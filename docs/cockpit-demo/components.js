@@ -7,7 +7,7 @@
 // views/, which imports what it uses from the others. app.js imports from here only.
 
 import { html, useEffect, useLayoutEffect, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { areaScope, cardPlan, flowOn, indexRows, railShown, triageKey, workKinds, workPageOf } from './logic.js'
+import { areaScope, cardPlan, indexRows, railShown, triageKey, workKinds, workPageOf } from './logic.js'
 import { T } from './text.js'
 import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
@@ -70,13 +70,13 @@ function PageView({ s, c }) {
   if (s.ui.page === WORKERS_PAGE) return html`<${WorkersPage} s=${s} c=${c} />`
   if (s.ui.page === CHAT_PAGE) return s.rooms?.layout === 'workspaces' ? html`<${RoomsPage} s=${s} c=${c} />` : html`<${ChatPage} s=${s} c=${c} />`
   if (s.ui.page === SETTINGS_PAGE) return html`<${SettingsPage} s=${s} c=${c} />`
-  // the Work through page, only while cockpit.flow.enabled is on; a stored @flow without it opens Today (app.js fixPage)
-  if (s.ui.page === FLOW_PAGE && flowOn(s)) return html`<${FlowPage} s=${s} c=${c} />`
   // as cmux the agents live in the Chat (its A2A area): a stored or stray @agents shows the Chat until the controller moves it there
   if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return s.rooms?.layout === 'workspaces' ? html`<${RoomsPage} s=${s} c=${c} />` : html`<${AgentsPage} s=${s} c=${c} />`
   const view = workViewNow(s)
   // the files view (one task at a time) needs no work page: it walks the tasks of the model
   if (view === 'dossier') return html`<${DossierView} s=${s} c=${c} />`
+  // Work through (cockpit.flow.enabled) needs none either: it walks every open point of the model
+  if (view === 'flow') return html`<${FlowPage} s=${s} c=${c} />`
   const work = view === 'due' ? null : workPageOf(s.model?.pages)
   if (view === 'jev') {
     const JevWork = jev?.JevWork

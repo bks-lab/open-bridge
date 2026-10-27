@@ -23,6 +23,7 @@ from .. import model_route as mr
 from . import model as m
 from . import describe as dsc
 from . import organize as og
+from . import themes as thm
 from .card_fields import validate_brief
 from .config import TARGETS
 from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as AGENT_PEER_RE
@@ -64,6 +65,7 @@ PATTERN_KINDS: dict[str, tuple[re.Pattern, str]] = {
     "ask_hash": (ASK_HASH_RE, "not a question hash"),
     "organize_id": (og.ID_RE, "not a proposal id"),
     "describe_id": (dsc.PROPOSAL_RE, "not a proposal id"),
+    "theme_id": (thm.THEME_ID_RE, "not a theme id"),
 }
 _LAUNCH_MODELS = ("auto", *mr.MODELS)
 _LAUNCH_EFFORTS = ("auto", "standard", *mr.EFFORTS)
@@ -86,6 +88,7 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "route_by": (ROUTE_BY, f"must be one of {', '.join(ROUTE_BY)}"),
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
     "tour_how": (TOUR_HOW, "finished or skipped"),
+    "themes_mode": (thm.MODES, "assign or regroup"),
 }
 
 
@@ -178,6 +181,16 @@ def _organize_items(actions: "Actions", value: Any, name: str, today: dt.date) -
     return list(value)
 
 
+def _theme_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # a theme's name: one line of words, refused when it does not fit, never cut
+    if isinstance(value, str) and re.search(r"[\n\r\t]", value):
+        raise bad_arg(name, "one line, no tabs")
+    text = " ".join(check_text(value, name, thm.NAME_MAX).split())
+    if not text:
+        raise bad_arg(name, "must not be empty")
+    return text
+
+
 def _brief(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
     # what a person wrote for a brief: refused whole when the gate finds anything wrong, never cut
     if not isinstance(value, dict):
@@ -209,6 +222,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "digit": _digit,
     "organize_items": _organize_items,
     "brief": _brief,
+    "theme_name": _theme_name,
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
 

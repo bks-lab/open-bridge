@@ -588,6 +588,43 @@ class WorkVerbs:
         ctx.extra["outcome"] = result["outcome"]
         ctx.delta()
 
+    # ------------------------------------------------------------ themes of the Work through page (themes.py)
+
+    def v_flow_themes_run(self, ctx: Ctx, mode: str, keys: list) -> None:
+        """One run of the themes over open points: each key must be a row the page shows now. The model call runs
+        on the themes' own lock, never the write lock (it writes nothing of the Bridge)"""
+        app = self.app
+        rows = []
+        for key in keys:
+            found = app.collector.resolve(key)
+            if not found:
+                raise ActionError(409, "stale_row", "the row is no longer there", "keys")
+            rows.append({**found["out"], "key": key})
+        done = app.themes.run(mode, rows, call=lambda name, subject, argv, timeout, **kw: ctx.call(name, subject, argv, timeout, **kw))
+        ctx.note(app.themes.tx()["ordered"].format(n=done["n"]))
+        ctx.extra["themes"] = app.themes.state()
+
+    def _theme_row(self, key: str) -> None:
+        if not self.app.collector.resolve(key):
+            raise ActionError(409, "stale_row", "the row is no longer there", "key")
+
+    def v_flow_theme_move(self, ctx: Ctx, key: str, theme: str) -> None:
+        self._theme_row(key)
+        name = self.app.themes.move(key, theme)
+        ctx.note(self.app.themes.tx()["moved"].format(name=name))
+        ctx.extra["themes"] = self.app.themes.state()
+
+    def v_flow_theme_new(self, ctx: Ctx, key: str, name: str) -> None:
+        self._theme_row(key)
+        made = self.app.themes.new(key, name)
+        ctx.note(self.app.themes.tx()["moved"].format(name=made))
+        ctx.extra["themes"] = self.app.themes.state()
+
+    def v_flow_theme_rename(self, ctx: Ctx, theme: str, name: str) -> None:
+        made = self.app.themes.rename(theme, name)
+        ctx.note(self.app.themes.tx()["renamed"].format(name=made))
+        ctx.extra["themes"] = self.app.themes.state()
+
     def v_describe_apply(self, ctx: Ctx, key: str, proposal: str, brief: dict | None = None) -> None:
         app = self.app
         result = app.describe.apply(key, proposal, brief, call=self.describe_ctx(ctx))

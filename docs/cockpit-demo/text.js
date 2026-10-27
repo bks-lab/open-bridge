@@ -266,7 +266,6 @@ const en = {
   btnStartControlShort: 'Start',
   startControlTitle: 'Opens a new Claude tab in the {ws} workspace (created when missing); the page asks it from then on',
   sessionsTab: 'Sessions',
-  flowTab: 'Work through',
   sessionsTitle: 'Claude sessions',
   sessionsIntro: 'Every Claude Code session running on this machine, with its subagents. Click a card to jump to its tab.',
   sessionsEmpty: 'No Claude session runs right now.',
@@ -358,7 +357,7 @@ const en = {
   workOrder: {
     label: 'Order of this page',
     viewLabel: 'View of the work tab',
-    views: { due: 'Due', area: 'By source', jev: 'By Jev', dossier: 'Files' },
+    views: { due: 'Due', area: 'By source', jev: 'By Jev', dossier: 'Files', flow: 'Work through' },
     byArea: 'By area',
     byJev: 'By Jev',
     run: 'Order with Jev',
@@ -1753,7 +1752,6 @@ const de = {
   btnStartControlShort: 'Starten',
   startControlTitle: 'Öffnet einen neuen Claude-Tab im Workspace {ws} (legt ihn an, wenn er fehlt); die Seite fragt ab dann dort',
   sessionsTab: 'Sitzungen',
-  flowTab: 'Abarbeiten',
   sessionsTitle: 'Claude-Sitzungen',
   sessionsIntro: 'Jede Claude-Code-Sitzung, die auf diesem Rechner läuft, mit ihren Subagenten. Ein Klick auf die Karte springt in ihren Tab.',
   sessionsEmpty: 'Gerade läuft keine Claude-Sitzung.',
@@ -1845,7 +1843,7 @@ const de = {
   workOrder: {
     label: 'Reihenfolge dieser Seite',
     viewLabel: 'Ansicht des Arbeit-Reiters',
-    views: { due: 'Dran', area: 'Nach Quelle', jev: 'Nach Jev', dossier: 'Akten' },
+    views: { due: 'Dran', area: 'Nach Quelle', jev: 'Nach Jev', dossier: 'Akten', flow: 'Abarbeiten' },
     byArea: 'Nach Bereichen',
     byJev: 'Nach Jev',
     run: 'Mit Jev ordnen',

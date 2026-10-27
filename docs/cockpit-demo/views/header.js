@@ -3,10 +3,10 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, flowOn, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
-  AGENTS_PAGE, FLOW_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
   morePages, pageOrder, reviewHomeOf,
 } from './nav.js'
 import { AgentMark, agentBadge } from './agents.js'
@@ -252,7 +252,6 @@ export function PageBar({ s, c }) {
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
       ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
-      ${flowOn(s) ? tab(FLOW_PAGE, t.flowTab, n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null) : null}
       ${tab(SESSIONS_PAGE, t.sessionsTab, aiLeft > 0
         ? html`<span class="pbadge is-quiet" title=${t.aiWaitingTitle(aiLeft)}><span>${t.aiBadge}</span> <span class="mono">${aiLeft}</span></span>`
         : sess.sessions > 0

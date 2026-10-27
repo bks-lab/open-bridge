@@ -94,6 +94,10 @@ their defaults:
 | `flow.prep_ahead` | `2` | how many cards after the one in front get their brief prepared (`describe_run`, within `describe.budget_per_hour`), only when it is missing or stale; `0` prepares none |
 | `flow.max_running` | `4` | how many started agents may run before Let AI do it asks "4 are running already. Start anyway?" (at least 1) |
 | `flow.rank_max_age_days` | `7` | a Jev rank older than this many days does not order the tasks (the triage's `next_rank` is left out), the plain order takes over; at least 1 |
+| `flow.themes.enabled` | `false` | Work through groups its points by themes a small model gives them, across the areas (Themes beside Areas at the top of its left column), and suggests a decision for each in the same call, see [Work through](#work-through-flow). Off, the areas group them |
+| `flow.themes.max_themes` | `8` | the most themes there may be, the ones a person made included (2 to 20) |
+| `flow.themes.budget_per_day` | `6` | how many runs a day may order the themes, the click "Order themes again" included; once spent, the areas group what has no theme yet until the next day |
+| `flow.themes.model` | none | the model of the themes, `haiku`, `sonnet` or `opus`; none: the service `cockpit-themes` of `workflow/ai-services/` (default Haiku) |
 | `flow.rerank_per_day` | `3` | how often a day a click on "order again" may ask Jev anew; `0` only the order of the day's first call. Reserved: the page has no such button yet, so nothing reads it |
 | `a2a_sources` | none | further sources of A2A peers beside `infra/a2a-peers/`: a list of `{name, script}`, `script` a skill's own `skills/<skill>/scripts/<name>.py` that reaches agents another way (an access proxy, a broker) and keeps its own credentials. At most four; a bad entry is ignored and named in `status`. Contract under [Peers from a script](#5-asking-claude-the-relay) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
@@ -2292,6 +2296,7 @@ share or clean up.
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
 | `jev-pages.json` | Jev's order per page | yes: the titles |
+| `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, and the runs of the last day (the budget) | yes: theme names and the reasons of the suggestions |
 | `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
 | `relay/done/` | what became of each (written by that session) | yes: the answers |
 | `relay/heartbeat/` | one file per Claude Code session with the relay on | no |

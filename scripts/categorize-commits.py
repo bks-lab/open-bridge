@@ -593,6 +593,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_brief_refs.py",
     "scripts/lib/bridge_cockpit/describe.py",             # each item's brief written and kept by a small model
     "scripts/tests/test_bridge_cockpit_describe.py",
+    "scripts/lib/bridge_cockpit/themes.py",               # the themes of Work through, ordered by a small model
+    "scripts/tests/test_bridge_cockpit_themes.py",
     "scripts/tests/test_task_brief.py",
     "scripts/tests/test_card_fields.py",
     "scripts/tests/test_workplace_brief.py",

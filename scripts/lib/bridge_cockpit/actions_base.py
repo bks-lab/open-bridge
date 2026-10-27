@@ -118,6 +118,12 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "describe_run": {"key": ("key", True), "ahead": ("bool", False)},
     "describe_apply": {"key": ("key", True), "proposal": ("describe_id", True), "brief": ("brief", False)},
     "describe_discard": {"key": ("key", True), "proposal": ("describe_id", True)},
+    # the themes of the Work through page (themes.py): one run over the open points (assign: those without a theme,
+    # regroup: a click orders them all anew), a point moved by hand to a theme or to a new one, a theme renamed
+    "flow_themes_run": {"mode": ("themes_mode", True), "keys": ("keys", True)},
+    "flow_theme_move": {"key": ("key", True), "theme": ("theme_id", True)},
+    "flow_theme_new": {"key": ("key", True), "name": ("theme_name", True)},
+    "flow_theme_rename": {"theme": ("theme_id", True), "name": ("theme_name", True)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
     "pin": {"key": ("key", True), "on": ("bool", True)},
@@ -193,7 +199,8 @@ READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "guide_read", "guide_settings", "guide_settings_reset",
-                         "tour_done", "tour_reset"})
+                         "tour_done", "tour_reset", "flow_themes_run", "flow_theme_move", "flow_theme_new",
+                         "flow_theme_rename"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
