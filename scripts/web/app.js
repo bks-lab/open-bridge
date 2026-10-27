@@ -1801,7 +1801,8 @@ async function boot() {
       lang: params.get('lang') || 'en', offline: params.get('offline') === '1', empty: params.get('empty') === '1',
       auth: params.get('auth') === '0' ? false : undefined, tour: params.get('tour') === '1',
       work: params.get('work'), focusToFiles: params.get('focus_to_files') === '1', filesScope: params.get('files_scope'),
-      flow: params.get('flow') !== '0',
+      flow: params.get('flow') !== '0', workPage: params.get('work_page') === '1',
+      views: params.get('views') ? params.get('views').split(',').map(x => x.trim()).filter(Boolean) : null,
     })
   }
   api = createApi(transport)

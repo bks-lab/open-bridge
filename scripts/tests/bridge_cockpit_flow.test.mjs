@@ -2243,3 +2243,244 @@ test('F, the work views: cockpit.work_views keeps the views it names, an older s
   const s = { model: { pages: [page] }, jev, work: { flow: { enabled: true }, views: ['files', 'flow'] }, ui: { workView: 'jev' } }
   assert.equal(logic.workViewIn(s), 'dossier')
 })
+
+// ---------------------------------------------------------------- round 4: the views and the demo
+
+const demoFlow = (ui = {}, over = {}) => cockpitState(NOW, { ...over, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowPicked: [], ...ui } })
+
+test('Running now: on top of the left column and of the overview, its title opens it in the middle, To tab the strong way', () => {
+  const s = demoFlow()
+  const parts = logic.flowParts(s)
+  assert.ok(parts.lane.length >= 3, 'the demo runs a start, a recognised session, a task tab and a session waiting')
+  assert.ok(parts.lane.some(x => x.how === 'seen' && x.stage === 'working') && parts.lane.some(x => x.stage === 'waiting'))
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const block = el.$('aside .flow-run')
+  assert.match(block.$('h3').text(), new RegExp(`${en.flow.run.label}\\s*${parts.lane.length}`))
+  assert.equal(block.$$('.flow-run-item').length, parts.lane.length)
+  const strip = el.$('.flow-runstrip')
+  assert.equal(strip.$$('.flow-runstrip-row').length, parts.lane.length)
+  const seen = parts.lane.find(x => x.how === 'seen')
+  const row = strip.$$('.flow-runstrip-row').find(r => r.text().includes(seen.title))
+  assert.match(row.text(), new RegExp(en.flow.run.how.seen))
+  assert.ok(row.$$('button').find(b => b.text() === en.flow.toTab).hasClass('btn-primary'))
+  block.$$('.flow-run-open')[0].click()
+  assert.deepEqual(c.calls.at(-1), ['flowRun', parts.lane[0].id])
+  // no entry of Running now in the overview's table or the batch
+  assert.ok(!el.$$('.flow-ov-row').some(tr => tr.text().includes(seen.title)))
+})
+
+test('the run view: the card, its tabs and the instruction line, no walk bar; Not this task unlinks a recognised session', () => {
+  const s = demoFlow()
+  const seen = logic.flowParts(s).lane.find(x => x.how === 'seen')
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'run', flowRunId: seen.id })} c=${c} />`)
+  assert.match(el.$('.flow-card').text(), new RegExp(seen.title))
+  assert.equal(el.$('.flow-walk'), null)
+  assert.ok(el.$('.flow-ptabs'))
+  assert.ok(el.$('aside .flow-run-item.is-on'), 'the entry open is marked on the left')
+  const can = el.$$('.flow-aside .flow-can button')
+  assert.equal(can[0].text(), en.flow.toTab)
+  assert.ok(can[0].hasClass('btn-primary'))
+  el.button(en.flow.run.unlink).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'session_unlink', { session: seen.session.sid }])
+  assert.match(el.$('.flow-aside [data-field=who]').text(), /docs search/)
+  // an entry gone (finished, unlinked): the overview again
+  const gone = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'run', flowRunId: 'session:surface:99' })} c=${recorder()} />`)
+  assert.ok(gone.$('.flow-overview') || gone.$('.flow-prio'))
+})
+
+test('Not now: a button per group at the foot of the left column, a click shows the group as a list with its batch', async () => {
+  const s = demoFlow()
+  const left = logic.flowParts(s).leftOut
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const block = el.$('aside .flow-notnow')
+  assert.match(block.$('h3').text(), new RegExp(`${en.flow.notnow.label}\\s*${left.total}`))
+  assert.deepEqual(block.$$('.flow-notnow-item').map(b => b.$('.flow-side-label').text()), left.groups.map(g => en.flow.notnow.group[g.reason]))
+  block.$$('.flow-notnow-item')[0].click()
+  assert.deepEqual(c.calls.at(-1), ['flowLeft', left.groups[0].reason])
+  // the Sunday question waits under Later, from two days before; Back on takes it back in this browser
+  const later = left.groups.find(g => g.reason === 'later')
+  const sunday = later.rows.find(e => e.why === 'ahead')
+  assert.ok(sunday, 'the question due in five days waits')
+  const c2 = recorder()
+  const list = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'later', flowLeftPicked: [sunday.row.key] })} c=${c2} />`)
+  assert.match(list.$('.flow-leftlist h2').text(), new RegExp(en.flow.notnow.group.later))
+  assert.match(list.$('.flow-left-sub').text(), new RegExp(en.flow.notnow.sub.later))
+  assert.equal(list.$('.flow-instruct'), null, 'no instruction line in a list of Not now')
+  assert.match(list.$('.flow-aside').text(), new RegExp(en.flow.notnow.hint.slice(0, 30)))
+  const tr = list.$$('.flow-ov-row').find(r => r.text().includes(sunday.row.title))
+  assert.match(tr.text(), new RegExp(en.flow.notnow.from('')))
+  assert.deepEqual(list.$$('.flow-ov-verbs button').map(b => b.text()), [en.flow.notnow.back, `${en.flow.verbs.later} ▾`, en.flow.verbs.done, `${en.flow.verbs.drop} ▾`])
+  list.button(en.flow.notnow.back).click()
+  await tick()
+  assert.match(list.$('.flow-list-confirm').text(), /1 back on/)
+  list.button(en.flow.list.confirm).click()
+  await tick()
+  assert.deepEqual(c2.calls.find(x => x[0] === 'flowEarly'), ['flowEarly', { [sunday.row.key]: sunday.until }])
+  // the watched issues and pull requests under a head per repository
+  const watch = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'watch' })} c=${recorder()} />`)
+  const heads = watch.$$('.flow-ov-group').map(h => h.text())
+  assert.ok(heads.includes('example/repo') && heads.includes('example/tools'), heads.join(', '))
+  assert.ok(watch.$$('.flow-ov-open').some(a => a.getAttribute('href')?.startsWith('https://example.org/')), 'an issue opens on the web')
+})
+
+test('Merge in the batch: two open tasks ticked offer it, a stream or an item ticked with them turns it off with why', async () => {
+  const s = demoFlow({ flowPicked: ['task:release-polish', 'task:release-wording'] })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const merge = el.button(`${en.flow.merge.button} ▾`)
+  assert.ok(merge && !merge.hasAttribute('disabled'))
+  merge.click()
+  await tick()
+  const panel = el.$('.flow-merge')
+  assert.match(panel.text(), new RegExp(en.flow.merge.title))
+  assert.equal(panel.$$('input[type=radio]').length, 2)
+  assert.ok(c.calls.filter(x => x[0] === 'loadActivity').length >= 2, 'the feeds load for the counts')
+  assert.match(panel.text(), /Polish the wording of the release checklist stays/)
+  el.button(en.flow.merge.run).click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'flowMerge'), ['flowMerge', 'task:release-polish', ['task:release-wording'], 'overview'])
+  // with an inbox item ticked too: disabled, and the line says why
+  const mixed = mount(html`<${FlowPage} s=${demoFlow({ flowPicked: ['task:release-polish', 'task:release-wording', 'inbox:20261009-0900-review-demo-a1b2'] })} c=${recorder()} />`)
+  assert.ok(mixed.button(`${en.flow.merge.button} ▾`).hasAttribute('disabled'))
+  assert.match(mixed.$('.flow-merge-only').text(), new RegExp(en.flow.merge.only.slice(0, 20)))
+  // the panel's keep goes to the one with more activity once the feeds came
+  const feeds = { 'task:release-polish': { counts: { all: 2 }, facts: { moved: '2026-10-05' } }, 'task:release-wording': { counts: { all: 7 }, facts: { moved: '2026-10-07' } } }
+  const withFeeds = demoFlow({ flowPicked: ['task:release-polish', 'task:release-wording'] }, { details: { inbox: {}, task: {},
+    activity: Object.fromEntries(Object.entries(feeds).map(([k, v]) => [k, { status: 'ok', ver: 0, data: v }])) } })
+  const p = mount(html`<${views.flowlist.MergePanel} rows=${logic.flowParts(withFeeds).task.map(x => x.row).concat(logic.flowParts(withFeeds).doing.map(x => x.row))
+    .filter(r => r.key.startsWith('task:release-'))} s=${withFeeds} c=${recorder()} onClose=${() => {}} />`)
+  assert.match(p.text(), /Reword the release checklist stays/)
+  assert.match(p.text(), new RegExp(en.flow.merge.activity(7)))
+})
+
+test('Prio: the switch offers it with a work page Jev orders, the grid of four squares, a click enters a square', async () => {
+  const base = mock.buildState(NOW, { workPage: true })
+  const st = cockpitState(NOW, { model: base.model, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowMode: 'prio', flowPicked: [] } })
+  const all = logic.flowQueue(logic.flowParts(st))
+  const keys = all.filter(x => x.row).map(x => x.row.key)
+  const order = { at_ms: NOW - 30 * MIN, items: keys.slice(0, 4).map((key, i) => ({ key, rank: i + 1, quadrant: logic.FLOW_QUADRANTS[i], who: 'me' })) }
+  const s = { ...st, jevOrder: { work: { order, running: false, error: null } } }
+  assert.equal(logic.flowMode(s), 'prio')
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  assert.deepEqual(el.$$('aside .seg-btn').map(b => b.text()), [en.flow.side.themes, en.flow.side.areas, en.flow.side.prio])
+  const squares = el.$$('.flow-prio-grid .flow-prio-sq')
+  assert.deepEqual(squares.map(b => b.getAttribute('data-quadrant')), ['now', 'plan', 'hand', 'drop'])
+  assert.match(squares[0].text(), new RegExp(en.flow.fields.quadrant.now))
+  assert.match(squares[0].text(), new RegExp(en.flow.prio.sub.now))
+  assert.ok(el.$('.flow-prio-none .flow-prio-sq'), 'the points Jev did not rate')
+  assert.match(el.$('.flow-prio-from').text(), /Jev ordered/)
+  assert.match(el.$('.flow-aside').text(), new RegExp(en.flow.prio.hint.slice(0, 30)))
+  squares[1].click()
+  assert.deepEqual(c.calls.at(-1), ['flowSide', 'q:plan'])
+  // no order yet: the page asks for the day's order once
+  const none = { ...st, jevOrder: {} }
+  const c2 = recorder()
+  mount(html`<${FlowPage} s=${none} c=${c2} />`)
+  await tick()
+  assert.deepEqual(c2.calls.find(x => x[0] === 'flowPrioOrder'), ['flowPrioOrder', 'work'])
+  // a square entered: Back says All squares, its points as one band in Jev's order
+  const inside = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowSide: { prio: 'q:now' } } }} c=${recorder()} />`)
+  assert.match(inside.$('.flow-side-back').text(), new RegExp(en.flow.side.allQuads))
+  assert.deepEqual(inside.$$('.flow-side-band h3').map(h => h.text()), [en.flow.groups.rank])
+})
+
+test('the head counts points, what runs and what is not now; the sum is every open row', () => {
+  const s = demoFlow()
+  const p = logic.flowParts(s)
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  assert.match(el.$('.flow-head').text(), new RegExp(en.flow.count(p.counts.points, p.counts.running, p.counts.left)))
+  assert.equal(p.counts.total - p.counts.extra, logic.flowUniverse(s).size)
+  assert.equal(en.flow.count(1, 0, 2), '1 point · 2 not now')
+  assert.equal(text.TABLES.de.flow.count(3, 1, 2), '3 Punkte · 1 läuft · 2 nicht dran')
+  // the left-out drawer is gone
+  assert.equal(el.$('.flow-left'), null)
+})
+
+test('the Sessions page names a task recognised from the session and offers Not this task', () => {
+  const s = cockpitState(NOW, { ui: { page: '@sessions' } })
+  const c = recorder()
+  const el = mount(html`<${views.sessions.SessionsPage} s=${s} c=${c} />`)
+  const seen = el.$$('.sess-seen')
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].text(), en.sessionSeen)
+  assert.equal(seen[0].getAttribute('title'), en.sessionSeenTitle)
+  el.button(en.sessionNotThis).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'session_unlink', { session: '6b1d9e20-0000-4000-8000-000000000004' }])
+})
+
+test('F: the work tab shows only the views cockpit.work_views keeps', () => {
+  const page = { id: 'work', group: 'work', jev: true, sections: [] }
+  const s = cockpitState(NOW, { work: { ...cockpitState(NOW).work, views: ['files', 'flow'] }, jev: { enabled: true, ready: true },
+    ui: { page: 'briefing', workView: 'flow' } })
+  s.model = { ...s.model, pages: [...s.model.pages, page] }
+  const sw = mount(html`<${views.day.WorkSwitch} s=${s} c=${recorder()} />`)
+  assert.deepEqual(sw.$$('[role=radio]').map(b => b.text()), [en.workOrder.views.dossier, en.workOrder.views.flow])
+})
+
+test('the demo merges two tasks and takes it back; the refusals as the server words them', async () => {
+  const tr = mock.createMockTransport({ latency: 0 })
+  const act = (verb, args) => tr.post('/api/action', { verb, args })
+  assert.equal((await act('flow_merge', { keep: 'task:release-polish', keys: ['task:release-polish'] })).error.code, 'invalid_argument')
+  assert.equal((await act('flow_merge', { keep: 'task:release-polish', keys: ['task:nowhere'] })).error.code, 'stale_row')
+  assert.equal((await act('flow_merge', { keep: 'task:release-polish', keys: ['task:team-onboarding'] })).error.code, 'merge_not_task')
+  assert.equal((await act('flow_merge', { keep: 'task:release-polish', keys: ['inbox:20261009-0915-update-docs-e5f6'] })).error.code, 'merge_not_task')
+  const off = mock.createMockTransport({ latency: 0, flow: false })
+  assert.equal((await off.post('/api/action', { verb: 'flow_merge', args: { keep: 'task:release-polish', keys: ['task:release-wording'] } })).error.code, 'flow_off')
+  // a backlog task of the files list merges as well
+  const r = await act('flow_merge', { keep: 'task:release-polish', keys: ['task:release-wording', 'task:docs-search'] })
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.data.merge, { keep: 'release-polish', merged: ['release-wording', 'docs-search'], failed: [] })
+  assert.deepEqual(r.data.settled, ['task:release-wording', 'task:docs-search'])
+  assert.deepEqual(r.data.undo.map(u => u.undo), [{ verb: 'task_unmerge', args: { keep: 'release-polish', slug: 'release-wording', as: 'review' } },
+    { verb: 'task_unmerge', args: { keep: 'release-polish', slug: 'docs-search', as: 'backlog' } }])
+  let st = (await tr.get('/api/state')).data
+  const keys = new Set([...st.model.sections.flatMap(x => x.rows).map(x => x.key), ...st.model.files.map(f => `task:${f.slug}`)])
+  assert.ok(!keys.has('task:release-wording') && !keys.has('task:docs-search') && keys.has('task:release-polish'))
+  const top = (await tr.get('/api/history')).data.entries[0]
+  assert.equal(top.verb, 'flow_merge')
+  assert.deepEqual(top.items.map(x => [x.did, x.ident]), [['merged', 'release-wording'], ['merged_in', 'release-polish'], ['merged', 'docs-search'], ['merged_in', 'release-polish']])
+  const feed = (await tr.get('/api/flow/activity?key=task:release-polish&fresh=1')).data
+  assert.ok(feed.rows.some(x => x.change?.new === 'merged_in' && x.change.from === 'release-wording'))
+  // the undo: the merged task is back, a second undo of the same is not applicable
+  const u = await act('task_unmerge', { keep: 'release-polish', slug: 'release-wording', as: 'review' })
+  assert.equal(u.ok, true)
+  assert.deepEqual(u.data.unmerge, { keep: 'release-polish', slug: 'release-wording' })
+  st = (await tr.get('/api/state')).data
+  assert.ok(st.model.sections.flatMap(x => x.rows).some(x => x.key === 'task:release-wording'))
+  assert.ok(st.model.files.some(f => f.slug === 'release-wording'))
+  assert.equal((await act('task_unmerge', { keep: 'release-polish', slug: 'release-wording' })).error.code, 'not_applicable')
+  assert.ok(await act('task_unmerge', { keep: 'release-polish', slug: 'docs-search', as: 'backlog' }))
+  assert.ok((await tr.get('/api/state')).data.model.files.some(f => f.slug === 'docs-search'))
+})
+
+test('the demo takes Back on and a recognised session back: unhide, reopen, running, keep, Not this task', async () => {
+  const tr = mock.createMockTransport({ latency: 0 })
+  const act = (verb, args) => tr.post('/api/action', { verb, args })
+  let st = (await tr.get('/api/state')).data
+  const hiddenKey = 'title:Renew the test certificate'
+  assert.ok(st.model.hidden.some(r => r.key === hiddenKey))
+  await act('unhide', { key: hiddenKey })
+  st = (await tr.get('/api/state')).data
+  assert.ok(!st.model.hidden.some(r => r.key === hiddenKey) && st.model.sections.flatMap(x => x.rows).some(r => r.key === hiddenKey))
+  await act('inbox_reopen', { id: '20261008-1600-quote-check-3e4f' })
+  st = (await tr.get('/api/state')).data
+  assert.equal(st.model.sections.flatMap(x => x.rows).find(r => r.inbox_id === '20261008-1600-quote-check-3e4f').inbox_state, 'open')
+  await act('task_keep', { keys: ['task:report-dark-mode'] })
+  st = (await tr.get('/api/state')).data
+  assert.equal(st.model.sections.flatMap(x => x.rows).find(r => r.key === 'task:report-dark-mode').bucket, 'tasks')
+  // a session recognised at work on a task: Not this task takes the task off, and says so
+  const sid = st.sessions.sessions.find(x => x.task_how === 'seen').sid
+  const r = await act('session_unlink', { session: sid })
+  assert.deepEqual(r.data.session, { sid, refused: 'search-index' })
+  assert.match(r.data.note, /no longer counts as work on search-index/)
+  st = (await tr.get('/api/state')).data
+  assert.equal(st.sessions.sessions.find(x => x.sid === sid).task, null)
+  assert.equal((await act('session_unlink', { session: sid })).error.code, 'stale_row')
+  await act('session_link', { session: sid, slug: 'search-index' })
+  st = (await tr.get('/api/state')).data
+  assert.deepEqual([st.sessions.sessions.find(x => x.sid === sid).task, st.sessions.sessions.find(x => x.sid === sid).task_how], ['search-index', 'hand'])
+})

@@ -477,7 +477,8 @@ const en = {
     overlapWith: titles => `overlaps ${titles}`,
     facts: { when: 'When', duration: 'Length', calendar: 'Calendar', where: 'Where', link: 'Meeting', people: n => `People (${n})` },
   },
-  histDid: did => ({ done: 'done', declined: 'not doing', not_doing: 'not doing', dropped: 'dropped', approved: 'approved' })[did]
+  histDid: did => ({ done: 'done', declined: 'not doing', not_doing: 'not doing', dropped: 'dropped', approved: 'approved', merged: 'merged into another task',
+    merged_in: 'took a merged task in' })[did]
     ?? (String(did).startsWith('hidden until ') ? `hidden until ${String(did).slice(13)}`
       : String(did).startsWith('later until ') ? `later, until ${String(did).slice(12)}`
       : String(did).startsWith('runs on until ') ? `runs on, look again ${String(did).slice(14)}` : String(did)),
@@ -1984,7 +1985,8 @@ const de = {
     overlapWith: titles => `überschneidet sich mit ${titles}`,
     facts: { when: 'Wann', duration: 'Dauer', calendar: 'Kalender', where: 'Ort', link: 'Besprechung', people: n => `Teilnehmende (${n})` },
   },
-  histDid: did => ({ done: 'erledigt', declined: 'wird nicht gemacht', not_doing: 'wird nicht gemacht', dropped: 'verworfen', approved: 'freigegeben' })[did]
+  histDid: did => ({ done: 'erledigt', declined: 'wird nicht gemacht', not_doing: 'wird nicht gemacht', dropped: 'verworfen', approved: 'freigegeben', merged: 'in eine andere Aufgabe zusammengeführt',
+    merged_in: 'hat eine Aufgabe aufgenommen' })[did]
     ?? (String(did).startsWith('hidden until ') ? `ausgeblendet bis ${String(did).slice(13)}`
       : String(did).startsWith('later until ') ? `später, bis ${String(did).slice(12)}`
       : String(did).startsWith('runs on until ') ? `läuft noch, nachsehen ${String(did).slice(14)}` : String(did)),

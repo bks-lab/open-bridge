@@ -152,6 +152,18 @@ test('text tables: an error text for every error code of the API', () => {
   for (const t of Object.values(text.TABLES)) for (const c of codes) assert.ok(t.errors[c], c)
 })
 
+test('text tables: the two refusals of a merge (round 4) worded in both languages, no dash', () => {
+  for (const [lang, t] of Object.entries(text.TABLES)) {
+    for (const code of ['merge_not_task', 'merge_changed']) {
+      assert.ok(t.errors[code], `${lang} ${code}`)
+      assert.doesNotMatch(t.errors[code], /[\u2013\u2014]|--/, `${lang} ${code}`)
+      assert.equal(logic.errorText({ code, message: 'x' }, t), t.errors[code], `${lang} ${code}`)
+    }
+  }
+  assert.match(text.TABLES.en.errors.merge_not_task, /no streams and no inbox items/)
+  assert.match(text.TABLES.de.errors.merge_changed, /von Hand geändert/)
+})
+
 test('setControl: the control workspace name from the config fills every text, nothing hard-coded', () => {
   const all = () => [...leaves(text.T())].map(([, v]) => v).join('\n')
   for (const lang of ['de', 'en']) {
