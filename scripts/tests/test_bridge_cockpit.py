@@ -100,7 +100,7 @@ def collect_fixture(root: Path) -> dict:
             "status": [{"title": "Systems", "count": 0, "health": True}],
         },
         "pages": [
-            {"id": "systems", "title": "Systems", "sections": [
+            {"id": "systems", "title": "Systems", "subs": ["@workers", "tasks"], "sections": [
                 {"id": "checks", "kind": "command", "title": "Checks", "status": "ok", "alarm": True, "bad": 1,
                  "weight": 1, "total": 1, "items": [
                      {"id": "backup-stale", "title": "Backup older than 2 days", "detail": "drift", "tone": "bad",
@@ -109,9 +109,9 @@ def collect_fixture(root: Path) -> dict:
                  "items": [{"id": "upstream-drift", "title": "Upstream drift", "tone": "warn", "url": "file:///etc/passwd", "ask": True,
                            "actionable": True}]},
                 {"id": "accounts", "kind": "command", "title": "Accounts", "status": "ok", "weight": 1, "view": "tiles",
-                 "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
+                 "hide_ok": True, "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
                            {"title": "Not an account"}]}]},
-            {"id": "tasks", "title": "Tasks", "sections": [
+            {"id": "tasks", "title": "Tasks", "under": "systems", "sections": [
                 {"id": "tasks", "kind": "tasks", "title": "Tasks", "status": "ok", "items": [
                     {"title": "Demo task", "task": "demo-task", "priority": "P1", "state": "doing",
                      "url": f"file://{root}/work/tasks/demo-task/STATUS.md",
@@ -482,6 +482,19 @@ def test_parse_pages_places_cards_by_the_profile():
     # not a list: no placement, the page keeps what `overview` alone draws
     assert m.parse_pages({"pages": [{"id": "ops", "title": "B", "cards": "costs", "sections": [{"id": "a"}]}]})[0]["cards"] is None
     assert m.parse_cards([]) == []
+
+
+def test_parse_pages_keeps_where_a_page_stands_and_what_a_section_hides():
+    # `under`: the page has no tab, a tile of its parent opens it; the parent's `subs` name its sub pages in their
+    # order (text only); a section's hide_ok: drawn only while one of its rows is a finding
+    pages = m.parse_pages({"pages": [
+        {"id": "ops", "title": "Betrieb", "subs": ["@workers", "inv", 3, ""], "sections": [{"id": "a", "hide_ok": True}]},
+        {"id": "inv", "title": "Inventar", "under": "ops", "sections": [{"id": "b", "hide_ok": "yes"}]},
+        {"id": "lab", "title": "Labor", "under": 7, "subs": "inv", "sections": [{"id": "c"}]}]})
+    assert pages[0]["subs"] == ["@workers", "inv"] and pages[0]["under"] is None
+    assert pages[1]["under"] == "ops" and pages[1]["subs"] == []
+    assert pages[2]["under"] is None and pages[2]["subs"] == []
+    assert [p["sections"][0]["hide_ok"] for p in pages] == [True, False, False]
 
 
 def test_mark_and_as_of():
@@ -924,6 +937,10 @@ def test_model_shape(world):
     assert pages["systems"]["group"] == "main"
     assert pages["systems"]["overview"] is False      # the browser gets the overview switch of every page
     assert pages["systems"]["jev"] is False           # and whether it can be ordered by Jev, never the words
+    # where a page stands: under another (no tab of its own), and which sub pages a page names, in their order
+    assert pages["tasks"]["under"] == "systems" and pages["systems"]["under"] is None
+    assert pages["systems"]["subs"] == ["@workers", "tasks"] and pages["tasks"]["subs"] == []
+    assert [x["hide_ok"] for x in pages["systems"]["sections"]] == [False, False, True]
     assert model["teams"][0]["roles"][1] == {"id": "review", "name": "Review", "mode": "report"}
     dumped = json.dumps(model)
     assert "file://" not in dumped and world.app.token not in dumped and "command" not in model

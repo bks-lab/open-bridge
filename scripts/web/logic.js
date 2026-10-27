@@ -1186,13 +1186,34 @@ export function screenLines(text) {
 
 // ---------------------------------------------------------------- workers tab (workload view --json)
 
+// red is an outage (gone, switched off, stopped, its last run failed), orange the upkeep a declaration and its machine
+// drift into; the same table as STATE_TONE in scripts/bridge-resources.py
 const WORKER_TONE = { in_sync: 'ok', observed: 'ok', intentionally_absent: 'dim', 'not reported': 'dim', not_provisioned: 'dim', absent: 'bad', disabled: 'bad',
-  drifted: 'warn', inventory_missing: 'warn', source_drift: 'warn', inventory_stale: 'warn' }
+  stopped: 'bad', last_run_failed: 'bad', drifted: 'warn', inventory_missing: 'warn', source_drift: 'warn', inventory_stale: 'warn' }
 
 /** A run's state as a tone: ok, warn, bad, dim; anything unknown is warn, never silently ok */
 export function workerTone(run) {
   if (run?.retired) return 'dim'
   return WORKER_TONE[run?.state] ?? (run?.state ? 'warn' : 'ok')
+}
+
+/** The severity of a run's worst finding as the engine files it (high, medium, info), or null: the run's own
+ *  `severity` where the view names one, else read off its findings */
+export function jobSeverity(run) {
+  if (typeof run?.severity === 'string' && run.severity && run.severity !== 'none') return run.severity
+  const sev = (run?.findings ?? []).map(f => f?.severity)
+  return ['high', 'medium', 'info'].find(x => sev.includes(x)) ?? null
+}
+
+/** The background jobs in service by what they want: `failing` an outage (the engine's high: gone, stopped, its last
+ *  run failed), `upkeep` a deviation to tend (medium: a unit without its marker, a program outside the repository),
+ *  `ok` the rest of `all`. Only an outage is loud wherever the cockpit counts jobs; upkeep stays calm */
+export function jobCounts(view) {
+  const runs = (view?.runs ?? []).filter(r => !r.retired)
+  const failing = runs.filter(r => jobSeverity(r) === 'high').length
+  const upkeep = runs.filter(r => jobSeverity(r) === 'medium').length
+  const all = view?.stats?.in_service ?? runs.length
+  return { all, failing, upkeep, ok: Math.max(0, all - failing - upkeep) }
 }
 
 /** How a recorded run is drawn: a shape and a tone, never colour alone */
@@ -1552,6 +1573,27 @@ export function sectionTile(section) {
   } else if (tone === 'neutral' && section?.alarm && count === 0) tone = 'success'
   const counts = gaugeSection(items) && !peak ? items.map(it => ({ title: it.title, value: it.meter.value, max: it.meter.max })) : null
   return { count, loud: loud.length, tone, note: loud[0]?.title ?? null, peak, counts, state: 'ok' }
+}
+
+/** The tile of a sub page on the page it stands under (`under:`): red with its findings (a section drawn only with a
+ *  finding counts too), red with the reason of a source that could not be read, orange with the rows that need a look;
+ *  else the size of its first drawn section and how those rows stand. Green only where an alarm section of the page
+ *  reports nothing: rows nothing measures live (a device outside the tailnet, an account) never make it look in order */
+export function subPageTile(page) {
+  const sections = page?.sections ?? []
+  const items = sections.flatMap(sec => sec.items ?? [])
+  const lead = sections.find(sec => !sec.hide_ok) ?? sections[0] ?? null
+  const rows = lead?.items ?? []
+  const base = { big: lead?.total ?? lead?.count ?? rows.length, lead: lead?.title ?? '', note: null, error: false,
+    counts: { ok: rows.filter(toneFilter('ok')).length, problems: rows.filter(toneFilter('problems')).length, off: rows.filter(toneFilter('off')).length } }
+  const bad = sections.reduce((n, sec) => n + (typeof sec.bad === 'number' ? sec.bad : (sec.items ?? []).filter(it => it.tone === 'bad').length), 0)
+  if (bad) return { ...base, tone: 'danger', big: bad, note: items.find(it => it.tone === 'bad')?.title ?? null }
+  const broken = sections.find(sec => sec.status === 'error')
+  if (broken) return { ...base, tone: 'danger', note: broken.reason || broken.title || '', error: true }
+  const warn = items.filter(it => it.tone === 'warn')
+  if (warn.length) return { ...base, tone: 'warning', big: warn.length, note: warn[0].title ?? null }
+  const clear = sections.some(sec => sec.alarm && sec.status === 'ok' && !(sec.total ?? sec.count ?? (sec.items ?? []).length))
+  return { ...base, tone: clear ? 'success' : 'neutral' }
 }
 
 export const USAGE_SOURCES = ['session', 'subagent', 'worker']
@@ -3128,7 +3170,11 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   for (const run of s?.workers?.data?.runs ?? []) {
     if (run.retired) continue
     const lastRun = (run.strip ?? []).at(-1)
-    const tone = workerTone(run) === 'bad' || ['failed', 'expired'].includes(lastRun?.verdict) ? 'bad' : workerTone(run) === 'warn' ? 'warn' : null
+    // an outage is news in red; upkeep the engine files medium is no news at all, only a run without a severity
+    // keeps the orange of its state
+    const sev = jobSeverity(run)
+    const tone = sev === 'high' || workerTone(run) === 'bad' || ['failed', 'expired'].includes(lastRun?.verdict) ? 'bad'
+      : sev == null && workerTone(run) === 'warn' ? 'warn' : null
     if (tone) add(`job:${run.id}`, 'failing', tone, tone === 'bad' ? 'jobFailed' : 'jobWarn', [run.title ?? run.id], { kind: 'workers' })
   }
   // 22 machines, clouds and model sources that are down, from the pages of the profile

@@ -345,7 +345,13 @@ const en = {
   usageProjects: 'Projects',
   usageInput: (inp, read, write) => `read ${inp} new, ${read} from the cache, ${write} into the cache`,
   usageDayOf: day => `Day ${day}`,
-  overviewWorkers: (ok, all, bad) => (bad ? `${bad} with findings, ${ok} of ${all} fine` : `${ok} of ${all} fine`),
+  // an outage first, then the upkeep to tend, then what is fine (logic.js jobCounts)
+  overviewWorkers: (ok, all, down, tend) => [down ? `${down} down` : '', tend ? `${tend} to tend` : '', `${ok} of ${all} fine`].filter(Boolean).join(', '),
+  // a sub page's tile: its first section and how its rows stand (logic.js subPageTile)
+  subPageRows: (lead, n = {}) => `${lead}: ${[n.ok ? `${n.ok} in order` : '', n.off ? `${n.off} off` : ''].filter(Boolean).join(', ') || 'nothing in it'}`,
+  // the head of a sub page: the way back to the page it stands under
+  parentBack: title => `‹ ${title}`,
+  parentBackLabel: title => `Back to ${title}`,
   overviewPeak: (title, pct) => `highest: ${title} ${pct} %`,
   overviewJump: title => `to ${title}`,
   workersOnHost: (n, bad) => (bad ? `${n} background jobs on this machine, ${bad} with findings` : `${n} background jobs on this machine`),
@@ -1848,7 +1854,10 @@ const de = {
   usageProjects: 'Projekte',
   usageInput: (inp, read, write) => `gelesen: ${inp} neu, ${read} aus dem Cache, ${write} in den Cache`,
   usageDayOf: day => `Tag ${day}`,
-  overviewWorkers: (ok, all, bad) => (bad ? `${bad} mit Befund, ${ok} von ${all} in Ordnung` : `${ok} von ${all} in Ordnung`),
+  overviewWorkers: (ok, all, down, tend) => [down ? `${down} ausgefallen` : '', tend ? `${tend} zur Pflege` : '', `${ok} von ${all} in Ordnung`].filter(Boolean).join(', '),
+  subPageRows: (lead, n = {}) => `${lead}: ${[n.ok ? `${n.ok} in Ordnung` : '', n.off ? `${n.off} aus` : ''].filter(Boolean).join(', ') || 'leer'}`,
+  parentBack: title => `‹ ${title}`,
+  parentBackLabel: title => `Zurück zu ${title}`,
   overviewPeak: (title, pct) => `höchstes: ${title} ${pct} %`,
   overviewJump: title => `zu ${title}`,
   workersOnHost: (n, bad) => (bad ? `${n} Hintergrundjobs auf dieser Maschine, ${bad} mit Befund` : `${n} Hintergrundjobs auf dieser Maschine`),

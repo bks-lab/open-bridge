@@ -301,9 +301,12 @@ test('page bar: More wears a dot only for a reason behind it; a grey count, an i
   await foldedBar(bad, el => assert.ok(!!el.$('.ptab-more button .dot.tk-danger'), 'no red dot for a finding behind More'))
   const ok = { ...calm, model: { ...calm.model, pages: [...calm.model.pages, { ...page, badge: { kind: 'ok' } }] } }
   await foldedBar(ok, el => assert.ok(!el.$('.ptab-more button .dot'), 'a dot on More for a green ok'))
-  // background jobs with findings: a warning
-  const jobs = { ...calm, workers: { status: 'ok', data: { stats: { with_findings: 3 } } } }
-  await foldedBar(jobs, el => assert.ok(!!el.$('.ptab-more button .dot.tk-warning'), 'no dot for the findings of the jobs'))
+  // background jobs: an outage is red on More, upkeep alone no reason (proposal 5, jobCounts)
+  const runs = [{ id: 'a', state: 'last_run_failed', severity: 'high' }, { id: 'b', state: 'drifted', severity: 'medium' }]
+  const down = { ...calm, workers: { status: 'ok', data: { stats: { with_findings: 2, in_service: 2 }, runs } } }
+  await foldedBar(down, el => assert.ok(!!el.$('.ptab-more button .dot.tk-danger'), 'no red dot for an outage of the jobs'))
+  const upkeep = { ...calm, workers: { status: 'ok', data: { stats: { with_findings: 1, in_service: 1 }, runs: [runs[1]] } } }
+  await foldedBar(upkeep, el => assert.ok(!el.$('.ptab-more button .dot'), 'a dot on More for upkeep of the jobs'))
 })
 
 test('page bar and header: a tooltip names a key only while the shortcuts are on', async () => {
@@ -2277,6 +2280,149 @@ test('jev: a plan entry the model holds no row for reads its kind and source fro
   assert.equal(row.origin.category, 'bot')
   assert.equal(row.inbox_id, '20261001-0900-x-ab12')
   assert.equal(planRow({ key: 'task:y' }, null, null).task, 'y')
+})
+
+// ---------------------------------------------------------------- Operations and its sub pages (under:, @workers)
+
+const opsSec = (id, title, items, extra = {}) => ({ id, kind: 'command', title, status: 'ok', reason: '', alarm: false, empty: 'nothing',
+  count: items.length, total: items.length, weight: 0, bad: items.filter(x => x.tone === 'bad').length, as_of: null, more: 0, items, ...extra })
+const opsRow = (i, title, tone = null) => ({ index: i, title, tone, detail: '', when: '', actionable: false })
+const opsRun = (id, severity) => ({ id, title: id, state: severity === 'high' ? 'stopped' : severity === 'medium' ? 'drifted' : 'in_sync',
+  severity: severity ?? 'none', findings: severity ? [{ state: 'x', severity, detail: 'd' }] : [], strip: [], retired: false })
+
+/** The cockpit with three pages of an invented Bridge: Operations names Background jobs, Inventory and Lab as its sub pages */
+function opsState({ runs = [opsRun('mail', null), opsRun('pilot', 'medium')], ui = {}, pages = null } = {}) {
+  const base = cockpitState(NOW, { ui })
+  const page = (id, title, sections, extra = {}) => ({ id, title, group: 'main', badge: { kind: 'ok' }, overview: false, cards: null,
+    jev: false, under: null, subs: [], sections, ...extra })
+  const all = pages ?? [
+    page('ops', 'Operations', [opsSec('checks', 'Checks', [], { alarm: true, empty: 'all green' })],
+      { overview: true, cards: [], subs: ['@workers', 'inv', 'lab'] }),
+    page('inv', 'Inventory', [opsSec('machines', 'Machines', [opsRow(0, 'box'), opsRow(1, 'printer', 'dim'), opsRow(2, 'watch', 'dim')], { view: 'tiles' }),
+      opsSec('cloud', 'Cloud live', [opsRow(0, 'fn-a')], { view: 'tiles', hide_ok: true })], { under: 'ops' }),
+    page('lab', 'Lab', [opsSec('remotes', 'Remotes', [opsRow(0, 'gpu-box', 'dim')]), opsSec('findings', 'Findings', [], { alarm: true })], { under: 'ops' }),
+  ]
+  const live = runs.filter(r => !r.retired)
+  return { ...base, model: { ...base.model, pages: all }, usage: { status: 'idle', data: null }, costs: { status: 'idle', data: null },
+    workers: { status: 'ok', error: null, data: { host: 'homebox', generated_at: '', systems: [], runs,
+      stats: { in_service: live.length, with_findings: live.filter(r => r.findings.length).length, not_reported: 0, retired: 0 } } } }
+}
+
+const tabTexts = bar => bar.$$('[role=tab]').map(b => b.text())
+
+/** The page bar reads its active tab back with querySelector, listens for resize and measures its tabs (as in the
+ *  flow suite): a DOM without layout says 0, so it neither folds nor moves its marker. Installed by the first test
+ *  that mounts the bar, so the tests above this section run on the DOM as it was */
+function pageBar(s, c = recorder()) {
+  const proto = Object.getPrototypeOf(document.createElement('div'))
+  if (!proto.querySelector) proto.querySelector = function querySelector(sel) { return this.$(sel) }
+  globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
+  for (const k of ['offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth']) {
+    if (!Object.getOwnPropertyDescriptor(proto, k)) Object.defineProperty(proto, k, { get: () => 0, configurable: true })
+  }
+  return mount(html`<${views.header.PageBar} s=${s} c=${c} />`)
+}
+
+test('operations: a page names its sub pages and each knows its parent; Background jobs only where a worker view exists', () => {
+  const { parentOf, subPagesOf, pageOrder } = views.nav
+  const s = opsState()
+  assert.deepEqual(subPagesOf(s, 'ops'), ['@workers', 'inv', 'lab'])
+  assert.deepEqual([parentOf(s, 'inv'), parentOf(s, '@workers'), parentOf(s, 'ops')], ['ops', 'ops', null])
+  assert.ok(!pageOrder(s).some(id => ['inv', 'lab', '@workers'].includes(id)), pageOrder(s).join(' '))
+  assert.deepEqual(subPagesOf({ ...s, workers: { status: 'none', data: null } }, 'ops'), ['inv', 'lab'])
+  // a parent the model does not carry leaves its sub pages a tab of their own
+  const orphan = { ...s, model: { ...s.model, pages: s.model.pages.filter(p => p.id !== 'ops') } }
+  assert.equal(parentOf(orphan, 'inv'), null)
+  assert.ok(pageOrder(orphan).includes('inv') && pageOrder(orphan).includes('@workers'))
+  // beside a sub page's title a plain ok only on a live all clear: devices nothing measures live are not in order
+  const { headBadgeOf } = views.nav
+  const page = id => s.model.pages.find(p => p.id === id)
+  assert.deepEqual([headBadgeOf(s, page('inv')).kind, headBadgeOf(s, page('lab')).kind, headBadgeOf(s, page('ops')).kind], ['none', 'ok', 'ok'])
+})
+
+test('operations: a sub page has no tab, the tab of the page it stands under stays lit while it is open', () => {
+  for (const page of ['inv', '@workers']) {
+    const bar = pageBar(opsState({ ui: { page } }))
+    const tabs = tabTexts(bar)
+    assert.ok(tabs.some(x => x.startsWith('Operations')), tabs.join(' | '))
+    assert.ok(!tabs.some(x => x.startsWith('Inventory') || x.startsWith('Lab') || x.startsWith(en.workersTab)), tabs.join(' | '))
+    const lit = bar.$$('[role=tab]').filter(b => b.getAttribute('aria-selected') === 'true').map(b => b.text())
+    assert.equal(lit.length, 1, page)
+    assert.match(lit[0], /^Operations/, page)
+  }
+})
+
+test('operations: an outage turns the parent tab red with its count, upkeep alone leaves it calm', () => {
+  const opsTab = s => pageBar(s).$$('[role=tab]').find(b => b.text().startsWith('Operations'))
+  const calm = opsTab(opsState())
+  assert.ok(!calm.$('.tk-danger') && !calm.$('.tk-warning'), calm.text())
+  const down = opsTab(opsState({ runs: [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')] }))
+  assert.ok(down.$('.pbadge .tk-danger'), down.text())
+  assert.equal(down.$('.pbadge .mono').text(), '1')
+  // a finding on a sub page counts there too
+  const s = opsState()
+  const inv = s.model.pages.find(p => p.id === 'inv')
+  const red = { ...s, model: { ...s.model, pages: s.model.pages.map(p => (p === inv ? { ...inv, badge: { kind: 'bad', n: 2 } } : p)) } }
+  assert.equal(opsTab(red).$('.pbadge .mono').text(), '2')
+})
+
+test('operations: Background jobs keep their own tab red only for an outage, never orange for upkeep', () => {
+  const alone = runs => {
+    const s = opsState({ runs })
+    return { ...s, model: { ...s.model, pages: s.model.pages.map(p => ({ ...p, subs: [], under: null })) } }
+  }
+  const jobsTab = s => pageBar(s).$$('[role=tab]').find(b => b.text().startsWith(en.workersTab))
+  const upkeep = jobsTab(alone([opsRun('pilot', 'medium'), opsRun('report', 'medium')]))
+  assert.ok(upkeep, 'the tab is there')
+  assert.ok(!upkeep.$('.pbadge'), upkeep.text())
+  const down = jobsTab(alone([opsRun('pilot', 'medium'), opsRun('backup', 'high')]))
+  assert.ok(down.$('.pbadge .tk-danger'), down.text())
+  assert.equal(down.$('.pbadge .mono').text(), '1')
+})
+
+test('operations: tiles on top open the sub pages, Background jobs with only the runs that carry a finding', () => {
+  const { OverviewBoard } = views.pages
+  const s = opsState({ runs: [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')] })
+  const c = recorder()
+  const el = mount(html`<${OverviewBoard} page=${s.model.pages[0]} s=${s} c=${c} />`)
+  const tiles = el.$$('.otile')
+  assert.deepEqual(tiles.map(x => x.$('.otile-title').text()), [en.workersTab, 'Inventory', 'Lab', 'Checks'])
+  const [jobs, inv, lab] = tiles
+  assert.ok(jobs.hasClass('tk-danger'), jobs.getAttribute('class'))
+  assert.equal(jobs.$('.otile-big').text(), '1')
+  jobs.click()
+  assert.deepEqual(c.calls.at(-1), ['openWorkers', { attention: true }])
+  // devices nothing measures live never look in order; the lab's quiet findings are a live all clear
+  assert.ok(inv.hasClass('tk-neutral'), inv.getAttribute('class'))
+  assert.equal(inv.$('.otile-big').text(), '3')
+  assert.match(inv.$('.otile-sub').text(), /^Machines: /)
+  inv.click()
+  assert.deepEqual(c.calls.at(-1), ['setPage', 'inv'])
+  assert.ok(lab.hasClass('tk-success'), lab.getAttribute('class'))
+  // upkeep alone keeps the jobs tile calm
+  const calm = mount(html`<${OverviewBoard} page=${s.model.pages[0]} s=${opsState()} c=${recorder()} />`).$('.otile')
+  assert.ok(calm.hasClass('tk-neutral'), calm.getAttribute('class'))
+})
+
+test('operations: a sub page carries the way back to the page it stands under', () => {
+  const c = recorder()
+  const back = mount(html`<${views.header.ParentLink} s=${opsState({ ui: { page: 'inv' } })} c=${c} />`).button('‹ Operations')
+  assert.ok(back, 'the back link')
+  back.click()
+  assert.deepEqual(c.calls.at(-1), ['setPage', 'ops'])
+  const head = mount(html`<${views.sessions.WorkersPage} s=${opsState({ ui: { page: '@workers' } })} c=${recorder()} />`)
+  assert.ok(head.$('.page-head').button('‹ Operations'), 'on Background jobs too')
+  assert.ok(!mount(html`<${views.header.ParentLink} s=${opsState({ ui: { page: 'ops' } })} c=${recorder()} />`).$('button'), 'none on the parent')
+})
+
+test('operations: a section with hide_ok is drawn only while one of its rows is a finding', () => {
+  const { PageSection } = views.pages
+  const s = opsState({ ui: { page: 'inv' } })
+  const page = s.model.pages.find(p => p.id === 'inv')
+  const cloud = page.sections.find(x => x.id === 'cloud')
+  assert.ok(!mount(html`<${PageSection} page=${page} section=${cloud} s=${s} c=${recorder()} />`).$('section'), 'hidden while quiet')
+  const down = { ...cloud, bad: 1, items: [opsRow(0, 'fn-a', 'bad')] }
+  assert.ok(mount(html`<${PageSection} page=${page} section=${down} s=${s} c=${recorder()} />`).$('section'), 'shown with a finding')
 })
 
 // ---------------------------------------------------------------- the runaway guard of cockpit_render.mjs

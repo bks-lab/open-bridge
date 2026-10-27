@@ -4,7 +4,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, indexRows, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
+  duration, indexRows, jobCounts, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
   asksYou, countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
   MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey,
   itemRow, workPageOf,
@@ -70,8 +70,10 @@ export function stationOf(x, s, c, chosen, project) {
   if (x.id === 'c:workers') {
     const st = s.workers?.data?.stats
     if (!st) return { id: x.id, label: t.workersTab, value: '·', sub: '', tone: null, onClick: () => c.setPage(WORKERS_PAGE) }
-    return { id: x.id, label: t.workersTab, value: String(st.in_service ?? 0), sub: h.workersFindings(st.with_findings ?? 0),
-      tone: st.with_findings ? 'warning' : 'success', onClick: () => c.setPage(WORKERS_PAGE) }
+    // red only for an outage, upkeep stays calm (logic.js jobCounts)
+    const j = jobCounts(s.workers.data)
+    return { id: x.id, label: t.workersTab, value: String(st.in_service ?? 0), sub: t.overviewWorkers(j.ok, j.all, j.failing, j.upkeep),
+      tone: j.failing ? 'danger' : j.upkeep ? null : 'success', onClick: () => c.setPage(WORKERS_PAGE) }
   }
   if (x.id === 'c:waiting') {
     const nowRows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows ?? []
@@ -275,8 +277,8 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
   } else if (x.id === 'c:workers') {
     const runs = (s.workers?.data?.runs ?? []).filter(r => !['ok', 'dim'].includes(workerTone(r)))
     body = html`${head(t.workersTab, st.value)}
-      ${s.workers?.data?.stats ? html`<p class="stage-row-sub">${h.workersFindings(s.workers.data.stats.with_findings ?? 0)}</p>` : null}
-      ${runs.slice(0, 8).map(r => html`<${InspectRow} key=${r.id} tone=${workerTone(r) === 'bad' ? 'danger' : 'warning'} title=${r.title}
+      ${s.workers?.data?.stats ? html`<p class="stage-row-sub">${st.sub}</p>` : null}
+      ${runs.slice(0, 8).map(r => html`<${InspectRow} key=${r.id} tone=${workerTone(r) === 'bad' ? 'danger' : 'muted'} title=${r.title}
         sub=${short(r.findings?.[0]?.detail ?? r.state ?? '', 90)} side=${r.host} onClick=${() => c.setPage(WORKERS_PAGE)} />`)}
       ${foot(h.openPage(t.workersTab), () => c.setPage(WORKERS_PAGE))}`
   } else if (x.id === 'c:tabs') {
@@ -429,6 +431,7 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
   const relay = s.relay ?? {}
   const loading = !!s.loading?.pass
   const workers = s.workers?.data?.stats
+  const jobs = jobCounts(s.workers?.data)
   const agents = (s.sessions?.sessions ?? []).reduce((n, x) => n + (x.agents?.running_count ?? 0) + (x.workflows?.length ?? 0), 0)
   const conv = (s.quick?.convs ?? []).find(x => x.id === s.ui.coreConv) ?? null
   const live = useQuickLive(conv?.id)
@@ -466,8 +469,8 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
       <${Btn} size="xs" variant="ghost" busy=${loading} onClick=${c.reload}>${t.reload}<//><//>
     ${(s.model?.alarms ?? []).map(a => html`<${InspectRow} key=${a.page_id + a.section_title} tone="danger" title=${h.alarm(a.count, a.section_title)}
       sub=${a.page_title} onClick=${() => c.setPage(a.page_id)} />`)}
-    ${workers ? html`<${InspectRow} tone=${workers.with_findings ? 'warning' : 'success'} title=${h.workersLine(workers.in_service ?? 0)}
-      sub=${h.workersFindings(workers.with_findings ?? 0)} onClick=${() => c.setPage(WORKERS_PAGE)} />` : null}
+    ${workers ? html`<${InspectRow} tone=${jobs.failing ? 'danger' : jobs.upkeep ? 'muted' : 'success'} title=${h.workersLine(workers.in_service ?? 0)}
+      sub=${t.overviewWorkers(jobs.ok, jobs.all, jobs.failing, jobs.upkeep)} onClick=${() => c.setPage(WORKERS_PAGE)} />` : null}
     <${InspectRow} tone=${agents ? 'info' : 'muted'} title=${h.agentsLine(agents)} sub=${h.sessionsLine((s.sessions?.sessions ?? []).length)}
       onClick=${() => c.setPage(SESSIONS_PAGE)} />
     ${!brief && (conv || busy) ? html`<h3 class="label-caps core-sub">${h.askTitle}</h3>

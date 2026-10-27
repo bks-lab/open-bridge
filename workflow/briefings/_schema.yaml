@@ -137,10 +137,15 @@ $defs:
           docs/briefings.md § Dashboard pages.
         items:
           type: object
-          required: [id, sections]
+          required: [id]
           additionalProperties: false
+          # "@workers" places the cockpit's own Background jobs page under a page of this list: an id and under, no sections
+          if: {properties: {id: {const: "@workers"}}}
+          then: {required: [under], propertyNames: {enum: [id, under]}}
+          else: {required: [sections]}
           properties:
-            id: {type: string, minLength: 1, not: {enum: [briefing, more]}, description: "briefing and more are taken: the briefing page and the page for the rest."}
+            id: {type: string, minLength: 1, not: {enum: [briefing, more]}, description: "briefing and more are taken: the briefing page and the page for the rest. @workers places the cockpit's Background jobs page (with under, nothing else)."}
+            under: {type: string, minLength: 1, description: "The id of another page of this list: this page gets no tab, a tile on that page opens it, and that page's tab stays lit while it is open. One level deep; neither page may be of group work or day."}
             title: {type: string, description: "Tab name. Default: the label page_<id>, else the id."}
             group: {enum: [main, more, work, day], description: "main (default): a tab in the page bar. more: after the daily tabs, and folded behind a More menu when the bar is too narrow. work: no tab of its own; the page is the by-source view of the work tab, beside what is due and, with jev:, by Jev (the Jev tab then folds into it too). day: no tab of its own; its sections stand under the day list of the Today page."}
             overview: {type: boolean, description: "true: a dashboard opens the page with a board of tiles, one per section (its count and its loudest row), each a jump to its section. Default false."}
@@ -190,6 +195,7 @@ $defs:
                       hide_empty: {type: boolean, description: "true: an empty section is left out instead of saying so."}
                       steps: {enum: [menu, buttons], description: "How a dashboard offers a row's own steps (a command row's actions). menu (default): one button opens them; buttons: each step is a button of its own, run by a second click on it."}
                       actionable: {type: boolean, description: "Whether a person can hand the rows on (Do it, Advise, Later, Close). Default: findings and tracker rows."}
+                      hide_ok: {type: boolean, description: "true: the section stays on the page for what reads it there (an account's services, the tab badge, the alarm) but is drawn only while one of its rows is a finding."}
       page_rest:
         enum: [show, hide]
         description: "A section no page names: show it on the tab 'more' (default) or leave it out."

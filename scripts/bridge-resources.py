@@ -44,13 +44,15 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCES = Path(".bridge") / "resources"     # what the dashboard showed last, under the Bridge root
 
-# a worker state as a tone, the same table as WORKER_TONE in scripts/web/logic.js; anything else is warn
+# a worker state as a tone, the same table as WORKER_TONE in scripts/web/logic.js; anything else is warn. Red is an
+# outage (gone, switched off, stopped, its last run failed), orange the upkeep a declaration and its machine drift into
 STATE_TONE = {"in_sync": "none", "observed": "none", "unmanaged": "none", "intentionally_absent": "dim",
               "not reported": "dim", "not_provisioned": "dim", "absent": "bad", "disabled": "bad",
+              "stopped": "bad", "last_run_failed": "bad",
               "drifted": "warn", "inventory_missing": "warn", "source_drift": "warn", "inventory_stale": "warn"}
 # workers that need a look, worst first; in_sync, unmanaged and observed are not listed one by one
-WORKER_RANK = {"absent": 0, "disabled": 1, "drifted": 2, "inventory_missing": 3, "source_drift": 4,
-               "inventory_stale": 5, "not_provisioned": 6, "unknown": 7}
+WORKER_RANK = {"absent": 0, "disabled": 1, "stopped": 1, "last_run_failed": 1, "drifted": 2, "inventory_missing": 3,
+               "source_drift": 4, "inventory_stale": 5, "not_provisioned": 6, "unknown": 7}
 QUIET_STATES = {"in_sync", "unmanaged", "observed", "intentionally_absent"}
 # keys whose entries are resources of an account, at the top or under `cloud:`
 RESOURCE_KEYS = ("subscriptions", "resource_groups", "keyvaults", "app_registrations", "zones", "workers",
@@ -262,7 +264,9 @@ def machine_rows(root: Path, tx: dict, peers: dict | None) -> list[dict]:
         parts = [str(x) for x in (m.get("type"), m.get("os")) if x]
         tone = "none"
         if peers is None:
+            # nothing live says it is up: grey like a machine outside the tailnet, never green
             parts.append(tx["no_tailscale"])
+            tone = "dim"
         elif ts in peers:
             p = peers[ts]
             parts.append(tx["online"] if p["online"] else tx["offline"])

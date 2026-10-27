@@ -9,7 +9,7 @@
 
 import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
-import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, quickLive } from './components.js'
+import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, parentOf, quickLive } from './components.js'
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
@@ -363,7 +363,8 @@ function offerTour() {
   if (tourOffered(s.tour) && !s.ui.tour) setUi({ tour: { id: 'welcome', from: s.ui.page } })
 }
 
-/** A stored page that the profile no longer has falls back to the Briefing ('@check' is the page's own) */
+/** A stored page that the profile no longer has falls back to the Briefing ('@check' is the page's own); a sub page
+ *  has no tab but is a page all the same (parentOf) */
 function fixPage() {
   const s = store.get()
   if (s.model && s.ui.page === CHECK_PAGE && !pageOrder(s).includes(CHECK_PAGE)) ctl.openReview()   // the check moved onto a page
@@ -371,7 +372,7 @@ function fixPage() {
   // the page @flow of an older cockpit: the work tab in its view; a Sessions page stored before round 6, where Running
   // now lists the sessions: Running now (meant for one release; after it the fallback below opens Today)
   else if (flowPageFor(s.ui.page, s)) ctl.setPage(s.ui.page)
-  else if (s.model && !pageOrder(s).includes(s.ui.page)) setUi({ page: 'briefing' })
+  else if (s.model && !pageOrder(s).includes(s.ui.page) && !parentOf(s, s.ui.page)) setUi({ page: 'briefing' })
 }
 
 const handlers = {

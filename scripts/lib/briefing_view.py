@@ -361,14 +361,18 @@ DEFAULT_PAGES = ("work", "status", "dates", "trackers", "today")
 # where a default page sits: work and status in front, the rest behind More, today's activity under the day list
 DEFAULT_PAGE_GROUP = {"work": "main", "status": "main", "dates": "more", "trackers": "more", "today": "day"}
 REST_PAGE = "more"
-PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev", "cards"}
+PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev", "cards", "under"}
+# the cockpit's own pages a profile may place under one of its pages (`{id: "@workers", under: ops}`): an id
+# and `under`, never sections; the page then has no tab, it opens from a tile on the page it stands under
+PLACED_PAGES = ("@workers",)
 # the live cards a dashboard may place after a section of a page (bridge_cockpit.model.CARD_IDS)
 PAGE_CARDS = ("costs", "usage", "noise")
 JEV_KEYS = {"skip_sections", "private"}
 # where a page sits in a dashboard's page bar: in front, or behind a "More" menu
 PAGE_GROUPS = ("main", "more", "work", "day")   # day: no tab, its sections stand under the day list;
 # work: no tab, it is the "by source" view of the work tab (the briefing), beside "what is due" and "by Jev"
-PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable", "steps"}
+PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable", "steps",
+                     "hide_ok"}
 # how a dashboard offers a row's own steps: one menu (default), or each as a button of its own
 PAGE_STEPS = ("menu", "buttons")
 # how a dashboard draws a section: rows in a table (default), cards, or a mosaic of every row
@@ -600,6 +604,7 @@ def _page_problems(view: dict) -> list:
     if not isinstance(pages, list):
         return out + ["view.pages must be a list of pages"]
     seen, placed = set(), {}
+    listed = {p["id"]: p for p in pages if isinstance(p, dict) and isinstance(p.get("id"), str) and p["id"]}
     for n, page in enumerate(pages, 1):
         where = f"view.pages {n}"
         if not isinstance(page, dict):
@@ -615,8 +620,15 @@ def _page_problems(view: dict) -> list:
         elif pid in seen:
             out.append(f"{where}: page {pid} listed twice")
         seen.add(pid)
+        if pid in PLACED_PAGES:
+            out += [f"{where}: unknown key {key}" for key in sorted(set(page) - {"id", "under"})]
+            out += _under_problems(page, listed, where) if "under" in page else \
+                [f"{where}: {pid} needs under (the page it stands under)"]
+            continue
         for key in sorted(set(page) - PAGE_KEYS):
             out.append(f"{where}: unknown key {key}")
+        if "under" in page:
+            out += _under_problems(page, listed, where)
         if "title" in page and not isinstance(page["title"], str):
             out.append(f"{where}: title must be text")
         if "group" in page and page["group"] not in PAGE_GROUPS:
@@ -659,7 +671,7 @@ def _page_problems(view: dict) -> list:
             detail = entry.get("detail", [])
             if not (isinstance(detail, str) or (isinstance(detail, list) and all(isinstance(d, str) for d in detail))):
                 out.append(f"{at}: detail must be a field name or a list of them")
-            for key in ("alarm", "badge", "hide_empty", "actionable"):
+            for key in ("alarm", "badge", "hide_empty", "actionable", "hide_ok"):
                 if key in entry and not isinstance(entry[key], bool):
                     out.append(f"{at}: {key} must be true or false")
             if "view" in entry and entry["view"] not in PAGE_VIEWS:
@@ -667,6 +679,25 @@ def _page_problems(view: dict) -> list:
             if "steps" in entry and entry["steps"] not in PAGE_STEPS:
                 out.append(f"{at}: steps must be one of {', '.join(PAGE_STEPS)}")
     return out
+
+
+def _under_problems(page: dict, listed: dict, where: str) -> list:
+    """`under:` of a page: another page of view.pages with a tab of its own, standing under none itself."""
+    under = page["under"]
+    if not isinstance(under, str) or not under:
+        return [f"{where}: under must be a page id"]
+    if under == page.get("id"):
+        return [f"{where}: a page cannot stand under itself"]
+    parent = listed.get(under)
+    if parent is None or under in PLACED_PAGES:
+        return [f"{where}: under names no page of view.pages: {under}"]
+    if page.get("group") in ("work", "day"):
+        return [f"{where}: under and group work or day exclude each other"]
+    if parent.get("group") in ("work", "day"):
+        return [f"{where}: under: {under} has no tab of its own (group work or day)"]
+    if "under" in parent:
+        return [f"{where}: under: {under} stands under {parent['under']} itself, one level only"]
+    return []
 
 
 def page_section_ids(view: dict) -> list:
@@ -2096,7 +2127,10 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
             # a row's steps as buttons of their own (a machine's power switches), not behind one menu
             **({"steps": "buttons"} if entry.get("steps") == "buttons" else {}),
             # nothing to say when it is empty: a dashboard leaves the section out instead of "nothing"
-            **({"hide_empty": True} if entry.get("hide_empty") is True else {})}
+            **({"hide_empty": True} if entry.get("hide_empty") is True else {}),
+            # kept on its page for what reads it there (an account's services, the badge, the alarm), drawn
+            # only while one of its rows is a finding
+            **({"hide_ok": True} if entry.get("hide_ok") is True else {})}
 
 
 
@@ -2125,7 +2159,9 @@ def _card_problems(cards, sections, where: str) -> list:
 def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     """The dashboard's pages beside the briefing: which section on which page, every row
     in the same columns. `view.pages` decides; without it a section's kind does, and a
-    section no page names lands on the rest page, so nothing collected goes unseen."""
+    section no page names lands on the rest page, so nothing collected goes unseen. A page
+    may stand under another (`under:`, no tab of its own); the parent names its sub pages
+    in `subs`, the cockpit's own pages a profile places there (PLACED_PAGES) among them."""
     view = _cfg(profile)
     labels = _labels(view, profile.get("_language"))
     marks = marks_of(view)
@@ -2133,10 +2169,15 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     sections = {s.get("id"): s for s in result.get("sections") or [] if isinstance(s, dict) and s.get("id")}
     plan = []   # (id, title, [entry], group, overview, jev)
     cards = {}  # page id -> its `cards:`, passed through as written (the dashboard places them)
+    unders = []  # (id, under) in the listed order: a page, or one of the cockpit's (PLACED_PAGES), under another
     configured = view.get("pages") if isinstance(view.get("pages"), list) else None
     if configured is not None:
         for page in configured:
             if not isinstance(page, dict) or not isinstance(page.get("id"), str):
+                continue
+            if isinstance(page.get("under"), str) and page["under"]:
+                unders.append((page["id"], page["under"]))
+            if page["id"] in PLACED_PAGES:
                 continue
             entries = [{"id": e} if isinstance(e, str) else e for e in page.get("sections") or []
                        if isinstance(e, str) or (isinstance(e, dict) and isinstance(e.get("id"), str))]
@@ -2164,4 +2205,14 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
         if built:
             out.append({"id": pid, "title": title, "sections": built, "group": group, **({"overview": True} if overview else {}),
                         **({"jev": jev} if jev is not None else {}), **({"cards": cards[pid]} if pid in cards else {})})
+    # a page under another has no tab: the parent names its sub pages in the listed order (`subs`), a sub page
+    # without a section of its own is none, and neither side may be a page without a tab (group work or day)
+    shown = {p["id"]: p for p in out if p["group"] not in ("work", "day")}
+    below = {pid for pid, _ in unders}
+    for pid, under in unders:
+        if under in shown and under not in below and (pid in PLACED_PAGES or pid in shown) \
+                and pid not in shown[under].get("subs", []):
+            if pid in shown:
+                shown[pid]["under"] = under
+            shown[under].setdefault("subs", []).append(pid)
     return out
