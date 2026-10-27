@@ -1525,8 +1525,9 @@ kbd {
   .hdr-headline { display: none; }
   /* icons only for reload and history, so the header fits beside the command box */
   .hide-narrow { display: none; }
-  /* the as-of time moves into the day column (.day-counts), the header keeps its buttons in view */
-  .hdr .hdr-asof { display: none; }
+  /* the as-of time moves into the day column (.day-counts), the header keeps its buttons in view; its warnings
+     (connection lost, stale model, failed pass) stay at every width */
+  .hdr .hdr-asof .asof-text { display: none; }
   .hdr-right { min-width: 0; }
   .hdr-right { flex: 1 1 auto; justify-content: flex-end; }
 }

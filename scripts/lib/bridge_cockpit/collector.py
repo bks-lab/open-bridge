@@ -263,17 +263,19 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known, sec_ctx)
                      for i, it in enumerate(s["items"][:cap])]
             items = [i for i in shown if not (i["actionable"] and (i["key"] in settled or (hidden.get(i["key"]) or "") > today))]
-            # a row put off or settled leaves the table, and its count and finding go with it, so the tab badge,
-            # the section head and the alarm never count a row the page does not show
+            # a row put off or settled leaves the table, and its count, finding and weight go with it, so the tab
+            # badge, the section head and the alarm never count a row the page does not show (a row weighs unless
+            # it is dim, briefing_view._page_section; a section that does not count stays at 0)
             gone = [i for i in shown if i not in items]
             bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad"))
-            sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "weight", "as_of")}
+            weight = max(0, s["weight"] - sum(1 for i in gone if i.get("tone") != "dim"))
+            sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "as_of")}
             sec["left_out"] = s.get("left_out") is True    # a section asked again on its own has no such key
             for extra in ("stale", "boards", "metrics", "cal_figures"):
                 if s.get(extra):
                     sec[extra] = s[extra]
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
-                               "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
+                               "weight": weight, "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
                                "steps": s.get("steps"),
                                "more": max(0, len(s["items"]) - cap)})
             if bad > 0:

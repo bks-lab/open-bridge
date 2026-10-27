@@ -593,6 +593,14 @@ test('FE-1 / FE-3: warnings name a lost connection, a stale model and a failed p
   for (const cls of ['hdr-asof', 'hdr-warn', 'mobile-status', 'hdr-relay']) {
     assert.doesNotMatch(narrow, new RegExp(`\\.${cls}[^{]*\\{[^}]*display:\\s*none`), `${cls} hidden below 900 px`)
   }
+  // from 900 to 1279 px the header keeps its warnings and gives way with the as-of time alone
+  const at = css.indexOf('@media (max-width: 1279px)')
+  const medium = css.slice(at, css.indexOf('@media', at + 1))
+  assert.ok(at >= 0 && medium.includes('.hdr-asof'), 'the medium block names the as-of')
+  for (const cls of ['hdr-asof', 'hdr-warn']) {
+    assert.doesNotMatch(medium, new RegExp(`\\.${cls}\\s*(,[^{]*)?\\{[^}]*display:\\s*none`), `${cls} hidden from 900 to 1279 px`)
+  }
+  assert.match(medium, /\.hdr \.hdr-asof \.asof-text\s*\{[^}]*display:\s*none/)
   const src = readComponents()
   assert.match(src, /pageWarnings\(/)
   // below 900 px the warnings and the relay state have their own line under the header
@@ -2014,7 +2022,7 @@ test('a tab whose start is settled (its item closed, its task done) offers to cl
   assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, k => k !== 'close', true), ['go_on'])
 })
 
-test('the starts handed to the AI fall into: done and to check, needs you, working, no word', async () => {
+test('the starts handed to the AI fall into: to check, done, needs you, working, no word', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const now = 10 * 60000
   const returns = [
@@ -2031,13 +2039,15 @@ test('the starts handed to the AI fall into: done and to check, needs you, worki
     { ref: 'surface:4', state: 'working' },
   ]
   const g = logic.aiGroups(returns, tabs, now)
-  assert.deepEqual(g.check.map(r => r.key), ['inbox:a', 'inbox:b'])
+  // a settled start has nothing left to check: it is done, an answer is the one to check
+  assert.deepEqual(g.check.map(r => r.key), ['inbox:b'])
+  assert.deepEqual(g.done.map(r => r.key), ['inbox:a'])
   assert.deepEqual(g.asks.map(r => r.key), ['task:c'])
   assert.deepEqual(g.working.map(r => r.key), ['task:d', 'task:e'])
   assert.deepEqual(g.lost.map(r => r.key), ['task:f'])
   // the tab of a settled start is the one to close; a result that is not closed yet is not
   assert.deepEqual([...logic.settledRefs(returns, tabs, now)], ['surface:1'])
-  // what waits on you there: the checks whose tab is still open, plus the questions
+  // what waits on you there: the checks and the settled starts whose tab is still open, plus the questions
   assert.equal(logic.aiWaiting(returns, tabs, now), 2)
   assert.equal(logic.aiWaiting([], [], now), 0)
   // a tab settled on its own (its item or task closed, no start of the cockpit) counts once as well
@@ -2052,7 +2062,7 @@ test('the sessions page leads with what the AI did, grouped by what it wants of 
   assert.match(page, /<\$\{AiReturns\}/)
   const ai = src.match(/function AiReturns\([\s\S]*?\n\}/)[0]
   assert.match(ai, /aiGroups\(/)
-  for (const g of ['check', 'asks', 'working', 'lost']) assert.match(ai, new RegExp(`'${g}'`))
+  for (const g of ['check', 'done', 'asks', 'working', 'lost']) assert.match(ai, new RegExp(`'${g}'`))
   // a tab settled on its own (no start of the cockpit names it) stands under done as well
   assert.match(ai, /settled && /)
   assert.match(ai, /<\$\{TabCard\}/)

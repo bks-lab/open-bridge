@@ -108,6 +108,22 @@ test('return card: the cross takes the start off the list', () => {
   assert.deepEqual(c.calls.at(-1), ['act', 'return_forget', { key: 'inbox:20261009-0910-tidy-labels-c3d4' }])
 })
 
+test('the sessions page: a settled start is done, never to check; it stands there only while its tab is open to be closed', () => {
+  const old = n => start({ key: `inbox:20261001-0900-old-${n}`, item: `20261001-0900-old-${n}`, title: `Old start ${n}`,
+    stage: 'done', tab: null, at_ms: NOW - 3 * 24 * 60 * MIN })
+  const s = withReturns([old(1), old(2), start({ stage: 'done' })], { ui: { page: '@sessions' } })
+  const box = mount(html`<${views.sessions.SessionsPage} s=${s} c=${recorder()} />`).$('.ai-returns')
+  assert.ok(box !== null, 'the section of the starts stands')
+  const heads = box.$$('.ai-group h4').map(h => h.text())
+  assert.ok(!heads.some(h => h.startsWith(en.aiGroup.check)), heads.join(' | '))
+  assert.deepEqual(heads, [`${en.aiGroup.done} 1`])
+  assert.deepEqual(box.$$('.rcard-title').map(b => b.text()), ['Tidy the issue labels on the demo board'])
+  assert.ok(box.button(en.btnCloseTab) !== null, 'its tab can go')
+  // with nothing but old settled starts nothing is left for you: no section at all
+  const quiet = withReturns([old(1), old(2)], { ui: { page: '@sessions' } })
+  assert.ok(!mount(html`<${views.sessions.SessionsPage} s=${quiet} c=${recorder()} />`).$('.ai-returns'), 'the old starts stand there')
+})
+
 // ---------------------------------------------------------------- TabControls
 
 function renderControls(ref, { slim = true, tab: patch = {}, returns = [], ...over } = {}) {
@@ -241,6 +257,69 @@ test('header: a cockpit with only its own state names that, and a normal one sho
   const demo = renderHeader(null, { mock: true })
   assert.equal(demo.$('.hdr-scratch'), null)
   assert.equal(demo.$('.hdr-demo .hdr-demo-long').text(), en.demoBadge)
+})
+
+// ---------------------------------------------------------------- the page bar: More and the keys in the tooltips
+
+/** The page bar as on a screen too narrow for its tabs, handed to `check`: the DOM has no layout, so the bar is told
+ *  that it overflows (scrollWidth past clientWidth) and folds every tab of the more group behind More, one a render.
+ *  It reads its active tab back and listens for resize (as in the aria suite); the stubs stand for this mount only,
+ *  and the bar is unmounted before they go */
+async function foldedBar(s, check) {
+  const { render } = await loadCockpit()
+  const proto = Object.getPrototypeOf(document.body)
+  const saved = ['querySelector', 'offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth'].map(k => [k, Object.getOwnPropertyDescriptor(proto, k)])
+  const hadWindow = 'window' in globalThis
+  if (!hadWindow) globalThis.window = { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
+  Object.defineProperty(proto, 'querySelector', { value(sel) { return this.$(sel) }, configurable: true, writable: true })
+  for (const k of ['offsetLeft', 'offsetWidth', 'clientWidth']) Object.defineProperty(proto, k, { get: () => 0, configurable: true })
+  Object.defineProperty(proto, 'scrollWidth', { get() { return this.hasClass('pagebar') ? 2000 : 0 }, configurable: true })
+  const root = document.createElement('div')
+  try {
+    render(html`<${views.header.PageBar} s=${s} c=${recorder()} />`, root)
+    await new Promise(resolve => setTimeout(resolve, 30))
+    check(root)
+  } finally {
+    render(null, root)
+    for (const [k, d] of saved) { if (d) Object.defineProperty(proto, k, d); else delete proto[k] }
+    if (!hadWindow) delete globalThis.window
+  }
+}
+
+test('page bar: More wears a dot only for a reason behind it; a grey count, an idle agent or a green ok is none', async () => {
+  const base = cockpitState(NOW)
+  const calm = cockpitState(NOW, { agents: { ...base.agents, convs: [] }, ui: { page: '@start' } })
+  await foldedBar(calm, el => {
+    const more = el.$('.ptab-more button')
+    assert.ok(more !== null, 'the tabs of the more group fold behind More')
+    assert.equal(more.text().startsWith(en.morePages), true)
+    assert.ok(!more.$('.dot'), 'a dot on More with nothing behind it')
+  })
+  // a page behind More with a finding: its colour on More
+  const page = { id: 'llm', title: 'Models', group: 'more', badge: { kind: 'bad', n: 2 }, sections: [] }
+  const bad = { ...calm, model: { ...calm.model, pages: [...calm.model.pages, page] } }
+  await foldedBar(bad, el => assert.ok(!!el.$('.ptab-more button .dot.tk-danger'), 'no red dot for a finding behind More'))
+  const ok = { ...calm, model: { ...calm.model, pages: [...calm.model.pages, { ...page, badge: { kind: 'ok' } }] } }
+  await foldedBar(ok, el => assert.ok(!el.$('.ptab-more button .dot'), 'a dot on More for a green ok'))
+  // background jobs with findings: a warning
+  const jobs = { ...calm, workers: { status: 'ok', data: { stats: { with_findings: 3 } } } }
+  await foldedBar(jobs, el => assert.ok(!!el.$('.ptab-more button .dot.tk-warning'), 'no dot for the findings of the jobs'))
+})
+
+test('page bar and header: a tooltip names a key only while the shortcuts are on', async () => {
+  const off = cockpitState(NOW, { ui: { page: '@start' } })
+  const on = cockpitState(NOW, { ui: { page: '@start', shortcuts: true } })
+  await foldedBar(off, el => {
+    const titles = el.$$('[title]').map(x => x.getAttribute('title'))
+    assert.ok(!titles.some(x => /\(Alt \d\)/.test(x)), titles.join(' | '))
+  })
+  await foldedBar(on, el => assert.equal(el.$$('[role=tab]')[0].getAttribute('title'), `${en.startTab} (Alt 1)`))
+  const titles = s => mount(html`<${Header} s=${s} c=${recorder()} />`).$$('button').map(b => b.getAttribute('title')).filter(Boolean)
+  const quiet = titles(off)
+  assert.ok(!quiet.some(x => /\((\?|r)\)$/.test(x)), quiet.join(' | '))
+  assert.ok(quiet.includes(en.helpTitle) && quiet.includes(en.reloadTitle), quiet.join(' | '))
+  const keyed = titles(on)
+  assert.ok(keyed.includes(`${en.helpTitle} (?)`) && keyed.includes(`${en.reloadTitle} (r)`), keyed.join(' | '))
 })
 
 // ---------------------------------------------------------------- what works where: header chip and sidebar counts

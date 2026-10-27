@@ -2472,13 +2472,14 @@ export function liveStage(r, tabs, nowMs) {
   return nowMs - r.at_ms < 180000 ? 'started' : 'lost'
 }
 
-/** The starts handed to the AI by what they want of you: done, answered or gone quiet and to check, a
- *  question, at work, or gone without a word. Newest first within a group, as the server sends them */
+/** The starts handed to the AI by what they want of you: answered or gone quiet and to check, settled (done:
+ *  nothing left to check, at most a tab to close), a question, at work, or gone without a word. Newest first
+ *  within a group, as the server sends them */
 export function aiGroups(returns, tabs, nowMs) {
-  const g = { check: [], asks: [], working: [], lost: [] }
+  const g = { check: [], done: [], asks: [], working: [], lost: [] }
   for (const r of returns ?? []) {
     const live = liveStage(r, tabs, nowMs)
-    const to = live === 'done' || live === 'result' || live === 'idle' ? 'check' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
+    const to = live === 'result' || live === 'idle' ? 'check' : live === 'done' ? 'done' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
     g[to].push({ ...r, live })
   }
   return g
@@ -2490,11 +2491,12 @@ export function settledRefs(returns, tabs, nowMs) {
   return new Set((returns ?? []).filter(r => r.tab?.ref && open.has(r.tab.ref) && liveStage(r, tabs, nowMs) === 'done').map(r => r.tab.ref))
 }
 
-/** What the AI left for you: checks whose tab is still open, tabs settled on their own, and the questions */
+/** What the AI left for you: checks and settled starts whose tab is still open, tabs settled on their own, and
+ *  the questions */
 export function aiWaiting(returns, tabs, nowMs) {
   const g = aiGroups(returns, tabs, nowMs)
   const open = new Set((tabs ?? []).map(t => t.ref))
-  const done = new Set(g.check.filter(r => r.tab?.ref && open.has(r.tab.ref)).map(r => r.tab.ref))
+  const done = new Set([...g.check, ...g.done].filter(r => r.tab?.ref && open.has(r.tab.ref)).map(r => r.tab.ref))
   for (const t of tabs ?? []) if (t.settled && t.state === 'waiting' && !t.is_control) done.add(t.ref)
   return done.size + g.asks.length
 }

@@ -1300,6 +1300,9 @@ def test_a_page_item_put_off_or_settled_no_longer_counts(world):
     assert (sec["items"], sec["count"], sec["total"], sec["bad"]) == ([], 0, 0, 0)
     assert pg["badge"]["kind"] != "bad"
     assert not [a for a in world.app.collector.model["alarms"] if a["page_id"] == "systems"]
+    # its weight goes too: the grey number of the tab counts only the two sections that still show a row
+    assert sec["weight"] == 0
+    assert pg["badge"] == {"kind": "count", "n": 2, "warn": True}
 
 
 def test_advise_later_and_settle_work_on_a_page_item(world):

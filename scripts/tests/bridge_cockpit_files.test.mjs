@@ -65,6 +65,33 @@ test('files and the area filter: a found file opens where the filtered queue hol
   assert.equal(logic.scopeKeep({ ...s, ui: { ...s.ui, dossierAt: null } }).dossierAt, null)
 })
 
+test('a click on a task outside the files view shows it: an open one in the item drawer, a closed one in the files view', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const row = task => ({ key: `task:${task}`, task, status: 'doing', bucket: 'act', title: task })
+  const model = { sections: [{ id: 'now', rows: [] }, { id: 'work', rows: [row('a'), row('b')] }] }
+  const work = { flow: { enabled: true }, views: null }
+  const at = ui => ({ model, tabs: { tabs: [] }, now: 0, more: {}, home: { pins: [] }, work,
+    ui: { area: null, picked: [], dossierAt: null, drawer: null, ...ui } })
+  // Work through, the start page, a card in the item drawer over the files: the drawer opens over the page, which stays
+  for (const ui of [{ page: 'briefing', workView: 'flow' }, { page: '@start' }, { page: 'briefing', workView: 'dossier', drawer: 'item' }]) {
+    assert.deepEqual(logic.fileClick(at(ui), 'a', null), { item: 'task:a' }, JSON.stringify(ui))
+  }
+  // in the files view with nothing over it the file opens there, at its place in the queue (fileOpen)
+  const files = at({ page: 'briefing', workView: 'dossier' })
+  assert.deepEqual(logic.fileClick(files, 'b', null), { ui: logic.fileOpen(files, 'b', null) })
+  // a closed copy: the files view reads it by its folder, so the click opens Work there, for this visit
+  const closed = 'work/done/2026-10/x'
+  assert.deepEqual(logic.fileClick(at({ page: 'briefing', workView: 'flow' }), 'x', closed),
+    { ui: { workView: 'dossier', drawer: null, item: null, dossierOpen: closed }, page: 'briefing' })
+  // where cockpit.work_views keeps no files view, the drawer takes the closed one too
+  assert.deepEqual(logic.fileClick({ ...at({ page: '@start' }), work: { ...work, views: ['flow'] } }, 'x', closed), { item: 'task:x' })
+  // the controller goes that way: the drawer through openItem, else the files view and its page
+  const open = read('app.js').match(/\n {2}openFile\(slug, path\) \{[\s\S]*?\n {2}\},/)[0]
+  assert.match(open, /fileClick\(/)
+  assert.match(open, /ctl\.openItem\(/)
+  assert.match(open, /ctl\.setPage\(/)
+})
+
 // ---------------------------------------------------------------- the files view: one queue for every walk
 
 test('one queue function: the focus scope keeps the start page queue as it was, P0 and P1 tasks only', () => {

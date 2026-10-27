@@ -132,6 +132,8 @@ export function Header({ s, c }) {
   const themeIcon = s.ui.theme === 'dark' ? 'moon' : s.ui.theme === 'light' ? 'sun' : 'auto'
   // the Tabs button counts the tabs that want you; a finished (idle) one waits on nobody
   const waiting = tabsButtonCount(s.tabs?.tabs)
+  // a tooltip names a key only while the shortcuts are on (app.js keydown): off, the key does nothing
+  const keyed = (label, key) => (s.ui.shortcuts ? `${label} (${key})` : label)
   return html`<header class="hdr">
     <div class="hdr-id">
       <span class="eyebrow">${t.appName}</span>
@@ -149,7 +151,7 @@ export function Header({ s, c }) {
       ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}
       ${s.layout === 'medium' || (s.layout === 'wide' && !railOn(s)) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
         onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'} cls="hdr-tabs">${t.tabsButton(waiting)}<//>` : null}
-      <${Btn} variant="ghost" size="sm" icon="reload" title=${t.reloadTitle} label=${t.reloadTitle}
+      <${Btn} variant="ghost" size="sm" icon="reload" title=${keyed(t.reloadTitle, 'r')} label=${t.reloadTitle}
         busy=${!!s.loading?.pass && s.loading?.fresh} onClick=${c.reload} cls="hdr-reload"><span class="hide-narrow">${t.reload}</span><//>
       <${Btn} variant=${(s.quick?.convs ?? []).some(chatRunning) ? 'primary' : 'secondary'}
         size="sm" icon="send" onClick=${() => c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
@@ -164,7 +166,7 @@ export function Header({ s, c }) {
         onClick=${() => c.setDrawer(s.ui.drawer === 'notes' ? null : 'notes')} pressed=${s.ui.drawer === 'notes'} cls="hdr-notes" />
       <${Btn} variant="ghost" size="sm" icon="bulb" label=${t.hints.buttonTitle} title=${t.hints.buttonTitle}
         pressed=${!!s.ui.hints} onClick=${() => c.setHints(!s.ui.hints)} cls="hdr-explain"><span class="hide-narrow">${t.hints.button}</span><//>
-      <${Btn} variant="ghost" size="sm" icon="help" label=${t.helpTitle} title=${`${t.helpTitle} (?)`}
+      <${Btn} variant="ghost" size="sm" icon="help" label=${t.helpTitle} title=${keyed(t.helpTitle, '?')}
         onClick=${() => c.setDrawer('help')} cls="hdr-help" />
     </div>
   </header>`
@@ -231,10 +233,12 @@ export function PageBar({ s, c }) {
     window.addEventListener('resize', again)
     return () => window.removeEventListener('resize', again)
   }, [])
-  const made = new Map()   // id -> { label, badge, keyHint }, drawn below in tab order
-  const tab = (id, label, badge) => {
+  const made = new Map()   // id -> { label, badge, flag, keyHint }, drawn below in tab order
+  // the tooltip names the tab's Alt key only while the shortcuts are on (app.js); `flag` is the colour the badge
+  // carries for a reason (a finding, a warning), which More wears for the tabs folded behind it
+  const tab = (id, label, badge, flag = null) => {
     const i = order.indexOf(id)
-    made.set(id, { label, badge, keyHint: i >= 0 && i < 9 ? `${label} (Alt ${i + 1})` : undefined })
+    made.set(id, { label, badge, flag, keyHint: s.ui.shortcuts && i >= 0 && i < 9 ? `${label} (Alt ${i + 1})` : undefined })
     return null
   }
   const button = id => { const x = made.get(id); return html`<button key=${id} type="button" role="tab" class=${`ptab${s.ui.page === id ? ' is-active' : ''}`}
@@ -257,13 +261,14 @@ export function PageBar({ s, c }) {
         : sess.sessions > 0
         ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null)}
       ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
-        ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null)}
+        ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null,
+        s.workers?.data?.stats?.with_findings ? 'warning' : null)}
       ${tab(CHAT_PAGE, t.chatTab, html`<${ChatTabMark} kind=${chatTabSignal(s)} />`)}
-      ${(s.agents?.peers ?? []).length && !agentsInChat ? tab(AGENTS_PAGE, t.agentsTab, html`<${AgentMark} kind=${agentBadge(s)} />`) : null}
+      ${(s.agents?.peers ?? []).length && !agentsInChat ? tab(AGENTS_PAGE, t.agentsTab, html`<${AgentMark} kind=${agentBadge(s)} />`, agentBadge(s) === 'waiting' ? 'warning' : null) : null}
       ${reviewHomeOf(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`
         : toClose > 0 ? html`<span class="pbadge"><span class="mono">${toClose}</span></span>` : null)}
-      ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`) : null}
-      ${pages.map(p => tab(p.id, p.title, html`<${PageBadge} badge=${p.badge} title=${badgeTitle(p)} />`))}
+      ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`, s.jev.ready ? null : 'warning') : null}
+      ${pages.map(p => tab(p.id, p.title, html`<${PageBadge} badge=${p.badge} title=${badgeTitle(p)} />`, p.badge?.kind === 'bad' ? 'danger' : null))}
       ${tab(SETTINGS_PAGE, t.settings.title, null)}
       ${order.filter(id => made.has(id) && !folded.has(id)).map(button)}
       ${fold ? html`<${MoreTab} items=${order.filter(id => folded.has(id) && made.has(id)).map(id => ({ id, ...made.get(id) }))}
@@ -273,11 +278,13 @@ export function PageBar({ s, c }) {
 }
 
 /** The last tab of the bar: opens the pages that stand behind it. While one of them is open the tab
- *  carries its name; a page behind it with a finding shows a dot */
+ *  carries its name; else the strongest colour a tab behind it carries for a reason, a finding red, a warning
+ *  amber, as a dot. A grey count, a green ok or a running agent is no reason */
 function MoreTab({ items, s, c, open, setOpen, box }) {
   const t = T()
   const current = items.find(x => x.id === s.ui.page)
-  const flagged = items.some(x => x.badge && x.id !== s.ui.page)
+  const flags = items.filter(x => x.id !== s.ui.page).map(x => x.flag)
+  const flag = flags.includes('danger') ? 'danger' : flags.includes('warning') ? 'warning' : null
   const pick = id => { setOpen(false); c.setPage(id) }
   // the bar scrolls sideways and would clip a menu inside it, so the menu stands fixed under the tab
   const [at, setAt] = useState(null)
@@ -285,7 +292,7 @@ function MoreTab({ items, s, c, open, setOpen, box }) {
   return html`<span class="ptab-more" ref=${box}>
     <button type="button" role="tab" class=${`ptab${current ? ' is-active' : ''}`} aria-selected=${String(!!current)}
       aria-haspopup="menu" aria-expanded=${String(open)} onClick=${toggle}>
-      <span>${current ? current.label : t.morePages}</span>${current ? current.badge : flagged ? html`<${Dot} token="warning" />` : null}
+      <span>${current ? current.label : t.morePages}</span>${current ? current.badge : flag ? html`<${Dot} token=${flag} />` : null}
       <span aria-hidden="true">▾</span></button>
     ${open ? html`<span class="settle-menu more-menu" role="menu" style=${at ? { top: `${at.top}px`, left: `${at.left}px` } : undefined}>
       ${items.map(x => html`<button key=${x.id} type="button" role="menuitem" class=${`settle-item${x.id === s.ui.page ? ' is-on' : ''}`}
