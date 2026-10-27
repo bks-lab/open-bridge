@@ -113,7 +113,7 @@ their defaults:
 | `a2a_sources` | none | further sources of A2A peers beside `infra/a2a-peers/`: a list of `{name, script}`, `script` a skill's own `skills/<skill>/scripts/<name>.py` that reaches agents another way (an access proxy, a broker) and keeps its own credentials. At most four; a bad entry is ignored and named in `status`. Contract under [Peers from a script](#5-asking-claude-the-relay) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
-| `person_name` | none | how Claude and Jev name you; without it they say "the user" |
+| `person_name` | none | how Claude and Jev name you; without it they say "the user". With `flow.enabled`, a task whose next step names you is yours, not one that waits on others |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
 | `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Help and Settings still start it), see [The first-run tour](#the-first-run-tour) |
@@ -372,9 +372,13 @@ column becomes a select on top and the tab bar scrolls sideways.
 
 The head says "N points · R running · M not now" (the running part only while
 something runs) and how many were decided here. The three add up to everything
-open: every row of the sections and every hidden row not decided here, and with
-`cockpit.files_scope: all` every task and stream of the files view, each once.
-The server sends the same number as `model.counts.flow_open`.
+open: every row of the sections and every hidden row not decided here, with
+`cockpit.files_scope: all` every task and stream of the files view, every task
+a page names whose folder is open (`model.task_rows` that are closable or a
+stream: a stream of folders without a STATUS.md of its own too), and every
+inbox item a page lists that is put off past the briefing's window
+(`model.deferred`, only with Work through on: the idea shelf, what runs on),
+each once. The server sends the same number as `model.counts.flow_open`.
 
 The points come in groups whose order is fixed in the code; nothing moves a
 point across a group, a Jev rank only orders inside one:
@@ -393,7 +397,10 @@ point across a group, a Jev rank only orders inside one:
 
 Groups 1 to 5 **need you**: the left column counts them. Every open row stands
 exactly once: on a point, under Running now or in one group of Not now; a start,
-a tab or a question about a task takes that task out of the others. A doing
+a tab or a question about a task takes that task out of the others. A tab that
+asks brings the task of the session linked to it (by hand, by its task tab or
+recognised): while it asks, the task stands once, as that card, and goes back
+to Running now once the tab works again. A doing
 task with an agent at work stands under Running now; without one it is **In
 progress**, and the field **Who works on it** says "Nobody works on it right
 now, last moved N days ago" (its `updated` day, the `last_updated` of its
@@ -407,7 +414,11 @@ open: the calm card offers up to three to start.
 part of the walk, the overview's table or a batch. It stands on top of the left
 column, one line each (a dot that pulses while it works, the title, its tab and
 stage), and as a strip over the overview with since when, how it is known, **To
-tab** and **View**. That is a start of the cockpit that runs, a live session at
+tab** and **View**. An entry with a task of its own has a box there, in the same
+selection as the overview's: it is only for **Merge** with a point (the one an
+agent works on is suggested to stay, so no folder moves from under it) and
+**Done**; a batch never starts, puts off or drops what runs, its line says
+"stays out". That is a start of the cockpit that runs, a live session at
 work or waiting at its prompt that works on a task, and a task's own tab at
 work or waiting. A tab that asks is a point (A tab asks), never here. Which
 task a session works on: a link by hand (the Sessions page), else its tab's own
@@ -432,9 +443,11 @@ recognised task as such.
 and does not run, in six groups: **Later** (hidden until a day, put off in the
 inbox, or due later than the lead time, each with its day), **Waits on
 others** (on a person or a run, and an item the Bridge runs on its own after
-your yes), **Resting** (blocked, quiet for long, up for parking, a task whose
-status is unknown), **Ideas and backlog** (ideas of the inbox and backlog
-tasks), **Streams** (they come through their inbox items) and **Watching**
+your yes; a task whose next step names you, `cockpit.person_name` or "me",
+waits on nobody else and is a point), **Resting** (blocked, quiet for long, up
+for parking, a task whose status is unknown), **Ideas and backlog** (ideas of
+the inbox, also one put off with the day it comes back, and backlog tasks),
+**Streams** (they come through their inbox items) and **Watching**
 (issues and pull requests that are not in Now, by repository). A click on a
 group shows its list in the middle: a box, the title, its kind, when (from or
 until a day, due), its area, and the batch bar with the verbs the group offers.
@@ -449,8 +462,10 @@ task in the files view, an inbox item in its card.
 | Watching | Later, Done, Drop |
 
 **Back on** takes a row up again: a hidden row shows (`unhide`), a deferred
-item opens (`inbox_reopen`), a blocked or waiting task runs on (`task_running`),
-a resting one is kept (`task_keep`), and a point due later than the lead time
+item opens (`inbox_reopen`), a blocked task runs on (`task_running` clears its
+blocker), a resting one is kept (`task_keep`); a task that waits on someone
+else's next step has nothing to clear, so it stays out and the line says so.
+A point due later than the lead time
 shows now, in this browser only (kept as `bridge-cockpit.flowEarly` until its
 day). Back on carries no undo; put the row off again instead. A row decided
 here (done, not doing) is open no longer: it is listed nowhere and not counted.
@@ -464,15 +479,24 @@ Friday. `0` waits for the day itself.
 **Merge.** When two or more ticked rows of a batch bar (the overview or a Not
 now list) are open finite tasks, **Merge** opens a panel under the bar: which
 task stays, a choice per task with its count of activity and when it last
-moved, the one with the most activity suggested. **Merge** in it closes the
+moved, one an agent works on suggested, else the one with the most activity. **Merge** in it closes the
 others as merged into the one that stays (`flow_merge`, through `task.py
 merge`, see [`work-system.md`](work-system.md)): their headline, goal, notes and
 open steps come over as one section of the kept task, their documents stay
 where they are and are linked from it, and each closes with `outcome: merged`
 and `merged_into`. The Activity of both shows the decision. **Undo the batch**
 takes every merge back (`task_unmerge`, one per merged task, also from the
-history): the section and the links leave the kept task and the merged one
-opens again with the status it had. A section changed by hand since cannot be
+history): both STATUS.md files come back byte for byte as they were before the
+merge (`task.py merge` keeps them in `.bridge/task-merges.json`; a brief the
+describe pass wrote meanwhile does not count as a change), so no note and no new
+`last_updated` stays behind and no brief turns stale. A file changed since is
+edited instead: the section, the tagged `related:` lines and the merge's note
+leave the kept task, the merged one opens again with the status it had and its
+blocker, and the undo writes no note of its own (only its log row). The notes a
+merge, its undo and a reopen after it wrote never come over into a later merged
+section. `related:` in any block style (indented or not, an item over two lines)
+stays readable; a list the merge could not extend safely stays as it was, with
+a warning. A section changed by hand since cannot be
 taken back (`merge_changed`); streams and inbox items do not merge
 (`merge_not_task`), and with any of them ticked the button stays grey and says
 so.
@@ -2626,6 +2650,7 @@ the cockpit (git ignores them too):
 | `.bridge/triage.json` | the last triage run (`scripts/triage.py`): per task and inbox item a gist, a verdict and who does it | yes: titles and gists |
 | `.bridge/describe.json` | describe (`describe.py`): per item the hash of the brief as it was written, the waiting proposal, the last error and cost, and the calls of the last hour (the budget) | yes: proposed goals and criteria |
 | `.bridge/task-review.json` | the last task check (`task.py review`): per task a verdict and its reason | yes: task titles and reasons |
+| `.bridge/task-merges.json` | each merge not taken back (`task.py merge`): both STATUS.md files as they were before and after it, so `task.py unmerge` puts them back byte for byte; an undo removes its entry | yes: the whole text of both tasks |
 | `.bridge/resources/workers-view.json` | the full worker view of the Resources section (`scripts/bridge-resources.py workers`) | no |
 | `.bridge/resources/costs-view.json` | the last cloud cost report with its source, read time and age (`scripts/bridge-resources.py costs`) | no |
 | `.bridge/resources/usage-days.json` | the token counts of each closed day per source, model, project and Bridge, 120 days | no: numbers under model, project and Bridge names |
@@ -2736,7 +2761,13 @@ changes in these ways:
    codes, `merge_not_task` and `merge_changed`, and the history items `merged`
    and `merged_in`. `task.py` gains `merge`, `unmerge` and `close --merged-into`;
    STATUS.md gains `outcome: merged` and `merged_into`
-   ([`work-system.md`](work-system.md)).
+   ([`work-system.md`](work-system.md)). A task closed as merged keeps its
+   `blocked_by` and `blocked_since`; a plain close still drops them. `task.py
+   merge` writes `.bridge/task-merges.json`, and `unmerge` restores both files
+   from it byte for byte while neither changed since (a brief aside), else it
+   edits them as before, now without a note of its own; `unmerge` answers
+   `restored`. A merge made before this version has no entry there, so its undo
+   takes the edit path.
 7. **Rows carry `updated` and `until`.** Task rows carry their STATUS.md
    `last_updated`, deferred inbox rows the day they come back; both are null
    elsewhere, and a reader that does not know them skips them.
@@ -2744,6 +2775,23 @@ changes in these ways:
    the work tab's switch, and `work_state()` sends them as `views`; `files` is
    always kept. An older server sends no `views` and the page offers all, as
    before. Once Work through holds everything, `[files, flow]` is enough.
+9. **Everything a page shows is in it.** With Work through on the model gains
+   `deferred`: the inbox items a page lists (the idea shelf, what runs on) that
+   are put off past the briefing's window, as rows (`inbox_state: deferred`,
+   `until`), which the verbs reach like any other. Work through also places the
+   open tasks of `task_rows` (a stream of folders without a STATUS.md of its own
+   too), and a page task carries its `status` from the task list.
+   `model.counts.flow_open` counts both, also with Work through off (it is one
+   number). An idea put off now stands under Ideas and backlog with its day,
+   not under Later.
+10. **Running now, Back on, Prio.** An entry of Running now with a task of its
+   own has a box for Merge and Done with the points; a batch leaves what runs
+   out of a start, Later and Drop (`working`). Back on runs a task again only
+   where a blocker stands; a task whose next step names you
+   (`cockpit.person_name`, sent as `work.person` while Work through is on) is a
+   point, not Waits on others. Prio has Ask Jev again at the foot of its left
+   column. A session linked to a task that closed (done, merged) counts as no
+   task from then on and is recognised again; the link itself stays for resume.
 
 ### Upgrading: quiet tabs and the result line
 

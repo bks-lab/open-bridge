@@ -126,7 +126,8 @@ const byPrio = (a, b) => (PRIO_RANK[a.priority] ?? 4) - (PRIO_RANK[b.priority] ?
 const byAge = (a, b) => ageOf(a).localeCompare(ageOf(b))
 // a due day first, the soonest first; then the oldest
 const byDue = (a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0) || byAge(a, b)
-const byKey = (a, b) => String(a.key).localeCompare(String(b.key))
+// an issue's number as a number: owner/repo#2 before #18
+const byKey = (a, b) => String(a.key).localeCompare(String(b.key), undefined, { numeric: true })
 const byTitle = (a, b) => String(a.title ?? '').localeCompare(String(b.title ?? ''))
 
 // ---------------------------------------------------------------- round 4: every open row once
@@ -142,7 +143,8 @@ export function fileRow(f) {
 }
 
 /** The open rows and where each came from first: the sections in their order, the hidden rows not settled here,
- *  every file of model.files */
+ *  every file of model.files, every open task a page names (model.task_rows: a task or a stream whose folder is
+ *  open, closable or stream), every item put off past the briefing's window (model.deferred) */
 function universeOf(s) {
   const model = s?.model ?? {}
   const rows = new Map()
@@ -151,11 +153,14 @@ function universeOf(s) {
   for (const id of SECTIONS) for (const r of (model.sections ?? []).find(x => x.id === id)?.rows ?? []) put(r, id)
   for (const r of model.hidden ?? []) if (r && r.settled_as == null) put(r, 'hidden')
   for (const f of Array.isArray(model.files) ? model.files : []) if (f?.slug) put(fileRow(f), 'files')
+  for (const r of model.task_rows ?? []) if (r && (r.closable || r.stream)) put(r, 'task_rows')
+  for (const r of model.deferred ?? []) put(r, 'deferred')
   return { rows, from }
 }
 
 /** The open rows of the page by key, the first source winning: every row of the sections (now, give, work, track,
- *  later), every hidden row not settled here, every file of model.files. model.task_rows is no part of it */
+ *  later), every hidden row not settled here, every file of model.files, every open task of model.task_rows (a
+ *  closed one a page still names is not open), every item of model.deferred */
 export const flowUniverse = s => universeOf(s).rows
 
 /** The row keys a point stands for: pointKeys, and the task a question card stands for beside its item */
@@ -199,6 +204,19 @@ export function repoOf(row) {
 
 const isTaskRow = r => !r.inbox_id && !!r.task && r.key === `task:${r.task}`
 const isStreamRow = r => !!(r.stream || r.work_kind === 'stream')
+// what a task waits on: its blocker (task.py wait sets it with quiet_until), from the row or its card
+const rowBlocked = r => !!(r?.blocked_by || r?.card?.state?.blocked_by)
+// the words a next step names the person by: the briefing's own (briefing_view WHO_YOU) and cockpit.person_name
+const MINE = ['me', 'you', 'self']
+
+/** Whether a waiting row waits on someone else: it is blocked by something, or its next step names another person.
+ *  A next step that names the person (cockpit.person_name, s.work.person) is their own: no wait on others */
+export function waitsOnOthers(r, s) {
+  if (rowBlocked(r)) return true
+  const who = String(r?.card?.next?.who ?? '').trim().toLowerCase()
+  const me = String(s?.work?.person ?? '').trim().toLowerCase()
+  return !(who && (MINE.includes(who) || who === me))
+}
 // a row of Now: its section, or what puts a row there (urgency now or today, bucket do)
 const inNow = (r, src) => src === 'now' || r.section === 'now' || r.urgency === 'now' || r.urgency === 'today' || r.bucket === 'do'
 
@@ -280,8 +298,11 @@ export function flowParts(s) {
       usedTabs.add(t.ref)
     }
     // L5 the tabs that ask you, with or without a row, the oldest question first: they need you, so they are points
+    // a session linked to that tab (by hand, by its task tab, or recognised) brings its task: it stands once, as the
+    // card that asks, and goes back to Running now once its tab works again
     for (const t of tabs.filter(x => x.state === 'needs-you' && !usedTabs.has(x.ref) && asking(x)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
-      const found = (t.slug ? rowOfTask(t.slug) : null) ?? (t.item ? uni.get(`inbox:${t.item}`) ?? null : null)
+      const linked = (s?.sessions?.sessions ?? []).find(v => v.task && v.tab?.ref === t.ref)
+      const found = (t.slug ? rowOfTask(t.slug) : null) ?? (t.item ? uni.get(`inbox:${t.item}`) ?? null : null) ?? (linked ? rowOfTask(linked.task) : null)
       const row = found && !used.has(found.key) ? found : null
       out.asks.push({ group: 'asks', id: `tab:${t.ref}`, kind: 'tab', tab: t, row })
       take(row)
@@ -313,7 +334,8 @@ export function flowParts(s) {
   const questions = []
   const reports = []
   for (const r of open()) {
-    if (r.inbox_state === 'deferred') leave('later', r, { why: 'deferred', until: r.until ?? null })
+    if (r.inbox_state === 'deferred' && r.art === 'idea') leave('idea', r, { until: r.until ?? null })
+    else if (r.inbox_state === 'deferred') leave('later', r, { why: 'deferred', until: r.until ?? null })
     else if (!r.inbox_id) continue
     else if (r.inbox_state === 'approved') leave('waiting', r)
     else if (r.art === 'idea') leave('idea', r)
@@ -342,7 +364,7 @@ export function flowParts(s) {
       if (isStreamRow(r)) leave('stream', r)
       else if (r.status === 'backlog') leave('idea', r)
       else if (!TASK_STATES.includes(r.status)) leave('resting', r)
-      else if (r.bucket === 'waiting') leave('waiting', r)
+      else if (r.bucket === 'waiting' && waitsOnOthers(r, s)) leave('waiting', r)
       else if (r.bucket === 'resting' || r.bucket === 'drop' || r.blocked_by) leave('resting', r)
       else if (!waits(r)) tasks.push(r)
     } else if (r.bucket === 'waiting') leave('waiting', r)
@@ -374,7 +396,11 @@ export function flowParts(s) {
 
 /** How many agents run now: the entries of Running now that are at work or starting (a start, a session or a task
  *  tab; one waiting at its prompt runs nothing). Let AI do it asks first once cockpit.flow.max_running of them run */
-export const flowRunning = s => flowParts(s).lane.filter(x => x.stage === 'started' || x.stage === 'working').length
+export const flowRunning = (s, parts = flowParts(s)) => parts.lane.filter(x => x.stage === 'started' || x.stage === 'working').length
+
+/** The rows of Running now a box may tick: an entry's own open task (no stream). Ticked, such a row goes only into a
+ *  merge or Done of a batch, never into a start, Later or Drop (batchPlan): an agent works on it. Each {id, row, x} */
+export const laneRows = lane => (lane ?? []).filter(x => x.row && isTaskRow(x.row) && !isStreamRow(x.row)).map(x => ({ id: x.row.key, row: x.row, x }))
 
 /** What drives a point in progress now: a start of the cockpit (`start`, its stage and since when), the agent tab of
  *  its task (`tab`, the tab's state), a session in a linked tab (`session`, by hand, by its task tab or recognised,
@@ -620,9 +646,13 @@ export function batchPlan(rows, how, s, value = '', lang = 'en') {
   const drop = []
   const starts = []
   const skipped = []
-  let running = flowRunning(s)
+  const parts = flowParts(s)
+  let running = flowRunning(s, parts)
   const cap = flowSettings(s).max_running
+  // what runs (Running now) goes into Done of a batch or a merge, never into a suggestion, a start, Later or Drop
+  const lanes = new Set(parts.lane.map(x => x.row?.key).filter(Boolean))
   for (const row of rows ?? []) {
+    if (lanes.has(row?.key) && how !== 'done') { skipped.push({ row, why: 'working' }); continue }
     const sug = how === 'suggested' ? flowSuggestion(row, s) : null
     const verb = how === 'suggested' ? sug?.verb : how
     if (!verb) { skipped.push({ row, why: 'no_suggestion' }); continue }
@@ -681,8 +711,10 @@ export function leftPlan(entries, verb, s, value = '', lang = 'en') {
     if (e.why === 'hidden') calls.push({ verb: 'unhide', args: { key: row.key } })
     else if (e.why === 'deferred' && row.inbox_id) calls.push({ verb: 'inbox_reopen', args: { id: row.inbox_id } })
     else if (e.why === 'ahead') early.push(row.key)
-    else if (isTaskRow(row) && !isStreamRow(row) && (row.blocked_by || row.bucket === 'waiting')) calls.push({ verb: 'task_running', args: { slug: row.task } })
-    else if (isTaskRow(row) && !isStreamRow(row) && TASK_STATES.includes(row.status)) calls.push({ verb: 'task_keep', args: { keys: [row.key] } })
+    // running again clears a blocker (task.py wait --clear); a wait that comes from a next step of someone else has
+    // nothing to clear, so it stays out and the line says so
+    else if (isTaskRow(row) && !isStreamRow(row) && rowBlocked(row)) calls.push({ verb: 'task_running', args: { slug: row.task } })
+    else if (isTaskRow(row) && !isStreamRow(row) && row.bucket !== 'waiting' && TASK_STATES.includes(row.status)) calls.push({ verb: 'task_keep', args: { keys: [row.key] } })
     else skipped.push({ row, why: 'not_offered' })
   }
   return { calls, early, skipped, counts: { back: calls.length + early.length, done: 0, later: 0, drop: 0, do: 0 }, how: 'back', value, days: [], reasons: [] }
@@ -693,14 +725,16 @@ export const mergeable = rows => (rows ?? []).filter(r => !!r && isTaskRow(r) &&
 
 const STATE_RANK = { doing: 0, review: 1, backlog: 2 }
 
-/** The task a merge keeps, suggested: the one with the most activity (its feed's count of all rows), then the one
- *  moved last, then doing before review before backlog, then the first in the list. `feeds` key -> feed */
-export function mergeKeep(rows, feeds = {}) {
+/** The task a merge keeps, suggested: one an agent works on (`working`, its keys: its folder never moves from under
+ *  the agent), then the one with the most activity (its feed's count of all rows), then the one moved last, then
+ *  doing before review before backlog, then the first in the list. `feeds` key -> feed */
+export function mergeKeep(rows, feeds = {}, working = new Set()) {
   const list = mergeable(rows)
   if (!list.length) return null
   const all = r => Number(feeds?.[r.key]?.counts?.all) || 0
   const moved = r => String(feeds?.[r.key]?.facts?.moved ?? '')
-  return list.map((r, i) => ({ r, i })).sort((a, b) => all(b.r) - all(a.r) || moved(b.r).localeCompare(moved(a.r))
+  const busy = r => (working.has(r.key) ? 1 : 0)
+  return list.map((r, i) => ({ r, i })).sort((a, b) => busy(b.r) - busy(a.r) || all(b.r) - all(a.r) || moved(b.r).localeCompare(moved(a.r))
     || (STATE_RANK[a.r.status] ?? 3) - (STATE_RANK[b.r.status] ?? 3) || a.i - b.i)[0].r.key
 }
 

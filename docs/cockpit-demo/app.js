@@ -1110,6 +1110,14 @@ const ctl = {
     const res = await ctl.jevWork(page, false)
     if (!res?.ok) store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { order: s.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false } } }))
   },
+  // Prio: Ask Jev again, a new order of the work page (as the Jev view's button), busy until it answers
+  async flowPrioAgain(page) {
+    if (!page || store.get().jevOrder?.[page]?.running) return
+    prioAsked.add(page)
+    store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { ...(s.jevOrder[page] ?? {}), order: s.jevOrder[page]?.order ?? null, running: true, error: null } } }))
+    const res = await ctl.jevWork(page, true)
+    if (!res?.ok) store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { order: s.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false } } }))
+  },
   flowPick: (keys, on) => setUi(ui => {
     const picked = new Set(ui.flowPicked ?? [])
     for (const k of keys ?? []) { if (on) picked.add(k); else picked.delete(k) }
@@ -1174,6 +1182,7 @@ const ctl = {
   async flowBatch(calls, from = 'overview') {
     const undo = []
     let n = 0
+    let said = null
     setUi({ flowBatch: { running: true, n: 0, undo: [], from } })
     quietNotesUntil = Infinity
     try {
@@ -1182,13 +1191,15 @@ const ctl = {
         if (!r?.ok) continue
         n += a.args.keys?.length ?? 1
         undo.push(...(r.undo ?? []))
+        // a merge says what went into what, as the server words it
+        if (a.verb === 'flow_merge' && typeof r.note === 'string') said = r.note
       }
     } finally {
       quietNotesUntil = Date.now() + BATCH_NOTE_GRACE_MS
     }
     setUi(ui => ({ flowBatch: { running: false, n, undo, from }, flowDecided: (ui.flowDecided ?? 0) + n }))
     // one toast says the batch; its one undo stands in the overview's line (views/flowlist.js), never twice
-    if (n) pushNote({ text: T().flow.list.ran(n), tone: 'ok' }, { linger: 10000 })
+    if (n) pushNote({ text: calls.length === 1 && said ? said : T().flow.list.ran(n), tone: 'ok' }, { linger: 10000 })
     return { n, undo }
   },
   // the batch taken back, every point of it

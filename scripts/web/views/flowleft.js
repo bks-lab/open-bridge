@@ -50,10 +50,10 @@ export function NotNowNarrow({ left, open = null, c }) {
   </details>`
 }
 
-/** When a row of Not now comes or is due: the day it comes back (Later) and its due, else its age */
+/** When a row of Not now comes or is due: the day it comes back (Later, or an idea put off) and its due, else its age */
 function whenOf(e, reason, s, lang) {
   const f = T().flow
-  if (reason === 'later') {
+  if (reason === 'later' || e.until) {
     return [e.until ? f.notnow.from(formatDay(e.until, lang)) : null, e.due ? f.notnow.due(activityWhen(e.due, lang)) : null].filter(Boolean).join(' · ')
   }
   const age = ageDays(e.row, s.now || Date.now())

@@ -8151,9 +8151,9 @@ R4_TASKS = [
 DEFERRED_ID = "20261009-0930-later-call-b9c0"
 
 
-def r4_world(tmp_path, scope: str = "all") -> World:
-    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  files_scope: " + scope + "\n",
-              serve=False, prepare=False)
+def r4_world(tmp_path, scope: str = "all", flow: bool = False, pages: list | None = None) -> World:
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  files_scope: " + scope + "\n"
+              + ("  flow:\n    enabled: true\n" if flow else ""), serve=False, prepare=False)
     # workplace.py tasks lists the backlog only with --all
     w.runner.handlers["workplace.tasks"] = lambda argv: ok(
         [t for t in R4_TASKS if "--all" in argv or t.get("status", "doing") in ("doing", "review")])
@@ -8164,6 +8164,7 @@ def r4_world(tmp_path, scope: str = "all") -> World:
         data["view"]["buckets"][1]["items"].append(
             {"title": "Call back later", "inbox_id": DEFERRED_ID, "gate": "only-you", "inbox_state": "deferred",
              "urgency": "later", "sources": ["inbox"]})
+        data["pages"] += pages or []
         return ok(data)
     w.runner.handlers["briefing.collect"] = collect
     item = w.root / "work" / "inbox" / DEFERRED_ID
@@ -8200,10 +8201,13 @@ def test_a_task_row_carries_the_day_it_last_changed_and_a_deferred_item_the_day_
 
 
 def universe(model: dict) -> list[str]:
-    """Every open row of the model as Work through counts it: sections, hidden rows not decided here, every file"""
+    """Every open row of the model as Work through counts it: sections, hidden rows not decided here, every file,
+    every task a page names that is open (a task or a stream), every item put off past the briefing's window"""
     keys = [r["key"] for s in model["sections"] for r in s["rows"]]
     keys += [r["key"] for r in model["hidden"] if r.get("settled_as") is None]
     keys += [f"task:{f['slug']}" for f in model["files"] or []]
+    keys += [r["key"] for r in model["task_rows"] if r.get("closable") or r.get("stream")]
+    keys += [r["key"] for r in model.get("deferred") or []]
     return keys
 
 
@@ -8232,5 +8236,94 @@ def test_flow_open_without_files_counts_the_sections_and_the_hidden_rows(tmp_pat
         assert model["files"] is None
         assert model["counts"]["flow_open"] == len(set(universe(model))) == 9
         assert "task:parked" not in universe(model)                    # no backlog task without the files
+    finally:
+        w.close()
+
+
+IDEA_ID = "20261020-0800-a-shelved-idea-1a2b"
+BACK_ID = "20261020-0810-put-off-and-back-3c4d"
+FAR_ID = "20261020-0820-runs-on-a-person-5e6f"
+
+
+def inbox_item(root: Path, iid: str, kind: str, summary: str, events: list[tuple[str, str]]) -> None:
+    folder = root / "work" / "inbox" / iid
+    (folder / "events").mkdir(parents=True)
+    (folder / "item.yaml").write_text(f"schema_version: 1\ncreated: '2026-10-20T08:00'\nfrom: person\nkind: {kind}\n"
+                                      f"summary: {summary}\ngate: only-you\nurgency: later\n", encoding="utf-8")
+    for n, (verb, extra) in enumerate(events):
+        (folder / "events" / f"20261020T09{n:02d}00Z-{n:02d}-web-{verb}.yaml").write_text(
+            f"verb: {verb}\nby: web\nat: '2026-10-20T09:{n:02d}'\n{extra}", encoding="utf-8")
+
+
+def work_page(*items, tasks=()) -> dict:
+    """A work page as briefing.py writes one: its inbox sections (open, the idea shelf, what runs on) and its tasks"""
+    return {"id": "work", "title": "Work", "group": "work", "sections": [
+        {"id": "ideas", "kind": "inbox", "title": "Ideas", "status": "ok", "items": [
+            {"id": iid, "inbox": iid, "title": title, "origin_section_kind": "inbox"} for iid, title in items]},
+        {"id": "tasks", "kind": "tasks", "title": "Tasks", "status": "ok", "items": [
+            {"title": title, "task": slug, "state": "doing"} for slug, title in tasks]}]}
+
+
+def test_work_through_carries_what_the_work_page_shows_beyond_the_briefing(tmp_path):
+    """an idea put off for months, an item put off that waits on a person, a stream a page names without a
+    STATUS.md of its own: open, so Work through holds them; an item taken back on and a closed task are not"""
+    page = work_page((IDEA_ID, "A shelved idea"), (BACK_ID, "Put off and back on"), (FAR_ID, "Runs on a person"),
+                     (DEFERRED_ID, "Call back later"),
+                     tasks=[("job-hunt", "Job hunt"), ("old-one", "An old task"), ("demo-task", "Demo task")])
+    w = r4_world(tmp_path, flow=True, pages=[page])
+    try:
+        inbox_item(w.root, IDEA_ID, "idea", "A shelved idea", [("defer", "until: '2027-01-25'\n")])
+        inbox_item(w.root, BACK_ID, "decision", "Put off and back on", [("defer", "until: '2027-01-25'\n"), ("reopen", "")])
+        inbox_item(w.root, FAR_ID, "decision", "Runs on a person", [("defer", "until: '2026-12-01T09:00'\nwaits_on: the vendor\n")])
+        (w.root / "work" / "streams" / "job-hunt" / "2026-10").mkdir(parents=True)   # a stream of folders, no STATUS.md
+        (w.root / "work" / "done" / "2026-10" / "old-one").mkdir(parents=True)
+        (w.root / "work" / "done" / "2026-10" / "old-one" / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        model = w.app.collector.model
+        deferred = {r["key"]: r for r in model["deferred"]}
+        assert set(deferred) == {f"inbox:{IDEA_ID}", f"inbox:{FAR_ID}"}
+        idea = deferred[f"inbox:{IDEA_ID}"]
+        assert (idea["inbox_state"], idea["until"], idea["art"], idea["inbox_id"], idea["title"]) == (
+            "deferred", "2027-01-25", "idea", IDEA_ID, "A shelved idea")
+        assert deferred[f"inbox:{FAR_ID}"]["until"] == "2026-12-01"
+        rows = {r["key"]: r for r in model["task_rows"]}
+        assert rows["task:job-hunt"]["stream"] is True and not rows["task:old-one"]["closable"] and not rows["task:old-one"]["stream"]
+        keys = set(universe(model))                     # first source wins: a task of the files may stand in task_rows too
+        assert model["counts"]["flow_open"] == len(keys)
+        assert "task:job-hunt" in keys and "task:old-one" not in keys and f"inbox:{BACK_ID}" not in keys
+        # every inbox item and task the work page shows is open in Work through, or closed
+        shown = [it for sec in next(p for p in model["pages"] if p["id"] == "work")["sections"] for it in sec["items"]]
+        rows_out = [r for sec in model["sections"] for r in sec["rows"]] + model["hidden"] + model["deferred"]
+        by_inbox = {r["inbox_id"] for r in rows_out if r.get("inbox_id") and r["key"] in keys}
+        for it in shown:
+            if it.get("inbox"):
+                assert it["inbox"] in by_inbox or it["inbox"] == BACK_ID, it
+            elif it.get("task"):
+                assert f"task:{it['task']}" in keys or it["task"] == "old-one", it
+        # the verbs reach a carried row like any other
+        assert w.row(f"inbox:{IDEA_ID}")["inbox_state"] == "deferred"
+    finally:
+        w.close()
+
+
+def test_with_work_through_off_nothing_is_carried(tmp_path):
+    page = work_page((IDEA_ID, "A shelved idea"))
+    w = r4_world(tmp_path, pages=[page])
+    try:
+        inbox_item(w.root, IDEA_ID, "idea", "A shelved idea", [("defer", "until: '2027-01-25'\n")])
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        assert "deferred" not in w.app.collector.model
+    finally:
+        w.close()
+
+
+def test_a_page_task_carries_its_status_from_the_task_list(tmp_path):
+    page = work_page(tasks=[("parked", "Parked idea")])
+    w = r4_world(tmp_path, flow=True, pages=[page])
+    try:
+        rows = {r["key"]: r for r in w.app.collector.model["task_rows"]}
+        assert rows["task:parked"]["status"] == "backlog"
     finally:
         w.close()

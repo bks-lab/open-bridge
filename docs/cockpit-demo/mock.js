@@ -234,6 +234,7 @@ const WORDS = {
     'Restart the three test tunnels on Sunday evening': 'Am Sonntagabend die drei Testtunnel neu starten',
     'Check the quote for the new laptops': 'Das Angebot für die neuen Laptops prüfen',
     'Idea: badges for the docs pages': 'Idee: Abzeichen für die Doku-Seiten',
+    'Idea: a workshop on the release process': 'Idee: ein Workshop zum Release-Ablauf',
     'Review the pull request for the export fix': 'Den Pull Request für die Export-Korrektur prüfen',
     'Document the new config switch': 'Den neuen Config-Schalter dokumentieren',
     'Order new business cards': 'Neue Visitenkarten bestellen',
@@ -533,12 +534,15 @@ function mockBrief(r) {
 }
 
 /** The open rows as the server counts them (collector.py counts.flow_open): the keys of the sections, of the hidden rows
- *  not settled here and of every file, each once. Its own loop, so the page's universe (flow.js) is checked against it */
-function openCount(sections, hidden, files) {
+ *  not settled here, of every file, of every open task a page names (task_rows, closable or a stream) and of every item
+ *  put off past the window (deferred), each once. Its own loop, so the page's universe (flow.js) is checked against it */
+function openCount(sections, hidden, files, taskRows = [], deferred = []) {
   const keys = new Set()
   for (const sec of sections) for (const r of sec.rows) keys.add(r.key)
   for (const r of hidden) if (r.settled_as == null) keys.add(r.key)
   for (const f of files ?? []) keys.add(`task:${f.slug}`)
+  for (const r of taskRows) if (r.closable || r.stream) keys.add(r.key)
+  for (const r of deferred) keys.add(r.key)
   return keys.size
 }
 
@@ -755,6 +759,16 @@ export function buildState(now = Date.now(), opts = {}) {
     origin: O('calendar', 'Calendar'), work_kind: null, hidden_until: null, settled_as: 'done', actions: [A('ask')],
   })]
   for (const r of hidden) Object.assign(r, mockCard(r, null, now))
+  // an idea put off for months on the idea shelf of the work page: past the briefing's window, so no section holds it;
+  // Work through carries it (collector.deferred_rows) under Ideas with the day it comes back
+  const deferred = empty ? [] : [row({
+    key: 'inbox:20260915-1000-idea-workshop-7a8b', bucket: 'plan', section: 'later', title: 'Idea: a workshop on the release process',
+    origin: O('person', 'lee', 'lee'), inbox_kind: 'idea', sources: ['inbox'], inbox_id: '20260915-1000-idea-workshop-7a8b', gate: 'free',
+    area: 'Ops', area_names: ['Ops'], inbox_state: 'deferred', until: isoIn(90, now), inbox_key: 'idea-workshop', actions: [A('done', true)],
+  })]
+  for (const r of deferred) Object.assign(r, mockCard(r, null, now), { art: 'idea' })
+  // the tasks a page names that no section carries (collector task_rows): open, so Work through holds them too
+  const taskRows = empty ? [] : [rows.quiet, rows.waits]
 
   // every task and stream as a file (collector.files_of, cockpit.files_scope all): the ones a row stands for with
   // that row's bucket, a deferred one, and the backlog the queue never shows; only the keys the page reads
@@ -892,6 +906,8 @@ export function buildState(now = Date.now(), opts = {}) {
     pages.push({ id: 'work', title: 'Work', group: 'work', badge: { kind: 'none' }, jev: { skip_sections: [], private: [] }, sections: [
       { id: 'inbox', kind: 'inbox', title: 'Inbox', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 4, total: 4, weight: 4, bad: 0,
         as_of: hhmm(now - 2 * MIN), more: 0, items: [rows.review, rows.labels, rows.docs, rows.tunnels].map(inboxItem) },
+      { id: 'ideas', kind: 'inbox', title: 'Ideas', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 2, total: 2, weight: 0, bad: 0,
+        as_of: null, more: 0, items: [rows.badges, ...deferred].map(inboxItem) },
       { id: 'tasks', kind: 'tasks', title: 'Tasks', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 4, total: 4, weight: 4, bad: 0,
         as_of: null, more: 0, items: [rows.polish, rows.cleanup, rows.reword, rows.quiet].map(taskItem) },
     ] })
@@ -981,10 +997,10 @@ export function buildState(now = Date.now(), opts = {}) {
       status: [{ title: 'Systems', count: empty ? 0 : 1, probe: true, state: 'ok' }, { title: 'Inbox', count: empty ? 0 : 6, probe: false, state: 'ok' }],
       extras: { clear: ['Services: all running'], hygiene: empty ? [] : ['2 tasks without a log row for 7 days'], workplace: empty ? null : 'Tabs: 3 suggested' },
       counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: forYou, give: sections[1].total, work: sections[2].total, track: sections[3].total, later: sections[4].total, hidden: hidden.length,
-        flow_open: openCount(sections, hidden, files) },
-      sections, numbers, hidden,
+        flow_open: openCount(sections, hidden, files, taskRows, deferred) },
+      sections, numbers, hidden, deferred,
       approvable: empty ? [] : [rows.labels.key, rows.docs.key],
-      task_rows: empty ? [] : [rows.quiet, rows.waits],
+      task_rows: taskRows,
       // the tasks closed this week (daybook.week_done): a closed task and an ended stream
       week: empty ? { count: 0, since: null, items: [] } : { count: 2, since: isoIn(-4, now), items: [
         { slug: 'release-checklist', title: 'Write the release checklist', closed: isoIn(-1, now), work_kind: 'done_task' },
@@ -1667,6 +1683,11 @@ export function createMockTransport(opts = {}) {
     }
     state.model.approvable = state.model.approvable.filter(k => !keys.includes(k))
     state.model.task_rows = state.model.task_rows.filter(r => !keys.includes(r.key))
+    // an item put off past the window (model.deferred) leaves its list the same way
+    for (const [at, r] of (state.model.deferred ?? []).entries()) {
+      if (keys.includes(r.key)) gone.set(r.key, { section: 'deferred', at, row: r, compact: false, approvable: false, task: null })
+    }
+    if (state.model.deferred) state.model.deferred = state.model.deferred.filter(r => !keys.includes(r.key))
     state.model.review = { ...state.model.review, keys: state.model.review.keys.filter(k => !keys.includes(k)) }
     seq += 1
     state.model = { ...state.model, seq }
@@ -1678,6 +1699,13 @@ export function createMockTransport(opts = {}) {
     const was = gone.get(key)
     if (!was) return
     gone.delete(key)
+    if (was.section === 'deferred') {
+      if (!(state.model.deferred ?? []).some(r => r.key === key)) state.model.deferred = [...(state.model.deferred ?? []), was.row]
+      seq += 1
+      state.model = { ...state.model, seq }
+      wait(() => emit('view', state.model), 120)
+      return
+    }
     const sec = state.model.sections.find(x => x.id === was.section)
     if (!sec || sec.rows.some(r => r.key === key)) return
     sec.rows.splice(Math.min(was.at, sec.rows.length), 0, was.row)

@@ -54,7 +54,7 @@ export const FLOW = {
           p.counts.drop ? `${p.counts.drop} drop${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} later until ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} to an agent` : null].filter(Boolean)
-        const out = p.skipped.length ? `${p.skipped.length} stay out` : null
+        const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'stays' : 'stay'} out` : null
         return [parts.join(', ') || 'Nothing to do', out].filter(Boolean).join('; ')
       },
       // the plan by its counts only, for the line of what is ticked; none to run says so
@@ -103,6 +103,8 @@ export const FLOW = {
     run: {
       label: 'Running now', unlink: 'Not this task',
       how: { start: 'started from the cockpit', hand: 'linked by hand', tab: 'its own task tab', seen: 'recognised from the session' },
+      boxWhy: 'An agent works on these already, so they are no points to decide. The box is only for merging.',
+      cardWhy: 'An agent works on it already, so it stands under Running now and not as a point.',
     },
     notnow: {
       label: 'Not now',
@@ -116,7 +118,8 @@ export const FLOW = {
     },
     merge: {
       button: 'Merge', run: 'Merge', only: 'Only open tasks can be merged: no streams, no inbox items.', title: 'Which task stays?',
-      proposal: 'Suggested: the one with more activity', activity: n => (n === 1 ? '1 entry of activity' : `${n} entries of activity`),
+      proposal: 'Suggested: the one with more activity', proposalRunning: 'Suggested: the one an agent works on right now',
+      activity: n => (n === 1 ? '1 entry of activity' : `${n} entries of activity`),
       explain: (keep, n) => `${keep} stays. ${n === 1 ? 'The other closes' : `The other ${n} close`} as merged: goal, notes and open steps come over as a section, documents stay where they are and are linked.`,
     },
     prio: {
@@ -126,6 +129,7 @@ export const FLOW = {
       axis: { urgent: 'urgent', notUrgent: 'not urgent', important: 'important', notImportant: 'not important' },
       from: (time, n) => `Jev ordered ${n} point${n === 1 ? '' : 's'}, ${time}. A click on a square shows its points in Jev's order.`,
       running: 'Jev is ordering the points', failed: 'Jev could not order the points', empty: 'No order by Jev yet today.',
+      foot: time => `Prio by Jev, ${time}`, again: 'Ask Jev again',
       hint: 'Jev rates urgency, importance, effort and whether only you can do it. A click on a square, then on a title, shows the details and Jev\'s values here.',
     },
     rest: { title: 'All decided.', sub: 'Nothing open waits in the queue.', suggest: 'To start with', none: 'No idea or backlog task to suggest.' },
@@ -232,7 +236,7 @@ export const FLOW = {
           p.counts.drop ? `${p.counts.drop} weg${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} später bis ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} an einen Agenten` : null].filter(Boolean)
-        const out = p.skipped.length ? `${p.skipped.length} bleiben draußen` : null
+        const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'bleibt' : 'bleiben'} draußen` : null
         return [parts.join(', ') || 'Nichts zu tun', out].filter(Boolean).join('; ')
       },
       // the plan by its counts only, for the line of what is ticked; none to run says so
@@ -281,6 +285,8 @@ export const FLOW = {
     run: {
       label: 'Läuft gerade', unlink: 'Nicht diese Aufgabe',
       how: { start: 'aus dem Cockpit gestartet', hand: 'von Hand verknüpft', tab: 'eigener Aufgaben-Tab', seen: 'aus der Sitzung erkannt' },
+      boxWhy: 'Hier arbeitet schon ein Agent, darum sind es keine Punkte zum Entscheiden. Das Kästchen braucht es nur zum Zusammenführen.',
+      cardWhy: 'Daran arbeitet schon ein Agent, darum steht es unter Läuft gerade und nicht als Punkt.',
     },
     notnow: {
       label: 'Nicht dran',
@@ -294,7 +300,8 @@ export const FLOW = {
     },
     merge: {
       button: 'Zusammenführen', run: 'Zusammenführen', only: 'Nur offene Aufgaben lassen sich zusammenführen, keine Streams und keine Posteingangspunkte.',
-      title: 'Welche Aufgabe bleibt?', proposal: 'Vorschlag: die mit mehr Aktivität', activity: n => (n === 1 ? '1 Eintrag Aktivität' : `${n} Einträge Aktivität`),
+      title: 'Welche Aufgabe bleibt?', proposal: 'Vorschlag: die mit mehr Aktivität',
+      proposalRunning: 'Vorschlag: die, an der gerade ein Agent arbeitet', activity: n => (n === 1 ? '1 Eintrag Aktivität' : `${n} Einträge Aktivität`),
       explain: (keep, n) => `${keep} bleibt. ${n === 1 ? 'Die andere wird' : `Die anderen ${n} werden`} als zusammengeführt geschlossen: Ziel, Notizen und offene Schritte kommen als Abschnitt dazu, Dokumente bleiben liegen und werden verlinkt.`,
     },
     prio: {
@@ -304,6 +311,7 @@ export const FLOW = {
       axis: { urgent: 'dringend', notUrgent: 'nicht dringend', important: 'wichtig', notImportant: 'nicht wichtig' },
       from: (time, n) => `Jev ordnet jeden Punkt nach Dringlichkeit und Wichtigkeit, ${time}, ${n} ${n === 1 ? 'Punkt' : 'Punkte'}. Ein Klick auf ein Quadrat zeigt seine Punkte nach Jevs Rang.`,
       running: 'Jev ordnet die Punkte', failed: 'Jev konnte die Punkte nicht ordnen', empty: 'Heute noch keine Ordnung von Jev.',
+      foot: time => `Prio von Jev, ${time}`, again: 'Jev neu fragen',
       hint: 'Jev bewertet Dringlichkeit, Wichtigkeit, Aufwand und ob nur du es kannst. Ein Klick auf ein Quadrat, dann auf einen Titel, zeigt hier die Details und Jevs Werte.',
     },
     rest: { title: 'Alles entschieden.', sub: 'Im Band wartet nichts Offenes.', suggest: 'Zum Starten', none: 'Keine Idee und keine Backlog-Aufgabe zum Vorschlagen.' },

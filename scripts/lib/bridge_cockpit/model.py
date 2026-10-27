@@ -281,7 +281,7 @@ def task_row_for(slug: str, title: str, tasks: list[dict], tx: dict = EN) -> dic
         [tx["quiet_for"].format(days=as_text(t["age"]))] if t["stale"] else [])
     row = task_row(slug, title or t.get("title") or t["label"])
     row.update(why=why, sources=["tasks"], priority=t["priority"], area=t["area"], area_names=list(t["area_names"]),
-               task_type=t["type"], origin_raw=t.get("origin"), updated=t.get("updated"))
+               task_type=t["type"], origin_raw=t.get("origin"), updated=t.get("updated"), status=t.get("status"))
     return row
 
 

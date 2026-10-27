@@ -5,13 +5,15 @@
 // whose tab works or waits at its prompt, a task's own tab at work. RunningBlock is its part on top of the left column,
 // one compact line per entry (its dot pulses while it works, its title opens it in the middle as view `run`, the tab's
 // name and its stage under it); RunningStrip stands on top of the overview in the middle, each entry with its tab, its
-// stage, since when, how it is known, To tab as the strong way and View. On a narrow screen, where the left column is a
-// select, RunningNarrow folds the same lines under one line over the middle.
+// stage, since when, how it is known, To tab as the strong way and View, and a box where it has a task of its own: the
+// box is only for merging (and Done) with the points ticked in the overview, a batch never starts, puts off or drops
+// what runs (logic.js laneRows, batchPlan). On a narrow screen, where the left column is a select, RunningNarrow folds
+// the same lines under one line over the middle.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, short, stageTone } from '../logic.js'
+import { duration, laneRows, short, stageTone } from '../logic.js'
 import { T } from '../text.js'
 import { TabWays } from './flowside.js'
 import { Dot } from './parts.js'
@@ -68,15 +70,21 @@ export function RunningNarrow({ lane, s, c, on = null }) {
 }
 
 /** Running now on top of the overview: the entries of the side entered (every one at the level of all), each with its
- *  tab, stage, since when and how, To tab the strong way and View */
-export function RunningStrip({ lane, s, c }) {
+ *  tab, stage, since when and how, To tab the strong way and View; a box on an entry with a task of its own, in the
+ *  same selection as the overview's (`picked`, ui.flowPicked), for a merge with a point */
+export function RunningStrip({ lane, s, c, picked = new Set() }) {
   const f = T().flow
   if (!lane?.length) return null
+  const boxes = new Set(laneRows(lane).map(r => r.x.id))
   return html`<section class="flow-runstrip" aria-labelledby="flow-runstrip-h">
-    <h3 id="flow-runstrip-h" class="label-caps">${f.run.label} <span class="mono">${lane.length}</span></h3>
+    <h3 id="flow-runstrip-h" class="label-caps">${f.run.label} <span class="mono">${lane.length}</span>
+      ${boxes.size ? html` <span class="flow-runstrip-why muted small">${f.run.boxWhy}</span>` : null}</h3>
     <ul class="flow-runstrip-list">${lane.map(x => {
       const w = laneWords(x, s)
-      return html`<li key=${x.id} class="flow-runstrip-row">
+      const key = boxes.has(x.id) ? x.row.key : null
+      return html`<li key=${x.id} class=${`flow-runstrip-row${key && picked.has(key) ? ' is-picked' : ''}`}>
+        ${key ? html`<input type="checkbox" class="flow-ov-pick flow-runstrip-pick" aria-label=${f.list.pick(short(w.title, 60))}
+          checked=${picked.has(key)} onClick=${() => c.flowPick([key], !picked.has(key))} />` : html`<span class="flow-runstrip-pick" aria-hidden="true"></span>`}
         <${LaneDot} x=${x} />
         <span class="flow-runstrip-text">
           <button type="button" class="flow-run-open" onClick=${() => c.flowRun(x.id)}>${short(w.title, 120)}</button>

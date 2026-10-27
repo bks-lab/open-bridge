@@ -212,6 +212,9 @@
 .flow-ov-open { display: block; padding: 0; border: 0; background: transparent; color: var(--on-surface); font: inherit; font-weight: 600; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .flow-ov-open:hover { text-decoration: underline; }
 .flow-ov-sub { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+/* a long ref in the kind chip wraps inside the column instead of pushing the table under the right column */
+.flow-ov-sub .kind { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.flow-ov-sug { min-width: 9em; }
 /* the stage keeps its words whole: the column grows to fit them */
 .flow-ov-stage { white-space: nowrap; }
 .flow-ov-stage .dot { margin-right: 4px; }
@@ -252,6 +255,10 @@
 .flow-runstrip { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .flow-runstrip > h3 { margin: 0; color: var(--on-surface-muted); }
 .flow-runstrip-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 4px 0; }
+.flow-runstrip-row.is-picked { background: var(--surface-raised); }
+/* the box of an entry with a task of its own (only for a merge), a blank of its width where there is none */
+.flow-runstrip-pick { flex: 0 0 16px; width: 16px; margin: 0; }
+.flow-runstrip > h3 .flow-runstrip-why { margin-left: 8px; font-weight: 400; letter-spacing: normal; text-transform: none; }
 .flow-runstrip-row + .flow-runstrip-row { border-top: 1px solid var(--border); }
 .flow-runstrip-text { display: flex; flex-direction: column; gap: 1px; flex: 1 1 240px; min-width: 0; }
 .flow-runstrip-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
@@ -259,7 +266,9 @@
 
 /* round 4, Merge: under the batch bar which task stays, a radio each */
 .flow-merge-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.flow-merge-list .flow-check { align-items: baseline; flex-wrap: wrap; }
+/* the radio keeps its line beside the title, the facts go under the title, not under the radio */
+.flow-merge-list .flow-check { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; column-gap: 8px; }
+.flow-merge-list .flow-check > .muted { grid-column: 2; }
 .flow-merge-title { font-weight: 600; overflow-wrap: anywhere; }
 .flow-merge > p, .flow-merge-only { margin: 0; }
 

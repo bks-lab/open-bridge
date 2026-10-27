@@ -116,9 +116,12 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 runs: dict, teams: list[dict], tasks: list[dict], settled: set, starting: set, now: float,
                 seq: int, stale: bool, profile: str | None, tx: dict,
                 review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
-                describe: dict | None = None, files: list[dict] | None = None) -> tuple[dict, dict]:
+                describe: dict | None = None, files: list[dict] | None = None,
+                carry_deferred: bool = False) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
-    triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py)."""
+    triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py).
+    `carry_deferred` (Work through on) adds `deferred`: the inbox items a page lists that are put off past the
+    briefing's window, as rows (deferred_rows)."""
     today = m.iso_date(now)
     dismissed = dismissed or {}
     hidden = {**hidden, **{k: "9999-12-31" for k in dismissed}}     # out until "show again"
@@ -242,10 +245,13 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     page_titles = {it["task"]: it["title"] for it in reversed(page_items) if it.get("title")}
     # and every task the last check judged, so its overview row has the same actions
     review_tasks = [(slug, v["title"]) for slug, v in verdicts.items()]
+    # a task the list of every task names (cockpit.files_scope all) carries its status and fields from there too
+    listed = files if files is not None else tasks
     for slug, title in [(t["slug"], page_titles.get(t["slug"]) or t.get("title") or t["label"]) for t in tasks] + page_tasks + review_tasks:
         key = f"task:{slug}"
         if key not in index and key not in settled:
-            task_rows.append(row_out(m.task_row_for(slug, title, tasks, tx), "work"))
+            task_rows.append(row_out(m.task_row_for(slug, title, listed, tx), "work"))
+    deferred_out = deferred_rows(view, index, settled, root, row_out, today) if carry_deferred else None
 
     pages = []
     alarms = []
@@ -298,7 +304,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                    "working_tabs": len([t for t in others if t["state"] == "working"]),
                    "now": asks, "give": totals["give"], "work": totals["work"],
                    "track": totals["track"], "later": totals["later"],
-                   "hidden": len(hidden_out), "flow_open": flow_open(sections, hidden_out, files_out)},
+                   "hidden": len(hidden_out),
+                   "flow_open": flow_open(sections, hidden_out, files_out, task_rows, deferred_out)},
         "sections": sections, "numbers": numbers, "hidden": hidden_out, "approvable": approvable,
         "task_rows": task_rows,
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
@@ -312,16 +319,51 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         # every task and stream as a file (cockpit.files_scope all), None while the files view walks the active ones
         "files": files_out,
     }
+    if deferred_out is not None:
+        model["deferred"] = deferred_out
     return model, index
 
 
-def flow_open(sections: list[dict], hidden: list[dict], files: list[dict] | None) -> int:
+def deferred_rows(view: dict, index: dict, settled: set, root: Path, row_out, today: str) -> list[dict]:
+    """The inbox items a page lists (an inbox section: the idea shelf, what runs on) that are put off past the
+    briefing's window, so no section carries them: a row each (bucket plan, inbox_state deferred, the day it comes
+    back as `until`), in the index like any other, so the verbs reach it. Read from the item's own events as the
+    card reads them (details.inbox_facts): an item taken back on, closed, or no longer put off is left out"""
+    have = {e["row"].get("inbox_id") for e in index.values() if isinstance(e, dict) and isinstance(e.get("row"), dict)}
+    out, seen = [], set()
+    for pg in view.get("pages", []):
+        for sec in pg.get("sections", []):
+            if sec.get("kind") != "inbox":
+                continue
+            for it in sec.get("items", []):
+                iid = it.get("inbox")
+                key = f"inbox:{iid}"
+                if not isinstance(iid, str) or iid in have or iid in seen or key in index or key in settled:
+                    continue
+                facts = inbox_facts(root, iid) or {}
+                if not facts.get("deferred") or facts["deferred"] <= today:
+                    continue
+                seen.add(iid)
+                row = m._base_row(bucket="plan", title=facts.get("summary") or it.get("title") or iid, inbox_id=iid,
+                                  gate=facts.get("gate") or None, task=facts.get("task") or None, inbox_state="deferred",
+                                  inbox_kind=facts.get("kind") or None, area=facts.get("area") or None,
+                                  due=facts.get("due") or None, created=facts.get("created") or None, sources=["inbox"])
+                row["key"] = key
+                out.append(row_out(row, "later"))
+    return out
+
+
+def flow_open(sections: list[dict], hidden: list[dict], files: list[dict] | None, task_rows: list[dict] | None = None,
+              deferred: list[dict] | None = None) -> int:
     """How many things are open, each once (Work through's universe, flow.js flowUniverse): every row of the
-    sections, every hidden row not decided here (no settled_as: put off, it is still open) and every file of the
-    files view (files_scope all) under its task's key"""
+    sections, every hidden row not decided here (no settled_as: put off, it is still open), every file of the
+    files view (files_scope all) under its task's key, every task a page names whose folder is open (a task or a
+    stream under work/tasks or work/streams: closable or stream) and every item put off past the window (deferred)"""
     keys = {r["key"] for s in sections for r in s["rows"]}
     keys |= {r["key"] for r in hidden if r.get("settled_as") is None}
     keys |= {f"task:{f['slug']}" for f in files or []}
+    keys |= {r["key"] for r in task_rows or [] if r.get("closable") or r.get("stream")}
+    keys |= {r["key"] for r in deferred or []}
     return len(keys)
 
 
@@ -669,7 +711,8 @@ class Collector:
                 hidden=app.store.hidden(), dismissed=app.store.dismissed(), runs=app.store.team_runs(), teams=self.teams, tasks=self.tasks,
                 settled=set(self.settled), starting=self.starting_items(), now=app.clock(), seq=self.seq,
                 stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
-                origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks, **app.card_sources())
+                origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks,
+                carry_deferred=(getattr(app.cfg, "flow", None) or {}).get("enabled") is True, **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)

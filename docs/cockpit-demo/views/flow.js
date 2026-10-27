@@ -33,7 +33,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, pointsIn,
+  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn,
   prepTargets, previewText, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
 } from '../logic.js'
 import { T } from '../text.js'
@@ -169,6 +169,9 @@ function Rest({ s, c }) {
     </section>`
 }
 
+// a word of a list as the start of a sentence
+const upFirst = t => (t ? t[0].toUpperCase() + t.slice(1) : t)
+
 /** A point in progress, or an entry of Running now: its state in its head (its dot pulses while an agent works on it,
  *  logic.js flowDrive) and the last lines of that tab's screen. Who works on it and since when is a field on the right,
  *  where its verbs stand too */
@@ -177,12 +180,15 @@ function DoingCard({ x, s }) {
   const d = flowDrive(x, s)
   const row = x.row
   const lines = tailLines(d.tab?.last ?? x.start?.tab?.last)
-  const live = d.by !== 'none' && d.stage === 'working'
+  const live = d.by !== 'none' && (d.stage === 'working' || d.stage === 'started')
   const title = row?.title ?? x.title ?? x.start?.title ?? ''
   const token = d.by === 'none' ? 'muted' : stageTone(d.stage === 'needs-you' ? 'asks' : d.stage ?? 'working')
+  // an entry of Running now says so in its head with its stage, and why it stands there and not as a point
+  const kind = x.lane ? [f.run.label, f.doing.stage[d.stage] ?? d.stage].filter(Boolean).join(' · ') : f.kind.doing
   return html`<article class=${`fx-hero tk-${token === 'muted' ? 'muted' : 'info'}`} aria-labelledby="flow-title">
-    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${token} pulse=${live} />${f.kind.doing}</span></header>
+    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${token} pulse=${live} />${kind}</span></header>
     <h2 id="flow-title" class="fx-title">${title}</h2>
+    ${x.lane ? html`<p class="muted small">${[upFirst(f.run.how[x.how]), f.run.cardWhy].filter(Boolean).join('. ')}</p>` : null}
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
   </article>`
 }
@@ -211,7 +217,9 @@ export function FlowPage({ s, c }) {
   const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
   const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : null
   const driver = flowDriver(s)
-  const keys = new Set(listRows(queue).filter(r => r.row).map(r => r.id))
+  // the boxes: every point with a row, and what runs with a task of its own (for a merge and Done only)
+  const runRows = laneRows(lane)
+  const keys = new Set([...listRows(queue).filter(r => r.row).map(r => r.id), ...runRows.map(r => r.id)])
   const picked = new Set((s.ui.flowPicked ?? []).filter(k => keys.has(k)))
   const go = k => c.flowGo(queue[k].id, k)
   const decided = s.ui.flowDecided ?? 0
@@ -257,10 +265,10 @@ export function FlowPage({ s, c }) {
             </div>
             <div class="flow-dock"><${InstructLine} key=${x.id} scope=${scope} s=${s} c=${c} /></div>`
           : view === 'overview' ? html`<header class="flow-main-head"><h2 class="flow-main-title">${entered ? html`<${SideDot} side=${entered} />` : null}${name}</h2></header>
-            <${RunningStrip} lane=${lane} s=${s} c=${c} />
+            <${RunningStrip} lane=${lane} picked=${picked} s=${s} c=${c} />
             ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />`
               : !all.length ? html`<${Rest} s=${s} c=${c} />`
-              : html`<${FlowOverview} key=${side} points=${queue} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind}
+              : html`<${FlowOverview} key=${side} points=${queue} running=${runRows} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind}
                 band=${mode === 'prio' && entered ? (entered.id === 'none' ? 'due' : 'rank') : null} s=${s} c=${c} />`}
             ${all.length ? html`<div class="flow-dock"><${InstructLine} scope=${scope} s=${s} c=${c} /></div>` : null}`
           : html`<header class="flow-main-head">

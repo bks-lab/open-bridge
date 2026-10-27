@@ -491,7 +491,7 @@ test('In progress: the card shows the last lines, the field says who works on it
   let el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ work: [task('busy')], tabs: [busy] }),
     ui: { ...state().ui, page: 'briefing', workView: 'flow', flowView: 'run', flowRunId: 'tab:surface:21' } })} c=${c} />`)
   const card = el.$('.flow-card')
-  assert.match(card.text(), new RegExp(en.flow.kind.doing))
+  assert.match(card.text(), new RegExp(`${en.flow.run.label} · ${en.flow.doing.stage.working}`))
   assert.equal(card.$('.flow-who'), null, 'no box who works on it in the card')
   assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab busy: at work, for 18 min/)
   assert.match(card.$('.fx-screen').text(), /Running the tests/)
@@ -938,7 +938,8 @@ test('a point an agent already works on: no Let AI do it as its suggestion, and 
   assert.equal(logic.flowSuggestion(task('free'), s).verb, 'do')
   const plan = logic.batchPlan(rows, 'suggested', s)
   assert.deepEqual(plan.calls.map(x => x.args.keys), [['task:free']])
-  assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:run', 'no_suggestion'], ['task:tabbed', 'no_suggestion']])
+  // both run (Running now): a batch takes what runs only into Done or a merge
+  assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:run', 'working'], ['task:tabbed', 'working']])
   // the same for a start picked by hand with one verb for all
   assert.deepEqual(logic.batchPlan([task('run')], 'do', s).skipped.map(x => x.why), ['working'])
 })
@@ -2178,12 +2179,14 @@ test('leftPlan: Back on per entry, the other verbs as a batch plans them', () =>
     e(ask('20261009-0901-a-far'), { why: 'ahead', until: '2026-10-12' }), e(task('blocked', { blocked_by: 'x' })), e(task('waits', { bucket: 'waiting' })),
     e(task('quiet', { bucket: 'resting' })), e(ask('20261009-0902-a-w', { bucket: 'waiting' })), e(task('st', { stream: true }))]
   const plan = logic.leftPlan(entries, 'back', s)
+  // a wait that comes from someone else's next step has no blocker to clear: it stays out (UX-4)
   assert.deepEqual(plan.calls, [{ verb: 'unhide', args: { key: 'ref:acme/app#1' } }, { verb: 'inbox_reopen', args: { id: '20261009-0900-a-d' } },
-    { verb: 'task_running', args: { slug: 'blocked' } }, { verb: 'task_running', args: { slug: 'waits' } }, { verb: 'task_keep', args: { keys: ['task:quiet'] } }])
+    { verb: 'task_running', args: { slug: 'blocked' } }, { verb: 'task_keep', args: { keys: ['task:quiet'] } }])
   assert.deepEqual(plan.early, ['inbox:20261009-0901-a-far'])
-  assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['inbox:20261009-0902-a-w', 'not_offered'], ['task:st', 'not_offered']])
-  assert.equal(plan.counts.back, 6)
-  assert.match(en.flow.batch.summary(plan), /6 back on; 2 stay out/)
+  assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:waits', 'not_offered'], ['inbox:20261009-0902-a-w', 'not_offered'], ['task:st', 'not_offered']])
+  assert.equal(plan.counts.back, 5)
+  assert.match(en.flow.batch.summary(plan), /5 back on; 3 stay out/)
+  assert.match(text.TABLES.de.flow.batch.summary({ counts: { back: 1 }, skipped: [{}] }), /1 wieder dran; 1 bleibt draußen/)
   // done, later, drop, do: exactly as batchPlan
   const rows = [e(ref('acme/app', 1)), e(task('st', { stream: true }))]
   assert.deepEqual(logic.leftPlan(rows, 'done', s).calls, logic.batchPlan(rows.map(x => x.row), 'done', s).calls)
@@ -2500,4 +2503,173 @@ test('under an area filter Work through holds the files of that area only: a bac
   assert.ok(idea.includes('task:docs-search'))
   // the files view's own list stays whole (wholeModel)
   assert.equal(scoped.wholeModel.files.length, s.model.files.length)
+})
+
+// ---------------------------------------------------------------- round 4 review: what the walk on the real data found
+
+/** Two tasks about the same thing: one a session runs (Running now), one a point; a third point besides */
+function twinState(ui = {}) {
+  const tabs = [{ ref: 'surface:1', name: 'board tab', state: 'working', since_ms: NOW - 40 * MIN }]
+  const sessions = { sessions: [{ id: 'a', sid: 'a-full', task: 'board-ui', task_how: 'seen', task_since_ms: NOW - 30 * MIN, tab: { ref: 'surface:1' } }] }
+  return state({ work: [task('board-ui', { title: 'Board UI' }), task('points-walk', { title: 'Points walk' }), task('other', { title: 'Other' })],
+    tabs, sessions, ui: { flowView: 'overview', flowPicked: [], ...ui } })
+}
+
+test('UX-1: a task in Running now has a box only for merging; with a point ticked beside it Merge is offered', async () => {
+  const s = twinState({ flowPicked: ['task:board-ui', 'task:points-walk'] })
+  const parts = logic.flowParts(s)
+  assert.deepEqual(parts.lane.map(x => x.row?.key), ['task:board-ui'])
+  assert.deepEqual(logic.laneRows(parts.lane).map(r => r.id), ['task:board-ui'])
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const strip = el.$('.flow-runstrip')
+  const box = strip.$('input[type=checkbox]')
+  assert.ok(box, 'the strip entry has a box')
+  assert.ok(strip.$('.flow-runstrip-row').hasClass('is-picked'), 'ticked')
+  assert.match(strip.text(), new RegExp(en.flow.run.boxWhy.slice(0, 20)))
+  box.click()
+  assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:board-ui'], false])
+  const merge = el.button(`${en.flow.merge.button} ▾`)
+  assert.ok(merge && !merge.hasAttribute('disabled'), 'a lane task and a point task can be merged')
+  merge.click()
+  await tick()
+  // the one a session runs on is the one that stays: its folder never moves from under the agent
+  assert.match(el.$('.flow-merge').text(), /Board UI stays/)
+  assert.match(el.$('.flow-merge').text(), new RegExp(en.flow.merge.proposalRunning.slice(0, 25)))
+  // a batch never starts, puts off or drops what runs; Done stays a choice
+  const lane = s.model.sections[2].rows[0]
+  const point = s.model.sections[2].rows[1]
+  const sug = logic.batchPlan([lane, point], 'suggested', { ...s, triage: { last: { at: '2026-10-09T08:00' }, items: { 'task:board-ui': { verdict: 'close' }, 'task:points-walk': { verdict: 'close' } } } })
+  assert.deepEqual(sug.skipped.map(x => [x.row.key, x.why]), [['task:board-ui', 'working']])
+  for (const how of ['later', 'drop', 'do']) {
+    assert.deepEqual(logic.batchPlan([lane], how, s, how === 'later' ? '2026-10-12' : 'x').skipped.map(x => x.why), ['working'], how)
+  }
+  assert.deepEqual(logic.batchPlan([lane, point], 'done', s).calls, [{ verb: 'settle', args: { keys: ['task:board-ui', 'task:points-walk'], outcome: 'done', by: 'batch' } }])
+  // All ticks the points, not what runs
+  const c2 = recorder()
+  const el2 = mount(html`<${FlowPage} s=${twinState()} c=${c2} />`)
+  el2.$('.flow-ov-all').click()
+  assert.deepEqual(c2.calls.at(-1)[1].sort(), ['task:other', 'task:points-walk'])
+  assert.equal(logic.mergeKeep([point, lane], {}, new Set(['task:board-ui'])), 'task:board-ui')
+})
+
+test('UX-2: a recognised session whose tab asks stands once, as the card that asks, with its task', () => {
+  const sessions = { sessions: [{ id: 'a', sid: 'a-full', task: 'board-ui', task_how: 'seen', task_since_ms: NOW - 30 * MIN, tab: { ref: 'surface:1' } }] }
+  for (const st of ['working', 'waiting', 'needs-you']) {
+    const s = state({ work: [task('board-ui')], tabs: [{ ref: 'surface:1', name: 'board tab', state: st, since_ms: NOW - 5 * MIN }], sessions })
+    const parts = logic.flowParts(s)
+    const keys = logic.flowKeys(parts)
+    if (st === 'needs-you') {
+      assert.deepEqual(parts.lane, [])
+      assert.deepEqual(parts.asks.map(x => [x.id, x.row?.key]), [['tab:surface:1', 'task:board-ui']])
+      assert.deepEqual(parts.doing, [])
+      assert.deepEqual([parts.counts.points, parts.counts.extra], [1, 0])
+    } else {
+      assert.deepEqual(parts.lane.map(x => x.id), ['session:surface:1'], st)
+      assert.equal(parts.counts.points, 0)
+    }
+    assert.equal(keys.size, 1, st)
+  }
+})
+
+test('UX-3: the open tasks a page names and the items put off past the window stand in Work through', () => {
+  const s = state({ work: [task('a')] })
+  s.model.task_rows = [task('job-hunt', { status: null, stream: true, closable: false, bucket: 'do', title: 'Job hunt' }),
+    task('parked', { status: 'backlog', closable: true, bucket: 'do' }), task('closed-one', { status: null, closable: false, stream: false })]
+  s.model.deferred = [ask('20261020-0800-a-shelved-idea', { art: 'idea', inbox_state: 'deferred', until: '2027-01-25', bucket: 'plan' }),
+    ask('20261020-0820-runs-on', { inbox_state: 'deferred', until: '2026-12-01', bucket: 'plan' })]
+  s.model.pages = [{ id: 'work', group: 'work', sections: [
+    { id: 'ideas', kind: 'inbox', items: [{ inbox: '20261020-0800-a-shelved-idea' }, { inbox: '20261020-0820-runs-on' }] },
+    { id: 'tasks', kind: 'tasks', items: [{ task: 'a' }, { task: 'job-hunt' }, { task: 'parked' }, { task: 'closed-one' }] }] }]
+  const uni = logic.flowUniverse(s)
+  assert.deepEqual([...uni.keys()].sort(), ['inbox:20261020-0800-a-shelved-idea', 'inbox:20261020-0820-runs-on', 'task:a', 'task:job-hunt', 'task:parked'])
+  checkInvariant(s, 'pages')
+  const parts = logic.flowParts(s)
+  const left = Object.fromEntries(parts.leftOut.groups.map(g => [g.reason, g.rows]))
+  assert.deepEqual(left.stream.map(e => e.row.key), ['task:job-hunt'])
+  // an idea put off for months stands with the ideas and says its day, any other item put off under Later
+  assert.deepEqual(left.idea.map(e => [e.row.key, e.until]).sort(), [['inbox:20261020-0800-a-shelved-idea', '2027-01-25'], ['task:parked', null]])
+  assert.deepEqual(left.later.map(e => [e.row.key, e.why, e.until]), [['inbox:20261020-0820-runs-on', 'deferred', '2026-12-01']])
+  // every inbox item and task the work page shows is in the universe, or closed
+  for (const sec of s.model.pages[0].sections) {
+    for (const it of sec.items) {
+      const ok = it.inbox ? [...uni.values()].some(r => r.inbox_id === it.inbox) : uni.has(`task:${it.task}`) || it.task === 'closed-one'
+      assert.ok(ok, JSON.stringify(it))
+    }
+  }
+  // the list says the day an idea put off comes back
+  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'left', flowLeft: 'idea' } }} c=${recorder()} />`)
+  const tr = el.$$('.flow-ov-row').find(r => r.text().includes('20261020-0800-a-shelved-idea'))
+  assert.match(tr.text(), new RegExp(en.flow.notnow.from('').trim()))
+})
+
+test('UX-3: the demo counts the open rows by its own loop, the page by its universe, with task_rows and deferred', () => {
+  const NOWD = new Date(2026, 9, 9, 12, 0, 0).getTime()
+  for (const opts of [{}, { filesScope: 'all' }]) {
+    const demo = mock.buildState(NOWD, opts)
+    assert.ok((demo.model.deferred ?? []).length >= 1, 'the demo puts an idea off past the window')
+    assert.equal(logic.flowUniverse(demo).size, demo.model.counts.flow_open, JSON.stringify(opts))
+    checkInvariant({ ...demo, now: NOWD, ui: { busy: {} } }, `demo ${JSON.stringify(opts)}`)
+  }
+})
+
+test('UX-4: Back on clears only a real wait; a task whose next step is the person\'s own waits on nobody else', () => {
+  const me = { key: 'task:mine', status: 'doing', bucket: 'waiting', card: { next: { what: 'build the next one', who: 'Ada' }, state: { blocked_by: null } } }
+  const blocked = { ...task('blocked'), bucket: 'waiting', card: { state: { blocked_by: 'the vendor' } } }
+  const other = { ...task('other'), bucket: 'waiting', card: { next: { what: 'answer', who: 'Bob' }, state: { blocked_by: null } } }
+  const s = state({ later: [{ ...task('mine'), ...me }, blocked, other] })
+  s.work = { ...s.work, person: 'Ada' }
+  const parts = logic.flowParts(s)
+  const left = Object.fromEntries(parts.leftOut.groups.map(g => [g.reason, g.rows.map(e => e.row.key)]))
+  assert.deepEqual(left.waiting.sort(), ['task:blocked', 'task:other'])
+  assert.deepEqual(parts.doing.map(x => x.row.key), ['task:mine'], 'its own next step: a point')
+  const e = row => ({ row, until: null, why: null, due: null, repo: null })
+  const plan = logic.leftPlan([e(blocked), e(other), e(task('fb', { blocked_by: 'x', bucket: 'waiting' }))], 'back', s)
+  assert.deepEqual(plan.calls, [{ verb: 'task_running', args: { slug: 'blocked' } }, { verb: 'task_running', args: { slug: 'fb' } }])
+  assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:other', 'not_offered']])
+  // without a person named, nothing changes: who is someone else
+  const s2 = state({ later: [{ ...task('mine'), ...me }] })
+  assert.deepEqual(logic.flowParts(s2).leftOut.groups.map(g => g.reason), ['waiting'])
+})
+
+test('UX-6 and UX-7: Prio asks Jev again at the foot of its left column; a square names every point it counts', async () => {
+  const base = mock.buildState(NOW, { workPage: true })
+  const st = cockpitState(NOW, { model: base.model, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowMode: 'prio', flowPicked: [] } })
+  const order = { at_ms: NOW - 30 * MIN, items: [] }
+  const s = { ...st, jevOrder: { work: { order, running: false, error: null } } }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const foot = el.$('aside .flow-prio-foot')
+  assert.ok(foot, 'the foot of Prio level one')
+  assert.match(foot.text(), new RegExp(en.flow.prio.foot('').trim()))
+  foot.$('button').click()
+  assert.deepEqual(c.calls.at(-1), ['flowPrioAgain', 'work'])
+  const busy = mount(html`<${FlowPage} s=${{ ...s, jevOrder: { work: { order, running: true, error: null } } }} c=${recorder()} />`)
+  assert.ok(busy.$('aside .flow-prio-foot button').hasAttribute('disabled') || busy.$('aside .flow-prio-foot button').getAttribute('aria-busy') === 'true')
+  // every point stands unrated: the square lists four, the line says how many more, the reports by their rows
+  const none = el.$('.flow-prio-none .flow-prio-sq')
+  const n = Number(none.$('.flow-prio-n').text())
+  const listed = none.$$('.flow-prio-titles li').length
+  assert.equal(listed, Math.min(4, n))
+  if (n > 4) assert.match(none.text(), new RegExp(en.flow.prio.more(n - 4)))
+})
+
+test('the overview says of a task nobody works on when it last moved; Watching sorts issue numbers as numbers', () => {
+  const s = state({ work: [task('idle', { updated: '2026-10-05', created: '2026-10-08' })], ui: { flowView: 'overview', flowPicked: [] } })
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  const tr = el.$$('.flow-ov-row').find(r => r.text().includes('Task idle'))
+  assert.match(tr.text(), new RegExp(en.flow.doing.none(4)))
+  const w = state({ later: [ref('acme/app', 18), ref('acme/app', 2), ref('acme/app', 101)] })
+  const watch = logic.flowParts(w).leftOut.groups.find(g => g.reason === 'watch').rows.map(e => e.row.key)
+  assert.deepEqual(watch, ['ref:acme/app#2', 'ref:acme/app#18', 'ref:acme/app#101'])
+})
+
+test('an entry of Running now opened in the middle says so in its head, and why it is no point', () => {
+  const s = twinState()
+  const lane = logic.flowParts(s).lane[0]
+  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'run', flowRunId: lane.id } }} c=${recorder()} />`)
+  const head = el.$('.flow-card .fx-kind').text()
+  assert.match(head, new RegExp(en.flow.run.label))
+  assert.match(head, new RegExp(en.flow.doing.stage.working))
+  assert.match(el.$('.flow-card').text(), new RegExp(en.flow.run.cardWhy.slice(0, 30)))
 })

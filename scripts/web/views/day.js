@@ -30,7 +30,8 @@ export function KindTag({ row, s, c, link = false }) {
   const t = T()
   const k = rowKind(row, s)
   const title = k.task ? (indexRows(s?.model).get(`task:${k.task}`)?.title ?? k.task) : null
-  const about = (k.kind === 'inbox' || k.kind === 'issue') && k.task
+  // an issue or item that names its task, unless the task's title only repeats the row's own
+  const about = (k.kind === 'inbox' || k.kind === 'issue') && k.task && title !== row?.title
     ? html`<span class="kind-about"> · ${t.kindAbout} <span class=${`kind-about-what kind-${k.taskKind ?? 'task'}`}><span aria-hidden="true">${KIND_MARK[k.taskKind ?? 'task']}</span> ${t.kind[k.taskKind ?? 'task']}:</span> ${link && c
       ? html`<button type="button" class="btn-link" onClick=${() => c.select(`task:${k.task}`)}>${short(title, 48)}</button>`
       : short(title, 48)}</span>` : null

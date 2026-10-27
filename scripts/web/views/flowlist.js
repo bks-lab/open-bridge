@@ -17,7 +17,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { activityWhen, batchPlan, batchPreselect, batchSummary, DAY, dropReasonWord, flowDrive, flowSettings, flowSuggestion, FLOW_BANDS, FLOW_YOU,
+import { activityWhen, atWork, batchPlan, batchPreselect, batchSummary, DAY, dropReasonWord, flowDrive, flowSettings, flowSuggestion, FLOW_BANDS, FLOW_YOU,
   formatDay, isoDate, jevWhy, mergeable, mergeKeep, nextMonday, pointBand, rowProject, short, stageTone } from '../logic.js'
 import { T, TABLES, language } from '../text.js'
 import { KindTag } from './day.js'
@@ -77,8 +77,8 @@ export function Suggestion({ sug, s }) {
 const MERGE_FEEDS = 10
 
 /** Merge, under the batch bar: which of the ticked tasks stays (a radio each with its activity and when it last moved,
- *  the one with more activity suggested once the feeds came; a pick of the person's holds), what happens to the
- *  others, Merge and Cancel. The merge goes out as one batch with one undo (app.js flowMerge); as Confirm does, it
+ *  one an agent works on suggested, else the one with more activity once the feeds came; a pick of the person's
+ *  holds), what happens to the others, Merge and Cancel. The merge goes out as one batch with one undo (app.js flowMerge); as Confirm does, it
  *  unticks the rows it took first (`onPick`), so an undo brings them back unticked */
 export function MergePanel({ rows, s, c, onClose, onPick = () => {}, from = 'overview' }) {
   const t = T()
@@ -90,7 +90,8 @@ export function MergePanel({ rows, s, c, onClose, onPick = () => {}, from = 'ove
   useEffect(() => { for (const k of keys.slice(0, MERGE_FEEDS)) c.loadActivity(k) }, [keys.join(',')])
   const feeds = Object.fromEntries(keys.map(k => [k, s.details?.activity?.[k]?.data ?? null]))
   const ready = keys.slice(0, MERGE_FEEDS).every(k => feeds[k])
-  const keep = keys.includes(pick) ? pick : ready ? mergeKeep(list, feeds) : keys[0]
+  const working = new Set(list.filter(r => atWork(r, s)).map(r => r.key))
+  const keep = keys.includes(pick) ? pick : ready || working.size ? mergeKeep(list, ready ? feeds : {}, working) : keys[0]
   const kept = list.find(r => r.key === keep)
   const others = keys.filter(k => k !== keep)
   const run = async () => {
@@ -100,7 +101,7 @@ export function MergePanel({ rows, s, c, onClose, onPick = () => {}, from = 'ove
   }
   return html`<div class="verbbar-panel flow-merge" role="group" aria-labelledby="flow-merge-h">
     <p id="flow-merge-h" class="label-caps">${f.title}</p>
-    ${ready ? html`<p class="muted small">${f.proposal}</p>` : null}
+    ${working.has(keep) && !keys.includes(pick) ? html`<p class="muted small">${f.proposalRunning}</p>` : ready ? html`<p class="muted small">${f.proposal}</p>` : null}
     <ul class="flow-merge-list">${list.map(r => {
       const feed = feeds[r.key]
       const moved = feed?.facts?.moved ?? r.updated ?? null
@@ -132,7 +133,9 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
   const [panel, setPanel] = useState(null)       // later, drop or merge: the batch buttons that open a choice
   const [plan, setPlan] = useState(null)         // the plan waiting for Confirm
   const [other, setOther] = useState('')
-  const all = pickable.length > 0 && chosen.length === pickable.length
+  // All ticks the rows of the list; a row ticked from elsewhere (an entry of Running now) does not count for it
+  const ids = new Set(chosen.map(r => r.key))
+  const all = pickable.length > 0 && pickable.every(r => ids.has(r.id))
   const pre = suggest ? batchPreselect(pickable.map(r => r.row), s) : []
   const suggested = suggest ? batchPlan(chosen, 'suggested', s, '', lang) : null
   const counts = suggested ? (TABLES[lang] ?? TABLES.en).flow.batch.counts(suggested) : null
@@ -193,7 +196,7 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
   </div>`
 }
 
-export function FlowOverview({ points, picked, titleFor, kindFor, band = null, s, c }) {
+export function FlowOverview({ points, picked, titleFor, kindFor, band = null, running = [], s, c }) {
   const t = T()
   const f = t.flow
   const w = f.list
@@ -202,7 +205,8 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, s
   const bands = bandsOf(points, band)
   const rows = bands.flatMap(b => b.rows)
   const pickable = rows.filter(r => r.row)
-  const chosen = pickable.filter(r => picked.has(r.id)).map(r => r.row)
+  // the ticked points, and what runs ticked on the strip above (logic.js laneRows): for a merge or Done
+  const chosen = [...pickable, ...running].filter(r => picked.has(r.id)).map(r => r.row)
   const from = new Set(rows.map(r => flowSuggestion(r.row, s)?.from).filter(Boolean))
   const day = s.triage?.last?.at ? formatDay(String(s.triage.last.at).slice(0, 10), lang) : null
   if (!rows.length) return html`<section class="flow-overview" aria-label=${w.label}><p class="muted">${w.empty}</p></section>`
@@ -221,11 +225,15 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, s
           const age = row ? ageDays(row, nowMs) : null
           const area = rowArea(r)
           const tone = pointTone(r.x, s)
+          // a task in progress nobody works on says when it last moved, not how old it is
+          const drive = row && r.x.group === 'doing' ? flowDrive(r.x, s) : null
+          const idle = drive?.by === 'none' ? f.doing.none(drive.days) : null
           return html`<tr key=${r.id} class=${`flow-ov-row${row && picked.has(r.id) ? ' is-picked' : ''}`}>
             <td>${row ? html`<input type="checkbox" class="flow-ov-pick" aria-label=${w.pick(short(title, 60))} checked=${picked.has(r.id)}
               onClick=${() => c.flowPick([r.id], !picked.has(r.id))} />` : null}</td>
             <td class="flow-ov-point"><button type="button" class="flow-ov-open" onClick=${() => c.flowGo(r.x.id, points.indexOf(r.x))}>${short(title, 120)}</button>
-              ${row ? html`<span class="flow-ov-sub muted small"><${KindTag} row=${row} s=${s} />${age == null ? '' : html` <span class="mono">${w.age(age)}</span>`}</span>` : null}</td>
+              ${row ? html`<span class="flow-ov-sub muted small"><${KindTag} row=${row} s=${s} />${idle ? html` <span>${idle}</span>`
+                : age == null ? '' : html` <span class="mono">${w.age(age)}</span>`}</span>` : null}</td>
             <td class="flow-ov-stage small"><${Dot} token=${tone.token} pulse=${tone.pulse} /> ${kindFor(r.x)}</td>
             <td class="flow-ov-area small">${area}</td>
             <td class="flow-ov-sug">${row ? html`<${Suggestion} sug=${flowSuggestion(row, s)} s=${s} />` : null}</td>

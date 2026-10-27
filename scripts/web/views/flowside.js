@@ -10,8 +10,8 @@
 // shows), All and Tick the AI suggestions, then its points grouped Needs you, In progress, Tasks, Reports (logic.js
 // pointBand), each with a box, its title (a click opens the point), a dot and a word for its stage, its area and the
 // suggestion as a small chip. The boxes are the same selection as the overview's (ui.flowPicked). A theme entered can
-// be renamed. In Prio level one holds Jev's four squares (an empty one too) and Not rated yet, level two the points of a
-// square in Jev's order as one band. On a narrow screen both levels are one select over the middle, Running now and Not
+// be renamed. In Prio level one holds Jev's four squares (an empty one too) and Not rated yet, with when Jev ordered and
+// Ask Jev again at its foot (views/flowprio.js PrioFoot), level two the points of a square in Jev's order as one band. On a narrow screen both levels are one select over the middle, Running now and Not
 // now fold under it.
 // FlowAside, the right column of an open point (round 3), as an issue tracker's sidebar: on top What you can do, the AI
 // suggestion in one line (on an open point the only place it stands) and the card's verbs under each other, the strong
@@ -37,6 +37,7 @@ import { OriginTag } from './day.js'
 import { Segmented } from './detail.js'
 import { NotNowBlock, NotNowNarrow } from './flowleft.js'
 import { bandsOf, pointTone, rowArea, Suggestion } from './flowlist.js'
+import { PrioFoot } from './flowprio.js'
 import { RunningBlock, RunningNarrow } from './flowrun.js'
 import { TAB_MSG_MAX } from './nav.js'
 import { Btn, Dot, Icon, PrioChip } from './parts.js'
@@ -93,7 +94,7 @@ function Level1({ sides, mode, points, s, c }) {
       <${Btn} size="xs" variant="secondary" icon="spark" busy=${busy} disabled=${!keys.length || th?.budget_left === 0}
         onClick=${() => c.flowThemes('regroup', keys.slice(0, 50))}>${f.regroup}<//>
       ${status ? html`<p class="muted small" role="status">${status}</p>` : null}
-    </div>` : null}`
+    </div>` : mode === 'prio' ? html`<${PrioFoot} s=${s} c=${c} />` : null}`
 }
 
 /** Level two: back to all, the name as the way to the overview, All and Tick, the points grouped with their boxes */
