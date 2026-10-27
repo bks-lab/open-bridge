@@ -9,15 +9,15 @@
 
 import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
-import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, quickLive } from './components.js'
+import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, parentOf, quickLive } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
+  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -327,7 +327,8 @@ function applyState(payload) {
     // what the day's budgets of Work through still hold: summaries and instructions (round 3)
     flow_ai: payload.flow_ai ?? s.flow_ai,
     rooms: payload.rooms ?? s.rooms,
-    notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
+    // a note keeps its date for the history's days (server at_ms); one of an older server has none (0)
+    notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: n.at_ms ?? 0 })) : s.notes,
   }))
   // the answers being written, whole: a page that connects in the middle of one shows all of it
   if (payload.quick_live) quickLive.set(quickLiveSnapshot(payload.quick_live))
@@ -362,13 +363,16 @@ function offerTour() {
   if (tourOffered(s.tour) && !s.ui.tour) setUi({ tour: { id: 'welcome', from: s.ui.page } })
 }
 
-/** A stored page that the profile no longer has falls back to the Briefing ('@check' is the page's own) */
+/** A stored page that the profile no longer has falls back to the Briefing ('@check' is the page's own); a sub page
+ *  has no tab but is a page all the same (parentOf) */
 function fixPage() {
   const s = store.get()
   if (s.model && s.ui.page === CHECK_PAGE && !pageOrder(s).includes(CHECK_PAGE)) ctl.openReview()   // the check moved onto a page
   else if (s.ui.page === AGENTS_PAGE && chatAsWorkspaces(s)) ctl.setPage(AGENTS_PAGE)   // as cmux the agents live in the Chat
-  else if (flowPageFor(s.ui.page)) ctl.setPage(s.ui.page)   // the page @flow of an older cockpit: the work tab in its view
-  else if (s.model && !pageOrder(s).includes(s.ui.page)) setUi({ page: 'briefing' })
+  // the page @flow of an older cockpit: the work tab in its view; a Sessions page stored before round 6, where Running
+  // now lists the sessions: Running now (meant for one release; after it the fallback below opens Today)
+  else if (flowPageFor(s.ui.page, s)) ctl.setPage(s.ui.page)
+  else if (s.model && !pageOrder(s).includes(s.ui.page) && !parentOf(s, s.ui.page)) setUi({ page: 'briefing' })
 }
 
 const handlers = {
@@ -494,10 +498,12 @@ const handlers = {
   relay_state(rs) {
     store.set(s => ({ ...s, relay: { ...s.relay, ...rs, records: s.relay.records } }))
   },
+  // a tab that starts waiting toasts while it is out of sight, else it says so in the history only; one past the
+  // hour always toasts (logic.js alertToasts)
   alert(a) {
     const t = T()
     const text = a.kind === 'tab_long' ? t.tabLongToast(a.name) : t.tabToast(a.name, t.state[a.state] ?? a.state)
-    pushNote({ text, tone: 'warn', go: { kind: 'tab', ref: a.ref } })
+    pushNote({ text, tone: 'warn', go: { kind: 'tab', ref: a.ref } }, { toast: alertToasts(store.get(), a) })
     if (a.kind === 'tab_waiting' && store.get().boot.config?.voice) {
       try {
         const u = new SpeechSynthesisUtterance(t.voiceWaiting(a.name))
@@ -779,10 +785,10 @@ const ctl = {
   ask,
   copy,
   dismissToast,
-  // the notes drawer, from the "+N more" toast: the count goes, the toasts still up stay
+  // the notes in the history, from the "+N more" toast: the count goes, the toasts still up stay
   openNotes() {
     store.set(s => ({ ...s, ...notesOpenedState(s) }))
-    setUi({ drawer: 'notes' })
+    ctl.openHistory()
   },
   pauseToast: (id, why) => toastTimers.pause(id, why),
   resumeToast: (id, why) => toastTimers.resume(id, why),
@@ -793,6 +799,19 @@ const ctl = {
   },
   select(key) {
     const s = store.get()
+    // the work tab without Due shows no day column to select in (a click on a tab's name, views/tabs.js): Work
+    // through opens the row's point, entry or group of Not now, anything else the row's detail beside the page
+    const work = { ...s, ui: { ...s.ui, page: 'briefing' } }
+    const view = workViewIn(work)
+    if (view !== 'due') {
+      const to = view === 'flow' ? flowWhere(areaScope(work), key) : null
+      if (!to) return ctl.peek(key, null)
+      if (s.ui.page !== 'briefing') ctl.setPage('briefing')
+      if (to.view === 'run') return ctl.flowRun(to.id)
+      if (to.view === 'left') return ctl.flowLeft(to.id)
+      return setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: null }, flowAt: { id: to.id, i: 0 },
+        flowView: 'point', flowPicked: [], flowPlan: null }))
+    }
     setUi({ selectedKey: key, focusKey: key, pageDetail: false, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
     if (s.ui.page !== 'briefing') setUi({ page: 'briefing' })
     if (s.layout === 'narrow') requestAnimationFrame(() => window.scrollTo(0, 0))
@@ -860,21 +879,26 @@ const ctl = {
     const s = store.get()
     // as cmux the agents have no page: their way (the band, a card, a stored page) opens the Chat on its A2A area
     id = ctl.pageFor(id)
-    // Work through was a page (@flow) and is a view of the work tab now: a stored page or a link leads there
-    const flowTo = flowPageFor(id)
+    // Work through was a page (@flow) and is a view of the work tab now: a stored page or a link leads there. Where it
+    // lists the live sessions, every way to the Sessions tab (a link, a note, the band, the tour, an area's number)
+    // leads to its Running now in the middle (round 6, logic.js flowPageFor)
+    const flowTo = flowPageFor(id, s)
     if (flowTo) {
-      save('bridge-cockpit.workTab', flowTo.view)
-      setUi({ workView: flowTo.view })
+      const go = workViewGo(s, flowTo.view)
+      if (go.save) save('bridge-cockpit.workTab', go.view)
+      setUi({ workView: go.view, ...(flowTo.flowView ? { flowView: flowTo.flowView, flowRunId: null, flowPlan: null } : {}) })
       id = flowTo.page
     }
     // a page of group day has no tab: a tile or link to it opens Today, where its sections stand
     if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = 'briefing'
-    // the work page and the Jev tab are views of the work tab where a page of group work exists
+    // the work page and the Jev tab are views of the work tab where a page of group work exists; with By source or
+    // By Jev switched off the way lands in Work through (workViewGo, nothing stored), Jev's with Prio on the left
     const work = workPageOf(s.model?.pages)
     if (work && (id === work.id || (id === '@jev' && work.jev))) {
-      const view = id === work.id ? 'area' : 'jev'
-      save('bridge-cockpit.workTab', view)
-      setUi({ workView: view })
+      const go = workViewGo(s, id === work.id ? 'area' : 'jev')
+      if (go.save) save('bridge-cockpit.workTab', go.view)
+      setUi({ workView: go.view })
+      if (id === '@jev' && go.view === 'flow' && prioOn(s)) ctl.flowMode('prio')
       id = 'briefing'
     }
     save('bridge-cockpit.page', id)
@@ -883,13 +907,20 @@ const ctl = {
     setUi({ page: id, pageDetail: false, queue: null, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null })
     pageSeen(id)
   },
-  // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab
+  // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab,
+  // also where the work tab offers no By source (reviewHome with the views on offer)
   openReview() {
-    const home = reviewHome(store.get().model?.pages, T().workOrder.kinds)
+    const s = store.get()
+    const home = reviewHome(s.model?.pages, T().workOrder.kinds, workViewsIn(s))
     if (!home) return ctl.setPage(CHECK_PAGE)
     ctl.setPage(home.page)
     ctl.setWorkKind(home.label)
-    ctl.setWorkView('area')
+    if (workViewGo(store.get(), 'area').save) ctl.setWorkView('area')
+  },
+  // a page at one of its sections, its head brought into view once drawn (Not now's line of the GitHub rows)
+  openSection(page, section) {
+    ctl.setPage(page)
+    requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(`ps-${page}-${section}`)?.scrollIntoView({ block: 'start' })))
   },
   // the Workers tab with a filter set (the machine whose workers a tile or a drawer asked for)
   openWorkers(filter) {
@@ -904,10 +935,6 @@ const ctl = {
   setShortcuts(on) {
     save('bridge-cockpit.shortcuts', on ? 'on' : 'off')
     setUi({ shortcuts: on })
-  },
-  cycleTheme() {
-    const order = ['auto', 'light', 'dark']
-    ctl.setTheme(order[(order.indexOf(store.get().ui.theme) + 1) % order.length])
   },
   setDrawer: name => setUi({ drawer: name }),
   // the settings page at one of its areas (start, look, launch), kept for the next visit
@@ -1038,7 +1065,9 @@ const ctl = {
       : { order: s.jevOrder[page]?.order ?? null, error: res.error?.message ?? 'error', running: false } } }))
     if (force && res.ok && res.data.order) ctl.setWorkView('jev')
   },
-  setWorkView: v => { save('bridge-cockpit.workTab', v); setUi({ workView: v }); pageSeen('briefing') },
+  // a click on the switch, or a way that names a view (jevRank, openReview): a view switched off is shown as the tab's
+  // fallback and never stored (workViewGo)
+  setWorkView: v => { const go = workViewGo(store.get(), v); if (go.save) save('bridge-cockpit.workTab', go.view); setUi({ workView: go.view }); pageSeen('briefing') },
   // the files view of the work tab for this visit only (the search of the command box, the focus's way on with
   // cockpit.focus_to_files): the saved view stays the default (it changes by a click on the switch or the config)
   openFiles() {
@@ -1228,9 +1257,16 @@ const ctl = {
   clearFind: () => store.set(s => ({ ...s, find: null })),
   // a found file opens in the queue where it stands there, else beside it (a backlog task); a closed one always
   // beside it, by its folder, since a slug can be open and closed at once
-  // under the area filter: in the filtered queue, one of another area beside it (logic.js fileOpen)
+  // under the area filter: in the filtered queue, one of another area beside it (logic.js fileOpen).
+  // Outside the files view the click shows the task where it is seen (logic.js fileClick): an open one in the
+  // item drawer over the page (one opened from a drawer leads back to it), a closed one in the files view
   openFile(slug, path) {
-    setUi(fileOpen(store.get(), slug, path))
+    const s = store.get()
+    const to = fileClick(s, slug, path)
+    const from = s.ui.drawer === 'item' ? s.ui.item : null
+    if (to.item) return from?.key === to.item ? undefined : ctl.openItem(to.item, null, {}, from)
+    setUi(to.ui)
+    if (to.page) ctl.setPage(to.page)
   },
   closeFile: () => setUi({ dossierOpen: null }),
   // one file of a task's folder (the Files drawer), read in place; `path` the folder of a closed copy, or null
@@ -1702,9 +1738,10 @@ function onKey(e) {
     return
   }
   const key = e.key
+  // the help left the header: ? lays the notes of Explain over the page (the look-up card is under Settings, Appearance)
   if (key === '?') {
     e.preventDefault()
-    return setUi({ drawer: 'help' })
+    return ctl.setHints(true)
   }
   if (key === '/') {
     e.preventDefault()

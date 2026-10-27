@@ -2,10 +2,10 @@
 // The cockpit, overlays: drawers, dialogs, toasts, the boot and auth panels.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
-  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, hintsFor, nextInQueue, itemRow,
+  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, nextInQueue, itemRow,
   workKindOf, noteGo,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -21,7 +21,7 @@ import {
 import { MeterBar, RowSteps, StatusMenu } from './pages.js'
 import { GH_REF, GitHubDetail } from './github.js'
 import { CalendarFacts } from './dates.js'
-import { Btn, Dot, Empty, Icon, Spinner, StateLine, useRoving } from './parts.js'
+import { Btn, Dot, Empty, Icon, Spinner, StateLine } from './parts.js'
 import { TaskSessions } from './sessions.js'
 import { TabsColumn } from './tabs.js'
 
@@ -376,14 +376,18 @@ export function TabsDrawer({ s, c, byKey }) {
       <${TabsColumn} s=${s} c=${c} byKey=${byKey} inDrawer /></aside></div>`
 }
 
-/** The undo buttons of one closed item: a task comes back open, or only as still to be done */
+/** The undo buttons of one closed item: a task comes back with the status it had before the close (its undo names
+ *  it; an older entry without one opens again), or only as still to be done, unless that is where it came from */
 function UndoButtons({ it, c, busy }) {
   const t = T()
   const u = it.undo
   if (!u) return null
-  if (u.verb === 'task_reopen') return html`<span class="btn-row">
-    <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u, 'doing')}>${t.undoReopen}<//>
-    <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.undo(u, 'backlog')}>${t.undoBacklog}<//></span>`
+  if (u.verb === 'task_reopen') {
+    const was = ['doing', 'review', 'backlog'].includes(u.args?.as) ? u.args.as : 'doing'
+    return html`<span class="btn-row">
+    <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${{ doing: t.undoReopen, review: t.undoReview, backlog: t.undoBacklog }[was]}<//>
+    ${was === 'backlog' ? null : html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.undo(u, 'backlog')}>${t.undoBacklog}<//>`}</span>`
+  }
   return html`<span class="btn-row"><${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${u.verb === 'unhide' ? t.undoShow : u.verb === 'row_undo' || u.verb === 'task_unmerge' ? t.undoStep : t.undoReopen}<//></span>`
 }
 
@@ -395,24 +399,45 @@ function histWord(it, s) {
   return /stream/.test(wk ?? '') ? 'stream' : 'task'
 }
 
-/** What the dashboard closed, dropped, settled or hid, newest first and by day; each item can be taken back */
+/** The notes of one day in the history, newest first: what the cockpit reported, such as a finished job or a failed
+ *  step. An entry that names its place leads there; the drawer closes first, so an item drawer can open */
+function DayNotes({ notes, s, c }) {
+  const t = T()
+  return html`<details class="hist-notes" open>
+    <summary class="small muted">${t.histNotes(notes.length)}</summary>
+    <ol class="notes">${notes.map((n, i) => {
+      const go = noteGo(n.go)
+      return html`<li key=${i} class="note">
+      <span class="mono muted small">${n.at}</span>
+      ${go ? html`<button type="button" class="note-go" title=${t.noteGo}
+          onClick=${e => { c.setDrawer(null); goTo(s, c, go, e.currentTarget) }}>
+          <${StateLine} token=${noteToken(n.tone)} word=${n.text} /><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<${StateLine} token=${noteToken(n.tone)} word=${n.text} />`}
+    </li>`
+    })}</ol>
+  </details>`
+}
+
+/** What the dashboard closed, dropped, settled or hid, newest first and by day; each item can be taken back. Each
+ *  day shows its notes above its closed items, the one place the notes are listed; a note keeps its day (`ms`, the
+ *  server's at_ms), one without a date counts as today's. What happened today and the mute rules stay elsewhere */
 export function HistoryDrawer({ s, c }) {
   const t = T()
   const lang = language()
   const entries = s.history ?? []
-  const days = []
-  for (const e of entries) {
-    const day = isoDate(e.at_ms)
-    let d = days.find(x => x.day === day)
-    if (!d) days.push(d = { day, entries: [] })
-    d.entries.push(e)
-  }
+  const today = isoDate(s.now || Date.now())
+  const byDay = new Map()
+  const dayOf = day => byDay.get(day) ?? byDay.set(day, { day, entries: [], notes: [] }).get(day)
+  for (const e of entries) dayOf(isoDate(e.at_ms)).entries.push(e)
+  for (const n of (s.notes ?? []).slice().reverse()) dayOf(n.ms > 0 ? isoDate(n.ms) : today).notes.push(n)
+  const days = [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
   const busyOf = u => !!s.ui.busy[u.verb]
   return html`<${Drawer} id="history" title=${t.historyTitle} onClose=${() => c.setDrawer(null)}>
     <p class="muted small">${t.historyIntro}</p>
     ${days.length ? days.map(d => html`<section class="hist-day" key=${d.day}>
-      <h3 class="label-caps">${formatDay(d.day, lang)}</h3>
-      <ol class="hist">${d.entries.flatMap(e => e.items.map((it, i) => html`<li key=${`${e.id}-${i}`} class=${`hist-item${it.undone_ms ? ' is-undone' : ''}`}>
+      <h3 class="label-caps">${d.day === today ? t.historyToday(formatDay(d.day, lang)) : formatDay(d.day, lang)}</h3>
+      ${d.notes.length ? html`<${DayNotes} notes=${d.notes} s=${s} c=${c} />` : null}
+      ${d.entries.length ? html`<ol class="hist">${d.entries.flatMap(e => e.items.map((it, i) => html`<li key=${`${e.id}-${i}`} class=${`hist-item${it.undone_ms ? ' is-undone' : ''}`}>
         <span class="mono muted small">${clockTime(e.at_ms)}</span>
         <div class="hist-main">
           <span class="hist-what"><span class="chip">${t.histKind[histWord(it, s)] ?? it.kind}</span>
@@ -422,80 +447,9 @@ export function HistoryDrawer({ s, c }) {
           ${it.undone_ms ? html`<span class="small"><${StateLine} token="success" word=${t.histUndone(clockTime(it.undone_ms))} /></span>`
             : html`<${UndoButtons} it=${it} c=${c} busy=${it.undo ? busyOf(it.undo) : false} />`}
         </div>
-      </li>`))}</ol>
+      </li>`))}</ol>` : null}
     </section>`) : html`<${Empty}>${t.historyEmpty}<//>`}
   <//>`
-}
-
-export function NotesDrawer({ s, c }) {
-  const t = T()
-  const notes = s.notes.slice().reverse()
-  return html`<${Drawer} id="notes" title=${t.notesTitle} onClose=${() => c.setDrawer(null)}>
-    ${notes.length ? html`<ol class="notes">${notes.map((n, i) => {
-      const go = noteGo(n.go)
-      // an entry that names its place leads there; the drawer closes first, so an item drawer can open
-      return html`<li key=${i} class="note">
-      <span class="mono muted small">${n.at}</span>
-      ${go ? html`<button type="button" class="note-go" title=${t.noteGo}
-          onClick=${e => { c.setDrawer(null); goTo(s, c, go, e.currentTarget) }}>
-          <${StateLine} token=${noteToken(n.tone)} word=${n.text} /><${Icon} name="chevronRight" size=${14} /></button>`
-        : html`<${StateLine} token=${noteToken(n.tone)} word=${n.text} />`}
-    </li>`
-    })}</ol>` : html`<${Empty}>${t.notesEmpty}<//>`}
-  <//>`
-}
-
-/** Whether the page shows an area now; without a document to ask (a render elsewhere) every one counts */
-function onPage(target) {
-  if (typeof document === 'undefined' || !document.querySelector) return true
-  try {
-    // as the overlay counts it: a part in a hidden pane has no size and gets no note, so no line here either
-    const r = document.querySelector(target)?.getBoundingClientRect?.()
-    return !!r && r.width > 0 && r.height > 0
-  } catch { return false }
-}
-
-const HELP_TABS = ['page', 'rows', 'act', 'keys', 'trust']
-
-/** Help: one topic at a time, this page first. Its parts are the explain overlay's (logic.js hintsFor) as a
- *  list, so the notes and the help never say two different things */
-export function HelpDialog({ s, c }) {
-  const t = T()
-  const h = t.help
-  const ref = useFocusOnOpen(true)
-  const [tab, setTab] = useState('page')
-  const keys = useRoving()
-  const hints = hintsFor(s).filter(x => onPage(x.target))
-  const list = items => html`<dl class="help-cards">${items.map(x => html`<div key=${x.id}>
-    <dt>${t.hints.items[x.id].title}</dt><dd>${t.hints.items[x.id].body}</dd></div>`)}</dl>`
-  const topics = items => html`<dl class="help-text">${items.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
-    ? html`<ul class="plain help-list">${v.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : v}</dd></div>`)}</dl>`
-  const own = hints.filter(x => x.group === 'page')
-  const body = tab === 'page' ? html`<p class="muted small">${h.pageLead}</p>
-      ${own.length ? list(own) : html`<p class="muted small">${h.pageNone}</p>`}
-      <h3 class="label-caps help-sub">${h.headTitle}</h3>
-      ${list(hints.filter(x => x.group === 'head'))}`
-    : tab === 'keys' ? (s.ui.shortcuts ? html`<dl class="keys">${t.keys.map(([k, v]) => html`<div key=${k}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>
-        <p class="muted small">${t.commandHint}</p>
-        <p class="muted small">${t.keysOn} <button type="button" class="btn-link" onClick=${() => c.openSettings('look')}>${t.settings.keysTitle}</button></p>`
-      : html`<p class="muted small">${t.keysOff} <button type="button" class="btn-link" onClick=${() => c.openSettings('look')}>${t.settings.keysTitle}</button></p>`)
-    : topics(t.helpTopics[tab])
-  return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.setDrawer(null) }}>
-    <div class="dialog help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" ref=${ref}>
-      <header class="drawer-head help-head">
-        <h2 class="sec-title" id="help-title">${t.helpTitle}</h2>
-        <span class="btn-row help-tour">
-          <button type="button" class="btn btn-secondary btn-xs" title=${t.tour.helpLine} onClick=${() => c.tourStart()}><span class="btn-label">${t.tour.again}</span></button>
-          <button type="button" class="btn btn-ghost btn-xs" onClick=${() => c.setHints(true)}><${Icon} name="bulb" size=${14} /><span class="btn-label">${t.hints.helpButton}</span></button>
-        </span>
-        <${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${() => c.setDrawer(null)} />
-      </header>
-      <div class="seg help-tabs" role="tablist" aria-label=${h.tabsLabel} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>${HELP_TABS.map(id => html`<button type="button" key=${id}
-        role="tab" id=${`help-tab-${id}`} aria-selected=${String(tab === id)} aria-controls="help-pane" data-autofocus=${tab === id ? '' : undefined}
-        class=${`seg-btn${tab === id ? ' is-on' : ''}`} onClick=${() => setTab(id)}>${h.tabs[id]}</button>`)}</div>
-      <div class="help-pane" id="help-pane" role="tabpanel" aria-labelledby=${`help-tab-${tab}`}>${body}</div>
-    </div>
-  </div>`
 }
 
 export function ConfirmDialog({ s, c }) {
@@ -617,7 +571,7 @@ export function MobileSwitch({ s, c }) {
   // On a phone the header has no room for them: the relay state and the warnings (lost connection,
   // stale model, failed pass) get their own line here, each a dot plus its written word.
   return html`<div class="mobile-switch">
-    <div class="mobile-status"><${RelayBadge} s=${s} /><${AsOf} s=${s} /></div>
+    <div class="mobile-status"><${RelayBadge} s=${s} /><${AsOf} s=${s} c=${c} /></div>
     <${Segmented} label=${t.pagesLabel} current=${current} values=${items} onPick=${v => c.setPane(v)} />
   </div>`
 }

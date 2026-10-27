@@ -6,14 +6,16 @@
 // and the batch bar), until a title opens a point (ui.flowView): Back to overview, a line while points are ticked, the
 // point as a card, held by its id (logic.js focusIndex) so the next one moves up after a decision, in the queue's fixed
 // order (logic.js flowQueue: the return card after a jump to a tab, the tabs that ask, what an agent finished, a start
-// that got lost, the questions for you; then what is in progress; then the tasks in review; the reports as one card).
+// that got lost, the questions for you; then what is in progress; then the tasks in review; the reports as one card),
+// walked the way the overview lists them (views/flowlist.js walkOrder, one order for both, round 6 B).
 // The card carries content only (round 3, nothing twice): its kind in its head (the state, the only place it stands),
 // its title, what its tab asks with one set of answers, a start's result, the live tab's screen; who works on it is a
 // field on the right, the criteria stand in Description. Under it the
 // tabs of the point (views/flowtabs.js: Description, Steps, Activity, Related), then at the foot the instruction line
 // (views/flowinstruct.js, cockpit.flow.instruct) over the files view's walk bar (views/dossier.js Walk), which after
-// the last point leads to the first point of the next theme where something is open. Right what you can do and the
-// fields (views/flowside.js FlowAside: the suggestion, the verbs, who works on it, the source), a hint in the overview.
+// the last point leads to the first point of the next theme where something is open. Right, only while a point or an
+// entry of Running now is open (round 6 B: the overview, a list and the grid take the width, their hint under them),
+// what you can do and the fields (views/flowside.js FlowAside: the suggestion, the verbs, who works on it, the source).
 // To tab remembers the jump (ui.flowJump, in memory only): once the page is in view again return_after_s later, the
 // return card asks how it went (app.js). Round 4: every open row stands exactly once (logic.js flowParts). What runs
 // stands in Running now (views/flowrun.js: one row on top of the left column that shows every entry in the middle as
@@ -22,28 +24,31 @@
 // as view `run`, its card, its tabs and its instruction line, without the walk bar, its way back to the list it came
 // from); what is no point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a
 // list in the middle (view `left`) with its own batch. Round 5: the left column lists no point, the middle does; what
-// opens in the middle is brought into view where the page scrolled its top away. Prio orders the left column by Jev's squares (views/flowprio.js: the 2x2 grid at the
-// level of all squares). With nothing open the calm card offers up to three ideas to start. Without a terminal driver
-// the cards of the agents, the entries of Running now and every way to a tab stay out; its session cards stay.
+// opens in the middle is brought into view where the page scrolled its top away. Prio orders the left column by Jev's
+// squares (views/flowprio.js: the 2x2 grid at the level of all squares). With nothing open the calm card offers up to
+// three ideas to start; before the first state the page says it loads, or why not (round 6 B). Without a terminal
+// driver the cards of the agents, the entries of Running now and every way to a tab stay out; its session cards stay.
 // The agents' cards: a tab that asks carries the answers to its question (views/reply.js), the decision guide
 // (views/guide.js) folded under one button, each through the reply verbs that guard the tab; a finished or quiet start
 // its result line (the criteria of its brief stand in Description, to check yourself); Done and close the tab, Improve
 // (words to the tab while it lives, else a new start) and Runs on stand on the right. When a point is opened, the
 // briefs of the next points that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
-// once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key). No title opens a drawer
-// or another view. For the mouse: the page names no key.
+// once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key), in every order of the
+// left column, as does Jev's daily order of the work page where Jev orders it (c.flowPrioOrder, once per page load;
+// the server orders anew only on the day's first ask). No title opens a drawer or another view. For the mouse: the
+// page names no key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn, runningOf,
-  prepTargets, previewText, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
+  prepTargets, previewText, prioOn, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
 } from '../logic.js'
 import { T } from '../text.js'
-import { WorkSwitch } from './day.js'
+import { NoModel, WorkSwitch } from './day.js'
 import { Walk } from './dossier.js'
 import { LeftList } from './flowleft.js'
-import { FlowOverview, listRows } from './flowlist.js'
+import { FlowOverview, listRows, walkOrder } from './flowlist.js'
 import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
 import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
@@ -208,7 +213,14 @@ function intoView(el) {
 const pointTitle = x => (x.group === 'doing' ? x.row?.title ?? x.title ?? x.start?.title ?? x.tab?.name ?? '' : cardTitle(x))
 const pointKind = x => (x.group === 'doing' ? T().flow.kind.doing : cardKind(x))
 
+/** The page; before the first state (or without one: the connection gone, a pass failed) it says so, as Due does,
+ *  never the calm card's All decided over an empty queue (round 6 B) */
 export function FlowPage({ s, c }) {
+  if (s.model) return html`<${FlowBody} s=${s} c=${c} />`
+  return html`<div class="col col-page flow"><header class="page-head flow-head"><${WorkSwitch} s=${s} c=${c} /></header><${NoModel} s=${s} cls="flow-nostate" /></div>`
+}
+
+function FlowBody({ s, c }) {
   const t = T()
   const f = t.flow
   const parts = flowParts(s)
@@ -218,7 +230,10 @@ export function FlowPage({ s, c }) {
   // the theme, area or square entered (level two of the left column), else the level of all of them
   const entered = sides.find(x => x.id !== 'all' && x.id === s.ui.flowSide?.[mode]) ?? null
   const side = entered?.id ?? 'all'
-  const queue = pointsIn(all, side, s, mode)
+  // how the overview bands its points (Prio: a square by Jev's rank, Not rated yet by due), and the walk in that order:
+  // Next goes the way the overview lists them (round 6 B, views/flowlist.js walkOrder)
+  const band = mode === 'prio' && entered ? (entered.id === 'none' ? 'due' : 'rank') : null
+  const queue = walkOrder(pointsIn(all, side, s, mode), band)
   const lane = pointsIn(parts.lane, side, s, mode)
   const runs = runningOf(parts)
   const i = focusIndex(queue, s.ui.flowAt)
@@ -245,11 +260,14 @@ export function FlowPage({ s, c }) {
   const ahead = flowSettings(s).prep_ahead
   const prep = view === 'point' && x ? prepTargets(queue, i, ahead, s) : []
   useEffect(() => { if (prep.length) c.flowPrep(prep) }, [x?.id, ahead])
-  // the points without a theme get theirs when the view shows them, once per key on this page load (app.js)
-  const ask = mode === 'themes' ? themesToAsk(all, s) : []
+  // the points without a theme get theirs when the view shows them, once per key on this page load (app.js), in every
+  // order of the left column: the themes run's suggestions stand in the overview in Areas and Prio too (round 6 B)
+  const ask = themesToAsk(all, s)
   useEffect(() => { if (ask.length) c.flowThemesAuto(ask) }, [ask.join(',')])
-  // Prio reads Jev's daily order of the work page: asked once per page load while it shows and none is there
-  const work = mode === 'prio' ? workPageOf(s.model?.pages) : null
+  // Jev's daily order of the work page (Prio's squares, Jev's suggestions in every order): asked once per page load in
+  // every order where Jev orders that page and none is there; the server orders anew only on the day's first ask, a
+  // new order is Ask Jev again's click (round 6 B)
+  const work = prioOn(s) ? workPageOf(s.model?.pages) : null
   const order = work ? s.jevOrder?.[work.id] : null
   useEffect(() => { if (work && order === undefined) c.flowPrioOrder(work.id) }, [work?.id, order === undefined])
   const name = sideName(entered, mode)
@@ -269,11 +287,11 @@ export function FlowPage({ s, c }) {
       <p class="muted small">${[f.count(counts.points, runs.n, counts.left), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
     </header>
     ${driver ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
-    <div class="flow-grid">
+    <div class=${`flow-grid${x ? '' : ' no-aside'}`}>
       <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} running=${runs} left=${parts.leftOut}
         run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
-        ${view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} />`
+        ${view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} /><p class="muted small flow-main-hint">${f.notnow.hint}</p>`
           : view === 'running' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
               <h2 id="flow-running-h" class="flow-main-title">${f.run.label} <span class="mono muted">${runs.n}</span></h2>
@@ -291,10 +309,11 @@ export function FlowPage({ s, c }) {
             <div class="flow-dock"><${InstructLine} key=${x.id} scope=${scope} s=${s} c=${c} /></div>`
           : view === 'overview' ? html`<header class="flow-main-head"><h2 class="flow-main-title">${entered ? html`<${SideDot} side=${entered} />` : null}${name}</h2></header>
             <${RunningStrip} lane=${lane} picked=${picked} s=${s} c=${c} />
-            ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />`
+            ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />
+              <p class="muted small flow-main-hint">${f.prio.hint}</p>`
               : !all.length ? html`<${Rest} s=${s} c=${c} />`
               : html`<${FlowOverview} key=${side} points=${queue} running=${runRows} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind}
-                band=${mode === 'prio' && entered ? (entered.id === 'none' ? 'due' : 'rank') : null} s=${s} c=${c} />`}
+                band=${band} s=${s} c=${c} />`}
             ${all.length ? html`<div class="flow-dock"><${InstructLine} scope=${scope} s=${s} c=${c} /></div>` : null}`
           : html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
@@ -312,7 +331,7 @@ export function FlowPage({ s, c }) {
                 tagsOf=${() => null} whyOf=${pointKind} done=${f.walk2.last} onwards=${onwards} cls="flow-walk" />
             </div>`}
       </section>
-      <${FlowAside} x=${x} s=${s} c=${c} hint=${view === 'left' ? f.notnow.hint : grid ? f.prio.hint : null} />
+      ${x ? html`<${FlowAside} x=${x} s=${s} c=${c} />` : null}
     </div>
   </div>`
 }

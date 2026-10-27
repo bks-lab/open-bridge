@@ -20,14 +20,14 @@ import { DayColumn, WorkSwitch } from './views/day.js'
 import { DetailColumn } from './views/detail.js'
 import { DossierView } from './views/dossier.js'
 import { FlowPage } from './views/flow.js'
-import { Header, PageBadge, PageBar } from './views/header.js'
+import { Header, PageBadge, PageBar, ParentLink } from './views/header.js'
 import { AreaBar, HomePage, jumpToTab, useHomeTitle } from './views/home.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FLOW_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, onPageOf, reviewHomeOf,
-  workViewNow,
+  headBadgeOf, subPagesOf, workViewNow,
 } from './views/nav.js'
 import {
-  AuthPanel, BootPanel, ConfirmDialog, HelpDialog, HistoryDrawer, InfoDrawer, ItemDrawer, MobileSwitch, NotesDrawer,
+  AuthPanel, BootPanel, ConfirmDialog, HistoryDrawer, InfoDrawer, ItemDrawer, MobileSwitch,
   TabsDrawer, Toasts,
 } from './views/overlays.js'
 import { JevList, KindBar, OverviewBoard, PageCard, PageSection, WorkOrder } from './views/pages.js'
@@ -41,7 +41,7 @@ export { useHomeTitle } from './views/home.js'
 export { quickLive } from './views/chat.js'
 export {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FLOW_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces,
-  morePages, pageOrder, workViewNow,
+  morePages, pageOrder, parentOf, workViewNow,
 } from './views/nav.js'
 
 // Jev is an optional integration (integrations.typesafe): its page and stylesheet load only once it is
@@ -117,10 +117,10 @@ function PageView({ s, c }) {
   const card = id => html`<${PageCard} key=${`@${id}`} id=${id} page=${page} s=${s} c=${c} />`
   return html`<div class="col col-page">
     <header class="page-head">
-      ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : html`<h2 class="detail-title">${page.title}</h2>`}
-      <${PageBadge} badge=${page.badge} />
+      ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : html`<${ParentLink} s=${s} c=${c} /><h2 class="detail-title">${page.title}</h2>`}
+      <${PageBadge} badge=${headBadgeOf(s, whole)} />
     </header>
-    ${page.overview ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
+    ${page.overview || subPagesOf(s, whole.id).length ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
     ${kinds.length > 1 ? html`<${KindBar} kinds=${kinds} active=${kind} c=${c} />` : null}
     ${page.sections?.some(sec => sec.kind === 'tasks' || sec.kind === 'inbox') ? html`<${TriageBar} s=${s} c=${c} byKey=${indexRows(s.model)}
       items=${(kind ? whole.sections.filter(sec => kind.sections.includes(sec.id)) : whole.sections)
@@ -179,9 +179,7 @@ export function App({ store, ctl }) {
       ${showTabsCol ? html`<${TabsColumn} s=${v} c=${ctl} byKey=${shownKey} />` : null}
     </main>
     ${tabsDrawer && s.ui.drawer === 'tabs' ? html`<${TabsDrawer} s=${v} c=${ctl} byKey=${shownKey} />` : null}
-    ${s.ui.drawer === 'notes' ? html`<${NotesDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'history' ? html`<${HistoryDrawer} s=${s} c=${ctl} />` : null}
-    ${s.ui.drawer === 'help' ? html`<${HelpDialog} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'item' && s.ui.item ? html`<${ItemDrawer} s=${s} c=${ctl} byKey=${byKey} />` : null}
     ${s.ui.drawer === 'info' && s.ui.info ? html`<${InfoDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.tabView === '@ask' ? html`<${QuickChat} s=${s} c=${ctl} />` : s.ui.tabView ? html`<${TabView} s=${s} c=${ctl} />` : null}

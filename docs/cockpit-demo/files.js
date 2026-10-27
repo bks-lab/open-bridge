@@ -3,7 +3,7 @@
 // the search and what a question asked in a file carries along. No DOM, no network, no state. logic.js
 // passes every name on, so a view may import it from either; the frontend test imports this file under node.
 import { TABLES } from './text.js'
-import { CONTEXT_MAX, indexRows, liveStage, queueOf } from './logic.js'
+import { CONTEXT_MAX, indexRows, liveStage, queueOf, workViewIn } from './logic.js'
 import { areaScope, inProject } from './areas.js'
 
 /** The files the files view walks under the filters of Work (areaScope as on Work, whatever page is open):
@@ -20,6 +20,18 @@ export function fileOpen(s, slug, path) {
   const queue = closed ? [] : scopedFileQueue(s)
   const i = queue.findIndex(x => x.slug === slug)
   return i >= 0 ? { dossierAt: { id: queue[i].id, i }, dossierOpen: null } : { dossierOpen: closed ? path : slug }
+}
+
+/** Where a click on a task's file shows it (c.openFile from a card, Work through, the start page or the files
+ *  view): in the files view where Work shows it with nothing over it, at its place there (fileOpen); anywhere
+ *  else an open task in the item drawer over the page, which stays as it was, and a closed copy in the files
+ *  view for this visit, since only that view reads a copy by its folder (the drawer reads the open one first).
+ *  Where cockpit.work_views keeps no files view the drawer takes the closed one too. {item} or {ui, page} */
+export function fileClick(s, slug, path) {
+  if (s.ui?.page === 'briefing' && workViewIn(s) === 'dossier' && !s.ui.drawer && !s.ui.tabView) return { ui: fileOpen(s, slug, path) }
+  const closed = typeof path === 'string' && path.startsWith('work/done/')
+  if (!closed || workViewIn({ ...s, ui: { ...s.ui, workView: 'dossier' } }) !== 'dossier') return { item: `task:${slug}` }
+  return { ui: { workView: 'dossier', drawer: null, item: null, ...fileOpen(s, slug, path) }, page: 'briefing' }
 }
 
 const FILE_STATES = ['doing', 'review']

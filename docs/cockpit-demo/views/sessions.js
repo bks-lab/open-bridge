@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the sessions and the background jobs pages. SessionCard also stands in Running now of Work through
-// (views/flowrun.js SessionCards, round 6), compact and with that page's box, task line and way to the Chat.
+// (views/flowrun.js SessionCards, round 6), compact and with that page's box, task line and way to the Chat. Where
+// Running now lists the sessions (logic.js sessionsInFlow) the Sessions page has no tab and every way to it leads
+// there; the control session's notice stands on the head of the Chat as well (views/header.js ControlNotice).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
@@ -14,7 +16,7 @@ import { TabControls } from './detail.js'
 import { ReturnCard } from './home.js'
 import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
-import { StartControl, canStartControl } from './header.js'
+import { ParentLink, StartControl, canStartControl } from './header.js'
 import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
@@ -154,24 +156,28 @@ export function TaskSessions({ row, s, c }) {
   </div>`
 }
 
-/** What the AI was handed from the cockpit this week, by what it wants of you: done and to check (a
- *  settled one offers to close its tab), a question, at work, gone without a word. Older tabs that no
- *  start of the cockpit names stay below as sessions */
+/** What the AI was handed from the cockpit this week, by what it wants of you: answered or gone quiet and to
+ *  check, done (a settled start only while its tab is open, which it offers to close: one without a tab wants
+ *  nothing more), a question, at work, gone without a word. Older tabs that no start of the cockpit names stay
+ *  below as sessions */
 function AiReturns({ s, c }) {
   const t = T()
-  const g = aiGroups(s.model?.returns, s.tabs?.tabs, s.now || Date.now())
-  const order = ['check', 'asks', 'working', 'lost']
+  const tabs = s.tabs?.tabs ?? []
+  const g = aiGroups(s.model?.returns, tabs, s.now || Date.now())
+  const order = ['check', 'done', 'asks', 'working', 'lost']
   // tabs whose item or task is settled without a start of the cockpit naming them: done as well
+  const open = new Set(tabs.map(x => x.ref))
   const named = new Set((s.model?.returns ?? []).map(r => r.tab?.ref).filter(Boolean))
-  const loose = (s.tabs?.tabs ?? []).filter(x => x.settled && x.state === 'waiting' && !x.is_control && !named.has(x.ref))
-  const count = k => g[k].length + (k === 'check' ? loose.length : 0)
+  const loose = tabs.filter(x => x.settled && x.state === 'waiting' && !x.is_control && !named.has(x.ref))
+  const list = k => (k === 'done' ? g.done.filter(r => open.has(r.tab?.ref)) : g[k])
+  const count = k => list(k).length + (k === 'done' ? loose.length : 0)
   if (!order.some(k => count(k))) return null
   return html`<section class="panel panel-pad psec ai-returns" aria-labelledby="ai-returns-title">
     <header class="psec-head"><h3 class="sec-title" id="ai-returns-title">${t.home.returnsTitle}</h3></header>
     ${order.filter(k => count(k)).map(k => html`<div class="ai-group" key=${k}>
       <h4 class="label-caps">${t.aiGroup[k]} <span class="sec-count mono">${count(k)}</span></h4>
-      <div class="ai-cards">${g[k].map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
-        ${k === 'check' ? loose.map(x => html`<${TabCard} key=${x.ref} tab=${x} s=${s} c=${c} byKey=${indexRows(s.model)} />`) : null}</div>
+      <div class="ai-cards">${list(k).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
+        ${k === 'done' ? loose.map(x => html`<${TabCard} key=${x.ref} tab=${x} s=${s} c=${c} byKey=${indexRows(s.model)} />`) : null}</div>
     </div>`)}
   </section>`
 }
@@ -296,7 +302,7 @@ export function WorkersPage({ s, c }) {
   }
   return html`<div class="col col-page">
     <header class="page-head">
-      <h2 class="detail-title">${t.workersTab}</h2>
+      <${ParentLink} s=${s} c=${c} /><h2 class="detail-title">${t.workersTab}</h2>
       ${view ? html`<span class="muted small">${t.workersFrom(view.host, Number.isFinite(at) ? formatClock(at, language()).slice(0, 5) : '?')}</span>` : null}
       <button type="button" class="btn-link small" onClick=${() => c.loadWorkers()}>${t.reload}</button>
     </header>

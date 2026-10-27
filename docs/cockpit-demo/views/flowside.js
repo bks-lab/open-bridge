@@ -11,24 +11,26 @@
 // is entered. In Prio the list holds Jev's four squares (an empty one too) and Not rated yet, with when Jev ordered and
 // Ask Jev again at its foot (views/flowprio.js PrioFoot). On a narrow screen the list is one select over the middle,
 // Running now and Not now fold under it.
-// FlowAside, the right column of an open point (round 3), as an issue tracker's sidebar: on top What you can do, the AI
-// suggestion in one line (on an open point the only place it stands) and the card's verbs under each other, the strong
-// one first, every other one in the same style (views/verbbar.js stack): a live tab (at work, asking, or waiting at its
-// prompt, logic.js flowLive) gives To tab and View and neither Let AI do it nor Give your yes, a point in progress
-// without one Let AI go on, a finished start the verb the AI suggests (else Done and close the tab), the other verbs,
-// Improve, Runs on, Open answer and its tab's ways, a lost one Start again, Done, Drop and Forget, the return card Done,
-// Later, Drop, Runs on and Not yet, the reports All seen.
+// FlowAside, the right column of an open point (round 3; round 6 B: only while one is open), as an issue tracker's
+// sidebar: on top What you can do, the AI suggestion in one line (on an open point the only place it stands; the task
+// check's verdict counts as one) and the card's verbs under each other, the strong one first, every other one in the
+// same style (views/verbbar.js stack): a live tab (at work, asking, or waiting at its prompt, logic.js flowLive) gives
+// To tab and View and neither Let AI do it nor Give your yes, a point in progress without one Let AI go on, a finished
+// start the verb the AI suggests (else Done and close the tab), the other verbs, Improve, Runs on, Open answer and its
+// tab's ways, a lost one Start again, Done, Drop and Forget, the return card Done, Later, Drop, Runs on and Not yet,
+// the reports All seen; a row with steps of its own on a page (an application, logic.js pageStepsOf) its steps, which
+// open the info drawer where they stand (round 6 B).
 // Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
 // else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source (its
 // chip, STATUS.md to the files view, an issue or a pull request by its ref on the web), Created, Moved. No Status
-// field: the card's head says it. In the overview a line says how they come.
+// field: the card's head says it.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
-  isoDate, meterLevel, refOfUrl, replySend, short,
+  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, short,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
@@ -250,6 +252,9 @@ function PointActs({ x, s, c, sug }) {
   // a live tab, at work, asking or at its prompt: its ways first, To tab the strong one, and no second agent started
   // beside it (no Let AI do it, no Give your yes)
   const lead = live ? html`<div class="fx-do"><${TabWays} tab=${live} row=${row} title=${title} s=${s} c=${c} strong /></div>` : null
+  // a row with steps of its own on a page (an application): they stand in the info drawer, one click away
+  const page = row ? pageStepsOf(row, s) : null
+  const steps = page ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openInfo(page.it, page.page, page.section)}>${t.rowSteps} ▾<//>` : null
   const ways = tab && !live ? html`<${TabWays} tab=${tab} row=${row} title=${title} s=${s} c=${c} />` : null
   if (x.kind === 'reports') {
     const keys = x.rows.map(r => r.key)
@@ -274,7 +279,7 @@ function PointActs({ x, s, c, sug }) {
     const verbs = running ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']
     const said = verbs.includes(sug?.verb) ? sug.verb : null
     return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
-      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${html`${ways}${unlink}`} stack />`
+      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${html`${steps}${ways}${unlink}`} stack />`
   }
   if (x.kind === 'start') {
     const r = x.start
@@ -294,7 +299,7 @@ function PointActs({ x, s, c, sug }) {
   const verb = sug?.verb
   const primary = live ? false : ['do', 'done', 'later', 'drop'].includes(verb) ? verb : null
   return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${live ? ASKING_VERBS : null} primary=${primary} suggested=${!!primary} yes=${!live}
-    extra=${ways} stack />`
+    extra=${html`${steps}${ways}`} stack />`
 }
 
 /** Who works on a point, in words: its tab and how long, a start of the cockpit, a session by hand, else when it last
@@ -358,14 +363,12 @@ function Fields({ x, s, c }) {
   </section>`
 }
 
-/** The right column: What you can do and the fields of the point open, or of the entry of Running now; in the overview
- *  a line how they come (`hint`: Prio's at its level of all squares, a list of Not now its own) */
-export function FlowAside({ x, s, c, hint = null }) {
+/** The right column: What you can do and the fields of the point open, or of the entry of Running now; nothing while
+ *  none is open (round 6 B: no empty Fields card, the middle takes the width) */
+export function FlowAside({ x, s, c }) {
   const t = T()
   const f = t.flow
-  if (!x) return html`<aside class="flow-aside" aria-label=${f.fields.label}>
-    <section class="flow-aside-part"><p class="label-caps">${f.fields.label}</p><p class="muted small flow-aside-hint">${hint ?? f.fields.overview}</p></section>
-  </aside>`
+  if (!x) return null
   const row = x.kind === 'reports' ? null : x.row ?? null
   const sug = row ? flowSuggestion(row, s) : null
   return html`<aside class="flow-aside" aria-label=${f.fields.can}>

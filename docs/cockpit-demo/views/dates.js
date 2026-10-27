@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
-// The cockpit's dates as an agenda (`view: agenda` on a calendar section): the figures on top, each a filter,
-// then the events as an agenda by day, a week grid or a month overview. Everything here reads; an event's
-// steps start an agent tab (row_action), a click opens the event's detail.
+// The cockpit's dates as an agenda (`view: agenda` on a calendar section): two figures on top, the overlaps
+// (a filter) and the longest free block left today, then the events as an agenda by day, a week grid or a month
+// overview. The page shows time only: the next date stands on Start, due rows in Work, and the month is offered
+// once the loaded dates span four weeks (a month kept in the browser shows the agenda till then). Everything
+// here reads; an event's steps start an agent tab (row_action), a click opens the event's detail.
 import { html, useEffect, useMemo, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T, language } from '../text.js'
 import { Btn, Chip, Icon, MarkChip, StateLine } from './parts.js'
@@ -10,6 +12,8 @@ import { rowActionKey } from '../logic.js'
 const MODES = ['agenda', 'week', 'month']
 const MODE_KEY = 'cockpit.dates.mode'
 const HOUR_PX = 40
+// the days the loaded dates must span, today included, before the month is offered: fewer leave most cells empty
+const MONTH_DAYS = 28
 const NARROW = '(max-width: 760px)'
 
 const two = n => String(n).padStart(2, '0')
@@ -57,8 +61,8 @@ function dayLabel(key, todayKey) {
   return date
 }
 
-/** A row passes the filters: a calendar, only events that count, a text, a figure's range */
-function shows(it, f, todayKey) {
+/** A row passes the filters: a calendar, only events that count, a text, the overlaps figure */
+function shows(it, f) {
   const cal = it.cal
   if (!cal) return true
   if (f.mine && cal.info) return false
@@ -67,46 +71,24 @@ function shows(it, f, todayKey) {
     const hay = `${it.title} ${cal.where ?? ''} ${(cal.people ?? []).join(' ')} ${cal.calendar ?? ''}`.toLowerCase()
     if (!hay.includes(f.q.toLowerCase())) return false
   }
-  if (f.range === 'today') return cal.day === todayKey
-  if (f.range === 'tomorrow') return cal.day === dayKey(addDays(parseDay(todayKey), 1))
-  if (f.range === 'week') return cal.day >= todayKey && cal.day < dayKey(addDays(parseDay(todayKey), 7)) && !cal.info
   if (f.range === 'overlaps') return (cal.overlaps ?? []).length > 0
   return true
 }
 
-function Figures({ figures, due, filter, setFilter, now, page }) {
+/** Two figures at most: the overlaps, a filter, and the longest free block left today. Today, tomorrow and the week
+ *  stand as the agenda's day heads, the next date on Start, due rows in Work, where a row put off stays put off */
+function Figures({ figures, filter, setFilter }) {
   const t = T()
   if (!figures) return null
-  const pick = id => setFilter({ ...filter, range: filter.range === id ? null : id })
-  const next = figures.next?.start ? Math.round((new Date(figures.next.start).getTime() - now) / 60000) : null
-  const tiles = [
-    { id: 'today', n: figures.today, label: t.cal.fig.today, sub: figures.busy_today ? t.cal.fig.busy(duration(figures.busy_today)) : null },
-    { id: 'tomorrow', n: figures.tomorrow, label: t.cal.fig.tomorrow },
-    { id: 'week', n: figures.week, label: t.cal.fig.week, sub: figures.info_week ? t.cal.fig.info(figures.info_week) : null },
-    { id: 'overlaps', n: figures.overlaps, label: t.cal.fig.overlaps, loud: figures.overlaps ? 'warning' : null },
-  ]
+  const on = filter.range === 'overlaps'
   return html`<ul class="calf" aria-label=${t.cal.figuresLabel}>
-    ${tiles.map(x => {
-      const on = filter.range === x.id
-      return html`<li key=${x.id}><button type="button" class=${`calf-tile${on ? ' is-on' : ''}${x.loud ? ` tk-${x.loud} is-loud` : ''}`}
-        aria-pressed=${String(on)} onClick=${() => pick(x.id)}>
-        <span class="calf-n mono">${x.n}</span><span class="calf-label">${x.label}</span>
-        ${x.sub ? html`<span class="calf-sub muted">${x.sub}</span>` : null}</button></li>`
-    })}
-    ${figures.next ? html`<li class="calf-wide"><div class="calf-tile is-static">
-      <span class="calf-label muted">${t.cal.fig.next}</span>
-      <span class="calf-title">${figures.next.title}</span>
-      <span class="calf-sub mono">${hhmm(figures.next.start)} · ${next != null && next >= 0 ? t.cal.fig.inMin(duration(Math.max(1, next))) : ''}</span>
-    </div></li>` : null}
+    <li><button type="button" class=${`calf-tile${on ? ' is-on' : ''}${figures.overlaps ? ' tk-warning is-loud' : ''}`}
+      aria-pressed=${String(on)} onClick=${() => setFilter({ ...filter, range: on ? null : 'overlaps' })}>
+      <span class="calf-n mono">${figures.overlaps}</span><span class="calf-label">${t.cal.fig.overlaps}</span></button></li>
     ${figures.free_today ? html`<li><div class="calf-tile is-static">
       <span class="calf-n mono">${duration(figures.free_today.minutes) || '0'}</span>
       <span class="calf-label">${t.cal.fig.free}</span>
       <span class="calf-sub muted">${t.cal.fig.freeFrom(hhmm(figures.free_today.from))}</span></div></li>` : null}
-    ${due.overdue || due.week ? html`<li><button type="button" class=${`calf-tile${due.overdue ? ' tk-danger is-loud' : ''}`}
-      onClick=${() => document.getElementById(`ps-${page.id}-${due.section}`)?.scrollIntoView({ block: 'start' })}>
-      <span class="calf-n mono">${due.overdue || due.week}</span>
-      <span class="calf-label">${due.overdue ? t.cal.fig.overdue : t.cal.fig.due}</span>
-      ${due.overdue && due.week ? html`<span class="calf-sub muted">${t.cal.fig.dueToo(due.week)}</span>` : null}</button></li>` : null}
   </ul>`
 }
 
@@ -297,7 +279,7 @@ export function DatesAgenda({ items, page, section, s, c }) {
   const [mode, setModeRaw] = useState(readMode)
   const [filter, setFilter] = useState({ q: '', mine: false, calendar: null, range: null })
   const narrow = useNarrow()
-  const shown = useMemo(() => items.filter(it => it.cal && shows(it, filter, todayKey)), [items, filter, todayKey])
+  const shown = useMemo(() => items.filter(it => it.cal && shows(it, filter)), [items, filter])
   const byDay = useMemo(() => {
     const m = new Map()
     // by day, a day's all-day events first, then by start
@@ -309,31 +291,18 @@ export function DatesAgenda({ items, page, section, s, c }) {
     }
     return m
   }, [shown])
-  // the loaded window: prev and next never leave the days the section brought
+  // the loaded window: prev and next never leave the days the section brought, and the month needs four weeks of it
   const loaded = items.map(it => it.cal?.day).filter(Boolean).sort()
   const firstDay = loaded[0] ?? todayKey
   const lastDay = loaded[loaded.length - 1] ?? todayKey
+  const monthOn = Math.round((parseDay(lastDay) - parseDay(firstDay)) / 86400000) + 1 >= MONTH_DAYS
+  const modes = monthOn ? MODES : MODES.filter(m => m !== 'month')
   // on a Saturday or Sunday the week to look at is the coming one: the section brings the days ahead
   const home = [0, 6].includes(parseDay(todayKey).getDay()) ? dayKey(mondayOf(addDays(parseDay(todayKey), 7))) : todayKey
   const [anchor, setAnchor] = useState(home)
-  const view = mode === 'week' && narrow ? 'agenda' : mode
+  // a week on a narrow screen or a month that is not offered shows the agenda; the kept choice stays for later
+  const view = (mode === 'week' && narrow) || (mode === 'month' && !monthOn) ? 'agenda' : mode
   const setMode = m => { setModeRaw(m); keepMode(m) }
-  // the due figures come from the page's other sections: rows with a date (`due_at`)
-  const due = useMemo(() => {
-    const out = { overdue: 0, week: 0, section: null }
-    const limit = dayKey(addDays(parseDay(todayKey), 7))
-    for (const sec of page.sections ?? []) {
-      if (sec.id === section.id) continue
-      for (const it of sec.items ?? []) {
-        if (!it.due_at) continue
-        if (it.due_at < todayKey) out.overdue += 1
-        else if (it.due_at < limit) out.week += 1
-        else continue
-        out.section = out.section ?? sec.id
-      }
-    }
-    return out
-  }, [page, section.id, todayKey])
   const weekStart = mondayOf(parseDay(anchor))
   // the month starts from today until the person moves it: the weekend's next Monday may lie in the next month
   const monthAnchor = anchor === home ? todayKey : anchor
@@ -354,9 +323,9 @@ export function DatesAgenda({ items, page, section, s, c }) {
     ? `${new Intl.DateTimeFormat(language(), { day: '2-digit', month: '2-digit' }).format(weekStart)} ${t.cal.to} ${new Intl.DateTimeFormat(language(), { day: '2-digit', month: '2-digit' }).format(addDays(weekStart, 6))}`
     : new Intl.DateTimeFormat(language(), { month: 'long', year: 'numeric' }).format(parseDay(monthAnchor))
   return html`<div class="cal">
-    <${Figures} figures=${section.cal_figures} due=${due} filter=${filter} setFilter=${setFilter} now=${now} page=${page} />
+    <${Figures} figures=${section.cal_figures} filter=${filter} setFilter=${setFilter} />
     <div class="cal-tools">
-      <div class="ghb-mode" role="group" aria-label=${t.cal.viewLabel}>${MODES.map(m => html`<button type="button" key=${m}
+      <div class="ghb-mode" role="group" aria-label=${t.cal.viewLabel}>${modes.map(m => html`<button type="button" key=${m}
         class=${`ghb-mode-btn${view === m ? ' is-on' : ''}`} aria-pressed=${String(view === m)} disabled=${m === 'week' && narrow}
         title=${m === 'week' && narrow ? t.cal.weekNarrow : undefined} onClick=${() => setMode(m)}>${t.cal.views[m]}</button>`)}</div>
       ${view !== 'agenda' ? html`<span class="cal-nav">

@@ -215,6 +215,15 @@ kbd {
 }
 .hdr-status > span { overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
 .hdr-relay { padding: 0 4px; flex: 0 0 auto; }
+/* the as-of time is the reload button: the time and ↻ in one, no reload button of its own */
+.asof-btn {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 6px; border: 0; border-radius: var(--radius-md);
+  background: none; font: inherit; color: var(--on-surface-muted); cursor: pointer;
+}
+.asof-btn .asof-text { overflow: hidden; text-overflow: ellipsis; }
+.asof-btn .icon { flex: none; }
+.asof-btn:hover:not([disabled]) { background: var(--surface-muted); color: var(--on-surface); }
+.asof-btn[aria-busy] .icon { animation: spin 0.8s linear infinite; }
 /* what works in this Bridge's tabs now; a click opens the Sessions page */
 .hdr-agents { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; font-size: 12.5px; white-space: nowrap; color: var(--on-surface-muted); }
 .hdr-agents:hover { color: var(--ink); }
@@ -769,7 +778,6 @@ kbd {
 /* Dates as an agenda (views/dates.js): figures, filters, agenda by day, week grid, month overview */
 .cal { display: grid; gap: 14px; margin: 4px 0 8px; }
 .calf { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
-.calf-wide { grid-column: span 2; }
 .calf-tile {
   width: 100%; height: 100%; display: grid; gap: 2px; justify-items: start; align-content: start; padding: 10px 12px; text-align: left;
   background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--on-surface); font: inherit;
@@ -784,7 +792,6 @@ kbd {
 .calf-tile.is-static:hover { border-color: var(--border); }
 .calf-n { font-size: 24px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--counter); }
 .calf-label { font-size: var(--text-sm); }
-.calf-title { font-weight: 600; overflow-wrap: anywhere; }
 .calf-sub { font-size: 11px; }
 .cal-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .cal-nav { display: inline-flex; align-items: center; gap: 6px; }
@@ -864,7 +871,6 @@ kbd {
 .cal-facts { display: grid; gap: 12px; }
 .cal-people { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; font-size: var(--text-sm); }
 @media (max-width: 760px) {
-  .calf-wide { grid-column: span 1; }
   .cal-row { grid-template-columns: 64px 1fr; }
   .cal-acts { grid-column: 1 / -1; justify-content: flex-start; }
   .cal-dayhead { grid-template-columns: 1fr; }
@@ -872,7 +878,8 @@ kbd {
   .cal-mo-title { display: none; }
 }
 
-/* GitHub work (views/github.js): figures, boards with their switch, an opened issue or pull request */
+/* GitHub work (views/github.js): the figures with a cause, the boards' facts in the list, an opened issue or pull request;
+   the switch of a board (.ghb-mode) stands in the settings */
 .ghb { display: grid; gap: 14px; margin: 4px 0 14px; }
 .ghb-figures { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .ghb-figure {
@@ -884,29 +891,12 @@ kbd {
 .ghb-figure.is-on { border-color: var(--secondary); box-shadow: inset 0 0 0 1px var(--secondary); }
 .ghb-figure.is-loud { border-left: 3px solid var(--tk); }
 .ghb-figure.is-loud .ghb-n { color: var(--tk); }
-.ghb-figure.is-done { cursor: default; background: var(--surface-muted); }
 .ghb-n { font-size: 24px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--counter); }
 .ghb-label { font-size: var(--text-sm); }
-.ghb-sub { font-size: var(--text-xs, 11px); }
-.ghb-boards { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-.ghb-board {
-  display: grid; gap: 8px; align-content: start; padding: 12px 14px;
-  background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-xl);
-}
-.ghb-board.is-on { border-color: var(--secondary); box-shadow: inset 0 0 0 1px var(--secondary); }
-.ghb-board-head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0; border: 0; background: none;
-  color: var(--on-surface); font: inherit; text-align: left; cursor: pointer;
-}
-.ghb-board-head:disabled { cursor: default; }
-.ghb-board-head:focus-visible { outline: 2px solid var(--secondary); outline-offset: 3px; border-radius: 4px; }
-.ghb-board-name { font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
-.ghb-board .ghb-n { font-size: 20px; }
 .ghb-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--border); }
 .ghb-seg { flex-basis: 0; min-width: 4px; background: var(--tk); }
 .ghb-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; }
 .ghb-dot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: var(--tk); vertical-align: 0; }
-.ghb-off { margin: 0; }
 .ghb-mode { display: inline-flex; justify-self: start; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
 .ghb-mode-btn {
   padding: 3px 10px; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--on-surface-muted);
@@ -938,6 +928,7 @@ kbd {
 .ghl-head:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; border-radius: 4px; }
 .ghl-head-name { font-size: var(--text-sm); font-weight: 600; letter-spacing: .02em; }
 .ghl-head-bar { flex: 0 1 160px; height: 6px; margin-left: auto; }
+.ghl-facts { padding-left: calc(1em + 8px); }
 .ghl-chev { display: inline-block; width: 1em; color: var(--on-surface-muted); transition: transform 120ms ease-out; }
 .ghl-chev.is-open { transform: rotate(90deg); }
 .ghl-rows { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -987,7 +978,6 @@ kbd {
 .gh-comment-head { margin: 0 0 6px; display: flex; gap: 6px; align-items: center; }
 @media (max-width: 560px) {
   .ghb-figures { grid-template-columns: repeat(2, 1fr); }
-  .ghb-boards { grid-template-columns: 1fr; }
 }
 
 .settle { position: relative; display: inline-flex; }
@@ -1352,16 +1342,9 @@ kbd {
 .conf { margin-left: 6px; letter-spacing: 1px; }
 .tbl-review .c-reason { min-width: 220px; }
 .tbl-review tr.is-kept td { opacity: 0.75; }
-.help-dialog { width: min(760px, 100%); display: flex; flex-direction: column; overflow: hidden; }
-.help-tabs { align-self: flex-start; margin-bottom: 12px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; flex-shrink: 0; }
-.help-tabs .seg-btn { white-space: nowrap; }
-.help-pane { overflow-y: auto; height: min(52vh, 460px); padding-right: 4px; }
-.help-pane > p { margin: 0 0 10px; }
-.help-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 0 0 14px; }
-.help-cards > div { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; background: var(--surface); }
-.help-cards dt { font-weight: 600; font-size: var(--text-sm); }
-.help-cards dd { margin: 2px 0 0; color: var(--on-surface-muted); font-size: var(--text-sm); }
-.help-sub { margin: 6px 0 8px; }
+/* the look-up card under Settings, Appearance (views/settings.js LookupCard): one topic below its switch */
+.lookup-pane { margin-top: 12px; }
+.lookup-pane > p { margin: 0 0 10px; }
 .keys > div, .help-text > div {
   display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; padding: 6px 0;
   border-top: 1px solid var(--border); font-size: var(--text-sm);
@@ -1370,6 +1353,9 @@ kbd {
 .help-text dt { font-weight: 600; }
 .help-text dd { color: var(--on-surface-muted); }
 .notes { display: flex; flex-direction: column; }
+/* the notes of a day in the history, above its closed items */
+.hist-notes summary { cursor: pointer; }
+.hist-notes .notes { margin: 4px 0 0; }
 .note { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
 
 .toasts {
@@ -1393,7 +1379,7 @@ kbd {
 .toast-go:hover, .note-go:hover { background: var(--surface-muted); }
 .toast-go:hover > span { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .toast-go:hover svg, .note-go:hover svg { color: var(--accent); }
-/* past four: one compact last toast that opens the notes drawer */
+/* past four: one compact last toast that opens the notes in the history */
 .toast.toast-more {
   display: block; justify-self: end; align-self: flex-end; width: auto; padding: 6px 12px; cursor: pointer;
   color: var(--on-surface-muted); font: inherit; font-size: var(--text-sm); text-align: center;
@@ -1523,10 +1509,11 @@ kbd {
 
 @media (max-width: 1279px) {
   .hdr-headline { display: none; }
-  /* icons only for reload and history, so the header fits beside the command box */
+  /* icons only for History and Explain, so the header fits beside the command box */
   .hide-narrow { display: none; }
-  /* the as-of time moves into the day column (.day-counts), the header keeps its buttons in view */
-  .hdr .hdr-asof { display: none; }
+  /* only the as-of time gives way: it moves into the day column (.day-counts) and stays in the button's tooltip;
+     the warnings (connection lost, stale model, failed pass) and ↻ stay in view at every width */
+  .hdr .hdr-asof .asof-text { display: none; }
   .hdr-right { min-width: 0; }
   .hdr-right { flex: 1 1 auto; justify-content: flex-end; }
 }
@@ -2976,11 +2963,6 @@ pre.guide-read-text { font-family: var(--font-mono); }
 .tour-dot.is-on { background: var(--accent); width: 16px; }
 .tour-acts { margin-top: 14px; align-items: center; }
 .tour-gap { flex: 1; }
-.help-head { flex-wrap: wrap; }
-.help-tour { margin-left: auto; }
-@media (max-width: 599px) {
-  .help-tour { order: 3; width: 100%; margin-left: 0; }
-}
 .tour-done { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .tour-spot { transition: none; }

@@ -6,19 +6,23 @@
 // own boxes. A tab or a workspace of its own may get a name
 // here (RenameField); task tabs and the control session keep theirs (logic.js canRename). "Organize with AI"
 // in the sidebar's head asks the model for a tidier order of this Bridge's workspaces (views/organize.js).
+// Round 6, from the Sessions page: on top of Work why the relay has nobody to ask with the button that starts a
+// control session (views/header.js ControlNotice), and why the tabs may be missing or stale (views/tabs.js
+// TabWarnings); a tab's pane names the task it works on, which opens in the drawer over the Chat.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
+import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, indexRows, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented } from './detail.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { GuideLine, GuideTree } from './guide.js'
+import { ControlNotice } from './header.js'
 import { chatAreaOf } from './nav.js'
 import { AskLine, TabReply } from './reply.js'
-import { useTabScreen } from './tabs.js'
+import { TabWarnings, useTabScreen } from './tabs.js'
 
 const CHATS_SHOWN = 6
 const GUIDE_VIEWS = ['guide', 'both', 'screen']
@@ -43,6 +47,16 @@ const firstClick = fn => e => { if ((e?.detail ?? 1) <= 1) fn() }
 
 /** Whether the workplace knows this tab by its name (a task, an inbox item, a team role): it keeps that name */
 const taskTab = tab => !!(tab.slug || tab.item || tab.team)
+
+/** The task a tab works on: its own (a task tab), else the newest live session in it linked to one (by hand, by its
+ *  task tab, or recognised from what it did); null for none and for the control session */
+function taskOfTab(s, tab) {
+  if (tab.is_control) return null
+  if (tab.slug) return tab.slug
+  const linked = (s.sessions?.sessions ?? []).filter(x => x.task && x.tab?.ref === tab.ref)
+    .sort((a, b) => (b.started_ms ?? 0) - (a.started_ms ?? 0))[0]
+  return linked?.task ?? null
+}
 
 /** The new name of a tab or a workspace, in place of its row: Enter or Save takes it (trimmed, never
  *  empty), Esc or Cancel leaves the old one. The field stands instead of the row's button, never inside it */
@@ -354,6 +368,9 @@ function TabPane({ s, c, tab }) {
     return r
   } }
   const closeTab = async () => { const r = await c.act('tab_close', { tab_ref: tab.ref }); if (r?.ok) onward() }
+  // the task it works on, opened in the drawer over the Chat (round 6)
+  const slug = taskOfTab(s, tab)
+  const taskTitle = slug ? indexRows(s.model).get(`task:${slug}`)?.title ?? slug : null
   return html`<section class=${`panel chat-main rooms-main has-walk${replying ? ' has-reply' : ''}${view === 'guide' ? ' is-guide-only' : ''}`} aria-labelledby="room-title">
     <header class="tabview-head">
       <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
@@ -362,6 +379,8 @@ function TabPane({ s, c, tab }) {
       ${canRename(s, tab) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
         onClick=${() => c.startRename('tab', tab.ref)} />` : null}
       <span class="muted small">${tab.workspace}</span>
+      ${slug ? html`<button type="button" class="btn-link small room-task" title=${t.infoOpenTask}
+        onClick=${() => c.openItem(`task:${slug}`, { task: slug, title: taskTitle })}>${t.sessionTask(short(taskTitle, 60))}</button>` : null}
       <span class="tabview-live muted small" aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
         : screen ? t.tabViewLive : t.loading}</span>
       ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
@@ -475,6 +494,8 @@ export function RoomsPage({ s, c }) {
   }
   pane = pane ?? html`<${ChatPane} s=${s} c=${c} />`
   return html`<div class="col col-page roomspage">
+    <${ControlNotice} s=${s} c=${c} />
+    <${TabWarnings} s=${s} />
     <div class="rooms-grid">
       <div class="rooms-left"><${AreaSwitch} s=${s} c=${c} area=${area} /><${Sidebar} s=${s} c=${c} rooms=${rooms} here=${here} /></div>
       ${pane}

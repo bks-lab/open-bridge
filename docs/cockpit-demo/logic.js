@@ -774,7 +774,7 @@ export const TOAST_MAX = 4
 
 /** What a pushed note does to `{ notes, toasts, toastsMore }`: a new note and, unless `toast` is false, a
  * toast with `id`. Four stay up; one pushed out is counted in `toastsMore`, never lost without a word (the
- * notes drawer keeps it), and named in `out`, so its timer stops. The oldest toast without an action goes
+ * notes in the history keep it), and named in `out`, so its timer stops. The oldest toast without an action goes
  * first, so an Undo stays within its few seconds; only when every one has an action does the oldest go. A
  * note a visible toast already shows changes neither and comes back with `dup` set, so the caller can hand
  * a twin's action and target to that toast (giveTwin). Its `go` is kept only as noteGo takes it. */
@@ -811,9 +811,21 @@ export function dismissState({ toasts, toastsMore = 0 }, id) {
   return { toasts: left, toastsMore: left.length ? toastsMore : 0 }
 }
 
-/** The notes drawer opened from the "+N more" toast: the count goes, the toasts still up stay */
+/** The notes in the history opened from the "+N more" toast: the count goes, the toasts still up stay */
 export function notesOpenedState() {
   return { toastsMore: 0 }
+}
+
+/** Whether a tab alert makes a toast or only a note in the history: a tab that starts waiting toasts while it is out
+ *  of sight, not while its tab view is open or the Chat shows it in its work area (no tab view over it); a tab past
+ *  the hour always toasts */
+export function alertToasts(s, alert) {
+  if (alert?.kind !== 'tab_waiting') return true
+  const ui = s?.ui ?? {}
+  const ref = alert.ref
+  if (!ref) return true
+  if (ui.tabView) return ui.tabView !== ref
+  return !(ui.page === '@chat' && ui.chatArea !== 'a2a' && ui.room?.kind === 'tab' && ui.room.id === ref)
 }
 
 /** Insert or replace a relay record by id; newest first */
@@ -1174,13 +1186,34 @@ export function screenLines(text) {
 
 // ---------------------------------------------------------------- workers tab (workload view --json)
 
+// red is an outage (gone, switched off, stopped, its last run failed), orange the upkeep a declaration and its machine
+// drift into; the same table as STATE_TONE in scripts/bridge-resources.py
 const WORKER_TONE = { in_sync: 'ok', observed: 'ok', intentionally_absent: 'dim', 'not reported': 'dim', not_provisioned: 'dim', absent: 'bad', disabled: 'bad',
-  drifted: 'warn', inventory_missing: 'warn', source_drift: 'warn', inventory_stale: 'warn' }
+  stopped: 'bad', last_run_failed: 'bad', drifted: 'warn', inventory_missing: 'warn', source_drift: 'warn', inventory_stale: 'warn' }
 
 /** A run's state as a tone: ok, warn, bad, dim; anything unknown is warn, never silently ok */
 export function workerTone(run) {
   if (run?.retired) return 'dim'
   return WORKER_TONE[run?.state] ?? (run?.state ? 'warn' : 'ok')
+}
+
+/** The severity of a run's worst finding as the engine files it (high, medium, info), or null: the run's own
+ *  `severity` where the view names one, else read off its findings */
+export function jobSeverity(run) {
+  if (typeof run?.severity === 'string' && run.severity && run.severity !== 'none') return run.severity
+  const sev = (run?.findings ?? []).map(f => f?.severity)
+  return ['high', 'medium', 'info'].find(x => sev.includes(x)) ?? null
+}
+
+/** The background jobs in service by what they want: `failing` an outage (the engine's high: gone, stopped, its last
+ *  run failed), `upkeep` a deviation to tend (medium: a unit without its marker, a program outside the repository),
+ *  `ok` the rest of `all`. Only an outage is loud wherever the cockpit counts jobs; upkeep stays calm */
+export function jobCounts(view) {
+  const runs = (view?.runs ?? []).filter(r => !r.retired)
+  const failing = runs.filter(r => jobSeverity(r) === 'high').length
+  const upkeep = runs.filter(r => jobSeverity(r) === 'medium').length
+  const all = view?.stats?.in_service ?? runs.length
+  return { all, failing, upkeep, ok: Math.max(0, all - failing - upkeep) }
 }
 
 /** How a recorded run is drawn: a shape and a tone, never colour alone */
@@ -1542,6 +1575,27 @@ export function sectionTile(section) {
   return { count, loud: loud.length, tone, note: loud[0]?.title ?? null, peak, counts, state: 'ok' }
 }
 
+/** The tile of a sub page on the page it stands under (`under:`): red with its findings (a section drawn only with a
+ *  finding counts too), red with the reason of a source that could not be read, orange with the rows that need a look;
+ *  else the size of its first drawn section and how those rows stand. Green only where an alarm section of the page
+ *  reports nothing: rows nothing measures live (a device outside the tailnet, an account) never make it look in order */
+export function subPageTile(page) {
+  const sections = page?.sections ?? []
+  const items = sections.flatMap(sec => sec.items ?? [])
+  const lead = sections.find(sec => !sec.hide_ok) ?? sections[0] ?? null
+  const rows = lead?.items ?? []
+  const base = { big: lead?.total ?? lead?.count ?? rows.length, lead: lead?.title ?? '', note: null, error: false,
+    counts: { ok: rows.filter(toneFilter('ok')).length, problems: rows.filter(toneFilter('problems')).length, off: rows.filter(toneFilter('off')).length } }
+  const bad = sections.reduce((n, sec) => n + (typeof sec.bad === 'number' ? sec.bad : (sec.items ?? []).filter(it => it.tone === 'bad').length), 0)
+  if (bad) return { ...base, tone: 'danger', big: bad, note: items.find(it => it.tone === 'bad')?.title ?? null }
+  const broken = sections.find(sec => sec.status === 'error')
+  if (broken) return { ...base, tone: 'danger', note: broken.reason || broken.title || '', error: true }
+  const warn = items.filter(it => it.tone === 'warn')
+  if (warn.length) return { ...base, tone: 'warning', big: warn.length, note: warn[0].title ?? null }
+  const clear = sections.some(sec => sec.alarm && sec.status === 'ok' && !(sec.total ?? sec.count ?? (sec.items ?? []).length))
+  return { ...base, tone: clear ? 'success' : 'neutral' }
+}
+
 export const USAGE_SOURCES = ['session', 'subagent', 'worker']
 
 /** Today's written tokens and the usual day (the mean of the earlier days with any use; null without one) */
@@ -1798,10 +1852,19 @@ export function workViews(page, jev, flow = false, allowed = null) {
   return kept.length ? kept : all
 }
 
-/** The view the work tab shows: the remembered one where it can, else the first view kept (what is due by default) */
+/** The view the work tab shows: the remembered one (none remembered: what is due, as app.js loads it) where it can,
+ *  else Work through where it is on offer (a Bridge that switched the other views off never lands in the files),
+ *  else the first view kept */
 export function workViewOf(view, page, jev, flow = false, allowed = null) {
   const views = workViews(page, jev, flow, allowed)
-  return views.includes(view) ? view : views[0]
+  const want = view ?? 'due'
+  return views.includes(want) ? want : views.includes('flow') ? 'flow' : views[0]
+}
+
+/** The views of the work tab under the state: workViews with the work page, Jev, cockpit.flow.enabled and
+ *  cockpit.work_views of `s` */
+export function workViewsIn(s) {
+  return workViews(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null)
 }
 
 /** The view of the work tab under the state: workViewOf with the work page, Jev, cockpit.flow.enabled and
@@ -1810,10 +1873,30 @@ export function workViewIn(s) {
   return workViewOf(s?.ui?.workView, workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null)
 }
 
+/** Where a way that names a view of the work tab (a jump to the work page, to Jev, to the task check, a click on
+ *  the switch) lands under the state: {view, save}, the view itself where it is on offer and to be kept as the
+ *  tab's view, else the view the tab falls back to (workViewOf), never kept, so a view switched off is not stored */
+export function workViewGo(s, view) {
+  const on = workViewsIn(s).includes(view)
+  return { view: on ? view : workViewIn({ ...s, ui: { ...s?.ui, workView: view } }), save: on }
+}
+
+/** Whether the live sessions stand in Running now of Work through rather than on a tab of their own (round 6): the
+ *  work tab offers Work through (cockpit.flow.enabled, kept by cockpit.work_views), whose Running now lists every
+ *  live session as a card, with a terminal driver or without one. Then the bar has no Sessions tab and every way to
+ *  it leads there (flowPageFor); a Bridge without Work through keeps the tab */
+export function sessionsInFlow(s) {
+  return workViews(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null).includes('flow')
+}
+
 /** Where a page id leads that is a view now: the Work through page (@flow, a stored page or a link of an older
- *  page) is the work tab in its view Work through; null for every other id */
-export function flowPageFor(id) {
-  return id === '@flow' ? { page: 'briefing', view: 'flow' } : null
+ *  page) is the work tab in its view Work through; the Sessions page (@sessions) is its Running now (flowView
+ *  running) where that lists the live sessions (sessionsInFlow of `s`), so every way to the tab lands there: a
+ *  link, a note, the band, the tour, an area's number, a page stored by an older cockpit. Null for every other id */
+export function flowPageFor(id, s = null) {
+  if (id === '@flow') return { page: 'briefing', view: 'flow' }
+  if (id === '@sessions' && sessionsInFlow(s)) return { page: 'briefing', view: 'flow', flowView: 'running' }
+  return null
 }
 
 // cockpit.work_view names a view by the word the docs use; the page has its own ids for them
@@ -1891,11 +1974,13 @@ export function workKinds(sections, kinds) {
 }
 
 /** Where the task check stands when inbox and tasks share a page: that page and the label of its tasks
- *  section ({page, label}), else null and the check keeps a tab of its own */
-export function reviewHome(pages, kinds) {
+ *  section ({page, label}), else null and the check keeps a tab of its own. `views`, the views of the work tab
+ *  on offer (workViewsIn): the work page is the check's place only while By source (`area`) is among them */
+export function reviewHome(pages, kinds, views = null) {
   for (const p of pages ?? []) {
     const tasks = (p.sections ?? []).find(sec => sec.kind === 'tasks')
-    if (tasks && workKinds(p.sections, kinds).length) return { page: p.id, label: workLabel(tasks, kinds) }
+    if (!tasks || !workKinds(p.sections, kinds).length) continue
+    return p.group === 'work' && Array.isArray(views) && !views.includes('area') ? null : { page: p.id, label: workLabel(tasks, kinds) }
   }
   return null
 }
@@ -2472,13 +2557,14 @@ export function liveStage(r, tabs, nowMs) {
   return nowMs - r.at_ms < 180000 ? 'started' : 'lost'
 }
 
-/** The starts handed to the AI by what they want of you: done, answered or gone quiet and to check, a
- *  question, at work, or gone without a word. Newest first within a group, as the server sends them */
+/** The starts handed to the AI by what they want of you: answered or gone quiet and to check, settled (done:
+ *  nothing left to check, at most a tab to close), a question, at work, or gone without a word. Newest first
+ *  within a group, as the server sends them */
 export function aiGroups(returns, tabs, nowMs) {
-  const g = { check: [], asks: [], working: [], lost: [] }
+  const g = { check: [], done: [], asks: [], working: [], lost: [] }
   for (const r of returns ?? []) {
     const live = liveStage(r, tabs, nowMs)
-    const to = live === 'done' || live === 'result' || live === 'idle' ? 'check' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
+    const to = live === 'result' || live === 'idle' ? 'check' : live === 'done' ? 'done' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
     g[to].push({ ...r, live })
   }
   return g
@@ -2490,11 +2576,12 @@ export function settledRefs(returns, tabs, nowMs) {
   return new Set((returns ?? []).filter(r => r.tab?.ref && open.has(r.tab.ref) && liveStage(r, tabs, nowMs) === 'done').map(r => r.tab.ref))
 }
 
-/** What the AI left for you: checks whose tab is still open, tabs settled on their own, and the questions */
+/** What the AI left for you: checks and settled starts whose tab is still open, tabs settled on their own, and
+ *  the questions */
 export function aiWaiting(returns, tabs, nowMs) {
   const g = aiGroups(returns, tabs, nowMs)
   const open = new Set((tabs ?? []).map(t => t.ref))
-  const done = new Set(g.check.filter(r => r.tab?.ref && open.has(r.tab.ref)).map(r => r.tab.ref))
+  const done = new Set([...g.check, ...g.done].filter(r => r.tab?.ref && open.has(r.tab.ref)).map(r => r.tab.ref))
   for (const t of tabs ?? []) if (t.settled && t.state === 'waiting' && !t.is_control) done.add(t.ref)
   return done.size + g.asks.length
 }
@@ -3083,7 +3170,11 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   for (const run of s?.workers?.data?.runs ?? []) {
     if (run.retired) continue
     const lastRun = (run.strip ?? []).at(-1)
-    const tone = workerTone(run) === 'bad' || ['failed', 'expired'].includes(lastRun?.verdict) ? 'bad' : workerTone(run) === 'warn' ? 'warn' : null
+    // an outage is news in red; upkeep the engine files medium is no news at all, only a run without a severity
+    // keeps the orange of its state
+    const sev = jobSeverity(run)
+    const tone = sev === 'high' || workerTone(run) === 'bad' || ['failed', 'expired'].includes(lastRun?.verdict) ? 'bad'
+      : sev == null && workerTone(run) === 'warn' ? 'warn' : null
     if (tone) add(`job:${run.id}`, 'failing', tone, tone === 'bad' ? 'jobFailed' : 'jobWarn', [run.title ?? run.id], { kind: 'workers' })
   }
   // 22 machines, clouds and model sources that are down, from the pages of the profile
@@ -3110,10 +3201,11 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
 
 /** Where a page target of the band leads: every page the controller routes itself (the tab row, a page
  *  of group work or day, Jev wherever it lives, the agents wherever a peer is: as cmux they are the Chat's
- *  A2A area, app.js setPage); Today only for a name that exists nowhere */
+ *  A2A area, a page that is a view now, like the Sessions tab as Running now: flowPageFor; app.js setPage);
+ *  Today only for a name that exists nowhere */
 export function tickerPage(s, id, order = []) {
   const known = order.includes(id) || id === '@jev' || (id === '@agents' && (s?.agents?.peers ?? []).length > 0)
-    || (s?.model?.pages ?? []).some(p => p.id === id)
+    || (s?.model?.pages ?? []).some(p => p.id === id) || !!flowPageFor(id, s)
   return known ? id : 'briefing'
 }
 
@@ -3386,7 +3478,8 @@ export function tourIndex(s) {
 
 /** The tour's steps in order. A step names its texts (text.js tour.steps.<id>), the page it opens and the
  *  area it lights (a CSS selector); one without a target stands in the middle. The tab column is left out
- *  where the layout shows none (narrow: its own switch at the foot) */
+ *  where the layout shows none (narrow: its own switch at the foot); the sessions are Running now where Work
+ *  through lists them (sessionsInFlow: the same page id, app.js setPage leads it there) */
 export function tourSteps(s) {
   const narrow = s?.layout === 'narrow'
   return [
@@ -3396,8 +3489,8 @@ export function tourSteps(s) {
     { id: 'work', page: 'briefing', target: '#main' },
     ...(narrow ? [] : [{ id: 'tabs', target: '#tabs-column, .hdr-tabs' }]),
     { id: 'ask', target: '.hdr-ask' },
-    { id: 'sessions', page: '@sessions', target: '#main' },
-    { id: 'help', target: '.hdr-help' },
+    { id: sessionsInFlow(s) ? 'running' : 'sessions', page: '@sessions', target: '#main' },
+    { id: 'explain', target: '.hdr-explain' },
     { id: 'done' },
   ]
 }
@@ -3447,18 +3540,19 @@ const HINTS = {
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
-  // Work through, a view of the work tab (its parts are explained there, hintsFor)
+  // Work through, a view of the work tab (its parts are explained there, hintsFor), with the session cards of Running now
   '@flow': [['flowSide', '.flow-side'], ['flowOverview', '.flow-overview'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
-    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk']],
+    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk'], ['sessCards', '.flow-sessions']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
 const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],
   ['triage', '.tri-sort'], ['reviewStrip', '.review-strip'], ['jorder', '.jorder'], ['sectionHead', '.psec .psec-head'],
-  ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghb-boards'],
+  ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghl-facts'],
   ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
   ['calFigures', '.calf'], ['calBar', '.calbar'], ['calDays', '.cal-day']]
-const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['reload', '.hdr-reload'], ['tabsButton', '.hdr-tabs'],
-  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['notes', '.hdr-notes'], ['help', '.hdr-help']]
+// the as-of time is the reload button, the notes stand in the history, the look-up card under Settings, Appearance
+const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['tabsButton', '.hdr-tabs'],
+  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['explain', '.hdr-explain']]
 
 /** What the overlay explains on the page now: its own areas (group page), then the header (group head).
  *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts */

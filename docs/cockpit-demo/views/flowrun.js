@@ -2,13 +2,15 @@
 // The cockpit, Running now of Work through (views/flow.js, round 4): what runs is no point to decide, so it stands
 // apart from the walk, the overview's table, the boxes and the batch (logic.js flowParts `lane`): a start of the
 // cockpit at work, a session linked to a task (by hand, by its own task tab, or recognised from what it did lately)
-// whose tab works or waits at its prompt, a task's own tab at work. Round 6: every live session stands here too, with
-// a task or without one and with a terminal driver or without one (flowParts `sessions`, logic.js runningOf), as a
-// compact card of the Sessions page (views/sessions.js SessionCard: its state, the title as the jump to its tab, where
-// it runs, its agents as a count and a lane, two lines of its tab, one next step, the task to link); a lane entry in
-// a session's tab is that card's, so it stands once. RunningRow is its part on top of the left column (round 5), one
-// row like a group of Not now: its name, its count (the cards and the entries no card holds), a dot that pulses while
-// one works; a click shows them in the middle (view `running`: the entries no card holds as rows, then SessionCards).
+// whose tab works or went quiet at its prompt (finished; one waiting that is not quiet yet needs you and is a point,
+// logic.js tabStage), a task's own tab at work or finished. Round 6: every live session stands here too, with a task
+// or without one and with a terminal driver or without one (flowParts `sessions`, logic.js runningOf), as a compact
+// card of the Sessions page (views/sessions.js SessionCard: its state read off the live tab, a quiet one finished,
+// the title as the jump to its tab, where it runs, its agents as a count and a lane, two lines of its tab, one next
+// step, the task to link); a lane entry in a session's tab is that card's, so it stands once. RunningRow is its part
+// on top of the left column (round 5), one row like a group of Not now: its name, its count (the cards and the
+// entries no card holds), a dot that pulses while one works; a click shows them in the middle (view `running`: the
+// entries no card holds as rows, then SessionCards).
 // RunningStrip also stands on top of the overview, the entries of the side entered, each with its tab, its stage,
 // since when, how it is known, To tab as the strong way and View, and a box where it has a task of its own: the box is
 // only for merging (and Done) with the points ticked in the overview, a batch never starts, puts off or drops what
@@ -40,8 +42,8 @@ export function laneWords(x, s) {
   }
 }
 
-/** An entry's dot: it pulses while its agent works, a tab waiting at its prompt is calm */
-const LaneDot = ({ x }) => html`<${Dot} token=${stageTone(x.stage === 'waiting' ? 'waiting' : 'working')} pulse=${x.stage === 'working' || x.stage === 'started'} />`
+/** An entry's dot: it pulses while its agent works, a tab waiting at its prompt or finished is calm */
+const LaneDot = ({ x }) => html`<${Dot} token=${stageTone(x.stage === 'waiting' || x.stage === 'idle' ? 'idle' : 'working')} pulse=${x.stage === 'working' || x.stage === 'started'} />`
 
 /** The lines of Running now, compact: dot, title (a click opens it in the middle), the tab and its stage; a session
  *  card's line opens its entry where it has one, else the cards */
@@ -104,7 +106,8 @@ export function SessionCards({ sessions, s, c, picked = new Set() }) {
   // the card's View goes to the Chat too: the controller with that one way changed (a proxy, so a recorder stays one)
   const cv = rooms ? new Proxy(c, { get: (o, k) => (k === 'openTabView' ? inChat : o[k]) }) : c
   return html`<ul class="sess-grid flow-sessions" aria-label=${f.run.sessions}>${sessions.map((v, i) => {
-    const x = v.tab ? v.session : { ...v.session, tab: null }
+    // the card reads its state off its tab: the live one, whose quiet (idle) says finished, not waiting
+    const x = v.tab ? { ...v.session, tab: { ...(v.session.tab ?? {}), state: v.tab.state, idle: v.tab.idle === true } } : { ...v.session, tab: null }
     const key = v.entry ? boxes.get(v.entry.id) ?? null : null
     const title = v.entry ? laneWords(v.entry, s).title : ''
     const lead = key ? html`<input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(title, 60))}

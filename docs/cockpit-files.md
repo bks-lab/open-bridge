@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's files view: one task at a time as a file on the work tab, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file behind the queue, and the switches cockpit.work_view, cockpit.focus_to_files and cockpit.files_scope."
 type: guide
-last_updated: 2026-10-25
+last_updated: 2026-10-27
 related:
   - bridge-cockpit.md
   - cockpit-areas.md
@@ -57,6 +57,13 @@ with where it comes from and since when; with none of these the file says "No
 next step known" rather than making one up. A file a tab asks about keeps the
 verbs of its task, the tab named beside them. Every task row of the model
 carries `status` and `next` for it (`model.task_next`).
+
+A link to a task opens it here only from inside this view. Anywhere else (a
+point of Work through, Not now, a card, the start page) an open task opens in
+the item drawer over the page, so the page stays as it was and Back leads to a
+drawer it came from; a closed one switches the work tab to this view with it
+open, for this visit (`files.js fileClick`). Where `cockpit.work_views` keeps
+no Files view the drawer takes the closed one too.
 
 The view says what its queue leaves out, so a short queue explains itself.
 Under the head of the file stands one calm line: where the file stands, then

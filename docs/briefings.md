@@ -1,7 +1,7 @@
 ---
 summary: "Briefing profiles: each person describes the briefing they want in workflow/briefings/<id>.yaml (sections, trackers, queries, inbox rules, and a view: how it is shown); scripts/briefing.py executes it and the agent advises on the result. Section kinds, provider query keys, selection, views (sources, triage, brevity, plan), change marks, inbox rules, org profiles."
 type: guide
-last_updated: 2026-10-09
+last_updated: 2026-10-27
 related:
   - bridge-cockpit.md
   - ../workflow/briefings/_schema.yaml
@@ -607,11 +607,18 @@ A page entry overrides that per section: `when` and `link` name an item field,
 an empty section that reads as good news, set `empty:` too, for example
 `empty: "all green"`); `badge: false`
 keeps a section out of the number on its tab; `hide_empty: true` leaves a section off its tab
-while it has no rows (an empty section without it shows as one quiet line);
+while it has no rows (an empty section without it shows as one quiet line); `hide_ok: true`
+draws a section only while one of its rows is bad or its source fails, and it still counts
+toward its tab and its alarm (a cloud section the account tiles read, say);
 `actionable: true|false` says whether the dashboard offers Get it done, Advise and Close
 on every row of the section. Without it, a row is actionable when it is a finding (red or
 yellow) or a tracker row; a row that already has an inbox item or a task keeps that path.
 Every row also carries `id`, its source id, which keys the item the dashboard files for it.
+A page with `under: <page id>` is a sub page of that page: no tab of its own, a tile on its
+parent, "‹ <parent>" as the way back in the cockpit. It names another page of `view.pages`,
+not itself, one level deep, and neither side has `group: work` or `group: day`; `validate`
+says which rule an entry breaks. The cockpit's own Background jobs page is placed the same
+way by an entry of `id` and `under` only: `{id: "@workers", under: ops}`.
 `view.page_skip: [<section id>, ...]` keeps sections off every page, the rest page
 included, while they still run: a section that only feeds a file another page reads. Each section
 also says what it adds to its tab's badge (`weight`: rows not dimmed, for

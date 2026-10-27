@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the pages: which tab stands where, and the fixed page ids.
+// The cockpit, the pages: which tab stands where, which page stands under another, and the fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FLOW_PAGE, listedChats, reviewHome, walkRefs, workPageOf, workViewIn } from '../logic.js'
+import { FLOW_PAGE, jobCounts, listedChats, reviewHome, sessionsInFlow, subPageTile, walkRefs, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -10,6 +10,8 @@ export const JEV_PAGE = '@jev'
 export const ASK_MAX = 4000
 export const TAB_MSG_MAX = 2000     // the 'text' check of SPECIAL_KINDS in actions.py (tab_send in actions_tabs.py)
 export const CHECK_PAGE = '@check'      // the task check's own page; profile pages never start with @
+// the live sessions; where Work through lists them in Running now (logic.js sessionsInFlow) the page has no tab and
+// every way to it leads there (app.js setPage)
 export const SESSIONS_PAGE = '@sessions'
 export const WORKERS_PAGE = '@workers'
 export const CHAT_PAGE = '@chat'
@@ -21,6 +23,10 @@ export { FLOW_PAGE }
 
 /** Whether the Chat is laid out as cmux (cockpit.chat_layout: workspaces): the agents then live in it, not on a page */
 export const chatAsWorkspaces = s => s?.rooms?.layout === 'workspaces'
+
+/** The name of the way to the live sessions, as the place it opens: Running now where Work through lists them
+ *  (logic.js sessionsInFlow), else the Sessions tab */
+export const sessionsName = s => (sessionsInFlow(s) ? T().flow.run.label : T().sessionsTab)
 
 /** The area the Chat as cmux shows: Work (the workspaces, tabs and chats) or A2A (the agents). A2A only where
  *  a peer exists; a stored choice without one, or in the classic layout, shows Work */
@@ -88,9 +94,44 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
   }
 }
 
-/** The page the task check stands on, when inbox and tasks share one (then the check has no tab of its own) */
+/** The page the task check stands on, when inbox and tasks share one (then the check has no tab of its own); the
+ *  work page only while the work tab offers By source, else the check is a tab again */
 export function reviewHomeOf(s) {
-  return reviewHome(s.model?.pages, T().workOrder.kinds)
+  return reviewHome(s.model?.pages, T().workOrder.kinds, workViewsIn(s))
+}
+
+/** The sub pages a page names (`under:` in the profile, `subs` from briefing_view.pages), in their order: the
+ *  pages the model carries, and the Workers page where a worker view exists. A page without a tab names none */
+export function subPagesOf(s, id) {
+  const pages = s?.model?.pages ?? []
+  const page = pages.find(p => p.id === id)
+  if (!page || page.under || page.group === 'day' || page.group === 'work') return []
+  return (page.subs ?? []).filter(x => (x === WORKERS_PAGE ? s.workers?.status !== 'none' : x !== id && pages.some(p => p.id === x)))
+}
+
+/** The page a sub page stands under, or null: the sub page has no tab of its own, the parent's tab stays lit while
+ *  it is open, and it carries the way back. A parent the model does not carry leaves the page its own tab */
+export function parentOf(s, id) {
+  return (s?.model?.pages ?? []).find(p => p.id !== id && subPagesOf(s, p.id).includes(id))?.id ?? null
+}
+
+/** A page's badge in the bar: its own, or red with every finding of its sub pages and the outages of the Workers
+ *  page under it, so their alarm still shows on the one tab left. Upkeep of the workers never colours it */
+export function tabBadgeOf(s, page) {
+  const subs = subPagesOf(s, page?.id)
+  if (!subs.length) return page?.badge
+  const pages = s.model?.pages ?? []
+  const badOf = p => (p?.badge?.kind === 'bad' ? p.badge.n : 0)
+  const bad = badOf(page) + subs.reduce((n, id) => n + (id === WORKERS_PAGE ? jobCounts(s.workers?.data).failing
+    : badOf(pages.find(p => p.id === id))), 0)
+  return bad > 0 ? { kind: 'bad', n: bad } : page.badge
+}
+
+/** The badge beside a page's title: its tab's, but a sub page's plain "ok" only on a live all clear (an alarm
+ *  section that reports nothing, logic.js subPageTile): rows nothing measures live never make a page look in order */
+export function headBadgeOf(s, page) {
+  const badge = tabBadgeOf(s, page)
+  return badge?.kind === 'ok' && parentOf(s, page?.id) && subPageTile(page).tone !== 'success' ? { kind: 'none' } : badge
 }
 
 /** Every page with whether it stands behind More: the fixed pages, then the profile's. The system
@@ -100,13 +141,16 @@ function pageList(s) {
   // Work through (cockpit.flow.enabled) is a view of the work tab, no tab of its own.
   // Everything else stands behind them and folds behind More only when the bar has no room for it.
   // The Workers tab only where a worker view exists, Agents only where this Bridge knows an A2A peer and the
-  // Chat is the classic one (as cmux the agents are a tab inside the Chat, chatAreaOf);
-  // a page of group `day` has no tab, its sections stand under the day list of Today (DayColumn); Settings is the last of all
-  return [{ id: START_PAGE }, { id: 'briefing' }, { id: CHAT_PAGE }, { id: SESSIONS_PAGE, more: true },
-    ...(s.workers?.status === 'none' ? [] : [{ id: WORKERS_PAGE, more: true }]),
+  // Chat is the classic one (as cmux the agents are a tab inside the Chat, chatAreaOf), Sessions only where Work through
+  // does not list the live sessions in its Running now (round 6, sessionsInFlow);
+  // a page of group `day` has no tab, its sections stand under the day list of Today (DayColumn); a sub page
+  // (parentOf: a profile page with `under:`, or the Workers page placed under one) has none either, a tile of
+  // its parent opens it; Settings is the last of all
+  return [{ id: START_PAGE }, { id: 'briefing' }, { id: CHAT_PAGE }, ...(sessionsInFlow(s) ? [] : [{ id: SESSIONS_PAGE, more: true }]),
+    ...(s.workers?.status === 'none' || parentOf(s, WORKERS_PAGE) ? [] : [{ id: WORKERS_PAGE, more: true }]),
     ...((s.agents?.peers ?? []).length && !chatAsWorkspaces(s) ? [{ id: AGENTS_PAGE, more: true }] : []), ...(reviewHomeOf(s) ? [] : [{ id: CHECK_PAGE, more: true }]),
     ...(s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? [{ id: JEV_PAGE, more: true }] : []),
-    ...(s.model?.pages ?? []).filter(p => p.group !== 'day' && p.group !== 'work').map(p => ({ id: p.id, more: p.group === 'more' })),
+    ...(s.model?.pages ?? []).filter(p => p.group !== 'day' && p.group !== 'work' && !parentOf(s, p.id)).map(p => ({ id: p.id, more: p.group === 'more' })),
     { id: SETTINGS_PAGE, more: true }]
 }
 
@@ -128,6 +172,11 @@ export const onPageOf = s => s.ui.page !== 'briefing' || workViewNow(s) !== 'due
 export function pageOrder(s) {
   const list = pageList(s)
   return [...list.filter(p => !p.more), ...list.filter(p => p.more)].map(p => p.id)
+}
+
+/** The tab that is lit while a page is open: its parent's for a sub page, else its own */
+export function litTab(s) {
+  return parentOf(s, s.ui?.page) ?? s.ui?.page
 }
 
 /** The pages behind the bar's More menu */
