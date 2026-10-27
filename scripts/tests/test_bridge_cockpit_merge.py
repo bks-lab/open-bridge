@@ -252,3 +252,22 @@ def test_both_activities_show_the_merge_and_when_it_was_taken_back(world):
     world.act("task_unmerge", **res["undo"][0]["undo"]["args"])
     assert decisions(feed(world, KEEP))[0]["undone_ms"] == int(NOW)
     assert decisions(feed(world, A))[0]["undone_ms"] == int(NOW)
+
+
+def test_a_backlog_task_without_a_row_merges_under_its_own_title(tmp_path):
+    w = World(tmp_path, config=FLOW.format(on="true", lang="en") + "  files_scope: all\n")
+    try:
+        status(w.root, "parked", "backlog")
+        listed = [{"slug": "demo-task", "label": "Demo task", "area": "Demo", "status": "doing", "kind": "tasks"},
+                  {"slug": "parked", "label": "Parked", "title": "A parked idea", "area": "Ops", "status": "backlog",
+                   "kind": "tasks"}]
+        w.runner.handlers["workplace.tasks"] = lambda argv: ok(listed)
+        w.runner.handlers["task.merge"] = lambda argv: ok({"keep": "demo-task", "slug": "parked"})
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        assert w.app.collector.resolve("task:parked") is None          # no row of its own: only model.files
+        res = w.act("flow_merge", keep=KEEP, keys=["task:parked"])
+        assert res["note"] == "A parked idea merged into Work on the demo task"
+        assert res["undo"][0]["title"] == "A parked idea"
+    finally:
+        w.close()

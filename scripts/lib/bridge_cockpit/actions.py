@@ -319,7 +319,10 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             stream = (root / "work" / "streams" / slug / "STATUS.md").is_file()
             if not stream and not (root / "work" / "tasks" / slug / "STATUS.md").is_file():
                 return None
-            row = m.task_row(slug, slug)
+            # a task the files view lists without a row (a backlog task, files_scope all) keeps its own title
+            listed = next((t for t in (self.app.collector.all_tasks or self.app.collector.tasks or [])
+                           if t.get("slug") == slug), None)
+            row = m.task_row(slug, (listed or {}).get("title") or (listed or {}).get("label") or slug)
             return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": not stream, "stream": stream},
                     "hidden": False}
         return None
