@@ -171,14 +171,15 @@ const store = createStore({
     flowAt: null, flowChip: 'all', flowJump: null, flowAdvice: null, flowDecided: 0,
     // its left column: by themes or by areas (flowMode, kept in this browser), the theme or area entered in each
     // ({themes, areas}, null for the level of all), the overview of it or a point in the middle (flowView), the keys
-    // ticked (one selection for the left column and the overview), a batch that ran ({n, undo, from}: the overview's,
-    // a list's of Not now or the instruction line's) and a themes run of the page in flight. Round 4: Prio as a third
-    // order, the entry of Running now open in the middle (flowView run), the group of Not now open there (flowView
-    // left) with its own ticks, and the points due later the viewer took back on before their day ({key: until}, kept
-    // in this browser, pruned once that day came)
+    // ticked (one selection for the overview and Running now), a batch that ran ({n, undo, from}: the overview's, a
+    // list's of Not now or the instruction line's) and a themes run of the page in flight. Round 4: Prio as a third
+    // order, the entry of Running now open in the middle (flowView run, flowRunFrom the list it came from: the view
+    // running of round 5 or the overview), the group of Not now open there (flowView left) with its own ticks, and the
+    // points due later the viewer took back on before their day ({key: until}, kept in this browser, pruned once that
+    // day came)
     flowMode: ['areas', 'prio'].find(v => v === load('bridge-cockpit.flowMode', 'themes')) ?? 'themes', flowSide: {},
     flowView: 'overview', flowPicked: [], flowBatch: null,
-    flowThemesBusy: false, flowRunId: null, flowLeft: null, flowLeftPicked: [], flowEarly: loadEarly(),
+    flowThemesBusy: false, flowRunId: null, flowRunFrom: 'overview', flowLeft: null, flowLeftPicked: [], flowEarly: loadEarly(),
     // round 3: the tab under the card of an open point (it stays from point to point, kept in this browser), the
     // filter of its Activity, and the plan the instruction line made of a sentence, waiting for Run
     flowTab: ['desc', 'steps', 'activity', 'related'].find(v => v === load('bridge-cockpit.flowTab', 'desc')) ?? 'desc',
@@ -1084,7 +1085,9 @@ const ctl = {
   flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [], flowPlan: null }) },
   flowOverview: () => setUi(ui => ({ flowView: 'overview', flowPlan: ui.flowView === 'overview' ? ui.flowPlan : null })),
   // round 4: an entry of Running now opened in the middle, a group of Not now shown as a list there with its own ticks
-  flowRun: id => setUi({ flowView: 'run', flowRunId: id ?? null, flowPlan: null }),
+  // an entry of Running now remembers whether it was opened from the list of them, so Back leads there again
+  flowRun: id => setUi(ui => ({ flowView: 'run', flowRunId: id ?? null, flowRunFrom: ui.flowView === 'running' ? 'running' : 'overview', flowPlan: null })),
+  flowRunning: () => setUi({ flowView: 'running', flowRunId: null, flowPlan: null }),
   flowLeft: reason => setUi(ui => ({ flowView: 'left', flowLeft: reason ?? null, flowLeftPicked: ui.flowLeft === reason ? ui.flowLeftPicked : [], flowPlan: null })),
   flowLeftPick: (keys, on) => setUi(ui => {
     const picked = new Set(ui.flowLeftPicked ?? [])

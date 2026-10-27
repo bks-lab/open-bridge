@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, Work through: a view of the work tab (cockpit.flow.enabled, logic.js workViews 'flow'), laid out as cmux
 // lays out a workspace. Left the themes the server's small model gives the open points across the areas, or the areas
-// themselves, and once one is entered its points (views/flowside.js FlowSide). The middle shows the overview of the
-// theme entered, or of all of them (views/flowlist.js FlowOverview: a table of the points with a suggestion each and
-// the batch bar), until a title opens a point (ui.flowView): Back to overview, a line while points are ticked, the
+// themselves, the one entered marked (views/flowside.js FlowSide, a table of contents). The middle shows the overview
+// of the theme entered, or of all of them (views/flowlist.js FlowOverview: a table of the points with a suggestion each
+// and the batch bar), until a title opens a point (ui.flowView): Back to overview, a line while points are ticked, the
 // point as a card, held by its id (logic.js focusIndex) so the next one moves up after a decision, in the queue's fixed
 // order (logic.js flowQueue: the return card after a jump to a tab, the tabs that ask, what an agent finished, a start
 // that got lost, the questions for you; then what is in progress; then the tasks in review; the reports as one card).
@@ -16,10 +16,12 @@
 // fields (views/flowside.js FlowAside: the suggestion, the verbs, who works on it, the source), a hint in the overview.
 // To tab remembers the jump (ui.flowJump, in memory only): once the page is in view again return_after_s later, the
 // return card asks how it went (app.js). Round 4: every open row stands exactly once (logic.js flowParts). What runs
-// stands in Running now (views/flowrun.js: on top of the left column and of the overview, never in the walk; a click
-// opens it in the middle as view `run`, its card, its tabs and its instruction line, without the walk bar); what is no
-// point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a list in the middle
-// (view `left`) with its own batch. Prio orders the left column by Jev's squares (views/flowprio.js: the 2x2 grid at the
+// stands in Running now (views/flowrun.js: one row on top of the left column that shows every entry in the middle as
+// view `running`, the entries of the side on top of the overview, never in the walk; a title opens one in the middle
+// as view `run`, its card, its tabs and its instruction line, without the walk bar, its way back to the list it came
+// from); what is no point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a
+// list in the middle (view `left`) with its own batch. Round 5: the left column lists no point, the middle does; what
+// opens in the middle is brought into view where the page scrolled its top away. Prio orders the left column by Jev's squares (views/flowprio.js: the 2x2 grid at the
 // level of all squares). With nothing open the calm card offers up to three ideas to start. Without a terminal driver
 // the cards of the agents, Running now and every way to a tab stay out.
 // The agents' cards: a tab that asks carries the answers to its question (views/reply.js), the decision guide
@@ -31,7 +33,7 @@
 // or another view. For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn,
   prepTargets, previewText, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
@@ -193,6 +195,14 @@ function DoingCard({ x, s }) {
   </article>`
 }
 
+/** Brings the top of the middle back into the page column where it scrolled up out of sight: the column that
+ *  scrolls is the page's (.col), on a narrow screen the window */
+function intoView(el) {
+  if (!el?.getBoundingClientRect || !el.scrollIntoView) return
+  const col = el.closest?.('.col')?.getBoundingClientRect?.()
+  if (el.getBoundingClientRect().top < Math.max(0, col?.top ?? 0) - 1) el.scrollIntoView({ block: 'start' })
+}
+
 /** A point's title and its kind in a word, for the tabs, the walk and the list */
 const pointTitle = x => (x.group === 'doing' ? x.row?.title ?? x.title ?? x.start?.title ?? x.tab?.name ?? '' : cardTitle(x))
 const pointKind = x => (x.group === 'doing' ? T().flow.kind.doing : cardKind(x))
@@ -214,12 +224,14 @@ export function FlowPage({ s, c }) {
   // decided, a start that finished, a group emptied) falls back to the overview
   const running = s.ui.flowView === 'run' ? parts.lane.find(e => e.id === s.ui.flowRunId) ?? null : null
   const group = s.ui.flowView === 'left' ? parts.leftOut.groups.find(g => g.reason === s.ui.flowLeft) ?? null : null
-  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
+  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'running' && parts.lane.length ? 'running'
+    : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
   const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : null
   const driver = flowDriver(s)
   // the boxes: every point with a row, and what runs with a task of its own (for a merge and Done only)
   const runRows = laneRows(lane)
-  const keys = new Set([...listRows(queue).filter(r => r.row).map(r => r.id), ...runRows.map(r => r.id)])
+  // (the view `running` shows every entry, so its boxes count at every side)
+  const keys = new Set([...listRows(queue).filter(r => r.row).map(r => r.id), ...(view === 'running' ? laneRows(parts.lane) : runRows).map(r => r.id)])
   const picked = new Set((s.ui.flowPicked ?? []).filter(k => keys.has(k)))
   const go = k => c.flowGo(queue[k].id, k)
   const decided = s.ui.flowDecided ?? 0
@@ -243,6 +255,11 @@ export function FlowPage({ s, c }) {
   const scope = view === 'left' ? null : instructScope(x, queue, picked, entered ? name : null, s)
   const counts = parts.counts
   const grid = mode === 'prio' && !entered
+  // what opens in the middle comes into view: its top scrolled up out of the page column is brought back (round 5)
+  const main = useRef(null)
+  useEffect(() => { requestAnimationFrame(() => intoView(main.current)) }, [view, group?.reason, running?.id, side, view === 'point' ? x?.id : null])
+  // back from an entry of Running now: to the list it was opened from (ui.flowRunFrom), else to the overview
+  const fromRunning = view === 'run' && s.ui.flowRunFrom === 'running'
   const card = x ? (x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`) : null
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
@@ -251,12 +268,17 @@ export function FlowPage({ s, c }) {
     </header>
     ${driver ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
     <div class="flow-grid">
-      <${FlowSide} sides=${sides} entered=${entered} mode=${mode} points=${queue} all=${all} at=${i} view=${view} picked=${picked}
-        titleFor=${pointTitle} kindFor=${pointKind} lane=${parts.lane} left=${parts.leftOut} run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
-      <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title}>
+      <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} lane=${parts.lane} left=${parts.leftOut}
+        run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
+      <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
         ${view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} />`
-          : view === 'run' ? html`<header class="flow-main-head">
+          : view === 'running' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
+              <h2 id="flow-running-h" class="flow-main-title">${f.run.label} <span class="mono muted">${parts.lane.length}</span></h2>
+            </header>
+            <${RunningStrip} lane=${parts.lane} picked=${picked} bare s=${s} c=${c} />`
+          : view === 'run' ? html`<header class="flow-main-head">
+              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => (fromRunning ? c.flowRunning() : c.flowOverview())}>${fromRunning ? f.run.back : f.point.back}<//>
               <span class="flow-main-theme muted">${f.run.label}</span>
             </header>
             <div class="flow-point">

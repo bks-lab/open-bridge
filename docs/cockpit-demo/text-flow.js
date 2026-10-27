@@ -14,7 +14,6 @@ export const FLOW = {
       budget: 'No runs left today: what has no theme yet waits under No theme yet', failed: 'The themes could not be ordered',
       pick: 'Theme or area', move: 'Move to theme', moveLabel: 'Theme of this point', newTheme: 'New theme', newName: 'Name of the new theme',
       rename: 'Rename the theme', renameLabel: 'New name', save: 'Save', cancel: 'Cancel',
-      overview: 'Overview', chip: v => `AI: ${v}`, tickAi: n => `Tick the AI suggestions (${n})`, points: 'The points of this theme',
       prio: 'Prio', allQuads: 'All squares',
     },
     groups: { you: 'Needs you', doing: 'In progress', task: 'Tasks', issue: 'Issues and PRs', reports: 'Reports', rank: 'By Jev\'s rank', due: 'By due day' },
@@ -101,7 +100,7 @@ export const FLOW = {
     walk: { label: 'Walk through the cards', done: 'That was the last card.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
     run: {
-      label: 'Running now', unlink: 'Not this task',
+      label: 'Running now', unlink: 'Not this task', back: 'Back to Running now',
       how: { start: 'started from the cockpit', hand: 'linked by hand', tab: 'its own task tab', seen: 'recognised from the session' },
       boxWhy: 'An agent works on these already, so they are no points to decide. The box is only for merging.',
       cardWhy: 'An agent works on it already, so it stands under Running now and not as a point.',
@@ -196,7 +195,6 @@ export const FLOW = {
       budget: 'Für heute keine Läufe mehr: was noch kein Thema hat, wartet unter Noch ohne Thema', failed: 'Die Themen ließen sich nicht ordnen',
       pick: 'Thema oder Bereich', move: 'In Thema legen', moveLabel: 'Thema dieses Punkts', newTheme: 'Neues Thema', newName: 'Name des neuen Themas',
       rename: 'Thema umbenennen', renameLabel: 'Neuer Name', save: 'Speichern', cancel: 'Abbrechen',
-      overview: 'Übersicht', chip: v => `AI: ${v}`, tickAi: n => `Vorschläge der AI anhaken (${n})`, points: 'Die Punkte dieses Themas',
       prio: 'Prio', allQuads: 'Alle Quadrate',
     },
     groups: { you: 'Braucht dich', doing: 'In Arbeit', task: 'Aufgaben', issue: 'Issues und PRs', reports: 'Meldungen', rank: 'Nach Jevs Rang', due: 'Nach Fälligkeit' },
@@ -283,7 +281,7 @@ export const FLOW = {
     walk: { label: 'Durch die Karten gehen', done: 'Das war die letzte Karte.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
     run: {
-      label: 'Läuft gerade', unlink: 'Nicht diese Aufgabe',
+      label: 'Läuft gerade', unlink: 'Nicht diese Aufgabe', back: 'Zurück zu Läuft gerade',
       how: { start: 'aus dem Cockpit gestartet', hand: 'von Hand verknüpft', tab: 'eigener Aufgaben-Tab', seen: 'aus der Sitzung erkannt' },
       boxWhy: 'Hier arbeitet schon ein Agent, darum sind es keine Punkte zum Entscheiden. Das Kästchen braucht es nur zum Zusammenführen.',
       cardWhy: 'Daran arbeitet schon ein Agent, darum steht es unter Läuft gerade und nicht als Punkt.',

@@ -307,30 +307,27 @@ source, By Jev and Files, there only with `cockpit.flow.enabled: true`
 (`cockpit.work_view: flow` opens the tab on it). It is laid out as cmux lays
 out a workspace:
 
-- **Left**, like the workspace sidebar, in two levels. First the **themes** a
+- **Left**, like the workspace sidebar or a mail app's folders, a table of
+  contents that lists no point. First the **themes** a
   small model gives the open points across the areas (`cockpit.flow.themes`,
   below), or the **areas** (`workplace.workspaces`, the same names and colours
   as the cmux workspaces; Themes and Areas switch at the top while the themes
   are on): one entry per theme or area that holds a point, with its colour,
   how many need you (in the warning tone) and how many are open, **No theme
-  yet** or **No area** last, and **Order themes again** at the foot. A click
-  enters one. Inside, **All themes** on top leads back; the name of the theme,
-  marked **Overview** while the overview shows, leads to its overview; **All**
-  and **Tick the AI suggestions (n)** tick; then its points grouped **Needs
-  you**, **In progress**, **Tasks**, **Issues and PRs**, **Reports**, each with a box, its title (a
-  click opens the point), a dot and a word for its stage, its area and the
-  suggestion as a small chip. A theme entered can be renamed. With Jev a
-  third order, **Prio**, stands beside Themes and Areas (below). Over both
-  levels stands **Running now** while an agent works (below), at the foot
-  **Not now** with its groups (below). On a narrow screen both levels are one
-  select over the middle, Running now a strip over it and Not now folded
-  under it.
+  yet** or **No area** last, under **All themes** (or All areas), and **Order
+  themes again** at the foot. A click enters one: the list stays as it is, the
+  one entered marked, All leads back, and its points stand in the middle only.
+  A theme entered can be renamed. With Jev a third order, **Prio**, stands
+  beside Themes and Areas (below). On top stands **Running now** as one row
+  with its count while an agent works (below), at the foot **Not now** with its
+  groups (below); what one of them opens in the middle is scrolled into view.
+  On a narrow screen the list is one select over the middle, Running now a
+  strip over it and Not now folded under it.
 - **In the middle**, on entering a theme (and at the level of all of them),
   its **overview**: every point as a row of a table, grouped as on the left,
   with its box, title, stage, area and the suggestion with half a sentence of
   why (below), a line over it naming where the suggestions come from, and on
-  top the sticky batch bar. The boxes on the left and in the table are one
-  selection. A click on a title, on the left or in the table, opens the
+  top the sticky batch bar. A click on a title opens the
   **point**: on top **Back to overview** with the theme's name beside it, a
   line "n ticked" with **See in the overview** while points are ticked, then
   the point as a card that carries its content only: its kind in its head (the
@@ -346,9 +343,8 @@ out a workspace:
   where something is open. Neither the title nor anything else opens the item
   drawer or another view.
 - **Right**, for the point open, **What you can do**: the AI's suggestion as
-  one sentence (on an open point the only place it stands; the left column and
-  the overview show it as a chip and a column, because there one picks without
-  a point open), then the verbs under each other in one style, the suggested
+  one sentence (on an open point the only place it stands; the overview shows
+  it as a column, because there one picks without a point open), then the verbs under each other in one style, the suggested
   one the strong button. While an agent tab is on the point (at work, asking, or
   waiting at its prompt) **To tab** leads and **View** follows, and neither
   Let AI do it nor Give your yes stands there: no second agent starts beside
@@ -412,9 +408,10 @@ open: the calm card offers up to three to start.
 
 **Running now.** What an agent works on right now is not a point and never
 part of the walk, the overview's table or a batch. It stands on top of the left
-column, one line each (a dot that pulses while it works, the title, its tab and
-stage), and as a strip over the overview with since when, how it is known, **To
-tab** and **View**. An entry with a task of its own has a box there, in the same
+column as one row with its count and a dot that pulses while an entry works; a
+click lists every entry in the middle, and the entries of the side entered stand
+as a strip over the overview, each with its tab, stage, since when, how it is
+known, **To tab** and **View**. An entry opened from that list goes back to it. An entry with a task of its own has a box there, in the same
 selection as the overview's: it is only for **Merge** with a point (the one an
 agent works on is suggested to stay, so no folder moves from under it) and
 **Done**; a batch never starts, puts off or drops what runs, its line says

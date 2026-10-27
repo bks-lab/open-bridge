@@ -280,15 +280,16 @@ def test_work_through_opens_as_a_view_of_the_work_tab_and_walks_its_points(base_
     assert page.locator("#main .flow-tabs").count() == 0
     where[0] = "a theme"
     if width > 960:
-        page.locator("#main .flow-side-item").first.click()
+        page.locator("#main .flow-side-item:not(.is-all)").first.click()
     else:
         page.locator("#main .flow-side-select select").select_option(index=1)
     page.wait_for_selector("#main .flow-overview .flow-ov-pick")
     where[0] = "two ticked"
-    page.locator("#main .flow-ov-pick").nth(0).check()
-    page.locator("#main .flow-ov-pick").nth(1).check()
-    if width > 960:
-        assert page.locator("#main .flow-pt-pick:checked").count() == 2
+    page.locator("#main .flow-overview .flow-ov-row .flow-ov-pick").nth(0).check()
+    page.locator("#main .flow-overview .flow-ov-row .flow-ov-pick").nth(1).check()
+    # the boxes stand in the middle only (round 5: the left column lists no point)
+    assert page.locator("#main .flow-overview .flow-ov-row .flow-ov-pick:checked").count() == 2
+    assert page.locator("#main .flow-side .flow-pt").count() == 0
     where[0] = "a point"
     page.locator("#main .flow-ov-open").first.click()
     page.wait_for_selector("#main .flow-card .fx-hero")
