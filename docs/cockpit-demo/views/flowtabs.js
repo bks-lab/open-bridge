@@ -64,10 +64,11 @@ function RelatedPane({ rel }) {
   </div>`
 }
 
-/** A changed value in words: a status, a theme's name, who drives it (nobody), a decision with its day or reason */
+/** A changed value in words: a status as the card head words it (an inbox item's too), a theme's name, who drives it
+ *  (nobody), a decision with its day or reason */
 function changeWord(ch, v, t, lang) {
   const f = t.flow.activity
-  if (ch.field === 'status') return t.taskState[v] ?? String(v)
+  if (ch.field === 'status') return f.state[v] ?? t.taskState[v] ?? String(v)
   if (ch.field === 'theme') return v ?? t.flow.side.noTheme
   if (ch.field === 'driver') return v ?? f.nobody
   if (ch.field === 'decision') {
@@ -76,12 +77,27 @@ function changeWord(ch, v, t, lang) {
   return String(v ?? '')
 }
 
-/** A change: the old value struck through, then the new one; without an old value the new one alone */
+// the fields whose empty side is a value of its own: no theme yet, nobody drives it
+const NAMED_EMPTY = new Set(['theme', 'driver'])
+
+/** A change: the old value struck through, then the new one; without an old value the new one alone, but a theme or a
+ *  driver before was No theme yet or nobody, struck as such */
 function Change({ ch }) {
   const t = T()
   const lang = language()
-  return html`<span class="flow-chg">${ch.old != null ? html`<del class="flow-chg-old">${changeWord(ch, ch.old, t, lang)}</del> → ` : null}<span
+  const old = ch.old != null || NAMED_EMPTY.has(ch.field)
+  return html`<span class="flow-chg">${old ? html`<del class="flow-chg-old">${changeWord(ch, ch.old, t, lang)}</del> → ` : null}<span
     class="flow-chg-new">${changeWord(ch, ch.new, t, lang)}</span></span>`
+}
+
+// the ref a code row starts with ("owner/repo#18", "repo#18", a commit's hash): the link of the row is that ref
+const CODE_REF_RE = /^((?:[\w.-]+\/)?[\w.-]+#\d+|[0-9a-f]{7,40})(?=\s|$)\s*/
+
+/** A code row's text with its ref as the link to the web (the mockup's "open-bridge #530"); null when it starts with none */
+function codeRef(r) {
+  const web = (r.links ?? []).find(l => l.kind === 'web')
+  const m = r.kind === 'code' && web ? CODE_REF_RE.exec(String(r.text ?? '')) : null
+  return m ? { href: web.href, ref: m[1], rest: String(r.text).slice(m[0].length), links: r.links.filter(l => l !== web) } : null
 }
 
 /** The links of a row: a document in a new tab through the doc route, a page on the web, a tab, a task */
@@ -119,14 +135,16 @@ function ActRow({ r, c }) {
   const who = r.by ? [f.by[r.by.kind] ?? r.by.kind, r.by.name].filter(Boolean).join(' · ') : null
   const changes = r.kind === 'doc' && r.doc?.state === 'changed' && r.doc.changes > 1 ? f.doc.changes(r.doc.changes) : null
   const { ch, text } = rowSays(r)
+  const code = codeRef(r)
   return html`<li class=${`flow-act-row is-${r.kind}${r.undone_ms ? ' is-undone' : ''}`}>
     <time class="flow-act-time mono" datetime=${r.at}>${activityWhen(r.at, lang)}</time>
     <div class="flow-act-body">
       <span class="flow-act-kind">${kind}${changes ? ` · ${changes}` : ''}</span>
       <span class="flow-act-what">
         ${ch ? html`<${Change} ch=${ch} />` : null}
-        ${text ? html`<span class="flow-act-text">${text}</span>` : null}
-        <${Links} links=${r.links} c=${c} />
+        ${code ? html`<span class="flow-act-text"><a class="flow-act-ref mono" href=${code.href} target="_blank" rel="noopener noreferrer"
+          title=${code.href}>${code.ref}</a>${code.rest ? ` ${code.rest}` : ''}</span>` : text ? html`<span class="flow-act-text">${text}</span>` : null}
+        <${Links} links=${code ? code.links : r.links} c=${c} />
         ${r.undone_ms ? html`<span class="flow-act-undone">${f.undone}</span>` : null}
       </span>
       ${who ? html`<span class="flow-act-who">${who}</span>` : null}
@@ -177,7 +195,10 @@ function ActFoot({ row, feed, s, c }) {
   const add = async () => {
     if (!v) return
     const r = await c.flowNote(row.key, v)
-    if (r?.ok) setText('')
+    if (!r?.ok) return
+    setText('')
+    // written while a filter hides the notes: back to All, where it shows
+    if (!['all', 'notes'].includes(s.ui.flowFilter ?? 'all')) c.flowFilter('all')
   }
   const pick = e => {
     const el = e.currentTarget

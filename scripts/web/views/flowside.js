@@ -11,19 +11,22 @@
 // be renamed. On a narrow screen both levels are one select over the middle.
 // FlowAside, the right column of an open point (round 3), as an issue tracker's sidebar: on top What you can do, the AI
 // suggestion in one line (on an open point the only place it stands) and the card's verbs under each other, the strong
-// one first (views/verbbar.js stack): a live tab gives To tab and View and no Let AI do it, a point in progress without
-// one Let AI go on, a finished start Done and close the tab, Improve, Runs on, Open answer, Later and Drop, a lost one
-// Start again, Done, Drop and Forget, the return card Done, Later, Drop, Runs on and Not yet, the reports All seen.
+// one first, every other one in the same style (views/verbbar.js stack): a live tab (at work, asking, or waiting at its
+// prompt, logic.js flowLive) gives To tab and View and neither Let AI do it nor Give your yes, a point in progress
+// without one Let AI go on, a finished start the verb the AI suggests (else Done and close the tab), the other verbs,
+// Improve, Runs on, Open answer and its tab's ways, a lost one Start again, Done, Drop and Forget, the return card Done,
+// Later, Drop, Runs on and Not yet, the reports All seen.
 // Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
-// else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source as
-// links, Created, Moved. No Status field: the card's head says it. In the overview a line says how they come.
+// else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source (its
+// chip, STATUS.md to the files view, an issue or a pull request by its ref on the web), Created, Moved. No Status
+// field: the card's head says it. In the overview a line says how they come.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  activityWhen, batchPreselect, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowSuggestion, flowTabOf, formatDay,
-  isoDate, meterLevel, replySend, short,
+  activityWhen, batchPreselect, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowSuggestion, flowTabOf,
+  isoDate, meterLevel, refOfUrl, replySend, short,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
@@ -183,12 +186,12 @@ export function ThemePick({ row, s, c, compact = false }) {
 const ASKING_VERBS = ['advise', 'done', 'later', 'drop']
 
 /** To tab and View for the tab of a point: the jump is remembered for the return card (c.flowJump). `strong`: the
- *  tab is live (at work or asking), so To tab is the strong way */
+ *  tab is live (logic.js flowLive), so To tab is the strong way; View always in the style of the stack */
 export function TabWays({ tab, row, title, s, c, strong = false }) {
   const f = T().flow
   if (!tab || !flowDriver(s)) return null
   return html`<${Btn} size="sm" variant=${strong ? 'primary' : 'secondary'} onClick=${() => c.flowJump({ key: row?.key ?? null, ref: tab.ref, title: title ?? tab.name })}>${f.toTab}<//>
-    <${Btn} size="sm" variant=${strong ? 'secondary' : 'ghost'} onClick=${() => c.openTabView(tab.ref)}>${f.view}<//>`
+    <${Btn} size="sm" variant="secondary" onClick=${() => c.openTabView(tab.ref)}>${f.view}<//>`
 }
 
 /** Improve on a finished start: what is still to do, as words to the tab while its agent waits there (tab_send
@@ -227,9 +230,10 @@ function Improve({ row, tab, s, c, onDone }) {
   </div>`
 }
 
-/** What a finished or quiet start offers: Done and close the tab (or Done), Improve, Runs on, Open answer, Later,
- *  Drop; whose item is not in the list, its tab's ways and Forget */
-function FinishedActs({ x, s, c, forget }) {
+/** What a finished or quiet start offers, under each other in one style: the verb the AI suggests strong where it is
+ *  Done, Later or Drop, else Done; Done closes its tab too where it has one (Done and close the tab); then the other
+ *  two, Improve, Runs on, Open answer and the tab's ways. Whose item is not in the list: its tab's ways and Forget */
+function FinishedActs({ x, s, c, sug, forget }) {
   const t = T()
   const f = t.flow
   const r = x.start
@@ -240,17 +244,18 @@ function FinishedActs({ x, s, c, forget }) {
   const live = !!tab && tab.state === 'waiting' && canTab(s, 'send')
   const tomorrow = isoDate((s.now || Date.now()) + DAY)
   if (!row) return html`<div class="fx-do"><${TabWays} tab=${tab} row=${null} title=${r.title} s=${s} c=${c} />${forget}</div>`
-  const doneClose = async () => {
-    const res = await c.act('settle', { keys: [row.key], outcome: 'done' })
-    if (res?.ok && tab) await c.act('tab_close', { tab_ref: tab.ref })
+  const doneClose = async by => {
+    const res = await c.act('settle', { keys: [row.key], outcome: 'done', ...(by ? { by } : {}) })
+    if (res?.ok) await c.act('tab_close', { tab_ref: tab.ref })
+    return res
   }
+  const said = ['done', 'later', 'drop'].includes(sug?.verb) ? sug.verb : null
   const more = html`<${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>
     <${Btn} size="sm" variant="secondary" onClick=${() => c.act('runs_on', { keys: [row.key], until: tomorrow })}>${f.runsOn}<//>
-    ${r.result?.key ? html`<${Btn} size="sm" variant="ghost" onClick=${() => c.openItem(r.result.key, null)}>${t.home.returnOpenAnswer}<//>` : null}`
-  const ways = html`<${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} />`
-  return html`${tab ? html`<div class="fx-do"><${Btn} size="sm" variant="primary" onClick=${doneClose}>${f.doneClose}<//>${more}</div>
-      <${VerbBar} row=${row} s=${s} c=${c} verbs=${['later', 'drop']} primary=${false} extra=${ways} stack />`
-    : html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary="done" extra=${more} stack />`}
+    ${r.result?.key ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openItem(r.result.key, null)}>${t.home.returnOpenAnswer}<//>` : null}
+    <${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} />`
+  return html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary=${said ?? 'done'} suggested=${!!said}
+      words=${tab ? { done: f.doneClose } : {}} handlers=${tab ? { done: doneClose } : {}} yes=${false} extra=${more} stack />
     ${fix ? html`<${Improve} row=${row} tab=${live ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
 }
 
@@ -262,7 +267,8 @@ function PointActs({ x, s, c, sug }) {
   const live = flowLive(x, s)
   const tab = flowTabOf(x, s)
   const title = row?.title ?? x.title ?? x.start?.title ?? tab?.name ?? ''
-  // a live tab, at work or asking: its ways first, To tab the strong one, and no second agent started beside it
+  // a live tab, at work, asking or at its prompt: its ways first, To tab the strong one, and no second agent started
+  // beside it (no Let AI do it, no Give your yes)
   const lead = live ? html`<div class="fx-do"><${TabWays} tab=${live} row=${row} title=${title} s=${s} c=${c} strong /></div>` : null
   const ways = tab && !live ? html`<${TabWays} tab=${tab} row=${row} title=${title} s=${s} c=${c} />` : null
   if (x.kind === 'reports') {
@@ -273,7 +279,7 @@ function PointActs({ x, s, c, sug }) {
   if (x.kind === 'back') {
     const back = () => c.flowBack()
     const rest = html`<${Btn} size="sm" variant="secondary" onClick=${back}>${f.runsOn}<//>
-      <${Btn} size="sm" variant="ghost" onClick=${back}>${f.notYet}<//>`
+      <${Btn} size="sm" variant="secondary" onClick=${back}>${f.notYet}<//>`
     return row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary="done" onDone=${back} extra=${rest} stack />`
       : html`<div class="fx-do">${rest}</div>`
   }
@@ -285,26 +291,27 @@ function PointActs({ x, s, c, sug }) {
     const verbs = running ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']
     const said = verbs.includes(sug?.verb) ? sug.verb : null
     return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
-      words=${running ? {} : { do: f.doing.goOn }} extra=${ways} stack />`
+      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${ways} stack />`
   }
   if (x.kind === 'start') {
     const r = x.start
-    const forget = html`<${Btn} size="sm" variant="ghost" onClick=${() => c.act('return_forget', { key: r.key })}>${t.home.returnForget}<//>`
+    const forget = html`<${Btn} size="sm" variant="secondary" onClick=${() => c.act('return_forget', { key: r.key })}>${t.home.returnForget}<//>`
     if (x.group === 'lost') {
       return row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['do', 'done', 'drop']} primary="do" words=${{ do: f.verbs.restart }} extra=${forget} stack />`
         : html`<div class="fx-do">${forget}</div>`
     }
-    if (x.group === 'result') return html`<${FinishedActs} x=${x} s=${s} c=${c} forget=${forget} />`
+    if (x.group === 'result') return html`<${FinishedActs} x=${x} s=${s} c=${c} sug=${sug} forget=${forget} />`
     // a start whose tab asks: its ways, then the verbs that leave the tab its question
-    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} extra=${ways} stack />`
+    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} yes=${false} extra=${ways} stack />`
       : ways ? html`<div class="fx-do">${ways}</div>` : null}`
   }
   if (x.kind === 'tab') return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${row
-    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} stack />` : null}`
+    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} yes=${false} stack />` : null}`
   // a question or a task: its verbs, the one the AI suggests the strong one where the card has it
   const verb = sug?.verb
   const primary = live ? false : ['do', 'done', 'later', 'drop'].includes(verb) ? verb : null
-  return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${live ? ASKING_VERBS : null} primary=${primary} suggested=${!!primary} extra=${ways} stack />`
+  return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${live ? ASKING_VERBS : null} primary=${primary} suggested=${!!primary} yes=${!live}
+    extra=${ways} stack />`
 }
 
 /** Who works on a point, in words: its tab and how long, a start of the cockpit, a session by hand, else when it last
@@ -336,7 +343,8 @@ function Fields({ x, s, c }) {
   const feed = row ? s.details?.activity?.[row.key]?.data ?? null : null
   const detail = row?.task ? s.details?.task?.[row.task]?.data ?? null : null
   const none = html`<span class="muted">${f.none}</span>`
-  const link = href => html`<a href=${href} target="_blank" rel="noopener noreferrer" title=${href}>${short(String(href).replace(/^https?:\/\//, ''), 40)}</a>`
+  // a link on the web by its ref where it is an issue or a pull request ("repo#12"), else by its address
+  const link = href => html`<a href=${href} target="_blank" rel="noopener noreferrer" title=${href}>${refOfUrl(href) ?? short(String(href).replace(/^https?:\/\//, ''), 40)}</a>`
   const value = fld => {
     if (fld.id === 'theme') return html`<${ThemePick} key=${row.key} row=${row} s=${s} c=${c} compact />`
     if (fld.id === 'area') return fld.value || none
@@ -347,10 +355,14 @@ function Fields({ x, s, c }) {
       return fld.priority ? html`<${PrioChip} priority=${fld.priority} />` : none
     }
     if (['urgency', 'impact', 'effort'].includes(fld.id)) return html`<${Meter} value=${fld.value} />`
-    if (fld.id === 'due') return fld.value ? formatDay(fld.value, lang) : none
+    if (fld.id === 'due') return fld.value ? activityWhen(fld.value, lang) : none
     if (fld.id === 'source') {
       const rows = fld.rows ?? (fld.row ? [fld.row] : [])
+      // the task's file opens in the files view, where its STATUS.md stands
+      const slug = fld.row?.task ?? null
+      if (!rows.length && !slug && !fld.url && !fld.link) return none
       return html`<span class="flow-source">${rows.map(r => html`<${OriginTag} key=${r.key} row=${r} />`)}
+        ${slug ? html`<button type="button" class="btn-link flow-source-file" onClick=${() => c.openFile(slug, null)}>STATUS.md</button>` : null}
         ${fld.url ? link(fld.url) : null}${fld.link ? link(fld.link) : null}</span>`
     }
     if (fld.id === 'created' || fld.id === 'moved') return fld.value ? activityWhen(fld.value, lang) : none

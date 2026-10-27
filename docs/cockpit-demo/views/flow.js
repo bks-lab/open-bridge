@@ -7,8 +7,9 @@
 // point as a card, held by its id (logic.js focusIndex) so the next one moves up after a decision, in the queue's fixed
 // order (logic.js flowQueue: the return card after a jump to a tab, the tabs that ask, what an agent finished, a start
 // that got lost, the questions for you; then what is in progress; then the tasks in review; the reports as one card).
-// The card carries content only (round 3, nothing twice): its kind, its state in its head (the only place it stands),
-// its title, what its tab asks with the answers, a start's result and criteria, the live tab's screen. Under it the
+// The card carries content only (round 3, nothing twice): its kind in its head (the state, the only place it stands),
+// its title, what its tab asks with one set of answers, a start's result, the live tab's screen; who works on it is a
+// field on the right, the criteria stand in Description. Under it the
 // tabs of the point (views/flowtabs.js: Description, Steps, Activity, Related), then at the foot the instruction line
 // (views/flowinstruct.js, cockpit.flow.instruct) over the files view's walk bar (views/dossier.js Walk), which after
 // the last point leads to the first point of the next theme where something is open. Right what you can do and the
@@ -17,10 +18,10 @@
 // return card asks how it went (app.js). What the queue leaves out stands in a drawer with why; with nothing open the
 // calm card offers up to three ideas to start. Without a terminal driver the cards of the agents and every way to a
 // tab stay out.
-// The agents' cards: a tab that asks carries the answers to its question (views/reply.js) and the decision guide
-// (views/guide.js), each through the reply verbs that guard the tab; a finished or quiet start its result line and
-// the criteria of its brief as a plain list to check yourself (no tick, nothing judges them); Done and close the tab,
-// Improve (words to the tab while it lives, else a new start) and Runs on stand on the right. When a point is opened, the
+// The agents' cards: a tab that asks carries the answers to its question (views/reply.js), the decision guide
+// (views/guide.js) folded under one button, each through the reply verbs that guard the tab; a finished or quiet start
+// its result line (the criteria of its brief stand in Description, to check yourself); Done and close the tab, Improve
+// (words to the tab while it lives, else a new start) and Runs on stand on the right. When a point is opened, the
 // briefs of the next points that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
 // once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key). No title opens a drawer
 // or another view. For the mouse: the page names no key.
@@ -28,8 +29,8 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, formatDay, instructScope, pointsIn,
-  prepTargets, previewText, restSuggestions, short, stageTone, stateToken, tabOfTask, tabStateKey, themesToAsk,
+  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, formatDay, guideOf, instructScope, pointsIn,
+  prepTargets, previewText, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
@@ -40,7 +41,7 @@ import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
 import { Calm, Hero } from './focus.js'
 import { GuideTree } from './guide.js'
-import { Btn, Dot, StateLine } from './parts.js'
+import { Btn, Dot } from './parts.js'
 import { AskLine, TabReply } from './reply.js'
 import { VerbBar } from './verbbar.js'
 
@@ -63,14 +64,19 @@ function cardTitle(x) {
 /** A card's kind in a word: its group, a quiet start by its stage */
 const cardKind = x => T().flow.kind[x.stage === 'idle' ? 'idle' : x.group]
 
-/** What a tab asks, answered on the card: the answers to its question as buttons (a dialog's options, yes and no,
- *  go on, a field) and the decision guide's steps. The way to the tab stands on the right (views/flowside.js
- *  TabWays, which remembers the jump), so neither repeats it */
+/** What a tab asks, answered on the card: the answers to its question as one row of buttons (a dialog's options, yes
+ *  and no, go on, a field), and the decision guide's steps folded under one button, without the guide's own line what
+ *  it is about (the card's title says it). The way to the tab stands on the right (views/flowside.js TabWays, which
+ *  remembers the jump), so neither repeats it */
 function AskBlock({ tab, s, c }) {
+  const f = T().flow.guide
+  const [open, setOpen] = useState(false)
   if (!tab) return null
+  const guide = guideOf(s, tab).status !== 'off'
   return html`<div class="flow-askblock">
     <${TabReply} tab=${tab} s=${s} c=${c} compact noJump />
-    <${GuideTree} tab=${tab} s=${s} c=${c} bare />
+    ${guide ? html`<button type="button" class="btn-link flow-guide-toggle" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>${open ? f.hide : f.show}</button>` : null}
+    ${guide && open ? html`<${GuideTree} tab=${tab} s=${s} c=${c} bare about=${false} />` : null}
   </div>`
 }
 
@@ -88,31 +94,22 @@ function BackCard({ x, s }) {
 }
 
 /** A start of the return channel that wants you: its tab asks, it finished (or went quiet), or it got lost. The card
- *  says what came back (the result line, the criteria of its brief to check yourself) and what its tab asks; what to
- *  do with it stands on the right */
+ *  says what came back (the result line, without its own head word) and what its tab asks; since when it runs is the
+ *  field Who works on it, the criteria of its brief stand in Description, what to do with it stands on the right */
 function StartCard({ x, s, c }) {
   const t = T()
   const f = t.flow
   const r = x.start
-  const row = x.row
   const tab = x.tab
-  const ago = duration((s.now || Date.now()) - r.at_ms)
   const lines = r.result?.text ? [] : tailLines(tab?.last ?? r.tab?.last)
-  const finished = x.group === 'result'
-  const criteria = finished ? (row?.card?.acceptance ?? []).filter(Boolean) : []
   return html`<article class=${`fx-hero tk-${stageTone(x.stage === 'idle' ? 'result' : x.stage)}`} aria-labelledby="flow-title">
-    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span>
-      <span class="mono muted small">${f.started(ago)}</span></header>
+    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span></header>
     <h2 id="flow-title" class="fx-title">${r.title}</h2>
-    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${r.result.kind === 'note' ? f.result : t.home.returnAnswer}</span> ${short(r.result.text, 400)}</p>` : null}
+    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${r.result.kind === 'note' ? f.result : t.home.returnAnswer}</span> ${short(resultText(r.result.text), 400)}</p>` : null}
     ${x.stage === 'idle' && !r.result?.text ? html`<p class="muted">${f.idleSub}</p>` : null}
     ${x.group === 'lost' ? html`<p class="muted">${f.lostSub}</p>` : null}
     ${x.group === 'asks' ? html`<${AskLine} tab=${tab} />` : null}
     ${lines.length && x.group !== 'asks' ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
-    ${criteria.length ? html`<section class="flow-criteria" aria-labelledby="flow-criteria">
-      <h3 id="flow-criteria" class="label-caps">${f.criteria}</h3>
-      <ul>${criteria.map((line, k) => html`<li key=${k}>${line}</li>`)}</ul>
-    </section>` : null}
     ${x.group === 'asks' ? html`<${AskBlock} tab=${tab} s=${s} c=${c} />` : null}
   </article>`
 }
@@ -180,25 +177,19 @@ function Rest({ s, c }) {
     </section>`
 }
 
-/** A point in progress: its state in its head (the tab that drives it and since when, logic.js flowDrive) and the
- *  last lines of that tab's screen. Who works on it is a field on the right, where its verbs stand too */
+/** A point in progress: its state in its head (its dot pulses while an agent works on it, logic.js flowDrive) and the
+ *  last lines of that tab's screen. Who works on it and since when is a field on the right, where its verbs stand too */
 function DoingCard({ x, s }) {
-  const t = T()
-  const f = t.flow
+  const f = T().flow
   const d = flowDrive(x, s)
-  const nowMs = s.now || Date.now()
   const row = x.row
   const lines = tailLines(d.tab?.last ?? x.start?.tab?.last)
   const live = d.by !== 'none' && d.stage === 'working'
   const title = row?.title ?? x.title ?? x.start?.title ?? ''
   const token = d.by === 'none' ? 'muted' : stageTone(d.stage === 'needs-you' ? 'asks' : d.stage ?? 'working')
-  const tab = d.tab
   return html`<article class=${`fx-hero tk-${token === 'muted' ? 'muted' : 'info'}`} aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${token} pulse=${live} />${f.kind.doing}</span></header>
     <h2 id="flow-title" class="fx-title">${title}</h2>
-    ${tab ? html`<div class="fx-meta"><${StateLine} token=${stateToken(tabStateKey(tab))} strong
-        word=${`${t.home.list.tab} ${tab.name}: ${t.state[tabStateKey(tab)] ?? tab.state}`} />
-      <span class="mono muted">${duration(nowMs - (tab.since_ms || nowMs))}</span></div>` : null}
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
   </article>`
 }
@@ -240,7 +231,7 @@ export function FlowPage({ s, c }) {
   useEffect(() => { if (ask.length) c.flowThemesAuto(ask) }, [ask.join(',')])
   const name = sideName(entered, mode)
   // what the instruction line speaks for: the point open, else the ticked points or every point of the side
-  const scope = instructScope(x, queue, picked, name, s)
+  const scope = instructScope(x, queue, picked, entered ? name : null, s)
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />

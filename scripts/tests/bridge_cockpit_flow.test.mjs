@@ -707,6 +707,9 @@ test('a tab that asks: the decision guide on the card, a branch pressed through 
     options: [{ n: 2, label: 'Redirect it', why: 'Links stay alive' }], pick: 0, source: 'haiku', at_ms: NOW - MIN } } }
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ tabs: [tab] }), guide })} c=${c} />`)
+  // folded under one button on the card, so its answers come once
+  el.$$('.flow-card button').find(b => b.text() === en.flow.guide.show).click()
+  await tick()
   assert.match(el.$('.flow-card').text(), /Two pages say the same/)
   el.$$('.guide-opt').find(b => b.text().includes('Redirect it')).click()
   await tick()
@@ -723,17 +726,16 @@ test('a tab that asks: the decision guide on the card, a branch pressed through 
 
 // ---------------------------------------------------------------- finished or quiet: the result, the criteria, improve
 
-test('a finished start: its result line and the criteria of its brief as a plain list, nothing ticked', () => {
+test('a finished start: its result line once under Result, the criteria of its brief in Description, nothing ticked', () => {
   const row = task('fin', { card: { acceptance: ['The machine boots Linux', 'The backup runs'] } })
   const s = cockpitState(NOW, state({ work: [row], tabs: [{ ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', since_ms: NOW - 25 * MIN }],
     returns: [startOf('fin', 'result', { tab: { ref: 'surface:10' }, result: { kind: 'note', text: 'Result: driver installed, a restart is open', key: null, at_ms: null } })] }))
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   const card = el.$('.flow-card')
-  assert.match(card.text(), new RegExp(`${en.flow.result}.*driver installed`))
-  const items = card.$$('.flow-criteria li').map(li => li.text())
-  assert.deepEqual(items, ['The machine boots Linux', 'The backup runs'])
-  assert.doesNotMatch(card.$('.flow-criteria').text(), /[✓✔☑]/)
-  assert.equal(card.$$('input').filter(i => i.getAttribute('type') === 'checkbox').length, 0)
+  assert.equal(card.$('.flow-answer').text(), `${en.flow.result} driver installed, a restart is open`, 'the head word once')
+  assert.match(el.$('.flow-ptabs [role=tabpanel]').text(), /The machine boots Linux.*The backup runs/)
+  assert.doesNotMatch(el.$('.flow-ptabs [role=tabpanel]').text(), /[✓✔☑]/)
+  assert.equal(el.$('.flow-ptabs').$$('input').filter(i => i.getAttribute('type') === 'checkbox').length, 0)
   assert.ok(el.button(en.flow.doneClose) && el.button(en.flow.runsOn) && el.button(`${en.flow.improve.button} ▾`))
 })
 
@@ -1267,14 +1269,15 @@ test('Activity: the filters with their counts, each row with time, kind, old str
   // a state row: the old value struck through, then the new one, and who did it
   const status = rows[6]
   assert.equal(status.$('.flow-chg-old').localName, 'del')
-  assert.match(status.$('.flow-chg-old').text(), new RegExp(text.TABLES.en.taskState.backlog))
-  assert.match(status.$('.flow-chg-new').text(), new RegExp(text.TABLES.en.taskState.doing))
+  assert.equal(status.$('.flow-chg-old').text(), en.flow.activity.state.backlog)
+  assert.equal(status.$('.flow-chg-new').text(), en.flow.activity.state.doing)
   assert.match(status.$('.flow-act-who').text(), new RegExp(en.flow.activity.by.git))
   assert.match(status.$('.flow-act-kind').text(), new RegExp(en.flow.activity.kind.status))
-  // a decision taken back says so, a theme without an old one shows the new alone
+  // a decision taken back says so, a theme without an old one struck as No theme yet, as the mockup has it
   assert.ok(rows[3].$('.flow-act-undone'))
   assert.match(rows[3].text(), new RegExp(en.flow.activity.undone))
-  assert.equal(rows[0].$('.flow-chg-old'), null)
+  assert.equal(rows[0].$('.flow-chg-old').text(), en.flow.side.noTheme)
+  assert.equal(rows[2].$('.flow-chg-old').text(), en.flow.activity.nobody, 'who drives it: nobody before the start')
   assert.match(rows[0].$('.flow-act-who').text(), new RegExp(en.flow.activity.by.themes))
   // a document opens in a new tab through the doc route, a web link too, a tab link in the page's view of the tab
   const doc = rows[1].$('a')
@@ -1426,7 +1429,8 @@ test('nothing twice: state in the card head, who and source in the fields, the s
   const aside = el.$('.flow-aside')
   const tabs = el.$('.flow-ptabs')
   const where = (sel) => [card, aside, tabs].map(x => x.$$(sel).length)
-  assert.deepEqual(where('.state-line'), [1, 0, 0], 'the state once, in the card head')
+  assert.deepEqual(where('.fx-kind'), [1, 0, 0], 'the state once, in the card head')
+  assert.deepEqual(where('.state-line'), [0, 0, 0], 'who drives it is the field, no state line of its tab')
   assert.deepEqual(where('.fx-screen'), [1, 0, 0], 'the screen once, in the card')
   assert.deepEqual(where('.origin'), [0, 1, 0], 'the source once, in the fields')
   assert.deepEqual(where('.flow-sug'), [0, 1, 0], 'the suggestion once, on the right')
@@ -1590,10 +1594,15 @@ test('the demo: the activity of the demo task carries every kind and every filte
   const inbox = st.model.sections.flatMap(x => x.rows).find(x => x.inbox_id === '20261009-0915-update-docs-e5f6')
   const short = (await tr.get(`/api/flow/activity?key=${encodeURIComponent(inbox.key)}`)).data
   assert.ok(short.rows.length >= 2 && short.rows.length < feed.rows.length)
-  const other = st.model.sections.flatMap(x => x.rows).find(x => x.task && x.key !== 'task:demo-task' && !x.inbox_id)
+  const started = new Set((st.model.returns ?? []).map(r => r.key))
+  const other = st.model.sections.flatMap(x => x.rows).find(x => x.task && x.key !== 'task:demo-task' && !x.inbox_id && !started.has(x.key))
   const one = (await tr.get(`/api/flow/activity?key=${encodeURIComponent(other.key)}`)).data
   assert.deepEqual(one.rows.map(x => x.kind), ['created'])
   assert.equal(one.facts.jev, null)
+  // a row started from the cockpit lists that start among its agents, as activity.py does
+  const run = st.model.sections.flatMap(x => x.rows).find(x => started.has(x.key) && x.task !== 'demo-task' && !x.inbox_id)
+  const ran = (await tr.get(`/api/flow/activity?key=${encodeURIComponent(run.key)}`)).data
+  assert.ok(ran.counts.agents >= 1, run.key)
   assert.equal((await tr.get('/api/flow/activity?key=task:nowhere')).error.code, 'stale_row')
   // a document opens from a Blob of invented text
   const href = tr.href('/api/flow/doc?slug=demo-task&path=deliverables%2Fguide-draft.md')
@@ -1662,4 +1671,268 @@ test('the demo: the summary within its budget and kept while nothing changed, th
   // by is taken on the verbs it belongs to
   r = await tr.post('/api/action', { verb: 'later', args: { key: 'task:demo-task', until: '2026-12-01', by: 'instruction' } })
   assert.equal(r.ok, true)
+})
+
+// ---------------------------------------------------------------- round 3, after review: nothing twice, one answer set,
+// the live tab leads, the suggested verb strong, every state worded, the source as links, each skip in its step
+
+test('the card never says who works on it: no tab state, no started ago; the field on the right says it', () => {
+  // a question about a task whose tab waits at its prompt, a task whose tab works, a start whose tab asks, a tab alone
+  const waits = { ref: 'surface:12', name: 'a research', slug: 'a', state: 'waiting', since_ms: NOW - 14 * MIN, last: 'Shall I merge the sources?' }
+  const q = pointState({ rows: [ask('20261009-0900-a-q', { task: 'a', area: 'Ops' })], feed: feedOf('inbox:20261009-0900-a-q'), tabs: [waits] })
+  let el = mount(html`<${FlowPage} s=${q} c=${recorder()} />`)
+  assert.ok(!el.$('.flow-card .state-line'), 'no tab state in the card')
+  assert.doesNotMatch(el.$('.flow-card').text(), /a research/)
+  assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab a research: waiting, for 14 min/)
+  const busy = { ref: 'surface:21', name: 'notes', slug: 'a', state: 'working', since_ms: NOW - 10 * MIN, last: 'Reading the notes' }
+  el = mount(html`<${FlowPage} s=${pointState({ tabs: [busy] })} c=${recorder()} />`)
+  assert.ok(!el.$('.flow-card .fx-meta'), 'no line who drives it in the card')
+  assert.doesNotMatch(el.$('.flow-card').text(), /notes: at work/)
+  assert.match(el.$('.flow-card .fx-screen').text(), /Reading the notes/, 'the screen stays in the card')
+  const asks = { ref: 'surface:10', name: 'fin', slug: 'fin', state: 'needs-you', since_ms: NOW - 5 * MIN, ask: { text: 'Edit the file?', hash: 'h9', options: [{ n: 1, label: 'Yes' }] } }
+  const st = cockpitState(NOW, state({ work: [task('fin')], tabs: [asks], returns: [startOf('fin', 'asks', { tab: { ref: 'surface:10' } })] }))
+  el = mount(html`<${FlowPage} s=${st} c=${recorder()} />`)
+  assert.doesNotMatch(el.$('.flow-card').text(), new RegExp(en.flow.started('30 min')))
+  assert.match(el.$('.flow-aside [data-field=who]').text(), /Started from the cockpit 30 min ago/)
+  el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ tabs: [dialog()] }))} c=${recorder()} />`)
+  assert.ok(!el.$('.flow-card .state-line'), 'a tab alone: its kind says it asks, no state line')
+})
+
+test('a tab that asks: one set of answers on the card, the guide folded behind one button and without a second title', async () => {
+  const tab = dialog()
+  const guide = { enabled: true, entries: { [tab.ref]: { key: 'h1', state: 'needs-you', about: 'Merging the docs', where: 'Two pages say the same',
+    options: [{ n: 2, label: 'Redirect it', why: 'Links stay alive' }], pick: 0, source: 'haiku', at_ms: NOW - MIN } } }
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ tabs: [tab] }), guide })} c=${recorder()} />`)
+  const card = el.$('.flow-card')
+  assert.deepEqual(card.$$('.reply-btns button').map(b => b.text()), ['Delete', 'Redirect'])
+  assert.ok(!card.$('.guide'), 'the guide is folded')
+  const open = card.$$('button').find(b => b.text() === en.flow.guide.show)
+  assert.ok(open, 'one button unfolds it')
+  open.click()
+  await tick()
+  assert.ok(el.$('.flow-card .guide'))
+  assert.ok(!el.$('.flow-card .guide-head'), 'what it is about is the card\'s title already')
+  assert.ok(el.$$('.flow-card button').some(b => b.text() === en.flow.guide.hide))
+})
+
+test('a finished start: the criteria stand in Description, not in the card as well', () => {
+  const row = task('fin', { card: { acceptance: ['The machine boots Linux', 'The backup runs'] } })
+  const s = pointState({ rows: [row], feed: feedOf('task:fin'), detail: null,
+    tabs: [{ ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', since_ms: NOW - 25 * MIN }],
+    returns: [startOf('fin', 'result', { tab: { ref: 'surface:10' }, result: { kind: 'note', text: 'Result: driver installed', key: null, at_ms: null } })],
+    ui: { flowAt: { id: 'start:task:fin', i: 0 } } })
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  assert.ok(!el.$('.flow-card .flow-criteria'))
+  assert.doesNotMatch(el.$('.flow-card').text(), /The machine boots Linux/)
+  assert.match(el.$('.flow-ptabs [role=tabpanel]').text(), /The machine boots Linux.*The backup runs/)
+})
+
+test('the instruction line names what it speaks for: the reports by their count, no line where nothing takes a sentence', () => {
+  const s = cockpitState(NOW, { ...state({ now: [report('20261009-0901-a-r'), report('20261009-0902-b-r')] }), work: pointState().work,
+    flow_ai: { instruct_left: 9 }, ui: { ...state().ui, page: 'briefing', workView: 'flow', flowAt: { id: 'reports', i: 0 } } })
+  const q = queueOf(s)
+  const scope = logic.instructScope(q[0], q, new Set(), 'Ops', s)
+  assert.deepEqual([scope.point, scope.keys, scope.n], [false, ['inbox:20261009-0901-a-r', 'inbox:20261009-0902-b-r'], 2])
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  assert.match(el.$('.flow-instruct-scope').text(), new RegExp(en.flow.instruct.reports(2)))
+  // a start whose item is not in the list: nothing the sentence could act on, so no line that never sends
+  const gone = cockpitState(NOW, { ...state({ returns: [startOf('gone', 'result', { result: { kind: 'note', text: 'Result: done', key: null, at_ms: null } })] }),
+    work: pointState().work })
+  const gq = queueOf(gone)
+  assert.equal(logic.instructScope(gq[0], gq, new Set(), 'Ops', gone), null)
+  assert.ok(!mount(html`<${FlowPage} s=${gone} c=${recorder()} />`).$('.flow-instruct'))
+  // an instruction that ran keeps its undo there, though the point now in front takes no sentence
+  const ran = { ...gone, ui: { ...gone.ui, flowBatch: { running: false, n: 1, from: 'instruct', undo: [{ undo: { verb: 'task_reopen', args: { slug: 'a' } } }] } } }
+  const c = recorder()
+  const kept = mount(html`<${FlowPage} s=${ran} c=${c} />`)
+  assert.ok(kept.$('.flow-instruct-done'), 'the undo stays')
+  assert.ok(!kept.$('.flow-instruct textarea'), 'no field that could not send')
+  kept.button(en.flow.instruct.undo).click()
+  assert.deepEqual(c.calls.at(-1), ['flowBatchUndo'])
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.instruct.reports(2))
+  // the overview of all: how many of the rows it shows the sentence reaches (a tab alone has no item), no side named
+  const mixed = cockpitState(NOW, { ...state({ work: [task('a'), task('b')], tabs: [dialog()] }), work: pointState().work,
+    ui: { ...state().ui, page: 'briefing', workView: 'flow', flowView: 'overview' } })
+  const ov = mount(html`<${FlowPage} s=${mixed} c=${recorder()} />`)
+  assert.equal(ov.$('.flow-instruct-scope').text().split(' · ')[0], en.flow.instruct.every(2, 3))
+  assert.equal(en.flow.instruct.every(2, 3), 'For 2 of the 3 points')
+  assert.equal(text.TABLES.de.flow.instruct.every(9, 11), 'Gilt für 9 von 11 Punkten')
+})
+
+test('a tab that waits at its prompt is live too: To tab and View lead in one style, no Let AI do it, no Give your yes', () => {
+  const waits = { ref: 'surface:12', name: 'a research', slug: 'a', state: 'waiting', since_ms: NOW - 14 * MIN }
+  const yes = { gate: 'your-yes', has_action: true }
+  for (const tab of [waits, { ...waits, state: 'working' }]) {
+    const s = pointState({ rows: [ask('20261009-0900-a-q', { task: 'a', ...yes })], feed: feedOf('inbox:20261009-0900-a-q'), tabs: [tab] })
+    assert.equal(logic.flowLive(queueOf(s)[0], s)?.ref, 'surface:12', tab.state)
+    const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+    const can = el.$$('.flow-aside .flow-can button')
+    assert.deepEqual(can.slice(0, 2).map(b => b.text()), [en.flow.toTab, en.flow.view], tab.state)
+    assert.ok(can[0].hasClass('btn-primary') && can[1].hasClass('btn-secondary'), tab.state)
+    assert.equal(can.filter(b => b.hasClass('btn-ghost')).length, 0, 'one style in the stack')
+    assert.ok(!can.some(b => b.text() === `${en.flow.verbs.do} ▾` || b.text() === en.flow.approve), tab.state)
+  }
+})
+
+test('a finished start: the verb the AI suggests is the strong one, Done and close the tab one of the others, one style', () => {
+  const row = task('fin')
+  const live = { ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', since_ms: NOW - 25 * MIN }
+  const themes = themesState({ assign: {}, suggest: { 'task:fin': { verb: 'drop', reason: 'No longer needed', drop: 'not_needed', at_ms: NOW } } })
+  const s = { ...cockpitState(NOW, state({ work: [row], tabs: [live],
+    returns: [startOf('fin', 'result', { tab: { ref: 'surface:10' }, result: { kind: 'note', text: 'Result: nothing to do', key: 'inbox:x', at_ms: null } })] })), themes }
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  const can = el.$$('.flow-aside .flow-can button')
+  assert.equal(can[0].text(), `${en.flow.verbs.drop} ▾`)
+  assert.ok(can[0].hasClass('btn-primary'))
+  const close = can.find(b => b.text() === en.flow.doneClose)
+  assert.ok(close && close.hasClass('btn-secondary'))
+  assert.equal(can.filter(b => b.hasClass('btn-primary')).length, 1)
+  assert.equal(can.filter(b => b.hasClass('btn-ghost')).length, 0, 'one style in the stack')
+  assert.ok(!can.some(b => b.text() === en.flow.approve))
+  // without a suggestion Done and close the tab is the strong one
+  const plain = mount(html`<${FlowPage} s=${{ ...s, themes: { enabled: false } }} c=${recorder()} />`)
+  assert.equal(plain.$('.flow-aside .flow-can button').text(), en.flow.doneClose)
+})
+
+test('Activity words every state as the page does: an inbox item open, a task in review as the card head says it', () => {
+  const rows = [arow({ id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'open' } }),
+    arow({ id: 'status:2', kind: 'status', filters: ['state'], change: { field: 'status', old: 'doing', new: 'review' } }),
+    arow({ id: 'status:3', kind: 'status', filters: ['state'], change: { field: 'status', old: 'open', new: 'approved' } })]
+  const feed = feedOf('task:a', { rows, counts: { all: 3, notes: 0, docs: 0, state: 3, agents: 0, code: 0 } })
+  try {
+    for (const lang of ['en', 'de']) {
+      text.setLanguage(lang)
+      const t = text.TABLES[lang].flow
+      const el = mount(html`<${FlowPage} s=${pointState({ feed, ui: { flowTab: 'activity' } })} c=${recorder()} />`)
+      const said = el.$$('.flow-act-row .flow-chg').map(x => x.text())
+      assert.deepEqual(said, [t.activity.state.open, `${t.activity.state.doing} → ${t.activity.state.review}`,
+        `${t.activity.state.open} → ${t.activity.state.approved}`], lang)
+      assert.equal(t.activity.state.review, t.kind.task, `${lang}: review as the card head says it`)
+      assert.equal(t.activity.state.doing, t.kind.doing, `${lang}: doing as the card head says it`)
+      for (const k of ['open', 'approved', 'deferred', 'done', 'dropped', 'backlog']) assert.ok(t.activity.state[k], `${lang} ${k}`)
+    }
+  } finally {
+    text.setLanguage('en')
+  }
+})
+
+test('the source in the fields: the chip stays in the column, STATUS.md opens the files view, an issue opens on the web by its ref', () => {
+  const c = recorder()
+  const row = task('a', { area: 'Ops', url: 'https://example.org/repo/issues/12', origin: { category: 'bot', word_key: null, detail: 'issue-radar', raw: null, ref: 'example/repo#3' } })
+  const el = mount(html`<${FlowPage} s=${pointState({ rows: [row], detail: detailOf({ front: { status: 'doing' } }) })} c=${c} />`)
+  const src = el.$('.flow-aside [data-field=source]')
+  assert.ok(src.$('.origin'), 'the chip stays')
+  const status = src.$$('button').find(b => b.text() === 'STATUS.md')
+  assert.ok(status, 'STATUS.md as a link')
+  status.click()
+  assert.deepEqual(c.calls.at(-1), ['openFile', 'a', null])
+  const link = src.$$('a').find(a => a.getAttribute('href') === 'https://example.org/repo/issues/12')
+  assert.equal(link?.text(), 'repo#12', 'the issue by its ref')
+  assert.equal(logic.refOfUrl('https://github.com/owner/repo/pull/7'), 'owner/repo#7')
+  assert.equal(logic.refOfUrl('https://example.org/grp/app/-/issues/3'), 'grp/app#3')
+  assert.equal(logic.refOfUrl('https://example.org/docs/page'), null)
+})
+
+test('the plan says each skip inside its step, the point struck through; a reply to a tab that asks says to answer on the card', () => {
+  const busy = { ref: 'surface:21', name: 'busy', slug: 'a', state: 'working', since_ms: NOW - MIN }
+  const plan = { id: 'p1', text: 'x', point: true, n: 1, steps: [
+    { n: 1, op: 'do', mail: true, keys: ['task:a'], titles: ['Task a'], note: 'A mail draft, a draft only', skipped: [] },
+    { n: 2, op: 'reply', keys: [], titles: [], tab_ref: null, text: 'yes', skipped: [{ key: 'task:a', title: 'Task a', why: 'not_offered' }] },
+  ], unclear: null, model: 'haiku', at_ms: NOW }
+  let el = mount(html`<${FlowPage} s=${pointState({ tabs: [busy], ui: { flowPlan: plan } })} c=${recorder()} />`)
+  const steps = el.$$('.flow-instruct-plan .flow-instruct-step')
+  assert.equal(steps.length, 2)
+  assert.equal(steps[0].$('del')?.text(), 'Task a', 'the point that drops out is struck through in its step')
+  assert.match(steps[0].text(), new RegExp(en.flow.instruct.skipped.working))
+  assert.equal(el.$$('.flow-instruct-plan > .flow-instruct-skip').length, 0, 'no loose line under the steps')
+  // the server says not offered for a reply; with the point's tab asking a choice the page says why
+  const asks = { ...busy, state: 'needs-you', ask: { text: 'Pick one', hash: 'h1', options: [{ n: 1, label: 'One' }] } }
+  el = mount(html`<${FlowPage} s=${pointState({ tabs: [asks], ui: { flowPlan: plan } })} c=${recorder()} />`)
+  const reply = el.$$('.flow-instruct-plan .flow-instruct-step')[1]
+  assert.match(reply.text(), new RegExp(en.flow.instruct.skipped.asks.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.equal(reply.$('del')?.text(), 'Task a')
+})
+
+test('the demo plans the placeholder in full, a mail as a draft only; a part it cannot read stays unclear', async () => {
+  for (const lang of ['en', 'de']) {
+    const tr = mock.createMockTransport({ lang, latency: 0 })
+    const example = text.TABLES[lang].flow.instruct.placeholder.split(': ').slice(1).join(': ')
+    const r = await tr.post('/api/action', { verb: 'flow_instruct', args: { text: example, keys: ['task:demo-task'], point: true } })
+    assert.deepEqual(r.data.plan.steps.map(x => [x.op, x.mail ?? false]), [['done', false], ['do', true]], lang)
+    assert.equal(r.data.plan.unclear, null, lang)
+    assert.match(r.data.plan.steps[1].note, /mail-draft/)
+  }
+  const tr = mock.createMockTransport({ lang: 'de', latency: 0 })
+  const r = await tr.post('/api/action', { verb: 'flow_instruct', args: { text: 'erledigt, und kauf Brot', keys: ['task:demo-task'], point: true } })
+  assert.deepEqual(r.data.plan.steps.map(x => x.op), ['done'])
+  assert.match(r.data.plan.unclear, /kauf Brot/)
+  // a reply to a tab that asks a choice: the why says so
+  const st = (await tr.get('/api/state')).data
+  const asking = st.tabs.tabs.find(t => t.state === 'needs-you' && t.slug)
+  const key = `task:${asking.slug}`
+  if (st.model.sections.some(x => x.rows.some(y => y.key === key))) {
+    const p = await tr.post('/api/action', { verb: 'flow_instruct', args: { text: 'antworte: ja', keys: [key], point: true } })
+    assert.deepEqual(p.data.plan.steps[0].skipped.map(x => x.why), ['asks'])
+  }
+})
+
+test('the demo takes a decision back: the point is in the list again, the note in the page\'s language', async () => {
+  const tr = mock.createMockTransport({ lang: 'de', latency: 0 })
+  const rowsOf = async () => (await tr.get('/api/state')).data.model.sections.flatMap(x => x.rows).map(r => r.key)
+  const before = await rowsOf()
+  const key = before.find(k => k.startsWith('inbox:'))
+  const task1 = before.find(k => k.startsWith('task:'))
+  let r = await tr.post('/api/action', { verb: 'settle', args: { keys: [key, task1], outcome: 'done' } })
+  assert.equal(r.ok, true)
+  assert.doesNotMatch(r.data.note, /settle|inbox:|task:/)
+  assert.ok(!(await rowsOf()).includes(key))
+  for (const u of r.data.undo) {
+    const back = await tr.post('/api/action', { verb: u.undo.verb, args: u.undo.args })
+    assert.equal(back.ok, true)
+    assert.doesNotMatch(back.data.note, /reopen|inbox:|task:/)
+  }
+  const after = await rowsOf()
+  assert.ok(after.includes(key) && after.includes(task1), 'both are back')
+  assert.equal(after.length, before.length)
+})
+
+test('the German demo speaks German: the note of a note, the steps and criteria of a task; one attachment says itself once', async () => {
+  const tr = mock.createMockTransport({ lang: 'de', latency: 0 })
+  const heard = []
+  tr.events({ note: x => heard.push(x.text) }, () => {})
+  await new Promise(r => setTimeout(r, 40))
+  const n = await tr.post('/api/action', { verb: 'note', args: { key: 'task:demo-task', text: 'Notiz' } })
+  assert.doesNotMatch(n.data.note, /^Mock: note\b|task:demo-task/)
+  await new Promise(r => setTimeout(r, 40))
+  assert.deepEqual(heard, [n.data.note], 'the note of a note, once')
+  heard.length = 0
+  const a = await tr.post('/api/flow/attach', { key: 'task:demo-task', name: 'x.txt', data: 'aGk=' })
+  assert.equal(a.ok, true)
+  await new Promise(r => setTimeout(r, 40))
+  assert.deepEqual(heard, [], 'the page says the attachment itself, the demo adds no second note')
+  const st = (await tr.get('/api/state')).data
+  const slugs = [...new Set(st.model.sections.flatMap(x => x.rows).filter(x => x.task && !x.inbox_id).map(x => x.task))]
+  const steps = []
+  for (const slug of slugs.slice(0, 3)) {
+    const d = (await tr.get(`/api/task?slug=${slug}`)).data
+    const text = d.sections.find(x => x.heading === 'Steps').text
+    assert.doesNotMatch(text, /Outline the chapters|Collect examples|Review with/, slug)
+    steps.push(text)
+    for (const p of d.related) assert.doesNotMatch(p, /\s/)
+  }
+  assert.ok(new Set(steps).size > 1, 'the steps differ from task to task')
+  const d = (await tr.get('/api/task?slug=demo-task')).data
+  assert.doesNotMatch(JSON.stringify(d.sections), /done and checked|team member/)
+})
+
+test('the demo names an attachment as the server does: letters of any script kept, one blank or underscore of a run', async () => {
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
+  // what activity.py safe_name makes of each (computed with the server's function)
+  const want = { 'Mein Bericht (Entwurf) ä.txt': 'Mein Bericht (Entwurf) ä.txt', 'Grüße_aus  Köln.md': 'Grüße_aus Köln.md', 'a​b.txt': 'ab.txt',
+    'x  y__z.txt': 'x y_z.txt', 'Отчёт №5.txt': 'Отчёт _5.txt', '日本語.txt': '日本語.txt', '..hidden .txt': 'hidden .txt',
+    'emoji\u{1F600}.txt': 'emoji_.txt', 'Zahl ²³ ½.txt': 'Zahl ²³ ½.txt', 'a _b.txt': 'a _b.txt' }
+  for (const [name, safe] of Object.entries(want)) {
+    const r = await tr.post('/api/flow/attach', { key: 'task:demo-task', name, data: 'aGk=' })
+    assert.equal(r.data?.attach?.name, safe, name)
+  }
 })

@@ -208,6 +208,26 @@ const WORDS = {
     'A file of the demo, invented: nothing here is real.': 'Eine Datei der Demo, erfunden: nichts hier ist echt.',
     'No verb in the sentence: done, later, drop, a mail or a reply.': 'Kein Verb im Satz: erledigt, später, weg, eine Mail oder eine Antwort.',
     'Write a mail draft with the mail-draft skill, a draft only, never send it': 'Schreibe einen Mail-Entwurf mit dem Skill mail-draft, nur als Entwurf, niemals senden',
+    'No verb in this part:': 'Kein Verb in diesem Teil:', 'Started from the cockpit': 'Aus dem Cockpit gestartet',
+    // Work through, round 3 after review: the notes the demo gives its verbs, the briefs and steps of its tasks
+    'Mock: the note is kept': 'Demo: Notiz gespeichert', 'Mock: decided': 'Demo: entschieden', 'Mock: put off': 'Demo: verschoben',
+    'Mock: shelved': 'Demo: zurückgestellt', 'Mock: an agent starts on it': 'Demo: ein Agent fängt damit an', 'Mock: back in the list': 'Demo: wieder in der Liste',
+    'Onboard the new team members': 'Die neuen Teammitglieder einarbeiten',
+    'Issue example-org/demo-project#12 links the finished guide': 'Issue example-org/demo-project#12 verlinkt die fertige Anleitung',
+    ' links the finished guide': ' verlinkt die fertige Anleitung',
+    'The open points of the review (§3) are answered': 'Die offenen Punkte des Reviews (§3) sind beantwortet',
+    'The open points of the review (': 'Die offenen Punkte des Reviews (', ') are answered': ') sind beantwortet',
+    'Done, with its result written down in STATUS.md': 'Erledigt, mit dem Ergebnis in STATUS.md festgehalten',
+    'Outline the chapters': 'Die Kapitel gliedern', 'Collect examples from the setup': 'Beispiele aus der Einrichtung sammeln',
+    'Write the first two chapters': 'Die ersten zwei Kapitel schreiben', 'Take the screenshots': 'Die Screenshots machen',
+    'Let a new colleague try the guide': 'Eine neue Kollegin die Anleitung ausprobieren lassen',
+    'List the merged changes since the last tag': 'Die gemergten Änderungen seit dem letzten Tag auflisten',
+    'Link each change to its pull request': 'Jede Änderung mit ihrem Pull Request verlinken',
+    'Answer the open points of the review': 'Die offenen Punkte des Reviews beantworten', 'Push the tag': 'Den Tag pushen',
+    'List every page of the docs folder': 'Jede Seite des Doku-Ordners auflisten', 'Group the pages by topic': 'Die Seiten nach Thema gruppieren',
+    'Check every link of the index': 'Jeden Link des Index prüfen',
+    'Read what is still open': 'Lesen, was noch offen ist', 'Do the work': 'Die Arbeit erledigen', 'Write the result into STATUS.md': 'Das Ergebnis in STATUS.md schreiben',
+    'Outline the guide in chapters, screenshots come next.': 'Die Anleitung in Kapitel gliedern, als Nächstes die Screenshots.',
   },
 }
 
@@ -495,7 +515,7 @@ function mockCard(r, m = {}, now = Date.now()) {
 
 /** What the demo's describe writes for a row without a brief: invented, in the shape the model answers with */
 function mockBrief(r) {
-  return { goal: `${r.title}, done and checked`, acceptance: r.stream ? [] : ['The work is done and written down in STATUS.md', 'Someone else checked the result'],
+  return { goal: 'Done, with its result written down in STATUS.md', acceptance: r.stream ? [] : ['The work is done and written down in STATUS.md', 'Someone else checked the result'],
     by: 'claude-haiku-5-5', edited: false }
 }
 
@@ -1049,7 +1069,20 @@ function findFiles(q, state) {
   return { ok: true, query: String(q ?? '').trim(), words, engine: 'python', total: groups.length, truncated: false, groups }
 }
 
-function taskDetail(slug, state) {
+// the checklist of each demo task (its Steps), and the paths its STATUS.md names; any other task a short one of its own
+const DEMO_STEPS = {
+  'demo-task': [[true, 'Outline the chapters'], [true, 'Collect examples from the setup'], [false, 'Write the first two chapters'],
+    [false, 'Take the screenshots'], [false, 'Let a new colleague try the guide']],
+  'alpha-release': [[true, 'List the merged changes since the last tag'], [true, 'Link each change to its pull request'],
+    [true, 'Answer the open points of the review'], [false, 'Push the tag']],
+  'docs-refresh': [[true, 'List every page of the docs folder'], [false, 'Group the pages by topic'], [false, 'Check every link of the index']],
+}
+const DEMO_STEPS_ANY = [[true, 'Read what is still open'], [false, 'Do the work'], [false, 'Write the result into STATUS.md']]
+const DEMO_RELATED = { 'demo-task': ['docs/demo-guide.md', 'work/tasks/docs-refresh/STATUS.md'],
+  'alpha-release': ['CHANGELOG.md', 'work/tasks/release-polish/STATUS.md'], 'docs-refresh': ['docs/index.md'] }
+
+/** A task's file as details.py task_detail sends it; `words` the demo's own language, for the lines composed here */
+function taskDetail(slug, state, words = null) {
   // the front of the task the row stands for (review C12): a P0 row opens as that P0, not as one fixed page
   const rows = [...(state?.model?.sections ?? []).flatMap(s => s.rows ?? []),
     ...(state?.model?.pages ?? []).flatMap(p => (p.sections ?? []).flatMap(s => s.items ?? []))]
@@ -1077,11 +1110,10 @@ function taskDetail(slug, state) {
       { heading: 'Next', text: '- Draft the first two chapters\n- Collect screenshots from the example setup', truncated: false },
       { heading: 'Log', text: '2026-10-08: outline written, examples collected\n2026-10-03: task opened', truncated: false },
       // the checklist the Steps tab of Work through reads
-      { heading: 'Steps', text: '- [x] Outline the chapters\n- [x] Collect examples from the setup\n- [ ] Write the first two chapters\n'
-        + '- [ ] Take the screenshots\n- [ ] Review with a new team member', truncated: false },
+      { heading: 'Steps', text: (DEMO_STEPS[slug] ?? DEMO_STEPS_ANY).map(([done, step]) => `- [${done ? 'x' : ' '}] ${localize(step, words)}`).join('\n'), truncated: false },
     ],
     // the paths STATUS.md names under related (details.py)
-    related: ['docs/demo-guide.md', 'work/tasks/docs-refresh/STATUS.md'],
+    related: DEMO_RELATED[slug] ?? [],
     log: [
       { at: '2026-10-08 16:20', glyph: 'n', context: slug, text: 'Outline written, examples collected' },
       { at: '2026-10-03 11:05', glyph: 'n', context: slug, text: 'Task opened after the team call' },
@@ -1460,6 +1492,10 @@ function feedCounts(rows) {
   return counts
 }
 
+// the notes the demo gives the verbs Work through sends, in words both languages carry (WORDS); any other verb names itself
+const MOCK_NOTES = { note: 'Mock: the note is kept', settle: 'Mock: decided', later: 'Mock: put off', shelve: 'Mock: shelved',
+  do_it: 'Mock: an agent starts on it', task_reopen: 'Mock: back in the list', inbox_reopen: 'Mock: back in the list' }
+
 // the sentence a mail of an instruction becomes: a start that drafts only (text.py instruct.mail_note)
 const MAIL_NOTE = 'Write a mail draft with the mail-draft skill, a draft only, never send it'
 
@@ -1497,7 +1533,12 @@ export function createMockTransport(opts = {}) {
     })
     history.unshift({ id: `h${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, at_ms: now(), verb, items, backfilled: false })
   }
+  const gone = new Map()                                   // the rows a decision took out, by key, for its undo
   const removeRows = (keys, verb) => {
+    for (const sec of state.model.sections) {
+      sec.rows.forEach((r, at) => { if (keys.includes(r.key)) gone.set(r.key, { section: sec.id, at, row: r, compact: sec.compact.includes(r.key),
+        approvable: state.model.approvable.includes(r.key), task: state.model.task_rows.find(x => x.key === r.key) ?? null }) })
+    }
     // a file put off stays a file, deferred; one closed or dropped leaves the list
     if (state.model.files) {
       const put = ['later', 'hide'].includes(verb)
@@ -1517,13 +1558,40 @@ export function createMockTransport(opts = {}) {
     wait(() => emit('view', state.model), 300)
   }
 
+  // an undo: the row a decision took out comes back to its section, at its place, the page hears the new view
+  const restoreRow = key => {
+    const was = gone.get(key)
+    if (!was) return
+    gone.delete(key)
+    const sec = state.model.sections.find(x => x.id === was.section)
+    if (!sec || sec.rows.some(r => r.key === key)) return
+    sec.rows.splice(Math.min(was.at, sec.rows.length), 0, was.row)
+    if (was.compact) sec.compact.push(key)
+    sec.total = sec.rows.length
+    if (was.approvable) state.model.approvable.push(key)
+    if (was.task) state.model.task_rows.push(was.task)
+    if (state.model.files && key.startsWith('task:')) state.model.files = state.model.files.map(f => (`task:${f.slug}` === key ? { ...f, deferred: false, deferred_until: null } : f))
+    seq += 1
+    state.model = { ...state.model, seq }
+    wait(() => emit('view', state.model), 120)
+  }
+
   // Work through, round 3: the row of a key, the feed of a point (an inbox item that names a task reads the task's), the
   // refusals of flow_off and of a key no longer in the list
   const flowOff = () => (state.work?.flow?.enabled ? null : fail(409, 'flow_off', 'Work through is off'))
   const rowOf = key => state.model.sections.flatMap(x => x.rows).find(r => r.key === key) ?? null
+  // the starts of the return channel on a row, as activity.py lists them, where the invented feed has none of its own
+  const startRows = row => (state.model.returns ?? []).filter(r => r.key === row.key).map((r, k) => {
+    const tab = state.tabs.tabs.find(t => t.ref === r.tab?.ref) ?? null
+    return feedRow(r.at_ms ?? now(), { id: `agent:r${k + 1}`, kind: 'agent', filters: ['agents', 'state'], text: 'Started from the cockpit',
+      change: { field: 'driver', old: null, new: tab?.name ?? null }, by: { kind: 'you', name: null },
+      agent: { mode: r.mode ?? 'go', stage: r.stage ?? 'started', result: r.result?.text ?? null }, links: tab ? [{ kind: 'tab', ref: tab.ref }] : [] })
+  })
   const feedOf = row => {
     const own = row.task ? `task:${row.task}` : row.key
-    const rows = [...(added[row.key] ?? []), ...(own !== row.key ? added[own] ?? [] : []), ...feedRows(row, now())]
+    const base = feedRows(row, now())
+    const rows = [...(added[row.key] ?? []), ...(own !== row.key ? added[own] ?? [] : []), ...base,
+      ...(base.some(r => r.kind === 'agent') ? [] : startRows(row))]
       .sort((a, b) => (b.at_ms ?? 0) - (a.at_ms ?? 0))
     const hash = rows.map(r => r.id).join(',')
     const kept = summaries[row.key] ?? null
@@ -1548,8 +1616,10 @@ export function createMockTransport(opts = {}) {
     if (!data || data.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return bad('data')
     const bytes = (data.length / 4) * 3 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0)
     if (bytes > state.work.flow.attach.max_mb * 1048576) return fail(413, 'attach_too_big', 'too big')
-    let name = String(args.name ?? '').split(/[\\/]/).pop().normalize('NFC').replace(/[\u0000-\u001f\u007f]/g, '')
-      .replace(/[^\w .()+,=@-]/gu, '_').replace(/[ _]{2,}/g, m => m[0]).replace(/^[. _-]+/, '').replace(/[. ]+$/, '')
+    // as activity.py safe_name: Python's \w is every letter and digit of any script, so \p{L} and \p{N} here; control
+    // and format characters out; runs of blanks, then of underscores, as one
+    let name = String(args.name ?? '').split(/[\\/]/).pop().normalize('NFC').replace(/[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}]/gu, '')
+      .replace(/[^\p{L}\p{N}_ .()+,=@-]/gu, '_').replace(/ {2,}/g, ' ').replace(/_{2,}/g, '_').replace(/^[. _-]+/, '').replace(/[. ]+$/, '')
     if (name.length > 120) { const dot = name.lastIndexOf('.'); const ext = dot > 0 && name.length - dot <= 16 ? name.slice(dot) : ''; name = name.slice(0, 120 - ext.length) + ext }
     if (!name) return bad('name')
     const slug = row.task
@@ -1566,34 +1636,47 @@ export function createMockTransport(opts = {}) {
     const r = feedRow(now(), { id: `doc:a${Object.values(added).flat().length + 1}`, kind: 'doc', filters: ['docs'], by: { kind: 'you', name: null },
       doc: { path, state: 'new', changes: 1, attached: true, bytes }, links: [{ kind: 'doc', slug, path }] })
     added[own] = [r, ...(added[own] ?? [])]
-    wait(() => note(`Attached: ${path}`, 'ok'), 50)
-    return ok({ ok: true, verb: 'flow_attach', note: `Attached: ${path}`, steps: [], settled: [], reload: 'none', attach: { path, name: pick, bytes, row: r } })
+    // the page says the attachment itself (app.js flowAttach): no note of the demo's beside it
+    return ok({ ok: true, verb: 'flow_attach', note: '', steps: [], settled: [], reload: 'none', attach: { path, name: pick, bytes, row: r } })
   }
-  // a sentence of the instruction line as a plan (instruct.py), by a fixed word match: done, later, drop, a mail (always a
-  // start that drafts only), a start, a reply (only with the point open and its tab at its prompt); nothing runs
+  // a sentence of the instruction line as a plan (instruct.py), by a fixed word match, part by part (the parts between
+  // commas): done, later, drop, a mail or a question to someone (always a start that drafts only), a start, a reply
+  // (only with the point open and its tab at its prompt; after "reply:" the rest of the sentence is its words). A part
+  // with none of them stays unclear, as the model says what it could not plan; nothing runs
   const instruct = args => {
     const rows = (args.keys ?? []).map(rowOf).filter(Boolean)
     if (!rows.length) return fail(409, 'stale_row', 'no such row')
-    const low = ` ${String(args.text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `
-    const has = (...w) => w.some(x => low.includes(` ${x} `))
+    const text = String(args.text ?? '').trim()
     const steps = []
+    const unclear = []
     const step = (op, rs, extra = {}) => steps.push({ n: steps.length + 1, op, keys: rs.map(r => r.key), titles: rs.map(r => r.title), skipped: [], ...extra })
     const monday = (() => { const d = new Date(now()); d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7)); return isoIn(Math.round((d.getTime() - now()) / DAY), now()) })()
-    if (has('done', 'erledigt', 'fertig')) step('done', rows)
-    if (has('later', 'später', 'monday', 'montag')) step('later', rows, { until: monday })
-    if (has('drop', 'weg', 'not needed', 'nicht mehr nötig')) step('drop', rows, { reason: 'not_needed' })
-    if (has('mail', 'e mail', 'email')) step('do', rows, { mail: true, note: `${localize(MAIL_NOTE, words)}: ${String(args.text).trim()}` })
-    else if (has('let ai', 'bridge macht', 'agent')) step('do', rows, { note: String(args.text).trim() })
-    if (has('reply', 'antwort', 'antworte', 'go on', 'weiter')) {
-      // typed words go only to a tab that waits at its prompt (instruct.py takes_words); one that asks a choice or works
-      // does not offer a reply
+    // typed words go only to a tab that waits at its prompt (instruct.py takes_words); one that asks a choice is answered
+    // on the card (asks), one at work takes nothing (not_offered)
+    const reply = said => {
       const tab = args.point ? state.tabs.tabs.find(t => t.slug === rows[0].task && t.state !== 'shell') : null
-      const said = String(args.text).split(':').slice(1).join(':').trim() || String(args.text).trim()
       if (tab?.state === 'waiting' && !tab.is_control) step('reply', rows.slice(0, 1), { tab_ref: tab.ref, text: said })
-      else step('reply', [], { tab_ref: null, text: said, skipped: rows.map(r => ({ key: r.key, title: r.title, why: tab ? 'not_offered' : 'no_tab' })) })
+      else step('reply', [], { tab_ref: null, text: said, skipped: rows.map(r => ({ key: r.key, title: r.title,
+        why: !tab ? 'no_tab' : tab.state === 'needs-you' ? 'asks' : 'not_offered' })) })
     }
-    return { id: `p${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, text: String(args.text).trim(), point: !!args.point, n: rows.length,
-      steps, unclear: steps.length ? null : 'No verb in the sentence: done, later, drop, a mail or a reply.', model: 'haiku', at_ms: now() }
+    const told = /(?:^|[\s,;])(?:reply|answer|antworte|antwort)\s*:\s*(.*)$/iu.exec(text)
+    const head = told ? text.slice(0, told.index) : text
+    for (const part of head.split(/[,;]/).map(x => x.trim().replace(/^(?:and|und|then|dann)\s+/iu, '')).filter(Boolean)) {
+      const low = ` ${part.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `
+      const has = (...w) => w.some(x => low.includes(` ${x} `))
+      const before = steps.length
+      if (has('done', 'erledigt', 'fertig')) step('done', rows)
+      if (has('later', 'später', 'monday', 'montag')) step('later', rows, { until: monday })
+      if (has('drop', 'weg', 'not needed', 'nicht mehr nötig')) step('drop', rows, { reason: 'not_needed' })
+      if (has('mail', 'e mail', 'email', 'ask', 'frag', 'frage')) step('do', rows, { mail: true, note: `${localize(MAIL_NOTE, words)}: ${part}` })
+      else if (has('let ai', 'bridge macht', 'agent')) step('do', rows, { note: part })
+      if (has('reply', 'antwort', 'antworte', 'go on', 'weiter')) reply(part)
+      if (steps.length === before) unclear.push(part)
+    }
+    if (told) reply(told[1].trim() || text)
+    return { id: `p${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, text, point: !!args.point, n: rows.length, steps,
+      unclear: !steps.length ? 'No verb in the sentence: done, later, drop, a mail or a reply.' : unclear.length ? `${localize('No verb in this part:', words)} ${unclear.join('; ')}` : null,
+      model: 'haiku', at_ms: now() }
   }
 
   return {
@@ -1622,7 +1705,7 @@ export function createMockTransport(opts = {}) {
         const found = taskFile(url.searchParams.get('slug'), url.searchParams.get('file'))
         return found ? ok(found) : fail(404, 'not_found', 'no such file')
       }
-      if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug'), state))
+      if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug'), state, words))
       if (url.pathname === '/api/flow/activity') {
         const off = flowOff()
         if (off) return off
@@ -1800,7 +1883,7 @@ export function createMockTransport(opts = {}) {
         const verb = body?.verb
         const args = body?.args ?? {}
         const keys = args.keys ?? (args.key ? [args.key] : [])
-        const result = { ok: true, verb, note: `Mock: ${verb} ${keys.join(', ') || args.tab_ref || ''}`.trim(), steps: [], settled: [],
+        const result = { ok: true, verb, note: MOCK_NOTES[verb] ?? `Mock: ${verb} ${keys.join(', ') || args.tab_ref || ''}`.trim(), steps: [], settled: [],
           reload: 'none', jump: null, relay: null, confirm: null }
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
         // Work through, round 3: an attachment, the summary of a point's Activity, the plan of an instruction
@@ -1988,6 +2071,8 @@ export function createMockTransport(opts = {}) {
           const hit = history.flatMap(e => e.items).find(it => !it.undone_ms && it.undo?.verb === verb
             && Object.entries(args).every(([k, v]) => k === 'as' || k === 'note' || it.undo.args[k] === v))
           if (hit) hit.undone_ms = now()
+          // and the row the decision took out of the list is back where it stood
+          restoreRow(verb === 'task_reopen' ? `task:${args.slug}` : verb === 'inbox_reopen' ? `inbox:${args.id}` : args.key)
         }
         if (verb === 'drop' && (args.reason === 'family' || args.reason === 'source')) {
           result.muted = `20261010-1200-mock-${mockMutes.length}`

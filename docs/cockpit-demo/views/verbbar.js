@@ -46,10 +46,13 @@ function Advice({ row, s, c, onStart }) {
 
 /** The five verbs of one row. `verbs` narrows them (a card that offers fewer), `primary` names the strong one where
  *  the card knows better than the triage (false: none, a way to the tab is the strong one), `suggested` says the AI
- *  suggested that one, `words` gives a verb other words (Start again on a lost start), `onDone` runs after a verb
- *  went out, whatever it answered (the return card forgets its jump), `extra` stands after them, `stack` puts them
- *  under each other with the strong one first */
-export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = false, words = {}, onDone = null, extra = null, stack = false }) {
+ *  suggested that one, `words` gives a verb other words (Start again on a lost start), `handlers` a verb its own
+ *  action (Done that closes the tab too: called with the verb's by, answers what the server answered), `yes` false
+ *  leaves out Give your yes (an agent works on the point already), `onDone` runs after a verb went out, whatever it
+ *  answered (the return card forgets its jump), `extra` stands after them, `stack` puts them under each other with the
+ *  strong one first, every other one in the same style */
+export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = false, words = {}, handlers = {}, yes: offerYes = true, onDone = null,
+  extra = null, stack = false }) {
   const t = T()
   const f = t.flow
   const lang = language()
@@ -90,11 +93,12 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     setCrowd(0)
     send(a)
   }
-  const click = v => (PANELS.has(v) ? toggle(v) : v === 'advise' ? c.flowAdvise(row.key) : send(flowAction(v, row, '', by(v))))
+  const own = async v => finish(await handlers[v](by(v)))
+  const click = v => (handlers[v] ? own(v) : PANELS.has(v) ? toggle(v) : v === 'advise' ? c.flowAdvise(row.key) : send(flowAction(v, row, '', by(v))))
   const nowMs = s.now || Date.now()
   const putOff = iso => send(flowAction('later', row, iso, by('later')))
   const word = v => words[v] ?? f.verbs[v]
-  const yes = row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved'
+  const yes = offerYes && row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved'
   const pickDay = () => {
     const iso = parseDate(day, s.now)
     if (!iso) return setDayErr(t.noDate(day || ' '))
@@ -108,7 +112,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     <div class="verbbar-row">
       ${list.map(v => html`<${Btn} key=${v} size="sm" variant=${v === strong ? 'primary' : 'secondary'} busy=${busy && v !== 'advise'}
         pressed=${PANELS.has(v) ? open === v : undefined} onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`)}
-      ${yes ? html`<${Btn} size="sm" variant="ghost" busy=${busy} onClick=${() => send({ verb: 'do_it', args: { keys: [row.key] } })}>${f.approve}<//>` : null}
+      ${yes ? html`<${Btn} size="sm" variant=${stack ? 'secondary' : 'ghost'} busy=${busy} onClick=${() => send({ verb: 'do_it', args: { keys: [row.key] } })}>${f.approve}<//>` : null}
       ${extra}
     </div>
     ${open === 'do' ? html`<div class="verbbar-panel">

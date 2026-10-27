@@ -326,10 +326,12 @@ out a workspace:
   selection. A click on a title, on the left or in the table, opens the
   **point**: on top **Back to overview** with the theme's name beside it, a
   line "n ticked" with **See in the overview** while points are ticked, then
-  the point as a card that carries its content only: its kind and the state of
-  its tab in its head (the one place the state stands), the title, the tab's
-  question with its answers, what came back and the criteria to check, the last
-  lines of its tab's screen. Under the card the point's **tabs** (below), at the
+  the point as a card that carries its content only: its kind in its head (the
+  one place its state stands), the title, the tab's question with one row of
+  answers (the decision guide folded under **Show the decision guide**), what
+  came back, the last lines of its tab's screen. Who works on it and since when
+  is a field on the right, the criteria of its brief stand in Description. Under
+  the card the point's **tabs** (below), at the
   foot the **instruction line** (below, while it is on) and under it the files
   view's walk bar
   (**Previous point**, "n of m", the next title, **Next point**). After the
@@ -339,14 +341,21 @@ out a workspace:
 - **Right**, for the point open, **What you can do**: the AI's suggestion as
   one sentence (on an open point the only place it stands; the left column and
   the overview show it as a chip and a column, because there one picks without
-  a point open), then the verbs under each other, the suggested one the strong
-  button. Under it the **Fields**, like the sidebar of an issue tracker:
+  a point open), then the verbs under each other in one style, the suggested
+  one the strong button. While an agent tab is on the point (at work, asking, or
+  waiting at its prompt) **To tab** leads and **View** follows, and neither
+  Let AI do it nor Give your yes stands there: no second agent starts beside
+  it, as the instruction line and a batch have it. On a finished start the verb
+  the AI suggests is the strong one too, else Done and close the tab. Under it
+  the **Fields**, like the sidebar of an issue tracker:
   **Theme** (to change, with the themes on), **Area**, **Who works on it**,
   **Prio** (Jev's quadrant and rank while Jev's order of the point is younger
   than `rank_max_age_days`, else the day's triage rank, else the priority),
   **Urgent**, **Important** and **Effort** as small bars (only with Jev's
-  order), **Due**, **Source** (as links), **Created** and **Moved** (the newest
-  row of its Activity). There is no Status field: the card's head says it, and
+  order), **Due**, **Source** (its chip, **STATUS.md** that opens the task in
+  the files view, an issue or a pull request by its ref on the web),
+  **Created** and **Moved** (the newest row of its Activity). There is no Status
+  field: the card's head says it, and
   who works on it and the source stand only here. In the overview a line says
   that a click on a title shows them here.
 
@@ -528,8 +537,10 @@ button.
 the foot of the middle above the walk bar, one row while it is empty: one
 sentence to the Bridge in place of a few clicks. Above it what it speaks for:
 on a point that point ("For: <title>", and "a reply goes to its live tab" while
-its tab waits at its prompt), in the overview the ticked points or all points
-of the theme (at most 50 go, and the label says so). **Send** hands the sentence
+its tab waits at its prompt), on the Reports card its reports, in the overview
+the ticked points or all points of the theme (at most 50 go, and the label says
+so). A point with no item behind it (a tab alone, a start whose item is not in
+the list) has no line. **Send** hands the sentence
 and the points (their titles, kinds, the verbs each offers and whether a tab
 runs, nothing more) to a
 small model that answers with steps of the verbs there are: Done, Later until a
@@ -538,8 +549,10 @@ it waits at its prompt (a tab that asks a choice is answered on the card). A
 mail becomes a start of Let AI do it whose sentence asks for a draft with the
 mail-draft skill, a draft only, never sent. The server checks every step against
 what each point offers, the day and the scope, and runs nothing. The page shows
-**This is how I understood it**: the steps in words, what stays out and why,
-what was unclear; **Run** sends the steps through the same verbs and their undo
+**This is how I understood it**: the steps in words, each point that drops out
+of a step struck through in it with why (a reply to a tab that asks a choice
+says to answer it on the card), what was unclear; **Run** sends the steps
+through the same verbs and their undo
 (quiet, one toast, with `by: instruction`, a start never where an agent works
 already nor past `max_running`), and **Undo the instruction** stands under the
 line once; **Change** puts the sentence back into the field, **Discard** drops
@@ -2548,7 +2561,8 @@ See [Work through](#work-through-flow).
 ### Upgrading: the tabs, Activity and the instruction line
 
 Nothing has to be done by hand. With `cockpit.flow.enabled: false` nothing
-changes at all: every new route and verb answers `409 flow_off`.
+changes at all: every new route and verb answers `409 flow_off`, the verbs
+before they read their arguments (a bad argument does not turn it into a 400).
 
 1. **The page.** On an open point of Work through the card carries its content
    only; the verbs moved to the right column (What you can do, under each
@@ -2565,7 +2579,10 @@ changes at all: every new route and verb answers `409 flow_off`.
    services `cockpit-activity` and `cockpit-instruct` of `workflow/ai-services/`
    (Haiku when none is declared); `flow_attach`, the verb behind the attach
    route. The state gains `flow_ai` (what is left of both budgets today, and
-   whether an instruction is being read), which an older page skips.
+   whether an instruction is being read), which an older page skips. A step of
+   the plan names why a point drops out of it (`skipped[].why`): `not_offered`,
+   `bad_day`, `unknown_point`, `no_tab`, and `asks` for a reply to a tab that
+   asks a choice; a page that does not know a why shows it as it comes.
 4. **`by` on four verbs.** `do_it`, `later`, `shelve` and `settle` take an
    optional `by` (`suggestion`, `batch`, `instruction`); the history entry, the
    start and the audit line keep it. Without it the click counts as your own,

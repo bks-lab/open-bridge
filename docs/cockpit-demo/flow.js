@@ -650,10 +650,23 @@ export function flowTabOf(x, s) {
   return tab && tab.state !== 'shell' ? tab : null
 }
 
-/** The tab of a point while it is live, at work or asking: then To tab is the strong way, and no second agent starts */
+/** The tab of a point while it is live: at work, asking, or waiting at its prompt (the agent is there, it takes words).
+ *  Then To tab is the strong way and no second agent starts, the same rule as atWork, so the verbs on the right and
+ *  the instruction line agree on whether an agent works on the point */
 export function flowLive(x, s) {
   const tab = flowTabOf(x, s)
-  return tab && ['working', 'needs-you'].includes(tab.state) ? tab : null
+  return tab && ['working', 'needs-you', 'waiting'].includes(tab.state) ? tab : null
+}
+
+/** A start's result line without its own head word ("Result: ..." or "Ergebnis: ...", returns.py RESULT_HEADS): the
+ *  card says Result above it already */
+export const resultText = text => String(text ?? '').replace(/^\s*(?:Result|Ergebnis)\s*:\s*/i, '')
+
+/** The short name of an issue, a pull request or a merge request by its address ("owner/repo#7"; one path segment
+ *  before it gives "repo#7"); null for any other link */
+export function refOfUrl(href) {
+  const m = /^https?:\/\/[^/]+\/(.+?)\/(?:-\/)?(?:issues|pull|pulls|merge_requests)\/(\d+)(?:[/?#]|$)/.exec(String(href ?? ''))
+  return m ? `${m[1].split('/').slice(-2).join('/')}#${m[2]}` : null
 }
 
 /** The fields of the right column, in their order, each {id, ...} for the view to word: the theme (themes on), the
@@ -681,11 +694,19 @@ export function flowFields(x, s, feed = null, detail = null) {
   const link = /^https?:\/\/\S+$/.test(origin) ? origin : null
   const url = row?.url ?? link
   out.push({ id: 'source', row, rows: reports ? x.rows : null, url: url ?? null, link: link && link !== url ? link : null })
+  // a start whose item is not in the list: it was made and last moved when it started
+  const started = x.kind === 'start' && Number.isFinite(x.start?.at_ms) ? localStamp(x.start.at_ms) : null
   if (!reports) {
-    out.push({ id: 'created', value: facts.created ?? detail?.front?.created ?? row?.created ?? null })
-    out.push({ id: 'moved', value: facts.moved ?? detail?.front?.last_updated ?? null })
+    out.push({ id: 'created', value: facts.created ?? detail?.front?.created ?? row?.created ?? (row ? null : started) })
+    out.push({ id: 'moved', value: facts.moved ?? detail?.front?.last_updated ?? started })
   }
   return out
+}
+
+/** A local moment as activity.py words it: "YYYY-MM-DDTHH:MM" */
+function localStamp(ms) {
+  const d = new Date(ms)
+  return `${isoDate(ms)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 /** A level of Jev's bars in a word: high from two thirds, low under one third */
@@ -694,21 +715,38 @@ export const meterLevel = v => (v >= 0.67 ? 'high' : v >= 0.34 ? 'mid' : 'low')
 /** Whether a file is too large to attach (cockpit.flow.attach.max_mb): the page says so before it reads it */
 export const attachTooBig = (bytes, s) => Number(bytes) > flowSettings(s).attach.max_mb * 1048576
 
-/** What the instruction line speaks for: the open point (and its tab, where a reply can go), else in the overview the
- *  points ticked there or every point of the side entered; at most INSTRUCT_MAX keys go. {point, picked, keys, n, cut,
- *  title, tab, name} */
+/** What the instruction line speaks for: the open point (and its tab, where a reply can go), the reports card for its
+ *  reports (as in the overview: no reply), else in the overview the points ticked there or every point of the side
+ *  entered (`name` null: all of them); at most INSTRUCT_MAX keys go. {point, picked, reports, keys, n, cut, total (the
+ *  rows of the overview), title, tab, name}, or null where no key stands behind it (a tab alone, a start whose item is
+ *  not in the list): there a sentence could act on nothing */
 export function instructScope(x, queue, picked, name, s) {
+  const cut = keys => ({ keys: keys.slice(0, INSTRUCT_MAX), n: keys.length, cut: keys.length > INSTRUCT_MAX })
+  if (x?.kind === 'reports') {
+    const keys = pointKeys(x)
+    return keys.length ? { point: false, picked: false, reports: true, ...cut(keys), title: null, tab: null, name } : null
+  }
   if (x) {
-    const row = x.kind === 'reports' ? null : x.row ?? null
+    const row = x.row ?? null
+    if (!row?.key) return null
     const tab = flowTabOf(x, s)
-    return { point: true, picked: false, keys: row?.key ? [row.key] : [], n: row?.key ? 1 : 0, cut: false,
-      title: row?.title ?? x.tab?.name ?? '', tab: takesWords(tab, s) ? tab : null, name }
+    return { point: true, picked: false, reports: false, keys: [row.key], n: 1, cut: false, title: row.title ?? '', tab: takesWords(tab, s) ? tab : null, name }
   }
   const all = (queue ?? []).flatMap(pointKeys)
   const ticked = picked?.size ? all.filter(k => picked.has(k)) : []
   const mine = ticked.length ? ticked : all
-  return { point: false, picked: ticked.length > 0, keys: mine.slice(0, INSTRUCT_MAX), n: mine.length, cut: mine.length > INSTRUCT_MAX,
-    title: null, tab: null, name }
+  if (!mine.length) return null
+  // the rows the overview shows, a point without an item too: the label says how many of them the sentence reaches
+  const total = (queue ?? []).reduce((n, q) => n + (q.kind === 'reports' ? q.rows.length : 1), 0)
+  return { point: false, picked: ticked.length > 0, reports: false, ...cut(mine), total, title: null, tab: null, name }
+}
+
+/** Why a step of the plan leaves a point out, in the page's terms: a reply the server calls not offered while the
+ *  point's tab asks a choice is that (asks: answered on the card); anything else as the server says it */
+export function instructWhy(step, skip, s) {
+  if (step?.op !== 'reply' || skip?.why !== 'not_offered' || !skip.key) return skip?.why ?? null
+  const row = indexRows(s?.model).get(skip.key)
+  return row && flowDrive({ kind: 'row', row }, s).tab?.state === 'needs-you' ? 'asks' : skip.why
 }
 
 /** Whether typed words may go to `tab`: it waits at its prompt, as the reply box has it (replyOptions). A tab that asks
@@ -719,7 +757,8 @@ const takesWords = (tab, s) => !!tab && replyOptions(tab, s).textBox
  *  each with by instruction. Done for several goes out as one settle; Later with its day, Drop with its reason in the
  *  page's words; Let AI do it with its sentence (a mail is such a start, its sentence asks for a draft only) and, as in
  *  a batch, never where an agent works already nor past max_running; a reply goes to the tab its step names, through
- *  the reply guard, only while it waits at its prompt. A key no longer in the list stays out. {calls, skipped: [{key, title, why}]} */
+ *  the reply guard, only while it waits at its prompt. A key no longer in the list stays out. {calls, skipped: [{step,
+ *  key, title, why}]}, `step` the index of the step in plan.steps, so the page says each skip inside its step */
 export function instructCalls(plan, s, lang = 'en') {
   const calls = []
   const skipped = []
@@ -727,8 +766,8 @@ export function instructCalls(plan, s, lang = 'en') {
   const rows = indexRows(s?.model)
   let running = flowRunning(s)
   const cap = flowSettings(s).max_running
-  for (const step of plan.steps) {
-    const out = (k, why) => skipped.push({ key: k, title: rows.get(k)?.title ?? null, why })
+  for (const [at, step] of plan.steps.entries()) {
+    const out = (k, why) => skipped.push({ step: at, key: k, title: rows.get(k)?.title ?? null, why })
     const keys = (step.keys ?? []).filter(k => rows.has(k) || (out(k, 'gone'), false))
     if (!keys.length) continue
     const op = step.op === 'mail' ? 'do' : step.op

@@ -441,8 +441,62 @@ def test_a_batch_of_the_work_through_overview_says_itself_in_one_toast_with_one_
     page.wait_for_selector("#main .flow-list-done")
     page.wait_for_timeout(600)
     toasts = page.locator(".toast .toast-text").all_text_contents()
-    steps = [t for t in toasts if re.match(r"Mock: (settle|later|shelve|do_it)\b", t)]
+    # the demo's note of each step (mock.js MOCK_NOTES), or the verb's name where it has none
+    steps = [t for t in toasts if re.match(r"Mock: (settle|later|shelve|do_it|decided|put off|shelved|an agent starts on it)\b", t)]
     undos = page.locator(".toast button", has_text="Undo").count() + page.locator("#main button", has_text="Undo the batch").count()
     ctx.close()
     assert not steps, toasts
     assert undos == 1
+
+
+# the scroller of an element: its nearest ancestor that scrolls (the page column of the cockpit)
+LAYOUT = """() => {
+  const scroller = el => { for (let n = el.parentElement; n; n = n.parentElement) { const o = getComputedStyle(n).overflowY
+    if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n } return document.scrollingElement }
+  const aside = document.querySelector('#main .flow-aside')
+  const s = scroller(aside)
+  s.scrollTop = s.scrollHeight
+  const box = el => el.getBoundingClientRect()
+  const sb = box(s), ab = box(aside), head = box(aside.querySelector('.flow-can > h3')), first = box(aside.querySelector('.flow-can .btn'))
+  return { scrolled: s.scrollTop, top: sb.top, bottom: Math.min(sb.bottom, innerHeight), aside: [ab.top, ab.bottom], head: head.top, first: first.bottom }
+}"""
+
+
+@pytest.mark.parametrize("size", [(1680, 1000), (1280, 900)])
+def test_the_right_column_stays_whole_and_an_asking_point_keeps_its_tabs_in_view(base_url, browser, size):
+    """Round 3 after review. A point whose tab asks holds one set of answers on its card (the guide folded), so the tabs
+    under it start in view. With Activity open and the middle scrolled to its end, the right column stays inside the
+    scroller: What you can do whole on top, its first button in view, the column's foot not cut"""
+    w, h = size
+    problems: list[str] = []
+    where = ["an asking point"]
+    ctx = browser.new_context(viewport={"width": w, "height": h})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang=de&work=flow")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    page.evaluate("() => window.localStorage.clear()")
+    page.reload()
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
+    page.wait_for_selector("#main .flow-grid .flow-overview .flow-ov-open")
+    page.locator("#main .flow-ov-open").first.click()
+    page.wait_for_selector("#main .flow-card .reply-btns")
+    page.wait_for_timeout(200)
+    bar = page.locator("#main .flow-ptabs-bar").bounding_box()
+    assert bar["y"] + bar["height"] <= h, f"the tabs under the card start below the fold: {bar}"
+    where[0] = "the right column"
+    _open_report_point(page, base_url, "de")
+    page.locator("#main .flow-ptabs [role=tab][data-tab=activity]").click()
+    page.wait_for_selector("#main .flow-act-rows .flow-act-row")
+    page.wait_for_timeout(200)
+    got = page.evaluate(LAYOUT)
+    page.wait_for_timeout(100)
+    got = page.evaluate(LAYOUT)
+    ctx.close()
+    assert got["scrolled"] > 0, got
+    assert got["head"] >= got["top"] - 0.5, f"What you can do is cut at the top: {got}"
+    assert got["aside"][0] >= got["top"] - 0.5 and got["aside"][1] <= got["bottom"] + 0.5, f"the right column leaves the scroller: {got}"
+    assert got["first"] <= got["bottom"], got
+    assert not problems, "\n".join(problems)

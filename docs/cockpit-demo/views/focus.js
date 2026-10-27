@@ -8,7 +8,7 @@
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, focusIndex, homeListParts, homeQueue, previewText, projectTone, short, stateToken, untilText,
-  upcomingEvents, greetingText, dayLabel, workPageId, rowProject, tabStateKey, whyWithoutDue
+  upcomingEvents, greetingText, dayLabel, workPageId, rowProject, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar } from './day.js'
@@ -41,9 +41,10 @@ function screenLines(text, n = 4) {
  *  The files view (dossier.js) shows its next step in it: `title` in place of the entry's own, `kindWord` in
  *  place of its kind, `sub` a line under the title (where the step comes from and since when). The Work through
  *  page (flow.js) shows the card as content only: no foot (`foot` false: the verbs stand in its right column), none of
- *  the facts its fields say (`facts` false: no kind tag, source, area, return chip or priority, the reasons without the
- *  due day), more of the tab's screen (`screen` lines), and what the tab asks as `children`; its title opens nothing
- *  there (`openable` false): the details stand beside the card, no drawer with a walk of its own */
+ *  the facts its fields say (`facts` false: no kind tag, source, area, return chip, priority, reasons, nor the state of
+ *  its tab and since when, which the field Who works on it says), more of the tab's screen (`screen` lines), and what
+ *  the tab asks as `children`; its title opens nothing there (`openable` false): the details stand beside the card, no
+ *  drawer with a walk of its own */
 export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null, openable = true, foot = true, facts = true,
   screen = 4, children = null }) {
   const t = T()
@@ -53,7 +54,7 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
   const tab = x.kind === 'tab' ? x.tab : tabOf(x.id)
   const tone = x.kind === 'tab' || tab?.state === 'needs-you' ? 'warning' : x.row.priority === 'P0' ? 'danger' : 'accent'
   const lines = tab ? screenLines(tab.last, screen) : []
-  const why = x.kind === 'row' ? (facts ? x.row.why ?? [] : whyWithoutDue(x.row.why)) : []
+  const why = x.kind === 'row' && facts ? x.row.why ?? [] : []
   const prio = facts && x.kind === 'row' && x.row.priority && title == null
   const open = el => (x.kind === 'tab' ? jumpToTab(s, c, x.tab.ref) : openWhole(c, x.row, el))
   return html`<article class=${`fx-hero tk-${tone}${n > 1 ? ' has-more' : ''}${n > 2 ? ' has-many' : ''}`} aria-labelledby="fx-title">
@@ -65,12 +66,12 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
         : html`${prio ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}`}
     </h2>
     ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
-    ${facts || tab ? html`<div class="fx-meta">
-      ${x.kind === 'tab' || !facts ? null : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}
+    ${facts ? html`<div class="fx-meta">
+      ${x.kind === 'tab' ? null : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}
       ${project ? html`<span class=${`fx-proj tk-${projectTone(project)}`}>${project}</span>` : null}
       ${tab ? html`<${StateLine} token=${stateToken(tabStateKey(tab))} strong word=${x.kind === 'tab' ? t.state[tabStateKey(tab)] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tabStateKey(tab)] ?? tab.state}`} />
         <span class="mono muted">${duration(s.now - (tab.since_ms || s.now))}</span>` : null}
-      ${x.kind === 'row' && facts ? html`<${ReturnChip} s=${s} rowKey=${x.row.key} />` : null}
+      ${x.kind === 'row' ? html`<${ReturnChip} s=${s} rowKey=${x.row.key} />` : null}
     </div>` : null}
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
     ${why.length ? html`<ul class="fx-why">${why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
