@@ -2,13 +2,14 @@
 // The cockpit, Running now of Work through (views/flow.js, round 4): what runs is no point to decide, so it stands
 // apart from the walk, the overview's table, the boxes and the batch (logic.js flowParts `lane`): a start of the
 // cockpit at work, a session linked to a task (by hand, by its own task tab, or recognised from what it did lately)
-// whose tab works or waits at its prompt, a task's own tab at work. RunningBlock is its part on top of the left column,
-// one compact line per entry (its dot pulses while it works, its title opens it in the middle as view `run`, the tab's
-// name and its stage under it); RunningStrip stands on top of the overview in the middle, each entry with its tab, its
-// stage, since when, how it is known, To tab as the strong way and View, and a box where it has a task of its own: the
-// box is only for merging (and Done) with the points ticked in the overview, a batch never starts, puts off or drops
-// what runs (logic.js laneRows, batchPlan). On a narrow screen, where the left column is a select, RunningNarrow folds
-// the same lines under one line over the middle.
+// whose tab works or waits at its prompt, a task's own tab at work. RunningRow is its part on top of the left column
+// (round 5), one row like a group of Not now: its name, its count, a dot that pulses while an entry works; a click
+// shows every entry in the middle (view `running`, RunningStrip under a head of its own). RunningStrip also stands on
+// top of the overview, the entries of the side entered, each with its tab, its stage, since when, how it is known, To
+// tab as the strong way and View, and a box where it has a task of its own: the box is only for merging (and Done)
+// with the points ticked in the overview, a batch never starts, puts off or drops what runs (logic.js laneRows,
+// batchPlan); a title opens the entry in the middle as view `run`. On a narrow screen, where the left column is a
+// select, RunningNarrow folds one compact line per entry (dot, title, tab and stage) under one line over the middle.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
@@ -49,14 +50,20 @@ function LaneLines({ lane, s, c, on }) {
   })}</ul>`
 }
 
-/** Running now on top of the left column, on every side and in every mode; nothing while nothing runs */
-export function RunningBlock({ lane, s, c, on = null }) {
+/** Running now on top of the left column, one row in the style of a group of Not now: its name, its count, a dot
+ *  that pulses while an entry works; a click shows the entries in the middle (view `running`), marked while they or
+ *  one of them stand there; nothing while nothing runs */
+export function RunningRow({ lane, c, on = false }) {
   const f = T().flow
   if (!lane?.length) return null
-  return html`<section class="flow-run flow-side-body" aria-labelledby="flow-run-h">
-    <h3 id="flow-run-h" class="flow-side-group label-caps">${f.run.label} <span class="mono">${lane.length}</span></h3>
-    <${LaneLines} lane=${lane} s=${s} c=${c} on=${on} />
-  </section>`
+  const working = lane.some(x => x.stage === 'working' || x.stage === 'started')
+  return html`<div class="flow-run flow-side-body">
+    <button type="button" class=${`flow-notnow-item flow-run-cat${on ? ' is-on' : ''}`} aria-current=${on ? 'true' : undefined} onClick=${() => c.flowRunning()}>
+      <${Dot} token=${stageTone(working ? 'working' : 'waiting')} pulse=${working} />
+      <span class="flow-side-name"><span class="flow-side-label">${f.run.label}</span></span>
+      <span class="flow-side-open mono muted">${lane.length}</span>
+    </button>
+  </div>`
 }
 
 /** Running now on a narrow screen: one line with the count and the first title, folded open by a click */
@@ -71,14 +78,16 @@ export function RunningNarrow({ lane, s, c, on = null }) {
 
 /** Running now on top of the overview: the entries of the side entered (every one at the level of all), each with its
  *  tab, stage, since when and how, To tab the strong way and View; a box on an entry with a task of its own, in the
- *  same selection as the overview's (`picked`, ui.flowPicked), for a merge with a point */
-export function RunningStrip({ lane, s, c, picked = new Set() }) {
+ *  same selection as the overview's (`picked`, ui.flowPicked), for a merge with a point. `bare`: the view `running`,
+ *  whose head names it, so no head of its own, why the boxes are there as a line */
+export function RunningStrip({ lane, s, c, picked = new Set(), bare = false }) {
   const f = T().flow
   if (!lane?.length) return null
   const boxes = new Set(laneRows(lane).map(r => r.x.id))
-  return html`<section class="flow-runstrip" aria-labelledby="flow-runstrip-h">
-    <h3 id="flow-runstrip-h" class="label-caps">${f.run.label} <span class="mono">${lane.length}</span>
-      ${boxes.size ? html` <span class="flow-runstrip-why muted small">${f.run.boxWhy}</span>` : null}</h3>
+  return html`<section class=${`flow-runstrip${bare ? ' is-bare' : ''}`} aria-labelledby=${bare ? 'flow-running-h' : 'flow-runstrip-h'}>
+    ${bare ? (boxes.size ? html`<p class="flow-runstrip-why muted small">${f.run.boxWhy}</p>` : null)
+      : html`<h3 id="flow-runstrip-h" class="label-caps">${f.run.label} <span class="mono">${lane.length}</span>
+      ${boxes.size ? html` <span class="flow-runstrip-why muted small">${f.run.boxWhy}</span>` : null}</h3>`}
     <ul class="flow-runstrip-list">${lane.map(x => {
       const w = laneWords(x, s)
       const key = boxes.has(x.id) ? x.row.key : null

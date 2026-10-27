@@ -364,12 +364,20 @@ test('the page on the demo data: the themes or areas on the left, the overview o
   assert.ok(el.$('.flow-side') && el.$('.flow-overview') && el.$('.flow-aside'), 'three columns')
   // no tabs over the card and no Focus or List any more, no chips and no lane
   for (const gone of ['.flow-tabs', '.flow-main-top', '.flow-chips', '.flow-lane', '.flow-card', '.flow-walk']) assert.equal(el.$(gone), null, gone)
-  // level one: an entry per theme or area, no All entry (the overview of all stands in the middle)
+  // level one, a table of contents: All first, marked at the level of all, then an entry per theme or area
   const mode = logic.flowMode(s)
-  const sides = logic.flowSides(s, logic.flowQueue(logic.flowParts(s)), mode).filter(x => x.id !== 'all')
-  assert.equal(el.$$('.flow-side-item').length, sides.length)
-  el.$$('.flow-side-item')[0].click()
+  const every = logic.flowSides(s, logic.flowQueue(logic.flowParts(s)), mode)
+  const sides = every.filter(x => x.id !== 'all')
+  const items = el.$$('.flow-side-item')
+  assert.equal(items.length, sides.length + 1)
+  assert.match(items[0].text(), new RegExp(`${mode === 'themes' ? en.flow.side.allThemes : en.flow.side.allAreas}\\s*${every[0].open}`))
+  assert.ok(items[0].hasClass('is-on'))
+  assert.equal(items[0].getAttribute('aria-current'), 'true')
+  assert.ok(items.slice(1).every(b => !b.hasClass('is-on') && b.getAttribute('aria-current') == null))
+  items[1].click()
   assert.deepEqual(c.calls.at(-1), ['flowSide', sides[0].id])
+  items[0].click()
+  assert.deepEqual(c.calls.at(-1), ['flowSide', null])
   // the middle names the level and shows every point grouped, the right says how details come
   assert.match(el.$('.flow-main-head').text(), new RegExp(mode === 'themes' ? en.flow.side.allThemes : en.flow.side.allAreas))
   assert.ok(el.$$('.flow-ov-row').length >= sides.length)
@@ -389,41 +397,42 @@ test('the page on the demo data: the themes or areas on the left, the overview o
 const opsState = (ui = {}) => cockpitState(NOW, { ...state({ now: [ask('20261009-0900-a-q', { area: 'Ops' })], work: [task('a', { area: 'Ops' }), task('b', { area: 'Docs' })] }),
   ui: { ...state().ui, page: 'briefing', workView: 'flow', flowSide: { areas: 'a:ops' }, flowView: 'overview', flowPicked: [], ...ui } })
 
-test('a theme entered: back to all, its name as the overview, its points grouped with a box, a stage and a chip', () => {
+test('a theme entered: the left column keeps the same list, the one entered marked, All first leads back, no points on it', () => {
   const c = recorder()
-  const el = mount(html`<${FlowPage} s=${opsState()} c=${c} />`)
+  const st = opsState()
+  const el = mount(html`<${FlowPage} s=${st} c=${c} />`)
   const side = el.$('.flow-side')
-  // on top the way back, then the name marked as the overview it shows
-  el.$('.flow-side-back').click()
+  const sides = logic.flowSides(st, logic.flowQueue(logic.flowParts(st)), 'areas').filter(x => x.id !== 'all')
+  const items = side.$$('.flow-side-item')
+  assert.equal(items.length, sides.length + 1, 'All and every area, as on level one')
+  assert.match(items[0].text(), new RegExp(en.flow.side.allAreas))
+  assert.ok(!items[0].hasClass('is-on'))
+  items[0].click()
   assert.deepEqual(c.calls.at(-1), ['flowSide', null])
-  assert.match(el.$('.flow-side-back').text(), new RegExp(en.flow.side.allAreas))
-  const title = el.$('.flow-side-title')
-  assert.match(title.text(), /Ops/)
-  assert.match(title.text(), new RegExp(en.flow.side.overview))
-  assert.equal(title.getAttribute('aria-current'), 'true')
-  title.click()
-  assert.deepEqual(c.calls.at(-1), ['flowOverview'])
-  // the groups in the queue's order, a row per point: its box, title, stage and area
-  assert.deepEqual(side.$$('.flow-side-group').map(h => h.text()), [en.flow.groups.you, en.flow.groups.doing])
-  const items = side.$$('.flow-pt')
-  assert.equal(items.length, 2)
-  assert.match(items[1].$('.flow-pt-meta').text(), new RegExp(`${en.flow.kind.doing}.*Ops`))
-  items[1].$('.flow-pt-open').click()
-  assert.deepEqual(c.calls.at(-1), ['flowGo', 'task:a', 1])
-  items[1].$('.flow-pt-pick').click()
-  assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:a'], true])
-  // the middle: the theme's name, the same groups as a table, a title opens the point
+  // the area entered is marked, the others are not
+  const ops = items.find(b => /Ops/.test(b.text()))
+  assert.ok(ops.hasClass('is-on'))
+  assert.equal(ops.getAttribute('aria-current'), 'true')
+  assert.deepEqual(items.filter(b => b.hasClass('is-on')).length, 1)
+  items.find(b => /Docs/.test(b.text())).click()
+  assert.deepEqual(c.calls.at(-1), ['flowSide', 'a:docs'])
+  // no points, no boxes, no All box and no Tick on the left: the middle has them
+  for (const gone of ['.flow-pt', '.flow-pt-pick', '.flow-pt-chip', '.flow-side-back', '.flow-side-title', '.flow-side-tick', 'input[type=checkbox]']) {
+    assert.ok(!side.$(gone), gone)
+  }
+  // the middle: the theme's name, the groups as a table with a box, a stage and an area; a title opens the point
   assert.match(el.$('.flow-main-head').text(), /Ops/)
   assert.deepEqual(el.$$('.flow-ov-group').map(h => h.text()), [en.flow.groups.you, en.flow.groups.doing])
   const rows = el.$$('.flow-ov-row')
   assert.equal(rows.length, 2)
+  assert.match(rows[1].text(), /Ops/)
   rows[0].$('.flow-ov-open').click()
   assert.deepEqual(c.calls.at(-1), ['flowGo', 'inbox:20261009-0900-a-q', 0])
+  rows[1].$('.flow-ov-pick').click()
+  assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:a'], true])
   // the stage keeps its words whole: no ellipsis in its cell
   assert.ok(!rows[1].$('.flow-ov-stage').getAttribute('class').includes('ellipsis'))
-  // the boxes left and in the table are one selection
   const picked = mount(html`<${FlowPage} s=${opsState({ flowPicked: ['task:a'] })} c=${recorder()} />`)
-  assert.deepEqual(picked.$$('.flow-pt-pick').map(b => b.hasAttribute('checked')), [false, true])
   assert.deepEqual(picked.$$('.flow-ov-pick').map(b => b.hasAttribute('checked')), [false, true])
   assert.match(picked.$('.flow-ov-bar').text(), new RegExp(en.flow.list.ticked(1, '')))
 })
@@ -431,7 +440,7 @@ test('a theme entered: back to all, its name as the overview, its points grouped
 test('the open point: Back to overview, what is ticked, the card with its verbs, the walk on to the next theme', () => {
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${opsState({ flowView: 'point', flowAt: { id: 'task:a', i: 1 }, flowPicked: ['task:a'] })} c=${c} />`)
-  assert.equal(el.$('.flow-overview'), null)
+  assert.ok(!el.$('.flow-overview'), '.flow-overview')
   const back = el.$('.flow-back')
   assert.match(back.text(), new RegExp(en.flow.point.back))
   back.click()
@@ -444,8 +453,9 @@ test('the open point: Back to overview, what is ticked, the card with its verbs,
   // the card, the point marked on the left, the title of the card opens nothing
   assert.ok(el.$('.flow-card .fx-hero'))
   assert.equal(el.$('.flow-card .fx-title button'), null)
-  assert.deepEqual(el.$$('.flow-pt').map(li => li.getAttribute('class').includes('is-on')), [false, true])
-  assert.equal(el.$('.flow-side-title').getAttribute('aria-current'), null)
+  // the left column names where the point stands: its area stays marked, no point listed there
+  assert.ok(!el.$('aside .flow-pt'), 'aside .flow-pt')
+  assert.equal(el.$$('.flow-side-item').find(b => /Ops/.test(b.text())).getAttribute('aria-current'), 'true')
   // the files view's walk bar: after the last point of Ops, the next area
   assert.ok(el.$('.flow-walk .dz-walk'))
   assert.match(el.$('.dz-walk-next').text(), new RegExp(en.flow.walk2.nextSide('Docs')))
@@ -474,7 +484,7 @@ test('the open point carries the suggestion the overview shows: its words on the
   assert.match(advice.text(), new RegExp(en.flow.list.cols.suggestion))
   assert.match(advice.text(), new RegExp(en.flow.list.verb.done))
   assert.match(advice.text(), /Answered in the thread/)
-  assert.equal(el.$('.flow-card .flow-sug'), null, 'not on the card')
+  assert.ok(!el.$('.flow-card .flow-sug'), 'not on the card')
   // the strong button is the suggested verb, not Advise, and the first of the stack
   const strong = el.$$('.flow-aside .flow-can button').filter(b => b.getAttribute('class').includes('primary')).map(b => b.text().trim())
   assert.deepEqual(strong, [en.flow.verbs.done])
@@ -495,7 +505,7 @@ test('In progress: the card shows the last lines, the field says who works on it
   assert.equal(card.$('.flow-who'), null, 'no box who works on it in the card')
   assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab busy: at work, for 18 min/)
   assert.match(card.$('.fx-screen').text(), /Running the tests/)
-  assert.equal(el.$('.flow-aside .fx-screen'), null, 'the screen only in the card')
+  assert.ok(!el.$('.flow-aside .fx-screen'), 'the screen only in the card')
   // a tab at work: To tab is the strong button, View beside it, no Let AI do it
   assert.ok(el.button(en.flow.toTab).hasClass('btn-primary') && el.button(en.flow.view) && el.button(en.flow.verbs.done))
   assert.equal(el.button(`${en.flow.doing.goOn} ▾`), null)
@@ -998,11 +1008,10 @@ test('the overview: suggestions with where they come from, Tick, the ticked line
   assert.match(from, new RegExp(en.flow.list.from.themes))
   assert.match(from, new RegExp(en.flow.list.honest))
   assert.match(el.$$('.flow-ov-row')[0].$('.flow-ov-sug').text(), /The guide is merged/)
-  // the chip on the left names the suggestion
-  assert.match(el.$$('.flow-pt')[0].$('.flow-pt-chip').text(), new RegExp(en.flow.list.verb.done))
-  // Tick, left and in the bar: done and drop, never Let AI do it; nothing goes out
-  el.button(en.flow.side.tickAi(2)).click()
-  assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:d1', 'task:drop'], true])
+  // the suggestion stands once, in the middle: no chip and no Tick in the left column
+  assert.match(el.$$('.flow-ov-row')[0].$('.flow-ov-sug').text(), new RegExp(en.flow.list.verb.done))
+  assert.ok(!el.$('aside .flow-pt-chip'), 'aside .flow-pt-chip')
+  // Tick in the bar: done and drop, never Let AI do it; nothing goes out
   el.button(en.flow.list.tick(2)).click()
   assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:d1', 'task:drop'], true])
   assert.equal(c.calls.filter(x => x[0] === 'act' || x[0] === 'flowBatch').length, 0)
@@ -2251,26 +2260,95 @@ test('F, the work views: cockpit.work_views keeps the views it names, an older s
 
 const demoFlow = (ui = {}, over = {}) => cockpitState(NOW, { ...over, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowPicked: [], ...ui } })
 
-test('Running now: on top of the left column and of the overview, its title opens it in the middle, To tab the strong way', () => {
+test('Running now: one row on top of the left column, the entries on top of the overview, a title opens one, To tab the strong way', () => {
   const s = demoFlow()
   const parts = logic.flowParts(s)
   assert.ok(parts.lane.length >= 3, 'the demo runs a start, a recognised session, a task tab and a session waiting')
   assert.ok(parts.lane.some(x => x.how === 'seen' && x.stage === 'working') && parts.lane.some(x => x.stage === 'waiting'))
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
-  const block = el.$('aside .flow-run')
-  assert.match(block.$('h3').text(), new RegExp(`${en.flow.run.label}\\s*${parts.lane.length}`))
-  assert.equal(block.$$('.flow-run-item').length, parts.lane.length)
-  const strip = el.$('.flow-runstrip')
+  // the left column holds one row: its name and its count, the dot pulsing while an entry works, no entry listed
+  const cats = el.$$('aside .flow-run-cat')
+  assert.equal(cats.length, 1)
+  assert.ok(cats[0].hasClass('flow-notnow-item'), 'styled as a group of Not now')
+  assert.match(cats[0].text(), new RegExp(`${en.flow.run.label}\\s*${parts.lane.length}`))
+  assert.ok(cats[0].$('.dot').hasClass('dot-pulse'))
+  assert.ok(!cats[0].hasClass('is-on'))
+  assert.ok(!el.$('aside .flow-side-body .flow-run-item'), 'no entry listed in the wide column (the narrow fold keeps its lines)')
+  assert.ok(!el.$('aside .flow-side-body .flow-run-open'), 'no entry listed in the wide column (the narrow fold keeps its lines)')
+  cats[0].click()
+  assert.deepEqual(c.calls.at(-1), ['flowRunning'])
+  const strip = el.$('.flow-main .flow-runstrip')
   assert.equal(strip.$$('.flow-runstrip-row').length, parts.lane.length)
   const seen = parts.lane.find(x => x.how === 'seen')
   const row = strip.$$('.flow-runstrip-row').find(r => r.text().includes(seen.title))
   assert.match(row.text(), new RegExp(en.flow.run.how.seen))
   assert.ok(row.$$('button').find(b => b.text() === en.flow.toTab).hasClass('btn-primary'))
-  block.$$('.flow-run-open')[0].click()
+  strip.$$('.flow-run-open')[0].click()
   assert.deepEqual(c.calls.at(-1), ['flowRun', parts.lane[0].id])
   // no entry of Running now in the overview's table or the batch
   assert.ok(!el.$$('.flow-ov-row').some(tr => tr.text().includes(seen.title)))
+  // nothing runs: no row
+  const calm = mount(html`<${FlowPage} s=${state({ work: [task('a')], ui: { flowView: 'overview', flowPicked: [] } })} c=${recorder()} />`)
+  assert.ok(!calm.$('aside .flow-run-cat'), 'aside .flow-run-cat')
+})
+
+test('the running view: back to overview, Running now with its count, every entry with To tab and View and its box, the row marked', () => {
+  const s = demoFlow({ flowView: 'running' })
+  const lane = logic.flowParts(s).lane
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  assert.ok(!el.$('.flow-overview'), '.flow-overview')
+  const main = el.$('.flow-main')
+  assert.match(main.$('h2').text(), new RegExp(`${en.flow.run.label}\\s*${lane.length}`))
+  const rows = main.$$('.flow-runstrip-row')
+  assert.equal(rows.length, lane.length, 'every entry, at the level of all')
+  assert.ok(rows.every(r => r.$$('button').some(b => b.text() === en.flow.toTab)))
+  assert.ok(rows.some(r => r.$$('button').some(b => b.text() === en.flow.view)))
+  assert.ok(main.$('.flow-runstrip-pick'), 'the boxes for a merge stay')
+  rows[0].$('.flow-run-open').click()
+  assert.deepEqual(c.calls.at(-1), ['flowRun', lane[0].id])
+  main.$('.flow-back').click()
+  assert.deepEqual(c.calls.at(-1), ['flowOverview'])
+  const cat = el.$('aside .flow-run-cat')
+  assert.ok(cat.hasClass('is-on'))
+  assert.equal(cat.getAttribute('aria-current'), 'true')
+  // nothing marked among the sides while Running now is open in the middle
+  assert.ok(el.$$('.flow-side-item').every(b => !b.hasClass('is-on')))
+  // the running view with nothing running falls back to the overview
+  const calm = mount(html`<${FlowPage} s=${state({ work: [task('a')], ui: { flowView: 'running', flowPicked: [] } })} c=${recorder()} />`)
+  assert.ok(calm.$('.flow-overview'))
+})
+
+test('an entry opened from the running view goes back to it, one opened from the overview back to the overview', () => {
+  const s = demoFlow()
+  const seen = logic.flowParts(s).lane.find(x => x.how === 'seen')
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'run', flowRunId: seen.id, flowRunFrom: 'running' })} c=${c} />`)
+  assert.match(el.$('.flow-back').text(), new RegExp(en.flow.run.back))
+  el.$('.flow-back').click()
+  assert.deepEqual(c.calls.at(-1), ['flowRunning'])
+  const c2 = recorder()
+  const el2 = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'run', flowRunId: seen.id })} c=${c2} />`)
+  assert.match(el2.$('.flow-back').text(), new RegExp(en.flow.point.back))
+  el2.$('.flow-back').click()
+  assert.deepEqual(c2.calls.at(-1), ['flowOverview'])
+})
+
+test('what opens in the middle comes into view: the top of the middle scrolled up out of sight is brought back', async () => {
+  const seen = []
+  const had = { rect: proto.getBoundingClientRect, into: proto.scrollIntoView }
+  proto.getBoundingClientRect = function rect() { return { top: String(this.getAttribute?.('class') ?? '').includes('flow-main') ? -400 : 0 } }
+  proto.scrollIntoView = function into(opts) { seen.push([this.getAttribute('class'), opts]) }
+  try {
+    const left = logic.flowParts(demoFlow()).leftOut.groups[0].reason
+    mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: left })} c=${recorder()} />`)
+    await tick()
+    assert.ok(seen.some(([cls, opts]) => cls.includes('flow-main') && opts?.block === 'start'), 'the middle scrolled into view')
+  } finally {
+    proto.getBoundingClientRect = had.rect
+    proto.scrollIntoView = had.into
+  }
 })
 
 test('the run view: the card, its tabs and the instruction line, no walk bar; Not this task unlinks a recognised session', () => {
@@ -2281,7 +2359,7 @@ test('the run view: the card, its tabs and the instruction line, no walk bar; No
   assert.match(el.$('.flow-card').text(), new RegExp(seen.title))
   assert.equal(el.$('.flow-walk'), null)
   assert.ok(el.$('.flow-ptabs'))
-  assert.ok(el.$('aside .flow-run-item.is-on'), 'the entry open is marked on the left')
+  assert.ok(el.$('aside .flow-run-cat.is-on'), 'Running now is marked on the left while one of its entries is open')
   const can = el.$$('.flow-aside .flow-can button')
   assert.equal(can[0].text(), en.flow.toTab)
   assert.ok(can[0].hasClass('btn-primary'))
@@ -2390,10 +2468,13 @@ test('Prio: the switch offers it with a work page Jev orders, the grid of four s
   mount(html`<${FlowPage} s=${none} c=${c2} />`)
   await tick()
   assert.deepEqual(c2.calls.find(x => x[0] === 'flowPrioOrder'), ['flowPrioOrder', 'work'])
-  // a square entered: Back says All squares, its points as one band in Jev's order
+  // a square entered: All squares first, the squares as on level one with it marked, its points one band in Jev's order
   const inside = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowSide: { prio: 'q:now' } } }} c=${recorder()} />`)
-  assert.match(inside.$('.flow-side-back').text(), new RegExp(en.flow.side.allQuads))
-  assert.deepEqual(inside.$$('.flow-side-band h3').map(h => h.text()), [en.flow.groups.rank])
+  const sq = inside.$$('aside .flow-side-item')
+  assert.match(sq[0].text(), new RegExp(en.flow.side.allQuads))
+  assert.ok(sq.find(b => b.text().includes(en.flow.fields.quadrant.now)).hasClass('is-on'))
+  assert.ok(inside.$('aside .flow-prio-foot'), 'Ask Jev again stays at the foot')
+  assert.deepEqual(inside.$$('.flow-ov-group').map(h => h.text()), [en.flow.groups.rank])
 })
 
 test('the head counts points, what runs and what is not now; the sum is every open row', () => {
