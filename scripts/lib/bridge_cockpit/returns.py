@@ -52,7 +52,9 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}\Z")
 STAMP_RE = re.compile(r"^(\d{8}T\d{6}Z)")
 ANSWER_VERBS = ("note", "close", "executed", "failed")
 MODES = ("go", "report", "context")
-PICK_FIELDS = ("model", "effort", "routed_by")
+# what the agent started with when the cockpit chose it (launch.py), and who decided the start when it was not the
+# person's own click (by: suggestion, batch, instruction), kept for the Activity tab
+PICK_FIELDS = ("model", "effort", "routed_by", "by")
 
 
 class Launches:
@@ -73,7 +75,7 @@ class Launches:
         atomic_write_json(self.path, {"v": 1, "launches": self._items})
 
     def record(self, entries: list) -> None:
-        """Keep the starts that ran: [{key, item, title, mode, model?, effort?, routed_by?}], newest first"""
+        """Keep the starts that ran: [{key, item, title, mode, model?, effort?, routed_by?, by?}], newest first"""
         now = self.clock()
         with self.lock:
             for e in entries:

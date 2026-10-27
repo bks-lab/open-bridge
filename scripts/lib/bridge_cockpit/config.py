@@ -16,6 +16,7 @@ import re
 import yaml
 
 from .. import model_route as mr
+from . import activity as act
 from . import describe as dsc
 from . import guide as gd
 from . import origin as og
@@ -39,8 +40,11 @@ FILES_SCOPES = ("active", "all")
 # each with its default and minimum (a value below it keeps the default)
 FLOW_DROP_REASONS = ("resolves_itself", "not_needed", "someone_else", "not_worth_it")
 FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 7, 1), ("rerank_per_day", 3, 0))
-# themes: the nested block of the themes the page groups its points by (themes.py, cockpit.flow.themes)
-FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "themes")
+# themes: the nested block of the themes the page groups its points by (themes.py, cockpit.flow.themes); summary,
+# instruct and attach the nested blocks of the Activity tab and the instruction line (activity.py, instruct.py), each
+# off by default, the two that call a model within a budget a day
+FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "themes",
+             "summary", "instruct", "attach")
 FLOW_REASON_MAX = 80
 FLOW_REASONS_MAX = 12
 FLOW_RETURN_MAX = 3600
@@ -160,7 +164,9 @@ def jev_criteria_of(value: Any) -> dict | None:
 
 def flow_defaults() -> dict:
     return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20,
-            **{key: default for key, default, _low in FLOW_INTS}, "themes": thm.defaults()}
+            **{key: default for key, default, _low in FLOW_INTS}, "themes": thm.defaults(),
+            "summary": act.ai_defaults(act.SUMMARY_BUDGET), "instruct": act.ai_defaults(act.INSTRUCT_BUDGET),
+            "attach": act.attach_defaults()}
 
 
 def _flow_reasons(value: Any) -> tuple[list[str], list[str]]:
@@ -193,6 +199,9 @@ def flow_of(value: Any) -> dict:
         if _is_int(value.get(key)) and value[key] >= low:
             out[key] = value[key]
     out["themes"] = thm.themes_of(value.get("themes"))
+    out["summary"] = act.ai_of(value.get("summary"), act.SUMMARY_BUDGET)
+    out["instruct"] = act.ai_of(value.get("instruct"), act.INSTRUCT_BUDGET)
+    out["attach"] = act.attach_of(value.get("attach"))
     return out
 
 
@@ -221,6 +230,10 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
                        f"using {used['return_after_s']}")
         elif key == "themes":
             out += thm.check(v, used["themes"], at)
+        elif key in ("summary", "instruct"):
+            out += act.ai_check(v, used[key], at, act.SERVICE if key == "summary" else act.INSTRUCT_SERVICE)
+        elif key == "attach":
+            out += act.attach_check(v, used["attach"], at)
         elif key in lows:
             if not _is_int(v):
                 out.append(f"{at}: must be a whole number, got {_show(v)}; using {used[key]}")

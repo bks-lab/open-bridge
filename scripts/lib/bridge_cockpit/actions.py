@@ -21,7 +21,9 @@ from typing import Any, Callable
 
 from .. import model_route as mr
 from . import model as m
+from . import activity as act
 from . import describe as dsc
+from . import instruct as ins
 from . import organize as og
 from . import themes as thm
 from .card_fields import validate_brief
@@ -33,7 +35,7 @@ from .history import REOPEN_AS
 from .store import append_log
 # every shared name stays importable from here (ActionError, SPEC, the patterns): callers never changed
 from .actions_base import *  # noqa: F401,F403
-from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
+from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, BY_CHOICES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, REASON_MAX, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
                            STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
@@ -89,6 +91,7 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
     "tour_how": (TOUR_HOW, "finished or skipped"),
     "themes_mode": (thm.MODES, "assign or regroup"),
+    "by": (BY_CHOICES, "suggestion, batch or instruction"),
 }
 
 
@@ -191,6 +194,19 @@ def _theme_name(actions: "Actions", value: Any, name: str, today: dt.date) -> st
     return text
 
 
+def _attach_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # the name a document is kept under: made safe (activity.safe_name), refused when nothing is left of it
+    made = act.safe_name(value)
+    if not made:
+        raise bad_arg(name, "must be a file name")
+    return made
+
+
+def _attach_data(actions: "Actions", value: Any, name: str, today: dt.date) -> bytes:
+    # the document itself: strict base64 of 1 byte up to cockpit.flow.attach.max_mb (activity.decode_data)
+    return act.decode_data(value, act.block(actions.app, "attach")["max_mb"], name)
+
+
 def _brief(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
     # what a person wrote for a brief: refused whole when the gate finds anything wrong, never cut
     if not isinstance(value, dict):
@@ -223,8 +239,14 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "organize_items": _organize_items,
     "brief": _brief,
     "theme_name": _theme_name,
+    # the sentence of the instruction line: line breaks folded into blanks, 1 to 600 characters (instruct.fold)
+    "instruct_text": lambda actions, value, name, today: ins.fold(value, name),
+    "attach_name": _attach_name,
+    "attach_data": _attach_data,
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
+# the verbs after which the Activity tab's kept feeds stand: they change nothing a feed reads
+KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct"}
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
@@ -398,18 +420,38 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             or clean.get("proposal") or clean.get("relay_id") or clean.get("slug") or clean.get("id") or ""
         handler = getattr(self, f"v_{verb}")
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
-        if verb in READ_ONLY_VERBS:
-            handler(ctx, **clean)
-        elif verb in LOCAL_VERBS:
-            self.recorded(ctx, handler, clean)
-        elif verb in LAYOUT_VERBS:
-            with self.layout_lock:
+        ctx.by = clean.pop("by", None)
+        touched = self.touched(clean)
+        try:
+            if verb in READ_ONLY_VERBS:
+                handler(ctx, **clean)
+            elif verb in LOCAL_VERBS:
                 self.recorded(ctx, handler, clean)
-        else:
-            with self.write_lock:
-                ctx.locked = True
-                self.recorded(ctx, handler, clean)
+            elif verb in LAYOUT_VERBS:
+                with self.layout_lock:
+                    self.recorded(ctx, handler, clean)
+            else:
+                with self.write_lock:
+                    ctx.locked = True
+                    self.recorded(ctx, handler, clean)
+        finally:
+            # what a verb names is read anew by the Activity tab (activity.py keeps a feed CACHE_MS); a plan of the
+            # instruction line changes nothing
+            if verb not in KEEPS_FEEDS and touched and getattr(self.app, "activity", None) is not None:
+                self.app.activity.drop(touched)
         return self.finish(ctx)
+
+    @staticmethod
+    def touched(clean: dict) -> list[str]:
+        """The row keys a verb names: its keys and key, a task by its slug, an inbox item by its id"""
+        out = [k for k in clean.get("keys") or [] if isinstance(k, str)]
+        if isinstance(clean.get("key"), str):
+            out.append(clean["key"])
+        if isinstance(clean.get("slug"), str):
+            out.append(f"task:{clean['slug']}")
+        if isinstance(clean.get("id"), str) and INBOX_ID_RE.match(clean["id"]):
+            out.append(f"inbox:{clean['id']}")
+        return out
 
     def refused_after(self, ctx: Ctx, error: ActionError) -> None:
         """A refusal that follows a step that wrote: the page still gets what to take back, and the model
@@ -431,7 +473,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             if ctx.steps or ctx.notes or ctx.settled:
                 self.audit(ctx)
             if ctx.history and getattr(self.app, "history", None) is not None:
-                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history)
+                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history, by=ctx.by)
                 ctx.extra["undo"] = [{"title": x["title"], "kind": x["kind"], "undo": x["undo"]}
                                      for x in ctx.history if x.get("undo")]
             if refused is not None:
@@ -440,7 +482,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
     def audit(self, ctx: Ctx) -> None:
         exits = ",".join(str(s["exit"]) for s in ctx.steps) or "-"
         ok = all(s["ok"] for s in ctx.steps)
-        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **ctx.audit_extra)
+        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **({"by": ctx.by} if ctx.by else {}), **ctx.audit_extra)
 
     def audit_line(self, verb: str, subject: str = "", **fields: Any) -> None:
         """One line in audit.log: time, verb, subject, then key=value. The one writer of that file, for
