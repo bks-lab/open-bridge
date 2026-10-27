@@ -14,7 +14,7 @@ import { TabControls } from './detail.js'
 import { ReturnCard } from './home.js'
 import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
-import { StartControl, canStartControl } from './header.js'
+import { ParentLink, StartControl, canStartControl } from './header.js'
 import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
@@ -296,7 +296,7 @@ export function WorkersPage({ s, c }) {
   }
   return html`<div class="col col-page">
     <header class="page-head">
-      <h2 class="detail-title">${t.workersTab}</h2>
+      <${ParentLink} s=${s} c=${c} /><h2 class="detail-title">${t.workersTab}</h2>
       ${view ? html`<span class="muted small">${t.workersFrom(view.host, Number.isFinite(at) ? formatClock(at, language()).slice(0, 5) : '?')}</span>` : null}
       <button type="button" class="btn-link small" onClick=${() => c.loadWorkers()}>${t.reload}</button>
     </header>

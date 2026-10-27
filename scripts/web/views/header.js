@@ -3,11 +3,11 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, short, railOn, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
-  morePages, pageOrder, reviewHomeOf,
+  litTab, morePages, pageOrder, parentOf, reviewHomeOf, tabBadgeOf,
 } from './nav.js'
 import { AgentMark, agentBadge } from './agents.js'
 import { usePopover } from './pages.js'
@@ -212,6 +212,8 @@ export function PageBar({ s, c }) {
   })
   const order = pageOrder(s)
   const more = morePages(s)
+  // a sub page has no tab: the tab of the page it stands under stays lit while it is open
+  const lit = litTab(s)
   const [open, setOpen] = useState(false)
   const moreBox = usePopover(open, setOpen)
   // every tab stands in the bar while the bar is wide enough; only when they overflow do the pages
@@ -219,7 +221,7 @@ export function PageBar({ s, c }) {
   // A resize unfolds and measures again
   const navRef = useRef(null)
   const [foldN, setFoldN] = useState(0)
-  const foldable = order.filter(id => more.has(id) && id !== s.ui.page)
+  const foldable = order.filter(id => more.has(id) && id !== lit)
   const folded = new Set(foldable.slice(Math.max(0, foldable.length - foldN)))
   const fold = folded.size > 0
   useLayoutEffect(() => {
@@ -237,8 +239,8 @@ export function PageBar({ s, c }) {
     made.set(id, { label, badge, keyHint: i >= 0 && i < 9 ? `${label} (Alt ${i + 1})` : undefined })
     return null
   }
-  const button = id => { const x = made.get(id); return html`<button key=${id} type="button" role="tab" class=${`ptab${s.ui.page === id ? ' is-active' : ''}`}
-    aria-selected=${String(s.ui.page === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
+  const button = id => { const x = made.get(id); return html`<button key=${id} type="button" role="tab" class=${`ptab${lit === id ? ' is-active' : ''}`}
+    aria-selected=${String(lit === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
     <span>${x.label}</span>${x.badge}</button>` }
   // what waits for you: Today and Work through carry the same number, no counter of their own
   const n = s.model?.briefing_badge ?? 0
@@ -247,6 +249,8 @@ export function PageBar({ s, c }) {
   // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip
   const sess = sessionCounts(s.sessions?.sessions)
   const agentsInChat = chatAsWorkspaces(s)
+  // the background jobs: an outage is red, upkeep no colour at all
+  const jobs = jobCounts(s.workers?.data)
   return html`<nav class="pagebar" aria-label=${t.pagesLabel} ref=${navRef}>
     <div class="pagebar-tabs" role="tablist" ref=${tabsRef} onKeyDown=${keys.onKeyDown}>
       ${box ? html`<${TabMarker} box=${box} />` : null}
@@ -256,28 +260,28 @@ export function PageBar({ s, c }) {
         ? html`<span class="pbadge is-quiet" title=${t.aiWaitingTitle(aiLeft)}><span>${t.aiBadge}</span> <span class="mono">${aiLeft}</span></span>`
         : sess.sessions > 0
         ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null)}
-      ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
-        ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null)}
+      ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, jobs.failing
+        ? html`<span class="pbadge" title=${t.overviewWorkers(jobs.ok, jobs.all, jobs.failing, jobs.upkeep)}><${Dot} token="danger" /><span class="mono">${jobs.failing}</span></span>` : null)}
       ${tab(CHAT_PAGE, t.chatTab, html`<${ChatTabMark} kind=${chatTabSignal(s)} />`)}
       ${(s.agents?.peers ?? []).length && !agentsInChat ? tab(AGENTS_PAGE, t.agentsTab, html`<${AgentMark} kind=${agentBadge(s)} />`) : null}
       ${reviewHomeOf(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`
         : toClose > 0 ? html`<span class="pbadge"><span class="mono">${toClose}</span></span>` : null)}
       ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`) : null}
-      ${pages.map(p => tab(p.id, p.title, html`<${PageBadge} badge=${p.badge} title=${badgeTitle(p)} />`))}
+      ${pages.map(p => tab(p.id, p.title, html`<${PageBadge} badge=${tabBadgeOf(s, p)} title=${badgeTitle(p)} />`))}
       ${tab(SETTINGS_PAGE, t.settings.title, null)}
       ${order.filter(id => made.has(id) && !folded.has(id)).map(button)}
       ${fold ? html`<${MoreTab} items=${order.filter(id => folded.has(id) && made.has(id)).map(id => ({ id, ...made.get(id) }))}
-        s=${s} c=${c} open=${open} setOpen=${setOpen} box=${moreBox} />` : null}
+        s=${s} c=${c} lit=${lit} open=${open} setOpen=${setOpen} box=${moreBox} />` : null}
     </div>
   </nav>`
 }
 
 /** The last tab of the bar: opens the pages that stand behind it. While one of them is open the tab
  *  carries its name; a page behind it with a finding shows a dot */
-function MoreTab({ items, s, c, open, setOpen, box }) {
+function MoreTab({ items, s, c, lit, open, setOpen, box }) {
   const t = T()
-  const current = items.find(x => x.id === s.ui.page)
-  const flagged = items.some(x => x.badge && x.id !== s.ui.page)
+  const current = items.find(x => x.id === lit)
+  const flagged = items.some(x => x.badge && x.id !== lit)
   const pick = id => { setOpen(false); c.setPage(id) }
   // the bar scrolls sideways and would clip a menu inside it, so the menu stands fixed under the tab
   const [at, setAt] = useState(null)
@@ -288,10 +292,20 @@ function MoreTab({ items, s, c, open, setOpen, box }) {
       <span>${current ? current.label : t.morePages}</span>${current ? current.badge : flagged ? html`<${Dot} token="warning" />` : null}
       <span aria-hidden="true">▾</span></button>
     ${open ? html`<span class="settle-menu more-menu" role="menu" style=${at ? { top: `${at.top}px`, left: `${at.left}px` } : undefined}>
-      ${items.map(x => html`<button key=${x.id} type="button" role="menuitem" class=${`settle-item${x.id === s.ui.page ? ' is-on' : ''}`}
+      ${items.map(x => html`<button key=${x.id} type="button" role="menuitem" class=${`settle-item${x.id === lit ? ' is-on' : ''}`}
         title=${x.keyHint} onClick=${() => pick(x.id)}><span>${x.label}</span>${x.badge}</button>`)}
     </span>` : null}
   </span>`
+}
+
+/** "‹ Operations" at the head of a sub page: the way back to the page it stands under (parentOf), none elsewhere */
+export function ParentLink({ s, c }) {
+  const t = T()
+  const up = parentOf(s, s.ui.page)
+  const page = up ? (s.model?.pages ?? []).find(p => p.id === up) : null
+  if (!page) return null
+  return html`<button type="button" class="btn-link page-up" aria-label=${t.parentBackLabel(page.title)}
+    onClick=${() => c.setPage(up)}>${t.parentBack(page.title)}</button>`
 }
 
 export function AlarmBanner({ s, c }) {

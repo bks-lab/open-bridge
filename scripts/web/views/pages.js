@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
-  sectionStamp, triageKey, triageShows, sectionTile, tokenText, usageToday, tabStateKey,
+  sectionStamp, triageKey, triageShows, sectionTile, subPageTile, jobCounts, tokenText, usageToday, tabStateKey,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
   cardPlan, moneyText, costBoard, itemRow,
@@ -20,6 +20,7 @@ import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
 import { Btn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
+import { WORKERS_PAGE, subPagesOf } from './nav.js'
 import { DatesAgenda } from './dates.js'
 import { CostCard, UsageCard } from './costs.js'
 
@@ -504,6 +505,8 @@ export function PageSection({ page, section, s, c }) {
   // nothing found: a section that says so in one quiet line, or none at all when the profile asks
   const quiet = !items.length && section.status !== 'error' && section.status !== 'skipped' && !(gh && ghFilter)
   if (quiet && section.hide_empty) return null
+  // kept on the page for what reads it there (an account's services, the badge, the alarm): drawn only with a finding
+  if (section.hide_ok && !section.bad && section.status !== 'error') return null
   if (quiet) {
     return html`<section class="panel psec psec-quiet" aria-labelledby=${`ps-${page.id}-${section.id}`}>
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}</h2>
@@ -575,20 +578,34 @@ function BoardTile({ title, tone, big, sub, note, onClick, label, bars = null })
   </button></li>`
 }
 
-/** The board on top of a page with `overview: true`: a tile per section and per live source (workers, tokens,
- *  costs when the page places the cost card), each a click away from its details. The running sessions stand in
- *  the tab column beside it */
+/** The board on top of a page with `overview: true` or with sub pages: first a tile per sub page (`under:`, the
+ *  Workers page among them), each opening it, then with `overview` a tile per section and per live source
+ *  (workers, tokens, costs when the page places the cost card), each a click away from its details. Workers are
+ *  red only for an outage and open on the runs with a finding; a sub page is green only on a live all clear
+ *  (logic.js subPageTile). The running sessions stand in the tab column beside it */
 export function OverviewBoard({ page, s, c }) {
   const t = T()
   const lang = language()
   const tiles = []
-  const stats = s.workers?.data?.stats
-  if (stats) {
-    const bad = stats.with_findings ?? 0
-    const all = stats.in_service ?? 0
-    tiles.push(html`<${BoardTile} key="@w" title=${t.workersTab} tone=${bad ? 'warning' : 'success'} big=${bad || all}
-      sub=${t.overviewWorkers(all - bad, all, bad)} label=${t.overviewJump(t.workersTab)} onClick=${() => c.openWorkers({})} />`)
+  const subs = subPagesOf(s, page.id)
+  const jobsTile = () => {
+    const j = jobCounts(s.workers.data)
+    return html`<${BoardTile} key="@w" title=${t.workersTab} tone=${j.failing ? 'danger' : j.upkeep ? 'neutral' : 'success'} big=${j.failing || j.all}
+      sub=${t.overviewWorkers(j.ok, j.all, j.failing, j.upkeep)} label=${t.overviewJump(t.workersTab)}
+      onClick=${() => c.openWorkers(j.failing || j.upkeep ? { attention: true } : {})} />`
   }
+  const stats = s.workers?.data?.stats
+  if (stats && page.overview && !subs.includes(WORKERS_PAGE)) tiles.push(jobsTile())
+  for (const id of subs) {
+    const sub = (s.model?.pages ?? []).find(p => p.id === id)
+    if (id === WORKERS_PAGE) { if (stats) tiles.push(jobsTile()) }
+    else if (sub) {
+      const x = subPageTile(sub)
+      tiles.push(html`<${BoardTile} key=${`@p:${id}`} title=${sub.title} tone=${x.tone} big=${x.big}
+        sub=${x.error ? t.unreadable(x.note) : x.note ?? t.subPageRows(x.lead, x.counts)} label=${t.overviewJump(sub.title)} onClick=${() => c.setPage(id)} />`)
+    }
+  }
+  if (!page.overview) return html`<ul class="oboard" aria-label=${page.title}>${tiles}</ul>`
   const plan = cardPlan(page)
   const placed = [...Object.values(plan.after).flat(), ...plan.end]
   const k = s.costs?.data
@@ -610,6 +627,7 @@ export function OverviewBoard({ page, s, c }) {
   for (const sec of page.sections ?? []) {
     const x = sectionTile(sec)
     if (sec.hide_empty && !x.count && x.state === 'ok') continue
+    if (sec.hide_ok && !sec.bad && x.state !== 'error') continue
     const sub = x.state === 'error' ? t.unreadable(x.note || '') : x.state === 'skipped' ? skipText(sec, t)
       : x.peak ? t.overviewPeak(x.peak.title, x.peak.percent)
       : x.counts ? x.counts.map(g => `${g.title} ${Math.round(g.value)}/${Math.round(g.max)}`).join(', ')

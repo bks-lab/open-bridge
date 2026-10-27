@@ -514,8 +514,10 @@ READS = {
                   "priority", "state", "lines", "origin_raw"},
 }
 # keys the fixture uses that only other kinds of rows carry: a GitHub row (ref), a command section with its
-# own view (view), the rows of a command or accounts section (tags, account, row_id, actions)
-ONLY_ELSEWHERE = {"row": {"ref"}, "page_section": {"view"}, "page_item": {"tags", "account", "row_id", "actions"}}
+# own view or drawn only with a finding (view, hide_ok), the rows of a command or accounts section (tags, account,
+# row_id, actions), and a page placed under another by view.pages (under, and its parent's subs)
+ONLY_ELSEWHERE = {"row": {"ref"}, "page": {"under", "subs"}, "page_section": {"view", "hide_ok"},
+                  "page_item": {"tags", "account", "row_id", "actions"}}
 
 
 def levels(data: dict) -> dict[str, set[str]]:

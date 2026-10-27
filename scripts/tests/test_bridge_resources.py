@@ -54,7 +54,10 @@ def test_machines_are_live_from_tailscale_and_an_always_on_one_offline_is_red(tm
     assert by["laptop"]["tone"] == "none" and "online" in by["laptop"]["raw_state"]
     assert by["printer"]["tone"] == "dim"                            # not in the tailnet: nothing live to say
     assert [r["title"] for r in rows][0] == "box"                    # always-on machines first
-    assert "tailscale not readable" in br.machine_rows(root, TX, None)[0]["raw_state"]
+    blind = br.machine_rows(root, TX, None)
+    assert "tailscale not readable" in blind[0]["raw_state"]
+    # without tailscale nothing says a machine is up: none of them may look in order
+    assert {r["tone"] for r in blind} == {"dim"} and not any(r["live"] for r in blind)
 
 
 def test_tailscale_peers_reads_hostnames_and_self(monkeypatch):
@@ -185,6 +188,18 @@ def test_the_full_worker_view_becomes_mosaic_rows_and_is_kept_whole(tmp_path):
     assert "gone" in rows[1]["raw_state"] and "checks mail" in rows[2]["raw_state"]
     assert json.loads((tmp_path / ".bridge" / "resources" / "workers-view.json").read_text()) == doc
     assert br.view_rows(tmp_path, TX, str(tmp_path / "nope.json"), NOW, 70)[0]["tone"] == "bad"
+
+
+def test_a_stopped_run_or_a_failed_last_run_is_an_outage_and_stands_first(tmp_path):
+    # the two states the engine files as high: red like a missing run, never the orange of an upkeep deviation
+    src = tmp_path / "v.json"
+    doc = {"schema": 1, "host": "box", "generated_at": "2026-10-10T13:30:00+00:00", "runs": [
+        {"id": "a", "title": "Drifted", "state": "drifted", "findings": [{"state": "drifted", "severity": "medium"}]},
+        {"id": "b", "title": "Stopped", "state": "stopped", "findings": [{"state": "stopped", "severity": "high"}]},
+        {"id": "c", "title": "Failed", "state": "last_run_failed", "findings": [{"state": "last_run_failed", "severity": "high"}]}]}
+    src.write_text(json.dumps(doc))
+    rows = br.view_rows(tmp_path, TX, str(src), NOW, 70)
+    assert [(r["title"], r["tone"]) for r in rows[1:]] == [("Stopped", "bad"), ("Failed", "bad"), ("Drifted", "warn")]
 
 
 def test_rows_carry_tags_to_filter_by_and_accounts_their_status(tmp_path):

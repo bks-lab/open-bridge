@@ -274,6 +274,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                     sec[extra] = s[extra]
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
                                "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
+                               "hide_ok": s.get("hide_ok") is True,
                                "steps": s.get("steps"),
                                "more": max(0, len(s["items"]) - cap)})
             if bad > 0:
@@ -281,6 +282,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                                "count": int(bad)})
         pages.append({"id": pg["id"], "title": pg["title"], "badge": m.page_badge({"sections": secs}), "sections": secs,
                       "group": pg.get("group", "main"), "overview": pg.get("overview") is True, "cards": m.parse_cards(pg.get("cards")),
+                      "under": pg.get("under"), "subs": list(pg.get("subs") or []),
                       "jev": isinstance(pg.get("jev"), dict)})
 
     waiting_tabs = [t for t in others if m.is_waiting(t, view)]

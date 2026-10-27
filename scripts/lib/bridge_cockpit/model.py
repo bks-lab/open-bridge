@@ -318,6 +318,8 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board", "agenda") else None,
                 "cal_figures": parse_cal_figures(x.get("cal_figures")),
                 "hide_empty": x.get("hide_empty") is True,
+                # kept for what reads it on the page (an account's services, the badge), drawn only with a finding
+                "hide_ok": x.get("hide_ok") is True,
                 "steps": "buttons" if x.get("steps") == "buttons" else None,
                 "stale": as_text_or_null(x.get("stale")),
                 "boards": parse_boards(x.get("boards")),
@@ -328,6 +330,10 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
                 "group": p.get("group") if p.get("group") in ("more", "work", "day") else "main", "overview": p.get("overview") is True,
                 "cards": parse_cards(p.get("cards")),
+                # where the page stands: under another (no tab, a tile of that page opens it), and the sub pages a
+                # page names in their order, the cockpit's own @workers among them (briefing_view.pages)
+                "under": as_text_or_null(p.get("under")),
+                "subs": [x for x in _list(p.get("subs")) if isinstance(x, str) and x][:12],
                 # the order by Jev: the words stay on the server (jev.rank), the page only learns there is one
                 "jev": ({k: [as_text(x) for x in v] if isinstance(v := p["jev"].get(k), list) else []
                          for k in ("skip_sections", "private")} if isinstance(p.get("jev"), dict) else None)}

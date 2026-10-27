@@ -830,6 +830,43 @@ test('workers: tones, strip marks, facets that count without themselves, groups 
     [['Board', 1], ['Mail', 2]])
 })
 
+test('background jobs: an outage is what the engine files high, upkeep what it files medium; only the outage is loud', () => {
+  const run = (id, severity, extra = {}) => ({ id, findings: severity ? [{ severity }] : [], ...extra })
+  const view = { stats: { in_service: 6 }, runs: [run('a', 'high'), run('b', 'medium'), run('c', 'medium'), run('d', 'info'), run('e', null),
+    run('f', 'high', { retired: true }), run('g', 'info', { severity: 'high' })] }
+  // the run's own severity (its worst finding) wins; without one, its findings say it; a retired run never counts
+  assert.deepEqual(logic.jobCounts(view), { all: 6, failing: 2, upkeep: 2, ok: 2 })
+  assert.deepEqual(logic.jobCounts(null), { all: 0, failing: 0, upkeep: 0, ok: 0 })
+  assert.equal(logic.jobSeverity({ severity: 'none', findings: [] }), null)
+  assert.equal(logic.jobSeverity({ findings: [{ severity: 'info' }, { severity: 'medium' }] }), 'medium')
+  // stopped and a failed last run are an outage, red like a missing run, never the orange of upkeep
+  assert.equal(logic.workerTone({ state: 'stopped' }), 'bad')
+  assert.equal(logic.workerTone({ state: 'last_run_failed' }), 'bad')
+  assert.equal(logic.workerTone({ state: 'drifted' }), 'warn')
+})
+
+test('a sub page tile: red with its findings, orange with what needs a look, green only where an alarm reports nothing', () => {
+  const sec = (id, items, extra = {}) => ({ id, title: id, status: 'ok', items, count: items.length, total: items.length,
+    bad: items.filter(x => x.tone === 'bad').length, ...extra })
+  const machines = sec('Machines', [{ title: 'box' }, { title: 'printer', tone: 'dim' }, { title: 'watch', tone: 'dim' }])
+  // devices nothing measures live: the size of the first section and how its rows stand, never green
+  const plain = logic.subPageTile({ sections: [machines] })
+  assert.deepEqual([plain.tone, plain.big, plain.lead, plain.counts, plain.note], ['neutral', 3, 'Machines', { ok: 1, problems: 0, off: 2 }, null])
+  // an alarm section that reports nothing is a live all clear
+  const quiet = sec('Findings', [], { alarm: true })
+  assert.equal(logic.subPageTile({ sections: [machines, quiet] }).tone, 'success')
+  // a finding anywhere on the page counts, in a section drawn only with a finding (hide_ok) too, and it never leads
+  const cloud = sec('Cloud', [{ title: 'fn-a', tone: 'bad' }, { title: 'fn-b' }], { hide_ok: true })
+  const red = logic.subPageTile({ sections: [cloud, machines, quiet] })
+  assert.deepEqual([red.tone, red.big, red.note, red.lead], ['danger', 1, 'fn-a', 'Machines'])
+  const warn = logic.subPageTile({ sections: [machines, sec('Disk', [{ title: 'disk at 85 %', tone: 'warn' }])] })
+  assert.deepEqual([warn.tone, warn.big, warn.note], ['warning', 1, 'disk at 85 %'])
+  // a source that could not be read says why, in red
+  const broken = logic.subPageTile({ sections: [sec('Remotes', [], { status: 'error', reason: 'ssh failed' }), quiet] })
+  assert.deepEqual([broken.tone, broken.error, broken.note], ['danger', true, 'ssh failed'])
+  assert.equal(logic.subPageTile(null).tone, 'neutral')
+})
+
 test('logic: drawn sections filter by search, state, group and tags; a tag facet counts without its own choice', () => {
   const rows = [
     { title: 'fn-a', tone: null, group: 'Azure', tags: { Kind: 'Function App', State: 'running' } },
@@ -1886,11 +1923,11 @@ test('the Sessions tab and the Sessions station show the same number from sessio
   assert.ok(uses.length >= 2, `sessionCounts used ${uses.length} times, expected tab and station`)
 })
 
-test('the Workers tab marks findings like a page with findings, never as a bare number beside the station count', () => {
+test('the Workers tab marks an outage like a page with findings, never as a bare number beside the station count', () => {
   const src = readComponents()
   // the bare grey number of findings beside "Workers" read as the count of workers (5 on Start, 2 on the tab)
   assert.doesNotMatch(src, /pbadge is-quiet"><span class="mono">\$\{s\.workers\.data\.stats\.with_findings\}/)
-  assert.match(src, /tab\(WORKERS_PAGE[^\n]*\n[^\n]*workersFindings/)
+  assert.match(src, /tab\(WORKERS_PAGE[^\n]*\n[^\n]*overviewWorkers/)
 })
 
 test('demo: the coloured Today number and the waits-for-you count agree, and count the asks of Now', async () => {
@@ -2466,6 +2503,9 @@ test('ticker: each status rule names its kind, tone and where a click leads', ()
   check(runs([{ id: 'j', title: 'j', state: 'absent', strip: [] }]), 'jobFailed', 'failing', 'bad', { kind: 'workers' })
   check(runs([{ id: 'j', title: 'j', state: 'in_sync', strip: [{ verdict: 'ok' }, { verdict: 'failed' }] }]), 'jobFailed', 'failing', 'bad')
   check(runs([{ id: 'j', title: 'j', state: 'drifted', strip: [] }]), 'jobWarn', 'failing', 'warn')
+  // an outage the engine files high is news in red; upkeep it files medium is no news at all
+  check(runs([{ id: 'j', title: 'j', state: 'stopped', severity: 'high', strip: [] }]), 'jobFailed', 'failing', 'bad')
+  assert.equal(statusOf(runs([{ id: 'j', title: 'j', state: 'drifted', severity: 'medium', strip: [] }]), 'jobWarn').length, 0)
   assert.equal(statusOf(runs([{ id: 'j', title: 'j', state: 'in_sync', strip: [{ verdict: 'ok' }] }]), 'jobFailed').length, 0)
   // 22 machines, clouds and LLM sources that are down
   const items = list => mk({ model: model({ pages: [{ id: 'sys', sections: [{ id: 'res', items: list }] }] }) })

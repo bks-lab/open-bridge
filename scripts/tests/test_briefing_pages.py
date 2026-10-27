@@ -791,6 +791,70 @@ def test_cards_are_valid_for_the_schema_too():
         jsonschema.validate(profile, schema)
 
 
+def test_a_page_can_stand_under_another_and_the_parent_names_its_sub_pages():
+    # `under:` gives a page no tab of its own: it opens from a tile on the page it names. The parent learns its
+    # sub pages in the listed order (`subs`), the cockpit's own Background jobs page (@workers) among them
+    view = {"pages": [{"id": "ops", "sections": ["probes"], "overview": True},
+                      {"id": "@workers", "under": "ops"},
+                      {"id": "week", "sections": ["cal"], "under": "ops"},
+                      {"id": "gone", "sections": ["nope"], "under": "ops"},
+                      {"id": "log", "sections": ["commits"]}]}
+    assert bv._page_problems(view) == []
+    pages = bv.pages(_result(), _profile(view))
+    assert [p["id"] for p in pages] == ["ops", "week", "log", "more"]       # a placement is no page of its own
+    assert _page(pages, "week")["under"] == "ops"
+    # a sub page without a section (gone) is no page, so its parent does not name it
+    assert _page(pages, "ops")["subs"] == ["@workers", "week"]
+    assert "under" not in _page(pages, "ops") and "subs" not in _page(pages, "log")
+
+
+def test_under_must_name_a_page_of_its_own_one_level_deep():
+    def problems(*pages):
+        return bv._page_problems({"pages": list(pages)})
+    ops = {"id": "ops", "sections": ["probes"]}
+    assert problems(ops, {"id": "week", "sections": ["cal"], "under": "nope"}) == [
+        "view.pages 2: under names no page of view.pages: nope"]
+    assert problems(ops, {"id": "week", "sections": ["cal"], "under": "week"}) == [
+        "view.pages 2: a page cannot stand under itself"]
+    assert problems(ops, {"id": "week", "sections": ["cal"], "under": "ops"}, {"id": "log", "sections": ["commits"], "under": "week"}) == [
+        "view.pages 3: under: week stands under ops itself, one level only"]
+    assert problems({"id": "ops", "sections": ["probes"], "group": "day"}, {"id": "week", "sections": ["cal"], "under": "ops"}) == [
+        "view.pages 2: under: ops has no tab of its own (group work or day)"]
+    assert problems(ops, {"id": "week", "sections": ["cal"], "under": "ops", "group": "work"}) == [
+        "view.pages 2: under and group work or day exclude each other"]
+    assert problems(ops, {"id": "week", "sections": ["cal"], "under": 3}) == ["view.pages 2: under must be a page id"]
+    # the cockpit's Background jobs page is placed, never filled: an id and the page it stands under, nothing else
+    assert problems(ops, {"id": "@workers"}) == ["view.pages 2: @workers needs under (the page it stands under)"]
+    assert problems(ops, {"id": "@workers", "under": "ops", "sections": ["cal"]}) == ["view.pages 2: unknown key sections"]
+    assert problems(ops, {"id": "@workers", "under": "ops"}, {"id": "week", "sections": ["cal"], "under": "@workers"}) == [
+        "view.pages 3: under names no page of view.pages: @workers"]
+
+
+def test_under_and_the_workers_placement_are_valid_for_the_schema_too():
+    import pytest
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = yaml.safe_load((ROOT / "workflow" / "briefings" / "_schema.yaml").read_text(encoding="utf-8"))
+    profile = {"schema_version": 1, "scope": "user", "id": "p", "sections": [{"kind": "tasks"}, {"kind": "inbox"}],
+               "view": {"pages": [{"id": "ops", "sections": ["tasks"]}, {"id": "@workers", "under": "ops"},
+                                  {"id": "inv", "sections": [{"id": "inbox", "hide_ok": True}], "under": "ops"}]}}
+    jsonschema.validate(profile, schema)
+    assert bf.profile_problems(profile, "p") == []
+    profile["view"]["pages"][1] = {"id": "@workers", "under": "ops", "title": "Jobs"}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(profile, schema)
+
+
+def test_hide_ok_is_carried_only_when_set_and_must_be_a_bool():
+    # hide_ok: the section stays on its page (an account's services, the tab badge, the alarm read it) but is
+    # drawn only while one of its rows is a finding
+    view = {"pages": [{"id": "ops", "sections": ["commits", {"id": "probes", "hide_ok": True}]}], "page_rest": "hide"}
+    pages = bv.pages(_result(), _profile(view))
+    assert _section(pages, "probes")["hide_ok"] is True
+    assert "hide_ok" not in _section(pages, "commits")
+    assert any("hide_ok must be true or false" in x for x in
+               bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "hide_ok": "yes"}]}]}))
+
+
 def test_a_page_can_ask_for_an_order_by_jev():
     # `jev:` asks a dashboard for an order of the page's rows on a click; skip_sections and private keep rows home
     jev = {"skip_sections": ["probes"], "private": ["privat"]}
