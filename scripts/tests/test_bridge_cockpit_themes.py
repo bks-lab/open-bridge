@@ -286,3 +286,12 @@ def test_the_batch_of_the_list_is_taken_whole_and_one_undo_each_restores_every_p
     assert len(items) == 4 and all(it["undone_ms"] for it in items)
     for key in (OTHER, YES, ONLY, DEMO):
         assert key not in world.app.collector.settled
+
+
+def test_the_words_of_the_themes_live_in_text_py():
+    """rules/language-policy.md section 3: a CORE module words nothing in German itself; its table lives in text.py
+    under one key per language, as jev.py keeps its own"""
+    from lib.bridge_cockpit.text import TABLES
+    assert th.TEXT == {code: TABLES[code]["themes"] for code in TABLES}
+    src = Path(th.__file__).read_text(encoding="utf-8")
+    assert src.isascii(), [line for line in src.splitlines() if not line.isascii()]
