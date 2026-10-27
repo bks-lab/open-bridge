@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_bridge_cockpit import NOW, ONLY_ID, World, fail, ok, private_key_dir, refused  # noqa: E402,F401
 from lib.bridge_cockpit import actions_work as aw  # noqa: E402
 from lib.bridge_cockpit import history as hist  # noqa: E402
+from lib.bridge_cockpit import text as text_mod  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 FLOW = "cockpit:\n  enabled: true\n  language: {lang}\n  flow:\n    enabled: {on}\n"
@@ -121,7 +122,8 @@ def test_the_heading_is_in_the_language_of_the_instance(tmp_path):
     try:
         w.runner.calls.clear()
         w.act("flow_merge", keep=KEEP, keys=[A])
-        assert "Zusammengeführt aus {slug}" in task_calls(w)[0]
+        heading = text_mod.T("de")["merge_heading"]
+        assert heading != text_mod.T("en")["merge_heading"] and heading in task_calls(w)[0]
     finally:
         w.close()
 

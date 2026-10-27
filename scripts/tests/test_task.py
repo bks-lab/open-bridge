@@ -718,10 +718,10 @@ def test_merge_copies_goal_notes_and_open_steps_links_the_documents_and_closes_t
 
 def test_merge_takes_a_heading_of_its_own_and_puts_the_block_at_the_end_without_notes(repo):
     keep = _two(repo, keep=KEEP.split("## Notes")[0].rstrip("\n") + "\n", docs=())
-    r = run(repo, "merge", "keeper", "--from", "merged-one", "--heading", "Zusammengeführt aus {slug}", "--json")
+    r = run(repo, "merge", "keeper", "--from", "merged-one", "--heading", "Taken over from {slug}", "--json")
     assert r.returncode == 0, r.stderr
     text = keep.read_text(encoding="utf-8")
-    assert "## Zusammengeführt aus merged-one\n" in text
+    assert "## Taken over from merged-one\n" in text
     assert text.index("<!-- /merged-from: merged-one -->") < text.index("## Notes")   # the note made the section after it
     out = _json.loads(r.stdout)
     assert out["docs"] == 0 and out["related"] == 1

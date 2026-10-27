@@ -485,7 +485,7 @@ DE: dict = {
     "session_linked": "Sitzung {name} gehört jetzt zur Aufgabe {slug}",
     "session_unlinked": "Die Sitzung gehört zu keiner Aufgabe mehr",
     "session_not_this": "Die Sitzung zählt nicht mehr als Arbeit an {slug}",
-    # Zusammenführen in Abarbeiten
+    # Merge of Work through: the heading of the merged section (task.py replaces {slug}), the notes of a merge
     "merge_heading": "Zusammengeführt aus {slug}", "merged": "{names} in {title} zusammengeführt",
     "merge_failed": "{title} ließ sich nicht zusammenführen: {err}", "merge_undone": "Zusammenführung von {title} zurückgenommen",
     "run_seen": "Geprüft: das Ergebnis von {name} ({slug})",
