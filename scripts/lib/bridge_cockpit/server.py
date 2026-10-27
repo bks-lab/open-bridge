@@ -431,11 +431,14 @@ class App:
         """The work tab as the config sets it: the view it opens on (cockpit.work_view) and whether the start
         page's focus leads on into the files view (cockpit.focus_to_files), which tasks are files (cockpit.files_scope),
         the Work through page (cockpit.flow: on or off, its reasons to drop, its return delay) and the views its
-        switch offers (cockpit.work_views)"""
+        switch offers (cockpit.work_views). With Work through on also who the person is (cockpit.person_name):
+        a task whose next step names them waits on nobody else"""
+        flow = dict(getattr(self.cfg, "flow", None) or flow_defaults())
+        person = getattr(self.cfg, "person_name", None) if flow.get("enabled") is True else None
         return {"view": getattr(self.cfg, "work_view", "due"), "focus_to_files": bool(getattr(self.cfg, "focus_to_files", False)),
-                "files_scope": getattr(self.cfg, "files_scope", "active"),
-                "flow": dict(getattr(self.cfg, "flow", None) or flow_defaults()),
-                "views": list(getattr(self.cfg, "work_views", None) or WORK_VIEWS)}
+                "files_scope": getattr(self.cfg, "files_scope", "active"), "flow": flow,
+                "views": list(getattr(self.cfg, "work_views", None) or WORK_VIEWS),
+                **({"person": person} if person else {})}
 
     def tour_state(self) -> dict:
         """The first-run tour: whether a first visit offers it (cockpit.tour) and how it ended, if it did"""
@@ -471,11 +474,18 @@ class App:
         flow = getattr(self.cfg, "flow", None) or {}
         return flow.get("enabled") is True and flow.get("infer_sessions", True) is True
 
+    def open_links(self) -> dict:
+        """The kept session links whose task is open: a link to a task that closed (done, merged) is kept, so a
+        resume or a reopen finds it, but it counts as no task and blocks no recognition (sessions.infer)"""
+        return {sid: v for sid, v in self.store.session_links().items()
+                if isinstance(v, dict) and isinstance(v.get("task"), str) and self.task_open(v["task"])}
+
     def session_tasks(self) -> dict:
         """The task each live session works on, {sid: {task, how, since_ms}}: a link by hand, else a tab's link
         (every start from the cockpit), else the open task it is seen working on (sessions.infer) unless the pair
-        was refused. A link's since is when it was made, never before the session started"""
-        links, refused = self.store.session_links(), self.store.session_refused()
+        was refused; a link counts only while its task is open (open_links). A link's since is when it was made,
+        never before the session started"""
+        links, refused = self.open_links(), self.store.session_refused()
         seen = self.sessions.seen_state() if self.infer_on() else {}
         slugs = self.open_slugs() if seen else set()
         out = {}
@@ -531,8 +541,9 @@ class App:
             linked = self.link_tab_sessions()
             slugs, links = self.open_slugs(), self.store.session_links()
             ran = self.sessions.refresh_runs(self.clock(), slugs, links, self.root)
-            # the task a live session is seen working on, read from its transcript only while Work through is on
-            seen = (self.sessions.infer(slugs, self.store.session_refused(), links, self.root) if self.infer_on()
+            # the task a live session is seen working on, read from its transcript only while Work through is on; a
+            # link to a task that closed no longer keeps a session from being read
+            seen = (self.sessions.infer(slugs, self.store.session_refused(), self.open_links(), self.root) if self.infer_on()
                     else self.sessions.clear_seen())
             if linked or changed or ran or seen:
                 self.broadcast("sessions", self.sessions_state())

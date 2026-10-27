@@ -327,6 +327,30 @@ def test_unlinking_a_task_tab_session_holds_the_tab_does_not_link_it_again(flow)
     assert got["task"] is None and SID not in w.app.store.session_links()
 
 
+def test_a_link_to_a_task_that_closed_no_longer_counts_and_the_session_is_seen_again(flow):
+    w, home = flow
+    task(w.root, "tab-task")
+    path = home.session(SID, w.root, pid=4100, tab_slug="tab-task")
+    w.clock.now = ms(2)
+    home.session(SID_B, w.root, bash("task.py note other-task", 3), pid=4101, surface=SURF_B)
+    home.poll()
+    w.act("session_link", session=SID_B, slug="demo-task")
+    got = home.poll()
+    assert (got[SID]["task"], got[SID]["task_how"]) == ("tab-task", "tab")
+    assert (got[SID_B]["task"], got[SID_B]["task_how"]) == ("demo-task", "hand")
+    # both tasks close (a merge or a done moves the folder): the links stay kept for resume, but count no more
+    for slug in ("tab-task", "demo-task"):
+        done = w.root / "work" / "done" / "2026-10" / slug
+        done.parent.mkdir(parents=True, exist_ok=True)
+        (w.root / "work" / "tasks" / slug).rename(done)
+    home.append(path, bash("task.py note other-task -- going on with the next one", 9))
+    got = home.poll()
+    assert (got[SID]["task"], got[SID]["task_how"]) == ("other-task", "seen")
+    assert (got[SID_B]["task"], got[SID_B]["task_how"]) == ("other-task", "seen")
+    assert set(w.app.store.session_links()) == {SID, SID_B}          # kept, a reopen counts them again
+    assert w.app.sessions_state()["links"] == []
+
+
 def test_a_session_of_another_bridge_is_never_read_a_plain_folder_is(flow, tmp_path, monkeypatch):
     w, home = flow
     other = tmp_path / "other-bridge"

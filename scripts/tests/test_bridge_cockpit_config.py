@@ -261,6 +261,20 @@ def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path
         w.close()
 
 
+def test_with_work_through_on_the_state_names_the_person_its_waiting_rule_reads(tmp_path):
+    base = "cockpit:\n  enabled: true\n  language: en\n  person_name: Ada\n"
+    w = World(tmp_path / "a", config=base + "  flow:\n    enabled: true\n", serve=False, prepare=False)
+    try:
+        assert w.app.state_payload()["work"]["person"] == "Ada"
+    finally:
+        w.close()
+    w = World(tmp_path / "b", config=base, serve=False, prepare=False)
+    try:
+        assert "person" not in w.app.state_payload()["work"]        # flow off: nothing new goes out
+    finally:
+        w.close()
+
+
 # ---------------------------------------------------------------- cockpit.flow (the Work through page)
 
 def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(tmp_path):
