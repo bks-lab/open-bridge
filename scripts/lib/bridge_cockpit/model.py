@@ -371,6 +371,63 @@ def item_key(page_id: str, section_id: str, info: dict) -> str:
     return f"item:{page_id}/{section_id}/{rid}"
 
 
+def page_twins(view: dict | None) -> dict[str, list[tuple[str, dict, str]]]:
+    """The page items that are a row of Due: a tracker or command row of Due is ref:<id> (briefing_view, row_key) with
+    the sections it came from as its sources, and a page section among them lists the same thing as item <id>
+    (item_key). Row key -> [(page id, section, item key)], only for a row some page lists"""
+    if not view:
+        return {}
+    listed: dict[str, list[tuple[str, dict, dict]]] = {}
+    for pg in view.get("pages") or []:
+        for s in pg.get("sections") or []:
+            ids = {it["id"]: it for it in s.get("items") or [] if it.get("id")}
+            if ids:
+                listed.setdefault(s.get("id"), []).append((pg.get("id"), s, ids))
+    out: dict[str, list[tuple[str, dict, str]]] = {}
+    for row in all_rows(view):
+        ref = row.get("ref")
+        if not ref or row.get("key") != f"ref:{ref}":
+            continue
+        hits = [(pid, s, item_key(pid, s["id"], ids[ref])) for sid in row.get("sources") or []
+                for pid, s, ids in listed.get(sid, ()) if ref in ids]
+        if hits:
+            out[row["key"]] = hits
+    return out
+
+
+def decision_twins(pairs: dict[str, list[tuple[str, dict, str]]]) -> dict[str, tuple[str, ...]]:
+    """The keys one decision holds for (later, done, not doing, show again): a row of Due and its page items
+    (page_twins) are one thing under several keys. Each key of such a group -> the whole group, its own key first"""
+    out: dict[str, tuple[str, ...]] = {}
+    for key, hits in pairs.items():
+        group = list(dict.fromkeys([key, *(k for _, _, k in hits)]))
+        for k in group:
+            out[k] = (k, *(g for g in group if g != k))
+    return out
+
+
+def with_twins(decided: dict, twins: dict[str, tuple[str, ...]]) -> dict:
+    """The decisions by key (hidden, dismissed, settled) with each one also under the keys of the same thing
+    (decision_twins); a key's own decision wins over its twin's"""
+    out = dict(decided)
+    for key, value in decided.items():
+        for twin in twins.get(key, ())[1:]:
+            out.setdefault(twin, value)
+    return out
+
+
+def board_places(pairs: dict[str, list[tuple[str, dict, str]]]) -> dict[str, dict]:
+    """Row key -> {page, section}: the GitHub list a row of Due stands in (page_twins), a section on its board view with
+    a board or figures (views/pages.js draws it as views/github.js GitHubList); a row in none is not in the map"""
+    out: dict[str, dict] = {}
+    for key, hits in pairs.items():
+        for pid, s, _ in hits:
+            if s.get("view") == "board" and (s.get("boards") or s.get("metrics")):
+                out[key] = {"page": pid, "section": s["id"]}
+                break
+    return out
+
+
 def launch_item(row: dict) -> str | None:
     return row.get("inbox_id") or row.get("task") or None
 

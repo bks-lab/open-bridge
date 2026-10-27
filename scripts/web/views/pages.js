@@ -100,8 +100,9 @@ function GaugeTile({ it, page, section, c }) {
 /** A command row's own steps (an application: followed up, turned down, ...) in two clicks; each is
  *  run by its section's command and can be taken back from the toast or the history. `as="buttons"`
  *  (a section's `steps: buttons`) sets every step out as a button of its own: the first click arms it,
- *  the second runs it, and an armed button falls back after a few seconds */
-export function RowSteps({ it, page, section, s, c, as = 'menu' }) {
+ *  the second runs it, and an armed button falls back after a few seconds. `head` (a GitHub row's lead
+ *  step or To tab, views/github.js) makes it one split button: the head left, ▾ with these steps */
+export function RowSteps({ it, page, section, s, c, as = 'menu', head = null }) {
   const t = T()
   const [open, setOpen] = useState(false)
   const [armed, setArmed] = useState(null)
@@ -120,7 +121,9 @@ export function RowSteps({ it, page, section, s, c, as = 'menu' }) {
       onClick=${() => (armed === a.id ? pick(a.id) : setArmed(a.id))}>${armed === a.id ? t.stepConfirm(a.label) : a.label}<//>`)}</span>`
   }
   return html`<span class="settle" ref=${box}>
-    <${Btn} size="xs" variant="ghost" busy=${busy} pressed=${open} title=${t.rowStepsTitle} onClick=${() => setOpen(!open)}>${t.rowSteps} ▾<//>
+    ${head ? html`<span class="btn-split">${head}<${Btn} size="xs" variant="primary" busy=${busy} pressed=${open} title=${t.rowStepsTitle}
+        label=${t.rowStepsMore} onClick=${() => setOpen(!open)}>▾<//></span>`
+      : html`<${Btn} size="xs" variant="ghost" busy=${busy} pressed=${open} title=${t.rowStepsTitle} onClick=${() => setOpen(!open)}>${t.rowSteps} ▾<//>`}
     ${open ? html`<span class="settle-menu" role="menu">${it.actions.map(a => html`<button type="button" role="menuitem" key=${a.id}
       class="settle-item" onClick=${() => pick(a.id)}><span>${a.label}</span></button>`)}</span>` : null}
   </span>`

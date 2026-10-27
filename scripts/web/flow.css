@@ -232,6 +232,12 @@
 }
 .flow-notnow-item:hover { background: var(--surface-raised); }
 .flow-notnow-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+/* the rows a GitHub list holds: one quiet line, no group, it leads to the list where they stand */
+.flow-notnow-line {
+  width: 100%; padding: 7px 9px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--on-surface-muted);
+  font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; overflow-wrap: anywhere;
+}
+.flow-notnow-line:hover { background: var(--surface-raised); color: var(--on-surface); text-decoration: underline; }
 .flow-run-cat .flow-side-name { flex-direction: row; }
 /* the strip as the view of its own: its head is the page's, so no frame of its own */
 .flow-runstrip.is-bare { padding: 0; border: 0; background: transparent; }

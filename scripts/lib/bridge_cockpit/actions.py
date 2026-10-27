@@ -344,8 +344,10 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
                           page_item={"section": sec.get("title") or sec["id"], "detail": it.get("detail") or "",
                                      "inbox_key": inbox_key, "row": f":{sec['id']}:{it['id']}" if it.get("id") else None})
         row["key"] = key
-        hidden = (self.app.store.hidden().get(key) or "") > self.today().isoformat()
-        return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": False}, "hidden": hidden}
+        # put off or decided under this key or under the row of Due it is (collector.twins): Show again takes it back
+        hidden, dismissed, today = self.app.store.hidden(), self.app.store.dismissed(), self.today().isoformat()
+        gone = any((hidden.get(k) or "") > today or k in dismissed for k in self.app.collector.twins(key))
+        return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": False}, "hidden": gone}
 
     def entries(self, keys: list[str]) -> list[dict]:
         return [self.entry(k, "keys") for k in keys]

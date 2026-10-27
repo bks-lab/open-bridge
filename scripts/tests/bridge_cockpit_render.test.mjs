@@ -1894,11 +1894,79 @@ test('github boards: a board switched off leaves the page, one line names it and
   const c = recorder()
   const section = ghSection(s)
   const el = mount(html`<${GitHubBoard} section=${section} filter=${null} setFilter=${() => {}} c=${c} s=${s} />`)
-  assert.deepEqual(el.$$('.ghb-board-name').map(x => x.text()), ['Demo board', 'Docs board'])
   const line = el.$('.ghb-hidden')
   assert.match(line.text(), /Old roadmap/)
   line.$('button').click()
   assert.deepEqual(c.calls.at(-1), ['openSettings', 'boards'])
+})
+
+test('github page (G4): only the figures with a cause stand above the list, no tile per board and no switch on the page', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const section = ghSection(s)
+  const el = mount(html`<${GitHubBoard} section=${section} filter=${null} setFilter=${() => {}} c=${c} s=${s} />`)
+  // the demo counts open, yours, your PRs, in progress, in review, closed and merged (no cause to look) and blocked 0
+  assert.deepEqual(el.$$('.ghb-figure .ghb-label').map(x => x.text()), [en.gh.figure.ask_review, en.gh.figure.quiet, en.gh.figure.untasked])
+  assert.ok(!el.$('.ghb-boards'), 'no tile per board: its facts stand in the head of its list')
+  assert.ok(!el.$('.ghb-mode'), 'Off, Mine and All are chosen in the settings only')
+  el.$$('.ghb-figure')[1].click()
+  assert.deepEqual(c.calls, [])
+  const picked = []
+  const f = mount(html`<${GitHubBoard} section=${section} filter=${null} setFilter=${x => picked.push(x)} c=${c} s=${s} />`)
+  f.$$('.ghb-figure')[1].click()
+  assert.deepEqual(picked, [{ kind: 'flag', id: 'quiet' }])
+})
+
+test('github list (G4): the head of a board names its facts, the cards it shows, how many are open by state, a cut', () => {
+  const { GitHubList } = views.github
+  const s = cockpitState(NOW)
+  const base = ghSection(s)
+  const section = { ...base, boards: base.boards.map(b => (b.name === 'Demo board' ? { ...b, capped: 200 } : b)) }
+  const el = mount(html`<${GitHubList} items=${section.items} page="trackers" section=${section} s=${s} c=${recorder()} byKey=${new Map()} />`)
+  const group = name => el.$$('.ghl-group').find(g => g.$('.ghl-head-name').text() === name)
+  const facts = group('Demo board').$('.ghl-facts').text()
+  for (const part of [en.gh.boardMode.mine, en.gh.boardOpen(9), `3 ${en.gh.state.new}`, `2 ${en.gh.state.in_progress}`, `1 ${en.gh.state.blocked}`, en.gh.capped(200)]) {
+    assert.ok(facts.includes(part), `${part} in ${facts}`)
+  }
+  // rows the search adds without a board stand under their repository, with no board facts
+  assert.ok(group('example/tools') && !group('example/tools').$('.ghl-facts'))
+})
+
+test('github rows (G4): one split start, the lead step left and the other steps under ▾, Close beside; a live tab leads with To tab', async () => {
+  const { GitHubList } = views.github
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const it = { index: 0, key: 'item:github/boards/example/repo#5', title: 'example/repo#5 Fix it', actionable: true, row_id: 'example/repo#5',
+    group: 'Demo board', flags: ['mine'], gh: { title: 'Fix it', repo: 'example/repo', number: 5, type: 'issue', state: 'ready' },
+    actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }, { id: 'sync', label: 'Sync status' }],
+    link: { kind: 'web', href: 'https://example.org/repo/issues/5' } }
+  const list = row => mount(html`<${GitHubList} items=${[row]} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${c} byKey=${new Map()} />`)
+  const el = list(it)
+  const acts = el.$('.ghl-acts')
+  const [lead, more] = acts.$('.btn-split').$$('button')
+  assert.equal(lead.text(), 'Implement', 'yours to implement: the lead')
+  assert.equal(more.text(), '▾')
+  assert.ok(!acts.$('.start'), 'no second start beside the lead step')
+  assert.ok(labels(acts).includes(`${en.settle} ▾`), 'Close beside it')
+  lead.click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'row_action', { page: 'github', section: 'boards', index: 0, action: 'implement' }])
+  more.click()
+  await tick()
+  assert.deepEqual(acts.$$('[role="menuitem"]').map(b => b.text()), ['Analyse', 'Sync status'])
+  acts.$$('[role="menuitem"]')[0].click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'row_action', { page: 'github', section: 'boards', index: 0, action: 'analyze' }])
+  // an agent works on the row: To tab leads, every step under ▾
+  const live = list({ ...it, tab: { ref: 'surface:9', state: 'working', live: true, waiting: false } }).$('.ghl-acts')
+  const [toTab, all] = live.$('.btn-split').$$('button')
+  assert.equal(toTab.text(), en.btnToTab)
+  toTab.click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'tab_jump', { tab_ref: 'surface:9' }])
+  all.click()
+  await tick()
+  assert.deepEqual(live.$$('[role="menuitem"]').map(b => b.text()), ['Analyse', 'Implement', 'Sync status'])
+  // a row with no step of its own: the general start is its one start
+  const bare = list({ ...it, actions: null }).$('.ghl-acts')
+  assert.ok(bare.$('.start') && !bare.$('.btn-split'))
 })
 
 test('github boards: the settings list every board, the hidden ones too, and the default for new boards', () => {

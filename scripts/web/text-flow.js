@@ -119,6 +119,9 @@ export const FLOW = {
         ahead: (due, d) => `due ${due}, back on ${d}`, waits: who => `waits on ${who}`, others: 'waits on others',
         approved: 'your yes is given, waits on an agent', blocked: by => `blocked: ${by}`, park: 'up for parking',
         resting: d => `resting since ${d}`, rests: 'resting' },
+      // the watched rows a GitHub list holds: one line that leads to that list (views/flowleft.js)
+      onPage: (n, page) => `${n} on ${page}`,
+      onPageTitle: page => `Issues and pull requests of your boards: they stand on ${page}, a click shows them there`,
     },
     merge: {
       button: 'Merge', run: 'Merge', only: 'Only open tasks can be merged: no streams, no inbox items.', title: 'Which task stays?',
@@ -304,6 +307,8 @@ export const FLOW = {
         ahead: (due, d) => `fällig ${due}, wieder dran ab ${d}`, waits: who => `wartet auf ${who}`, others: 'wartet auf andere',
         approved: 'dein Ja ist gegeben, wartet auf einen Agenten', blocked: by => `blockiert: ${by}`, park: 'zum Parken vorgeschlagen',
         resting: d => `ruht seit ${d}`, rests: 'ruht' },
+      onPage: (n, page) => `${n} auf ${page}`,
+      onPageTitle: page => `Issues und Pull Requests deiner Boards: sie stehen auf ${page}, ein Klick zeigt sie dort`,
     },
     merge: {
       button: 'Zusammenführen', run: 'Zusammenführen', only: 'Nur offene Aufgaben lassen sich zusammenführen, keine Streams und keine Posteingangspunkte.',

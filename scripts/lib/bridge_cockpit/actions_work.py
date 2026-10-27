@@ -239,11 +239,15 @@ class WorkVerbs:
         self.hide_until(ctx, self.entry(key)["row"], until)
 
     def v_unhide(self, ctx: Ctx, key: str) -> None:
+        """Show again: under the row's own key and under the keys of the same thing (collector.twins: an issue in
+        Due and on the GitHub page), wherever the decision was taken"""
         found = self.entry(key)
-        if not found["hidden"] or not self.app.store.unhide(key):
+        twins = self.app.collector.twins(key)
+        if not found["hidden"] or not [k for k in twins if self.app.store.unhide(k)]:
             raise self.not_applicable("the row is not hidden")
         if getattr(self.app, "history", None) is not None:
-            self.app.history.mark_undone("unhide", key)
+            for k in twins:
+                self.app.history.mark_undone("unhide", k)
         ctx.note(self.tx["unhidden_note"].format(title=m.short(found["row"]["title"], 60)), go=row_go(found["row"]))
 
     def v_drop(self, ctx: Ctx, key: str, reason: str | None = None) -> None:

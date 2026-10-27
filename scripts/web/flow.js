@@ -38,13 +38,14 @@ export const FLOW_CHIPS = { all: FLOW_GROUPS, you: FLOW_YOU, running: ['doing'],
 
 // the groups of Not now, the open rows that are no point now, in the order the left column lists them: Later (round 6
 // B: put off or due later than the lead time, waiting on others, resting, one group with the reason on each row), ideas
-// and the backlog, the streams, the issues and pull requests watched
-export const FLOW_LEFT_OUT = ['later', 'idea', 'stream', 'watch']
+// and the backlog, the streams, the issues and pull requests watched, and those of them a GitHub list holds (`github`,
+// the row's on_board: they stand on that page, so Not now names them in one line that leads there, views/flowleft.js)
+export const FLOW_LEFT_OUT = ['later', 'idea', 'stream', 'watch', 'github']
 
 // why a row of Not now is no point (its entry's `kind`): the kinds Later holds, in the order it lists them, then the
 // groups of their own
 const LATER_KINDS = ['later', 'waiting', 'resting']
-const LEFT_KINDS = [...LATER_KINDS, 'idea', 'stream', 'watch']
+const LEFT_KINDS = [...LATER_KINDS, 'idea', 'stream', 'watch', 'github']
 
 // the verbs each group of Not now offers in its batch bar (a row a verb does not fit stays out, not_offered); Back on
 // in Later acts on each row by why it waits, as it did in the three groups (leftPlan)
@@ -274,7 +275,8 @@ const inNow = (r, src) => src === 'now' || r.section === 'now' || r.urgency === 
  *  cockpit.flow.ahead_days waits under Later until then (aheadOf), unless the viewer took it back on (ui.flowEarly).
  *  A card is {group, id, kind, row?, start?, tab?, task?, covers?, rows?, stage?}; an entry of the lane {group doing,
  *  lane, id, kind start, session or tab, row, tab, stage, how, title, at}; one of Not now {row, kind, until, why, due,
- *  repo}, kind the reason it is no point (later, waiting, resting, idea, stream, watch; the first three share Later).
+ *  repo}, kind the reason it is no point (later, waiting, resting, idea, stream, watch, github; the first three share
+ *  Later). A watched row a GitHub list holds (on_board) stands in the group `github`, which names that list as `at`.
  *  Besides, every live session as a card of Running now (`sessions`, round 6: {id, kind live, session, tab, entry,
  *  stage}, entry the lane's entry in its tab), with or without a driver; it stands for no row, so no key or count moves.
  *  counts: points (the reports by their rows), running, left, extra (cards and entries that stand for no open row,
@@ -448,7 +450,7 @@ export function flowParts(s) {
       else if (!waits(r)) tasks.push(r)
     } else if (r.bucket === 'waiting') leave('waiting', r)
     else if (inNow(r, from.get(r.key))) { if (!waits(r)) issues.push(r) }
-    else leave('watch', r, { repo: repoOf(r) })
+    else leave(r.on_board?.page ? 'github' : 'watch', r, { repo: repoOf(r) })
   }
   const ranks = rankMap(s)
   const order = (a, b) => byRank(ranks)(a, b) || byPrio(a, b) || byAge(a, b)
@@ -460,11 +462,12 @@ export function flowParts(s) {
   // Running now, the newest first
   out.lane.sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
   left.later.sort((a, b) => (a.until && b.until ? a.until.localeCompare(b.until) : a.until ? -1 : b.until ? 1 : 0) || byTitle(a.row, b.row))
-  left.watch.sort((a, b) => (a.repo && b.repo ? a.repo.localeCompare(b.repo) : a.repo ? -1 : b.repo ? 1 : 0) || byKey(a.row, b.row))
+  for (const k of ['watch', 'github']) left[k].sort((a, b) => (a.repo && b.repo ? a.repo.localeCompare(b.repo) : a.repo ? -1 : b.repo ? 1 : 0) || byKey(a.row, b.row))
   for (const k of ['waiting', 'resting', 'idea', 'stream']) left[k].sort((a, b) => byPrio(a.row, b.row) || byAge(a.row, b.row))
-  // Later holds its three kinds in their order, each sorted as it was
+  // Later holds its three kinds in their order, each sorted as it was; the GitHub line names the list its rows stand in
   const groups = FLOW_LEFT_OUT.map(reason => ({ reason, rows: (reason === 'later' ? LATER_KINDS : [reason]).flatMap(k => left[k]) }))
     .filter(g => g.rows.length)
+    .map(g => (g.reason === 'github' ? { ...g, at: boardOf(g.rows, model.pages) } : g))
   const leftN = groups.reduce((n, g) => n + g.rows.length, 0)
   out.leftOut = { total: leftN, groups }
   const queue = flowQueue(out, 'all')
@@ -473,6 +476,18 @@ export function flowParts(s) {
   const extra = queue.filter(x => x.kind !== 'reports' && !open1(x)).length + out.lane.filter(x => !open1(x)).length - queue.filter(x => x.covers).length
   out.counts = { points, running: out.lane.length, left: leftN, extra, total: points + out.lane.length + leftN, sessions: out.sessions.length }
   return out
+}
+
+/** Where the rows of Not now a GitHub list holds stand: the list most of them name ({page, section}, the server's
+ *  on_board) with its page's title, else the page's id */
+function boardOf(entries, pages) {
+  const n = new Map()
+  for (const { row: { on_board: at } } of entries) {
+    const k = `${at.page}/${at.section}`
+    n.set(k, { at, count: (n.get(k)?.count ?? 0) + 1 })
+  }
+  const { page, section } = [...n.values()].sort((a, b) => b.count - a.count)[0].at
+  return { page, section, title: (pages ?? []).find(p => p.id === page)?.title || page }
 }
 
 // the order of the session cards: a tab that asks (answered here, so no point), at work, waiting at its prompt, quiet

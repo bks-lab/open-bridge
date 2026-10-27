@@ -117,7 +117,7 @@ test('flowParts: what is put off, waits, rests, is a stream or an idea stands in
   assert.deepEqual(parts.leftOut.groups[0].rows.map(e => e.kind), ['later', 'waiting', 'resting'])
   assert.equal(parts.leftOut.groups[0].rows[0].until, '2026-10-20')
   assert.equal(parts.leftOut.total, 6)
-  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => k !== 'watch'))
+  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => !['watch', 'github'].includes(k)))
   // the ideas and the backlog come back only on the calm card, at most three: by rank, else the priority first
   assert.deepEqual(logic.restSuggestions(s, 3).map(r => r.key), ['task:backlog-one', 'inbox:20261009-0900-a-idea'])
   assert.deepEqual(logic.restSuggestions(s, 1).map(r => r.key), ['task:backlog-one'])
@@ -2238,7 +2238,7 @@ test('flowParts rules: hidden, put off, approved, idea, waiting and resting, rep
   assert.deepEqual(parts.doing.map(x => x.id), ['task:doing-one'])
   // an issue or PR in Now, by bucket do or urgency now, is a point of Issues and PRs, the soonest due first
   assert.deepEqual(parts.issue.map(x => x.row.key), ['ref:acme/app#1', 'ref:acme/app#9'])
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['later', 'idea', 'stream', 'watch'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['later', 'idea', 'stream', 'watch', 'github'])
   assert.deepEqual(logic.FLOW_GROUPS, ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
   assert.deepEqual(logic.FLOW_BANDS, ['you', 'doing', 'task', 'issue', 'reports'])
   assert.deepEqual(logic.FLOW_CHIPS.tasks, ['task', 'issue'])
@@ -2521,7 +2521,9 @@ test('Not now: a button per group at the foot of the left column, a click shows 
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
   const block = el.$('aside .flow-notnow')
   assert.match(block.$('h3').text(), new RegExp(`${en.flow.notnow.label}\\s*${left.total}`))
-  assert.deepEqual(block.$$('.flow-notnow-item').map(b => b.$('.flow-side-label').text()), left.groups.map(g => en.flow.notnow.group[g.reason]))
+  // a button per group; the rows the demo's GitHub list holds stand in one line of their own (G3)
+  assert.deepEqual(block.$$('.flow-notnow-item').map(b => b.$('.flow-side-label').text()), left.groups.filter(g => !g.at).map(g => en.flow.notnow.group[g.reason]))
+  assert.equal(block.$('.flow-notnow-line').text().trim(), en.flow.notnow.onPage(2, 'Trackers'))
   block.$$('.flow-notnow-item')[0].click()
   assert.deepEqual(c.calls.at(-1), ['flowLeft', left.groups[0].reason])
   // the Sunday question waits under Later, from two days before; Back on takes it back in this browser
@@ -2545,11 +2547,44 @@ test('Not now: a button per group at the foot of the left column, a click shows 
   list.button(en.flow.list.confirm).click()
   await tick()
   assert.deepEqual(c2.calls.find(x => x[0] === 'flowEarly'), ['flowEarly', { [sunday.row.key]: sunday.until }])
-  // the watched issues and pull requests under a head per repository
+  // the watched issues and pull requests no GitHub list holds under a head per repository
   const watch = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'watch' })} c=${recorder()} />`)
   const heads = watch.$$('.flow-ov-group').map(h => h.text())
-  assert.ok(heads.includes('example/repo') && heads.includes('example/tools'), heads.join(', '))
+  assert.ok(heads.includes('example/repo') && heads.includes('grp/app') && !heads.includes('example/tools'), heads.join(', '))
   assert.ok(watch.$$('.flow-ov-open').some(a => a.getAttribute('href')?.startsWith('https://example.org/')), 'an issue opens on the web')
+})
+
+test('Not now: the rows a GitHub list holds fold into one line that leads there, the rest stay watched, the counts hold (G3)', () => {
+  const gh = { page: 'github', section: 'boards' }
+  const s = state({ later: [ref('acme/app', 3, { on_board: gh }), ref('acme/app', 2, { on_board: gh }), ref('acme/docs', 4),
+    { key: 'ref:checks/disk-low', ref: 'checks/disk-low', title: 'Disk almost full', bucket: 'plan' },
+    ref('acme/app', 7, { on_board: gh, bucket: 'do' })],
+    hidden: [ref('acme/app', 9, { on_board: gh, hidden_until: '2026-10-20' })] })
+  s.model.pages = [{ id: 'github', title: 'GitHub', sections: [] }]
+  const { parts } = checkInvariant(s, 'a GitHub list')
+  const by = Object.fromEntries(parts.leftOut.groups.map(g => [g.reason, g]))
+  // only the watched rows of a board fold: one that needs you stays a point, one put off stays under Later
+  assert.deepEqual(by.github.rows.map(e => e.row.key), ['ref:acme/app#2', 'ref:acme/app#3'])
+  assert.deepEqual(by.github.at, { ...gh, title: 'GitHub' })
+  assert.deepEqual(by.watch.rows.map(e => e.row.key), ['ref:acme/docs#4', 'ref:checks/disk-low'])
+  assert.deepEqual(parts.issue.map(x => x.row.key), ['ref:acme/app#7'])
+  assert.deepEqual(by.later.rows.map(e => e.row.key), ['ref:acme/app#9'])
+  // the line counts its rows: Not now holds them, so points, Running now and Not now still add up to every open row
+  assert.equal(parts.counts.left, 5)
+  assert.equal(parts.leftOut.total, 5)
+  // the left column: Watching and Later as group buttons, the GitHub rows as one quiet line that opens the list
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'overview' } }} c=${c} />`)
+  const block = el.$('aside .flow-notnow')
+  assert.deepEqual(block.$$('.flow-notnow-item').map(b => b.$('.flow-side-label').text()), [en.flow.notnow.group.later, en.flow.notnow.group.watch])
+  const line = block.$('.flow-notnow-line')
+  assert.equal(line.text().trim(), en.flow.notnow.onPage(2, 'GitHub'))
+  assert.equal(line.getAttribute('title'), en.flow.notnow.onPageTitle('GitHub'))
+  line.click()
+  assert.deepEqual(c.calls.at(-1), ['openSection', 'github', 'boards'])
+  // a list on a page the model does not name keeps its id as the word
+  const lone = state({ later: [ref('acme/app', 2, { on_board: { page: 'boards', section: 'work' } })] })
+  assert.deepEqual(logic.flowParts(lone).leftOut.groups[0].at, { page: 'boards', section: 'work', title: 'boards' })
 })
 
 test('Merge in the batch: two open tasks ticked offer it, a stream or an item ticked with them turns it off with why', async () => {
@@ -3131,7 +3166,7 @@ test('R6B 2f: one group Later holds what is put off, what waits on others and wh
   later: [ask('20261009-0904-a-w', { bucket: 'waiting' }), ask('20261009-0903-a-ok', { inbox_state: 'approved' })],
   hidden: [task('put-off', { hidden_until: '2026-10-20' })] })
   const parts = logic.flowParts(s)
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['later', 'idea', 'stream', 'watch'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['later', 'idea', 'stream', 'watch', 'github'])
   assert.deepEqual(parts.leftOut.groups.map(g => g.reason), ['later'])
   const later = parts.leftOut.groups[0].rows
   assert.deepEqual(later.map(e => [e.row.key, e.kind]), [['task:put-off', 'later'], ['task:waits', 'waiting'], ['inbox:20261009-0903-a-ok', 'waiting'],

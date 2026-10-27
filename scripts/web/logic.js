@@ -3547,7 +3547,7 @@ const HINTS = {
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
 const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],
   ['triage', '.tri-sort'], ['reviewStrip', '.review-strip'], ['jorder', '.jorder'], ['sectionHead', '.psec .psec-head'],
-  ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghb-boards'],
+  ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghl-facts'],
   ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
   ['calFigures', '.calf'], ['calBar', '.calbar'], ['calDays', '.cal-day']]
 // the as-of time is the reload button, the notes stand in the history, the look-up card under Settings, Appearance

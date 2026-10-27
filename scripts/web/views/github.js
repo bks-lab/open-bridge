@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
-// The cockpit's GitHub work: the figures and the boards above a github-work section, and the detail of
-// one issue or pull request (briefing.py detail, through /api/github). Everything here reads; a step on
-// a row starts an agent tab (row_action), a board's switch is the person's own choice (github_board), and
-// the settings list every board with the mode a new one starts with (github_board_default).
+// The cockpit's GitHub work: the figures with a cause above a github-work section (round 6: no tile per board and
+// no switch on the page), its rows under a head per board that names the board's facts, and the detail of one issue
+// or pull request (briefing.py detail, through /api/github). Everything here reads; a row has one start, its lead
+// step with the other steps under ▾ (row_action, an agent tab) and Close beside it; a board's switch is the person's
+// own choice, made in the settings, which list every board with the mode a new one starts with (github_board,
+// github_board_default).
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
-import { actionRow, ghSortRows, itemRow, pageItemActs, rowActionKey } from '../logic.js'
-import { OriginTag, RowBar } from './day.js'
+import { actionRow, canTab, ghSortRows, itemRow, pageItemActs, rowActionKey } from '../logic.js'
+import { OriginTag, SettleMenu, StartMenu } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
 import { Card } from './settings.js'
@@ -43,52 +45,26 @@ function ago(iso) {
   return days <= 0 ? t.gh.today : days === 1 ? t.gh.yesterday : t.gh.daysAgo(days)
 }
 
-/** The figures and the boards above the rows; a click on either filters the rows below, a second one clears it */
-export function GitHubBoard({ section, filter, setFilter, c, s }) {
+/** The figures with a cause above the rows (one a person should look at, not zero), who the rows are with, and the
+ *  boards switched off; a click on a figure or a person filters the rows below, a second one clears it */
+export function GitHubBoard({ section, filter, setFilter, c }) {
   const t = T()
-  const metrics = (section.metrics ?? []).filter(m => !['closed', 'landed'].includes(m.id) || m.n != null)
+  const metrics = (section.metrics ?? []).filter(m => LOUD[m.id] && m.n > 0)
   // a board switched off leaves the page: one line names them and leads to the settings, where it comes back
-  const boards = (section.boards ?? []).filter(b => b.mode !== 'off')
   const hidden = (section.boards ?? []).filter(b => b.mode === 'off')
   const pick = f => setFilter(filter && filter.kind === f.kind && filter.id === f.id ? null : f)
-  const busy = !!s.ui.busy.github_board
   // who the rows are with, the busiest first: a chip each, a filter like the figures
   const people = Object.entries((section.items ?? []).reduce((n, it) => (it.who ? { ...n, [it.who]: (n[it.who] ?? 0) + 1 } : n), {}))
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 16)
   return html`<div class="ghb">
     ${metrics.length ? html`<ul class="ghb-figures" aria-label=${t.gh.figuresLabel}>${metrics.map(m => {
-      const done = m.id === 'closed' || m.id === 'landed'
       const on = filter?.kind === 'flag' && filter.id === m.id
-      const loud = m.n > 0 && LOUD[m.id]
       return html`<li key=${m.id}>
-        <button type="button" class=${`ghb-figure${on ? ' is-on' : ''}${loud ? ` tk-${loud} is-loud` : ''}${done ? ' is-done' : ''}`}
-          aria-pressed=${String(on)} disabled=${done} title=${t.gh.figureTitle[m.id]?.(m) ?? ''} onClick=${() => pick({ kind: 'flag', id: m.id })}>
+        <button type="button" class=${`ghb-figure tk-${LOUD[m.id]} is-loud${on ? ' is-on' : ''}`}
+          aria-pressed=${String(on)} title=${t.gh.figureTitle[m.id]?.(m) ?? ''} onClick=${() => pick({ kind: 'flag', id: m.id })}>
           <span class="ghb-n mono">${m.n}</span>
           <span class="ghb-label">${t.gh.figure[m.id] ?? m.id}</span>
-          ${m.days != null && (m.id === 'my_pr' || done) ? html`<span class="ghb-sub muted">${t.gh.figureSub[m.id]?.(m.days) ?? ''}</span>` : null}
         </button></li>`
-    })}</ul>` : null}
-    ${boards.length ? html`<ul class="ghb-boards" aria-label=${t.gh.boardsLabel}>${boards.map(b => {
-      const total = BOARD_STATES.reduce((n, k) => n + (b.counts?.[k] ?? 0), 0)
-      const on = filter?.kind === 'board' && filter.id === b.name
-      return html`<li key=${b.slug ?? b.name} class=${`ghb-board${on ? ' is-on' : ''}`}>
-        <button type="button" class="ghb-board-head" aria-pressed=${String(on)}
-          title=${t.gh.boardFilterTitle} onClick=${() => pick({ kind: 'board', id: b.name })}>
-          <span class="ghb-board-name">${b.name}</span>
-          <span class="ghb-n mono">${b.open ?? total}</span>
-        </button>
-        ${total ? html`<div class="ghb-bar" role="img"
-            aria-label=${BOARD_STATES.filter(k => b.counts?.[k]).map(k => `${b.counts[k]} ${t.gh.state[k]}`).join(', ')}>
-          ${BOARD_STATES.filter(k => b.counts?.[k]).map(k => html`<span key=${k} class=${`ghb-seg tk-${STATE_TOKEN[k]}`}
-            style=${{ flexGrow: b.counts[k] }} title=${`${b.counts[k]} ${t.gh.state[k]}`}></span>`)}
-        </div>
-        <p class="ghb-legend muted small">${BOARD_STATES.filter(k => b.counts?.[k]).map(k => html`<span key=${k}>
-          <span class=${`ghb-dot tk-${STATE_TOKEN[k]}`}></span>${b.counts[k]} ${t.gh.state[k]}</span>`)}</p>`
-        : html`<p class="muted small ghb-off">${t.gh.boardEmpty}</p>`}
-        ${b.capped ? html`<p class="muted small">${t.gh.capped(b.capped)}</p>` : null}
-        ${b.slug && b.mode ? html`<${ModeGroup} modes=${['off', 'mine', 'all']} at=${b.mode} label=${t.gh.modeLabel(b.name)} busy=${busy}
-          pick=${m => c.act('github_board', { section: section.id, slug: b.slug, mode: m })} />` : null}
-      </li>`
     })}</ul>` : null}
     ${section.boards?.length ? html`<p class="ghb-hidden muted small">
       ${hidden.length ? html`<span>${t.gh.hiddenBoards(hidden.map(b => b.name).join(', '))}</span>` : null}
@@ -231,7 +207,7 @@ function keepFolded(set) {
 }
 
 /** The one step a row leads with: a review someone asked you for, your issue to implement, someone else's
- *  card to remind them of, else a look at it; the rest stay in the menu */
+ *  card to remind them of, else a look at it; the rest stay in the menu under ▾ beside it */
 export function leadStep(it) {
   const ids = (it.actions ?? []).map(a => a.id)
   const f = it.flags ?? []
@@ -261,15 +237,29 @@ function matches(it, q) {
   return q.toLowerCase().split(/\s+/).every(w => hay.includes(w))
 }
 
+/** The one start of a row (round 6): its lead step, or To tab while an agent works on it, with the other steps under
+ *  ▾ (RowSteps); a row with no step of its own starts through the general start (StartMenu). Never two starts */
+function GhStart({ it, row, page, section, s, c }) {
+  const t = T()
+  const live = it.tab && it.tab.live
+  const lead = leadStep(it)
+  const steps = (it.actions ?? []).filter(a => live || a.id !== lead)
+  const head = live ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[it.tab.ref]}
+      onClick=${() => (canTab(s, 'focus') ? c.act('tab_jump', { tab_ref: it.tab.ref }) : c.openTabView(it.tab.ref))}>${t.btnToTab}<//>`
+    : lead ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[rowActionKey({ page, section, index: it.index })]}
+      onClick=${() => c.act('row_action', { page, section, index: it.index, action: lead })}>${(it.actions ?? []).find(a => a.id === lead)?.label}<//>`
+      : null
+  if (head && steps.length && it.row_id) return html`<${RowSteps} it=${{ ...it, actions: steps }} page=${page} section=${section} s=${s} c=${c} head=${head} />`
+  return head ?? (row ? html`<${StartMenu} row=${row} s=${s} c=${c} />` : null)
+}
+
 function GhRow({ it, page, section, s, c, byKey }) {
   const t = T()
   const g = it.gh ?? {}
-  const lead = leadStep(it)
-  const rest = (it.actions ?? []).filter(a => a.id !== lead)
-  const leadLabel = (it.actions ?? []).find(a => a.id === lead)?.label
   const token = STATE_TOKEN[g.state] ?? 'info'
-  const live = it.tab && it.tab.live
-  const settleRow = (pageItemActs(it) || it.inbox || (it.task && byKey.has(`task:${it.task}`))) ? actionRow(it, byKey) : null
+  const found = (pageItemActs(it) || it.inbox || (it.task && byKey.has(`task:${it.task}`))) ? actionRow(it, byKey) : null
+  // the row the close door acts on, with the agent tab the page item names
+  const settleRow = found && it.tab && !found.tab ? { ...found, tab: { ref: it.tab.ref, state: it.tab.state, live: it.tab.live ?? it.tab.state !== 'shell' } } : found
   const open = () => c.openInfo(it, page, section)
   const repoName = g.repo ? g.repo.split('/').pop() : ''
   return html`<li class=${`ghl-row${g.quiet ? ' is-quiet' : ''}`} tabindex="0"
@@ -298,20 +288,31 @@ function GhRow({ it, page, section, s, c, byKey }) {
       <span class="muted small" title=${g.changed ?? ''}>${ago(g.changed)}</span>
     </div>
     <div class="ghl-acts btn-row">
-      ${settleRow ? html`<${RowBar} row=${settleRow} s=${s} c=${c} tab=${it.tab} pin=${false} />`
-        : live ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[it.tab.ref]} onClick=${() => c.act('tab_jump', { tab_ref: it.tab.ref })}>${t.btnToTab}<//>` : null}
-      ${lead && !live ? html`<${Btn} size="xs" variant=${settleRow ? 'secondary' : 'primary'} busy=${!!s.ui.busy[rowActionKey({ page, section, index: it.index })]}
-            onClick=${() => c.act('row_action', { page, section, index: it.index, action: lead })}>${leadLabel}<//>` : null}
-      ${rest.length && it.row_id ? html`<${RowSteps} it=${{ ...it, actions: rest }} page=${page} section=${section} s=${s} c=${c} />` : null}
+      <${GhStart} it=${it} row=${settleRow} page=${page} section=${section} s=${s} c=${c} />
+      ${settleRow ? html`<${SettleMenu} rows=${[settleRow]} s=${s} c=${c} />` : null}
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer"
         title=${t.openLink} aria-label=${t.openLink}><${Icon} name="external" size=${14} /></a>` : null}
     </div>
   </li>`
 }
 
+/** What a board says of itself under its head in the list (round 6: the tile per board is gone): which cards it
+ *  shows (its switch, chosen in the settings), how many are open on it, by state, and where it was cut */
+function BoardFacts({ b }) {
+  const t = T()
+  const states = BOARD_STATES.filter(k => b.counts?.[k])
+  const open = b.open ?? states.reduce((n, k) => n + b.counts[k], 0)
+  return html`<p class="ghb-legend ghl-facts muted small">
+    ${t.gh.boardMode[b.mode] ? html`<span>${t.gh.boardMode[b.mode]}</span>` : null}
+    <span>${t.gh.boardOpen(open)}</span>
+    ${states.map(k => html`<span key=${k}><span class=${`ghb-dot tk-${STATE_TOKEN[k]}`}></span>${b.counts[k]} ${t.gh.state[k]}</span>`)}
+    ${b.capped ? html`<span>${t.gh.capped(b.capped)}</span>` : null}
+  </p>`
+}
+
 /** The rows of a github-work section under their board: a one-line head per board (its count and a bar of
- *  its rows' states) that folds, the rows in the work's order or newest first, a search over everything a
- *  row names */
+ *  its rows' states) that folds, the board's facts under it, the rows in the work's order or newest first, a
+ *  search over everything a row names */
 export function GitHubList({ items, page, section, s, c, byKey }) {
   const t = T()
   const [q, setQ] = useState('')
@@ -350,6 +351,7 @@ export function GitHubList({ items, page, section, s, c, byKey }) {
       const rows = ghSortRows(shown.filter(it => (it.group ?? '') === g), by)
       const isFolded = folded.has(g)
       const counts = rows.reduce((n, it) => ({ ...n, [it.gh?.state ?? 'new']: (n[it.gh?.state ?? 'new'] ?? 0) + 1 }), {})
+      const board = (section.boards ?? []).find(b => b.name === g && b.mode !== 'off')
       return html`<section class="ghl-group" key=${g}>
         <button type="button" class="ghl-head" aria-expanded=${String(!isFolded)} onClick=${() => fold(g)}>
           <span class=${`ghl-chev${isFolded ? '' : ' is-open'}`} aria-hidden="true">›</span>
@@ -358,6 +360,7 @@ export function GitHubList({ items, page, section, s, c, byKey }) {
           <span class="ghb-bar ghl-head-bar" aria-hidden="true">${BOARD_STATES.filter(k => counts[k]).map(k => html`<span key=${k}
             class=${`ghb-seg tk-${STATE_TOKEN[k]}`} style=${{ flexGrow: counts[k] }}></span>`)}</span>
         </button>
+        ${board ? html`<${BoardFacts} b=${board} />` : null}
         ${isFolded ? null : html`<ul class="ghl-rows">${rows.map(it => html`<${GhRow} key=${it.index} it=${it} page=${page}
           section=${section.id} s=${s} c=${c} byKey=${byKey} />`)}</ul>`}
       </section>`

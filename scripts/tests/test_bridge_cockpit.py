@@ -8260,6 +8260,87 @@ def test_flow_open_without_files_counts_the_sections_and_the_hidden_rows(tmp_pat
         w.close()
 
 
+def gh_page(*ids, extra=(), view="board", boards=True) -> dict:
+    """A GitHub page as briefing.py writes one: the section the rows of Due name as their source (`github`) on its
+    board view with a board, one actionable item per id, and any further section"""
+    sec = {"id": "github", "kind": "tracker", "title": "GitHub", "status": "ok", "view": view, "total": len(ids),
+           "items": [{"id": rid, "row_id": rid, "title": f"Issue {rid}", "actionable": True} for rid in ids]}
+    if boards:
+        sec["boards"] = [{"name": "Tool board", "slug": "tool-board", "mode": "mine", "open": len(ids)}]
+    return {"id": "github", "title": "GitHub", "sections": [sec, *extra]}
+
+
+def with_pages(world, *pages) -> dict:
+    world.app.collector.view["pages"] = [*world.app.collector.view.get("pages", []), *m.parse_pages({"pages": list(pages)})]
+    world.app.collector.rebuild()
+    return world.app.collector.model
+
+
+def page_keys(world, page: str = "github", section: str = "github") -> list[str]:
+    pg = next(p for p in world.app.collector.model["pages"] if p["id"] == page)
+    return [i["key"] for s in pg["sections"] if s["id"] == section for i in s["items"]]
+
+
+def test_the_github_list_carries_every_row_so_its_search_and_filter_see_them_all(world):
+    """G1: a section on its board view (the GitHub list, views/github.js) searches and filters every row on the page,
+    so the model carries all of them, not the first ITEM_CAP; a plain table keeps its cap and its "more n" """
+    plain = {"id": "plain", "kind": "command", "title": "Plain", "status": "ok", "total": 87,
+             "items": [{"id": f"p{n}", "title": f"Row {n}"} for n in range(87)]}
+    model = with_pages(world, gh_page(*[f"example/repo#{n}" for n in range(100, 187)], extra=[plain]))
+    gh, rest = next(p for p in model["pages"] if p["id"] == "github")["sections"]
+    assert (len(gh["items"]), gh["more"], gh["total"]) == (87, 0, 87)
+    assert (len(rest["items"]), rest["more"]) == (50, 37)
+
+
+def test_a_decision_on_a_github_row_holds_in_work_through_and_on_the_github_page(world):
+    """G2: Due and the GitHub page show one issue under two keys (ref:<id> and item:<page>/<section>/<id>, the page
+    section among the row's sources): Later, Done or Show again under either key holds under both, in "more" too"""
+    item = "item:github/github/example/repo#12"
+    model = with_pages(world, gh_page("example/repo#12", "example/repo#99"))
+    hidden = lambda: {r["key"]: (r["hidden_until"], r["settled_as"]) for r in world.app.collector.model["hidden"]}  # noqa: E731
+    assert item in page_keys(world) and "ref:example/repo#12" not in hidden()
+    open_before = model["counts"]["flow_open"]
+    # Later on the GitHub page: Work through has the issue under Later until the same day, still open
+    world.act("hide", key=item, until="2026-11-08")
+    assert item not in page_keys(world) and hidden()["ref:example/repo#12"] == ("2026-11-08", None)
+    assert world.app.collector.model["counts"]["flow_open"] == open_before
+    # Show again in Work through: back on both, nothing of it left in the store
+    world.act("unhide", key="ref:example/repo#12")
+    assert item in page_keys(world) and "ref:example/repo#12" not in hidden()
+    assert not {item, "ref:example/repo#12"} & set(world.app.store.hidden())
+    # Later in Work through: the GitHub page and its "more" leave the row out, the other row stays
+    world.act("hide", key="ref:example/repo#12", until="2026-11-08")
+    items, _ = world.app.collector.page_items("github", "github")
+    assert item not in page_keys(world) and [i["key"] for i in items] == ["item:github/github/example/repo#99"]
+    # Show again from the page's side (the undo of its Later): back on both
+    world.act("unhide", key=item)
+    assert item in page_keys(world) and "ref:example/repo#12" not in hidden()
+    # Done on the GitHub page: decided in Work through too, so it counts as open no more; Show again takes it back
+    world.app.store.dismiss(item, "done", "Issue example/repo#12")
+    world.app.collector.rebuild()
+    assert hidden()["ref:example/repo#12"] == (None, "done") and item not in page_keys(world)
+    assert world.app.collector.model["counts"]["flow_open"] == open_before - 1
+    world.act("unhide", key=item)
+    assert item in page_keys(world) and world.app.collector.model["counts"]["flow_open"] == open_before
+
+
+def test_a_due_row_names_the_github_list_it_stands_in(world):
+    """G3: a row of Due whose issue stands in a GitHub list (a section on its board view with a board or figures)
+    names that list, so Work through folds it into one line leading there; a row no such list holds names none"""
+    listed = {"id": "listed", "title": "Listed", "sections": [
+        {"id": "github", "kind": "tracker", "title": "Plain", "status": "ok",
+         "items": [{"id": "example/repo#7", "title": "Answer from the vendor", "actionable": True}]}]}
+    with_pages(world, gh_page("example/repo#12"), listed)
+    assert world.row("ref:example/repo#12")["on_board"] == {"page": "github", "section": "github"}
+    # on a plain list only: a twin for the decisions, but no GitHub list to fold into
+    assert world.row("ref:example/repo#7")["on_board"] is None
+    assert "item:listed/github/example/repo#7" in world.app.collector.twins("ref:example/repo#7")
+    # a board view without a board or a figure is no GitHub list either
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "github"]
+    with_pages(world, gh_page("example/repo#12", boards=False))
+    assert world.row("ref:example/repo#12")["on_board"] is None
+
+
 IDEA_ID = "20261020-0800-a-shelved-idea-1a2b"
 BACK_ID = "20261020-0810-put-off-and-back-3c4d"
 FAR_ID = "20261020-0820-runs-on-a-person-5e6f"
