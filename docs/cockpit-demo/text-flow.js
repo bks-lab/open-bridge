@@ -104,6 +104,7 @@ export const FLOW = {
       how: { start: 'started from the cockpit', hand: 'linked by hand', tab: 'its own task tab', seen: 'recognised from the session' },
       boxWhy: 'An agent works on these already, so they are no points to decide. The box is only for merging.',
       cardWhy: 'An agent works on it already, so it stands under Running now and not as a point.',
+      sessions: 'Sessions', noTask: 'no task', inChat: 'View in chat',
     },
     notnow: {
       label: 'Not now',
@@ -183,7 +184,7 @@ export const FLOW = {
       skipped: { not_offered: 'not offered here', bad_day: 'the day does not work', unknown_point: 'not among the points', no_tab: 'no live tab',
         asks: 'the tab asks a choice: answer it on the card', working: 'an agent works on it already', running: 'too many agents run', gone: 'no longer in the list' },
     },
-    noDriver: 'No terminal driver here: agents are not started from this page, so what runs and the agent tabs do not show.',
+    noDriver: 'No terminal driver here: agents are not started from this page and the agent tabs do not show. Running now lists the live sessions without their tabs.',
   },
   de: {
     title: 'Abarbeiten',
@@ -285,6 +286,7 @@ export const FLOW = {
       how: { start: 'aus dem Cockpit gestartet', hand: 'von Hand verknüpft', tab: 'eigener Aufgaben-Tab', seen: 'aus der Sitzung erkannt' },
       boxWhy: 'Hier arbeitet schon ein Agent, darum sind es keine Punkte zum Entscheiden. Das Kästchen braucht es nur zum Zusammenführen.',
       cardWhy: 'Daran arbeitet schon ein Agent, darum steht es unter Läuft gerade und nicht als Punkt.',
+      sessions: 'Sitzungen', noTask: 'ohne Aufgabe', inChat: 'Im Chat ansehen',
     },
     notnow: {
       label: 'Nicht dran',
@@ -364,6 +366,6 @@ export const FLOW = {
       skipped: { not_offered: 'hier nicht angeboten', bad_day: 'der Tag passt nicht', unknown_point: 'nicht unter den Punkten', no_tab: 'kein laufender Tab',
         asks: 'der Tab fragt eine Auswahl: auf der Karte antworten', working: 'ein Agent arbeitet schon daran', running: 'zu viele Agenten laufen', gone: 'nicht mehr in der Liste' },
     },
-    noDriver: 'Hier gibt es keinen Terminal-Treiber: Agenten starten nicht von dieser Seite, Laufendes und Agenten-Tabs fehlen deshalb.',
+    noDriver: 'Hier gibt es keinen Terminal-Treiber: Agenten starten nicht von dieser Seite, Agenten-Tabs fehlen deshalb. Läuft gerade zeigt die laufenden Sitzungen ohne ihre Tabs.',
   },
 }

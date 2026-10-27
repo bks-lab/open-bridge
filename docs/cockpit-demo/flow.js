@@ -18,7 +18,7 @@ export const FLOW_PAGE = '@flow'
 // the groups of the queue, in the order the page walks them: the return card after a jump, a tab that asks, what an
 // agent finished, a start that got lost, a question for you (these five need you), a task in progress nobody works on
 // right now, the tasks in review, the issues and pull requests of Now, the reports as one card. What runs stands in
-// Running now (parts.lane), never in the queue
+// Running now (parts.lane and the live sessions, parts.sessions), never in the queue
 export const FLOW_GROUPS = ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports']
 
 // the groups that need you: the left column counts them in the warning tone
@@ -229,8 +229,10 @@ const inNow = (r, src) => src === 'now' || r.section === 'now' || r.urgency === 
  *  cockpit.flow.ahead_days waits under Later until then (aheadOf), unless the viewer took it back on (ui.flowEarly).
  *  A card is {group, id, kind, row?, start?, tab?, task?, covers?, rows?, stage?}; an entry of the lane {group doing,
  *  lane, id, kind start, session or tab, row, tab, stage, how, title, at}; one of Not now {row, until, why, due, repo}.
+ *  Besides, every live session as a card of Running now (`sessions`, round 6: {id, kind live, session, tab, entry,
+ *  stage}, entry the lane's entry in its tab), with or without a driver; it stands for no row, so no key or count moves.
  *  counts: points (the reports by their rows), running, left, extra (cards and entries that stand for no open row,
- *  less the tasks a question stands for beside its item) and their total */
+ *  less the tasks a question stands for beside its item), their total, and the session cards */
 export function flowParts(s) {
   const nowMs = s?.now || Date.now()
   const model = s?.model ?? {}
@@ -247,7 +249,7 @@ export function flowParts(s) {
   const used = new Set()      // row keys a card, an entry of the lane or a group already stands for
   const usedTabs = new Set()
   const take = row => { if (row?.key) used.add(row.key) }
-  const out = { back: null, asks: [], result: [], lost: [], question: [], doing: [], task: [], issue: [], reports: [], lane: [] }
+  const out = { back: null, asks: [], result: [], lost: [], question: [], doing: [], task: [], issue: [], reports: [], lane: [], sessions: [] }
   const tabOf = ref => allTabs.find(t => t.ref === ref) ?? null
   if (driver) {
     // L1 the return card, only once the jump is armed (flowArm); its row and its tab stand nowhere else
@@ -276,8 +278,9 @@ export function flowParts(s) {
       for (const t of mine) usedTabs.add(t.ref)
     }
     // L3 a live session linked to a task (by hand, by its task tab, or recognised from what it did) while its tab works
-    // or waits at its prompt; a second session on the same task stands without the row
-    for (const x of s?.sessions?.sessions ?? []) {
+    // or waits at its prompt; a second session on the same task stands without the row. The newest session of a tab
+    // first, so the entry of a tab is the task its card shows (S)
+    for (const x of [...(s?.sessions?.sessions ?? [])].sort((a, b) => (b?.started_ms ?? 0) - (a?.started_ms ?? 0))) {
       const tab = x?.task && x.tab?.ref && !usedTabs.has(x.tab.ref) ? tabOf(x.tab.ref) : null
       if (!runs(tab)) continue
       const key = `task:${x.task}`
@@ -312,6 +315,32 @@ export function flowParts(s) {
     out.result.sort((a, b) => (a.start.at_ms ?? 0) - (b.start.at_ms ?? 0))
     out.lost.sort((a, b) => (b.start.at_ms ?? 0) - (a.start.at_ms ?? 0))
   }
+  // S every live session of this machine as one card of Running now (round 6), with a task or without one and with a
+  // driver or without one (then without its tab): a lane entry in its tab is that card's (`entry`, its box), a tab that
+  // stands as a point (the return card, one that asks, a finished start) keeps its session there, a tab back at its
+  // shell and the control session (the Chat's) stand nowhere. One card per tab: of several sessions in one tab (one
+  // went on after a compaction) the newest, with the task of the newest one that has one where it has none (its sid
+  // too, so Not this task undoes that link). Rows of no row key: the keys and counts stay the lane's
+  const laneOfTab = new Map(out.lane.filter(e => e.tab?.ref).map(e => [e.tab.ref, e]))
+  const byTab = new Map()
+  for (const x of s?.sessions?.sessions ?? []) {
+    if (!x || x.tab?.is_control) continue
+    const tab = driver && x.tab?.ref ? tabOf(x.tab.ref) : null
+    if (tab?.state === 'shell' || (tab && !laneOfTab.has(tab.ref) && usedTabs.has(tab.ref))) continue
+    const card = { id: `live:${x.id ?? x.sid}`, kind: 'live', session: x, tab, entry: tab ? laneOfTab.get(tab.ref) ?? null : null,
+      stage: tab?.state ?? (x.status === 'busy' ? 'working' : 'idle') }
+    if (!tab) { out.sessions.push(card); continue }
+    const all = [...(byTab.get(tab.ref) ?? []), card]
+    byTab.set(tab.ref, all)
+  }
+  for (const all of byTab.values()) {
+    all.sort((a, b) => (b.session.started_ms ?? 0) - (a.session.started_ms ?? 0))
+    const [card] = all
+    const holder = card.session.task ? null : all.find(v => v.session.task)
+    out.sessions.push(holder ? { ...card, session: { ...card.session, task: holder.session.task, task_how: holder.session.task_how,
+      task_since_ms: holder.session.task_since_ms, sid: holder.session.sid } } : card)
+  }
+  out.sessions.sort((a, b) => (SESSION_RANK[a.stage] ?? 3) - (SESSION_RANK[b.stage] ?? 3) || (b.session.started_ms ?? 0) - (a.session.started_ms ?? 0))
   const left = Object.fromEntries(FLOW_LEFT_OUT.map(k => [k, []]))
   const leave = (why, row, extra = {}) => {
     left[why].push({ row, until: null, why: null, due: row.due ?? null, repo: null, ...extra })
@@ -390,8 +419,22 @@ export function flowParts(s) {
   const points = queue.reduce((n, x) => n + (x.kind === 'reports' ? x.rows.length : 1), 0)
   const open1 = x => !!x.row?.key && uni.has(x.row.key)
   const extra = queue.filter(x => x.kind !== 'reports' && !open1(x)).length + out.lane.filter(x => !open1(x)).length - queue.filter(x => x.covers).length
-  out.counts = { points, running: out.lane.length, left: leftN, extra, total: points + out.lane.length + leftN }
+  out.counts = { points, running: out.lane.length, left: leftN, extra, total: points + out.lane.length + leftN, sessions: out.sessions.length }
   return out
+}
+
+// the order of the session cards: a tab that asks (answered here, so no point), at work, waiting at its prompt, quiet
+const SESSION_RANK = { 'needs-you': 0, working: 1, waiting: 2 }
+
+/** What Running now lists (round 6): the cards of the live sessions, then the entries of the lane no session card
+ *  holds (`loose`: a start at work or a task's own tab without a live session), their number `n` (the left column's
+ *  count) and whether one of them works. A busy session works; one waiting at its prompt or quiet does not */
+export function runningOf(parts) {
+  const sessions = parts?.sessions ?? []
+  const held = new Set(sessions.map(v => v.entry?.id).filter(Boolean))
+  const loose = (parts?.lane ?? []).filter(e => !held.has(e.id))
+  const working = loose.some(x => x.stage === 'working' || x.stage === 'started') || sessions.some(v => v.stage === 'working')
+  return { sessions, loose, n: sessions.length + loose.length, working }
 }
 
 /** How many agents run now: the entries of Running now that are at work or starting (a start, a session or a task

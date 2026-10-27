@@ -674,7 +674,8 @@ test('round 6: one card per tab, the newest session of it, with the task of an o
   }
   // the newer one linked itself: its own task stands
   const s2 = state({ work: [task('board-ui'), task('other')], tabs, sessions: { sessions: [older, { ...newer, task: 'other', task_how: 'seen' }] } })
-  assert.deepEqual(logic.flowParts(s2).sessions.map(v => [v.session.id, v.session.task]), [['new1', 'other']])
+  const p2 = logic.flowParts(s2)
+  assert.deepEqual(p2.sessions.map(v => [v.session.id, v.session.task, v.entry?.row?.key]), [['new1', 'other', 'task:other']])
 })
 
 test('round 6: without a terminal driver Running now still lists the live sessions, without their tabs', () => {

@@ -278,8 +278,9 @@ export function flowParts(s) {
       for (const t of mine) usedTabs.add(t.ref)
     }
     // L3 a live session linked to a task (by hand, by its task tab, or recognised from what it did) while its tab works
-    // or waits at its prompt; a second session on the same task stands without the row
-    for (const x of s?.sessions?.sessions ?? []) {
+    // or waits at its prompt; a second session on the same task stands without the row. The newest session of a tab
+    // first, so the entry of a tab is the task its card shows (S)
+    for (const x of [...(s?.sessions?.sessions ?? [])].sort((a, b) => (b?.started_ms ?? 0) - (a?.started_ms ?? 0))) {
       const tab = x?.task && x.tab?.ref && !usedTabs.has(x.tab.ref) ? tabOf(x.tab.ref) : null
       if (!runs(tab)) continue
       const key = `task:${x.task}`
