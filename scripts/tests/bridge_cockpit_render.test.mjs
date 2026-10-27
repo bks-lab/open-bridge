@@ -310,6 +310,8 @@ test('page bar: More wears a dot only for a reason behind it; a grey count, an i
 })
 
 test('page bar and header: a tooltip names a key only while the shortcuts are on', async () => {
+  const proto = Object.getPrototypeOf(document.body)
+  proto.focus ??= function focus() { document.activeElement = this }
   const off = cockpitState(NOW, { ui: { page: '@start' } })
   const on = cockpitState(NOW, { ui: { page: '@start', shortcuts: true } })
   await foldedBar(off, el => {
@@ -317,18 +319,23 @@ test('page bar and header: a tooltip names a key only while the shortcuts are on
     assert.ok(!titles.some(x => /\(Alt \d\)/.test(x)), titles.join(' | '))
   })
   await foldedBar(on, el => assert.equal(el.$$('[role=tab]')[0].getAttribute('title'), `${en.startTab} (Alt 1)`))
-  const titles = s => mount(html`<${Header} s=${s} c=${recorder()} />`).$$('button').map(b => b.getAttribute('title')).filter(Boolean)
-  const quiet = titles(off)
-  assert.ok(!quiet.some(x => /\((\?|r)\)$/.test(x)), quiet.join(' | '))
-  // the as-of time is the reload (r), Explain answers to ? (proposal 4)
-  assert.ok(quiet.includes(en.hints.buttonTitle) && quiet.some(x => x.endsWith(` · ${en.reloadTitle}`)), quiet.join(' | '))
-  const keyed = titles(on)
-  assert.ok(keyed.includes(`${en.hints.buttonTitle} (?)`) && keyed.some(x => x.endsWith(`${en.reloadTitle} (r)`)), keyed.join(' | '))
+  const header = s => mount(html`<${Header} s=${s} c=${recorder()} />`)
+  const titles = el => el.$$('button').map(b => b.getAttribute('title')).filter(Boolean)
+  // the as-of time is the reload (r); Explain, first in Help, answers to ? (decision 6, menue.md)
+  const quiet = header(off)
+  quiet.$('.hdr-help > button').click()
+  await tick()
+  assert.ok(!titles(quiet).some(x => /\((\?|r)\)$/.test(x)), titles(quiet).join(' | '))
+  assert.ok(titles(quiet).includes(en.hints.buttonTitle) && titles(quiet).some(x => x.endsWith(` · ${en.reloadTitle}`)), titles(quiet).join(' | '))
+  const keyed = header(on)
+  keyed.$('.hdr-help > button').click()
+  await tick()
+  assert.ok(titles(keyed).includes(`${en.hints.buttonTitle} (?)`) && titles(keyed).some(x => x.endsWith(`${en.reloadTitle} (r)`)), titles(keyed).join(' | '))
 })
 
 // ---------------------------------------------------------------- Header: four parts and the as-of time (K1 to K5)
 
-test('header: the as-of time is the reload button with its mark; no colours, bell, help or reload button beside it', () => {
+test('header: the as-of time is the reload button with its mark; no colours, reload or Explain button beside it', () => {
   const s = cockpitState(NOW)
   const c = recorder()
   const el = mount(html`<${Header} s=${s} c=${c} />`)
@@ -339,9 +346,65 @@ test('header: the as-of time is the reload button with its mark; no colours, bel
   assert.match(asof.getAttribute('title'), new RegExp(en.reloadTitle.replace(/[()]/g, '\\$&')))
   asof.click()
   assert.deepEqual(c.calls, [['reload']])
-  for (const gone of ['.hdr-reload', '.hdr-notes', '.hdr-help', '.hdr-theme']) assert.ok(!el.$(gone), `${gone} left the header`)
-  assert.ok(!el.$$('button').some(b => /^(Theme|Help|Notes)\b/.test(b.getAttribute('aria-label') ?? '')), 'no colours, help or bell button')
-  for (const kept of ['.hdr-ask', '.hdr-history', '.hdr-explain']) assert.ok(el.$(kept), `${kept} stays`)
+  for (const gone of ['.hdr-reload', '.hdr-theme', '.hdr-explain']) assert.ok(!el.$(gone), `${gone} left the header`)
+  assert.ok(!el.$$('button').some(b => /^Theme\b/.test(b.getAttribute('aria-label') ?? '')), 'no colours button')
+  for (const kept of ['.hdr-ask', '.hdr-history', '.hdr-notes', '.hdr-help']) assert.ok(el.$(kept), `${kept} stays`)
+})
+
+test('header as the menu has it (decision 6): Notes is the bell, Help ? holds Explain first, the look-up topics and the tour', async () => {
+  // the menu moves the focus in on open: the small DOM answers with what it supports
+  const proto = Object.getPrototypeOf(document.body)
+  proto.focus ??= function focus() { document.activeElement = this }
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${Header} s=${s} c=${c} />`)
+  // left to right: History, Notes, then Help at the end
+  const parts = el.$('.hdr-right').childNodes.map(n => (n.nodeType === 1 ? n.getAttribute('class') ?? '' : ''))
+  const at = name => parts.findIndex(x => x.split(' ').includes(`hdr-${name}`))
+  assert.ok(at('history') >= 0 && at('history') < at('notes') && at('notes') < at('help') && at('help') === parts.length - 1, parts.join(' | '))
+  const bell = el.$('.hdr-notes')
+  assert.equal(bell.getAttribute('aria-label'), en.notesTitle)
+  assert.ok(bell.$('svg'), 'the bell')
+  bell.click()
+  assert.deepEqual(c.calls.at(-1), ['setDrawer', 'notes'])
+  const help = el.$('.hdr-help > button')
+  assert.equal(help.getAttribute('aria-haspopup'), 'menu')
+  assert.equal(help.getAttribute('aria-label'), en.helpTitle)
+  assert.ok(!el.$('.help-menu'), 'closed until clicked')
+  const items = () => el.$$('.help-menu [role=menuitem]')
+  help.click()
+  await tick()
+  const topics = ['rows', 'act', 'keys', 'trust']
+  assert.deepEqual(items().map(b => b.text()), [en.hints.button, ...topics.map(id => en.help.tabs[id]), en.tour.again])
+  assert.match(el.$('.help-menu').text(), new RegExp(en.settings.lookupTitle))
+  const want = [['setHints', true], ...topics.map(id => ['openLookup', id]), ['tourStart']]
+  for (let k = 0; k < want.length; k++) {
+    if (!el.$('.help-menu')) { help.click(); await tick() }
+    items()[k].click()
+    await tick()
+    assert.deepEqual(c.calls.at(-1), want[k], `item ${k}`)
+    assert.ok(!el.$('.help-menu'), 'a pick closes the menu')
+  }
+})
+
+test('notes drawer: the bell lists what the cockpit reported, newest first; an entry with a target goes there', async () => {
+  const proto = Object.getPrototypeOf(document.body)
+  proto.focus ??= function focus() { document.activeElement = this }
+  proto.querySelector ??= function querySelector(sel) { try { return this.$(sel) } catch { return null } }
+  const { NotesDrawer } = views.overlays
+  const s = cockpitState(NOW, { ui: { drawer: 'notes' }, notes: [
+    { at: '11:58', text: 'Plain note', tone: 'info', ms: 1 },
+    { at: '11:59', text: 'Sent to demo-task', tone: 'ok', ms: 2, go: { kind: 'item', key: 'task:demo-task' } },
+  ] })
+  const c = recorder()
+  const el = mount(html`<${NotesDrawer} s=${s} c=${c} />`)
+  assert.deepEqual(el.$$('.note').map(n => n.text().includes('Sent to demo-task')), [true, false], 'newest first')
+  el.$('button.note-go').click()
+  assert.deepEqual(c.calls, [['setDrawer', null], ['openItem', 'task:demo-task', null]])
+  const none = mount(html`<${NotesDrawer} s=${{ ...s, notes: [] }} c=${recorder()} />`)
+  assert.match(none.text(), new RegExp(en.notesEmpty))
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].notesTitle && text.TABLES[lang].notesEmpty && text.TABLES[lang].helpTitle, lang)
+  await tick()
 })
 
 test('header: while a fresh pass runs the as-of button waits; narrow, the header keeps the mark, the line below the time', () => {

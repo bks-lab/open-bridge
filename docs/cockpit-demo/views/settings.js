@@ -241,11 +241,13 @@ const LOOKUP_TOPICS = ['rows', 'act', 'keys', 'trust']
 
 /** To look up, one topic at a time: what the marks of a row say, how acting works, the keys (only while they are on:
  *  mouse first, so off the card says only that they are off, the card above switches them on), what costs tokens and
- *  what stays local. What each part of a page is for is Explain's, in the header */
+ *  what stays local. Help in the header opens it on a topic. What each part of a page is for is Explain's, in Help */
 function LookupCard({ s }) {
   const t = T()
   const w = t.settings
-  const [topic, setTopic] = useState('rows')
+  // the topic the header's Help picked (app.js openLookup), each pick anew; a click on the card's own switch after it
+  const [topic, setTopic] = useState(s.ui.lookupTopic ?? 'rows')
+  useEffect(() => { if (s.ui.lookupTopic) setTopic(s.ui.lookupTopic) }, [s.ui.lookupTopic, s.ui.lookupAt])
   const body = topic === 'keys'
     ? s.ui.shortcuts ? html`<p class="muted small">${t.commandHint}</p>
       <dl class="keys">${t.keys.map(([k, v], i) => html`<div key=${i}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>`

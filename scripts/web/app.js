@@ -785,10 +785,10 @@ const ctl = {
   ask,
   copy,
   dismissToast,
-  // the notes in the history, from the "+N more" toast: the count goes, the toasts still up stay
+  // the notes under the bell, from the "+N more" toast: the count goes, the toasts still up stay
   openNotes() {
     store.set(s => ({ ...s, ...notesOpenedState(s) }))
-    ctl.openHistory()
+    setUi({ drawer: 'notes' })
   },
   pauseToast: (id, why) => toastTimers.pause(id, why),
   resumeToast: (id, why) => toastTimers.resume(id, why),
@@ -946,6 +946,12 @@ const ctl = {
     if (id) ctl.setSettingsSection(id)
     ctl.setPage(SETTINGS_PAGE)
     setUi({ drawer: null })
+  },
+  /** A topic of the look-up card from the header's Help: Settings, Appearance, the card on that topic, in view */
+  openLookup(topic) {
+    setUi({ lookupTopic: topic, lookupAt: Date.now() })
+    ctl.openSettings('look')
+    setTimeout(() => document.querySelector('.lookup-pane')?.closest?.('.set-card')?.scrollIntoView?.({ block: 'start' }), 80)
   },
   setPane(pane) {
     setUi({ pane })
@@ -1738,7 +1744,8 @@ function onKey(e) {
     return
   }
   const key = e.key
-  // the help left the header: ? lays the notes of Explain over the page (the look-up card is under Settings, Appearance)
+  // ? is Explain, the first item of Help in the header: its notes over the page (the look-up card is under Settings,
+  // Appearance, Help names its topics)
   if (key === '?') {
     e.preventDefault()
     return ctl.setHints(true)

@@ -3493,7 +3493,7 @@ export function tourSteps(s) {
     ...(narrow ? [] : [{ id: 'tabs', target: '#tabs-column, .hdr-tabs' }]),
     { id: 'ask', target: '.hdr-ask' },
     { id: sessionsInFlow(s) ? 'running' : 'sessions', page: '@sessions', target: '#main' },
-    { id: 'explain', target: '.hdr-explain' },
+    { id: 'help', target: '.hdr-help' },
     { id: 'done' },
   ]
 }
@@ -3553,9 +3553,10 @@ const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', 
   ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghl-facts'],
   ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
   ['calFigures', '.calf'], ['calBar', '.calbar'], ['calDays', '.cal-day']]
-// the as-of time is the reload button, the notes stand in the history, the look-up card under Settings, Appearance
+// the as-of time is the reload button; the notes stand under the bell and in the history by day; Help, last, holds
+// Explain first, then the look-up topics and the tour (decision 6, menue.md)
 const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['tabsButton', '.hdr-tabs'],
-  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['explain', '.hdr-explain']]
+  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['notes', '.hdr-notes'], ['relay', '.hdr-relay'], ['help', '.hdr-help']]
 
 /** What the overlay explains on the page now: its own areas (group page), then the header (group head).
  *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts; the work

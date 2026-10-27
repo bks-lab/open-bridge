@@ -153,14 +153,39 @@ export function ChatTabMark({ kind }) {
   return kind === 'quick' ? html`<${Spinner} />` : html`<${AgentMark} kind=${kind} />`
 }
 
-/** The header keeps the as-of time (the reload button), Tabs, Ask, History and Explain beside the state of what
- *  runs. The colours and the look-up card of the old help stand in Settings, Appearance, the notes in the history */
+// the topics of the look-up card (views/settings.js LookupCard), in its order
+const LOOKUP_TOPICS = ['rows', 'act', 'keys', 'trust']
+
+/** Help, "?", the last part of the header (decision 6, menue.md): a menu with Explain first (the notes over the page;
+ *  the key ? with the shortcuts on), then the topics of the look-up card under Settings, Appearance (c.openLookup
+ *  opens it on that topic), then the tour. A pick closes the menu */
+function HelpMenu({ s, c }) {
+  const t = T()
+  const [open, setOpen] = useState(false)
+  const box = usePopover(open, setOpen)
+  const pick = fn => () => { setOpen(false); fn() }
+  const explain = s.ui.shortcuts ? `${t.hints.buttonTitle} (?)` : t.hints.buttonTitle
+  return html`<span class="settle hdr-help" ref=${box}>
+    <button type="button" class="btn btn-ghost btn-sm" aria-haspopup="menu" aria-expanded=${String(open)}
+      aria-label=${t.helpTitle} title=${t.helpTitle} onClick=${() => setOpen(!open)}><${Icon} name="help" /></button>
+    ${open ? html`<span class="settle-menu help-menu" role="menu" aria-label=${t.helpTitle}>
+      <button type="button" role="menuitem" class="settle-item" title=${explain} onClick=${pick(() => c.setHints(true))}>
+        <${Icon} name="bulb" size=${14} /><span>${t.hints.button}</span></button>
+      <span class="settle-hint label-caps muted" role="presentation">${t.settings.lookupTitle}</span>
+      ${LOOKUP_TOPICS.map(id => html`<button key=${id} type="button" role="menuitem" class="settle-item"
+        onClick=${pick(() => c.openLookup(id))}><span>${t.help.tabs[id]}</span></button>`)}
+      <button type="button" role="menuitem" class="settle-item" onClick=${pick(() => c.tourStart())}><span>${t.tour.again}</span></button>
+    </span>` : null}
+  </span>`
+}
+
+/** The header as the menu has it (decision 6, menue.md): the as-of time (the reload button), Tabs, Ask, History,
+ *  Notes (the bell, the notes' own list; the history keeps them by day too) beside the state of what runs, and Help
+ *  last, with Explain as its first item. The colours and the look-up card stand in Settings, Appearance */
 export function Header({ s, c }) {
   const t = T()
   // the Tabs button counts the tabs that want you; a finished (idle) one waits on nobody
   const waiting = tabsButtonCount(s.tabs?.tabs)
-  // a tooltip names a key only while the shortcuts are on (app.js keydown): off, the key does nothing
-  const keyed = (label, key) => (s.ui.shortcuts ? `${label} (${key})` : label)
   return html`<header class="hdr">
     <div class="hdr-id">
       <span class="eyebrow">${t.appName}</span>
@@ -182,11 +207,12 @@ export function Header({ s, c }) {
         size="sm" icon="send" onClick=${() => c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
       <${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
         pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()} cls="hdr-history"><span class="hide-narrow">${t.historyButton}</span><//>
+      <${Btn} variant="ghost" size="sm" icon="bell" label=${t.notesTitle} title=${t.notesTitle}
+        onClick=${() => c.setDrawer(s.ui.drawer === 'notes' ? null : 'notes')} pressed=${s.ui.drawer === 'notes'} cls="hdr-notes" />
       ${s.layout === 'narrow' ? null : html`<${AgentsChip} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${RelayBadge} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${StartControl} s=${s} c=${c} short />`}
-      <${Btn} variant="ghost" size="sm" icon="bulb" label=${t.hints.buttonTitle} title=${keyed(t.hints.buttonTitle, '?')}
-        pressed=${!!s.ui.hints} onClick=${() => c.setHints(!s.ui.hints)} cls="hdr-explain"><span class="hide-narrow">${t.hints.button}</span><//>
+      <${HelpMenu} s=${s} c=${c} />
     </div>
   </header>`
 }

@@ -230,7 +230,10 @@ kbd {
 .hdr-agents { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; font-size: 12.5px; white-space: nowrap; color: var(--on-surface-muted); }
 .hdr-agents:hover { color: var(--ink); }
 /* only the loading line and the as-of time give way; buttons and the relay word never overlap */
-.hdr-right > .btn, .hdr-right > .cmd { flex: 0 0 auto; }
+.hdr-right > .btn, .hdr-right > .cmd, .hdr-right > .hdr-help { flex: 0 0 auto; }
+/* Help, last in the header: Explain, the look-up topics and the tour under it, aligned to its right edge */
+.help-menu { min-width: 220px; }
+.help-menu .settle-hint { padding-top: 8px; }
 .hdr-status, .hdr-asof { flex: 0 1 auto; overflow: hidden; }
 /* the right side never grows wider than its buttons plus one short loading line, so it stays off the page tabs */
 .hdr-status { max-width: min(300px, 22vw); }

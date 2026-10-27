@@ -116,7 +116,7 @@ their defaults:
 | `person_name` | none | how Claude and Jev name you; without it they say "the user". With `flow.enabled`, a task whose next step names you is yours, not one that waits on others |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
-| `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Settings and Explain still start it), see [The first-run tour](#the-first-run-tour) |
+| `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Settings, Help and Explain still start it), see [The first-run tour](#the-first-run-tour) |
 | `session_guide` | off | the decision guide: Claude Haiku reads a waiting tab's session and offers its next steps as buttons, in the chat and on the Sessions page (section 3, "The decision guide") |
 | `usage.remotes` | the machines of `infra/instances` | other machines whose token use the overview page adds in (`infra/remotes` names; `[]` for none), see the overview page, "Tokens" |
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
@@ -204,9 +204,11 @@ The header carries the profile's title, when the briefing was
 collected as a button with ↻ on it (a click collects every source fresh; while
 a fresh pass runs it waits), the warnings before it (connection lost, a stale
 model, a failed pass: at every width, below 1280 pixels only the time gives way
-and stays in the tooltip), a loading indicator, Tabs, Ask, History, Explain and
-a dot for the relay. The colours (auto, light, dark) and the look-up card that
-was the help stand in Settings, Appearance. Under it sits the page bar. In front stand the
+and stays in the tooltip), a loading indicator, Tabs, Ask, History, Notes (the
+bell: what the cockpit reported lately, newest first), a dot for the relay, and
+Help (`?`) last: Explain first in it, then the topics of the look-up card and the
+tour. The colours (auto, light, dark) and the look-up card stand in Settings,
+Appearance. Under it sits the page bar. In front stand the
 tabs of every day: "Start" (a new visit opens on it, a reload stays where it
 was), "Today" (the briefing), "Chat", then the profile's pages with the
 default `group: main` (Work and Operations in a typical profile). Behind them
@@ -1724,7 +1726,8 @@ done", back to the backlog with a note; an entry from before this knew no
 status and reopens as doing), an inbox item "open again" (`inbox.py reopen`),
 any other row "show again". Above each day's entries stand its notes
 ("Notes (n)", the newest first, today's under "Today, <day>"): the toasts of
-that day, each a click to the place it names; there is no bell list of its own.
+that day, each a click to the place it names; the bell in the header lists the
+same notes, newest first.
 What was taken back says when. Closes from before the history
 existed are filled in once from `audit.log`; one that was opened again since
 shows as taken back.
@@ -2267,20 +2270,21 @@ The first time the page opens it offers a short tour, the way other tools introd
 themselves: a welcome with "Start the tour" and "Skip", then one step per area with
 that area lit up and the rest dimmed: the tabs on top, Start, Today, the agent tabs
 (not on a narrow screen), Ask, Sessions (Running now where Work through lists the
-sessions), Explain and settings. Next and Back go
+sessions), Help and settings. Next and Back go
 through it (also the arrow keys), a step opens the page it shows, and the end goes
 back to the page where it began. Skip or `Esc` ends it at any step.
 
 How it ended (finished or skipped, with the date) is kept on the server in
-`state.json`, key `tour`, so another browser does not offer it again. Settings,
-Appearance, Introduction and the bar of Explain start it again at any time; Settings
+`state.json`, key `tour`, so another browser does not offer it again. Help in the
+header, Settings, Appearance, Introduction and the bar of Explain start it again at
+any time; Settings
 can also offer it again on the next visit (verb `tour_reset`). `cockpit.tour:
 false` switches the offer off for a Bridge whose people know the page; the buttons
 still start it. In mock mode it stays closed unless the link carries `&tour=1`.
 
 ### Explain this page
 
-"Explain" in the header (the bulb, `?` with the shortcuts on) lays notes over the page as it
+"Explain", the first item of Help in the header (`?` with the shortcuts on), lays notes over the page as it
 stands: each area the page shows gets a numbered note beside it, a ring around it
 (an ellipse for a button or a chip, a frame for a row or a column) and an arrow from
 the note to the ring. Every page explains its own parts: Start, Today, Chat,
@@ -2289,7 +2293,7 @@ own list, and a page of the briefing profile explains the parts it is built from
 (the count beside its title, the overview tiles, the sorting bars, a section's
 head, its rows, the GitHub figures and boards, the quota gauges, the costs, the
 dates). The notes come in rounds so none covers another: the page first, the header
-(views, As of, Ask, History, Claude, Explain) in a round of its own after
+(views, As of, Tabs, Ask, History, Notes, Claude, Help) in a round of its own after
 it, read from left to right. Next, Back and the arrow keys page through the rounds,
 and the bar says which round shows and how many areas stand further down (scroll,
 and they follow). An area the page does not show right now is left out. A click
@@ -2299,7 +2303,8 @@ nothing.
 ### Look up
 
 The card **Look up** in Settings, Appearance (between Keyboard shortcuts and
-Introduction) shows one topic at a time: **Rows** says what a row's mark and
+Introduction; Help in the header opens it on any of its topics) shows one topic
+at a time: **Rows** says what a row's mark and
 its section mean; **Acting** covers the panel, Let AI do it, Advise, Close and
 Ask; **Keys** lists the shortcuts while they are on, and while they are off says
 only that they are off and where to switch them on (mouse first: no key named);
@@ -2923,10 +2928,12 @@ a Bridge go further.
 2. **Sessions.** With Work through on there is no Sessions tab, and every way to
    it opens Running now. A tab waiting at its prompt and not quiet yet is a
    point (A tab asks); a quiet one (`idle`) stays under Running now as finished.
-3. **The header.** No theme, bell, help or reload button: the as-of time
-   reloads, the notes stand in the history under their day (a note carries
-   `at_ms`; one from an older server counts as today's), the colours and Look
-   up stand in Settings, Appearance, and `?` opens Explain.
+3. **The header.** As the menu decision has it: no theme or reload button,
+   the as-of time reloads; the notes stand under the bell and in the history
+   under their day (a note carries `at_ms`; one from an older server counts as
+   today's); Help, last, holds Explain first, the look-up topics and the tour,
+   so Explain has no button of its own; the colours and Look up stand in
+   Settings, Appearance, and `?` opens Explain.
 4. **Operations.** `under: <page>` on a profile page and the entry
    `{id: "@workers", under: <page>}` make sub pages, `hide_ok: true` on a
    section entry hides it while all is clear. Delete a section from `sections:`

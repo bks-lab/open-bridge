@@ -4660,9 +4660,10 @@ test('tourSteps: a welcome first and an end last, the tab column only where the 
   assert.ok(wide.every(x => !x.target || typeof x.target === 'string'))
   const narrow = logic.tourSteps({ layout: 'narrow' })
   assert.ok(!narrow.some(x => x.id === 'tabs'))
-  // the help has no button in the header any more: the tour shows Explain there, which stands at every width
-  assert.equal(wide.find(x => x.id === 'explain')?.target, '.hdr-explain')
-  assert.ok(!wide.some(x => x.id === 'help' || x.target === '.hdr-help'))
+  // Explain is the first item of Help (decision 6, menue.md): the tour shows Help, which stands at every width
+  assert.equal(wide.find(x => x.id === 'help')?.target, '.hdr-help')
+  assert.ok(!wide.some(x => x.id === 'explain' || x.target === '.hdr-explain'))
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].tour.steps.help && !text.TABLES[lang].tour.steps.explain, lang)
   // a step that shows a page names one the page knows
   assert.ok(wide.filter(x => x.page).every(x => ['@start', 'briefing', '@sessions', '@chat', '@settings'].includes(x.page)))
 })
@@ -4701,8 +4702,9 @@ test('hintsFor: the page\'s own areas first, then the header, each once, each wi
     const groups = list.map(h => h.group)
     assert.ok(groups.indexOf('head') > 0 && groups.lastIndexOf('page') < groups.indexOf('head'), page)
     assert.ok(list.filter(h => h.group === 'page').length >= 3, `${page} explains itself`)
-    assert.equal(list.at(-1).id, 'explain', page)    // the header's Explain comes last everywhere, help has no button
-    for (const gone of ['reload', 'notes', 'help']) assert.ok(!list.some(h => h.id === gone), `${page}: ${gone} left the header`)
+    assert.equal(list.at(-1).id, 'help', page)    // the header's Help comes last everywhere, Explain is its first item
+    assert.ok(list.some(h => h.id === 'notes' && h.target === '.hdr-notes'), `${page}: the bell`)
+    for (const gone of ['reload', 'explain']) assert.ok(!list.some(h => h.id === gone), `${page}: ${gone} left the header`)
   }
   const start = logic.hintsFor({ ui: { page: '@start' }, layout: 'wide' }).map(h => h.id)
   assert.equal(start[0], 'prompt')

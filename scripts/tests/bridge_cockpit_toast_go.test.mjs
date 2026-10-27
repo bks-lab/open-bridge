@@ -131,7 +131,7 @@ test('toast: the close X and Undo never navigate', () => {
 
 // ---------------------------------------------------------------- more than four
 
-test('overflow: at five a compact last toast says how many more and opens the notes (in the history)', () => {
+test('overflow: at five a compact last toast says how many more and opens the notes (the bell\'s list)', () => {
   const four = [1, 2, 3, 4].map(i => toast(i))
   assert.equal(renderToasts(four, { toastsMore: 0 }).el.$('.toast-more'), null)
   const { el, c } = renderToasts([2, 3, 4, 5].map(i => toast(i)), { toastsMore: 1 })

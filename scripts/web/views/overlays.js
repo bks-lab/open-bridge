@@ -418,8 +418,27 @@ function DayNotes({ notes, s, c }) {
   </details>`
 }
 
+/** The notes under the bell (decision 6, menue.md): what the cockpit reported lately, newest first. An entry that
+ *  names its place leads there; the drawer closes first, so an item drawer can open. The history keeps them by day */
+export function NotesDrawer({ s, c }) {
+  const t = T()
+  const notes = (s.notes ?? []).slice().reverse()
+  return html`<${Drawer} id="notes" title=${t.notesTitle} onClose=${() => c.setDrawer(null)}>
+    ${notes.length ? html`<ol class="notes">${notes.map((n, i) => {
+      const go = noteGo(n.go)
+      return html`<li key=${i} class="note">
+      <span class="mono muted small">${n.at}</span>
+      ${go ? html`<button type="button" class="note-go" title=${t.noteGo}
+          onClick=${e => { c.setDrawer(null); goTo(s, c, go, e.currentTarget) }}>
+          <${StateLine} token=${noteToken(n.tone)} word=${n.text} /><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<${StateLine} token=${noteToken(n.tone)} word=${n.text} />`}
+    </li>`
+    })}</ol>` : html`<${Empty}>${t.notesEmpty}<//>`}
+  <//>`
+}
+
 /** What the dashboard closed, dropped, settled or hid, newest first and by day; each item can be taken back. Each
- *  day shows its notes above its closed items, the one place the notes are listed; a note keeps its day (`ms`, the
+ *  day shows its notes above its closed items (the bell lists them too, NotesDrawer); a note keeps its day (`ms`, the
  *  server's at_ms), one without a date counts as today's. What happened today and the mute rules stay elsewhere */
 export function HistoryDrawer({ s, c }) {
   const t = T()
