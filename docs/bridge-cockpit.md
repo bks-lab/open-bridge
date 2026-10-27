@@ -296,30 +296,44 @@ source, By Jev and Files, there only with `cockpit.flow.enabled: true`
 (`cockpit.work_view: flow` opens the tab on it). It is laid out as cmux lays
 out a workspace:
 
-- **Left**, like the workspace sidebar: the **themes** a small model gives the
-  open points across the areas (`cockpit.flow.themes`, below), or the
-  **areas** (`workplace.workspaces`, the same names and colours as the cmux
-  workspaces; Themes and Areas switch at the top while the themes are on).
-  **All** on top, one entry per theme or area that holds a point, with how
-  many need you (in the warning tone, the entry marked) and how many are open,
-  **No theme yet** or **No area** last. A click picks one; the choice stays
-  while the page is open. On a narrow screen this is a select over the tabs.
-- **Over the card**, like the tab bar: **Focus** or **List** (kept in this
-  browser), and in Focus the open points of the group picked as tabs, each with
-  a dot for its kind and stage, in the queue's fixed order. The row wraps, so
-  no tab is ever cut off.
-- **In the middle** the point in front as a card with its verbs, and under it
-  the files view's walk bar (**Previous point**, "n of m", the next title,
-  **Next point**, sticky at the foot of the column). After the last point of a
-  theme or area it leads to the next one where something is open. Neither the
-  title nor anything else opens the item drawer or another view.
-- **Right** the details to pull in: Goal and story, Acceptance criteria, Steps
-  (the checklist of STATUS.md, read only), Source, Notes and log, Result (what
-  came back, as the files view shows it), the Screen of its tab, Related. At
-  first only their headings, the goal open; a click pulls a block in, and the
-  blocks stay open from point to point. With the themes on, the column also
-  moves the point to another theme or a new one. On a medium screen the
-  details stand under the card.
+- **Left**, like the workspace sidebar, in two levels. First the **themes** a
+  small model gives the open points across the areas (`cockpit.flow.themes`,
+  below), or the **areas** (`workplace.workspaces`, the same names and colours
+  as the cmux workspaces; Themes and Areas switch at the top while the themes
+  are on): one entry per theme or area that holds a point, with its colour,
+  how many need you (in the warning tone) and how many are open, **No theme
+  yet** or **No area** last, and **Order themes again** at the foot. A click
+  enters one. Inside, **All themes** on top leads back; the name of the theme,
+  marked **Overview** while the overview shows, leads to its overview; **All**
+  and **Tick the AI suggestions (n)** tick; then its points grouped **Needs
+  you**, **In progress**, **Tasks**, **Reports**, each with a box, its title (a
+  click opens the point), a dot and a word for its stage, its area and the
+  suggestion as a small chip. A theme entered can be renamed. On a narrow
+  screen both levels are one select over the middle.
+- **In the middle**, on entering a theme (and at the level of all of them),
+  its **overview**: every point as a row of a table, grouped as on the left,
+  with its box, title, stage, area and the suggestion with half a sentence of
+  why (below), a line over it naming where the suggestions come from, and on
+  top the sticky batch bar. The boxes on the left and in the table are one
+  selection. A click on a title, on the left or in the table, opens the
+  **point**: on top **Back to overview** with the theme's name beside it, a
+  line "n ticked" with **See in the overview** while points are ticked, then
+  the point as a card with its verbs, and under it the files view's walk bar
+  (**Previous point**, "n of m", the next title, **Next point**). After the
+  last point of a theme or area it leads to the first point of the next one
+  where something is open. Neither the title nor anything else opens the item
+  drawer or another view.
+- **Right** the details of the point open: Goal and story, Acceptance
+  criteria, Steps (the checklist of STATUS.md, read only), Source, Notes and
+  log, Result (what came back, as the files view shows it), the Screen of its
+  tab, Related. At first only their headings, the goal open; a click pulls a
+  block in, and the blocks stay open from point to point. With the themes on,
+  the column also moves the point to another theme or a new one. In the
+  overview a line says that a click on a title shows the details here.
+
+The three columns stand side by side down to a width of 1180 pixels; below
+that the details stand under the middle, and on a narrow screen the left
+column becomes a select on top.
 
 The head says "N in progress · M open".
 
@@ -365,22 +379,25 @@ and a theme you rename, stay as you set them through every later run. With the
 themes off, without a Claude model, or on an older server, the areas group
 the points.
 
-**List.** All points of the group as rows: a box to pick, the title, kind,
-stage, area, age, and a **suggestion** with half a sentence of why: Done, Drop
+**The overview and its batch.** Every point of the theme as a row: a box, the
+title (with its kind and age under it), stage, area, and a **suggestion** with
+half a sentence of why: Done, Drop
 (with a reason of `cockpit.flow.drop_reasons`), Later until a day, Let AI do it,
 or Needs you. It comes from the day's triage first (verdict close, stale or
 waiting, else who does it), while that is at most two days old; else from the
 themes run. The line over the rows says where the suggestions come from and
-that they are only suggestions. **Take the suggestions** picks the rows whose
+that they are only suggestions. **Tick the suggestions** ticks the rows whose
 suggestion is Done, Drop or Later (never Let AI do it); the boxes and **All**
-pick by hand, and **Done**, **Later until** and **Drop because** (one reason for
-all) act on the picked rows. Nothing goes out before the one line that says what
-will happen ("2 done, 1 drop: No longer needed, 1 later until 31.10.") is
-confirmed. Then each call goes out in turn (`settle` for many keys at once,
-`later` and `shelve` one by one), one note says how many were decided, and
-**Undo the batch** takes every one of them back through the undo each verb
-returned. The server's note of each step lands in the notes, not as a toast of
-its own. Let AI do it in a batch starts a point only with its own sentence and
+tick by hand, and the bar says what the ticked ones would do ("2 ticked: 1 done,
+1 drop"). **Run the suggestions** takes each ticked row's own suggestion;
+**Done**, **Later until** and **Drop because** (one reason for all) do the same
+for all ticked rows. Nothing goes out before the one line that says what will
+happen ("2 done, 1 drop: No longer needed, 1 later until 31.10.") is confirmed.
+Then each call goes out in turn (`settle` for many keys at once, `later` and
+`shelve` one by one), one toast says how many were decided, and **Undo the
+batch**, once, in the overview, takes every one of them back through the undo
+each verb returned. The server's note of each step lands in the notes, not as a
+toast of its own. Let AI do it in a batch starts a point only with its own sentence and
 only while fewer than `cockpit.flow.max_running` run; the rest stays out, and
 the line says so. A point an agent already works on (a start of the cockpit
 that is not over, or a tab of its task) is never suggested for Let AI do it,
@@ -421,10 +438,10 @@ to check yourself: nothing ticks them and nothing judges them. The card offers
 while its agent waits there, else a new start with those words), **Runs on**
 and **Drop because**. A lost start offers **Start again**.
 
-**Briefs ahead.** When a card comes to the front, the next
-`cockpit.flow.prep_ahead` cards whose brief is missing or stale get it written
+**Briefs ahead.** When a point is opened, the next
+`cockpit.flow.prep_ahead` points whose brief is missing or stale get it written
 (`describe_run` with `ahead: true`), one at a time, each key once per page
-load, never on a timer. A refusal (the hour's budget spent, a brief being
+load, never on a timer, and quietly: no toast for them. A refusal (the hour's budget spent, a brief being
 written already) ends the round; the cards not asked for yet are asked for
 when a later card comes up. These runs keep within `describe.budget_per_hour`;
 a click on a card's Describe button still always runs.
@@ -444,7 +461,7 @@ commands to start it by hand.
 `cockpit.flow.enabled: true` the view does not exist. Work through was a tab of
 its own (page `@flow`) and is a view of the work tab now: a stored page `@flow`
 or a link to it opens the work tab in that view, and `cockpit.work_view` takes
-`flow`. The chips and the lane Running are gone; the left column and the tabs
+`flow`. The chips and the lane Running are gone; the left column and the overview
 stand for them, and doing tasks moved from the decision cards to In progress.
 The themes are a second opt-in (`cockpit.flow.themes.enabled`, off by default):
 four new verbs (`flow_themes_run`, `flow_theme_move`, `flow_theme_new`,
