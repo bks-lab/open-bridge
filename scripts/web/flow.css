@@ -22,6 +22,8 @@
 /* the left column, level one: one entry per theme or area, its colour, its name, what needs you and what is open */
 .flow-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; max-height: var(--flow-col-max); overflow-y: auto;
   padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+/* the column scrolls in itself once Running now and Not now make it long: no part of it shrinks to make room */
+.flow-side > * { flex-shrink: 0; }
 .flow-side > .seg { align-self: stretch; }
 .flow-side > .seg .seg-btn { flex: 1 1 0; }
 .flow-side-select { display: none; }
@@ -246,6 +248,7 @@
 .flow-notnow-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
 .flow-run-narrow, .flow-notnow-narrow { display: none; }
 .flow-run-narrow > summary, .flow-notnow-narrow > summary { cursor: pointer; padding: 6px 4px; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.flow-run-narrow > summary > .label-caps, .flow-notnow-narrow > summary > .label-caps { display: inline; margin: 0 4px 0 0; }
 .flow-runstrip { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .flow-runstrip > h3 { margin: 0; color: var(--on-surface-muted); }
 .flow-runstrip-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 4px 0; }

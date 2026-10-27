@@ -79,7 +79,7 @@ export function RunningStrip({ lane, s, c }) {
       return html`<li key=${x.id} class="flow-runstrip-row">
         <${LaneDot} x=${x} />
         <span class="flow-runstrip-text">
-          <button type="button" class="flow-ov-open" onClick=${() => c.flowRun(x.id)}>${short(w.title, 120)}</button>
+          <button type="button" class="flow-run-open" onClick=${() => c.flowRun(x.id)}>${short(w.title, 120)}</button>
           <span class="muted small">${[w.tab, w.stage, w.since, w.how].filter(Boolean).join(' · ')}</span>
         </span>
         <span class="flow-runstrip-acts"><${TabWays} tab=${x.tab} row=${x.row} title=${w.title} s=${s} c=${c} strong /></span>
