@@ -8324,6 +8324,66 @@ def test_a_decision_on_a_github_row_holds_in_work_through_and_on_the_github_page
     assert item in page_keys(world) and world.app.collector.model["counts"]["flow_open"] == open_before
 
 
+def test_a_decision_in_work_through_never_silences_an_alarm_or_a_command_list(world):
+    """G2 holds for an issue on a GitHub page, a tracker list: a probe on an alarm section (kind command) that lists
+    the id of a ref row of Due keeps its row, its finding and its alarm when the row is put off in Work through"""
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "github", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all probes green",
+         "items": [{"id": "example/repo#7", "title": "Backup failed", "tone": "bad", "actionable": True}]}]}
+    model = with_pages(world, ops)
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    assert "item:ops/github/example/repo#7" not in world.app.collector.twins("ref:example/repo#7")
+    world.act("hide", key="ref:example/repo#7", until="2026-11-08")       # Later in Work through
+    model = world.app.collector.model
+    sec = next(p for p in model["pages"] if p["id"] == "ops")["sections"][0]
+    assert [i["key"] for i in sec["items"]] == ["item:ops/github/example/repo#7"] and sec["bad"] == 1
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    # a tracker section with an alarm is no plain GitHub list either: its finding stays
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "ops"]
+    ops["sections"][0]["kind"] = "tracker"
+    with_pages(world, ops)
+    assert "item:ops/github/example/repo#7" not in world.app.collector.twins("ref:example/repo#7")
+
+
+def test_a_new_decision_replaces_what_the_twins_held(world):
+    """One decision under both keys also when each side decided once: Later on the GitHub page until A, then Later
+    again from Work through until B leaves one key in the store, and the row of Due, the page and its "more" agree
+    on B; Done from Work through after a Later on the page leaves no older Later behind for Show again"""
+    item, ref = "item:github/github/example/repo#12", "ref:example/repo#12"
+    with_pages(world, gh_page("example/repo#12", "example/repo#99"))
+    world.act("hide", key=item, until="2026-11-08")
+    world.act("hide", key=ref, until="2026-11-30")
+    assert world.app.store.hidden() == {ref: "2026-11-30"}
+    hidden = {r["key"]: r["hidden_until"] for r in world.app.collector.model["hidden"]}
+    assert hidden[ref] == "2026-11-30"
+    merged = m.with_twins(world.app.store.hidden(), world.app.collector.twin_map)
+    assert merged[item] == merged[ref] == "2026-11-30"
+    items, _ = world.app.collector.page_items("github", "github")
+    assert item not in page_keys(world) and [i["key"] for i in items] == ["item:github/github/example/repo#99"]
+    # and the other way round: shortening from the page writes the page's key only
+    world.act("hide", key=item, until="2026-11-10")
+    assert world.app.store.hidden() == {item: "2026-11-10"}
+    # Done in Work through: the page's Later goes, so Show again brings the row back on both sides at once
+    world.act("settle", keys=[ref], outcome="done")
+    assert item not in world.app.store.hidden() and ref in world.app.store.dismissed()
+    world.act("unhide", key=ref)
+    assert not world.app.store.hidden() and not world.app.store.dismissed() and item in page_keys(world)
+
+
+def test_show_again_marks_undone_only_what_it_took_back(world):
+    """Show again marks the history entry undone only under the keys whose decision it took back: an expired Later
+    of a twin keeps its history entry"""
+    item, ref = "item:github/github/example/repo#12", "ref:example/repo#12"
+    with_pages(world, gh_page("example/repo#12"))
+    world.act("hide", key=ref, until="2026-11-30")
+    assert item in world.app.collector.twins(ref)
+    undone = []
+    world.app.history.mark_undone = lambda verb, ident: undone.append((verb, ident))
+    world.act("unhide", key=ref)
+    assert undone == [("unhide", ref)]
+
+
 def test_a_due_row_names_the_github_list_it_stands_in(world):
     """G3: a row of Due whose issue stands in a GitHub list (a section on its board view with a board or figures)
     names that list, so Work through folds it into one line leading there; a row no such list holds names none"""

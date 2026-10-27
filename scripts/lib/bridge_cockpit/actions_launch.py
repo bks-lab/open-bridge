@@ -41,7 +41,14 @@ class LaunchSteps:
         self.settle(ctx, row, self.tx["approved_note"])
         return True
 
+    def clear_twins(self, key: str) -> None:
+        """Before a decision is written under `key`: what the keys of the same thing hold goes (collector.twins), so
+        one thing never holds two decisions with different dates and a later Show again finds no older one"""
+        for twin in self.app.collector.twins(key)[1:]:
+            self.app.store.unhide(twin)
+
     def hide_until(self, ctx: Ctx, row: dict, until: str) -> None:
+        self.clear_twins(row["key"])
         self.app.store.hide(row["key"], until, str(row["title"]))
         ctx.history.append(history_item(row["key"], row["title"], "other", f"hidden until {until}"))
         ctx.note(self.tx["hidden_note"].format(until=until, title=m.short(row["title"], 60)))
@@ -214,6 +221,7 @@ class LaunchSteps:
         if new_id is None:
             return None
         until = (self.today() + dt.timedelta(days=30)).isoformat()
+        self.clear_twins(row["key"])
         self.app.store.hide(row["key"], until, str(row["title"]))
         # the row is back with "show again", from the toast or the history; the inbox item stays
         ctx.history.append(history_item(row["key"], row["title"], "other", f"filed, hidden until {until}"))

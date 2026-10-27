@@ -1595,7 +1595,10 @@ page entry (docs/briefings.md).
 `ref:<id>`) and on a GitHub page (`item:<page>/<section>/<id>`) is one row to
 decide: Later, Done and Show again from either side act under both keys, on the
 page, in its "more" list and in Work through, and the work row names the GitHub
-list it stands in as `on_board: {page, section}` (null where none).
+list it stands in as `on_board: {page, section}` (null where none). A new
+decision replaces what the other key held, so one issue never holds two dates.
+Only a tracker list twins: a command list or an alarm section keeps its rows, so
+a Later in Work through never takes a failing probe off its page or its alarm.
 
 **GitHub work with steps.** A `github-work` section (docs/briefings.md § GitHub
 work) on a page with `view: board` lists one row per issue or pull request

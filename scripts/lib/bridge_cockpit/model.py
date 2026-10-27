@@ -373,13 +373,17 @@ def item_key(page_id: str, section_id: str, info: dict) -> str:
 
 def page_twins(view: dict | None) -> dict[str, list[tuple[str, dict, str]]]:
     """The page items that are a row of Due: a tracker or command row of Due is ref:<id> (briefing_view, row_key) with
-    the sections it came from as its sources, and a page section among them lists the same thing as item <id>
-    (item_key). Row key -> [(page id, section, item key)], only for a row some page lists"""
+    the sections it came from as its sources, and a tracker list among them on a page (an issue on the GitHub page)
+    lists the same thing as item <id> (item_key). A command list or an alarm section never twins: a Later in Work
+    through must not take a failing probe off its page, its count and its alarm. Row key -> [(page id, section,
+    item key)], only for a row some such list holds"""
     if not view:
         return {}
     listed: dict[str, list[tuple[str, dict, dict]]] = {}
     for pg in view.get("pages") or []:
         for s in pg.get("sections") or []:
+            if s.get("kind") != "tracker" or s.get("alarm") is True:
+                continue
             ids = {it["id"]: it for it in s.get("items") or [] if it.get("id")}
             if ids:
                 listed.setdefault(s.get("id"), []).append((pg.get("id"), s, ids))

@@ -242,11 +242,11 @@ class WorkVerbs:
         """Show again: under the row's own key and under the keys of the same thing (collector.twins: an issue in
         Due and on the GitHub page), wherever the decision was taken"""
         found = self.entry(key)
-        twins = self.app.collector.twins(key)
-        if not found["hidden"] or not [k for k in twins if self.app.store.unhide(k)]:
+        taken = [k for k in self.app.collector.twins(key) if self.app.store.unhide(k)] if found["hidden"] else []
+        if not taken:
             raise self.not_applicable("the row is not hidden")
         if getattr(self.app, "history", None) is not None:
-            for k in twins:
+            for k in taken:                 # only a decision taken back: an expired Later of a twin keeps its entry
                 self.app.history.mark_undone("unhide", k)
         ctx.note(self.tx["unhidden_note"].format(title=m.short(found["row"]["title"], 60)), go=row_go(found["row"]))
 
@@ -469,7 +469,8 @@ class WorkVerbs:
                 self.settle_soon(ctx)
             elif kind == "other":
                 # not collector.settle: its source still lists the row, so it would stay invisible for good;
-                # dismissed it shows under the hidden rows with "show again"
+                # dismissed it shows under the hidden rows with "show again"; a twin's older Later goes first
+                self.clear_twins(key)
                 self.app.store.dismiss(key, outcome, row["title"])
                 self.write_note(ctx, row, self.tx["close_reason"][outcome] + extra)
                 ctx.history.append({**history_item(key, row["title"], "other", outcome), **({"reason": text} if text else {})})
