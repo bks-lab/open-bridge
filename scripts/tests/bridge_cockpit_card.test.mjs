@@ -313,6 +313,20 @@ test('demo: describe writes a brief for an item nobody wrote, proposes for an ed
   assert.equal(detail.describe.written, 'human')
 })
 
+test('demo: a brief written ahead stays quiet as the server keeps it (no note), a click still says what it did', async () => {
+  const { mock } = await loadCockpit()
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
+  const notes = []
+  tr.events(new Proxy({}, { get: (_, name) => p => { if (name === 'note' && p?.text) notes.push(p.text) } }), () => {})
+  const act = (verb, args) => tr.post('/api/action', { verb, args })
+  assert.equal((await act('describe_run', { key: 'task:old-cleanup', ahead: true })).data.outcome, 'written')
+  await new Promise(r => setTimeout(r, 120))
+  assert.deepEqual(notes, [], 'no toast for a brief prepared ahead')
+  await act('describe_run', { key: 'task:old-cleanup' })
+  await new Promise(r => setTimeout(r, 120))
+  assert.equal(notes.length, 1, 'a click says what it did')
+})
+
 // ---------------------------------------------------------------- review fixes
 
 const { render } = await loadCockpit()

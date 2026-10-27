@@ -1794,7 +1794,8 @@ export function createMockTransport(opts = {}) {
               ? { describe: { ...view, proposal: { id: `d${String(now()).slice(-10)}`, by: brief.by, at_ms: now(), brief } } }
               : setBrief(brief, 'ai')
             result.outcome = view.written === 'human' ? 'proposal' : 'written'
-            result.note = view.written === 'human' ? 'Mock: a proposal waits beside your text' : `Mock: described ${r.title}`
+            // a brief prepared ahead (the Work through page) stays quiet, as actions_work.py describe_run keeps it
+            result.note = args.ahead ? '' : view.written === 'human' ? 'Mock: a proposal waits beside your text' : `Mock: described ${r.title}`
           } else if (verb === 'describe_apply') {
             next = setBrief({ ...prop.brief, ...(args.brief ?? {}), by: prop.by }, 'human')
             result.note = `Mock: applied for ${r.title}`
