@@ -655,6 +655,28 @@ test('round 6: Running now holds every live session as a card, with or without a
   assert.equal(logic.runningOf(p2).n, 1)
 })
 
+test('round 6: one card per tab, the newest session of it, with the task of an older one where it has none', () => {
+  const tabs = [{ ref: 'surface:30', name: 'ui tab', state: 'working', since_ms: NOW - 2 * MIN }]
+  const older = { id: 'old1', sid: 'old1-full', task: 'board-ui', task_how: 'hand', task_since_ms: NOW - 600 * MIN, status: 'idle',
+    started_ms: NOW - 600 * MIN, tab: { ref: 'surface:30', name: 'ui tab' }, agents: { running_count: 1, done_recent: 0, running: [] } }
+  const newer = { id: 'new1', sid: 'new1-full', task: null, status: 'busy', started_ms: NOW - 2 * MIN, tab: { ref: 'surface:30', name: 'ui tab' } }
+  for (const list of [[older, newer], [newer, older]]) {
+    const s = state({ work: [task('board-ui')], tabs, sessions: { sessions: list } })
+    const parts = logic.flowParts(s)
+    assert.equal(parts.sessions.length, 1, 'one card for the tab')
+    const [card] = parts.sessions
+    assert.equal(card.session.id, 'new1')
+    assert.deepEqual([card.session.task, card.session.task_how, card.session.sid], ['board-ui', 'hand', 'old1-full'])
+    assert.equal(card.entry?.id, 'session:surface:30')
+    assert.equal(logic.runningOf(parts).n, 1)
+    const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'running', flowPicked: [] } }} c=${recorder()} />`)
+    assert.equal(el.$$('.flow-main .sess').length, 1)
+  }
+  // the newer one linked itself: its own task stands
+  const s2 = state({ work: [task('board-ui'), task('other')], tabs, sessions: { sessions: [older, { ...newer, task: 'other', task_how: 'seen' }] } })
+  assert.deepEqual(logic.flowParts(s2).sessions.map(v => [v.session.id, v.session.task]), [['new1', 'other']])
+})
+
 test('round 6: without a terminal driver Running now still lists the live sessions, without their tabs', () => {
   const sessions = { sessions: [{ id: 'aa11', sid: 'aa11-full', task: 'mine', status: 'busy', started_ms: NOW - 12 * MIN, tab: { ref: 'surface:12', name: 'mine' } },
     { id: 'bb22', sid: 'bb22-full', status: 'idle', started_ms: NOW - 50 * MIN, tab: null }] }

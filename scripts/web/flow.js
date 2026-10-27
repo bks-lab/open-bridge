@@ -317,14 +317,27 @@ export function flowParts(s) {
   // S every live session of this machine as one card of Running now (round 6), with a task or without one and with a
   // driver or without one (then without its tab): a lane entry in its tab is that card's (`entry`, its box), a tab that
   // stands as a point (the return card, one that asks, a finished start) keeps its session there, a tab back at its
-  // shell and the control session (the Chat's) stand nowhere. Rows of no row key: the keys and counts stay the lane's
+  // shell and the control session (the Chat's) stand nowhere. One card per tab: of several sessions in one tab (one
+  // went on after a compaction) the newest, with the task of the newest one that has one where it has none (its sid
+  // too, so Not this task undoes that link). Rows of no row key: the keys and counts stay the lane's
   const laneOfTab = new Map(out.lane.filter(e => e.tab?.ref).map(e => [e.tab.ref, e]))
+  const byTab = new Map()
   for (const x of s?.sessions?.sessions ?? []) {
     if (!x || x.tab?.is_control) continue
     const tab = driver && x.tab?.ref ? tabOf(x.tab.ref) : null
     if (tab?.state === 'shell' || (tab && !laneOfTab.has(tab.ref) && usedTabs.has(tab.ref))) continue
-    out.sessions.push({ id: `live:${x.id ?? x.sid}`, kind: 'live', session: x, tab, entry: tab ? laneOfTab.get(tab.ref) ?? null : null,
-      stage: tab?.state ?? (x.status === 'busy' ? 'working' : 'idle') })
+    const card = { id: `live:${x.id ?? x.sid}`, kind: 'live', session: x, tab, entry: tab ? laneOfTab.get(tab.ref) ?? null : null,
+      stage: tab?.state ?? (x.status === 'busy' ? 'working' : 'idle') }
+    if (!tab) { out.sessions.push(card); continue }
+    const all = [...(byTab.get(tab.ref) ?? []), card]
+    byTab.set(tab.ref, all)
+  }
+  for (const all of byTab.values()) {
+    all.sort((a, b) => (b.session.started_ms ?? 0) - (a.session.started_ms ?? 0))
+    const [card] = all
+    const holder = card.session.task ? null : all.find(v => v.session.task)
+    out.sessions.push(holder ? { ...card, session: { ...card.session, task: holder.session.task, task_how: holder.session.task_how,
+      task_since_ms: holder.session.task_since_ms, sid: holder.session.sid } } : card)
   }
   out.sessions.sort((a, b) => (SESSION_RANK[a.stage] ?? 3) - (SESSION_RANK[b.stage] ?? 3) || (b.session.started_ms ?? 0) - (a.session.started_ms ?? 0))
   const left = Object.fromEntries(FLOW_LEFT_OUT.map(k => [k, []]))
