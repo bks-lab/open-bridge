@@ -999,7 +999,7 @@ test('agents: a draft never travels to another agent, held answers show on the c
   assert.match(src, /const heldOf = \(convs, id\) => convs\.filter\(x => x\.peer === id && !x\.running && x\.turns\.at\(-1\)\?\.waiting\)\.length/)
 })
 
-test('history: a close offers undo at once and later; a task comes back open or as still to be done', () => {
+test('history: a close offers undo at once and later; a task comes back as it was or as still to be done', () => {
   const app = read('app.js')
   const comp = readComponents()
   assert.match(app, /if \(r\.undo\?\.length && r\.ok\) \{\s*pushNote\(\{[^}]*action: 'undo', undo: r\.undo \}/)
@@ -1008,8 +1008,10 @@ test('history: a close offers undo at once and later; a task comes back open or 
   // the server's own note of the same text is often first: the undo must still reach the toast
   // (what the twin gives is logic.js giveTwin, tested in bridge_cockpit_toast_go.test.mjs)
   assert.match(app, /const twin = giveTwin\(s\.toasts, note\)/)
+  // the history restores that status too, never a forced doing (the clicks: bridge_cockpit_render.test.mjs)
   const buttons = comp.match(/function UndoButtons\([\s\S]*?\n\}/)[0]
-  assert.match(buttons, /c\.undo\(u, 'doing'\)/)
+  assert.doesNotMatch(buttons, /c\.undo\(u, 'doing'\)/)
+  assert.match(buttons, /c\.undo\(u\)/)
   assert.match(buttons, /c\.undo\(u, 'backlog'\)/)
   assert.match(comp, /s\.ui\.drawer === 'history' \? html`<\$\{HistoryDrawer\}/)
 })
@@ -4471,10 +4473,10 @@ test('keyboard shortcuts are off unless switched on in the settings, this browse
   assert.match(settings, /c\.setShortcuts\(v === 'on'\)/)
   assert.match(settings.slice(settings.indexOf('function LookArea')), /<\$\{KeysCard\}/)
   assert.match(read('views/header.js'), /s\.ui\.shortcuts \? html`<\$\{CommandBox\}/, 'the code box only with shortcuts on')
-  const help = read('views/overlays.js')
-  assert.match(help, /t\.keysOff/)
-  assert.match(help, /c\.openSettings\('look'\)/)
-  for (const lang of [text.TABLES.en, text.TABLES.de]) assert.ok(lang.keysOff && lang.keysOn && lang.settings.keysTitle && lang.settings.keysIntro, 'labels')
+  // the keys stand in the look-up card on the same page (the help left the header): off, it says the card above switches them on
+  assert.match(settings.slice(settings.indexOf('function LookupCard')), /t\.keysOff/)
+  assert.match(settings.slice(settings.indexOf('function LookArea')), /<\$\{LookupCard\}/)
+  for (const lang of [text.TABLES.en, text.TABLES.de]) assert.ok(lang.keysOff && lang.settings.keysTitle && lang.settings.keysIntro, 'labels')
 })
 
 // ---------------------------------------------------------------- the decision guide (guide.py, views/guide.js)
@@ -4568,6 +4570,9 @@ test('tourSteps: a welcome first and an end last, the tab column only where the 
   assert.ok(wide.every(x => !x.target || typeof x.target === 'string'))
   const narrow = logic.tourSteps({ layout: 'narrow' })
   assert.ok(!narrow.some(x => x.id === 'tabs'))
+  // the help has no button in the header any more: the tour shows Explain there, which stands at every width
+  assert.equal(wide.find(x => x.id === 'explain')?.target, '.hdr-explain')
+  assert.ok(!wide.some(x => x.id === 'help' || x.target === '.hdr-help'))
   // a step that shows a page names one the page knows
   assert.ok(wide.filter(x => x.page).every(x => ['@start', 'briefing', '@sessions', '@chat', '@settings'].includes(x.page)))
 })
@@ -4606,7 +4611,8 @@ test('hintsFor: the page\'s own areas first, then the header, each once, each wi
     const groups = list.map(h => h.group)
     assert.ok(groups.indexOf('head') > 0 && groups.lastIndexOf('page') < groups.indexOf('head'), page)
     assert.ok(list.filter(h => h.group === 'page').length >= 3, `${page} explains itself`)
-    assert.equal(list.at(-1).id, 'help', page)       // the header's help comes last everywhere
+    assert.equal(list.at(-1).id, 'explain', page)    // the header's Explain comes last everywhere, help has no button
+    for (const gone of ['reload', 'notes', 'help']) assert.ok(!list.some(h => h.id === gone), `${page}: ${gone} left the header`)
   }
   const start = logic.hintsFor({ ui: { page: '@start' }, layout: 'wide' }).map(h => h.id)
   assert.equal(start[0], 'prompt')

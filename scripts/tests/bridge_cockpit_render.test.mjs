@@ -243,6 +243,43 @@ test('header: a cockpit with only its own state names that, and a normal one sho
   assert.equal(demo.$('.hdr-demo .hdr-demo-long').text(), en.demoBadge)
 })
 
+// ---------------------------------------------------------------- Header: four parts and the as-of time (K1 to K5)
+
+test('header: the as-of time is the reload button with its mark; no colours, bell, help or reload button beside it', () => {
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${Header} s=${s} c=${c} />`)
+  const asof = el.$('.hdr-asof button')
+  assert.ok(asof, 'the time is a button')
+  assert.equal(asof.$('.asof-text').text(), en.sourceAsOf(s.model.collected_at))
+  assert.ok(asof.$('svg'), 'with the reload mark on it')
+  assert.match(asof.getAttribute('title'), new RegExp(en.reloadTitle.replace(/[()]/g, '\\$&')))
+  asof.click()
+  assert.deepEqual(c.calls, [['reload']])
+  for (const gone of ['.hdr-reload', '.hdr-notes', '.hdr-help', '.hdr-theme']) assert.ok(!el.$(gone), `${gone} left the header`)
+  assert.ok(!el.$$('button').some(b => /^(Theme|Help|Notes)\b/.test(b.getAttribute('aria-label') ?? '')), 'no colours, help or bell button')
+  for (const kept of ['.hdr-ask', '.hdr-history', '.hdr-explain']) assert.ok(el.$(kept), `${kept} stays`)
+})
+
+test('header: while a fresh pass runs the as-of button waits; narrow, the header keeps the mark, the line below the time', () => {
+  const busy = cockpitState(NOW, { loading: { pass: 'full', fresh: true, started_ms: NOW, eta_ms: 0, queued: null, last_error: null } })
+  const b = mount(html`<${Header} s=${busy} c=${recorder()} />`).$('.hdr-asof button')
+  assert.equal(b.getAttribute('aria-busy'), 'true')
+  assert.ok(b.hasAttribute('disabled'), 'a second click starts no second pass')
+  const narrow = cockpitState(NOW, { layout: 'narrow' })
+  const c = recorder()
+  const head = mount(html`<${Header} s=${narrow} c=${c} />`)
+  const mark = head.$('.hdr-asof button')
+  assert.ok(mark && mark.$('svg'), 'the mark stays in a narrow header')
+  assert.equal(mark.$('.asof-text'), null)
+  mark.click()
+  assert.deepEqual(c.calls, [['reload']])
+  const line = mount(html`<${views.overlays.MobileSwitch} s=${narrow} c=${c} />`).$('.mobile-status .hdr-asof button')
+  assert.equal(line.$('.asof-text').text(), en.sourceAsOf(narrow.model.collected_at))
+  line.click()
+  assert.deepEqual(c.calls.at(-1), ['reload'])
+})
+
 // ---------------------------------------------------------------- what works where: header chip and sidebar counts
 
 test('the header shows the working total from the mock sessions', () => {
@@ -1662,38 +1699,26 @@ test('hints: nothing in view says so instead of an empty overlay', () => {
   assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.none.slice(0, 20)))
 })
 
-// ---------------------------------------------------------------- help (views/overlays.js HelpDialog)
+// ---------------------------------------------------------------- look up (views/settings.js, under Appearance; K3)
 
-test('help: one topic at a time, this page first; a topic tab shows its own words, the keys theirs', async () => {
-  const { HelpDialog } = views.overlays
-  const proto = Object.getPrototypeOf(document.body)
-  proto.focus ??= function focus() { document.activeElement = this }
-  proto.querySelector ??= function querySelector(sel) { return this.$(sel) }
-  // the page beneath is not mounted here: the help asks the document which parts it shows, and none are
-  const ask = Object.getOwnPropertyDescriptor(document, 'querySelector')
-  document.querySelector = () => null
-  try {
-  const c = recorder()
-  const el = mount(html`<${HelpDialog} s=${cockpitState(NOW, { ui: { page: '@sessions', drawer: 'help', shortcuts: false } })} c=${c} />`)
-  const tabs = el.$$('.help-tabs .seg-btn').map(b => b.text())
-  assert.deepEqual(tabs, ['page', 'rows', 'act', 'keys', 'trust'].map(id => en.help.tabs[id]))
-  assert.match(el.$('.help-pane').text(), new RegExp(en.help.pageLead.slice(0, 24)))
-  assert.match(el.$('.help-pane').text(), new RegExp(en.help.headTitle))
-  assert.doesNotMatch(el.$('.help-pane').text(), new RegExp(en.kindHelp))
-  el.button(en.help.tabs.rows).click()
+test('look up: Appearance holds the signs, acting, the keys and costs, one topic at a time; the page notes are Explain\'s', async () => {
+  const { SettingsPage } = views.settings
+  const s = cockpitState(NOW, { ui: { page: '@settings', settingsSection: 'look', shortcuts: false } })
+  const el = mount(html`<${SettingsPage} s=${s} c=${recorder()} />`)
+  const card = el.$$('.set-card').find(x => x.$('.set-card-name')?.text() === en.settings.lookupTitle)
+  assert.ok(card, 'the card stands under Appearance')
+  assert.deepEqual(card.$$('.seg-btn').map(b => b.text()), ['rows', 'act', 'keys', 'trust'].map(id => en.help.tabs[id]))
+  assert.match(card.text(), new RegExp(en.kindHelp))
+  card.button(en.help.tabs.keys).click()
   await tick()
-  assert.match(el.$('.help-pane').text(), new RegExp(en.kindHelp))
-  el.button(en.help.tabs.keys).click()
+  assert.match(card.text(), new RegExp(en.keysOff.slice(0, 20)))
+  assert.ok(card.$('kbd'), 'the keys stand there even while they are off')
+  card.button(en.help.tabs.trust).click()
   await tick()
-  assert.match(el.$('.help-pane').text(), new RegExp(en.keysOff.slice(0, 20)))
-  el.button(en.hints.helpButton).click()
-  assert.deepEqual(c.calls.at(-1), ['setHints', true])
-  el.button(en.tour.again).click()
-  assert.deepEqual(c.calls.at(-1), ['tourStart'])
-  assert.match(el.$('.help-pane').text() + el.text(), new RegExp(en.help.tabs.keys))
-  } finally {
-    if (ask) Object.defineProperty(document, 'querySelector', ask); else delete document.querySelector
-  }
+  assert.match(card.text(), new RegExp(en.helpTopics.trust[0][0]))
+  assert.doesNotMatch(card.text(), new RegExp(en.kindHelp))
+  // the colours stand on the same page, the header has no button for them
+  assert.ok(el.$$('.set-card-name').some(x => x.text() === en.settings.themeTitle))
 })
 
 // ---------------------------------------------------------------- NextUp
@@ -2095,6 +2120,32 @@ test('kind: the history says Stream for an ended stream, Task for a task', async
     { key: 'task:x', title: 'X', kind: 'task', work_kind: 'task', did: 'done', ident: 'x', undo: null }] }]
   const el = await settled(html`<${HistoryDrawer} s=${s} c=${recorder()} />`)
   assert.deepEqual(el.$$('.hist-what .chip').map(x => x.text()), [en.histKind.stream, en.histKind.task])
+})
+
+test('history: undo brings a task back with the status it had before the close, never forced to doing (K2)', async () => {
+  const { HistoryDrawer } = views.overlays
+  const s = cockpitState(NOW)
+  const back = (slug, as) => ({ verb: 'task_reopen', args: { slug, ...(as ? { as } : {}) } })
+  s.history = [{ id: 'h2', at_ms: NOW, verb: 'task_close', items: [
+    { key: 'task:in-review', title: 'In review', kind: 'task', did: 'done', ident: 'in-review', undo: back('in-review', 'review') },
+    { key: 'task:in-backlog', title: 'In backlog', kind: 'task', did: 'done', ident: 'in-backlog', undo: back('in-backlog', 'backlog') },
+    { key: 'task:older', title: 'Older', kind: 'task', did: 'done', ident: 'older', undo: back('older') }] }]
+  const c = recorder()
+  const el = await settled(html`<${HistoryDrawer} s=${s} c=${c} />`)
+  const rows = el.$$('.hist-item')
+  const review = rows[0].$$('button')
+  assert.deepEqual(review.map(b => b.text()), [en.undoReview, en.undoBacklog])
+  review[0].click()
+  assert.deepEqual(c.calls.at(-1), ['undo', s.history[0].items[0].undo])
+  review[1].click()
+  assert.deepEqual(c.calls.at(-1), ['undo', s.history[0].items[0].undo, 'backlog'])
+  // closed out of the backlog: the one way back is the backlog
+  const backlog = rows[1].$$('button')
+  assert.deepEqual(backlog.map(b => b.text()), [en.undoBacklog])
+  backlog[0].click()
+  assert.deepEqual(c.calls.at(-1), ['undo', s.history[0].items[1].undo])
+  // an older entry without the status: open again as before, or still to be done
+  assert.deepEqual(rows[2].$$('button').map(b => b.text()), [en.undoReopen, en.undoBacklog])
 })
 
 test('origin: the files view lists the inbox entries of a file with who filed them', () => {

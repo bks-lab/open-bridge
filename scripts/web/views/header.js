@@ -11,7 +11,7 @@ import {
 } from './nav.js'
 import { AgentMark, agentBadge } from './agents.js'
 import { usePopover } from './pages.js'
-import { Btn, Dot, Spinner, StateLine, useRoving, useTween } from './parts.js'
+import { Btn, Dot, Icon, Spinner, StateLine, useRoving, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- header and page bar
 
@@ -36,16 +36,19 @@ function Warnings({ s }) {
     <${StateLine} token=${w.token} strong=${w.token === 'danger'} word=${w.word} /></span>`)
 }
 
-export function AsOf({ s }) {
+/** When the data was collected, as the button that collects it again (↻ on it; there is no reload button of its
+ *  own), the warnings before it. `brief`: the mark alone, for a narrow header whose line below shows the time and
+ *  the warnings. While a fresh pass runs it waits, so a second click starts no second pass */
+export function AsOf({ s, c, brief = false }) {
   const t = T()
   const m = s.model
-  if (!m) {
-    return html`<span class="hdr-asof"><${Warnings} s=${s} />
-      <span class="muted asof-text">${s.conn === 'open' ? t.loading : t.connWait}</span></span>`
-  }
-  return html`<span class="hdr-asof" title=${m.is_full ? '' : t.noTracker}>
-    <${Warnings} s=${s} />
-    <span class="muted asof-text">${t.sourceAsOf(m.collected_at)}${m.is_full ? '' : ` ${t.noTracker}`}</span>
+  const words = m ? `${t.sourceAsOf(m.collected_at)}${m.is_full ? '' : ` ${t.noTracker}`}` : s.conn === 'open' ? t.loading : t.connWait
+  const busy = !!s.loading?.pass && !!s.loading?.fresh
+  return html`<span class="hdr-asof">
+    ${brief ? null : html`<${Warnings} s=${s} />`}
+    <button type="button" class="asof-btn" title=${`${words} · ${t.reloadTitle}`} aria-label=${`${words}, ${t.reloadTitle}`}
+      disabled=${busy} aria-busy=${busy ? 'true' : undefined} onClick=${() => c?.reload?.()}>
+      ${brief ? null : html`<span class="muted asof-text">${words}</span>`}<${Icon} name="reload" size=${14} /></button>
   </span>`
 }
 
@@ -127,9 +130,10 @@ export function ChatTabMark({ kind }) {
   return kind === 'quick' ? html`<${Spinner} />` : html`<${AgentMark} kind=${kind} />`
 }
 
+/** The header keeps the as-of time (the reload button), Tabs, Ask, History and Explain beside the state of what
+ *  runs. The colours and the look-up card of the old help stand in Settings, Appearance, the notes in the history */
 export function Header({ s, c }) {
   const t = T()
-  const themeIcon = s.ui.theme === 'dark' ? 'moon' : s.ui.theme === 'light' ? 'sun' : 'auto'
   // the Tabs button counts the tabs that want you; a finished (idle) one waits on nobody
   const waiting = tabsButtonCount(s.tabs?.tabs)
   return html`<header class="hdr">
@@ -145,12 +149,10 @@ export function Header({ s, c }) {
     <span class="hdr-headline" aria-hidden="true"></span>
     <div class="hdr-right">
       <${LoadingIndicator} s=${s} />
-      ${s.layout === 'narrow' ? null : html`<${AsOf} s=${s} />`}
+      <${AsOf} s=${s} c=${c} brief=${s.layout === 'narrow'} />
       ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}
       ${s.layout === 'medium' || (s.layout === 'wide' && !railOn(s)) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
         onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'} cls="hdr-tabs">${t.tabsButton(waiting)}<//>` : null}
-      <${Btn} variant="ghost" size="sm" icon="reload" title=${t.reloadTitle} label=${t.reloadTitle}
-        busy=${!!s.loading?.pass && s.loading?.fresh} onClick=${c.reload} cls="hdr-reload"><span class="hide-narrow">${t.reload}</span><//>
       <${Btn} variant=${(s.quick?.convs ?? []).some(chatRunning) ? 'primary' : 'secondary'}
         size="sm" icon="send" onClick=${() => c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
       <${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
@@ -158,14 +160,8 @@ export function Header({ s, c }) {
       ${s.layout === 'narrow' ? null : html`<${AgentsChip} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${RelayBadge} s=${s} c=${c} />`}
       ${s.layout === 'narrow' ? null : html`<${StartControl} s=${s} c=${c} short />`}
-      <${Btn} variant="ghost" size="sm" icon=${themeIcon} label=${`${t.themeLabel}: ${t.theme[s.ui.theme]}`}
-        title=${`${t.themeLabel}: ${t.theme[s.ui.theme]}`} onClick=${c.cycleTheme} />
-      <${Btn} variant="ghost" size="sm" icon="bell" label=${t.notesTitle} title=${t.notesTitle}
-        onClick=${() => c.setDrawer(s.ui.drawer === 'notes' ? null : 'notes')} pressed=${s.ui.drawer === 'notes'} cls="hdr-notes" />
       <${Btn} variant="ghost" size="sm" icon="bulb" label=${t.hints.buttonTitle} title=${t.hints.buttonTitle}
         pressed=${!!s.ui.hints} onClick=${() => c.setHints(!s.ui.hints)} cls="hdr-explain"><span class="hide-narrow">${t.hints.button}</span><//>
-      <${Btn} variant="ghost" size="sm" icon="help" label=${t.helpTitle} title=${`${t.helpTitle} (?)`}
-        onClick=${() => c.setDrawer('help')} cls="hdr-help" />
     </div>
   </header>`
 }

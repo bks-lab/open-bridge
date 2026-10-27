@@ -258,10 +258,13 @@ class App:
 
     def note(self, text: str, tone: str = "info", go: dict | None = None) -> dict | None:
         """A note for every page, with where it leads when it names a place (actions_base.note_go); returns that
-        place as sent, None for none. A target the scrub would change is dropped, never sent changed."""
+        place as sent, None for none. A target the scrub would change is dropped, never sent changed. It carries
+        its date beside the time (at_ms): the history lists the notes under their day, and a server that runs past
+        midnight keeps yesterday's."""
         if not text:
             return None
-        entry = {"at": m.clock_time(self.clock()), "text": self.scrub(text), "tone": tone}
+        now = self.clock()
+        entry = {"at": m.clock_time(now), "at_ms": int(now), "text": self.scrub(text), "tone": tone}
         target = note_go(go)
         if target and all(self.scrub(v) == v for v in target.values()):
             entry["go"] = target

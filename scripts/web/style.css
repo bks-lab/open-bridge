@@ -215,6 +215,15 @@ kbd {
 }
 .hdr-status > span { overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
 .hdr-relay { padding: 0 4px; flex: 0 0 auto; }
+/* the as-of time is the reload button: the time and ↻ in one, no reload button of its own */
+.asof-btn {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 6px; border: 0; border-radius: var(--radius-md);
+  background: none; font: inherit; color: var(--on-surface-muted); cursor: pointer;
+}
+.asof-btn .asof-text { overflow: hidden; text-overflow: ellipsis; }
+.asof-btn .icon { flex: none; }
+.asof-btn:hover:not([disabled]) { background: var(--surface-muted); color: var(--on-surface); }
+.asof-btn[aria-busy] .icon { animation: spin 0.8s linear infinite; }
 /* what works in this Bridge's tabs now; a click opens the Sessions page */
 .hdr-agents { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; font-size: 12.5px; white-space: nowrap; color: var(--on-surface-muted); }
 .hdr-agents:hover { color: var(--ink); }
@@ -1352,16 +1361,9 @@ kbd {
 .conf { margin-left: 6px; letter-spacing: 1px; }
 .tbl-review .c-reason { min-width: 220px; }
 .tbl-review tr.is-kept td { opacity: 0.75; }
-.help-dialog { width: min(760px, 100%); display: flex; flex-direction: column; overflow: hidden; }
-.help-tabs { align-self: flex-start; margin-bottom: 12px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; flex-shrink: 0; }
-.help-tabs .seg-btn { white-space: nowrap; }
-.help-pane { overflow-y: auto; height: min(52vh, 460px); padding-right: 4px; }
-.help-pane > p { margin: 0 0 10px; }
-.help-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 0 0 14px; }
-.help-cards > div { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; background: var(--surface); }
-.help-cards dt { font-weight: 600; font-size: var(--text-sm); }
-.help-cards dd { margin: 2px 0 0; color: var(--on-surface-muted); font-size: var(--text-sm); }
-.help-sub { margin: 6px 0 8px; }
+/* the look-up card under Settings, Appearance (views/settings.js LookupCard): one topic below its switch */
+.lookup-pane { margin-top: 12px; }
+.lookup-pane > p { margin: 0 0 10px; }
 .keys > div, .help-text > div {
   display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; padding: 6px 0;
   border-top: 1px solid var(--border); font-size: var(--text-sm);
@@ -1370,6 +1372,9 @@ kbd {
 .help-text dt { font-weight: 600; }
 .help-text dd { color: var(--on-surface-muted); }
 .notes { display: flex; flex-direction: column; }
+/* the notes of a day in the history, above its closed items */
+.hist-notes summary { cursor: pointer; }
+.hist-notes .notes { margin: 4px 0 0; }
 .note { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
 
 .toasts {
@@ -1393,7 +1398,7 @@ kbd {
 .toast-go:hover, .note-go:hover { background: var(--surface-muted); }
 .toast-go:hover > span { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .toast-go:hover svg, .note-go:hover svg { color: var(--accent); }
-/* past four: one compact last toast that opens the notes drawer */
+/* past four: one compact last toast that opens the notes in the history */
 .toast.toast-more {
   display: block; justify-self: end; align-self: flex-end; width: auto; padding: 6px 12px; cursor: pointer;
   color: var(--on-surface-muted); font: inherit; font-size: var(--text-sm); text-align: center;
@@ -1523,10 +1528,10 @@ kbd {
 
 @media (max-width: 1279px) {
   .hdr-headline { display: none; }
-  /* icons only for reload and history, so the header fits beside the command box */
+  /* icons only for History and Explain, so the header fits beside the command box */
   .hide-narrow { display: none; }
-  /* the as-of time moves into the day column (.day-counts), the header keeps its buttons in view */
-  .hdr .hdr-asof { display: none; }
+  /* only the as-of time gives way (it stays in the button's tooltip): its warnings and ↻ stay in view */
+  .hdr .hdr-asof .asof-text { display: none; }
   .hdr-right { min-width: 0; }
   .hdr-right { flex: 1 1 auto; justify-content: flex-end; }
 }
@@ -2976,11 +2981,6 @@ pre.guide-read-text { font-family: var(--font-mono); }
 .tour-dot.is-on { background: var(--accent); width: 16px; }
 .tour-acts { margin-top: 14px; align-items: center; }
 .tour-gap { flex: 1; }
-.help-head { flex-wrap: wrap; }
-.help-tour { margin-left: auto; }
-@media (max-width: 599px) {
-  .help-tour { order: 3; width: 100%; margin-left: 0; }
-}
 .tour-done { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .tour-spot { transition: none; }

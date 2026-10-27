@@ -27,7 +27,7 @@ import {
   workViewNow,
 } from './views/nav.js'
 import {
-  AuthPanel, BootPanel, ConfirmDialog, HelpDialog, HistoryDrawer, InfoDrawer, ItemDrawer, MobileSwitch, NotesDrawer,
+  AuthPanel, BootPanel, ConfirmDialog, HistoryDrawer, InfoDrawer, ItemDrawer, MobileSwitch,
   TabsDrawer, Toasts,
 } from './views/overlays.js'
 import { JevList, KindBar, OverviewBoard, PageCard, PageSection, WorkOrder } from './views/pages.js'
@@ -179,9 +179,7 @@ export function App({ store, ctl }) {
       ${showTabsCol ? html`<${TabsColumn} s=${v} c=${ctl} byKey=${shownKey} />` : null}
     </main>
     ${tabsDrawer && s.ui.drawer === 'tabs' ? html`<${TabsDrawer} s=${v} c=${ctl} byKey=${shownKey} />` : null}
-    ${s.ui.drawer === 'notes' ? html`<${NotesDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'history' ? html`<${HistoryDrawer} s=${s} c=${ctl} />` : null}
-    ${s.ui.drawer === 'help' ? html`<${HelpDialog} s=${s} c=${ctl} />` : null}
     ${s.ui.drawer === 'item' && s.ui.item ? html`<${ItemDrawer} s=${s} c=${ctl} byKey=${byKey} />` : null}
     ${s.ui.drawer === 'info' && s.ui.info ? html`<${InfoDrawer} s=${s} c=${ctl} />` : null}
     ${s.ui.tabView === '@ask' ? html`<${QuickChat} s=${s} c=${ctl} />` : s.ui.tabView ? html`<${TabView} s=${s} c=${ctl} />` : null}

@@ -90,6 +90,13 @@ def test_the_server_note_keeps_a_valid_target_and_drops_another(world):
     assert "go" not in world.app.notes[-1]
 
 
+def test_the_server_note_carries_its_date_beside_its_time(world):
+    # the history lists the notes under their day, so a note kept over midnight is not one of today's
+    world.app.note("dated")
+    assert world.app.notes[-1]["at"] == "12:00"
+    assert world.app.notes[-1]["at_ms"] == int(world.clock())
+
+
 def test_a_tab_verb_leads_back_to_its_tab_in_the_result_and_the_broadcast(world):
     res = world.act("tab_jump", tab_ref="surface:7")
     assert res["note"] and res["go"] == {"kind": "tab", "ref": "surface:7"}
