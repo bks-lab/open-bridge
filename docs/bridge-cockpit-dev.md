@@ -446,13 +446,20 @@ missing in one language, an empty value, an em or en dash, or an emoji.
 
 ```bash
 pytest -q scripts/tests/test_bridge_cockpit*.py scripts/tests/test_cockpit_costs_contract.py scripts/tests/test_task.py scripts/tests/test_task_review.py
-node --test scripts/tests/bridge_cockpit_*.test.mjs
+node --max-old-space-size=512 --test --test-timeout=30000 scripts/tests/bridge_cockpit_*.test.mjs
 python3 scripts/build-cockpit-demo.py --check
 npx -y -p typescript@5.6.3 -c 'node mods/cockpit-relay/tests/pure.test.mjs'
 claude plugin test mods/cockpit-relay        # engine tests, local only
 ```
 
-These are the commands CI runs (`.github/workflows/validate.yml`). Use the bare
+These are the commands CI runs (`.github/workflows/validate.yml`). Keep the heap cap
+and the timeout on the node run locally too, and run one file at a time while a view is in
+flux: a view that renders itself without end then fails in seconds, with a message naming
+it, instead of eating the machine's memory (the guard and its budgets are in
+`scripts/tests/cockpit_render.mjs`; never pass `--test-timeout=0`). A node of that small
+DOM prints as its tag, classes and the start of its text, so `assert.equal(el, null)` may
+fail on an element; printed whole, one element once grew the process by gigabytes a
+second. Use the bare
 `pytest` binary: on some machines `python3` has no pytest module while the
 `pytest` command runs under the interpreter that does.
 

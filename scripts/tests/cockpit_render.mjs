@@ -11,9 +11,16 @@
 // listeners with bubbling clicks, and a selector subset for queries (tag, .class, #id, [attr],
 // [attr="value"], descendant and > child). It is no browser: no layout, no CSS, no focus. Effects run
 // on Preact's own timer; motion reads reduced, so a tween shows its target at once.
+//
+// A failing assertion on a node prints it as a tag, never as the page behind it (the comment above class
+// Node). A runaway fails its test instead of filling the machine (§ the runaway guard below): a component rendered
+// more than RENDER_BURST times without the event loop turning, or more than RENDER_RATE times within a second,
+// throws "render loop: <Name>"; a heap past HEAP_CEILING_MB throws "heap ceiling"; and every mounted root is
+// unmounted when its file ends, so an effect still ticking cannot keep the process alive.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import util from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -27,11 +34,29 @@ const EVENTS = ['click', 'dblclick', 'input', 'change', 'submit', 'keydown', 'ke
   'mouseleave', 'contextmenu', 'scroll', 'wheel', 'toggle', 'load', 'error', 'dragstart', 'dragover', 'dragleave', 'drop',
   'animationend', 'transitionend', 'copy', 'paste']
 
+// What a failing assertion prints of a node must stay small. node's assert prints `actual` with depth 1000,
+// sorted, with getters and without custom inspectors, and it marks a cycle only along the current path, so a
+// value reached twice is printed twice. A node reaches its parent, its children and, on a mounted root,
+// Preact's vnode tree with the whole page state behind it: printed that way it never ended and grew the process
+// by gigabytes a second, outside the heap, so neither a heap cap nor the test timeout stopped it (27.10.2026).
+// So every link out of a node is non-enumerable, which assert and the reporter skip, the keys Preact writes on
+// a DOM node (`__k` the root's vnode, `l` the listeners) land in a hidden slot, and util.inspect, which the
+// reporters use, shows a node as its tag, its classes and the start of its text.
+const hidden = (obj, key, value) => Object.defineProperty(obj, key, { value, writable: true, configurable: true, enumerable: false })
+const TEXT_SHOWN = 60
+
 class Node {
   constructor(nodeType) {
     this.nodeType = nodeType
-    this.parentNode = null
-    this.childNodes = []
+    hidden(this, 'parentNode', null)
+    hidden(this, 'childNodes', [])
+  }
+
+  [util.inspect.custom]() {
+    if (this.nodeType === 3) return `#text ${JSON.stringify(clip(this.data))}`
+    if (this.localName === '#document') return '#document'
+    const cls = this.getAttribute('class')
+    return `<${this.localName}${cls ? ` class="${cls}"` : ''}>${clip(this.text())}</${this.localName}>`
   }
 
   get firstChild() { return this.childNodes[0] ?? null }
@@ -84,7 +109,7 @@ class Element extends Node {
     this.tagName = name.toUpperCase()
     this.namespaceURI = ns
     this.attrs = new Map()
-    this.listeners = new Map()
+    hidden(this, 'listeners', new Map())
     const style = { cssText: '' }
     Object.defineProperty(style, 'setProperty', { value: (k, v) => { style[k] = v } })
     this.style = style
@@ -137,6 +162,15 @@ class Element extends Node {
 }
 
 for (const name of EVENTS) Object.defineProperty(Element.prototype, `on${name}`, { value: null, writable: true })
+
+/** A text cut to what a failure message needs */
+const clip = t => (t.length > TEXT_SHOWN ? `${t.slice(0, TEXT_SHOWN)}…` : t)
+
+// the keys Preact sets on a DOM node, kept off the node's own enumerable properties (see above)
+for (const key of ['__k', 'l']) {
+  const slot = Symbol(key)
+  Object.defineProperty(Node.prototype, key, { configurable: true, get() { return this[slot] }, set(v) { hidden(this, slot, v) } })
+}
 
 function descendants(root) {
   const out = []
@@ -203,9 +237,9 @@ function matches(el, parts, root, i = parts.length - 1) {
 
 class Document extends Element {
   constructor() { super('#document') }
-  createElement(name) { return new Element(name) }
-  createElementNS(ns, name) { return new Element(name, ns) }
-  createTextNode(data) { return new Text(data) }
+  createElement(name) { checkHeap(); return new Element(name) }
+  createElementNS(ns, name) { checkHeap(); return new Element(name, ns) }
+  createTextNode(data) { checkHeap(); return new Text(data) }
 }
 
 /** Puts the DOM on globalThis once; before the vendored Preact loads, which reads it at import */
@@ -217,6 +251,96 @@ function installDom() {
     addEventListener() {}, removeEventListener() {} })
   globalThis.requestAnimationFrame = fn => setTimeout(() => fn(Date.now()), 0)
   globalThis.cancelAnimationFrame = id => clearTimeout(id)
+}
+
+// ---------------------------------------------------------------- the runaway guard
+
+// Why a guard and not a timeout: Preact drains its render queue in one microtask and runs layout effects inside
+// that drain, so a component that sets state from a layout effect or from its own render renders again before
+// any timer can fire. The test timeout is a timer, so it never fires, and the process grows until the heap cap
+// or the machine ends it. An effect loop goes through requestAnimationFrame (a timer here) instead: the timeout
+// fires, but the root is never unmounted, so the loop keeps rendering and the file never ends. Both are counted
+// here, on every render, which needs no timer to run.
+//
+// The real suites stay far below each budget: measured with COCKPIT_RENDER_STATS=1 on 27.10.2026 over every
+// bridge_cockpit_*.test.mjs, the most renders of one component were 4 in a burst and 7 in a second, and the heap
+// peaked at 81 MB (209 MB resident). An effect loop renders some 350 times a second here, so the rate budget
+// trips it within a third of a second; the ceiling sits below the 512 MB heap cap CI runs with, so the guard
+// speaks before V8 aborts.
+
+/** Renders of one component instance without the event loop turning in between */
+export const RENDER_BURST = 100
+/** Renders of one component instance within one second */
+export const RENDER_RATE = 100
+/** The heap a cockpit test may use, in MB; COCKPIT_RENDER_HEAP_MB overrides it */
+export const HEAP_CEILING_MB = Number(process.env.COCKPIT_RENDER_HEAP_MB) || 384
+const HEAP_EVERY = 1000          // renders or created nodes between two heap checks
+
+const sites = new WeakMap()      // mounted root -> where the test mounted it
+const roots = new Set()          // WeakRefs of every mounted root, unmounted when the file ends
+const counts = new WeakMap()     // component instance -> { burst, turn, second, since }
+let burstTurn = 0                // bumped once per turn of the event loop that rendered anything
+let turnArmed = false
+let ticks = 0
+const stats = process.env.COCKPIT_RENDER_STATS ? { burst: 0, rate: 0, heap: 0 } : null
+
+/** The component's name as a person reads it in a test */
+const nameOf = vnode => vnode.type?.displayName || vnode.type?.name || 'an anonymous component'
+
+/** Where the root this instance renders into was mounted, from the stack mount() kept */
+function siteOf(inst) {
+  let n = inst?.__P
+  while (n?.parentNode) n = n.parentNode
+  return (n && sites.get(n)) || 'an unknown place'
+}
+
+function checkHeap() {
+  if (++ticks % HEAP_EVERY) return
+  const used = process.memoryUsage().heapUsed / 1048576
+  if (stats) stats.heap = Math.max(stats.heap, used)
+  if (used > HEAP_CEILING_MB) {
+    throw new Error(`cockpit_render: heap ceiling: ${Math.round(used)} MB used, more than ${HEAP_CEILING_MB} MB; `
+      + 'an unbounded list or a state that grows on every render (COCKPIT_RENDER_HEAP_MB moves the ceiling)')
+  }
+}
+
+/** Counts one render of the component of `vnode` and throws once it renders without end */
+function countRender(vnode) {
+  const inst = vnode.__c
+  if (!turnArmed) { turnArmed = true; setImmediate(() => { burstTurn++; turnArmed = false }) }
+  const now = Date.now()
+  let c = counts.get(inst)
+  if (!c) counts.set(inst, c = { burst: 0, turn: burstTurn, second: 0, since: now })
+  if (c.turn !== burstTurn) { c.turn = burstTurn; c.burst = 0 }
+  if (now - c.since >= 1000) { c.since = now; c.second = 0 }
+  c.burst++
+  c.second++
+  if (stats) { stats.burst = Math.max(stats.burst, c.burst); stats.rate = Math.max(stats.rate, c.second) }
+  const over = c.burst > RENDER_BURST ? `${c.burst} times without the event loop turning (budget ${RENDER_BURST})`
+    : c.second > RENDER_RATE ? `${c.second} times within a second (budget ${RENDER_RATE})` : null
+  if (over) {
+    // Preact's queue counter stays raised after a throw from its drain; a fresh scheduler makes the next update
+    // flush again, so the tests after this one still render
+    loaded.options.debounceRendering = fn => Promise.resolve().then(fn)
+    throw new Error(`cockpit_render: render loop: ${nameOf(vnode)} rendered ${over}; a state update in its render, `
+      + `in an effect or in a layout effect schedules it again on every render. Mounted at ${siteOf(inst)}`)
+  }
+  checkHeap()
+}
+
+async function installGuard(options) {
+  const before = options.__r          // Preact's mangled options._render, called before every component render
+  options.__r = vnode => { countRender(vnode); before?.(vnode) }
+  if (stats) process.on('exit', () => process.stderr.write(`cockpit_render stats: most renders of one component in a burst `
+    + `${stats.burst}, in a second ${stats.rate}, heap peak ${Math.round(stats.heap)} MB\n`))
+  // only under `node --test`: a hook registered from a plain script starts a test run of its own, whose report
+  // lands in that script's output (test_cockpit_costs_contract.py renders through this file that way)
+  if (!process.env.NODE_TEST_CONTEXT) return
+  const { after } = await import('node:test')
+  after(() => {
+    for (const ref of roots) { const root = ref.deref(); if (root) try { loaded.render(null, root) } catch { /* torn down anyway */ } }
+    roots.clear()
+  })
 }
 
 // ---------------------------------------------------------------- the cockpit modules
@@ -233,10 +357,18 @@ export async function loadCockpit() {
   const web = path.join(tmp, 'web')
   fs.cpSync(WEB, web, { recursive: true })
   fs.writeFileSync(path.join(web, 'package.json'), '{ "type": "module" }\n')
+  // the copy also exports Preact's options object (`n` in the minified bundle), which the guard hooks into;
+  // the page's own file stays as vendored
+  const bundle = path.join(web, 'vendor', 'htm-preact-3.1.1.module.js')
+  const src = fs.readFileSync(bundle, 'utf8')
+  if (!src.includes('export{a as h,')) throw new Error('cockpit_render: the vendored Preact changed its exports; update the guard')
+  fs.writeFileSync(bundle, src.replace('export{a as h,', 'export{n as options,a as h,'))
   const load = rel => import(pathToFileURL(path.join(web, rel)).href)
   const vendor = await load('vendor/htm-preact-3.1.1.module.js')
+  if (typeof vendor.options?.__e !== 'function') throw new Error('cockpit_render: `n` is no longer Preact\'s options object')
   const views = {}
   for (const name of ['home', 'detail', 'sessions', 'header', 'tabs', 'day', 'github', 'rooms', 'reply', 'organize', 'chat', 'agents', 'pages', 'costs', 'guide', 'tour', 'hints', 'overlays', 'list', 'focus', 'stage', 'dossier', 'check', 'parts', 'nav', 'card', 'flow', 'verbbar', 'flowside', 'flowtabs', 'flowinstruct', 'flowlist', 'flowleft', 'flowrun', 'flowprio']) views[name] = await load(`views/${name}.js`)
+  await installGuard(vendor.options)
   loaded = { ...vendor, views, text: await load('text.js'), logic: await load('logic.js'), mock: await load('mock.js'),
     jev: await load('jev/page.js') }
   return loaded
@@ -246,6 +378,10 @@ export async function loadCockpit() {
 export function mount(vnode) {
   if (!loaded) throw new Error('cockpit_render: await loadCockpit() before mount()')
   const root = document.createElement('div')
+  // the first frame outside this file is the test that mounts
+  const site = new Error().stack.split('\n').slice(2).find(l => !l.includes('cockpit_render.mjs'))
+  sites.set(root, site ? site.trim().replace(/^at /, '') : 'an unknown place')
+  roots.add(new WeakRef(root))
   loaded.render(vnode, root)
   return root
 }

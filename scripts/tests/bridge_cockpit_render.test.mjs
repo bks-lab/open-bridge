@@ -2147,3 +2147,146 @@ test('jev: a plan entry the model holds no row for reads its kind and source fro
   assert.equal(row.inbox_id, '20261001-0900-x-ab12')
   assert.equal(planRow({ key: 'task:y' }, null, null).task, 'y')
 })
+
+// ---------------------------------------------------------------- the runaway guard of cockpit_render.mjs
+// A view that renders itself without end must fail its test within a second or two, with a message naming it,
+// instead of growing the process until the machine runs out of memory. Each case runs in a child process with
+// its own heap cap and a hard kill, so a guard that does not trip costs this suite seconds, never the machine.
+
+const HELPER = new URL('./cockpit_render.mjs', import.meta.url).href
+// the child is a test run of its own, not a file of this one: without this its report goes out in the runner's
+// binary protocol instead of text
+const { NODE_TEST_CONTEXT: _, ...CHILD_ENV } = process.env
+
+/** Runs the module `src` in a child with a 256 MB heap and a hard kill after `kill` ms; `asTest` runs it as a
+ *  file under `node --test`, the way the suites run */
+async function capped(src, { asTest = false, env = {}, kill = 20000 } = {}) {
+  const { spawnSync } = await import('node:child_process')
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  let args = ['--input-type=module', '-e', src]
+  let dir = null
+  if (asTest) {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-guard-'))
+    fs.writeFileSync(path.join(dir, 'case.test.mjs'), src)
+    args = ['--test', '--test-timeout=60000', path.join(dir, 'case.test.mjs')]
+  }
+  const started = Date.now()
+  try {
+    const r = spawnSync(process.execPath, ['--max-old-space-size=256', ...args],
+      { encoding: 'utf8', timeout: kill, killSignal: 'SIGKILL', env: { ...CHILD_ENV, ...env } })
+    return { ...r, wall: Date.now() - started, out: (r.stdout ?? '') + (r.stderr ?? '') }
+  } finally {
+    if (dir) fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** Runs `body` in a capped child after loading the cockpit; reports how long the trip took */
+async function runaway(body, opts = {}) {
+  const src = `
+    import test from 'node:test'
+    import { loadCockpit, mount } from ${JSON.stringify(HELPER)}
+    const { html, useState, useEffect, useLayoutEffect } = await loadCockpit()
+    let t0 = 0
+    process.prependListener('uncaughtException', e => { console.log('TRIP ' + (Date.now() - t0) + ' ' + e.message); process.exit(3) })
+    ${body}`
+  const r = await capped(src, opts)
+  const m = /TRIP (\d+) (.*)/.exec(r.stdout)
+  return { ...r, ms: m ? Number(m[1]) : null, message: m ? m[2] : null }
+}
+
+test('guard: a layout effect that sets state on every render trips the render budget, naming the component', async () => {
+  const r = await runaway(`
+    function LayoutSpinner() { const [n, set] = useState(0); useLayoutEffect(() => set(n + 1)); return html\`<b>\${n}</b>\` }
+    t0 = Date.now(); mount(html\`<\${LayoutSpinner} />\`); await new Promise(r => setTimeout(r, 30000))`)
+  assert.equal(r.status, 3, r.out)
+  assert.match(r.message, /render loop: LayoutSpinner/)
+  assert.match(r.message, /Mounted at .*\[eval1\]:\d+/)
+  assert.ok(r.ms < 2000, `tripped after ${r.ms} ms`)
+})
+
+test('guard: a state update in the render body trips the render budget', async () => {
+  const r = await runaway(`
+    function RenderSetter() { const [n, set] = useState(0); set(n + 1); return html\`<b>\${n}</b>\` }
+    t0 = Date.now(); mount(html\`<\${RenderSetter} />\`); await new Promise(r => setTimeout(r, 30000))`)
+  assert.equal(r.status, 3, r.out)
+  assert.match(r.message, /render loop: RenderSetter/)
+  assert.ok(r.ms < 2000, `tripped after ${r.ms} ms`)
+})
+
+test('guard: an effect that sets state on every render trips the render budget within a second or two', async () => {
+  const r = await runaway(`
+    function EffectSpinner() { const [xs, set] = useState([]); useEffect(() => set(xs.concat([xs.length]))); return html\`<ul>\${xs.map(x => html\`<li>\${x}</li>\`)}</ul>\` }
+    t0 = Date.now(); mount(html\`<\${EffectSpinner} />\`); await new Promise(r => setTimeout(r, 30000))`)
+  assert.equal(r.status, 3, r.out)
+  assert.match(r.message, /render loop: EffectSpinner/)
+  assert.ok(r.ms < 2500, `tripped after ${r.ms} ms`)
+})
+
+test('guard: an unbounded list trips the heap ceiling before the heap cap', async () => {
+  const r = await runaway(`
+    function Endless() { return html\`<ul>\${Array.from({ length: 400000 }, (_, i) => html\`<li class="row">\${i}</li>\`)}</ul>\` }
+    t0 = Date.now(); try { mount(html\`<\${Endless} />\`) } catch (e) { console.log('TRIP ' + (Date.now() - t0) + ' ' + e.message); process.exit(3) }`,
+  { env: { COCKPIT_RENDER_HEAP_MB: '96' } })
+  assert.equal(r.status, 3, r.out)
+  assert.match(r.message, /heap ceiling: .* MB used, more than 96 MB/)
+})
+
+test('guard: a slow effect loop under the budget ends with its file instead of keeping the process alive', async () => {
+  const r = await runaway(`
+    function Ticker() { const [n, set] = useState(0); useEffect(() => { const t = setTimeout(() => set(n + 1), 20); return () => clearTimeout(t) }); return html\`<b>\${n}</b>\` }
+    test('ticks', async () => { mount(html\`<\${Ticker} />\`); await new Promise(r => setTimeout(r, 200)) })`, { asTest: true })
+  assert.equal(r.signal, null, `killed after ${r.wall} ms: the process outlived its tests\n${r.out}`)
+  assert.equal(r.status, 0, r.out)
+  assert.ok(r.wall < 10000, `ended after ${r.wall} ms`)
+})
+
+// A failing assertion prints its `actual`. An element of the small DOM hangs off its parent, Preact's root vnode
+// and through it the whole page state, and node's assert prints with depth 1000 and without custom inspectors,
+// so printing one element used to grow the process by gigabytes a second (outside the heap, so a heap cap did
+// not stop it) and the test timeout never fired. The element now prints as its tag, classes and a little text.
+
+/** Runs `body` in a capped child after mounting a return card as `el` */
+function printing(body, opts = {}) {
+  const src = `
+    import test from 'node:test'
+    import assert from 'node:assert/strict'
+    import util from 'node:util'
+    import { cockpitState, loadCockpit, mount, recorder } from ${JSON.stringify(HELPER)}
+    const { html, views } = await loadCockpit()
+    const NOW = ${NOW}
+    const el = mount(html\`<\${views.home.ReturnCard} r=\${${JSON.stringify(start())}} s=\${cockpitState(NOW)} c=\${recorder()} />\`)
+    ${body}`
+  return capped(src, opts)
+}
+
+test('print: a failing assert.equal on an element builds a short message at once', async () => {
+  const r = await printing(`
+    const t0 = Date.now()
+    try { assert.equal(el.firstChild, null) } catch (e) { console.log(JSON.stringify({ ms: Date.now() - t0, len: e.message.length, msg: e.message })) }`)
+  assert.equal(r.signal, null, `killed after ${r.wall} ms while printing an element`)
+  const got = JSON.parse(r.stdout.split('\n').find(l => l.startsWith('{"ms"')) ?? 'null')
+  assert.ok(got.ms < 1000, `the message took ${got.ms} ms`)
+  assert.ok(got.len < 2000, `the message is ${got.len} characters long`)
+  assert.match(got.msg, /article/)
+})
+
+test('print: util.inspect of an element, a text node and the document reads as a tag, not as the page', async () => {
+  const r = await printing(`
+    console.log(util.inspect(el.firstChild)); console.log(util.inspect(el.firstChild.firstChild)); console.log(util.inspect(document))`)
+  assert.equal(r.status, 0, r.out)
+  const [element, , doc] = r.stdout.trim().split('\n')
+  assert.match(element, /^<article class="rcard[^"]*">.{0,90}<\/article>$/)
+  assert.ok(r.stdout.length < 1000, r.stdout)
+  assert.equal(doc, '#document')
+})
+
+test('print: a failing test on an element ends in seconds through the test reporter', async () => {
+  const r = await printing(`
+    test('an element where none belongs', () => { assert.equal(el, null) })`, { asTest: true })
+  assert.equal(r.signal, null, `killed after ${r.wall} ms while reporting the failure`)
+  assert.equal(r.status, 1, r.out)
+  assert.match(r.out, /an element where none belongs/)
+  assert.ok(r.out.length < 20000, `the report is ${r.out.length} characters long`)
+})
