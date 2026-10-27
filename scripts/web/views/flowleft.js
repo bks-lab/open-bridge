@@ -11,7 +11,7 @@
 // Back on, Later, Done, Drop or Let AI do it, Merge where two or more ticked rows are open tasks), then a table: a box,
 // the title (it opens the row where it lives: an issue or a pull request on the web, a task in the files view, an inbox
 // item in its drawer, a row with steps of its own on a page the info drawer that holds them), its kind, when (in Later:
-// why), its area.
+// why), its area, and in Later Back on in one click where the row can come back.
 // The watched rows stand under a head per repository. No instruction line and no walk bar here.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
@@ -120,9 +120,15 @@ export function LeftList({ group, s, c }) {
   const chosen = group.rows.filter(e => picked.has(e.row.key))
   // the watched rows under a head per repository, the others in one run
   const heads = reason === 'watch' ? [...new Set(group.rows.map(e => e.repo ?? null))] : [undefined]
-  const run = async plan => {
-    if (plan?.early?.length) c.flowEarly(Object.fromEntries(chosen.filter(e => plan.early.includes(e.row.key)).map(e => [e.row.key, e.until])))
+  const runOn = async (list, plan) => {
+    if (plan?.early?.length) c.flowEarly(Object.fromEntries(list.filter(e => plan.early.includes(e.row.key)).map(e => [e.row.key, e.until])))
     if (plan?.calls?.length) await c.flowBatch(plan.calls, 'left')
+  }
+  const run = plan => runOn(chosen, plan)
+  // in Later each row that can come back has Back on in one click too, as the hidden list of Due had it
+  const backOne = e => {
+    const plan = reason === 'later' ? leftPlan([e], 'back', s, '', lang) : null
+    return plan?.counts.back ? html`<${Btn} size="xs" variant="ghost" cls="flow-ov-back" onClick=${() => runOn([e], plan)}>${f.notnow.back}<//>` : null
   }
   return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">
     <header class="flow-main-head">
@@ -134,9 +140,9 @@ export function LeftList({ group, s, c }) {
       planOf=${(how, value) => leftPlan(chosen, how, s, value, lang)} onRun=${run} from="left" s=${s} c=${c} />
     ${group.rows.length ? html`<table class="flow-ov-table">
       <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${f.list.pickAll}</span></th><th>${f.list.cols.point}</th><th>${reason === 'later' ? f.notnow.cols.why : f.notnow.cols.when}</th>
-        <th>${f.list.cols.area}</th></tr></thead>
+        <th>${f.list.cols.area}</th>${reason === 'later' ? html`<th class="flow-ov-actcol"><span class="sr-only">${f.notnow.back}</span></th>` : null}</tr></thead>
       <tbody>${heads.map(head => html`
-        ${head !== undefined ? html`<tr key=${`repo-${head}`} class="flow-ov-group"><th colspan="4" scope="colgroup"><span class="label-caps">${head ?? f.notnow.otherRepo}</span></th></tr>` : null}
+        ${head !== undefined ? html`<tr key=${`repo-${head}`} class="flow-ov-group"><th colspan=${reason === 'later' ? 5 : 4} scope="colgroup"><span class="label-caps">${head ?? f.notnow.otherRepo}</span></th></tr>` : null}
         ${group.rows.filter(e => head === undefined || (e.repo ?? null) === head).map(e => {
           const row = e.row
           return html`<tr key=${row.key} class=${`flow-ov-row${picked.has(row.key) ? ' is-picked' : ''}`}>
@@ -147,6 +153,7 @@ export function LeftList({ group, s, c }) {
             ${reason === 'later' ? html`<td class="flow-ov-stage flow-ov-why small">${laterWhy(e, lang)}</td>`
               : html`<td class="flow-ov-stage small">${whenOf(e, reason, s, lang)}</td>`}
             <td class="flow-ov-area small">${rowProject(row)}</td>
+            ${reason === 'later' ? html`<td class="flow-ov-act">${backOne(e)}</td>` : null}
           </tr>`
         })}`)}</tbody>
     </table>` : html`<p class="muted">${f.notnow.empty}</p>`}

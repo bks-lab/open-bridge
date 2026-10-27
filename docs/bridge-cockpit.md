@@ -515,7 +515,9 @@ blocker), a resting one is kept (`task_keep`); a task that waits on someone
 else's next step has nothing to clear, so it stays out and the line says so.
 A point due later than the lead time
 shows now, in this browser only (kept as `bridge-cockpit.flowEarly` until its
-day). Back on carries no undo; put the row off again instead. A row decided
+day). In Later each row that can come back carries Back on as a button of its
+own too, one click without ticking it first. Back on carries no undo; put the
+row off again instead. A row decided
 here (done, not doing) is open no longer: it is listed nowhere and not counted.
 
 **Not too early** (`flow.ahead_days`, default 2). A point due further ahead
@@ -1333,8 +1335,10 @@ stands under opens with one tile per sub page over its board (drawn with
 open and turns red with the findings of its sub pages. A sub page heads with
 "‹ <parent>" as the way back. The Background jobs page is placed the same way
 with an entry of its own, `{id: "@workers", under: <page>}`; its tile opens it
-on "Only with a finding" while it has findings. A sub page's tile is red with
-findings or an unreadable source, orange with warnings, else neutral, and
+on "Only outages" while one is down (red), else on "Only with a finding" while it
+has findings. A sub page's tile is red with findings or an unreadable source,
+orange with warnings (one by its title, several as "n warnings in <section>"),
+else neutral, and
 green only where an alarm section of that page reports nothing, so rows that
 nothing measures live never look in order. Drop the line `under:` and the
 page is a tab again. A section with `hide_ok: true` is drawn only while one of

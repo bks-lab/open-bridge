@@ -3249,6 +3249,21 @@ test('R6B 2f: one group Later holds what is put off, what waits on others and wh
   assert.deepEqual(logic.LEFT_VERBS.later, ['back', 'later', 'done', 'drop'])
 })
 
+test('Later: Back on in one click on each row that can come back, beside the batch (as the hidden list of Due had it)', () => {
+  const s = state({ work: [task('blocked', { blocked_by: 'the vendor' })], later: [ask('20261009-0904-a-w', { bucket: 'waiting' })],
+    hidden: [task('put-off', { hidden_until: '2026-10-20' })] })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'left', flowLeft: 'later', flowLeftPicked: [] } }} c=${c} />`)
+  const rowOf = title => el.$$('.flow-ov-row').find(tr => tr.$('.flow-ov-open').text() === title)
+  const back = tr => tr.$$('button').find(b => b.text() === en.flow.notnow.back)
+  assert.ok(back(rowOf('Task put-off')) && back(rowOf('Task blocked')), 'a row put off and a blocked task')
+  assert.ok(!back(rowOf('Question 20261009-0904-a-w')), 'nothing to take back on: no button')
+  back(rowOf('Task put-off')).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'unhide', args: { key: 'task:put-off' } }], 'left'])
+  // the column Why still says only why
+  assert.equal(rowOf('Task put-off').$('.flow-ov-why').text(), en.flow.notnow.why.hidden(logic.formatDay('2026-10-20', 'en')))
+})
+
 test('R6B 2g: the right column stands only while a point or an entry is open; a list of Not now and Prio say how they work in the middle', () => {
   const s = state({ work: [task('a')], later: [ask('20261009-0904-a-w', { bucket: 'waiting' })] })
   const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'overview', flowPicked: [] } }} c=${recorder()} />`)

@@ -850,6 +850,8 @@ test('workers: tones, strip marks, facets that count without themselves, groups 
   assert.deepEqual(logic.stripMark({ verdict: 'failed' }), ['✗', 'bad'])
   assert.deepEqual(logic.stripMark({ verdict: 'odd' }), ['?', 'warn'])
   assert.deepEqual(logic.filterWorkers(runs, { attention: true }).map(r => r.id), ['b'])
+  // an outage is the engine's high (jobCounts' failing): the red tile of Background jobs opens on those only
+  assert.deepEqual(logic.filterWorkers([...runs, { id: 'd', state: 'drifted', severity: 'medium', findings: [] }], { outage: true }).map(r => r.id), ['b'])
   assert.deepEqual(logic.filterWorkers(runs, { q: 'pil' }).map(r => r.id), ['b'])
   const f = logic.workerFacets(runs, { kind: 'interval' })
   assert.deepEqual(f.kind, { interval: 2, daemon: 1 })      // the facet itself is not applied to its own counts
@@ -888,7 +890,14 @@ test('a sub page tile: red with its findings, orange with what needs a look, gre
   const red = logic.subPageTile({ sections: [cloud, machines, quiet] })
   assert.deepEqual([red.tone, red.big, red.note, red.lead], ['danger', 1, 'fn-a', 'Machines'])
   const warn = logic.subPageTile({ sections: [machines, sec('Disk', [{ title: 'disk at 85 %', tone: 'warn' }])] })
-  assert.deepEqual([warn.tone, warn.big, warn.note], ['warning', 1, 'disk at 85 %'])
+  assert.deepEqual([warn.tone, warn.big, warn.note, warn.warnIn], ['warning', 1, 'disk at 85 %', null])
+  // several warnings say how many and where, not the title of the first log line
+  const logs = sec('Logs (24 h)', [1, 2, 3, 4].map(n => ({ title: `host-${n} Journal`, tone: 'warn' })), { view: 'groups' })
+  const many = logic.subPageTile({ sections: [machines, sec('Findings', [], { alarm: true }), logs] })
+  assert.deepEqual([many.tone, many.big, many.note, many.warnIn], ['warning', 4, null, ['Logs (24 h)']])
+  assert.equal(text.TABLES.en.subPageWarn(4, ['Logs (24 h)']), '4 warnings in Logs (24 h)')
+  assert.equal(text.TABLES.de.subPageWarn(4, ['Logs (24 h)']), '4 Warnungen in Logs (24 h)')
+  assert.match(read('views/pages.js'), /x\.warnIn \? t\.subPageWarn\(x\.big, x\.warnIn\)/)
   // a source that could not be read says why, in red
   const broken = logic.subPageTile({ sections: [sec('Remotes', [], { status: 'error', reason: 'ssh failed' }), quiet] })
   assert.deepEqual([broken.tone, broken.error, broken.note], ['danger', true, 'ssh failed'])
@@ -4736,6 +4745,13 @@ test('hints: the work switch explains the views it offers, no other (round 6 B)'
   assert.equal(logic.hintText(text.TABLES.en.hints.items.ask), text.TABLES.en.hints.items.ask)
   // the overlay measures and draws the words of the page it explains
   assert.match(read('views/hints.js'), /hintText\(words\[h\.id\], h\.vars\)/)
+})
+
+test('hints: the bar of Explain speaks of the mouse, it names no key (mouse first)', () => {
+  for (const lang of ['en', 'de']) {
+    const h = text.TABLES[lang].hints
+    for (const w of [h.bar, h.barOne]) assert.ok(!/Esc|Arrow|Pfeil|key|Taste/i.test(w), `${lang}: ${w}`)
+  }
 })
 
 test('hints: every explanation in the texts belongs to an area some page points at, in both languages alike', () => {

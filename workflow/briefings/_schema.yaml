@@ -199,6 +199,10 @@ $defs:
       page_rest:
         enum: [show, hide]
         description: "A section no page names: show it on the tab 'more' (default) or leave it out."
+      page_skip:
+        type: array
+        items: {type: string}
+        description: "Section ids kept off every page, the rest page included: a section another part reads (a file it writes, a list Work holds), shown nowhere on its own."
       marks:
         type: array
         description: |

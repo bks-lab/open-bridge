@@ -512,6 +512,17 @@ def test_a_sections_max_still_caps_its_rows_in_a_view():
     assert sum(len(b["items"]) for b in view["buckets"]) == 3 and view["more"] == 0
 
 
+def test_page_rest_and_page_skip_pass_the_json_schema():
+    """view.page_skip (sections kept off every page) is a key briefing_view accepts, so the schema takes it too"""
+    import pytest
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = yaml.safe_load((ROOT / "workflow" / "briefings" / "_schema.yaml").read_text(encoding="utf-8"))
+    data = profile(view={"style": "triage", "page_rest": "show", "page_skip": ["res-workers", "faelligkeiten"]})
+    jsonschema.validate(data, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(profile(view={"style": "triage", "page_skip": "faelligkeiten"}), schema)
+
+
 def test_a_full_view_profile_passes_the_json_schema_too():
     import pytest
     jsonschema = pytest.importorskip("jsonschema")

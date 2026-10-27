@@ -2573,7 +2573,7 @@ test('operations: Background jobs keep their own tab red only for an outage, nev
   assert.equal(down.$('.pbadge .mono').text(), '1')
 })
 
-test('operations: tiles on top open the sub pages, Background jobs with only the runs that carry a finding', () => {
+test('operations: tiles on top open the sub pages, Background jobs on its outages when red, else on the runs with a finding', () => {
   const { OverviewBoard } = views.pages
   const s = opsState({ runs: [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')] })
   const c = recorder()
@@ -2584,7 +2584,7 @@ test('operations: tiles on top open the sub pages, Background jobs with only the
   assert.ok(jobs.hasClass('tk-danger'), jobs.getAttribute('class'))
   assert.equal(jobs.$('.otile-big').text(), '1')
   jobs.click()
-  assert.deepEqual(c.calls.at(-1), ['openWorkers', { attention: true }])
+  assert.deepEqual(c.calls.at(-1), ['openWorkers', { outage: true }])
   // devices nothing measures live never look in order; the lab's quiet findings are a live all clear
   assert.ok(inv.hasClass('tk-neutral'), inv.getAttribute('class'))
   assert.equal(inv.$('.otile-big').text(), '3')
@@ -2592,9 +2592,24 @@ test('operations: tiles on top open the sub pages, Background jobs with only the
   inv.click()
   assert.deepEqual(c.calls.at(-1), ['setPage', 'inv'])
   assert.ok(lab.hasClass('tk-success'), lab.getAttribute('class'))
-  // upkeep alone keeps the jobs tile calm
-  const calm = mount(html`<${OverviewBoard} page=${s.model.pages[0]} s=${opsState()} c=${recorder()} />`).$('.otile')
+  // upkeep alone keeps the jobs tile calm, and it opens on the runs with a finding
+  const c2 = recorder()
+  const calm = mount(html`<${OverviewBoard} page=${s.model.pages[0]} s=${opsState()} c=${c2} />`).$('.otile')
   assert.ok(calm.hasClass('tk-neutral'), calm.getAttribute('class'))
+  calm.click()
+  assert.deepEqual(c2.calls.at(-1), ['openWorkers', { attention: true }])
+})
+
+test('Background jobs opened on their outages: only those, the chip says so and takes it back', () => {
+  const runs = [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')]
+  const el = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs, ui: { page: '@workers', workersFilter: { outage: true } } })} c=${recorder()} />`)
+  const chip = el.$$('.wfilters .fchip').find(b => b.text().includes(en.workerOutage))
+  assert.ok(chip, 'the outage chip')
+  assert.equal(chip.getAttribute('aria-pressed'), 'true')
+  assert.match(el.$('.wfilters').text(), new RegExp(en.workersShown(1, 3).replace(/[()]/g, '\\$&')))
+  // without an outage the chip stands only while it is on
+  const calm = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: runs.slice(0, 2), ui: { page: '@workers' } })} c=${recorder()} />`)
+  assert.ok(!calm.$$('.wfilters .fchip').some(b => b.text().includes(en.workerOutage)))
 })
 
 test('operations: a sub page carries the way back to the page it stands under', () => {

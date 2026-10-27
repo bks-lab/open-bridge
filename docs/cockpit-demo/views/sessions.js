@@ -8,7 +8,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, serious, scheduleText,
-  dayNoteText, weekdayNames, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone, aiGroups, previewText,
+  dayNoteText, weekdayNames, filterWorkers, groupBySystem, jobCounts, stripMark, workerFacets, workerTone, aiGroups, previewText,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Skeleton } from './day.js'
@@ -281,7 +281,7 @@ export function WorkersPage({ s, c }) {
   const t = T()
   const w = s.workers ?? {}
   useEffect(() => { c.loadWorkers() }, [s.model?.seq ?? 0])
-  const [flt, setFlt] = useState(() => ({ q: '', kind: null, sphere: null, state: null, host: null, attention: false, ...(s.ui.workersFilter ?? {}) }))
+  const [flt, setFlt] = useState(() => ({ q: '', kind: null, sphere: null, state: null, host: null, attention: false, outage: false, ...(s.ui.workersFilter ?? {}) }))
   const view = w.data
   const runs = (view?.runs ?? []).filter(r => !r.retired)
   const shown = filterWorkers(runs, flt)
@@ -320,6 +320,8 @@ export function WorkersPage({ s, c }) {
             onInput=${e => set({ q: e.currentTarget.value })} />
           <button type="button" class=${`fchip${flt.attention ? ' is-on' : ''}`} aria-pressed=${String(flt.attention)}
             onClick=${() => set({ attention: !flt.attention })}><span class="fdot fdot-warn" aria-hidden="true"></span>${t.workerAttention}</button>
+          ${flt.outage || jobCounts(view).failing ? html`<button type="button" class=${`fchip${flt.outage ? ' is-on' : ''}`} aria-pressed=${String(flt.outage)}
+            onClick=${() => set({ outage: !flt.outage })}><span class="fdot fdot-bad" aria-hidden="true"></span>${t.workerOutage}</button>` : null}
           <span class="muted small">${t.workersShown(shown.length, runs.length)}</span>
         </div>
         ${['state', 'kind', 'sphere', 'host'].map(facetRow)}

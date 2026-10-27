@@ -1236,11 +1236,13 @@ export function workerFacets(runs, filter = {}) {
 }
 
 /** Search, facets and "only with a finding" */
-export function filterWorkers(runs, { q = '', kind = null, sphere = null, state = null, host = null, attention = false } = {}) {
+export function filterWorkers(runs, { q = '', kind = null, sphere = null, state = null, host = null, attention = false, outage = false } = {}) {
   const needle = q.trim().toLowerCase()
   return (runs ?? []).filter(r => (!kind || r.kind === kind) && (!sphere || r.sphere === sphere)
     && (!state || r.state === state) && (!host || r.host === host)
     && (!attention || (r.findings ?? []).some(serious))
+    // an outage as jobCounts counts it (the engine's high), what the red tile of Background jobs opens on
+    && (!outage || jobSeverity(r) === 'high')
     && (!needle || `${r.id} ${r.title ?? ''} ${r.purpose ?? ''} ${r.system ?? ''}`.toLowerCase().includes(needle)))
 }
 
@@ -1576,22 +1578,27 @@ export function sectionTile(section) {
 }
 
 /** The tile of a sub page on the page it stands under (`under:`): red with its findings (a section drawn only with a
- *  finding counts too), red with the reason of a source that could not be read, orange with the rows that need a look;
- *  else the size of its first drawn section and how those rows stand. Green only where an alarm section of the page
+ *  finding counts too), red with the reason of a source that could not be read, orange with the rows that need a look
+ *  (one by its title, several by how many and the sections they stand in, `warnIn`: a log line's title alone reads
+ *  cryptic on a tile); else the size of its first drawn section and how those rows stand. Green only where an alarm section of the page
  *  reports nothing: rows nothing measures live (a device outside the tailnet, an account) never make it look in order */
 export function subPageTile(page) {
   const sections = page?.sections ?? []
   const items = sections.flatMap(sec => sec.items ?? [])
   const lead = sections.find(sec => !sec.hide_ok) ?? sections[0] ?? null
   const rows = lead?.items ?? []
-  const base = { big: lead?.total ?? lead?.count ?? rows.length, lead: lead?.title ?? '', note: null, error: false,
+  const base = { big: lead?.total ?? lead?.count ?? rows.length, lead: lead?.title ?? '', note: null, error: false, warnIn: null,
     counts: { ok: rows.filter(toneFilter('ok')).length, problems: rows.filter(toneFilter('problems')).length, off: rows.filter(toneFilter('off')).length } }
   const bad = sections.reduce((n, sec) => n + (typeof sec.bad === 'number' ? sec.bad : (sec.items ?? []).filter(it => it.tone === 'bad').length), 0)
   if (bad) return { ...base, tone: 'danger', big: bad, note: items.find(it => it.tone === 'bad')?.title ?? null }
   const broken = sections.find(sec => sec.status === 'error')
   if (broken) return { ...base, tone: 'danger', note: broken.reason || broken.title || '', error: true }
   const warn = items.filter(it => it.tone === 'warn')
-  if (warn.length) return { ...base, tone: 'warning', big: warn.length, note: warn[0].title ?? null }
+  if (warn.length > 1) {
+    const where = [...new Set(sections.filter(sec => (sec.items ?? []).some(it => it.tone === 'warn')).map(sec => sec.title).filter(Boolean))]
+    return { ...base, tone: 'warning', big: warn.length, warnIn: where }
+  }
+  if (warn.length) return { ...base, tone: 'warning', big: 1, note: warn[0].title ?? null }
   const clear = sections.some(sec => sec.alarm && sec.status === 'ok' && !(sec.total ?? sec.count ?? (sec.items ?? []).length))
   return { ...base, tone: clear ? 'success' : 'neutral' }
 }

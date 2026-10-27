@@ -595,7 +595,7 @@ export function OverviewBoard({ page, s, c }) {
     const j = jobCounts(s.workers.data)
     return html`<${BoardTile} key="@w" title=${t.workersTab} tone=${j.failing ? 'danger' : j.upkeep ? 'neutral' : 'success'} big=${j.failing || j.all}
       sub=${t.overviewWorkers(j.ok, j.all, j.failing, j.upkeep)} label=${t.overviewJump(t.workersTab)}
-      onClick=${() => c.openWorkers(j.failing || j.upkeep ? { attention: true } : {})} />`
+      onClick=${() => c.openWorkers(j.failing ? { outage: true } : j.upkeep ? { attention: true } : {})} />`
   }
   const stats = s.workers?.data?.stats
   if (stats && page.overview && !subs.includes(WORKERS_PAGE)) tiles.push(jobsTile())
@@ -605,7 +605,7 @@ export function OverviewBoard({ page, s, c }) {
     else if (sub) {
       const x = subPageTile(sub)
       tiles.push(html`<${BoardTile} key=${`@p:${id}`} title=${sub.title} tone=${x.tone} big=${x.big}
-        sub=${x.error ? t.unreadable(x.note) : x.note ?? t.subPageRows(x.lead, x.counts)} label=${t.overviewJump(sub.title)} onClick=${() => c.setPage(id)} />`)
+        sub=${x.error ? t.unreadable(x.note) : x.warnIn ? t.subPageWarn(x.big, x.warnIn) : x.note ?? t.subPageRows(x.lead, x.counts)} label=${t.overviewJump(sub.title)} onClick=${() => c.setPage(id)} />`)
     }
   }
   if (!page.overview) return html`<ul class="oboard" aria-label=${page.title}>${tiles}</ul>`

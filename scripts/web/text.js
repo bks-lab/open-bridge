@@ -357,6 +357,8 @@ const en = {
   overviewWorkers: (ok, all, down, tend) => [down ? `${down} down` : '', tend ? `${tend} to tend` : '', `${ok} of ${all} fine`].filter(Boolean).join(', '),
   // a sub page's tile: its first section and how its rows stand (logic.js subPageTile)
   subPageRows: (lead, n = {}) => `${lead}: ${[n.ok ? `${n.ok} in order` : '', n.off ? `${n.off} off` : ''].filter(Boolean).join(', ') || 'nothing in it'}`,
+  // several warnings on a sub page's tile: how many and the sections they stand in
+  subPageWarn: (n, where = []) => `${n} warnings in ${[].concat(where).join(', ')}`,
   // the head of a sub page: the way back to the page it stands under
   parentBack: title => `‹ ${title}`,
   parentBackLabel: title => `Back to ${title}`,
@@ -391,6 +393,7 @@ const en = {
   workerAlone: 'On their own',
   workerUndecided: 'System not decided',
   workerAttention: 'Only with a finding',
+  workerOutage: 'Only outages',
   workerNoRuns: 'no runs recorded',
   workerContinuous: 'ends of runs, not runs: this kind only writes a line when it stops',
   workerStrip: n => `the last ${n} recorded runs`,
@@ -799,8 +802,8 @@ const en = {
   hints: {
     button: 'Explain',
     buttonTitle: 'Explain this page: notes on what is what',
-    bar: 'Arrow keys page on, Esc closes.',
-    barOne: 'A click anywhere or Esc closes.',
+    bar: 'Next and Back page on, a click anywhere closes.',
+    barOne: 'A click anywhere closes.',
     close: 'Close',
     tour: 'Start the tour',
     next: 'Next',
@@ -1870,6 +1873,7 @@ const de = {
   usageDayOf: day => `Tag ${day}`,
   overviewWorkers: (ok, all, down, tend) => [down ? `${down} ausgefallen` : '', tend ? `${tend} zur Pflege` : '', `${ok} von ${all} in Ordnung`].filter(Boolean).join(', '),
   subPageRows: (lead, n = {}) => `${lead}: ${[n.ok ? `${n.ok} in Ordnung` : '', n.off ? `${n.off} aus` : ''].filter(Boolean).join(', ') || 'leer'}`,
+  subPageWarn: (n, where = []) => `${n} Warnungen in ${[].concat(where).join(', ')}`,
   parentBack: title => `‹ ${title}`,
   parentBackLabel: title => `Zurück zu ${title}`,
   overviewPeak: (title, pct) => `höchstes: ${title} ${pct} %`,
@@ -1903,6 +1907,7 @@ const de = {
   workerAlone: 'Einzeln',
   workerUndecided: 'Ohne Zuordnung',
   workerAttention: 'Nur mit Befund',
+  workerOutage: 'Nur Ausfälle',
   workerNoRuns: 'keine Läufe aufgezeichnet',
   workerContinuous: 'Enden von Läufen, keine Läufe: diese Art schreibt nur eine Zeile, wenn sie endet',
   workerStrip: n => `die letzten ${n} aufgezeichneten Läufe`,
@@ -2304,8 +2309,8 @@ const de = {
   hints: {
     button: 'Erklären',
     buttonTitle: 'Diese Seite erklären: Notizen, was wofür ist',
-    bar: 'Pfeiltasten blättern, Esc schließt.',
-    barOne: 'Ein Klick irgendwohin oder Esc schließt.',
+    bar: 'Weiter und Zurück blättern, ein Klick daneben schließt.',
+    barOne: 'Ein Klick irgendwohin schließt.',
     close: 'Schließen',
     tour: 'Einführung starten',
     next: 'Weiter',
