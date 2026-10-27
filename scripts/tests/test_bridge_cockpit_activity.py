@@ -841,6 +841,20 @@ def test_the_summary_refuses_off_empty_budget_running_unavailable_and_failed(tmp
         w.close()
 
 
+def test_every_new_verb_answers_flow_off_before_it_checks_its_arguments(tmp_path):
+    """With cockpit.flow.enabled false every verb of round 3 answers 409 flow_off, whatever its arguments: a bad key, an
+    empty sentence, bad data never turn it into a 400 that would say the verb is there"""
+    w = make_world(tmp_path, flow="false")
+    try:
+        for verb, args in (("flow_activity_summary", {"key": "no key"}), ("flow_instruct", {"text": "", "keys": []}),
+                           ("flow_attach", {"key": DEMO, "name": "", "data": "%%%"})):
+            with pytest.raises(ActionError) as e:
+                w.act(verb, **args)
+            assert (e.value.status, e.value.code) == (409, "flow_off"), verb
+    finally:
+        w.close()
+
+
 def test_the_summary_model_comes_from_the_block_else_the_service(world):
     folder = world.root / "workflow" / "ai-services"
     folder.mkdir(parents=True)

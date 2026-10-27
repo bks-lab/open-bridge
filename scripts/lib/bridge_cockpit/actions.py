@@ -46,6 +46,9 @@ from .actions_pages import PageVerbs
 from .actions_tabs import TabVerbs
 from .actions_work import WorkVerbs
 
+#: the verbs of Work through's round 3, refused with flow_off before their arguments are checked
+FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach"})
+
 
 # The argument types of SPEC. Most are one pattern or one list of words with the message a refusal names;
 # the rest have a check of their own. validate() raises LookupError for a kind that is in none of them.
@@ -410,6 +413,10 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
     # ------------------------------------------------------------ entry point
 
     def execute(self, verb: Any, args: Any) -> dict:
+        # the verbs of Work through's round 3 answer flow_off while the page is off, before their arguments are read:
+        # a 400 for a bad argument would say the verb is there
+        if verb in FLOW_OFF_FIRST and not act.flow_on(self.app):
+            raise ActionError(409, "flow_off", act.TEXT[act._lang(self.app)]["off"])
         clean = self.validate(verb, args)
         if verb in CMUX_VERBS and not self.app.runner.cmux:
             raise ActionError(503, "cmux_unavailable", "the cmux CLI is not available")

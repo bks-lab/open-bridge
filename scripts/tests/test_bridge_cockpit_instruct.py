@@ -135,9 +135,10 @@ def test_a_reply_needs_the_open_point_and_its_live_tab(world):
 
 def test_a_reply_goes_only_to_a_tab_that_waits_at_its_prompt(world):
     """A tab that asks a choice takes its options on the card and one at work takes nothing (actions_tabs.py tab_send
-    refuses typed words there): the model is not offered a reply, and a reply step leaves the point out"""
+    refuses typed words there): the model is not offered a reply, and a reply step leaves the point out, saying why: a
+    tab that asks a choice is answered on the card (asks), one at work takes nothing (not_offered)"""
     world.runner.handlers["claude.p"] = lambda argv: answer([step("reply", [1], text="go on")])
-    for state in ("needs-you", "working"):
+    for state, why in (("needs-you", "asks"), ("working", "not_offered")):
         status = [dict(t, state=state) if t.get("slug") == "demo-task" else t for t in STATUS]
         world.runner.handlers["workplace.status"] = lambda argv, status=status: ok(status)
         world.app.tabs.poll()
@@ -145,7 +146,7 @@ def test_a_reply_goes_only_to_a_tab_that_waits_at_its_prompt(world):
         world.app.collector.drain()
         [reply] = world.act("flow_instruct", text="tell it to go on", keys=[DEMO], point=True)["plan"]["steps"]
         assert reply["keys"] == [] and reply["tab_ref"] is None, state
-        assert reply["skipped"] == [{"key": DEMO, "title": "Work on the demo task", "why": "not_offered"}], state
+        assert reply["skipped"] == [{"key": DEMO, "title": "Work on the demo task", "why": why}], state
         data, _s = sent(world.runner.of("claude.p")[-1])
         assert data["points"][0]["live_tab"] is True and "reply" not in data["points"][0]["offers"], state
     waiting(world)
