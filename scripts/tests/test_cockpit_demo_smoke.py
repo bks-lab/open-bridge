@@ -296,3 +296,29 @@ def test_work_through_opens_as_a_view_of_the_work_tab_and_walks_its_points(base_
     page.wait_for_timeout(250)
     ctx.close()
     assert not problems, "\n".join(problems)
+
+
+def test_a_batch_of_the_work_through_list_says_itself_in_one_toast(base_url, browser):
+    """A batch confirmed in the list of Work through: the server's note of each step lands in the notes, never as a
+    toast of its own; one toast says the batch, with its undo"""
+    ctx = browser.new_context(viewport={"width": 1680, "height": 1000})
+    page = ctx.new_page()
+    page.goto(f"{base_url}?lang=en&work=flow")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    page.evaluate("() => window.localStorage.clear()")
+    page.reload()
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
+    page.wait_for_selector("#main .flow-grid .flow-card .fx-hero")
+    page.locator("#main .flow-main-top .seg-btn").nth(1).click()
+    page.wait_for_selector("#main .flow-list")
+    page.locator("#main .flow-list-bar .btn-primary").first.click()
+    page.wait_for_selector("#main .flow-list-confirm")
+    page.locator("#main .flow-list-confirm .btn-primary").click()
+    page.wait_for_selector("#main .flow-list-done")
+    page.wait_for_timeout(600)
+    toasts = page.locator(".toast .toast-text").all_text_contents()
+    steps = [t for t in toasts if re.match(r"Mock: (settle|later|shelve|do_it)\b", t)]
+    ctx.close()
+    assert not steps, toasts

@@ -379,9 +379,12 @@ will happen ("2 done, 1 drop: No longer needed, 1 later until 31.10.") is
 confirmed. Then each call goes out in turn (`settle` for many keys at once,
 `later` and `shelve` one by one), one note says how many were decided, and
 **Undo the batch** takes every one of them back through the undo each verb
-returned. Let AI do it in a batch starts a point only with its own sentence and
+returned. The server's note of each step lands in the notes, not as a toast of
+its own. Let AI do it in a batch starts a point only with its own sentence and
 only while fewer than `cockpit.flow.max_running` run; the rest stays out, and
-the line says so.
+the line says so. A point an agent already works on (a start of the cockpit
+that is not over, or a tab of its task) is never suggested for Let AI do it,
+and a batch starts no second agent on it.
 
 The five verbs, the suggested one as the primary button (the triage's verdict,
 else Advise on a question and Let AI do it on a task the AI may do):

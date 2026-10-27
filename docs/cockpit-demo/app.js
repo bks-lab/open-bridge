@@ -433,8 +433,10 @@ const handlers = {
   loading(loading) {
     store.set(s => ({ ...s, loading }))
   },
+  // the server says each action in a note to every page; the steps of a batch of Work through land in the notes
+  // only, since the batch says itself in one toast with one undo (ctl.flowBatch, quietNotesUntil)
   note(n) {
-    pushNote(n)
+    pushNote(n, { toast: Date.now() > quietNotesUntil })
   },
   relay(record) {
     const before = (store.get().relay?.records ?? []).find(r => r.id === record?.id)
@@ -517,6 +519,11 @@ function onConn(conn) {
 function rowIndex() {
   return indexRows(store.get().model)
 }
+
+// while a batch of Work through runs, and a moment after its last step (the server's note of a step may come after
+// its answer), the server's notes make no toast (handlers.note)
+let quietNotesUntil = 0
+const BATCH_NOTE_GRACE_MS = 2000
 
 // the themes of Work through asked for by the page itself: each key once per page load, quietly (a refusal, the day's
 // budget spent, says itself in the state the left column reads); no timer, only the view showing new points asks
@@ -1049,11 +1056,16 @@ const ctl = {
     const undo = []
     let n = 0
     setUi({ flowBatch: { running: true, n: 0, undo: [] } })
-    for (const a of calls ?? []) {
-      const r = await act(a.verb, a.args, { quiet: true })
-      if (!r?.ok) continue
-      n += a.args.keys?.length ?? 1
-      undo.push(...(r.undo ?? []))
+    quietNotesUntil = Infinity
+    try {
+      for (const a of calls ?? []) {
+        const r = await act(a.verb, a.args, { quiet: true })
+        if (!r?.ok) continue
+        n += a.args.keys?.length ?? 1
+        undo.push(...(r.undo ?? []))
+      }
+    } finally {
+      quietNotesUntil = Date.now() + BATCH_NOTE_GRACE_MS
     }
     setUi(ui => ({ flowBatch: { running: false, n, undo }, flowDecided: (ui.flowDecided ?? 0) + n }))
     if (n) pushNote({ text: T().flow.list.ran(n), tone: 'ok', ...(undo.length ? { action: 'undo', undo } : {}) }, { linger: 10000 })
