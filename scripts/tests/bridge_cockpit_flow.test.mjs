@@ -863,6 +863,25 @@ test('flowSuggestion: the triage of the day first, else what the themes run said
   assert.equal(logic.flowSuggestion(task('closing', { stream: true, settle: [] }), s), null)
 })
 
+test('a point an agent already works on: no Let AI do it as its suggestion, and a batch never starts a second agent on it', () => {
+  const rows = [task('run'), task('tabbed'), task('free')]
+  const sug = { 'task:run': { verb: 'do', reason: 'r' }, 'task:tabbed': { verb: 'do', reason: 'r' }, 'task:free': { verb: 'do', reason: 'r' } }
+  // the start's tab names no task (slug), so only the start itself says an agent is on it
+  const s = { ...state({ work: rows, tabs: [{ ref: 'surface:7', name: 'tabbed', slug: 'tabbed', state: 'working', since_ms: NOW - MIN },
+    { ref: 'surface:9', name: 'agent', state: 'working', since_ms: NOW - 5 * MIN }],
+    returns: [{ key: 'task:run', item: 'run', title: 'Task run', mode: 'go', at_ms: NOW - 5 * MIN, stage: 'working', tab: { ref: 'surface:9' } }] }),
+  themes: themesState({ suggest: sug }) }
+  // the start from the cockpit and the tab of the task work on it already: nothing to hand to an agent there
+  assert.equal(logic.flowSuggestion(task('run'), s), null)
+  assert.equal(logic.flowSuggestion(task('tabbed'), s), null)
+  assert.equal(logic.flowSuggestion(task('free'), s).verb, 'do')
+  const plan = logic.batchPlan(rows, 'suggested', s)
+  assert.deepEqual(plan.calls.map(x => x.args.keys), [['task:free']])
+  assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:run', 'no_suggestion'], ['task:tabbed', 'no_suggestion']])
+  // the same for a start picked by hand with one verb for all
+  assert.deepEqual(logic.batchPlan([task('run')], 'do', s).skipped.map(x => x.why), ['working'])
+})
+
 test('batchPlan: the suggestions take done, drop and later, never Let AI do it unless picked and under max_running', () => {
   const rows = [task('d1'), task('d2'), task('drop'), task('later'), task('agent'), task('mine')]
   const sug = { 'task:d1': { verb: 'done', reason: 'r' }, 'task:d2': { verb: 'done', reason: 'r' },

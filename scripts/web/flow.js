@@ -336,14 +336,24 @@ function triageFresh(s) {
   return Number.isFinite(at) && (s?.now || Date.now()) - at <= TRIAGE_FRESH_DAYS * DAY
 }
 
+/** Whether an agent works on a row already: a start of the cockpit for it that is not over, or a tab of its task
+ *  (its own or a linked session's, flowDrive). Let AI do it there would start a second agent on the same work */
+export function atWork(row, s) {
+  if (!row?.key) return false
+  const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control)
+  const nowMs = s?.now || Date.now()
+  if ((s?.model?.returns ?? []).some(r => r.key === row.key && !['done', 'lost'].includes(flowStage(r, tabs, nowMs)))) return true
+  return flowDrive({ kind: 'row', row }, s).by !== 'none'
+}
+
 /** The suggestion for a row in the list, with half a sentence of why and where it comes from: the triage of the day
  *  first (verdict close, stale or waiting, else doer ai or either), while it is fresh; else what the themes run said
- *  for it. Only a verb the row offers (verbsFor), or `you` (only the person can). {verb, reason, until, drop, from,
- *  at} or null */
+ *  for it. Only a verb the row offers (verbsFor), or `you` (only the person can); never Let AI do it where an agent
+ *  works on it already (atWork). {verb, reason, until, drop, from, at} or null */
 export function flowSuggestion(row, s) {
   if (!row?.key) return null
   const offered = verbsFor(row)
-  const ok = v => v === 'you' || offered.includes(v)
+  const ok = v => v === 'you' || (offered.includes(v) && !(v === 'do' && atWork(row, s)))
   const tr = s?.triage?.items?.[row.key]
   if (tr && triageFresh(s)) {
     const verb = TRIAGE_VERB[tr.verdict] ?? (['ai', 'either'].includes(tr.doer) ? 'do' : tr.doer === 'you' ? 'you' : null)
@@ -367,7 +377,8 @@ export function batchPreselect(rows, s) {
  *  ('done', 'later' with the day as `value`, 'drop' with one reason as `value`). Done for several goes out as one
  *  settle; a task dropped is shelved, anything else settled as not doing with the reason; Let AI do it starts a row
  *  only with its own sentence and only while fewer than max_running run, else it stays out. {calls, skipped, counts}:
- *  calls in the order done, later, drop, do; skipped [{row, why}], why not_offered, no_suggestion, you or running */
+ *  calls in the order done, later, drop, do; skipped [{row, why}], why not_offered, no_suggestion, you, working (an
+ *  agent is on it already, atWork) or running */
 export function batchPlan(rows, how, s, value = '', lang = 'en') {
   const done = []
   const later = []
@@ -394,6 +405,7 @@ export function batchPlan(rows, how, s, value = '', lang = 'en') {
       if (a) drop.push(a)
       else skipped.push({ row, why: 'not_offered' })
     } else if (verb === 'do') {
+      if (atWork(row, s)) { skipped.push({ row, why: 'working' }); continue }
       if (running >= cap) { skipped.push({ row, why: 'running' }); continue }
       running += 1
       starts.push(flowAction('do', row, startNote(row, lang)))
