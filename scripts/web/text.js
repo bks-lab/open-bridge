@@ -42,7 +42,7 @@ const en = {
 
   // header and frame
   reload: 'reload',
-  reloadTitle: 'Reload everything fresh (r)',
+  reloadTitle: 'Reload everything fresh',
   asOf: 'As of',
   sourceAsOf: time => `as of ${time}`,
   measuredAt: time => `measured ${time}`,
@@ -1164,7 +1164,7 @@ const en = {
   sessionSince: d => `for ${d}`,
   sessionStarted: d => `started ${d} ago`,
   sessionNoTab: 'not in an agent tab',
-  aiGroup: { check: 'Done, please check', asks: 'Needs you', working: 'Working', lost: 'No word' },
+  aiGroup: { check: 'Done, please check', done: 'Settled, the tab can go', asks: 'Needs you', working: 'Working', lost: 'No word' },
   aiBadge: 'AI',
   tabSettled: { item: 'Done: its item is closed. The tab can go.', task: 'Done: its task is closed. The tab can go.' },
   aiWaitingTitle: n => `${n} from the AI ${n === 1 ? 'waits' : 'wait'} for you: a result to check or a question`,
@@ -1558,7 +1558,7 @@ const de = {
   },
 
   reload: 'neu laden',
-  reloadTitle: 'Alles frisch laden (r)',
+  reloadTitle: 'Alles frisch laden',
   asOf: 'Stand',
   sourceAsOf: time => `Stand ${time}`,
   measuredAt: time => `gemessen ${time}`,
@@ -2666,7 +2666,7 @@ const de = {
   sessionSince: d => `seit ${d}`,
   sessionStarted: d => `gestartet vor ${d}`,
   sessionNoTab: 'nicht in einem Agenten-Tab',
-  aiGroup: { check: 'Fertig, bitte prüfen', asks: 'Braucht dich', working: 'Arbeitet', lost: 'Ohne Rückmeldung' },
+  aiGroup: { check: 'Fertig, bitte prüfen', done: 'Erledigt, der Tab kann zu', asks: 'Braucht dich', working: 'Arbeitet', lost: 'Ohne Rückmeldung' },
   aiBadge: 'AI',
   tabSettled: { item: 'Erledigt, das Item ist geschlossen. Der Tab kann zu.', task: 'Erledigt, die Aufgabe ist abgeschlossen. Der Tab kann zu.' },
   aiWaitingTitle: n => `${n} von der AI ${n === 1 ? 'wartet' : 'warten'} auf dich: ein Ergebnis zum Prüfen oder eine Frage`,

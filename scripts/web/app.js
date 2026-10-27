@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
+  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept,
 } from './logic.js'
@@ -1228,9 +1228,16 @@ const ctl = {
   clearFind: () => store.set(s => ({ ...s, find: null })),
   // a found file opens in the queue where it stands there, else beside it (a backlog task); a closed one always
   // beside it, by its folder, since a slug can be open and closed at once
-  // under the area filter: in the filtered queue, one of another area beside it (logic.js fileOpen)
+  // under the area filter: in the filtered queue, one of another area beside it (logic.js fileOpen).
+  // Outside the files view the click shows the task where it is seen (logic.js fileClick): an open one in the
+  // item drawer over the page (one opened from a drawer leads back to it), a closed one in the files view
   openFile(slug, path) {
-    setUi(fileOpen(store.get(), slug, path))
+    const s = store.get()
+    const to = fileClick(s, slug, path)
+    const from = s.ui.drawer === 'item' ? s.ui.item : null
+    if (to.item) return from?.key === to.item ? undefined : ctl.openItem(to.item, null, {}, from)
+    setUi(to.ui)
+    if (to.page) ctl.setPage(to.page)
   },
   closeFile: () => setUi({ dossierOpen: null }),
   // one file of a task's folder (the Files drawer), read in place; `path` the folder of a closed copy, or null
