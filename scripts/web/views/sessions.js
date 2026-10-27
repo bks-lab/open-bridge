@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the sessions and the background jobs pages.
+// The cockpit, the sessions and the background jobs pages. SessionCard also stands in Running now of Work through
+// (views/flowrun.js SessionCards, round 6), compact and with that page's box, task line and way to the Chat.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
@@ -45,7 +46,9 @@ function AgentLane({ agents, now }) {
   </div>`
 }
 
-export function SessionCard({ x, i = 0, s, c }) {
+/** One live session as a card. `compact` (Running now): the agents as a count and a lane, no list, the session id
+ *  only as a tooltip; `lead` stands first in its head (a box), `more` under its title, `foot` beside its next step */
+export function SessionCard({ x, i = 0, s, c, compact = false, lead = null, more = null, foot = null }) {
   const t = T()
   // the session list names its tab slim; the tab list has the rest (last line, filed result, settled)
   const tab = x.tab ? (s.tabs?.tabs ?? []).find(y => y.ref === x.tab.ref) ?? x.tab : null
@@ -60,6 +63,7 @@ export function SessionCard({ x, i = 0, s, c }) {
     ${alert ? html`<span class="hit hit-alert" key=${`a${alert}`} aria-hidden="true"></span>` : null}
     ${newAgent ? html`<span class="hit" key=${`n${newAgent}`} aria-hidden="true"></span>` : null}
     <div class="sess-head">
+      ${lead}
       <${StateLine} token=${token} strong=${state === 'needs-you'} word=${t.sessionStatus[state] ?? state} />
       <span class="muted small">${t.sessionSince(duration(s.now - (x.since_ms || s.now)))}</span>
       ${x.tab?.is_control ? html`<span class="chip">${t.sessionControl}</span>` : null}
@@ -69,9 +73,10 @@ export function SessionCard({ x, i = 0, s, c }) {
     ${x.tab?.is_control && !x.relay ? html`<p class="small"><${StateLine} token="warning" word=${t.sessionControlNoRelay} /></p>` : null}
     ${jump ? html`<button type="button" class="sess-title btn-link" title=${t.sessionJumpTitle(title)} onClick=${jump}>${short(title, 70)}</button>`
       : html`<span class="sess-title">${short(title, 70)}</span>`}
-    <div class="sess-where muted small">
+    ${more}
+    <div class="sess-where muted small" title=${compact ? x.id : undefined}>
       ${x.tab ? html`<span>${x.tab.workspace}</span>` : html`<span>${t.sessionNoTab}</span>`}
-      <span class="mono">${x.id}</span>
+      ${compact ? null : html`<span class="mono">${x.id}</span>`}
       <span>${t.sessionStarted(duration(s.now - (x.started_ms || s.now)))}</span>
     </div>
     ${agents.running_count || agents.done_recent ? html`<div class="sess-agents">
@@ -79,7 +84,7 @@ export function SessionCard({ x, i = 0, s, c }) {
       ${agents.done_recent ? html`<span class="muted small">${t.agentsDone(agents.done_recent)}</span>` : null}
     </div>` : null}
     <${AgentLane} agents=${agents.running} now=${s.now} />
-    ${agents.running.length ? html`<ul class="sess-agent-list">${agents.running.map(a => html`<li key=${a.id} class="row-in">
+    ${agents.running.length && !compact ? html`<ul class="sess-agent-list">${agents.running.map(a => html`<li key=${a.id} class="row-in">
         <${Dot} token="success" pulse />
         <span class="mono small">${a.type}</span>
         <span class="sess-agent-desc">${a.description ?? ''}</span>
@@ -92,6 +97,7 @@ export function SessionCard({ x, i = 0, s, c }) {
     <div class="btn-row sess-foot">
       ${tab ? html`<${TabControls} tab=${tab} s=${s} c=${c} slim />`
         : jump ? html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${jump}>${t.sessionJump}<//>` : null}
+      ${foot}
       <${SessionTask} x=${x} s=${s} c=${c} />
     </div>
   </li>`

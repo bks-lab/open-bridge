@@ -386,7 +386,7 @@ test('the page on the demo data: the themes or areas on the left, the overview o
   assert.equal(el.$('.flow-ptabs'), null)
   // the head says how many points, how many run and how many are not now (round 4), and holds the view switch
   const counts = logic.flowParts(s).counts
-  assert.match(el.$('.flow-head').text(), new RegExp(en.flow.count(counts.points, counts.running, counts.left)))
+  assert.match(el.$('.flow-head').text(), new RegExp(en.flow.count(counts.points, logic.runningOf(logic.flowParts(s)).n, counts.left)))
   assert.ok(el.$('.flow-head .work-switch'))
   // narrow: the same choice as a select, its first option the level of all
   const opts = el.$$('.flow-side-select option')
@@ -611,6 +611,102 @@ test('the lane: a tab of a session linked to a task, typed by hand, runs there a
   const quiet = state({ work: [task('mine')], tabs: [{ ...tabs[0], state: 'shell' }], sessions })
   assert.deepEqual(logic.flowParts(quiet).lane, [])
   assert.deepEqual(queueOf(quiet).map(x => x.id), ['task:mine'])
+})
+
+test('round 6: Running now holds every live session as a card, with or without a task, each once', () => {
+  const tabs = [{ ref: 'surface:12', name: 'mine', state: 'working', since_ms: NOW - 9 * MIN },
+    { ref: 'surface:13', name: 'free', state: 'working', since_ms: NOW - 4 * MIN },
+    { ref: 'surface:14', name: 'asking', state: 'needs-you', since_ms: NOW - 2 * MIN },
+    { ref: 'surface:15', name: 'ended', state: 'shell' },
+    { ref: 'surface:16', name: 'own tab', slug: 'tabbed', state: 'working', since_ms: NOW - 3 * MIN },
+    { ref: 'surface:17', name: 'quiet', state: 'waiting', since_ms: NOW - 30 * MIN }]
+  const sessions = { sessions: [
+    { id: 'aa11', sid: 'aa11-full', task: 'mine', task_how: 'hand', status: 'busy', started_ms: NOW - 12 * MIN, tab: { ref: 'surface:12', name: 'mine' } },
+    { id: 'bb22', sid: 'bb22-full', task: null, status: 'busy', started_ms: NOW - 5 * MIN, tab: { ref: 'surface:13', name: 'free' } },
+    { id: 'cc33', sid: 'cc33-full', task: null, status: 'idle', started_ms: NOW - 6 * MIN, tab: { ref: 'surface:14', name: 'asking' } },
+    { id: 'dd44', sid: 'dd44-full', task: null, status: 'idle', started_ms: NOW - 60 * MIN, tab: { ref: 'surface:15', name: 'ended' } },
+    { id: 'ee55', sid: 'ee55-full', task: null, status: 'busy', started_ms: NOW - 3 * MIN, tab: { ref: 'surface:16', name: 'own tab' } },
+    { id: 'ff66', sid: 'ff66-full', task: null, status: 'idle', started_ms: NOW - 40 * MIN, tab: { ref: 'surface:17', name: 'quiet' } },
+    { id: 'gg77', sid: 'gg77-full', task: null, status: 'busy', started_ms: NOW - 8 * MIN, remote: true, tab: null },
+    { id: 'hh88', sid: 'hh88-full', task: null, status: 'idle', started_ms: NOW - 99 * MIN, tab: { ref: 'surface:3', name: 'Control', is_control: true } }] }
+  const s = state({ work: [task('mine'), task('tabbed'), task('other')], tabs, sessions })
+  const parts = logic.flowParts(s)
+  // the lane keeps its entries and its keys: the counts and the universe do not move
+  assert.deepEqual(parts.lane.map(x => x.id).sort(), ['session:surface:12', 'tab:surface:16'])
+  checkInvariant(s, 'sessions')
+  // one card per live session: the one asking stands as its point, the ended tab and the control session stay out;
+  // busy before idle, the newest first within
+  assert.deepEqual(parts.sessions.map(v => v.session.id), ['ee55', 'bb22', 'gg77', 'aa11', 'ff66'])
+  const by = Object.fromEntries(parts.sessions.map(v => [v.session.id, v]))
+  // a lane entry of a session's tab is that session's card, with its row for the box: never a row of its own besides
+  assert.equal(by.aa11.entry.id, 'session:surface:12')
+  assert.equal(by.ee55.entry.id, 'tab:surface:16')
+  assert.equal(by.bb22.entry, null)
+  assert.equal(by.gg77.tab, null)
+  assert.deepEqual(logic.runningOf(parts).loose, [])
+  assert.equal(logic.runningOf(parts).n, 5)
+  assert.equal(parts.counts.sessions, 5)
+  assert.ok(parts.asks.some(x => x.tab.ref === 'surface:14'))
+  // a start at work in a tab without a session stays a row of its own
+  const start = { key: 'task:other', item: 'other', title: 'Task other', mode: 'go', at_ms: NOW - 2 * MIN, stage: 'started', tab: { ref: 'surface:20' } }
+  const s2 = state({ work: [task('other')], tabs: [{ ref: 'surface:20', name: 'run', state: 'working' }], returns: [start], sessions: { sessions: [] } })
+  const p2 = logic.flowParts(s2)
+  assert.deepEqual(logic.runningOf(p2).loose.map(x => x.id), ['start:task:other'])
+  assert.equal(logic.runningOf(p2).n, 1)
+})
+
+test('round 6: without a terminal driver Running now still lists the live sessions, without their tabs', () => {
+  const sessions = { sessions: [{ id: 'aa11', sid: 'aa11-full', task: 'mine', status: 'busy', started_ms: NOW - 12 * MIN, tab: { ref: 'surface:12', name: 'mine' } },
+    { id: 'bb22', sid: 'bb22-full', status: 'idle', started_ms: NOW - 50 * MIN, tab: null }] }
+  const s = state({ work: [task('mine')], tabs: [{ ref: 'surface:12', name: 'mine', state: 'working' }], sessions, driver: { caps: [] } })
+  const parts = logic.flowParts(s)
+  assert.deepEqual(parts.lane, [])
+  assert.deepEqual(parts.sessions.map(v => [v.session.id, v.tab, v.entry]), [['aa11', null, null], ['bb22', null, null]])
+  checkInvariant(s, 'no driver')
+  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'running', flowPicked: [] } }} c=${recorder()} />`)
+  assert.match(el.$('aside .flow-run-cat').text(), new RegExp(`${en.flow.run.label}\\s*2`))
+  assert.equal(el.$$('.flow-main .sess').length, 2)
+  assert.ok(!el.button(en.flow.toTab), 'no To tab without a driver')
+  assert.ok(!el.button(en.btnToTab), 'no To tab without a driver')
+  assert.match(el.$('.flow-main').text(), new RegExp(en.flow.run.noTask))
+})
+
+test('round 6: the running view shows the sessions as compact cards, a box for a task, View opens the tab in the Chat', () => {
+  const tabs = [{ ref: 'surface:1', name: 'board tab', state: 'working', since_ms: NOW - 40 * MIN, last: 'Reading the board' },
+    { ref: 'surface:2', name: 'loose tab', state: 'working', since_ms: NOW - 5 * MIN, last: 'Writing tests' }]
+  const sessions = { sessions: [
+    { id: 'a', sid: 'a-full', task: 'board-ui', task_how: 'seen', task_since_ms: NOW - 30 * MIN, status: 'busy', started_ms: NOW - 40 * MIN, tab: { ref: 'surface:1', name: 'board tab', workspace: 'Work' },
+      agents: { running_count: 1, done_recent: 0, running: [{ id: 'x1', type: 'Explore', description: 'Find it', since_ms: NOW - MIN }] } },
+    { id: 'b', sid: 'b-full', task: null, status: 'busy', started_ms: NOW - 5 * MIN, tab: { ref: 'surface:2', name: 'loose tab', workspace: 'Work' } }] }
+  const s = state({ work: [task('board-ui', { title: 'Board UI' }), task('other')], tabs, sessions, rooms: { layout: 'workspaces' },
+    ui: { flowView: 'running', flowPicked: ['task:board-ui'] } })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const main = el.$('.flow-main')
+  assert.match(main.$('h2').text(), new RegExp(`${en.flow.run.label}\\s*2`))
+  const cards = main.$$('.sess')
+  assert.equal(cards.length, 2, 'one card per session')
+  assert.ok(!main.$('.flow-runstrip-row'), 'the session of a lane entry is its card, not a row besides')
+  const board = cards.find(x => x.text().includes('board tab'))
+  const loose = cards.find(x => x.text().includes('loose tab'))
+  // the task's card keeps its box for a merge, ticked; the card without a task has none and offers to link one
+  const box = board.$('input[type=checkbox]')
+  assert.ok(box && box.hasAttribute('checked'), 'the box of the task, ticked')
+  assert.ok(!loose.$('input[type=checkbox]'), 'no box without a task')
+  assert.ok(loose.$('select.sess-task-pick'), 'a task picker')
+  assert.match(loose.text(), new RegExp(en.flow.run.noTask))
+  assert.match(board.text(), /Writing tests|Reading the board/)
+  assert.ok(!board.$('.sess-agent-list'), 'compact: the agents as a count and a lane, not a list')
+  // the title jumps to the tab, View in chat opens the tab's room in the Chat, the task opens the entry in the middle
+  board.$('.sess-title').click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'tab_jump', { tab_ref: 'surface:1' }])
+  board.$$('button').find(b => b.text() === en.flow.run.inChat).click()
+  assert.deepEqual(c.calls.slice(-2), [['setPage', '@chat'], ['pickRoom', { kind: 'tab', id: 'surface:1' }]])
+  board.$('.flow-run-open').click()
+  assert.deepEqual(c.calls.at(-1), ['flowRun', 'session:surface:1'])
+  // the classic Chat has no rooms: no View in chat, View stays the overlay
+  const classic = mount(html`<${FlowPage} s=${{ ...s, rooms: { layout: 'classic' } }} c=${recorder()} />`)
+  assert.ok(!classic.$$('.sess button').some(b => b.text() === en.flow.run.inChat), 'no View in chat in the classic layout')
 })
 
 test('prepTargets: the next cards whose brief is missing or stale, at most n, never one the page prepared already', () => {
@@ -2271,7 +2367,7 @@ test('Running now: one row on top of the left column, the entries on top of the 
   const cats = el.$$('aside .flow-run-cat')
   assert.equal(cats.length, 1)
   assert.ok(cats[0].hasClass('flow-notnow-item'), 'styled as a group of Not now')
-  assert.match(cats[0].text(), new RegExp(`${en.flow.run.label}\\s*${parts.lane.length}`))
+  assert.match(cats[0].text(), new RegExp(`${en.flow.run.label}\\s*${logic.runningOf(parts).n}`))
   assert.ok(cats[0].$('.dot').hasClass('dot-pulse'))
   assert.ok(!cats[0].hasClass('is-on'))
   assert.ok(!el.$('aside .flow-side-body .flow-run-item'), 'no entry listed in the wide column (the narrow fold keeps its lines)')
@@ -2295,14 +2391,18 @@ test('Running now: one row on top of the left column, the entries on top of the 
 
 test('the running view: back to overview, Running now with its count, every entry with To tab and View and its box, the row marked', () => {
   const s = demoFlow({ flowView: 'running' })
-  const lane = logic.flowParts(s).lane
+  const run = logic.runningOf(logic.flowParts(s))
+  const lane = run.loose
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
   assert.ok(!el.$('.flow-overview'), '.flow-overview')
   const main = el.$('.flow-main')
-  assert.match(main.$('h2').text(), new RegExp(`${en.flow.run.label}\\s*${lane.length}`))
+  assert.match(main.$('h2').text(), new RegExp(`${en.flow.run.label}\\s*${run.n}`))
+  // round 6: the entries no session card holds as rows, every live session as a card
   const rows = main.$$('.flow-runstrip-row')
-  assert.equal(rows.length, lane.length, 'every entry, at the level of all')
+  assert.ok(lane.length >= 1, 'the demo runs a start without a session')
+  assert.equal(rows.length, lane.length, 'every entry no card holds, at the level of all')
+  assert.equal(main.$$('.sess').length, run.sessions.length)
   assert.ok(rows.every(r => r.$$('button').some(b => b.text() === en.flow.toTab)))
   assert.ok(rows.some(r => r.$$('button').some(b => b.text() === en.flow.view)))
   assert.ok(main.$('.flow-runstrip-pick'), 'the boxes for a merge stay')
@@ -2481,7 +2581,8 @@ test('the head counts points, what runs and what is not now; the sum is every op
   const s = demoFlow()
   const p = logic.flowParts(s)
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
-  assert.match(el.$('.flow-head').text(), new RegExp(en.flow.count(p.counts.points, p.counts.running, p.counts.left)))
+  // what runs: the session cards and the entries no card holds, as the left column's row counts them (round 6)
+  assert.match(el.$('.flow-head').text(), new RegExp(en.flow.count(p.counts.points, logic.runningOf(p).n, p.counts.left)))
   assert.equal(p.counts.total - p.counts.extra, logic.flowUniverse(s).size)
   assert.equal(en.flow.count(1, 0, 2), '1 point · 2 not now')
   assert.equal(text.TABLES.de.flow.count(3, 1, 2), '3 Punkte · 1 läuft · 2 nicht dran')

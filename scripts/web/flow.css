@@ -234,6 +234,10 @@
 /* the strip as the view of its own: its head is the page's, so no frame of its own */
 .flow-runstrip.is-bare { padding: 0; border: 0; background: transparent; }
 .flow-runstrip.is-bare > .flow-runstrip-why { margin: 0 0 4px; }
+/* the live sessions under the entries (round 6): the Sessions page's cards, the entry's title a link under its title */
+.flow-sessions { margin-top: 10px; }
+.flow-sessions .flow-run-open { justify-self: start; text-align: left; }
+.flow-sessions .sess-head > .flow-ov-pick { margin: 0; }
 .flow-run-narrow, .flow-notnow-narrow { display: none; }
 .flow-run-narrow > summary, .flow-notnow-narrow > summary { cursor: pointer; padding: 6px 4px; font-size: var(--text-sm); overflow-wrap: anywhere; }
 .flow-run-narrow > summary > .label-caps, .flow-notnow-narrow > summary > .label-caps { display: inline; margin: 0 4px 0 0; }

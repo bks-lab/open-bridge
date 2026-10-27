@@ -17,13 +17,14 @@
 // To tab remembers the jump (ui.flowJump, in memory only): once the page is in view again return_after_s later, the
 // return card asks how it went (app.js). Round 4: every open row stands exactly once (logic.js flowParts). What runs
 // stands in Running now (views/flowrun.js: one row on top of the left column that shows every entry in the middle as
-// view `running`, the entries of the side on top of the overview, never in the walk; a title opens one in the middle
+// view `running`, since round 6 every live session there as a compact card, the entries of the side on top of the
+// overview, never in the walk; a title opens one in the middle
 // as view `run`, its card, its tabs and its instruction line, without the walk bar, its way back to the list it came
 // from); what is no point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a
 // list in the middle (view `left`) with its own batch. Round 5: the left column lists no point, the middle does; what
 // opens in the middle is brought into view where the page scrolled its top away. Prio orders the left column by Jev's squares (views/flowprio.js: the 2x2 grid at the
 // level of all squares). With nothing open the calm card offers up to three ideas to start. Without a terminal driver
-// the cards of the agents, Running now and every way to a tab stay out.
+// the cards of the agents, the entries of Running now and every way to a tab stay out; its session cards stay.
 // The agents' cards: a tab that asks carries the answers to its question (views/reply.js), the decision guide
 // (views/guide.js) folded under one button, each through the reply verbs that guard the tab; a finished or quiet start
 // its result line (the criteria of its brief stand in Description, to check yourself); Done and close the tab, Improve
@@ -35,7 +36,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn,
+  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn, runningOf,
   prepTargets, previewText, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
 } from '../logic.js'
 import { T } from '../text.js'
@@ -44,7 +45,7 @@ import { Walk } from './dossier.js'
 import { LeftList } from './flowleft.js'
 import { FlowOverview, listRows } from './flowlist.js'
 import { PrioGrid, PrioSource } from './flowprio.js'
-import { RunningStrip } from './flowrun.js'
+import { RunningStrip, SessionCards } from './flowrun.js'
 import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
@@ -219,12 +220,13 @@ export function FlowPage({ s, c }) {
   const side = entered?.id ?? 'all'
   const queue = pointsIn(all, side, s, mode)
   const lane = pointsIn(parts.lane, side, s, mode)
+  const runs = runningOf(parts)
   const i = focusIndex(queue, s.ui.flowAt)
   // the middle: the point open, an entry of Running now, a group of Not now, else the overview; what went (a point
   // decided, a start that finished, a group emptied) falls back to the overview
   const running = s.ui.flowView === 'run' ? parts.lane.find(e => e.id === s.ui.flowRunId) ?? null : null
   const group = s.ui.flowView === 'left' ? parts.leftOut.groups.find(g => g.reason === s.ui.flowLeft) ?? null : null
-  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'running' && parts.lane.length ? 'running'
+  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'running' && runs.n ? 'running'
     : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
   const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : null
   const driver = flowDriver(s)
@@ -264,19 +266,20 @@ export function FlowPage({ s, c }) {
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
-      <p class="muted small">${[f.count(counts.points, counts.running, counts.left), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
+      <p class="muted small">${[f.count(counts.points, runs.n, counts.left), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
     </header>
     ${driver ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
     <div class="flow-grid">
-      <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} lane=${parts.lane} left=${parts.leftOut}
+      <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} running=${runs} left=${parts.leftOut}
         run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
         ${view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} />`
           : view === 'running' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
-              <h2 id="flow-running-h" class="flow-main-title">${f.run.label} <span class="mono muted">${parts.lane.length}</span></h2>
+              <h2 id="flow-running-h" class="flow-main-title">${f.run.label} <span class="mono muted">${runs.n}</span></h2>
             </header>
-            <${RunningStrip} lane=${parts.lane} picked=${picked} bare s=${s} c=${c} />`
+            <${RunningStrip} lane=${runs.loose} picked=${picked} bare s=${s} c=${c} />
+            <${SessionCards} sessions=${runs.sessions} picked=${picked} s=${s} c=${c} />`
           : view === 'run' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => (fromRunning ? c.flowRunning() : c.flowOverview())}>${fromRunning ? f.run.back : f.point.back}<//>
               <span class="flow-main-theme muted">${f.run.label}</span>
