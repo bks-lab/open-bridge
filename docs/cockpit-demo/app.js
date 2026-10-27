@@ -505,6 +505,9 @@ function rowIndex() {
   return indexRows(store.get().model)
 }
 
+// a quick question names the key of the chat's button only where the page has its shortcuts on (quick.py system_text)
+const quickKeys = ui => (ui?.shortcuts ? { keys: true } : {})
+
 // the refusal of an action, by the args object it was sent with, for reply() to show where it was asked
 // (logic.js replyRefusal: a step that failed keeps its own note)
 const refusals = new WeakMap()
@@ -575,7 +578,7 @@ async function ask(kind, args = {}) {
     const conv = kind === 'free' && (ui.tabView === '@ask' || onChat) ? ui.quickConv : null
     // a free question carries what the page shows right now, as data beside it (the core asks without it)
     const context = kind === 'free' ? askContext(store.get(), language()) : ''
-    const res = await api.ask(kind, context ? { ...args, context } : args, { via: 'quick', model: ui.quickModel, ...(conv ? { conv } : {}) })
+    const res = await api.ask(kind, context ? { ...args, context } : args, { via: 'quick', model: ui.quickModel, ...(conv ? { conv } : {}), ...quickKeys(ui) })
     if (res.ok && res.data?.conv) {
       // asked on the Chat tab it stays there, from anywhere else the chat window opens on it
       setUi(onChat && kind === 'free' ? { quickConv: res.data.conv } : { tabView: '@ask', quickConv: res.data.conv, openMsg: null })
@@ -978,7 +981,8 @@ const ctl = {
   flowBack: () => setUi({ flowJump: null }),
   // Advise on a card: one read-only quick question about the row, its answer shown in the card (views/verbbar.js)
   flowAdvise: key => withBusy('ask:row', 'row', async () => {
-    const res = await api.ask('row', { key }, { via: 'quick', model: store.get().ui.quickModel })
+    // asked from a card: the answer names the card's verb, never a key (quick.py system_text, origin flow)
+    const res = await api.ask('row', { key }, { via: 'quick', model: store.get().ui.quickModel, origin: 'flow' })
     if (res.ok && res.data?.conv) {
       setUi({ flowAdvice: { key, conv: res.data.conv } })
       return true
@@ -1019,7 +1023,7 @@ const ctl = {
   askFile: (text, context, task) => withBusy('ask:free', 'free', async () => {
     const ui = store.get().ui
     const args = { text, ...(context ? { context } : {}), ...(task ? { task } : {}) }
-    const res = await api.ask('free', args, { via: 'quick', model: ui.quickModel })
+    const res = await api.ask('free', args, { via: 'quick', model: ui.quickModel, ...quickKeys(ui) })
     if (res.ok && res.data?.conv) {
       setUi({ tabView: '@ask', quickConv: res.data.conv, openMsg: null })
       return true
@@ -1061,7 +1065,7 @@ const ctl = {
   },
   // a question from the bridge's core: it stays in the core's panel, no chat window opens
   askQuiet: (text, conv) => withBusy('ask:core', 'free', async () => {
-    const res = await api.ask('free', { text }, { via: 'quick', place: 'core', model: store.get().ui.quickModel, ...(conv ? { conv } : {}) })
+    const res = await api.ask('free', { text }, { via: 'quick', place: 'core', model: store.get().ui.quickModel, ...(conv ? { conv } : {}), ...quickKeys(store.get().ui) })
     if (res.ok && res.data?.conv) { setUi({ coreConv: res.data.conv }); return res.data.conv }
     failNote(res)
     return null

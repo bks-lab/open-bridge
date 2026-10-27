@@ -124,6 +124,7 @@ EN: dict = {
     "note_added": "Note on {title}: {line}",
     "note_failed": "Note failed: {err}",
     "btn_do": "Let AI do it",
+    "btn_flow_do": "Let AI do it",     # the verb on a card of Work through (text-flow.js verbs.do)
     "btn_advise": "Advise",
     "btn_start_agent": "Let AI do it",
     "launch_team": "Team, role {role}",
@@ -236,9 +237,14 @@ EN: dict = {
            "overview). The A2A agents this Bridge may ask are in infra/a2a-peers/ (whose, what they may be asked). "
            "When a question belongs to one of them, suggest asking it in the Agents tab or with "
            "skills/a2a/a2a.sh ask <peer> \"...\"; you send nothing yourself.",
-    "quick_launch_on": "the button \"{do_it}\" below this chat (Cmd Enter) hands it to an agent tab, a full Claude "
+    "quick_launch_on": "the button \"{do_it}\" below this chat{keys} hands it to an agent tab, a full Claude "
                        "session that may install, change and fix things and asks before anything leaves this machine. "
                        "When something needs doing, say briefly what, and point to that button.",
+    # asked from a card of Work through: its button, never a key (the page is for the mouse)
+    "quick_launch_flow": "the button \"{do_it}\" on the card this question comes from hands it to an agent tab, a full "
+                         "Claude session that may install, change and fix things and asks before anything leaves this "
+                         "machine. When something needs doing, say briefly what, and point to that button. Name no key.",
+    "quick_launch_keys": " (Cmd Enter)",
     "quick_launch_off": "an agent tab (\"{do_it}\") would do it as a full Claude session, but no terminal is connected "
                         "on this machine yet: workplace.driver in bridge-config.yaml is not set (for cmux: "
                         "skills/cmux/scripts/cmux_driver.py). Say so, and that the work can start once it is set.",
@@ -400,6 +406,7 @@ DE: dict = {
     "note_added": "Notiz an {title}: {line}",
     "note_failed": "Notiz ging nicht: {err}",
     "btn_do": "AI machen lassen",
+    "btn_flow_do": "Bridge macht",
     "btn_advise": "Beraten",
     "btn_start_agent": "AI machen lassen",
     "launch_team": "Team, Rolle {role}",
@@ -514,9 +521,13 @@ DE: dict = {
            "A2A-Agenten, die diese Bridge fragen darf, stehen in infra/a2a-peers/ (wer, was man sie fragen darf). "
            "Gehört eine Frage zu einem von ihnen, schlag vor, sie im Tab Agenten zu stellen oder mit "
            "skills/a2a/a2a.sh ask <peer> \"...\"; du selbst schickst nichts.",
-    "quick_launch_on": "Der Knopf „{do_it}“ unter diesem Chat (Cmd Enter) gibt es an einen Agent-Tab, eine volle "
+    "quick_launch_on": "Der Knopf „{do_it}“ unter diesem Chat{keys} gibt es an einen Agent-Tab, eine volle "
                        "Claude-Sitzung, die installieren, ändern und reparieren darf und fragt, bevor etwas diesen "
                        "Rechner verlässt. Braucht es Arbeit, sag knapp was, und verweise auf diesen Knopf.",
+    "quick_launch_flow": "Der Knopf „{do_it}“ auf der Karte, von der diese Frage kommt, gibt es an einen Agent-Tab, eine "
+                         "volle Claude-Sitzung, die installieren, ändern und reparieren darf und fragt, bevor etwas diesen "
+                         "Rechner verlässt. Braucht es Arbeit, sag knapp was, und verweise auf diesen Knopf. Nenne keine Taste.",
+    "quick_launch_keys": " (Cmd Enter)",
     "quick_launch_off": "Ein Agent-Tab („{do_it}“) würde es als volle Claude-Sitzung erledigen, aber auf diesem "
                         "Rechner ist noch kein Terminal verbunden: workplace.driver in bridge-config.yaml fehlt (für "
                         "cmux: skills/cmux/scripts/cmux_driver.py). Sag das, und dass die Arbeit starten kann, sobald "

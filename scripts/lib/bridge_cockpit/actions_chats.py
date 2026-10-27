@@ -10,7 +10,7 @@ from typing import Any
 
 from . import model as m
 from .history import item as history_item
-from .quick import CONV_RE
+from .quick import CONV_RE, ORIGINS as QUICK_ORIGINS
 from .relay import KINDS as ASK_KINDS
 from .actions_base import (CONTEXT_MAX, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, QUICK_PLACES, SHORT_TIMEOUT, SLUG_RE,
                            ActionError, Ctx, bad_arg, check_key, check_text)
@@ -184,7 +184,7 @@ class ChatVerbs:
         return self.filed_page_item(f"briefing:{profile}{same}" if profile else "", same)
 
     def ask(self, kind: Any, args: Any, via: Any = "control", model: Any = None, conv: Any = None,
-            place: Any = None) -> tuple[int, dict]:
+            place: Any = None, origin: Any = None, keys: Any = None) -> tuple[int, dict]:
         """A question to Claude. `via` "quick" (what the page sends) asks a short read-only session of its
         own (quick.py, Haiku unless the page names a model) and answers with the conversation id; "control"
         hands it to the control session through the relay. `place` "core": a free quick question of the start
@@ -195,6 +195,12 @@ class ChatVerbs:
         app, tx = self.app, self.tx
         if via not in ("quick", "control"):
             raise bad_arg("via", "quick or control")
+        # where the page asks from (a card of Work through names its verb, quick.system_text) and whether its
+        # shortcuts are on (only then does the answer name a key); both optional, a new conversation keeps them
+        if origin is not None and origin not in QUICK_ORIGINS:
+            raise bad_arg("origin", "only flow")
+        if keys is not None and not isinstance(keys, bool):
+            raise bad_arg("keys", "must be true or false")
         if place is not None and (place not in QUICK_PLACES or via != "quick" or kind != "free"):
             raise bad_arg("place", "only core or suggest, for a free quick question")
         if via == "control" and not app.cfg.relay:
@@ -279,7 +285,8 @@ class ChatVerbs:
                 prompt = m.evening(tabs, app.tabs.seen_copy(), app.clock(), tx)
         if via == "quick":
             try:
-                conv_id = app.quick.start(prompt, qmodel, conv, kind, place, context=context, about=about)
+                conv_id = app.quick.start(prompt, qmodel, conv, kind, place, context=context, about=about,
+                                          origin=origin, keys=bool(keys))
             except KeyError:
                 raise ActionError(409, "stale_row", "the conversation is gone", "conv")
             except RuntimeError as exc:

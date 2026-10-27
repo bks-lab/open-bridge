@@ -3672,9 +3672,35 @@ def test_the_quick_chat_points_to_the_agent_tab_and_never_sends_the_work_back():
     for lang in ("de", "en"):
         text = system_text(lang, None)
         assert TABLES[lang]["btn_do"] in text and "[[remind:" in text and "workplace.driver" not in text
+        assert "Cmd Enter" not in text      # a key only where the shortcuts are on
         off = system_text(lang, None, can_launch=False)
         assert TABLES[lang]["btn_do"] in off and "workplace.driver" in off
     assert "starts it" not in system_text("en", None)
+
+
+def test_the_advice_names_the_cards_verb_on_work_through_and_a_key_only_with_the_shortcuts_on(world):
+    # 27.10.: asked from a card of Work through, the advice said "below this chat (Cmd Enter)" while the card's
+    # button is "Let AI do it" and the shortcuts were off
+    from lib.bridge_cockpit.quick import system_text
+    from lib.bridge_cockpit.text import TABLES
+    for lang in ("de", "en"):
+        words = TABLES[lang]
+        flow = system_text(lang, None, origin="flow")
+        assert words["btn_flow_do"] in flow and "Cmd" not in flow and "Enter" not in flow
+        plain = system_text(lang, None)
+        assert words["btn_do"] in plain and "Cmd" not in plain and "Enter" not in plain
+        assert "Cmd Enter" in system_text(lang, None, keys=True)
+    assert TABLES["de"]["btn_flow_do"] == "Bridge macht" and TABLES["en"]["btn_flow_do"] == "Let AI do it"
+    # the page says where it asks from; the conversation keeps it for every turn
+    world.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": "Fine.", "is_error": False})
+    status, payload = world.app.actions.ask("row", {"key": "task:demo-task"}, via="quick", origin="flow")
+    assert status == 202
+    conv = world.app.quick.convs[payload["conv"]]
+    assert conv["origin"] == "flow" and conv["keys"] is False
+    for bad in ({"origin": "elsewhere"}, {"keys": "yes"}):
+        with pytest.raises(ActionError) as e:
+            world.app.actions.ask("row", {"key": "task:demo-task"}, via="quick", **bad)
+        assert e.value.code == "invalid_argument"
 
 
 def test_the_quick_chat_reads_why_a_section_is_empty_before_it_guesses():

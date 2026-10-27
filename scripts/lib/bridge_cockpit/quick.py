@@ -61,13 +61,25 @@ SYSTEM = {code: TABLES[code]["quick_system"] for code in TABLES}   # the words l
 NOBODY = {code: TABLES[code]["quick_nobody"] for code in TABLES}   # the words live in text.py
 
 
-def system_text(lang: str, who: str | None, can_launch: bool = True, today: str | None = None) -> str:
+#: where a quick question may say it comes from (/api/ask `origin`): a card of Work through names its own verb
+ORIGINS = ("flow",)
+
+
+def system_text(lang: str, who: str | None, can_launch: bool = True, today: str | None = None,
+                origin: str | None = None, keys: bool = False) -> str:
     """The system text in the dashboard's language, naming the person from cockpit.person_name. It names the
     agent tab the chat hands work to, or says no terminal can start one yet (`can_launch`): a chat that only
-    knew it may read told the person the Bridge cannot act and handed them the steps (18.10.)."""
+    knew it may read told the person the Bridge cannot act and handed them the steps (18.10.). Asked from a card
+    of Work through (`origin` flow) it names the card's verb and no key; elsewhere the key only where the page has
+    its shortcuts on (`keys`), since the person who keeps them off works with the mouse (27.10.)."""
     lang = lang if lang in SYSTEM else "en"
     words = TABLES[lang]
-    launch = words["quick_launch_on" if can_launch else "quick_launch_off"].format(do_it=words["btn_do"])
+    if can_launch and origin == "flow":
+        launch = words["quick_launch_flow"].format(do_it=words["btn_flow_do"])
+    elif can_launch:
+        launch = words["quick_launch_on"].format(do_it=words["btn_do"], keys=words["quick_launch_keys"] if keys else "")
+    else:
+        launch = words["quick_launch_off"].format(do_it=words["btn_do"])
     # without a name the person is "the user", in the grammatical case each sentence needs
     return SYSTEM[lang].format(who=who or NOBODY[lang], who_subject=who or words["quick_nobody_subject"],
                                launch=launch, today=today or "unknown")
@@ -293,7 +305,8 @@ class Quick:
                     "convs": json.loads(json.dumps(convs))}
 
     def start(self, prompt: str, model: str | None, conv: str | None = None, kind: str = "free",
-              place: str | None = None, context: str | None = None, about: dict | None = None) -> str:
+              place: str | None = None, context: str | None = None, about: dict | None = None,
+              origin: str | None = None, keys: bool = False) -> str:
         """Ask in a new conversation, or go on in `conv`; returns the conversation id at once. A new one with
         `place` "core" (the start page's core) takes the place of the last: it goes to the archive. `about`
         (a new one only) names the row and the item it is about, for the settle sweep."""
@@ -311,7 +324,9 @@ class Quick:
             else:
                 conv = "q" + uuid.uuid4().hex[:10]
                 c = {"id": conv, "kind": kind, "started_ms": now, "session": None, "total_usd": 0.0, "turns": [],
-                     "running": False, "last_ms": now, "about": dict(about) if about else None}
+                     "running": False, "last_ms": now, "about": dict(about) if about else None,
+                     # where it was asked (a card of Work through) and whether the page has its shortcuts on
+                     "origin": origin, "keys": bool(keys)}
                 if place:
                     c["place"] = place
                     for old in [x for x in self.convs.values() if x.get("place") == place and not x["running"]]:
@@ -501,8 +516,10 @@ class Quick:
     def _run(self, conv: str, model: str, prompt: str, session: str | None,
              provider: str = "claude", actual_model: str | None = None, context: str | None = None) -> None:
         app = self.app
+        c = self.convs.get(conv) or {}
         system = system_text(self.lang(), getattr(app.cfg, "person_name", None), self._can_launch(),
-                             time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000)))
+                             time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000)),
+                             origin=c.get("origin"), keys=bool(c.get("keys")))
         if context:
             # what the page shows, as data after the system text, fresh on every turn and kept nowhere
             system += "\n\n" + TABLES[self.lang()]["quick_situation"].format(text=app.scrub(context))
