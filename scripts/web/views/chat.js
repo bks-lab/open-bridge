@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the chat: the quick chat window and its page.
+// The cockpit, the chat: the quick chat window and its page, on whose head the control session's notice stands (round 6,
+// views/header.js ControlNotice, from the Sessions page).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { short, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, listedChats, reminderArgs, routeOf } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
+import { ControlNotice } from './header.js'
 import { LaunchPick } from './launch.js'
 import { ASK_MAX } from './nav.js'
 import { useFocusOnOpen } from './overlays.js'
@@ -264,6 +266,7 @@ export function ChatPage({ s, c }) {
       ${conv && !conv.running ? html`<button type="button" class=${`chip quick-conv agent-forget${forgetArmed === conv.id ? ' is-armed' : ''}`}
         title=${t.quickForgetHint} onBlur=${() => setForgetArmed(null)}
         onClick=${() => forgetArmed === conv.id ? c.quickForget(conv.id) : setForgetArmed(conv.id)}>${forgetArmed === conv.id ? t.quickForgetSure : t.quickForget}</button>` : null}</header>
+    <${ControlNotice} s=${s} c=${c} />
     <div class="chat-grid">
       <nav class="panel chat-list" aria-label=${t.quickChats}>
         <button type="button" class=${`chat-item chat-new${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.quickNew}</button>

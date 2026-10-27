@@ -619,7 +619,8 @@ test('round 6: Running now holds every live session as a card, with or without a
     { ref: 'surface:14', name: 'asking', state: 'needs-you', since_ms: NOW - 2 * MIN },
     { ref: 'surface:15', name: 'ended', state: 'shell' },
     { ref: 'surface:16', name: 'own tab', slug: 'tabbed', state: 'working', since_ms: NOW - 3 * MIN },
-    { ref: 'surface:17', name: 'quiet', state: 'waiting', since_ms: NOW - 30 * MIN }]
+    // quiet: still for 30 minutes with nothing asked, so the server marks it idle and it is no point (round 6 b)
+    { ref: 'surface:17', name: 'quiet', state: 'waiting', idle: true, since_ms: NOW - 30 * MIN }]
   const sessions = { sessions: [
     { id: 'aa11', sid: 'aa11-full', task: 'mine', task_how: 'hand', status: 'busy', started_ms: NOW - 12 * MIN, tab: { ref: 'surface:12', name: 'mine' } },
     { id: 'bb22', sid: 'bb22-full', task: null, status: 'busy', started_ms: NOW - 5 * MIN, tab: { ref: 'surface:13', name: 'free' } },
@@ -2114,7 +2115,8 @@ function dumpState(over = {}) {
   const files = [fileOf('board-ui', { status: 'doing', bucket: 'plan' }), fileOf('points-walk', { status: 'doing', bucket: 'tasks' }),
     ...['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].map(x => fileOf(`backlog-${x}`)), fileOf('applications', { kind: 'stream', status: 'doing' })]
   const tabs = [{ ref: 'surface:1', name: 'cockpit board ui', state: 'working', since_ms: TUE - 70 * MIN, slug: null, item: null, last: 'Editing flow.js' },
-    { ref: 'surface:2', name: 'notes', state: 'waiting', since_ms: TUE - 30 * MIN, slug: null, item: null },
+    // still for 30 minutes with nothing to decide: idle, as the server marks it, so no point (round 6 b)
+    { ref: 'surface:2', name: 'notes', state: 'waiting', idle: true, since_ms: TUE - 30 * MIN, slug: null, item: null },
     { ref: 'surface:3', name: 'Control', state: 'waiting', is_control: true }]
   const sessions = { sessions: [{ id: 's1', sid: 's1-full', task: 'board-ui', task_how: 'seen', task_since_ms: TUE - 50 * MIN, started_ms: TUE - 90 * MIN,
     tab: { ref: 'surface:1', name: 'cockpit board ui' } }, { id: 's2', sid: 's2-full', task: null, tab: { ref: 'surface:2', name: 'notes' } }] }
@@ -2877,4 +2879,77 @@ test('an entry of Running now opened in the middle says so in its head, and why 
   assert.match(head, new RegExp(en.flow.run.label))
   assert.match(head, new RegExp(en.flow.doing.stage.working))
   assert.match(el.$('.flow-card').text(), new RegExp(en.flow.run.cardWhy.slice(0, 30)))
+})
+
+// ---------------------------------------------------------------- round 6 b: the Sessions tab goes, Running now holds the sessions
+
+test('round 6 b S5: a waiting tab that wants you is a point that asks; a quiet one keeps its session card', () => {
+  const tabs = [{ ref: 'surface:21', name: 'asks at its prompt', state: 'waiting', since_ms: NOW - 4 * MIN },
+    { ref: 'surface:22', name: 'went quiet', state: 'waiting', idle: true, since_ms: NOW - 30 * MIN },
+    { ref: 'surface:23', name: 'needs you', state: 'needs-you', since_ms: NOW - 2 * MIN }]
+  const sessions = { sessions: [
+    { id: 'w1', sid: 'w1-full', task: null, status: 'idle', started_ms: NOW - 9 * MIN, tab: { ref: 'surface:21', name: 'asks at its prompt' } },
+    { id: 'w2', sid: 'w2-full', task: null, status: 'idle', started_ms: NOW - 40 * MIN, tab: { ref: 'surface:22', name: 'went quiet' } }] }
+  const s = state({ work: [task('other')], tabs, sessions })
+  const parts = logic.flowParts(s)
+  // the oldest question first, a waiting tab beside one that needs you (logic.js wantsYou)
+  assert.deepEqual(parts.asks.map(x => x.id), ['tab:surface:21', 'tab:surface:23'])
+  assert.deepEqual(queueOf(s).map(x => x.group), ['asks', 'asks', 'doing'])
+  // its session stands with the point, not a second time as a card; the quiet one is no point and keeps its card
+  assert.deepEqual(parts.sessions.map(v => v.session.id), ['w2'])
+  checkInvariant(s, 'waiting tabs')
+  // without a terminal driver nothing asks from a tab
+  assert.deepEqual(logic.flowParts({ ...s, driver: { caps: [] } }).asks, [])
+})
+
+test('round 6 b S1: where Work through lists the sessions, every way to the Sessions tab leads to its Running now', () => {
+  const on = state()
+  const off = { ...on, work: { flow: { enabled: false } } }
+  const kept = { ...on, work: { ...on.work, views: ['files'] } }
+  assert.equal(logic.sessionsInFlow(on), true)
+  assert.equal(logic.sessionsInFlow(off), false)
+  assert.equal(logic.sessionsInFlow(kept), false, 'cockpit.work_views without flow keeps the tab')
+  assert.equal(logic.sessionsInFlow(null), false)
+  assert.deepEqual(logic.flowPageFor('@sessions', on), { page: 'briefing', view: 'flow', flowView: 'running' })
+  assert.equal(logic.flowPageFor('@sessions', off), null)
+  assert.equal(logic.flowPageFor('@sessions'), null)
+  assert.deepEqual(logic.flowPageFor('@flow', on), { page: 'briefing', view: 'flow' })
+  // a note or a status item of the band that names the tab keeps the name, so setPage leads it there
+  assert.equal(logic.tickerPage(on, '@sessions', views.nav.pageOrder(on)), '@sessions')
+  assert.equal(logic.tickerPage(off, '@sessions', views.nav.pageOrder(off)), '@sessions')
+  // the area jumps and the tour name the tab as before: the controller leads them (app.js setPage)
+  assert.deepEqual(logic.areaJump('running', {}), { page: '@sessions' })
+  assert.ok(logic.tourSteps({ ...on, layout: 'wide' }).some(x => x.page === '@sessions'))
+  // the way's name says where it lands
+  assert.equal(views.nav.sessionsName(on), en.flow.run.label)
+  assert.equal(views.nav.sessionsName(off), en.sessionsTab)
+})
+
+test('round 6 b S2 S6: no Sessions tab and no AI badge where Running now lists the sessions; without Work through both stay', () => {
+  const on = cockpitState(NOW, { ui: { page: 'briefing' } })
+  const off = cockpitState(NOW, { work: { ...on.work, flow: { enabled: false } }, ui: { page: 'briefing' } })
+  assert.ok(!views.nav.pageOrder(on).includes('@sessions'))
+  assert.ok(views.nav.pageOrder(off).includes('@sessions'))
+  assert.ok(views.nav.morePages(off).has('@sessions'))
+  // the demo leaves the AI something to look at, so the badge would show on the tab
+  assert.ok(logic.aiWaiting(on.model.returns, on.tabs.tabs, NOW) > 0)
+  const tabsOf = s => mount(html`<${views.header.PageBar} s=${s} c=${recorder()} />`).$$('[role=tab]')
+  const named = (list, word) => list.find(b => b.text().startsWith(word)) ?? null
+  assert.ok(!named(tabsOf(on), en.sessionsTab), 'no Sessions tab')
+  assert.ok(!tabsOf(on).some(b => b.$$('.pbadge').some(x => x.text().startsWith(en.aiBadge))), 'no AI badge anywhere')
+  const kept = named(tabsOf(off), en.sessionsTab)
+  assert.ok(!!kept, 'the Sessions tab stays without Work through')
+  assert.match(kept.text(), new RegExp(`${en.aiBadge}`))
+})
+
+test('round 6 b: the tour shows Running now where it lists the sessions, the Sessions tab elsewhere, in both languages', () => {
+  const on = { ...state(), layout: 'wide' }
+  const off = { ...on, work: { flow: { enabled: false } } }
+  const step = s => logic.tourSteps(s).find(x => x.page === '@sessions')
+  assert.equal(step(on).id, 'running')
+  assert.equal(step(off).id, 'sessions')
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].tour.steps.running?.body, lang)
+  // the explain overlay names the session cards where they stand now
+  const hints = logic.hintsFor({ ...on, ui: { page: 'briefing', workView: 'flow' } }).map(h => [h.id, h.target])
+  assert.ok(hints.some(([id, target]) => id === 'sessCards' && target === '.flow-sessions'))
 })

@@ -367,7 +367,9 @@ function fixPage() {
   const s = store.get()
   if (s.model && s.ui.page === CHECK_PAGE && !pageOrder(s).includes(CHECK_PAGE)) ctl.openReview()   // the check moved onto a page
   else if (s.ui.page === AGENTS_PAGE && chatAsWorkspaces(s)) ctl.setPage(AGENTS_PAGE)   // as cmux the agents live in the Chat
-  else if (flowPageFor(s.ui.page)) ctl.setPage(s.ui.page)   // the page @flow of an older cockpit: the work tab in its view
+  // the page @flow of an older cockpit: the work tab in its view; a Sessions page stored before round 6, where Running
+  // now lists the sessions: Running now (meant for one release; after it the fallback below opens Today)
+  else if (flowPageFor(s.ui.page, s)) ctl.setPage(s.ui.page)
   else if (s.model && !pageOrder(s).includes(s.ui.page)) setUi({ page: 'briefing' })
 }
 
@@ -860,11 +862,13 @@ const ctl = {
     const s = store.get()
     // as cmux the agents have no page: their way (the band, a card, a stored page) opens the Chat on its A2A area
     id = ctl.pageFor(id)
-    // Work through was a page (@flow) and is a view of the work tab now: a stored page or a link leads there
-    const flowTo = flowPageFor(id)
+    // Work through was a page (@flow) and is a view of the work tab now: a stored page or a link leads there. Where it
+    // lists the live sessions, every way to the Sessions tab (a link, a note, the band, the tour, an area's number)
+    // leads to its Running now in the middle (round 6, logic.js flowPageFor)
+    const flowTo = flowPageFor(id, s)
     if (flowTo) {
       save('bridge-cockpit.workTab', flowTo.view)
-      setUi({ workView: flowTo.view })
+      setUi({ workView: flowTo.view, ...(flowTo.flowView ? { flowView: flowTo.flowView, flowRunId: null, flowPlan: null } : {}) })
       id = flowTo.page
     }
     // a page of group day has no tab: a tile or link to it opens Today, where its sections stand

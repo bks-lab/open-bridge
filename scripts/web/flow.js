@@ -10,7 +10,7 @@
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowProject, tabOfTask, workPageOf } from './logic.js'
+import { canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -225,7 +225,7 @@ const inNow = (r, src) => src === 'now' || r.section === 'now' || r.urgency === 
  *  recognised from what it did, a task's own tab at work or waiting) or in a group of Not now (`leftOut`, by why). A
  *  point or an entry of the lane may stand for no open row (a tab alone, a start whose item left the list), a row of
  *  Not now always stands for one. Live first (only with a terminal driver): the return card, the starts by stage, the
- *  sessions, the task tabs, the tabs that ask; then each open row by the first rule that fits. A point due later than
+ *  sessions, the task tabs, the tabs that want you; then each open row by the first rule that fits. A point due later than
  *  cockpit.flow.ahead_days waits under Later until then (aheadOf), unless the viewer took it back on (ui.flowEarly).
  *  A card is {group, id, kind, row?, start?, tab?, task?, covers?, rows?, stage?}; an entry of the lane {group doing,
  *  lane, id, kind start, session or tab, row, tab, stage, how, title, at}; one of Not now {row, until, why, due, repo}.
@@ -300,10 +300,12 @@ export function flowParts(s) {
       take(row)
       usedTabs.add(t.ref)
     }
-    // L5 the tabs that ask you, with or without a row, the oldest question first: they need you, so they are points
-    // a session linked to that tab (by hand, by its task tab, or recognised) brings its task: it stands once, as the
-    // card that asks, and goes back to Running now once its tab works again
-    for (const t of tabs.filter(x => x.state === 'needs-you' && !usedTabs.has(x.ref) && asking(x)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
+    // L5 the tabs that want you, with or without a row, the oldest question first: one that needs you, and since round
+    // 6 one waiting at its prompt that did not go quiet or settle (logic.js wantsYou, the rule of the rest of the
+    // cockpit, the server's idle); they ask something, so they are points. A session linked to that tab (by hand, by its
+    // task tab, or recognised) brings its task: it stands once, as the card that asks, and goes back to Running now
+    // once its tab works again
+    for (const t of tabs.filter(x => wantsYou(x) && !usedTabs.has(x.ref) && asking(x)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
       const linked = (s?.sessions?.sessions ?? []).find(v => v.task && v.tab?.ref === t.ref)
       const found = (t.slug ? rowOfTask(t.slug) : null) ?? (t.item ? uni.get(`inbox:${t.item}`) ?? null : null) ?? (linked ? rowOfTask(linked.task) : null)
       const row = found && !used.has(found.key) ? found : null

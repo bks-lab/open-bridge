@@ -16,7 +16,7 @@ import { KindTag, OriginTag, RowBar } from './day.js'
 import {
   DayBars, PinStar, ReturnCard, ReturnChip, jumpToTab, openWhole, pageParts, pageTitleOf, pct, returnsOf, shownTiles,
 } from './home.js'
-import { ASK_MAX, SESSIONS_PAGE, WORKERS_PAGE, briefingTitle } from './nav.js'
+import { ASK_MAX, SESSIONS_PAGE, WORKERS_PAGE, briefingTitle, sessionsName } from './nav.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
 import { TickerBand, TickerStatusList } from './ticker.js'
 
@@ -271,7 +271,7 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
         side=${duration(s.now - (y.since_ms || s.now))} onClick=${() => c.setPage(SESSIONS_PAGE)} />`)}
       ${(s.agents?.peers ?? []).map(pe => html`<${InspectRow} key=${pe.id} tone=${pe.reach === 'ok' ? 'success' : 'muted'} title=${pe.id}
         sub=${pe.summary ? short(pe.summary, 80) : ''} onClick=${() => c.openAgent(pe.id)} />`)}
-      ${foot(h.openPage(t.sessionsTab), () => c.setPage(SESSIONS_PAGE))}`
+      ${foot(h.openPage(sessionsName(s)), () => c.setPage(SESSIONS_PAGE))}`
   } else if (x.id === 'c:workers') {
     const runs = (s.workers?.data?.runs ?? []).filter(r => !['ok', 'dim'].includes(workerTone(r)))
     body = html`${head(t.workersTab, st.value)}

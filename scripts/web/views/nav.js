@@ -2,7 +2,7 @@
 // The cockpit, the pages: which tab stands where, and the fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FLOW_PAGE, listedChats, reviewHome, walkRefs, workPageOf, workViewIn } from '../logic.js'
+import { FLOW_PAGE, listedChats, reviewHome, sessionsInFlow, walkRefs, workPageOf, workViewIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -10,6 +10,8 @@ export const JEV_PAGE = '@jev'
 export const ASK_MAX = 4000
 export const TAB_MSG_MAX = 2000     // the 'text' check of SPECIAL_KINDS in actions.py (tab_send in actions_tabs.py)
 export const CHECK_PAGE = '@check'      // the task check's own page; profile pages never start with @
+// the live sessions; where Work through lists them in Running now (logic.js sessionsInFlow) the page has no tab and
+// every way to it leads there (app.js setPage)
 export const SESSIONS_PAGE = '@sessions'
 export const WORKERS_PAGE = '@workers'
 export const CHAT_PAGE = '@chat'
@@ -21,6 +23,10 @@ export { FLOW_PAGE }
 
 /** Whether the Chat is laid out as cmux (cockpit.chat_layout: workspaces): the agents then live in it, not on a page */
 export const chatAsWorkspaces = s => s?.rooms?.layout === 'workspaces'
+
+/** The name of the way to the live sessions, as the place it opens: Running now where Work through lists them
+ *  (logic.js sessionsInFlow), else the Sessions tab */
+export const sessionsName = s => (sessionsInFlow(s) ? T().flow.run.label : T().sessionsTab)
 
 /** The area the Chat as cmux shows: Work (the workspaces, tabs and chats) or A2A (the agents). A2A only where
  *  a peer exists; a stored choice without one, or in the classic layout, shows Work */
@@ -100,9 +106,10 @@ function pageList(s) {
   // Work through (cockpit.flow.enabled) is a view of the work tab, no tab of its own.
   // Everything else stands behind them and folds behind More only when the bar has no room for it.
   // The Workers tab only where a worker view exists, Agents only where this Bridge knows an A2A peer and the
-  // Chat is the classic one (as cmux the agents are a tab inside the Chat, chatAreaOf);
+  // Chat is the classic one (as cmux the agents are a tab inside the Chat, chatAreaOf), Sessions only where Work through
+  // does not list the live sessions in its Running now (round 6, sessionsInFlow);
   // a page of group `day` has no tab, its sections stand under the day list of Today (DayColumn); Settings is the last of all
-  return [{ id: START_PAGE }, { id: 'briefing' }, { id: CHAT_PAGE }, { id: SESSIONS_PAGE, more: true },
+  return [{ id: START_PAGE }, { id: 'briefing' }, { id: CHAT_PAGE }, ...(sessionsInFlow(s) ? [] : [{ id: SESSIONS_PAGE, more: true }]),
     ...(s.workers?.status === 'none' ? [] : [{ id: WORKERS_PAGE, more: true }]),
     ...((s.agents?.peers ?? []).length && !chatAsWorkspaces(s) ? [{ id: AGENTS_PAGE, more: true }] : []), ...(reviewHomeOf(s) ? [] : [{ id: CHECK_PAGE, more: true }]),
     ...(s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? [{ id: JEV_PAGE, more: true }] : []),
