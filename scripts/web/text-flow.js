@@ -31,15 +31,6 @@ export const FLOW = {
     },
     walk2: { label: 'Walk through the points', prev: 'Previous point', next: 'Next point', last: 'That was the last point here.',
       nextSide: name => `Next: ${name}`, toSide: 'Go there' },
-    details: {
-      label: 'Details', hint: 'A click pulls a block in.', loading: 'Reading the task',
-      overview: 'A click on a title opens the point in the middle; its details then stand here.',
-      blocks: { goal: 'Goal and story', criteria: 'Acceptance criteria', steps: 'Steps', source: 'Source', notes: 'Notes and log',
-        result: 'Result', screen: 'Screen of the tab', related: 'Related' },
-      none: { goal: 'No goal written yet.', criteria: 'No criteria written yet.', steps: 'No steps in the file.', source: 'No source named.',
-        notes: 'No notes and no log lines yet.', result: 'Nothing came back yet.', screen: 'No tab, so no screen.', related: 'Nothing related.' },
-      open: 'Open the link', view: 'View the whole screen', done: 'done', todo: 'open',
-    },
     list: {
       label: 'The points of this group', pickAll: 'All', pick: title => `Tick ${title}`, tick: n => `Tick the suggestions (${n})`,
       ticked: (n, parts) => (parts ? `${n} ticked: ${parts}` : `${n} ticked`), nothing: 'Nothing ticked', run: 'Run the suggestions',
@@ -182,15 +173,6 @@ export const FLOW = {
     },
     walk2: { label: 'Durch die Punkte gehen', prev: 'Vorheriger Punkt', next: 'Nächster Punkt', last: 'Das war der letzte Punkt hier.',
       nextSide: name => `Weiter mit: ${name}`, toSide: 'Dorthin' },
-    details: {
-      label: 'Details', hint: 'Ein Klick holt einen Baustein dazu.', loading: 'Aufgabe wird gelesen',
-      overview: 'Ein Klick auf einen Titel öffnet den Punkt in der Mitte, seine Details stehen dann hier.',
-      blocks: { goal: 'Ziel und Story', criteria: 'Akzeptanzkriterien', steps: 'Schritte', source: 'Quelle', notes: 'Notizen und Log',
-        result: 'Ergebnis', screen: 'Bildschirm des Tabs', related: 'Verwandtes' },
-      none: { goal: 'Noch kein Ziel geschrieben.', criteria: 'Noch keine Kriterien geschrieben.', steps: 'Keine Schritte in der Akte.', source: 'Keine Quelle genannt.',
-        notes: 'Noch keine Notizen und keine Logzeilen.', result: 'Noch nichts zurückgekommen.', screen: 'Kein Tab, also kein Bildschirm.', related: 'Nichts Verwandtes.' },
-      open: 'Link öffnen', view: 'Ganzen Bildschirm ansehen', done: 'erledigt', todo: 'offen',
-    },
     list: {
       label: 'Die Punkte dieser Gruppe', pickAll: 'Alle', pick: title => `${title} anhaken`, tick: n => `Vorschläge anhaken (${n})`,
       ticked: (n, parts) => (parts ? `${n} angehakt: ${parts}` : `${n} angehakt`), nothing: 'Nichts angehakt', run: 'Vorschläge ausführen',

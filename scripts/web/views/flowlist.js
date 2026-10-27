@@ -92,7 +92,8 @@ export function FlowOverview({ points, picked, titleFor, kindFor, s, c }) {
     c.flowPick(chosen.map(r => r.key), false)
     await c.flowBatch(calls)
   }
-  const done = s.ui.flowBatch
+  // the overview's own batch; one of the instruction line says itself under that line, never twice
+  const done = s.ui.flowBatch?.from === 'instruct' ? null : s.ui.flowBatch
   const from = new Set(rows.map(r => flowSuggestion(r.row, s)?.from).filter(Boolean))
   const day = s.triage?.last?.at ? formatDay(String(s.triage.last.at).slice(0, 10), lang) : null
   const reasons = flowSettings(s).drop_reasons

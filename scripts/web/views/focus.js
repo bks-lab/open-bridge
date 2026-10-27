@@ -8,7 +8,7 @@
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, focusIndex, homeListParts, homeQueue, previewText, projectTone, short, stateToken, untilText,
-  upcomingEvents, greetingText, dayLabel, workPageId, rowProject, tabStateKey
+  upcomingEvents, greetingText, dayLabel, workPageId, rowProject, tabStateKey, whyWithoutDue
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar } from './day.js'
@@ -40,43 +40,48 @@ function screenLines(text, n = 4) {
 /** The one next step, large: its kind, its title, where it belongs, what it is about, and the way to act.
  *  The files view (dossier.js) shows its next step in it: `title` in place of the entry's own, `kindWord` in
  *  place of its kind, `sub` a line under the title (where the step comes from and since when). The Work through
- *  page (flow.js) puts its own verbs in its foot (`acts`, in place of the row's buttons or the tab's ways), and its
- *  title opens nothing there (`openable` false): the details stand beside the card, no drawer with a walk of its own */
-export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null, openable = true }) {
+ *  page (flow.js) shows the card as content only: no foot (`foot` false: the verbs stand in its right column), none of
+ *  the facts its fields say (`facts` false: no kind tag, source, area, return chip or priority, the reasons without the
+ *  due day), more of the tab's screen (`screen` lines), and what the tab asks as `children`; its title opens nothing
+ *  there (`openable` false): the details stand beside the card, no drawer with a walk of its own */
+export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null, openable = true, foot = true, facts = true,
+  screen = 4, children = null }) {
   const t = T()
   const f = t.home.focus
   const kind = kindOf(x, nowKeys(s))
-  const project = projectOf(x)
+  const project = facts ? projectOf(x) : null
   const tab = x.kind === 'tab' ? x.tab : tabOf(x.id)
   const tone = x.kind === 'tab' || tab?.state === 'needs-you' ? 'warning' : x.row.priority === 'P0' ? 'danger' : 'accent'
-  const lines = tab ? screenLines(tab.last) : []
-  const why = x.kind === 'row' ? x.row.why ?? [] : []
+  const lines = tab ? screenLines(tab.last, screen) : []
+  const why = x.kind === 'row' ? (facts ? x.row.why ?? [] : whyWithoutDue(x.row.why)) : []
+  const prio = facts && x.kind === 'row' && x.row.priority && title == null
   const open = el => (x.kind === 'tab' ? jumpToTab(s, c, x.tab.ref) : openWhole(c, x.row, el))
   return html`<article class=${`fx-hero tk-${tone}${n > 1 ? ' has-more' : ''}${n > 2 ? ' has-many' : ''}`} aria-labelledby="fx-title">
     <header class="fx-hero-top">
       <span class="fx-kind"><${Dot} token=${tone === 'accent' ? 'info' : tone} pulse=${kind === 'tab'} />${kindWord ?? f.kind[kind]}</span>
     </header>
     <h2 id="fx-title" class="fx-title">
-      ${openable ? html`<button type="button" onClick=${e => open(e.currentTarget)}>${x.kind === 'row' && x.row.priority && title == null ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}</button>`
-        : html`${x.kind === 'row' && x.row.priority && title == null ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}`}
+      ${openable ? html`<button type="button" onClick=${e => open(e.currentTarget)}>${prio ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}</button>`
+        : html`${prio ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}`}
     </h2>
     ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
-    <div class="fx-meta">
-      ${x.kind === 'tab' ? null : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}
+    ${facts || tab ? html`<div class="fx-meta">
+      ${x.kind === 'tab' || !facts ? null : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}
       ${project ? html`<span class=${`fx-proj tk-${projectTone(project)}`}>${project}</span>` : null}
       ${tab ? html`<${StateLine} token=${stateToken(tabStateKey(tab))} strong word=${x.kind === 'tab' ? t.state[tabStateKey(tab)] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tabStateKey(tab)] ?? tab.state}`} />
         <span class="mono muted">${duration(s.now - (tab.since_ms || s.now))}</span>` : null}
-      ${x.kind === 'row' ? html`<${ReturnChip} s=${s} rowKey=${x.row.key} />` : null}
-    </div>
+      ${x.kind === 'row' && facts ? html`<${ReturnChip} s=${s} rowKey=${x.row.key} />` : null}
+    </div>` : null}
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
     ${why.length ? html`<ul class="fx-why">${why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
-    <footer class="fx-acts">
+    ${children}
+    ${foot ? html`<footer class="fx-acts">
       ${acts ?? html`<div class="fx-do">
         ${x.kind === 'tab' ? html`<${Btn} variant="primary" onClick=${() => jumpToTab(s, c, x.tab.ref)}>${t.home.toTab}<//>
           <${Btn} variant="secondary" onClick=${() => c.openTabView(x.tab.ref)}>${t.home.view}<//>`
           : html`<${RowBar} row=${x.row} s=${s} c=${c} tab=${tab} pin=${false} size="sm" /><${PinStar} rowKey=${x.row.key} s=${s} c=${c} />`}
       </div>`}
-    </footer>
+    </footer>` : null}
   </article>`
 }
 
