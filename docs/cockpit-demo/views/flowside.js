@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the columns around the middle of Work through (views/flow.js), laid out as cmux lays out a workspace.
-// FlowSide, the left column in two levels, like a workspace sidebar that opens a workspace. Level one: Themes or Areas
-// on top while the themes are on (logic.js flowMode), then one entry per theme or area that holds a point (its colour,
+// FlowSide, the left column in two levels, like a workspace sidebar that opens a workspace. On top Running now
+// (views/flowrun.js RunningBlock: what runs is no point), at the foot Not now (views/flowleft.js NotNowBlock: the open
+// rows that are no point now, by group), both on every side and in every mode. Level one: Themes, Areas or Prio on top
+// where two of them are on offer (logic.js flowModes, flowMode), then one entry per theme or area that holds a point (its colour,
 // its name, how many need you in the warning tone, how many are open), No theme yet or No area last; a click enters
 // it. Under the list Order themes again (a regroup within the day's budget) and what the themes run is doing. Level two:
 // All themes on top to go back, the name of the theme or area as the way to its overview (marked while the overview
 // shows), All and Tick the AI suggestions, then its points grouped Needs you, In progress, Tasks, Reports (logic.js
 // pointBand), each with a box, its title (a click opens the point), a dot and a word for its stage, its area and the
 // suggestion as a small chip. The boxes are the same selection as the overview's (ui.flowPicked). A theme entered can
-// be renamed. On a narrow screen both levels are one select over the middle.
+// be renamed. In Prio level one holds Jev's four squares (an empty one too) and Not rated yet, level two the points of a
+// square in Jev's order as one band. On a narrow screen both levels are one select over the middle, Running now and Not
+// now fold under it.
 // FlowAside, the right column of an open point (round 3), as an issue tracker's sidebar: on top What you can do, the AI
 // suggestion in one line (on an open point the only place it stands) and the card's verbs under each other, the strong
 // one first, every other one in the same style (views/verbbar.js stack): a live tab (at work, asking, or waiting at its
@@ -25,22 +29,26 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  activityWhen, batchPreselect, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowSuggestion, flowTabOf,
+  activityWhen, batchPreselect, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
   isoDate, meterLevel, refOfUrl, replySend, short,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Segmented } from './detail.js'
+import { NotNowBlock, NotNowNarrow } from './flowleft.js'
 import { bandsOf, pointTone, rowArea, Suggestion } from './flowlist.js'
+import { RunningBlock, RunningNarrow } from './flowrun.js'
 import { TAB_MSG_MAX } from './nav.js'
 import { Btn, Dot, Icon, PrioChip } from './parts.js'
 import { VerbBar } from './verbbar.js'
 
 /** The words of a side: its theme or area name, else All or None in the words of the mode */
 export function sideName(side, mode) {
-  const f = T().flow.side
-  if (!side || side.id === 'all') return mode === 'themes' ? f.allThemes : f.allAreas
-  if (side.id === 'none') return mode === 'themes' ? f.noTheme : f.noArea
+  const t = T().flow
+  const f = t.side
+  if (!side || side.id === 'all') return mode === 'themes' ? f.allThemes : mode === 'prio' ? f.allQuads : f.allAreas
+  if (side.id === 'none') return mode === 'themes' ? f.noTheme : mode === 'prio' ? t.prio.none : f.noArea
+  if (side.quadrant) return t.fields.quadrant[side.quadrant] ?? side.quadrant
   return side.name
 }
 
@@ -69,7 +77,9 @@ function Level1({ sides, mode, points, s, c }) {
   const keys = points.flatMap(x => (x.kind === 'reports' ? x.rows.map(r => r.key) : x.row?.key ? [x.row.key] : []))
   const busy = !!s.ui.flowThemesBusy || !!th?.running || !!s.ui.busy?.['flow:themes']
   const status = mode !== 'themes' ? null : busy ? f.ordering : th?.budget_left === 0 ? f.budget : th?.last_error ? f.failed : null
-  return html`${th?.enabled === true ? html`<${Segmented} label=${f.label} values=${[['themes', f.themes], ['areas', f.areas]]} current=${mode}
+  const modes = flowModes(s)
+  const word = { themes: f.themes, areas: f.areas, prio: f.prio }
+  return html`${modes.length > 1 ? html`<${Segmented} label=${f.label} values=${modes.map(m => [m, word[m]])} current=${mode}
       onPick=${v => c.flowMode(v)} />` : null}
     <ul class="flow-side-list flow-side-body">${sides.filter(x => x.id !== 'all').map(x => html`<li key=${x.id}>
       <button type="button" class=${`flow-side-item${x.you ? ' is-you' : ''}`} title=${x.you ? f.asks : undefined} onClick=${() => c.flowSide(x.id)}>
@@ -91,7 +101,8 @@ function Level2({ entered, mode, points, at, view, picked, titleFor, kindFor, s,
   const t = T()
   const f = t.flow.side
   const [renaming, setRenaming] = useState(false)
-  const bands = bandsOf(points)
+  // in Prio one band: a square by Jev's rank, the unrated by due
+  const bands = bandsOf(points, mode === 'prio' ? (entered.id === 'none' ? 'due' : 'rank') : null)
   const pickable = bands.flatMap(b => b.rows).filter(r => r.row)
   const all = pickable.length > 0 && pickable.every(r => picked.has(r.id))
   const pre = batchPreselect(pickable.map(r => r.row), s)
@@ -134,8 +145,10 @@ function Level2({ entered, mode, points, at, view, picked, titleFor, kindFor, s,
   </div>`
 }
 
-/** The left column: level one the themes or areas, level two the points of the one entered (logic.js flowSides) */
-export function FlowSide({ sides, entered, mode, points, all, at, view, picked, titleFor, kindFor, s, c }) {
+/** The left column: Running now on top, level one the themes, areas or squares, level two the points of the one
+ *  entered (logic.js flowSides), Not now at the foot; `lane` and `left` the page's (flowParts), `run` the entry of
+ *  Running now open in the middle, `open` the group of Not now open there */
+export function FlowSide({ sides, entered, mode, points, all, at, view, picked, titleFor, kindFor, lane = [], left = null, run = null, open = null, s, c }) {
   const f = T().flow.side
   return html`<aside class="flow-side" aria-label=${f.label}>
     <label class="flow-side-select"><span class="sr-only">${f.pick}</span>
@@ -143,9 +156,13 @@ export function FlowSide({ sides, entered, mode, points, all, at, view, picked, 
         <option value="">${sideName(null, mode)} (${sides[0]?.open ?? 0})</option>
         ${sides.filter(x => x.id !== 'all').map(x => html`<option key=${x.id} value=${x.id}>${sideName(x, mode)} (${x.open})</option>`)}
       </select></label>
+    <${RunningNarrow} lane=${lane} s=${s} c=${c} on=${run} />
+    <${NotNowNarrow} left=${left} open=${open} c=${c} />
+    <${RunningBlock} lane=${lane} s=${s} c=${c} on=${run} />
     ${entered ? html`<${Level2} entered=${entered} mode=${mode} points=${points} at=${at} view=${view} picked=${picked}
         titleFor=${titleFor} kindFor=${kindFor} s=${s} c=${c} />`
       : html`<${Level1} sides=${sides} mode=${mode} points=${all} s=${s} c=${c} />`}
+    <${NotNowBlock} left=${left} open=${open} c=${c} />
   </aside>`
 }
 
@@ -283,15 +300,18 @@ function PointActs({ x, s, c, sug }) {
     return row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary="done" onDone=${back} extra=${rest} stack />`
       : html`<div class="fx-do">${rest}</div>`
   }
+  // an entry of Running now: a session the cockpit linked or recognised can be told it works on something else
+  const unlink = x.lane && x.kind === 'session' && x.session?.sid
+    ? html`<${Btn} size="sm" variant="secondary" busy=${!!s.ui.busy?.session_unlink} onClick=${() => c.act('session_unlink', { session: x.session.sid })}>${f.run.unlink}<//>` : null
   if (x.group === 'doing') {
-    if (!row) return lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)
+    if (!row) return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${unlink ? html`<div class="fx-do">${unlink}</div>` : null}`
     // at work: Done, Later, Drop beside its tab; without an agent at work Let AI go on with it. The strong one: the way
     // to a live tab, else the verb the AI suggests where the card has it, else Let AI go on (Done while a start runs)
     const running = !!live || (x.kind === 'start' && ['started', 'working'].includes(x.stage))
     const verbs = running ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']
     const said = verbs.includes(sug?.verb) ? sug.verb : null
     return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
-      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${ways} stack />`
+      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${html`${ways}${unlink}`} stack />`
   }
   if (x.kind === 'start') {
     const r = x.start
@@ -375,12 +395,13 @@ function Fields({ x, s, c }) {
   </section>`
 }
 
-/** The right column: What you can do and the fields of the point open; in the overview a line how they come */
-export function FlowAside({ x, s, c }) {
+/** The right column: What you can do and the fields of the point open, or of the entry of Running now; in the overview
+ *  a line how they come (`hint`: Prio's at its level of all squares, a list of Not now its own) */
+export function FlowAside({ x, s, c, hint = null }) {
   const t = T()
   const f = t.flow
   if (!x) return html`<aside class="flow-aside" aria-label=${f.fields.label}>
-    <section class="flow-aside-part"><p class="label-caps">${f.fields.label}</p><p class="muted small flow-aside-hint">${f.fields.overview}</p></section>
+    <section class="flow-aside-part"><p class="label-caps">${f.fields.label}</p><p class="muted small flow-aside-hint">${hint ?? f.fields.overview}</p></section>
   </aside>`
   const row = x.kind === 'reports' ? null : x.row ?? null
   const sug = row ? flowSuggestion(row, s) : null

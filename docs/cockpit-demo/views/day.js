@@ -444,7 +444,7 @@ function HiddenList({ s, c }) {
 /** The views of the work tab as one row of chips: what is due, by source, by Jev, the files, Work through */
 export function WorkSwitch({ s, c }) {
   const t = T()
-  const views = workViews(workPageOf(s.model?.pages), s.jev, flowOn(s))
+  const views = workViews(workPageOf(s.model?.pages), s.jev, flowOn(s), s.work?.views ?? null)
   const keys = useRoving()
   if (views.length < 2) return null
   const view = workViewNow(s)
