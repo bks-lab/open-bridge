@@ -143,7 +143,12 @@ export function jumpToTab(s, c, ref) {
  *  the controller has; a page that exists nowhere and a row that is gone open Today */
 export function goTo(s, c, target, el) {
   switch (target?.kind) {
-    case 'page': return c.setPage(tickerPage(s, target.id, pageOrder(s)))
+    case 'page': {
+      const done = c.setPage(tickerPage(s, target.id, pageOrder(s)))
+      // a part of the page named (the day's status on Start): brought into view once the page drew it
+      if (target.at) setTimeout(() => globalThis.document?.querySelector?.(target.at)?.scrollIntoView?.({ block: 'start' }), 80)
+      return done
+    }
     case 'item': return c.openItem(target.key, null)
     case 'tab': return jumpToTab(s, c, target.ref)
     case 'drawer': return c.setDrawer(target.id)

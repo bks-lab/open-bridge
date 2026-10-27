@@ -84,7 +84,7 @@ their defaults:
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev), `files` (Files) or `flow` (Work through, with `flow.enabled`), see [The files view](cockpit-files.md); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. A click on the tab's switch still picks another for this browser, until the key changes |
-| `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, `files` is always kept (every link that opens a task's file leads there), not a list or nothing left offers all. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the Sessions tab then goes (Running now lists the sessions) and, without By source, the task check has its tab Tidy up behind More again |
+| `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, `files` is always kept (every link that opens a task's file leads there), not a list or nothing left offers all. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the Sessions tab then goes (Running now lists the sessions) and, without By source, the task check has its tab Tidy up again (behind More only when the bar is full) |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
 | `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue on top and the rest behind it on the chips Active, Waiting, Resting, Backlog and All, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
@@ -374,7 +374,12 @@ out a workspace:
   field: the card's head says it, and
   who works on it and the source stand only here. A row with steps of its own
   on a page (an application) has **Steps ▾**, which opens the info drawer that
-  holds them.
+  holds them. Under the verbs of every point or entry with a row stands
+  **Details**: an inbox item or a task opens its item drawer, with every verb Due
+  has (urgency, area, as a task, follow up, gather info, own workspace, advise as
+  a tab, take over a tab), any other row its detail column beside the page (Prio,
+  area, urgency, take over a tab). The reports carry it on each report in the
+  card, beside Seen.
 
 Before the first state arrives the middle shows the loading or warning block
 Due shows, never "All decided". A click on a tab's name (the tab column, the
@@ -562,7 +567,10 @@ each point (below). The result is kept (`.bridge/cockpit/flow-themes.json`):
 points that come later are given the themes there are, a new theme only where
 none fits, never more than `max_themes`. The page asks only when the view shows
 points without a theme (each once per page load), and **Order themes again**
-orders every point anew; there is no timer. Every run counts against
+orders every point anew; there is no timer. Where the work tab offers no By
+source, **Sort again** stands beside it in every order of the left column: the
+daily triage asked anew for what changed (below), the button By source carries in
+its strip. Every run counts against
 `budget_per_day`; once it is spent, what has no theme yet stands under **No
 theme yet** until the next day. A point you move to another theme or a new one,
 and a theme you rename, stay as you set them through every later run. With the
@@ -813,7 +821,9 @@ and under the greeting in the bridge and tiles views:
   quotas near or over their pace, token outliers, peers and machines that do
   not answer, and the last warning notes. The page builds these from what it
   already holds, so they cost nothing and change the moment the state does. A
-  click opens the place it names: the page, the tab, the row or the drawer.
+  click opens the place it names: the page, the tab, the row or the drawer. A
+  source, the pass, the load or the triage opens the day column of Due, or,
+  where the work tab offers no Due, Start with the day's status in view.
   Red comes before orange, orange before blue. Six rows show; the rest opens
   in place behind "N more". While status rows stand there and no live event
   came yet, the live feed says so in one short line instead of its longer
@@ -2291,8 +2301,9 @@ nothing.
 The card **Look up** in Settings, Appearance (between Keyboard shortcuts and
 Introduction) shows one topic at a time: **Rows** says what a row's mark and
 its section mean; **Acting** covers the panel, Let AI do it, Advise, Close and
-Ask; **Keys** lists the shortcuts, also while they are off, and says where to
-switch them on; **Costs and safety** says what spends tokens and what leaves the
+Ask; **Keys** lists the shortcuts while they are on, and while they are off says
+only that they are off and where to switch them on (mouse first: no key named);
+**Costs and safety** says what spends tokens and what leaves the
 machine. What a part of the page is for, Explain shows on the page itself.
 
 ### Keyboard
@@ -2905,7 +2916,10 @@ a Bridge go further.
    Work through where it is on (in the page and in `config.py`), and no way
    stores it. `cockpit.work_view: flow` with `cockpit.work_views: [files, flow]`
    leaves Work through and Files; without By source the task check is a tab of
-   its own again (Tidy up, behind More).
+   its own again (Tidy up, behind More only when the bar is full), the triage's
+   Sort again stands at the foot of Work through's left column, the band's
+   notes on a source, the pass or the triage open the day's status on Start, and
+   Explain on the switch names only the views it offers.
 2. **Sessions.** With Work through on there is no Sessions tab, and every way to
    it opens Running now. A tab waiting at its prompt and not quiet yet is a
    point (A tab asks); a quiet one (`idle`) stays under Running now as finished.

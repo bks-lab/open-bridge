@@ -161,6 +161,8 @@
 .flow-can .verbbar-panel { padding: 10px 12px; }
 .flow-can .verbbar-panel .btn { width: auto; }
 .flow-can .verbbar-panel .verbbar-acts { flex-wrap: wrap; }
+/* Details under the verbs: the row's drawer or detail column, a quiet link (round 6 B) */
+.flow-can-more { margin: 0; font-size: var(--text-sm); }
 .flow-meta { grid-template-columns: minmax(0, 1fr); gap: 0; }
 .flow-meta .meta-item { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .flow-meta dt { margin: 0; color: var(--on-surface-muted); font-family: inherit; font-size: var(--text-sm); font-weight: 400; letter-spacing: 0; text-transform: none; }

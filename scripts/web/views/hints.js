@@ -6,7 +6,7 @@
 // the page does not show right now is left out. A click anywhere or Esc closes it; it changes nothing.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { hintRounds, hintsFor } from '../logic.js'
+import { hintRounds, hintsFor, hintText } from '../logic.js'
 import { T } from '../text.js'
 import { useFocusOnOpen } from './overlays.js'
 
@@ -50,10 +50,13 @@ function HintsMeasured({ s, c }) {
   now.current = s
   useLayoutEffect(() => {
     const measure = () => {
-      const items = hintsFor(now.current).map(h => ({ id: h.id, group: h.group, rect: rectOf(h.target), note: noteSize(words[h.id]) }))
+      // the words as this page says them (the work switch names its own views), measured and drawn alike
+      const said = hintsFor(now.current).map(h => ({ ...h, words: hintText(words[h.id], h.vars) }))
+      const items = said.map(h => ({ id: h.id, group: h.group, rect: rectOf(h.target), note: noteSize(h.words) }))
       // the bar at the foot keeps its strip: no note is placed behind it
       const view = viewOf()
-      setLayout({ ...hintRounds(items, { width: view.width, height: view.height - BAR_ROOM }), view })
+      setLayout({ ...hintRounds(items, { width: view.width, height: view.height - BAR_ROOM }), view,
+        words: Object.fromEntries(said.map(h => [h.id, h.words])) })
     }
     measure()
     if (typeof window === 'undefined' || !window.addEventListener) return undefined
@@ -80,8 +83,8 @@ function curve({ x1, y1, x2, y2 }) {
   return `M${x1.toFixed(1)} ${y1.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`
 }
 
-/** The drawn overlay for a layout (hintRounds' rounds and the view they were placed in), its round `at`;
- *  `go(n)` shows another round */
+/** The drawn overlay for a layout (hintRounds' rounds, the view they were placed in and the words measured), its
+ *  round `at`; `go(n)` shows another round */
 export function HintsLayer({ layout, at = 0, go = () => {}, c }) {
   const t = T().hints
   const ref = useFocusOnOpen(true)
@@ -117,7 +120,7 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c }) {
       ${placed.filter(p => p.arrow).map(p => html`<path key=${`a${p.id}`} class="hints-arrow" d=${curve(p.arrow)} marker-end="url(#hints-head)" />`)}
     </svg>
     ${placed.map(p => {
-      const words = t.items[p.id]
+      const words = layout?.words?.[p.id] ?? hintText(t.items[p.id])
       return html`<div key=${p.id} class="hints-note" data-hint=${p.id}
         style=${{ top: `${Math.round(p.note.top)}px`, left: `${Math.round(p.note.left)}px`, width: `${p.note.width}px` }}>
         <span class="hints-n mono" aria-hidden="true">${p.n}</span>

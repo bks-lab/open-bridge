@@ -10,7 +10,7 @@ export const FLOW = {
     side: {
       label: 'Group by', themes: 'Themes', areas: 'Areas', allThemes: 'All themes', allAreas: 'All areas', noTheme: 'No theme yet',
       noArea: 'No area', you: n => `${n} need${n === 1 ? 's' : ''} you`, open: n => `${n} open`, asks: 'Something here needs you',
-      regroup: 'Order themes again', regrouping: 'Ordering the themes', ordering: 'Haiku gives the new points a theme',
+      regroup: 'Order themes again', resort: 'Sort again', regrouping: 'Ordering the themes', ordering: 'Haiku gives the new points a theme',
       budget: 'No runs left today: what has no theme yet waits under No theme yet', failed: 'The themes could not be ordered',
       pick: 'Theme or area', move: 'Move to theme', moveLabel: 'Theme of this point', newTheme: 'New theme', newName: 'Name of the new theme',
       rename: 'Rename the theme', renameLabel: 'New name', save: 'Save', cancel: 'Cancel',
@@ -97,6 +97,7 @@ export const FLOW = {
       note: 'Read only: nothing changes until you pick a verb.',
     },
     reports: n => (n === 1 ? '1 report' : `${n} reports`), seen: 'Seen', allSeen: 'All seen',
+    details: 'Details', detailsTitle: 'Every field and verb of this row',
     walk: { label: 'Walk through the cards', done: 'That was the last card.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
     run: {
@@ -199,7 +200,7 @@ export const FLOW = {
     side: {
       label: 'Gruppieren nach', themes: 'Themen', areas: 'Bereiche', allThemes: 'Alle Themen', allAreas: 'Alle Bereiche', noTheme: 'Noch ohne Thema',
       noArea: 'Ohne Bereich', you: n => `${n} ${n === 1 ? 'braucht' : 'brauchen'} dich`, open: n => `${n} offen`, asks: 'Hier braucht dich etwas',
-      regroup: 'Themen neu ordnen', regrouping: 'Themen werden geordnet', ordering: 'Haiku gibt den neuen Punkten ein Thema',
+      regroup: 'Themen neu ordnen', resort: 'Neu einordnen', regrouping: 'Themen werden geordnet', ordering: 'Haiku gibt den neuen Punkten ein Thema',
       budget: 'Für heute keine Läufe mehr: was noch kein Thema hat, wartet unter Noch ohne Thema', failed: 'Die Themen ließen sich nicht ordnen',
       pick: 'Thema oder Bereich', move: 'In Thema legen', moveLabel: 'Thema dieses Punkts', newTheme: 'Neues Thema', newName: 'Name des neuen Themas',
       rename: 'Thema umbenennen', renameLabel: 'Neuer Name', save: 'Speichern', cancel: 'Abbrechen',
@@ -286,6 +287,7 @@ export const FLOW = {
       note: 'Nur lesend: nichts ändert sich, bis du ein Verb wählst.',
     },
     reports: n => (n === 1 ? '1 Meldung' : `${n} Meldungen`), seen: 'Gesehen', allSeen: 'Alle gesehen',
+    details: 'Details', detailsTitle: 'Alle Felder und Befehle dieser Zeile',
     walk: { label: 'Durch die Karten gehen', done: 'Das war die letzte Karte.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
     run: {

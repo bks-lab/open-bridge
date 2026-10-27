@@ -239,15 +239,17 @@ function DetailsCard({ s, c }) {
 
 const LOOKUP_TOPICS = ['rows', 'act', 'keys', 'trust']
 
-/** To look up, one topic at a time: what the marks of a row say, how acting works, the keys (listed while they are
- *  off too), what costs tokens and what stays local. What each part of a page is for is Explain's, in the header */
+/** To look up, one topic at a time: what the marks of a row say, how acting works, the keys (only while they are on:
+ *  mouse first, so off the card says only that they are off, the card above switches them on), what costs tokens and
+ *  what stays local. What each part of a page is for is Explain's, in the header */
 function LookupCard({ s }) {
   const t = T()
   const w = t.settings
   const [topic, setTopic] = useState('rows')
   const body = topic === 'keys'
-    ? html`<p class="muted small">${s.ui.shortcuts ? t.commandHint : t.keysOff}</p>
+    ? s.ui.shortcuts ? html`<p class="muted small">${t.commandHint}</p>
       <dl class="keys">${t.keys.map(([k, v], i) => html`<div key=${i}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>`
+      : html`<p class="muted small">${t.keysOff}</p>`
     : html`<dl class="help-text">${t.helpTopics[topic].map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
       ? html`<ul class="plain help-list">${v.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : v}</dd></div>`)}</dl>`
   return html`<${Card} title=${w.lookupTitle} intro=${w.lookupIntro}>

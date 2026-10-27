@@ -3092,6 +3092,9 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   const add = (id, cat, tone, key, vars = [], target = null) => out.push({ id: `st:${id}`, cat, tone, key, vars, target })
   const model = s?.model ?? {}
   const tk = s?.ticker ?? {}
+  // where the state of the sources, the pass and the triage stands: the day column of Due, else (Due switched off)
+  // the day's status on Start (round 6 B), since Work through shows neither it nor its Repair
+  const dayAt = workViewsIn(s).includes('due') ? { kind: 'page', id: 'briefing' } : { kind: 'page', id: '@start', at: '.day-status' }
   // 1 findings on a page
   for (const a of model.alarms ?? []) add(`alarm:${a.page_id}:${a.section_title}`, 'failing', 'bad', 'alarm', [a.count, `${a.section_title} (${a.page_title})`], { kind: 'page', id: a.page_id })
   // 2 the quotas, against their marks and their pace
@@ -3104,21 +3107,21 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   for (const o of tk.perf?.outliers ?? []) add(`outlier:${o.source}`, 'quota', 'warn', 'outlier', [o.source, o.factor], { kind: 'page', id: '@sessions' })
   // 4 and 5 the briefing pass: failed, or running far longer than it should
   const ld = s?.loading ?? {}
-  if (ld.last_error) add('load-failed', 'failing', 'bad', 'loadFailed', [short(ld.last_error.message ?? '', 60)], { kind: 'page', id: 'briefing' })
+  if (ld.last_error) add('load-failed', 'failing', 'bad', 'loadFailed', [short(ld.last_error.message ?? '', 60)], dayAt)
   if (ld.pass && ld.started_ms && now - ld.started_ms > Math.max(1.5 * (ld.eta_ms || 0), 30000)) {
     add('load-slow', 'slow', 'warn', 'loadSlow', [duration(now - ld.started_ms)])
   }
   // 6 the last pass, against the collect time limit
   const pass = (tk.perf?.passes ?? []).at(-1)
   const limit = tk.limits?.timeout_ms ?? 0
-  if (pass && limit && pass.took_ms >= 0.9 * limit) add('pass-slow', 'slow', 'bad', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
-  else if (pass && pass.took_ms >= 60000) add('pass-slow', 'slow', 'warn', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
+  if (pass && limit && pass.took_ms >= 0.9 * limit) add('pass-slow', 'slow', 'bad', 'passSlow', [Math.round(pass.took_ms / 1000)], dayAt)
+  else if (pass && pass.took_ms >= 60000) add('pass-slow', 'slow', 'warn', 'passSlow', [Math.round(pass.took_ms / 1000)], dayAt)
   // 7 a source of the briefing in error: out of time is slow, anything else failing
   for (const x of model.status ?? []) {
-    if (skipFixable(x)) add(`source:${x.title}`, 'failing', 'warn', 'sourceCannotRun', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })
+    if (skipFixable(x)) add(`source:${x.title}`, 'failing', 'warn', 'sourceCannotRun', [x.title, short(x.reason ?? '', 60)], dayAt)
     if (x.state !== 'error') continue
-    if (/took longer|time limit/i.test(x.reason ?? '')) add(`source:${x.title}`, 'slow', 'warn', 'sourceSlow', [x.title], { kind: 'page', id: 'briefing' })
-    else add(`source:${x.title}`, 'failing', 'bad', 'sourceFailed', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })
+    if (/took longer|time limit/i.test(x.reason ?? '')) add(`source:${x.title}`, 'slow', 'warn', 'sourceSlow', [x.title], dayAt)
+    else add(`source:${x.title}`, 'failing', 'bad', 'sourceFailed', [x.title, short(x.reason ?? '', 60)], dayAt)
   }
   // 8 to 10 the page itself
   if (model.stale) add('stale', 'failing', 'warn', 'stale')
@@ -3154,8 +3157,8 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   else if (rv.error) add('review', 'failing', 'bad', 'reviewFailed', [], { kind: 'review' })
   if (!rv.running && (rv.last?.to_close ?? 0) > 0) add('to-close', 'waiting', 'info', 'toClose', [rv.last.to_close], { kind: 'review' })
   // 18 the daily check
-  if (s?.triage?.running) add('triage', 'running', 'info', 'triageRuns', [], { kind: 'page', id: 'briefing' })
-  else if (s?.triage?.error) add('triage', 'failing', 'bad', 'triageFailed', [], { kind: 'page', id: 'briefing' })
+  if (s?.triage?.running) add('triage', 'running', 'info', 'triageRuns', [], dayAt)
+  else if (s?.triage?.error) add('triage', 'failing', 'bad', 'triageFailed', [], dayAt)
   // 19 and 20 the agents of other Bridges
   for (const p of s?.agents?.peers ?? []) {
     if (['refused', 'failed', 'unreachable'].includes(p.reach)) add(`peer:${p.id}`, 'offline', 'warn', 'peerDown', [p.name ?? p.id], { kind: 'page', id: '@agents' })
@@ -3555,15 +3558,24 @@ const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['tabsButton
   ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['explain', '.hdr-explain']]
 
 /** What the overlay explains on the page now: its own areas (group page), then the header (group head).
- *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts */
+ *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts; the work
+ *  switch's item carries the views on offer as `vars` */
 export function hintsFor(s) {
   const page = s?.ui?.page
   const view = page === 'briefing' ? workViewIn(s) : null
   const dayColumns = page !== 'briefing' || view === 'due'
   const own = view === 'flow' ? [['workSwitch', '.work-switch'], ...HINTS['@flow']] : !dayColumns ? [['workSwitch', '.work-switch'], ...PAGE_HINTS, ['tabcol', '#tabs-column']]
     : HINTS[page] ?? [...PAGE_HINTS, ['tabcol', '#tabs-column']]
-  return [...own.map(([id, target]) => ({ id, target, group: 'page' })),
+  // the work switch names the views it offers, no other (round 6 B): its words get them as `vars` (hintText)
+  const vars = id => (id === 'workSwitch' ? { vars: [workViewsIn(s)] } : {})
+  return [...own.map(([id, target]) => ({ id, target, group: 'page', ...vars(id) })),
     ...HEADER_HINTS.map(([id, target]) => ({ id, target, group: 'head' }))]
+}
+
+/** A hint's words as the page shows them: a body that depends on the page (a function of the hint's `vars`, hintsFor)
+ *  filled in, any other as it stands */
+export function hintText(words, vars = []) {
+  return typeof words?.body === 'function' ? { ...words, body: words.body(...vars) } : words
 }
 
 const HINT_MARGIN = 12    // the notes keep this far off the screen's edges

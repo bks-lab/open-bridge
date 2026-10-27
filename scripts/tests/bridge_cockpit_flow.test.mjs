@@ -521,6 +521,34 @@ test('In progress: the card shows the last lines, the field says who works on it
   assert.equal(el.button(en.flow.toTab), null)
 })
 
+test('Sort again at the foot of the left column where By source, which carries the triage rerun, is off (round 6 B)', () => {
+  const at = (views, themes, busy = {}) => {
+    const s = { ...state({ work: [task('a'), task('b')] }), themes, ui: { ...state().ui, page: 'briefing', workView: 'flow', flowView: 'overview', busy } }
+    s.model.pages = [{ id: 'arbeit', title: 'Work', group: 'work', sections: [] }]
+    s.work = { ...s.work, views }
+    return s
+  }
+  for (const themes of [themesState(), { enabled: false }]) {
+    const c = recorder()
+    const el = mount(html`<${FlowPage} s=${cockpitState(NOW, at(['files', 'flow'], themes))} c=${c} />`)
+    const b = el.$$('.flow-side .flow-side-foot button').find(x => x.text() === en.flow.side.resort)
+    assert.ok(b, `Sort again with the themes ${themes.enabled ? 'on' : 'off'}`)
+    assert.ok(b.hasClass('btn-ghost'))
+    assert.equal(b.getAttribute('title'), en.triage.rerunTitle)
+    b.click()
+    assert.deepEqual(c.calls.find(x => x[0] === 'triageRun'), ['triageRun', false])
+    if (themes.enabled) assert.ok(el.$('.flow-side-foot').$$('button').some(x => x.text() === en.flow.side.regroup), 'beside Order themes again')
+  }
+  // busy while the triage runs, and not there while By source offers its own
+  const busy = mount(html`<${FlowPage} s=${cockpitState(NOW, at(['files', 'flow'], themesState(), { [logic.TRIAGE_BUSY]: true }))} c=${recorder()} />`)
+  const b = busy.$$('.flow-side-foot button').find(x => x.text() === en.flow.side.resort)
+  assert.ok(b.getAttribute('disabled') != null && b.getAttribute('aria-busy') === 'true')
+  const all = mount(html`<${FlowPage} s=${cockpitState(NOW, at(null, themesState()))} c=${recorder()} />`)
+  assert.ok(!all.$$('.flow-side button').some(x => x.text() === en.flow.side.resort), 'By source carries it')
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.side.resort, lang)
+  assert.equal(text.TABLES.de.flow.side.resort, 'Neu einordnen')
+})
+
 test('the themes: the view asks for the points without one, never twice in a render, not with the day spent or the themes off', async () => {
   const th = themesState({ assign: { 'task:a': 't000001' } })
   const base = { ...state({ work: [task('a'), task('b')] }), ui: { ...state().ui, page: 'briefing', workView: 'flow' } }
@@ -1570,6 +1598,36 @@ test('the right column by card: a live tab gives To tab and View, a finished sta
   const r = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: [report('20261009-0901-a-r')] }))} c=${recorder()} />`)
   assert.ok(r.$('.flow-aside').$$('button').some(b => b.text() === en.flow.allSeen))
   assert.ok(!r.$('.flow-card').$$('button').some(b => b.text() === en.flow.allSeen))
+})
+
+test('Details at the point (round 6 B): an inbox item or a task opens its drawer, any other row its detail column, a report its own', () => {
+  const details = el => el.$$('.flow-aside .flow-can button').filter(b => b.text() === en.flow.details)
+  const q = ask('20261009-0900-a-q1')
+  const t = task('a')
+  const issue = ref('acme/app', 7, { bucket: 'do' })
+  for (const [s, call] of [[state({ now: [q] }), ['openItem', q.key]], [state({ work: [t] }), ['openItem', t.key]],
+    [state({ now: [issue] }), ['peek', issue.key, null]]]) {
+    const c = recorder()
+    const el = mount(html`<${FlowPage} s=${cockpitState(NOW, s)} c=${c} />`)
+    const links = details(el)
+    assert.equal(links.length, 1, `one Details at ${call[1]}`)
+    assert.ok(links[0].hasClass('btn-link'), 'a link in the style of the column, below the verbs')
+    links[0].click()
+    const got = c.calls.find(x => x[0] === call[0])
+    assert.ok(got, `${call[0]} for ${call[1]}`)
+    assert.deepEqual(got.slice(0, call.length), call)
+    if (call[0] === 'openItem') assert.equal(got[2]?.key, call[1], 'the drawer gets the row')
+  }
+  // the reports: one point of many rows, so Details stands on each report in the card, beside its Seen
+  const reps = [report('20261009-0901-a-r'), report('20261009-0902-a-r')]
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: reps }))} c=${c} />`)
+  assert.equal(details(el).length, 0)
+  const each = el.$$('.flow-reports > li').map(li => li.$$('button').find(b => b.text() === en.flow.details))
+  assert.equal(each.filter(Boolean).length, 2)
+  each[1].click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'openItem').slice(0, 2), ['openItem', reps[1].key])
+  for (const lang of ['en', 'de']) assert.equal(text.TABLES[lang].flow.details, 'Details')
 })
 
 test('nothing twice: state in the card head, who and source in the fields, the screen in the card, the suggestion on the right', () => {

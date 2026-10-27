@@ -35,8 +35,8 @@
 // briefs of the next points that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
 // once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key), in every order of the
 // left column, as does Jev's daily order of the work page where Jev orders it (c.flowPrioOrder, once per page load;
-// the server orders anew only on the day's first ask). No title opens a drawer or another view. For the mouse: the
-// page names no key.
+// the server orders anew only on the day's first ask). No title opens a drawer or another view; Details does, under
+// the verbs of a point and on each report (round 6 B). For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
@@ -51,7 +51,7 @@ import { LeftList } from './flowleft.js'
 import { FlowOverview, listRows, walkOrder } from './flowlist.js'
 import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
-import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
+import { DetailsLink, FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
 import { Calm, Hero } from './focus.js'
@@ -129,7 +129,8 @@ function StartCard({ x, s, c }) {
   </article>`
 }
 
-/** The reports as one card: each folds open with its reasons and Seen; all of them seen at once stands on the right */
+/** The reports as one card: each folds open with its reasons, Seen and Details (its drawer, views/flowside.js
+ *  openDetails); all of them seen at once stands on the right */
 function ReportsCard({ x, s, c }) {
   const f = T().flow
   return html`<article class="fx-hero tk-muted" aria-labelledby="flow-title">
@@ -139,7 +140,7 @@ function ReportsCard({ x, s, c }) {
       <summary>${r.title}</summary>
       ${(r.why ?? []).length ? html`<ul class="fx-why">${r.why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
       <div class="fx-do"><${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy?.[r.key]}
-        onClick=${() => c.act('settle', { keys: [r.key], outcome: 'done' })}>${f.seen}<//></div>
+        onClick=${() => c.act('settle', { keys: [r.key], outcome: 'done' })}>${f.seen}<//><${DetailsLink} row=${r} c=${c} /></div>
     </details></li>`)}</ul>
   </article>`
 }

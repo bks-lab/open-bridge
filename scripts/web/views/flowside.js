@@ -7,8 +7,8 @@
 // (logic.js flowModes, flowMode), then All themes (or All areas, All squares) and one entry per theme or area that holds
 // a point (its colour, its name, how many need you in the warning tone, how many are open), No theme yet or No area
 // last; a click enters it. Entered, the list stays the same with the one entered marked and All leads back. Under the
-// list Order themes again (a regroup within the day's budget), what the themes run is doing, and Rename while a theme
-// is entered. In Prio the list holds Jev's four squares (an empty one too) and Not rated yet, with when Jev ordered and
+// list Order themes again (a regroup within the day's budget), Sort again where By source is off (the daily triage
+// asked anew, in every order, round 6 B), what the themes run is doing, and Rename while a theme is entered. In Prio the list holds Jev's four squares (an empty one too) and Not rated yet, with when Jev ordered and
 // Ask Jev again at its foot (views/flowprio.js PrioFoot). On a narrow screen the list is one select over the middle,
 // Running now and Not now fold under it.
 // FlowAside, the right column of an open point (round 3; round 6 B: only while one is open), as an issue tracker's
@@ -19,7 +19,8 @@
 // start the verb the AI suggests (else Done and close the tab), the other verbs, Improve, Runs on, Open answer and its
 // tab's ways, a lost one Start again, Done, Drop and Forget, the return card Done, Later, Drop, Runs on and Not yet,
 // the reports All seen; a row with steps of its own on a page (an application, logic.js pageStepsOf) its steps, which
-// open the info drawer where they stand (round 6 B).
+// open the info drawer where they stand (round 6 B). Under the verbs Details opens the row's drawer (an inbox item, a
+// task) or its detail column (any other row), where every verb of Due stands (round 6 B).
 // Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
 // else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source (its
 // chip, STATUS.md to the files view, an issue or a pull request by its ref on the web), Created, Moved. No Status
@@ -30,7 +31,7 @@
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
-  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, short,
+  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, short, triageRunning, workPageOf, workViewsIn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
@@ -71,10 +72,19 @@ function Rename({ theme, c, onDone }) {
   </form>`
 }
 
+/** Sort again: the daily triage asked anew for what changed (c.triageRun, small model, cents), the button By source
+ *  carries in its strip (triage.js TriageBar). Only where a work page exists and By source is not on offer (round 6 B) */
+function Resort({ s, c }) {
+  if (!workPageOf(s.model?.pages) || workViewsIn(s).includes('area')) return null
+  return html`<${Btn} size="xs" variant="ghost" busy=${triageRunning(s)} title=${T().triage.rerunTitle}
+    onClick=${() => c.triageRun(false)}>${T().flow.side.resort}<//>`
+}
+
 /** The list of the left column, the same on both levels like a mail app's folders: All first (marked at the level
  *  of all, a click leads back to it), then the themes, areas or squares with their counts, the one entered marked
- *  while the middle shows it or one of its points (`marked`); a click enters one. The foot: Order themes again and,
- *  while a theme is entered, Rename it; in Prio Ask Jev again */
+ *  while the middle shows it or one of its points (`marked`); a click enters one. The foot: Order themes again,
+ *  Sort again where By source is off (Resort, in every order) and, while a theme is entered, Rename it; in Prio Ask
+ *  Jev again */
 function SideList({ sides, entered, mode, points, marked, s, c }) {
   const f = T().flow.side
   const th = s.themes
@@ -105,10 +115,12 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
     ${mode === 'themes' ? html`<div class="flow-side-foot flow-side-body">
       <${Btn} size="xs" variant="secondary" icon="spark" busy=${busy} disabled=${!keys.length || th?.budget_left === 0}
         onClick=${() => c.flowThemes('regroup', keys.slice(0, 50))}>${f.regroup}<//>
+      <${Resort} s=${s} c=${c} />
       ${status ? html`<p class="muted small" role="status">${status}</p>` : null}
       ${entered?.theme ? renaming ? html`<${Rename} key=${entered.theme.id} theme=${entered.theme} c=${c} onDone=${() => setRenaming(false)} />`
         : html`<${Btn} size="xs" variant="ghost" onClick=${() => setRenaming(true)}>${f.rename}<//>` : null}
-    </div>` : mode === 'prio' ? html`<${PrioFoot} s=${s} c=${c} />` : null}`
+    </div>` : html`${mode === 'prio' ? html`<${PrioFoot} s=${s} c=${c} />` : null}${Resort({ s, c }) ? html`<div class="flow-side-foot flow-side-body">
+      <${Resort} s=${s} c=${c} /></div>` : null}`}`
 }
 
 /** The left column, a table of contents (round 5): Running now as one row on top (views/flowrun.js RunningRow, the
@@ -363,8 +375,18 @@ function Fields({ x, s, c }) {
   </section>`
 }
 
+/** Details of a row (round 6 B): an inbox item or a task in its drawer, with every verb Due has (urgency, area, as a
+ *  task, follow up, gather info, own workspace, advise as a tab, take over a tab), any other row in its detail column
+ *  beside the page (Prio, area, urgency, take over a tab) */
+export const openDetails = (c, row) => (row.inbox_id || String(row.key).startsWith('task:') ? c.openItem(row.key, row) : c.peek(row.key, null))
+
+/** The link Details under the verbs of a row */
+export const DetailsLink = ({ row, c }) => html`<button type="button" class="btn-link flow-details" title=${T().flow.detailsTitle}
+  onClick=${() => openDetails(c, row)}>${T().flow.details}</button>`
+
 /** The right column: What you can do and the fields of the point open, or of the entry of Running now; nothing while
- *  none is open (round 6 B: no empty Fields card, the middle takes the width) */
+ *  none is open (round 6 B: no empty Fields card, the middle takes the width). Under the verbs Details, where the point
+ *  or the entry has a row (the reports carry it on each report in the card) */
 export function FlowAside({ x, s, c }) {
   const t = T()
   const f = t.flow
@@ -376,6 +398,7 @@ export function FlowAside({ x, s, c }) {
       <h3 id="flow-can" class="label-caps">${f.fields.can}</h3>
       ${sug ? html`<p class="flow-can-sug"><span class="label-caps">${f.list.cols.suggestion}</span> <${Suggestion} sug=${sug} s=${s} /></p>` : null}
       <${PointActs} key=${x.id} x=${x} s=${s} c=${c} sug=${sug} />
+      ${row?.key ? html`<p class="flow-can-more"><${DetailsLink} row=${row} c=${c} /></p>` : null}
     </section>
     <${Fields} x=${x} s=${s} c=${c} />
   </aside>`

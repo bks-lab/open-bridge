@@ -16,6 +16,10 @@ import { CHAT } from './text-chat.js'
 /** The CLI an error names ("the claude CLI is not available"), or null */
 const cliName = e => /\bthe (\S+) CLI\b/.exec(String(e?.message ?? ''))?.[1] ?? null
 
+// every view the work tab's switch can offer, in its order (logic.js workViews): the words of the switch's hint name
+// these where no list is given
+const WORK_VIEWS_ALL = ['due', 'area', 'jev', 'dossier', 'flow']
+
 const en = {
   appName: 'Bridge',
   cockpit: 'Cockpit',
@@ -822,7 +826,10 @@ const en = {
       tabcol: { title: 'Agent tabs', body: 'Every agent in your terminal, grouped by workspace. A marked one waits for you, answer it right here.' },
       tabWait: { title: 'A tab that needs you', body: 'What it asks, read by Haiku. Yes and No answer it from here, more shows the rest.' },
       snap: { title: 'Layout backup', body: 'Saves how your tabs stand in the terminal, so the layout comes back after a restart.' },
-      workSwitch: { title: 'How the work is ordered', body: 'Due sorts by date, By source by where an entry comes from, By Jev in the order Jev suggests.' },
+      // the views the switch offers, in its order (logic.js hintsFor gives them, hintText fills them in; none given: all)
+      workSwitch: { title: 'How the work is ordered', body: views => (Array.isArray(views) ? views : WORK_VIEWS_ALL).map(v => ({ due: 'Due: by date.', area: 'By source: by origin.',
+        jev: 'By Jev: in the order Jev suggests.', dossier: 'Files: task by task, closed ones too.',
+        flow: 'Work through: everything open exactly once, point by point.' })[v]).filter(Boolean).join(' ') },
       chatModel: { title: 'Model for answers', body: 'Which model answers here. Haiku is quick and cheap, Opus thinks longest.' },
       chatList: { title: 'Your chats', body: 'Earlier questions with their answers. A click opens one again, New starts a fresh one.' },
       chatBox: { title: 'Ask', body: 'Claude reads and changes nothing. A bigger job goes on from the answer into an agent tab.' },
@@ -2320,7 +2327,10 @@ const de = {
       tabcol: { title: 'Agenten-Tabs', body: 'Jeder Agent in deinem Terminal, nach Workspace gruppiert. Ein markierter wartet auf dich, antworte ihm gleich hier.' },
       tabWait: { title: 'Ein Tab, der dich braucht', body: 'Was er fragt, von Haiku gelesen. Ja und Nein antworten ihm von hier, mehr zeigt den Rest.' },
       snap: { title: 'Sicherung der Anordnung', body: 'Hält fest, wie deine Tabs im Terminal stehen, damit die Anordnung nach einem Neustart zurückkommt.' },
-      workSwitch: { title: 'Wie die Arbeit geordnet ist', body: 'Dran ordnet nach Datum, Nach Quelle nach der Herkunft eines Eintrags, Nach Jev in der Reihenfolge, die Jev vorschlägt.' },
+      // the views the switch offers, in its order (logic.js hintsFor gives them, hintText fills them in; none given: all)
+      workSwitch: { title: 'Wie die Arbeit geordnet ist', body: views => (Array.isArray(views) ? views : WORK_VIEWS_ALL).map(v => ({ due: 'Dran: nach Datum.', area: 'Nach Quelle: nach Herkunft.',
+        jev: 'Nach Jev: in Jevs Reihenfolge.', dossier: 'Akten: Aufgabe für Aufgabe, auch erledigte.',
+        flow: 'Abarbeiten: alles Offene genau einmal, Punkt für Punkt.' })[v]).filter(Boolean).join(' ') },
       chatModel: { title: 'Modell für Antworten', body: 'Welches Modell hier antwortet. Haiku ist schnell und günstig, Opus denkt am längsten.' },
       chatList: { title: 'Deine Chats', body: 'Frühere Fragen mit ihren Antworten. Ein Klick öffnet eine wieder, Neu beginnt eine frische.' },
       chatBox: { title: 'Fragen', body: 'Claude liest und ändert nichts. Größere Arbeit geht von der Antwort aus in einen Agenten-Tab.' },

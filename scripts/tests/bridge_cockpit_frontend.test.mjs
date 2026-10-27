@@ -2439,6 +2439,26 @@ test('ticker: a quiet store says nothing; the kinds are the seven of the contrac
   assert.deepEqual(logic.tickerStatus(quietStore(), NOW, logic.TICKER_KINDS), [])
 })
 
+test('ticker: without Due the sources, the pass, the load and the triage lead to the day status on Start (round 6 B)', () => {
+  const off = over => quietStore({ work: { flow: { enabled: true }, views: ['files', 'flow'] }, ...over })
+  const model = extra => ({ ...quietStore().model, ...extra })
+  const start = { kind: 'page', id: '@start', at: '.day-status' }
+  for (const [s, key] of [
+    [off({ model: model({ status: [{ title: 'Mail', state: 'error', reason: 'token expired' }] }) }), 'sourceFailed'],
+    [off({ model: model({ status: [{ title: 'Mail', state: 'error', reason: 'took longer than the time limit' }] }) }), 'sourceSlow'],
+    [off({ model: model({ status: [{ title: 'Mail', status: 'skipped', reason: 'no such command' }] }) }), 'sourceCannotRun'],
+    [off({ loading: { pass: null, last_error: { message: 'boom' } } }), 'loadFailed'],
+    [off({ ticker: { ...quietStore().ticker, perf: { passes: [{ took_ms: 70000 }], outliers: [] } } }), 'passSlow'],
+    [off({ triage: { running: true, error: null } }), 'triageRuns'],
+    [off({ triage: { running: null, error: 'boom' } }), 'triageFailed'],
+  ]) assert.deepEqual(statusOf(s, key)[0]?.target, start, key)
+  // what waits on you still opens the work tab, and with Due on offer the status keeps it too
+  assert.deepEqual(statusOf(off({ model: model({ counts: { now: 2 } }) }), 'waitsForYou')[0].target, { kind: 'page', id: 'briefing' })
+  assert.deepEqual(statusOf(quietStore({ triage: { running: null, error: 'boom' } }), 'triageFailed')[0].target, { kind: 'page', id: 'briefing' })
+  // the way there opens the page, then brings the part it names into view
+  assert.match(read('views/home.js'), /case 'page': \{[\s\S]*?target\.at[\s\S]*?scrollIntoView/)
+})
+
 test('ticker: each status rule names its kind, tone and where a click leads', () => {
   const mk = over => quietStore(over)
   const model = extra => ({ ...quietStore().model, ...extra })
@@ -2582,7 +2602,7 @@ test('ticker: a page target opens pages the controller routes itself, Today only
   assert.equal(logic.tickerPage({ model: null }, 'gone', []), 'briefing')
   // the band leads through goTo, which toasts and notes share (views/home.js)
   const tk = read('views/home.js')
-  assert.match(tk, /case 'page': return c\.setPage\(tickerPage\(s, target\.id, pageOrder\(s\)\)\)/)
+  assert.match(tk, /case 'page': \{\s*const done = c\.setPage\(tickerPage\(s, target\.id, pageOrder\(s\)\)\)/)
   assert.match(tk, /case 'item': return c\.openItem\(target\.key, null\)/)
 })
 
@@ -4696,6 +4716,26 @@ test('hintsFor: the page\'s own areas first, then the header, each once, each wi
   for (const id of ['pageBadge', 'table', 'ghFigures', 'costBars', 'calDays']) assert.ok(prof.includes(id), id)
 })
 
+test('hints: the work switch explains the views it offers, no other (round 6 B)', () => {
+  const s = { ui: { page: 'briefing', workView: 'flow' }, layout: 'wide', work: { flow: { enabled: true }, views: ['files', 'flow'] },
+    model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
+  const sw = logic.hintsFor(s).find(h => h.id === 'workSwitch')
+  assert.deepEqual(sw.vars, [['dossier', 'flow']])
+  const de = logic.hintText(text.TABLES.de.hints.items.workSwitch, sw.vars).body
+  assert.equal(de, 'Akten: Aufgabe für Aufgabe, auch erledigte. Abarbeiten: alles Offene genau einmal, Punkt für Punkt.')
+  for (const gone of ['Dran', 'Nach Quelle', 'Nach Jev']) assert.ok(!de.includes(gone), gone)
+  const en = logic.hintText(text.TABLES.en.hints.items.workSwitch, sw.vars).body
+  assert.ok(en.startsWith('Files: ') && en.includes('Work through: ') && !/Due|By source|By Jev/.test(en), en)
+  // every view on offer names itself, in the order of the switch
+  const all = logic.hintsFor({ ...WORK_AREA, work: { flow: { enabled: true } } }).find(h => h.id === 'workSwitch')
+  assert.deepEqual(all.vars, [['due', 'area', 'dossier', 'flow']])
+  assert.match(logic.hintText(text.TABLES.de.hints.items.workSwitch, all.vars).body, /^Dran: .*Nach Quelle: .*Akten: .*Abarbeiten: /)
+  // a hint whose words do not depend on the page stays as it is
+  assert.equal(logic.hintText(text.TABLES.en.hints.items.ask), text.TABLES.en.hints.items.ask)
+  // the overlay measures and draws the words of the page it explains
+  assert.match(read('views/hints.js'), /hintText\(words\[h\.id\], h\.vars\)/)
+})
+
 test('hints: every explanation in the texts belongs to an area some page points at, in both languages alike', () => {
   const used = new Set([...HINT_PAGES.map(page => ({ ui: { page }, layout: 'wide' })), WORK_AREA]
     .flatMap(s => logic.hintsFor(s).map(h => h.id)))
@@ -4703,7 +4743,9 @@ test('hints: every explanation in the texts belongs to an area some page points 
     const items = text.TABLES[lang].hints.items
     assert.deepEqual(Object.keys(items).filter(id => !used.has(id)), [], `${lang}: words no page uses`)
     for (const [id, w] of Object.entries(items)) {
-      assert.ok(w.body.length >= 30 && w.body.length <= 160, `${lang} ${id}: ${w.body.length} characters`)
+      // words that name what the page offers (the work switch): the fewest and the most it can name
+      const bodies = typeof w.body === 'function' ? [w.body(['dossier', 'flow']), w.body(['due', 'area', 'jev', 'dossier', 'flow'])] : [w.body]
+      for (const b of bodies) assert.ok(b.length >= 30 && b.length <= (bodies.length > 1 ? 200 : 160), `${lang} ${id}: ${b.length} characters`)
     }
   }
   assert.deepEqual(Object.keys(text.TABLES.en.hints.items).sort(), Object.keys(text.TABLES.de.hints.items).sort())
