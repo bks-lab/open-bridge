@@ -30,8 +30,10 @@ code { font-size: 12px; overflow-wrap: anywhere; }
 :focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
 :focus:not(:focus-visible) { outline: none; }
 
+/* pinned to the corner of its containing block: where it flowed instead, the spans of a long list in the page
+   column reached past the window and the document scrolled with the column */
 .sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 .skip {

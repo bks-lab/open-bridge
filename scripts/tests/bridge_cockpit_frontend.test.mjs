@@ -578,6 +578,17 @@ test('FE-1: the page shows the connection as lost once it is not open for 3 s, a
   assert.equal(logic.connLost('connecting', 6000, 10000), true)
 })
 
+test('a screen reader span never stretches the document: .sr-only pins itself to the corner of its containing block', () => {
+  // without top and left it stands where it would flow; inside the page column that has no positioned ancestor, so
+  // the spans of a long list (the origin chips of the GitHub rows) reached past the window and the document scrolled
+  // with the column: a jump to a section (ctl.openSection) moved the whole page and left a blank band under it
+  const css = read('style.css')
+  const rule = css.slice(css.indexOf('.sr-only {'), css.indexOf('}', css.indexOf('.sr-only {')))
+  assert.match(rule, /position: absolute/)
+  assert.match(rule, /top: 0/)
+  assert.match(rule, /left: 0/)
+})
+
 test('FE-1 / FE-3: warnings name a lost connection, a stale model and a failed pass, at every width', () => {
   const t = text.TABLES.en
   const base = { conn: 'open', connMs: 0, now: 10000, model: { stale: false }, loading: { pass: null, last_error: null } }
