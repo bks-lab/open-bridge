@@ -583,7 +583,9 @@ class WorkVerbs:
             raise ActionError(429, "describe_budget", tx["budget"], "ahead")
         result = app.describe.run_key(key, why="ahead" if ahead else "click", call=self.describe_ctx(ctx),
                                       unlocked=ctx.unlocked)
-        ctx.note(tx["written"].format(title=result["title"]) if result["outcome"] == "written" else tx["proposed"])
+        # a brief prepared ahead stays quiet (no note to every page, so no toast per card); a click says what it did
+        if not ahead:
+            ctx.note(tx["written"].format(title=result["title"]) if result["outcome"] == "written" else tx["proposed"])
         ctx.extra["describe"] = app.describe.state_for(key)
         ctx.extra["outcome"] = result["outcome"]
         ctx.delta()
@@ -591,15 +593,17 @@ class WorkVerbs:
     # ------------------------------------------------------------ themes of the Work through page (themes.py)
 
     def v_flow_themes_run(self, ctx: Ctx, mode: str, keys: list) -> None:
-        """One run of the themes over open points: each key must be a row the page shows now. The model call runs
-        on the themes' own lock, never the write lock (it writes nothing of the Bridge)"""
+        """One run of the themes over open points. A key whose row is gone since the page drew it (settled in
+        between) is left out, the others run; only a run with no open key left is refused, before any model call.
+        The model call runs on the themes' own lock, never the write lock (it writes nothing of the Bridge)"""
         app = self.app
         rows = []
         for key in keys:
             found = app.collector.resolve(key)
-            if not found:
-                raise ActionError(409, "stale_row", "the row is no longer there", "keys")
-            rows.append({**found["out"], "key": key})
+            if found:
+                rows.append({**found["out"], "key": key})
+        if not rows:
+            raise ActionError(409, "stale_row", "the row is no longer there", "keys")
         done = app.themes.run(mode, rows, call=lambda name, subject, argv, timeout, **kw: ctx.call(name, subject, argv, timeout, **kw))
         # the page's own run for new points stays quiet; the click that orders all anew says what it did
         if mode == "regroup":

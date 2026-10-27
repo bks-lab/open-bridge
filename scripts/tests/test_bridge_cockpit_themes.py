@@ -186,6 +186,20 @@ def test_a_point_moved_by_hand_and_a_theme_named_by_hand_stay_through_a_new_orde
     assert "Docs and guides" not in names.values()
 
 
+def test_a_run_with_one_stale_key_orders_the_rest_and_only_all_stale_is_refused(world):
+    """A point settled between the page's render and the run: its key is left out, the others get their theme; only
+    a run where no key is open any more is refused, and that without a model call"""
+    st = world.act("flow_themes_run", mode="assign", keys=[DEMO, "task:no-such-task", YES])["themes"]
+    assert set(st["assign"]) == {DEMO, YES}
+    sent = data_of(world.runner.of("claude.p")[-1])
+    assert len(sent["points"]) == 2
+    n = len(world.runner.of("claude.p"))
+    with pytest.raises(ActionError) as e:
+        world.act("flow_themes_run", mode="assign", keys=["task:no-such-task"])
+    assert e.value.code == "stale_row"
+    assert len(world.runner.of("claude.p")) == n
+
+
 def test_a_move_names_a_theme_that_is_there_and_a_point_that_is_open(world):
     world.act("flow_themes_run", mode="assign", keys=[DEMO])
     tid = world.app.themes.state()["themes"][0]["id"]

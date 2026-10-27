@@ -366,7 +366,9 @@ def test_a_brief_prepared_ahead_keeps_within_the_budget_a_click_never_waits(tmp_
     budget_per_hour, refused once it is spent, without a model call; a click still always runs"""
     w = make_world(tmp_path, budget=1)
     try:
-        assert w.act("describe_run", key="task:demo-task", ahead=True)["ok"]
+        res = w.act("describe_run", key="task:demo-task", ahead=True)
+        # prepared ahead it stays quiet: no note to every page, so no toast per card (the click says what it did)
+        assert res["ok"] and res["note"] == ""
         n = len(model_calls(w))
         with pytest.raises(ActionError) as spent:
             w.act("describe_run", key=f"inbox:{YES_ID}", ahead=True)
@@ -907,3 +909,14 @@ def test_a_file_made_later_in_the_task_folder_is_reachable_without_touching_stat
 def test_the_prompt_asks_to_cite_a_listed_reference_a_criterion_is_about():
     system, _ = dsc.prompt({"kind": "task", "data": "{}"}, "English")
     assert "so the card can link it" in system and len(system) <= dsc.SYSTEM_MAX
+
+
+def test_the_words_of_describe_live_in_text_py():
+    """rules/language-policy.md section 3: a CORE module words nothing in German itself; its notes live in text.py
+    under one key per language, as themes.py keeps its own"""
+    from lib.bridge_cockpit import describe as ds
+    from lib.bridge_cockpit.text import TABLES
+    assert ds.TEXT == {code: TABLES[code]["describe"] for code in TABLES}
+    assert set(TABLES["de"]["describe"]) == set(TABLES["en"]["describe"])
+    src = Path(ds.__file__).read_text(encoding="utf-8")
+    assert not [line for line in src.splitlines() if any(ch in line for ch in "äöüÄÖÜß")]
