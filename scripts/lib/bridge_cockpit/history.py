@@ -178,6 +178,9 @@ def _closed_item(root: Path, key: str) -> dict | None:
         stream = (live.parent.parent.name == "streams") if live else (fm or {}).get("was_stream") is True \
             if isinstance(fm, dict) else False
         out = item(key, title, "task", "done" if live else outcome, ident, work_kind="stream" if stream else "task")
+        into = (fm or {}).get("merged_into") if isinstance(fm, dict) else None
+        if not live and outcome == "merged" and isinstance(into, str):
+            out["into"] = into      # the task it went into, as a merge of the cockpit records it
         if live:                    # opened again since: already taken back, when the file last changed
             out["undone_ms"] = int(live.stat().st_mtime * 1000)
         return out

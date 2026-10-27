@@ -220,6 +220,7 @@ def test_a_task_closed_as_merged_backfills_as_merged(tmp_path):
                                     encoding="utf-8")
     item = hist._closed_item(tmp_path, "task:gone-task")
     assert item["did"] == "merged" and item["undo"] == {"verb": "task_reopen", "args": {"slug": "gone-task"}}
+    assert item["into"] == "demo-task"          # the Activity row names the task it went into
 
 
 def test_the_marks_are_the_ones_task_py_writes():

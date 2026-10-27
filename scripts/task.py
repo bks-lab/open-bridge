@@ -35,15 +35,18 @@ directory moves to work/done/YYYY-MM/<slug>/ (a plain move, no git), the board i
 regenerated and one row goes into today's block of work/log.md. A stream, an
 unknown slug or a task already under work/done/ is refused without writing.
 ``--merged-into KEEP`` closes it as merged into another task instead (``outcome: merged``,
-``merged_into: KEEP``, the note "Merged into KEEP"); it excludes ``--declined``.
+``merged_into: KEEP``, the note "Merged into KEEP", its ``blocked_by`` kept for an undo); it excludes
+``--declined``.
 
 ``merge`` makes one task of two about the same thing: the task ``--from`` names is closed as merged into
 ``<keep>``, and ``<keep>`` gets one section with what it said (its headline, its goal, every line of its
 notes and every open step, as text) and the paths of its STATUS.md and of up to 20 of its documents at their
 new place under work/done/ (the folder moves whole, nothing is copied), the same paths in ``related:``
-tagged ``# merged-from: <slug>``, and a dated note. Everything is checked before the first write, and when
-the close fails the section and the related lines come out again. ``unmerge`` takes it back: the section and
-the tagged related lines go, the merged task opens again (``--as``), and both tasks get a note.
+tagged ``# merged-from: <slug>``, and a dated note; both files as they were before and after go to
+``.bridge/task-merges.json``. Everything is checked before the first write, and when the close fails the
+section and the related lines come out again. ``unmerge`` takes it back: a file still as the merge left it
+comes back byte for byte, one changed since loses what the merge added (the section, the tagged related
+lines, the merge's note) and the merged task opens again (``--as``); the undo writes no note of its own.
 
 ``next`` sets the task's next step, ``next: {what: <text>}`` as the schema has it (a step written
 before, also as a block mapping, goes whole), with ``last_updated:`` and a dated "Next step: <text>" note,
@@ -302,9 +305,10 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
         fields += [("outcome", "merged", "closed"), ("merged_into", merged_into, "outcome")]
     if was_stream:
         fields.append(("was_stream", "true", "closed"))
-    # a normal close drops an old "outcome: declined", which would otherwise survive and mislabel the task
+    # a normal close drops an old "outcome: declined", which would otherwise survive and mislabel the task; a task
+    # closed as merged keeps its blocker, so an undo of the merge opens it as it was (unmerge_task)
     text = remove_fields(text, ("merged_into",))
-    text = remove_fields(set_fields(text, fields), ("blocked_by", "blocked_since")
+    text = remove_fields(set_fields(text, fields), (() if merged_into else ("blocked_by", "blocked_since"))
                          + (() if declined or merged_into else ("outcome",)))
     word = "Declined" if declined else "Closed"
     said = ("Stream ended, declined" if declined else "Stream ended") if was_stream else word
@@ -610,9 +614,10 @@ REOPEN_STATUSES = ("doing", "backlog", "review")   # review too: an undo restore
 
 
 def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | None = None,
-                now: dt.datetime | None = None) -> dict:
+                now: dt.datetime | None = None, noted: bool = True) -> dict:
     """The inverse of close_task: back to work/tasks/ (an ended stream back to work/streams/), status set, close
-    fields gone, note, board, log row."""
+    fields gone, note, board, log row. noted False writes no note into STATUS.md (the undo of a merge: an undo
+    leaves no trace in the task, the log row still says it)"""
     now = now or dt.datetime.now()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
         raise ValueError(f"not a task slug: {slug!r}")
@@ -631,7 +636,8 @@ def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | Non
     today = now.date().isoformat()
     note = " ".join((note or "").split())
     text = remove_fields(set_fields(text, [("status", status, None)]), ("closed", "outcome", "was_stream", "merged_into"))
-    text = add_note(text, f"Reopened: {note}" if note else "Reopened", today)
+    if noted:
+        text = add_note(text, f"Reopened: {note}" if note else "Reopened", today)
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         os.rename(src, dest)
@@ -765,6 +771,12 @@ MERGE_HEADING = "Merged from {slug}"
 PLAIN_PATH_RE = re.compile(r"[A-Za-z0-9._/-]+")
 STEP_OPEN_RE = re.compile(r"^\s*[-*+] \[ \]")
 LIST_ITEM_RE = re.compile(r"^\s*[-*+] ")
+# the notes a merge, its undo and a reopen after it write: bookkeeping of a merge, not what the task says, so a
+# later merge leaves them out of its section (a reopen of its own, "Reopened" or "Reopened: <why>", stays)
+MERGE_NOTE_RE = re.compile(r"^\s*[-*+] \d{4}-\d{2}-\d{2}: (?:Merged into \S+|Merged in \S+(?:: .*)?|Merge of \S+ taken back"
+                           r"|Reopened: merge into \S+ taken back)\s*$")
+# what a merge kept of both files, so its undo puts them back byte for byte: {"<keep><<slug>": {...}}
+MERGE_RECORD = Path(".bridge") / "task-merges.json"
 
 
 def _marks(slug: str) -> tuple[str, str]:
@@ -805,7 +817,7 @@ def _front_and_body(text: str) -> tuple[dict, str]:
 
 def _merged_parts(text: str, slug: str) -> dict:
     """What a merged task brings along as text: its headline, its goal when it says more, every line of its notes
-    and every open step, each as written"""
+    but the bookkeeping of earlier merges (MERGE_NOTE_RE), and every open step, each as written"""
     fm, body = _front_and_body(text)
     headline = _headline_of(text, slug)
     brief = fm.get("brief") if isinstance(fm.get("brief"), dict) else {}
@@ -814,7 +826,7 @@ def _merged_parts(text: str, slug: str) -> dict:
     start = next((i for i, ln in enumerate(lines) if NOTES.match(ln.rstrip())), None)
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines)) if start is not None else None
     notes = [ln.rstrip() if LIST_ITEM_RE.match(ln) else f"- {ln.strip()}"
-             for ln in (lines[start + 1:end] if start is not None else []) if ln.strip()]
+             for ln in (lines[start + 1:end] if start is not None else []) if ln.strip() and not MERGE_NOTE_RE.match(ln)]
     inside = set(range(start, end)) if start is not None else set()
     steps = [ln.rstrip() for i, ln in enumerate(lines) if i not in inside and STEP_OPEN_RE.match(ln)]
     return {"headline": headline, "goal": goal if goal and goal != " ".join(headline.split()) else "",
@@ -855,51 +867,90 @@ def _front_range(lines: list) -> tuple[int, int]:
 
 
 def _related_block(lines: list, start: int, end: int) -> tuple[int | None, int, str]:
-    """(line of `related:`, the line after its block, what follows the key on its line) in the frontmatter"""
+    """(line of `related:`, the line after its block, what follows the key on its line) in the frontmatter. The
+    block runs on over indented and blank lines and over items written at the key's own indent (`- path`, the
+    style PyYAML writes)"""
     at = next((i for i in range(start + 1, end) if re.match(r"related:(\s|$)", lines[i])), None)
     if at is None:
         return None, end, ""
     after = at + 1
-    while after < end and (lines[after][:1] in (" ", "\t") or not lines[after].strip()):
+    while after < end and (lines[after][:1] in (" ", "\t") or not lines[after].strip()
+                           or re.match(r"-(\s|$)", lines[after])):
         after += 1
     rest = re.sub(r"\s+#.*$", "", lines[at].rstrip("\r\n")[len("related:"):]).strip()
     return at, after, rest
 
 
+def _related_items(text: str) -> tuple[bool, object]:
+    """(readable, the `related:` value) of the frontmatter: (False, None) when it does not parse or PyYAML is
+    missing, so nothing can be checked; a missing key reads as None"""
+    try:
+        lines = text.splitlines(keepends=True)
+        start, end = _front_range(lines)
+        front = yaml_load("".join(lines[start + 1:end]))
+    except Exception:  # noqa: BLE001 - unreadable: nothing to check against
+        return False, None
+    return True, front.get("related") if isinstance(front, dict) else None
+
+
+RELATED_KEPT = "related: is not a block list, the paths stand only in the merged section"
+
+
 def _add_related(text: str, paths: list, slug: str) -> tuple[str, int, str | None]:
     """The paths as items of `related:`, each tagged with the slug: a new block list when there is none, after
-    the last item of a block list; a flow list or a scalar stays as it is (a warning)"""
+    the last line of a block list (an item that goes on over a second line stays whole). A flow list or a scalar
+    stays as it is (a warning), and so does a list the edit would not leave reading as its items plus the paths"""
     lines = text.splitlines(keepends=True)
     start, end = _front_range(lines)
     nl = "\r\n" if lines[start].endswith("\r\n") else "\n"
     at, after, rest = _related_block(lines, start, end)
     if at is not None and rest:
-        return text, 0, "related: is not a block list, the paths stand only in the merged section"
+        return text, 0, RELATED_KEPT
     indent, pos = "  ", end
     if at is not None:
-        items = [i for i in range(at + 1, after) if lines[i].lstrip().startswith("- ")]
+        items = [i for i in range(at + 1, after) if lines[i].lstrip().startswith("- ") or lines[i].strip() == "-"]
         if items:
             indent = lines[items[-1]][:len(lines[items[-1]]) - len(lines[items[-1]].lstrip())]
-        pos = (items[-1] + 1) if items else at + 1
+        filled = [i for i in range(at + 1, after) if lines[i].strip()]
+        pos = (filled[-1] + 1) if filled else at + 1
     new = [f"{indent}- {_yaml_item(p)}  {_related_tag(slug)}{nl}" for p in paths]
     if at is None:
         new = [f"related:{nl}"] + new
     lines[pos:pos] = new
-    return "".join(lines), len(paths), None
+    out = "".join(lines)
+    ok, old = _related_items(text)
+    if ok:
+        readable, got = _related_items(out)
+        if old is not None and not isinstance(old, list) or not readable or got != (old or []) + list(paths):
+            return text, 0, RELATED_KEPT
+    return out, len(paths), None
 
 
 def _drop_related(text: str, slug: str) -> tuple[str, int]:
-    """The related items a merge of slug added, and `related:` itself when no item is left"""
+    """The related items a merge of slug added, and `related:` itself when no item is left; an edit that would not
+    leave the list reading as its items less the tagged ones leaves the text as it was"""
     lines = text.splitlines(keepends=True)
     start, end = _front_range(lines)
     at, after, rest = _related_block(lines, start, end)
     if at is None or rest:
         return text, 0
     tag = _related_tag(slug)
-    gone = [i for i in range(at + 1, after) if lines[i].lstrip().startswith("- ") and lines[i].rstrip().endswith(tag)]
-    left = [i for i in range(at + 1, after) if lines[i].lstrip().startswith("- ") and i not in gone]
+    is_item = lambda i: lines[i].lstrip().startswith("- ") or lines[i].strip() == "-"     # noqa: E731
+    gone = [i for i in range(at + 1, after) if is_item(i) and lines[i].rstrip().endswith(tag)]
+    left = [i for i in range(at + 1, after) if is_item(i) and i not in gone]
     drop = set(gone) | ({at} if not left else set())
-    return "".join(ln for i, ln in enumerate(lines) if i not in drop), len(gone)
+    out = "".join(ln for i, ln in enumerate(lines) if i not in drop)
+    ok, old = _related_items(text)
+    if ok and gone:
+        try:
+            tagged = yaml_load("".join(lines[i].lstrip() for i in gone))
+        except Exception:  # noqa: BLE001 - the tagged lines do not read: the list is not as a merge left it
+            tagged = None
+        readable, got = _related_items(out)
+        want = [x for x in old if x not in tagged] if isinstance(old, list) and isinstance(tagged, list) else None
+        if want is None or not readable or (got if left else got or []) != want:
+            return text, 0
+    return out, len(gone)
 
 
 def _insert_block(text: str, block: list) -> str:
@@ -932,11 +983,47 @@ def _remove_block(text: str, slug: str) -> str | None:
     return "".join(lines[:a] + lines[stop:])
 
 
+def _drop_note(text: str, pattern: str) -> str:
+    """The text without its newest notes line that matches `pattern` (after the `- YYYY-MM-DD: ` of the line)"""
+    lines = text.splitlines(keepends=True)
+    rx = re.compile(r"^\s*[-*+] \d{4}-\d{2}-\d{2}: " + pattern + r"\s*$")
+    hit = next((i for i in range(len(lines) - 1, -1, -1) if rx.match(lines[i].rstrip("\r\n"))), None)
+    return text if hit is None else "".join(lines[:hit] + lines[hit + 1:])
+
+
+def _record_key(keep: str, slug: str) -> str:
+    return f"{keep}<{slug}"
+
+
+def _load_records(root: Path) -> dict:
+    try:
+        data = json.loads((root / MERGE_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_records(root: Path, data: dict) -> None:
+    path = root / MERGE_RECORD
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("{}", encoding="utf-8")
+    _replace_file(path, json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
+
+
+def _same(text: str, kept) -> bool:
+    """Whether a file still says what a merge left in it: equal but for a brief written meanwhile (a brief is no
+    change of what the task says; the restore puts the brief back that the text before carried)"""
+    from lib.bridge_cockpit.card_fields import strip_brief
+    return isinstance(kept, str) and strip_brief(text) == strip_brief(kept)
+
+
 def merge_task(root: Path, keep: str, slug: str, *, heading: str | None = None,
                now: dt.datetime | None = None) -> dict:
     """slug closes as merged into keep: keep gets one section with what slug said and where its files went, its
     related: lists those paths, both get a note; checked before the first write, taken out again when the close
-    fails. One merged task per call."""
+    fails. Both files as they were before and after go to MERGE_RECORD, so unmerge_task puts them back byte for
+    byte. One merged task per call."""
     now = now or dt.datetime.now()
     work = root / "work"
     if keep == slug:
@@ -951,7 +1038,8 @@ def merge_task(root: Path, keep: str, slug: str, *, heading: str | None = None,
     first, _last = _marks(slug)
     if first in keep_text:
         raise ValueError(f"{keep} holds a merged section of {slug} already")
-    parts = _merged_parts(src_path.read_bytes().decode("utf-8"), slug)
+    src_before = src_path.read_bytes().decode("utf-8")
+    parts = _merged_parts(src_before, slug)
     docs = _merged_docs(src_path.parent)
     moved = f"work/done/{month}/{slug}"
     paths = [f"{moved}/STATUS.md"] + [f"{moved}/deliverables/{d}" for d in docs]
@@ -974,6 +1062,15 @@ def merge_task(root: Path, keep: str, slug: str, *, heading: str | None = None,
         raise
     warnings = ([warning] if warning else []) + list(out["warnings"])
     try:
+        records = _load_records(root)
+        records[_record_key(keep, slug)] = {
+            "at": now.isoformat(timespec="seconds"), "keep_before": keep_text, "keep_after": text,
+            "slug_path": out["moved_to"], "slug_before": src_before,
+            "slug_after": (root / out["moved_to"] / "STATUS.md").read_bytes().decode("utf-8")}
+        _save_records(root, records)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"{MERGE_RECORD.as_posix()} not written, an undo edits the files instead of restoring them: {exc}")
+    try:
         append_log_row(root, now, keep, f"merged in {slug}")
     except Exception as exc:  # noqa: BLE001 - the merge stands; a missing row is a warning
         warnings.append(f"work/log.md row not written: {exc}")
@@ -981,9 +1078,28 @@ def merge_task(root: Path, keep: str, slug: str, *, heading: str | None = None,
             "steps": len(parts["steps"]), "docs": len(docs), "related": related, "warnings": warnings}
 
 
+def _move_back(root: Path, src: Path, dest: Path, text: str) -> None:
+    """A closed folder back to its open place with the text of its STATUS.md, as close_task moves it there"""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.rename(src, dest)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        shutil.move(str(src), str(dest))
+    try:
+        _replace_file(dest / "STATUS.md", text)
+    except OSError:
+        os.rename(dest, src)
+        raise
+
+
 def unmerge_task(root: Path, keep: str, slug: str, *, status: str = "doing", now: dt.datetime | None = None) -> dict:
-    """The inverse of merge_task: the section and the tagged related lines leave keep, slug opens again as
-    status, both get a note. Refused when slug is not closed as merged into keep or the section is not there."""
+    """The inverse of merge_task. Each of the two files a merge left as it was (a brief written meanwhile aside)
+    comes back byte for byte as it was before the merge (MERGE_RECORD); a file changed since is edited instead:
+    the section, the tagged related lines and the merge's note leave keep, slug opens again as status without the
+    note of its close. The undo writes no note of its own, only its log row. Refused when slug is not closed as
+    merged into keep or the section is not there."""
     now = now or dt.datetime.now()
     work = root / "work"
     if status not in REOPEN_STATUSES:
@@ -992,28 +1108,68 @@ def unmerge_task(root: Path, keep: str, slug: str, *, status: str = "doing", now
     if not MERGE_SLUG_RE.fullmatch(slug):
         raise ValueError(f"not a task slug: {slug!r}")
     closed = sorted((work / "done").glob(f"*/{slug}/STATUS.md"))
-    fm = _front_and_body(closed[-1].read_bytes().decode("utf-8"))[0] if closed else {}
+    gone_text = closed[-1].read_bytes().decode("utf-8") if closed else ""
+    fm = _front_and_body(gone_text)[0] if closed else {}
     if fm.get("outcome") != "merged" or fm.get("merged_into") != keep:
         raise ValueError(f"{slug} is not closed as merged into {keep}")
     before = keep_path.read_bytes().decode("utf-8")
-    text = _remove_block(before, slug)
-    if text is None:
+    cut = _remove_block(before, slug)
+    if cut is None:
         raise ValueError(f"the merged section of {slug} in {keep} was changed by hand")
-    text, related = _drop_related(text, slug)
-    text = add_note(text, f"Merge of {slug} taken back", now.date().isoformat())
+    records = _load_records(root)
+    rec = records.get(_record_key(keep, slug)) or {}
+    src = closed[-1].parent
+    keep_exact = _same(before, rec.get("keep_after"))
+    slug_exact = (_same(gone_text, rec.get("slug_after")) and isinstance(rec.get("slug_before"), str)
+                  and src.relative_to(root).as_posix() == rec.get("slug_path"))
+    if keep_exact:
+        text, related = rec["keep_before"], len(re.findall(re.escape(_related_tag(slug)), before))
+    else:
+        text, related = _drop_related(cut, slug)
+        text = _drop_note(text, rf"Merged in {re.escape(slug)}(?:: .*)?")
     _replace_file(keep_path, text)
     try:
-        out = reopen_task(root, slug, status=status, note=f"merge into {keep} taken back", now=now)
+        if slug_exact:
+            dest = work / "tasks" / slug
+            if dest.exists():
+                raise ValueError(f"{slug} is open already (work/tasks/)")
+            _move_back(root, src, dest, rec["slug_before"])
+            back = rec["slug_before"]
+            warnings = []
+            try:
+                with contextlib.redirect_stdout(sys.stderr):
+                    regenerate_board(root)
+            except Exception as exc:  # noqa: BLE001 - the task is open again; a stale board is a warning
+                warnings.append(f"work/board.md not regenerated: {exc}")
+            try:
+                append_log_row(root, now, slug, f"reopened: merge into {keep} taken back")
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"work/log.md row not written: {exc}")
+            out = {"moved_to": dest.relative_to(root).as_posix(), "warnings": warnings}
+        else:
+            _replace_file(closed[-1], _drop_note(gone_text, rf"Merged into {re.escape(keep)}(?:: .*)?"))
+            try:
+                out = reopen_task(root, slug, status=status, note=f"merge into {keep} taken back", now=now, noted=False)
+            except BaseException:
+                _replace_file(closed[-1], gone_text)
+                raise
+            back = (root / out["moved_to"] / "STATUS.md").read_bytes().decode("utf-8")
     except BaseException:
         _replace_file(keep_path, before)
         raise
+    records.pop(_record_key(keep, slug), None)
     warnings = list(out["warnings"])
+    try:
+        _save_records(root, records)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"{MERGE_RECORD.as_posix()} not written: {exc}")
     try:
         append_log_row(root, now, keep, f"merge of {slug} taken back")
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"work/log.md row not written: {exc}")
-    return {"keep": keep, "slug": slug, "moved_to": out["moved_to"], "status": status,
-            "removed": {"block": True, "related": related}, "warnings": warnings}
+    state = _front_and_body(back)[0].get("status")
+    return {"keep": keep, "slug": slug, "moved_to": out["moved_to"], "status": state if isinstance(state, str) else status,
+            "restored": keep_exact and slug_exact, "removed": {"block": True, "related": related}, "warnings": warnings}
 
 
 # ---------------------------------------------------------------- review
