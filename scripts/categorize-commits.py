@@ -599,6 +599,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_activity.py",
     "scripts/lib/bridge_cockpit/instruct.py",             # Work through: the instruction line's sentence as checked steps
     "scripts/tests/test_bridge_cockpit_instruct.py",
+    "scripts/tests/test_bridge_cockpit_sessions.py",      # Work through: the task a live session is seen working on
+    "scripts/tests/test_bridge_cockpit_merge.py",         # Work through: Merge and its undo (flow_merge, task_unmerge)
     "scripts/tests/test_task_brief.py",
     "scripts/tests/test_card_fields.py",
     "scripts/tests/test_workplace_brief.py",

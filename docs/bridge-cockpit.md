@@ -317,10 +317,14 @@ out a workspace:
   enters one. Inside, **All themes** on top leads back; the name of the theme,
   marked **Overview** while the overview shows, leads to its overview; **All**
   and **Tick the AI suggestions (n)** tick; then its points grouped **Needs
-  you**, **In progress**, **Tasks**, **Reports**, each with a box, its title (a
+  you**, **In progress**, **Tasks**, **Issues and PRs**, **Reports**, each with a box, its title (a
   click opens the point), a dot and a word for its stage, its area and the
-  suggestion as a small chip. A theme entered can be renamed. On a narrow
-  screen both levels are one select over the middle.
+  suggestion as a small chip. A theme entered can be renamed. With Jev a
+  third order, **Prio**, stands beside Themes and Areas (below). Over both
+  levels stands **Running now** while an agent works (below), at the foot
+  **Not now** with its groups (below). On a narrow screen both levels are one
+  select over the middle, Running now a strip over it and Not now folded
+  under it.
 - **In the middle**, on entering a theme (and at the level of all of them),
   its **overview**: every point as a row of a table, grouped as on the left,
   with its box, title, stage, area and the suggestion with half a sentence of
@@ -366,7 +370,11 @@ The three columns stand side by side down to a width of 1180 pixels; below
 that the right column stands under the middle, and on a narrow screen the left
 column becomes a select on top and the tab bar scrolls sideways.
 
-The head says "N in progress · M open".
+The head says "N points · R running · M not now" (the running part only while
+something runs) and how many were decided here. The three add up to everything
+open: every row of the sections and every hidden row not decided here, and with
+`cockpit.files_scope: all` every task and stream of the files view, each once.
+The server sends the same number as `model.counts.flow_open`.
 
 The points come in groups whose order is fixed in the code; nothing moves a
 point across a group, a Jev rank only orders inside one:
@@ -378,23 +386,108 @@ point across a group, a Jev rank only orders inside one:
 | 3 | Finished or quiet | a start of the return channel with its answer or result line, and one whose tab went quiet (stage `idle`) | the oldest first |
 | 4 | Tab gone | a start without a tab and without a word | the newest first |
 | 5 | A question for you | an inbox item that asks (art `ask`), with or without a task | a due day first, then the oldest |
-| 6 | In progress | a start that runs, a tab of a session linked to a task while it works, then every task with status doing | what runs the newest first; the tasks by `next_rank`, a Jev view of a work page, priority, age |
+| 6 | In progress | every task with status doing that no agent works on right now (what runs stands under Running now) | by `next_rank`, a Jev view of a work page, priority, age |
 | 7 | In review | the tasks in review, every priority | as the tasks above |
-| 8 | Reports | the reports (art `report`), as one tab | the oldest first |
+| 8 | Issues and PRs | an issue or pull request in Now (urgency now or today, or to do) | a due day first, then priority |
+| 9 | Reports | the reports (art `report`), as one tab | the oldest first |
 
-Groups 1 to 5 **need you**: the left column counts them. Every row stands once:
-a start, a tab or a question about a task takes that task out of the others. A
-doing task needs you only when its tab asks or finished; otherwise it is **In
-progress**, and the field **Who works on it** says who and since when: its agent tab and
-stage, a session you typed in a linked tab, a start of the cockpit, else "no tab
-open, last moved N days ago" (its `updated` day). The card shows the last lines
-of the tab; the right column offers **To tab** and **View** (the strong one while
-the tab is at work or asks), **Done**, **Later until** and **Drop because**,
-and without a tab at work **Let AI go on with it** (a start with a sentence, as
-always). **Left out (n)** lists what the queue leaves out and why: put off until
-a day, waiting on someone else, resting or blocked, streams (they come through
-their inbox items), ideas and backlog. Ideas and backlog tasks come back only
-when nothing is open: the calm card offers up to three to start.
+Groups 1 to 5 **need you**: the left column counts them. Every open row stands
+exactly once: on a point, under Running now or in one group of Not now; a start,
+a tab or a question about a task takes that task out of the others. A doing
+task with an agent at work stands under Running now; without one it is **In
+progress**, and the field **Who works on it** says "Nobody works on it right
+now, last moved N days ago" (its `updated` day, the `last_updated` of its
+STATUS.md). The right column offers **To tab** and **View** (the strong one
+while a tab is at work or asks), **Done**, **Later until** and **Drop
+because**, and without a tab at work **Let AI go on with it** (a start with a
+sentence, as always). Ideas and backlog tasks come back only when nothing is
+open: the calm card offers up to three to start.
+
+**Running now.** What an agent works on right now is not a point and never
+part of the walk, the overview's table or a batch. It stands on top of the left
+column, one line each (a dot that pulses while it works, the title, its tab and
+stage), and as a strip over the overview with since when, how it is known, **To
+tab** and **View**. That is a start of the cockpit that runs, a live session at
+work or waiting at its prompt that works on a task, and a task's own tab at
+work or waiting. A tab that asks is a point (A tab asks), never here. Which
+task a session works on: a link by hand (the Sessions page), else its tab's own
+task (every start from the cockpit), else, with `flow.infer_sessions` (on by
+default), the task it is **recognised** on. For that the server reads the end
+of the session's own transcript (`~/.claude/projects/<folder>/<session id>.jsonl`,
+the last 256 KiB, further up to 4 MiB while nothing decides, at most 400
+events) and takes the newest message or tool call that names exactly one open
+task: `task.py <verb> <slug>`, `work/tasks/<slug>/` or `task:<slug>`. A tool's
+result never counts (a listing names many tasks), a line that names two is
+skipped. Only sessions of this Bridge in a tab are read, at most 12 per scan,
+never another Bridge's; no model is asked, and of the text only the slug leaves
+the server. A click on a title opens the entry in the middle with its card,
+its tabs and the instruction line; the right column offers To tab first, View,
+Done, Later and Drop, and for a session **Not this task**: it unlinks the
+session and remembers that it does not work on that task (`session_unlink`,
+kept in `state.json` as `session_refused`), so it is not recognised on it
+again; Link on the Sessions page takes that back. The Sessions page marks a
+recognised task as such.
+
+**Not now.** At the foot of the left column, every open row that is no point
+and does not run, in six groups: **Later** (hidden until a day, put off in the
+inbox, or due later than the lead time, each with its day), **Waits on
+others** (on a person or a run, and an item the Bridge runs on its own after
+your yes), **Resting** (blocked, quiet for long, up for parking, a task whose
+status is unknown), **Ideas and backlog** (ideas of the inbox and backlog
+tasks), **Streams** (they come through their inbox items) and **Watching**
+(issues and pull requests that are not in Now, by repository). A click on a
+group shows its list in the middle: a box, the title, its kind, when (from or
+until a day, due), its area, and the batch bar with the verbs the group offers.
+A title opens the row where it lives: an issue or pull request on the web, a
+task in the files view, an inbox item in its card.
+
+| Group | Verbs of its batch bar |
+|---|---|
+| Later, Waits on others, Resting | Back on, Later, Done, Drop |
+| Ideas and backlog | Let AI do it, Later, Done, Drop |
+| Streams | Later |
+| Watching | Later, Done, Drop |
+
+**Back on** takes a row up again: a hidden row shows (`unhide`), a deferred
+item opens (`inbox_reopen`), a blocked or waiting task runs on (`task_running`),
+a resting one is kept (`task_keep`), and a point due later than the lead time
+shows now, in this browser only (kept as `bridge-cockpit.flowEarly` until its
+day). Back on carries no undo; put the row off again instead. A row decided
+here (done, not doing) is open no longer: it is listed nowhere and not counted.
+
+**Not too early** (`flow.ahead_days`, default 2). A point due further ahead
+than that, and not of urgency now, waits under Later until that many days
+before its day, then it is a point again; a due with a time counts by its day.
+With 2, an item due on Sunday at 19:00 stands under Later "from Friday" until
+Friday. `0` waits for the day itself.
+
+**Merge.** When two or more ticked rows of a batch bar (the overview or a Not
+now list) are open finite tasks, **Merge** opens a panel under the bar: which
+task stays, a choice per task with its count of activity and when it last
+moved, the one with the most activity suggested. **Merge** in it closes the
+others as merged into the one that stays (`flow_merge`, through `task.py
+merge`, see [`work-system.md`](work-system.md)): their headline, goal, notes and
+open steps come over as one section of the kept task, their documents stay
+where they are and are linked from it, and each closes with `outcome: merged`
+and `merged_into`. The Activity of both shows the decision. **Undo the batch**
+takes every merge back (`task_unmerge`, one per merged task, also from the
+history): the section and the links leave the kept task and the merged one
+opens again with the status it had. A section changed by hand since cannot be
+taken back (`merge_changed`); streams and inbox items do not merge
+(`merge_not_task`), and with any of them ticked the button stays grey and says
+so.
+
+**Prio** (while Jev can order the work page). A third order beside Themes and
+Areas, kept in this browser: the open points by Jev's quadrants as a 2x2 grid
+in the middle, columns urgent and not urgent, rows important and not important.
+Each square shows its count, its first four titles and a suggestion; **Not
+rated by Jev yet** stands under the grid while points have no rating (a tab
+alone, an issue: Jev rates no refs). A click on a square enters it, its points
+in Jev's rank, the walk too. The order is the day's order of the work page (the
+Jev view), asked once per page load when there is none, and counts only while
+it is younger than `flow.rank_max_age_days`. Jev also feeds the suggestions,
+after the triage and the themes: Drop for a point that is neither urgent nor
+important, Let AI do it for one that is urgent and not important.
 
 **Themes** (`cockpit.flow.themes.enabled: true`). A small model (`themes.py`,
 one `claude -p` call with the points as data: title, kind, area and the goal of
@@ -562,8 +655,8 @@ line once; **Change** puts the sentence back into the field, **Discard** drops
 the plan. Opening another point or the overview drops the plan too. Every call
 counts against `budget_per_day`, one runs at a time.
 
-**Without a terminal driver** the cards of the agents (groups 1 to 4 and the
-starts in progress) and every way to a tab stay out. A start then hands out the
+**Without a terminal driver** the cards of the agents (groups 1 to 4), Running
+now and every way to a tab stay out. A start then hands out the
 commands to start it by hand.
 
 **Upgrading.** Opt-in, nothing changes until the key is set: without
@@ -583,8 +676,11 @@ adds the verb `shelve` and `describe_run`'s `ahead` (from the first version);
 every other page, view, verb and endpoint stays as it was. The tabs under the
 card, Activity, the right column and the instruction line came later: see
 [Upgrading: the tabs, Activity and the instruction line](#upgrading-the-tabs-activity-and-the-instruction-line).
+Running now, Not now, Merge, Prio and the lead time came in a later version:
+see [Upgrading: Running now, Not now, Merge and Prio](#upgrading-running-now-not-now-merge-and-prio).
 To try it in the demo, open the work tab and pick Work through (`?work=flow`
-opens it there); `?flow=0` shows the demo without it.
+opens it there); `?flow=0` shows the demo without it, `?work_page=1` adds the
+work page that Prio orders, and `?views=files,flow` narrows the switch.
 
 ### The start page
 
@@ -2137,7 +2233,8 @@ nothing a stranger could trigger:
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
   close, settle (done or not doing), shelve (a task parked as an idea, with its
   reason), urgency, priority, note, attach (a document into a task's
-  deliverables), check tasks, keep open, close task, launch,
+  deliverables), merge (open tasks into one, and its undo), check tasks, keep
+  open, close task, launch,
   adopt, send, key,
   close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker
   profile, guide read, guide settings), every id
@@ -2502,7 +2599,7 @@ share or clean up.
 | `stdout.log` | what the process itself prints: the dated line of each start, and a crash before the server is up | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |
-| `state.json` | team runs started from the page, the start page's tiles and pins, how the first-run tour ended, the workflow runs marked as checked; and this machine's copy of the rows hidden or marked done or not doing (the shared record is `work/cockpit/settled/`, below) | yes: the title of each row marked done or not doing |
+| `state.json` | team runs started from the page, the start page's tiles and pins, how the first-run tour ended, the workflow runs marked as checked, the sessions said not to work on a task (`session_refused`: per session id the slugs Not this task named, at most 8 each); and this machine's copy of the rows hidden or marked done or not doing (the shared record is `work/cockpit/settled/`, below) | yes: the title of each row marked done or not doing |
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
 | `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |
@@ -2600,6 +2697,53 @@ before they read their arguments (a bad argument does not turn it into a 400).
    times.
 
 See [Work through](#work-through-flow).
+
+### Upgrading: Running now, Not now, Merge and Prio
+
+Nothing has to be done by hand. With `cockpit.flow.enabled: false` no
+transcript is read, `flow_merge` answers `409 flow_off` and the page has no
+Work through view. One thing changes there too, on the Sessions page: Unlink of
+the session of a task's own tab now holds (before, the next poll linked it
+again), because `session_unlink` remembers the refusal; the live sessions carry
+`task_how` and `task_since_ms` for their links. With Work through on, the view
+changes in these ways:
+
+1. **What runs no longer counts as a point.** A start at work, a session at
+   work on a task and a task's own tab stand under Running now, out of the
+   walk, the overview and the batch. The head says points, running and not
+   now, which add up to `model.counts.flow_open`.
+2. **Sessions are recognised.** `flow.infer_sessions` is on by default: a live
+   session of this Bridge in a tab is read at the end of its own transcript
+   (only its messages and tool calls, never a tool's result, no model call)
+   for the one open task it names. `sessions_state().sessions[]` gains
+   `task_how` (`hand`, `tab`, `seen`) and `task_since_ms`; `task` is the task
+   in effect. A link by hand or a start from the cockpit wins.
+   `session_unlink` also records a refusal (`session_refused` in `state.json`)
+   and answers `session: {sid, refused}`; `session_link` drops it. Set
+   `flow.infer_sessions: false` to read no transcript; a refusal holds then
+   too, so unlinking a task tab's session keeps it unlinked.
+3. **Settled rows are no longer listed.** A hidden row decided here (done, not
+   doing) used to show under the old Left out drawer; it is open no longer and
+   stands nowhere. The drawer itself gave way to Not now.
+4. **Due later waits.** `flow.ahead_days` is 2 by default: a point due further
+   ahead than two days, and not of urgency now, waits under Not now, Later,
+   until two days before. `366` shows everything at once as before.
+5. **Issues in Now are points.** An issue or pull request in the section Now
+   (urgency now or today, or to do) is a point of the new group Issues and PRs;
+   every other one stands under Watching.
+6. **Merge.** Two new verbs, `flow_merge` (behind the flow gate) and its undo
+   `task_unmerge` (no gate, only an undo the server handed out), two new error
+   codes, `merge_not_task` and `merge_changed`, and the history items `merged`
+   and `merged_in`. `task.py` gains `merge`, `unmerge` and `close --merged-into`;
+   STATUS.md gains `outcome: merged` and `merged_into`
+   ([`work-system.md`](work-system.md)).
+7. **Rows carry `updated` and `until`.** Task rows carry their STATUS.md
+   `last_updated`, deferred inbox rows the day they come back; both are null
+   elsewhere, and a reader that does not know them skips them.
+8. **Work views.** `cockpit.work_views` (default all five) names the views of
+   the work tab's switch, and `work_state()` sends them as `views`; `files` is
+   always kept. An older server sends no `views` and the page offers all, as
+   before. Once Work through holds everything, `[files, flow]` is enough.
 
 ### Upgrading: quiet tabs and the result line
 
