@@ -283,9 +283,9 @@ def _decide(events: list[tuple[list[str], dict]], slugs: set, roots: tuple) -> t
     found, since = None, None
     for texts, entry in reversed(events):
         text = "\n".join(texts)
-        near = set(any_slug.findall(text))
-        named = {s for s in slugs if (s in near or s in text)
-                 and (_mention(s, roots).search(text) or task_cmd_re(s).search(text))}
+        if not any_slug.search(text):          # most events name no task at all: one pass over the text
+            continue
+        named = {s for s in slugs if s in text and (_mention(s, roots).search(text) or task_cmd_re(s).search(text))}
         if len(named) != 1:
             continue
         slug = next(iter(named))
