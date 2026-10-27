@@ -456,20 +456,50 @@ class App:
 
     def link_tab_sessions(self) -> bool:
         """A session in a task tab (BRIDGE_TAB_SLUG names an open task) is linked to that task by itself;
-        True when a link is new. A team tab names its task too; an inbox tab names no task."""
+        True when a link is new. A team tab names its task too; an inbox tab names no task. A pair refused on
+        the page ("Not this task") stays unlinked."""
         changed = False
+        refused = self.store.session_refused()
         for x in self.sessions.state():
             slug = x.get("tab_slug") or ""
-            if x.get("sid") and self.task_open(slug):
+            if x.get("sid") and self.task_open(slug) and slug not in (refused.get(x["sid"]) or {}):
                 changed = self.store.link_session(x["sid"], slug, x.get("name") or "", x.get("cwd") or "", "tab") or changed
         return changed
 
+    def infer_on(self) -> bool:
+        """Whether a live session's task is recognised from its transcript: Work through on, and its switch"""
+        flow = getattr(self.cfg, "flow", None) or {}
+        return flow.get("enabled") is True and flow.get("infer_sessions", True) is True
+
+    def session_tasks(self) -> dict:
+        """The task each live session works on, {sid: {task, how, since_ms}}: a link by hand, else a tab's link
+        (every start from the cockpit), else the open task it is seen working on (sessions.infer) unless the pair
+        was refused. A link's since is when it was made, never before the session started"""
+        links, refused = self.store.session_links(), self.store.session_refused()
+        seen = self.sessions.seen_state() if self.infer_on() else {}
+        slugs = self.open_slugs() if seen else set()
+        out = {}
+        for x in self.sessions.state():
+            sid = x.get("sid") or ""
+            link, saw = links.get(sid), seen.get(sid)
+            started = x.get("started_ms") if isinstance(x.get("started_ms"), int) else 0
+            if link and isinstance(link.get("task"), str):
+                at = link.get("at_ms") if isinstance(link.get("at_ms"), (int, float)) else 0
+                out[sid] = {"task": link["task"], "how": "tab" if link.get("how") == "tab" else "hand",
+                            "since_ms": int(max(at, started)) or None}
+            elif saw and saw["task"] in slugs and saw["task"] not in (refused.get(sid) or {}):
+                out[sid] = {"task": saw["task"], "how": "seen", "since_ms": saw.get("since_ms")}
+        return out
+
     def sessions_state(self) -> dict:
-        """The live sessions, each with the task it is linked to, and every kept link: the page shows a
-        task's sessions, the live ones with their tab, the ended ones to go on in"""
+        """The live sessions, each with the task it works on (session_tasks: task, task_how, task_since_ms), and
+        every kept link: the page shows a task's sessions, the live ones with their tab, the ended ones to go on in"""
         links = self.store.session_links()
+        tasks = self.session_tasks()
         # copies: the scan's own list is what the next scan compares with
-        live = [{**x, "task": (links.get(x.get("sid") or "") or {}).get("task")} for x in self.sessions.state()]
+        live = [{**x, "task": (tasks.get(x.get("sid") or "") or {}).get("task"),
+                 "task_how": (tasks.get(x.get("sid") or "") or {}).get("how"),
+                 "task_since_ms": (tasks.get(x.get("sid") or "") or {}).get("since_ms")} for x in self.sessions.state()]
         sids = {x.get("sid") for x in live}
         kept = [{"sid": sid, **v, "live": sid in sids} for sid, v in links.items() if self.task_open(v.get("task", ""))]
         kept.sort(key=lambda v: -v.get("at_ms", 0))
@@ -499,8 +529,12 @@ class App:
             relay = frozenset(h["session"] for h in self.relay.heartbeats(self.clock()))
             changed = self.sessions.refresh(self.tabs.tab_list(), self.clock(), self.tabs.control_ref(), relay)
             linked = self.link_tab_sessions()
-            ran = self.sessions.refresh_runs(self.clock(), self.open_slugs(), self.store.session_links(), self.root)
-            if linked or changed or ran:
+            slugs, links = self.open_slugs(), self.store.session_links()
+            ran = self.sessions.refresh_runs(self.clock(), slugs, links, self.root)
+            # the task a live session is seen working on, read from its transcript only while Work through is on
+            seen = (self.sessions.infer(slugs, self.store.session_refused(), links, self.root) if self.infer_on()
+                    else self.sessions.clear_seen())
+            if linked or changed or ran or seen:
                 self.broadcast("sessions", self.sessions_state())
         except Exception as exc:  # noqa: BLE001 - the sessions page is an extra, never a reason for the tabs to stop
             self.log_error(f"sessions: {exc!r}")

@@ -143,13 +143,24 @@ class ChatVerbs:
             raise ActionError(409, "stale_row", "no such session here", "session")
         name = (live or old).get("name") or session[:8]
         self.app.store.link_session(session, slug, name, (live or old).get("cwd") or "", "hand")
+        self.app.store.unrefuse_session(session, slug)        # linked by hand: no longer "Not this task"
         ctx.note(self.tx["session_linked"].format(name=m.short(name, 40), slug=slug), go={"kind": "item", "key": f"task:{slug}"})
         self.app.broadcast("sessions", self.app.sessions_state())
 
     def v_session_unlink(self, ctx: Ctx, session: str) -> None:
-        if not self.app.store.unlink_session(session):
+        """"Not this task": the session's link goes, and its task, linked or seen (server.session_tasks), is refused
+        for that session for good, so neither its transcript nor its tab takes it for that task again. No undo: a
+        link on the Sessions page links it again."""
+        now = self.app.session_tasks().get(session) or {}
+        link = self.app.store.session_links().get(session) or {}
+        if not link and now.get("how") != "seen":
             raise ActionError(409, "stale_row", "the session is not linked", "session")
-        ctx.note(self.tx["session_unlinked"])
+        slug = now.get("task") or link.get("task")
+        self.app.store.unlink_session(session)
+        if isinstance(slug, str) and slug:
+            self.app.store.refuse_session(session, slug)
+        ctx.extra["session"] = {"sid": session, "refused": slug}
+        ctx.note(self.tx["session_not_this"].format(slug=slug) if now.get("how") == "seen" else self.tx["session_unlinked"])
         self.app.broadcast("sessions", self.app.sessions_state())
 
     def v_session_resume(self, ctx: Ctx, session: str) -> None:

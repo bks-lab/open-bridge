@@ -23,6 +23,7 @@ from .settled import SettledStore
 LOG_MAX_BYTES = 1024 * 1024
 RUNS_SEEN_MAX = 300         # the newest workflow runs marked as checked; an older run has long left the files view
 SESSION_LINKS_MAX = 300      # the newest links of sessions to tasks; an older one has long been resumed or forgotten
+REFUSED_PER_SESSION = 8      # the tasks a session was said not to work on ("Not this task"), the newest kept
 
 
 def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
@@ -131,6 +132,11 @@ class WebStore:
         # session ends, so the task can go on in it (claude --resume, only on this machine).
         self._links = {k: v for k, v in links.items()
                        if isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("task"), str)}
+        # "Not this task": {session id: {slug: at_ms}}, a session the page shall not take for work on that task,
+        # neither from its transcript (sessions.infer) nor from its tab (server.link_tab_sessions)
+        refused = data.get("session_refused") if isinstance(data.get("session_refused"), dict) else {}
+        self._refused = {sid: {s: int(at) for s, at in v.items() if isinstance(s, str) and isinstance(at, (int, float))}
+                         for sid, v in refused.items() if isinstance(sid, str) and isinstance(v, dict)}
         # the workflow runs whose result was checked in the files view: {run id: at_ms}
         seen_runs = data.get("runs_seen") if isinstance(data.get("runs_seen"), dict) else {}
         self._runs_seen = {k: v for k, v in seen_runs.items() if isinstance(k, str) and isinstance(v, (int, float))}
@@ -149,7 +155,7 @@ class WebStore:
         atomic_write_json(self.path, {"v": 1, "hidden": self._hidden, "dismissed": self._dismissed,
                                       "team_runs": self._runs, "home_tiles": self._home, "home_seen": self._seen,
                                       "pins": self._pins, "session_links": self._links, "tour": self._tour,
-                                      "runs_seen": self._runs_seen})
+                                      "runs_seen": self._runs_seen, "session_refused": self._refused})
 
     def prune(self) -> bool:
         """Drop hidden entries whose date has come (hidden while date > today)."""
@@ -281,6 +287,35 @@ class WebStore:
                                 "how": how}
             for drop in sorted(self._links, key=lambda k: self._links[k].get("at_ms", 0))[:-SESSION_LINKS_MAX]:
                 del self._links[drop]
+            self._save()
+            return True
+
+    def session_refused(self) -> dict:
+        with self.lock:
+            return {sid: dict(v) for sid, v in self._refused.items()}
+
+    def refuse_session(self, sid: str, slug: str) -> None:
+        """A session is not work on this task: kept with the newest REFUSED_PER_SESSION per session and the
+        newest SESSION_LINKS_MAX sessions"""
+        with self.lock:
+            mine = self._refused.setdefault(sid, {})
+            mine[slug] = int(self.clock())
+            for drop in sorted(mine, key=lambda s: mine[s])[:-REFUSED_PER_SESSION]:
+                del mine[drop]
+            newest = lambda k: max(self._refused[k].values(), default=0)  # noqa: E731
+            for drop in sorted(self._refused, key=newest)[:-SESSION_LINKS_MAX]:
+                del self._refused[drop]
+            self._save()
+
+    def unrefuse_session(self, sid: str, slug: str) -> bool:
+        """A refusal taken back (the session is linked to that task by hand); True when there was one"""
+        with self.lock:
+            mine = self._refused.get(sid) or {}
+            if slug not in mine:
+                return False
+            del mine[slug]
+            if not mine:
+                self._refused.pop(sid, None)
             self._save()
             return True
 
