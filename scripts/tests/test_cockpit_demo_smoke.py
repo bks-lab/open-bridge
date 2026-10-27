@@ -261,9 +261,9 @@ def test_area_name_opens_the_files_for_this_visit_only(base_url, browser):
 @pytest.mark.parametrize("width", [1680, 1280, 900])
 def test_work_through_opens_as_a_view_of_the_work_tab_and_walks_its_points(base_url, browser, lang, width):
     """?work=flow stands for cockpit.work_view: flow. The view shows its left column (a select on a narrow screen) and
-    the overview of all points; a theme entered, two points ticked, a point opened with its card, a detail pulled in,
-    the walk bar, back to the overview and a batch planned: no console error on the way. Down to 1180px the details
-    stand beside the middle"""
+    the overview of all points; a theme entered, two points ticked, a point opened with its card, the Activity tab under
+    it, the walk bar, back to the overview and a batch planned: no console error on the way. Down to 1180px the right
+    column (what you can do, the fields) stands beside the middle"""
     problems: list[str] = []
     where = ["flow"]
     ctx = browser.new_context(viewport={"width": width, "height": 1000})
@@ -294,17 +294,128 @@ def test_work_through_opens_as_a_view_of_the_work_tab_and_walks_its_points(base_
     page.wait_for_selector("#main .flow-card .fx-hero")
     assert page.locator("#main .flow-walk .dz-walk").count() == 1
     assert page.locator("#main .flow-picked-line").count() == 1
-    page.locator("#main .flow-block-head button").nth(1).click()
+    page.locator("#main .flow-ptabs [role=tab][data-tab=activity]").click()
+    page.wait_for_selector("#main .flow-act")
     page.wait_for_timeout(200)
     if width >= 1280:
         card = page.locator("#main .flow-main").bounding_box()
-        details = page.locator("#main .flow-details").bounding_box()
-        assert details["x"] >= card["x"] + card["width"], "the details stand beside the middle"
+        aside = page.locator("#main .flow-aside").bounding_box()
+        assert aside["x"] >= card["x"] + card["width"], "the right column stands beside the middle"
     where[0] = "the overview"
     page.locator("#main .flow-back").click()
     page.wait_for_selector("#main .flow-overview")
     page.locator("#main .flow-ov-verbs .btn-primary").click()
     page.wait_for_selector("#main .flow-list-confirm")
+    page.wait_for_timeout(250)
+    ctx.close()
+    assert not problems, "\n".join(problems)
+
+
+# the demo's question about a task whose Activity holds every kind of row (mock.js: an inbox row naming a task reads
+# that task's feed); its title in the page's language comes from the demo's own words
+REPORT_KEY = "inbox:20261009-0900-review-demo-a1b2"
+TITLE_OF = """async key => {
+  const lang = new URLSearchParams(location.search).get('lang') || 'en'
+  const t = (await import('./mock.js')).createMockTransport({ lang, latency: 0 })
+  const state = (await t.get('/api/state')).data
+  return state.model.sections.flatMap(x => x.rows).find(r => r.key === key).title
+}"""
+
+
+def _open_report_point(page, base_url, lang):
+    """Work through on a clean page, at the level of all themes: the demo's question about its task open"""
+    page.goto(f"{base_url}?lang={lang}&work=flow")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    page.evaluate("() => window.localStorage.clear()")
+    page.reload()
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
+    page.wait_for_selector("#main .flow-grid .flow-overview .flow-ov-open")
+    page.locator("#main .flow-ov-open", has_text=page.evaluate(TITLE_OF, REPORT_KEY)).click()
+    page.wait_for_selector("#main .flow-card .fx-hero")
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+@pytest.mark.parametrize("width", [1680, 900])
+def test_an_open_point_has_its_tabs_its_activity_its_fields_and_the_instruction_line(base_url, browser, lang, width):
+    """Round 3 of Work through. The card carries content only (no verbs in it); the verbs and the fields stand in the
+    right column, without a Status field. Under the card the tabs, Description first; Activity filtered to Documents
+    shows only document rows, each a link that opens in a new tab; the tab chosen stays on the next point. The
+    instruction line turns a sentence into a plan: Change gives the sentence back, Discard drops the plan, Run runs it
+    and leaves one undo under the line. No console error on the way"""
+    problems: list[str] = []
+    where = ["a point"]
+    ctx = browser.new_context(viewport={"width": width, "height": 1000})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    _open_report_point(page, base_url, lang)
+    assert page.locator("#main .flow-card .verbbar").count() == 0, "the card carries no verbs"
+    assert page.locator("#main .flow-aside .flow-can .verbbar.is-stack").count() == 1
+    assert page.locator("#main .flow-aside .flow-meta [data-field=who]").count() == 1
+    assert page.locator("#main .flow-aside .flow-meta [data-field=status]").count() == 0
+    tabs = page.locator("#main .flow-ptabs [role=tab]")
+    assert tabs.count() >= 2
+    assert tabs.first.get_attribute("data-tab") == "desc" and tabs.first.get_attribute("aria-selected") == "true"
+    where[0] = "activity"
+    page.locator("#main .flow-ptabs [role=tab][data-tab=activity]").click()
+    page.wait_for_selector("#main .flow-act-rows .flow-act-row")
+    page.locator("#main .flow-act-filters .seg-btn").nth(2).click()
+    page.wait_for_selector("#main .flow-act-rows .flow-act-row.is-doc")
+    assert page.locator("#main .flow-act-rows .flow-act-row").count() == page.locator("#main .flow-act-rows .flow-act-row.is-doc").count()
+    link = page.locator("#main .flow-act-rows .flow-act-links a").first
+    assert link.get_attribute("target") == "_blank" and link.get_attribute("href")
+    where[0] = "the next point"
+    page.locator("#main .flow-walk .dz-walk button").last.click()
+    page.wait_for_timeout(200)
+    assert page.locator("#main .flow-ptabs [role=tab][data-tab=activity]").get_attribute("aria-selected") == "true"
+    where[0] = "the instruction line"
+    sentence = "done"                       # the demo reads its verbs in either language
+    box = page.locator("#main #flow-instruct-text")
+    box.fill(sentence)
+    page.locator("#main .flow-instruct-row button").click()
+    page.wait_for_selector("#main .flow-instruct-plan .flow-instruct-step")
+    acts = page.locator("#main .flow-instruct-plan .verbbar-acts button")
+    assert acts.count() == 3
+    acts.nth(1).click()
+    page.wait_for_timeout(100)
+    assert page.locator("#main .flow-instruct-plan").count() == 0 and box.input_value() == sentence
+    page.locator("#main .flow-instruct-row button").click()
+    page.wait_for_selector("#main .flow-instruct-plan")
+    page.locator("#main .flow-instruct-plan .verbbar-acts button").nth(2).click()
+    page.wait_for_timeout(100)
+    assert page.locator("#main .flow-instruct-plan").count() == 0
+    box.fill(sentence)
+    page.locator("#main .flow-instruct-row button").click()
+    page.wait_for_selector("#main .flow-instruct-plan")
+    page.locator("#main .flow-instruct-plan .verbbar-acts .btn-primary").click()
+    page.wait_for_selector("#main .flow-instruct-done button")
+    page.wait_for_timeout(250)
+    ctx.close()
+    assert not problems, "\n".join(problems)
+
+
+def test_a_note_and_an_attached_document_land_in_the_activity_of_the_point(base_url, browser):
+    """The foot of Activity: a note goes out through the verb note and stands as a note row; a file picked is attached
+    to the task's deliverables and stands as a document row marked attached, with its link"""
+    problems: list[str] = []
+    where = ["activity"]
+    ctx = browser.new_context(viewport={"width": 1680, "height": 1000})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    _open_report_point(page, base_url, "en")
+    page.locator("#main .flow-ptabs [role=tab][data-tab=activity]").click()
+    page.wait_for_selector("#main .flow-act-rows .flow-act-row")
+    page.locator("#main .flow-act-filters .seg-btn").nth(1).click()
+    notes = page.locator("#main .flow-act-rows .flow-act-row").count()
+    page.locator("#main .flow-act-note").fill("Checked the outline, fine")
+    page.locator("#main .flow-act-noteform button").click()
+    page.wait_for_function(f"() => document.querySelectorAll('#main .flow-act-rows .flow-act-row').length > {notes}")
+    assert page.locator("#main .flow-act-rows", has_text="Checked the outline, fine").count() == 1
+    page.locator("#main .flow-act-filters .seg-btn").nth(2).click()
+    page.locator("#main .flow-act-file").set_input_files(
+        files=[{"name": "notes for review.txt", "mimeType": "text/plain", "buffer": b"invented notes\n"}])
+    page.wait_for_selector("#main .flow-act-rows a:has-text('notes for review.txt')")
     page.wait_for_timeout(250)
     ctx.close()
     assert not problems, "\n".join(problems)

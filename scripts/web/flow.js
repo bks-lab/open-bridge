@@ -10,7 +10,7 @@
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { asksYou, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replySend, rowProject, tabOfTask } from './logic.js'
+import { asksYou, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowProject, tabOfTask } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -700,8 +700,9 @@ export const attachTooBig = (bytes, s) => Number(bytes) > flowSettings(s).attach
 export function instructScope(x, queue, picked, name, s) {
   if (x) {
     const row = x.kind === 'reports' ? null : x.row ?? null
+    const tab = flowTabOf(x, s)
     return { point: true, picked: false, keys: row?.key ? [row.key] : [], n: row?.key ? 1 : 0, cut: false,
-      title: row?.title ?? x.tab?.name ?? '', tab: flowTabOf(x, s), name }
+      title: row?.title ?? x.tab?.name ?? '', tab: takesWords(tab, s) ? tab : null, name }
   }
   const all = (queue ?? []).flatMap(pointKeys)
   const ticked = picked?.size ? all.filter(k => picked.has(k)) : []
@@ -710,11 +711,15 @@ export function instructScope(x, queue, picked, name, s) {
     title: null, tab: null, name }
 }
 
+/** Whether typed words may go to `tab`: it waits at its prompt, as the reply box has it (replyOptions). A tab that asks
+ *  a choice takes its options on the card, one at work takes nothing (actions_tabs.py tab_send) */
+const takesWords = (tab, s) => !!tab && replyOptions(tab, s).textBox
+
 /** What Run sends for the plan the server made of a sentence (flow_instruct): every step through the verb it names,
  *  each with by instruction. Done for several goes out as one settle; Later with its day, Drop with its reason in the
  *  page's words; Let AI do it with its sentence (a mail is such a start, its sentence asks for a draft only) and, as in
  *  a batch, never where an agent works already nor past max_running; a reply goes to the tab its step names, through
- *  the reply guard. A key no longer in the list stays out. {calls, skipped: [{key, title, why}]} */
+ *  the reply guard, only while it waits at its prompt. A key no longer in the list stays out. {calls, skipped: [{key, title, why}]} */
 export function instructCalls(plan, s, lang = 'en') {
   const calls = []
   const skipped = []
@@ -730,8 +735,8 @@ export function instructCalls(plan, s, lang = 'en') {
     if (op === 'reply') {
       const tab = (s?.tabs?.tabs ?? []).find(t => t.ref === step.tab_ref)
       const words = String(step.text ?? '').trim()
-      if (tab && words) calls.push(replySend(tab, words))
-      else for (const k of keys) out(k, 'no_tab')
+      if (tab && words && takesWords(tab, s)) calls.push(replySend(tab, words))
+      else for (const k of keys) out(k, tab?.state === 'needs-you' ? 'asks' : 'no_tab')
       continue
     }
     if (op === 'done') {

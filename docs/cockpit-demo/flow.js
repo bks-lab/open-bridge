@@ -2,13 +2,15 @@
 // Pure helpers of the cockpit's Work through page (views/flow.js): the one queue in its fixed groups, what it
 // leaves out and why, the cards of the calm card, the return card after a jump to a tab, the five verbs (which a
 // row offers, which one is suggested, what each sends), the briefs to prepare for the cards that come next and how
-// many agents run. No DOM, no network, no state of its own (prepRunner holds the line app.js keeps). logic.js
+// many agents run; since round 3 also the tabs under the card of an open point (Description, Steps, Activity, Related),
+// the rows and counts of its Activity, the fields on the right, and the scope and the calls of the instruction line.
+// No DOM, no network, no state of its own (prepRunner holds the line app.js keeps). logic.js
 // passes every name on, so a view may import it from either; the flow test imports it under node.
 //
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { asksYou, canTab, DAY, homeProjects, isAnswered, isoDate, liveStage, nextMonday, projectTone, rowProject, tabOfTask } from './logic.js'
+import { asksYou, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowProject, tabOfTask } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -58,9 +60,13 @@ export const flowOn = s => s?.work?.flow?.enabled === true
 export function flowSettings(s) {
   const f = s?.work?.flow ?? {}
   const int = (k, d, low) => (Number.isInteger(f[k]) && f[k] >= low ? f[k] : d)
+  const mb = f.attach?.max_mb
   return { enabled: f.enabled === true, drop_reasons: Array.isArray(f.drop_reasons) ? f.drop_reasons : [],
     return_after_s: Number.isFinite(f.return_after_s) ? f.return_after_s : 20, prep_ahead: int('prep_ahead', 2, 0),
-    max_running: int('max_running', 4, 1) }
+    max_running: int('max_running', 4, 1),
+    // round 3, each off unless the server says on (an older server sends none of them)
+    summary: { enabled: f.summary?.enabled === true }, instruct: { enabled: f.instruct?.enabled === true },
+    attach: { enabled: f.attach?.enabled === true, max_mb: Number.isFinite(mb) && mb >= 1 ? mb : 10 } }
 }
 
 /** Whether a terminal driver starts tabs here: without one nothing runs from the page, so the lane, the cards of
@@ -237,6 +243,8 @@ export function flowDrive(x, s) {
   const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control)
   if (x.kind === 'start') return { by: 'start', tab: x.tab ?? null, since_ms: x.start.at_ms ?? null, days: null, stage: x.stage }
   if (x.kind === 'session') return { by: 'session', tab: x.tab, since_ms: x.at ?? null, days: null, stage: 'working' }
+  // a card of a tab (one that asks, the return card while its tab is there): that tab
+  if ((x.kind === 'tab' || x.kind === 'back') && x.tab) return { by: 'tab', tab: x.tab, since_ms: x.tab.since_ms ?? null, days: null, stage: x.tab.state }
   const slug = x.row?.task
   const tab = slug ? tabOfTask(tabs, slug) : null
   if (tab && tab.state !== 'shell') return { by: 'tab', tab, since_ms: tab.since_ms ?? null, days: null, stage: tab.state }
@@ -405,6 +413,7 @@ export function batchPreselect(rows, s) {
  *  calls in the order done, later, drop, do; skipped [{row, why}], why not_offered, no_suggestion, you, working (an
  *  agent is on it already, atWork) or running */
 export function batchPlan(rows, how, s, value = '', lang = 'en') {
+  const by = how === 'suggested' ? 'suggestion' : 'batch'
   const done = []
   const later = []
   const drop = []
@@ -421,19 +430,19 @@ export function batchPlan(rows, how, s, value = '', lang = 'en') {
     if (verb === 'done') done.push(row)
     else if (verb === 'later') {
       const day = how === 'suggested' ? sug.until : value
-      const a = flowAction('later', row, day)
+      const a = flowAction('later', row, day, by)
       if (a) later.push(a)
       else skipped.push({ row, why: 'not_offered' })
     } else if (verb === 'drop') {
       const why = how === 'suggested' ? (sug.drop ? dropReasonWord(sug.drop, lang) : sug.reason) : value
-      const a = flowAction('drop', row, why)
+      const a = flowAction('drop', row, why, by)
       if (a) drop.push(a)
       else skipped.push({ row, why: 'not_offered' })
     } else if (verb === 'do') {
       if (atWork(row, s)) { skipped.push({ row, why: 'working' }); continue }
       if (running >= cap) { skipped.push({ row, why: 'running' }); continue }
       running += 1
-      starts.push(flowAction('do', row, startNote(row, lang)))
+      starts.push(flowAction('do', row, startNote(row, lang), by))
     } else skipped.push({ row, why: 'not_offered' })
   }
   // the drops that settle (not a shelve) go out together where they share a reason
@@ -443,9 +452,9 @@ export function batchPlan(rows, how, s, value = '', lang = 'en') {
     if (a.verb !== 'settle') { shelves.push(a); continue }
     const k = a.args.text
     if (settles.has(k)) settles.get(k).args.keys.push(...a.args.keys)
-    else settles.set(k, { verb: 'settle', args: { keys: [...a.args.keys], outcome: 'not_doing', text: k } })
+    else settles.set(k, { verb: 'settle', args: { keys: [...a.args.keys], outcome: 'not_doing', text: k, by } })
   }
-  const calls = [...(done.length ? [{ verb: 'settle', args: { keys: done.map(r => r.key), outcome: 'done' } }] : []),
+  const calls = [...(done.length ? [{ verb: 'settle', args: { keys: done.map(r => r.key), outcome: 'done', by } }] : []),
     ...later, ...shelves, ...settles.values(), ...starts]
   return { calls, skipped, counts: { done: done.length, later: later.length, drop: drop.length, do: starts.length },
     how, value, days: [...new Set(later.map(a => a.args.until))], reasons: [...new Set(drop.map(a => a.args.reason ?? a.args.text))] }
@@ -542,18 +551,20 @@ export function suggestedVerb(row, triage = null) {
 /** What a verb sends for a row: {verb, args}, or null when it may not go (a start without a sentence, a drop
  *  without a reason or of a stream). Let AI do it always carries a sentence, so it starts an agent and never
  *  approves an item's own action unseen (actions_work.py do_it); Drop shelves a task (an idea in the inbox, the
- *  task declined) and settles anything else as not doing, the reason with it. Advise is a question (c.flowAdvise) */
-export function flowAction(verb, row, value = '') {
+ *  task declined) and settles anything else as not doing, the reason with it. Advise is a question (c.flowAdvise).
+ *  `by` says where the decision came from (suggestion, batch, instruction); a click of the person's own sends none */
+export function flowAction(verb, row, value = '', by = null) {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim()
   const key = row?.key
   if (!key) return null
-  if (verb === 'do') return text ? { verb: 'do_it', args: { keys: [key], note: text } } : null
-  if (verb === 'done') return { verb: 'settle', args: { keys: [key], outcome: 'done' } }
-  if (verb === 'later') return /^\d{4}-\d{2}-\d{2}$/.test(text) ? { verb: 'later', args: { key, until: text } } : null
+  const tag = by ? { by } : {}
+  if (verb === 'do') return text ? { verb: 'do_it', args: { keys: [key], note: text, ...tag } } : null
+  if (verb === 'done') return { verb: 'settle', args: { keys: [key], outcome: 'done', ...tag } }
+  if (verb === 'later') return /^\d{4}-\d{2}-\d{2}$/.test(text) ? { verb: 'later', args: { key, until: text, ...tag } } : null
   if (verb === 'drop') {
     if (!text || isStream(row)) return null
-    return row.task && !row.inbox_id ? { verb: 'shelve', args: { key, reason: text.slice(0, 200) } }
-      : { verb: 'settle', args: { keys: [key], outcome: 'not_doing', text } }
+    return row.task && !row.inbox_id ? { verb: 'shelve', args: { key, reason: text.slice(0, 200), ...tag } }
+      : { verb: 'settle', args: { keys: [key], outcome: 'not_doing', text, ...tag } }
   }
   return null
 }
@@ -566,4 +577,186 @@ export function startNote(row, lang = 'en') {
 /** The words of a reason to drop: a key of the defaults in the page's language, a reason of the instance as written */
 export function dropReasonWord(reason, lang = 'en') {
   return (TABLES[lang] ?? TABLES.en).flow.drop.reason[reason] ?? String(reason)
+}
+
+// ---------------------------------------------------------------- round 3: the open point's tabs, its activity, its
+// fields, the instruction line
+
+// the tabs under the card of an open point, in the order of their bar
+export const FLOW_TABS = ['desc', 'steps', 'activity', 'related']
+
+// the filters of the Activity tab, in the order of their bar; a row of the feed names the ones it counts in
+export const ACTIVITY_FILTERS = ['all', 'notes', 'docs', 'state', 'agents', 'code']
+
+// at most this many keys go with one instruction (actions.py keys)
+export const INSTRUCT_MAX = 50
+
+/** The tabs a point has under its card: Description and Activity on every point with a row, Steps and Related where
+ *  the row has a task (an inbox item that names one reads that task); a tab alone and the reports card have none */
+export function pointTabs(x) {
+  const row = x && x.kind !== 'reports' ? x.row : null
+  if (!row?.key) return []
+  return FLOW_TABS.filter(id => id === 'desc' || id === 'activity' || !!row.task)
+}
+
+/** The tab shown: the one chosen (ui.flowTab, kept from point to point) where the point has it, else Description */
+export const pointTab = (tabs, want) => (tabs.includes(want) ? want : 'desc')
+
+const STEP_RE = /^\s*[-*] \[( |x|X)\] (.+)$/
+
+/** The steps of a task: the checklist lines of its STATUS.md, as they stand (read only: they are ticked there) */
+export function stepsOf(detail) {
+  return (detail?.sections ?? []).flatMap(sec => String(sec.text ?? '').split('\n').map(l => STEP_RE.exec(l)).filter(Boolean)
+    .map(m => ({ done: m[1] !== ' ', text: m[2].trim() })))
+}
+
+/** What is related to a point: the other rows of its task as they stand in the model (its inbox items, the task's own
+ *  row for an item that names it) and the paths its STATUS.md names under related. {rows, paths} */
+export function relatedOf(x, s, detail) {
+  const row = x && x.kind !== 'reports' ? x.row : null
+  if (!row?.task) return { rows: [], paths: [] }
+  const rows = [...indexRows(s?.model).values()].filter(r => r.task === row.task && r.key !== row.key)
+  return { rows, paths: (detail?.related ?? []).map(String).filter(Boolean) }
+}
+
+/** The rows of the activity under a filter, in the server's order (the newest first) */
+export const activityRows = (feed, filter = 'all') => (feed?.rows ?? []).filter(r => filter === 'all' || (r.filters ?? []).includes(filter))
+
+/** The count of each filter: the server's, counted before it cut the rows at 200, else counted from the rows */
+export function activityCounts(feed) {
+  const given = feed?.counts && typeof feed.counts === 'object' ? feed.counts : null
+  return Object.fromEntries(ACTIVITY_FILTERS.map(f => [f, given ? Math.max(0, Number(given[f]) || 0) : activityRows(feed, f).length]))
+}
+
+/** When a row of the activity happened, short: the day and the time ("27.10. 09:40", "Oct 27 09:40"), the day alone
+ *  for a source that has only the day */
+export function activityWhen(at, lang = 'en') {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(String(at ?? ''))
+  if (!m) return ''
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12)
+  let day
+  try {
+    day = new Intl.DateTimeFormat(lang, lang === 'de' ? { day: 'numeric', month: 'numeric' } : { month: 'short', day: 'numeric' }).format(d)
+  } catch {
+    day = `${Number(m[3])}.${Number(m[2])}.`
+  }
+  return m[4] ? `${day} ${m[4]}:${m[5]}` : day
+}
+
+/** The agent tab of a point that takes words: the tab that drives it (flowDrive), unless it is back at its shell */
+export function flowTabOf(x, s) {
+  if (!x || x.kind === 'reports') return null
+  const tab = flowDrive(x, s).tab
+  return tab && tab.state !== 'shell' ? tab : null
+}
+
+/** The tab of a point while it is live, at work or asking: then To tab is the strong way, and no second agent starts */
+export function flowLive(x, s) {
+  const tab = flowTabOf(x, s)
+  return tab && ['working', 'needs-you'].includes(tab.state) ? tab : null
+}
+
+/** The fields of the right column, in their order, each {id, ...} for the view to word: the theme (themes on), the
+ *  area, who works on it (flowDrive), the prio (Jev's quadrant and rank from the feed, else the triage's rank, else the
+ *  priority), the three bars of Jev, due, the source (its row, row.url, else STATUS.md's origin when it is a link),
+ *  created and moved. Never the status: the card's head says it */
+export function flowFields(x, s, feed = null, detail = null) {
+  if (!x) return []
+  const reports = x.kind === 'reports'
+  const row = reports ? null : x.row ?? null
+  const facts = feed?.facts ?? {}
+  const jev = facts.jev && typeof facts.jev === 'object' ? facts.jev : null
+  const out = []
+  if (s?.themes?.enabled === true && row?.key) out.push({ id: 'theme', value: s.themes.assign?.[row.key] ?? null })
+  out.push({ id: 'area', value: pointArea(x) })
+  if (!reports) out.push({ id: 'who', drive: flowDrive(x, s) })
+  if (!reports) {
+    const rank = row ? s?.triage?.items?.[row.key]?.next_rank : null
+    out.push({ id: 'prio', jev: jev ? { quadrant: jev.quadrant ?? null, rank: jev.rank ?? null } : null,
+      rank: !jev && Number.isFinite(rank) ? rank : null, priority: row?.priority ?? null })
+    if (jev) for (const id of ['urgency', 'impact', 'effort']) if (Number.isFinite(jev[id])) out.push({ id, value: jev[id] })
+    out.push({ id: 'due', value: row?.due ?? null })
+  }
+  const origin = typeof detail?.front?.origin === 'string' ? detail.front.origin.trim() : ''
+  const link = /^https?:\/\/\S+$/.test(origin) ? origin : null
+  const url = row?.url ?? link
+  out.push({ id: 'source', row, rows: reports ? x.rows : null, url: url ?? null, link: link && link !== url ? link : null })
+  if (!reports) {
+    out.push({ id: 'created', value: facts.created ?? detail?.front?.created ?? row?.created ?? null })
+    out.push({ id: 'moved', value: facts.moved ?? detail?.front?.last_updated ?? null })
+  }
+  return out
+}
+
+/** A level of Jev's bars in a word: high from two thirds, low under one third */
+export const meterLevel = v => (v >= 0.67 ? 'high' : v >= 0.34 ? 'mid' : 'low')
+
+/** Whether a file is too large to attach (cockpit.flow.attach.max_mb): the page says so before it reads it */
+export const attachTooBig = (bytes, s) => Number(bytes) > flowSettings(s).attach.max_mb * 1048576
+
+/** What the instruction line speaks for: the open point (and its tab, where a reply can go), else in the overview the
+ *  points ticked there or every point of the side entered; at most INSTRUCT_MAX keys go. {point, picked, keys, n, cut,
+ *  title, tab, name} */
+export function instructScope(x, queue, picked, name, s) {
+  if (x) {
+    const row = x.kind === 'reports' ? null : x.row ?? null
+    const tab = flowTabOf(x, s)
+    return { point: true, picked: false, keys: row?.key ? [row.key] : [], n: row?.key ? 1 : 0, cut: false,
+      title: row?.title ?? x.tab?.name ?? '', tab: takesWords(tab, s) ? tab : null, name }
+  }
+  const all = (queue ?? []).flatMap(pointKeys)
+  const ticked = picked?.size ? all.filter(k => picked.has(k)) : []
+  const mine = ticked.length ? ticked : all
+  return { point: false, picked: ticked.length > 0, keys: mine.slice(0, INSTRUCT_MAX), n: mine.length, cut: mine.length > INSTRUCT_MAX,
+    title: null, tab: null, name }
+}
+
+/** Whether typed words may go to `tab`: it waits at its prompt, as the reply box has it (replyOptions). A tab that asks
+ *  a choice takes its options on the card, one at work takes nothing (actions_tabs.py tab_send) */
+const takesWords = (tab, s) => !!tab && replyOptions(tab, s).textBox
+
+/** What Run sends for the plan the server made of a sentence (flow_instruct): every step through the verb it names,
+ *  each with by instruction. Done for several goes out as one settle; Later with its day, Drop with its reason in the
+ *  page's words; Let AI do it with its sentence (a mail is such a start, its sentence asks for a draft only) and, as in
+ *  a batch, never where an agent works already nor past max_running; a reply goes to the tab its step names, through
+ *  the reply guard, only while it waits at its prompt. A key no longer in the list stays out. {calls, skipped: [{key, title, why}]} */
+export function instructCalls(plan, s, lang = 'en') {
+  const calls = []
+  const skipped = []
+  if (!plan || !Array.isArray(plan.steps)) return { calls, skipped }
+  const rows = indexRows(s?.model)
+  let running = flowRunning(s)
+  const cap = flowSettings(s).max_running
+  for (const step of plan.steps) {
+    const out = (k, why) => skipped.push({ key: k, title: rows.get(k)?.title ?? null, why })
+    const keys = (step.keys ?? []).filter(k => rows.has(k) || (out(k, 'gone'), false))
+    if (!keys.length) continue
+    const op = step.op === 'mail' ? 'do' : step.op
+    if (op === 'reply') {
+      const tab = (s?.tabs?.tabs ?? []).find(t => t.ref === step.tab_ref)
+      const words = String(step.text ?? '').trim()
+      if (tab && words && takesWords(tab, s)) calls.push(replySend(tab, words))
+      else for (const k of keys) out(k, tab?.state === 'needs-you' ? 'asks' : 'no_tab')
+      continue
+    }
+    if (op === 'done') {
+      const ok = keys.filter(k => verbsFor(rows.get(k)).includes('done') || (out(k, 'not_offered'), false))
+      if (ok.length) calls.push({ verb: 'settle', args: { keys: ok, outcome: 'done', by: 'instruction' } })
+      continue
+    }
+    for (const k of keys) {
+      const row = rows.get(k)
+      if (!['later', 'drop', 'do'].includes(op) || !verbsFor(row).includes(op)) { out(k, 'not_offered'); continue }
+      if (op === 'do') {
+        if (atWork(row, s)) { out(k, 'working'); continue }
+        if (running >= cap) { out(k, 'running'); continue }
+      }
+      const value = op === 'later' ? step.until : op === 'drop' ? dropReasonWord(step.reason ?? '', lang) : step.note
+      const a = flowAction(op, row, value, 'instruction')
+      if (!a) { out(k, op === 'later' ? 'bad_day' : 'not_offered'); continue }
+      if (op === 'do') running += 1
+      calls.push(a)
+    }
+  }
+  return { calls, skipped }
 }

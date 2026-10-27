@@ -1290,6 +1290,35 @@ test('Activity: the filters with their counts, each row with time, kind, old str
   assert.equal(st.$$('.flow-act-row').length, 4)
 })
 
+test('Activity as the server words it: a state row says itself in its change, a document in its link, a start without a tab names nobody', () => {
+  // activity.py gives a state row a short phrase as its text (a fallback for a reader without the change), a document
+  // row its path inside deliverables/, and a start of the return channel a driver of null when no tab is known
+  const rows = [
+    arow({ id: 'status:1', at: '2026-10-08T15:00', kind: 'status', filters: ['state'], text: 'Status changed', change: { field: 'status', old: 'doing', new: 'review' } }),
+    arow({ id: 'decision:1', at: '2026-10-08T14:00', kind: 'decision', filters: ['state'], text: 'Later until 2026-10-12',
+      change: { field: 'decision', old: null, new: 'later', until: '2026-10-12' }, by: { kind: 'instruction', name: null } }),
+    arow({ id: 'theme:1', at: '2026-10-08T13:00', kind: 'theme', filters: ['state'], text: 'Theme changed', change: { field: 'theme', old: 'Docs', new: 'Release work' } }),
+    arow({ id: 'doc:1', at: '2026-10-08T12:00', kind: 'doc', filters: ['docs'], text: 'sub/plan.md',
+      doc: { path: 'deliverables/sub/plan.md', state: 'new', changes: 1, attached: false, bytes: 10 }, links: [{ kind: 'doc', slug: 'a', path: 'deliverables/sub/plan.md' }] }),
+    arow({ id: 'agent:1', at: '2026-10-08T11:00', kind: 'agent', filters: ['agents', 'state'], text: 'the draft is in deliverables/plan.md',
+      change: { field: 'driver', old: null, new: null }, agent: { mode: 'go', stage: 'result', result: 'the draft is in deliverables/plan.md' } }),
+    arow({ id: 'created:1', at: '2026-10-01', kind: 'created', filters: ['state'], text: 'Created', change: { field: 'status', old: null, new: 'backlog' } }),
+  ]
+  const feed = feedOf('task:a', { rows, counts: { all: 6, notes: 0, docs: 1, state: 5, agents: 1, code: 0 } })
+  const el = mount(html`<${FlowPage} s=${pointState({ feed, ui: { flowTab: 'activity' } })} c=${recorder()} />`)
+  const r = el.$$('.flow-act-row')
+  assert.equal(r.length, 6)
+  for (const k of [0, 1, 2, 5]) {
+    assert.ok(!r[k].$('.flow-act-text'), `${rows[k].kind}: the change says it, the phrase is not said twice`)
+    assert.ok(r[k].$('.flow-chg-new'))
+  }
+  assert.match(r[1].$('.flow-chg-new').text(), new RegExp(en.flow.activity.decision.later))
+  assert.ok(!r[3].$('.flow-act-text'), 'the path stands once, as the link')
+  assert.equal(r[3].$('a').text(), 'deliverables/sub/plan.md')
+  assert.ok(!r[4].$('.flow-chg'), 'no driver known: no change shown')
+  assert.match(r[4].$('.flow-act-text').text(), /the draft is in deliverables\/plan\.md/)
+})
+
 test('Activity: a note through the server, a document attached where the point has a task, the summary on a click', async () => {
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${pointState({ ui: { flowTab: 'activity' } })} c=${c} />`)
@@ -1405,12 +1434,18 @@ test('nothing twice: state in the card head, who and source in the fields, the s
   assert.equal(aside.$$('dt').filter(d => /status|state/i.test(d.text())).length, 0)
 })
 
-test('instructScope: the open point, with its live tab; in the overview the ticked points, else every point of the side, at most 50', () => {
+test('instructScope: the open point, with its tab where it takes typed words; in the overview the ticked points, else every point of the side, at most 50', () => {
   const busy = { ref: 'surface:21', name: 'busy', slug: 'a', state: 'working', since_ms: NOW - MIN }
   const s = pointState({ tabs: [busy] })
   const q = queueOf(s)
   const one = logic.instructScope(q[0], q, new Set(), 'Ops', s)
-  assert.deepEqual([one.point, one.keys, one.title, one.tab?.ref], [true, ['task:a'], 'Task a', 'surface:21'])
+  assert.deepEqual([one.point, one.keys, one.title, one.tab?.ref], [true, ['task:a'], 'Task a', undefined])
+  // a reply goes only to a tab that waits at its prompt (replyOptions: a text box), not to one at work or asking a choice
+  for (const [state, ref] of [['waiting', 'surface:21'], ['needs-you', undefined]]) {
+    const w = pointState({ tabs: [{ ...busy, state }] })
+    const wq = queueOf(w)
+    assert.equal(logic.instructScope(wq.find(x => x.row?.key === 'task:a'), wq, new Set(), 'Ops', w).tab?.ref, ref, state)
+  }
   const many = state({ work: Array.from({ length: 60 }, (_, i) => task(`t${i}`)) })
   const all = queueOf(many)
   const side = logic.instructScope(null, all, new Set(), 'Ops', many)
@@ -1425,7 +1460,8 @@ test('instructScope: the open point, with its live tab; in the overview the tick
 test('instructCalls: each step through its verb with by instruction, done for several as one settle, a reply to its tab', () => {
   // the tab a reply goes to (the plan names it), no tab of the task: Let AI do it may start on task a
   const live = { ref: 'surface:3', name: 'helper', state: 'waiting', since_ms: NOW - MIN }
-  const s = state({ work: [task('a'), task('b'), task('busy')], tabs: [live, { ref: 'surface:4', name: 'busy', slug: 'busy', state: 'working' }] })
+  const asks = { ref: 'surface:5', name: 'asker', state: 'needs-you', since_ms: NOW - MIN, ask: { options: [{ n: 1, label: 'Yes' }] } }
+  const s = state({ work: [task('a'), task('b'), task('busy')], tabs: [live, asks, { ref: 'surface:4', name: 'busy', slug: 'busy', state: 'working' }] })
   const plan = { id: 'p1', text: 'x', point: false, steps: [
     { n: 1, op: 'done', keys: ['task:a', 'task:b'], titles: ['Task a', 'Task b'], skipped: [] },
     { n: 2, op: 'later', keys: ['task:b'], until: '2026-10-12', skipped: [] },
@@ -1433,6 +1469,8 @@ test('instructCalls: each step through its verb with by instruction, done for se
     { n: 4, op: 'do', mail: true, keys: ['task:a', 'task:busy'], note: 'Write a mail draft, a draft only, never send it: ask about the prices', skipped: [] },
     { n: 5, op: 'reply', keys: ['task:a'], tab_ref: 'surface:3', text: 'yes, go on', skipped: [] },
     { n: 6, op: 'done', keys: ['task:gone'], skipped: [] },
+    // a tab that asks a choice takes its options on the card, never typed words (actions_tabs.py tab_send)
+    { n: 7, op: 'reply', keys: ['task:b'], tab_ref: 'surface:5', text: 'yes', skipped: [] },
   ], unclear: null }
   const { calls, skipped } = logic.instructCalls(plan, s, 'en')
   assert.deepEqual(calls, [
@@ -1442,7 +1480,8 @@ test('instructCalls: each step through its verb with by instruction, done for se
     { verb: 'do_it', args: { keys: ['task:a'], note: 'Write a mail draft, a draft only, never send it: ask about the prices', by: 'instruction' } },
     { verb: 'tab_send', args: { tab_ref: 'surface:3', text: 'yes, go on', expect: 'waiting', name: 'helper' } },
   ])
-  assert.deepEqual(skipped.map(x => [x.key, x.why]), [['task:busy', 'working'], ['task:gone', 'gone']])
+  assert.deepEqual(skipped.map(x => [x.key, x.why]), [['task:busy', 'working'], ['task:gone', 'gone'], ['task:b', 'asks']])
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.instruct.skipped.asks, 'the why is worded')
   // a reply whose tab is gone runs nothing
   assert.deepEqual(logic.instructCalls({ steps: [{ op: 'reply', keys: ['task:a'], tab_ref: 'surface:99', text: 'y', skipped: [] }] }, s, 'en').calls, [])
   assert.deepEqual(logic.instructCalls(null, s, 'en'), { calls: [], skipped: [] })

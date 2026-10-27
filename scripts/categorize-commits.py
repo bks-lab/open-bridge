@@ -595,6 +595,10 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_describe.py",
     "scripts/lib/bridge_cockpit/themes.py",               # the themes of Work through, ordered by a small model
     "scripts/tests/test_bridge_cockpit_themes.py",
+    "scripts/lib/bridge_cockpit/activity.py",             # Work through: the Activity of a point, its documents, attach
+    "scripts/tests/test_bridge_cockpit_activity.py",
+    "scripts/lib/bridge_cockpit/instruct.py",             # Work through: the instruction line's sentence as checked steps
+    "scripts/tests/test_bridge_cockpit_instruct.py",
     "scripts/tests/test_task_brief.py",
     "scripts/tests/test_card_fields.py",
     "scripts/tests/test_workplace_brief.py",
@@ -651,8 +655,10 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/dossier.js",
     "scripts/web/views/flow.js",
     "scripts/web/views/verbbar.js",
-    "scripts/web/views/flowside.js",          # Work through: the themes or areas, the tabs, the details
+    "scripts/web/views/flowside.js",          # Work through: the themes, the right column's verbs and fields
     "scripts/web/views/flowlist.js",          # Work through: the list with suggestions and the batch
+    "scripts/web/views/flowtabs.js",          # Work through: the tabs under the card, the Activity pane
+    "scripts/web/views/flowinstruct.js",      # Work through: the instruction line and its understood steps
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",

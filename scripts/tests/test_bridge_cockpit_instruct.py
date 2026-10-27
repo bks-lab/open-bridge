@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_bridge_cockpit import NOW, ONLY_ID, TODAY, TOMORROW, YES_ID, World, fail, ok, private_key_dir  # noqa: E402,F401
+from test_bridge_cockpit import NOW, ONLY_ID, STATUS, TODAY, TOMORROW, YES_ID, World, fail, ok, private_key_dir  # noqa: E402,F401
 
 from lib.bridge_cockpit import instruct as ins  # noqa: E402
 from lib.bridge_cockpit.actions import ActionError  # noqa: E402
@@ -57,6 +57,15 @@ def world(tmp_path):
     w.close()
 
 
+def waiting(world, slug="demo-task"):
+    """the tab of slug waits at its prompt: it takes typed words (the fixture's tab of demo-task asks a choice)"""
+    status = [dict(t, state="waiting") if t.get("slug") == slug else t for t in STATUS]
+    world.runner.handlers["workplace.status"] = lambda argv: ok(status)
+    world.app.tabs.poll()
+    world.app.collector.request("both")
+    world.app.collector.drain()
+
+
 def sent(argv):
     """(data block, sentence) of a call"""
     text = argv[-1]
@@ -87,6 +96,7 @@ def test_the_instruct_argv_is_one_exact_shape_the_runner_lets_through(tmp_path):
 # ---------------------------------------------------------------- a point: done, a mail draft, a reply to its tab
 
 def test_a_sentence_on_the_open_point_becomes_steps_and_nothing_runs(world):
+    waiting(world)
     before = len(world.runner.calls)
     res = world.act("flow_instruct", text="done, and ask the vendor\nabout the prices", keys=[DEMO], point=True)
     calls = world.runner.calls[before:]
@@ -121,6 +131,26 @@ def test_a_reply_needs_the_open_point_and_its_live_tab(world):
     assert plan["steps"][0]["skipped"] == [{"key": YES, "title": "Tidy labels", "why": "no_tab"}]
     data, _s = sent(world.runner.of("claude.p")[-1])
     assert data["points"][0]["live_tab"] is False and "reply" not in data["points"][0]["offers"]
+
+
+def test_a_reply_goes_only_to_a_tab_that_waits_at_its_prompt(world):
+    """A tab that asks a choice takes its options on the card and one at work takes nothing (actions_tabs.py tab_send
+    refuses typed words there): the model is not offered a reply, and a reply step leaves the point out"""
+    world.runner.handlers["claude.p"] = lambda argv: answer([step("reply", [1], text="go on")])
+    for state in ("needs-you", "working"):
+        status = [dict(t, state=state) if t.get("slug") == "demo-task" else t for t in STATUS]
+        world.runner.handlers["workplace.status"] = lambda argv, status=status: ok(status)
+        world.app.tabs.poll()
+        world.app.collector.request("both")
+        world.app.collector.drain()
+        [reply] = world.act("flow_instruct", text="tell it to go on", keys=[DEMO], point=True)["plan"]["steps"]
+        assert reply["keys"] == [] and reply["tab_ref"] is None, state
+        assert reply["skipped"] == [{"key": DEMO, "title": "Work on the demo task", "why": "not_offered"}], state
+        data, _s = sent(world.runner.of("claude.p")[-1])
+        assert data["points"][0]["live_tab"] is True and "reply" not in data["points"][0]["offers"], state
+    waiting(world)
+    [reply] = world.act("flow_instruct", text="tell it to go on", keys=[DEMO], point=True)["plan"]["steps"]
+    assert reply["keys"] == [DEMO] and reply["tab_ref"] == "surface:7" and reply["skipped"] == []
 
 
 # ---------------------------------------------------------------- the overview: each step checked

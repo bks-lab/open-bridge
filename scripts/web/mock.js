@@ -194,15 +194,12 @@ const WORDS = {
     'Accounts for two new members are ready': 'Zugänge für zwei neue Mitglieder sind bereit',
     'The board was tidied last week': 'Das Board wurde letzte Woche aufgeräumt',
     // Work through, round 3: the activity of the demo task, its summary, the mail note of an instruction
-    'Draft of the first two chapters': 'Entwurf der ersten zwei Kapitel',
     'Started: find three good sources for the team page': 'Gestartet: drei gute Quellen für die Teamseite finden',
     'Outline agreed with the team, screenshots come next': 'Gliederung mit dem Team abgestimmt, als Nächstes die Screenshots',
     'Outline written, examples collected': 'Gliederung geschrieben, Beispiele gesammelt',
     'example/repo#15 Add a config switch for the report': 'example/repo#15 Einen Config-Schalter für den Bericht einbauen',
     'example/repo#18 Docs: setup guide outline': 'example/repo#18 Doku: Gliederung der Einrichtungsanleitung',
     'Finished: three sources found, the result note is filed': 'Fertig: drei Quellen gefunden, die Ergebnisnotiz ist abgelegt',
-    'From the inbox': 'Aus dem Posteingang',
-    'Filed by a session': 'Von einer Sitzung abgelegt',
     'The new config key needs a line in the setup guide': 'Der neue Config-Schlüssel braucht eine Zeile in der Einrichtungsanleitung',
     'Started: update the setup docs': 'Gestartet: die Einrichtungs-Doku nachziehen',
     'Docs and guides': 'Doku und Anleitungen',
@@ -210,7 +207,7 @@ const WORDS = {
       'Seit letzter Woche ist die Gliederung mit dem Team abgestimmt, und die ersten zwei Kapitel stehen als Entwurf. Ein Agent hat drei Quellen gefunden, als Nächstes kommen die Screenshots.',
     'A file of the demo, invented: nothing here is real.': 'Eine Datei der Demo, erfunden: nichts hier ist echt.',
     'No verb in the sentence: done, later, drop, a mail or a reply.': 'Kein Verb im Satz: erledigt, später, weg, eine Mail oder eine Antwort.',
-    'Write a mail draft with the mail-draft skill, a draft only, never send it': 'Schreib einen Mail-Entwurf mit dem Skill mail-draft, nur als Entwurf, nie senden',
+    'Write a mail draft with the mail-draft skill, a draft only, never send it': 'Schreibe einen Mail-Entwurf mit dem Skill mail-draft, nur als Entwurf, niemals senden',
   },
 }
 
@@ -1419,7 +1416,7 @@ function feedRows(row, now) {
   if (row.task === 'demo-task') {
     return [
       ago(120, { id: 'theme:1', kind: 'theme', filters: ['state'], change: { field: 'theme', old: null, new: 'Docs and guides' }, by: { kind: 'themes', name: null } }),
-      ago(160, { id: 'doc:1', kind: 'doc', filters: ['docs'], text: 'Draft of the first two chapters', by: { kind: 'agent', name: 'demo-task research' },
+      ago(160, { id: 'doc:1', kind: 'doc', filters: ['docs'], text: 'guide-draft.md', by: { kind: 'agent', name: 'demo-task research' },
         doc: doc('deliverables/guide-draft.md', 'new'), links: [{ kind: 'doc', slug: 'demo-task', path: 'deliverables/guide-draft.md' }] }),
       ago(240, { id: 'agent:1', kind: 'agent', filters: ['agents', 'state'], text: 'Started: find three good sources for the team page',
         change: { field: 'driver', old: null, new: 'demo-task research' }, by: { kind: 'suggestion', name: null },
@@ -1441,7 +1438,7 @@ function feedRows(row, now) {
       ago(5 * 1440, { id: 'doc:3', kind: 'doc', filters: ['docs'], by: { kind: 'you', name: null },
         doc: doc('deliverables/screenshots.pdf', 'new', { attached: true, bytes: 48213 }), links: [{ kind: 'doc', slug: 'demo-task', path: 'deliverables/screenshots.pdf' }] }),
       ago(6 * 1440, { id: 'status:1', kind: 'status', filters: ['state'], change: { field: 'status', old: 'backlog', new: 'doing' }, by: { kind: 'git', name: null } }),
-      day(7, { id: 'created:1', kind: 'created', filters: ['state'], text: 'From the inbox', change: { field: 'status', old: null, new: 'backlog' },
+      day(7, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'backlog' },
         by: { kind: 'you', name: null } }),
     ]
   }
@@ -1450,7 +1447,7 @@ function feedRows(row, now) {
       ago(35, { id: 'agent:1', kind: 'agent', filters: ['agents', 'state'], text: 'Started: update the setup docs', change: { field: 'driver', old: null, new: null },
         by: { kind: 'you', name: null }, agent: { mode: 'go', stage: 'working', result: null } }),
       ago(26 * 60, { id: 'note:1', kind: 'note', filters: ['notes'], text: 'The new config key needs a line in the setup guide' }),
-      day(3, { id: 'created:1', kind: 'created', filters: ['state'], text: 'Filed by a session', change: { field: 'status', old: null, new: 'open' } }),
+      day(3, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'open' } }),
     ]
   }
   return [day(5, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: row.status ?? 'open' } })]
@@ -1573,7 +1570,7 @@ export function createMockTransport(opts = {}) {
     return ok({ ok: true, verb: 'flow_attach', note: `Attached: ${path}`, steps: [], settled: [], reload: 'none', attach: { path, name: pick, bytes, row: r } })
   }
   // a sentence of the instruction line as a plan (instruct.py), by a fixed word match: done, later, drop, a mail (always a
-  // start that drafts only), a start, a reply (only with the point open and a tab there); nothing runs
+  // start that drafts only), a start, a reply (only with the point open and its tab at its prompt); nothing runs
   const instruct = args => {
     const rows = (args.keys ?? []).map(rowOf).filter(Boolean)
     if (!rows.length) return fail(409, 'stale_row', 'no such row')
@@ -1588,10 +1585,12 @@ export function createMockTransport(opts = {}) {
     if (has('mail', 'e mail', 'email')) step('do', rows, { mail: true, note: `${localize(MAIL_NOTE, words)}: ${String(args.text).trim()}` })
     else if (has('let ai', 'bridge macht', 'agent')) step('do', rows, { note: String(args.text).trim() })
     if (has('reply', 'antwort', 'antworte', 'go on', 'weiter')) {
+      // typed words go only to a tab that waits at its prompt (instruct.py takes_words); one that asks a choice or works
+      // does not offer a reply
       const tab = args.point ? state.tabs.tabs.find(t => t.slug === rows[0].task && t.state !== 'shell') : null
       const said = String(args.text).split(':').slice(1).join(':').trim() || String(args.text).trim()
-      if (tab) step('reply', rows.slice(0, 1), { tab_ref: tab.ref, text: said })
-      else step('reply', [], { skipped: rows.map(r => ({ key: r.key, title: r.title, why: 'no_tab' })) })
+      if (tab?.state === 'waiting' && !tab.is_control) step('reply', rows.slice(0, 1), { tab_ref: tab.ref, text: said })
+      else step('reply', [], { tab_ref: null, text: said, skipped: rows.map(r => ({ key: r.key, title: r.title, why: tab ? 'not_offered' : 'no_tab' })) })
     }
     return { id: `p${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, text: String(args.text).trim(), point: !!args.point, n: rows.length,
       steps, unclear: steps.length ? null : 'No verb in the sentence: done, later, drop, a mail or a reply.', model: 'haiku', at_ms: now() }

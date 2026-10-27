@@ -7,7 +7,7 @@ What the model may say (OPS): done, later until a day, drop with a reason, do (l
 never send: text.py instruct.mail_note). Each step names the points by their number in scope; every step is checked
 here against what each point offers (the page's verbsFor: no done or drop for a stream, no start on an approved
 item), its day (after today, within UNTIL_MAX_DAYS) and the scope (a number outside it, a reply without the open
-point's live tab). What does not fit is left out of the step with its reason (`skipped`); an op outside OPS is no
+point's live tab, or to one that does not wait at its prompt). What does not fit is left out of the step with its reason (`skipped`); an op outside OPS is no
 step. Nothing runs on the server: the answer is the plan, the page runs its steps through the existing verbs and
 their undo.
 
@@ -105,9 +105,17 @@ def argv_ok(argv_: Any, claude: str | None) -> bool:
             and 0 < len(argv_[14]) <= SYSTEM_MAX and 0 < len(argv_[16]) <= PROMPT_MAX)
 
 
+def takes_words(tab: dict | None, control_ref: str | None) -> bool:
+    """Whether typed words may go to a point's live tab: it waits at its prompt and is not the control session, as the
+    page's reply box has it (logic.js replyOptions). A tab that asks a choice takes its options on the card and one at
+    work takes nothing (actions_tabs.py v_tab_send)"""
+    return bool(tab) and tab.get("state") == "waiting" and tab.get("ref") != control_ref
+
+
 def offers(out: dict, live: bool, point: bool) -> list[str]:
     """The ops a point takes, as the page's verbsFor has it: done and drop never on a stream, done only where the row
-    settles as done, a start (and so a mail draft) never on an approved item; a reply only on the open point's live tab"""
+    settles as done, a start (and so a mail draft) never on an approved item; a reply only on the open point's live tab
+    while it takes typed words (`live`: takes_words)"""
     stream = not out.get("inbox_id") and bool(out.get("stream") or out.get("work_kind") == "stream")
     got = []
     if not stream and "done" in (out.get("settle") or []):
@@ -133,7 +141,7 @@ def prompt(points: list[dict], sentence: str, today: str, language: str, reasons
     system = SYSTEM.format(today=today, steps=STEPS_MAX, language=language or "English")
     data = {"today": today, "language": language or "English", "drop_reasons": reasons, "point": point,
             "points": [{"n": p["n"], "title": scrub(_line(p["title"], TITLE_MAX)), "kind": _kind(p["out"]),
-                        "offers": offers(p["out"], bool(p["tab"]), point), "live_tab": bool(p["tab"])} for p in points]}
+                        "offers": offers(p["out"], bool(p.get("typed")), point), "live_tab": bool(p["tab"])} for p in points]}
     return system, f"{DATA_LABEL}\n{json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n{SENTENCE_LABEL}\n{sentence}"
 
 
@@ -148,8 +156,8 @@ def _day(value: Any, today: str) -> str | None:
 
 def plan_steps(answer: dict, points: list[dict], sentence: str, today: str, reasons: list[str], point: bool,
                mail_note: str) -> tuple[list[dict], str | None]:
-    """(steps, unclear) of the model's answer, each step checked (module doc). points are {n, key, title, out, tab}:
-    tab the live tab of the point, None without one"""
+    """(steps, unclear) of the model's answer, each step checked (module doc). points are {n, key, title, out, tab, typed}:
+    tab the live tab of the point, None without one; typed whether it takes typed words (takes_words)"""
     by_n = {p["n"]: p for p in points}
     steps: list[dict] = []
     for raw in (answer.get("steps") if isinstance(answer.get("steps"), list) else [])[:STEPS_MAX]:
@@ -186,6 +194,8 @@ def plan_steps(answer: dict, points: list[dict], sentence: str, today: str, reas
             if verb == "reply":
                 if not (point and p["tab"]):
                     why = "no_tab"
+                elif not p.get("typed"):
+                    why = "not_offered"
             elif op not in offers(p["out"], bool(p["tab"]), point):
                 why = "not_offered"
             elif verb == "later" and until is None:
@@ -233,7 +243,7 @@ class Instruct:
             tab = found.get("tab")
             live = tab if isinstance(tab, dict) and tab.get("ref") and m.is_live(tab) else None
             points.append({"n": len(points) + 1, "key": key, "title": app.scrub(_line(out.get("title") or key, TITLE_MAX)),
-                           "out": out, "tab": live})
+                           "out": out, "tab": live, "typed": takes_words(live, app.tabs.control_ref())})
         if not points:
             raise ActionError(409, "stale_row", "the rows are no longer there", "keys")
         model = act.select_model(app, "instruct", SERVICE)

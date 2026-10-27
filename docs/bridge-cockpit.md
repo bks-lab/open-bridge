@@ -99,6 +99,14 @@ their defaults:
 | `flow.themes.budget_per_day` | `6` | how many runs a day may order the themes, the click "Order themes again" included; once spent, the areas group what has no theme yet until the next day |
 | `flow.themes.model` | none | the model of the themes, `haiku`, `sonnet` or `opus`; none: the service `cockpit-themes` of `workflow/ai-services/` (default Haiku) |
 | `flow.rerank_per_day` | `3` | how often a day a click on "order again" may ask Jev anew; `0` only the order of the day's first call. Reserved: the page has no such button yet, so nothing reads it |
+| `flow.summary.enabled` | `false` | the summary on top of a point's Activity tab: a click on "Summarise since last week" has a small model sum up what happened to the point in at most three sentences, see [Work through](#work-through-flow). Off, the button does not show |
+| `flow.summary.budget_per_day` | `10` | how many summaries a day may call the model; a point whose rows did not change answers the kept one without a call and without counting. `0` calls none |
+| `flow.summary.model` | none | the model of the summary, `haiku`, `sonnet` or `opus`; none: the service `cockpit-activity` of `workflow/ai-services/` (default Haiku) |
+| `flow.instruct.enabled` | `false` | the instruction line at the foot of Work through: a sentence a small model turns into steps of the verbs there are, shown as "This is how I understood it" and run only on a click, see [Work through](#work-through-flow). Off, the line does not show |
+| `flow.instruct.budget_per_day` | `30` | how many sentences a day may go to the model; `0` none |
+| `flow.instruct.model` | none | the model of the instruction line, `haiku`, `sonnet` or `opus`; none: the service `cockpit-instruct` of `workflow/ai-services/` (default Haiku) |
+| `flow.attach.enabled` | `false` | Attach a document at the foot of a point's Activity: the file goes into the deliverables folder of the point's open task (never elsewhere), see [Work through](#work-through-flow). Off, the button does not show and the route refuses |
+| `flow.attach.max_mb` | `10` | the largest document Attach takes, in megabytes (1 to 25); the page checks the size before it sends |
 | `a2a_sources` | none | further sources of A2A peers beside `infra/a2a-peers/`: a list of `{name, script}`, `script` a skill's own `skills/<skill>/scripts/<name>.py` that reaches agents another way (an access proxy, a broker) and keeps its own credentials. At most four; a bad entry is ignored and named in `status`. Contract under [Peers from a script](#5-asking-claude-the-relay) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
@@ -318,24 +326,33 @@ out a workspace:
   selection. A click on a title, on the left or in the table, opens the
   **point**: on top **Back to overview** with the theme's name beside it, a
   line "n ticked" with **See in the overview** while points are ticked, then
-  the point as a card with its verbs, the suggested one the strong button, its
-  AI suggestion with the half sentence of why as the overview shows it, and
-  under it the files view's walk bar
+  the point as a card that carries its content only: its kind and the state of
+  its tab in its head (the one place the state stands), the title, the tab's
+  question with its answers, what came back and the criteria to check, the last
+  lines of its tab's screen. Under the card the point's **tabs** (below), at the
+  foot the **instruction line** (below, while it is on) and under it the files
+  view's walk bar
   (**Previous point**, "n of m", the next title, **Next point**). After the
   last point of a theme or area it leads to the first point of the next one
   where something is open. Neither the title nor anything else opens the item
   drawer or another view.
-- **Right** the details of the point open: Goal and story, Acceptance
-  criteria, Steps (the checklist of STATUS.md, read only), Source, Notes and
-  log, Result (what came back, as the files view shows it), the Screen of its
-  tab, Related. At first only their headings, the goal open; a click pulls a
-  block in, and the blocks stay open from point to point. With the themes on,
-  the column also moves the point to another theme or a new one. In the
-  overview a line says that a click on a title shows the details here.
+- **Right**, for the point open, **What you can do**: the AI's suggestion as
+  one sentence (on an open point the only place it stands; the left column and
+  the overview show it as a chip and a column, because there one picks without
+  a point open), then the verbs under each other, the suggested one the strong
+  button. Under it the **Fields**, like the sidebar of an issue tracker:
+  **Theme** (to change, with the themes on), **Area**, **Who works on it**,
+  **Prio** (Jev's quadrant and rank while Jev's order of the point is younger
+  than `rank_max_age_days`, else the day's triage rank, else the priority),
+  **Urgent**, **Important** and **Effort** as small bars (only with Jev's
+  order), **Due**, **Source** (as links), **Created** and **Moved** (the newest
+  row of its Activity). There is no Status field: the card's head says it, and
+  who works on it and the source stand only here. In the overview a line says
+  that a click on a title shows them here.
 
 The three columns stand side by side down to a width of 1180 pixels; below
-that the details stand under the middle, and on a narrow screen the left
-column becomes a select on top.
+that the right column stands under the middle, and on a narrow screen the left
+column becomes a select on top and the tab bar scrolls sideways.
 
 The head says "N in progress · M open".
 
@@ -356,10 +373,11 @@ point across a group, a Jev rank only orders inside one:
 Groups 1 to 5 **need you**: the left column counts them. Every row stands once:
 a start, a tab or a question about a task takes that task out of the others. A
 doing task needs you only when its tab asks or finished; otherwise it is **In
-progress**, and its card says who works on it and since when: its agent tab and
+progress**, and the field **Who works on it** says who and since when: its agent tab and
 stage, a session you typed in a linked tab, a start of the cockpit, else "no tab
-open, last moved N days ago" (its `updated` day). It shows the last lines of
-the tab, **To tab**, **View**, **Done**, **Later until** and **Drop because**,
+open, last moved N days ago" (its `updated` day). The card shows the last lines
+of the tab; the right column offers **To tab** and **View** (the strong one while
+the tab is at work or asks), **Done**, **Later until** and **Drop because**,
 and without a tab at work **Let AI go on with it** (a start with a sentence, as
 always). **Left out (n)** lists what the queue leaves out and why: put off until
 a day, waiting on someone else, resting or blocked, streams (they come through
@@ -405,8 +423,12 @@ the line says so. A point an agent already works on (a start of the cockpit
 that is not over, or a tab of its task) is never suggested for Let AI do it,
 and a batch starts no second agent on it.
 
-The five verbs, the suggested one as the primary button (the triage's verdict,
-else Advise on a question and Let AI do it on a task the AI may do):
+The five verbs stand in the right column under each other, the suggested one
+as the primary button (the triage's verdict, else Advise on a question and Let
+AI do it on a task the AI may do). A verb sent from a suggestion, a batch or the
+instruction line says so (`by`: `suggestion`, `batch`, `instruction`; a click of
+your own sends none): the history, the start and the audit line keep it and
+Activity shows it as who decided; nothing acts on it:
 
 | Verb | Sends |
 |---|---|
@@ -428,15 +450,15 @@ its answers as buttons, the same as everywhere a tab is answered: a dialog's
 options (`tab_option`), yes and no, go on, a field for an answer of your own.
 With the decision guide on, its steps stand under them. Every answer names
 the question it answers, so nothing reaches a tab that moved on; once sent,
-the card leaves the queue until the tab asks anew. The card offers no start
-(the tab takes no sentence while it asks), only **To tab** and **View** beside
-the other verbs.
+the card leaves the queue until the tab asks anew. The right column offers no
+start (the tab takes no sentence while it asks): **To tab** first, **View**,
+then the other verbs.
 
 **Finished or quiet.** A finished start shows its answer, or its result line
 (a note "Result: ..." on its task since the start), and a quiet one says that
 no question was read. Under it the criteria of the item's brief as a plain list
-to check yourself: nothing ticks them and nothing judges them. The card offers
-**Done and close the tab**, **Improve** (what is still to do: sent to the tab
+to check yourself: nothing ticks them and nothing judges them. The right
+column offers **Done and close the tab**, **Improve** (what is still to do: sent to the tab
 while its agent waits there, else a new start with those words), **Runs on**
 and **Drop because**. A lost start offers **Start again**.
 
@@ -454,6 +476,75 @@ memory only (a reload forgets it). When the page is in view again at least
 **Back from the tab ...: How did it go?** stands in front, with Done, Runs on,
 Later until, Drop because and Not yet; any answer forgets the jump. Switching
 to another app and back without To tab never brings it.
+
+**The tabs under the card**, as an issue tracker has them: **Description**
+(the goal, the story and the criteria of the point's brief; its source stands in
+the fields), **Steps** with how many of how many are done (the checklist of
+STATUS.md, read only), **Activity** with how many rows it holds, and **Related**
+with how many (the other rows of the same task, the paths STATUS.md names). The
+tab you pick stays from point to point (remembered in this browser); a tab the
+point lacks falls back to Description, and a point with one tab only and the
+Reports card have no bar. The panes read at most about 820 pixels wide.
+
+**Activity** is one list of everything that happened to the point, newest first,
+read from what the Bridge keeps anyway (`activity.py`); nothing is asked of a
+tab. Each row says when, what kind, what (a change as the old value struck
+through, then the new one; a decision taken back says so) and who or what did it
+(you, an AI suggestion taken, a batch, the instruction line, the themes run, an
+agent, the Bridge, git). The filters count their rows:
+
+| Filter | Rows |
+|---|---|
+| All | every row below |
+| Notes | the notes of its task (`task.py note`), an inbox item's notes, the rows of `work/log.md` that name the task (one that repeats a note of the same day is left out) |
+| Documents | the files in the task's `deliverables/` (any type, eight folders deep, no dotfiles, no links), new or changed: when git added and last changed each, else the file's own times; a document attached from here says so. Each is a link that opens it in a new tab |
+| State | a change of `status:` (as git has it, and the working tree against the last commit), an inbox item's state, a move to another theme, each decision of the page (done, not doing, later until, dropped with its reason, hidden) and whether it was taken back, when it was created, and who drives it (the starts of agents, linked sessions) |
+| Agents | the starts of the return channel with their result, the workflow runs of the task, linked sessions; a live tab links to the page's view of it |
+| Code | the issues and pull requests of `sync.github`, and the GitHub issues, pull requests and commits its notes and log rows name, each once (the one that is the row's own source stands in the fields) |
+
+An inbox item that names a task shows that task's documents too. At most 200
+rows show; the counts are taken before that. Git is optional: without it, or
+when a call fails, the file times stand in. The list is read when the point
+opens (its count and its fields need it) and kept for 20 seconds; a verb on the
+row, a note or an attachment reads it anew.
+
+On top, with `cockpit.flow.summary.enabled`, **Summarise since last week**: a
+small model sums up the rows of the last seven days (none: the newest 40, at most
+60) in at most three sentences, in the instance's language, shown with its model
+and time and kept per point (`flow-activity.json`). The same rows answer the
+kept summary without a call; once rows came since it reads **outdated** and the
+button asks again. Each call counts against `budget_per_day`, one runs at a time,
+and a refusal says itself in place, never as a toast. At the foot a one-line
+field **Write a note** with **Add note** (the verb `note`, as everywhere) and,
+with `cockpit.flow.attach.enabled` on a point with an open task, **Attach a
+document**: the page checks the size against `max_mb` first, the server writes
+the file flat into the task's `deliverables/` under a safe name (no folder, no
+path, a name already there gets `-2` up to `-99`), leaves a note "Attached:
+deliverables/<name>" on the task, and the list shows it as attached. An inbox
+item that names a task attaches to that task; a point without one offers no
+button.
+
+**The instruction line** (`cockpit.flow.instruct.enabled`, off by default), at
+the foot of the middle above the walk bar, one row while it is empty: one
+sentence to the Bridge in place of a few clicks. Above it what it speaks for:
+on a point that point ("For: <title>", and "a reply goes to its live tab" while
+its tab waits at its prompt), in the overview the ticked points or all points
+of the theme (at most 50 go, and the label says so). **Send** hands the sentence
+and the points (their titles, kinds, the verbs each offers and whether a tab
+runs, nothing more) to a
+small model that answers with steps of the verbs there are: Done, Later until a
+day, Drop because, Let AI do it with a sentence, a reply to the point's tab while
+it waits at its prompt (a tab that asks a choice is answered on the card). A
+mail becomes a start of Let AI do it whose sentence asks for a draft with the
+mail-draft skill, a draft only, never sent. The server checks every step against
+what each point offers, the day and the scope, and runs nothing. The page shows
+**This is how I understood it**: the steps in words, what stays out and why,
+what was unclear; **Run** sends the steps through the same verbs and their undo
+(quiet, one toast, with `by: instruction`, a start never where an agent works
+already nor past `max_running`), and **Undo the instruction** stands under the
+line once; **Change** puts the sentence back into the field, **Discard** drops
+the plan. Opening another point or the overview drops the plan too. Every call
+counts against `budget_per_day`, one runs at a time.
 
 **Without a terminal driver** the cards of the agents (groups 1 to 4 and the
 starts in progress) and every way to a tab stay out. A start then hands out the
@@ -473,9 +564,11 @@ that does not read them is not affected. `/api/ask` takes two optional fields,
 (true only while the page has its shortcuts on: only then does the answer name
 Cmd Enter); a page that sends neither gets an answer that names no key. The page
 adds the verb `shelve` and `describe_run`'s `ahead` (from the first version);
-every other page, view, verb and endpoint stays as it was. To try it in the
-demo, open the work tab and pick Work through (`?work=flow` opens it there);
-`?flow=0` shows the demo without it.
+every other page, view, verb and endpoint stays as it was. The tabs under the
+card, Activity, the right column and the instruction line came later: see
+[Upgrading: the tabs, Activity and the instruction line](#upgrading-the-tabs-activity-and-the-instruction-line).
+To try it in the demo, open the work tab and pick Work through (`?work=flow`
+opens it there); `?flow=0` shows the demo without it.
 
 ### The start page
 
@@ -2027,7 +2120,8 @@ nothing a stranger could trigger:
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
   close, settle (done or not doing), shelve (a task parked as an idea, with its
-  reason), urgency, priority, note, check tasks, keep open, close task, launch,
+  reason), urgency, priority, note, attach (a document into a task's
+  deliverables), check tasks, keep open, close task, launch,
   adopt, send, key,
   close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker
   profile, guide read, guide settings), every id
@@ -2063,7 +2157,14 @@ nothing a stranger could trigger:
   the read-only quick chat (`claude -p` with Read, Grep and Glob), the A2A
   shapes of section 5, `codex exec --sandbox read-only`, the Haiku judge of how
   complex an item is (no tools, no settings, no session), "Organize with AI"
-  (one call, no tools, it keeps only tab refs and task slugs from the answer)
+  (one call, no tools, it keeps only tab refs and task slugs from the answer),
+  the summary of a point's Activity and the instruction line of Work through
+  (each one call with no tools, no settings and no session, its own JSON schema;
+  the instruction line's answer is only a plan the page shows, checked against
+  the verbs each point offers, and nothing runs before your click on Run), two
+  read-only `git log` shapes over one task's `deliverables/` and its
+  `STATUS.md` (five seconds each, the folder checked against
+  `work/tasks/<slug>` or `work/streams/<slug>`)
   and `/bin/ps eww -o command= -p <pid>` with a pid of digits only, for the
   Sessions page. The cmux CLI is never called directly: whatever the page does
   to an agent tab goes through `workplace.py` and its terminal driver;
@@ -2081,6 +2182,17 @@ nothing a stranger could trigger:
   takes only its options (a typed digit would pick one past that check). A
   refusal sends nothing and says so
   ("The tab moved on before the answer, nothing was sent.");
+- a document of a task (`GET /api/flow/doc`) is served only from below that
+  task's `deliverables/`, with no link on the way and only a regular file, and
+  never runs as a page of the cockpit: an HTML file opens sandboxed (its
+  scripts cannot reach the cockpit, the network or a form), an image or a text
+  file under a policy that loads nothing else, a PDF in the browser's viewer,
+  anything else as a download. An attached document (`POST /api/flow/attach`,
+  off unless `cockpit.flow.attach.enabled`) goes only into the deliverables
+  folder of an open task, as a new file (never over one), under a name cleaned
+  of paths and odd characters, within `max_mb`; this one route takes a larger
+  body, every other POST stays at 64 KB. Its audit line names the row and the
+  size, never the file's name;
 - "Organize with AI" changes only what you ticked, of a proposal that is at
   most 15 minutes old. Before it applies anything the server polls the tabs and
   reads the workspaces again; an item whose value is no longer the one it was
@@ -2387,7 +2499,8 @@ share or clean up.
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
 | `jev-pages.json` | Jev's order per page | yes: the titles |
-| `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, and the runs of the last day (the budget) | yes: theme names and the reasons of the suggestions |
+| `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, the runs of the last day (the budget), and the last 500 moves of a point from one theme to another (the names as they were, by the AI or a person) for its Activity | yes: theme names and the reasons of the suggestions |
+| `flow-activity.json` | Activity of Work through (`activity.py`): the summary of each point kept with the fingerprint of the rows it read, and the calls of the summary and of the instruction line per day (their budgets) | yes: the summaries |
 | `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
 | `relay/done/` | what became of each (written by that session) | yes: the answers |
 | `relay/heartbeat/` | one file per Claude Code session with the relay on | no |
@@ -2429,6 +2542,42 @@ that knows it:
    card the answer names the card's button and no key, elsewhere it names Cmd
    Enter only with `keys: true`. An older page sends neither and its answers
    name no key any more.
+
+See [Work through](#work-through-flow).
+
+### Upgrading: the tabs, Activity and the instruction line
+
+Nothing has to be done by hand. With `cockpit.flow.enabled: false` nothing
+changes at all: every new route and verb answers `409 flow_off`.
+
+1. **The page.** On an open point of Work through the card carries its content
+   only; the verbs moved to the right column (What you can do, under each
+   other) and the detail blocks gave way to the tabs under the card and the
+   Fields. The tab picked is kept in the browser as `bridge-cockpit.flowTab`.
+2. **New routes, read only or behind their own key.** `GET /api/flow/activity`
+   (the list of a point) and `GET /api/flow/doc` (a document of a task) need
+   only `cockpit.flow.enabled`; `POST /api/flow/attach` also
+   `cockpit.flow.attach.enabled` (off by default). A page that does not call
+   them is not affected.
+3. **New verbs.** `flow_activity_summary` (`cockpit.flow.summary`) and
+   `flow_instruct` (`cockpit.flow.instruct`), both off by default, within a
+   daily budget, one call at a time, their model from the block or the
+   services `cockpit-activity` and `cockpit-instruct` of `workflow/ai-services/`
+   (Haiku when none is declared); `flow_attach`, the verb behind the attach
+   route. The state gains `flow_ai` (what is left of both budgets today, and
+   whether an instruction is being read), which an older page skips.
+4. **`by` on four verbs.** `do_it`, `later`, `shelve` and `settle` take an
+   optional `by` (`suggestion`, `batch`, `instruction`); the history entry, the
+   start and the audit line keep it. Without it the click counts as your own,
+   as before.
+5. **Files.** `flow-activity.json` joins the cockpit's folder; `flow-themes.json`
+   gains `moves`, the last 500 moves of a point between themes; an older
+   version ignores them and leaves them out the next time it writes the file,
+   so Activity then starts its theme rows anew. Both are runtime files under
+   `.bridge/cockpit/`, safe to delete.
+6. **Git, optional.** Activity reads two `git log` shapes per task when git is
+   there; without it the documents and status changes take the files' own
+   times.
 
 See [Work through](#work-through-flow).
 

@@ -97,6 +97,19 @@ function Links({ links, c }) {
   })}</span>`
 }
 
+// the kinds whose change says what happened: the server's text of such a row is a phrase for a reader without it
+const SAID_BY_CHANGE = new Set(['status', 'theme', 'decision', 'created'])
+
+/** What a row says besides its change and its links, said once (nothing twice): a state row says itself in its change,
+ *  a document in its link (the server's text is its path inside deliverables/), a start without a known tab names
+ *  nobody (a driver of null on both sides is no change) */
+function rowSays(r) {
+  const ch = r.change && !(r.change.field === 'driver' && r.change.old == null && r.change.new == null) ? r.change : null
+  const path = r.kind === 'doc' ? String(r.doc?.path ?? '') : ''
+  const text = !r.text || (ch && SAID_BY_CHANGE.has(r.kind)) || r.text === ch?.new || (path && (r.text === path || `deliverables/${r.text}` === path)) ? null : r.text
+  return { ch, text }
+}
+
 /** One row of the activity: when, what kind, what happened, who or what did it */
 function ActRow({ r, c }) {
   const t = T()
@@ -105,13 +118,14 @@ function ActRow({ r, c }) {
   const kind = r.kind === 'doc' && r.doc ? f.doc[r.doc.attached ? 'attached' : r.doc.state === 'changed' ? 'changed' : 'new'] : f.kind[r.kind] ?? r.kind
   const who = r.by ? [f.by[r.by.kind] ?? r.by.kind, r.by.name].filter(Boolean).join(' · ') : null
   const changes = r.kind === 'doc' && r.doc?.state === 'changed' && r.doc.changes > 1 ? f.doc.changes(r.doc.changes) : null
+  const { ch, text } = rowSays(r)
   return html`<li class=${`flow-act-row is-${r.kind}${r.undone_ms ? ' is-undone' : ''}`}>
     <time class="flow-act-time mono" datetime=${r.at}>${activityWhen(r.at, lang)}</time>
     <div class="flow-act-body">
       <span class="flow-act-kind">${kind}${changes ? ` · ${changes}` : ''}</span>
       <span class="flow-act-what">
-        ${r.change ? html`<${Change} ch=${r.change} />` : null}
-        ${r.text && r.text !== r.change?.new ? html`<span class="flow-act-text">${r.text}</span>` : null}
+        ${ch ? html`<${Change} ch=${ch} />` : null}
+        ${text ? html`<span class="flow-act-text">${text}</span>` : null}
         <${Links} links=${r.links} c=${c} />
         ${r.undone_ms ? html`<span class="flow-act-undone">${f.undone}</span>` : null}
       </span>

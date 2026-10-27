@@ -220,6 +220,9 @@ work:
 #     max_running: 4       # started agents running before Let AI do it asks first
 #     rank_max_age_days: 7 # a Jev rank older than this does not order the tasks
 #     rerank_per_day: 3    # how often a day a click on "order again" may ask Jev anew
+#     summary: {enabled: false, budget_per_day: 10}    # Activity: a small model sums up the last week on a click
+#     instruct: {enabled: false, budget_per_day: 30}   # the instruction line: a sentence becomes steps, run on a click
+#     attach: {enabled: false, max_mb: 10}             # Activity: attach a document to the task's deliverables/
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)

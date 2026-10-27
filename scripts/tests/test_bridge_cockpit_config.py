@@ -378,6 +378,12 @@ def test_a_bad_flow_value_keeps_its_default_and_says_so(tmp_path, flow, key, use
 
 def test_every_flow_key_has_a_doc_row():
     doc = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
-    for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day"):
-        assert re.search(rf"^\| `flow\.{key}` \|", doc, re.M), f"flow.{key} has no row in docs/bridge-cockpit.md"
-    assert "flow" in template_block()
+    for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day",
+                "summary.enabled", "summary.budget_per_day", "summary.model",
+                "instruct.enabled", "instruct.budget_per_day", "instruct.model", "attach.enabled", "attach.max_mb"):
+        assert re.search(rf"^\| `flow\.{re.escape(key)}` \|", doc, re.M), f"flow.{key} has no row in docs/bridge-cockpit.md"
+    flow = template_block()["flow"]
+    # round 3 of Work through: each block in the template with its default, all off
+    assert {k: flow[k] for k in ("summary", "instruct", "attach")} == {
+        "summary": {"enabled": False, "budget_per_day": 10}, "instruct": {"enabled": False, "budget_per_day": 30},
+        "attach": {"enabled": False, "max_mb": 10}}
