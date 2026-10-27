@@ -155,10 +155,14 @@ export function areaScope(s) {
   const tabOf = new Map(tabs.map(t => [t.ref, t]))
   const keepReturn = r => inProject(byKey.get(r.key) ?? {}, area) || (!!r.tab?.ref && !!tabOf.get(r.tab.ref) && inProject(tabOf.get(r.tab.ref), area))
   if (page === '@flow' || (page === 'briefing' && s.ui.workView === 'flow' && s.work?.flow?.enabled === true)) {
-    const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
+    // the rows as Due scopes them (workView due: the same call with the view Work through again never ended)
+    const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', workView: 'due', pinnedOnly: false } })
     // the sessions too, by their tab or folder as on the Sessions page: a linked session drives its task (In progress)
     const keepSession = x => (x.tab?.ref && tabOf.get(x.tab.ref) ? inProject(tabOf.get(x.tab.ref), area) : inProject({ workspace: x.project }, area))
-    return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn) },
+    // the files of the area too (round 4: a backlog task or a stream of model.files is an open row of the page); the
+    // files view keeps reading every file through wholeModel
+    const files = Array.isArray(v.model?.files) && area ? { files: v.model.files.filter(f => inProject({ area_names: f.area_names }, area)) } : {}
+    return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn), ...files },
       sessions: s.sessions && area ? { ...s.sessions, sessions: (s.sessions.sessions ?? []).filter(keepSession) } : s.sessions }
   }
   if (page === 'briefing') {

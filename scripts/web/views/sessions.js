@@ -108,14 +108,17 @@ function openTasks(s) {
   return [...out].map(([slug, title]) => ({ slug, title })).sort((a, b) => a.slug.localeCompare(b.slug))
 }
 
-/** Which task a session works on: a task tab links itself, any other is linked here by hand */
+/** Which task a session works on: a task tab links itself, any other is linked here by hand, or the cockpit
+ *  recognised it from what the session did lately (task_how seen, round 4), which Not this task takes back */
 function SessionTask({ x, s, c }) {
   const t = T()
   if (!x.sid) return null
   const tasks = openTasks(s)
+  const seen = x.task_how === 'seen'
   return html`<span class="sess-task small">
     ${x.task ? html`<span class="chip chip-task" title=${t.sessionTaskTitle}>${t.sessionTask(x.task)}</span>
-      <button type="button" class="btn-link small" onClick=${() => c.act('session_unlink', { session: x.sid })}>${t.sessionUnlink}</button>`
+      ${seen ? html`<span class="muted sess-seen" title=${t.sessionSeenTitle}>${t.sessionSeen}</span>` : null}
+      <button type="button" class="btn-link small" onClick=${() => c.act('session_unlink', { session: x.sid })}>${seen ? t.sessionNotThis : t.sessionUnlink}</button>`
       : html`<select class="input input-sm sess-task-pick" aria-label=${t.sessionLinkLabel} title=${t.sessionLinkLabel}
           onChange=${e => { const slug = e.currentTarget.value; if (slug) c.act('session_link', { session: x.sid, slug }) }}>
           <option value="">${t.sessionLinkLabel}</option>

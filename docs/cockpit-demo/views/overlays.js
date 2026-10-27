@@ -384,7 +384,7 @@ function UndoButtons({ it, c, busy }) {
   if (u.verb === 'task_reopen') return html`<span class="btn-row">
     <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u, 'doing')}>${t.undoReopen}<//>
     <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.undo(u, 'backlog')}>${t.undoBacklog}<//></span>`
-  return html`<span class="btn-row"><${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${u.verb === 'unhide' ? t.undoShow : u.verb === 'row_undo' ? t.undoStep : t.undoReopen}<//></span>`
+  return html`<span class="btn-row"><${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${u.verb === 'unhide' ? t.undoShow : u.verb === 'row_undo' || u.verb === 'task_unmerge' ? t.undoStep : t.undoReopen}<//></span>`
 }
 
 /** The word of a history line: a task's line says Stream for a stream (the server keeps work_kind on it; an older

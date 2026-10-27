@@ -6,7 +6,7 @@
 export const FLOW = {
   en: {
     title: 'Work through',
-    progress: (n, m) => `${n} in progress · ${m} open`,
+    count: (n, r, m) => [`${n} point${n === 1 ? '' : 's'}`, r ? `${r} running` : null, `${m} not now`].filter(Boolean).join(' · '),
     side: {
       label: 'Group by', themes: 'Themes', areas: 'Areas', allThemes: 'All themes', allAreas: 'All areas', noTheme: 'No theme yet',
       noArea: 'No area', you: n => `${n} need${n === 1 ? 's' : ''} you`, open: n => `${n} open`, asks: 'Something here needs you',
@@ -15,8 +15,9 @@ export const FLOW = {
       pick: 'Theme or area', move: 'Move to theme', moveLabel: 'Theme of this point', newTheme: 'New theme', newName: 'Name of the new theme',
       rename: 'Rename the theme', renameLabel: 'New name', save: 'Save', cancel: 'Cancel',
       overview: 'Overview', chip: v => `AI: ${v}`, tickAi: n => `Tick the AI suggestions (${n})`, points: 'The points of this theme',
+      prio: 'Prio', allQuads: 'All squares',
     },
-    groups: { you: 'Needs you', doing: 'In progress', task: 'Tasks', reports: 'Reports' },
+    groups: { you: 'Needs you', doing: 'In progress', task: 'Tasks', issue: 'Issues and PRs', reports: 'Reports', rank: 'By Jev\'s rank', due: 'By due day' },
     point: { back: 'Back to overview', ticked: n => `${n} ticked`, see: 'See in the overview' },
     tabs: { label: 'Open points', count: n => (n === 1 ? '1 point' : `${n} points`) },
     doing: {
@@ -24,7 +25,8 @@ export const FLOW = {
       tab: (name, word, ago) => `Agent tab ${name}: ${word}${ago ? `, for ${ago}` : ''}`,
       start: (word, ago) => `Started from the cockpit ${ago} ago, ${word}`,
       session: (name, ago) => `Your session in the tab ${name}${ago ? `, for ${ago}` : ''}`,
-      none: d => (d == null ? 'No tab open.' : d === 0 ? 'No tab open, last moved today.' : d === 1 ? 'No tab open, last moved yesterday.' : `No tab open, last moved ${d} days ago.`),
+      none: d => (d == null ? 'Nobody works on it right now.' : d === 0 ? 'Nobody works on it right now, last moved today.' : d === 1
+        ? 'Nobody works on it right now, last moved yesterday.' : `Nobody works on it right now, last moved ${d} days ago.`),
       stage: { started: 'starting', working: 'at work', waiting: 'waiting', 'needs-you': 'asks you', idle: 'quiet', asks: 'asks you', result: 'finished',
         lost: 'its tab is gone' },
       goOn: 'Let AI go on with it',
@@ -37,7 +39,8 @@ export const FLOW = {
       confirm: 'Confirm', cancel: 'Cancel', undo: 'Undo the batch',
       ran: n => (n === 1 ? '1 point decided in one batch' : `${n} points decided in one batch`),
       honest: 'Only suggestions: nothing runs without a click.', none: 'No suggestion',
-      from: { triage: day => `from the triage of ${day}`, themes: 'from Haiku now' },
+      from: { triage: day => `from the triage of ${day}`, themes: 'from Haiku now', jev: day => `from Jev, ${day}` },
+      jevWhy: { drop: 'neither urgent nor important, says Jev', hand: 'urgent, not important: the Bridge can do it, says Jev' },
       verb: { done: 'Done', drop: 'Drop', later: 'Later', do: 'Let AI do it', you: 'Needs you' },
       laterUntil: day => `Later until ${day}`, age: d => (d === 0 ? 'today' : `${d} d`),
       cols: { point: 'Point', stage: 'Stage', area: 'Area', suggestion: 'AI suggestion' },
@@ -47,7 +50,7 @@ export const FLOW = {
       summary: plan => {
         const p = { counts: {}, reasons: [], days: [], skipped: [], ...(plan && typeof plan === 'object' ? plan : {}) }
         const day = d => { const [, m, x] = String(d).split('-'); return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1] ?? m} ${Number(x)}` }
-        const parts = [p.counts.done ? `${p.counts.done} done` : null,
+        const parts = [p.counts.back ? `${p.counts.back} back on` : null, p.counts.done ? `${p.counts.done} done` : null,
           p.counts.drop ? `${p.counts.drop} drop${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} later until ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} to an agent` : null].filter(Boolean)
@@ -57,7 +60,7 @@ export const FLOW = {
       // the plan by its counts only, for the line of what is ticked; none to run says so
       counts: plan => {
         const k = plan?.counts ?? {}
-        return [k.done ? `${k.done} done` : null, k.drop ? `${k.drop} drop` : null, k.later ? `${k.later} later` : null,
+        return [k.back ? `${k.back} back on` : null, k.done ? `${k.done} done` : null, k.drop ? `${k.drop} drop` : null, k.later ? `${k.later} later` : null,
           k.do ? `${k.do} to an agent` : null].filter(Boolean).join(', ') || 'no suggestion to run'
       },
     },
@@ -69,7 +72,8 @@ export const FLOW = {
       label: 'Running', show: 'Show its screen', hide: 'Fold its screen', noScreen: 'Nothing on its screen yet.',
       stage: { started: 'starting', working: 'at work' }, session: 'your session', since: m => `for ${m} min`,
     },
-    kind: { back: 'Back from a tab', asks: 'A tab asks', result: 'Finished', idle: 'Quiet', lost: 'Tab gone', question: 'A question for you', doing: 'In progress', task: 'In review', reports: 'Reports' },
+    kind: { back: 'Back from a tab', asks: 'A tab asks', result: 'Finished', idle: 'Quiet', lost: 'Tab gone', question: 'A question for you', doing: 'In progress', task: 'In review',
+      issue: 'An issue to do', reports: 'Reports' },
     back: name => `Back from the tab ${name}`, backAsk: 'How did it go?', backGone: 'The item of this tab is settled already.',
     started: ago => `started ${ago} ago`, lostSub: 'No tab and no answer since the start.', since: ago => `for ${ago}`,
     idleSub: 'The tab went quiet, no question read on its screen.', result: 'Result', criteria: 'Criteria to check yourself',
@@ -95,10 +99,34 @@ export const FLOW = {
     },
     reports: n => (n === 1 ? '1 report' : `${n} reports`), seen: 'Seen', allSeen: 'All seen',
     walk: { label: 'Walk through the cards', done: 'That was the last card.' },
-    left: {
-      button: n => `Left out (${n})`, title: 'Left out of the queue',
-      reason: { later: 'Put off', waiting: 'Waits on someone else', resting: 'Resting or blocked', stream: 'Streams, they come through their inbox items', idea: 'Ideas and backlog, they wait on the calm card' },
-      until: day => `until ${day}`,
+    // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
+    run: {
+      label: 'Running now', unlink: 'Not this task',
+      how: { start: 'started from the cockpit', hand: 'linked by hand', tab: 'its own task tab', seen: 'recognised from the session' },
+    },
+    notnow: {
+      label: 'Not now',
+      group: { later: 'Later', waiting: 'Waits on others', resting: 'Resting', idea: 'Ideas and backlog', stream: 'Streams', watch: 'Watching' },
+      sub: { later: 'Put off, hidden until a day, or due later than the lead time', waiting: 'Waits on a person, a run or the Bridge',
+        resting: 'Blocked, quiet for long, or up for parking', idea: 'Ideas from the inbox and tasks in the backlog',
+        stream: 'Long runners, they come through their inbox items', watch: 'Issues and pull requests, by repository' },
+      from: day => `from ${day}`, until: day => `until ${day}`, due: when => `due ${when}`, otherRepo: 'Other sources', back: 'Back on',
+      hint: 'Ticked rows take the buttons of the bar. A title opens the row where it lives.', empty: 'Nothing here.',
+      cols: { when: 'When' },
+    },
+    merge: {
+      button: 'Merge', run: 'Merge', only: 'Only open tasks can be merged: no streams, no inbox items.', title: 'Which task stays?',
+      proposal: 'Suggested: the one with more activity', activity: n => (n === 1 ? '1 entry of activity' : `${n} entries of activity`),
+      explain: (keep, n) => `${keep} stays. ${n === 1 ? 'The other closes' : `The other ${n} close`} as merged: goal, notes and open steps come over as a section, documents stay where they are and are linked.`,
+    },
+    prio: {
+      title: 'Prio by Jev', none: 'Not rated by Jev yet', more: n => `and ${n} more`,
+      sub: { now: 'urgent and important, only you', plan: 'important, not urgent', hand: 'urgent, not important, the Bridge can do it', drop: 'neither urgent nor important' },
+      hints: { now: 'Suggestion: today, yourself', plan: 'Suggestion: set a day or Let AI do it', hand: 'Suggestion: Let AI do it', drop: 'Suggestion: Drop because' },
+      axis: { urgent: 'urgent', notUrgent: 'not urgent', important: 'important', notImportant: 'not important' },
+      from: (time, n) => `Jev ordered ${n} point${n === 1 ? '' : 's'}, ${time}. A click on a square shows its points in Jev's order.`,
+      running: 'Jev is ordering the points', failed: 'Jev could not order the points', empty: 'No order by Jev yet today.',
+      hint: 'Jev rates urgency, importance, effort and whether only you can do it. A click on a square, then on a title, shows the details and Jev\'s values here.',
     },
     rest: { title: 'All decided.', sub: 'Nothing open waits in the queue.', suggest: 'To start with', none: 'No idea or backlog task to suggest.' },
     // round 3: the tabs under the card of an open point, its one Activity, the fields on the right, the instruction line
@@ -113,7 +141,8 @@ export const FLOW = {
       kind: { note: 'Note', log: 'Log', doc: 'Document', status: 'Status', theme: 'Theme', decision: 'Decision', created: 'Created',
         agent: 'Agent', session: 'Session', code: 'Code' },
       doc: { new: 'Document new', changed: 'Document changed', attached: 'Attached', changes: n => (n === 1 ? '1 change' : `${n} changes`) },
-      decision: { done: 'Done', not_doing: 'Not doing', later: 'Later', shelved: 'Shelved', dropped: 'Dropped', hidden: 'Hidden' },
+      decision: { done: 'Done', not_doing: 'Not doing', later: 'Later', shelved: 'Shelved', dropped: 'Dropped', hidden: 'Hidden', merged: 'Merged into',
+        merged_in: 'Merged in' },
       until: day => `until ${day}`, because: why => `because ${why}`, undone: 'taken back', nobody: 'nobody',
       // a state as the card head says it (kind.doing, kind.task), an inbox item's states beside a task's
       state: { backlog: 'Backlog', doing: 'In progress', review: 'In review', done: 'Done', open: 'Open', approved: 'Approved',
@@ -155,7 +184,7 @@ export const FLOW = {
   },
   de: {
     title: 'Abarbeiten',
-    progress: (n, m) => `${n} in Arbeit · ${m} offen`,
+    count: (n, r, m) => [`${n} ${n === 1 ? 'Punkt' : 'Punkte'}`, r ? `${r} ${r === 1 ? 'läuft' : 'laufen'}` : null, `${m} nicht dran`].filter(Boolean).join(' · '),
     side: {
       label: 'Gruppieren nach', themes: 'Themen', areas: 'Bereiche', allThemes: 'Alle Themen', allAreas: 'Alle Bereiche', noTheme: 'Noch ohne Thema',
       noArea: 'Ohne Bereich', you: n => `${n} ${n === 1 ? 'braucht' : 'brauchen'} dich`, open: n => `${n} offen`, asks: 'Hier braucht dich etwas',
@@ -164,8 +193,9 @@ export const FLOW = {
       pick: 'Thema oder Bereich', move: 'In Thema legen', moveLabel: 'Thema dieses Punkts', newTheme: 'Neues Thema', newName: 'Name des neuen Themas',
       rename: 'Thema umbenennen', renameLabel: 'Neuer Name', save: 'Speichern', cancel: 'Abbrechen',
       overview: 'Übersicht', chip: v => `AI: ${v}`, tickAi: n => `Vorschläge der AI anhaken (${n})`, points: 'Die Punkte dieses Themas',
+      prio: 'Prio', allQuads: 'Alle Quadrate',
     },
-    groups: { you: 'Braucht dich', doing: 'In Arbeit', task: 'Aufgaben', reports: 'Meldungen' },
+    groups: { you: 'Braucht dich', doing: 'In Arbeit', task: 'Aufgaben', issue: 'Issues und PRs', reports: 'Meldungen', rank: 'Nach Jevs Rang', due: 'Nach Fälligkeit' },
     point: { back: 'Zur Übersicht', ticked: n => `${n} angehakt`, see: 'In der Übersicht ansehen' },
     tabs: { label: 'Offene Punkte', count: n => (n === 1 ? '1 Punkt' : `${n} Punkte`) },
     doing: {
@@ -173,7 +203,8 @@ export const FLOW = {
       tab: (name, word, ago) => `Agent-Tab ${name}: ${word}${ago ? `, seit ${ago}` : ''}`,
       start: (word, ago) => `Vor ${ago} aus dem Cockpit gestartet, ${word}`,
       session: (name, ago) => `Deine Sitzung im Tab ${name}${ago ? `, seit ${ago}` : ''}`,
-      none: d => (d == null ? 'Kein Tab offen.' : d === 0 ? 'Kein Tab offen, zuletzt heute bewegt.' : d === 1 ? 'Kein Tab offen, zuletzt gestern bewegt.' : `Kein Tab offen, zuletzt bewegt vor ${d} Tagen.`),
+      none: d => (d == null ? 'Gerade arbeitet niemand daran.' : d === 0 ? 'Gerade arbeitet niemand daran, zuletzt heute bewegt.' : d === 1
+        ? 'Gerade arbeitet niemand daran, zuletzt gestern bewegt.' : `Gerade arbeitet niemand daran, zuletzt bewegt vor ${d} Tagen.`),
       stage: { started: 'startet', working: 'arbeitet', waiting: 'wartet', 'needs-you': 'fragt dich', idle: 'still', asks: 'fragt dich', result: 'fertig',
         lost: 'sein Tab ist weg' },
       goOn: 'Bridge macht weiter',
@@ -186,7 +217,8 @@ export const FLOW = {
       confirm: 'Bestätigen', cancel: 'Abbrechen', undo: 'Stapel rückgängig',
       ran: n => (n === 1 ? '1 Punkt in einem Stapel entschieden' : `${n} Punkte in einem Stapel entschieden`),
       honest: 'Nur Vorschläge: ohne Klick läuft nichts.', none: 'Kein Vorschlag',
-      from: { triage: day => `aus der Sortierung vom ${day}`, themes: 'von Haiku jetzt' },
+      from: { triage: day => `aus der Sortierung vom ${day}`, themes: 'von Haiku jetzt', jev: day => `von Jev, ${day}` },
+      jevWhy: { drop: 'weder dringend noch wichtig, sagt Jev', hand: 'dringend, nicht wichtig: die Bridge kann es, sagt Jev' },
       verb: { done: 'Erledigt', drop: 'Weg', later: 'Später', do: 'Bridge macht', you: 'Fragt dich' },
       laterUntil: day => `Später bis ${day}`, age: d => (d === 0 ? 'heute' : `${d} T`),
       cols: { point: 'Punkt', stage: 'Stand', area: 'Bereich', suggestion: 'Vorschlag der AI' },
@@ -196,7 +228,7 @@ export const FLOW = {
       summary: plan => {
         const p = { counts: {}, reasons: [], days: [], skipped: [], ...(plan && typeof plan === 'object' ? plan : {}) }
         const day = d => { const [, m, x] = String(d).split('-'); return `${Number(x)}.${Number(m)}.` }
-        const parts = [p.counts.done ? `${p.counts.done} erledigt` : null,
+        const parts = [p.counts.back ? `${p.counts.back} wieder dran` : null, p.counts.done ? `${p.counts.done} erledigt` : null,
           p.counts.drop ? `${p.counts.drop} weg${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} später bis ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} an einen Agenten` : null].filter(Boolean)
@@ -206,7 +238,7 @@ export const FLOW = {
       // the plan by its counts only, for the line of what is ticked; none to run says so
       counts: plan => {
         const k = plan?.counts ?? {}
-        return [k.done ? `${k.done} erledigt` : null, k.drop ? `${k.drop} weg` : null, k.later ? `${k.later} später` : null,
+        return [k.back ? `${k.back} wieder dran` : null, k.done ? `${k.done} erledigt` : null, k.drop ? `${k.drop} weg` : null, k.later ? `${k.later} später` : null,
           k.do ? `${k.do} an einen Agenten` : null].filter(Boolean).join(', ') || 'kein Vorschlag zum Ausführen'
       },
     },
@@ -218,7 +250,8 @@ export const FLOW = {
       label: 'Läuft', show: 'Bildschirm zeigen', hide: 'Bildschirm einklappen', noScreen: 'Noch nichts auf dem Bildschirm.',
       stage: { started: 'startet', working: 'arbeitet' }, session: 'deine Sitzung', since: m => `seit ${m} Min`,
     },
-    kind: { back: 'Zurück aus einem Tab', asks: 'Tab fragt', result: 'Fertig', idle: 'Still', lost: 'Tab verschwunden', question: 'Frage an dich', doing: 'In Arbeit', task: 'In Prüfung', reports: 'Meldungen' },
+    kind: { back: 'Zurück aus einem Tab', asks: 'Tab fragt', result: 'Fertig', idle: 'Still', lost: 'Tab verschwunden', question: 'Frage an dich', doing: 'In Arbeit', task: 'In Prüfung',
+      issue: 'Issue zu tun', reports: 'Meldungen' },
     back: name => `Zurück aus dem Tab ${name}`, backAsk: 'Wie ging es aus?', backGone: 'Der Eintrag dieses Tabs ist schon erledigt.',
     started: ago => `gestartet vor ${ago}`, lostSub: 'Seit dem Start kein Tab und keine Antwort.', since: ago => `seit ${ago}`,
     idleSub: 'Der Tab ist still, auf seinem Bildschirm keine Frage erkannt.', result: 'Ergebnis', criteria: 'Kriterien zum Selbstprüfen',
@@ -244,10 +277,34 @@ export const FLOW = {
     },
     reports: n => (n === 1 ? '1 Meldung' : `${n} Meldungen`), seen: 'Gesehen', allSeen: 'Alle gesehen',
     walk: { label: 'Durch die Karten gehen', done: 'Das war die letzte Karte.' },
-    left: {
-      button: n => `Ausgelassen (${n})`, title: 'Nicht im Band',
-      reason: { later: 'Verschoben', waiting: 'Wartet auf jemand anderen', resting: 'Ruht oder blockiert', stream: 'Streams, sie kommen über ihre Posteingangseinträge', idea: 'Ideen und Backlog, sie warten auf der Ruhekarte' },
-      until: day => `bis ${day}`,
+    // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
+    run: {
+      label: 'Läuft gerade', unlink: 'Nicht diese Aufgabe',
+      how: { start: 'aus dem Cockpit gestartet', hand: 'von Hand verknüpft', tab: 'eigener Aufgaben-Tab', seen: 'aus der Sitzung erkannt' },
+    },
+    notnow: {
+      label: 'Nicht dran',
+      group: { later: 'Später', waiting: 'Wartet auf andere', resting: 'Ruht', idea: 'Ideen und Backlog', stream: 'Streams', watch: 'Beobachten' },
+      sub: { later: 'Verschoben, ausgeblendet oder erst später fällig', waiting: 'Wartet auf eine Person, einen Lauf oder die Bridge',
+        resting: 'Blockiert, lange still oder zum Parken vorgeschlagen', idea: 'Ideen aus dem Posteingang und Aufgaben im Backlog',
+        stream: 'Daueraufgaben, sie kommen über ihre Posteingangspunkte', watch: 'Issues und Pull Requests, nach Repository' },
+      from: day => `ab ${day}`, until: day => `bis ${day}`, due: when => `fällig ${when}`, otherRepo: 'Andere Quellen', back: 'Wieder dran',
+      hint: 'Angehakte Zeilen nehmen die Knöpfe der Leiste. Ein Titel öffnet die Zeile dort, wo sie lebt.', empty: 'Hier ist nichts.',
+      cols: { when: 'Wann' },
+    },
+    merge: {
+      button: 'Zusammenführen', run: 'Zusammenführen', only: 'Nur offene Aufgaben lassen sich zusammenführen, keine Streams und keine Posteingangspunkte.',
+      title: 'Welche Aufgabe bleibt?', proposal: 'Vorschlag: die mit mehr Aktivität', activity: n => (n === 1 ? '1 Eintrag Aktivität' : `${n} Einträge Aktivität`),
+      explain: (keep, n) => `${keep} bleibt. ${n === 1 ? 'Die andere wird' : `Die anderen ${n} werden`} als zusammengeführt geschlossen: Ziel, Notizen und offene Schritte kommen als Abschnitt dazu, Dokumente bleiben liegen und werden verlinkt.`,
+    },
+    prio: {
+      title: 'Prio nach Jev', none: 'Noch nicht von Jev bewertet', more: n => `und ${n} weitere`,
+      sub: { now: 'dringend und wichtig, nur du', plan: 'wichtig, nicht dringend', hand: 'dringend, nicht wichtig, die Bridge kann es', drop: 'weder dringend noch wichtig' },
+      hints: { now: 'Vorschlag: heute selbst', plan: 'Vorschlag: Termin setzen oder Bridge macht', hand: 'Vorschlag: Bridge macht', drop: 'Vorschlag: Weg, weil' },
+      axis: { urgent: 'dringend', notUrgent: 'nicht dringend', important: 'wichtig', notImportant: 'nicht wichtig' },
+      from: (time, n) => `Jev ordnet jeden Punkt nach Dringlichkeit und Wichtigkeit, ${time}, ${n} ${n === 1 ? 'Punkt' : 'Punkte'}. Ein Klick auf ein Quadrat zeigt seine Punkte nach Jevs Rang.`,
+      running: 'Jev ordnet die Punkte', failed: 'Jev konnte die Punkte nicht ordnen', empty: 'Heute noch keine Ordnung von Jev.',
+      hint: 'Jev bewertet Dringlichkeit, Wichtigkeit, Aufwand und ob nur du es kannst. Ein Klick auf ein Quadrat, dann auf einen Titel, zeigt hier die Details und Jevs Werte.',
     },
     rest: { title: 'Alles entschieden.', sub: 'Im Band wartet nichts Offenes.', suggest: 'Zum Starten', none: 'Keine Idee und keine Backlog-Aufgabe zum Vorschlagen.' },
     // round 3: the tabs under the card of an open point, its one Activity, the fields on the right, the instruction line
@@ -262,7 +319,8 @@ export const FLOW = {
       kind: { note: 'Notiz', log: 'Log', doc: 'Dokument', status: 'Stand', theme: 'Thema', decision: 'Entscheidung', created: 'Angelegt',
         agent: 'Agent', session: 'Sitzung', code: 'Code' },
       doc: { new: 'Dokument neu', changed: 'Dokument geändert', attached: 'Angehängt', changes: n => (n === 1 ? '1 Änderung' : `${n} Änderungen`) },
-      decision: { done: 'Erledigt', not_doing: 'Nicht gemacht', later: 'Später', shelved: 'Zurückgestellt', dropped: 'Weg', hidden: 'Ausgeblendet' },
+      decision: { done: 'Erledigt', not_doing: 'Nicht gemacht', later: 'Später', shelved: 'Zurückgestellt', dropped: 'Weg', hidden: 'Ausgeblendet', merged: 'Zusammengeführt in',
+        merged_in: 'Zusammengeführt aus' },
       until: day => `bis ${day}`, because: why => `weil ${why}`, undone: 'zurückgenommen', nobody: 'niemand',
       // a state as the card head says it (kind.doing, kind.task), an inbox item's states beside a task's
       state: { backlog: 'Backlog', doing: 'In Arbeit', review: 'In Prüfung', done: 'Erledigt', open: 'Offen', approved: 'Freigegeben',

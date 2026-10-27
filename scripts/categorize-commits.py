@@ -659,6 +659,9 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/flowlist.js",          # Work through: the list with suggestions and the batch
     "scripts/web/views/flowtabs.js",          # Work through: the tabs under the card, the Activity pane
     "scripts/web/views/flowinstruct.js",      # Work through: the instruction line and its understood steps
+    "scripts/web/views/flowrun.js",           # Work through: Running now, in the left column and over the overview
+    "scripts/web/views/flowleft.js",          # Work through: Not now, its groups and their lists
+    "scripts/web/views/flowprio.js",          # Work through: Prio, the 2x2 grid of Jev's squares
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",

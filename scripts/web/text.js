@@ -477,7 +477,8 @@ const en = {
     overlapWith: titles => `overlaps ${titles}`,
     facts: { when: 'When', duration: 'Length', calendar: 'Calendar', where: 'Where', link: 'Meeting', people: n => `People (${n})` },
   },
-  histDid: did => ({ done: 'done', declined: 'not doing', not_doing: 'not doing', dropped: 'dropped', approved: 'approved' })[did]
+  histDid: did => ({ done: 'done', declined: 'not doing', not_doing: 'not doing', dropped: 'dropped', approved: 'approved', merged: 'merged into another task',
+    merged_in: 'took a merged task in' })[did]
     ?? (String(did).startsWith('hidden until ') ? `hidden until ${String(did).slice(13)}`
       : String(did).startsWith('later until ') ? `later, until ${String(did).slice(12)}`
       : String(did).startsWith('runs on until ') ? `runs on, look again ${String(did).slice(14)}` : String(did)),
@@ -1133,6 +1134,8 @@ const en = {
   settleRuns: 'Runs on …', runsConfirm: 'Runs on',
   sessionTask: slug => `task ${slug}`, sessionTaskTitle: 'The task this session works on',
   sessionUnlink: 'detach', sessionLinkLabel: 'Assign task …',
+  // round 4: a task recognised from what the session did lately (sessions.py, task_how seen), and the way to undo it
+  sessionSeen: 'recognised', sessionSeenTitle: 'Recognised from what the session did lately; Not this task unlinks it.', sessionNotThis: 'Not this task',
   taskSessions: n => n === 1 ? 'Session' : `Sessions (${n})`, sessionLive: 'running', sessionEnded: 'ended',
   sessionResume: 'Go on in it', sessionsOnTask: n => n === 1 ? '1 session' : `${n} sessions`,
   lane: { now: 'Being worked on', runs: 'Runs on', review: 'For your yes', next: 'Up next' },
@@ -1372,6 +1375,8 @@ const en = {
     attach_no_task: 'Only a point with an open task takes a document.',
     attach_too_big: 'The document is larger than the limit (cockpit.flow.attach.max_mb).',
     attach_exists: 'Too many documents of that name are there already. Rename it and attach it again.',
+    merge_not_task: 'Only open tasks can be merged, no streams and no inbox items.',
+    merge_changed: 'The merged section was changed by hand, so the merge cannot be taken back.',
     not_applicable: 'This action does not apply to this row.',
     relay_offline: 'Claude is not reachable right now.',
     handoff_running: 'This chat is being handed on right now.',
@@ -1980,7 +1985,8 @@ const de = {
     overlapWith: titles => `überschneidet sich mit ${titles}`,
     facts: { when: 'Wann', duration: 'Dauer', calendar: 'Kalender', where: 'Ort', link: 'Besprechung', people: n => `Teilnehmende (${n})` },
   },
-  histDid: did => ({ done: 'erledigt', declined: 'wird nicht gemacht', not_doing: 'wird nicht gemacht', dropped: 'verworfen', approved: 'freigegeben' })[did]
+  histDid: did => ({ done: 'erledigt', declined: 'wird nicht gemacht', not_doing: 'wird nicht gemacht', dropped: 'verworfen', approved: 'freigegeben', merged: 'in eine andere Aufgabe zusammengeführt',
+    merged_in: 'hat eine Aufgabe aufgenommen' })[did]
     ?? (String(did).startsWith('hidden until ') ? `ausgeblendet bis ${String(did).slice(13)}`
       : String(did).startsWith('later until ') ? `später, bis ${String(did).slice(12)}`
       : String(did).startsWith('runs on until ') ? `läuft noch, nachsehen ${String(did).slice(14)}` : String(did)),
@@ -2630,6 +2636,8 @@ const de = {
   settleRuns: 'Läuft noch …', runsConfirm: 'Läuft noch',
   sessionTask: slug => `Aufgabe ${slug}`, sessionTaskTitle: 'Die Aufgabe, an der diese Sitzung arbeitet',
   sessionUnlink: 'lösen', sessionLinkLabel: 'Aufgabe zuordnen …',
+  // round 4: a task recognised from what the session did lately (sessions.py, task_how seen), and the way to undo it
+  sessionSeen: 'erkannt', sessionSeenTitle: 'Aus dem erkannt, was die Sitzung zuletzt tat; Nicht diese Aufgabe löst das.', sessionNotThis: 'Nicht diese Aufgabe',
   taskSessions: n => n === 1 ? 'Sitzung' : `Sitzungen (${n})`, sessionLive: 'läuft', sessionEnded: 'beendet',
   sessionResume: 'Fortsetzen', sessionsOnTask: n => n === 1 ? '1 Sitzung' : `${n} Sitzungen`,
   lane: { now: 'Dran', runs: 'Läuft', review: 'Abnahme', next: 'Als Nächstes' },
@@ -2865,6 +2873,8 @@ const de = {
     attach_no_task: 'Nur ein Punkt mit offener Aufgabe nimmt ein Dokument.',
     attach_too_big: 'Das Dokument ist größer als erlaubt (cockpit.flow.attach.max_mb).',
     attach_exists: 'Dokumente dieses Namens gibt es schon zu oft. Umbenennen und noch einmal anhängen.',
+    merge_not_task: 'Nur offene Aufgaben lassen sich zusammenführen, keine Streams und keine Posteingangspunkte.',
+    merge_changed: 'Der zusammengeführte Abschnitt wurde von Hand geändert, darum lässt sich das nicht zurücknehmen.',
     not_applicable: 'Diese Aktion passt nicht zu dieser Zeile.',
     relay_offline: 'Claude ist gerade nicht erreichbar.',
     handoff_running: 'Dieser Chat wird gerade weitergegeben.',

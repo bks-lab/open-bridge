@@ -249,9 +249,9 @@ test('the header shows the working total from the mock sessions', () => {
   const s = cockpitState(NOW)
   const c = recorder()
   const chip = mount(html`<${Header} s=${s} c=${c} />`).$('.hdr-agents')
-  // this Bridge's tabs: three busy sessions, five subagents, two workflows (the paused one does not count);
-  // the session of another folder stands only in the tooltip
-  assert.equal(chip.text(), en.header.working(3, 5, 2))
+  // this Bridge's tabs: four busy sessions (round 4: one of them on a task it was recognised working on), five
+  // subagents, two workflows (the paused one does not count); the session of another folder stands only in the tooltip
+  assert.equal(chip.text(), en.header.working(4, 5, 2))
   assert.equal(chip.getAttribute('title'), en.header.workingTitle(4, 2))
   chip.click()
   assert.deepEqual(c.calls, [['setPage', '@sessions']])
@@ -346,9 +346,9 @@ test('by status the sidebar lists every tab under its status, the longest waitin
   const groups = el.$$('section.room-status')
   // each heading: the status word and how many tabs stand under it
   assert.deepEqual(groups.map(g => g.$('h3').text()), [`${en.rooms.status['needs-you']} 1`, `${en.rooms.status.waiting} 3`,
-    `${en.rooms.status.working} 2`, `${en.rooms.status.shell} 1`])
+    `${en.rooms.status.working} 3`, `${en.rooms.status.shell} 1`])
   assert.deepEqual(groups.map(g => g.$$('.room-tab .room-name').map(x => x.text())),
-    [['alpha-release'], ['report-draft', 'demo-task research', 'changelog'], ['docs-refresh', 'notes'], ['zsh']])
+    [['alpha-release'], ['report-draft', 'demo-task research', 'changelog'], ['docs-refresh', 'docs search', 'notes'], ['zsh']])
   assert.equal(groups[1].$('.room-tab .room-meta').text(), 'Demo')          // the workspace in place of the state word
   assert.equal(el.$$('section.room-ws .room-ws-title').length, 0)           // no workspace groups in this order
   // the control session and the quick chats stay reachable below
@@ -844,7 +844,7 @@ test('the rename field replaces the item, saves through tab_rename and workspace
   const side = mount(html`<${Sidebar} s=${w} c=${cw} rooms=${roomsOf(w)} here=${{ kind: 'chat' }} />`)
   const docs = side.$$('section.room-ws').find(g => g.$('.room-rename'))
   assert.ok(docs && docs.$('.room-ws-head') === null, 'the head is replaced by the field')
-  assert.equal(docs.$$('.room-tab').length, 2)                                     // its tabs stay
+  assert.equal(docs.$$('.room-tab').length, 3)                                     // its tabs stay
   const wsInput = docs.$('.room-rename input')
   assert.equal(wsInput.getAttribute('aria-label'), en.rooms.renameWs)
   typeInto(wsInput, 'Writing')
@@ -1860,7 +1860,10 @@ test('with cockpit.focus_to_files a focus of one step still offers the files vie
 
 test('the demo shows the work tab as the default config does, and ?work=files&focus_to_files=1&files_scope=all as the switches do', () => {
   const { mock } = loadedRooms
-  const work = st => { const { flow, ...rest } = st.work; return rest }
+  const work = st => { const { flow, views, ...rest } = st.work; return rest }
+  // every view of the work tab (cockpit.work_views), ?views=files,flow narrows it
+  assert.deepEqual(mock.buildState(NOW).work.views, ['due', 'source', 'jev', 'files', 'flow'])
+  assert.deepEqual(mock.buildState(NOW, { views: ['files', 'flow'] }).work.views, ['files', 'flow'])
   assert.deepEqual(work(mock.buildState(NOW)), { view: 'due', focus_to_files: false, files_scope: 'active' })
   assert.deepEqual(work(mock.buildState(NOW, { work: 'files', focusToFiles: true, filesScope: 'all' })), { view: 'files', focus_to_files: true, files_scope: 'all' })
   assert.deepEqual(work(mock.buildState(NOW, { work: 'tiles', filesScope: 'some' })), { view: 'due', focus_to_files: false, files_scope: 'active' })

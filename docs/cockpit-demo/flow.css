@@ -22,6 +22,8 @@
 /* the left column, level one: one entry per theme or area, its colour, its name, what needs you and what is open */
 .flow-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; max-height: var(--flow-col-max); overflow-y: auto;
   padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+/* the column scrolls in itself once Running now and Not now make it long: no part of it shrinks to make room */
+.flow-side > * { flex-shrink: 0; }
 .flow-side > .seg { align-self: stretch; }
 .flow-side > .seg .seg-btn { flex: 1 1 0; }
 .flow-side-select { display: none; }
@@ -223,6 +225,65 @@
 .flow-sug-you .flow-sug-verb, .flow-pt-chip.flow-sug-you { border-color: var(--warning); color: var(--warning); }
 .flow-sug-why { min-width: 0; color: var(--on-surface-muted); }
 
+/* round 4, Running now: on top of the left column a compact line per entry (dot, title, tab and stage), on top of the
+   overview a strip with To tab and View; Not now at the foot of the left column, a button per group, the one open
+   marked; on a narrow screen both fold under the select */
+.flow-run, .flow-notnow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.flow-notnow { padding-top: 8px; border-top: 1px solid var(--border); }
+.flow-run .flow-side-group, .flow-notnow .flow-side-group { margin-top: 0; }
+.flow-run-list, .flow-runstrip-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.flow-run-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px; border: 1px solid transparent; border-radius: var(--radius-md); }
+.flow-run-item > .dot { margin-top: 5px; }
+.flow-run-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+.flow-run-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.flow-run-open { padding: 0; border: 0; background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); font-weight: 600;
+  text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.flow-run-open:hover { text-decoration: underline; }
+.flow-run-meta { font-size: var(--text-label); overflow-wrap: anywhere; }
+.flow-notnow-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 1px solid transparent; border-radius: var(--radius-md);
+  background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
+}
+.flow-notnow-item:hover { background: var(--surface-raised); }
+.flow-notnow-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+.flow-run-narrow, .flow-notnow-narrow { display: none; }
+.flow-run-narrow > summary, .flow-notnow-narrow > summary { cursor: pointer; padding: 6px 4px; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.flow-run-narrow > summary > .label-caps, .flow-notnow-narrow > summary > .label-caps { display: inline; margin: 0 4px 0 0; }
+.flow-runstrip { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-runstrip > h3 { margin: 0; color: var(--on-surface-muted); }
+.flow-runstrip-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 4px 0; }
+.flow-runstrip-row + .flow-runstrip-row { border-top: 1px solid var(--border); }
+.flow-runstrip-text { display: flex; flex-direction: column; gap: 1px; flex: 1 1 240px; min-width: 0; }
+.flow-runstrip-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.flow-left-sub { margin: 0; }
+
+/* round 4, Merge: under the batch bar which task stays, a radio each */
+.flow-merge-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.flow-merge-list .flow-check { align-items: baseline; flex-wrap: wrap; }
+.flow-merge-title { font-weight: 600; overflow-wrap: anywhere; }
+.flow-merge > p, .flow-merge-only { margin: 0; }
+
+/* round 4, Prio: Jev's squares as a 2x2 grid, urgent left, important on top, the axes named beside them; the points
+   not rated under it, full width */
+.flow-prio { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-prio-from { margin: 0; }
+.flow-prio-grid { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.flow-prio-axis { align-self: end; text-align: center; }
+.flow-prio-axis-y { align-self: center; writing-mode: vertical-rl; transform: rotate(180deg); }
+.flow-prio-sq {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; min-height: 150px; padding: 12px 14px;
+  border: 1px solid var(--border); border-top: 3px solid var(--tk, var(--border-strong)); border-radius: var(--radius-lg); background: var(--surface);
+  color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; transition: background var(--motion), border-color var(--motion);
+}
+.flow-prio-sq:hover { background: var(--surface-raised); }
+.flow-prio-head { display: flex; align-items: center; gap: 8px; width: 100%; }
+.flow-prio-name { flex: 1 1 auto; min-width: 0; font-weight: 700; color: var(--ink); }
+.flow-prio-n { flex: none; padding: 0 8px; border-radius: var(--radius-full); background: var(--surface-raised); font-size: var(--text-label); font-weight: 600; }
+.flow-prio-titles { display: flex; flex-direction: column; gap: 2px; margin: 0; padding-left: 16px; font-size: var(--text-sm); }
+.flow-prio-titles li { overflow-wrap: anywhere; }
+.flow-prio-hint { margin-top: auto; color: var(--on-surface-muted); }
+.flow-prio-none .flow-prio-sq { width: 100%; min-height: 0; }
+
 /* below 1180px the right column moves under the middle; narrow, one column and the left column a select on top */
 @media (max-width: 1180px) {
   .flow-grid { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
@@ -236,6 +297,10 @@
   .flow-side > .flow-side-body { display: none; }
   .flow-side-select { display: block; }
   .flow-side-select .input { width: 100%; }
+  .flow-run-narrow, .flow-notnow-narrow { display: block; }
+  .flow-runstrip { display: none; }
+  .flow-prio-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .flow-prio-axis { display: none; }
   .flow-ov-table thead { display: none; }
   .flow-ov-table, .flow-ov-table tbody { display: block; }
   .flow-ov-group { display: block; }
@@ -258,12 +323,7 @@
 .flow-askblock { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
 .flow-askblock > .reply, .flow-askblock > .guide { align-self: stretch; }
 
-/* what the queue leaves out, and the calm card's ideas */
-.flow-left { display: flex; flex-direction: column; gap: 8px; }
-.flow-left > .btn-link { align-self: flex-start; }
-.flow-left-list { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.flow-left-group p { margin: 0 0 4px; color: var(--on-surface-muted); }
-.flow-left-group ul { margin: 0; padding-left: 18px; color: var(--on-surface); font-size: var(--text-sm); }
+/* the calm card's ideas */
 .flow-rest { display: flex; flex-direction: column; gap: 8px; }
 .flow-rest > h2 { margin: 0; color: var(--on-surface-muted); }
 .flow-rest ul { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }

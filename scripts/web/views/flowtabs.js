@@ -72,7 +72,8 @@ function changeWord(ch, v, t, lang) {
   if (ch.field === 'theme') return v ?? t.flow.side.noTheme
   if (ch.field === 'driver') return v ?? f.nobody
   if (ch.field === 'decision') {
-    return [f.decision[v] ?? String(v), ch.until ? f.until(formatDay(ch.until, lang)) : null, ch.reason ? f.because(ch.reason) : null].filter(Boolean).join(' ')
+    // a merge names the other task: the one it went into, the one it took in (round 4)
+    return [f.decision[v] ?? String(v), ch.into ?? ch.from ?? null, ch.until ? f.until(formatDay(ch.until, lang)) : null, ch.reason ? f.because(ch.reason) : null].filter(Boolean).join(' ')
   }
   return String(v ?? '')
 }
