@@ -270,7 +270,7 @@ const inNow = (r, src) => src === 'now' || r.section === 'now' || r.urgency === 
  *  waiting that is not quiet yet needs you and asks as a point) or in a group of Not now (`leftOut`, by why). A
  *  point or an entry of the lane may stand for no open row (a tab alone, a start whose item left the list), a row of
  *  Not now always stands for one. Live first (only with a terminal driver): the return card, the starts by stage, the
- *  sessions, the task tabs, the tabs that ask; then each open row by the first rule that fits. A point due later than
+ *  sessions, the task tabs, the tabs that want you; then each open row by the first rule that fits. A point due later than
  *  cockpit.flow.ahead_days waits under Later until then (aheadOf), unless the viewer took it back on (ui.flowEarly).
  *  A card is {group, id, kind, row?, start?, tab?, task?, covers?, rows?, stage?}; an entry of the lane {group doing,
  *  lane, id, kind start, session or tab, row, tab, stage, how, title, at}; one of Not now {row, kind, until, why, due,
@@ -348,10 +348,11 @@ export function flowParts(s) {
       take(row)
       usedTabs.add(t.ref)
     }
-    // L5 the tabs that want you (a dialog, or waiting at its prompt and not quiet yet, wantsYou), with or without a
-    // row, the oldest first: they need you, so they are points. A session linked to that tab (by hand, by its task tab,
-    // or recognised) brings its task: it stands once, as the card that asks, and goes back to Running now once its
-    // tab works again or went quiet
+    // L5 the tabs that want you, with or without a row, the oldest question first: one that needs you (a dialog), and
+    // since round 6 one waiting at its prompt that did not go quiet yet (logic.js wantsYou, the rule of the rest of the
+    // cockpit, the server's idle); they ask something, so they are points. A session linked to that tab (by hand, by
+    // its task tab, or recognised) brings its task: it stands once, as the card that asks, and goes back to Running
+    // now once its tab works again or went quiet
     for (const t of tabs.filter(x => wantsYou(x) && !usedTabs.has(x.ref) && asking(x)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
       const linked = (s?.sessions?.sessions ?? []).find(v => v.task && v.tab?.ref === t.ref)
       const found = (t.slug ? rowOfTask(t.slug) : null) ?? (t.item ? uni.get(`inbox:${t.item}`) ?? null : null) ?? (linked ? rowOfTask(linked.task) : null)

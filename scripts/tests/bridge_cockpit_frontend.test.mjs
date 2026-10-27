@@ -713,6 +713,15 @@ test('the check page survives a model update: fixPage keeps every page of the ta
   assert.match(read('app.js'), /const ids = pageOrder\(s\)/)
 })
 
+test('round 6 b: setPage and fixPage lead a page through flowPageFor with the state, Running now opens in the middle', () => {
+  // one place for every way to the Sessions tab (a link, a note, the tour, the areas, a stored page): setPage
+  const set = read('app.js').match(/  setPage\(id\) \{[\s\S]*?\n  \},/)[0]
+  assert.match(set, /flowPageFor\(id, s\)/)
+  assert.match(set, /flowTo\.flowView/)
+  const fix = read('app.js').match(/function fixPage\(\) \{[\s\S]*?\n\}/)[0]
+  assert.match(fix, /flowPageFor\(s\.ui\.page, s\)/)
+})
+
 // ---------------------------------------------------------------- motion.js and the drawings
 
 test('motion: a spring starts at 0, arrives at 1 and never overshoots at zeta 0.95', () => {

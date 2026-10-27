@@ -1827,10 +1827,22 @@ export function workViewGo(s, view) {
   return { view: on ? view : workViewIn({ ...s, ui: { ...s?.ui, workView: view } }), save: on }
 }
 
+/** Whether the live sessions stand in Running now of Work through rather than on a tab of their own (round 6): the
+ *  work tab offers Work through (cockpit.flow.enabled, kept by cockpit.work_views), whose Running now lists every
+ *  live session as a card, with a terminal driver or without one. Then the bar has no Sessions tab and every way to
+ *  it leads there (flowPageFor); a Bridge without Work through keeps the tab */
+export function sessionsInFlow(s) {
+  return workViews(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null).includes('flow')
+}
+
 /** Where a page id leads that is a view now: the Work through page (@flow, a stored page or a link of an older
- *  page) is the work tab in its view Work through; null for every other id */
-export function flowPageFor(id) {
-  return id === '@flow' ? { page: 'briefing', view: 'flow' } : null
+ *  page) is the work tab in its view Work through; the Sessions page (@sessions) is its Running now (flowView
+ *  running) where that lists the live sessions (sessionsInFlow of `s`), so every way to the tab lands there: a
+ *  link, a note, the band, the tour, an area's number, a page stored by an older cockpit. Null for every other id */
+export function flowPageFor(id, s = null) {
+  if (id === '@flow') return { page: 'briefing', view: 'flow' }
+  if (id === '@sessions' && sessionsInFlow(s)) return { page: 'briefing', view: 'flow', flowView: 'running' }
+  return null
 }
 
 // cockpit.work_view names a view by the word the docs use; the page has its own ids for them
@@ -3131,10 +3143,11 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
 
 /** Where a page target of the band leads: every page the controller routes itself (the tab row, a page
  *  of group work or day, Jev wherever it lives, the agents wherever a peer is: as cmux they are the Chat's
- *  A2A area, app.js setPage); Today only for a name that exists nowhere */
+ *  A2A area, a page that is a view now, like the Sessions tab as Running now: flowPageFor; app.js setPage);
+ *  Today only for a name that exists nowhere */
 export function tickerPage(s, id, order = []) {
   const known = order.includes(id) || id === '@jev' || (id === '@agents' && (s?.agents?.peers ?? []).length > 0)
-    || (s?.model?.pages ?? []).some(p => p.id === id)
+    || (s?.model?.pages ?? []).some(p => p.id === id) || !!flowPageFor(id, s)
   return known ? id : 'briefing'
 }
 
@@ -3407,7 +3420,8 @@ export function tourIndex(s) {
 
 /** The tour's steps in order. A step names its texts (text.js tour.steps.<id>), the page it opens and the
  *  area it lights (a CSS selector); one without a target stands in the middle. The tab column is left out
- *  where the layout shows none (narrow: its own switch at the foot) */
+ *  where the layout shows none (narrow: its own switch at the foot); the sessions are Running now where Work
+ *  through lists them (sessionsInFlow: the same page id, app.js setPage leads it there) */
 export function tourSteps(s) {
   const narrow = s?.layout === 'narrow'
   return [
@@ -3417,7 +3431,7 @@ export function tourSteps(s) {
     { id: 'work', page: 'briefing', target: '#main' },
     ...(narrow ? [] : [{ id: 'tabs', target: '#tabs-column, .hdr-tabs' }]),
     { id: 'ask', target: '.hdr-ask' },
-    { id: 'sessions', page: '@sessions', target: '#main' },
+    { id: sessionsInFlow(s) ? 'running' : 'sessions', page: '@sessions', target: '#main' },
     { id: 'help', target: '.hdr-help' },
     { id: 'done' },
   ]
@@ -3468,9 +3482,9 @@ const HINTS = {
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
-  // Work through, a view of the work tab (its parts are explained there, hintsFor)
+  // Work through, a view of the work tab (its parts are explained there, hintsFor), with the session cards of Running now
   '@flow': [['flowSide', '.flow-side'], ['flowOverview', '.flow-overview'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
-    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk']],
+    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk'], ['sessCards', '.flow-sessions']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
 const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],

@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, short, railOn, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, pageWarnings, sessionCounts, sessionsInFlow, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
@@ -49,6 +49,12 @@ export function AsOf({ s }) {
   </span>`
 }
 
+/** A control session runs but does not listen to the relay (it is on, not online): the questions of the page cannot reach it */
+export function relayDeaf(s) {
+  const r = s.relay ?? {}
+  return !!r.enabled && r.reason !== 'disabled' && !r.online && (s.sessions?.sessions ?? []).some(x => x.tab?.is_control && !x.relay)
+}
+
 export function RelayBadge({ s, c }) {
   const t = T()
   const r = s.relay ?? {}
@@ -57,14 +63,16 @@ export function RelayBadge({ s, c }) {
   let token = 'on-surface-muted'
   let word = t.relay.offline
   let title = r.reason ? t.relayReason[r.reason] : null
-  // a control session runs but does not listen: say so, and the click shows it on the sessions page
-  const deaf = !r.online && (s.sessions?.sessions ?? []).some(x => x.tab?.is_control && !x.relay)
+  // a control session runs but does not listen: say so, and the click shows it where the control session is told
+  // about: the Chat where Running now lists the sessions (round 6: it leaves the control session out), else the
+  // Sessions page
+  const deaf = relayDeaf(s)
   if (!r.enabled || r.reason === 'disabled') word = t.relay.disabled
   else if (r.online && r.session?.busy) { token = 'warning'; word = t.relay.busy }
   else if (r.online) { token = 'success'; word = t.relay.online }
   else if (deaf) { token = 'warning'; word = t.relay.deaf; title = t.sessionControlNoRelay }
   return deaf
-    ? html`<button type="button" class="hdr-relay btn-link" title=${title} onClick=${() => c.setPage(SESSIONS_PAGE)}><${StateLine} token=${token} word=${word} /></button>`
+    ? html`<button type="button" class="hdr-relay btn-link" title=${title} onClick=${() => c.setPage(sessionsInFlow(s) ? CHAT_PAGE : SESSIONS_PAGE)}><${StateLine} token=${token} word=${word} /></button>`
     : html`<span class="hdr-relay" title=${title ?? word}><${StateLine} token=${token} word=${word} /></span>`
 }
 
@@ -83,9 +91,22 @@ export function StartControl({ s, c, size = 'xs', short: brief = false }) {
     onClick=${() => c.act('start_control', {})}>${brief ? t.btnStartControlShort : t.btnStartControl}<//>`
 }
 
+/** What the head of the Chat says of the control session (round 6, from the Sessions page): why the relay has
+ *  nobody to ask, with the button that starts one (canStartControl), and that a control session runs but does not
+ *  listen (relayDeaf); nothing while the relay is ready or off */
+export function ControlNotice({ s, c }) {
+  const t = T()
+  const start = canStartControl(s)
+  const deaf = relayDeaf(s)
+  if (!start && !deaf) return null
+  return html`${start ? html`<p class="banner chat-control"><${StateLine} token="warning" word=${t.relayReason[s.relay.reason]} />
+      <${StartControl} s=${s} c=${c} size="sm" /></p>` : null}
+    ${deaf ? html`<p class="banner chat-control"><${StateLine} token="warning" word=${t.sessionControlNoRelay} /></p>` : null}`
+}
+
 /** What works in this Bridge's tabs right now: busy sessions, subagents active in the last 2 minutes and
  *  workflows that are not paused (logic.js agentLoad). Sessions elsewhere on this machine only in the
- *  tooltip. A click opens the Sessions page */
+ *  tooltip. A click opens the Sessions page, which is Running now where Work through lists them (app.js setPage) */
 export function AgentsChip({ s, c }) {
   const t = T()
   const { total, elsewhere } = agentLoad(s.sessions?.sessions, s.tabs?.tabs)
@@ -248,18 +269,21 @@ export function PageBar({ s, c }) {
   const n = s.model?.briefing_badge ?? 0
   const aiLeft = aiWaiting(s.model?.returns, s.tabs?.tabs, s.now || Date.now())   // what the AI left for you (sessions page)
   const toClose = s.model?.review?.last?.to_close ?? 0
-  // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip
+  // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip. Where
+  // Work through lists the live sessions in Running now (round 6) the tab goes, its AI badge with it: what the AI left
+  // stands there as points already (a start that asks or finished), Running now counts what runs
   const sess = sessionCounts(s.sessions?.sessions)
+  const sessTab = !sessionsInFlow(s)
   const agentsInChat = chatAsWorkspaces(s)
   return html`<nav class="pagebar" aria-label=${t.pagesLabel} ref=${navRef}>
     <div class="pagebar-tabs" role="tablist" ref=${tabsRef} onKeyDown=${keys.onKeyDown}>
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
       ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
-      ${tab(SESSIONS_PAGE, t.sessionsTab, aiLeft > 0
+      ${sessTab ? tab(SESSIONS_PAGE, t.sessionsTab, aiLeft > 0
         ? html`<span class="pbadge is-quiet" title=${t.aiWaitingTitle(aiLeft)}><span>${t.aiBadge}</span> <span class="mono">${aiLeft}</span></span>`
         : sess.sessions > 0
-        ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null)}
+        ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null) : null}
       ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
         ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null,
         s.workers?.data?.stats?.with_findings ? 'warning' : null)}

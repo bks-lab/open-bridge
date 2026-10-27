@@ -2369,3 +2369,59 @@ test('print: a failing test on an element ends in seconds through the test repor
   assert.match(r.out, /an element where none belongs/)
   assert.ok(r.out.length < 20000, `the report is ${r.out.length} characters long`)
 })
+
+// ---------------------------------------------------------------- round 6 b: what the Sessions page held, in the Chat
+
+const OFFLINE = { enabled: true, online: false, reason: 'no_heartbeat', session: null, records: [] }
+const chatOn = (over = {}) => cockpitState(NOW, { ...over, ui: { room: { kind: 'chat' }, tabView: 'surface:99', ...(over.ui ?? {}) } })
+
+test('round 6 b S3: the Chat says on its head why the relay has nobody to ask, with the button that starts a control session', () => {
+  const t = text.T()
+  const c = recorder()
+  const el = mount(html`<${RoomsPage} s=${chatOn({ relay: OFFLINE })} c=${c} />`)
+  const note = el.$('.chat-control')
+  assert.ok(!!note, 'the notice on top of the Chat')
+  assert.ok(note.text().includes(t.relayReason.no_heartbeat), note.text())
+  note.button(t.btnStartControl).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'start_control', {}])
+  // the same notice stands on top of the classic Chat (views/chat.js ChatPage)
+  const own = mount(html`<${views.header.ControlNotice} s=${chatOn({ relay: OFFLINE })} c=${recorder()} />`)
+  assert.ok(own.$$('.chat-control').some(x => x.text().includes(t.relayReason.no_heartbeat)), 'the notice on its own')
+  // the relay ready: nothing
+  assert.ok(!mount(html`<${RoomsPage} s=${chatOn()} c=${recorder()} />`).$('.chat-control'), 'nothing while the relay is ready')
+  // a control session that runs but does not listen: the Chat says so, and the header's badge leads there where
+  // Running now lists the sessions (the Sessions page without Work through)
+  const deaf = { ...OFFLINE, reason: 'ambiguous' }
+  const words = mount(html`<${RoomsPage} s=${chatOn({ relay: deaf })} c=${recorder()} />`).$$('.chat-control').map(x => x.text())
+  assert.ok(words.some(w => w.includes(t.sessionControlNoRelay)), words.join(' | '))
+  const badge = s => { const c2 = recorder(); mount(html`<${views.header.RelayBadge} s=${s} c=${c2} />`).$('button.hdr-relay').click(); return c2.calls }
+  assert.deepEqual(badge(chatOn({ relay: deaf })), [['setPage', '@chat']])
+  const classicFlow = chatOn({ relay: deaf })
+  assert.deepEqual(badge({ ...classicFlow, work: { ...classicFlow.work, flow: { enabled: false } } }), [['setPage', '@sessions']])
+})
+
+test('round 6 b S4: the Chat warns when the tab list is broken or no driver lists the tabs, and a tab links to its task', () => {
+  const t = text.T()
+  const banners = s => mount(html`<${RoomsPage} s=${s} c=${recorder()} />`).$$('.banner').map(x => x.text())
+  const base = chatOn()
+  const broken = banners(chatOn({ tabs: { ...base.tabs, error: { since: '11:58', message: 'the terminal did not answer' } } }))
+  assert.ok(broken.some(w => w.includes(t.tabsStale('11:58', 'the terminal did not answer'))), broken.join(' | '))
+  const none = banners(chatOn({ cmux: { ok: false, error: null }, driver: { caps: [] } }))
+  assert.ok(none.some(w => w.includes(t.noDriver)), none.join(' | '))
+  assert.deepEqual(banners(base), [])
+  // a task tab names its task, a click opens it in the drawer over the Chat
+  const open = ref => {
+    const c = recorder()
+    const el = mount(html`<${RoomsPage} s=${chatOn({ ui: { room: { kind: 'tab', id: ref } } })} c=${c} />`)
+    const link = el.$('.tabview-head .room-task')
+    if (!link) return null
+    link.click()
+    const call = c.calls.find(x => x[0] === 'openItem')
+    return call ? [call[1], link.getAttribute('title')] : []
+  }
+  assert.deepEqual(open('surface:12'), ['task:demo-task', t.infoOpenTask])
+  // a tab typed into by hand whose session works on a task (recognised): that task
+  assert.deepEqual(open('surface:14'), ['task:search-index', t.infoOpenTask])
+  // a tab of no task: no link
+  assert.equal(open('surface:11'), null)
+})

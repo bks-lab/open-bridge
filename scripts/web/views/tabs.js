@@ -169,6 +169,14 @@ function SnapshotPanel({ s, c }) {
   </section>`
 }
 
+/** Why the tabs may be missing or stale: no terminal driver lists them, or the last read of their list failed
+ *  (since when, why). The tab column and the head of the Chat show it (round 6) */
+export function TabWarnings({ s }) {
+  const t = T()
+  return html`${noTabDriver(s) ? html`<p class="banner"><${StateLine} token="warning" word=${t.noDriver} /></p>` : null}
+    ${s.tabs?.error ? html`<p class="banner"><${StateLine} token="danger" strong word=${t.tabsStale(s.tabs.error.since, s.tabs.error.message)} /></p>` : null}`
+}
+
 export function TabsColumn({ s, c, byKey, inDrawer }) {
   const t = T()
   const tabs = s.tabs?.tabs ?? []
@@ -188,8 +196,7 @@ export function TabsColumn({ s, c, byKey, inDrawer }) {
             : s.layout === 'wide' ? html`<${Btn} variant="ghost" size="xs" title=${t.tabsHideTitle} onClick=${() => c.toggleRail()}>${t.tabsHide}<//>` : null}
         </span>
       </header>
-      ${noTabDriver(s) ? html`<p class="banner"><${StateLine} token="warning" word=${t.noDriver} /></p>` : null}
-      ${s.tabs?.error ? html`<p class="banner"><${StateLine} token="danger" strong word=${t.tabsStale(s.tabs.error.since, s.tabs.error.message)} /></p>` : null}
+      <${TabWarnings} s=${s} />
       ${control ? html`<${TabCard} tab=${control} s=${s} c=${c} byKey=${byKey} slim />` : null}
       ${groups.length ? groups.map(g => html`<section class="tabgroup" key=${g.workspace}>
         <h3 class="mono-label">${g.workspace || '·'}</h3>

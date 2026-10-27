@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the sessions and the background jobs pages. SessionCard also stands in Running now of Work through
-// (views/flowrun.js SessionCards, round 6), compact and with that page's box, task line and way to the Chat.
+// (views/flowrun.js SessionCards, round 6), compact and with that page's box, task line and way to the Chat. Where
+// Running now lists the sessions (logic.js sessionsInFlow) the Sessions page has no tab and every way to it leads
+// there; the control session's notice stands on the head of the Chat as well (views/header.js ControlNotice).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
