@@ -115,6 +115,8 @@
    leaves out the next title rather than cut it to a few letters */
 .flow-dock { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 @container (max-width: 680px) { .flow-dock .dz-walk-next { visibility: hidden; } }
+/* a middle as narrow as beside the detail column: Next wraps onto a line of its own, never cut off */
+@container (max-width: 480px) { .flow-dock .dz-walk { flex-wrap: wrap; padding: 10px 12px; gap: 8px; } .flow-dock .dz-walk-next { display: none; } }
 /* the page's own bottom padding would leave a strip under it where the rows scroll by: it sticks to the very edge */
 @media (min-width: 701px) {
   .flow-dock { position: sticky; bottom: calc(-1 * var(--space-xl)); z-index: 3; box-shadow: 0 -14px 24px -18px color-mix(in srgb, var(--ink) 30%, transparent); }
@@ -291,6 +293,12 @@
 .flow-prio-titles li { overflow-wrap: anywhere; }
 .flow-prio-hint { margin-top: auto; color: var(--on-surface-muted); }
 .flow-prio-none .flow-prio-sq { width: 100%; min-height: 0; }
+
+/* the detail column beside the page (Details on a row that is no inbox item or task, views/flowside.js) halves the
+   page's width: the right column goes under the middle, as below 1180px (a narrow screen shows one pane at a time) */
+.main.with-detail:not(.layout-narrow) .flow-grid { grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); }
+.main.with-detail:not(.layout-narrow) .flow-grid > .flow-aside { grid-column: 2; position: static; max-height: none; overflow: visible; }
+.main.with-detail:not(.layout-narrow) .flow-aside > .flow-can, .main.with-detail:not(.layout-narrow) .flow-aside > .flow-fields { max-height: none; overflow: visible; }
 
 /* below 1180px the right column moves under the middle; narrow, one column and the left column a select on top */
 @media (max-width: 1180px) {

@@ -521,6 +521,15 @@ test('In progress: the card shows the last lines, the field says who works on it
   assert.equal(el.button(en.flow.toTab), null)
 })
 
+test('Details beside the page: with the detail column open the right column of Work through moves under the middle', () => {
+  // the detail column halves the page column (style.css .with-detail): three columns of Work through do not fit there
+  const css = fs.readFileSync(new URL('../web/flow.css', import.meta.url), 'utf8')
+  assert.match(css, /\.main\.with-detail:not\(\.layout-narrow\) \.flow-grid \{ grid-template-columns: minmax\(200px, 240px\) minmax\(0, 1fr\); \}/)
+  assert.match(css, /\.main\.with-detail:not\(\.layout-narrow\) \.flow-grid > \.flow-aside \{ grid-column: 2; position: static;/)
+  // and the walk bar in a middle that narrow wraps its Next onto a line of its own instead of cutting it off
+  assert.match(css, /@container \(max-width: 480px\) \{ \.flow-dock \.dz-walk \{ flex-wrap: wrap;/)
+})
+
 test('Sort again at the foot of the left column where By source, which carries the triage rerun, is off (round 6 B)', () => {
   const at = (views, themes, busy = {}) => {
     const s = { ...state({ work: [task('a'), task('b')] }), themes, ui: { ...state().ui, page: 'briefing', workView: 'flow', flowView: 'overview', busy } }
