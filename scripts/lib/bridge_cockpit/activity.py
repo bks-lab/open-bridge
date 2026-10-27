@@ -564,6 +564,16 @@ def doc_path(root: Path, slug: Any, path: Any) -> Path | None:
 
 # ---------------------------------------------------------------- the feed of one point
 
+
+def names_slug(slug: str, what: str) -> bool:
+    """whether a log row names the task as a whole word: `demo-task` is not named by `demo-task-two`"""
+    return re.search(rf"(?<![a-z0-9-]){re.escape(slug)}(?![a-z0-9-])", what) is not None
+
+
+def names_ref(ref: str, what: str) -> bool:
+    """whether a log row names the issue or PR itself: `repo#12` is not named by `repo#123`"""
+    return re.search(re.escape(ref) + r"(?!\d)", what) is not None
+
 class _Feed:
     """The rows of one point, built source by source (module doc); sorted_rows() gives them newest first"""
 
@@ -626,7 +636,7 @@ class _Feed:
         elif slug:
             self.safely(self.task, slug, own_lines)
         elif isinstance(row.get("ref"), str) and row["ref"]:
-            self.safely(self.log, lambda context, what, ref=row["ref"]: ref in what)
+            self.safely(self.log, lambda context, what, ref=row["ref"]: names_ref(ref, what))
         self.safely(self.decisions)
         self.safely(self.themes)
         self.safely(self.agents, slug if not inbox else None, own_lines)
@@ -640,7 +650,7 @@ class _Feed:
             return
         path = found[1]
         folder = path.parent
-        self.read_notes(path, True)
+        self.safely(self.read_notes, path, True)
         for day, time_, note in self.notes:
             self.texts.append((day, None, note))
             if ATTACHED_RE.match(note):
@@ -650,14 +660,14 @@ class _Feed:
             else:
                 at_ms = when_of(f"{day}T{time_}")[0] if time_ else None
                 self.add("note", note, at_ms=at_ms, day=day)
-        self.log(lambda context, what: context == slug or slug in what)
-        self.docs(slug, folder)
-        self.status(folder, path)
+        self.safely(self.log, lambda context, what: context == slug or names_slug(slug, what))
+        self.safely(self.docs, slug, folder)
+        self.safely(self.status, folder, path)
 
     def read_notes(self, path: Path, own: bool) -> None:
         """The dated lines of a STATUS.md's `## Notes` and the files their attach notes name; `own`: the point's own
         task, whose front matter and notes the feed reads (an inbox row reads only what its task attached)"""
-        front, body = details.split_front(path.read_text(encoding="utf-8"))
+        front, body = details.split_front(path.read_text(encoding="utf-8", errors="replace"))
         notes = re.search(r"^## Notes\s*$(.*?)(?=^## |\Z)", body, flags=re.M | re.S)
         for line in (notes.group(1).splitlines() if notes else []):
             hit = NOTE_RE.match(line.strip())
@@ -675,7 +685,7 @@ class _Feed:
     def log(self, names) -> None:
         """The rows of work/log.md a point is named in; one equal to a note of the same day is left out"""
         try:
-            text = (self.root / "work" / "log.md").read_text(encoding="utf-8")
+            text = (self.root / "work" / "log.md").read_text(encoding="utf-8", errors="replace")
         except OSError:
             return
         same_day = {(day, " ".join(note.split())) for day, _t, note in self.notes}

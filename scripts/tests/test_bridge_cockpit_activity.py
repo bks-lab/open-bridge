@@ -889,3 +889,32 @@ def test_the_summary_argv_is_one_exact_shape(tmp_path):
         assert not act.summary_argv_ok(bad, "/fake/bin/claude")
         with pytest.raises(RunnerRefused):
             runner.check(bad)
+
+
+# ---------------------------------------------------------------- the feed keeps to its own point
+
+def test_log_rows_of_a_task_whose_slug_holds_this_one_stay_out(world):
+    with (world.root / "work" / "log.md").open("a", encoding="utf-8") as f:
+        f.write("| 2026-10-09 11:00 | x | demo-task-two | the other task moved on |\n"
+                "| 2026-10-09 11:05 | x | other | see demo-task-two for the rest |\n"
+                "| 2026-10-09 11:10 | x | other | demo-task, too |\n")
+    texts = [r["text"] for r in of(feed(world), "log")]
+    assert "the other task moved on" not in texts and "see demo-task-two for the rest" not in texts
+    assert "demo-task, too" in texts
+
+
+def test_a_ref_matches_its_own_number_and_not_a_longer_one(world):
+    with (world.root / "work" / "log.md").open("a", encoding="utf-8") as f:
+        f.write("| 2026-10-09 11:00 | x | other | fixed example/repo#123 |\n"
+                "| 2026-10-09 11:05 | x | other | closed example/repo#12 at last |\n")
+    texts = [r["text"] for r in feed(world, key=ISSUE)["rows"]]
+    assert "closed example/repo#12 at last" in texts
+    assert not any("example/repo#123" in t for t in texts)
+
+
+def test_a_bad_byte_in_the_log_leaves_documents_and_status_standing(world):
+    with (world.root / "work" / "log.md").open("ab") as f:
+        f.write(b"| 2026-10-09 12:00 | x | other | caf\xe9 demo-task |\n")
+    data = feed(world)
+    assert of(data, "doc") and of(data, "status")
+    assert any("demo-task" in r["text"] for r in of(data, "log"))

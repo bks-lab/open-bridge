@@ -55,8 +55,8 @@ function Plan({ plan, s, c, onChange }) {
       const runs = (st.keys ?? []).some(key => !skipped.some(x => x.step === k && x.key === key))
       return html`<li key=${k} class=${`flow-instruct-step${runs ? '' : ' is-out'}`}>
         <span class="flow-instruct-op">${stepWord(st, f, lang)}</span><${StepPoints} st=${st} k=${k} skipped=${skipped} s=${s} f=${f} />
-        ${st.op === 'reply' && st.text ? html` <q class="flow-instruct-said">${short(st.text, 200)}</q>` : null}
-        ${(st.op === 'do' || st.op === 'mail') && st.note && runs ? html`<span class="flow-instruct-note muted small">${short(st.note, 240)}</span>` : null}
+        ${st.op === 'reply' && st.text ? html` <q class="flow-instruct-said">${st.text}</q>` : null}
+        ${(st.op === 'do' || st.op === 'mail') && st.note && runs ? html`<span class="flow-instruct-note muted small">${st.note}</span>` : null}
       </li>`
     })}</ol>` : null}
     ${plan.unclear ? html`<p class="small flow-instruct-unclear"><span class="label-caps">${f.unclear}</span> ${plan.unclear}</p>` : null}

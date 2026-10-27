@@ -156,7 +156,7 @@ def _day(value: Any, today: str) -> str | None:
 
 
 def plan_steps(answer: dict, points: list[dict], sentence: str, today: str, reasons: list[str], point: bool,
-               mail_note: str) -> tuple[list[dict], str | None]:
+               mail_note: str, do_note: str) -> tuple[list[dict], str | None]:
     """(steps, unclear) of the model's answer, each step checked (module doc). points are {n, key, title, out, tab, typed}:
     tab the live tab of the point, None without one; typed whether it takes typed words (takes_words)"""
     by_n = {p["n"]: p for p in points}
@@ -180,7 +180,8 @@ def plan_steps(answer: dict, points: list[dict], sentence: str, today: str, reas
         elif verb == "do":
             given = (raw.get("text") or raw.get("note")) if mail else (raw.get("note") or raw.get("text"))
             text = _line(given, NOTE_MAX) or _line(sentence, NOTE_MAX)
-            out["note"] = _line(mail_note.format(text=text), NOTE_MAX) if mail else text
+            # every start says it never sends, not only the ones the model calls a mail (an order hidden in a title)
+            out["note"] = _line((mail_note if mail else do_note).format(text=text), NOTE_MAX)
         elif verb == "reply":
             out["tab_ref"] = None
             out["text"] = _line(raw.get("text") or raw.get("note"), REPLY_MAX) or _line(sentence, REPLY_MAX)
@@ -279,7 +280,7 @@ class Instruct:
         if not isinstance(answer, dict) or not isinstance(answer.get("steps"), list):
             why = "the answer holds no steps" if run.ok else ((run.err or "").strip().splitlines()[-1:] or ["no answer"])[0]
             raise ActionError(502, "instruct_failed", tx["failed"].format(why=app.scrub(why)[:200]))
-        steps, unclear = plan_steps(answer, points, text, today, reasons, point, tx["mail_note"])
+        steps, unclear = plan_steps(answer, points, text, today, reasons, point, tx["mail_note"], tx["do_note"])
         return app.scrub_tree({"id": "p" + uuid.uuid4().hex[:10], "text": text, "point": point, "n": len(points),
                                "steps": steps, "unclear": unclear, "model": act.alias(used or model),
                                "at_ms": int(app.clock())})

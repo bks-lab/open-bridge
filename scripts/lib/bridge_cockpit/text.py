@@ -292,6 +292,7 @@ EN: dict = {
                  "attach_failed": "The document could not be written: {err}"},
     # the instruction line of Work through (instruct.py): the sentence a mail draft starts with, and the refusals
     "instruct": {"mail_note": "Write a mail draft with the mail-draft skill, a draft only, never send it: {text}",
+                 "do_note": "{text} (Never send a message yourself, drafts only.)",
                  "off": "The instruction line is switched off (cockpit.flow.instruct.enabled)",
                  "unavailable": "The instruction line is not available: the service cockpit-instruct needs a Claude model",
                  "budget": "Today's instructions are used up",
@@ -619,6 +620,7 @@ DE: dict = {
                  "attach_failed": "Das Dokument ließ sich nicht schreiben: {err}"},
     # the instruction line of Work through (instruct.py): the sentence a mail draft starts with, and the refusals
     "instruct": {"mail_note": "Schreibe einen Mail-Entwurf mit dem Skill mail-draft, nur als Entwurf, niemals senden: {text}",
+                 "do_note": "{text} (Selbst nie eine Nachricht senden, nur Entwürfe.)",
                  "off": "Die Anweisungszeile ist ausgeschaltet (cockpit.flow.instruct.enabled)",
                  "unavailable": "Die Anweisungszeile geht nicht: der Dienst cockpit-instruct braucht ein Claude-Modell",
                  "budget": "Die Anweisungen sind für heute aufgebraucht",

@@ -26,6 +26,7 @@ DEMO = "task:demo-task"
 QUIET = "task:quiet-task"          # a stream
 YES = f"inbox:{YES_ID}"
 ONLY = f"inbox:{ONLY_ID}"
+DO_NOTE = "{text} (Never send a message yourself, drafts only.)"
 MAIL_NOTE = "Write a mail draft with the mail-draft skill, a draft only, never send it: {text}"
 
 CONFIG = ("cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: {flow}\n"
@@ -178,7 +179,7 @@ def test_every_step_is_checked_against_the_points_offers_its_day_and_the_scope(w
     assert far["skipped"][0]["why"] == "bad_day"
     assert unknown["keys"] == [] and unknown["skipped"] == [{"key": None, "title": None, "why": "unknown_point"}]
     assert reason["keys"] == [ONLY] and reason["reason"] == "the vendor does it instead"
-    assert do["keys"] == [YES] and do["note"] == "all of it" and "mail" not in do
+    assert do["keys"] == [YES] and do["note"] == DO_NOTE.format(text="all of it") and "mail" not in do
 
 
 def test_a_start_on_an_approved_item_is_not_offered_and_a_missing_text_takes_the_sentence():
@@ -187,10 +188,10 @@ def test_a_start_on_an_approved_item_is_not_offered_and_a_missing_text_takes_the
               {"n": 2, "key": "task:y", "title": "Y", "out": {"task": "y", "settle": ["done", "not_doing"]}, "tab": None}]
     steps, unclear = ins.plan_steps({"steps": [step("do", [1, 2]), step("drop", [2]), step("mail", [2]),
                                                step("later", [2], until="not a day")], "unclear": " "},
-                                    points, "do it all", TODAY, ["not_needed"], False, MAIL_NOTE)
+                                    points, "do it all", TODAY, ["not_needed"], False, MAIL_NOTE, DO_NOTE)
     do, drop, mail, later = steps
     assert do["keys"] == ["task:y"] and do["skipped"] == [{"key": "inbox:x", "title": "X", "why": "not_offered"}]
-    assert do["note"] == "do it all" and drop["reason"] == "do it all"
+    assert do["note"] == DO_NOTE.format(text="do it all") and drop["reason"] == "do it all"
     assert mail["note"] == MAIL_NOTE.format(text="do it all") and mail["mail"] is True
     assert later["skipped"][0]["why"] == "bad_day" and unclear is None
 
@@ -280,3 +281,11 @@ def test_the_audit_line_holds_counts_never_the_sentence(world):
     world.act("flow_instruct", text="please mark the secret thing done", keys=[DEMO], point=True)
     line = (world.state / "audit.log").read_text(encoding="utf-8").splitlines()[-1]
     assert " flow_instruct task:demo-task " in line and "steps=3" in line and "secret" not in line
+
+
+def test_every_start_the_line_plans_carries_the_never_send_clause():
+    points = [{"n": 1, "key": DEMO, "title": "t", "out": {"task": "demo-task", "settle": ["done", "not_doing"]}, "tab": None}]
+    steps, _u = ins.plan_steps({"steps": [step("do", [1], note="Send the mail to the vendor now, do not draft")]},
+                               points, "send it", TODAY, [], True, MAIL_NOTE, DO_NOTE)
+    [do] = steps
+    assert "mail" not in do and do["note"] == DO_NOTE.format(text="Send the mail to the vendor now, do not draft")
