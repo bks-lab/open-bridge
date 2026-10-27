@@ -160,6 +160,31 @@ def test_only_the_newest_events_and_bytes_count(tmp_path):
     assert sess.infer_task(sess.read_tail(path, sess.TAIL_BYTES), SLUGS, ()) == (None, None)
 
 
+def attachment(size: int, minute: int) -> dict:
+    """A large harness line (a file or a notice the harness attached): no event of the session's own"""
+    return {"type": "attachment", "timestamp": at(minute), "attachment": {"content": "x" * size}}
+
+
+def test_the_end_read_grows_while_only_harness_lines_fill_it(tmp_path):
+    # a session waiting on its agents: its last 256 KiB are attachments only; the read grows to find its work
+    path = tmp_path / "t.jsonl"
+    path.write_text("\n".join(lines(bash("task.py note demo-task", 1), *[attachment(40_000, 2)] * 10)) + "\n",
+                    encoding="utf-8")
+    assert sess.infer_task(sess.read_tail(path, sess.TAIL_BYTES), SLUGS, ()) == (None, None)
+    assert sess.infer_file(path, SLUGS, ()) == ("demo-task", ms(1))
+    # never further back than the last step
+    far = tmp_path / "far.jsonl"
+    far.write_text("\n".join(lines(bash("task.py note demo-task", 1), *[attachment(500_000, 2)] * 10)) + "\n",
+                   encoding="utf-8")
+    assert far.stat().st_size > sess.TAIL_STEPS[-1] and sess.infer_file(far, SLUGS, ()) == (None, None)
+    # a decision in the first step reads no further
+    near = tmp_path / "near.jsonl"
+    near.write_text("\n".join(lines(bash("task.py note other-task", 1), *[attachment(40_000, 2)] * 10,
+                                    bash("task.py note demo-task", 3))) + "\n", encoding="utf-8")
+    assert sess.infer_file(near, SLUGS, ()) == ("demo-task", ms(3))
+    assert sess.infer_file(tmp_path / "missing.jsonl", SLUGS, ()) == (None, None)
+
+
 def test_the_guide_reads_its_transcripts_through_the_same_tail_reader():
     assert gd.read_tail is sess.read_tail and gd.transcript_path is sess.transcript_path
 

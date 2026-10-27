@@ -23,8 +23,9 @@ server: never the script.
 
 The task a live session works on is recognised from the end of its own transcript (infer, only while Work through
 is on and cockpit.flow.infer_sessions): of a session in a tab whose folder is this Bridge's by the same rule, the
-last TAIL_BYTES and at most INFER_EVENTS events are read, of each event only an assistant's text and the input of
-its tool calls and a person's plain text without the harness's reminders, never a tool result or thinking. The
+last TAIL_BYTES (grown in TAIL_STEPS while nothing decides) and at most INFER_EVENTS events are read, of each event
+only an assistant's text and the input of its tool calls and a person's plain text without the harness's
+reminders, never a tool result or thinking. The
 newest event that names exactly one open task (`task:<slug>`, `work/tasks|streams/<slug>`, `task.py <verb> <slug>`)
 decides; one naming none or two is passed over. Only the slug and since when leave this module, never the text,
 and nothing is written: a link by hand or a tab's link wins over it (server.py session_tasks).
@@ -54,9 +55,11 @@ RUN_KEEP_MS = 7 * 24 * 3600 * 1000   # a workflow run older than a week is no lo
 RUNS_MAX = 40                        # the newest bound runs the page gets
 RUN_SCAN_MS = 30_000                 # the runs are read again at most this often (and when the open tasks change)
 ANSWER_MAX = 600
-# a live session's task from its transcript (infer): the end of the file read, the newest events weighed, the
-# sessions read in one scan
+# a live session's task from its transcript (infer): the end of the file read, grown step by step while no event
+# decides (a session that waits on its agents fills its end with the harness's attachments), the newest events
+# weighed, the sessions read in one scan
 TAIL_BYTES = 256 * 1024
+TAIL_STEPS = (TAIL_BYTES, 1024 * 1024, 4 * 1024 * 1024)
 INFER_EVENTS = 400
 INFER_SESSIONS_MAX = 12
 # what the harness puts into a person's turn (reminders, a command's output): never the person's own words
@@ -232,14 +235,13 @@ def event_ms(entry: dict) -> int | None:
     return int(when.timestamp() * 1000)
 
 
-def infer_task(lines: list[str], slugs: set, roots: tuple = ()) -> tuple[str | None, int | None]:
-    """(slug, since_ms) of the open task the end of a transcript works on: the newest event that names exactly one
-    of `slugs` decides, one naming none or two is passed over; since is the oldest event of the unbroken run that
-    names it (an event naming another task ends the run). (None, None) when no event names exactly one."""
-    if not slugs:
-        return None, None
+def _events(lines: list[str]) -> list[tuple[list[str], dict]]:
+    """(texts, event) of the lines that are a person's or the assistant's event, the newest INFER_EVENTS; a line
+    that names neither kind is not parsed at all (the harness's attachments are the largest lines)"""
     events = []
     for raw in lines:
+        if '"user"' not in raw and '"assistant"' not in raw:
+            continue
         try:
             entry = json.loads(raw)
         except ValueError:
@@ -247,7 +249,35 @@ def infer_task(lines: list[str], slugs: set, roots: tuple = ()) -> tuple[str | N
         texts = event_texts(entry)
         if texts:
             events.append((texts, entry))
-    events = events[-INFER_EVENTS:]
+    return events[-INFER_EVENTS:]
+
+
+def infer_file(path: Path, slugs: set, roots: tuple = ()) -> tuple[str | None, int | None]:
+    """infer_task over the end of a transcript, read in TAIL_STEPS: the next, larger end only while no event
+    decided, fewer than INFER_EVENTS events were found and the file goes back further"""
+    found: tuple[str | None, int | None] = (None, None)
+    for size in TAIL_STEPS:
+        try:
+            whole = path.stat().st_size <= size
+        except OSError:
+            return None, None
+        events = _events(read_tail(path, size))
+        found = _decide(events, slugs, roots)
+        if found[0] or whole or len(events) >= INFER_EVENTS:
+            break
+    return found
+
+
+def infer_task(lines: list[str], slugs: set, roots: tuple = ()) -> tuple[str | None, int | None]:
+    """(slug, since_ms) of the open task the end of a transcript works on: the newest event that names exactly one
+    of `slugs` decides, one naming none or two is passed over; since is the oldest event of the unbroken run that
+    names it (an event naming another task ends the run). (None, None) when no event names exactly one."""
+    return _decide(_events(lines), slugs, roots)
+
+
+def _decide(events: list[tuple[list[str], dict]], slugs: set, roots: tuple) -> tuple[str | None, int | None]:
+    if not slugs:
+        return None, None
     roots = tuple(r for r in roots if r)
     any_slug = re.compile("|".join(re.escape(s) for s in sorted(slugs, key=len, reverse=True)))
     found, since = None, None
@@ -526,7 +556,7 @@ class Sessions:
         cached = self.infer_cache.get(str(path))
         if cached and cached[0] == stamp and cached[1] == key:
             return cached[2]
-        result = infer_task(read_tail(path, TAIL_BYTES), set(slugs), roots)
+        result = infer_file(path, set(slugs), roots)
         self.infer_cache[str(path)] = (stamp, key, result)
         return result
 
