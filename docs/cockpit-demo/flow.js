@@ -8,18 +8,21 @@
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { asksYou, canTab, isAnswered, liveStage } from './logic.js'
+import { asksYou, canTab, DAY, homeProjects, isAnswered, isoDate, liveStage, nextMonday, projectTone, rowProject, tabOfTask } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
 
 // the groups of the queue, in the order the page walks them: the return card after a jump, a tab that asks, what an
-// agent finished, a start that got lost, a question for you, the tasks of every priority, the reports as one card
-export const FLOW_GROUPS = ['back', 'asks', 'result', 'lost', 'question', 'task', 'reports']
+// agent finished, a start that got lost, a question for you (these five need you), what is in progress (a start that
+// runs, a session typed by hand, every doing task), the tasks in review, the reports as one card
+export const FLOW_GROUPS = ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'reports']
 
-// the chips over the queue and the groups each shows; `all` shows every group
-export const FLOW_CHIPS = { all: FLOW_GROUPS, you: ['asks', 'question'], running: ['back', 'result', 'lost'], tasks: ['task'],
-  reports: ['reports'] }
+// the groups that need you: the left column counts them in the warning tone
+export const FLOW_YOU = ['back', 'asks', 'result', 'lost', 'question']
+
+// the groups a filter of the queue shows; `all` shows every group (the page shows all, by theme or area)
+export const FLOW_CHIPS = { all: FLOW_GROUPS, you: FLOW_YOU, running: ['doing'], tasks: ['task'], reports: ['reports'] }
 
 // why an open row stands outside the queue, in the order the drawer names them
 export const FLOW_LEFT_OUT = ['later', 'waiting', 'resting', 'stream', 'idea']
@@ -33,10 +36,12 @@ export const FLOW_RETURN_MAX_MS = 4 * 3600000
 // the group a start of the return channel stands in by where it stands now: started and working run in the lane, a
 // done one is settled. `idle` (a quiet tab with no question, returns.py) counts as finished; a stage the page does
 // not know falls to the tabs that ask, since its tab no longer works
-const STAGE_GROUP = { started: 'lane', working: 'lane', asks: 'asks', idle: 'result', result: 'result', lost: 'lost', done: null }
+const STAGE_GROUP = { started: 'doing', working: 'doing', asks: 'asks', idle: 'result', result: 'result', lost: 'lost', done: null }
 
 const SECTIONS = ['now', 'give', 'work', 'track', 'later']
 const TASK_STATES = ['doing', 'review']
+// a triage older than this many days suggests nothing in the list: the themes run speaks instead (flowSuggestion)
+const TRIAGE_FRESH_DAYS = 2
 const PRIO_RANK = { P0: 0, P1: 1, P2: 2, P3: 3 }
 
 /** Whether the page and its tab exist: cockpit.flow.enabled, off on an older server */
@@ -120,7 +125,7 @@ export function flowParts(s) {
     used.add(row.key)
     if (row.task && !row.inbox_id) usedTasks.add(row.task)
   }
-  const out = { back: null, asks: [], result: [], lost: [], question: [], task: [], reports: [], lane: [] }
+  const out = { back: null, asks: [], result: [], lost: [], question: [], doing: [], task: [], reports: [], lane: [] }
   const tabOf = ref => allTabs.find(t => t.ref === ref) ?? null
   if (driver) {
     // 1 the return card, only once the jump is armed (flowArm); its row and its tab stand nowhere else
@@ -151,7 +156,7 @@ export function flowParts(s) {
       const tab = x.task && x.tab?.ref && !usedTabs.has(x.tab.ref) ? tabOf(x.tab.ref) : null
       if (!tab || tab.state !== 'working') continue
       const row = rowOfTask(x.task)
-      out.lane.push({ group: 'lane', id: `session:${tab.ref}`, kind: 'session', session: x, row, tab, stage: 'working',
+      out.doing.push({ group: 'doing', id: `session:${tab.ref}`, kind: 'session', session: x, row, tab, stage: 'working',
         title: row?.title ?? tab.name, at: x.started_ms ?? tab.since_ms ?? nowMs })
       take(row ?? { key: `task:${x.task}`, task: x.task })
       usedTabs.add(tab.ref)
@@ -187,7 +192,7 @@ export function flowParts(s) {
   // 7 the reports, one card; ideas wait on the calm card
   const reports = rows.filter(x => x.inbox_id && x.art === 'report' && !used.has(x.key) && x.inbox_state !== 'approved').sort(byAge)
   for (const r of rows.filter(x => x.inbox_id && x.art === 'idea')) leave('idea', r)
-  // 6 the tasks doing or in review, every priority: by rank, else priority, then age
+  // 6 the tasks doing (in progress, with what drives them) or in review, every priority: by rank, else priority, then age
   const tasks = []
   for (const r of rows.filter(x => x.task && !x.inbox_id && !used.has(x.key))) {
     if (usedTasks.has(r.task)) continue
@@ -198,12 +203,16 @@ export function flowParts(s) {
     else if (r.bucket === 'resting' || r.bucket === 'drop' || r.blocked_by) leave('resting', r)
     else tasks.push(r)
   }
-  out.task = tasks.sort((a, b) => byRank(ranks)(a, b) || byPrio(a, b) || byAge(a, b))
-    .map(r => ({ group: 'task', id: r.key, kind: 'row', row: r }))
+  const order = (a, b) => byRank(ranks)(a, b) || byPrio(a, b) || byAge(a, b)
+  out.task = tasks.filter(r => r.status !== 'doing').sort(order).map(r => ({ group: 'task', id: r.key, kind: 'row', row: r }))
+  // what runs first (the starts and the session tabs, the newest first), then the doing tasks in their order
+  out.lane = out.doing.slice()
+  out.doing = [...out.doing.sort((a, b) => (b.at ?? 0) - (a.at ?? 0)),
+    ...tasks.filter(r => r.status === 'doing').sort(order).map(r => ({ group: 'doing', id: r.key, kind: 'row', row: r }))]
   for (const r of reports) used.add(r.key)
   out.reports = reports.length ? [{ group: 'reports', id: 'reports', kind: 'reports', rows: reports }] : []
-  // the lane: what runs, the newest first
-  out.lane = (out.lane ?? []).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
+  // the lane: what runs (a start at work, a session tab at work), the newest first: what max_running counts
+  out.lane = out.lane.sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
   const groups = FLOW_LEFT_OUT.filter(k => left[k].length).map(reason => ({ reason, rows: left[reason] }))
   out.leftOut = { total: groups.reduce((n, g) => n + g.rows.length, 0), groups }
   return out
@@ -212,6 +221,201 @@ export function flowParts(s) {
 /** How many agents run now: the entries of the lane (starts at work, linked session tabs at work). Let AI do it asks
  *  first once cockpit.flow.max_running of them run */
 export const flowRunning = s => flowParts(s).lane.length
+
+/** What drives a point in progress now: a start of the cockpit (`start`, its stage and since when), the agent tab of
+ *  its task (`tab`, the tab's state), a session typed by hand in a linked tab (`session`), else nothing (`none`, with
+ *  how many days ago its task last moved, from its updated day). {by, tab, since_ms, days, stage} */
+export function flowDrive(x, s) {
+  const nowMs = s?.now || Date.now()
+  const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control)
+  if (x.kind === 'start') return { by: 'start', tab: x.tab ?? null, since_ms: x.start.at_ms ?? null, days: null, stage: x.stage }
+  if (x.kind === 'session') return { by: 'session', tab: x.tab, since_ms: x.at ?? null, days: null, stage: 'working' }
+  const slug = x.row?.task
+  const tab = slug ? tabOfTask(tabs, slug) : null
+  if (tab && tab.state !== 'shell') return { by: 'tab', tab, since_ms: tab.since_ms ?? null, days: null, stage: tab.state }
+  const linked = slug ? (s?.sessions?.sessions ?? []).find(v => v.task === slug && v.tab?.ref) : null
+  const ltab = linked ? tabs.find(t => t.ref === linked.tab.ref) ?? null : null
+  if (ltab) return { by: 'session', tab: ltab, since_ms: linked.started_ms ?? ltab.since_ms ?? null, days: null, stage: ltab.state }
+  const day = /^\d{4}-\d{2}-\d{2}/.test(String(x.row?.updated ?? '')) ? new Date(`${String(x.row.updated).slice(0, 10)}T00:00:00`).getTime() : null
+  const today = new Date(isoDate(nowMs) + 'T00:00:00').getTime()
+  return { by: 'none', tab: null, since_ms: null, days: day == null ? null : Math.max(0, Math.round((today - day) / DAY)), stage: null }
+}
+
+// ---------------------------------------------------------------- themes and areas: the left column
+
+const NO_SIDE = 'none'
+
+/** The area of a point: its row's project, else the workspace of its tab; '' without one */
+export const pointArea = x => (x?.row ? rowProject(x.row) : x?.kind === 'reports' ? rowProject(x.rows?.[0]) : x?.tab?.workspace) || ''
+
+/** The row keys a point stands for: the reports card for each of its rows, any other card for its row; a tab alone
+ *  has none */
+export const pointKeys = x => (x?.kind === 'reports' ? x.rows.map(r => r.key) : x?.row?.key ? [x.row.key] : [])
+
+/** How the left column groups: by the themes the server keeps (cockpit.flow.themes on), unless the person picked the
+ *  areas (ui.flowMode); by the areas while the themes are off or the server is older */
+export function flowMode(s) {
+  if (s?.themes?.enabled !== true) return 'areas'
+  return s?.ui?.flowMode === 'areas' ? 'areas' : 'themes'
+}
+
+const areaId = name => `a:${String(name).trim().toLowerCase()}`
+
+/** The side a row stands on: its theme (t:<id>) or its area (a:<name>), else none */
+function rowSide(row, s, mode, tab = null) {
+  if (mode === 'themes') {
+    const id = row ? s?.themes?.assign?.[row.key] : null
+    return id && (s.themes.themes ?? []).some(t => t.id === id) ? `t:${id}` : NO_SIDE
+  }
+  const name = row ? rowProject(row) : tab?.workspace
+  return name ? areaId(name) : NO_SIDE
+}
+
+/** The points of one side (`all` every one): a reports card splits, each side holds its own reports as one card */
+export function pointsIn(points, side, s, mode) {
+  if (!side || side === 'all') return points ?? []
+  const out = []
+  for (const x of points ?? []) {
+    if (x.kind === 'reports') {
+      const rows = x.rows.filter(r => rowSide(r, s, mode) === side)
+      if (rows.length) out.push({ ...x, rows })
+    } else if (rowSide(x.row, s, mode, x.tab) === side) out.push(x)
+  }
+  return out
+}
+
+/** The count of a side: its open points (reports by their rows) and how many of them need you */
+function countOf(points) {
+  const open = points.reduce((n, x) => n + (x.kind === 'reports' ? x.rows.length : 1), 0)
+  return { open, you: points.filter(x => FLOW_YOU.includes(x.group)).length }
+}
+
+/** The entries of the left column: All on top, then each theme or area that holds a point, No theme yet or No area
+ *  last when points stand outside them. A theme by its name (the server's order), an area by the order the start page
+ *  gives the areas (the most frequent first), its colour the terminal workspace's of that name where one has one.
+ *  Each {id, name, tone, color, open, you} */
+export function flowSides(s, points, mode = flowMode(s)) {
+  const sides = []
+  if (mode === 'themes') {
+    for (const t of s?.themes?.themes ?? []) {
+      const mine = pointsIn(points, `t:${t.id}`, s, mode)
+      if (mine.length) sides.push({ id: `t:${t.id}`, theme: t, name: t.name, tone: projectTone(t.name), color: null, ...countOf(mine) })
+    }
+  } else {
+    const rows = (points ?? []).flatMap(x => (x.kind === 'reports' ? x.rows : x.row ? [x.row] : []))
+    const tabs = (points ?? []).filter(x => !x.row && x.tab).map(x => x.tab)
+    const spaces = s?.tabs?.workspaces ?? []
+    for (const name of homeProjects(tabs, rows)) {
+      const mine = pointsIn(points, areaId(name), s, mode)
+      if (!mine.length) continue
+      const ws = spaces.find(w => String(w.title ?? '').trim().toLowerCase() === name.trim().toLowerCase() && w.color)
+      sides.push({ id: areaId(name), name, tone: projectTone(name), color: ws?.color ?? null, ...countOf(mine) })
+    }
+  }
+  const rest = pointsIn(points, NO_SIDE, s, mode)
+  return [{ id: 'all', name: null, tone: null, color: null, ...countOf(points ?? []) }, ...sides,
+    ...(rest.length ? [{ id: NO_SIDE, name: null, tone: 'muted', color: null, ...countOf(rest) }] : [])]
+}
+
+/** The keys a themes run should take now: the points without a theme, while themes are on, the day's budget has a
+ *  run left and none runs; at most 50 (actions.py keys). Empty otherwise: nothing asks */
+export function themesToAsk(points, s) {
+  const th = s?.themes
+  if (th?.enabled !== true || th.running || !(th.budget_left > 0)) return []
+  const known = new Set((th.themes ?? []).map(t => t.id))
+  return (points ?? []).flatMap(pointKeys).filter(k => !known.has(th.assign?.[k])).slice(0, 50)
+}
+
+// ---------------------------------------------------------------- the list: suggestions and the batch
+
+const TRIAGE_VERB = { close: 'done', stale: 'drop', waiting: 'later' }
+
+/** Whether the day's triage still speaks: its run at most TRIAGE_FRESH_DAYS ago */
+function triageFresh(s) {
+  const at = Date.parse(String(s?.triage?.last?.at ?? ''))
+  return Number.isFinite(at) && (s?.now || Date.now()) - at <= TRIAGE_FRESH_DAYS * DAY
+}
+
+/** The suggestion for a row in the list, with half a sentence of why and where it comes from: the triage of the day
+ *  first (verdict close, stale or waiting, else doer ai or either), while it is fresh; else what the themes run said
+ *  for it. Only a verb the row offers (verbsFor), or `you` (only the person can). {verb, reason, until, drop, from,
+ *  at} or null */
+export function flowSuggestion(row, s) {
+  if (!row?.key) return null
+  const offered = verbsFor(row)
+  const ok = v => v === 'you' || offered.includes(v)
+  const tr = s?.triage?.items?.[row.key]
+  if (tr && triageFresh(s)) {
+    const verb = TRIAGE_VERB[tr.verdict] ?? (['ai', 'either'].includes(tr.doer) ? 'do' : tr.doer === 'you' ? 'you' : null)
+    if (verb && ok(verb)) {
+      return { verb, reason: tr.reason || tr.gist || '', until: verb === 'later' ? isoDate(nextMonday(s?.now || Date.now())) : null,
+        drop: null, from: 'triage', at: s.triage.last.at }
+    }
+  }
+  const th = s?.themes?.suggest?.[row.key]
+  if (th && ok(th.verb)) return { verb: th.verb, reason: th.reason ?? '', until: th.until ?? null, drop: th.drop ?? null, from: 'themes', at: th.at_ms ?? null }
+  return null
+}
+
+/** The rows Take the suggestions ticks: those whose suggestion is done, drop or later; never Let AI do it, never one
+ *  that needs you */
+export function batchPreselect(rows, s) {
+  return (rows ?? []).filter(r => ['done', 'drop', 'later'].includes(flowSuggestion(r, s)?.verb)).map(r => r.key)
+}
+
+/** What a batch sends, before it is confirmed: `how` 'suggested' (each row its own suggestion), or one verb for all
+ *  ('done', 'later' with the day as `value`, 'drop' with one reason as `value`). Done for several goes out as one
+ *  settle; a task dropped is shelved, anything else settled as not doing with the reason; Let AI do it starts a row
+ *  only with its own sentence and only while fewer than max_running run, else it stays out. {calls, skipped, counts}:
+ *  calls in the order done, later, drop, do; skipped [{row, why}], why not_offered, no_suggestion, you or running */
+export function batchPlan(rows, how, s, value = '', lang = 'en') {
+  const done = []
+  const later = []
+  const drop = []
+  const starts = []
+  const skipped = []
+  let running = flowRunning(s)
+  const cap = flowSettings(s).max_running
+  for (const row of rows ?? []) {
+    const sug = how === 'suggested' ? flowSuggestion(row, s) : null
+    const verb = how === 'suggested' ? sug?.verb : how
+    if (!verb) { skipped.push({ row, why: 'no_suggestion' }); continue }
+    if (verb === 'you') { skipped.push({ row, why: 'you' }); continue }
+    if (!verbsFor(row).includes(verb)) { skipped.push({ row, why: 'not_offered' }); continue }
+    if (verb === 'done') done.push(row)
+    else if (verb === 'later') {
+      const day = how === 'suggested' ? sug.until : value
+      const a = flowAction('later', row, day)
+      if (a) later.push(a)
+      else skipped.push({ row, why: 'not_offered' })
+    } else if (verb === 'drop') {
+      const why = how === 'suggested' ? (sug.drop ? dropReasonWord(sug.drop, lang) : sug.reason) : value
+      const a = flowAction('drop', row, why)
+      if (a) drop.push(a)
+      else skipped.push({ row, why: 'not_offered' })
+    } else if (verb === 'do') {
+      if (running >= cap) { skipped.push({ row, why: 'running' }); continue }
+      running += 1
+      starts.push(flowAction('do', row, startNote(row, lang)))
+    } else skipped.push({ row, why: 'not_offered' })
+  }
+  // the drops that settle (not a shelve) go out together where they share a reason
+  const settles = new Map()
+  const shelves = []
+  for (const a of drop) {
+    if (a.verb !== 'settle') { shelves.push(a); continue }
+    const k = a.args.text
+    if (settles.has(k)) settles.get(k).args.keys.push(...a.args.keys)
+    else settles.set(k, { verb: 'settle', args: { keys: [...a.args.keys], outcome: 'not_doing', text: k } })
+  }
+  const calls = [...(done.length ? [{ verb: 'settle', args: { keys: done.map(r => r.key), outcome: 'done' } }] : []),
+    ...later, ...shelves, ...settles.values(), ...starts]
+  return { calls, skipped, counts: { done: done.length, later: later.length, drop: drop.length, do: starts.length },
+    how, value, days: [...new Set(later.map(a => a.args.until))], reasons: [...new Set(drop.map(a => a.args.reason ?? a.args.text))] }
+}
+
+/** The one line a batch shows before it runs: what goes how, with the reason and the day (text-flow.js batch) */
+export const batchSummary = (plan, lang = 'en') => (TABLES[lang] ?? TABLES.en).flow.batch.summary(plan)
 
 // the kinds of row describe writes a brief for (describe.py KINDS): a task or stream, an inbox item
 const describable = row => !!row && (!!row.inbox_id || (!!row.task && String(row.key).startsWith('task:')))

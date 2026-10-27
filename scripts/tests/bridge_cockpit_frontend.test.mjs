@@ -336,7 +336,7 @@ test('planBusy: row actions refuse when busy, a bulk keeps its own key and names
 
 test('act() wires planBusy into withBusy and tells what it left out', () => {
   const app = read('app.js')
-  const body = app.match(/async function act\(verb, args = \{\}\) \{[\s\S]*?\n\}/)[0]
+  const body = app.match(/async function act\(verb, args = \{\}, opts = \{\}\) \{[\s\S]*?\n\}/)[0]
   assert.match(body, /planBusy\(verb, args, store\.get\(\)\.ui\.busy\)/)
   assert.match(body, /\.skipped\.length[\s\S]{0,120}busySkipped/)
   assert.match(body, /\.refused\)[\s\S]{0,80}return null/)
@@ -2111,7 +2111,7 @@ test('launch: start args stay exactly as before while off; on, the choice goes a
   // Auto read only (manual off) still sends Auto
   assert.deepEqual(logic.withLaunch('do_it', args, { ...LAUNCH, manual: false, effort: false }, { launchModel: 'opus' }, {}), { ...args, model: 'auto' })
   // the controller sends every action through withLaunch, with the routes it cached
-  const act = read('app.js').match(/async function act\(verb, args = \{\}\) \{[\s\S]*?\n\}/)[0]
+  const act = read('app.js').match(/async function act\(verb, args = \{\}, opts = \{\}\) \{[\s\S]*?\n\}/)[0]
   assert.match(act, /api\.action\(verb, withLaunch\(verb, p\.args, st\.launch, st\.ui, st\.launchRoutes\)\)/)
 })
 
@@ -3238,7 +3238,7 @@ test('rooms: a quick chat shows a speech bubble, not a question mark; the core a
 test('rooms: the pane never jumps on its own, the header knows the rail is gone, the copy command is quoted', () => {
   const rooms = read('views/rooms.js')
   assert.doesNotMatch(rooms, /x\.state === 'waiting'\)\)/)                 // no auto pick of a waiting tab
-  assert.match(read('views/header.js'), /railShown\(s\.ui\.page, s\.rooms\?\.layout, s\.ui\.railHidden\)/)
+  assert.match(read('views/header.js'), /railOn\(s\)/)
   assert.equal(logic.shellQuote("/u/it's here"), "'/u/it'\\''s here'")
   assert.match(rooms, /cd \$\{shellQuote\(b\.path\)\} && claude/)
 })
@@ -3340,6 +3340,8 @@ test('the style files: every class selector is used by the page, or built from a
     'ticker-': ['slow', 'normal', 'fast'],
     'tri-': ['ai', 'either'],
     'kind-': ['task', 'stream', 'done_task', 'done_stream', 'inbox', 'issue', 'other'],
+    // a suggestion of the list of Work through, by its verb (views/flowlist.js)
+    'flow-sug-': ['done', 'drop', 'later', 'do', 'you'],
   }
   for (const p of Object.keys(DYNAMIC)) assert.ok(src.includes(`${p}\${`), `allowed prefix ${p} is built nowhere any more`)
   const built = c => Object.entries(DYNAMIC).some(([p, ok]) => c.startsWith(p) && (ok === null || ok.includes(c.slice(p.length))))

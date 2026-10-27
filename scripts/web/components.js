@@ -7,7 +7,7 @@
 // views/, which imports what it uses from the others. app.js imports from here only.
 
 import { html, useEffect, useLayoutEffect, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { areaScope, cardPlan, indexRows, railShown, triageKey, workKinds, workPageOf } from './logic.js'
+import { areaScope, cardPlan, indexRows, railOn, triageKey, workKinds, workPageOf } from './logic.js'
 import { T } from './text.js'
 import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
@@ -160,7 +160,7 @@ export function App({ store, ctl }) {
   const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
   const pane = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane
   // a wide page that shows sessions itself or needs the width folds the tab column to its header button
-  const rail = layout === 'wide' && railShown(s.ui.page, s.rooms?.layout, s.ui.railHidden)
+  const rail = layout === 'wide' && railOn(s)
   const tabsDrawer = layout === 'medium' || (layout === 'wide' && !rail)
   const showTabsCol = rail || (layout === 'narrow' && pane === 'tabs')
   const main = onPage

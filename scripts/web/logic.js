@@ -1478,6 +1478,12 @@ export function railShown(page, chatLayout = 'classic', hidden = false) {
   return !hidden && RAIL.has(page) && !(page === '@chat' && chatLayout === 'workspaces')
 }
 
+/** railShown for the state as it is: Work through (a view of the work tab) has its own columns, the details of
+ *  the point in front on the right, so the tab column folds there too */
+export function railOn(s, hidden = s?.ui?.railHidden) {
+  return railShown(s?.ui?.page, s?.rooms?.layout, hidden) && !(s?.ui?.page === 'briefing' && workViewIn(s) === 'flow')
+}
+
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab
  *  that filed its result or whose start is settled, else go to the tab; `can(right)` says what this cockpit
  *  may do with a tab (canTab) */
@@ -3433,8 +3439,9 @@ const HINTS = {
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
-  '@flow': [['flowChips', '.flow-chips'], ['flowLane', '.flow-lane'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
-    ['flowWalk', '.flow-work > .next-up']],
+  // Work through, a view of the work tab (its parts are explained there, hintsFor)
+  '@flow': [['flowSide', '.flow-side'], ['flowTabs', '.flow-tabs'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
+    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
 const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],
@@ -3449,8 +3456,9 @@ const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['reload', '
  *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts */
 export function hintsFor(s) {
   const page = s?.ui?.page
-  const dayColumns = page !== 'briefing' || workViewIn(s) === 'due'
-  const own = !dayColumns ? [['workSwitch', '.work-switch'], ...PAGE_HINTS, ['tabcol', '#tabs-column']]
+  const view = page === 'briefing' ? workViewIn(s) : null
+  const dayColumns = page !== 'briefing' || view === 'due'
+  const own = view === 'flow' ? [['workSwitch', '.work-switch'], ...HINTS['@flow']] : !dayColumns ? [['workSwitch', '.work-switch'], ...PAGE_HINTS, ['tabcol', '#tabs-column']]
     : HINTS[page] ?? [...PAGE_HINTS, ['tabcol', '#tabs-column']]
   return [...own.map(([id, target]) => ({ id, target, group: 'page' })),
     ...HEADER_HINTS.map(([id, target]) => ({ id, target, group: 'head' }))]

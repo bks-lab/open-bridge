@@ -1,33 +1,42 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the Work through page (page @flow, cockpit.flow.enabled): everything open as one row of cards, one
-// card large in front, the five verbs on it (views/verbbar.js), Next under it, and after a decision the next card
-// moves up into its place (held by its id, logic.js focusIndex). The queue is logic.js flowQueue in its fixed
-// groups: the return card after a jump to a tab, the tabs that ask, what an agent finished, a start that got lost, the
-// questions for you, the tasks of every priority, the reports as one card; chips over it show one kind only. What
-// the agents started from here runs in a narrow lane on top (the starts of the return channel), and a click there
-// shows the last lines of the tab without leaving the cards. To tab remembers the jump (ui.flowJump, in memory only):
-// once the page is in view again return_after_s later, the return card asks how it went (app.js). What the queue
-// leaves out (put off, waiting on someone, resting, streams, ideas) stands in a drawer with why; with nothing open the
-// calm card offers up to three ideas or backlog tasks to start. Without a terminal driver the lane, the cards of the
-// agents and every way to a tab stay out.
+// The cockpit, Work through: a view of the work tab (cockpit.flow.enabled, logic.js workViews 'flow'), laid out as cmux
+// lays out a workspace. Left the themes the server's small model gives the open points across the areas, or the areas
+// themselves (views/flowside.js FlowSide); over the card Focus or List, and in Focus the open points of the group
+// picked as tabs, in the queue's fixed order (logic.js flowQueue: the return card after a jump to a tab, the tabs that
+// ask, what an agent finished, a start that got lost, the questions for you; then what is in progress; then the tasks
+// in review; the reports as one tab). The point in front stands as a card with its verbs (views/verbbar.js), held by
+// its id (logic.js focusIndex) so the next one moves up after a decision; a point in progress says who works on it and
+// since when (logic.js flowDrive), with To tab, View, Done, Later and Drop, and Let AI do it to go on where no tab
+// works. Under the card the files view's walk bar (views/dossier.js Walk), and after the last point it leads to the
+// next group where something is open. Right the details to pull in (views/flowside.js FlowDetails). List shows the
+// group as rows with suggestions and a batch (views/flowlist.js). To tab remembers the jump (ui.flowJump, in memory
+// only): once the page is in view again return_after_s later, the return card asks how it went (app.js). What the
+// queue leaves out stands in a drawer with why; with nothing open the calm card offers up to three ideas to start.
+// Without a terminal driver the cards of the agents and every way to a tab stay out.
 // The agents' cards: a tab that asks carries the answers to its question (views/reply.js) and the decision guide
 // (views/guide.js), each through the reply verbs that guard the tab; a finished or quiet start its result line and
 // the criteria of its brief as a plain list to check yourself (no tick, nothing judges them), with Done and close
-// the tab, Improve (words to the tab while it lives, else a new start) and Runs on. The lane shows the tabs of
-// sessions linked to a task too. When a card comes to the front, the briefs of the next cards that miss one are
-// written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time, once per key). For the mouse: the page names no key.
+// the tab, Improve (words to the tab while it lives, else a new start) and Runs on. When a card comes to the front,
+// the briefs of the next cards that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
+// once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key). No title opens a drawer
+// or another view. For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  canTab, duration, errorText, FLOW_CHIPS, flowAction, flowCounts, flowDriver, flowParts, flowQueue, flowSettings, focusIndex, formatDay,
-  isoDate, prepTargets, previewText, replySend, restSuggestions, short, stageTone, tabOfTask, DAY,
+  canTab, duration, errorText, flowAction, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex,
+  formatDay, isoDate, pointsIn, prepTargets, previewText, replySend, restSuggestions, short, stageTone, tabOfTask, themesToAsk, DAY,
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { WorkSwitch } from './day.js'
+import { Segmented } from './detail.js'
+import { Walk } from './dossier.js'
+import { FlowList } from './flowlist.js'
+import { FlowDetails, FlowSide, FlowTabs, sideName } from './flowside.js'
 import { Calm, Hero } from './focus.js'
 import { GuideTree } from './guide.js'
 import { TAB_MSG_MAX } from './nav.js'
-import { Btn, Dot, WalkBar } from './parts.js'
+import { Btn, Dot } from './parts.js'
 import { AskLine, TabReply } from './reply.js'
 import { VerbBar } from './verbbar.js'
 
@@ -204,50 +213,14 @@ function Card({ x, n, s, c }) {
     const acts = html`<${AskBlock} tab=${x.tab} s=${s} c=${c} />
       <div class="fx-do"><${TabWays} tab=${x.tab} row=${x.row} s=${s} c=${c} /></div>
       ${x.row ? html`<${VerbBar} row=${x.row} s=${s} c=${c} verbs=${ASKING_VERBS} />` : null}`
-    return html`<${Hero} x=${{ kind: 'tab', id: x.tab.ref, tab: x.tab }} n=${n} tabOf=${() => null} s=${s} c=${c} kindWord=${f.kind.asks}
+    return html`<${Hero} x=${{ kind: 'tab', id: x.tab.ref, tab: x.tab }} n=${n} tabOf=${() => null} s=${s} c=${c} kindWord=${f.kind.asks} openable=${false}
       sub=${x.tab.ask?.text ? short(x.tab.ask.text.split('\n').find(Boolean), 200) : null} acts=${acts} />`
   }
   const row = x.row
   const tab = row.task ? tabOfTask(tabs, row.task) : null
   const sub = x.task ? f.forTask(x.task.title) : null
-  return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${f.kind[x.group]} sub=${sub}
+  return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${f.kind[x.group]} sub=${sub} openable=${false}
     acts=${html`<${VerbBar} row=${row} s=${s} c=${c} extra=${html`<${TabWays} tab=${tab} row=${row} title=${row.title} s=${s} c=${c} />`} />`} />`
-}
-
-/** The chips over the queue: one kind at a time, each with its count; a click on the chip that is on shows all */
-function Chips({ counts, s, c }) {
-  const f = T().flow
-  const on = s.ui.flowChip ?? 'all'
-  return html`<div class="flow-chips home-chips" role="toolbar" aria-label=${f.chipsLabel}>${Object.keys(FLOW_CHIPS).map(k => html`<button
-    type="button" key=${k} class=${`home-chip${on === k ? ' is-on' : ''}`} aria-pressed=${String(on === k)}
-    onClick=${() => c.flowChip(on === k ? 'all' : k)}>${f.chips[k]} <span class="mono">${counts[k] ?? 0}</span></button>`)}</div>`
-}
-
-/** What runs, in one line on top: each start with its stage and minutes; a click shows the tab's last lines */
-function Lane({ lane, s, c }) {
-  const f = T().flow
-  const [peek, setPeek] = useState(null)
-  if (!lane.length) return null
-  const nowMs = s.now || Date.now()
-  return html`<section class="flow-lane" aria-labelledby="flow-lane">
-    <h2 id="flow-lane" class="label-caps">${f.lane.label}</h2>
-    <ul class="flow-lane-list">${lane.map(x => {
-      const open = peek === x.id
-      const lines = tailLines(x.tab?.last ?? x.start?.tab?.last)
-      return html`<li key=${x.id} class=${open ? 'is-open' : ''}>
-        <button type="button" class="flow-lane-item" aria-expanded=${String(open)} title=${open ? f.lane.hide : f.lane.show}
-          onClick=${() => setPeek(open ? null : x.id)}>
-          <${Dot} token=${stageTone(x.stage)} pulse=${x.stage === 'working'} />
-          <span class="flow-lane-title">${short(x.title, 48)}</span>
-          <span class="muted small">${x.kind === 'session' ? f.lane.session : f.lane.stage[x.stage] ?? x.stage} · ${f.lane.since(Math.max(0, Math.round((nowMs - x.at) / 60000)))}</span>
-        </button>
-        ${open ? html`<div class="flow-lane-peek">
-          ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : html`<p class="muted small">${f.lane.noScreen}</p>`}
-          <div class="fx-do"><${TabWays} tab=${x.tab} row=${x.row} title=${x.title} s=${s} c=${c} /></div>
-        </div>` : null}
-      </li>`
-    })}</ul>
-  </section>`
 }
 
 /** What the queue leaves out, folded under one line: by why, each with its day when it was put off */
@@ -277,38 +250,92 @@ function Rest({ s, c }) {
     </section>`
 }
 
+/** A point in progress: who works on it and since when (flowDrive), the last lines of its tab, To tab and View, and
+ *  Done, Later until, Drop because; without a tab at work Let AI do it too, to go on with it (a start with a sentence,
+ *  as the verb always sends) */
+function DoingCard({ x, s, c }) {
+  const t = T()
+  const f = t.flow
+  const d = flowDrive(x, s)
+  const nowMs = s.now || Date.now()
+  const row = x.row
+  const ago = d.since_ms ? duration(nowMs - d.since_ms) : null
+  const word = f.doing.stage[d.stage] ?? t.state[d.stage] ?? d.stage
+  const who = d.by === 'tab' ? f.doing.tab(d.tab.name, word, ago) : d.by === 'start' ? f.doing.start(word, ago ?? '') : d.by === 'session'
+    ? f.doing.session(d.tab?.name ?? '', ago) : f.doing.none(d.days)
+  const lines = tailLines(d.tab?.last ?? x.start?.tab?.last, 6)
+  const live = d.by !== 'none' && d.stage === 'working'
+  const title = row?.title ?? x.title ?? x.start?.title ?? ''
+  const token = d.by === 'none' ? 'muted' : stageTone(d.stage === 'needs-you' ? 'asks' : d.stage ?? 'working')
+  return html`<article class=${`fx-hero tk-${token === 'muted' ? 'muted' : 'info'}`} aria-labelledby="flow-title">
+    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${token} pulse=${live} />${f.kind.doing}</span></header>
+    <h2 id="flow-title" class="fx-title">${title}</h2>
+    <p class="flow-who"><span class="label-caps">${f.doing.who}</span> ${who}</p>
+    ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
+    <footer class="fx-acts">
+      ${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${live ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']}
+        primary=${live ? 'done' : 'do'} words=${live ? {} : { do: f.doing.goOn }}
+        extra=${html`<${TabWays} tab=${d.tab} row=${row} title=${title} s=${s} c=${c} />`} />`
+        : html`<div class="fx-do"><${TabWays} tab=${d.tab} row=${null} title=${title} s=${s} c=${c} /></div>`}
+    </footer>
+  </article>`
+}
+
+/** A point's title and its kind in a word, for the tabs, the walk and the list */
+const pointTitle = x => (x.group === 'doing' ? x.row?.title ?? x.title ?? x.start?.title ?? x.tab?.name ?? '' : cardTitle(x))
+const pointKind = x => (x.group === 'doing' ? T().flow.kind.doing : cardKind(x))
+
 export function FlowPage({ s, c }) {
   const t = T()
   const f = t.flow
   const parts = flowParts(s)
-  const counts = flowCounts(parts)
-  const chip = s.ui.flowChip ?? 'all'
-  const queue = flowQueue(parts, chip)
+  const all = flowQueue(parts, 'all')
+  const mode = flowMode(s)
+  const sides = flowSides(s, all, mode)
+  const side = sides.some(x => x.id === s.ui.flowSide?.[mode]) ? s.ui.flowSide[mode] : 'all'
+  const queue = pointsIn(all, side, s, mode)
   const i = focusIndex(queue, s.ui.flowAt)
   const x = queue[i] ?? null
   const driver = flowDriver(s)
+  const show = s.ui.flowShow === 'list' ? 'list' : 'focus'
   const go = k => c.flowGo(queue[k].id, k)
-  const entry = k => ({ key: queue[k].id, title: short(cardTitle(queue[k]), 90), sub: cardKind(queue[k]), onOpen: () => go(k) })
   const decided = s.ui.flowDecided ?? 0
+  const doing = parts.doing.length
+  // after the last point of a theme or area: the next one below it where something is open
+  const at = sides.findIndex(v => v.id === side)
+  const nextSide = side === 'all' ? null : sides.slice(at + 1).find(v => v.id !== 'all' && v.open) ?? sides.slice(1, Math.max(1, at)).find(v => v.open)
+  const onwards = nextSide ? { title: f.walk2.nextSide(sideName(nextSide, mode)), word: f.walk2.toSide, onGo: () => c.flowSide(nextSide.id) } : null
   // the card in front changed: the briefs of the next cards are written ahead, where one is missing or stale
   const ahead = flowSettings(s).prep_ahead
   useEffect(() => {
     const keys = prepTargets(queue, i, ahead, s)
     if (keys.length) c.flowPrep(keys)
   }, [x?.id, ahead])
+  // the points without a theme get theirs when the view shows them, once per key on this page load (app.js)
+  const ask = mode === 'themes' ? themesToAsk(all, s) : []
+  useEffect(() => { if (ask.length) c.flowThemesAuto(ask) }, [ask.join(',')])
   return html`<div class="col col-page flow">
-    <header class="flow-head">
-      <h2 class="detail-title">${f.title}</h2>
-      <p class="muted small">${[decided ? f.decided(decided) : null, f.open(counts.all)].filter(Boolean).join(' · ')}</p>
+    <header class="page-head flow-head">
+      <${WorkSwitch} s=${s} c=${c} />
+      <p class="muted small">${[f.progress(doing, Math.max(0, all.length - doing)), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
     </header>
-    <${Chips} counts=${counts} s=${s} c=${c} />
-    ${driver ? html`<${Lane} lane=${parts.lane} s=${s} c=${c} />` : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
-    <div class="flow-work">
-      ${x ? html`<div class="flow-card" key=${x.id}><${Card} x=${x} n=${queue.length} s=${s} c=${c} /></div>
-        <${WalkBar} label=${f.walk.label} pos=${[i + 1, queue.length]} onPrev=${i > 0 ? () => go(i - 1) : null}
-          next=${i + 1 < queue.length ? entry(i + 1) : null} later=${[i + 2, i + 3].filter(k => k < queue.length).map(entry)} done=${f.walk.done} />`
-        : html`<${Rest} s=${s} c=${c} />`}
-      <${LeftOut} left=${parts.leftOut} />
+    ${driver ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
+    <div class=${`flow-grid is-${show}`}>
+      <${FlowSide} sides=${sides} side=${side} mode=${mode} points=${all} s=${s} c=${c} />
+      <section class="flow-main" aria-label=${f.title}>
+        <div class="flow-main-top">
+          <${Segmented} label=${f.show.label} values=${[['focus', f.show.focus], ['list', f.show.list]]} current=${show} onPick=${v => c.flowShow(v)} />
+          <span class="muted small">${f.tabs.count(queue.length)}</span>
+        </div>
+        ${show === 'list' ? html`<${FlowList} key=${side} points=${queue} s=${s} c=${c} titleFor=${pointTitle} />`
+          : x ? html`<${FlowTabs} points=${queue} i=${i} titleFor=${pointTitle} kindFor=${pointKind} go=${go} s=${s} />
+            <div class="flow-card" key=${x.id}>${x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} c=${c} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`}</div>
+            <${Walk} queue=${queue} i=${i} s=${s} c=${c} go=${go} words=${{ ...f.walk2, queue: t.dossier.walk.queue }} titleFor=${pointTitle}
+              tagsOf=${() => null} whyOf=${pointKind} done=${f.walk2.last} onwards=${onwards} cls="flow-walk" />`
+          : html`<${Rest} s=${s} c=${c} />`}
+      </section>
+      ${show === 'focus' ? html`<${FlowDetails} x=${x} s=${s} c=${c} />` : null}
     </div>
+    <${LeftOut} left=${parts.leftOut} />
   </div>`
 }

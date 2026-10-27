@@ -255,3 +255,44 @@ def test_area_name_opens_the_files_for_this_visit_only(base_url, browser):
     assert page.evaluate("() => localStorage.getItem('bridge-cockpit.workTab')") == before
     ctx.close()
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+@pytest.mark.parametrize("width", [1680, 900])
+def test_work_through_opens_as_a_view_of_the_work_tab_and_walks_its_points(base_url, browser, lang, width):
+    """?work=flow stands for cockpit.work_view: flow. The view shows its left column (a select on a narrow screen),
+    the points as tabs, the card, the walk bar; a theme picked, a detail pulled in, the list with its batch
+    line: no console error on the way"""
+    problems: list[str] = []
+    where = ["flow"]
+    ctx = browser.new_context(viewport={"width": width, "height": 1000})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang={lang}&work=flow")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    page.evaluate("() => window.localStorage.clear()")
+    page.reload()
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
+    page.wait_for_selector("#main .flow-grid .flow-card .fx-hero")
+    assert page.locator("#main .flow-tabs [role=tab]").count() > 3
+    assert page.locator("#main .flow-walk .dz-walk").count() == 1
+    where[0] = "a theme"
+    if width > 960:
+        page.locator("#main .flow-side-item").nth(1).click()
+    else:
+        page.locator("#main .flow-side-select select").select_option(index=1)
+    page.wait_for_timeout(200)
+    where[0] = "a block"
+    page.locator("#main .flow-block-head button").nth(1).click()
+    page.wait_for_timeout(200)
+    where[0] = "the list"
+    page.locator("#main .flow-main-top .seg-btn").nth(1).click()
+    page.wait_for_selector("#main .flow-list")
+    page.locator("#main .flow-list-bar .btn-primary").first.click()
+    page.wait_for_selector("#main .flow-list-confirm")
+    page.locator("#main .flow-main-top .seg-btn").nth(0).click()
+    page.wait_for_timeout(250)
+    ctx.close()
+    assert not problems, "\n".join(problems)

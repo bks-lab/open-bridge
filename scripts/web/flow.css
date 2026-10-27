@@ -1,37 +1,129 @@
 /* SPDX-License-Identifier: MIT */
 /*
  * The cockpit's Work through page (views/flow.js) and its five verbs (views/verbbar.js). Loaded right after
- * files.css; the card in front is the hero of the start page focus (style.css .fx-hero), the chips are the start
- * page's (.home-chip). Colors only through the DESIGN.md tokens (var(--token)), the same rules as style.css.
+ * files.css; the card in front is the hero of the start page focus (style.css .fx-hero), the walk bar the files
+ * view's (files.css .dz-foot). Colors only through the DESIGN.md tokens (var(--token)), the same rules as style.css.
  */
 
-/* the page: one column at a reading width, the card in the middle */
-.flow { display: flex; flex-direction: column; gap: var(--space-md); width: 100%; max-width: 880px; margin: 0 auto; min-width: 0; padding-bottom: var(--space-2xl); }
-.flow-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; }
-.flow-head .detail-title, .flow-head p { margin: 0; }
-.flow-chips { position: static; margin: 0; padding: 0; }
-.flow-chips .mono { color: var(--on-surface-muted); font-size: var(--text-label); }
-.flow-chips .is-on .mono { color: inherit; }
+/* the page: laid out as cmux lays out a workspace. Left the themes or areas (its workspace sidebar), in the middle the
+   open points as tabs over the card and the files view's walk bar under it, right the details to pull in */
+.flow { display: flex; flex-direction: column; gap: var(--space-md); width: 100%; min-width: 0; padding-bottom: var(--space-xl); }
+.flow-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; }
+.flow-head p { margin: 0; }
 .flow-nodriver { margin: 0; }
+.flow-grid { display: grid; grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(260px, 340px); gap: var(--space-md); align-items: start; min-width: 0; }
+.flow-grid.is-list { grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); }
 
-/* what runs: one quiet line of chips on top, a click folds the tab's last lines open under it */
-.flow-lane { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.flow-lane > h2 { margin: 7px 0 0; flex: none; color: var(--on-surface-muted); }
-.flow-lane-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; min-width: 0; }
-.flow-lane-list > li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.flow-lane-list > li.is-open { flex-basis: 100%; }
-.flow-lane-item {
-  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 11px; border: 1px solid var(--border);
-  border-radius: var(--radius-full); background: var(--surface-raised); color: var(--on-surface); font: inherit; font-size: var(--text-sm);
-  cursor: pointer; transition: border-color var(--motion);
+/* the left column: one entry per theme or area, its colour, its name, what needs you and what is open */
+.flow-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-side > .seg { align-self: stretch; }
+.flow-side > .seg .seg-btn { flex: 1 1 0; }
+.flow-side-select { display: none; }
+.flow-side-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.flow-side-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 1px solid transparent; border-radius: var(--radius-md);
+  background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
+  transition: background var(--motion), border-color var(--motion);
 }
-.flow-lane-item:hover { border-color: var(--border-strong); }
-.flow-lane-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.flow-lane-peek { display: flex; flex-direction: column; gap: 6px; padding: 0 2px 4px; }
+.flow-side-item:hover { background: var(--surface-raised); }
+.flow-side-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); font-weight: 600; }
+.flow-side-item.is-you .flow-side-name { color: var(--ink); }
+.flow-side-dot { flex: none; width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--ws-color, var(--tk, var(--border-strong))); }
+.flow-side-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-side-counts { display: inline-flex; align-items: center; gap: 8px; flex: none; font-size: var(--text-label); }
+.flow-side-you { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font-weight: 600; }
+.flow-side-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.flow-side-foot p { margin: 0; }
+.flow-side-rename, .flow-theme-pick { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.flow-theme-pick .input, .flow-side-rename .input { width: 100%; }
 
-/* the card in front and the walk under it */
-.flow-work { display: flex; flex-direction: column; gap: 10px; min-width: 0; isolation: isolate; }
-.flow-work > .next-up { margin-top: 20px; position: static; }
+/* the middle: Focus or List, the points as tabs (they wrap, none is cut off), the card, the walk bar */
+.flow-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-main-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.flow-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-tab {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 240px; padding: 5px 10px; border: 1px solid transparent;
+  border-radius: var(--radius-md); background: transparent; color: var(--on-surface-muted); font: inherit; font-size: var(--text-sm); cursor: pointer;
+  transition: background var(--motion), color var(--motion), border-color var(--motion);
+}
+.flow-tab:hover { background: var(--surface-raised); color: var(--on-surface); }
+.flow-tab.is-on { border-color: var(--border-strong); background: var(--surface-raised); color: var(--ink); font-weight: 600; }
+.flow-tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-tabs-sep { align-self: stretch; width: 1px; margin: 3px 4px; background: var(--border); }
+.flow-who { margin: 0; color: var(--on-surface); }
+.flow-who .label-caps { margin-right: 6px; color: var(--on-surface-muted); }
+/* the files view's bar, sticky under the card as it is under a file */
+.flow-main > .flow-walk { margin: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+
+/* the right column: the details of the point in front, block by block */
+.flow-details { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.flow-details-head p { margin: 0; }
+.flow-details-head .label-caps { color: var(--on-surface-muted); }
+.flow-block { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-block.is-open { background: var(--surface-raised); }
+.flow-block-head { margin: 0; font-size: var(--text-sm); }
+.flow-block-head button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 9px 12px; border: 0;
+  background: transparent; color: var(--on-surface); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.flow-block-body { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.flow-block-body p, .flow-block-body ul, .flow-block-body ol { margin: 0; }
+.flow-block-body .fx-screen { max-height: 240px; overflow: auto; }
+.flow-card-brief { border: 0; padding: 0; background: transparent; }
+/* the block's heading names the criteria already */
+.flow-card-brief .card-criteria-box > .label-caps { display: none; }
+.flow-theme-pick > .label-caps, .flow-side-rename > .label-caps { margin: 0; }
+.flow-steps { display: flex; flex-direction: column; gap: 4px; padding: 0; list-style: none; }
+.flow-steps li.is-done { color: var(--on-surface-muted); }
+.flow-step-mark { display: inline-block; min-width: 44px; color: var(--on-surface-muted); font-size: var(--text-label); }
+.flow-source { display: flex; flex-direction: column; gap: 6px; }
+
+/* the list: one row per point, a box, kind, stage, area, age and the suggestion with why */
+.flow-list { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-list-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-list-verbs { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.flow-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); cursor: pointer; }
+.flow-list-confirm, .flow-list-done { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface); }
+.flow-list-confirm > span { flex: 1 1 260px; color: var(--ink); }
+.flow-list-from { margin: 0; }
+.flow-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-row {
+  display: grid; grid-template-columns: 20px minmax(0, 2fr) 104px 112px 96px 40px minmax(0, 2fr);
+  align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); font-size: var(--text-sm);
+}
+.flow-row:first-child { border-top: 0; }
+.flow-row.is-picked { background: var(--surface-raised); }
+.flow-row-title { min-width: 0; color: var(--on-surface); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-row-kind, .flow-row-stage { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.flow-row-kind * { white-space: nowrap; }
+.flow-row-area { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.flow-sug { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.flow-sug-verb { flex: none; padding: 1px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-full); font-weight: 600; font-size: var(--text-label); }
+.flow-sug-done .flow-sug-verb { border-color: var(--success); color: var(--success); }
+.flow-sug-drop .flow-sug-verb { border-color: var(--danger); color: var(--danger); }
+.flow-sug-later .flow-sug-verb { border-color: var(--info); color: var(--info); }
+.flow-sug-do .flow-sug-verb { border-color: var(--accent); color: var(--accent); }
+.flow-sug-you .flow-sug-verb { border-color: var(--warning); color: var(--warning); }
+.flow-sug-why { min-width: 0; color: var(--on-surface-muted); }
+
+/* a medium screen: the details move under the card; a narrow one: the left column is a select over the tabs */
+@media (max-width: 1360px) {
+  .flow-grid { grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); }
+  .flow-grid > .flow-details { grid-column: 2; }
+}
+@media (max-width: 960px) {
+  .flow-grid, .flow-grid.is-list { grid-template-columns: minmax(0, 1fr); }
+  .flow-grid > .flow-details { grid-column: auto; }
+  .flow-side { position: static; padding: 8px; }
+  .flow-side-list { display: none; }
+  .flow-side-select { display: block; }
+  .flow-side-select .input { width: 100%; }
+  .flow-row { grid-template-columns: 20px minmax(0, 1fr) auto; }
+  .flow-row-kind, .flow-row-stage, .flow-row-area { display: none; }
+  .flow-row-sug { grid-column: 2 / -1; }
+}
+
+/* the card in front */
 .flow-card .fx-acts { flex-direction: column; align-items: stretch; }
 .flow-ask { margin: 0; font-size: var(--text-h4); color: var(--ink); }
 .flow-answer { margin: 0; color: var(--on-surface); }
@@ -72,7 +164,3 @@
 .verbbar-manual pre { padding: 10px 12px; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-muted); }
 .verbbar-err { color: var(--danger); }
 
-@media (max-width: 640px) {
-  .flow-lane { flex-direction: column; }
-  .flow-lane > h2 { margin: 0; }
-}

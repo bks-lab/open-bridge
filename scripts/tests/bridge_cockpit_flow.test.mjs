@@ -40,6 +40,8 @@ function state({ now = [], work = [], later = [], hidden = [], tabs = [], return
       { id: 'track', rows: [] }, { id: 'later', rows: later }], hidden, returns, briefing_badge: now.filter(logic.asksYou).length },
     tabs: { tabs }, driver: { caps: null }, triage: { items: {} }, jevOrder: {},
     work: { flow: { enabled: true, drop_reasons: ['resolves_itself', 'not_needed'], return_after_s: 20 } },
+    // the themes off unless a test switches them on: the left column groups by area
+    themes: { enabled: false },
     ui: { page: '@flow', busy: {}, flowAt: null, flowChip: 'all', flowJump: null, ...ui }, ...rest,
   }
 }
@@ -56,13 +58,14 @@ test('flowQueue: the groups stand in a fixed order, a Jev rank only orders insid
     jevOrder: { work: { order: { items: [{ key: 'task:plain', rank: 1 }, { key: 'task:ranked', rank: 2 }] } } },
   })
   const q = queueOf(s)
-  assert.deepEqual(q.map(x => x.group), ['asks', 'question', 'task', 'task'])
-  // the rank of a task never lifts it over a question; inside the tasks it outweighs the priority
-  assert.deepEqual(q.filter(x => x.group === 'task').map(x => x.row.task), ['plain', 'ranked'])
+  // doing tasks are in progress: after what needs you, before the tasks in review
+  assert.deepEqual(q.map(x => x.group), ['asks', 'question', 'doing', 'doing'])
+  // the rank of a task never lifts it over a question; inside its group it outweighs the priority
+  assert.deepEqual(q.filter(x => x.group === 'doing').map(x => x.row.task), ['plain', 'ranked'])
   // without a rank the priority orders the tasks
-  const plain = queueOf({ ...s, jevOrder: {} }).filter(x => x.group === 'task').map(x => x.row.task)
+  const plain = queueOf({ ...s, jevOrder: {} }).filter(x => x.group === 'doing').map(x => x.row.task)
   assert.deepEqual(plain, ['ranked', 'plain'])
-  assert.deepEqual(logic.FLOW_GROUPS, ['back', 'asks', 'result', 'lost', 'question', 'task', 'reports'])
+  assert.deepEqual(logic.FLOW_GROUPS, ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'reports'])
 })
 
 test('flowQueue: a question without a task and a task on P3 both stand in it, reports as one card at the end', () => {
@@ -77,8 +80,9 @@ test('flowQueue: a question without a task and a task on P3 both stand in it, re
   assert.deepEqual(reports.rows.map(r => r.inbox_id), ['20261009-0901-a-r1', '20261009-0902-a-r2'])
   // the chips: what asks you, what the agents left, the tasks, the reports by their rows
   const counts = logic.flowCounts(logic.flowParts(s))
-  assert.deepEqual(counts, { all: 5, you: 1, running: 0, tasks: 2, reports: 2 })
-  assert.deepEqual(queueOf(s, 'tasks').map(x => x.group), ['task', 'task'])
+  assert.deepEqual(counts, { all: 5, you: 1, running: 1, tasks: 1, reports: 2 })
+  assert.deepEqual(queueOf(s, 'tasks').map(x => x.group), ['task'])
+  assert.deepEqual(queueOf(s, 'running').map(x => x.row.task), ['low'])
 })
 
 test('flowQueue: an inbox item with a task stands once, on its question card, and the task does not come again', () => {
@@ -135,7 +139,8 @@ test('flowParts: a running start stands only in the lane, until it asks, finishe
   const s = state({ work: [task('run'), task('other')], tabs: [tab('working')], returns: [start('working')] })
   let parts = logic.flowParts(s)
   assert.deepEqual(parts.lane.map(x => x.row.key), ['task:run'])
-  assert.deepEqual(queueOf(s).map(x => x.id), ['task:other'])
+  // in progress: the start first, its task not a second time
+  assert.deepEqual(queueOf(s).map(x => x.id), ['start:task:run', 'task:other'])
   // the tab stops working: the start asks, as a card of the group of tabs that ask, and its tab is not listed twice
   const asks = state({ work: [task('run')], tabs: [tab('needs-you')], returns: [start('working')] })
   assert.deepEqual(queueOf(asks).map(x => [x.group, x.kind]), [['asks', 'start']])
@@ -160,7 +165,7 @@ test('flowParts: without a terminal driver no lane and no cards of the agents, t
   assert.equal(logic.flowDriver(s), false)
   assert.deepEqual([parts.lane, parts.asks, parts.result, parts.lost], [[], [], [], []])
   assert.equal(parts.back, null)
-  assert.deepEqual(queueOf(s).map(x => x.group), ['question', 'task', 'task', 'reports'])
+  assert.deepEqual(queueOf(s).map(x => x.group), ['question', 'doing', 'doing', 'reports'])
 })
 
 // ---------------------------------------------------------------- the return card
@@ -350,16 +355,123 @@ test('the page: Work through is a view of the work tab with cockpit.flow.enabled
   assert.equal(logic.flowPageFor('briefing'), null)
 })
 
-test('the page on the demo data: a card in front, the lane, the chips, the walk bar and what it leaves out', () => {
-  const s = cockpitState(NOW, { ui: { page: '@flow', flowChip: 'all' } })
+test('the page on the demo data: the left column, the tabs, the card, the details and the files view\'s walk bar', () => {
+  const s = cockpitState(NOW, { ui: { page: 'briefing', workView: 'flow' } })
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
-  assert.ok(el.$('.flow-card'), 'a card in front')
-  assert.ok(el.$('.flow-lane'), 'the lane of what runs')
-  assert.ok(el.$$('.flow-chips button').length === 5)
-  assert.ok(el.$('.next-up'), 'the walk bar')
-  el.$$('.flow-chips button').find(b => b.text().startsWith(en.flow.chips.tasks)).click()
-  assert.deepEqual(c.calls.at(-1), ['flowChip', 'tasks'])
+  assert.ok(el.$('.flow-side') && el.$('.flow-tabs') && el.$('.flow-card') && el.$('.flow-details'), 'three columns and the tabs')
+  // no chips and no lane any more: the left column and the tabs stand for them
+  assert.equal(el.$('.flow-chips'), null)
+  assert.equal(el.$('.flow-lane'), null)
+  // the walk is the files view's bar with the words of a point
+  const walk = el.$('.flow-walk .dz-walk')
+  assert.ok(walk, 'the big bar')
+  assert.ok(el.button(en.flow.walk2.prev) && el.button(en.flow.walk2.next))
+  // the head says how much is in progress and how much is open, and holds the view switch
+  assert.match(el.$('.flow-head').text(), /in progress/)
+  assert.ok(el.$('.flow-head .work-switch'))
+  // the title of the card opens nothing: no drawer, no walk of its own
+  assert.equal(el.$('.flow-card .fx-title button'), null)
+  // a tab brings its point to the front, an entry of the left column picks it
+  el.$$('.flow-tab')[1].click()
+  assert.equal(c.calls.at(-1)[0], 'flowGo')
+  el.$$('.flow-side-item')[1].click()
+  assert.equal(c.calls.at(-1)[0], 'flowSide')
+  // the details come as headings, the goal open; a click pulls another in
+  const heads = el.$$('.flow-block-head button')
+  assert.ok(heads.length >= 4)
+  assert.equal(heads[0].getAttribute('aria-expanded'), 'true')
+  heads[1].click()
+  assert.deepEqual(c.calls.at(-1), ['flowBlock', 'criteria'])
+  // narrow: the same choice as a select over the tabs
+  assert.ok(el.$('.flow-side-select select'))
+})
+
+test('the left column marks what needs you, the walk leads on to the next area after the last point', () => {
+  const s = cockpitState(NOW, { ...state({ now: [ask('20261009-0900-a-q', { area: 'Ops' })], work: [task('a', { area: 'Ops' }), task('b', { area: 'Docs' })] }),
+    ui: { ...state().ui, page: 'briefing', workView: 'flow', flowSide: { areas: 'a:ops' }, flowAt: { id: 'task:a', i: 1 } } })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const items = el.$$('.flow-side-item')
+  assert.deepEqual(items.map(b => [b.$('.flow-side-name').text(), b.$('.flow-side-you')?.text() ?? null, b.$('.flow-side-counts > .mono.muted').text()]),
+    [[en.flow.side.allAreas, '1', '3'], ['Ops', '1', '2'], ['Docs', null, '1']])
+  assert.ok(items[1].getAttribute('class').includes('is-you') && items[1].getAttribute('aria-current') === 'true')
+  // two points in Ops, the second in front: Next leads to Docs
+  assert.deepEqual(el.$$('.flow-tab').map(b => b.getAttribute('aria-selected')), ['false', 'true'])
+  assert.match(el.$('.dz-walk-next').text(), new RegExp(en.flow.walk2.nextSide('Docs')))
+  el.button(en.flow.walk2.toSide).click()
+  assert.deepEqual(c.calls.at(-1), ['flowSide', 'a:docs'])
+})
+
+test('In progress on the card: who works on it, the last lines, To tab, and Let AI go on only without a tab at work', () => {
+  const busy = { ref: 'surface:21', name: 'busy', slug: 'busy', state: 'working', since_ms: NOW - 18 * MIN, last: 'Running the tests' }
+  let c = recorder()
+  let el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ work: [task('busy')], tabs: [busy] }), ui: { ...state().ui, page: 'briefing', workView: 'flow' } })} c=${c} />`)
+  const card = el.$('.flow-card')
+  assert.match(card.text(), new RegExp(en.flow.kind.doing))
+  assert.match(card.$('.flow-who').text(), /Agent tab busy: at work, for 18 min/)
+  assert.match(card.$('.fx-screen').text(), /Running the tests/)
+  assert.ok(el.button(en.flow.toTab) && el.button(en.flow.verbs.done))
+  assert.equal(el.button(`${en.flow.doing.goOn} ▾`), null)
+  // no tab open: when it last moved, and Let AI go on with it
+  c = recorder()
+  el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ work: [task('quiet', { updated: '2026-10-06' })] }), ui: { ...state().ui, page: 'briefing', workView: 'flow' } })} c=${c} />`)
+  assert.match(el.$('.flow-who').text(), /No tab open, last moved 3 days ago/)
+  assert.ok(el.button(`${en.flow.doing.goOn} ▾`))
+  assert.equal(el.button(en.flow.toTab), null)
+})
+
+test('the List: suggestions with where they come from, Take the suggestions, one line to confirm, then the batch and its undo', async () => {
+  const rows = [task('d1'), task('drop'), task('agent'), task('mine')]
+  const triage = { last: { at: '2026-10-09T07:00:00' }, items: { 'task:d1': { verdict: 'close', reason: 'The guide is merged' },
+    'task:agent': { doer: 'ai', reason: 'A small change' } } }
+  const themes = themesState({ assign: {}, suggest: { 'task:drop': { verb: 'drop', reason: 'Nobody needs it', drop: 'not_needed', at_ms: NOW } } })
+  const base = { ...state({ work: rows }), triage, themes, ui: { ...state().ui, page: 'briefing', workView: 'flow', flowShow: 'list' } }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, base)} c=${c} />`)
+  assert.equal(el.$('.flow-details'), null)
+  assert.equal(el.$$('.flow-row').length, 4)
+  const from = el.$('.flow-list-from').text()
+  assert.match(from, /from the triage of/)
+  assert.match(from, new RegExp(en.flow.list.from.themes))
+  assert.match(from, new RegExp(en.flow.list.honest))
+  assert.match(el.$$('.flow-row')[0].text(), /The guide is merged/)
+  // nothing goes out before Confirm
+  el.button(en.flow.list.take).click()
+  await tick()
+  assert.equal(c.calls.filter(x => x[0] === 'act' || x[0] === 'flowBatch').length, 0)
+  // Take ticks done and drop, never Let AI do it
+  const picked = el.$$('.flow-row').map(li => li.getAttribute('class').includes('is-picked'))
+  assert.deepEqual(picked, [true, true, false, false])
+  assert.match(el.$('.flow-list-confirm').text(), /1 done, 1 drop: No longer needed/)
+  el.button(en.flow.list.confirm).click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done' } },
+    { verb: 'shelve', args: { key: 'task:drop', reason: 'No longer needed' } }]])
+  // after the batch: one undo for all of it
+  const after = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...base, ui: { ...base.ui, flowBatch: { running: false, n: 2, undo: [{ undo: {} }] } } })} c=${c} />`)
+  after.button(en.flow.list.undo).click()
+  assert.deepEqual(c.calls.at(-1), ['flowBatchUndo'])
+})
+
+test('the themes: the view asks for the points without one, never twice in a render, not with the day spent or the themes off', async () => {
+  const th = themesState({ assign: { 'task:a': 't000001' } })
+  const base = { ...state({ work: [task('a'), task('b')] }), ui: { ...state().ui, page: 'briefing', workView: 'flow' } }
+  let c = recorder()
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...base, themes: th })} c=${c} />`)
+  await tick()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'flowThemesAuto'), [['flowThemesAuto', ['task:b']]])
+  // Themes beside Areas on top, the theme of the point, Order themes again
+  assert.ok(el.$('.flow-side .seg'))
+  assert.ok(el.$('.flow-theme-pick select'))
+  assert.ok(el.button(en.flow.side.regroup))
+  for (const themes of [themesState({ budget_left: 0 }), { enabled: false }]) {
+    c = recorder()
+    const quiet = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...base, themes })} c=${c} />`)
+    await tick()
+    assert.equal(c.calls.filter(x => x[0] === 'flowThemesAuto').length, 0)
+    if (themes.enabled === false) assert.equal(quiet.$('.flow-side .seg'), null)
+  }
 })
 
 test('the page without a terminal driver: no lane and no To tab, the start hands out the commands to copy', () => {
@@ -428,10 +540,7 @@ test('the lane: a tab of a session linked to a task, typed by hand, runs there a
   const s = state({ work: [task('mine'), task('other')], tabs, sessions })
   const parts = logic.flowParts(s)
   assert.deepEqual(parts.lane.map(x => [x.kind, x.tab.ref, x.row?.key]), [['session', 'surface:12', 'task:mine']])
-  assert.deepEqual(queueOf(s).map(x => x.id), ['task:other'])
-  // the lane draws it with the task's title
-  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, s)} c=${recorder()} />`)
-  assert.match(el.$('.flow-lane').text(), /Task mine/)
+  assert.deepEqual(queueOf(s).map(x => x.id), ['session:surface:12', 'task:other'])
   // a session tab that stopped working is no longer in the lane, and its task is back in the band
   const quiet = state({ work: [task('mine')], tabs: [{ ...tabs[0], state: 'waiting' }], sessions })
   assert.deepEqual(logic.flowParts(quiet).lane, [])
@@ -534,12 +643,12 @@ test('a tab that asks: its options as buttons, a click answers the tab with the 
 test('a tab that was answered leaves the queue at once, the next card moves up', () => {
   const tab = dialog()
   const s = state({ tabs: [tab], work: [task('next')] })
-  assert.deepEqual(queueOf(s).map(x => x.group), ['asks', 'task'])
+  assert.deepEqual(queueOf(s).map(x => x.group), ['asks', 'doing'])
   const answered = { [tab.ref]: logic.answerMark(tab, 'Redirect', NOW) }
   assert.deepEqual(queueOf({ ...s, ui: { ...s.ui, answered } }).map(x => x.id), ['task:next'])
   // asked anew (another question), it is back
   const again = { ...tab, ask: { ...tab.ask, hash: 'h2' } }
-  assert.deepEqual(queueOf({ ...s, tabs: { tabs: [again] }, ui: { ...s.ui, answered } }).map(x => x.group), ['asks', 'task'])
+  assert.deepEqual(queueOf({ ...s, tabs: { tabs: [again] }, ui: { ...s.ui, answered } }).map(x => x.group), ['asks', 'doing'])
 })
 
 test('a tab that asks: the decision guide on the card, a branch pressed through tab_option with the hash, To tab remembered', async () => {
@@ -659,4 +768,134 @@ test('Let AI do it: with max_running starts at work it asks first, Start anyway 
   free.button(en.flow.start.button).click()
   await tick()
   assert.equal(one.calls.filter(x => x[0] === 'act' && x[1] === 'do_it').length, 1)
+})
+
+// ---------------------------------------------------------------- round 2: in progress, themes and areas, the list
+
+const DAYMS = 24 * 60 * MIN
+
+test('In progress: every doing task with what drives it, a review task stays a task, a doing task asks only through its tab', () => {
+  const tabs = [{ ref: 'surface:21', name: 'busy', slug: 'busy', state: 'working', since_ms: NOW - 18 * MIN, last: 'Running the tests' },
+    { ref: 'surface:22', name: 'asking', slug: 'asking', state: 'needs-you', since_ms: NOW - 2 * MIN }]
+  const sessions = { sessions: [{ id: 'cc33', task: 'typed', status: 'busy', started_ms: NOW - 9 * MIN, tab: { ref: 'surface:23', name: 'typed' } }] }
+  const s = state({ work: [task('busy'), task('asking'), task('quiet', { updated: '2026-10-06' }), task('typed'), task('checked', { status: 'review' })],
+    tabs: [...tabs, { ref: 'surface:23', name: 'typed', state: 'working', since_ms: NOW - 9 * MIN },
+      { ref: 'surface:24', name: 'started', state: 'working', since_ms: NOW - 4 * MIN }], sessions,
+    returns: [startOf('started', 'working', { tab: { ref: 'surface:24' }, at_ms: NOW - 4 * MIN })] })
+  const parts = logic.flowParts(s)
+  assert.deepEqual(logic.FLOW_GROUPS, ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'reports'])
+  // the doing ones: a start of the cockpit, a session typed by hand, the task with its working tab, the quiet one
+  const by = Object.fromEntries(parts.doing.map(x => [x.row?.task ?? x.start?.item, logic.flowDrive(x, s)]))
+  assert.equal(by.busy.by, 'tab')
+  assert.equal(by.busy.tab.ref, 'surface:21')
+  assert.equal(by.typed.by, 'session')
+  assert.equal(by.started.by, 'start')
+  assert.deepEqual([by.quiet.by, by.quiet.days], ['none', 3])
+  // the one whose tab asks stands with the tabs that ask, a review task with the tasks
+  assert.deepEqual(parts.asks.map(x => x.row?.task), ['asking'])
+  assert.deepEqual(parts.task.map(x => x.row.task), ['checked'])
+  // what runs counts for max_running as before: the starts and the session tabs at work
+  assert.equal(logic.flowRunning(s), 2)
+  const q = queueOf(s)
+  assert.ok(q.findIndex(x => x.group === 'doing') > q.findIndex(x => x.group === 'asks'))
+  assert.ok(q.findIndex(x => x.group === 'doing') < q.findIndex(x => x.group === 'task'))
+})
+
+const themesState = (over = {}) => ({ enabled: true, max_themes: 8, budget_left: 3, running: false, last_error: null,
+  themes: [{ id: 't000001', name: 'Release work', by: 'ai' }, { id: 't000002', name: 'Empty one', by: 'ai' }],
+  assign: { 'task:a': 't000001', 'inbox:20261009-0900-a-q': 't000001' }, by_person: [], suggest: {}, at_ms: NOW - MIN, ...over })
+
+test('the left column by areas: All on top, one entry per area with what needs you and what is open, No area last', () => {
+  const s = state({ now: [ask('20261009-0900-a-q', { area: 'Ops' })], work: [task('a', { area: 'Ops' }), task('b', { area: 'Docs' }), task('c')],
+    tabs: { tabs: [] } })
+  s.tabs = { tabs: [], workspaces: [{ ref: 'workspace:2', title: 'Ops', color: '#196F3D' }] }
+  const points = queueOf(s)
+  const sides = logic.flowSides(s, points, 'areas')
+  assert.deepEqual(sides.map(x => [x.id, x.open, x.you]), [['all', 4, 1], ['a:ops', 2, 1], ['a:docs', 1, 0], ['none', 1, 0]])
+  assert.equal(sides[1].color, '#196F3D')
+  assert.deepEqual(logic.pointsIn(points, 'a:ops', s, 'areas').map(x => x.id), ['inbox:20261009-0900-a-q', 'task:a'])
+  assert.deepEqual(logic.pointsIn(points, 'none', s, 'areas').map(x => x.id), ['task:c'])
+  assert.equal(logic.pointsIn(points, 'all', s, 'areas').length, 4)
+})
+
+test('the left column by themes: the themes that hold a point, No theme yet for the rest, areas while themes are off', () => {
+  const s = { ...state({ now: [ask('20261009-0900-a-q'), report('20261009-0901-a-r1'), report('20261009-0902-a-r2')],
+    work: [task('a'), task('b')] }), themes: themesState({ assign: { 'task:a': 't000001', 'inbox:20261009-0900-a-q': 't000001', 'inbox:20261009-0901-a-r1': 't000001' } }) }
+  const points = queueOf(s)
+  assert.equal(logic.flowMode(s), 'themes')
+  const sides = logic.flowSides(s, points, 'themes')
+  assert.deepEqual(sides.map(x => [x.id, x.name ?? null, x.open]), [['all', null, 5], ['t:t000001', 'Release work', 3], ['none', null, 2]])
+  // the reports card splits by side: each side holds its own reports as one tab
+  const mine = logic.pointsIn(points, 't:t000001', s, 'themes')
+  assert.deepEqual(mine.map(x => x.id), ['inbox:20261009-0900-a-q', 'task:a', 'reports'])
+  assert.deepEqual(mine.at(-1).rows.map(r => r.inbox_id), ['20261009-0901-a-r1'])
+  assert.deepEqual(logic.pointsIn(points, 'none', s, 'themes').map(x => x.id), ['task:b', 'reports'])
+  // what to send for a run: the points without a theme (reports by their rows), none twice, none while one runs
+  assert.deepEqual(logic.themesToAsk(points, s), ['task:b', 'inbox:20261009-0902-a-r2'])
+  assert.deepEqual(logic.themesToAsk(points, { ...s, themes: themesState({ running: true }) }), [])
+  assert.deepEqual(logic.themesToAsk(points, { ...s, themes: themesState({ budget_left: 0 }) }), [])
+  // switched off, or an older server: the areas
+  assert.equal(logic.flowMode({ ...s, themes: { enabled: false } }), 'areas')
+  assert.equal(logic.flowMode({ ...s, themes: undefined }), 'areas')
+  assert.equal(logic.flowMode({ ...s, ui: { ...s.ui, flowMode: 'areas' } }), 'areas')
+})
+
+test('flowSuggestion: the triage of the day first, else what the themes run said, each with where it comes from', () => {
+  const today = '2026-10-09T07:00:00'
+  const rows = [task('closing'), task('stale'), task('waits'), task('agent'), task('mine'), task('nothing')]
+  const triage = { last: { at: today }, items: { 'task:closing': { verdict: 'close', reason: 'The guide is merged' },
+    'task:stale': { verdict: 'stale', reason: 'Nobody needs it' }, 'task:waits': { verdict: 'waiting', reason: 'Waits on the vendor' },
+    'task:agent': { doer: 'ai', reason: 'A small change' } } }
+  const themes = themesState({ suggest: { 'task:mine': { verb: 'you', reason: 'Only you can sign it', at_ms: NOW - MIN },
+    'task:closing': { verb: 'drop', reason: 'ignored, the triage is fresh', at_ms: NOW - MIN } } })
+  const s = { ...state({ work: rows }), triage, themes }
+  const got = Object.fromEntries(rows.map(r => [r.task, logic.flowSuggestion(r, s)]))
+  assert.deepEqual([got.closing.verb, got.closing.from, got.closing.reason], ['done', 'triage', 'The guide is merged'])
+  assert.equal(got.stale.verb, 'drop')
+  assert.deepEqual([got.waits.verb, got.waits.until], ['later', '2026-10-12'])
+  assert.equal(got.agent.verb, 'do')
+  assert.deepEqual([got.mine.verb, got.mine.from], ['you', 'themes'])
+  assert.equal(got.nothing, null)
+  // a triage of three days ago is stale: the themes run speaks instead
+  const old = { ...s, triage: { ...triage, last: { at: '2026-10-06T07:00:00' } } }
+  assert.deepEqual([logic.flowSuggestion(task('closing'), old).verb, logic.flowSuggestion(task('closing'), old).from], ['drop', 'themes'])
+  // a verb the row does not offer is no suggestion: a stream is never done
+  assert.equal(logic.flowSuggestion(task('closing', { stream: true, settle: [] }), s), null)
+})
+
+test('batchPlan: the suggestions take done, drop and later, never Let AI do it unless picked and under max_running', () => {
+  const rows = [task('d1'), task('d2'), task('drop'), task('later'), task('agent'), task('mine')]
+  const sug = { 'task:d1': { verb: 'done', reason: 'r' }, 'task:d2': { verb: 'done', reason: 'r' },
+    'task:drop': { verb: 'drop', reason: 'r', drop: 'not_needed' }, 'task:later': { verb: 'later', reason: 'r', until: '2026-10-12' },
+    'task:agent': { verb: 'do', reason: 'r' }, 'task:mine': { verb: 'you', reason: 'r' } }
+  const s = { ...state({ work: rows }), themes: themesState({ suggest: sug }) }
+  // what Take the suggestions ticks: done, drop and later, never Let AI do it, never needs you
+  assert.deepEqual(logic.batchPreselect(rows, s), ['task:d1', 'task:d2', 'task:drop', 'task:later'])
+  let plan = logic.batchPlan(rows.filter(r => r.task !== 'mine'), 'suggested', s)
+  // Done for several goes out as one settle; drop shelves with its reason; later with its day; the start with its own sentence
+  assert.deepEqual(plan.calls, [
+    { verb: 'settle', args: { keys: ['task:d1', 'task:d2'], outcome: 'done' } },
+    { verb: 'later', args: { key: 'task:later', until: '2026-10-12' } },
+    { verb: 'shelve', args: { key: 'task:drop', reason: en.flow.drop.reason.not_needed } },
+    { verb: 'do_it', args: { keys: ['task:agent'], note: en.flow.start.note('Task agent') } }])
+  assert.deepEqual(plan.counts, { done: 2, later: 1, drop: 1, do: 1 })
+  assert.equal(logic.batchSummary(plan, 'en'), en.flow.batch.summary(plan))
+  // at max_running the start stays out, and the plan says why
+  const tabs = ['r1', 'r2', 'r3', 'r4'].map(x => ({ ref: `surface:${x}`, name: x, slug: x, state: 'working' }))
+  const busy = { ...s, returns: [], model: s.model, sessions: { sessions: tabs.map((t, i) => ({ id: `s${i}`, task: t.slug, tab: { ref: t.ref } })) },
+    tabs: { tabs } }
+  busy.model = { ...s.model, sections: s.model.sections.map(x => (x.id === 'work' ? { ...x, rows: [...x.rows, ...tabs.map(t => task(t.slug))] } : x)) }
+  plan = logic.batchPlan([task('agent')], 'suggested', busy)
+  assert.deepEqual(plan.calls, [])
+  assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:agent', 'running']])
+  // one verb for all: Done where a row offers it, Drop with one reason for all, Later with one day
+  plan = logic.batchPlan([task('d1'), task('x', { stream: true, settle: [] })], 'done', s)
+  assert.deepEqual(plan.calls, [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done' } }])
+  assert.deepEqual(plan.skipped.map(x => x.why), ['not_offered'])
+  plan = logic.batchPlan([task('d1'), ask('20261009-0900-a-q')], 'drop', s, 'Nobody needs it')
+  assert.deepEqual(plan.calls, [{ verb: 'shelve', args: { key: 'task:d1', reason: 'Nobody needs it' } },
+    { verb: 'settle', args: { keys: ['inbox:20261009-0900-a-q'], outcome: 'not_doing', text: 'Nobody needs it' } }])
+  assert.equal(logic.batchPlan([task('d1')], 'drop', s, '').calls.length, 0)
+  plan = logic.batchPlan([task('d1'), task('d2')], 'later', s, '2026-10-12')
+  assert.deepEqual(plan.calls.map(x => x.args), [{ key: 'task:d1', until: '2026-10-12' }, { key: 'task:d2', until: '2026-10-12' }])
 })

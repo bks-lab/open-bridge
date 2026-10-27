@@ -12,10 +12,10 @@ import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, quickLive } from './components.js'
 import {
   CONN_GRACE_MS, DAY, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
-  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
+  isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor,
+  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner,
 } from './logic.js'
@@ -113,6 +113,8 @@ const store = createStore({
   // the describe view per key (describe.py state_for) as the server last said it, live: its `describe` event and the
   // answer of a describe action; the next model carries it on its rows, so a new model clears it (views/card.js)
   describe: {},
+  // the themes of Work through (themes.py state): the themes, the theme of each point, the suggestions
+  themes: null,
   history: [],
   jev: { enabled: false, ready: false, reason: 'off' },
   workers: { status: 'idle', data: null, error: null },
@@ -157,6 +159,12 @@ const store = createStore({
     // filters it, the jump to a tab the return card asks about ({key, ref, title, at, armed}, kept in memory only, so
     // a reload brings no old card back), the row Advise answered ({key, conv}) and how many it decided since load
     flowAt: null, flowChip: 'all', flowJump: null, flowAdvice: null, flowDecided: 0,
+    // its left column: by themes or by areas (flowMode, kept in this browser), the theme or area picked in each
+    // ({themes, areas}), Focus or List (flowShow, kept in this browser), the detail blocks pulled in on the right (they
+    // stay open from point to point), a batch of the list that ran ({n, undo}) and a themes run of the page in flight
+    flowMode: load('bridge-cockpit.flowMode', 'themes') === 'areas' ? 'areas' : 'themes', flowSide: {},
+    flowShow: load('bridge-cockpit.flowShow', 'focus') === 'list' ? 'list' : 'focus', flowBlocks: ['goal'], flowBatch: null,
+    flowThemesBusy: false,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
@@ -295,6 +303,7 @@ function applyState(payload) {
     guide: payload.guide ?? s.guide,
     tour: payload.tour ?? s.tour,
     work: payload.work ?? s.work,
+    themes: payload.themes ?? s.themes,
     rooms: payload.rooms ?? s.rooms,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
@@ -389,6 +398,10 @@ const handlers = {
   },
   triage(tr) {
     store.set(s => ({ ...s, triage: tr }))
+  },
+  // the themes of Work through changed: a run, a move, a new name (themes.py changed)
+  themes(ev) {
+    if (ev && typeof ev === 'object') store.set(s => ({ ...s, themes: ev }))
   },
   // a brief written, proposed, applied or dropped, here or by the server's own pass (describe.py changed)
   describe(ev) {
@@ -505,6 +518,22 @@ function rowIndex() {
   return indexRows(store.get().model)
 }
 
+// the themes of Work through asked for by the page itself: each key once per page load, quietly (a refusal, the day's
+// budget spent, says itself in the state the left column reads); no timer, only the view showing new points asks
+const themesAsked = new Set()
+async function themesAuto(keys) {
+  const fresh = (keys ?? []).filter(k => !themesAsked.has(k))
+  if (!fresh.length || store.get().ui.flowThemesBusy) return
+  for (const k of fresh) themesAsked.add(k)
+  setUi({ flowThemesBusy: true })
+  try {
+    const res = await api.action('flow_themes_run', { mode: 'assign', keys: fresh })
+    if (res.ok && res.data?.themes) store.set(s => ({ ...s, themes: res.data.themes }))
+  } finally {
+    setUi({ flowThemesBusy: false })
+  }
+}
+
 // a quick question names the key of the chat's button only where the page has its shortcuts on (quick.py system_text)
 const quickKeys = ui => (ui?.shortcuts ? { keys: true } : {})
 
@@ -512,7 +541,7 @@ const quickKeys = ui => (ui?.shortcuts ? { keys: true } : {})
 // (logic.js replyRefusal: a step that failed keeps its own note)
 const refusals = new WeakMap()
 
-async function act(verb, args = {}) {
+async function act(verb, args = {}, opts = {}) {
   // a bulk leaves out the rows already in flight and says so, and marks each of the others busy (logic.js planBusy)
   const p = planBusy(verb, args, store.get().ui.busy)
   if (p.skipped.length) pushNote({ text: T().busySkipped(p.skipped.length), tone: 'warn' })
@@ -532,10 +561,15 @@ async function act(verb, args = {}) {
     const r = res.data
     if (r.confirm) return r
     // a close, drop or hide can be taken back for a few seconds right here, and later from the history
-    if (r.undo?.length && r.ok) {
+    // a batch of the list says what it did once, with one undo for all (ctl.flowBatch): its steps stay quiet
+    if (opts.quiet && r.ok) {
+      if (store.get().ui.drawer === 'history') ctl.loadHistory()
+    } else if (r.undo?.length && r.ok) {
       pushNote({ text: r.note || T().undoDone, tone: 'ok', go: r.go, action: 'undo', undo: r.undo }, { linger: 10000 })
       if (store.get().ui.drawer === 'history') ctl.loadHistory()
     } else if (r.note) pushNote({ text: r.note, tone: r.ok ? 'ok' : 'bad', go: r.go })
+    // a themes verb answers with the themes as they are now
+    if (r.themes) store.set(s => ({ ...s, themes: r.themes }))
     if (r.relay) store.set(s => ({ ...s, relay: { ...s.relay, records: upsertRecord(s.relay.records, r.relay) } }))
     // a describe action answers with the item's describe view: the card shows it before the next model comes
     if (r.describe && p.args.key) store.set(s => ({ ...s, describe: { ...s.describe, [p.args.key]: { key: p.args.key, ...r.describe } } }))
@@ -994,6 +1028,43 @@ const ctl = {
   // the briefs of the next cards, written ahead while one stands in front (prepAhead): a refusal ends the round, a key
   // that went out is not asked again on this page load. No timer: only a card coming up asks
   flowPrep: keys => prepAhead(keys),
+  // the left column of Work through: a theme or an area picked (its points walk from the first), themes or areas,
+  // Focus or List, a detail block pulled in or folded again
+  flowSide: id => setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: id }, flowAt: null })),
+  flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null }) },
+  flowShow: v => { save('bridge-cockpit.flowShow', v); setUi({ flowShow: v }) },
+  flowBlock: id => setUi(ui => {
+    const open = ui.flowBlocks ?? ['goal']
+    return { flowBlocks: open.includes(id) ? open.filter(x => x !== id) : [...open, id] }
+  }),
+  // the themes: the points without one get theirs when the view shows them (themesAuto, each key once per page
+  // load, quiet), a click orders all anew; a point moved or a theme named by hand wins over the model
+  flowThemesAuto: keys => themesAuto(keys),
+  flowThemes: (mode, keys) => withBusy('flow:themes', 'flow_themes_run', () => act('flow_themes_run', { mode, keys })),
+  flowThemeMove: (key, theme) => act('flow_theme_move', { key, theme }),
+  flowThemeNew: (key, name) => act('flow_theme_new', { key, name }),
+  flowThemeRename: (theme, name) => act('flow_theme_rename', { theme, name }),
+  // a batch of the list, confirmed: its calls one after the other, each quiet, then one note with one undo for all
+  async flowBatch(calls) {
+    const undo = []
+    let n = 0
+    setUi({ flowBatch: { running: true, n: 0, undo: [] } })
+    for (const a of calls ?? []) {
+      const r = await act(a.verb, a.args, { quiet: true })
+      if (!r?.ok) continue
+      n += a.args.keys?.length ?? 1
+      undo.push(...(r.undo ?? []))
+    }
+    setUi(ui => ({ flowBatch: { running: false, n, undo }, flowDecided: (ui.flowDecided ?? 0) + n }))
+    if (n) pushNote({ text: T().flow.list.ran(n), tone: 'ok', ...(undo.length ? { action: 'undo', undo } : {}) }, { linger: 10000 })
+    return { n, undo }
+  },
+  // the batch taken back, every point of it
+  async flowBatchUndo() {
+    const b = store.get().ui.flowBatch
+    setUi({ flowBatch: null })
+    for (const u of b?.undo ?? []) await ctl.undo(u.undo)
+  },
   // a chip behind the queue lists its files (views/dossier.js Shelves); null folds the list. `reveal`: picked from
   // the line of what the queue leaves out, far above, so the shelves scroll into view and the chip takes the focus
   setFileShelf: (k, reveal = false) => setUi({ fileShelf: k ?? null, fileShelfReveal: Boolean(reveal && k) }),
@@ -1406,7 +1477,7 @@ function moveFocus(step) {
 
 function focusTabs() {
   const s = store.get()
-  if (s.layout === 'medium' || (s.layout === 'wide' && !railShown(s.ui.page, s.rooms?.layout, s.ui.railHidden))) setUi({ drawer: 'tabs' })
+  if (s.layout === 'medium' || (s.layout === 'wide' && !railOn(s))) setUi({ drawer: 'tabs' })
   else if (s.layout === 'narrow') setUi({ pane: 'tabs' })
   requestAnimationFrame(() => document.getElementById('tabs-column')?.focus())
 }

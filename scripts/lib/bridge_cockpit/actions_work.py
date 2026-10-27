@@ -601,7 +601,9 @@ class WorkVerbs:
                 raise ActionError(409, "stale_row", "the row is no longer there", "keys")
             rows.append({**found["out"], "key": key})
         done = app.themes.run(mode, rows, call=lambda name, subject, argv, timeout, **kw: ctx.call(name, subject, argv, timeout, **kw))
-        ctx.note(app.themes.tx()["ordered"].format(n=done["n"]))
+        # the page's own run for new points stays quiet; the click that orders all anew says what it did
+        if mode == "regroup":
+            ctx.note(app.themes.tx()["ordered"].format(n=done["n"]))
         ctx.extra["themes"] = app.themes.state()
 
     def _theme_row(self, key: str) -> None:

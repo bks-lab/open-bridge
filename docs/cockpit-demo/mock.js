@@ -558,6 +558,12 @@ export function buildState(now = Date.now(), opts = {}) {
       next: { what: 'Check the links of the new index page', from: 'status', since: isoIn(-3, now), key: null },
       tab: { ref: 'surface:8', state: 'working', live: true, waiting: false }, actions: [A('to_tab', true)],
     }),
+    // a task in progress that no tab drives: Work through says when it last moved and offers to go on with it
+    polish: row({
+      key: 'task:release-polish', bucket: 'tasks', section: 'work', title: 'Polish the wording of the release checklist', sources: ['tasks'],
+      origin: O('bridge', null, 'Ad-hoc 2026-10-03'), work_kind: 'task', task: 'release-polish', priority: 'P2', area: 'Ops', area_names: ['Ops'],
+      status: 'doing', updated: isoIn(-4, now), actions: [A('do', true), A('advise')], selectable: true, closable: true,
+    }),
     cleanup: row({
       key: 'task:old-cleanup', bucket: 'tasks', section: 'work', title: 'Clean up the old example fixtures', sources: ['tasks'],
       origin: O('session', 'codex', 'inbox 20260930-1000-fixtures-d4e5 (2026-09-30, codex): Clean up the old example fixtures'), work_kind: 'task',
@@ -603,7 +609,7 @@ export function buildState(now = Date.now(), opts = {}) {
   const sections = empty ? [sec('now', [], []), sec('give', [], []), sec('work', [], []), sec('track', [], []), sec('later', [], [])] : [
     sec('now', [rows.review, rows.release], [rows.review, rows.release]),
     sec('give', [rows.labels, rows.docs, rows.sweep], [rows.labels, rows.docs, rows.sweep]),
-    sec('work', [rows.demo, rows.index, rows.cleanup, rows.onboarding], [rows.demo, rows.index]),
+    sec('work', [rows.demo, rows.index, rows.polish, rows.cleanup, rows.onboarding], [rows.demo, rows.index]),
     sec('track', [rows.flaky, rows.gitlab], []),
     sec('later', [rows.vendor, rows.idea, rows.onboardingNote, rows.filed], []),
   ]
@@ -871,10 +877,13 @@ export function buildState(now = Date.now(), opts = {}) {
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
     // the work tab as the config sets it (cockpit.work_view, cockpit.focus_to_files): ?work=files and ?focus_to_files=1
     // and which tasks are files (cockpit.files_scope): the queue alone as the default config, ?files_scope=all for every one
-    work: { view: ['due', 'source', 'jev', 'files'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true,
+    work: { view: ['due', 'source', 'jev', 'files', 'flow'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true,
       files_scope: opts.filesScope === 'all' ? 'all' : 'active',
       // the Work through page (cockpit.flow): on in the demo, ?flow=0 shows the cockpit without it
-      flow: { enabled: opts.flow !== false, drop_reasons: ['resolves_itself', 'not_needed', 'someone_else', 'not_worth_it'], return_after_s: 20 } },
+      flow: { enabled: opts.flow !== false, drop_reasons: ['resolves_itself', 'not_needed', 'someone_else', 'not_worth_it'], return_after_s: 20,
+        themes: { enabled: opts.flow !== false, max_themes: 8, budget_per_day: 6, model: null } } },
+    // the themes of Work through (themes.py state), invented: three themes across the areas, a point moved by hand
+    themes: empty || opts.flow === false ? { enabled: false } : themesState(now),
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
       { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
@@ -1295,6 +1304,25 @@ function agentsState(now) {
 }
 
 // the triage (triage.py state()): one line per task and inbox row of the demo, the last run 20 minutes ago
+/** The themes of Work through as themes.py states them: invented names across the areas, the theme of each point (one
+ *  a person moved), a suggestion with why for the points the triage says nothing about */
+export const MOCK_THEMES = [{ id: 't1a2b3c', name: 'Release work', by: 'ai' }, { id: 't4d5e6f', name: 'Docs and guides', by: 'ai' },
+  { id: 't7a8b9c', name: 'Board hygiene', by: 'person' }]
+function themesState(now) {
+  const [release, docs, board] = MOCK_THEMES.map(t => t.id)
+  return { enabled: true, max_themes: 8, themes: MOCK_THEMES.map(t => ({ ...t })), budget_left: 5, running: false, last_error: null,
+    at_ms: now - 6 * MIN, by_person: ['inbox:20261009-0910-tidy-labels-c3d4'],
+    assign: { 'task:alpha-release': release, 'task:release-polish': release, 'task:old-cleanup': release,
+      'inbox:20261009-0900-review-demo-a1b2': docs, 'task:demo-task': docs, 'task:docs-refresh': docs, 'inbox:20261009-0915-update-docs-e5f6': docs,
+      'inbox:20261009-0910-tidy-labels-c3d4': board, 'inbox:20261009-0940-filed-board-c2d3': board },
+    suggest: {
+      'task:release-polish': { verb: 'later', reason: 'The wording waits for the release date', until: isoIn(4, now), drop: null, at_ms: now - 6 * MIN },
+      'task:old-cleanup': { verb: 'done', reason: 'The fixtures are gone from the repository', until: null, drop: null, at_ms: now - 6 * MIN },
+      'inbox:20261009-0910-tidy-labels-c3d4': { verb: 'drop', reason: 'The board was tidied last week', until: null, drop: 'not_needed', at_ms: now - 6 * MIN },
+      'inbox:20261009-0940-filed-board-c2d3': { verb: 'you', reason: 'Only you can say if the switch is wanted', until: null, drop: null, at_ms: now - 6 * MIN },
+    } }
+}
+
 function triageState(now, running = null) {
   // effort is for the AI only: a row the person does carries none (triage.py). next_rank is Jev's fresh rank of
   // the row (the order of the Work through page's tasks), rank_at when it was given
@@ -1669,6 +1697,40 @@ export function createMockTransport(opts = {}) {
           result.settled = keys
           remember(verb, keys)
           removeRows(keys, verb)
+        }
+        if (verb.startsWith('flow_theme')) {
+          // the themes of Work through (themes.py): a run gives each new point the theme of its area's nearest
+          // invented theme, a move or a new theme by hand wins, a name by hand stays
+          const th = { ...state.themes, themes: state.themes.themes.map(t => ({ ...t })), assign: { ...state.themes.assign } }
+          const byArea = { Ops: MOCK_THEMES[0].id, Docs: MOCK_THEMES[1].id, Demo: MOCK_THEMES[1].id }
+          const rows = state.model.sections.flatMap(x => x.rows)
+          if (verb === 'flow_themes_run') {
+            if (!th.budget_left) return fail(429, 'themes_budget', 'no runs left today')
+            for (const k of args.keys ?? []) {
+              if (args.mode === 'regroup' && th.by_person.includes(k)) continue
+              if (args.mode === 'assign' && th.assign[k]) continue
+              const r = rows.find(x => x.key === k)
+              th.assign[k] = byArea[r?.area] ?? MOCK_THEMES[2].id
+            }
+            th.budget_left -= 1
+            th.at_ms = now()
+            // the page's own run stays quiet, the click says what it did
+            result.note = args.mode === 'regroup' ? `Mock: themes ordered: ${(args.keys ?? []).length} points` : ''
+          } else if (verb === 'flow_theme_move') {
+            result.note = ''
+            th.assign[args.key] = args.theme
+            th.by_person = [...new Set([...th.by_person, args.key])]
+          } else if (verb === 'flow_theme_new') {
+            const id = `t${Math.random().toString(16).slice(2, 8).padEnd(6, '0')}`
+            th.themes.push({ id, name: args.name, by: 'person' })
+            th.assign[args.key] = id
+            th.by_person = [...new Set([...th.by_person, args.key])]
+          } else if (verb === 'flow_theme_rename') {
+            th.themes = th.themes.map(t => (t.id === args.theme ? { ...t, name: args.name, by: 'person' } : t))
+          }
+          state.themes = th
+          result.themes = th
+          emit('themes', th)
         }
         if (verb === 'do_it' && args.note) {
           // a start with a sentence (the Work through page): it runs in the return channel at once, as the server records it

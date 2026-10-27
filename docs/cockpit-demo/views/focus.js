@@ -40,8 +40,9 @@ function screenLines(text, n = 4) {
 /** The one next step, large: its kind, its title, where it belongs, what it is about, and the way to act.
  *  The files view (dossier.js) shows its next step in it: `title` in place of the entry's own, `kindWord` in
  *  place of its kind, `sub` a line under the title (where the step comes from and since when). The Work through
- *  page (flow.js) puts its own verbs in its foot (`acts`, in place of the row's buttons or the tab's ways) */
-export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null }) {
+ *  page (flow.js) puts its own verbs in its foot (`acts`, in place of the row's buttons or the tab's ways), and its
+ *  title opens nothing there (`openable` false): the details stand beside the card, no drawer with a walk of its own */
+export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null, openable = true }) {
   const t = T()
   const f = t.home.focus
   const kind = kindOf(x, nowKeys(s))
@@ -56,7 +57,8 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
       <span class="fx-kind"><${Dot} token=${tone === 'accent' ? 'info' : tone} pulse=${kind === 'tab'} />${kindWord ?? f.kind[kind]}</span>
     </header>
     <h2 id="fx-title" class="fx-title">
-      <button type="button" onClick=${e => open(e.currentTarget)}>${x.kind === 'row' && x.row.priority && title == null ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}</button>
+      ${openable ? html`<button type="button" onClick=${e => open(e.currentTarget)}>${x.kind === 'row' && x.row.priority && title == null ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}</button>`
+        : html`${x.kind === 'row' && x.row.priority && title == null ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}`}
     </h2>
     ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
     <div class="fx-meta">

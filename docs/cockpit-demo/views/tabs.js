@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railShown, SCREEN_POLL_MS, tabStateKey } from '../logic.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railOn, SCREEN_POLL_MS, tabStateKey } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -182,7 +182,7 @@ export function TabsColumn({ s, c, byKey, inDrawer }) {
         <h2 class="sec-title" id="tabs-title">${t.tabsTitle} <span class="sec-count mono">${tabs.filter(x => !x.is_control).length}</span></h2>
         <span class="muted small">${waiting ? t.waitCount(waiting) : ''}${waiting && working ? ' · ' : ''}${working ? t.workingCount(working) : ''}</span>
         <span class="tabs-head-acts">
-          ${inDrawer && s.ui.railHidden && s.layout === 'wide' && railShown(s.ui.page, s.rooms?.layout)
+          ${inDrawer && s.ui.railHidden && s.layout === 'wide' && railOn(s, false)
             ? html`<${Btn} variant="ghost" size="xs" title=${t.tabsPinTitle} onClick=${() => c.toggleRail()}>${t.tabsPin}<//>` : null}
           ${inDrawer ? html`<${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${() => c.setDrawer(null)} />`
             : s.layout === 'wide' ? html`<${Btn} variant="ghost" size="xs" title=${t.tabsHideTitle} onClick=${() => c.toggleRail()}>${t.tabsHide}<//>` : null}

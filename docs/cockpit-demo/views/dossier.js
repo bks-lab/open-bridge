@@ -173,12 +173,18 @@ function RunCard({ r, s, c }) {
   </li>`
 }
 
+/** What came back for a task (logic.js fileResults): the starts of the return channel and the workflow runs; the
+ *  Result drawer of a file and the Result block of Work through (views/flow.js) show it the same */
+export function ResultList({ res, s, c }) {
+  return html`${res.returns.length ? html`<div class="ai-cards">${res.returns.map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}</div>` : null}
+    ${res.runs.length ? html`<ul class="entries dz-runs">${res.runs.map(r => html`<${RunCard} key=${r.id} r=${r} s=${s} c=${c} />`)}</ul>` : null}`
+}
+
 /** What came back for the file: the starts of the return channel and the workflow runs, open while one waits */
 function ResultDrawer({ res, s, c }) {
   const d = T().dossier
   return html`<${Drawer} title=${d.drawers.result} n=${res.returns.length + res.runs.length} open=${res.waiting > 0}>
-    ${res.returns.length ? html`<div class="ai-cards">${res.returns.map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}</div>` : null}
-    ${res.runs.length ? html`<ul class="entries dz-runs">${res.runs.map(r => html`<${RunCard} key=${r.id} r=${r} s=${s} c=${c} />`)}</ul>` : null}
+    <${ResultList} res=${res} s=${s} c=${c} />
   <//>`
 }
 
@@ -403,29 +409,37 @@ const reasonWord = x => {
 
 /** The foot of the file: Previous, where it stands, the title of the next file and Next, all buttons for the
  *  mouse. The position opens the whole queue as a list, a click on one walks to it. No key is named here:
- *  n and p walk too, only with the shortcuts switched on (app.js) */
-function Walk({ queue, i, s, c }) {
+ *  n and p walk too, only with the shortcuts switched on (app.js).
+ *  Work through walks its points with the same bar (views/flow.js): `go` walks to an index there (else the files
+ *  view's dossierWalk), `words` names the steps ({label, prev, next, queue}), `titleFor` and `tagsOf` draw an entry
+ *  without a row, `whyOf` its word on the right, `done` the line past the last one, and `onwards` ({title, word,
+ *  onGo}) what comes after the last one: Next then leads there (the next theme or area where something is open) */
+export function Walk({ queue, i, s, c, go: walkTo = null, words = null, titleFor = null, tagsOf = null, whyOf = null, done = null,
+  onwards = null, cls = '' }) {
   const t = T()
-  const w = t.dossier.walk
+  const w = words ?? t.dossier.walk
   const [list, setList] = useState(false)
-  if (queue.length < 2) return null
-  const go = k => { setList(false); c.dossierWalk(queue[k].id, k) }
+  if (queue.length < 2 && !onwards) return null
+  const go = k => { setList(false); walkTo ? walkTo(k) : c.dossierWalk(queue[k].id, k) }
   const next = i + 1 < queue.length ? queue[i + 1] : null
-  return html`<footer class="dz-foot">
+  const title = x => (titleFor ? titleFor(x) : x.row.title)
+  const ahead = next ? short(title(next), 80) : onwards ? onwards.title : done ?? t.nextDone
+  return html`<footer class=${`dz-foot${cls ? ` ${cls}` : ''}`}>
     ${list ? html`<ol id="dz-queue" class="dz-queue">${queue.map((x, k) => html`<li key=${x.id}>
       <button type="button" class="dz-queue-item" aria-current=${k === i ? 'true' : undefined} onClick=${() => go(k)}>
         <span class="dz-queue-n mono">${k + 1}</span>
-        <span class="entry-tags"><${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} /></span>
-        <span class="dz-queue-title">${short(x.row.title, 90)}</span>
-        <span class="dz-queue-why">${reasonWord(x)}</span>
+        <span class="entry-tags">${tagsOf ? tagsOf(x) : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}</span>
+        <span class="dz-queue-title">${short(title(x), 90)}</span>
+        <span class="dz-queue-why">${whyOf ? whyOf(x) : reasonWord(x)}</span>
       </button></li>`)}</ol>` : null}
     <nav class="dz-walk" aria-label=${w.label}>
       <${Btn} variant="secondary" size="sm" icon="back" cls="dz-walk-btn" disabled=${i === 0} onClick=${() => go(i - 1)}>${w.prev}<//>
       <button type="button" class="dz-pos" aria-expanded=${String(list)} aria-controls="dz-queue" title=${w.queue}
         onClick=${() => setList(!list)}><span class="mono">${t.nextPos(i + 1, queue.length)}</span><${Icon} name=${list ? 'chevronDown' : 'chevronUp'} /></button>
-      <span class="dz-walk-next">${next ? short(next.row.title, 80) : t.nextDone}</span>
-      <button type="button" class="btn btn-primary btn-sm dz-walk-btn dz-walk-go" disabled=${!next} onClick=${() => go(i + 1)}>
-        <span class="btn-label">${w.next}</span><${Icon} name="forward" /></button>
+      <span class="dz-walk-next">${ahead}</span>
+      <button type="button" class="btn btn-primary btn-sm dz-walk-btn dz-walk-go" disabled=${!next && !onwards}
+        onClick=${() => (next ? go(i + 1) : onwards?.onGo())}>
+        <span class="btn-label">${next || !onwards ? w.next : onwards.word}</span><${Icon} name="forward" /></button>
     </nav>
   </footer>`
 }
