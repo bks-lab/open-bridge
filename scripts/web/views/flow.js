@@ -4,7 +4,7 @@
 // themselves, and once one is entered its points (views/flowside.js FlowSide). The middle shows the overview of the
 // theme entered, or of all of them (views/flowlist.js FlowOverview: a table of the points with a suggestion each and
 // the batch bar), until a title opens a point (ui.flowView): Back to overview, a line while points are ticked, the
-// point as a card with its verbs (views/verbbar.js), held by its id (logic.js focusIndex) so the next one moves up
+// point as a card with its verbs (views/verbbar.js), the suggested one strong and the suggestion under it, held by its id (logic.js focusIndex) so the next one moves up
 // after a decision, in the queue's fixed order (logic.js flowQueue: the return card after a jump to a tab, the tabs
 // that ask, what an agent finished, a start that got lost, the questions for you; then what is in progress; then the
 // tasks in review; the reports as one card). A point in progress says who works on it and since when (logic.js
@@ -26,13 +26,13 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  canTab, duration, errorText, flowAction, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex,
+  canTab, duration, errorText, flowAction, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, flowSuggestion, focusIndex,
   formatDay, isoDate, pointsIn, prepTargets, previewText, replySend, restSuggestions, short, stageTone, tabOfTask, themesToAsk, DAY,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
 import { Walk } from './dossier.js'
-import { FlowOverview, listRows } from './flowlist.js'
+import { FlowOverview, listRows, Suggestion } from './flowlist.js'
 import { FlowDetails, FlowSide, SideDot, sideName } from './flowside.js'
 import { Calm, Hero } from './focus.js'
 import { GuideTree } from './guide.js'
@@ -220,8 +220,11 @@ function Card({ x, n, s, c }) {
   const row = x.row
   const tab = row.task ? tabOfTask(tabs, row.task) : null
   const sub = x.task ? f.forTask(x.task.title) : null
+  // the strong button is the verb the overview suggests for this point, where the bar has it (Needs you has none)
+  const sug = flowSuggestion(row, s)?.verb
+  const primary = ['do', 'done', 'later', 'drop'].includes(sug) ? sug : null
   return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${f.kind[x.group]} sub=${sub} openable=${false}
-    acts=${html`<${VerbBar} row=${row} s=${s} c=${c} extra=${html`<${TabWays} tab=${tab} row=${row} title=${row.title} s=${s} c=${c} />`} />`} />`
+    acts=${html`<${VerbBar} row=${row} s=${s} c=${c} primary=${primary} extra=${html`<${TabWays} tab=${tab} row=${row} title=${row.title} s=${s} c=${c} />`} />`} />`
 }
 
 /** What the queue leaves out, folded under one line: by why, each with its day when it was put off */
@@ -282,6 +285,14 @@ function DoingCard({ x, s, c }) {
   </article>`
 }
 
+/** The AI suggestion of an open point under its card, the same words as its row in the overview, so opening a
+ *  point keeps the why in view. Nothing without a suggestion */
+function PointAdvice({ row, s }) {
+  const sug = row ? flowSuggestion(row, s) : null
+  if (!sug) return null
+  return html`<p class="flow-advice"><span class="label-caps">${T().flow.list.cols.suggestion}</span> <${Suggestion} sug=${sug} s=${s} /></p>`
+}
+
 /** A point's title and its kind in a word, for the tabs, the walk and the list */
 const pointTitle = x => (x.group === 'doing' ? x.row?.title ?? x.title ?? x.start?.title ?? x.tab?.name ?? '' : cardTitle(x))
 const pointKind = x => (x.group === 'doing' ? T().flow.kind.doing : cardKind(x))
@@ -337,7 +348,8 @@ export function FlowPage({ s, c }) {
             </header>
             ${picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
               <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null}
-            <div class="flow-card" key=${x.id}>${x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} c=${c} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`}</div>
+            <div class="flow-card" key=${x.id}>${x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} c=${c} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`}
+              <${PointAdvice} row=${x.row} s=${s} /></div>
             <${Walk} queue=${queue} i=${i} s=${s} c=${c} go=${go} words=${{ ...f.walk2, queue: t.dossier.walk.queue }} titleFor=${pointTitle}
               tagsOf=${() => null} whyOf=${pointKind} done=${f.walk2.last} onwards=${onwards} cls="flow-walk" />`}
       </section>

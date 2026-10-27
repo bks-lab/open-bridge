@@ -55,8 +55,9 @@ function ageDays(row, nowMs) {
   return Math.max(0, Math.round((new Date(`${isoDate(nowMs)}T00:00:00`).getTime() - then) / DAY))
 }
 
-/** A suggestion as a chip: its verb (Later with its day), its half sentence, where it comes from on hover */
-function Suggestion({ sug, s }) {
+/** A suggestion as a chip: its verb (Later with its day), its half sentence, where it comes from on hover; the
+ *  overview's table and the open point (views/flow.js PointAdvice) draw it alike */
+export function Suggestion({ sug, s }) {
   const f = T().flow.list
   const lang = language()
   if (!sug) return html`<span class="muted small">${f.none}</span>`

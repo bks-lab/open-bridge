@@ -318,7 +318,9 @@ out a workspace:
   selection. A click on a title, on the left or in the table, opens the
   **point**: on top **Back to overview** with the theme's name beside it, a
   line "n ticked" with **See in the overview** while points are ticked, then
-  the point as a card with its verbs, and under it the files view's walk bar
+  the point as a card with its verbs, the suggested one the strong button, its
+  AI suggestion with the half sentence of why as the overview shows it, and
+  under it the files view's walk bar
   (**Previous point**, "n of m", the next title, **Next point**). After the
   last point of a theme or area it leads to the first point of the next one
   where something is open. Neither the title nor anything else opens the item

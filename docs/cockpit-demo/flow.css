@@ -71,6 +71,10 @@
 .flow-main-theme { font-size: var(--text-sm); }
 .flow-picked-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+/* the suggestion of an open point under its card, as its row in the overview says it */
+.flow-advice { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 12px 0 0; padding: 10px 14px;
+  border: 1px solid var(--border); border-left: 3px solid var(--info); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-advice > .label-caps { color: var(--on-surface-muted); }
 .flow-who { margin: 0; color: var(--on-surface); }
 .flow-who .label-caps { margin-right: 6px; color: var(--on-surface-muted); }
 /* the files view's bar, sticky under the card as it is under a file */

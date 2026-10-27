@@ -457,6 +457,25 @@ test('the open point: Back to overview, what is ticked, the card with its verbs,
   assert.equal(none.$('.flow-picked-line'), null)
 })
 
+test('the open point carries the suggestion the overview shows: its words under the card, its verb the strong button', () => {
+  const q = 'inbox:20261009-0900-a-q'
+  const themes = themesState({ suggest: { [q]: { verb: 'done', reason: 'Answered in the thread', at_ms: NOW - MIN } } })
+  const s = opsState({ flowView: 'point', flowAt: { id: q, i: 0 }, flowMode: 'areas' })
+  const el = mount(html`<${FlowPage} s=${{ ...s, themes }} c=${recorder()} />`)
+  // the same suggestion as in the overview's table, with its half sentence of why
+  const advice = el.$('.flow-card .flow-advice')
+  assert.ok(advice, 'the suggestion stands under the card')
+  assert.match(advice.text(), new RegExp(en.flow.list.cols.suggestion))
+  assert.match(advice.text(), new RegExp(en.flow.list.verb.done))
+  assert.match(advice.text(), /Answered in the thread/)
+  // the card's strong button is the suggested verb, not Advise
+  const strong = el.$$('.flow-card .fx-acts button').filter(b => b.getAttribute('class').includes('primary')).map(b => b.text().trim())
+  assert.deepEqual(strong, [en.flow.verbs.done])
+  // without a suggestion: no line under the card
+  const plain = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  assert.equal(plain.$('.flow-card .flow-advice'), null)
+})
+
 test('In progress on the card: who works on it, the last lines, To tab, and Let AI go on only without a tab at work', () => {
   const busy = { ref: 'surface:21', name: 'busy', slug: 'busy', state: 'working', since_ms: NOW - 18 * MIN, last: 'Running the tests' }
   let c = recorder()
