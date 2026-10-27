@@ -3269,8 +3269,11 @@ test('Later: Back on in one click on each row that can come back, beside the bat
   assert.ok(!back(rowOf('Question 20261009-0904-a-w')), 'nothing to take back on: no button')
   back(rowOf('Task put-off')).click()
   assert.deepEqual(c.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'unhide', args: { key: 'task:put-off' } }], 'left'])
-  // the column Why still says only why
+  // the column Why still says only why, and wraps so the button beside it keeps its room
   assert.equal(rowOf('Task put-off').$('.flow-ov-why').text(), en.flow.notnow.why.hidden(logic.formatDay('2026-10-20', 'en')))
+  const css = fs.readFileSync(new URL('../web/flow.css', import.meta.url), 'utf8')
+  assert.match(css, /\.flow-ov-stage\.flow-ov-why \{ white-space: normal;/)
+  assert.match(css, /\.flow-ov-act \{ width: 1%; white-space: nowrap; \}/)
 })
 
 test('R6B 2g: the right column stands only while a point or an entry is open; a list of Not now and Prio say how they work in the middle', () => {

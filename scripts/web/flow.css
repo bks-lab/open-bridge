@@ -206,6 +206,9 @@
 .flow-ov-stage { white-space: nowrap; }
 .flow-ov-stage .dot { margin-right: 4px; }
 .flow-ov-area { white-space: nowrap; }
+/* in Later the column Why wraps, so Back on beside it keeps its room */
+.flow-ov-stage.flow-ov-why { white-space: normal; min-width: 12em; }
+.flow-ov-act { width: 1%; white-space: nowrap; }
 .flow-sug { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
 .flow-sug-verb { flex: none; padding: 1px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-full); font-weight: 600; font-size: var(--text-label); }
 .flow-sug-done .flow-sug-verb { border-color: var(--success); color: var(--success); }
@@ -326,6 +329,7 @@
   .flow-ov-row > td.flow-ov-point { grid-column: 2 / -1; }
   .flow-ov-row > td.flow-ov-stage { grid-column: 2; }
   .flow-ov-row > td.flow-ov-sug { grid-column: 2 / -1; padding-bottom: 8px; }
+  .flow-ov-row > td.flow-ov-act { grid-column: 2 / -1; padding-bottom: 8px; }
 }
 
 /* the card in front */
