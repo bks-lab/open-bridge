@@ -706,6 +706,61 @@ test('row steps as buttons: a busy row disables its buttons', () => {
   assert.equal(el.$('button').hasAttribute('disabled'), true)
 })
 
+// ---------------------------------------------------------------- the dates page shows time only (views/dates.js)
+
+// a day n days after NOW as the server writes it, and one event on it at `hour`
+const calDay = n => { const d = new Date(2026, 9, 9 + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const calEvent = (index, n, hour, more = {}) => ({ index, title: `Date ${index}`, cal: { start: `${calDay(n)}T${hour}:00`, end: `${calDay(n)}T${hour}:30`,
+  day: calDay(n), minutes: 30, all_day: false, calendar: 'Work', info: false, where: null, online: false, people: [], past: false, running: false,
+  overlaps: [], ...more } })
+
+/** A dates page with these events and, beside the calendar, a section of due rows (overdue and due this week) */
+function renderDates(events) {
+  const cal = { id: 'calendar', kind: 'calendar', view: 'agenda', title: 'Calendar', status: 'ok', items: events, count: events.length, total: events.length,
+    cal_figures: { today: 2, busy_today: 60, tomorrow: 1, week: 3, overlaps: 1, info_week: 0, day_start: 8, day_end: 20,
+      next: { start: `${calDay(0)}T14:00`, title: 'Date 1' }, free_today: { minutes: 90, from: `${calDay(0)}T15:00` } } }
+  const due = { id: 'deadlines', kind: 'command', title: 'Deadlines', status: 'ok', count: 2, total: 2,
+    items: [{ index: 0, title: 'Slides', due_at: calDay(-2) }, { index: 1, title: 'Offer', due_at: calDay(3) }] }
+  const page = { id: 'dates', title: 'Dates', sections: [cal, due] }
+  const c = recorder()
+  return { el: mount(html`<${views.pages.PageSection} page=${page} section=${cal} s=${cockpitState(NOW)} c=${c} />`), c }
+}
+
+test('dates: two figures at most, the overlaps and the free block today; no day counts, no next date, no due rows of the page', () => {
+  const { el } = renderDates([calEvent(0, 0, 14, { overlaps: ['Date 1'] }), calEvent(1, 0, 14, { overlaps: ['Date 0'] }), calEvent(2, 1, 9)])
+  assert.deepEqual(el.$$('.calf-label').map(x => x.text()), [en.cal.fig.overlaps, en.cal.fig.free])
+  assert.ok(!el.$('.calf-title'), 'no tile names the next date')
+})
+
+test('dates: the overlaps figure still filters the agenda', async () => {
+  const { el } = renderDates([calEvent(0, 0, 14, { overlaps: ['Date 1'] }), calEvent(1, 0, 14, { overlaps: ['Date 0'] }), calEvent(2, 1, 9)])
+  assert.equal(el.$$('.cal-row').length, 3)
+  el.$$('.calf-tile')[0].click()
+  await new Promise(r => setTimeout(r, 20))
+  assert.deepEqual(el.$$('.cal-row .cal-title').map(x => x.text().trim()), ['Date 0', 'Date 1'])
+})
+
+test('dates: the month view stands once the loaded dates span four weeks; a month kept in the browser shows the agenda till then', () => {
+  const modes = el => el.$$('.ghb-mode-btn').map(b => b.text())
+  const short = [calEvent(0, 0, 9), calEvent(1, 26, 9)]   // 27 days, today included
+  const long = [calEvent(0, 0, 9), calEvent(1, 27, 9)]    // 28 days
+  assert.deepEqual(modes(renderDates(short).el), [en.cal.views.agenda, en.cal.views.week])
+  assert.deepEqual(modes(renderDates(long).el), [en.cal.views.agenda, en.cal.views.week, en.cal.views.month])
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const kept = []
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true,
+    value: { getItem: () => 'month', setItem: (k, v) => kept.push([k, v]) } })
+  try {
+    const hidden = renderDates(short).el
+    assert.ok(!!hidden.$('.cal-agenda') && !hidden.$('.cal-month'), 'the agenda while the month is hidden')
+    assert.ok(!!renderDates(long).el.$('.cal-month'), 'the month once four weeks are loaded')
+    assert.deepEqual(kept, [], 'hiding the month does not overwrite the kept choice')
+  } finally {
+    if (had) Object.defineProperty(globalThis, 'localStorage', had)
+    else delete globalThis.localStorage
+  }
+})
+
 // ---------------------------------------------------------------- quick_live: only the chat re-renders (#400)
 
 /** views/chat.js and the vendored Preact from a copy of their own (cockpit_render.mjs loads other views) */
