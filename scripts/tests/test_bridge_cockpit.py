@@ -1854,6 +1854,49 @@ def test_the_history_is_filled_once_from_the_older_audit_log(tmp_path):
     assert History(state, lambda: 0).backfill(root, state / "audit.log") == 0  # only once
 
 
+def test_a_history_entry_keeps_who_decided_and_a_click_of_the_person_keeps_none(tmp_path):
+    from lib.bridge_cockpit.history import History, item
+    h = History(tmp_path, lambda: 1_760_000_000_000)
+    h.add("later", [item("task:a", "A", "other", "hidden until 2026-10-10")], by="suggestion")
+    h.add("settle", [item("task:b", "B", "task", "done", "b")])
+    h.add("settle", [item("task:c", "C", "task", "done", "c")], by="")
+    by = {e["items"][0]["key"]: e.get("by") for e in History(tmp_path, lambda: 0).state()}
+    assert by == {"task:a": "suggestion", "task:b": None, "task:c": None}
+    assert all("by" not in e for e in h.state() if e["items"][0]["key"] != "task:a")
+
+
+def test_by_is_kept_in_the_history_the_starts_and_the_audit_line(world):
+    world.act("later", key="task:demo-task", until=TOMORROW, by="suggestion")
+    entry = world.app.history.state()[0]
+    assert entry["verb"] == "later" and entry["by"] == "suggestion"
+    other = world.root / "work" / "tasks" / "other-task"
+    other.mkdir()
+    (other / "STATUS.md").write_text("---\nstatus: doing\n---\n# Other\n", encoding="utf-8")
+    world.act("do_it", keys=["task:other-task"], note="Go on with it", by="instruction")
+    launch = next(x for x in world.app.launches.all() if x["key"] == "task:other-task")
+    assert launch["by"] == "instruction"
+    world.act("settle", keys=[f"inbox:{YES_ID}"], outcome="done", by="batch")
+    assert world.app.history.state()[0]["by"] == "batch"
+    lines = (world.state / "audit.log").read_text(encoding="utf-8").splitlines()
+    assert any(" later task:demo-task " in x and " by=suggestion" in x for x in lines)
+    assert any(" do_it task:other-task " in x and " by=instruction" in x for x in lines)
+    # a click of the person's own sends no by, and the entry carries none
+    world.act("hide", key="task:other-task", until=TOMORROW)
+    assert "by" not in world.app.history.state()[0]
+
+
+def test_by_is_one_of_three_words_and_only_on_the_decision_verbs(world):
+    with pytest.raises(ActionError) as e:
+        world.act("later", key="task:demo-task", until=TOMORROW, by="robot")
+    assert e.value.code == "invalid_argument" and e.value.field == "by"
+    with pytest.raises(ActionError) as e:
+        world.act("note", key="task:demo-task", text="x", by="batch")
+    assert e.value.field == "by"
+    with pytest.raises(ActionError) as e:
+        world.act("shelve", key="task:demo-task", reason="not needed", by="")
+    assert e.value.field == "by"
+
+
 def test_settle_asks_before_a_stream_ends_and_rows_say_whether_they_settle(world):
     refused(world, "not_applicable", "settle", keys=["task:quiet-task"], outcome="done")
     assert world.row("task:quiet-task")["settle"] == ["done", "not_doing"]

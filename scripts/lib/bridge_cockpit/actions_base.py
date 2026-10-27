@@ -51,6 +51,9 @@ STEP_MAX = 300
 REASON_MAX = 200
 # how the chat's route chip came to its choice (logic.js routeOf, views/chat.js)
 ROUTE_BY = ("prefix", "words", "default", "flipped", "forced")
+# who decided a do_it, later, shelve or settle the Work through page sends: a suggestion taken over, a batch, a line
+# of the instruction line; absent, the person's own click. Kept in the history and the starts, acted on nowhere
+BY_CHOICES = ("suggestion", "batch", "instruction")
 
 SHORT_TIMEOUT = 30
 LAUNCH_TIMEOUT = 150
@@ -63,17 +66,17 @@ LIST_TIMEOUT = 20
 SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # note: the person's sentence for this start; it goes on the item first (a live tab gets it typed in instead)
     "do_it": {"keys": ("keys", True), "target": ("target", False), "model": ("launch_model", False), "effort": ("launch_effort", False),
-              "note": ("text", False)},
+              "note": ("text", False), "by": ("by", False)},
     "advise": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False),
                         "note": ("text", False)},
     # text: the person's sentence, kept where the row lives (WorkVerbs.write_note)
-    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False)},
+    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False), "by": ("by", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
     # until: the day the idea may surface again, else task.py's own default
-    "shelve": {"key": ("key", True), "reason": ("reason", True), "until": ("date", False)},
+    "shelve": {"key": ("key", True), "reason": ("reason", True), "until": ("date", False), "by": ("by", False)},
     "unhide": {"key": ("key", True)},
     "drop": {"key": ("key", True), "reason": ("drop_reason", False)},
     "inbox_unmute": {"id": ("inbox_id", True)},
@@ -83,7 +86,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "priority": {"key": ("key", True), "value": ("priority", True)},
     # stream: the page asked, and a stream among the keys ends (task.py close --stream)
     "task_close": {"keys": ("keys", True), "reason": ("close_reason", True), "text": ("text", False), "stream": ("bool", False)},
-    "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False), "stream": ("bool", False)},
+    "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False), "stream": ("bool", False),
+               "by": ("by", False)},
     "quick_handoff": {"conv": ("conv", True), "to": ("handoff", True), "text": ("long_text", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "quick_forget": {"conv": ("conv", True)},
     # `routed`: how the chat's route chip chose the tab (audit only, never acted on)
@@ -292,6 +296,7 @@ class Ctx:
         self.pick: dict = {}           # the model and effort the start of this action asks for (launch.py)
         self.locked = False            # this action holds the write lock
         self.go: dict | None = None    # where the note leads (note_go), the first note that names a place
+        self.by: str | None = None     # who decided (BY_CHOICES), None for the person's own click
 
     @contextlib.contextmanager
     def unlocked(self):

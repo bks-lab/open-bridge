@@ -319,3 +319,15 @@ def test_a_result_line_of_an_earlier_start_the_same_day_is_not_this_starts(tmp_p
     task_note(tmp_path, "alpha", day, "Result: this run's answer")
     r = {x["key"]: x for x in returns.build(b.all(), tabs, {}, tmp_path, T0 + 5 * MIN)}["task:alpha"]
     assert r["stage"] == "result" and r["result"]["text"] == "Result: this run's answer"
+
+
+def test_a_start_keeps_who_decided_it_and_only_as_a_word(tmp_path):
+    """by (suggestion, batch, instruction) goes along with the start for the Activity tab; nothing acts on it"""
+    clock = Clock(T0)
+    b = returns.Launches(tmp_path / "state", clock)
+    b.record([{"key": "task:alpha", "item": "alpha", "title": "Alpha", "mode": "go", "by": "instruction"},
+              {"key": "task:beta", "item": "beta", "title": "Beta", "mode": "go", "by": 7},
+              {"key": "task:gamma", "item": "gamma", "title": "Gamma", "mode": "report"}])
+    got = {x["key"]: x for x in returns.Launches(tmp_path / "state", clock).all()}
+    assert got["task:alpha"]["by"] == "instruction"
+    assert "by" not in got["task:beta"] and "by" not in got["task:gamma"]

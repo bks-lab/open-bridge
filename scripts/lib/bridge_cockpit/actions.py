@@ -33,7 +33,7 @@ from .history import REOPEN_AS
 from .store import append_log
 # every shared name stays importable from here (ActionError, SPEC, the patterns): callers never changed
 from .actions_base import *  # noqa: F401,F403
-from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
+from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, BY_CHOICES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, REASON_MAX, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
                            STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
@@ -89,6 +89,7 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
     "tour_how": (TOUR_HOW, "finished or skipped"),
     "themes_mode": (thm.MODES, "assign or regroup"),
+    "by": (BY_CHOICES, "suggestion, batch or instruction"),
 }
 
 
@@ -398,6 +399,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             or clean.get("proposal") or clean.get("relay_id") or clean.get("slug") or clean.get("id") or ""
         handler = getattr(self, f"v_{verb}")
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
+        ctx.by = clean.pop("by", None)
         if verb in READ_ONLY_VERBS:
             handler(ctx, **clean)
         elif verb in LOCAL_VERBS:
@@ -431,7 +433,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             if ctx.steps or ctx.notes or ctx.settled:
                 self.audit(ctx)
             if ctx.history and getattr(self.app, "history", None) is not None:
-                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history)
+                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history, by=ctx.by)
                 ctx.extra["undo"] = [{"title": x["title"], "kind": x["kind"], "undo": x["undo"]}
                                      for x in ctx.history if x.get("undo")]
             if refused is not None:
@@ -440,7 +442,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
     def audit(self, ctx: Ctx) -> None:
         exits = ",".join(str(s["exit"]) for s in ctx.steps) or "-"
         ok = all(s["ok"] for s in ctx.steps)
-        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **ctx.audit_extra)
+        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **({"by": ctx.by} if ctx.by else {}), **ctx.audit_extra)
 
     def audit_line(self, verb: str, subject: str = "", **fields: Any) -> None:
         """One line in audit.log: time, verb, subject, then key=value. The one writer of that file, for
