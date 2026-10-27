@@ -11,7 +11,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
 
-const { html, views, text, logic } = await loadCockpit()
+const { html, views, text, logic, mock } = await loadCockpit()
 const { FlowPage } = views.flow
 const { VerbBar } = views.verbbar
 const en = text.TABLES.en
@@ -932,11 +932,12 @@ test('batchPlan: the suggestions take done, drop and later, never Let AI do it u
   assert.deepEqual(logic.batchPreselect(rows, s), ['task:d1', 'task:d2', 'task:drop', 'task:later'])
   let plan = logic.batchPlan(rows.filter(r => r.task !== 'mine'), 'suggested', s)
   // Done for several goes out as one settle; drop shelves with its reason; later with its day; the start with its own sentence
+  // each with by: suggestion, which the server keeps in the history and the launches
   assert.deepEqual(plan.calls, [
-    { verb: 'settle', args: { keys: ['task:d1', 'task:d2'], outcome: 'done' } },
-    { verb: 'later', args: { key: 'task:later', until: '2026-10-12' } },
-    { verb: 'shelve', args: { key: 'task:drop', reason: en.flow.drop.reason.not_needed } },
-    { verb: 'do_it', args: { keys: ['task:agent'], note: en.flow.start.note('Task agent') } }])
+    { verb: 'settle', args: { keys: ['task:d1', 'task:d2'], outcome: 'done', by: 'suggestion' } },
+    { verb: 'later', args: { key: 'task:later', until: '2026-10-12', by: 'suggestion' } },
+    { verb: 'shelve', args: { key: 'task:drop', reason: en.flow.drop.reason.not_needed, by: 'suggestion' } },
+    { verb: 'do_it', args: { keys: ['task:agent'], note: en.flow.start.note('Task agent'), by: 'suggestion' } }])
   assert.deepEqual(plan.counts, { done: 2, later: 1, drop: 1, do: 1 })
   assert.equal(logic.batchSummary(plan, 'en'), en.flow.batch.summary(plan))
   // at max_running the start stays out, and the plan says why
@@ -949,14 +950,14 @@ test('batchPlan: the suggestions take done, drop and later, never Let AI do it u
   assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:agent', 'running']])
   // one verb for all: Done where a row offers it, Drop with one reason for all, Later with one day
   plan = logic.batchPlan([task('d1'), task('x', { stream: true, settle: [] })], 'done', s)
-  assert.deepEqual(plan.calls, [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done' } }])
+  assert.deepEqual(plan.calls, [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done', by: 'batch' } }])
   assert.deepEqual(plan.skipped.map(x => x.why), ['not_offered'])
   plan = logic.batchPlan([task('d1'), ask('20261009-0900-a-q')], 'drop', s, 'Nobody needs it')
-  assert.deepEqual(plan.calls, [{ verb: 'shelve', args: { key: 'task:d1', reason: 'Nobody needs it' } },
-    { verb: 'settle', args: { keys: ['inbox:20261009-0900-a-q'], outcome: 'not_doing', text: 'Nobody needs it' } }])
+  assert.deepEqual(plan.calls, [{ verb: 'shelve', args: { key: 'task:d1', reason: 'Nobody needs it', by: 'batch' } },
+    { verb: 'settle', args: { keys: ['inbox:20261009-0900-a-q'], outcome: 'not_doing', text: 'Nobody needs it', by: 'batch' } }])
   assert.equal(logic.batchPlan([task('d1')], 'drop', s, '').calls.length, 0)
   plan = logic.batchPlan([task('d1'), task('d2')], 'later', s, '2026-10-12')
-  assert.deepEqual(plan.calls.map(x => x.args), [{ key: 'task:d1', until: '2026-10-12' }, { key: 'task:d2', until: '2026-10-12' }])
+  assert.deepEqual(plan.calls.map(x => x.args), [{ key: 'task:d1', until: '2026-10-12', by: 'batch' }, { key: 'task:d2', until: '2026-10-12', by: 'batch' }])
 })
 
 test('the overview: suggestions with where they come from, Tick, the ticked line, Run with one line to confirm, then one undo', async () => {
@@ -996,8 +997,8 @@ test('the overview: suggestions with where they come from, Tick, the ticked line
   assert.equal(c2.calls.filter(x => x[0] === 'flowBatch').length, 0)
   el2.button(en.flow.list.confirm).click()
   await tick()
-  assert.deepEqual(c2.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done' } },
-    { verb: 'shelve', args: { key: 'task:drop', reason: 'No longer needed' } }]])
+  assert.deepEqual(c2.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done', by: 'suggestion' } },
+    { verb: 'shelve', args: { key: 'task:drop', reason: 'No longer needed', by: 'suggestion' } }]])
   assert.ok(c2.calls.some(x => x[0] === 'flowPick' && x[2] === false))
   // the same for all: Done with the two ticked plans a settle of both
   const el3 = mount(html`<${FlowPage} s=${s2} c=${recorder()} />`)
@@ -1039,4 +1040,285 @@ test('themesAsker: each key once, but a run that failed leaves its keys free for
   release(true)
   await first
   assert.deepEqual(sent.slice(-1), [['x']])
+})
+
+// ---------------------------------------------------------------- round 3: tabs under the card, one Activity, fields
+// right, the instruction line, nothing twice
+
+
+/** A row of the activity feed as /api/flow/activity sends it */
+const arow = (over = {}) => ({ id: 'note:1', at: '2026-10-09T09:00', at_ms: NOW - 3 * 60 * MIN, kind: 'note', filters: ['notes'], text: '',
+  change: null, undone_ms: null, by: null, links: [], doc: null, agent: null, ...over })
+
+/** The feed of task:a: one row of each source, the counts before a cut, the facts and what the page may do */
+const feedOf = (key = 'task:a', over = {}) => ({ ok: true, key, at_ms: NOW, more: false,
+  rows: [
+    arow({ id: 'theme:1', at: '2026-10-09T09:40', kind: 'theme', filters: ['state'], change: { field: 'theme', old: null, new: 'Release work' },
+      by: { kind: 'themes', name: null } }),
+    arow({ id: 'doc:1', at: '2026-10-09T09:12', kind: 'doc', filters: ['docs'], text: 'The first draft', by: { kind: 'you', name: null },
+      doc: { path: 'deliverables/draft.md', state: 'new', changes: 1, attached: false, bytes: 1200 },
+      links: [{ kind: 'doc', slug: 'a', path: 'deliverables/draft.md' }] }),
+    arow({ id: 'agent:1', at: '2026-10-09T08:12', kind: 'agent', filters: ['agents', 'state'], text: 'Started: write the draft',
+      change: { field: 'driver', old: null, new: 'draft-tab' }, by: { kind: 'suggestion', name: null }, links: [{ kind: 'tab', ref: 'surface:5' }],
+      agent: { mode: 'go', stage: 'working', result: null } }),
+    arow({ id: 'decision:1', at: '2026-10-08T17:20', kind: 'decision', filters: ['state'],
+      change: { field: 'decision', old: null, new: 'later', until: '2026-10-12' }, undone_ms: NOW - 60 * MIN, by: { kind: 'batch', name: null } }),
+    arow({ id: 'code:1', at: '2026-10-08', kind: 'code', filters: ['code'], text: 'example/repo#18 The setup guide', by: { kind: 'git', name: null },
+      links: [{ kind: 'web', href: 'https://github.com/example/repo/pull/18' }] }),
+    arow({ id: 'note:1', at: '2026-10-07', kind: 'note', filters: ['notes'], text: 'Outline agreed' }),
+    arow({ id: 'status:1', at: '2026-10-06T10:00', kind: 'status', filters: ['state'], change: { field: 'status', old: 'backlog', new: 'doing' },
+      by: { kind: 'git', name: null } }),
+  ],
+  counts: { all: 7, notes: 1, docs: 1, state: 4, agents: 1, code: 1 },
+  facts: { created: '2026-10-05', moved: '2026-10-09T09:40',
+    jev: { quadrant: 'plan', rank: 4, urgency: 0.67, impact: 1.0, effort: 0.33, only_me: 0.8, at_ms: NOW } },
+  summary: null, can: { note: true, attach: true, summary: true }, ...over })
+
+/** The task detail of /api/task for task:a: its card, two steps of three done, two related paths */
+const detailOf = (over = {}) => ({ ok: true, slug: 'a', kind: 'task', path: 'work/tasks/a/STATUS.md',
+  front: { status: 'doing', created: '2026-10-05', origin: 'https://example.org/tickets/7' },
+  sections: [{ heading: 'Steps', text: '- [x] Outline\n- [X] Examples\n- [ ] Screenshots', truncated: false }],
+  log: [], inbox: [], related: ['docs/guide.md', 'work/tasks/b/STATUS.md'],
+  card: { kind: 'task', goal: 'A new member sets up the project in an hour', story: null, acceptance: ['Every step is written down'] }, ...over })
+
+/** The page on one point open: the flow blocks on as the demo has them, the detail and the feed loaded for task:a */
+function pointState({ rows = [task('a', { area: 'Ops' })], feed = feedOf(), detail = detailOf(), flow = {}, ui = {}, ...rest } = {}) {
+  const base = state({ work: rows, ...rest })
+  return cockpitState(NOW, { ...base,
+    work: { flow: { enabled: true, drop_reasons: ['resolves_itself', 'not_needed'], return_after_s: 20,
+      summary: { enabled: true, budget_per_day: 10, model: null }, instruct: { enabled: true, budget_per_day: 30, model: null },
+      attach: { enabled: true, max_mb: 10 }, ...flow } },
+    flow_ai: { summary_left: 9, instruct_left: 29, instruct_running: false },
+    details: { inbox: {}, task: detail ? { a: { status: 'ok', ver: 0, data: detail } } : {},
+      activity: feed ? { [feed.key]: { status: 'ok', ver: 0, data: feed } } : {} },
+    ui: { ...base.ui, page: 'briefing', workView: 'flow', flowView: 'point', flowAt: { id: rows[0].key, i: 0 }, flowTab: 'desc', flowFilter: 'all', ...ui } })
+}
+
+test('pointTabs: Description and Activity on every point with a row, Steps and Related with a task, none for a tab alone or the reports', () => {
+  assert.deepEqual(logic.FLOW_TABS, ['desc', 'steps', 'activity', 'related'])
+  assert.deepEqual(logic.pointTabs({ kind: 'row', row: task('a') }), ['desc', 'steps', 'activity', 'related'])
+  assert.deepEqual(logic.pointTabs({ kind: 'row', row: ask('20261009-0900-a-q') }), ['desc', 'activity'])
+  assert.deepEqual(logic.pointTabs({ kind: 'row', row: ask('20261009-0900-a-q', { task: 'a' }) }), ['desc', 'steps', 'activity', 'related'])
+  assert.deepEqual(logic.pointTabs({ kind: 'tab', tab: { ref: 'surface:1' }, row: null }), [])
+  assert.deepEqual(logic.pointTabs({ kind: 'reports', rows: [report('20261009-0901-a-r')] }), [])
+  // the tab chosen stays from point to point; one the point lacks falls back to Description
+  assert.equal(logic.pointTab(['desc', 'activity'], 'activity'), 'activity')
+  assert.equal(logic.pointTab(['desc', 'activity'], 'steps'), 'desc')
+  assert.equal(logic.pointTab(['desc', 'activity'], null), 'desc')
+})
+
+test('stepsOf: the checklist lines of STATUS.md as they stand, done or open', () => {
+  assert.deepEqual(logic.stepsOf(detailOf()), [{ done: true, text: 'Outline' }, { done: true, text: 'Examples' }, { done: false, text: 'Screenshots' }])
+  assert.deepEqual(logic.stepsOf(null), [])
+  assert.deepEqual(logic.stepsOf({ sections: [{ text: 'no list here\n- a plain bullet' }] }), [])
+})
+
+test('activityRows and activityCounts: a filter keeps the rows that carry it, the counts are the server\'s, before its cut', () => {
+  const feed = feedOf()
+  assert.deepEqual(logic.ACTIVITY_FILTERS, ['all', 'notes', 'docs', 'state', 'agents', 'code'])
+  assert.equal(logic.activityRows(feed, 'all').length, 7)
+  assert.deepEqual(logic.activityRows(feed, 'state').map(r => r.id), ['theme:1', 'agent:1', 'decision:1', 'status:1'])
+  assert.deepEqual(logic.activityRows(feed, 'agents').map(r => r.id), ['agent:1'])
+  assert.deepEqual(logic.activityRows(null, 'all'), [])
+  // the server counts before it cuts at 200 rows: its counts stand, even where the rows shown are fewer
+  assert.deepEqual(logic.activityCounts({ ...feed, counts: { ...feed.counts, all: 260 }, more: true }).all, 260)
+  // a feed without counts is counted from its rows
+  assert.deepEqual(logic.activityCounts({ rows: feed.rows }), { all: 7, notes: 1, docs: 1, state: 4, agents: 1, code: 1 })
+})
+
+test('activityWhen: a day and a time in the page\'s language, a day alone for a source with only the day', () => {
+  assert.equal(logic.activityWhen('2026-10-27T09:40', 'de'), '27.10. 09:40')
+  assert.equal(logic.activityWhen('2026-10-27', 'de'), '27.10.')
+  assert.match(logic.activityWhen('2026-10-27T09:40', 'en'), /^Oct 27 09:40$/)
+  assert.equal(logic.activityWhen('', 'en'), '')
+})
+
+test('flowFields: the fields of a point in their order, never a status; Prio from Jev, else the triage rank, else the priority', () => {
+  const s = pointState()
+  const x = queueOf(s)[0]
+  const fields = logic.flowFields(x, s, feedOf(), detailOf())
+  assert.deepEqual(fields.map(f => f.id), ['area', 'who', 'prio', 'urgency', 'impact', 'effort', 'due', 'source', 'created', 'moved'])
+  assert.ok(!fields.some(f => ['status', 'state'].includes(f.id)), 'no Status field: the card head says it')
+  const by = Object.fromEntries(fields.map(f => [f.id, f]))
+  assert.deepEqual(by.prio.jev, { quadrant: 'plan', rank: 4 })
+  assert.deepEqual([by.urgency.value, by.impact.value, by.effort.value], [0.67, 1.0, 0.33])
+  assert.equal(by.area.value, 'Ops')
+  assert.equal(by.who.drive.by, 'none')
+  assert.equal(by.source.url, 'https://example.org/tickets/7', 'STATUS.md origin when it is a link')
+  assert.equal(by.created.value, '2026-10-05')
+  assert.equal(by.moved.value, '2026-10-09T09:40')
+  // the theme comes first while the themes are on
+  const th = { ...s, themes: themesState() }
+  assert.equal(logic.flowFields(x, th, feedOf(), detailOf())[0].id, 'theme')
+  // without Jev: the triage's rank, else the priority; no bars then
+  const noJev = feedOf('task:a', { facts: { created: null, moved: null, jev: null } })
+  const ranked = { ...s, triage: { items: { 'task:a': { next_rank: 3 } } } }
+  const r = Object.fromEntries(logic.flowFields(x, ranked, noJev, null).map(f => [f.id, f]))
+  assert.equal(r.prio.rank, 3)
+  assert.equal(r.urgency, undefined)
+  assert.equal(Object.fromEntries(logic.flowFields(x, s, noJev, null).map(f => [f.id, f])).prio.priority, 'P2')
+  // a tab that asks: who works on it is its tab
+  const ts = state({ tabs: [dialog()] })
+  const tx = queueOf(ts)[0]
+  assert.equal(Object.fromEntries(logic.flowFields(tx, ts, null, null).map(f => [f.id, f])).who.drive.by, 'tab')
+})
+
+test('instructScope: the open point, with its live tab; in the overview the ticked points, else every point of the side, at most 50', () => {
+  const busy = { ref: 'surface:21', name: 'busy', slug: 'a', state: 'working', since_ms: NOW - MIN }
+  const s = pointState({ tabs: [busy] })
+  const q = queueOf(s)
+  const one = logic.instructScope(q[0], q, new Set(), 'Ops', s)
+  assert.deepEqual([one.point, one.keys, one.title, one.tab?.ref], [true, ['task:a'], 'Task a', 'surface:21'])
+  const many = state({ work: Array.from({ length: 60 }, (_, i) => task(`t${i}`)) })
+  const all = queueOf(many)
+  const side = logic.instructScope(null, all, new Set(), 'Ops', many)
+  assert.deepEqual([side.point, side.picked, side.n, side.keys.length, side.cut], [false, false, 60, 50, true])
+  const picked = logic.instructScope(null, all, new Set(['task:t3', 'task:t5']), 'Ops', many)
+  assert.deepEqual([picked.picked, picked.keys], [true, ['task:t3', 'task:t5']])
+  // the words of the label
+  assert.equal(en.flow.instruct.point('Task a'), 'For: Task a')
+  assert.match(en.flow.instruct.side(60, 'Ops'), /60 points in Ops/)
+})
+
+test('instructCalls: each step through its verb with by instruction, done for several as one settle, a reply to its tab', () => {
+  // the tab a reply goes to (the plan names it), no tab of the task: Let AI do it may start on task a
+  const live = { ref: 'surface:3', name: 'helper', state: 'waiting', since_ms: NOW - MIN }
+  const s = state({ work: [task('a'), task('b'), task('busy')], tabs: [live, { ref: 'surface:4', name: 'busy', slug: 'busy', state: 'working' }] })
+  const plan = { id: 'p1', text: 'x', point: false, steps: [
+    { n: 1, op: 'done', keys: ['task:a', 'task:b'], titles: ['Task a', 'Task b'], skipped: [] },
+    { n: 2, op: 'later', keys: ['task:b'], until: '2026-10-12', skipped: [] },
+    { n: 3, op: 'drop', keys: ['task:a'], reason: 'not_needed', skipped: [] },
+    { n: 4, op: 'do', mail: true, keys: ['task:a', 'task:busy'], note: 'Write a mail draft, a draft only, never send it: ask about the prices', skipped: [] },
+    { n: 5, op: 'reply', keys: ['task:a'], tab_ref: 'surface:3', text: 'yes, go on', skipped: [] },
+    { n: 6, op: 'done', keys: ['task:gone'], skipped: [] },
+  ], unclear: null }
+  const { calls, skipped } = logic.instructCalls(plan, s, 'en')
+  assert.deepEqual(calls, [
+    { verb: 'settle', args: { keys: ['task:a', 'task:b'], outcome: 'done', by: 'instruction' } },
+    { verb: 'later', args: { key: 'task:b', until: '2026-10-12', by: 'instruction' } },
+    { verb: 'shelve', args: { key: 'task:a', reason: en.flow.drop.reason.not_needed, by: 'instruction' } },
+    { verb: 'do_it', args: { keys: ['task:a'], note: 'Write a mail draft, a draft only, never send it: ask about the prices', by: 'instruction' } },
+    { verb: 'tab_send', args: { tab_ref: 'surface:3', text: 'yes, go on', expect: 'waiting', name: 'helper' } },
+  ])
+  assert.deepEqual(skipped.map(x => [x.key, x.why]), [['task:busy', 'working'], ['task:gone', 'gone']])
+  // a reply whose tab is gone runs nothing
+  assert.deepEqual(logic.instructCalls({ steps: [{ op: 'reply', keys: ['task:a'], tab_ref: 'surface:99', text: 'y', skipped: [] }] }, s, 'en').calls, [])
+  assert.deepEqual(logic.instructCalls(null, s, 'en'), { calls: [], skipped: [] })
+})
+
+test('the texts of round 3: both languages, the sixteen refusals worded, no key named, no dash', () => {
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const code of ['flow_off', 'summary_off', 'summary_budget', 'summary_running', 'summary_empty', 'summary_unavailable', 'summary_failed',
+      'instruct_off', 'instruct_budget', 'instruct_running', 'instruct_unavailable', 'instruct_failed', 'attach_off', 'attach_no_task',
+      'attach_too_big', 'attach_exists']) assert.ok(t.errors[code], `${lang} ${code}`)
+    for (const id of logic.ACTIVITY_FILTERS) assert.ok(t.flow.activity.filter[id], `${lang} filter ${id}`)
+    for (const id of logic.FLOW_TABS) assert.ok(t.flow.ptabs[id], `${lang} tab ${id}`)
+  }
+  const de = text.TABLES.de.flow
+  assert.deepEqual([de.ptabs.desc, de.ptabs.steps, de.ptabs.activity, de.ptabs.related], ['Beschreibung', 'Schritte', 'Aktivität', 'Verwandt'])
+  assert.deepEqual(logic.ACTIVITY_FILTERS.map(id => de.activity.filter[id]), ['Alles', 'Notizen', 'Dokumente', 'Zustand', 'Agenten', 'Code'])
+  assert.equal(de.fields.can, 'Was du tun kannst')
+  assert.equal(de.instruct.understood, 'So habe ich es verstanden')
+  assert.deepEqual([de.instruct.run, de.instruct.change, de.instruct.discard], ['Ausführen', 'Ändern', 'Verwerfen'])
+})
+
+// ---------------------------------------------------------------- round 3: the demo fakes every new route
+
+test('the demo: the activity of the demo task carries every kind and every filter, an inbox key a short one, any other key its creation', async () => {
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
+  const st = (await tr.get('/api/state')).data
+  assert.deepEqual(Object.keys(st.flow_ai).sort(), ['instruct_left', 'instruct_running', 'summary_left'])
+  for (const k of ['summary', 'instruct', 'attach']) assert.equal(st.work.flow[k].enabled, true, k)
+  const r = await tr.get('/api/flow/activity?key=task:demo-task')
+  assert.equal(r.ok, true)
+  const feed = r.data
+  const kinds = new Set(feed.rows.map(x => x.kind))
+  for (const k of ['note', 'log', 'doc', 'status', 'theme', 'decision', 'created', 'agent', 'session', 'code']) assert.ok(kinds.has(k), k)
+  for (const f of logic.ACTIVITY_FILTERS.slice(1)) assert.ok(feed.counts[f] > 0, f)
+  assert.equal(feed.counts.all, feed.rows.length)
+  assert.deepEqual(logic.activityCounts({ rows: feed.rows }), feed.counts)
+  assert.ok(feed.facts.jev && feed.facts.jev.rank > 0)
+  // newest first, each row with an id unique in the answer
+  const ms = feed.rows.map(x => x.at_ms ?? Date.parse(x.at))
+  assert.deepEqual(ms, [...ms].sort((a, b) => b - a))
+  assert.equal(new Set(feed.rows.map(x => x.id)).size, feed.rows.length)
+  // an inbox item that names the demo task reads its feed; another item has a short one of its own
+  const review = st.model.sections.flatMap(x => x.rows).find(x => x.inbox_id && x.task === 'demo-task')
+  assert.equal((await tr.get(`/api/flow/activity?key=${encodeURIComponent(review.key)}`)).data.counts.all, feed.counts.all)
+  const inbox = st.model.sections.flatMap(x => x.rows).find(x => x.inbox_id === '20261009-0915-update-docs-e5f6')
+  const short = (await tr.get(`/api/flow/activity?key=${encodeURIComponent(inbox.key)}`)).data
+  assert.ok(short.rows.length >= 2 && short.rows.length < feed.rows.length)
+  const other = st.model.sections.flatMap(x => x.rows).find(x => x.task && x.key !== 'task:demo-task' && !x.inbox_id)
+  const one = (await tr.get(`/api/flow/activity?key=${encodeURIComponent(other.key)}`)).data
+  assert.deepEqual(one.rows.map(x => x.kind), ['created'])
+  assert.equal(one.facts.jev, null)
+  assert.equal((await tr.get('/api/flow/activity?key=task:nowhere')).error.code, 'stale_row')
+  // a document opens from a Blob of invented text
+  const href = tr.href('/api/flow/doc?slug=demo-task&path=deliverables%2Fguide-draft.md')
+  assert.match(href, /^blob:/)
+  assert.equal(tr.href('/api/state'), '/api/state')
+  // off with ?flow=0
+  const off = mock.createMockTransport({ lang: 'en', latency: 0, flow: false })
+  assert.equal((await off.get('/api/flow/activity?key=task:demo-task')).error.code, 'flow_off')
+})
+
+test('the demo: a note and an attachment come into the feed, an attachment refused by the rules', async () => {
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0 })
+  const before = (await tr.get('/api/flow/activity?key=task:demo-task')).data.counts
+  let r = await tr.post('/api/action', { verb: 'note', args: { key: 'task:demo-task', text: 'Asked the team for screenshots' } })
+  assert.equal(r.ok, true)
+  r = await tr.post('/api/flow/attach', { key: 'task:demo-task', name: 'notes.txt', data: 'aGk=' })
+  assert.equal(r.ok, true)
+  assert.equal(r.data.attach.path, 'deliverables/notes.txt')
+  assert.equal(r.data.attach.bytes, 2)
+  const after = (await tr.get('/api/flow/activity?key=task:demo-task&fresh=1')).data
+  assert.equal(after.counts.notes, before.notes + 1)
+  assert.equal(after.counts.docs, before.docs + 1)
+  assert.equal(after.rows[0].kind, 'doc')
+  assert.equal(after.rows[0].doc.attached, true)
+  // the same name again gets -2; a bad name, bad data, too big, a point without a task are refused
+  assert.equal((await tr.post('/api/flow/attach', { key: 'task:demo-task', name: 'notes.txt', data: 'aGk=' })).data.attach.name, 'notes-2.txt')
+  assert.equal((await tr.post('/api/flow/attach', { key: 'task:demo-task', name: '../../etc/passwd', data: 'aGk=' })).data.attach.path, 'deliverables/passwd')
+  assert.equal((await tr.post('/api/flow/attach', { key: 'task:demo-task', name: '...', data: 'aGk=' })).error.code, 'invalid_argument')
+  assert.equal((await tr.post('/api/flow/attach', { key: 'task:demo-task', name: 'a.txt', data: '%%%' })).error.code, 'invalid_argument')
+  assert.equal((await tr.post('/api/flow/attach', { key: 'task:demo-task', name: 'a.bin', data: 'A'.repeat(15 * 1048576) })).error.code, 'attach_too_big')
+  const st = (await tr.get('/api/state')).data
+  const lone = st.model.sections.flatMap(x => x.rows).find(x => x.inbox_id && !x.task)
+  assert.equal((await tr.post('/api/flow/attach', { key: lone.key, name: 'a.txt', data: 'aGk=' })).error.code, 'attach_no_task')
+  // the verb takes the same way
+  r = await tr.post('/api/action', { verb: 'flow_attach', args: { key: 'task:demo-task', name: 'b.txt', data: 'aGk=' } })
+  assert.equal(r.data.attach.name, 'b.txt')
+})
+
+test('the demo: the summary within its budget and kept while nothing changed, the instruction by a fixed word match', async () => {
+  const tr = mock.createMockTransport({ lang: 'de', latency: 0 })
+  let r = await tr.post('/api/action', { verb: 'flow_activity_summary', args: { key: 'task:demo-task' } })
+  assert.equal(r.ok, true)
+  assert.ok(r.data.summary.text.length > 20)
+  assert.doesNotMatch(r.data.summary.text, /[\u2014\u2013]| - /)
+  assert.equal(r.data.summary.cached, false)
+  assert.equal(r.data.flow_ai.summary_left, 9)
+  r = await tr.post('/api/action', { verb: 'flow_activity_summary', args: { key: 'task:demo-task' } })
+  assert.equal(r.data.summary.cached, true)
+  assert.equal(r.data.flow_ai.summary_left, 9, 'a kept summary costs nothing')
+  // the instruction: done and a mail, the mail becomes a start that drafts only
+  r = await tr.post('/api/action', { verb: 'flow_instruct', args: { text: 'erledigt, und schreib eine Mail an den Anbieter', keys: ['task:demo-task'], point: true } })
+  assert.equal(r.ok, true)
+  const ops = r.data.plan.steps.map(x => [x.op, x.mail ?? false])
+  assert.deepEqual(ops, [['done', false], ['do', true]])
+  assert.match(r.data.plan.steps[1].note, /mail-draft/)
+  assert.equal(r.data.flow_ai.instruct_left, 29)
+  // a reply only with the point open and a live tab; in the overview it stays out with no_tab
+  r = await tr.post('/api/action', { verb: 'flow_instruct', args: { text: 'antworte: ja, weiter', keys: ['task:demo-task'], point: false } })
+  assert.deepEqual(r.data.plan.steps[0].skipped.map(x => x.why), ['no_tab'])
+  r = await tr.post('/api/action', { verb: 'flow_instruct', args: { text: 'antworte: ja, weiter', keys: ['task:demo-task'], point: true } })
+  assert.equal(r.data.plan.steps[0].op, 'reply')
+  assert.ok(r.data.plan.steps[0].tab_ref)
+  r = await tr.post('/api/action', { verb: 'flow_instruct', args: { text: 'hmm', keys: ['task:demo-task'], point: true } })
+  assert.deepEqual(r.data.plan.steps, [])
+  assert.ok(r.data.plan.unclear)
+  // by is taken on the verbs it belongs to
+  r = await tr.post('/api/action', { verb: 'later', args: { key: 'task:demo-task', until: '2026-12-01', by: 'instruction' } })
+  assert.equal(r.ok, true)
 })

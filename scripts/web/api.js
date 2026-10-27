@@ -29,6 +29,8 @@ async function parse(res) {
 /** The real transport: same-origin fetch and EventSource */
 function httpTransport() {
   return {
+    // the address of a file the page links rather than fetches (a document of a task): the path itself
+    href: p => p,
     async get(path) {
       try {
         const res = await fetch(path, { credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store' })
@@ -136,6 +138,16 @@ export function createApi(transport = httpTransport()) {
     relay: () => transport.get('/api/relay'),
     // since: the hash of the screen the page holds; the server then answers unchanged without the text
     tabScreen: (ref, since) => transport.get(`/api/tab/screen?ref=${encodeURIComponent(ref)}${since ? `&since=${encodeURIComponent(since)}` : ''}`),
+    // Work through, the Activity of a point (cached 20 s on the server; fresh skips it, after a note or an attachment)
+    activity: (key, fresh) => transport.get(`/api/flow/activity?key=${encodeURIComponent(key)}${fresh ? '&fresh=1' : ''}`),
+    // a document attached to the task of a point, its bytes as standard base64 (the one POST with a larger body cap)
+    attach: (key, name, data) => transport.post('/api/flow/attach', { key, name, data }, csrf),
+    // the link of a document in a task's deliverables/, opened in a new tab and never fetched by the page; the demo's
+    // transport gives a Blob of invented text in its place
+    docHref: (slug, path) => {
+      const p = `/api/flow/doc?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`
+      return transport.href ? transport.href(p) : p
+    },
     events: (handlers, onConn) => {
       // A page in a background browser tab tells the server so, and the server stops polling the
       // agent tabs, the full pass and the ticker for it; coming back asks for one poll at once.

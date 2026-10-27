@@ -951,11 +951,11 @@ export function detailNeedsLoad(entry, ver) {
   return !!entry.stale || entry.ver !== ver
 }
 
-/** Marks the details of a row's inbox entry and task as stale (after an action on that row) */
+/** Marks the details of a row's inbox entry, task and Activity (Work through) as stale (after an action on that row) */
 export function invalidateDetails(details, row) {
   if (!row || (!row.inbox_id && !row.task)) return details
-  const mark = (table, id) => (id && table[id] ? { ...table, [id]: { ...table[id], stale: true } } : table)
-  return { ...details, inbox: mark(details.inbox, row.inbox_id), task: mark(details.task, row.task) }
+  const mark = (table, id) => (id && table?.[id] ? { ...table, [id]: { ...table[id], stale: true } } : table ?? {})
+  return { ...details, inbox: mark(details.inbox, row.inbox_id), task: mark(details.task, row.task), activity: mark(details.activity, row.key) }
 }
 
 /** The "more" lists fetched for the run the model shows; one from an older run would freeze the section */
