@@ -18,6 +18,9 @@
 .flow-head p { margin: 0; }
 .flow-nodriver { margin: 0; }
 .flow-grid { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(260px, 340px); gap: var(--space-md); align-items: start; min-width: 0; }
+/* round 6 B: no point open, no right column; the overview, a list of Not now and Prio's grid take its width */
+.flow-grid.no-aside { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); }
+.flow-main-hint { margin: 0; }
 
 /* the left column, level one: one entry per theme or area, its colour, its name, what needs you and what is open */
 .flow-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; max-height: var(--flow-col-max); overflow-y: auto;
@@ -136,8 +139,8 @@
 .flow-instruct-step.is-out .flow-instruct-op { color: var(--on-surface-muted); }
 .flow-instruct-said { font-style: italic; }
 
-/* the right column: what you can do (the suggestion, the verbs under each other) and the fields; in the overview a
-   line how they come. It stands whole inside the scroller (--flow-col-max): What you can do on top, never scrolled
+/* the right column: what you can do (the suggestion, the verbs under each other) and the fields, only while a point
+   or an entry is open. It stands whole inside the scroller (--flow-col-max): What you can do on top, never scrolled
    away, the fields scroll in themselves */
 .flow-aside { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; min-width: 0; max-height: var(--flow-col-max); overflow-y: auto;
   border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
@@ -146,7 +149,6 @@
 .flow-aside-part { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; min-width: 0; }
 .flow-aside-part + .flow-aside-part { border-top: 1px solid var(--border); }
 .flow-aside-part > .label-caps { margin: 0; color: var(--on-surface-muted); }
-.flow-aside-hint { margin: 0; }
 /* the suggestion reads as one sentence that wraps: its label, the verb as a chip, the half sentence of why */
 .flow-can-sug { margin: 0; padding: 8px 10px; border-left: 3px solid var(--info); border-radius: var(--radius-md);
   background: var(--surface-raised); font-size: var(--text-sm); line-height: 1.7; }
@@ -284,12 +286,12 @@
 
 /* below 1180px the right column moves under the middle; narrow, one column and the left column a select on top */
 @media (max-width: 1180px) {
-  .flow-grid { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
+  .flow-grid, .flow-grid.no-aside { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
   .flow-grid > .flow-aside { grid-column: 2; position: static; max-height: none; overflow: visible; }
   .flow-aside > .flow-can, .flow-aside > .flow-fields { max-height: none; overflow: visible; }
 }
 @media (max-width: 960px) {
-  .flow-grid { grid-template-columns: minmax(0, 1fr); }
+  .flow-grid, .flow-grid.no-aside { grid-template-columns: minmax(0, 1fr); }
   .flow-grid > .flow-aside { grid-column: auto; }
   .flow-side { position: static; max-height: none; padding: 8px; }
   .flow-side > .flow-side-body { display: none; }

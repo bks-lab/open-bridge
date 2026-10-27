@@ -17,7 +17,7 @@ import { DayPages, DayView } from './detail.js'
 import { PageBadge } from './header.js'
 import {
   AGENTS_PAGE, ASK_MAX, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle,
-  pageOrder,
+  pageOrder, workViewNow,
 } from './nav.js'
 import { HomeFocusView } from './focus.js'
 import { HomeList } from './list.js'
@@ -588,7 +588,8 @@ function HomeDesk({ s, c }) {
 }
 
 /** The bar over Work, Chat and Sessions: the area they show (✕ shows every area again) and, on Work,
- *  the star that shows only the pinned rows. Nothing on the other pages, nothing when there is no choice */
+ *  the star that shows only the pinned rows, not over Work through, which shows every open row whatever is pinned
+ *  (round 6 B). Nothing on the other pages, nothing when there is no choice */
 export function AreaBar({ s, c }) {
   const h = T().home
   const page = s.ui.page
@@ -596,7 +597,7 @@ export function AreaBar({ s, c }) {
   const chosen = homeChosen(s.model, s.home)
   const start = page === START_PAGE && (homeView(chosen) !== 'areas' || chosen.some(id => id.startsWith('d:')))
   if (!AREA_PAGES.has(page) && !start) return null
-  const work = page === 'briefing'
+  const work = page === 'briefing' && workViewNow(s) !== 'flow'
   const pins = s.home?.pins ?? []
   if (!s.ui.area && !(work && (pins.length || s.ui.pinnedOnly))) return null
   // Chat under an area without an agent tab says so and offers every area, rather than an empty page

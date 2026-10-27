@@ -443,6 +443,19 @@ def test_a_work_view_the_list_leaves_out_opens_the_first_view_kept(tmp_path):
     assert len(out) == 1 and out[0].startswith("cockpit.work_view:") and "files" in out[0], out
 
 
+def test_a_work_view_the_list_leaves_out_opens_work_through_where_it_is_kept_and_on(tmp_path):
+    # round 6 B: a Bridge that keeps only the files and Work through lands in Work through, never in the files
+    cfg = load_web_config(tmp_path, {"cockpit": {"work_views": ["files", "flow"], "flow": {"enabled": True}}})
+    assert cfg.work_view == "flow" and cfg.config_warnings == ()
+    cfg = load_web_config(tmp_path, {"cockpit": {"work_views": ["files", "flow"], "work_view": "due", "flow": {"enabled": True}}})
+    assert cfg.work_view == "flow"
+    out = cfg.config_warnings
+    assert len(out) == 1 and out[0].startswith("cockpit.work_view:") and '"flow"' in out[0], out
+    # Work through off: the first view kept, as before
+    cfg = load_web_config(tmp_path, {"cockpit": {"work_views": ["files", "flow"], "flow": {"enabled": False}}})
+    assert cfg.work_view == "files"
+
+
 def test_the_state_hands_the_work_views_to_the_page(tmp_path):
     base = "cockpit:\n  enabled: true\n  language: en\n  work_views: [flow, files]\n"
     w = World(tmp_path / "a", config=base, serve=False, prepare=False)

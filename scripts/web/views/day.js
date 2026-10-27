@@ -471,19 +471,23 @@ function useDayHeight(c, on) {
   return ref
 }
 
+/** Without a model yet: a failed pass or a lost connection is said, not an endless skeleton; else the skeleton of a
+ *  page that loads. Due's day column and Work through (views/flow.js) say it alike */
+export function NoModel({ s, cls = 'col col-day' }) {
+  const t = T()
+  const warnings = pageWarnings(s, t).filter(w => w.kind !== 'driver')   // not a reason to hold back the day
+  if (warnings.length) {
+    return html`<div class=${cls}><div class="panel panel-pad">${warnings.map(w => html`<p key=${w.word}>
+      <${StateLine} token=${w.token} strong word=${w.word} /></p>`)}</div></div>`
+  }
+  return html`<div class=${cls} aria-busy="true"><div class="panel panel-pad"><${Skeleton} lines=${7} /></div></div>`
+}
+
 export function DayColumn({ s, c, byKey }) {
   const t = T()
   const m = s.model
   const colRef = useDayHeight(c, !!m)
-  if (!m) {
-    // without a model a failed pass or a lost connection is said, not an endless skeleton
-    const warnings = pageWarnings(s, t).filter(w => w.kind !== 'driver')   // not a reason to hold back the day
-    if (warnings.length) {
-      return html`<div class="col col-day"><div class="panel panel-pad">${warnings.map(w => html`<p key=${w.word}>
-        <${StateLine} token=${w.token} strong word=${w.word} /></p>`)}</div></div>`
-    }
-    return html`<div class="col col-day" aria-busy="true"><div class="panel panel-pad"><${Skeleton} lines=${7} /></div></div>`
-  }
+  if (!m) return html`<${NoModel} s=${s} />`
   const total = (m.sections ?? []).reduce((a, x) => a + (x.total ?? 0), 0)
   const budgets = rowBudgets(m.sections, s.ui.expanded ?? {}, s.ui.dayHeight ?? 0)
   return html`<div class="col col-day" ref=${colRef}>
