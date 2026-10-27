@@ -250,13 +250,13 @@ def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path
     w = World(tmp_path / "a", config=base, serve=False, prepare=False)
     try:
         assert w.app.state_payload()["work"] == {"view": "due", "focus_to_files": False, "files_scope": "active",
-                                                 "flow": cf.flow_defaults()}
+                                                 "flow": cf.flow_defaults(), "views": list(cf.WORK_VIEWS)}
     finally:
         w.close()
     w = World(tmp_path / "b", config=base + "  work_view: files\n  focus_to_files: true\n", serve=False, prepare=False)
     try:
         assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True, "files_scope": "active",
-                                                 "flow": cf.flow_defaults()}
+                                                 "flow": cf.flow_defaults(), "views": list(cf.WORK_VIEWS)}
     finally:
         w.close()
 
@@ -267,7 +267,7 @@ def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(t
     cfg = load_web_config(tmp_path, {})
     assert cfg.flow == {"enabled": False, "drop_reasons": ["resolves_itself", "not_needed", "someone_else", "not_worth_it"],
                         "return_after_s": 20, "prep_ahead": 2, "max_running": 4, "rank_max_age_days": 7,
-                        "rerank_per_day": 3,
+                        "rerank_per_day": 3, "ahead_days": 2, "infer_sessions": True,
                         "themes": {"enabled": False, "max_themes": 8, "budget_per_day": 6, "model": None},
                         "summary": {"enabled": False, "budget_per_day": 10, "model": None},
                         "instruct": {"enabled": False, "budget_per_day": 30, "model": None},
@@ -368,6 +368,9 @@ def test_the_flow_block_defaults_and_its_keys(tmp_path):
     ({"max_running": 0}, "cockpit.flow.max_running", "4"),
     ({"rank_max_age_days": 1.5}, "cockpit.flow.rank_max_age_days", "7"),
     ({"rerank_per_day": "3"}, "cockpit.flow.rerank_per_day", "3"),
+    ({"ahead_days": -1}, "cockpit.flow.ahead_days", "2"),
+    ({"ahead_days": 1.5}, "cockpit.flow.ahead_days", "2"),
+    ({"infer_sessions": "no"}, "cockpit.flow.infer_sessions", "true"),
 ])
 def test_a_bad_flow_value_keeps_its_default_and_says_so(tmp_path, flow, key, used):
     cfg = load_web_config(tmp_path, {"cockpit": {"flow": flow}})
@@ -378,8 +381,8 @@ def test_a_bad_flow_value_keeps_its_default_and_says_so(tmp_path, flow, key, use
 
 def test_every_flow_key_has_a_doc_row():
     doc = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
-    for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day",
-                "summary.enabled", "summary.budget_per_day", "summary.model",
+    for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day", "ahead_days",
+                "infer_sessions", "summary.enabled", "summary.budget_per_day", "summary.model",
                 "instruct.enabled", "instruct.budget_per_day", "instruct.model", "attach.enabled", "attach.max_mb"):
         assert re.search(rf"^\| `flow\.{re.escape(key)}` \|", doc, re.M), f"flow.{key} has no row in docs/bridge-cockpit.md"
     flow = template_block()["flow"]
@@ -387,3 +390,50 @@ def test_every_flow_key_has_a_doc_row():
     assert {k: flow[k] for k in ("summary", "instruct", "attach")} == {
         "summary": {"enabled": False, "budget_per_day": 10}, "instruct": {"enabled": False, "budget_per_day": 30},
         "attach": {"enabled": False, "max_mb": 10}}
+
+
+# ---------------------------------------------------------------- round 4: ahead_days, infer_sessions, work_views
+
+def test_the_flow_block_takes_ahead_days_and_infer_sessions(tmp_path):
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"ahead_days": 0, "infer_sessions": False}}})
+    assert cfg.flow["ahead_days"] == 0 and cfg.flow["infer_sessions"] is False and cfg.config_warnings == ()
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"ahead_days": 366}}})
+    assert cfg.flow["ahead_days"] == 366 and cfg.flow["infer_sessions"] is True
+
+
+def test_every_work_view_is_offered_unless_the_config_names_fewer(tmp_path):
+    cfg = load_web_config(tmp_path, {})
+    assert cfg.work_views == cf.WORK_VIEWS == ("due", "source", "jev", "files", "flow") and cfg.config_warnings == ()
+    cfg = load_web_config(tmp_path, {"cockpit": {"work_views": ["flow", "files"], "work_view": "flow"}})
+    assert cfg.work_views == ("files", "flow") and cfg.work_view == "flow" and cfg.config_warnings == ()
+
+
+@pytest.mark.parametrize("value, views, word", [
+    (["files", "flow", "dossier"], ("files", "flow"), "dossier"),          # an unknown word is dropped
+    (["flow"], ("files", "flow"), "files"),                                # files is always kept
+    ("files", cf.WORK_VIEWS, "list"),                                      # not a list: the default
+    ([], cf.WORK_VIEWS, "nothing"),                                        # nothing left: the default
+    (["dossier"], cf.WORK_VIEWS, "dossier"),
+])
+def test_a_wrong_work_views_list_says_what_it_kept(tmp_path, value, views, word):
+    cfg = load_web_config(tmp_path, {"cockpit": {"work_views": value}})
+    assert cfg.work_views == views
+    assert cfg.config_warnings and all(w.startswith("cockpit.work_views") for w in cfg.config_warnings)
+    assert any(word in w for w in cfg.config_warnings), cfg.config_warnings
+
+
+def test_a_work_view_the_list_leaves_out_opens_the_first_view_kept(tmp_path):
+    cfg = load_web_config(tmp_path, {"cockpit": {"work_views": ["files", "flow"], "work_view": "due"}})
+    assert cfg.work_view == "files"
+    out = cfg.config_warnings
+    assert len(out) == 1 and out[0].startswith("cockpit.work_view:") and "files" in out[0], out
+
+
+def test_the_state_hands_the_work_views_to_the_page(tmp_path):
+    base = "cockpit:\n  enabled: true\n  language: en\n  work_views: [flow, files]\n"
+    w = World(tmp_path / "a", config=base, serve=False, prepare=False)
+    try:
+        work = w.app.state_payload()["work"]
+        assert work["views"] == ["files", "flow"] and work["view"] == "files"
+    finally:
+        w.close()
