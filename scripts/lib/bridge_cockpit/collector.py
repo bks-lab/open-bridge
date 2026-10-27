@@ -204,6 +204,11 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "inbox_kind": row.get("inbox_kind"),
             # what a person sees an inbox row as (ask, report, idea); "waits for you" counts the asks
             "art": m.art_of_kind(row.get("inbox_kind")) if row.get("inbox_id") else None,
+            # Work through: when a task last moved (its STATUS.md), and the day a deferred item comes back, read
+            # from its own events as the card reads them (details.inbox_facts, kept until the item changes)
+            "updated": row.get("updated") if is_task_row else None,
+            "until": ((card_ctx.inbox(row["inbox_id"]) or {}).get("until")
+                      if row.get("inbox_id") and row.get("inbox_state") == "deferred" else None),
         }
         # the one card of the row (card.py), from the row as it goes out (and when its item was filed)
         out["card"] = cd.card_of({**out, "created": row.get("created")}, card_ctx)
@@ -279,6 +284,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     # what waits for you: the rows of Now that ask (briefing_view.asks_you). An idea or a report filed for today
     # still stands in Now, so the section's own total can be the larger number
     asks = sum(1 for r in next((x["all"] for x in lay["sections"] if x["id"] == "now"), []) if m.asks_you(r))
+    files_out = None if files is None else files_of(files, index)
     model = {
         "seq": seq, "stale": stale,
         "profile": view.get("profile") or profile or "", "title": view.get("title") or "",
@@ -292,7 +298,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                    "working_tabs": len([t for t in others if t["state"] == "working"]),
                    "now": asks, "give": totals["give"], "work": totals["work"],
                    "track": totals["track"], "later": totals["later"],
-                   "hidden": len(hidden_out)},
+                   "hidden": len(hidden_out), "flow_open": flow_open(sections, hidden_out, files_out)},
         "sections": sections, "numbers": numbers, "hidden": hidden_out, "approvable": approvable,
         "task_rows": task_rows,
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
@@ -304,9 +310,19 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         # "waits for you" and the lead line of the start page; the approvals stand in their own section
         "briefing_badge": asks,
         # every task and stream as a file (cockpit.files_scope all), None while the files view walks the active ones
-        "files": None if files is None else files_of(files, index),
+        "files": files_out,
     }
     return model, index
+
+
+def flow_open(sections: list[dict], hidden: list[dict], files: list[dict] | None) -> int:
+    """How many things are open, each once (Work through's universe, flow.js flowUniverse): every row of the
+    sections, every hidden row not decided here (no settled_as: put off, it is still open) and every file of the
+    files view (files_scope all) under its task's key"""
+    keys = {r["key"] for s in sections for r in s["rows"]}
+    keys |= {r["key"] for r in hidden if r.get("settled_as") is None}
+    keys |= {f"task:{f['slug']}" for f in files or []}
+    return len(keys)
 
 
 ACTIVE = ("doing", "review")     # the tasks every consumer but the files view reads (workplace.py ACTIVE)

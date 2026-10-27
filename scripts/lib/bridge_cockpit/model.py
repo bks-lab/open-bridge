@@ -256,6 +256,9 @@ def _base_row(**extra) -> dict:
            "due": None, "is_new": False, "is_changed": False,
            # a task row's state (doing, review) and its next step, derived (task_next), never stored
            "status": None, "next": None, "created": None,
+           # the day a task's STATUS.md last changed (the task list's `updated`), and the day a deferred inbox item
+           # comes back (its newest defer): what Work through reads for "last moved" and its list Later
+           "updated": None, "until": None,
            # where the row comes from (origin.py classifies them): the inbox item's `from` or the task's origin, the
            # inbox item's kind, the provider and kind of the section it came from, the task or stream it is about
            "origin_raw": None, "inbox_kind": None, "origin_provider": None, "origin_section_kind": None,
@@ -278,7 +281,7 @@ def task_row_for(slug: str, title: str, tasks: list[dict], tx: dict = EN) -> dic
         [tx["quiet_for"].format(days=as_text(t["age"]))] if t["stale"] else [])
     row = task_row(slug, title or t.get("title") or t["label"])
     row.update(why=why, sources=["tasks"], priority=t["priority"], area=t["area"], area_names=list(t["area_names"]),
-               task_type=t["type"], origin_raw=t.get("origin"))
+               task_type=t["type"], origin_raw=t.get("origin"), updated=t.get("updated"))
     return row
 
 
@@ -553,7 +556,8 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
             # An inbox entry shows the area of its task, but not its priority.
             priority = r["priority"] if r.get("inbox_id") else (r["priority"] if r["priority"] is not None else t["priority"])
             mine = {} if r.get("inbox_id") else {"status": t.get("status"), "next": task_next(t, inbox_rows),
-                                                  "origin_raw": r.get("origin_raw") or t.get("origin")}
+                                                  "origin_raw": r.get("origin_raw") or t.get("origin"),
+                                                  "updated": t.get("updated")}
             rows.append({**r, "area": t["area"], "area_names": list(t["area_names"]), "priority": priority,
                          "task_type": t["type"], **mine})
         buckets.append({**b, "rows": rows})
@@ -565,7 +569,8 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
             why.append(tx["inbox_open"].format(n=inbox_count[t["slug"]]))
         base = _base_row(bucket=bucket, title=t.get("title") or t["label"], why=why, sources=["tasks"], task=t["slug"],
                          priority=t["priority"], area=t["area"], area_names=list(t["area_names"]), task_type=t["type"],
-                         status=t.get("status"), next=task_next(t, inbox_rows), origin_raw=t.get("origin"))
+                         status=t.get("status"), next=task_next(t, inbox_rows), origin_raw=t.get("origin"),
+                         updated=t.get("updated"))
         base["key"] = row_key(base)
         return base
 

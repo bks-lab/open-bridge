@@ -8137,3 +8137,100 @@ def test_a_file_of_a_closed_task_is_read_from_its_folder(world):
 def test_task_detail_has_no_files_where_its_folder_holds_only_status(world):
     data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
     assert data["files"] == []
+
+
+# ---------------------------------------------------------------- round 4 of Work through: what the model carries
+
+R4_TASKS = [
+    {**TASKS[0], "kind": "tasks", "updated": "2026-10-08"},
+    {"slug": "parked", "label": "Parked idea", "area": "Ops", "priority": "P3", "status": "backlog", "kind": "tasks",
+     "updated": "2026-09-01"},
+    {"slug": "river", "label": "River", "area": "Ops", "priority": "P2", "status": "doing", "kind": "streams",
+     "blocked_by": "the vendor", "updated": "2026-10-01"},
+]
+DEFERRED_ID = "20261009-0930-later-call-b9c0"
+
+
+def r4_world(tmp_path, scope: str = "all") -> World:
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  files_scope: " + scope + "\n",
+              serve=False, prepare=False)
+    # workplace.py tasks lists the backlog only with --all
+    w.runner.handlers["workplace.tasks"] = lambda argv: ok(
+        [t for t in R4_TASKS if "--all" in argv or t.get("status", "doing") in ("doing", "review")])
+    base = w.runner.handlers["briefing.collect"]
+
+    def collect(argv):
+        data = json.loads(base(argv).out)
+        data["view"]["buckets"][1]["items"].append(
+            {"title": "Call back later", "inbox_id": DEFERRED_ID, "gate": "only-you", "inbox_state": "deferred",
+             "urgency": "later", "sources": ["inbox"]})
+        return ok(data)
+    w.runner.handlers["briefing.collect"] = collect
+    item = w.root / "work" / "inbox" / DEFERRED_ID
+    (item / "events").mkdir(parents=True)
+    (item / "item.yaml").write_text("schema_version: 1\ncreated: '2026-10-09T09:30'\nfrom: person\nkind: decision\n"
+                                    "summary: Call back later\ngate: only-you\nurgency: later\n", encoding="utf-8")
+    (item / "events" / "20261009T093100Z-01-web-defer.yaml").write_text(
+        "verb: defer\nby: web\nat: '2026-10-09T09:31'\nuntil: '2026-10-01'\n", encoding="utf-8")
+    (item / "events" / "20261009T093200Z-02-web-defer.yaml").write_text(
+        "verb: defer\nby: web\nat: '2026-10-09T09:32'\nuntil: '2026-10-14T18:00'\n", encoding="utf-8")
+    w.app.tabs.poll()
+    w.app.collector.request("both")
+    w.app.collector.drain()
+    return w
+
+
+def test_a_task_row_carries_the_day_it_last_changed_and_a_deferred_item_the_day_it_comes_back(tmp_path):
+    w = r4_world(tmp_path)
+    try:
+        assert w.row("task:demo-task")["updated"] == "2026-10-08"
+        assert w.row("task:river")["updated"] == "2026-10-01"
+        assert w.row(f"inbox:{ONLY_ID}")["updated"] is None and w.row("ref:example/repo#12")["updated"] is None
+        # the newest defer names the day, a time on it does not count
+        assert w.row(f"inbox:{DEFERRED_ID}")["until"] == "2026-10-14"
+        assert w.row(f"inbox:{ONLY_ID}")["until"] is None and w.row("task:demo-task")["until"] is None
+        # the hidden rows carry both keys as well
+        w.app.store.hide("task:demo-task", "2099-01-05")
+        w.app.collector.rebuild()
+        hidden = {r["key"]: r for r in w.app.collector.model["hidden"]}
+        assert hidden["task:demo-task"]["updated"] == "2026-10-08" and hidden["task:demo-task"]["until"] is None
+        assert m._base_row()["updated"] is None and m._base_row()["until"] is None
+    finally:
+        w.close()
+
+
+def universe(model: dict) -> list[str]:
+    """Every open row of the model as Work through counts it: sections, hidden rows not decided here, every file"""
+    keys = [r["key"] for s in model["sections"] for r in s["rows"]]
+    keys += [r["key"] for r in model["hidden"] if r.get("settled_as") is None]
+    keys += [f"task:{f['slug']}" for f in model["files"] or []]
+    return keys
+
+
+def test_flow_open_counts_every_open_row_once(tmp_path):
+    w = r4_world(tmp_path)
+    try:
+        w.app.store.hide("ref:example/repo#12", "2099-01-05")          # put off: still open
+        w.app.store.dismiss("ref:example/repo#7", "done", "Answer from the vendor")   # decided here: not open
+        w.app.collector.rebuild()
+        model = w.app.collector.model
+        rows = [r["key"] for s in model["sections"] for r in s["rows"]] + [r["key"] for r in model["hidden"]]
+        assert len(rows) == len(set(rows))                              # no key twice across sections and hidden
+        expected = {f"inbox:{ONLY_ID}", f"inbox:{YES_ID}", f"inbox:{YES2_ID}", f"inbox:{FILED_ID}", f"inbox:{DEFERRED_ID}",
+                    "task:demo-task", "task:river", "ref:example/repo#12", "task:parked"}
+        assert set(universe(model)) == expected
+        assert model["counts"]["flow_open"] == len(expected) == 9
+        assert {r["key"]: r["settled_as"] for r in model["hidden"]}["ref:example/repo#7"] == "done"
+    finally:
+        w.close()
+
+
+def test_flow_open_without_files_counts_the_sections_and_the_hidden_rows(tmp_path):
+    w = r4_world(tmp_path, scope="active")
+    try:
+        model = w.app.collector.model
+        assert model["files"] is None
+        assert model["counts"]["flow_open"] == len(set(universe(model))) == 9
+        assert "task:parked" not in universe(model)                    # no backlog task without the files
+    finally:
+        w.close()
