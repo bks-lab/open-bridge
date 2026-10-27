@@ -1787,19 +1787,27 @@ export function workPageOf(pages) {
 /** The views of the work tab: what is due (the four blocks) always, by source where a work page exists,
  *  by Jev where that page asks for an order and Jev is switched on and has its key, the files (one task
  *  at a time, views/dossier.js) always, and Work through (views/flow.js) last while cockpit.flow.enabled is on
- *  (`flow`): extra views, the default only where cockpit.work_view says so */
-export function workViews(page, jev, flow = false) {
-  return ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : []), 'dossier', ...(flow ? ['flow'] : [])]
+ *  (`flow`): extra views, the default only where cockpit.work_view says so. `allowed`, the words of
+ *  cockpit.work_views (work_state views), keeps only the views it names; nothing left, or an older server that sends
+ *  none, keeps them all */
+export function workViews(page, jev, flow = false, allowed = null) {
+  const all = ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : []), 'dossier', ...(flow ? ['flow'] : [])]
+  if (!Array.isArray(allowed)) return all
+  const ids = new Set(allowed.map(workViewId).filter(Boolean))
+  const kept = all.filter(v => ids.has(v))
+  return kept.length ? kept : all
 }
 
-/** The view the work tab shows: the remembered one where it can, else what is due */
-export function workViewOf(view, page, jev, flow = false) {
-  return workViews(page, jev, flow).includes(view) ? view : 'due'
+/** The view the work tab shows: the remembered one where it can, else the first view kept (what is due by default) */
+export function workViewOf(view, page, jev, flow = false, allowed = null) {
+  const views = workViews(page, jev, flow, allowed)
+  return views.includes(view) ? view : views[0]
 }
 
-/** The view of the work tab under the state: workViewOf with the work page, Jev and cockpit.flow.enabled of `s` */
+/** The view of the work tab under the state: workViewOf with the work page, Jev, cockpit.flow.enabled and
+ *  cockpit.work_views of `s` */
 export function workViewIn(s) {
-  return workViewOf(s?.ui?.workView, workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true)
+  return workViewOf(s?.ui?.workView, workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null)
 }
 
 /** Where a page id leads that is a view now: the Work through page (@flow, a stored page or a link of an older

@@ -15,9 +15,13 @@
 // the last point leads to the first point of the next theme where something is open. Right what you can do and the
 // fields (views/flowside.js FlowAside: the suggestion, the verbs, who works on it, the source), a hint in the overview.
 // To tab remembers the jump (ui.flowJump, in memory only): once the page is in view again return_after_s later, the
-// return card asks how it went (app.js). What the queue leaves out stands in a drawer with why; with nothing open the
-// calm card offers up to three ideas to start. Without a terminal driver the cards of the agents and every way to a
-// tab stay out.
+// return card asks how it went (app.js). Round 4: every open row stands exactly once (logic.js flowParts). What runs
+// stands in Running now (views/flowrun.js: on top of the left column and of the overview, never in the walk; a click
+// opens it in the middle as view `run`, its card, its tabs and its instruction line, without the walk bar); what is no
+// point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a list in the middle
+// (view `left`) with its own batch. Prio orders the left column by Jev's squares (views/flowprio.js: the 2x2 grid at the
+// level of all squares). With nothing open the calm card offers up to three ideas to start. Without a terminal driver
+// the cards of the agents, Running now and every way to a tab stay out.
 // The agents' cards: a tab that asks carries the answers to its question (views/reply.js), the decision guide
 // (views/guide.js) folded under one button, each through the reply verbs that guard the tab; a finished or quiet start
 // its result line (the criteria of its brief stand in Description, to check yourself); Done and close the tab, Improve
@@ -29,13 +33,16 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, formatDay, guideOf, instructScope, pointsIn,
-  prepTargets, previewText, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk,
+  duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, pointsIn,
+  prepTargets, previewText, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
 } from '../logic.js'
-import { T, language } from '../text.js'
+import { T } from '../text.js'
 import { WorkSwitch } from './day.js'
 import { Walk } from './dossier.js'
+import { LeftList } from './flowleft.js'
 import { FlowOverview, listRows } from './flowlist.js'
+import { PrioGrid, PrioSource } from './flowprio.js'
+import { RunningStrip } from './flowrun.js'
 import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
@@ -150,21 +157,6 @@ function Card({ x, n, s, c }) {
     foot=${false} facts=${false} screen=${SCREEN_LINES} />`
 }
 
-/** What the queue leaves out, folded under one line: by why, each with its day when it was put off */
-function LeftOut({ left }) {
-  const f = T().flow
-  const [open, setOpen] = useState(false)
-  if (!left.total) return null
-  const lang = language()
-  return html`<section class="flow-left">
-    <button type="button" class="btn-link" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>${f.left.button(left.total)} ${open ? '▾' : '▸'}</button>
-    ${open ? html`<div class="flow-left-list" role="group" aria-label=${f.left.title}>${left.groups.map(g => html`<div key=${g.reason} class="flow-left-group">
-      <p class="label-caps">${f.left.reason[g.reason]}</p>
-      <ul>${g.rows.map(({ row, until }) => html`<li key=${row.key}>${short(row.title, 90)}${until ? html` <span class="muted small">${f.left.until(formatDay(until, lang))}</span>` : null}</li>`)}</ul>
-    </div>`)}</div>` : null}
-  </section>`
-}
-
 /** Nothing open: the calm card, and up to three ideas or backlog tasks to start, each with Let AI do it */
 function Rest({ s, c }) {
   const f = T().flow
@@ -177,8 +169,9 @@ function Rest({ s, c }) {
     </section>`
 }
 
-/** A point in progress: its state in its head (its dot pulses while an agent works on it, logic.js flowDrive) and the
- *  last lines of that tab's screen. Who works on it and since when is a field on the right, where its verbs stand too */
+/** A point in progress, or an entry of Running now: its state in its head (its dot pulses while an agent works on it,
+ *  logic.js flowDrive) and the last lines of that tab's screen. Who works on it and since when is a field on the right,
+ *  where its verbs stand too */
 function DoingCard({ x, s }) {
   const f = T().flow
   const d = flowDrive(x, s)
@@ -205,47 +198,71 @@ export function FlowPage({ s, c }) {
   const all = flowQueue(parts, 'all')
   const mode = flowMode(s)
   const sides = flowSides(s, all, mode)
-  // the theme or area entered (level two of the left column), else the level of all of them
+  // the theme, area or square entered (level two of the left column), else the level of all of them
   const entered = sides.find(x => x.id !== 'all' && x.id === s.ui.flowSide?.[mode]) ?? null
   const side = entered?.id ?? 'all'
   const queue = pointsIn(all, side, s, mode)
+  const lane = pointsIn(parts.lane, side, s, mode)
   const i = focusIndex(queue, s.ui.flowAt)
-  const view = s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
-  const x = view === 'point' ? queue[i] ?? null : null
+  // the middle: the point open, an entry of Running now, a group of Not now, else the overview; what went (a point
+  // decided, a start that finished, a group emptied) falls back to the overview
+  const running = s.ui.flowView === 'run' ? parts.lane.find(e => e.id === s.ui.flowRunId) ?? null : null
+  const group = s.ui.flowView === 'left' ? parts.leftOut.groups.find(g => g.reason === s.ui.flowLeft) ?? null : null
+  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
+  const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : null
   const driver = flowDriver(s)
   const keys = new Set(listRows(queue).filter(r => r.row).map(r => r.id))
   const picked = new Set((s.ui.flowPicked ?? []).filter(k => keys.has(k)))
   const go = k => c.flowGo(queue[k].id, k)
   const decided = s.ui.flowDecided ?? 0
-  const doing = parts.doing.length
   // after the last point of a theme or area: the first point of the next one below it where something is open
   const at = sides.findIndex(v => v.id === side)
   const nextSide = entered ? sides.slice(at + 1).find(v => v.id !== 'all' && v.open) ?? sides.slice(1, Math.max(1, at)).find(v => v.open) : null
   const onwards = nextSide ? { title: f.walk2.nextSide(sideName(nextSide, mode)), word: f.walk2.toSide, onGo: () => c.flowSide(nextSide.id, 'point') } : null
   // the point in front changed: the briefs of the next points are written ahead, where one is missing or stale
   const ahead = flowSettings(s).prep_ahead
-  const prep = x ? prepTargets(queue, i, ahead, s) : []
+  const prep = view === 'point' && x ? prepTargets(queue, i, ahead, s) : []
   useEffect(() => { if (prep.length) c.flowPrep(prep) }, [x?.id, ahead])
   // the points without a theme get theirs when the view shows them, once per key on this page load (app.js)
   const ask = mode === 'themes' ? themesToAsk(all, s) : []
   useEffect(() => { if (ask.length) c.flowThemesAuto(ask) }, [ask.join(',')])
+  // Prio reads Jev's daily order of the work page: asked once per page load while it shows and none is there
+  const work = mode === 'prio' ? workPageOf(s.model?.pages) : null
+  const order = work ? s.jevOrder?.[work.id] : null
+  useEffect(() => { if (work && order === undefined) c.flowPrioOrder(work.id) }, [work?.id, order === undefined])
   const name = sideName(entered, mode)
-  // what the instruction line speaks for: the point open, else the ticked points or every point of the side
-  const scope = instructScope(x, queue, picked, entered ? name : null, s)
+  // what the instruction line speaks for: the point or the entry open, else the ticked points or every point of the side
+  const scope = view === 'left' ? null : instructScope(x, queue, picked, entered ? name : null, s)
+  const counts = parts.counts
+  const grid = mode === 'prio' && !entered
+  const card = x ? (x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`) : null
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
-      <p class="muted small">${[f.progress(doing, Math.max(0, all.length - doing)), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
+      <p class="muted small">${[f.count(counts.points, counts.running, counts.left), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
     </header>
     ${driver ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
     <div class="flow-grid">
       <${FlowSide} sides=${sides} entered=${entered} mode=${mode} points=${queue} all=${all} at=${i} view=${view} picked=${picked}
-        titleFor=${pointTitle} kindFor=${pointKind} s=${s} c=${c} />
+        titleFor=${pointTitle} kindFor=${pointKind} lane=${parts.lane} left=${parts.leftOut} run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title}>
-        ${!all.length ? html`<${Rest} s=${s} c=${c} />`
+        ${view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} />`
+          : view === 'run' ? html`<header class="flow-main-head">
+              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
+              <span class="flow-main-theme muted">${f.run.label}</span>
+            </header>
+            <div class="flow-point">
+              <div class="flow-card" key=${x.id}>${card}</div>
+              <${PointTabs} x=${x} s=${s} c=${c} />
+            </div>
+            <div class="flow-dock"><${InstructLine} key=${x.id} scope=${scope} s=${s} c=${c} /></div>`
           : view === 'overview' ? html`<header class="flow-main-head"><h2 class="flow-main-title">${entered ? html`<${SideDot} side=${entered} />` : null}${name}</h2></header>
-            <${FlowOverview} key=${side} points=${queue} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind} s=${s} c=${c} />
-            <div class="flow-dock"><${InstructLine} scope=${scope} s=${s} c=${c} /></div>`
+            <${RunningStrip} lane=${lane} s=${s} c=${c} />
+            ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />`
+              : !all.length ? html`<${Rest} s=${s} c=${c} />`
+              : html`<${FlowOverview} key=${side} points=${queue} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind}
+                band=${mode === 'prio' && entered ? (entered.id === 'none' ? 'due' : 'rank') : null} s=${s} c=${c} />`}
+            ${all.length ? html`<div class="flow-dock"><${InstructLine} scope=${scope} s=${s} c=${c} /></div>` : null}`
           : html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
               <span class="flow-main-theme muted">${name}</span>
@@ -253,7 +270,7 @@ export function FlowPage({ s, c }) {
             ${picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
               <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null}
             <div class="flow-point">
-              <div class="flow-card" key=${x.id}>${x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`}</div>
+              <div class="flow-card" key=${x.id}>${card}</div>
               <${PointTabs} x=${x} s=${s} c=${c} />
             </div>
             <div class="flow-dock">
@@ -262,8 +279,7 @@ export function FlowPage({ s, c }) {
                 tagsOf=${() => null} whyOf=${pointKind} done=${f.walk2.last} onwards=${onwards} cls="flow-walk" />
             </div>`}
       </section>
-      <${FlowAside} x=${x} s=${s} c=${c} />
+      <${FlowAside} x=${x} s=${s} c=${c} hint=${view === 'left' ? f.notnow.hint : grid ? f.prio.hint : null} />
     </div>
-    <${LeftOut} left=${parts.leftOut} />
   </div>`
 }

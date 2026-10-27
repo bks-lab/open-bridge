@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -82,6 +82,16 @@ function save(key, value) {
   try {
     window.localStorage.setItem(key, value)
   } catch { /* storage blocked: the choice lasts for this page only */ }
+}
+
+/** The points due later that this browser took back on before their day (Work through, Not now: Back on), the ones
+ *  whose day came dropped */
+function loadEarly() {
+  try {
+    return flowEarlyKept(JSON.parse(load('bridge-cockpit.flowEarly', '{}')), isoDate(Date.now()))
+  } catch {
+    return {}
+  }
 }
 
 // ---------------------------------------------------------------- store
@@ -161,11 +171,14 @@ const store = createStore({
     flowAt: null, flowChip: 'all', flowJump: null, flowAdvice: null, flowDecided: 0,
     // its left column: by themes or by areas (flowMode, kept in this browser), the theme or area entered in each
     // ({themes, areas}, null for the level of all), the overview of it or a point in the middle (flowView), the keys
-    // ticked (one selection for the left column and the overview), a batch that ran ({n, undo, from}: the overview's
-    // or the instruction line's) and a themes run of the page in flight
-    flowMode: load('bridge-cockpit.flowMode', 'themes') === 'areas' ? 'areas' : 'themes', flowSide: {},
+    // ticked (one selection for the left column and the overview), a batch that ran ({n, undo, from}: the overview's,
+    // a list's of Not now or the instruction line's) and a themes run of the page in flight. Round 4: Prio as a third
+    // order, the entry of Running now open in the middle (flowView run), the group of Not now open there (flowView
+    // left) with its own ticks, and the points due later the viewer took back on before their day ({key: until}, kept
+    // in this browser, pruned once that day came)
+    flowMode: ['areas', 'prio'].find(v => v === load('bridge-cockpit.flowMode', 'themes')) ?? 'themes', flowSide: {},
     flowView: 'overview', flowPicked: [], flowBatch: null,
-    flowThemesBusy: false,
+    flowThemesBusy: false, flowRunId: null, flowLeft: null, flowLeftPicked: [], flowEarly: loadEarly(),
     // round 3: the tab under the card of an open point (it stays from point to point, kept in this browser), the
     // filter of its Activity, and the plan the instruction line made of a sentence, waiting for Run
     flowTab: ['desc', 'steps', 'activity', 'related'].find(v => v === load('bridge-cockpit.flowTab', 'desc')) ?? 'desc',
@@ -726,6 +739,9 @@ let routeGen = 0
 
 // the briefs the Work through page writes ahead on this page load (logic.js prepRunner): one at a time, each key once,
 // quietly (no toast) and within the hour's budget (describe_run ahead); the answer's describe view goes to the store
+// the work pages whose Jev order Prio asked for on this page load (ctl.flowPrioOrder: once each)
+const prioAsked = new Set()
+
 const prepAhead = prepRunner(async key => {
   const res = await api.action('describe_run', { key, ahead: true })
   if (res.ok && res.data?.describe) store.set(s => ({ ...s, describe: { ...s.describe, [key]: { key, ...res.data.describe } } }))
@@ -1067,6 +1083,33 @@ const ctl = {
     flowAt: null, flowView: view === 'point' ? 'point' : 'overview', flowPicked: [], flowPlan: null })),
   flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [], flowPlan: null }) },
   flowOverview: () => setUi(ui => ({ flowView: 'overview', flowPlan: ui.flowView === 'overview' ? ui.flowPlan : null })),
+  // round 4: an entry of Running now opened in the middle, a group of Not now shown as a list there with its own ticks
+  flowRun: id => setUi({ flowView: 'run', flowRunId: id ?? null, flowPlan: null }),
+  flowLeft: reason => setUi(ui => ({ flowView: 'left', flowLeft: reason ?? null, flowLeftPicked: ui.flowLeft === reason ? ui.flowLeftPicked : [], flowPlan: null })),
+  flowLeftPick: (keys, on) => setUi(ui => {
+    const picked = new Set(ui.flowLeftPicked ?? [])
+    for (const k of keys ?? []) { if (on) picked.add(k); else picked.delete(k) }
+    return { flowLeftPicked: [...picked] }
+  }),
+  // Back on for points due later: they are points again in this browser until their day (no server state, no undo)
+  flowEarly(map) {
+    const next = flowEarlyKept({ ...(store.get().ui.flowEarly ?? {}), ...(map ?? {}) }, isoDate(Date.now()))
+    save('bridge-cockpit.flowEarly', JSON.stringify(next))
+    setUi({ flowEarly: next })
+    const n = Object.keys(map ?? {}).length
+    if (n) pushNote({ text: T().flow.batch.summary({ counts: { back: n } }), tone: 'ok' })
+  },
+  // Merge in a batch: the kept task takes the others in, one undo per merged task (task_unmerge), under the bar it came from
+  flowMerge: (keep, keys, from = 'overview') => ctl.flowBatch([{ verb: 'flow_merge', args: { keep, keys } }], from),
+  // Prio: Jev's daily order of the work page, asked once per page load (the round 2 Jev view's daily rule: nothing
+  // leaves the machine twice a day)
+  async flowPrioOrder(page) {
+    if (!page || prioAsked.has(page)) return
+    prioAsked.add(page)
+    store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { ...(s.jevOrder[page] ?? {}), order: s.jevOrder[page]?.order ?? null, running: true, error: null } } }))
+    const res = await ctl.jevWork(page, false)
+    if (!res?.ok) store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { order: s.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false } } }))
+  },
   flowPick: (keys, on) => setUi(ui => {
     const picked = new Set(ui.flowPicked ?? [])
     for (const k of keys ?? []) { if (on) picked.add(k); else picked.delete(k) }
