@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -793,6 +793,19 @@ const ctl = {
   },
   select(key) {
     const s = store.get()
+    // the work tab without Due shows no day column to select in (a click on a tab's name, views/tabs.js): Work
+    // through opens the row's point, entry or group of Not now, anything else the row's detail beside the page
+    const work = { ...s, ui: { ...s.ui, page: 'briefing' } }
+    const view = workViewIn(work)
+    if (view !== 'due') {
+      const to = view === 'flow' ? flowWhere(areaScope(work), key) : null
+      if (!to) return ctl.peek(key, null)
+      if (s.ui.page !== 'briefing') ctl.setPage('briefing')
+      if (to.view === 'run') return ctl.flowRun(to.id)
+      if (to.view === 'left') return ctl.flowLeft(to.id)
+      return setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: null }, flowAt: { id: to.id, i: 0 },
+        flowView: 'point', flowPicked: [], flowPlan: null }))
+    }
     setUi({ selectedKey: key, focusKey: key, pageDetail: false, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
     if (s.ui.page !== 'briefing') setUi({ page: 'briefing' })
     if (s.layout === 'narrow') requestAnimationFrame(() => window.scrollTo(0, 0))
@@ -863,18 +876,21 @@ const ctl = {
     // Work through was a page (@flow) and is a view of the work tab now: a stored page or a link leads there
     const flowTo = flowPageFor(id)
     if (flowTo) {
-      save('bridge-cockpit.workTab', flowTo.view)
-      setUi({ workView: flowTo.view })
+      const go = workViewGo(s, flowTo.view)
+      if (go.save) save('bridge-cockpit.workTab', go.view)
+      setUi({ workView: go.view })
       id = flowTo.page
     }
     // a page of group day has no tab: a tile or link to it opens Today, where its sections stand
     if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = 'briefing'
-    // the work page and the Jev tab are views of the work tab where a page of group work exists
+    // the work page and the Jev tab are views of the work tab where a page of group work exists; with By source or
+    // By Jev switched off the way lands in Work through (workViewGo, nothing stored), Jev's with Prio on the left
     const work = workPageOf(s.model?.pages)
     if (work && (id === work.id || (id === '@jev' && work.jev))) {
-      const view = id === work.id ? 'area' : 'jev'
-      save('bridge-cockpit.workTab', view)
-      setUi({ workView: view })
+      const go = workViewGo(s, id === work.id ? 'area' : 'jev')
+      if (go.save) save('bridge-cockpit.workTab', go.view)
+      setUi({ workView: go.view })
+      if (id === '@jev' && go.view === 'flow' && prioOn(s)) ctl.flowMode('prio')
       id = 'briefing'
     }
     save('bridge-cockpit.page', id)
@@ -883,13 +899,15 @@ const ctl = {
     setUi({ page: id, pageDetail: false, queue: null, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null })
     pageSeen(id)
   },
-  // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab
+  // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab,
+  // also where the work tab offers no By source (reviewHome with the views on offer)
   openReview() {
-    const home = reviewHome(store.get().model?.pages, T().workOrder.kinds)
+    const s = store.get()
+    const home = reviewHome(s.model?.pages, T().workOrder.kinds, workViewsIn(s))
     if (!home) return ctl.setPage(CHECK_PAGE)
     ctl.setPage(home.page)
     ctl.setWorkKind(home.label)
-    ctl.setWorkView('area')
+    if (workViewGo(store.get(), 'area').save) ctl.setWorkView('area')
   },
   // the Workers tab with a filter set (the machine whose workers a tile or a drawer asked for)
   openWorkers(filter) {
@@ -1038,7 +1056,9 @@ const ctl = {
       : { order: s.jevOrder[page]?.order ?? null, error: res.error?.message ?? 'error', running: false } } }))
     if (force && res.ok && res.data.order) ctl.setWorkView('jev')
   },
-  setWorkView: v => { save('bridge-cockpit.workTab', v); setUi({ workView: v }); pageSeen('briefing') },
+  // a click on the switch, or a way that names a view (jevRank, openReview): a view switched off is shown as the tab's
+  // fallback and never stored (workViewGo)
+  setWorkView: v => { const go = workViewGo(store.get(), v); if (go.save) save('bridge-cockpit.workTab', go.view); setUi({ workView: go.view }); pageSeen('briefing') },
   // the files view of the work tab for this visit only (the search of the command box, the focus's way on with
   // cockpit.focus_to_files): the saved view stays the default (it changes by a click on the switch or the config)
   openFiles() {

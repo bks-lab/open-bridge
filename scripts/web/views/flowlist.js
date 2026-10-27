@@ -2,9 +2,10 @@
 // The cockpit, the overview of Work through (views/flow.js): what the middle shows on entering a theme or area, and at
 // the level of all of them. Every point as a row of a table, grouped as the left column groups them (Needs you, In
 // progress, Tasks, Reports), with a box, its title (a click opens the point), its stage, its area and a suggestion
-// with half a sentence of why (logic.js flowSuggestion: the day's triage first, else what the themes run said in its
-// one call); a line over the table names where the suggestions come from. On top, sticky, the batch bar: All, Tick the
-// suggestions (the rows whose suggestion is done, drop or later, never Let AI do it), how many are ticked and what
+// with half a sentence of why (logic.js flowSuggestion: the day's triage or the task check, the newer first, else what
+// the themes run said in its one call, else Jev's square); a line over the table names where the suggestions come from,
+// and the walk bar of an open point goes the order of the table (walkOrder). On top, sticky, the batch bar: All, Tick
+// the suggestions (the rows whose suggestion is done, drop or later, never Let AI do it), how many are ticked and what
 // their suggestions would do, Run the suggestions, and for all ticked the same Done, Later until or Drop because (one
 // reason for all). The boxes are one selection with the left column's (ui.flowPicked). A batch plans what goes
 // (logic.js batchPlan), says itself in one line with Confirm, and only then does anything go out (app.js flowBatch,
@@ -47,6 +48,14 @@ export function bandsOf(points, one = null) {
   return FLOW_BANDS.map(band => ({ band, rows: rows.filter(r => pointBand(r.x) === band) })).filter(b => b.rows.length)
 }
 
+/** The points of a side in the order the overview lists them (bandsOf, `one` as there), each once: the order the walk
+ *  bar goes, so Next leads to the row under the one open (round 6 B) */
+export function walkOrder(points, one = null) {
+  const out = []
+  for (const b of bandsOf(points ?? [], one)) for (const r of b.rows) if (!out.includes(r.x)) out.push(r.x)
+  return out
+}
+
 /** The area of a row of the list: its row's project, else the workspace of its tab */
 export const rowArea = r => (r.row ? rowProject(r.row) : r.x?.tab?.workspace ?? '')
 
@@ -66,7 +75,8 @@ export function Suggestion({ sug, s }) {
   const lang = language()
   if (!sug) return html`<span class="muted small">${f.none}</span>`
   const day = at => formatDay(typeof at === 'number' ? isoDate(at) : String(at ?? '').slice(0, 10), lang)
-  const from = sug.from === 'triage' ? f.from.triage(day(sug.at)) : sug.from === 'jev' ? f.from.jev(day(sug.at)) : f.from.themes
+  const from = sug.from === 'triage' ? f.from.triage(day(sug.at)) : sug.from === 'check' ? f.from.check(day(sug.at))
+    : sug.from === 'jev' ? f.from.jev(day(sug.at)) : f.from.themes
   const word = sug.verb === 'later' && sug.until ? f.laterUntil(formatDay(sug.until, lang)) : f.verb[sug.verb]
   const why = sug.verb === 'drop' && sug.drop && sug.from !== 'jev' ? dropReasonWord(sug.drop, lang) : sug.reason || jevWhy(sug, lang)
   return html`<span class=${`flow-sug flow-sug-${sug.verb}`} title=${from}>
@@ -209,11 +219,13 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
   const chosen = [...pickable, ...running].filter(r => picked.has(r.id)).map(r => r.row)
   const from = new Set(rows.map(r => flowSuggestion(r.row, s)?.from).filter(Boolean))
   const day = s.triage?.last?.at ? formatDay(String(s.triage.last.at).slice(0, 10), lang) : null
+  const checked = s.model?.review?.last?.reviewed_at ? formatDay(String(s.model.review.last.reviewed_at).slice(0, 10), lang) : null
   if (!rows.length) return html`<section class="flow-overview" aria-label=${w.label}><p class="muted">${w.empty}</p></section>`
   return html`<section class="flow-overview" aria-label=${w.label}>
     <${BatchBar} pickable=${pickable} chosen=${chosen} onPick=${(keys, on) => c.flowPick(keys, on)} verbs=${['suggested', 'done', 'later', 'drop']}
       planOf=${(how, value) => batchPlan(chosen, how, s, value, lang)} onRun=${plan => c.flowBatch(plan?.calls ?? [])} suggest s=${s} c=${c} />
-    <p class="flow-list-from muted small">${[from.has('triage') && day ? w.from.triage(day) : null, from.has('themes') ? w.from.themes : null,
+    <p class="flow-list-from muted small">${[from.has('triage') && day ? w.from.triage(day) : null, from.has('check') && checked ? w.from.check(checked) : null,
+      from.has('themes') ? w.from.themes : null,
       from.has('jev') ? w.from.jev(formatDay(isoDate(nowMs), lang)) : null, w.honest].filter(Boolean).join(' · ')}</p>
     <table class="flow-ov-table">
       <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${w.pickAll}</span></th><th>${w.cols.point}</th><th>${w.cols.stage}</th>

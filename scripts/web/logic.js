@@ -1798,16 +1798,33 @@ export function workViews(page, jev, flow = false, allowed = null) {
   return kept.length ? kept : all
 }
 
-/** The view the work tab shows: the remembered one where it can, else the first view kept (what is due by default) */
+/** The view the work tab shows: the remembered one (none remembered: what is due, as app.js loads it) where it can,
+ *  else Work through where it is on offer (a Bridge that switched the other views off never lands in the files),
+ *  else the first view kept */
 export function workViewOf(view, page, jev, flow = false, allowed = null) {
   const views = workViews(page, jev, flow, allowed)
-  return views.includes(view) ? view : views[0]
+  const want = view ?? 'due'
+  return views.includes(want) ? want : views.includes('flow') ? 'flow' : views[0]
+}
+
+/** The views of the work tab under the state: workViews with the work page, Jev, cockpit.flow.enabled and
+ *  cockpit.work_views of `s` */
+export function workViewsIn(s) {
+  return workViews(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null)
 }
 
 /** The view of the work tab under the state: workViewOf with the work page, Jev, cockpit.flow.enabled and
  *  cockpit.work_views of `s` */
 export function workViewIn(s) {
   return workViewOf(s?.ui?.workView, workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null)
+}
+
+/** Where a way that names a view of the work tab (a jump to the work page, to Jev, to the task check, a click on
+ *  the switch) lands under the state: {view, save}, the view itself where it is on offer and to be kept as the
+ *  tab's view, else the view the tab falls back to (workViewOf), never kept, so a view switched off is not stored */
+export function workViewGo(s, view) {
+  const on = workViewsIn(s).includes(view)
+  return { view: on ? view : workViewIn({ ...s, ui: { ...s?.ui, workView: view } }), save: on }
 }
 
 /** Where a page id leads that is a view now: the Work through page (@flow, a stored page or a link of an older
@@ -1891,11 +1908,13 @@ export function workKinds(sections, kinds) {
 }
 
 /** Where the task check stands when inbox and tasks share a page: that page and the label of its tasks
- *  section ({page, label}), else null and the check keeps a tab of its own */
-export function reviewHome(pages, kinds) {
+ *  section ({page, label}), else null and the check keeps a tab of its own. `views`, the views of the work tab
+ *  on offer (workViewsIn): the work page is the check's place only while By source (`area`) is among them */
+export function reviewHome(pages, kinds, views = null) {
   for (const p of pages ?? []) {
     const tasks = (p.sections ?? []).find(sec => sec.kind === 'tasks')
-    if (tasks && workKinds(p.sections, kinds).length) return { page: p.id, label: workLabel(tasks, kinds) }
+    if (!tasks || !workKinds(p.sections, kinds).length) continue
+    return p.group === 'work' && Array.isArray(views) && !views.includes('area') ? null : { page: p.id, label: workLabel(tasks, kinds) }
   }
   return null
 }

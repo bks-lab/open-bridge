@@ -604,6 +604,10 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
 
     work_views = work_views_of(w.get("work_views"))[0]
     work_view = w["work_view"] if w.get("work_view") in WORK_VIEWS else "due"
+    flow = flow_of(w.get("flow"))
+    # a view the list leaves out opens Work through where it is kept and on (a Bridge that switched the other views
+    # off never lands in the files), else the first one kept
+    fallback = "flow" if "flow" in work_views and flow["enabled"] else work_views[0]
 
     cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
@@ -613,13 +617,12 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                     session_guide=gd.guide_of(w.get("session_guide")),
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
-                    # a view the list leaves out opens the first one kept
-                    work_view=work_view if work_view in work_views else work_views[0], work_views=work_views,
+                    work_view=work_view if work_view in work_views else fallback, work_views=work_views,
                     focus_to_files=w.get("focus_to_files") is True,
                     files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
                     a2a_sources=a2a_sources_of(w.get("a2a_sources"), root)[0],
-                    flow=flow_of(w.get("flow")),
+                    flow=flow,
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

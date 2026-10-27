@@ -3,14 +3,16 @@
 // leaves out and why, the cards of the calm card, the return card after a jump to a tab, the five verbs (which a
 // row offers, which one is suggested, what each sends), the briefs to prepare for the cards that come next and how
 // many agents run; since round 3 also the tabs under the card of an open point (Description, Steps, Activity, Related),
-// the rows and counts of its Activity, the fields on the right, and the scope and the calls of the instruction line.
-// No DOM, no network, no state of its own (prepRunner holds the line app.js keeps). logic.js
-// passes every name on, so a view may import it from either; the flow test imports it under node.
+// the rows and counts of its Activity, the fields on the right, and the scope and the calls of the instruction line;
+// since round 6 B where a key stands on the page (flowWhere) and the steps a row has on a page (pageStepsOf), for the
+// Bridges that show Work through alone. No DOM, no network, no state of its own (prepRunner holds the line app.js
+// keeps). logic.js passes every name on, so a view may import it from either; the flow test imports it under node.
 //
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowProject, tabOfTask, workPageOf } from './logic.js'
+import { canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowProject, tabOfTask, wantsYou,
+  workPageOf } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -34,14 +36,20 @@ export const pointBand = x => (FLOW_YOU.includes(x?.group) ? 'you' : x?.group)
 // the groups a filter of the queue shows; `all` shows every group (the page shows all, by theme or area)
 export const FLOW_CHIPS = { all: FLOW_GROUPS, you: FLOW_YOU, running: ['doing'], tasks: ['task', 'issue'], reports: ['reports'] }
 
-// the groups of Not now, the open rows that are no point now, in the order the left column lists them: put off or due
-// later than the lead time, waiting on others, resting, ideas and the backlog, the streams, the issues and pull
-// requests watched
-export const FLOW_LEFT_OUT = ['later', 'waiting', 'resting', 'idea', 'stream', 'watch']
+// the groups of Not now, the open rows that are no point now, in the order the left column lists them: Later (round 6
+// B: put off or due later than the lead time, waiting on others, resting, one group with the reason on each row), ideas
+// and the backlog, the streams, the issues and pull requests watched
+export const FLOW_LEFT_OUT = ['later', 'idea', 'stream', 'watch']
 
-// the verbs each group of Not now offers in its batch bar (a row a verb does not fit stays out, not_offered)
-export const LEFT_VERBS = { later: ['back', 'later', 'done', 'drop'], waiting: ['back', 'later', 'done', 'drop'], resting: ['back', 'later', 'done', 'drop'],
-  idea: ['do', 'later', 'done', 'drop'], stream: ['later'], watch: ['later', 'done', 'drop'] }
+// why a row of Not now is no point (its entry's `kind`): the kinds Later holds, in the order it lists them, then the
+// groups of their own
+const LATER_KINDS = ['later', 'waiting', 'resting']
+const LEFT_KINDS = [...LATER_KINDS, 'idea', 'stream', 'watch']
+
+// the verbs each group of Not now offers in its batch bar (a row a verb does not fit stays out, not_offered); Back on
+// in Later acts on each row by why it waits, as it did in the three groups (leftPlan)
+export const LEFT_VERBS = { later: ['back', 'later', 'done', 'drop'], idea: ['do', 'later', 'done', 'drop'], stream: ['later'],
+  watch: ['later', 'done', 'drop'] }
 
 // the five verbs, in the order the verb bar shows them
 export const FLOW_VERBS = ['do', 'advise', 'done', 'later', 'drop']
@@ -91,6 +99,11 @@ export const flowDriver = s => canTab(s, 'launch')
 /** Where a start stands now: the server's stage read against the tabs as they are (liveStage), a quiet one (idle)
  *  kept until its tab asks you */
 export const flowStage = (r, tabs, nowMs) => liveStage(r, tabs, nowMs)
+
+/** The stage of a live tab as the rest of the cockpit reads it (logic.js wantsYou, statusQueue): a tab waiting at its
+ *  prompt that went quiet (the server's `idle`, still for a while with last words that ask nothing) is finished,
+ *  `idle`; every other one its state */
+export const tabStage = t => (t?.state === 'waiting' && t.idle ? 'idle' : t?.state)
 
 /** A jump to a tab after the page came back into view: armed once return_after_s went by since the jump, gone
  *  after FLOW_RETURN_MAX_MS, waiting before. Without a jump nothing: being shown alone never asks */
@@ -180,6 +193,37 @@ export function flowKeys(parts) {
   return out
 }
 
+/** Where a row stands on the page by its key, for a way that names the row and not the page (a click on a tab's
+ *  name, views/tabs.js): its point {view point, id}, its entry of Running now {view run, id} or its group of Not now
+ *  {view left, id: the group}, the first place that holds it; null where it stands nowhere (another area's, settled) */
+export function flowWhere(s, key) {
+  if (!key) return null
+  const parts = flowParts(s)
+  const point = flowQueue(parts, 'all').find(x => coveredKeys(x).includes(key))
+  if (point) return { view: 'point', id: point.id }
+  const entry = parts.lane.find(x => x.row?.key === key)
+  if (entry) return { view: 'run', id: entry.id }
+  const group = parts.leftOut.groups.find(g => g.rows.some(e => e.row?.key === key))
+  return group ? { view: 'left', id: group.reason } : null
+}
+
+/** The page item with steps of its own that a row of a command section stands for (an application: followed up,
+ *  turned down), as the info drawer opens it (c.openInfo): {it, page, section}, the first section of a page named
+ *  like the row's source whose item carries the row's own id (row.ref, the item's row_id) and steps; else null. Its
+ *  steps stand only on the page that lists it (the work page: the view By source) and in that drawer, so Work
+ *  through leads there (round 6 B) */
+export function pageStepsOf(row, s) {
+  if (!row?.ref) return null
+  for (const p of s?.model?.pages ?? []) {
+    for (const sec of p.sections ?? []) {
+      if (!(row.sources ?? []).includes(sec.id)) continue
+      const it = (sec.items ?? []).find(x => x?.row_id === row.ref && x.actions?.length)
+      if (it) return { it, page: p.id, section: sec.id }
+    }
+  }
+  return null
+}
+
 // a calendar day as a count of days, so no clock change bends the count between two days
 const dayNumber = iso => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / DAY
 const dayOf = n => new Date(n * DAY).toISOString().slice(0, 10)
@@ -222,13 +266,15 @@ const inNow = (r, src) => src === 'now' || r.section === 'now' || r.urgency === 
 
 /** The parts of the page from the state it sees (areaScope). Every open row (flowUniverse) stands exactly once: on a
  *  point (the groups of FLOW_GROUPS), in Running now (`lane`: a start at work, a session linked to a task or
- *  recognised from what it did, a task's own tab at work or waiting) or in a group of Not now (`leftOut`, by why). A
+ *  recognised from what it did, a task's own tab, each while its tab works or went quiet at its prompt, tabStage; one
+ *  waiting that is not quiet yet needs you and asks as a point) or in a group of Not now (`leftOut`, by why). A
  *  point or an entry of the lane may stand for no open row (a tab alone, a start whose item left the list), a row of
  *  Not now always stands for one. Live first (only with a terminal driver): the return card, the starts by stage, the
  *  sessions, the task tabs, the tabs that ask; then each open row by the first rule that fits. A point due later than
  *  cockpit.flow.ahead_days waits under Later until then (aheadOf), unless the viewer took it back on (ui.flowEarly).
  *  A card is {group, id, kind, row?, start?, tab?, task?, covers?, rows?, stage?}; an entry of the lane {group doing,
- *  lane, id, kind start, session or tab, row, tab, stage, how, title, at}; one of Not now {row, until, why, due, repo}.
+ *  lane, id, kind start, session or tab, row, tab, stage, how, title, at}; one of Not now {row, kind, until, why, due,
+ *  repo}, kind the reason it is no point (later, waiting, resting, idea, stream, watch; the first three share Later).
  *  Besides, every live session as a card of Running now (`sessions`, round 6: {id, kind live, session, tab, entry,
  *  stage}, entry the lane's entry in its tab), with or without a driver; it stands for no row, so no key or count moves.
  *  counts: points (the reports by their rows), running, left, extra (cards and entries that stand for no open row,
@@ -244,7 +290,9 @@ export function flowParts(s) {
   const tabs = allTabs.filter(t => t.state !== 'shell')
   const answered = s?.ui?.answered ?? {}
   const asking = t => !isAnswered(answered[t.ref], t)
-  const runs = t => !!t && (t.state === 'working' || t.state === 'waiting')
+  // round 6 B: the waiting rule of the rest of the cockpit (wantsYou): a tab waiting at its prompt needs you until it
+  // went quiet, then it is finished; so only one at work or finished runs, one that needs you is a point (L5)
+  const runs = t => !!t && (t.state === 'working' || tabStage(t) === 'idle')
   const rowOfTask = slug => (slug ? uni.get(`task:${slug}`) ?? null : null)
   const used = new Set()      // row keys a card, an entry of the lane or a group already stands for
   const usedTabs = new Set()
@@ -278,32 +326,33 @@ export function flowParts(s) {
       for (const t of mine) usedTabs.add(t.ref)
     }
     // L3 a live session linked to a task (by hand, by its task tab, or recognised from what it did) while its tab works
-    // or waits at its prompt; a second session on the same task stands without the row. The newest session of a tab
-    // first, so the entry of a tab is the task its card shows (S)
+    // or went quiet at its prompt; a second session on the same task stands without the row. The newest session of a
+    // tab first, so the entry of a tab is the task its card shows (S)
     for (const x of [...(s?.sessions?.sessions ?? [])].sort((a, b) => (b?.started_ms ?? 0) - (a?.started_ms ?? 0))) {
       const tab = x?.task && x.tab?.ref && !usedTabs.has(x.tab.ref) ? tabOf(x.tab.ref) : null
       if (!runs(tab)) continue
       const key = `task:${x.task}`
       const row = used.has(key) ? null : rowOfTask(x.task)
-      out.lane.push({ group: 'doing', lane: true, id: `session:${tab.ref}`, kind: 'session', row, tab, session: x, stage: tab.state,
+      out.lane.push({ group: 'doing', lane: true, id: `session:${tab.ref}`, kind: 'session', row, tab, session: x, stage: tabStage(tab),
         how: x.task_how ?? 'hand', title: (row ?? uni.get(key) ?? named.get(key))?.title ?? tab.name,
         at: x.task_since_ms ?? x.started_ms ?? tab.since_ms ?? null })
       used.add(key)
       usedTabs.add(tab.ref)
     }
-    // L4 a task's own tab (its slug) at work or waiting at its prompt
+    // L4 a task's own tab (its slug) at work or quiet at its prompt
     for (const t of allTabs) {
       const row = runs(t) && t.slug && !usedTabs.has(t.ref) ? rowOfTask(t.slug) : null
       if (!row || used.has(row.key)) continue
-      out.lane.push({ group: 'doing', lane: true, id: `tab:${t.ref}`, kind: 'tab', row, tab: t, stage: t.state, how: 'tab', title: row.title ?? t.name,
+      out.lane.push({ group: 'doing', lane: true, id: `tab:${t.ref}`, kind: 'tab', row, tab: t, stage: tabStage(t), how: 'tab', title: row.title ?? t.name,
         at: t.since_ms ?? null })
       take(row)
       usedTabs.add(t.ref)
     }
-    // L5 the tabs that ask you, with or without a row, the oldest question first: they need you, so they are points
-    // a session linked to that tab (by hand, by its task tab, or recognised) brings its task: it stands once, as the
-    // card that asks, and goes back to Running now once its tab works again
-    for (const t of tabs.filter(x => x.state === 'needs-you' && !usedTabs.has(x.ref) && asking(x)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
+    // L5 the tabs that want you (a dialog, or waiting at its prompt and not quiet yet, wantsYou), with or without a
+    // row, the oldest first: they need you, so they are points. A session linked to that tab (by hand, by its task tab,
+    // or recognised) brings its task: it stands once, as the card that asks, and goes back to Running now once its
+    // tab works again or went quiet
+    for (const t of tabs.filter(x => wantsYou(x) && !usedTabs.has(x.ref) && asking(x)).sort((a, b) => (a.since_ms ?? 0) - (b.since_ms ?? 0))) {
       const linked = (s?.sessions?.sessions ?? []).find(v => v.task && v.tab?.ref === t.ref)
       const found = (t.slug ? rowOfTask(t.slug) : null) ?? (t.item ? uni.get(`inbox:${t.item}`) ?? null : null) ?? (linked ? rowOfTask(linked.task) : null)
       const row = found && !used.has(found.key) ? found : null
@@ -328,7 +377,7 @@ export function flowParts(s) {
     const tab = driver && x.tab?.ref ? tabOf(x.tab.ref) : null
     if (tab?.state === 'shell' || (tab && !laneOfTab.has(tab.ref) && usedTabs.has(tab.ref))) continue
     const card = { id: `live:${x.id ?? x.sid}`, kind: 'live', session: x, tab, entry: tab ? laneOfTab.get(tab.ref) ?? null : null,
-      stage: tab?.state ?? (x.status === 'busy' ? 'working' : 'idle') }
+      stage: tab ? tabStage(tab) : x.status === 'busy' ? 'working' : 'idle' }
     if (!tab) { out.sessions.push(card); continue }
     const all = [...(byTab.get(tab.ref) ?? []), card]
     byTab.set(tab.ref, all)
@@ -341,9 +390,9 @@ export function flowParts(s) {
       task_since_ms: holder.session.task_since_ms, sid: holder.session.sid } } : card)
   }
   out.sessions.sort((a, b) => (SESSION_RANK[a.stage] ?? 3) - (SESSION_RANK[b.stage] ?? 3) || (b.session.started_ms ?? 0) - (a.session.started_ms ?? 0))
-  const left = Object.fromEntries(FLOW_LEFT_OUT.map(k => [k, []]))
+  const left = Object.fromEntries(LEFT_KINDS.map(k => [k, []]))
   const leave = (why, row, extra = {}) => {
-    left[why].push({ row, until: null, why: null, due: row.due ?? null, repo: null, ...extra })
+    left[why].push({ row, kind: why, until: null, why: null, due: row.due ?? null, repo: null, ...extra })
     used.add(row.key)
   }
   // C: a point due later than the lead time waits under Later until then, unless the viewer took it back on
@@ -412,7 +461,9 @@ export function flowParts(s) {
   left.later.sort((a, b) => (a.until && b.until ? a.until.localeCompare(b.until) : a.until ? -1 : b.until ? 1 : 0) || byTitle(a.row, b.row))
   left.watch.sort((a, b) => (a.repo && b.repo ? a.repo.localeCompare(b.repo) : a.repo ? -1 : b.repo ? 1 : 0) || byKey(a.row, b.row))
   for (const k of ['waiting', 'resting', 'idea', 'stream']) left[k].sort((a, b) => byPrio(a.row, b.row) || byAge(a.row, b.row))
-  const groups = FLOW_LEFT_OUT.filter(k => left[k].length).map(reason => ({ reason, rows: left[reason] }))
+  // Later holds its three kinds in their order, each sorted as it was
+  const groups = FLOW_LEFT_OUT.map(reason => ({ reason, rows: (reason === 'later' ? LATER_KINDS : [reason]).flatMap(k => left[k]) }))
+    .filter(g => g.rows.length)
   const leftN = groups.reduce((n, g) => n + g.rows.length, 0)
   out.leftOut = { total: leftN, groups }
   const queue = flowQueue(out, 'all')
@@ -446,25 +497,25 @@ export const flowRunning = (s, parts = flowParts(s)) => parts.lane.filter(x => x
 export const laneRows = lane => (lane ?? []).filter(x => x.row && isTaskRow(x.row) && !isStreamRow(x.row)).map(x => ({ id: x.row.key, row: x.row, x }))
 
 /** What drives a point in progress now: a start of the cockpit (`start`, its stage and since when), the agent tab of
- *  its task (`tab`, the tab's state), a session in a linked tab (`session`, by hand, by its task tab or recognised,
- *  its tab's state now), else nothing (`none`, with how many days ago its task last moved, from its updated day).
- *  {by, tab, since_ms, days, stage} */
+ *  its task (`tab`, the tab's stage, tabStage: a quiet one finished), a session in a linked tab (`session`, by hand,
+ *  by its task tab or recognised, its tab's stage now), else nothing (`none`, with how many days ago its task last
+ *  moved, from its updated day). {by, tab, since_ms, days, stage} */
 export function flowDrive(x, s) {
   const nowMs = s?.now || Date.now()
   const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control)
   if (x.kind === 'start') return { by: 'start', tab: x.tab ?? null, since_ms: x.start.at_ms ?? null, days: null, stage: x.stage }
   if (x.kind === 'session') {
     const tab = tabs.find(t => t.ref === x.tab?.ref) ?? x.tab ?? null
-    return { by: 'session', tab, since_ms: x.at ?? null, days: null, stage: tab?.state ?? 'working' }
+    return { by: 'session', tab, since_ms: x.at ?? null, days: null, stage: tabStage(tab) ?? 'working' }
   }
   // a card of a tab (one that asks, the return card while its tab is there, a task tab of Running now): that tab
-  if ((x.kind === 'tab' || x.kind === 'back') && x.tab) return { by: 'tab', tab: x.tab, since_ms: x.tab.since_ms ?? null, days: null, stage: x.tab.state }
+  if ((x.kind === 'tab' || x.kind === 'back') && x.tab) return { by: 'tab', tab: x.tab, since_ms: x.tab.since_ms ?? null, days: null, stage: tabStage(x.tab) }
   const slug = x.row?.task
   const tab = slug ? tabOfTask(tabs, slug) : null
-  if (tab && tab.state !== 'shell') return { by: 'tab', tab, since_ms: tab.since_ms ?? null, days: null, stage: tab.state }
+  if (tab && tab.state !== 'shell') return { by: 'tab', tab, since_ms: tab.since_ms ?? null, days: null, stage: tabStage(tab) }
   const linked = slug ? (s?.sessions?.sessions ?? []).find(v => v.task === slug && v.tab?.ref) : null
   const ltab = linked ? tabs.find(t => t.ref === linked.tab.ref) ?? null : null
-  if (ltab) return { by: 'session', tab: ltab, since_ms: linked.task_since_ms ?? linked.started_ms ?? ltab.since_ms ?? null, days: null, stage: ltab.state }
+  if (ltab) return { by: 'session', tab: ltab, since_ms: linked.task_since_ms ?? linked.started_ms ?? ltab.since_ms ?? null, days: null, stage: tabStage(ltab) }
   const day = DAY_RE.test(String(x.row?.updated ?? '')) ? new Date(`${String(x.row.updated).slice(0, 10)}T00:00:00`).getTime() : null
   const today = new Date(isoDate(nowMs) + 'T00:00:00').getTime()
   return { by: 'none', tab: null, since_ms: null, days: day == null ? null : Math.max(0, Math.round((today - day) / DAY)), stage: null }
@@ -642,21 +693,33 @@ export function atWork(row, s) {
 }
 
 /** The suggestion for a row in the list, with half a sentence of why and where it comes from: the triage of the day
- *  first (verdict close, stale or waiting, else doer ai or either), while it is fresh; else what the themes run said
- *  for it. Only a verb the row offers (verbsFor), or `you` (only the person can); never Let AI do it where an agent
- *  works on it already (atWork). {verb, reason, until, drop, from, at} or null */
+ *  (verdict close, stale or waiting, else doer ai or either), while it is fresh, and the task check's verdict on a
+ *  task (round 6 B: close, stale or waiting; one the person kept the task against says nothing), the newer of the two
+ *  first; else what the themes run said for it, else Jev's square. Only a verb the row offers (verbsFor), or `you`
+ *  (only the person can); never Let AI do it where an agent works on it already (atWork). {verb, reason, until, drop,
+ *  from (triage, check, themes or jev), at} or null */
 export function flowSuggestion(row, s) {
   if (!row?.key) return null
   const offered = verbsFor(row)
   const ok = v => v === 'you' || (offered.includes(v) && !(v === 'do' && atWork(row, s)))
-  const tr = s?.triage?.items?.[row.key]
-  if (tr && triageFresh(s)) {
+  const monday = () => isoDate(nextMonday(s?.now || Date.now()))
+  const fromTriage = () => {
+    const tr = s?.triage?.items?.[row.key]
+    if (!tr || !triageFresh(s)) return null
     const verb = TRIAGE_VERB[tr.verdict] ?? (['ai', 'either'].includes(tr.doer) ? 'do' : tr.doer === 'you' ? 'you' : null)
-    if (verb && ok(verb)) {
-      return { verb, reason: tr.reason || tr.gist || '', until: verb === 'later' ? isoDate(nextMonday(s?.now || Date.now())) : null,
-        drop: null, from: 'triage', at: s.triage.last.at }
-    }
+    return verb && ok(verb) ? { verb, reason: tr.reason || tr.gist || '', until: verb === 'later' ? monday() : null, drop: null, from: 'triage', at: s.triage.last.at }
+      : null
   }
+  const fromCheck = () => {
+    const rv = row.review
+    const verb = rv && !rv.kept ? TRIAGE_VERB[rv.verdict] : null
+    return verb && ok(verb) ? { verb, reason: rv.reason ?? '', until: verb === 'later' ? monday() : null, drop: null, from: 'check',
+      at: s?.model?.review?.last?.reviewed_at ?? null } : null
+  }
+  const checkAt = Date.parse(String(s?.model?.review?.last?.reviewed_at ?? ''))
+  const checkFirst = Number.isFinite(checkAt) && !(checkAt < Date.parse(String(s?.triage?.last?.at ?? '')))
+  const said = checkFirst ? fromCheck() ?? fromTriage() : fromTriage() ?? fromCheck()
+  if (said) return said
   const th = s?.themes?.suggest?.[row.key]
   if (th && ok(th.verb)) return { verb: th.verb, reason: th.reason ?? '', until: th.until ?? null, drop: th.drop ?? null, from: 'themes', at: th.at_ms ?? null }
   // Jev last: its square drop says Drop (too big for what it brings, where the instance offers that reason), hand says
@@ -1082,10 +1145,12 @@ const takesWords = (tab, s) => !!tab && replyOptions(tab, s).textBox
 
 /** What Run sends for the plan the server made of a sentence (flow_instruct): every step through the verb it names,
  *  each with by instruction. Done for several goes out as one settle; Later with its day, Drop with its reason in the
- *  page's words; Let AI do it with its sentence (a mail is such a start, its sentence asks for a draft only) and, as in
- *  a batch, never where an agent works already nor past max_running; a reply goes to the tab its step names, through
- *  the reply guard, only while it waits at its prompt. A key no longer in the list stays out. {calls, skipped: [{step,
- *  key, title, why}]}, `step` the index of the step in plan.steps, so the page says each skip inside its step */
+ *  page's words, both never on a row an agent works on (atWork) unless the sentence was for that one open point
+ *  (plan.point; round 6 B: one to all or to the ticked ones leaves it alone, as a batch does); Let AI do it with its
+ *  sentence (a mail is such a start, its sentence asks for a draft only) and, as in a batch, never where an agent
+ *  works already nor past max_running; a reply goes to the tab its step names, through the reply guard, only while it
+ *  waits at its prompt. A key no longer in the list stays out. {calls, skipped: [{step, key, title, why}]}, `step` the
+ *  index of the step in plan.steps, so the page says each skip inside its step */
 export function instructCalls(plan, s, lang = 'en') {
   const calls = []
   const skipped = []
@@ -1113,6 +1178,7 @@ export function instructCalls(plan, s, lang = 'en') {
     for (const k of keys) {
       const row = rows.get(k)
       if (!['later', 'drop', 'do'].includes(op) || !verbsFor(row).includes(op)) { out(k, 'not_offered'); continue }
+      if (op !== 'do' && !plan.point && atWork(row, s)) { out(k, 'working'); continue }
       if (op === 'do') {
         if (atWork(row, s)) { out(k, 'working'); continue }
         if (running >= cap) { out(k, 'running'); continue }

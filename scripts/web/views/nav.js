@@ -2,7 +2,7 @@
 // The cockpit, the pages: which tab stands where, and the fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FLOW_PAGE, listedChats, reviewHome, walkRefs, workPageOf, workViewIn } from '../logic.js'
+import { FLOW_PAGE, listedChats, reviewHome, walkRefs, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -88,9 +88,10 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
   }
 }
 
-/** The page the task check stands on, when inbox and tasks share one (then the check has no tab of its own) */
+/** The page the task check stands on, when inbox and tasks share one (then the check has no tab of its own); the
+ *  work page only while the work tab offers By source, else the check is a tab again */
 export function reviewHomeOf(s) {
-  return reviewHome(s.model?.pages, T().workOrder.kinds)
+  return reviewHome(s.model?.pages, T().workOrder.kinds, workViewsIn(s))
 }
 
 /** Every page with whether it stands behind More: the fixed pages, then the profile's. The system
