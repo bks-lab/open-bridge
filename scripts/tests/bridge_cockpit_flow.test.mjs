@@ -2342,6 +2342,11 @@ test('Merge in the batch: two open tasks ticked offer it, a stream or an item ti
   el.button(en.flow.merge.run).click()
   await tick()
   assert.deepEqual(c.calls.find(x => x[0] === 'flowMerge'), ['flowMerge', 'task:release-polish', ['task:release-wording'], 'overview'])
+  // as Confirm does, the merge unticks the rows it took: an undo brings them back unticked
+  const untick = c.calls.findIndex(x => x[0] === 'flowPick' && x[2] === false)
+  assert.ok(untick >= 0, 'the merged rows are unticked')
+  assert.deepEqual([...c.calls[untick][1]].sort(), ['task:release-polish', 'task:release-wording'])
+  assert.ok(untick < c.calls.findIndex(x => x[0] === 'flowMerge'), 'unticked before the merge goes out')
   // with an inbox item ticked too: disabled, and the line says why
   const mixed = mount(html`<${FlowPage} s=${demoFlow({ flowPicked: ['task:release-polish', 'task:release-wording', 'inbox:20261009-0900-review-demo-a1b2'] })} c=${recorder()} />`)
   assert.ok(mixed.button(`${en.flow.merge.button} ▾`).hasAttribute('disabled'))

@@ -78,8 +78,9 @@ const MERGE_FEEDS = 10
 
 /** Merge, under the batch bar: which of the ticked tasks stays (a radio each with its activity and when it last moved,
  *  the one with more activity suggested once the feeds came; a pick of the person's holds), what happens to the
- *  others, Merge and Cancel. The merge goes out as one batch with one undo (app.js flowMerge) */
-export function MergePanel({ rows, s, c, onClose, from = 'overview' }) {
+ *  others, Merge and Cancel. The merge goes out as one batch with one undo (app.js flowMerge); as Confirm does, it
+ *  unticks the rows it took first (`onPick`), so an undo brings them back unticked */
+export function MergePanel({ rows, s, c, onClose, onPick = () => {}, from = 'overview' }) {
   const t = T()
   const f = t.flow.merge
   const lang = language()
@@ -94,6 +95,7 @@ export function MergePanel({ rows, s, c, onClose, from = 'overview' }) {
   const others = keys.filter(k => k !== keep)
   const run = async () => {
     onClose()
+    onPick(keys, false)
     await c.flowMerge(keep, others, from)
   }
   return html`<div class="verbbar-panel flow-merge" role="group" aria-labelledby="flow-merge-h">
@@ -180,7 +182,7 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
         onInput=${e => setOther(e.currentTarget.value)} />
         <${Btn} size="sm" variant="primary" disabled=${!other.trim()} onClick=${() => ask('drop', other.trim())}>${f.drop.send}<//></span>
     </div>` : null}
-    ${panel === 'merge' && canMerge ? html`<${MergePanel} rows=${chosen} s=${s} c=${c} from=${from} onClose=${() => setPanel(null)} />` : null}
+    ${panel === 'merge' && canMerge ? html`<${MergePanel} rows=${chosen} s=${s} c=${c} from=${from} onClose=${() => setPanel(null)} onPick=${onPick} />` : null}
     ${plan ? html`<div class="flow-list-confirm" role="alert">
       <span>${batchSummary(plan, lang)}</span>
       <${Btn} size="sm" variant="primary" disabled=${!plan.calls.length && !plan.early?.length} onClick=${confirm}>${w.confirm}<//>
