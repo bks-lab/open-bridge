@@ -83,16 +83,16 @@ their defaults:
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
-| `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `files` (Files), see [The files view](cockpit-files.md); a view the tab does not offer opens Due. A click on the tab's switch still picks another for this browser, until the key changes |
+| `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev), `files` (Files) or `flow` (Work through, with `flow.enabled`), see [The files view](cockpit-files.md); a view the tab does not offer opens Due. A click on the tab's switch still picks another for this browser, until the key changes |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
 | `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue on top and the rest behind it on the chips Active, Waiting, Resting, Backlog and All, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
 | `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
-| `flow.enabled` | `false` | the tab Work through (page `@flow`) right after Today: everything open as one card at a time in a fixed order, five verbs on each card, see [Work through](#work-through-flow). Off, the page and its tab do not exist |
+| `flow.enabled` | `false` | the view Work through of the work tab: everything open grouped by theme or area, one point at a time as a card with five verbs, or as a list with suggestions and a batch, see [Work through](#work-through-flow). Off, the view does not exist |
 | `flow.drop_reasons` | `[resolves_itself, not_needed, someone_else, not_worth_it]` | the reasons "Drop because" offers to click, beside a free field; the four keys are worded by the page in both languages, a reason of your own (1 to 80 characters, at most 12) stands as written |
 | `flow.return_after_s` | `20` | after "To tab" on a card, how many seconds later (at most 4 hours) the page asks how it went once it is in view again; `0` asks at the first return. Switching apps without "To tab" never asks |
 | `flow.prep_ahead` | `2` | how many cards after the one in front get their brief prepared (`describe_run`, within `describe.budget_per_hour`), only when it is missing or stale; `0` prepares none |
-| `flow.max_running` | `4` | how many started agents may run before Let AI do it asks "4 are running already. Start anyway?" (at least 1) |
+| `flow.max_running` | `4` | how many started agents may run before Let AI do it asks "4 are running already. Start anyway?" (at least 1); a batch of the list starts no more than that |
 | `flow.rank_max_age_days` | `7` | a Jev rank older than this many days does not order the tasks (the triage's `next_rank` is left out), the plain order takes over; at least 1 |
 | `flow.themes.enabled` | `false` | Work through groups its points by themes a small model gives them, across the areas (Themes beside Areas at the top of its left column), and suggests a decision for each in the same call, see [Work through](#work-through-flow). Off, the areas group them |
 | `flow.themes.max_themes` | `8` | the most themes there may be, the ones a person made included (2 to 20) |
@@ -291,14 +291,40 @@ step, its drawers, a search across every task and a question to the file. It has
 
 ### Work through (`@flow`)
 
-**Work through** is one tab right after Today, there only with
-`cockpit.flow.enabled: true`. Everything open comes as one row of cards: one
-card large in front, five verbs on it, **Next** under it, and after a decision
-the next card moves up into its place. Its badge is the number Today carries
-(what waits for you), no counter of its own.
+**Work through** is a view of the work tab, last in its switch beside Due, By
+source, By Jev and Files, there only with `cockpit.flow.enabled: true`
+(`cockpit.work_view: flow` opens the tab on it). It is laid out as cmux lays
+out a workspace:
 
-The cards come in groups whose order is fixed in the code; nothing moves a card
-across a group, a Jev rank only orders inside one:
+- **Left**, like the workspace sidebar: the **themes** a small model gives the
+  open points across the areas (`cockpit.flow.themes`, below), or the
+  **areas** (`workplace.workspaces`, the same names and colours as the cmux
+  workspaces; Themes and Areas switch at the top while the themes are on).
+  **All** on top, one entry per theme or area that holds a point, with how
+  many need you (in the warning tone, the entry marked) and how many are open,
+  **No theme yet** or **No area** last. A click picks one; the choice stays
+  while the page is open. On a narrow screen this is a select over the tabs.
+- **Over the card**, like the tab bar: **Focus** or **List** (kept in this
+  browser), and in Focus the open points of the group picked as tabs, each with
+  a dot for its kind and stage, in the queue's fixed order. The row wraps, so
+  no tab is ever cut off.
+- **In the middle** the point in front as a card with its verbs, and under it
+  the files view's walk bar (**Previous point**, "n of m", the next title,
+  **Next point**, sticky at the foot of the column). After the last point of a
+  theme or area it leads to the next one where something is open. Neither the
+  title nor anything else opens the item drawer or another view.
+- **Right** the details to pull in: Goal and story, Acceptance criteria, Steps
+  (the checklist of STATUS.md, read only), Source, Notes and log, Result (what
+  came back, as the files view shows it), the Screen of its tab, Related. At
+  first only their headings, the goal open; a click pulls a block in, and the
+  blocks stay open from point to point. With the themes on, the column also
+  moves the point to another theme or a new one. On a medium screen the
+  details stand under the card.
+
+The head says "N in progress · M open".
+
+The points come in groups whose order is fixed in the code; nothing moves a
+point across a group, a Jev rank only orders inside one:
 
 | # | Group | What | Order inside |
 |---|---|---|---|
@@ -307,20 +333,55 @@ across a group, a Jev rank only orders inside one:
 | 3 | Finished or quiet | a start of the return channel with its answer or result line, and one whose tab went quiet (stage `idle`) | the oldest first |
 | 4 | Tab gone | a start without a tab and without a word | the newest first |
 | 5 | A question for you | an inbox item that asks (art `ask`), with or without a task | a due day first, then the oldest |
-| 6 | Tasks | the tasks doing or in review, every priority | the triage's `next_rank` (Jev's rank while it is fresh), then a Jev view of a work page, then priority, then age |
-| 7 | Reports | the reports (art `report`), all on one card | the oldest first |
+| 6 | In progress | a start that runs, a tab of a session linked to a task while it works, then every task with status doing | what runs the newest first; the tasks by `next_rank`, a Jev view of a work page, priority, age |
+| 7 | In review | the tasks in review, every priority | as the tasks above |
+| 8 | Reports | the reports (art `report`), as one tab | the oldest first |
 
-Every row stands once: a start, a tab or a question about a task takes that
-task out of the tasks, and a start that runs stays in the lane **Running** on
-top until it asks, finishes or is lost. The lane holds the tabs of sessions
-linked to a task too (one you started yourself in that task's tab), while they
-work; their task stays out of the band meanwhile. A click on an entry of the lane shows
-the last lines of its tab without leaving the cards. The chips over the queue
-show one kind at a time (asks you, running, tasks, reports). **Left out (n)**
-lists what the queue leaves out and why: put off until a day, waiting on
-someone else, resting or blocked, streams (they come through their inbox
-items), ideas and backlog. Ideas and backlog tasks come back only when the
-queue is empty: the calm card offers up to three to start.
+Groups 1 to 5 **need you**: the left column counts them. Every row stands once:
+a start, a tab or a question about a task takes that task out of the others. A
+doing task needs you only when its tab asks or finished; otherwise it is **In
+progress**, and its card says who works on it and since when: its agent tab and
+stage, a session you typed in a linked tab, a start of the cockpit, else "no tab
+open, last moved N days ago" (its `updated` day). It shows the last lines of
+the tab, **To tab**, **View**, **Done**, **Later until** and **Drop because**,
+and without a tab at work **Let AI go on with it** (a start with a sentence, as
+always). **Left out (n)** lists what the queue leaves out and why: put off until
+a day, waiting on someone else, resting or blocked, streams (they come through
+their inbox items), ideas and backlog. Ideas and backlog tasks come back only
+when nothing is open: the calm card offers up to three to start.
+
+**Themes** (`cockpit.flow.themes.enabled: true`). A small model (`themes.py`,
+one `claude -p` call with the points as data: title, kind, area and the goal of
+the brief) gives every open point one of a few themes, two or three words in
+the instance's language, across the areas, and in the same call a suggestion for
+each point (below). The result is kept (`.bridge/cockpit/flow-themes.json`):
+points that come later are given the themes there are, a new theme only where
+none fits, never more than `max_themes`. The page asks only when the view shows
+points without a theme (each once per page load), and **Order themes again**
+orders every point anew; there is no timer. Every run counts against
+`budget_per_day`; once it is spent, what has no theme yet stands under **No
+theme yet** until the next day. A point you move to another theme or a new one,
+and a theme you rename, stay as you set them through every later run. With the
+themes off, without a Claude model, or on an older server, the areas group
+the points.
+
+**List.** All points of the group as rows: a box to pick, the title, kind,
+stage, area, age, and a **suggestion** with half a sentence of why: Done, Drop
+(with a reason of `cockpit.flow.drop_reasons`), Later until a day, Let AI do it,
+or Needs you. It comes from the day's triage first (verdict close, stale or
+waiting, else who does it), while that is at most two days old; else from the
+themes run. The line over the rows says where the suggestions come from and
+that they are only suggestions. **Take the suggestions** picks the rows whose
+suggestion is Done, Drop or Later (never Let AI do it); the boxes and **All**
+pick by hand, and **Done**, **Later until** and **Drop because** (one reason for
+all) act on the picked rows. Nothing goes out before the one line that says what
+will happen ("2 done, 1 drop: No longer needed, 1 later until 31.10.") is
+confirmed. Then each call goes out in turn (`settle` for many keys at once,
+`later` and `shelve` one by one), one note says how many were decided, and
+**Undo the batch** takes every one of them back through the undo each verb
+returned. Let AI do it in a batch starts a point only with its own sentence and
+only while fewer than `cockpit.flow.max_running` run; the rest stays out, and
+the line says so.
 
 The five verbs, the suggested one as the primary button (the triage's verdict,
 else Advise on a question and Let AI do it on a task the AI may do):
@@ -328,7 +389,7 @@ else Advise on a question and Let AI do it on a task the AI may do):
 | Verb | Sends |
 |---|---|
 | Let AI do it | `do_it` with a sentence, always: the field is filled with the title and the request to end with a note "Result: ...", and Start stays grey while it is empty. A start with a sentence never approves an item's own action; an item that needs your yes keeps **Give your yes** beside the verbs |
-| Advise | a read-only quick question about the row; the answer shows in the card, with **Start from it** |
+| Advise | a read-only quick question about the row; the answer shows in the card, with **Start from it**. The answer names the card's own button, Let AI do it, and no key (the quick question goes out with `origin: flow`) |
 | Done | `settle` done |
 | Later until | `later`: tomorrow, Monday, next week or a date |
 | Drop because | a reason from `cockpit.flow.drop_reasons` or typed, never without one: a task is shelved (`shelve`, an idea in the inbox and the task declined, taken back by reopening it), anything else settled as not doing with the reason. A stream's own row offers neither Drop nor Done; an inbox item about a stream is decided like any other item |
@@ -337,7 +398,7 @@ else Advise on a question and Let AI do it on a task the AI may do):
 picker of every start, while `cockpit.launch_model` is on): with Auto, the
 router's recommendation for this card is fetched once (`/api/route`) and kept
 for the page's life. Once `cockpit.flow.max_running` agents run (the entries
-of the lane), Start asks first: "4 are running already. Start anyway?". One
+of In progress at work), Start asks first: "4 are running already. Start anyway?". One
 click starts one item; there is no start of several at once.
 
 **A tab asks.** The card shows the question the tab poll read (`asks.py`) and
@@ -372,18 +433,26 @@ memory only (a reload forgets it). When the page is in view again at least
 Later until, Drop because and Not yet; any answer forgets the jump. Switching
 to another app and back without To tab never brings it.
 
-**Without a terminal driver** the lane, the cards of groups 1 to 4 and every
-way to a tab stay out, and the band holds the questions, the tasks and the
-reports. A start then hands out the commands to start it by hand.
+**Without a terminal driver** the cards of the agents (groups 1 to 4 and the
+starts in progress) and every way to a tab stay out. A start then hands out the
+commands to start it by hand.
 
 **Upgrading.** Opt-in, nothing changes until the key is set: without
-`cockpit.flow.enabled: true` the tab and the page do not exist, and a page
-stored as `@flow` opens Today. The page adds one verb, `shelve`, and one
-optional argument, `describe_run`'s `ahead` (refused with `describe_budget`
-once the hour's budget is spent); every other page, view, verb and endpoint
-stays as it was. The state sends the block under
-`work.flow` beside the work tab's keys; a page that does not read it is not
-affected. To try it in the demo, open it as it is (the demo has it on);
+`cockpit.flow.enabled: true` the view does not exist. Work through was a tab of
+its own (page `@flow`) and is a view of the work tab now: a stored page `@flow`
+or a link to it opens the work tab in that view, and `cockpit.work_view` takes
+`flow`. The chips and the lane Running are gone; the left column and the tabs
+stand for them, and doing tasks moved from the decision cards to In progress.
+The themes are a second opt-in (`cockpit.flow.themes.enabled`, off by default):
+four new verbs (`flow_themes_run`, `flow_theme_move`, `flow_theme_new`,
+`flow_theme_rename`), the state's key `themes` and the event `themes`; a page
+that does not read them is not affected. `/api/ask` takes two optional fields,
+`origin` (`flow`: the answer names the card's verb and no key) and `keys`
+(true only while the page has its shortcuts on: only then does the answer name
+Cmd Enter); a page that sends neither gets an answer that names no key. The page
+adds the verb `shelve` and `describe_run`'s `ahead` (from the first version);
+every other page, view, verb and endpoint stays as it was. To try it in the
+demo, open the work tab and pick Work through (`?work=flow` opens it there);
 `?flow=0` shows the demo without it.
 
 ### The start page
@@ -2319,6 +2388,27 @@ it must reach every machine:
 | File | What | Inbox or chat text |
 |---|---|---|
 | `work/cockpit/settled/` | every hide ("not now until <day>"), every row marked done or not doing, every "show again", one YAML file each (`<UTC stamp>-<seq>-<rand>-<act>.yaml`, or `legacy-<hash>-<act>.yaml` for an entry migrated from `state.json`), written once, never changed; the newest file for a row decides | yes: the row titles |
+
+### Upgrading: Work through as a view, its themes and the advice
+
+Nothing has to be done by hand; each point is opt-in or read only by a page
+that knows it:
+
+1. **No tab `@flow`.** Work through is the last view of the work tab while
+   `cockpit.flow.enabled` is true. A page stored as `@flow`, or a link to it,
+   opens the work tab in that view; `cockpit.work_view: flow` opens it there
+   too. Off, a stored `flow` view opens Due.
+2. **Themes.** `cockpit.flow.themes` (off by default) adds `flow-themes.json`
+   to the cockpit's folder, the verbs `flow_themes_run`, `flow_theme_move`,
+   `flow_theme_new` and `flow_theme_rename`, the state's `themes` and the
+   event `themes`. Without them the view groups by area.
+3. **The advice of a card.** `/api/ask` takes `origin` (`flow`) and `keys`
+   (true or false), both optional and kept by the conversation: asked from a
+   card the answer names the card's button and no key, elsewhere it names Cmd
+   Enter only with `keys: true`. An older page sends neither and its answers
+   name no key any more.
+
+See [Work through](#work-through-flow).
 
 ### Upgrading: quiet tabs and the result line
 
