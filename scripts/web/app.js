@@ -11,7 +11,7 @@ import { html, render } from './vendor/htm-preact-3.1.1.module.js'
 import { createApi } from './api.js'
 import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces, pageOrder, quickLive } from './components.js'
 import {
-  CONN_GRACE_MS, DAY, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
+  CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
@@ -327,7 +327,8 @@ function applyState(payload) {
     // what the day's budgets of Work through still hold: summaries and instructions (round 3)
     flow_ai: payload.flow_ai ?? s.flow_ai,
     rooms: payload.rooms ?? s.rooms,
-    notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
+    // a note keeps its date for the history's days (server at_ms); one of an older server has none (0)
+    notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: n.at_ms ?? 0 })) : s.notes,
   }))
   // the answers being written, whole: a page that connects in the middle of one shows all of it
   if (payload.quick_live) quickLive.set(quickLiveSnapshot(payload.quick_live))
@@ -496,10 +497,12 @@ const handlers = {
   relay_state(rs) {
     store.set(s => ({ ...s, relay: { ...s.relay, ...rs, records: s.relay.records } }))
   },
+  // a tab that starts waiting toasts while it is out of sight, else it says so in the history only; one past the
+  // hour always toasts (logic.js alertToasts)
   alert(a) {
     const t = T()
     const text = a.kind === 'tab_long' ? t.tabLongToast(a.name) : t.tabToast(a.name, t.state[a.state] ?? a.state)
-    pushNote({ text, tone: 'warn', go: { kind: 'tab', ref: a.ref } })
+    pushNote({ text, tone: 'warn', go: { kind: 'tab', ref: a.ref } }, { toast: alertToasts(store.get(), a) })
     if (a.kind === 'tab_waiting' && store.get().boot.config?.voice) {
       try {
         const u = new SpeechSynthesisUtterance(t.voiceWaiting(a.name))
@@ -781,10 +784,10 @@ const ctl = {
   ask,
   copy,
   dismissToast,
-  // the notes drawer, from the "+N more" toast: the count goes, the toasts still up stay
+  // the notes in the history, from the "+N more" toast: the count goes, the toasts still up stay
   openNotes() {
     store.set(s => ({ ...s, ...notesOpenedState(s) }))
-    setUi({ drawer: 'notes' })
+    ctl.openHistory()
   },
   pauseToast: (id, why) => toastTimers.pause(id, why),
   resumeToast: (id, why) => toastTimers.resume(id, why),
@@ -926,10 +929,6 @@ const ctl = {
   setShortcuts(on) {
     save('bridge-cockpit.shortcuts', on ? 'on' : 'off')
     setUi({ shortcuts: on })
-  },
-  cycleTheme() {
-    const order = ['auto', 'light', 'dark']
-    ctl.setTheme(order[(order.indexOf(store.get().ui.theme) + 1) % order.length])
   },
   setDrawer: name => setUi({ drawer: name }),
   // the settings page at one of its areas (start, look, launch), kept for the next visit
@@ -1733,9 +1732,10 @@ function onKey(e) {
     return
   }
   const key = e.key
+  // the help left the header: ? lays the notes of Explain over the page (the look-up card is under Settings, Appearance)
   if (key === '?') {
     e.preventDefault()
-    return setUi({ drawer: 'help' })
+    return ctl.setHints(true)
   }
   if (key === '/') {
     e.preventDefault()

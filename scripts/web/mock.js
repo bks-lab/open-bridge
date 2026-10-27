@@ -1061,7 +1061,7 @@ export function buildState(now = Date.now(), opts = {}) {
     themes: empty || opts.flow === false ? { enabled: false } : themesState(now),
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
-      { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
+      { at: hhmm(now - 9 * MIN), at_ms: now - 9 * MIN, text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
     ],
     relay: {
       enabled: true, online: relayOnline, reason: relayOnline ? null : 'no_heartbeat',

@@ -3,19 +3,20 @@
 //
 //   node --test scripts/tests/bridge_cockpit_toast_go.test.mjs
 //
-// The pure part (logic.js noteGo, pushNoteState) is tested on its own; the toasts and the notes drawer
-// are mounted with the render harness (cockpit_render.mjs) and clicked as a person clicks them, so the
-// assertions are on where a click leads: the controller calls it makes, in order.
+// The pure part (logic.js noteGo, pushNoteState, alertToasts) is tested on its own; the toasts and the notes in
+// the history are mounted with the render harness (cockpit_render.mjs) and clicked as a person clicks them, so
+// the assertions are on where a click leads: the controller calls it makes, in order.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
 
 const { html, views, text, logic } = await loadCockpit()
-const { Toasts, NotesDrawer } = views.overlays
+const { Toasts, HistoryDrawer } = views.overlays
 const en = text.TABLES.en
 const de = text.TABLES.de
 
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
+const MIN = 60000
 
 const toast = (id, over = {}) => ({ id, text: `Note ${id}`, tone: 'ok', at: '12:00', action: null, conv: null, undo: null,
   copy: null, go: null, ...over })
@@ -130,7 +131,7 @@ test('toast: the close X and Undo never navigate', () => {
 
 // ---------------------------------------------------------------- more than four
 
-test('overflow: at five a compact last toast says how many more and opens the notes drawer', () => {
+test('overflow: at five a compact last toast says how many more and opens the notes (in the history)', () => {
   const four = [1, 2, 3, 4].map(i => toast(i))
   assert.equal(renderToasts(four, { toastsMore: 0 }).el.$('.toast-more'), null)
   const { el, c } = renderToasts([2, 3, 4, 5].map(i => toast(i)), { toastsMore: 1 })
@@ -147,26 +148,85 @@ test('overflow: the words are English and German', () => {
   assert.equal(de.toastsMore(3), '+3 weitere')
 })
 
-// ---------------------------------------------------------------- the notes drawer
+// ---------------------------------------------------------------- the notes in the history (K2)
 
-test('notes drawer: an entry with a target closes the drawer and goes there, one without stays text', async () => {
-  // the drawer moves the focus in on open: the small DOM answers its queries with what it supports, else none
+/** The history drawer mounted with these notes and no closed items; the focus effect finds what the small DOM has */
+function renderNotes(notes) {
   const proto = Object.getPrototypeOf(document.body)
   proto.focus ??= function focus() { document.activeElement = this }
   proto.querySelector ??= function querySelector(sel) { try { return this.$(sel) } catch { return null } }
-  const s = cockpitState(NOW, { ui: { drawer: 'notes' }, notes: [
-    { at: '11:58', text: 'Plain note', tone: 'info', ms: 1 },
-    { at: '11:59', text: 'Sent to demo-task', tone: 'ok', ms: 2, go: { kind: 'item', key: 'task:demo-task' } },
-    { at: '11:59', text: 'Broken target', tone: 'ok', ms: 3, go: { kind: 'evil' } },
-  ] })
+  const s = cockpitState(NOW, { ui: { drawer: 'history' }, history: [], notes })
   const c = recorder()
-  const el = mount(html`<${NotesDrawer} s=${s} c=${c} />`)
+  return { el: mount(html`<${HistoryDrawer} s=${s} c=${c} />`), c }
+}
+
+const dayWord = ms => logic.formatDay(logic.isoDate(ms), 'en')
+
+test('history: the notes stand under Today, newest first; one with a target closes the drawer and goes there', async () => {
+  const { el, c } = renderNotes([
+    { at: '11:58', text: 'Plain note', tone: 'info', ms: NOW - 2 * MIN },
+    { at: '11:59', text: 'Sent to demo-task', tone: 'ok', ms: NOW - MIN, go: { kind: 'item', key: 'task:demo-task' } },
+    { at: '11:59', text: 'Broken target', tone: 'ok', ms: NOW - MIN, go: { kind: 'evil' } },
+  ])
+  const days = el.$$('.hist-day')
+  assert.equal(days.length, 1)
+  assert.equal(days[0].$('h3').text(), en.historyToday(dayWord(NOW)))
+  assert.match(days[0].$('.hist-notes summary').text(), new RegExp(en.histNotes(3).replace(/[()]/g, '\\$&')))
+  assert.deepEqual(days[0].$$('.note').map(n => n.text().replace(/^\d\d:\d\d\s*/, '')), ['Broken target', 'Sent to demo-task', 'Plain note'])
   const gos = el.$$('button.note-go')
   assert.equal(gos.length, 1)
   assert.match(gos[0].text(), /Sent to demo-task/)
   gos[0].click()
   assert.deepEqual(c.calls, [['setDrawer', null], ['openItem', 'task:demo-task', null]])
   await new Promise(resolve => setTimeout(resolve, 20))   // the focus effect runs inside the test
+})
+
+test('history: a note keeps its day, one from yesterday stands under yesterday, one without a date under today', async () => {
+  const { el } = renderNotes([
+    { at: '23:50', text: 'Late yesterday', tone: 'info', ms: NOW - 13 * 60 * MIN },
+    { at: '11:00', text: 'Undated', tone: 'info', ms: 0 },
+  ])
+  const days = el.$$('.hist-day')
+  assert.deepEqual(days.map(d => d.$('h3').text()), [en.historyToday(dayWord(NOW)), dayWord(NOW - 13 * 60 * MIN)])
+  assert.match(days[0].text(), /Undated/)
+  assert.match(days[1].text(), /Late yesterday/)
+  assert.doesNotMatch(days[0].text(), /Late yesterday/)
+  await new Promise(resolve => setTimeout(resolve, 20))
+})
+
+test('history: neither a closed item nor a note says the history is empty', async () => {
+  const { el } = renderNotes([])
+  assert.match(el.text(), new RegExp(en.historyEmpty))
+  assert.equal(el.$('.hist-day'), null)
+  await new Promise(resolve => setTimeout(resolve, 20))
+})
+
+test('the words of the notes in the history are English and German', () => {
+  assert.equal(en.histNotes(2), 'Notes (2)')
+  assert.equal(de.histNotes(2), 'Meldungen (2)')
+  assert.equal(de.historyToday('Fr., 9. Okt.'), 'Heute, Fr., 9. Okt.')
+})
+
+// ---------------------------------------------------------------- which tab alert toasts (K2)
+
+test('alertToasts: a tab that starts waiting toasts only while it is out of sight, one past the hour always', () => {
+  const waits = { kind: 'tab_waiting', ref: 'surface:7' }
+  const long = { kind: 'tab_long', ref: 'surface:7' }
+  const start = { ui: { page: '@start', tabView: null, room: null } }
+  assert.equal(logic.alertToasts(start, waits), true)
+  // its tab view is open, or the Chat shows it in its work area: the note goes to the history only
+  const viewed = { ui: { ...start.ui, tabView: 'surface:7' } }
+  assert.equal(logic.alertToasts(viewed, waits), false)
+  const room = { ui: { page: '@chat', chatArea: 'work', tabView: null, room: { kind: 'tab', id: 'surface:7' } } }
+  assert.equal(logic.alertToasts(room, waits), false)
+  // another tab in view, the Chat on its A2A area, a tab view over the room: it is not in sight
+  assert.equal(logic.alertToasts({ ui: { ...start.ui, tabView: 'surface:8' } }, waits), true)
+  assert.equal(logic.alertToasts({ ui: { ...room.ui, chatArea: 'a2a' } }, waits), true)
+  assert.equal(logic.alertToasts({ ui: { ...room.ui, tabView: 'surface:9' } }, waits), true)
+  assert.equal(logic.alertToasts({ ui: { ...room.ui, page: '@start' } }, waits), true)
+  // past the hour it toasts in sight too
+  assert.equal(logic.alertToasts(viewed, long), true)
+  assert.equal(logic.alertToasts(room, long), true)
 })
 
 // ---------------------------------------------------------------- the store's toast steps (review fixes)

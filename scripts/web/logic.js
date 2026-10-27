@@ -774,7 +774,7 @@ export const TOAST_MAX = 4
 
 /** What a pushed note does to `{ notes, toasts, toastsMore }`: a new note and, unless `toast` is false, a
  * toast with `id`. Four stay up; one pushed out is counted in `toastsMore`, never lost without a word (the
- * notes drawer keeps it), and named in `out`, so its timer stops. The oldest toast without an action goes
+ * notes in the history keep it), and named in `out`, so its timer stops. The oldest toast without an action goes
  * first, so an Undo stays within its few seconds; only when every one has an action does the oldest go. A
  * note a visible toast already shows changes neither and comes back with `dup` set, so the caller can hand
  * a twin's action and target to that toast (giveTwin). Its `go` is kept only as noteGo takes it. */
@@ -811,9 +811,21 @@ export function dismissState({ toasts, toastsMore = 0 }, id) {
   return { toasts: left, toastsMore: left.length ? toastsMore : 0 }
 }
 
-/** The notes drawer opened from the "+N more" toast: the count goes, the toasts still up stay */
+/** The notes in the history opened from the "+N more" toast: the count goes, the toasts still up stay */
 export function notesOpenedState() {
   return { toastsMore: 0 }
+}
+
+/** Whether a tab alert makes a toast or only a note in the history: a tab that starts waiting toasts while it is out
+ *  of sight, not while its tab view is open or the Chat shows it in its work area (no tab view over it); a tab past
+ *  the hour always toasts */
+export function alertToasts(s, alert) {
+  if (alert?.kind !== 'tab_waiting') return true
+  const ui = s?.ui ?? {}
+  const ref = alert.ref
+  if (!ref) return true
+  if (ui.tabView) return ui.tabView !== ref
+  return !(ui.page === '@chat' && ui.chatArea !== 'a2a' && ui.room?.kind === 'tab' && ui.room.id === ref)
 }
 
 /** Insert or replace a relay record by id; newest first */
@@ -3432,7 +3444,7 @@ export function tourSteps(s) {
     ...(narrow ? [] : [{ id: 'tabs', target: '#tabs-column, .hdr-tabs' }]),
     { id: 'ask', target: '.hdr-ask' },
     { id: sessionsInFlow(s) ? 'running' : 'sessions', page: '@sessions', target: '#main' },
-    { id: 'help', target: '.hdr-help' },
+    { id: 'explain', target: '.hdr-explain' },
     { id: 'done' },
   ]
 }
@@ -3492,8 +3504,9 @@ const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', 
   ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghb-boards'],
   ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
   ['calFigures', '.calf'], ['calBar', '.calbar'], ['calDays', '.cal-day']]
-const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['reload', '.hdr-reload'], ['tabsButton', '.hdr-tabs'],
-  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['notes', '.hdr-notes'], ['help', '.hdr-help']]
+// the as-of time is the reload button, the notes stand in the history, the look-up card under Settings, Appearance
+const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['tabsButton', '.hdr-tabs'],
+  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['explain', '.hdr-explain']]
 
 /** What the overlay explains on the page now: its own areas (group page), then the header (group head).
  *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts */
