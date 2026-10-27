@@ -417,14 +417,21 @@ agent works on is suggested to stay, so no folder moves from under it) and
 **Done**; a batch never starts, puts off or drops what runs, its line says
 "stays out". That is a start of the cockpit that runs, a live session at
 work or waiting at its prompt that works on a task, and a task's own tab at
-work or waiting. A tab that asks is a point (A tab asks), never here. Which
+work or waiting. In the middle every live Claude session of the machine stands
+there too, with a task or without one and even without a terminal driver, as a
+compact card of the Sessions page (state, title as the jump to its tab, its
+agents, two lines of its tab, one next step, a task to link), one card per tab;
+an entry in a session's tab is that card, and **View in chat** opens the tab in
+the Chat where the Chat lays out its tabs (`chat_layout: workspaces`). A tab
+that asks is a point (A tab asks), never here. Which
 task a session works on: a link by hand (the Sessions page), else its tab's own
 task (every start from the cockpit), else, with `flow.infer_sessions` (on by
 default), the task it is **recognised** on. For that the server reads the end
 of the session's own transcript (`~/.claude/projects/<folder>/<session id>.jsonl`,
 the last 256 KiB, further up to 4 MiB while nothing decides, at most 400
 events) and takes the newest message or tool call that names exactly one open
-task: `task.py <verb> <slug>`, `work/tasks/<slug>/` or `task:<slug>`. A tool's
+task: `task.py <verb> <slug>`, `work/tasks/<slug>/` (relative, or under the
+Bridge's root written absolute or as `~/...`) or `task:<slug>`. A tool's
 result never counts (a listing names many tasks), a line that names two is
 skipped. Only sessions of this Bridge in a tab are read, at most 12 per scan,
 never another Bridge's; no model is asked, and of the text only the slug leaves

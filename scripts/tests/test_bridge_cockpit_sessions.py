@@ -97,6 +97,23 @@ def test_each_sign_names_its_task():
     assert infer(read) == ("demo-task", ms(6))
 
 
+def test_the_root_written_from_home_counts_too(monkeypatch, tmp_path):
+    """E1 (round 6): a transcript writes the Bridge's root as `~/...` as often as absolute; both are its spellings,
+    and a folder outside the home has no `~` spelling"""
+    home = tmp_path / "home"
+    root = home / "code" / "bridge"
+    root.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    spell = sess.root_spellings(root, [root.resolve()])
+    assert "~/code/bridge" in spell and str(root) in spell
+    assert infer(bash("cat ~/code/bridge/work/tasks/demo-task/STATUS.md", 1), roots=spell) == ("demo-task", ms(1))
+    # the same path under another folder of the home names nothing
+    assert infer(bash("cat ~/code/other/work/tasks/demo-task/STATUS.md", 1), roots=spell) == (None, None)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    assert not any(x.startswith("~") for x in sess.root_spellings(outside, [outside.resolve()]))
+
+
 @pytest.mark.parametrize("command, found", [
     ("python3 scripts/task.py close --stream -- release-notes", "release-notes"),
     ('python3 scripts/task.py note "demo-task" -- quoted', "demo-task"),

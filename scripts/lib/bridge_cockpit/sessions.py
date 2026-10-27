@@ -13,7 +13,7 @@ that one variable is kept; the rest of the environment is dropped.
 The workflow runs of the last week, of every session (ended ones too), are bound to the open task they belong
 to, for the task's file in the files view (`runs`): a run belongs to a task only where it names exactly one, never
 by a guess. A mention is `task:<slug>`, `work/tasks/<slug>/` or `work/streams/<slug>/` in its name, summary,
-arguments or script (an absolute path only under this Bridge's root), or a name that is the slug; two tasks named
+arguments or script (a path written absolute or as `~/...` only under this Bridge's root), or a name that is the slug; two tasks named
 make no binding. The session it ran in being linked to the task, and the folder it ran in ending in the slug,
 only confirm a mention: alone they bind nothing, and a session linked to another task undoes it. A run belongs to
 this Bridge only where the folder it ran in (from the session's own file) is the Bridge, a folder in it, one of
@@ -25,9 +25,9 @@ The task a live session works on is recognised from the end of its own transcrip
 is on and cockpit.flow.infer_sessions): of a session in a tab whose folder is this Bridge's by the same rule, the
 last TAIL_BYTES (grown in TAIL_STEPS while nothing decides) and at most INFER_EVENTS events are read, of each event
 only an assistant's text and the input of its tool calls and a person's plain text without the harness's
-reminders, never a tool result or thinking. The
-newest event that names exactly one open task (`task:<slug>`, `work/tasks|streams/<slug>`, `task.py <verb> <slug>`)
-decides; one naming none or two is passed over. Only the slug and since when leave this module, never the text,
+reminders, never a tool result or thinking. The newest event that names exactly one open task (`task:<slug>`,
+`work/tasks|streams/<slug>` relative or under the root, absolute or as `~/...`, `task.py <verb> <slug>`) decides;
+one naming none or two is passed over. Only the slug and since when leave this module, never the text,
 and nothing is written: a link by hand or a tab's link wins over it (server.py session_tasks).
 Everything here only reads; a file that does not parse is skipped.
 """
@@ -145,9 +145,28 @@ def workflows(folder: Path) -> list[dict]:
     return out
 
 
+def root_spellings(home: Path, own: list[Path]) -> tuple:
+    """The ways a transcript writes this Bridge's root: as configured, as resolved, and each from the home as
+    `~/...` (round 6, E1: a session started in the Bridge often writes its paths so); each once, in that order"""
+    out = [str(home), str(own[0])]
+    try:
+        base = Path.home().resolve()
+    except (OSError, RuntimeError):
+        base = None
+    for x in list(out):
+        try:
+            rel = Path(x).resolve().relative_to(base) if base else None
+        except (OSError, ValueError):
+            rel = None
+        if rel is not None and str(rel) != ".":
+            out.append(f"~/{rel.as_posix()}")
+    return tuple(dict.fromkeys(out))
+
+
 def _mention_re(slug: str, roots: tuple = ()) -> re.Pattern:
     """A mention of a slug: `task:<slug>`, or `work/tasks|streams/<slug>` as a relative path or under one of
-    `roots` (this Bridge's root as written and as resolved); a path under any other folder names nothing"""
+    `roots` (this Bridge's root as written, as resolved and from the home as `~/...`, root_spellings); a path under
+    any other folder names nothing"""
     tail = r"(?![A-Za-z0-9_-])"
     under = "".join(f"|{re.escape(r.rstrip('/'))}/" for r in roots if r)
     return re.compile(rf"(?<![A-Za-z0-9_-])task:{re.escape(slug)}{tail}"
@@ -521,7 +540,7 @@ class Sessions:
         A transcript unchanged since its last read is not read again. True when what is seen changed."""
         base = self.base or claude_dir()
         own = own_folders(Path(home))
-        roots = tuple(dict.fromkeys(str(x) for x in (home, own[0])))
+        roots = root_spellings(Path(home), own)
         found, read, n = {}, set(), 0
         for x in self.state():
             sid, cwd = x.get("sid"), x.get("cwd")
@@ -576,7 +595,7 @@ class Sessions:
         """The workflow runs of the last week that belong to one of these open tasks, newest first"""
         base = self.base or claude_dir()
         own = own_folders(Path(home)) if home else []
-        roots = tuple(dict.fromkeys(str(x) for x in ((home, own[0]) if home else ())))
+        roots = root_spellings(Path(home), own) if home else ()
         found, seen = [], set()
         try:
             files = list((base / "projects").glob("*/*/workflows/wf_*.json"))
