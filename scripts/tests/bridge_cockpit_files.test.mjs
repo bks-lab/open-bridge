@@ -150,7 +150,7 @@ test('a file is its task row, not a board item that names the same task', () => 
 test('n and p walk the files view the way its bar does, the one files queue', () => {
   const app = read('app.js')
   const body = app.match(/\/\/ n \/ p in the files view[\s\S]*?\n  \}/)[0]
-  assert.match(body, /workViewOf\(s\.ui\.workView, workPageOf\(s\.model\?\.pages\), s\.jev\) === 'dossier'/)
+  assert.match(body, /workViewIn\(s\) === 'dossier'/)
   assert.match(body, /scopedFileQueue\(s\)/)
   assert.match(body, /focusIndex\(queue, s\.ui\.dossierAt\) \+ \(key === 'n' \? 1 : -1\)/)
   assert.match(body, /ctl\.dossierWalk\(queue\[to\]\.id, to\)/)

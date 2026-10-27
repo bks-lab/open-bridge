@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewOf,
+  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner,
 } from './logic.js'
@@ -336,6 +336,7 @@ function fixPage() {
   const s = store.get()
   if (s.model && s.ui.page === CHECK_PAGE && !pageOrder(s).includes(CHECK_PAGE)) ctl.openReview()   // the check moved onto a page
   else if (s.ui.page === AGENTS_PAGE && chatAsWorkspaces(s)) ctl.setPage(AGENTS_PAGE)   // as cmux the agents live in the Chat
+  else if (flowPageFor(s.ui.page)) ctl.setPage(s.ui.page)   // the page @flow of an older cockpit: the work tab in its view
   else if (s.model && !pageOrder(s).includes(s.ui.page)) setUi({ page: 'briefing' })
 }
 
@@ -624,7 +625,7 @@ function pageSeen(page) {
   const s = store.get()
   // a page measured with the model at hand counts as the first one: applyState leaves none after it (fixPage)
   if (s.model) bootSeen = true
-  const view = page === 'briefing' ? workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev)
+  const view = page === 'briefing' ? workViewIn(s)
     : page === START_PAGE ? homeView(homeChosen(s.model, s.home)) : null
   api.seen(page, view)
 }
@@ -775,6 +776,13 @@ const ctl = {
     const s = store.get()
     // as cmux the agents have no page: their way (the band, a card, a stored page) opens the Chat on its A2A area
     id = ctl.pageFor(id)
+    // Work through was a page (@flow) and is a view of the work tab now: a stored page or a link leads there
+    const flowTo = flowPageFor(id)
+    if (flowTo) {
+      save('bridge-cockpit.workTab', flowTo.view)
+      setUi({ workView: flowTo.view })
+      id = flowTo.page
+    }
     // a page of group day has no tab: a tile or link to it opens Today, where its sections stand
     if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = 'briefing'
     // the work page and the Jev tab are views of the work tab where a page of group work exists
@@ -1492,7 +1500,7 @@ function onKey(e) {
   }
   // n / p in a detail opened from a list (beside the page or in the item drawer): walk that list
   // (the Today list walks its own rows: a row picked there is open in the center)
-  const today = s.ui.page === 'briefing' && workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'due'
+  const today = s.ui.page === 'briefing' && workViewIn(s) === 'due'
     && !s.ui.pageDetail && !s.ui.drawer && !!s.ui.selectedKey
   const walking = today || (s.ui.queue?.length && (s.ui.drawer === 'item' || (s.ui.pageDetail && !s.ui.drawer)))
   if ((key === 'n' || key === 'p') && walking) {
@@ -1516,7 +1524,7 @@ function onKey(e) {
   }
   // n / p in the files view of the work tab: the same walk its bar takes (views/dossier.js)
   if ((key === 'n' || key === 'p') && s.ui.page === 'briefing' && !s.ui.drawer && !s.ui.pageDetail
-    && workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'dossier') {
+    && workViewIn(s) === 'dossier') {
     const queue = scopedFileQueue(s)   // the files the view shows under its filters
     const to = focusIndex(queue, s.ui.dossierAt) + (key === 'n' ? 1 : -1)
     e.preventDefault()

@@ -5,7 +5,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
-  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
+  pageItemActs, workPageOf, workViews, flowOn, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
   SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -441,10 +441,10 @@ function HiddenList({ s, c }) {
   </details>`
 }
 
-/** The views of the work tab as one row of chips: what is due, by source, by Jev */
+/** The views of the work tab as one row of chips: what is due, by source, by Jev, the files, Work through */
 export function WorkSwitch({ s, c }) {
   const t = T()
-  const views = workViews(workPageOf(s.model?.pages), s.jev)
+  const views = workViews(workPageOf(s.model?.pages), s.jev, flowOn(s))
   const keys = useRoving()
   if (views.length < 2) return null
   const view = workViewNow(s)

@@ -25,8 +25,9 @@ DEFAULT_PORT = 8797
 OPEN_IN = ("auto", "cmux", "system", "none")
 TARGETS = ("tab", "workspace", "area", "auto")
 CHAT_LAYOUTS = ("classic", "workspaces")   # workspaces: the chat as cmux shows it (workspaces, tabs, Bridges, agents)
-# the view the work tab opens on (cockpit.work_view): Due, By source, By Jev or Files; the page maps each to its own id
-WORK_VIEWS = ("due", "source", "jev", "files")
+# the view the work tab opens on (cockpit.work_view): Due, By source, By Jev, Files or Work through (only while
+# cockpit.flow.enabled is on, else Due); the page maps each to its own id
+WORK_VIEWS = ("due", "source", "jev", "files", "flow")
 # which tasks the files view holds (cockpit.files_scope): the doing and review ones, or every task and stream
 FILES_SCOPES = ("active", "all")
 # the Work through page (cockpit.flow, page @flow): off unless switched on. drop_reasons are what "Drop because"

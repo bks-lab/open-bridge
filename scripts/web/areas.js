@@ -154,9 +154,12 @@ export function areaScope(s) {
   const keepTab = t => t.is_control || inProject(t, area) || (!!t.slug && slugs.has(t.slug)) || (!!t.item && items.has(t.item))
   const tabOf = new Map(tabs.map(t => [t.ref, t]))
   const keepReturn = r => inProject(byKey.get(r.key) ?? {}, area) || (!!r.tab?.ref && !!tabOf.get(r.tab.ref) && inProject(tabOf.get(r.tab.ref), area))
-  if (page === '@flow') {
+  if (page === '@flow' || (page === 'briefing' && s.ui.workView === 'flow' && s.work?.flow?.enabled === true)) {
     const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
-    return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn) } }
+    // the sessions too, by their tab or folder as on the Sessions page: a linked session drives its task (In progress)
+    const keepSession = x => (x.tab?.ref && tabOf.get(x.tab.ref) ? inProject(tabOf.get(x.tab.ref), area) : inProject({ workspace: x.project }, area))
+    return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn) },
+      sessions: s.sessions && area ? { ...s.sessions, sessions: (s.sessions.sessions ?? []).filter(keepSession) } : s.sessions }
   }
   if (page === 'briefing') {
     const keepRow = r => !!r && inProject(r, area) && (!pins || pins.has(r.key))

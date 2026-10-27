@@ -319,22 +319,35 @@ test('a card whose tab asks offers no start: the tab takes no sentence while it 
 
 // ---------------------------------------------------------------- the page
 
-test('the page: its tab stands right after Today only with cockpit.flow.enabled, its badge is the count of what waits', () => {
-  const { pageOrder } = views.nav
-  assert.ok(!pageOrder({}).includes('@flow'))
-  assert.ok(!pageOrder({ work: { flow: { enabled: false } } }).includes('@flow'))
-  const on = pageOrder({ work: { flow: { enabled: true } } })
-  assert.equal(on[on.indexOf('briefing') + 1], '@flow')
+test('the page: Work through is a view of the work tab with cockpit.flow.enabled, no tab of its own', () => {
+  const { pageOrder, workViewNow } = views.nav
+  // no top tab, with the switch on or off
+  for (const enabled of [false, true]) assert.ok(!pageOrder({ work: { flow: { enabled } } }).includes('@flow'))
+  // a view of the work tab: last in its switch, only while the page is switched on
+  assert.ok(!logic.workViews(null, null, false).includes('flow'))
+  assert.deepEqual(logic.workViews(null, null, true), ['due', 'dossier', 'flow'])
+  assert.equal(logic.workViewOf('flow', null, null, false), 'due')
+  assert.equal(logic.workViewOf('flow', null, null, true), 'flow')
+  // cockpit.work_view may name it
+  assert.equal(logic.workViewId('flow'), 'flow')
   const flow = enabled => ({ ...cockpitState(NOW).work, flow: { enabled, drop_reasons: [], return_after_s: 20 } })
-  const s = cockpitState(NOW, { work: flow(true) })
-  const bar = mount(html`<${views.header.PageBar} s=${s} c=${recorder()} />`)
-  const tab = bar.$$('[role=tab]').find(b => b.text().startsWith(en.flowTab))
-  assert.ok(tab, 'the tab is there')
-  // the same number as Today's tab: what waits for you, no counter of its own
-  assert.ok(s.model.briefing_badge > 0)
-  assert.equal(tab.$('.pbadge').text(), String(s.model.briefing_badge))
-  const off = mount(html`<${views.header.PageBar} s=${cockpitState(NOW, { work: flow(false) })} c=${recorder()} />`)
-  assert.ok(!off.$$('[role=tab]').some(b => b.text().startsWith(en.flowTab)))
+  const on = cockpitState(NOW, { work: flow(true), ui: { page: 'briefing', workView: 'flow' } })
+  assert.equal(workViewNow(on), 'flow')
+  assert.equal(workViewNow({ ...on, work: flow(false) }), 'due')
+  // the view switch names it beside the others, a click picks it
+  const c = recorder()
+  const sw = mount(html`<${views.day.WorkSwitch} s=${on} c=${c} />`)
+  const radio = sw.$$('[role=radio]').find(b => b.text() === en.workOrder.views.flow)
+  assert.ok(radio, 'the view is in the switch')
+  assert.equal(radio.getAttribute('aria-checked'), 'true')
+  const off = mount(html`<${views.day.WorkSwitch} s=${{ ...on, work: flow(false) }} c=${recorder()} />`)
+  assert.ok(!off.$$('[role=radio]').some(b => b.text() === en.workOrder.views.flow))
+  // the page bar has no tab of the page any more
+  const bar = mount(html`<${views.header.PageBar} s=${on} c=${recorder()} />`)
+  assert.ok(!bar.$$('[role=tab]').some(b => b.text().startsWith(en.flow.title)))
+  // a stored page or a link @flow is the work tab in this view (logic.js flowPageFor)
+  assert.deepEqual(logic.flowPageFor('@flow'), { page: 'briefing', view: 'flow' })
+  assert.equal(logic.flowPageFor('briefing'), null)
 })
 
 test('the page on the demo data: a card in front, the lane, the chips, the walk bar and what it leaves out', () => {
@@ -378,7 +391,7 @@ test('the texts of the page: both languages alike, mouse first, no keyboard shor
   }
   const de = text.TABLES.de.flow
   assert.deepEqual([de.verbs.do, de.verbs.advise, de.verbs.done, de.verbs.later, de.verbs.drop], ['Bridge macht', 'Beraten', 'Erledigt', 'Später bis', 'Weg, weil'])
-  assert.equal(text.TABLES.de.flowTab, 'Abarbeiten')
+  assert.equal(text.TABLES.de.workOrder.views.flow, 'Abarbeiten')
   assert.equal(de.chips.running, 'Läuft')
 })
 
