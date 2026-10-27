@@ -23,6 +23,7 @@ from .. import model_route as mr
 from . import model as m
 from . import activity as act
 from . import describe as dsc
+from . import instruct as ins
 from . import organize as og
 from . import themes as thm
 from .card_fields import validate_brief
@@ -238,12 +239,14 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "organize_items": _organize_items,
     "brief": _brief,
     "theme_name": _theme_name,
+    # the sentence of the instruction line: line breaks folded into blanks, 1 to 600 characters (instruct.fold)
+    "instruct_text": lambda actions, value, name, today: ins.fold(value, name),
     "attach_name": _attach_name,
     "attach_data": _attach_data,
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
 # the verbs after which the Activity tab's kept feeds stand: they change nothing a feed reads
-KEEPS_FEEDS = READ_ONLY_VERBS
+KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct"}
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
@@ -432,7 +435,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
                     ctx.locked = True
                     self.recorded(ctx, handler, clean)
         finally:
-            # what a verb names is read anew by the Activity tab (activity.py keeps a feed CACHE_MS)
+            # what a verb names is read anew by the Activity tab (activity.py keeps a feed CACHE_MS); a plan of the
+            # instruction line changes nothing
             if verb not in KEEPS_FEEDS and touched and getattr(self.app, "activity", None) is not None:
                 self.app.activity.drop(touched)
         return self.finish(ctx)

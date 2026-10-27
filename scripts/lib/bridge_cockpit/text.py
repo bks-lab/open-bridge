@@ -290,6 +290,13 @@ EN: dict = {
                  "attach_exists": "A document of that name is there already",
                  "attach_folder": "The task's deliverables folder is a link or lies outside work/",
                  "attach_failed": "The document could not be written: {err}"},
+    # the instruction line of Work through (instruct.py): the sentence a mail draft starts with, and the refusals
+    "instruct": {"mail_note": "Write a mail draft with the mail-draft skill, a draft only, never send it: {text}",
+                 "off": "The instruction line is switched off (cockpit.flow.instruct.enabled)",
+                 "unavailable": "The instruction line is not available: the service cockpit-instruct needs a Claude model",
+                 "budget": "Today's instructions are used up",
+                 "running": "An instruction is being read already; try again in a moment",
+                 "failed": "The model gave no usable steps: {why}"},
     "jev": {
         "who": "the user", "who_subject": "the user", "today": "today", "tasks": "tasks",
         "about": "{who_subject}, works with a team and with AI agents",
@@ -610,6 +617,13 @@ DE: dict = {
                  "attach_exists": "Ein Dokument mit diesem Namen gibt es schon",
                  "attach_folder": "Der Ordner deliverables der Aufgabe ist ein Verweis oder liegt außerhalb von work/",
                  "attach_failed": "Das Dokument ließ sich nicht schreiben: {err}"},
+    # the instruction line of Work through (instruct.py): the sentence a mail draft starts with, and the refusals
+    "instruct": {"mail_note": "Schreibe einen Mail-Entwurf mit dem Skill mail-draft, nur als Entwurf, niemals senden: {text}",
+                 "off": "Die Anweisungszeile ist ausgeschaltet (cockpit.flow.instruct.enabled)",
+                 "unavailable": "Die Anweisungszeile geht nicht: der Dienst cockpit-instruct braucht ein Claude-Modell",
+                 "budget": "Die Anweisungen sind für heute aufgebraucht",
+                 "running": "Es wird schon eine Anweisung gelesen; gleich noch einmal versuchen",
+                 "failed": "Das Modell gab keine brauchbaren Schritte: {why}"},
     "jev": {
         "who": "dem Nutzer", "who_subject": "der Nutzer", "today": "heute", "tasks": "aufgaben",
         "about": "{who_subject}, arbeitet mit einem Team und mit KI-Agenten",

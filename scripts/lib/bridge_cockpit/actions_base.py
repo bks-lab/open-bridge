@@ -128,9 +128,11 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "flow_theme_move": {"key": ("key", True), "theme": ("theme_id", True)},
     "flow_theme_new": {"key": ("key", True), "name": ("theme_name", True)},
     "flow_theme_rename": {"theme": ("theme_id", True), "name": ("theme_name", True)},
-    # the Activity tab of Work through: a summary of a point's activity (activity.py), and a document attached to the
-    # task's deliverables/ (POST /api/flow/attach runs this verb)
+    # the Activity tab and the instruction line of Work through: a summary of a point's activity (activity.py), one
+    # sentence turned into steps over the points in scope, never run here (instruct.py; point: the scope is the open
+    # point), and a document attached to the task's deliverables/ (POST /api/flow/attach runs this verb)
     "flow_activity_summary": {"key": ("key", True)},
+    "flow_instruct": {"text": ("instruct_text", True), "keys": ("keys", True), "point": ("bool", False)},
     "flow_attach": {"key": ("key", True), "name": ("attach_name", True), "data": ("attach_data", True)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
@@ -208,7 +210,7 @@ READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "flow_themes_run", "flow_theme_move", "flow_theme_new",
-                         "flow_theme_rename", "flow_activity_summary"})
+                         "flow_theme_rename", "flow_activity_summary", "flow_instruct"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb

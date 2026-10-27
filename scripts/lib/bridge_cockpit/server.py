@@ -57,6 +57,7 @@ from .triage import Triage
 from .describe import Describer
 from .themes import Themes
 from .activity import Activity
+from .instruct import Instruct
 from .history import History
 from .quick import Quick
 from .review import Review
@@ -220,6 +221,7 @@ class App:
         self.describe = Describer(self)                # each item's brief, written and kept (describe.py)
         self.themes = Themes(self)                     # the themes of the Work through page (themes.py)
         self.activity = Activity(self)                 # a point's Activity tab: feed, documents, summary (activity.py)
+        self.instruct = Instruct(self)                 # the instruction line of Work through (instruct.py)
         self.history = History(self.state_dir, self.clock)
         self.collector = Collector(self)
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
@@ -420,7 +422,7 @@ class App:
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
                 "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(),
-                # the model calls of the Activity tab: the runs left today (activity.py)
+                # the model calls of the Activity tab and the instruction line: the runs left today (activity.py)
                 "flow_ai": self.activity.flow_ai(),
                 "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
                           "bridges": self.bridges.state()}}

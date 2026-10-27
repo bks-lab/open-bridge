@@ -461,6 +461,13 @@ def test_the_feed_is_kept_for_20_seconds_and_a_write_or_fresh_reads_again(world)
     task.write_text(task.read_text(encoding="utf-8") + "- 2026-10-09: after a note\n", encoding="utf-8")
     world.act("note", key=DEMO, text="a sentence")
     assert "after a note" in [r["text"] for r in of(feed(world), "note")]
+    # a plan of the instruction line changes nothing, so it keeps the feed
+    task.write_text(task.read_text(encoding="utf-8") + "- 2026-10-09: after a plan\n", encoding="utf-8")
+    world.app.cfg.flow["instruct"]["enabled"] = True
+    world.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "is_error": False, "result": "",
+                                                         "structured_output": {"steps": [], "unclear": None}})
+    world.act("flow_instruct", text="nothing", keys=[DEMO], point=True)
+    assert "after a plan" not in [r["text"] for r in of(feed(world), "note")]
 
 
 def test_the_feed_refuses_a_bad_key_a_gone_row_and_answers_flow_off(world, tmp_path):

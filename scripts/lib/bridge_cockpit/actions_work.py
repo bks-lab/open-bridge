@@ -636,7 +636,7 @@ class WorkVerbs:
         ctx.note(self.app.themes.tx()["renamed"].format(name=made))
         ctx.extra["themes"] = self.app.themes.state()
 
-    # ------------------------------------------------------------ the Activity tab
+    # ------------------------------------------------------------ the Activity tab and the instruction line
 
     def v_flow_activity_summary(self, ctx: Ctx, key: str) -> None:
         """The summary of a point's activity (activity.py): the kept one while the rows are the same, else one model
@@ -646,6 +646,14 @@ class WorkVerbs:
         ctx.extra["summary"] = summary
         ctx.extra["flow_ai"] = app.activity.flow_ai()
         ctx.audit_extra["cached"] = summary["cached"]
+
+    def v_flow_instruct(self, ctx: Ctx, text: str, keys: list, point: bool = False) -> None:
+        """One sentence turned into a plan of steps (instruct.py); nothing runs here, the page runs it on a click"""
+        app = self.app
+        plan = app.instruct.run(text, keys, point, call=self.describe_ctx(ctx))
+        ctx.extra["plan"] = plan
+        ctx.extra["flow_ai"] = app.activity.flow_ai()
+        ctx.audit_extra.update(points=plan["n"], steps=len(plan["steps"]))
 
     def v_flow_attach(self, ctx: Ctx, key: str, name: str, data: bytes) -> None:
         """A document into the open task's deliverables/, flat, under its safe name (a taken one numbered -2 to -99),
