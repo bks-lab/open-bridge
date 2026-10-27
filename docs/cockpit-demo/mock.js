@@ -180,6 +180,19 @@ const WORDS = {
     'The work is done and written down in STATUS.md': 'Die Arbeit ist erledigt und in STATUS.md festgehalten',
     'Someone else checked the result': 'Jemand anderes hat das Ergebnis geprüft',
     'First step': 'Erster Schritt',
+    // Work through: the themes, the titles and the reasons of the suggestions
+    'Release work': 'Release-Arbeit',
+    'Docs and guides': 'Doku und Anleitungen',
+    'Board hygiene': 'Board-Pflege',
+    'Release notes from the merged changes': 'Release Notes aus den gemergten Änderungen',
+    'Board: Add a config switch for the report': 'Board: Einen Config-Schalter für den Bericht einbauen',
+    'Only you can say if the switch is wanted': 'Nur du kannst sagen, ob der Schalter gewollt ist',
+    'the linked issue is closed': 'das verknüpfte Issue ist geschlossen',
+    'Polish the wording of the release checklist': 'Den Wortlaut der Release-Checkliste glätten',
+    'The wording waits for the release date': 'Der Wortlaut wartet auf das Release-Datum',
+    'The fixtures are gone from the repository': 'Die Fixtures sind aus dem Repository verschwunden',
+    'Accounts for two new members are ready': 'Zugänge für zwei neue Mitglieder sind bereit',
+    'The board was tidied last week': 'Das Board wurde letzte Woche aufgeräumt',
   },
 }
 
@@ -1740,6 +1753,11 @@ export function createMockTransport(opts = {}) {
           seq += 1
           state.model = { ...state.model, seq, returns: [...started, ...(state.model.returns ?? []).filter(x => !keys.includes(x.key))] }
           wait(() => emit('view', state.model), 200)
+        }
+        // what a decision on rows can be taken back by, one undo per row as the server's history hands them out
+        if (['settle', 'later', 'shelve'].includes(verb)) {
+          result.undo = keys.map(k => (k.startsWith('task:') ? { title: k, kind: 'task', undo: { verb: 'task_reopen', args: { slug: k.slice(5) } } }
+            : { title: k, kind: 'inbox', undo: { verb: 'inbox_reopen', args: { id: k.slice(6) } } }))
         }
         if (['task_reopen', 'inbox_reopen', 'unhide'].includes(verb)) {
           // the undo of the history drawer: the newest item that hands out exactly this undo is taken back

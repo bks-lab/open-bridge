@@ -9,13 +9,15 @@ export const FLOW = {
     progress: (n, m) => `${n} in progress · ${m} open`,
     side: {
       label: 'Group by', themes: 'Themes', areas: 'Areas', allThemes: 'All themes', allAreas: 'All areas', noTheme: 'No theme yet',
-      noArea: 'No area', you: n => `${n} need you`, open: n => `${n} open`, asks: 'Something here needs you',
+      noArea: 'No area', you: n => `${n} need${n === 1 ? 's' : ''} you`, open: n => `${n} open`, asks: 'Something here needs you',
       regroup: 'Order themes again', regrouping: 'Ordering the themes', ordering: 'Haiku gives the new points a theme',
       budget: 'No runs left today: what has no theme yet waits under No theme yet', failed: 'The themes could not be ordered',
       pick: 'Theme or area', move: 'Move to theme', moveLabel: 'Theme of this point', newTheme: 'New theme', newName: 'Name of the new theme',
       rename: 'Rename the theme', renameLabel: 'New name', save: 'Save', cancel: 'Cancel',
+      overview: 'Overview', chip: v => `AI: ${v}`, tickAi: n => `Tick the AI suggestions (${n})`, points: 'The points of this theme',
     },
-    show: { label: 'Show', focus: 'Focus', list: 'List' },
+    groups: { you: 'Needs you', doing: 'In progress', task: 'Tasks', reports: 'Reports' },
+    point: { back: 'Back to overview', ticked: n => `${n} ticked`, see: 'See in the overview' },
     tabs: { label: 'Open points', count: n => (n === 1 ? '1 point' : `${n} points`) },
     doing: {
       who: 'Who works on it',
@@ -30,6 +32,7 @@ export const FLOW = {
       nextSide: name => `Next: ${name}`, toSide: 'Go there' },
     details: {
       label: 'Details', hint: 'A click pulls a block in.', loading: 'Reading the task',
+      overview: 'A click on a title opens the point in the middle; its details then stand here.',
       blocks: { goal: 'Goal and story', criteria: 'Acceptance criteria', steps: 'Steps', source: 'Source', notes: 'Notes and log',
         result: 'Result', screen: 'Screen of the tab', related: 'Related' },
       none: { goal: 'No goal written yet.', criteria: 'No criteria written yet.', steps: 'No steps in the file.', source: 'No source named.',
@@ -37,15 +40,16 @@ export const FLOW = {
       open: 'Open the link', view: 'View the whole screen', done: 'done', todo: 'open',
     },
     list: {
-      label: 'The points of this group', pickAll: 'All', pick: title => `Pick ${title}`, take: 'Take the suggestions',
-      picked: n => (n === 1 ? '1 picked' : `${n} picked`), confirm: 'Confirm', cancel: 'Cancel', undo: 'Undo the batch',
+      label: 'The points of this group', pickAll: 'All', pick: title => `Tick ${title}`, tick: n => `Tick the suggestions (${n})`,
+      ticked: (n, parts) => (parts ? `${n} ticked: ${parts}` : `${n} ticked`), nothing: 'Nothing ticked', run: 'Run the suggestions',
+      confirm: 'Confirm', cancel: 'Cancel', undo: 'Undo the batch',
       ran: n => (n === 1 ? '1 point decided in one batch' : `${n} points decided in one batch`),
       honest: 'Only suggestions: nothing runs without a click.', none: 'No suggestion',
       from: { triage: day => `from the triage of ${day}`, themes: 'from Haiku now' },
       verb: { done: 'Done', drop: 'Drop', later: 'Later', do: 'Let AI do it', you: 'Needs you' },
       laterUntil: day => `Later until ${day}`, age: d => (d === 0 ? 'today' : `${d} d`),
-      cols: { kind: 'Kind', stage: 'Stage', area: 'Area', age: 'Age', suggestion: 'Suggestion' },
-      empty: 'Nothing open here.', drop: 'Drop all because', later: 'Later until',
+      cols: { point: 'Point', stage: 'Stage', area: 'Area', suggestion: 'AI suggestion' },
+      empty: 'Nothing open here.',
     },
     batch: {
       summary: plan => {
@@ -57,6 +61,12 @@ export const FLOW = {
           p.counts.do ? `${p.counts.do} to an agent` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} stay out` : null
         return [parts.join(', ') || 'Nothing to do', out].filter(Boolean).join('; ')
+      },
+      // the plan by its counts only, for the line of what is ticked; none to run says so
+      counts: plan => {
+        const k = plan?.counts ?? {}
+        return [k.done ? `${k.done} done` : null, k.drop ? `${k.drop} drop` : null, k.later ? `${k.later} later` : null,
+          k.do ? `${k.do} to an agent` : null].filter(Boolean).join(', ') || 'no suggestion to run'
       },
     },
     open: n => (n === 1 ? '1 open' : `${n} open`),
@@ -105,13 +115,15 @@ export const FLOW = {
     progress: (n, m) => `${n} in Arbeit · ${m} offen`,
     side: {
       label: 'Gruppieren nach', themes: 'Themen', areas: 'Bereiche', allThemes: 'Alle Themen', allAreas: 'Alle Bereiche', noTheme: 'Noch ohne Thema',
-      noArea: 'Ohne Bereich', you: n => `${n} brauchen dich`, open: n => `${n} offen`, asks: 'Hier braucht dich etwas',
+      noArea: 'Ohne Bereich', you: n => `${n} ${n === 1 ? 'braucht' : 'brauchen'} dich`, open: n => `${n} offen`, asks: 'Hier braucht dich etwas',
       regroup: 'Themen neu ordnen', regrouping: 'Themen werden geordnet', ordering: 'Haiku gibt den neuen Punkten ein Thema',
       budget: 'Für heute keine Läufe mehr: was noch kein Thema hat, wartet unter Noch ohne Thema', failed: 'Die Themen ließen sich nicht ordnen',
       pick: 'Thema oder Bereich', move: 'In Thema legen', moveLabel: 'Thema dieses Punkts', newTheme: 'Neues Thema', newName: 'Name des neuen Themas',
       rename: 'Thema umbenennen', renameLabel: 'Neuer Name', save: 'Speichern', cancel: 'Abbrechen',
+      overview: 'Übersicht', chip: v => `AI: ${v}`, tickAi: n => `Vorschläge der AI anhaken (${n})`, points: 'Die Punkte dieses Themas',
     },
-    show: { label: 'Ansicht', focus: 'Fokus', list: 'Liste' },
+    groups: { you: 'Braucht dich', doing: 'In Arbeit', task: 'Aufgaben', reports: 'Meldungen' },
+    point: { back: 'Zur Übersicht', ticked: n => `${n} angehakt`, see: 'In der Übersicht ansehen' },
     tabs: { label: 'Offene Punkte', count: n => (n === 1 ? '1 Punkt' : `${n} Punkte`) },
     doing: {
       who: 'Wer daran arbeitet',
@@ -126,6 +138,7 @@ export const FLOW = {
       nextSide: name => `Weiter mit: ${name}`, toSide: 'Dorthin' },
     details: {
       label: 'Details', hint: 'Ein Klick holt einen Baustein dazu.', loading: 'Aufgabe wird gelesen',
+      overview: 'Ein Klick auf einen Titel öffnet den Punkt in der Mitte, seine Details stehen dann hier.',
       blocks: { goal: 'Ziel und Story', criteria: 'Akzeptanzkriterien', steps: 'Schritte', source: 'Quelle', notes: 'Notizen und Log',
         result: 'Ergebnis', screen: 'Bildschirm des Tabs', related: 'Verwandtes' },
       none: { goal: 'Noch kein Ziel geschrieben.', criteria: 'Noch keine Kriterien geschrieben.', steps: 'Keine Schritte in der Akte.', source: 'Keine Quelle genannt.',
@@ -133,15 +146,16 @@ export const FLOW = {
       open: 'Link öffnen', view: 'Ganzen Bildschirm ansehen', done: 'erledigt', todo: 'offen',
     },
     list: {
-      label: 'Die Punkte dieser Gruppe', pickAll: 'Alle', pick: title => `${title} auswählen`, take: 'Vorschläge übernehmen',
-      picked: n => `${n} ausgewählt`, confirm: 'Bestätigen', cancel: 'Abbrechen', undo: 'Stapel rückgängig',
+      label: 'Die Punkte dieser Gruppe', pickAll: 'Alle', pick: title => `${title} anhaken`, tick: n => `Vorschläge anhaken (${n})`,
+      ticked: (n, parts) => (parts ? `${n} angehakt: ${parts}` : `${n} angehakt`), nothing: 'Nichts angehakt', run: 'Vorschläge ausführen',
+      confirm: 'Bestätigen', cancel: 'Abbrechen', undo: 'Stapel rückgängig',
       ran: n => (n === 1 ? '1 Punkt in einem Stapel entschieden' : `${n} Punkte in einem Stapel entschieden`),
       honest: 'Nur Vorschläge: ohne Klick läuft nichts.', none: 'Kein Vorschlag',
       from: { triage: day => `aus der Sortierung vom ${day}`, themes: 'von Haiku jetzt' },
       verb: { done: 'Erledigt', drop: 'Weg', later: 'Später', do: 'Bridge macht', you: 'Fragt dich' },
       laterUntil: day => `Später bis ${day}`, age: d => (d === 0 ? 'heute' : `${d} T`),
-      cols: { kind: 'Art', stage: 'Stand', area: 'Bereich', age: 'Alter', suggestion: 'Vorschlag' },
-      empty: 'Hier ist nichts offen.', drop: 'Alle weg, weil', later: 'Später bis',
+      cols: { point: 'Punkt', stage: 'Stand', area: 'Bereich', suggestion: 'Vorschlag der AI' },
+      empty: 'Hier ist nichts offen.',
     },
     batch: {
       summary: plan => {
@@ -153,6 +167,12 @@ export const FLOW = {
           p.counts.do ? `${p.counts.do} an einen Agenten` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} bleiben draußen` : null
         return [parts.join(', ') || 'Nichts zu tun', out].filter(Boolean).join('; ')
+      },
+      // the plan by its counts only, for the line of what is ticked; none to run says so
+      counts: plan => {
+        const k = plan?.counts ?? {}
+        return [k.done ? `${k.done} erledigt` : null, k.drop ? `${k.drop} weg` : null, k.later ? `${k.later} später` : null,
+          k.do ? `${k.do} an einen Agenten` : null].filter(Boolean).join(', ') || 'kein Vorschlag zum Ausführen'
       },
     },
     open: n => `${n} offen`,

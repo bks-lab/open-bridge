@@ -1,36 +1,43 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the columns around the card of Work through (views/flow.js), laid out as cmux lays out a workspace:
-// on the left the themes (or the areas) like its workspace sidebar, over the card its open points like its tab bar,
-// on the right the details of the point in front to pull in by click.
-// FlowSide: Themes or Areas on top while the themes are on (logic.js flowMode), then All, one entry per theme or area
-// that holds a point (its colour, its name, how many need you in the warning tone, how many are open), and No theme
-// yet or No area last; a theme or area where something needs you carries the warning dot. Under the list Order themes
-// again (a regroup within the day's budget) and what the themes run is doing; a theme picked can be renamed. On a
-// narrow screen the list is a select over the tabs. FlowTabs: the points of the group picked in the queue's fixed
-// order, each with a dot for its kind and stage; the row wraps, so none is ever cut off. FlowDetails: the blocks of the
-// task and around it (goal and story, criteria, steps, source, notes and log, result, the tab's screen, related),
-// only their headings at first, the goal open; a click pulls one in and the choice stays from point to point
-// (ui.flowBlocks). It reuses what the files view and the item card already draw (views/card.js ItemCard,
-// views/dossier.js ResultList). With the themes on, it also moves the point to another theme or a new one.
+// The cockpit, the columns around the middle of Work through (views/flow.js), laid out as cmux lays out a workspace.
+// FlowSide, the left column in two levels, like a workspace sidebar that opens a workspace. Level one: Themes or Areas
+// on top while the themes are on (logic.js flowMode), then one entry per theme or area that holds a point (its colour,
+// its name, how many need you in the warning tone, how many are open), No theme yet or No area last; a click enters
+// it. Under the list Order themes again (a regroup within the day's budget) and what the themes run is doing. Level two:
+// All themes on top to go back, the name of the theme or area as the way to its overview (marked while the overview
+// shows), All and Tick the AI suggestions, then its points grouped Needs you, In progress, Tasks, Reports (logic.js
+// pointBand), each with a box, its title (a click opens the point), a dot and a word for its stage, its area and the
+// suggestion as a small chip. The boxes are the same selection as the overview's (ui.flowPicked). A theme entered can
+// be renamed. On a narrow screen both levels are one select over the middle.
+// FlowDetails: the blocks of the task and around it (goal and story, criteria, steps, source, notes and log, result,
+// the tab's screen, related), only their headings at first, the goal open; a click pulls one in and the choice stays
+// from point to point (ui.flowBlocks); in the overview a line says how they come. It reuses what the files view and
+// the item card already draw (views/card.js ItemCard, views/dossier.js ResultList). With the themes on, it also moves
+// the point to another theme or a new one.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { detailNeedsLoad, duration, fileResults, flowDrive, FLOW_YOU, indexRows, previewText, short, stageTone } from '../logic.js'
+import { batchPreselect, detailNeedsLoad, duration, fileResults, flowDrive, flowSuggestion, indexRows, previewText, short } from '../logic.js'
 import { T } from '../text.js'
 import { describeOf, ItemCard } from './card.js'
 import { OriginTag } from './day.js'
 import { Segmented } from './detail.js'
 import { ResultList } from './dossier.js'
-import { Btn, Dot, Icon, useRoving } from './parts.js'
+import { bandsOf, pointTone, rowArea } from './flowlist.js'
+import { Btn, Dot, Icon } from './parts.js'
 
 /** The words of a side: its theme or area name, else All or None in the words of the mode */
 export function sideName(side, mode) {
   const f = T().flow.side
-  if (side.id === 'all') return mode === 'themes' ? f.allThemes : f.allAreas
+  if (!side || side.id === 'all') return mode === 'themes' ? f.allThemes : f.allAreas
   if (side.id === 'none') return mode === 'themes' ? f.noTheme : f.noArea
   return side.name
 }
+
+/** The colour mark of a side: its terminal workspace's colour where it has one, else the tone of its name */
+export const SideDot = ({ side }) => html`<span class=${`flow-side-dot tk-${side?.tone ?? 'muted'}`}
+  style=${side?.color ? { '--ws-color': side.color } : undefined} aria-hidden="true"></span>`
 
 /** Rename a theme a person picked: a field with Save; the name is a person's from then on (themes.py rename) */
 function Rename({ theme, c, onDone }) {
@@ -46,71 +53,91 @@ function Rename({ theme, c, onDone }) {
   </form>`
 }
 
-/** The left column: the themes or areas with their counts, a click picks one (logic.js flowSides) */
-export function FlowSide({ sides, side, mode, points, s, c }) {
-  const t = T()
-  const f = t.flow.side
+/** Level one: the themes or areas with their counts, a click enters one */
+function Level1({ sides, mode, points, s, c }) {
+  const f = T().flow.side
   const th = s.themes
-  const [renaming, setRenaming] = useState(false)
-  const picked = sides.find(x => x.id === side) ?? sides[0]
   const keys = points.flatMap(x => (x.kind === 'reports' ? x.rows.map(r => r.key) : x.row?.key ? [x.row.key] : []))
   const busy = !!s.ui.flowThemesBusy || !!th?.running || !!s.ui.busy?.['flow:themes']
   const status = mode !== 'themes' ? null : busy ? f.ordering : th?.budget_left === 0 ? f.budget : th?.last_error ? f.failed : null
-  return html`<aside class="flow-side" aria-label=${f.label}>
-    ${th?.enabled === true ? html`<${Segmented} label=${f.label} values=${[['themes', f.themes], ['areas', f.areas]]} current=${mode}
+  return html`${th?.enabled === true ? html`<${Segmented} label=${f.label} values=${[['themes', f.themes], ['areas', f.areas]]} current=${mode}
       onPick=${v => c.flowMode(v)} />` : null}
-    <label class="flow-side-select"><span class="sr-only">${f.pick}</span>
-      <select class="input" value=${picked.id} onChange=${e => c.flowSide(e.currentTarget.value)}>
-        ${sides.map(x => html`<option key=${x.id} value=${x.id}>${sideName(x, mode)} (${x.open})</option>`)}
-      </select></label>
-    <ul class="flow-side-list">${sides.map(x => {
-      const on = x.id === picked.id
-      return html`<li key=${x.id}><button type="button" class=${`flow-side-item${on ? ' is-on' : ''}${x.you ? ' is-you' : ''}`}
-        aria-current=${on ? 'true' : undefined} title=${x.you ? f.asks : undefined} onClick=${() => c.flowSide(x.id)}>
-        ${x.id === 'all' ? html`<${Icon} name="tabs" size=${14} />`
-          : html`<span class=${`flow-side-dot tk-${x.tone ?? 'muted'}`} style=${x.color ? { '--ws-color': x.color } : undefined} aria-hidden="true"></span>`}
-        <span class="flow-side-name">${sideName(x, mode)}</span>
-        <span class="flow-side-counts">
-          ${x.you ? html`<span class="flow-side-you" title=${f.you(x.you)}><${Dot} token="warning" /><span class="mono">${x.you}</span></span>` : null}
-          <span class="mono muted" title=${f.open(x.open)}>${x.open}</span>
-        </span>
-      </button></li>`
-    })}</ul>
-    ${mode === 'themes' ? html`<div class="flow-side-foot">
-      ${picked.theme && !renaming ? html`<${Btn} size="xs" variant="ghost" onClick=${() => setRenaming(true)}>${f.rename}<//>` : null}
-      ${picked.theme && renaming ? html`<${Rename} key=${picked.theme.id} theme=${picked.theme} c=${c} onDone=${() => setRenaming(false)} />` : null}
+    <ul class="flow-side-list flow-side-body">${sides.filter(x => x.id !== 'all').map(x => html`<li key=${x.id}>
+      <button type="button" class=${`flow-side-item${x.you ? ' is-you' : ''}`} title=${x.you ? f.asks : undefined} onClick=${() => c.flowSide(x.id)}>
+        <${SideDot} side=${x} />
+        <span class="flow-side-name"><span class="flow-side-label">${sideName(x, mode)}</span>
+          ${x.you ? html`<span class="flow-side-you">${f.you(x.you)}</span>` : null}</span>
+        <span class="flow-side-open mono muted" title=${f.open(x.open)}>${x.open}</span>
+        <${Icon} name="chevronRight" size=${14} />
+      </button></li>`)}</ul>
+    ${mode === 'themes' ? html`<div class="flow-side-foot flow-side-body">
       <${Btn} size="xs" variant="secondary" icon="spark" busy=${busy} disabled=${!keys.length || th?.budget_left === 0}
         onClick=${() => c.flowThemes('regroup', keys.slice(0, 50))}>${f.regroup}<//>
       ${status ? html`<p class="muted small" role="status">${status}</p>` : null}
+    </div>` : null}`
+}
+
+/** Level two: back to all, the name as the way to the overview, All and Tick, the points grouped with their boxes */
+function Level2({ entered, mode, points, at, view, picked, titleFor, kindFor, s, c }) {
+  const t = T()
+  const f = t.flow.side
+  const [renaming, setRenaming] = useState(false)
+  const bands = bandsOf(points)
+  const pickable = bands.flatMap(b => b.rows).filter(r => r.row)
+  const all = pickable.length > 0 && pickable.every(r => picked.has(r.id))
+  const pre = batchPreselect(pickable.map(r => r.row), s)
+  const open = view === 'point' ? points[at]?.id : null
+  return html`<div class="flow-side-body flow-side-drill">
+    <button type="button" class="btn-link flow-side-back" onClick=${() => c.flowSide(null)}>‹ ${sideName(null, mode)}</button>
+    <button type="button" class=${`flow-side-title${view === 'overview' ? ' is-on' : ''}`} aria-current=${view === 'overview' ? 'true' : undefined}
+      onClick=${() => c.flowOverview()}>
+      <${SideDot} side=${entered} /><span class="flow-side-name">${sideName(entered, mode)}</span>
+      <span class="flow-side-badge muted">${f.overview}</span>
+    </button>
+    <div class="flow-side-tools">
+      <label class="flow-check"><input type="checkbox" class="flow-side-all" checked=${all} disabled=${!pickable.length}
+        onClick=${() => c.flowPick(pickable.map(r => r.id), !all)} /><span>${t.flow.list.pickAll}</span></label>
+      <button type="button" class="btn-link flow-side-tick" disabled=${!pre.length} onClick=${() => c.flowPick(pre, true)}>${f.tickAi(pre.length)}</button>
+    </div>
+    ${bands.map(b => html`<section key=${b.band} class="flow-side-band" aria-label=${t.flow.groups[b.band]}>
+      <h3 class="flow-side-group label-caps">${t.flow.groups[b.band]}</h3>
+      <ul class="flow-pts">${b.rows.map(r => {
+        const sug = r.row ? flowSuggestion(r.row, s) : null
+        const tone = pointTone(r.x, s)
+        const title = r.row?.title ?? titleFor(r.x)
+        const area = rowArea(r)
+        const on = open != null && r.x.id === open
+        return html`<li key=${r.id} class=${`flow-pt${on ? ' is-on' : ''}${picked.has(r.id) ? ' is-picked' : ''}`}>
+          ${r.row ? html`<input type="checkbox" class="flow-pt-pick" aria-label=${t.flow.list.pick(short(title, 60))} checked=${picked.has(r.id)}
+            onClick=${() => c.flowPick([r.id], !picked.has(r.id))} />` : html`<span class="flow-pt-pick" aria-hidden="true"></span>`}
+          <button type="button" class="flow-pt-open" aria-current=${on ? 'true' : undefined} onClick=${() => c.flowGo(r.x.id, points.indexOf(r.x))}>
+            <span class="flow-pt-title">${short(title, 90)}</span>
+            <span class="flow-pt-meta"><${Dot} token=${tone.token} pulse=${tone.pulse} /><span>${kindFor(r.x)}${area ? ` · ${area}` : ''}</span>
+              ${sug ? html`<span class=${`flow-pt-chip flow-sug-${sug.verb}`}>${f.chip(t.flow.list.verb[sug.verb])}</span>` : null}</span>
+          </button>
+        </li>`
+      })}</ul>
+    </section>`)}
+    ${mode === 'themes' && entered.theme ? html`<div class="flow-side-foot">
+      ${renaming ? html`<${Rename} key=${entered.theme.id} theme=${entered.theme} c=${c} onDone=${() => setRenaming(false)} />`
+        : html`<${Btn} size="xs" variant="ghost" onClick=${() => setRenaming(true)}>${f.rename}<//>`}
     </div>` : null}
-  </aside>`
-}
-
-/** A point's dot: what it is and where it stands, as the agent tabs show theirs */
-function pointTone(x, s) {
-  if (x.group === 'doing') {
-    const d = flowDrive(x, s)
-    return { token: d.by === 'none' ? 'muted' : stageTone(d.stage === 'needs-you' ? 'asks' : d.stage ?? 'working'), pulse: d.stage === 'working' }
-  }
-  if (FLOW_YOU.includes(x.group)) return { token: x.group === 'result' ? 'success' : x.group === 'lost' ? 'danger' : 'warning', pulse: x.group === 'asks' }
-  return { token: x.group === 'reports' ? 'muted' : 'info', pulse: false }
-}
-
-/** Over the card: the points of the group picked as tabs, in the queue's order, a thin line between its groups */
-export function FlowTabs({ points, i, titleFor, kindFor, go, s }) {
-  const f = T().flow
-  const keys = useRoving()
-  return html`<div class="flow-tabs" role="tablist" aria-label=${f.tabs.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
-    ${points.map((x, k) => {
-      const tone = pointTone(x, s)
-      const sep = k > 0 && points[k - 1].group !== x.group && (FLOW_YOU.includes(points[k - 1].group) !== FLOW_YOU.includes(x.group) || x.group !== 'doing')
-      return html`${sep ? html`<span key=${`sep-${x.id}`} class="flow-tabs-sep" aria-hidden="true"></span>` : null}
-        <button key=${x.id} type="button" role="tab" aria-selected=${String(k === i)} class=${`flow-tab${k === i ? ' is-on' : ''}`}
-          title=${`${kindFor(x)}: ${titleFor(x)}`} onClick=${() => go(k)}>
-          <${Dot} token=${tone.token} pulse=${tone.pulse} /><span class="flow-tab-title">${short(titleFor(x), 34)}</span>
-        </button>`
-    })}
   </div>`
+}
+
+/** The left column: level one the themes or areas, level two the points of the one entered (logic.js flowSides) */
+export function FlowSide({ sides, entered, mode, points, all, at, view, picked, titleFor, kindFor, s, c }) {
+  const f = T().flow.side
+  return html`<aside class="flow-side" aria-label=${f.label}>
+    <label class="flow-side-select"><span class="sr-only">${f.pick}</span>
+      <select class="input" value=${entered?.id ?? ''} onChange=${e => c.flowSide(e.currentTarget.value || null)}>
+        <option value="">${sideName(null, mode)} (${sides[0]?.open ?? 0})</option>
+        ${sides.filter(x => x.id !== 'all').map(x => html`<option key=${x.id} value=${x.id}>${sideName(x, mode)} (${x.open})</option>`)}
+      </select></label>
+    ${entered ? html`<${Level2} entered=${entered} mode=${mode} points=${points} at=${at} view=${view} picked=${picked}
+        titleFor=${titleFor} kindFor=${kindFor} s=${s} c=${c} />`
+      : html`<${Level1} sides=${sides} mode=${mode} points=${all} s=${s} c=${c} />`}
+  </aside>`
 }
 
 // the blocks of the right column, in the order they stand; the first one stands open at first (app.js flowBlocks)
@@ -190,7 +217,9 @@ export function FlowDetails({ x, s, c }) {
   const blocks = x ? blocksOf(x, tab) : []
   const wantsTask = !!slug && blocks.some(b => open.includes(b) && b !== 'screen')
   useEffect(() => { if (wantsTask && detailNeedsLoad(entry, ver)) c.loadTask(slug) }, [slug, wantsTask, ver, entry?.stale])
-  if (!x) return html`<aside class="flow-details" aria-label=${f.label}></aside>`
+  if (!x) return html`<aside class="flow-details" aria-label=${f.label}>
+    <header class="flow-details-head"><p class="label-caps">${f.label}</p><p class="muted small flow-details-hint">${f.overview}</p></header>
+  </aside>`
   const data = entry?.data ?? null
   const card = data?.card ?? row?.card ?? null
   const key = row?.key ?? null

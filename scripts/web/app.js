@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileOpen, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -159,11 +159,12 @@ const store = createStore({
     // filters it, the jump to a tab the return card asks about ({key, ref, title, at, armed}, kept in memory only, so
     // a reload brings no old card back), the row Advise answered ({key, conv}) and how many it decided since load
     flowAt: null, flowChip: 'all', flowJump: null, flowAdvice: null, flowDecided: 0,
-    // its left column: by themes or by areas (flowMode, kept in this browser), the theme or area picked in each
-    // ({themes, areas}), Focus or List (flowShow, kept in this browser), the detail blocks pulled in on the right (they
-    // stay open from point to point), a batch of the list that ran ({n, undo}) and a themes run of the page in flight
+    // its left column: by themes or by areas (flowMode, kept in this browser), the theme or area entered in each
+    // ({themes, areas}, null for the level of all), the overview of it or a point in the middle (flowView), the keys
+    // ticked (one selection for the left column and the overview), the detail blocks pulled in on the right (they stay
+    // open from point to point), a batch of the overview that ran ({n, undo}) and a themes run of the page in flight
     flowMode: load('bridge-cockpit.flowMode', 'themes') === 'areas' ? 'areas' : 'themes', flowSide: {},
-    flowShow: load('bridge-cockpit.flowShow', 'focus') === 'list' ? 'list' : 'focus', flowBlocks: ['goal'], flowBatch: null,
+    flowView: 'overview', flowPicked: [], flowBlocks: ['goal'], flowBatch: null,
     flowThemesBusy: false,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
@@ -525,21 +526,20 @@ function rowIndex() {
 let quietNotesUntil = 0
 const BATCH_NOTE_GRACE_MS = 2000
 
-// the themes of Work through asked for by the page itself: each key once per page load, quietly (a refusal, the day's
-// budget spent, says itself in the state the left column reads); no timer, only the view showing new points asks
-const themesAsked = new Set()
-async function themesAuto(keys) {
-  const fresh = (keys ?? []).filter(k => !themesAsked.has(k))
-  if (!fresh.length || store.get().ui.flowThemesBusy) return
-  for (const k of fresh) themesAsked.add(k)
+// the themes of Work through asked for by the page itself (logic.js themesAsker): each key once per page load, one run
+// at a time, quietly (a refusal, the day's budget spent, says itself in the state the left column reads); a run that
+// failed leaves its keys free for a later ask. No timer, only the view showing new points asks
+const themesAuto = themesAsker(async keys => {
+  if (store.get().ui.flowThemesBusy) return false
   setUi({ flowThemesBusy: true })
   try {
-    const res = await api.action('flow_themes_run', { mode: 'assign', keys: fresh })
+    const res = await api.action('flow_themes_run', { mode: 'assign', keys })
     if (res.ok && res.data?.themes) store.set(s => ({ ...s, themes: res.data.themes }))
+    return !!res.ok
   } finally {
     setUi({ flowThemesBusy: false })
   }
-}
+})
 
 // a quick question names the key of the chat's button only where the page has its shortcuts on (quick.py system_text)
 const quickKeys = ui => (ui?.shortcuts ? { keys: true } : {})
@@ -1007,7 +1007,7 @@ const ctl = {
   },
   dossierWalk: (id, i) => setUi({ dossierAt: { id, i }, dossierOpen: null }),
   // the Work through page: a card brought to the front by its id, a chip (its queue starts over), one more decision
-  flowGo: (id, i) => setUi({ flowAt: { id, i } }),
+  flowGo: (id, i) => setUi({ flowAt: { id, i }, flowView: 'point' }),
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
   flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
   // To tab on a card: the jump goes out and is remembered for the return card; a driver that cannot jump shows the
@@ -1035,11 +1035,19 @@ const ctl = {
   // the briefs of the next cards, written ahead while one stands in front (prepAhead): a refusal ends the round, a key
   // that went out is not asked again on this page load. No timer: only a card coming up asks
   flowPrep: keys => prepAhead(keys),
-  // the left column of Work through: a theme or an area picked (its points walk from the first), themes or areas,
-  // Focus or List, a detail block pulled in or folded again
-  flowSide: id => setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: id }, flowAt: null })),
-  flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null }) },
-  flowShow: v => { save('bridge-cockpit.flowShow', v); setUi({ flowShow: v }) },
+  // the left column of Work through: a theme or an area entered (null: back to all of them), its overview first or,
+  // from the walk bar, its first point; the ticks start over. Themes or areas; the overview again from a point; a
+  // point ticked or not, the boxes of the left column and of the overview being one selection; a detail block
+  // pulled in or folded again
+  flowSide: (id, view = 'overview') => setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: id ?? null },
+    flowAt: null, flowView: view === 'point' ? 'point' : 'overview', flowPicked: [] })),
+  flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [] }) },
+  flowOverview: () => setUi({ flowView: 'overview' }),
+  flowPick: (keys, on) => setUi(ui => {
+    const picked = new Set(ui.flowPicked ?? [])
+    for (const k of keys ?? []) { if (on) picked.add(k); else picked.delete(k) }
+    return { flowPicked: [...picked] }
+  }),
   flowBlock: id => setUi(ui => {
     const open = ui.flowBlocks ?? ['goal']
     return { flowBlocks: open.includes(id) ? open.filter(x => x !== id) : [...open, id] }
@@ -1051,7 +1059,7 @@ const ctl = {
   flowThemeMove: (key, theme) => act('flow_theme_move', { key, theme }),
   flowThemeNew: (key, name) => act('flow_theme_new', { key, name }),
   flowThemeRename: (theme, name) => act('flow_theme_rename', { theme, name }),
-  // a batch of the list, confirmed: its calls one after the other, each quiet, then one note with one undo for all
+  // a batch of the overview, confirmed: its calls one after the other, each quiet, then one note with one undo for all
   async flowBatch(calls) {
     const undo = []
     let n = 0
@@ -1068,7 +1076,8 @@ const ctl = {
       quietNotesUntil = Date.now() + BATCH_NOTE_GRACE_MS
     }
     setUi(ui => ({ flowBatch: { running: false, n, undo }, flowDecided: (ui.flowDecided ?? 0) + n }))
-    if (n) pushNote({ text: T().flow.list.ran(n), tone: 'ok', ...(undo.length ? { action: 'undo', undo } : {}) }, { linger: 10000 })
+    // one toast says the batch; its one undo stands in the overview's line (views/flowlist.js), never twice
+    if (n) pushNote({ text: T().flow.list.ran(n), tone: 'ok' }, { linger: 10000 })
     return { n, undo }
   },
   // the batch taken back, every point of it

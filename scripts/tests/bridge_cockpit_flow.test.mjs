@@ -42,7 +42,7 @@ function state({ now = [], work = [], later = [], hidden = [], tabs = [], return
     work: { flow: { enabled: true, drop_reasons: ['resolves_itself', 'not_needed'], return_after_s: 20 } },
     // the themes off unless a test switches them on: the left column groups by area
     themes: { enabled: false },
-    ui: { page: '@flow', busy: {}, flowAt: null, flowChip: 'all', flowJump: null, ...ui }, ...rest,
+    ui: { page: '@flow', busy: {}, flowAt: null, flowChip: 'all', flowJump: null, flowView: 'point', ...ui }, ...rest,
   }
 }
 
@@ -355,52 +355,106 @@ test('the page: Work through is a view of the work tab with cockpit.flow.enabled
   assert.equal(logic.flowPageFor('briefing'), null)
 })
 
-test('the page on the demo data: the left column, the tabs, the card, the details and the files view\'s walk bar', () => {
+test('the page on the demo data: the themes or areas on the left, the overview of all in the middle, a hint on the right', () => {
   const s = cockpitState(NOW, { ui: { page: 'briefing', workView: 'flow' } })
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
-  assert.ok(el.$('.flow-side') && el.$('.flow-tabs') && el.$('.flow-card') && el.$('.flow-details'), 'three columns and the tabs')
-  // no chips and no lane any more: the left column and the tabs stand for them
-  assert.equal(el.$('.flow-chips'), null)
-  assert.equal(el.$('.flow-lane'), null)
-  // the walk is the files view's bar with the words of a point
-  const walk = el.$('.flow-walk .dz-walk')
-  assert.ok(walk, 'the big bar')
-  assert.ok(el.button(en.flow.walk2.prev) && el.button(en.flow.walk2.next))
+  assert.ok(el.$('.flow-side') && el.$('.flow-overview') && el.$('.flow-details'), 'three columns')
+  // no tabs over the card and no Focus or List any more, no chips and no lane
+  for (const gone of ['.flow-tabs', '.flow-main-top', '.flow-chips', '.flow-lane', '.flow-card', '.flow-walk']) assert.equal(el.$(gone), null, gone)
+  // level one: an entry per theme or area, no All entry (the overview of all stands in the middle)
+  const mode = logic.flowMode(s)
+  const sides = logic.flowSides(s, logic.flowQueue(logic.flowParts(s)), mode).filter(x => x.id !== 'all')
+  assert.equal(el.$$('.flow-side-item').length, sides.length)
+  el.$$('.flow-side-item')[0].click()
+  assert.deepEqual(c.calls.at(-1), ['flowSide', sides[0].id])
+  // the middle names the level and shows every point grouped, the right says how details come
+  assert.match(el.$('.flow-main-head').text(), new RegExp(mode === 'themes' ? en.flow.side.allThemes : en.flow.side.allAreas))
+  assert.ok(el.$$('.flow-ov-row').length >= sides.length)
+  assert.match(el.$('.flow-details').text(), new RegExp(en.flow.details.overview))
   // the head says how much is in progress and how much is open, and holds the view switch
   assert.match(el.$('.flow-head').text(), /in progress/)
   assert.ok(el.$('.flow-head .work-switch'))
-  // the title of the card opens nothing: no drawer, no walk of its own
+  // narrow: the same choice as a select, its first option the level of all
+  const opts = el.$$('.flow-side-select option')
+  assert.ok(!opts[0].getAttribute('value'), 'the first option has no side')
+  assert.equal(opts.length, sides.length + 1)
+})
+
+const opsState = (ui = {}) => cockpitState(NOW, { ...state({ now: [ask('20261009-0900-a-q', { area: 'Ops' })], work: [task('a', { area: 'Ops' }), task('b', { area: 'Docs' })] }),
+  ui: { ...state().ui, page: 'briefing', workView: 'flow', flowSide: { areas: 'a:ops' }, flowView: 'overview', flowPicked: [], ...ui } })
+
+test('a theme entered: back to all, its name as the overview, its points grouped with a box, a stage and a chip', () => {
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${opsState()} c=${c} />`)
+  const side = el.$('.flow-side')
+  // on top the way back, then the name marked as the overview it shows
+  el.$('.flow-side-back').click()
+  assert.deepEqual(c.calls.at(-1), ['flowSide', null])
+  assert.match(el.$('.flow-side-back').text(), new RegExp(en.flow.side.allAreas))
+  const title = el.$('.flow-side-title')
+  assert.match(title.text(), /Ops/)
+  assert.match(title.text(), new RegExp(en.flow.side.overview))
+  assert.equal(title.getAttribute('aria-current'), 'true')
+  title.click()
+  assert.deepEqual(c.calls.at(-1), ['flowOverview'])
+  // the groups in the queue's order, a row per point: its box, title, stage and area
+  assert.deepEqual(side.$$('.flow-side-group').map(h => h.text()), [en.flow.groups.you, en.flow.groups.doing])
+  const items = side.$$('.flow-pt')
+  assert.equal(items.length, 2)
+  assert.match(items[1].$('.flow-pt-meta').text(), new RegExp(`${en.flow.kind.doing}.*Ops`))
+  items[1].$('.flow-pt-open').click()
+  assert.deepEqual(c.calls.at(-1), ['flowGo', 'task:a', 1])
+  items[1].$('.flow-pt-pick').click()
+  assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:a'], true])
+  // the middle: the theme's name, the same groups as a table, a title opens the point
+  assert.match(el.$('.flow-main-head').text(), /Ops/)
+  assert.deepEqual(el.$$('.flow-ov-group').map(h => h.text()), [en.flow.groups.you, en.flow.groups.doing])
+  const rows = el.$$('.flow-ov-row')
+  assert.equal(rows.length, 2)
+  rows[0].$('.flow-ov-open').click()
+  assert.deepEqual(c.calls.at(-1), ['flowGo', 'inbox:20261009-0900-a-q', 0])
+  // the stage keeps its words whole: no ellipsis in its cell
+  assert.ok(!rows[1].$('.flow-ov-stage').getAttribute('class').includes('ellipsis'))
+  // the boxes left and in the table are one selection
+  const picked = mount(html`<${FlowPage} s=${opsState({ flowPicked: ['task:a'] })} c=${recorder()} />`)
+  assert.deepEqual(picked.$$('.flow-pt-pick').map(b => b.hasAttribute('checked')), [false, true])
+  assert.deepEqual(picked.$$('.flow-ov-pick').map(b => b.hasAttribute('checked')), [false, true])
+  assert.match(picked.$('.flow-ov-bar').text(), new RegExp(en.flow.list.ticked(1, '')))
+})
+
+test('the open point: Back to overview, what is ticked, the card with its verbs, the walk on to the next theme', () => {
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${opsState({ flowView: 'point', flowAt: { id: 'task:a', i: 1 }, flowPicked: ['task:a'] })} c=${c} />`)
+  assert.equal(el.$('.flow-overview'), null)
+  const back = el.$('.flow-back')
+  assert.match(back.text(), new RegExp(en.flow.point.back))
+  back.click()
+  assert.deepEqual(c.calls.at(-1), ['flowOverview'])
+  assert.match(el.$('.flow-main-theme').text(), /Ops/)
+  // one point ticked: the line says so and leads to the overview
+  assert.match(el.$('.flow-picked-line').text(), new RegExp(en.flow.point.ticked(1)))
+  el.button(en.flow.point.see).click()
+  assert.deepEqual(c.calls.at(-1), ['flowOverview'])
+  // the card, the point marked on the left, the title of the card opens nothing
+  assert.ok(el.$('.flow-card .fx-hero'))
   assert.equal(el.$('.flow-card .fx-title button'), null)
-  // a tab brings its point to the front, an entry of the left column picks it
-  el.$$('.flow-tab')[1].click()
-  assert.equal(c.calls.at(-1)[0], 'flowGo')
-  el.$$('.flow-side-item')[1].click()
-  assert.equal(c.calls.at(-1)[0], 'flowSide')
+  assert.deepEqual(el.$$('.flow-pt').map(li => li.getAttribute('class').includes('is-on')), [false, true])
+  assert.equal(el.$('.flow-side-title').getAttribute('aria-current'), null)
+  // the files view's walk bar: after the last point of Ops, the next area
+  assert.ok(el.$('.flow-walk .dz-walk'))
+  assert.match(el.$('.dz-walk-next').text(), new RegExp(en.flow.walk2.nextSide('Docs')))
+  el.button(en.flow.walk2.toSide).click()
+  assert.deepEqual(c.calls.at(-1), ['flowSide', 'a:docs', 'point'])
   // the details come as headings, the goal open; a click pulls another in
   const heads = el.$$('.flow-block-head button')
   assert.ok(heads.length >= 4)
   assert.equal(heads[0].getAttribute('aria-expanded'), 'true')
   heads[1].click()
   assert.deepEqual(c.calls.at(-1), ['flowBlock', 'criteria'])
-  // narrow: the same choice as a select over the tabs
-  assert.ok(el.$('.flow-side-select select'))
-})
-
-test('the left column marks what needs you, the walk leads on to the next area after the last point', () => {
-  const s = cockpitState(NOW, { ...state({ now: [ask('20261009-0900-a-q', { area: 'Ops' })], work: [task('a', { area: 'Ops' }), task('b', { area: 'Docs' })] }),
-    ui: { ...state().ui, page: 'briefing', workView: 'flow', flowSide: { areas: 'a:ops' }, flowAt: { id: 'task:a', i: 1 } } })
-  const c = recorder()
-  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
-  const items = el.$$('.flow-side-item')
-  assert.deepEqual(items.map(b => [b.$('.flow-side-name').text(), b.$('.flow-side-you')?.text() ?? null, b.$('.flow-side-counts > .mono.muted').text()]),
-    [[en.flow.side.allAreas, '1', '3'], ['Ops', '1', '2'], ['Docs', null, '1']])
-  assert.ok(items[1].getAttribute('class').includes('is-you') && items[1].getAttribute('aria-current') === 'true')
-  // two points in Ops, the second in front: Next leads to Docs
-  assert.deepEqual(el.$$('.flow-tab').map(b => b.getAttribute('aria-selected')), ['false', 'true'])
-  assert.match(el.$('.dz-walk-next').text(), new RegExp(en.flow.walk2.nextSide('Docs')))
-  el.button(en.flow.walk2.toSide).click()
-  assert.deepEqual(c.calls.at(-1), ['flowSide', 'a:docs'])
+  // nothing ticked: no line
+  const none = mount(html`<${FlowPage} s=${opsState({ flowView: 'point', flowAt: { id: 'task:a', i: 1 } })} c=${recorder()} />`)
+  assert.equal(none.$('.flow-picked-line'), null)
 })
 
 test('In progress on the card: who works on it, the last lines, To tab, and Let AI go on only without a tab at work', () => {
@@ -419,39 +473,6 @@ test('In progress on the card: who works on it, the last lines, To tab, and Let 
   assert.match(el.$('.flow-who').text(), /No tab open, last moved 3 days ago/)
   assert.ok(el.button(`${en.flow.doing.goOn} ▾`))
   assert.equal(el.button(en.flow.toTab), null)
-})
-
-test('the List: suggestions with where they come from, Take the suggestions, one line to confirm, then the batch and its undo', async () => {
-  const rows = [task('d1'), task('drop'), task('agent'), task('mine')]
-  const triage = { last: { at: '2026-10-09T07:00:00' }, items: { 'task:d1': { verdict: 'close', reason: 'The guide is merged' },
-    'task:agent': { doer: 'ai', reason: 'A small change' } } }
-  const themes = themesState({ assign: {}, suggest: { 'task:drop': { verb: 'drop', reason: 'Nobody needs it', drop: 'not_needed', at_ms: NOW } } })
-  const base = { ...state({ work: rows }), triage, themes, ui: { ...state().ui, page: 'briefing', workView: 'flow', flowShow: 'list' } }
-  const c = recorder()
-  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, base)} c=${c} />`)
-  assert.equal(el.$('.flow-details'), null)
-  assert.equal(el.$$('.flow-row').length, 4)
-  const from = el.$('.flow-list-from').text()
-  assert.match(from, /from the triage of/)
-  assert.match(from, new RegExp(en.flow.list.from.themes))
-  assert.match(from, new RegExp(en.flow.list.honest))
-  assert.match(el.$$('.flow-row')[0].text(), /The guide is merged/)
-  // nothing goes out before Confirm
-  el.button(en.flow.list.take).click()
-  await tick()
-  assert.equal(c.calls.filter(x => x[0] === 'act' || x[0] === 'flowBatch').length, 0)
-  // Take ticks done and drop, never Let AI do it
-  const picked = el.$$('.flow-row').map(li => li.getAttribute('class').includes('is-picked'))
-  assert.deepEqual(picked, [true, true, false, false])
-  assert.match(el.$('.flow-list-confirm').text(), /1 done, 1 drop: No longer needed/)
-  el.button(en.flow.list.confirm).click()
-  await tick()
-  assert.deepEqual(c.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done' } },
-    { verb: 'shelve', args: { key: 'task:drop', reason: 'No longer needed' } }]])
-  // after the batch: one undo for all of it
-  const after = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...base, ui: { ...base.ui, flowBatch: { running: false, n: 2, undo: [{ undo: {} }] } } })} c=${c} />`)
-  after.button(en.flow.list.undo).click()
-  assert.deepEqual(c.calls.at(-1), ['flowBatchUndo'])
 })
 
 test('the themes: the view asks for the points without one, never twice in a render, not with the day spent or the themes off', async () => {
@@ -917,4 +938,86 @@ test('batchPlan: the suggestions take done, drop and later, never Let AI do it u
   assert.equal(logic.batchPlan([task('d1')], 'drop', s, '').calls.length, 0)
   plan = logic.batchPlan([task('d1'), task('d2')], 'later', s, '2026-10-12')
   assert.deepEqual(plan.calls.map(x => x.args), [{ key: 'task:d1', until: '2026-10-12' }, { key: 'task:d2', until: '2026-10-12' }])
+})
+
+test('the overview: suggestions with where they come from, Tick, the ticked line, Run with one line to confirm, then one undo', async () => {
+  const rows = [task('d1'), task('drop'), task('agent'), task('mine')]
+  const triage = { last: { at: '2026-10-09T07:00:00' }, items: { 'task:d1': { verdict: 'close', reason: 'The guide is merged' },
+    'task:agent': { doer: 'ai', reason: 'A small change' } } }
+  const assign = Object.fromEntries(rows.map(r => [r.key, 't000001']))
+  const themes = themesState({ assign, suggest: { 'task:drop': { verb: 'drop', reason: 'Nobody needs it', drop: 'not_needed', at_ms: NOW } } })
+  const base = { ...state({ work: rows }), triage, themes,
+    ui: { ...state().ui, page: 'briefing', workView: 'flow', flowView: 'overview', flowSide: { themes: 't:t000001' }, flowPicked: [] } }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, base)} c=${c} />`)
+  assert.equal(el.$$('.flow-ov-row').length, 4)
+  const from = el.$('.flow-list-from').text()
+  assert.match(from, /from the triage of/)
+  assert.match(from, new RegExp(en.flow.list.from.themes))
+  assert.match(from, new RegExp(en.flow.list.honest))
+  assert.match(el.$$('.flow-ov-row')[0].$('.flow-ov-sug').text(), /The guide is merged/)
+  // the chip on the left names the suggestion
+  assert.match(el.$$('.flow-pt')[0].$('.flow-pt-chip').text(), new RegExp(en.flow.list.verb.done))
+  // Tick, left and in the bar: done and drop, never Let AI do it; nothing goes out
+  el.button(en.flow.side.tickAi(2)).click()
+  assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:d1', 'task:drop'], true])
+  el.button(en.flow.list.tick(2)).click()
+  assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:d1', 'task:drop'], true])
+  assert.equal(c.calls.filter(x => x[0] === 'act' || x[0] === 'flowBatch').length, 0)
+  assert.ok(el.button(en.flow.list.run).hasAttribute('disabled'))
+  // two ticked: the bar counts them by their suggestion, Run plans, Confirm sends and clears the boxes
+  const s2 = cockpitState(NOW, { ...base, ui: { ...base.ui, flowPicked: ['task:d1', 'task:drop'] } })
+  const c2 = recorder()
+  const el2 = mount(html`<${FlowPage} s=${s2} c=${c2} />`)
+  assert.match(el2.$('.flow-ov-bar').text(), new RegExp(en.flow.list.ticked(2, '1 done, 1 drop')))
+  assert.deepEqual(el2.$$('.flow-ov-row').map(tr => tr.getAttribute('class').includes('is-picked')), [true, true, false, false])
+  el2.button(en.flow.list.run).click()
+  await tick()
+  assert.match(el2.$('.flow-list-confirm').text(), /1 done, 1 drop: No longer needed/)
+  assert.equal(c2.calls.filter(x => x[0] === 'flowBatch').length, 0)
+  el2.button(en.flow.list.confirm).click()
+  await tick()
+  assert.deepEqual(c2.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'settle', args: { keys: ['task:d1'], outcome: 'done' } },
+    { verb: 'shelve', args: { key: 'task:drop', reason: 'No longer needed' } }]])
+  assert.ok(c2.calls.some(x => x[0] === 'flowPick' && x[2] === false))
+  // the same for all: Done with the two ticked plans a settle of both
+  const el3 = mount(html`<${FlowPage} s=${s2} c=${recorder()} />`)
+  el3.button(en.flow.verbs.done).click()
+  await tick()
+  assert.match(el3.$('.flow-list-confirm').text(), /2 done/)
+  // after the batch: one undo for all of it, once on the page
+  const after = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...base, ui: { ...base.ui, flowBatch: { running: false, n: 2, undo: [{ undo: {} }] } } })} c=${c} />`)
+  assert.equal(after.$$('button').filter(b => b.text().includes(en.flow.list.undo)).length, 1)
+  after.button(en.flow.list.undo).click()
+  assert.deepEqual(c.calls.at(-1), ['flowBatchUndo'])
+})
+
+test('pointBand: the left column and the overview group the points as Needs you, In progress, Tasks, Reports', () => {
+  assert.deepEqual(logic.FLOW_BANDS, ['you', 'doing', 'task', 'reports'])
+  for (const g of logic.FLOW_YOU) assert.equal(logic.pointBand({ group: g }), 'you')
+  assert.equal(logic.pointBand({ group: 'doing' }), 'doing')
+  assert.equal(logic.pointBand({ group: 'task' }), 'task')
+  assert.equal(logic.pointBand({ group: 'reports' }), 'reports')
+})
+
+test('themesAsker: each key once, but a run that failed leaves its keys free for the next ask', async () => {
+  const sent = []
+  let answer = false
+  const ask = logic.themesAsker(async keys => { sent.push(keys); return answer })
+  await ask(['a', 'b'])
+  await ask(['a', 'b'])
+  assert.deepEqual(sent, [['a', 'b'], ['a', 'b']])
+  answer = true
+  await ask(['a', 'c'])
+  await ask(['a', 'c'])
+  assert.deepEqual(sent.at(-1), ['a', 'c'])
+  assert.equal(sent.length, 3)
+  // one at a time: an ask while one runs is left out (the next render asks again)
+  let release
+  const slow = logic.themesAsker(keys => new Promise(r => { sent.push(keys); release = r }))
+  const first = slow(['x'])
+  await slow(['y'])
+  release(true)
+  await first
+  assert.deepEqual(sent.slice(-1), [['x']])
 })

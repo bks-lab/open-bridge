@@ -3440,7 +3440,7 @@ const HINTS = {
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
   // Work through, a view of the work tab (its parts are explained there, hintsFor)
-  '@flow': [['flowSide', '.flow-side'], ['flowTabs', '.flow-tabs'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
+  '@flow': [['flowSide', '.flow-side'], ['flowOverview', '.flow-overview'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
     ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained

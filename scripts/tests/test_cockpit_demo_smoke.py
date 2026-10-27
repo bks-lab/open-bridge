@@ -258,11 +258,12 @@ def test_area_name_opens_the_files_for_this_visit_only(base_url, browser):
 
 
 @pytest.mark.parametrize("lang", ["en", "de"])
-@pytest.mark.parametrize("width", [1680, 900])
+@pytest.mark.parametrize("width", [1680, 1280, 900])
 def test_work_through_opens_as_a_view_of_the_work_tab_and_walks_its_points(base_url, browser, lang, width):
-    """?work=flow stands for cockpit.work_view: flow. The view shows its left column (a select on a narrow screen),
-    the points as tabs, the card, the walk bar; a theme picked, a detail pulled in, the list with its batch
-    line: no console error on the way"""
+    """?work=flow stands for cockpit.work_view: flow. The view shows its left column (a select on a narrow screen) and
+    the overview of all points; a theme entered, two points ticked, a point opened with its card, a detail pulled in,
+    the walk bar, back to the overview and a batch planned: no console error on the way. Down to 1180px the details
+    stand beside the middle"""
     problems: list[str] = []
     where = ["flow"]
     ctx = browser.new_context(viewport={"width": width, "height": 1000})
@@ -275,32 +276,43 @@ def test_work_through_opens_as_a_view_of_the_work_tab_and_walks_its_points(base_
     page.reload()
     page.wait_for_selector(".pagebar-tabs [role=tab]")
     page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
-    page.wait_for_selector("#main .flow-grid .flow-card .fx-hero")
-    assert page.locator("#main .flow-tabs [role=tab]").count() > 3
-    assert page.locator("#main .flow-walk .dz-walk").count() == 1
+    page.wait_for_selector("#main .flow-grid .flow-overview")
+    assert page.locator("#main .flow-tabs").count() == 0
     where[0] = "a theme"
     if width > 960:
-        page.locator("#main .flow-side-item").nth(1).click()
+        page.locator("#main .flow-side-item").first.click()
     else:
         page.locator("#main .flow-side-select select").select_option(index=1)
-    page.wait_for_timeout(200)
-    where[0] = "a block"
+    page.wait_for_selector("#main .flow-overview .flow-ov-pick")
+    where[0] = "two ticked"
+    page.locator("#main .flow-ov-pick").nth(0).check()
+    page.locator("#main .flow-ov-pick").nth(1).check()
+    if width > 960:
+        assert page.locator("#main .flow-pt-pick:checked").count() == 2
+    where[0] = "a point"
+    page.locator("#main .flow-ov-open").first.click()
+    page.wait_for_selector("#main .flow-card .fx-hero")
+    assert page.locator("#main .flow-walk .dz-walk").count() == 1
+    assert page.locator("#main .flow-picked-line").count() == 1
     page.locator("#main .flow-block-head button").nth(1).click()
     page.wait_for_timeout(200)
-    where[0] = "the list"
-    page.locator("#main .flow-main-top .seg-btn").nth(1).click()
-    page.wait_for_selector("#main .flow-list")
-    page.locator("#main .flow-list-bar .btn-primary").first.click()
+    if width >= 1280:
+        card = page.locator("#main .flow-main").bounding_box()
+        details = page.locator("#main .flow-details").bounding_box()
+        assert details["x"] >= card["x"] + card["width"], "the details stand beside the middle"
+    where[0] = "the overview"
+    page.locator("#main .flow-back").click()
+    page.wait_for_selector("#main .flow-overview")
+    page.locator("#main .flow-ov-verbs .btn-primary").click()
     page.wait_for_selector("#main .flow-list-confirm")
-    page.locator("#main .flow-main-top .seg-btn").nth(0).click()
     page.wait_for_timeout(250)
     ctx.close()
     assert not problems, "\n".join(problems)
 
 
-def test_a_batch_of_the_work_through_list_says_itself_in_one_toast(base_url, browser):
-    """A batch confirmed in the list of Work through: the server's note of each step lands in the notes, never as a
-    toast of its own; one toast says the batch, with its undo"""
+def test_a_batch_of_the_work_through_overview_says_itself_in_one_toast_with_one_undo(base_url, browser):
+    """A batch confirmed in the overview of Work through: the server's note of each step lands in the notes, never as a
+    toast of its own; one toast says the batch, and the batch has one undo, in the overview's line (not in the toast)"""
     ctx = browser.new_context(viewport={"width": 1680, "height": 1000})
     page = ctx.new_page()
     page.goto(f"{base_url}?lang=en&work=flow")
@@ -310,15 +322,16 @@ def test_a_batch_of_the_work_through_list_says_itself_in_one_toast(base_url, bro
     page.reload()
     page.wait_for_selector(".pagebar-tabs [role=tab]")
     page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
-    page.wait_for_selector("#main .flow-grid .flow-card .fx-hero")
-    page.locator("#main .flow-main-top .seg-btn").nth(1).click()
-    page.wait_for_selector("#main .flow-list")
-    page.locator("#main .flow-list-bar .btn-primary").first.click()
+    page.wait_for_selector("#main .flow-grid .flow-overview")
+    page.locator("#main .flow-ov-bar .btn-secondary").first.click()
+    page.locator("#main .flow-ov-verbs .btn-primary").click()
     page.wait_for_selector("#main .flow-list-confirm")
     page.locator("#main .flow-list-confirm .btn-primary").click()
     page.wait_for_selector("#main .flow-list-done")
     page.wait_for_timeout(600)
     toasts = page.locator(".toast .toast-text").all_text_contents()
     steps = [t for t in toasts if re.match(r"Mock: (settle|later|shelve|do_it)\b", t)]
+    undos = page.locator(".toast button", has_text="Undo").count() + page.locator("#main button", has_text="Undo the batch").count()
     ctx.close()
     assert not steps, toasts
+    assert undos == 1

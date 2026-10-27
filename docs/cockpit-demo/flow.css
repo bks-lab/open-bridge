@@ -5,57 +5,78 @@
  * view's (files.css .dz-foot). Colors only through the DESIGN.md tokens (var(--token)), the same rules as style.css.
  */
 
-/* the page: laid out as cmux lays out a workspace. Left the themes or areas (its workspace sidebar), in the middle the
-   open points as tabs over the card and the files view's walk bar under it, right the details to pull in */
+/* the page: laid out as cmux lays out a workspace. Left the themes or areas (its workspace sidebar), entered: the
+   points of one; in the middle its overview or the point open with the files view's walk bar under it; right the
+   details to pull in. Three columns side by side down to 1180px, then the details under the middle, narrow one column
+   with the left column as a select on top */
 .flow { display: flex; flex-direction: column; gap: var(--space-md); width: 100%; min-width: 0; padding-bottom: var(--space-xl); }
 .flow-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; }
 .flow-head p { margin: 0; }
 .flow-nodriver { margin: 0; }
-.flow-grid { display: grid; grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(260px, 340px); gap: var(--space-md); align-items: start; min-width: 0; }
-.flow-grid.is-list { grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); }
+.flow-grid { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(260px, 340px); gap: var(--space-md); align-items: start; min-width: 0; }
 
-/* the left column: one entry per theme or area, its colour, its name, what needs you and what is open */
-.flow-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+/* the left column, level one: one entry per theme or area, its colour, its name, what needs you and what is open */
+.flow-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; max-height: calc(100vh - 140px); overflow-y: auto;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .flow-side > .seg { align-self: stretch; }
 .flow-side > .seg .seg-btn { flex: 1 1 0; }
 .flow-side-select { display: none; }
 .flow-side-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .flow-side-item {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 1px solid transparent; border-radius: var(--radius-md);
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 9px; border: 1px solid transparent; border-radius: var(--radius-md);
   background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
   transition: background var(--motion), border-color var(--motion);
 }
 .flow-side-item:hover { background: var(--surface-raised); }
-.flow-side-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); font-weight: 600; }
-.flow-side-item.is-you .flow-side-name { color: var(--ink); }
+.flow-side-item > svg { flex: none; color: var(--on-surface-muted); }
 .flow-side-dot { flex: none; width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--ws-color, var(--tk, var(--border-strong))); }
-.flow-side-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.flow-side-counts { display: inline-flex; align-items: center; gap: 8px; flex: none; font-size: var(--text-label); }
-.flow-side-you { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font-weight: 600; }
+.flow-side-name { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 1 1 auto; min-width: 0; font-weight: 600; }
+.flow-side-label { max-width: 100%; overflow-wrap: anywhere; }
+.flow-side-you { padding: 0 7px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--warning) 12%, var(--surface)); color: var(--warning); font-size: var(--text-label); font-weight: 600; }
+.flow-side-open { flex: none; font-size: var(--text-label); }
 .flow-side-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
 .flow-side-foot p { margin: 0; }
 .flow-side-rename, .flow-theme-pick { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .flow-theme-pick .input, .flow-side-rename .input { width: 100%; }
 
-/* the middle: Focus or List, the points as tabs (they wrap, none is cut off), the card, the walk bar */
-.flow-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.flow-main-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.flow-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.flow-tab {
-  display: inline-flex; align-items: center; gap: 6px; max-width: 240px; padding: 5px 10px; border: 1px solid transparent;
-  border-radius: var(--radius-md); background: transparent; color: var(--on-surface-muted); font: inherit; font-size: var(--text-sm); cursor: pointer;
-  transition: background var(--motion), color var(--motion), border-color var(--motion);
+/* level two: back to all, the name as the way to the overview, All and Tick, the points grouped with their boxes */
+.flow-side-drill { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.flow-side-back { align-self: flex-start; }
+.flow-side-title {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 1px solid transparent; border-radius: var(--radius-md);
+  background: transparent; color: var(--ink); font: inherit; font-weight: 700; text-align: left; cursor: pointer;
 }
-.flow-tab:hover { background: var(--surface-raised); color: var(--on-surface); }
-.flow-tab.is-on { border-color: var(--border-strong); background: var(--surface-raised); color: var(--ink); font-weight: 600; }
-.flow-tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.flow-tabs-sep { align-self: stretch; width: 1px; margin: 3px 4px; background: var(--border); }
+.flow-side-title:hover { background: var(--surface-raised); }
+.flow-side-title.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+.flow-side-title .flow-side-name { font-weight: 700; }
+.flow-side-badge { flex: none; font-size: var(--text-label); font-weight: 600; }
+.flow-side-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 0 4px; font-size: var(--text-label); }
+.flow-side-group { margin: 8px 0 2px; padding: 0 6px; color: var(--on-surface-muted); }
+.flow-pts { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.flow-pt { display: flex; align-items: flex-start; gap: 8px; padding: 6px; border: 1px solid transparent; border-radius: var(--radius-md); }
+.flow-pt:hover { background: var(--surface-raised); }
+.flow-pt.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+.flow-pt-pick { flex: none; width: 14px; margin: 3px 0 0; }
+.flow-pt-open { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: transparent;
+  color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; }
+.flow-pt-title { font-size: var(--text-sm); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.flow-pt-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; color: var(--on-surface-muted); font-size: var(--text-label); }
+.flow-pt-chip { padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-full); white-space: nowrap; }
+.flow-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); cursor: pointer; }
+
+/* the middle: its head (the name, or the way back to the overview), the overview or the point and the walk bar */
+.flow-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-main-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 32px; }
+.flow-main-title { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-h4); color: var(--ink); }
+.flow-main-theme { font-size: var(--text-sm); }
+.flow-picked-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .flow-who { margin: 0; color: var(--on-surface); }
 .flow-who .label-caps { margin-right: 6px; color: var(--on-surface-muted); }
 /* the files view's bar, sticky under the card as it is under a file */
 .flow-main > .flow-walk { margin: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); }
 
-/* the right column: the details of the point in front, block by block */
+/* the right column: the details of the point open, block by block; in the overview a line how they come */
 .flow-details { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .flow-details-head p { margin: 0; }
 .flow-details-head .label-caps { color: var(--on-surface-muted); }
@@ -78,49 +99,59 @@
 .flow-step-mark { display: inline-block; min-width: 44px; color: var(--on-surface-muted); font-size: var(--text-label); }
 .flow-source { display: flex; flex-direction: column; gap: 6px; }
 
-/* the list: one row per point, a box, kind, stage, area, age and the suggestion with why */
-.flow-list { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.flow-list-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.flow-list-verbs { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.flow-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); cursor: pointer; }
+/* the overview: the sticky batch bar, then a table of the points grouped, a box, the title, stage, area, suggestion */
+.flow-overview { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-ov-top { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: 8px; background: var(--surface); padding-bottom: 2px; }
+.flow-ov-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-ov-sum { flex: 1 1 120px; min-width: 0; }
+.flow-ov-verbs { display: inline-flex; flex-wrap: wrap; gap: 8px; }
 .flow-list-confirm, .flow-list-done { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface); }
 .flow-list-confirm > span { flex: 1 1 260px; color: var(--ink); }
 .flow-list-from { margin: 0; }
-.flow-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.flow-row {
-  display: grid; grid-template-columns: 20px minmax(0, 2fr) 104px 112px 96px 40px minmax(0, 2fr);
-  align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); font-size: var(--text-sm);
-}
-.flow-row:first-child { border-top: 0; }
-.flow-row.is-picked { background: var(--surface-raised); }
-.flow-row-title { min-width: 0; color: var(--on-surface); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.flow-row-kind, .flow-row-stage { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.flow-row-kind * { white-space: nowrap; }
-.flow-row-area { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.flow-ov-table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); font-size: var(--text-sm); }
+.flow-ov-table th, .flow-ov-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.flow-ov-table thead th { color: var(--on-surface-muted); font-size: var(--text-label); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.flow-ov-pickcol, .flow-ov-row > td:first-child { width: 1%; }
+.flow-ov-group th { padding-top: 12px; border-bottom: 0; color: var(--on-surface-muted); }
+.flow-ov-row.is-picked { background: var(--surface-raised); }
+.flow-ov-point { min-width: 0; }
+.flow-ov-open { display: block; padding: 0; border: 0; background: transparent; color: var(--on-surface); font: inherit; font-weight: 600; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.flow-ov-open:hover { text-decoration: underline; }
+.flow-ov-sub { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+/* the stage keeps its words whole: the column grows to fit them */
+.flow-ov-stage { white-space: nowrap; }
+.flow-ov-stage .dot { margin-right: 4px; }
+.flow-ov-area { white-space: nowrap; }
 .flow-sug { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
 .flow-sug-verb { flex: none; padding: 1px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-full); font-weight: 600; font-size: var(--text-label); }
-.flow-sug-done .flow-sug-verb { border-color: var(--success); color: var(--success); }
-.flow-sug-drop .flow-sug-verb { border-color: var(--danger); color: var(--danger); }
-.flow-sug-later .flow-sug-verb { border-color: var(--info); color: var(--info); }
-.flow-sug-do .flow-sug-verb { border-color: var(--accent); color: var(--accent); }
-.flow-sug-you .flow-sug-verb { border-color: var(--warning); color: var(--warning); }
+.flow-sug-done .flow-sug-verb, .flow-pt-chip.flow-sug-done { border-color: var(--success); color: var(--success); }
+.flow-sug-drop .flow-sug-verb, .flow-pt-chip.flow-sug-drop { border-color: var(--danger); color: var(--danger); }
+.flow-sug-later .flow-sug-verb, .flow-pt-chip.flow-sug-later { border-color: var(--info); color: var(--info); }
+.flow-sug-do .flow-sug-verb, .flow-pt-chip.flow-sug-do { border-color: var(--accent); color: var(--accent); }
+.flow-sug-you .flow-sug-verb, .flow-pt-chip.flow-sug-you { border-color: var(--warning); color: var(--warning); }
 .flow-sug-why { min-width: 0; color: var(--on-surface-muted); }
 
-/* a medium screen: the details move under the card; a narrow one: the left column is a select over the tabs */
-@media (max-width: 1360px) {
-  .flow-grid { grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); }
+/* below 1180px the details move under the middle; narrow, one column and the left column a select on top */
+@media (max-width: 1180px) {
+  .flow-grid { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
   .flow-grid > .flow-details { grid-column: 2; }
 }
 @media (max-width: 960px) {
-  .flow-grid, .flow-grid.is-list { grid-template-columns: minmax(0, 1fr); }
+  .flow-grid { grid-template-columns: minmax(0, 1fr); }
   .flow-grid > .flow-details { grid-column: auto; }
-  .flow-side { position: static; padding: 8px; }
-  .flow-side-list { display: none; }
+  .flow-side { position: static; max-height: none; padding: 8px; }
+  .flow-side > .flow-side-body { display: none; }
   .flow-side-select { display: block; }
   .flow-side-select .input { width: 100%; }
-  .flow-row { grid-template-columns: 20px minmax(0, 1fr) auto; }
-  .flow-row-kind, .flow-row-stage, .flow-row-area { display: none; }
-  .flow-row-sug { grid-column: 2 / -1; }
+  .flow-ov-table thead { display: none; }
+  .flow-ov-table, .flow-ov-table tbody { display: block; }
+  .flow-ov-group { display: block; }
+  .flow-ov-group th { display: block; }
+  .flow-ov-row { display: grid; grid-template-columns: 28px auto minmax(0, 1fr); align-items: baseline; border-bottom: 1px solid var(--border); }
+  .flow-ov-row > td { width: auto; border-bottom: 0; padding: 4px 8px; }
+  .flow-ov-row > td.flow-ov-point { grid-column: 2 / -1; }
+  .flow-ov-row > td.flow-ov-stage { grid-column: 2; }
+  .flow-ov-row > td.flow-ov-sug { grid-column: 2 / -1; padding-bottom: 8px; }
 }
 
 /* the card in front */

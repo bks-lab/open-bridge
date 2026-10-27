@@ -21,6 +21,13 @@ export const FLOW_GROUPS = ['back', 'asks', 'result', 'lost', 'question', 'doing
 // the groups that need you: the left column counts them in the warning tone
 export const FLOW_YOU = ['back', 'asks', 'result', 'lost', 'question']
 
+// the bands the left column and the overview of a theme group the points in, in the queue's order: what needs you,
+// what is in progress, the tasks in review, the reports (pointBand)
+export const FLOW_BANDS = ['you', 'doing', 'task', 'reports']
+
+/** The band of a point: a group that needs you is `you`, any other its own group */
+export const pointBand = x => (FLOW_YOU.includes(x?.group) ? 'you' : x?.group)
+
 // the groups a filter of the queue shows; `all` shows every group (the page shows all, by theme or area)
 export const FLOW_CHIPS = { all: FLOW_GROUPS, you: FLOW_YOU, running: ['doing'], tasks: ['task'], reports: ['reports'] }
 
@@ -324,6 +331,24 @@ export function themesToAsk(points, s) {
   if (th?.enabled !== true || th.running || !(th.budget_left > 0)) return []
   const known = new Set((th.themes ?? []).map(t => t.id))
   return (points ?? []).flatMap(pointKeys).filter(k => !known.has(th.assign?.[k])).slice(0, 50)
+}
+
+/** The one asker of the themes for the points without one (app.js keeps one per page load): `send(keys)` runs the
+ *  themes over them and resolves true when it went through. One run at a time (an ask while one runs is left out; the
+ *  next render asks again), each key once per page load; a run that failed leaves its keys free, so only a key that
+ *  was ordered counts as asked */
+export function themesAsker(send) {
+  const asked = new Set()
+  let running = false
+  return async function ask(keys) {
+    const fresh = [...new Set(keys ?? [])].filter(k => !asked.has(k))
+    if (!fresh.length || running) return
+    running = true
+    for (const k of fresh) asked.add(k)
+    let ok = false
+    try { ok = await send(fresh) } catch { ok = false } finally { running = false }
+    if (!ok) for (const k of fresh) asked.delete(k)
+  }
 }
 
 // ---------------------------------------------------------------- the list: suggestions and the batch

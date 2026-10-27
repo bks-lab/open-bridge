@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, Work through: a view of the work tab (cockpit.flow.enabled, logic.js workViews 'flow'), laid out as cmux
 // lays out a workspace. Left the themes the server's small model gives the open points across the areas, or the areas
-// themselves (views/flowside.js FlowSide); over the card Focus or List, and in Focus the open points of the group
-// picked as tabs, in the queue's fixed order (logic.js flowQueue: the return card after a jump to a tab, the tabs that
-// ask, what an agent finished, a start that got lost, the questions for you; then what is in progress; then the tasks
-// in review; the reports as one tab). The point in front stands as a card with its verbs (views/verbbar.js), held by
-// its id (logic.js focusIndex) so the next one moves up after a decision; a point in progress says who works on it and
-// since when (logic.js flowDrive), with To tab, View, Done, Later and Drop, and Let AI do it to go on where no tab
-// works. Under the card the files view's walk bar (views/dossier.js Walk), and after the last point it leads to the
-// next group where something is open. Right the details to pull in (views/flowside.js FlowDetails). List shows the
-// group as rows with suggestions and a batch (views/flowlist.js). To tab remembers the jump (ui.flowJump, in memory
-// only): once the page is in view again return_after_s later, the return card asks how it went (app.js). What the
-// queue leaves out stands in a drawer with why; with nothing open the calm card offers up to three ideas to start.
-// Without a terminal driver the cards of the agents and every way to a tab stay out.
+// themselves, and once one is entered its points (views/flowside.js FlowSide). The middle shows the overview of the
+// theme entered, or of all of them (views/flowlist.js FlowOverview: a table of the points with a suggestion each and
+// the batch bar), until a title opens a point (ui.flowView): Back to overview, a line while points are ticked, the
+// point as a card with its verbs (views/verbbar.js), held by its id (logic.js focusIndex) so the next one moves up
+// after a decision, in the queue's fixed order (logic.js flowQueue: the return card after a jump to a tab, the tabs
+// that ask, what an agent finished, a start that got lost, the questions for you; then what is in progress; then the
+// tasks in review; the reports as one card). A point in progress says who works on it and since when (logic.js
+// flowDrive), with To tab, View, Done, Later and Drop, and Let AI do it to go on where no tab works. Under the card the
+// files view's walk bar (views/dossier.js Walk), and after the last point it leads to the first point of the next
+// theme where something is open. Right the details to pull in (views/flowside.js FlowDetails), a hint in the overview.
+// To tab remembers the jump (ui.flowJump, in memory only): once the page is in view again return_after_s later, the
+// return card asks how it went (app.js). What the queue leaves out stands in a drawer with why; with nothing open the
+// calm card offers up to three ideas to start. Without a terminal driver the cards of the agents and every way to a
+// tab stay out.
 // The agents' cards: a tab that asks carries the answers to its question (views/reply.js) and the decision guide
 // (views/guide.js), each through the reply verbs that guard the tab; a finished or quiet start its result line and
 // the criteria of its brief as a plain list to check yourself (no tick, nothing judges them), with Done and close
-// the tab, Improve (words to the tab while it lives, else a new start) and Runs on. When a card comes to the front,
-// the briefs of the next cards that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
+// the tab, Improve (words to the tab while it lives, else a new start) and Runs on. When a point is opened, the
+// briefs of the next points that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
 // once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key). No title opens a drawer
 // or another view. For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
@@ -29,10 +31,9 @@ import {
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
-import { Segmented } from './detail.js'
 import { Walk } from './dossier.js'
-import { FlowList } from './flowlist.js'
-import { FlowDetails, FlowSide, FlowTabs, sideName } from './flowside.js'
+import { FlowOverview, listRows } from './flowlist.js'
+import { FlowDetails, FlowSide, SideDot, sideName } from './flowside.js'
 import { Calm, Hero } from './focus.js'
 import { GuideTree } from './guide.js'
 import { TAB_MSG_MAX } from './nav.js'
@@ -292,49 +293,55 @@ export function FlowPage({ s, c }) {
   const all = flowQueue(parts, 'all')
   const mode = flowMode(s)
   const sides = flowSides(s, all, mode)
-  const side = sides.some(x => x.id === s.ui.flowSide?.[mode]) ? s.ui.flowSide[mode] : 'all'
+  // the theme or area entered (level two of the left column), else the level of all of them
+  const entered = sides.find(x => x.id !== 'all' && x.id === s.ui.flowSide?.[mode]) ?? null
+  const side = entered?.id ?? 'all'
   const queue = pointsIn(all, side, s, mode)
   const i = focusIndex(queue, s.ui.flowAt)
-  const x = queue[i] ?? null
+  const view = s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
+  const x = view === 'point' ? queue[i] ?? null : null
   const driver = flowDriver(s)
-  const show = s.ui.flowShow === 'list' ? 'list' : 'focus'
+  const keys = new Set(listRows(queue).filter(r => r.row).map(r => r.id))
+  const picked = new Set((s.ui.flowPicked ?? []).filter(k => keys.has(k)))
   const go = k => c.flowGo(queue[k].id, k)
   const decided = s.ui.flowDecided ?? 0
   const doing = parts.doing.length
-  // after the last point of a theme or area: the next one below it where something is open
+  // after the last point of a theme or area: the first point of the next one below it where something is open
   const at = sides.findIndex(v => v.id === side)
-  const nextSide = side === 'all' ? null : sides.slice(at + 1).find(v => v.id !== 'all' && v.open) ?? sides.slice(1, Math.max(1, at)).find(v => v.open)
-  const onwards = nextSide ? { title: f.walk2.nextSide(sideName(nextSide, mode)), word: f.walk2.toSide, onGo: () => c.flowSide(nextSide.id) } : null
-  // the card in front changed: the briefs of the next cards are written ahead, where one is missing or stale
+  const nextSide = entered ? sides.slice(at + 1).find(v => v.id !== 'all' && v.open) ?? sides.slice(1, Math.max(1, at)).find(v => v.open) : null
+  const onwards = nextSide ? { title: f.walk2.nextSide(sideName(nextSide, mode)), word: f.walk2.toSide, onGo: () => c.flowSide(nextSide.id, 'point') } : null
+  // the point in front changed: the briefs of the next points are written ahead, where one is missing or stale
   const ahead = flowSettings(s).prep_ahead
-  useEffect(() => {
-    const keys = prepTargets(queue, i, ahead, s)
-    if (keys.length) c.flowPrep(keys)
-  }, [x?.id, ahead])
+  const prep = x ? prepTargets(queue, i, ahead, s) : []
+  useEffect(() => { if (prep.length) c.flowPrep(prep) }, [x?.id, ahead])
   // the points without a theme get theirs when the view shows them, once per key on this page load (app.js)
   const ask = mode === 'themes' ? themesToAsk(all, s) : []
   useEffect(() => { if (ask.length) c.flowThemesAuto(ask) }, [ask.join(',')])
+  const name = sideName(entered, mode)
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
       <p class="muted small">${[f.progress(doing, Math.max(0, all.length - doing)), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
     </header>
     ${driver ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
-    <div class=${`flow-grid is-${show}`}>
-      <${FlowSide} sides=${sides} side=${side} mode=${mode} points=${all} s=${s} c=${c} />
+    <div class="flow-grid">
+      <${FlowSide} sides=${sides} entered=${entered} mode=${mode} points=${queue} all=${all} at=${i} view=${view} picked=${picked}
+        titleFor=${pointTitle} kindFor=${pointKind} s=${s} c=${c} />
       <section class="flow-main" aria-label=${f.title}>
-        <div class="flow-main-top">
-          <${Segmented} label=${f.show.label} values=${[['focus', f.show.focus], ['list', f.show.list]]} current=${show} onPick=${v => c.flowShow(v)} />
-          <span class="muted small">${f.tabs.count(queue.length)}</span>
-        </div>
-        ${show === 'list' ? html`<${FlowList} key=${side} points=${queue} s=${s} c=${c} titleFor=${pointTitle} />`
-          : x ? html`<${FlowTabs} points=${queue} i=${i} titleFor=${pointTitle} kindFor=${pointKind} go=${go} s=${s} />
+        ${!all.length ? html`<${Rest} s=${s} c=${c} />`
+          : view === 'overview' ? html`<header class="flow-main-head"><h2 class="flow-main-title">${entered ? html`<${SideDot} side=${entered} />` : null}${name}</h2></header>
+            <${FlowOverview} key=${side} points=${queue} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind} s=${s} c=${c} />`
+          : html`<header class="flow-main-head">
+              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
+              <span class="flow-main-theme muted">${name}</span>
+            </header>
+            ${picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
+              <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null}
             <div class="flow-card" key=${x.id}>${x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} c=${c} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`}</div>
             <${Walk} queue=${queue} i=${i} s=${s} c=${c} go=${go} words=${{ ...f.walk2, queue: t.dossier.walk.queue }} titleFor=${pointTitle}
-              tagsOf=${() => null} whyOf=${pointKind} done=${f.walk2.last} onwards=${onwards} cls="flow-walk" />`
-          : html`<${Rest} s=${s} c=${c} />`}
+              tagsOf=${() => null} whyOf=${pointKind} done=${f.walk2.last} onwards=${onwards} cls="flow-walk" />`}
       </section>
-      ${show === 'focus' ? html`<${FlowDetails} x=${x} s=${s} c=${c} />` : null}
+      <${FlowDetails} x=${x} s=${s} c=${c} />
     </div>
     <${LeftOut} left=${parts.leftOut} />
   </div>`
