@@ -768,7 +768,8 @@ LIST_ITEM_RE = re.compile(r"^\s*[-*+] ")
 
 
 def _marks(slug: str) -> tuple[str, str]:
-    """The two lines a merged block stands between in the kept task's STATUS.md"""
+    """The two lines a merged block stands between in the kept task's STATUS.md (the cockpit's undo looks for the
+    same two: lib/bridge_cockpit/actions_work.py merge_marks)"""
     return f"<!-- merged-from: {slug} -->", f"<!-- /merged-from: {slug} -->"
 
 

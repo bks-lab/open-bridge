@@ -46,8 +46,8 @@ from .actions_pages import PageVerbs
 from .actions_tabs import TabVerbs
 from .actions_work import WorkVerbs
 
-#: the verbs of Work through's round 3, refused with flow_off before their arguments are checked
-FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach"})
+#: the verbs of Work through's rounds 3 and 4, refused with flow_off before their arguments are checked
+FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach", "flow_merge"})
 
 
 # The argument types of SPEC. Most are one pattern or one list of words with the message a refusal names;
@@ -456,6 +456,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             out.append(clean["key"])
         if isinstance(clean.get("slug"), str):
             out.append(f"task:{clean['slug']}")
+        if isinstance(clean.get("keep"), str):          # a merge: the task that stays, by its key or its slug
+            out.append(clean["keep"] if ":" in clean["keep"] else f"task:{clean['keep']}")
         if isinstance(clean.get("id"), str) and INBOX_ID_RE.match(clean["id"]):
             out.append(f"inbox:{clean['id']}")
         return out

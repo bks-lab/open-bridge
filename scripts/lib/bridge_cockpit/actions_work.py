@@ -9,8 +9,15 @@ import os
 from . import activity as act
 from . import model as m
 from .details import split_front
-from .history import item as history_item
-from .actions_base import DECLINED_REASONS, SHORT_TIMEOUT, TEAM_RE, ActionError, Ctx, bad_arg, row_go
+from .history import REOPEN_AS, item as history_item
+from .actions_base import (DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
+                           row_go)
+
+
+def merge_marks(slug: str) -> tuple[str, str]:
+    """The two lines a merged section stands between in the kept task's STATUS.md, as task.py merge writes them
+    (task.py _marks); an undo is only taken while both are there"""
+    return f"<!-- merged-from: {slug} -->", f"<!-- /merged-from: {slug} -->"
 
 
 class WorkVerbs:
@@ -571,6 +578,94 @@ class WorkVerbs:
         result = self.launch(ctx, [row], role["mode"], app.cfg.target, {"id": team, "role": role["id"], "name": role["name"]})
         if result in ("failed", "manual"):
             app.store.set_team_run(slug, before)
+
+    # ------------------------------------------------------------ Merge of Work through (task.py merge, unmerge)
+
+    def merge_row(self, key: str, field: str) -> dict:
+        """The row of an open finite task under work/tasks/, else merge_not_task: no stream, no inbox item, no
+        other row, no task closed meanwhile"""
+        entry = self.entry(key, field)
+        row, out = entry["row"], entry["out"] or {}
+        slug = row.get("task")
+        if (not key.startswith("task:") or row.get("inbox_id") or not isinstance(slug, str) or not SLUG_RE.match(slug)
+                or row.get("stream") or out.get("stream")
+                or not (self.app.root / "work" / "tasks" / slug / "STATUS.md").is_file()):
+            raise ActionError(409, "merge_not_task", "only open tasks merge: no streams, no inbox items", field)
+        return row
+
+    def v_flow_merge(self, ctx: Ctx, keep: str, keys: list[str]) -> None:
+        """Merge: the tasks of keys close as merged into the task of keep, one task.py merge each in the order given
+        (their goal, notes and open steps come over as a section, their documents are linked). Every row is checked
+        before the first write; a merge that fails is said and the next one goes on. One history entry, per merged
+        task its undo (task_unmerge, back to the status it had) and an item on the kept task."""
+        if len(keys) > MERGE_MAX:
+            raise bad_arg("keys", f"must be 1 to {MERGE_MAX} task keys")
+        if keep in keys:
+            raise bad_arg("keys", "the task that stays is not merged into itself")
+        for key in (keep, *keys):                       # every key first, then what each one is
+            self.entry(key, "keep" if key == keep else "keys")
+        kept = self.merge_row(keep, "keep")
+        rows = [self.merge_row(key, "keys") for key in keys]
+        into = self.slug(kept)
+        merged, failed = [], []
+        for row in rows:
+            slug = self.slug(row)
+            before = self.task_status(slug)     # read before the merge moves the folder: the undo restores it
+            argv = self.task_cmd("merge", into, "--from", slug, "--heading", self.tx["merge_heading"], "--json")
+            run = ctx.call("task.merge", slug, argv, SHORT_TIMEOUT)
+            if not run.ok:
+                failed.append(slug)
+                ctx.note(self.tx["merge_failed"].format(title=m.short(row["title"], 40), err=m.short(run.err, 100)), bad=True)
+                continue
+            merged.append(slug)
+            ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": "merged",
+                                "ident": slug, "into": into, "work_kind": "task", "undone_ms": None,
+                                "undo": {"verb": "task_unmerge", "args": {"keep": into, "slug": slug,
+                                                                          **({"as": before} if before in REOPEN_AS else {})}}})
+            ctx.history.append({"key": kept["key"], "title": str(kept["title"])[:200], "kind": "task", "did": "merged_in",
+                                "ident": into, "from": slug, "undo": None, "undone_ms": None})
+            self.app.collector.settle(row["key"], self.tx["merge_heading"].replace("{slug}", slug))
+            ctx.settled.append(row["key"])
+        ctx.extra["merge"] = {"keep": into, "merged": merged, "failed": failed}
+        if merged:
+            names = ", ".join(m.short(r["title"], 40) for r in rows if r["task"] in merged)
+            ctx.note(self.tx["merged"].format(names=names, title=m.short(kept["title"], 60)), go=row_go(kept))
+            self.settle_soon(ctx)
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def v_task_unmerge(self, ctx: Ctx, keep: str, slug: str, **kw) -> None:
+        """The undo of one merge: the section and the related lines leave the kept task, the merged task opens again
+        with the status it had (task.py unmerge). Only an undo flow_merge handed out, only while the section stands
+        between its markers as the merge left it. No flow gate: an undo, also from the history drawer."""
+        status = kw.get("as")
+        history = getattr(self.app, "history", None)
+        it = history.open_undo("task_unmerge", {"keep": keep, "slug": slug, **({"as": status} if status else {})}) \
+            if history is not None else None
+        if it is None:
+            raise self.not_applicable("nothing of that to take back", "slug")
+        try:
+            text = (self.app.root / "work" / "tasks" / keep / "STATUS.md").read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            text = ""
+        first, last = merge_marks(slug)
+        lines = [ln.strip() for ln in text.splitlines()]
+        if first not in lines or last not in lines or lines.index(last) < lines.index(first):
+            raise ActionError(409, "merge_changed", "the merged section was changed by hand", "keep")
+        argv = self.task_cmd("unmerge", keep, "--from", slug, *(["--as", status] if status else []), "--json")
+        run = ctx.call("task.unmerge", slug, argv, SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
+            return
+        history.mark(it)
+        history.mark_where({"key": f"task:{keep}", "did": "merged_in", "from": slug})
+        for key in (f"task:{slug}", f"task:{keep}"):
+            self.app.collector.unsettle(key)
+        ctx.extra["unmerge"] = {"keep": keep, "slug": slug}
+        ctx.note(self.tx["merge_undone"].format(title=m.short(it.get("title") or slug, 60)),
+                 go={"kind": "item", "key": f"task:{slug}"})
+        self.settle_soon(ctx)
+        self.app.collector.request("both")
 
     # ------------------------------------------------------------ describe (describe.py)
 

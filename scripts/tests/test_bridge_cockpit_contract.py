@@ -217,6 +217,19 @@ def s_shelve(w: World) -> None:
     w.act("shelve", key="task:demo-task", reason="after the release", until=TOMORROW)
 
 
+def s_merge(w: World) -> None:
+    """Merge on the Work through page, and its undo: task.py merge with the heading, task.py unmerge with --as"""
+    from lib.bridge_cockpit.actions_work import merge_marks
+    for slug, state in (("other-task", "review"), ("filed-task", "backlog")):
+        folder = w.root / "work" / "tasks" / slug
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "STATUS.md").write_text(f"---\nstatus: {state}\n---\n", encoding="utf-8")
+    res = w.act("flow_merge", keep="task:demo-task", keys=["task:other-task", "task:filed-task"])
+    keep = w.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    keep.write_text(keep.read_text(encoding="utf-8") + "\n".join(merge_marks("other-task")) + "\n", encoding="utf-8")
+    w.act("task_unmerge", **res["undo"][0]["undo"]["args"])
+
+
 def s_to_task(w: World) -> None:
     w.runner.handlers["task.new"] = lambda argv: ok(json.dumps({"slug": "tidy-labels", "status": "backlog"}))
     w.act("to_task", key=f"inbox:{YES_ID}")
@@ -369,6 +382,7 @@ class Scenario:
 
 EFFORT_CFG = tbc.LAUNCH_CFG.format(more="    effort: true\n")
 WORKSPACES_CFG = "cockpit:\n  enabled: true\n  language: en\n  chat_layout: workspaces\n"
+FLOW_CFG = "cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n"
 
 SCENARIOS = {
     "passes": Scenario(s_passes, {"briefing.collect", "workplace.tasks", "workplace.teams", "workplace.status",
@@ -382,6 +396,7 @@ SCENARIOS = {
     "waits": Scenario(s_waits, {"inbox.defer", "task.wait"}),
     "shelve": Scenario(s_shelve, {"task.shelve"}),
     "to_task": Scenario(s_to_task, {"task.new"}),
+    "merge": Scenario(s_merge, {"task.merge", "task.unmerge"}, config=FLOW_CFG),
     "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.area", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
     "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.next", "task.close"}),
     "settle": Scenario(s_settle, {"inbox.close", "inbox.drop", "task.close", "task.log"}),

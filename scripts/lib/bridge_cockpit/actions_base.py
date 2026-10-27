@@ -47,6 +47,8 @@ CONTEXT_MAX = 6000
 QUICK_PLACES = ("core", "suggest")
 # a task's next step as STATUS.md keeps it (task.py next): one line
 STEP_MAX = 300
+# how many tasks one Merge closes into the one that stays
+MERGE_MAX = 9
 # why a task is shelved (the Work through page's "Drop because"): one short line
 REASON_MAX = 200
 # how the chat's route chip came to its choice (logic.js routeOf, views/chat.js)
@@ -134,6 +136,10 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "flow_activity_summary": {"key": ("key", True)},
     "flow_instruct": {"text": ("instruct_text", True), "keys": ("keys", True), "point": ("bool", False)},
     "flow_attach": {"key": ("key", True), "name": ("attach_name", True), "data": ("attach_data", True)},
+    # Merge of Work through: the tasks of keys close as merged into the task of keep (task.py merge), one by one;
+    # task_unmerge is the undo of one of them (task.py unmerge), handed out by flow_merge, without the flow gate
+    "flow_merge": {"keep": ("key", True), "keys": ("keys", True)},
+    "task_unmerge": {"keep": ("slug", True), "slug": ("slug", True), "as": ("restore_as", False)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
     "pin": {"key": ("key", True), "on": ("bool", True)},
