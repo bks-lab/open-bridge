@@ -117,14 +117,22 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 seq: int, stale: bool, profile: str | None, tx: dict,
                 review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
                 describe: dict | None = None, files: list[dict] | None = None,
-                carry_deferred: bool = False) -> tuple[dict, dict]:
+                carry_deferred: bool = False, pairs: dict | None = None) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
     triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py).
     `carry_deferred` (Work through on) adds `deferred`: the inbox items a page lists that are put off past the
-    briefing's window, as rows (deferred_rows)."""
+    briefing's window, as rows (deferred_rows). `pairs` (model.page_twins of the view) is worked out here when the
+    caller has none: a row of Due and the page items of the same thing take one decision (model.decision_twins),
+    and a row names the GitHub list it stands in (`on_board`, model.board_places)."""
     today = m.iso_date(now)
-    dismissed = dismissed or {}
-    hidden = {**hidden, **{k: "9999-12-31" for k in dismissed}}     # out until "show again"
+    pairs = m.page_twins(view) if pairs is None else pairs
+    twins = m.decision_twins(pairs)
+    places = m.board_places(pairs)
+    # Later, Done or Not doing under ref:<id> (Work through) holds for item:<page>/<section>/<id> (the GitHub page)
+    # and the other way round
+    dismissed = m.with_twins(dismissed or {}, twins)
+    settled = set(m.with_twins(dict.fromkeys(settled), twins))
+    hidden = {**m.with_twins(hidden, twins), **{k: "9999-12-31" for k in dismissed}}     # out until "show again"
     lay = m.layout(view, settled, hidden, today, tabs)
     numbers = lay["numbers"]
     index: dict[str, dict] = {}
@@ -205,6 +213,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "work_kind": og.work_kind(row.get("task") or row.get("about_task"), known),
             "about_kind": row.get("about_kind"),
             "inbox_kind": row.get("inbox_kind"),
+            # the GitHub list the row also stands in ({page, section}, model.board_places): Work through folds such
+            # rows of Not now into one line that leads there
+            "on_board": places.get(row["key"]),
             # what a person sees an inbox row as (ask, report, idea); "waits for you" counts the asks
             "art": m.art_of_kind(row.get("inbox_kind")) if row.get("inbox_id") else None,
             # Work through: when a task last moved (its STATUS.md), and the day a deferred item comes back, read
@@ -258,7 +269,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     for pg in view.get("pages", []):
         secs = []
         for s in pg["sections"]:
-            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups") else ITEM_CAP    # drawn views filter every row
+            # drawn views and the GitHub list (board) filter and search every row
+            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board") else ITEM_CAP
             sec_ctx = replace(card_ctx, section_kind=s.get("kind"))
             shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known, sec_ctx)
                      for i, it in enumerate(s["items"][:cap])]
@@ -417,6 +429,8 @@ class Collector:
         self.teams: list[dict] = []
         self.model: dict | None = None
         self.index: dict[str, dict] = {}
+        # the keys of one thing in Due and on a page (model.decision_twins), from the view of the last rebuild
+        self.twin_map: dict[str, tuple[str, ...]] = {}
         self.seq = 0
         self.sent: str | None = None           # the last model sent, without its seq and pages
         self.sent_pages: dict | None = None    # and its pages, each as sent, by id
@@ -706,13 +720,16 @@ class Collector:
                 return
             self.seq += 1
             tabs = app.tabs.tab_list()
+            pairs = m.page_twins(self.view)
+            self.twin_map = m.decision_twins(pairs)
             model, index = build_model(
                 self.view, root=app.root, tabs=tabs, seen=app.tabs.seen_copy(), control_ref=app.tabs.control_ref(),
                 hidden=app.store.hidden(), dismissed=app.store.dismissed(), runs=app.store.team_runs(), teams=self.teams, tasks=self.tasks,
                 settled=set(self.settled), starting=self.starting_items(), now=app.clock(), seq=self.seq,
                 stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
                 origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks,
-                carry_deferred=(getattr(app.cfg, "flow", None) or {}).get("enabled") is True, **app.card_sources())
+                carry_deferred=(getattr(app.cfg, "flow", None) or {}).get("enabled") is True, pairs=pairs,
+                **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)
@@ -789,11 +806,20 @@ class Collector:
                         tabs = self.app.tabs.tab_list()
                         starting = self.starting_items()
                         items = [info_out(it, i, self.app.root, tabs, view, starting, page_id, section_id) for i, it in enumerate(s["items"])]
-                        out = {**self.app.store.hidden(), **{k: "9999-12-31" for k in self.app.store.dismissed()}}
+                        # a decision on the same thing in Due holds here too (model.decision_twins)
+                        out = m.with_twins({**self.app.store.hidden(), **{k: "9999-12-31" for k in self.app.store.dismissed()}},
+                                           self.twin_map)
+                        settled = m.with_twins(dict(self.settled), self.twin_map)
                         today = m.iso_date(self.app.clock())
-                        items = [i for i in items if not (i["actionable"] and (i["key"] in self.settled or (out.get(i["key"]) or "") > today))]
+                        items = [i for i in items if not (i["actionable"] and (i["key"] in settled or (out.get(i["key"]) or "") > today))]
                         return items, s.get("total", len(items))
         return None
+
+    def twins(self, key: str) -> tuple[str, ...]:
+        """`key` and the keys of the same thing in Due and on the pages (model.decision_twins), `key` first: one
+        decision holds for all of them, so Show again takes it back under each"""
+        with self.lock:
+            return self.twin_map.get(key) or (key,)
 
     def view_profile(self) -> str | None:
         with self.lock:
