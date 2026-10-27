@@ -2484,3 +2484,15 @@ test('the demo takes Back on and a recognised session back: unhide, reopen, runn
   st = (await tr.get('/api/state')).data
   assert.deepEqual([st.sessions.sessions.find(x => x.sid === sid).task, st.sessions.sessions.find(x => x.sid === sid).task_how], ['search-index', 'hand'])
 })
+
+test('under an area filter Work through holds the files of that area only: a backlog task of another area is not in Not now', () => {
+  const s = cockpitState(NOW, { ui: { page: 'briefing', workView: 'flow', area: 'Docs', flowView: 'overview', flowPicked: [] } })
+  const scoped = logic.areaScope(s)
+  assert.ok(scoped.model.files.length > 0)
+  assert.ok(scoped.model.files.every(f => (f.area_names ?? []).includes('Docs')), 'only the files of the area')
+  const idea = logic.flowParts(scoped).leftOut.groups.find(g => g.reason === 'idea')?.rows.map(e => e.row.key) ?? []
+  assert.ok(!idea.includes('task:metrics-export'), 'a backlog task of Ops stays out')
+  assert.ok(idea.includes('task:docs-search'))
+  // the files view's own list stays whole (wholeModel)
+  assert.equal(scoped.wholeModel.files.length, s.model.files.length)
+})
