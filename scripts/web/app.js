@@ -161,11 +161,15 @@ const store = createStore({
     flowAt: null, flowChip: 'all', flowJump: null, flowAdvice: null, flowDecided: 0,
     // its left column: by themes or by areas (flowMode, kept in this browser), the theme or area entered in each
     // ({themes, areas}, null for the level of all), the overview of it or a point in the middle (flowView), the keys
-    // ticked (one selection for the left column and the overview), the detail blocks pulled in on the right (they stay
-    // open from point to point), a batch of the overview that ran ({n, undo}) and a themes run of the page in flight
+    // ticked (one selection for the left column and the overview), a batch that ran ({n, undo, from}: the overview's
+    // or the instruction line's) and a themes run of the page in flight
     flowMode: load('bridge-cockpit.flowMode', 'themes') === 'areas' ? 'areas' : 'themes', flowSide: {},
-    flowView: 'overview', flowPicked: [], flowBlocks: ['goal'], flowBatch: null,
+    flowView: 'overview', flowPicked: [], flowBatch: null,
     flowThemesBusy: false,
+    // round 3: the tab under the card of an open point (it stays from point to point, kept in this browser), the
+    // filter of its Activity, and the plan the instruction line made of a sentence, waiting for Run
+    flowTab: ['desc', 'steps', 'activity', 'related'].find(v => v === load('bridge-cockpit.flowTab', 'desc')) ?? 'desc',
+    flowFilter: 'all', flowPlan: null,
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
@@ -186,7 +190,8 @@ const store = createStore({
     tickerPaused: load('bridge-cockpit.tickerPaused', '0') === '1', tickerRead: loadTickerRead(), tickerSince: tickerSince(), quickModel: load('bridge-cockpit.quickModel', null),
     launchModel: load('bridge-cockpit.launchModel', null), launchEffort: load('bridge-cockpit.launchEffort', null), rvFilter: 'all', rvSort: 'verdict', rvPicked: [],
   },
-  details: { inbox: {}, task: {} },
+  // the facts read on demand: an inbox item, a task's file, the Activity of a point of Work through (by row key)
+  details: { inbox: {}, task: {}, activity: {} },
   more: {},
   // the search of the files view (/api/find): { q, status: loading|ok|error|tooShort, data, error }; null: none
   find: null,
@@ -305,6 +310,8 @@ function applyState(payload) {
     tour: payload.tour ?? s.tour,
     work: payload.work ?? s.work,
     themes: payload.themes ?? s.themes,
+    // what the day's budgets of Work through still hold: summaries and instructions (round 3)
+    flow_ai: payload.flow_ai ?? s.flow_ai,
     rooms: payload.rooms ?? s.rooms,
     notes: Array.isArray(payload.notes) ? payload.notes.slice(-20).map(n => ({ ...n, ms: 0 })) : s.notes,
   }))
@@ -674,16 +681,32 @@ function pageSeen(page) {
   api.seen(page, view)
 }
 
-async function loadDetail(kind, id) {
+async function loadDetail(kind, id, fresh = false) {
   // `ver` ties the entry to the collect run it was read for; the old data stays visible meanwhile
   const ver = store.get().model?.collected_ms ?? 0
-  store.set(s => ({ ...s, details: { ...s.details, [kind]: { ...s.details[kind],
-    [id]: { status: 'loading', ver, data: s.details[kind][id]?.data ?? null } } } }))
-  // a task by its slug, or one folder of it (a closed copy the files view opened from the search)
-  const res = kind === 'inbox' ? await api.inbox(id) : id.includes('/') ? await api.task(id.split('/').pop(), id) : await api.task(id)
+  store.set(s => ({ ...s, details: { ...s.details, [kind]: { ...(s.details[kind] ?? {}),
+    [id]: { status: 'loading', ver, data: s.details[kind]?.[id]?.data ?? null } } } }))
+  // a task by its slug, or one folder of it (a closed copy the files view opened from the search); the Activity of a
+  // point by its row key, fresh after a note or an attachment (the server keeps a feed 20 s)
+  const res = kind === 'inbox' ? await api.inbox(id) : kind === 'activity' ? await api.activity(id, fresh)
+    : id.includes('/') ? await api.task(id.split('/').pop(), id) : await api.task(id)
   const entry = res.ok ? { status: 'ok', data: res.data, ver } : { status: 'error', error: errorText(res.error, T()), ver }
   if (res.status === 401) failNote(res)
-  store.set(s => ({ ...s, details: { ...s.details, [kind]: { ...s.details[kind], [id]: entry } } }))
+  store.set(s => ({ ...s, details: { ...s.details, [kind]: { ...(s.details[kind] ?? {}), [id]: entry } } }))
+}
+
+/** A file as standard base64, read in the browser (an attachment of Work through); null when it cannot be read */
+function fileBase64(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const url = String(reader.result ?? '')
+      const at = url.indexOf(',')
+      resolve(at >= 0 ? url.slice(at + 1) : null)
+    }
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(file)
+  })
 }
 
 function today() {
@@ -1007,7 +1030,7 @@ const ctl = {
   },
   dossierWalk: (id, i) => setUi({ dossierAt: { id, i }, dossierOpen: null }),
   // the Work through page: a card brought to the front by its id, a chip (its queue starts over), one more decision
-  flowGo: (id, i) => setUi({ flowAt: { id, i }, flowView: 'point' }),
+  flowGo: (id, i) => setUi(ui => ({ flowAt: { id, i }, flowView: 'point', flowPlan: ui.flowAt?.id === id ? ui.flowPlan : null })),
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
   flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
   // To tab on a card: the jump goes out and is remembered for the return card; a driver that cannot jump shows the
@@ -1039,19 +1062,63 @@ const ctl = {
   // from the walk bar, its first point; the ticks start over. Themes or areas; the overview again from a point; a
   // point ticked or not, the boxes of the left column and of the overview being one selection; a detail block
   // pulled in or folded again
+  // (a plan of the instruction line belongs to the scope it was made for: another point or side drops it)
   flowSide: (id, view = 'overview') => setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: id ?? null },
-    flowAt: null, flowView: view === 'point' ? 'point' : 'overview', flowPicked: [] })),
-  flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [] }) },
-  flowOverview: () => setUi({ flowView: 'overview' }),
+    flowAt: null, flowView: view === 'point' ? 'point' : 'overview', flowPicked: [], flowPlan: null })),
+  flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [], flowPlan: null }) },
+  flowOverview: () => setUi(ui => ({ flowView: 'overview', flowPlan: ui.flowView === 'overview' ? ui.flowPlan : null })),
   flowPick: (keys, on) => setUi(ui => {
     const picked = new Set(ui.flowPicked ?? [])
     for (const k of keys ?? []) { if (on) picked.add(k); else picked.delete(k) }
     return { flowPicked: [...picked] }
   }),
-  flowBlock: id => setUi(ui => {
-    const open = ui.flowBlocks ?? ['goal']
-    return { flowBlocks: open.includes(id) ? open.filter(x => x !== id) : [...open, id] }
+  // round 3: the tab under the card (it stays from point to point, kept in this browser), the filter of Activity
+  flowTab: id => { save('bridge-cockpit.flowTab', id); setUi({ flowTab: id }) },
+  flowFilter: id => setUi({ flowFilter: id }),
+  // the Activity of a point: read when it opens, fresh after a note or an attachment
+  loadActivity: (key, fresh = false) => loadDetail('activity', key, fresh),
+  // the link of a document in a task's deliverables/, opened in a new tab (a Blob of invented text in the demo)
+  docHref: (slug, path) => api.docHref(slug, path),
+  // a note on the point through the server (task.py note, the inbox's note), then the feed read anew
+  async flowNote(key, text) {
+    const r = await act('note', { key, text })
+    if (r?.ok) await loadDetail('activity', key, true)
+    return r
+  },
+  // a document attached to the point's task (deliverables/): read here as base64, sent, the feed read anew; a refusal
+  // says itself in a note
+  flowAttach: (key, file) => withBusy(`attach:${key}`, 'flow_attach', async () => {
+    const data = await fileBase64(file)
+    if (!data) { pushNote({ text: T().errors.unreadable({}), tone: 'bad' }); return null }
+    const res = await api.attach(key, file.name, data)
+    if (!res.ok) { pushNote(actionFailNote(res, T())); return null }
+    if (res.data?.flow_ai) store.set(s => ({ ...s, flow_ai: res.data.flow_ai }))
+    pushNote({ text: T().flow.activity.attach.done(res.data?.attach?.path ?? file.name), tone: 'ok' })
+    await loadDetail('activity', key, true)
+    return res.data
   }),
+  // the summary of the last week of a point's Activity, on a click: quiet, the refusal comes back to the pane
+  flowSummary: key => withBusy(`summary:${key}`, 'flow_activity_summary', async () => {
+    const res = await api.action('flow_activity_summary', { key })
+    if (res.data?.flow_ai) store.set(s => ({ ...s, flow_ai: res.data.flow_ai }))
+    if (!res.ok) { if (res.status === 401) failNote(res); return { ok: false, error: res.error } }
+    const summary = res.data?.summary ?? null
+    store.set(s => {
+      const e = s.details.activity?.[key]
+      return e?.data ? { ...s, details: { ...s.details, activity: { ...s.details.activity, [key]: { ...e, data: { ...e.data, summary } } } } } : s
+    })
+    return { ok: true, summary }
+  }),
+  // a sentence of the instruction line: the server's small model makes a plan of the verbs there are; nothing runs
+  flowInstruct: (text, keys, point) => withBusy('flow:instruct', 'flow_instruct', async () => {
+    const res = await api.action('flow_instruct', { text, keys, point: !!point })
+    if (res.data?.flow_ai) store.set(s => ({ ...s, flow_ai: res.data.flow_ai }))
+    if (!res.ok) { if (res.status === 401) failNote(res); return { ok: false, error: res.error } }
+    setUi({ flowPlan: res.data?.plan ?? null })
+    return { ok: true, plan: res.data?.plan ?? null }
+  }),
+  // the plan set or gone (Change, Discard, Run)
+  flowPlan: plan => setUi({ flowPlan: plan ?? null }),
   // the themes: the points without one get theirs when the view shows them (themesAuto, each key once per page
   // load, quiet), a click orders all anew; a point moved or a theme named by hand wins over the model
   flowThemesAuto: keys => themesAuto(keys),
@@ -1059,11 +1126,12 @@ const ctl = {
   flowThemeMove: (key, theme) => act('flow_theme_move', { key, theme }),
   flowThemeNew: (key, name) => act('flow_theme_new', { key, name }),
   flowThemeRename: (theme, name) => act('flow_theme_rename', { theme, name }),
-  // a batch of the overview, confirmed: its calls one after the other, each quiet, then one note with one undo for all
-  async flowBatch(calls) {
+  // a batch of the overview, confirmed, or the steps of an instruction run (from 'instruct'): its calls one after the
+  // other, each quiet, then one note with one undo for all, under the line that started it
+  async flowBatch(calls, from = 'overview') {
     const undo = []
     let n = 0
-    setUi({ flowBatch: { running: true, n: 0, undo: [] } })
+    setUi({ flowBatch: { running: true, n: 0, undo: [], from } })
     quietNotesUntil = Infinity
     try {
       for (const a of calls ?? []) {
@@ -1075,7 +1143,7 @@ const ctl = {
     } finally {
       quietNotesUntil = Date.now() + BATCH_NOTE_GRACE_MS
     }
-    setUi(ui => ({ flowBatch: { running: false, n, undo }, flowDecided: (ui.flowDecided ?? 0) + n }))
+    setUi(ui => ({ flowBatch: { running: false, n, undo, from }, flowDecided: (ui.flowDecided ?? 0) + n }))
     // one toast says the batch; its one undo stands in the overview's line (views/flowlist.js), never twice
     if (n) pushNote({ text: T().flow.list.ran(n), tone: 'ok' }, { linger: 10000 })
     return { n, undo }

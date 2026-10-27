@@ -9,23 +9,29 @@
 // pointBand), each with a box, its title (a click opens the point), a dot and a word for its stage, its area and the
 // suggestion as a small chip. The boxes are the same selection as the overview's (ui.flowPicked). A theme entered can
 // be renamed. On a narrow screen both levels are one select over the middle.
-// FlowDetails: the blocks of the task and around it (goal and story, criteria, steps, source, notes and log, result,
-// the tab's screen, related), only their headings at first, the goal open; a click pulls one in and the choice stays
-// from point to point (ui.flowBlocks); in the overview a line says how they come. It reuses what the files view and
-// the item card already draw (views/card.js ItemCard, views/dossier.js ResultList). With the themes on, it also moves
-// the point to another theme or a new one.
+// FlowAside, the right column of an open point (round 3), as an issue tracker's sidebar: on top What you can do, the AI
+// suggestion in one line (on an open point the only place it stands) and the card's verbs under each other, the strong
+// one first (views/verbbar.js stack): a live tab gives To tab and View and no Let AI do it, a point in progress without
+// one Let AI go on, a finished start Done and close the tab, Improve, Runs on, Open answer, Later and Drop, a lost one
+// Start again, Done, Drop and Forget, the return card Done, Later, Drop, Runs on and Not yet, the reports All seen.
+// Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
+// else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source as
+// links, Created, Moved. No Status field: the card's head says it. In the overview a line says how they come.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { batchPreselect, detailNeedsLoad, duration, fileResults, flowDrive, flowSuggestion, indexRows, previewText, short } from '../logic.js'
-import { T } from '../text.js'
-import { describeOf, ItemCard } from './card.js'
+import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import {
+  activityWhen, batchPreselect, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowSuggestion, flowTabOf, formatDay,
+  isoDate, meterLevel, replySend, short,
+} from '../logic.js'
+import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Segmented } from './detail.js'
-import { ResultList } from './dossier.js'
-import { bandsOf, pointTone, rowArea } from './flowlist.js'
-import { Btn, Dot, Icon } from './parts.js'
+import { bandsOf, pointTone, rowArea, Suggestion } from './flowlist.js'
+import { TAB_MSG_MAX } from './nav.js'
+import { Btn, Dot, Icon, PrioChip } from './parts.js'
+import { VerbBar } from './verbbar.js'
 
 /** The words of a side: its theme or area name, else All or None in the words of the mode */
 export function sideName(side, mode) {
@@ -140,27 +146,9 @@ export function FlowSide({ sides, entered, mode, points, all, at, view, picked, 
   </aside>`
 }
 
-// the blocks of the right column, in the order they stand; the first one stands open at first (app.js flowBlocks)
-export const DETAIL_BLOCKS = ['goal', 'criteria', 'steps', 'source', 'notes', 'result', 'screen', 'related']
-const STEP_RE = /^\s*[-*] \[( |x|X)\] (.+)$/
-
-/** The steps of a task: the checklist lines of its STATUS.md, as they stand (read only: they are ticked there) */
-function stepsOf(data) {
-  return (data?.sections ?? []).flatMap(sec => String(sec.text ?? '').split('\n').map(l => STEP_RE.exec(l)).filter(Boolean)
-    .map(m => ({ done: m[1] !== ' ', text: m[2].trim() })))
-}
-
-/** The blocks a point has: a task all of them, an inbox item its card, its source and notes, a tab alone its screen */
-function blocksOf(x, tab) {
-  if (x.kind === 'reports') return ['source', 'notes']
-  const row = x.row
-  if (!row) return tab ? ['screen'] : []
-  const task = !!row.task && !row.inbox_id
-  return DETAIL_BLOCKS.filter(b => (b === 'screen' ? !!tab : ['steps', 'result', 'related'].includes(b) ? task || !!row.task : true))
-}
-
-/** The theme of the point, by hand: another theme of the list, or a new one with a name of the person's */
-function ThemePick({ row, s, c }) {
+/** The theme of the point, by hand: another theme of the list, or a new one with a name of the person's. `compact`
+ *  (a field of the right column) names it there, so the select carries its label for a screen reader only */
+export function ThemePick({ row, s, c, compact = false }) {
   const f = T().flow.side
   const th = s.themes
   const [making, setMaking] = useState(false)
@@ -177,8 +165,8 @@ function ThemePick({ row, s, c }) {
         <${Btn} size="xs" variant="ghost" onClick=${() => setMaking(false)}>${f.cancel}<//></span>
     </form>`
   }
-  return html`<div class="flow-theme-pick">
-    <label class="label-caps" for=${id}>${f.moveLabel}</label>
+  return html`<div class=${`flow-theme-pick${compact ? ' is-compact' : ''}`}>
+    <label class=${compact ? 'sr-only' : 'label-caps'} for=${id}>${f.moveLabel}</label>
     <span class="field-row"><select id=${id} class="input" value=${now} onChange=${e => {
       const v = e.currentTarget.value
       if (v === '+') setMaking(true)
@@ -191,94 +179,205 @@ function ThemePick({ row, s, c }) {
   </div>`
 }
 
-/** One block: its heading a button that pulls it in or folds it, its body only while it is open */
-function Block({ id, open, c, children }) {
-  const f = T().flow.details
-  return html`<section class=${`flow-block${open ? ' is-open' : ''}`}>
-    <h3 class="flow-block-head"><button type="button" aria-expanded=${String(open)} onClick=${() => c.flowBlock(id)}>
-      <span>${f.blocks[id]}</span><${Icon} name=${open ? 'chevronUp' : 'chevronDown'} size=${14} /></button></h3>
-    ${open ? html`<div class="flow-block-body">${children}</div>` : null}
+// the verbs on a card whose tab asks: no start, the tab takes no sentence while it asks (actions_work.py start_noted)
+const ASKING_VERBS = ['advise', 'done', 'later', 'drop']
+
+/** To tab and View for the tab of a point: the jump is remembered for the return card (c.flowJump). `strong`: the
+ *  tab is live (at work or asking), so To tab is the strong way */
+export function TabWays({ tab, row, title, s, c, strong = false }) {
+  const f = T().flow
+  if (!tab || !flowDriver(s)) return null
+  return html`<${Btn} size="sm" variant=${strong ? 'primary' : 'secondary'} onClick=${() => c.flowJump({ key: row?.key ?? null, ref: tab.ref, title: title ?? tab.name })}>${f.toTab}<//>
+    <${Btn} size="sm" variant=${strong ? 'secondary' : 'ghost'} onClick=${() => c.openTabView(tab.ref)}>${f.view}<//>`
+}
+
+/** Improve on a finished start: what is still to do, as words to the tab while its agent waits there (tab_send
+ *  through the reply guard), else as the sentence of a new start (do_it, never without one) */
+function Improve({ row, tab, s, c, onDone }) {
+  const t = T()
+  const f = t.flow.improve
+  const [text, setText] = useState('')
+  const [note, setNote] = useState(null)
+  const busy = !!s.ui?.busy?.[tab ? tab.ref : row.key]
+  const v = text.trim()
+  const go = async () => {
+    if (!v) return
+    setNote(null)
+    if (tab) {
+      const { verb, args } = replySend(tab, v)
+      const r = await c.reply(verb, args)
+      if (r?.refused) { setNote(errorText(r.error, t)); return }
+      if (!r?.ok) { if (r?.note) setNote(r.note); return }
+    } else {
+      const a = flowAction('do', row, v)
+      if (!a || !(await c.act(a.verb, a.args))?.ok) return
+      c.flowDecided()
+    }
+    setText('')
+    onDone?.()
+  }
+  const id = `flow-improve-${row.key}`
+  return html`<div class="flow-improve verbbar-panel">
+    <label class="label-caps" for=${id}>${tab ? f.toTab : f.anew}</label>
+    <textarea id=${id} class="input textarea" rows="2" maxlength=${TAB_MSG_MAX} value=${text} onInput=${e => setText(e.currentTarget.value)}></textarea>
+    <div class="verbbar-acts">
+      <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!v} onClick=${go}>${tab ? f.send : f.restart}<//>
+      ${note ? html`<span class="small verbbar-err" role="status">${note}</span>` : null}
+    </div>
+  </div>`
+}
+
+/** What a finished or quiet start offers: Done and close the tab (or Done), Improve, Runs on, Open answer, Later,
+ *  Drop; whose item is not in the list, its tab's ways and Forget */
+function FinishedActs({ x, s, c, forget }) {
+  const t = T()
+  const f = t.flow
+  const r = x.start
+  const row = x.row
+  const tab = x.tab
+  const [fix, setFix] = useState(false)
+  // words to the tab while its agent waits there, else a new start with them (a quiet tab is back at its shell)
+  const live = !!tab && tab.state === 'waiting' && canTab(s, 'send')
+  const tomorrow = isoDate((s.now || Date.now()) + DAY)
+  if (!row) return html`<div class="fx-do"><${TabWays} tab=${tab} row=${null} title=${r.title} s=${s} c=${c} />${forget}</div>`
+  const doneClose = async () => {
+    const res = await c.act('settle', { keys: [row.key], outcome: 'done' })
+    if (res?.ok && tab) await c.act('tab_close', { tab_ref: tab.ref })
+  }
+  const more = html`<${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>
+    <${Btn} size="sm" variant="secondary" onClick=${() => c.act('runs_on', { keys: [row.key], until: tomorrow })}>${f.runsOn}<//>
+    ${r.result?.key ? html`<${Btn} size="sm" variant="ghost" onClick=${() => c.openItem(r.result.key, null)}>${t.home.returnOpenAnswer}<//>` : null}`
+  const ways = html`<${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} />`
+  return html`${tab ? html`<div class="fx-do"><${Btn} size="sm" variant="primary" onClick=${doneClose}>${f.doneClose}<//>${more}</div>
+      <${VerbBar} row=${row} s=${s} c=${c} verbs=${['later', 'drop']} primary=${false} extra=${ways} stack />`
+    : html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary="done" extra=${more} stack />`}
+    ${fix ? html`<${Improve} row=${row} tab=${live ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
+}
+
+/** The verbs of the point in front, by its card, under each other, the strong one first */
+function PointActs({ x, s, c, sug }) {
+  const t = T()
+  const f = t.flow
+  const row = x.kind === 'reports' ? null : x.row ?? null
+  const live = flowLive(x, s)
+  const tab = flowTabOf(x, s)
+  const title = row?.title ?? x.title ?? x.start?.title ?? tab?.name ?? ''
+  // a live tab, at work or asking: its ways first, To tab the strong one, and no second agent started beside it
+  const lead = live ? html`<div class="fx-do"><${TabWays} tab=${live} row=${row} title=${title} s=${s} c=${c} strong /></div>` : null
+  const ways = tab && !live ? html`<${TabWays} tab=${tab} row=${row} title=${title} s=${s} c=${c} />` : null
+  if (x.kind === 'reports') {
+    const keys = x.rows.map(r => r.key)
+    return html`<div class="fx-do"><${Btn} size="sm" variant="primary" busy=${!!s.ui.busy?.[keys.join(',')]}
+      onClick=${() => c.act('settle', { keys, outcome: 'done' })}>${f.allSeen}<//></div>`
+  }
+  if (x.kind === 'back') {
+    const back = () => c.flowBack()
+    const rest = html`<${Btn} size="sm" variant="secondary" onClick=${back}>${f.runsOn}<//>
+      <${Btn} size="sm" variant="ghost" onClick=${back}>${f.notYet}<//>`
+    return row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary="done" onDone=${back} extra=${rest} stack />`
+      : html`<div class="fx-do">${rest}</div>`
+  }
+  if (x.group === 'doing') {
+    if (!row) return lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)
+    // at work: Done, Later, Drop beside its tab; without an agent at work Let AI go on with it. The strong one: the way
+    // to a live tab, else the verb the AI suggests where the card has it, else Let AI go on (Done while a start runs)
+    const running = !!live || (x.kind === 'start' && ['started', 'working'].includes(x.stage))
+    const verbs = running ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']
+    const said = verbs.includes(sug?.verb) ? sug.verb : null
+    return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
+      words=${running ? {} : { do: f.doing.goOn }} extra=${ways} stack />`
+  }
+  if (x.kind === 'start') {
+    const r = x.start
+    const forget = html`<${Btn} size="sm" variant="ghost" onClick=${() => c.act('return_forget', { key: r.key })}>${t.home.returnForget}<//>`
+    if (x.group === 'lost') {
+      return row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['do', 'done', 'drop']} primary="do" words=${{ do: f.verbs.restart }} extra=${forget} stack />`
+        : html`<div class="fx-do">${forget}</div>`
+    }
+    if (x.group === 'result') return html`<${FinishedActs} x=${x} s=${s} c=${c} forget=${forget} />`
+    // a start whose tab asks: its ways, then the verbs that leave the tab its question
+    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} extra=${ways} stack />`
+      : ways ? html`<div class="fx-do">${ways}</div>` : null}`
+  }
+  if (x.kind === 'tab') return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${row
+    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} stack />` : null}`
+  // a question or a task: its verbs, the one the AI suggests the strong one where the card has it
+  const verb = sug?.verb
+  const primary = live ? false : ['do', 'done', 'later', 'drop'].includes(verb) ? verb : null
+  return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${live ? ASKING_VERBS : null} primary=${primary} suggested=${!!primary} extra=${ways} stack />`
+}
+
+/** Who works on a point, in words: its tab and how long, a start of the cockpit, a session by hand, else when it last
+ *  moved (logic.js flowDrive) */
+function whoWords(d, s) {
+  const t = T()
+  const f = t.flow.doing
+  const nowMs = s.now || Date.now()
+  const ago = d.since_ms ? duration(nowMs - d.since_ms) : null
+  const word = f.stage[d.stage] ?? t.state[d.stage] ?? d.stage
+  return d.by === 'tab' ? f.tab(d.tab.name, word, ago) : d.by === 'start' ? f.start(word, ago ?? '') : d.by === 'session'
+    ? f.session(d.tab?.name ?? '', ago) : f.none(d.days)
+}
+
+/** A bar of Jev, 0 to 1, with its level in a word */
+function Meter({ value }) {
+  const f = T().flow.fields
+  return html`<span class="flow-meter"><span class="meter-track" aria-hidden="true">
+    <span class="meter-fill tk-info" style=${{ transform: `scaleX(${Math.max(0, Math.min(1, value)).toFixed(3)})` }}></span></span>
+    <span>${f.level[meterLevel(value)]}</span></span>`
+}
+
+/** The fields of the point, like an issue tracker's sidebar (logic.js flowFields) */
+function Fields({ x, s, c }) {
+  const t = T()
+  const f = t.flow.fields
+  const lang = language()
+  const row = x.kind === 'reports' ? null : x.row ?? null
+  const feed = row ? s.details?.activity?.[row.key]?.data ?? null : null
+  const detail = row?.task ? s.details?.task?.[row.task]?.data ?? null : null
+  const none = html`<span class="muted">${f.none}</span>`
+  const link = href => html`<a href=${href} target="_blank" rel="noopener noreferrer" title=${href}>${short(String(href).replace(/^https?:\/\//, ''), 40)}</a>`
+  const value = fld => {
+    if (fld.id === 'theme') return html`<${ThemePick} key=${row.key} row=${row} s=${s} c=${c} compact />`
+    if (fld.id === 'area') return fld.value || none
+    if (fld.id === 'who') return whoWords(fld.drive, s)
+    if (fld.id === 'prio') {
+      if (fld.jev) return [fld.jev.quadrant ? f.quadrant[fld.jev.quadrant] ?? fld.jev.quadrant : null, fld.jev.rank ? f.jevPlace(fld.jev.rank) : null].filter(Boolean).join(' · ') || none
+      if (fld.rank != null) return f.rank(fld.rank)
+      return fld.priority ? html`<${PrioChip} priority=${fld.priority} />` : none
+    }
+    if (['urgency', 'impact', 'effort'].includes(fld.id)) return html`<${Meter} value=${fld.value} />`
+    if (fld.id === 'due') return fld.value ? formatDay(fld.value, lang) : none
+    if (fld.id === 'source') {
+      const rows = fld.rows ?? (fld.row ? [fld.row] : [])
+      return html`<span class="flow-source">${rows.map(r => html`<${OriginTag} key=${r.key} row=${r} />`)}
+        ${fld.url ? link(fld.url) : null}${fld.link ? link(fld.link) : null}</span>`
+    }
+    if (fld.id === 'created' || fld.id === 'moved') return fld.value ? activityWhen(fld.value, lang) : none
+    return none
+  }
+  return html`<section class="flow-fields flow-aside-part" aria-labelledby="flow-fields">
+    <h3 id="flow-fields" class="label-caps">${f.label}</h3>
+    <dl class="meta flow-meta">${flowFields(x, s, feed, detail).map(fld => html`<div class="meta-item" key=${fld.id} data-field=${fld.id}>
+      <dt>${f[fld.id]}</dt><dd>${value(fld)}</dd></div>`)}</dl>
   </section>`
 }
 
-const SKIP_BUT = keep => ['summary', 'goal', 'story', 'acceptance', 'next', 'state', 'owner', 'priority', 'due', 'area', 'source',
-  'progress', 'gaps', 'describe'].filter(k => !keep.includes(k))
-
-/** The right column: the details of the point in front, block by block (DETAIL_BLOCKS) */
-export function FlowDetails({ x, s, c }) {
+/** The right column: What you can do and the fields of the point open; in the overview a line how they come */
+export function FlowAside({ x, s, c }) {
   const t = T()
-  const f = t.flow.details
-  const row = x?.row ?? null
-  const slug = row?.task ?? null
-  const entry = slug ? s.details?.task?.[slug] : null
-  const ver = s.model?.collected_ms ?? 0
-  const open = s.ui.flowBlocks ?? ['goal']
-  const tab = x ? x.tab ?? (x.group === 'doing' ? flowDrive(x, s).tab : null) : null
-  const blocks = x ? blocksOf(x, tab) : []
-  const wantsTask = !!slug && blocks.some(b => open.includes(b) && b !== 'screen')
-  useEffect(() => { if (wantsTask && detailNeedsLoad(entry, ver)) c.loadTask(slug) }, [slug, wantsTask, ver, entry?.stale])
-  if (!x) return html`<aside class="flow-details" aria-label=${f.label}>
-    <header class="flow-details-head"><p class="label-caps">${f.label}</p><p class="muted small flow-details-hint">${f.overview}</p></header>
+  const f = t.flow
+  if (!x) return html`<aside class="flow-aside" aria-label=${f.fields.label}>
+    <section class="flow-aside-part"><p class="label-caps">${f.fields.label}</p><p class="muted small flow-aside-hint">${f.fields.overview}</p></section>
   </aside>`
-  const data = entry?.data ?? null
-  const card = data?.card ?? row?.card ?? null
-  const key = row?.key ?? null
-  const d = key ? describeOf(s, key, data?.describe, row?.describe) : null
-  const loading = slug && !data && entry?.status !== 'error'
-  const none = id => html`<p class="muted small">${loading ? f.loading : f.none[id]}</p>`
-  const nowMs = s.now || Date.now()
-  const body = id => {
-    if (id === 'goal' || id === 'criteria') {
-      const keep = id === 'goal' ? ['goal', 'story', 'describe'] : ['acceptance']
-      const has = id === 'goal' ? card?.goal || card?.story : (card?.acceptance ?? []).length
-      return html`${card ? html`<${ItemCard} card=${card} d=${d} dkey=${key} s=${s} c=${c} skip=${SKIP_BUT(keep)} cls="flow-card-brief" />` : null}
-        ${has ? null : none(id)}`
-    }
-    if (id === 'steps') {
-      const steps = stepsOf(data)
-      return steps.length ? html`<ul class="flow-steps">${steps.map((st, k) => html`<li key=${k} class=${st.done ? 'is-done' : ''}>
-        <span class="flow-step-mark mono">${st.done ? f.done : f.todo}</span> <span>${st.text}</span></li>`)}</ul>` : none(id)
-    }
-    if (id === 'source') {
-      const related = data?.related ?? []
-      const url = row?.url ?? row?.link ?? null
-      const rows = x.kind === 'reports' ? x.rows : row ? [row] : []
-      return html`<div class="flow-source">
-        ${rows.map(r => html`<p key=${r.key} class="small"><${OriginTag} row=${r} /> ${x.kind === 'reports' ? short(r.title, 60) : null}</p>`)}
-        ${url ? html`<p class="small"><a href=${url} target="_blank" rel="noopener noreferrer">${f.open}</a> <span class="muted">${short(url, 60)}</span></p>` : null}
-        ${related.length ? html`<ul class="entries">${related.map(p => html`<li key=${p} class="entry"><code>${p}</code></li>`)}</ul>` : null}
-        ${!rows.length && !url && !related.length ? none(id) : null}
-      </div>`
-    }
-    if (id === 'notes') {
-      const log = (data?.log ?? []).slice(-6)
-      const inbox = data?.inbox ?? []
-      const why = x.kind === 'reports' ? x.rows.flatMap(r => r.why ?? []) : row?.why ?? []
-      if (!log.length && !inbox.length && !why.length) return none(id)
-      return html`${why.length ? html`<ul class="fx-why">${why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
-        ${inbox.length ? html`<ul class="entries">${inbox.map(e => html`<li key=${e.id} class="entry"><span>${e.summary}</span></li>`)}</ul>` : null}
-        ${log.length ? html`<ol class="log-rows">${log.map((l, k) => html`<li key=${k}><span class="mono muted">${l.at}</span><span>${l.text}</span></li>`)}</ol>` : null}`
-    }
-    if (id === 'result') {
-      const res = slug ? fileResults(slug, s.model, s.tabs?.tabs, nowMs, s.sessions?.runs) : null
-      const said = x.start?.result?.text ?? null
-      if (!said && !(res && (res.returns.length || res.runs.length))) return none(id)
-      return html`${said ? html`<p class="flow-answer small">${short(said, 400)}</p>` : null}${res ? html`<${ResultList} res=${res} s=${s} c=${c} />` : null}`
-    }
-    if (id === 'screen') {
-      const lines = String(tab?.last ?? '').split('\n').map(previewText).filter(Boolean).slice(-12)
-      return html`${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : html`<p class="muted small">${f.none.screen}</p>`}
-        ${tab ? html`<p class="muted small">${tab.name} · ${duration(nowMs - (tab.since_ms || nowMs))}</p>
-          <${Btn} size="xs" variant="secondary" onClick=${() => c.openTabView(tab.ref)}>${f.view}<//>` : null}`
-    }
-    // related: the other rows of the same task (its inbox items, a page item), as they stand in the model
-    const others = slug ? [...indexRows(s.model).values()].filter(r => r.task === slug && r.key !== key) : []
-    return others.length ? html`<ul class="entries">${others.map(r => html`<li key=${r.key} class="entry"><span>${short(r.title, 80)}</span>
-      <span class="entry-tags"><${OriginTag} row=${r} /></span></li>`)}</ul>` : none(id)
-  }
-  return html`<aside class="flow-details" aria-label=${f.label}>
-    <header class="flow-details-head"><p class="label-caps">${f.label}</p><p class="muted small">${f.hint}</p></header>
-    ${s.themes?.enabled === true && key && x.kind !== 'reports' ? html`<${ThemePick} key=${key} row=${row} s=${s} c=${c} />` : null}
-    ${blocks.map(id => html`<${Block} key=${id} id=${id} open=${open.includes(id)} c=${c}>${open.includes(id) ? body(id) : null}<//>`)}
+  const row = x.kind === 'reports' ? null : x.row ?? null
+  const sug = row ? flowSuggestion(row, s) : null
+  return html`<aside class="flow-aside" aria-label=${f.fields.can}>
+    <section class="flow-can flow-aside-part" aria-labelledby="flow-can">
+      <h3 id="flow-can" class="label-caps">${f.fields.can}</h3>
+      ${sug ? html`<p class="flow-can-sug"><span class="label-caps">${f.list.cols.suggestion}</span> <${Suggestion} sug=${sug} s=${s} /></p>` : null}
+      <${PointActs} key=${x.id} x=${x} s=${s} c=${c} sug=${sug} />
+    </section>
+    <${Fields} x=${x} s=${s} c=${c} />
   </aside>`
 }

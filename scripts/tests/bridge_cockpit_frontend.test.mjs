@@ -2781,7 +2781,9 @@ test('ticker: the demo saves and resets its settings, refreshes and edits with i
 
 // Every route the server answers, read from its source: what the page may ask, the mock answers too.
 // /api/events is the event stream (the transport's events()), /api/health is for scripts, never the page.
-const MOCK_ROUTE_ALLOW = new Set(['GET /api/events', 'GET /api/health'])
+// /api/flow/doc streams a document's bytes into a tab of its own: the page never fetches it, it links it (api.docHref,
+// in the demo a Blob of invented text through transport.href).
+const MOCK_ROUTE_ALLOW = new Set(['GET /api/events', 'GET /api/health', 'GET /api/flow/doc'])
 
 // Reads the routes out of the handler source. A route the class misses would be skipped in silence,
 // so every `path == "/api/` and every jev route literal must come out as a route, or the reader throws.
@@ -2835,12 +2837,13 @@ test('mock parity: every server route has a well-formed mock answer, unless it i
     const query = {
       '/api/page': `page=${page.id}&section=${page.sections[0].id}`, '/api/tab/screen': `ref=${encodeURIComponent(st.tabs.tabs[0].ref)}`,
       '/api/task': 'slug=demo-task', '/api/find': 'q=demo', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
-      '/api/graph/node': `id=${encodeURIComponent(node)}`,
+      '/api/graph/node': `id=${encodeURIComponent(node)}`, '/api/flow/activity': 'key=task:demo-task',
     }
     const body = {
       '/api/action': { verb: 'snapshot_list', args: {} }, '/api/ask': { kind: 'free', args: { text: 'hi' }, via: 'quick' },
       '/api/route': { keys: ['task:demo-task'] }, '/api/reload': {}, '/api/triage/run': { fresh: false },
       '/api/jev/run': {}, '/api/jev/rank': { page: jevPage?.id ?? '', force: true },
+      '/api/flow/attach': { key: 'task:demo-task', name: 'notes.txt', data: 'aGk=' },
     }
     for (const route of routes) {
       if (MOCK_ROUTE_ALLOW.has(route)) continue
@@ -3772,6 +3775,25 @@ test('api.tabScreen names the hash the page holds, and asks plainly without one'
   await a.tabScreen('surface:7')
   await a.tabScreen('surface:7', '0123abcd')
   assert.deepEqual(got, ['/api/tab/screen?ref=surface%3A7', '/api/tab/screen?ref=surface%3A7&since=0123abcd'])
+})
+
+test('api: the activity of a point, fresh on demand; an attachment posted with the token; a document linked, never fetched', async () => {
+  const got = []
+  const posted = []
+  const a = api.createApi({ get: async p => { got.push(p); return { ok: true } }, post: async (p, b, csrf) => { posted.push([p, b, csrf]); return { ok: true } },
+    events: () => ({}) })
+  a.setCsrf('tok')
+  await a.activity('task:demo-task')
+  await a.activity('inbox:20261009-0900-a b', true)
+  assert.deepEqual(got, ['/api/flow/activity?key=task%3Ademo-task', '/api/flow/activity?key=inbox%3A20261009-0900-a%20b&fresh=1'])
+  await a.attach('task:demo-task', 'Offer v2.pdf', 'aGk=')
+  assert.deepEqual(posted, [['/api/flow/attach', { key: 'task:demo-task', name: 'Offer v2.pdf', data: 'aGk=' }, 'tok']])
+  // the link of a document: the path itself on the real server, whatever the transport makes of it in the demo
+  const href = '/api/flow/doc?slug=demo-task&path=deliverables%2FOffer%20v2.pdf'
+  assert.equal(a.docHref('demo-task', 'deliverables/Offer v2.pdf'), href)
+  const b = api.createApi({ get: async () => ({}), post: async () => ({}), events: () => ({}), href: p => `blob:${p.length}` })
+  assert.equal(b.docHref('demo-task', 'deliverables/Offer v2.pdf'), `blob:${href.length}`)
+  assert.equal(got.length, 2, 'linking fetched nothing')
 })
 
 test('the demo answers the tab screen like the server: a hash, and unchanged without text to it', async () => {
