@@ -309,3 +309,35 @@ def test_the_words_of_the_themes_live_in_text_py():
     assert th.TEXT == {code: TABLES[code]["themes"] for code in TABLES}
     src = Path(th.__file__).read_text(encoding="utf-8")
     assert src.isascii(), [line for line in src.splitlines() if not line.isascii()]
+
+
+# ---------------------------------------------------------------- moves: where a point went, kept for its Activity tab
+
+def moves_of(w, key):
+    return [(m["from"], m["to"], m["by"]) for m in w.app.themes.load()["moves"] if m["key"] == key]
+
+
+def test_every_move_of_a_point_is_kept_with_the_names_as_they_were(world):
+    world.act("flow_themes_run", mode="assign", keys=[DEMO, YES])
+    assert moves_of(world, DEMO) == [(None, "Docs and guides", "ai")]
+    ids = {t["name"]: t["id"] for t in world.app.themes.state()["themes"]}
+    world.act("flow_theme_move", key=DEMO, theme=ids["Inbox questions"])
+    world.act("flow_theme_rename", theme=ids["Inbox questions"], name="Things to answer")
+    world.act("flow_theme_new", key=DEMO, name="Release work")
+    # a rename moves nothing and changes no name a move kept
+    assert moves_of(world, DEMO) == [(None, "Docs and guides", "ai"), ("Docs and guides", "Inbox questions", "person"),
+                                     ("Things to answer", "Release work", "person")]
+    assert all(isinstance(m["at_ms"], int) for m in world.app.themes.load()["moves"])
+    # a run that leaves a point where it was moves nothing; a regroup that places it elsewhere does
+    world.runner.handlers["claude.p"] = lambda argv: answer(["Inbox questions", "Fresh"], [point(1, "Fresh")])
+    world.act("flow_themes_run", mode="regroup", keys=[YES])
+    assert moves_of(world, YES) == [(None, "Inbox questions", "ai"), ("Things to answer", "Fresh", "ai")]
+
+
+def test_only_the_last_500_moves_are_kept(world):
+    data = world.app.themes.load()
+    data["moves"] = [{"key": f"task:t{i}", "from": None, "to": "X", "by": "ai", "at_ms": i} for i in range(600)]
+    world.app.themes.save(data)
+    world.act("flow_themes_run", mode="assign", keys=[DEMO])
+    moves = world.app.themes.load()["moves"]
+    assert len(moves) == th.MOVES_MAX == 500 and moves[-1]["key"] == DEMO

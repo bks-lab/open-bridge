@@ -14,6 +14,10 @@ By hand. A person may move a point to another theme (flow_theme_move), to a new 
 later run, a regroup too, never moves such a point and never renames such a theme. A theme of the model that no
 point holds any more after a regroup is dropped.
 
+Moves. Every time a point lands in a theme, by a run or by hand, the store keeps it in `moves` ({key, from, to, by:
+ai or person, at_ms}, the names as they were then, the last MOVES_MAX): the Activity tab of the point shows them
+(activity.py). A rename moves nothing.
+
 When it runs. Never by itself: the page asks when its view opens and points without a theme are there, and on the
 click. Every call counts against budget_per_day (a click too); none runs past it, and two never run at once.
 
@@ -49,6 +53,7 @@ BRIEF_MAX = 200
 SYSTEM_MAX = 4000
 PROMPT_MAX = 16000
 UNTIL_MAX_DAYS = 366
+MOVES_MAX = 500             # the moves of points between themes the store keeps, newest last
 THEME_ID_RE = re.compile(r"^t[0-9a-f]{6}\Z")
 #: what the model may suggest, the page's verbs: Done, Drop because, Later until, Let AI do it, and needs you
 SUGGEST = ("done", "drop", "later", "do", "you")
@@ -300,9 +305,23 @@ class Themes:
         suggest = {k: v for k, v in (data.get("suggest") or {}).items()
                    if isinstance(k, str) and isinstance(v, dict) and v.get("verb") in SUGGEST}
         calls = [c for c in data.get("calls") or [] if isinstance(c, list) and len(c) == 2 and isinstance(c[0], (int, float))]
-        return {"version": 1, "themes": themes, "assign": assign, "suggest": suggest, "calls": calls,
+        moves = [x for x in data.get("moves") or [] if isinstance(x, dict) and isinstance(x.get("key"), str)
+                 and isinstance(x.get("to"), str) and x.get("by") in ("ai", "person")][-MOVES_MAX:]
+        return {"version": 1, "themes": themes, "assign": assign, "suggest": suggest, "calls": calls, "moves": moves,
                 "at_ms": data.get("at_ms") if _is_int(data.get("at_ms")) else None,
                 "last_error": data.get("last_error") if isinstance(data.get("last_error"), str) else None}
+
+    def moved(self, data: dict, key: str, old: str | None, new: str | None, by: str) -> None:
+        """One move of a point into a theme, kept with the names as they are now; none when it stays where it was"""
+        if new and new != old:
+            data.setdefault("moves", []).append({"key": key, "from": old, "to": new, "by": by, "at_ms": self.now_ms()})
+            del data["moves"][:-MOVES_MAX]
+
+    @staticmethod
+    def theme_name(data: dict, key: str) -> str | None:
+        """The name of the theme a point is in, None for none"""
+        tid = (data["assign"].get(key) or {}).get("theme")
+        return next((t["name"] for t in data["themes"] if t["id"] == tid), None)
 
     def save(self, data: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -431,6 +450,7 @@ class Themes:
     def _place(self, data: dict, mode: str, rows: list[dict], got: dict) -> int:
         cap = self.cfg()["max_themes"]
         keys = [r["key"] for r in rows]
+        before = {k: self.theme_name(data, k) for k in keys}
         if mode == "regroup":
             # every point of the run is placed anew but a person's; a theme of the model may come back by its name
             data["assign"] = {k: v for k, v in data["assign"].items() if k not in keys or v.get("by") == "person"}
@@ -461,6 +481,9 @@ class Themes:
         # a theme of the model no point holds is gone (a person's stays until renamed away)
         held = {v["theme"] for v in data["assign"].values()}
         data["themes"] = [t for t in data["themes"] if t["id"] in held or t.get("by") == "person"]
+        for key in keys:
+            if (data["assign"].get(key) or {}).get("by") == "ai":
+                self.moved(data, key, before[key], self.theme_name(data, key), "ai")
         return placed
 
     def _audit(self, mode: str, n: int, got: dict) -> None:
@@ -476,6 +499,7 @@ class Themes:
         found = next((t for t in data["themes"] if t["id"] == theme), None)
         if not found:
             raise _error(409, "stale_theme", self.tx()["stale"], "theme")
+        self.moved(data, key, self.theme_name(data, key), found["name"], "person")
         data["assign"][key] = {"theme": theme, "by": "person"}
         self.save(data)
         self.changed()
@@ -488,6 +512,7 @@ class Themes:
         if found is None:
             found = {"id": "t" + uuid.uuid4().hex[:6], "name": clean, "by": "person"}
             data["themes"].append(found)
+        self.moved(data, key, self.theme_name(data, key), found["name"], "person")
         data["assign"][key] = {"theme": found["id"], "by": "person"}
         self.save(data)
         self.changed()
