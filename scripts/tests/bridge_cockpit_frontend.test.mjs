@@ -3377,9 +3377,10 @@ test('header and rooms take counts only from sessionCounts or agentLoad', () => 
 
 test('rooms: every quick chat in the sidebar can be removed, by a button beside the row, never inside it', () => {
   const rooms = read('views/rooms.js')
-  assert.match(rooms, /class="room-chat-row"/)
+  assert.match(rooms, /class=\$\{`room-chat-row/)
   assert.match(rooms, /class="room-x"[^`]*onClick=\$\{\(\) => c\.quickForget\(x\.id\)\}/)
-  assert.match(rooms, /x\.running \? null : html`<button type="button" class="room-x"/)   // one still answering stays
+  // one still answering stays, and an archived one (round 6d) is gone already
+  assert.match(rooms, /x\.running \|\| archived \? null : html`<button type="button" class="room-x"/)
   assert.match(read('style.css'), /\.room-chat-row:hover \.room-x/)
 })
 
@@ -4350,6 +4351,82 @@ test('a start whose item note asks stays a question when its tab is gone, and wo
   const r = { key: 'inbox:i1', item: 'i1', at_ms: 1000, stage: 'asks', tab: null, result: { kind: 'note', text: 'Question: close it?', asks: true } }
   assert.equal(logic.liveStage(r, [], 9e9), 'asks')
   assert.equal(logic.liveStage(r, [{ ref: 'surface:3', item: 'i1', state: 'working' }], 9e9), 'working')
+})
+
+// round 6d: questions found again. A question gets a title from what it is about, a handed one its marker
+test('askTitle: by what it is about (job and state, row, task), else the first sentence cut at a word', () => {
+  const s = { model: { sections: [{ rows: [{ key: 'inbox:i7', title: 'Renew the test certificate' }, { key: 'task:alpha', title: 'Ship the alpha' }] }] },
+    workers: { data: { runs: [{ host: 'mini', id: 'chat-bot', title: 'chat-bot', state: 'last_run_failed' }] } } }
+  const conv = (about, q = 'Something else entirely') => ({ id: 'q0000000001', about, turns: [{ q }] })
+  assert.equal(logic.askTitle(conv({ kind: 'worker', key: 'worker:mini:chat-bot' }), s, 'de'), 'chat-bot · mini · letzter Lauf fehlgeschlagen')
+  assert.equal(logic.askTitle(conv({ kind: 'worker', key: 'worker:mini:gone' }), s, 'en'), 'gone · mini')
+  assert.equal(logic.askTitle(conv({ kind: 'row', key: 'inbox:i7', inbox: 'i7' }), s, 'en'), 'Renew the test certificate')
+  assert.equal(logic.askTitle(conv({ kind: 'handoff', inbox: 'i7' }), s, 'en'), 'Renew the test certificate')
+  assert.equal(logic.askTitle(conv({ kind: 'free', key: 'task:alpha', task: 'alpha' }), s, 'en'), 'Ship the alpha')
+  assert.equal(logic.askTitle(conv({ title: 'Named by the page' }), s, 'en'), 'Named by the page')
+  // nothing known: the first sentence, or the title in guillemets a row's prompt carries, cut at a word
+  assert.equal(logic.askTitle(conv(null, 'Background job chat-bot on mini: last run failed. It ended with 75. What now?'), s, 'en'),
+    'Background job chat-bot on mini: last run failed.')
+  assert.equal(logic.askTitle(conv(null, 'Briefing item: «Renew the old demo certificate» («demo»). Look at it.'), s, 'en'), 'Renew the old demo certificate')
+  const long = logic.askTitle(conv(null, 'word '.repeat(40)), s, 'en')
+  assert.ok(long.length <= 60 && long.endsWith('…') && !/wor…$/.test(long), long)
+})
+
+test('askOutcome and askMark: handed questions are marked in tab, done (with the outcome) or asks you', () => {
+  // the one shape quick.py handoff_outcome writes on the handed record, also read by handoffStatus
+  assert.equal(logic.askOutcome({}), null)
+  assert.equal(logic.askOutcome({ handed: { outcome: { text: '', closed: false, at_ms: 1, asks: false } } }), null)
+  assert.deepEqual(logic.askOutcome({ handed: { outcome: { text: 'Result: Restarted the job', closed: true, at_ms: 5, asks: false } } }),
+    { text: 'Restarted the job', asks: false, closed: true, at_ms: 5 })
+  assert.deepEqual(logic.askOutcome({ handed: { outcome: { text: 'Frage: Which machine?', closed: false, at_ms: 6, asks: true } } }),
+    { text: 'Which machine?', asks: true, closed: false, at_ms: 6 })
+  assert.deepEqual(logic.askOutcome({ handed: { outcome: { text: '', closed: true, at_ms: 7, asks: false } } }),
+    { text: null, asks: false, closed: true, at_ms: 7 })
+  const tabs = [{ ref: 'surface:21', name: 'Look at it', item: 'i1', state: 'working' }]
+  const back = (text, closed = true, asks = false) => ({ outcome: { text, closed, at_ms: 5, asks } })
+  const handed = (over = {}) => ({ id: 'q0000000002', turns: [{ q: 'x', a: 'y' }], handed: { to: 'tab', status: 'started', inbox_id: 'i1', ...over } })
+  assert.deepEqual(logic.askMark(handed(), tabs), { word: 'inTab', tone: 'info', text: null, ref: 'surface:21' })
+  assert.deepEqual(logic.askMark(handed(back('Nothing to do')), []), { word: 'done', tone: 'success', text: 'Nothing to do', ref: null })
+  // a note while the item is open and its tab still works is no end yet
+  assert.equal(logic.askMark(handed(back('Vendor wants 3.0', false)), tabs).word, 'inTab')
+  assert.equal(logic.askMark(handed(), [{ ...tabs[0], state: 'needs-you' }]).word, 'asksYou')
+  assert.equal(logic.askMark(handed(back('Question: Which one?', false, true)), []).word, 'asksYou')
+  assert.equal(logic.askMark(handed({ status: 'failed' }), tabs), null)
+  assert.equal(logic.askMark({ id: 'q0000000003', turns: [{ q: 'x', a: 'y' }] }, tabs), null)
+})
+
+test('askList: open and handed questions first, then the answered ones; equal titles get their time', () => {
+  const now = new Date(2026, 9, 28, 9, 0).getTime()
+  const at = (h, m, day = 28) => new Date(2026, 9, day, h, m).getTime()
+  const q = (id, ms, over = {}) => ({ id, started_ms: ms, last_ms: ms, turns: [{ q: 'Job chat-bot failed. Why?', a: 'Because.' }], ...over })
+  const convs = [q('q1', at(7, 34)), q('q2', at(7, 35), { handed: { to: 'tab', status: 'started', inbox_id: 'i1' } }),
+    q('q3', at(8, 10), { turns: [{ q: 'Something new?', a: 'Yes.' }] }), q('q4', at(7, 0, 27), { running: true, turns: [{ q: 'Job chat-bot failed. Why?', a: null }] })]
+  const list = logic.askList(convs, { now, tabs: { tabs: [] } }, 'de')
+  assert.deepEqual(list.map(x => x.conv.id), ['q2', 'q4', 'q3', 'q1'])
+  assert.deepEqual(list.map(x => x.open), [true, true, false, false])
+  assert.equal(list[0].title, 'Job chat-bot failed. · heute 07:35')
+  assert.equal(list[1].title, 'Job chat-bot failed. · gestern 07:00')
+  assert.equal(list[2].title, 'Something new?')
+  assert.equal(list[3].title, 'Job chat-bot failed. · heute 07:34')
+  assert.equal(list[0].mark.word, 'inTab')
+  assert.equal(logic.askStamp(at(7, 34, 20), now, 'de'), '20.10. 07:34')
+  assert.equal(logic.askStamp(at(7, 34), now, 'en'), 'today 07:34')
+})
+
+test('handoffStatus: a tab that waits on you before anything came back says so, and every word keeps the jump', () => {
+  const tabs = [{ ref: 'surface:21', name: 'Look at it', item: 'i1', state: 'needs-you' }]
+  const handed = { to: 'tab', at_ms: 1, status: 'started', inbox_id: 'i1' }
+  assert.deepEqual(logic.handoffStatus(handed, [], tabs), { word: 'asksYou', tone: 'warning', action: 'jump', ref: 'surface:21', tab: 'Look at it' })
+  const done = logic.handoffStatus({ ...handed, outcome: { text: 'Result: Done.', closed: true, at_ms: 5, asks: false } }, [], [{ ...tabs[0], state: 'working' }])
+  assert.equal(done.word, 'result')
+  assert.equal(done.action, 'jump')
+})
+
+test('the last question opened is kept in this browser, so a reload and the header find it again', () => {
+  const app = read('app.js')
+  assert.match(app, /quickConv: lastAsk\(\)/)
+  assert.match(app.match(/function lastAsk\(\) \{[\s\S]*?\n\}/)[0], /load\('bridge-cockpit\.lastAsk'/)
+  assert.match(app, /save\('bridge-cockpit\.lastAsk', id\)/)
 })
 
 test('ChatFoot never offers a one click control handoff', () => {

@@ -939,6 +939,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/history":
             # what the dashboard closed, dropped, settled or hid, newest first, each with its undo
             self.send_json(200, {"ok": True, "entries": app.history.state()})
+        elif path == "/api/chats/archive":
+            # the questions archived in the last days, for "all" under the questions (round 6d), read only
+            days = int(one("days")) if one("days").isdigit() else 7
+            self.send_json(200, {"ok": True, "convs": app.quick.archived(days)})
         elif path == "/api/agents":
             # the A2A peers with what their cards say (fetched in the background) and the conversations;
             # fresh=1 is the page's "check again": every card is fetched, also one inside its CARD_TTL

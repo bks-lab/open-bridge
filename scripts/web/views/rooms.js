@@ -9,13 +9,15 @@
 // Round 6, from the Sessions page: on top of Work why the relay has nobody to ask with the button that starts a
 // control session (views/header.js ControlNotice), and why the tabs may be missing or stale (views/tabs.js
 // TabWarnings); a tab's pane names the task it works on, which opens in the drawer over the Chat.
+// Round 6d: the questions stand on top of the sidebar, by title, open and handed ones first with their markers,
+// and "all" reaches the ones archived in the last days (read only: an archived one opens without its box).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, indexRows, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
+import { askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, indexRows, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
-import { ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
+import { AskMark, ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented } from './detail.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { GuideLine, GuideTree } from './guide.js'
@@ -120,24 +122,30 @@ function TabItem({ tab, on, s, c, where = false }) {
   <//>`
 }
 
+/** The questions (logic.js askList): open and handed ones first, each by its title with its marker; "all"
+ *  shows every one of the last days, the archived ones too (s.chatArchive, read once), greyed and without × */
 function Chats({ convs, s, c, here }) {
   const t = T()
-  const [all, setAll] = useState(false)
-  const shown = all ? convs : convs.slice(0, CHATS_SHOWN)
+  const all = !!s.ui.asksAll
+  const live = askList(convs, s, language())
+  const ids = new Set(live.map(x => x.conv.id))
+  const old = all ? askList((s.chatArchive?.convs ?? []).filter(x => !ids.has(x.id)), s, language()).map(x => ({ ...x, archived: true })) : []
+  const shown = all ? [...live, ...old] : live.slice(0, CHATS_SHOWN)
   return html`<div class="room-chats">
     <${Item} on=${here.kind === 'chat' && !s.ui.quickConv} cls="room-chat" onClick=${() => { c.newQuick(); c.pickRoom({ kind: 'chat' }) }}>
       <span class="room-name">+ ${t.quickNew}</span><//>
-    ${shown.map(x => html`<div class="room-chat-row" key=${x.id}>
+    ${shown.map(({ conv: x, title, mark, archived }) => html`<div class=${`room-chat-row${archived ? ' is-archived' : ''}`} key=${x.id}>
       <${Item} on=${here.kind === 'chat' && s.ui.quickConv === x.id} cls="room-chat" title=${x.turns[0]?.q}
         onClick=${() => { c.pickQuick(x.id); c.pickRoom({ kind: 'chat' }) }}>
         ${x.running ? html`<${Dot} token="info" pulse />` : html`<span class="room-glyph"><${Icon} name="chat" size=${12} /></span>`}
-        <span class="room-name">${short(x.turns[0]?.q ?? '', 40)}</span>
+        <span class="room-name">${title}<${AskMark} mark=${mark} archived=${archived} /></span>
         <span class="room-meta muted small">${chatStamp(x.last_ms ?? x.started_ms, s.now, language())}</span>
       <//>
-      ${x.running ? null : html`<button type="button" class="room-x" title=${t.quickForgetHint} aria-label=${t.quickForget} onClick=${() => c.quickForget(x.id)}>×</button>`}
+      ${x.running || archived ? null : html`<button type="button" class="room-x" title=${t.quickForgetHint} aria-label=${t.quickForget} onClick=${() => c.quickForget(x.id)}>×</button>`}
     </div>`)}
-    ${convs.length > CHATS_SHOWN ? html`<button type="button" class="btn-link small room-more" onClick=${() => setAll(!all)}>
-      ${all ? t.cardLess : t.rooms.allChats(convs.length)}</button>` : null}
+    ${all && s.chatArchive?.status === 'loading' ? html`<p class="muted small room-more">${t.asks.loading}</p>` : null}
+    ${all && s.chatArchive?.status === 'error' ? html`<p class="muted small room-more">${t.asks.failed}</p>` : null}
+    <button type="button" class="btn-link small room-more" onClick=${() => c.showAllAsks(!all)}>${all ? t.cardLess : t.rooms.allAsks}</button>
   </div>`
 }
 
@@ -158,7 +166,6 @@ function WorkspaceGroup({ w, s, c, here }) {
       ${w.bridge ? html`<span class="chip room-bridge">${w.bridge.name}</span>` : null}
     <//>`}
     ${w.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} />`)}
-    ${w.chats.length || (s.rooms?.control && w.title === s.rooms.control) ? html`<${Chats} convs=${w.chats} s=${s} c=${c} here=${here} />` : null}
   </section>`
 }
 
@@ -255,24 +262,21 @@ function useHeldOrder(list, mode, keyOf = w => w.key) {
 }
 
 /** The tabs by status (logic.js statusQueue), each row with its workspace, so you walk them top to bottom:
- *  answer or close what needs you or waits, then the rest (Work through and the tab's bar walk them). Below stand the control
- *  session and the quick chats, which have no status of
- *  that kind. A tab that changes its status starts its time again, so it goes last in its new group and
+ *  answer or close what needs you or waits, then the rest (Work through and the tab's bar walk them). Below stands the control
+ *  session, which has no status of that kind (the questions stand on top of the sidebar). A tab that changes its status starts its time again, so it goes last in its new group and
  *  the rows above it stay where they were */
 function StatusGroups({ s, c, here }) {
   const t = T()
   const groups = statusQueue(s.tabs?.tabs)
   const control = (s.tabs?.tabs ?? []).find(x => x.is_control)
-  const chats = listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)
   return html`<div class="room-status-list">
     ${groups.map(g => html`<section class="room-status" key=${g.state}>
       <h3 class="label-caps room-group"><${StateLine} token=${stateToken(g.state)} word=${t.rooms.status[g.state]} /> <span class="mono muted">${g.tabs.length}</span></h3>
       ${g.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} where />`)}
     </section>`)}
     ${!groups.length ? html`<${Empty}>${t.tabsEmpty}<//>` : null}
-    ${control || chats.length ? html`<section class="room-ws">
-      ${control ? html`<${TabItem} tab=${control} on=${here.kind === 'tab' && here.id === control.ref} s=${s} c=${c} />` : null}
-      <${Chats} convs=${chats} s=${s} c=${c} here=${here} />
+    ${control ? html`<section class="room-ws">
+      <${TabItem} tab=${control} on=${here.kind === 'tab' && here.id === control.ref} s=${s} c=${c} />
     </section>` : null}
   </div>`
 }
@@ -312,8 +316,8 @@ const tabFacts = (tabs, ref) => {
 }
 
 /** The sidebar of the Work area: the order of the tabs on top, where it is reached without scrolling past
- *  the asks; then Waiting for you (left out by status, whose first groups hold the same tabs), the
- *  workspaces or the status groups, and the Bridges on this machine. The A2A agents have an area of their own */
+ *  the asks; then Waiting for you (left out by status, whose first groups hold the same tabs), the questions,
+ *  the workspaces or the status groups, and the Bridges on this machine. The A2A agents have an area of their own */
 export function Sidebar({ s, c, rooms, here }) {
   const t = T()
   const sort = ['urgency', 'status'].includes(s.ui?.roomsSort) ? s.ui.roomsSort : 'terminal'
@@ -327,8 +331,8 @@ export function Sidebar({ s, c, rooms, here }) {
       <${WalkStart} s=${s} c=${c} />
     </div>
     ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} />`}
-    ${rooms.chats.length && sort !== 'status' ? html`<section class="room-ws"><h3 class="label-caps">${t.rooms.chats}</h3>
-      <${Chats} convs=${rooms.chats} s=${s} c=${c} here=${here} /></section>` : null}
+    <section class="room-ws room-asks"><h3 class="label-caps">${t.rooms.chats}</h3>
+      <${Chats} convs=${listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)} s=${s} c=${c} here=${here} /></section>
     <div class="room-group-head">
       <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
       ${canTab(s, 'rename') ? html`<${Btn} size="xs" variant="ghost" title=${t.organize.buttonTitle} busy=${!!s.ui?.organize?.busy}
@@ -406,16 +410,20 @@ function TabPane({ s, c, tab }) {
 function ChatPane({ s, c }) {
   const t = T()
   const q = s.quick ?? {}
-  const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
+  const live = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
+  // one picked from the archive under "all" reads as it was, without a box to go on in
+  const archived = live ? null : (s.chatArchive?.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
+  const conv = live ?? archived
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   return html`<section class="panel chat-main rooms-main" aria-label=${t.askTitle}>
-    <header class="tabview-head"><h2 class="sec-title tabview-title">${conv ? short(conv.turns[0]?.q ?? '', 80) : t.quickNew}</h2>
+    <header class="tabview-head"><h2 class="sec-title tabview-title">${conv ? askList([conv], s, language())[0].title : t.quickNew}</h2>
+      ${archived ? html`<${AskMark} archived />` : null}
       <span class="muted small">${t.rooms.chatHint}</span></header>
     <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
       ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
       ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
     </div>
-    <${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus=${false} />
+    ${archived ? null : html`<${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus=${false} />`}
   </section>`
 }
 

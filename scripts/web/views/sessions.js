@@ -17,7 +17,7 @@ import { ReturnCard, RowAsk, returnsOf } from './home.js'
 import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
 import { FolderBar, StartControl, canStartControl } from './header.js'
-import { CHAT_PAGE, chatAsWorkspaces } from './nav.js'
+import { openTabRoom } from './nav.js'
 import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
@@ -259,9 +259,8 @@ const ADVISE_OPEN = ['open', 'approved', 'waiting', 'deferred']
 function WorkerAdvise({ r, ret, s, c }) {
   const t = T()
   const open = ADVISE_OPEN.includes(r.advise?.state)
-  const toRoom = ref => (chatAsWorkspaces(s) ? (c.setPage(CHAT_PAGE), c.pickRoom({ kind: 'tab', id: ref })) : c.openTabView(ref))
   return html`${open ? html`<${Chip} token="info">${t.workerInTab}<//>` : null}
-    ${open && ret?.tab ? html`<${Btn} size="xs" variant="secondary" onClick=${() => toRoom(ret.tab.ref)}>${t.workerToTab}<//>`
+    ${open && ret?.tab ? html`<${Btn} size="xs" variant="secondary" onClick=${() => openTabRoom(s, c, ret.tab.ref)}>${t.workerToTab}<//>`
       : html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`}`
 }
 

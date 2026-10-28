@@ -1254,7 +1254,7 @@ test('the demo proposes every kind and applies the ticked ones', async () => {
 
 // ---------------------------------------------------------------- the chat: one input with a visible route (package 5)
 
-const { ChatFoot } = views.chat
+const { ChatFoot, ChatThread, QuickChat } = views.chat
 const ANSWERED = { id: 'q0123456789', kind: 'free', started_ms: NOW, session: null, total_usd: 0, running: false, last_ms: NOW,
   turns: [{ q: 'what next?', a: 'Commit the yaml change.', model_asked: 'haiku', model: 'haiku-5-5', cost_usd: 0.001, at_ms: NOW, error: null }] }
 
@@ -1340,15 +1340,18 @@ test('a handed chat shows its status and disables the handoff buttons only while
   const starting = renderFoot({ conv: { ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'starting' } } })
   assert.match(starting.el.$('.handoff-status').text(), new RegExp(en.handoff.starting))
   assert.equal(solve(starting.el).hasAttribute('disabled'), true)
-  // arrived: the tab that carries the item, one click away
+  // arrived: the tab that carries the item, one click away (one that asks you says so instead, round 6d)
   const s0 = cockpitState(NOW)
-  const tab = s0.tabs.tabs.find(t => !t.is_control && t.state !== 'shell')
+  const tab = s0.tabs.tabs.find(t => !t.is_control && t.state !== 'shell' && t.state !== 'needs-you')
   const tabs = { ...s0.tabs, tabs: s0.tabs.tabs.map(t => t.ref === tab.ref ? { ...t, item: '20261009-1200-what-next-a1b2' } : t) }
   const arrived = renderFoot({ conv: { ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'started', inbox_id: '20261009-1200-what-next-a1b2' } },
     over: { tabs } })
   assert.match(arrived.el.$('.handoff-status').text(), new RegExp(en.handoff.inTab(tab.name)))
   assert.equal(solve(arrived.el).hasAttribute('disabled'), false)
+  // Open the tab opens it in the cockpit (round 6d), the terminal is the second way
   arrived.el.button(en.handoff.jump).click()
+  assert.deepEqual(arrived.c.calls.filter(x => x[0] === 'openTabView'), [['openTabView', tab.ref]])
+  arrived.el.button(en.handoff.inTerminal).click()
   assert.deepEqual(acts(arrived.c), [['act', 'tab_jump', { tab_ref: tab.ref }]])
   // a failed start is tried again on the same route
   const failed = renderFoot({ conv: { ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'failed', inbox_id: 'x' } } })
@@ -1389,6 +1392,83 @@ test('every handed chat of the demo shows a worded status line', () => {
     seen.add(line.getAttribute('data-status'))
   }
   for (const word of ['starting', 'started', 'running', 'failed', 'manual', 'nothing', 'waiting', 'arrived', 'offline']) assert.ok(seen.has(word), word)
+})
+
+// ---------------------------------------------------------------- round 6d: finding questions again
+
+const asked = (id, q, ms, over = {}) => ({ id, kind: 'free', started_ms: ms, session: null, total_usd: 0, running: false, last_ms: ms,
+  turns: [{ q, a: 'An answer.', model_asked: 'haiku', model: 'haiku', cost_usd: 0, at_ms: ms, error: null }], ...over })
+const JOB_Q = 'Background job chat-bot on mini: last run failed. It ended with 75. What now?'
+function asksState(over = {}) {
+  const s0 = cockpitState(NOW)
+  const tab = s0.tabs.tabs.find(t => !t.is_control && t.state !== 'shell')
+  const tabs = { ...s0.tabs, tabs: s0.tabs.tabs.map(t => t.ref === tab.ref ? { ...t, item: 'i-job', state: 'working' } : t) }
+  const convs = [asked('q0000000001', JOB_Q, NOW - 30 * MIN), asked('q0000000002', JOB_Q, NOW - 29 * MIN),
+    asked('q0000000003', JOB_Q, NOW - 28 * MIN, { handed: { to: 'tab', at_ms: NOW - 27 * MIN, status: 'started', inbox_id: 'i-job' } }),
+    asked('q0000000004', 'What is new?', NOW - 5 * MIN),
+    asked('q0000000005', 'Close the old label task', NOW - 50 * MIN, { handed: { to: 'tab', at_ms: NOW - 49 * MIN, status: 'started', inbox_id: 'i-gone',
+      outcome: { text: 'Result: Nothing to do, the labels were merged already', closed: true, at_ms: NOW - 40 * MIN, asks: false } } })]
+  return { s: cockpitState(NOW, { tabs, quick: { ...s0.quick, keep_hours: 24, convs }, ...over }), tab }
+}
+
+test('the question window lists recent questions by title, with time stamps for equal ones and their markers', () => {
+  const { s } = asksState({ ui: { tabView: '@ask' } })
+  const el = mount(html`<${QuickChat} s=${s} c=${recorder()} />`)
+  const chips = el.$$('.quick-conv').map(b => b.text())
+  // open and handed first, the new chat button before them
+  assert.match(chips[1], /Background job chat-bot on mini: last run failed\./)
+  assert.match(chips[1], new RegExp(en.asks.mark.inTab))
+  assert.match(chips[2], new RegExp(en.asks.mark.done))
+  assert.ok(chips.some(x => x.includes('What is new?')), chips.join(' | '))
+  const stamped = chips.filter(x => x.includes('chat-bot'))
+  assert.equal(stamped.length, 3)
+  assert.equal(new Set(stamped).size, 3, 'three equal questions read apart by their time')
+  assert.ok(stamped.every(x => x.includes(en.asks.today)), stamped.join(' | '))
+})
+
+test('a handed question that came back shows its outcome under the question and in its status line', () => {
+  const { s } = asksState()
+  const conv = s.quick.convs.find(x => x.id === 'q0000000005')
+  const el = mount(html`<${ChatFoot} s=${s} c=${recorder()} conv=${conv} autofocus=${false} />`)
+  const line = el.$('.handoff-status')
+  assert.equal(line.getAttribute('data-status'), 'result')
+  assert.match(line.text(), new RegExp(en.handoff.result('Nothing to do, the labels were merged already')))
+  const thread = mount(html`<${ChatThread} s=${s} c=${recorder()} conv=${conv} />`)
+  assert.match(thread.$('.qoutcome').text(), /Nothing to do, the labels were merged already/)
+})
+
+test('as cmux, Open the tab picks the tab room in the cockpit and the terminal is the second way', () => {
+  const { s, tab } = asksState({ rooms: { ...cockpitState(NOW).rooms, layout: 'workspaces' } })
+  const conv = s.quick.convs.find(x => x.id === 'q0000000003')
+  const c = recorder()
+  const el = mount(html`<${ChatFoot} s=${s} c=${c} conv=${conv} autofocus=${false} />`)
+  el.button(en.handoff.jump).click()
+  assert.deepEqual(c.calls.filter(x => ['setPage', 'pickRoom'].includes(x[0])), [['setPage', '@chat'], ['pickRoom', { kind: 'tab', id: tab.ref }]])
+  el.button(en.handoff.inTerminal).click()
+  assert.deepEqual(acts(c), [['act', 'tab_jump', { tab_ref: tab.ref }]])
+})
+
+test('in the Chat as cmux the questions stand on top, open and handed first, and all of them reaches the archive', async () => {
+  const { s } = asksState({ rooms: { ...cockpitState(NOW).rooms, layout: 'workspaces' } })
+  const c = recorder()
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const group = el.$('.room-asks')
+  assert.ok(group, 'the questions have a group of their own')
+  const heads = el.$$('h3').map(h => h.text())
+  assert.ok(heads.findIndex(h => h.includes(en.rooms.chats)) < heads.findIndex(h => h.includes(en.rooms.workspaces)), heads.join(' | '))
+  const rows = group.$$('.room-chat-row').map(r => r.text())
+  assert.match(rows[0], new RegExp(en.asks.mark.inTab))
+  assert.match(rows[1], new RegExp(en.asks.mark.done))
+  assert.ok(rows.findIndex(x => x.includes('What is new?')) > 1, rows.join(' | '))
+  // all: every question of the last days, the archived ones too, read once from the server
+  group.button(en.rooms.allAsks).click()
+  await settle()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'showAllAsks'), [['showAllAsks', true]])
+  const archived = cockpitState(NOW, { ...s, chatArchive: { status: 'ok', convs: [asked('q00000000a1', 'An old question from Monday', NOW - 3 * 24 * 60 * MIN, { why: 'expired' })] } })
+  const all = mount(html`<${Sidebar} s=${{ ...archived, ui: { ...archived.ui, asksAll: true } }} c=${recorder()} rooms=${roomsOf(archived)} here=${{ kind: 'chat' }} />`)
+  const old = all.$$('.room-asks .room-chat-row').find(r => r.text().includes('An old question from Monday'))
+  assert.ok(old, 'the archived question is listed')
+  assert.match(old.text(), new RegExp(en.asks.mark.archived))
 })
 
 // ---------------------------------------------------------------- the A2A agents page
@@ -2952,6 +3032,22 @@ test('background jobs: a row asked before shows that question and opens it, a ne
     assert.deepEqual(c.calls.at(-1), ['openAsk', 'g0000000002'])
     row.button(en.btnAskAgain).click()
     assert.deepEqual(c.calls.at(-1), ['ask', 'worker', { host: 'homebox', id: 'bot' }])
+  }
+})
+
+test('background jobs: a row whose question went on to a tab carries the marker every question list shows', async () => {
+  // the row and the question window agree (logic.js askMark): in its tab, then done once its item came back
+  const base = opsState({ runs: [hostRun('bot', 'homebox', 'high')], ui: { page: '@workers' } })
+  const handed = outcome => ({ ...rowChat('g0000000004', 'worker:homebox:bot', false), turns: [{ q: 'x', a: 'y' }],
+    handed: { to: 'tab', at_ms: NOW, status: 'started', inbox_id: 'i-bot', ...(outcome ? { outcome } : {}) } })
+  for (const [conv, word] of [[handed(null), en.asks.mark.inTab],
+    [handed({ text: 'Result: the bot runs', closed: true, at_ms: NOW, asks: false }), en.asks.mark.done],
+    [handed({ text: 'Question: restart it?', closed: false, at_ms: NOW, asks: true }), en.asks.mark.asksYou]]) {
+    const s = { ...base, quick: { ...(base.quick ?? {}), convs: [conv] } }
+    const row = mount(html`<${views.sessions.WorkersPage} s=${s} c=${recorder()} />`).$('.wrow')
+    await openRow(row)
+    assert.match(row.$('.wrow-detail').text(), new RegExp(word))
+    assert.ok(row.button(en.askOpenConv), 'the question stays one click away')
   }
 })
 

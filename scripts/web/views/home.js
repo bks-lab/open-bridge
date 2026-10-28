@@ -7,7 +7,7 @@ import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
-  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv,
+  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -112,12 +112,14 @@ export function ReturnChip({ s, rowKey }) {
 }
 
 /** A row's ask (a job of the workers page, a page row): the question it was asked last (logic.js rowConv) as
- *  question open or answered with Open, and ask again beside it; a row never asked has only ask */
+ *  question open or answered, or once handed on with the marker every question list shows (logic.js askMark:
+ *  in its tab, done, asks you), with Open, and ask again beside it; a row never asked has only ask */
 export function RowAsk({ s, c, rowKey, onAsk, variant = 'ghost', cls = 'act-quiet' }) {
   const t = T()
   const conv = rowConv(s.quick?.convs, rowKey)
   if (!conv) return html`<${Btn} size="xs" variant=${variant} cls=${cls} onClick=${onAsk}>${t.btnAsk}<//>`
-  return html`<${Chip} token=${conv.running ? 'info' : 'success'}>${conv.running ? t.askRunning : t.askAnswered}<//>
+  const mark = conv.running ? null : askMark(conv, s.tabs?.tabs)
+  return html`<${Chip} token=${conv.running ? 'info' : mark?.tone ?? 'success'}>${conv.running ? t.askRunning : mark ? t.asks.mark[mark.word] : t.askAnswered}<//>
     <${Btn} size="xs" variant="secondary" onClick=${() => c.openAsk(conv.id)}>${t.askOpenConv}<//>
     <${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${onAsk}>${t.btnAskAgain}<//>`
 }
