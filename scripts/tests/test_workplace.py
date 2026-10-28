@@ -1379,6 +1379,28 @@ def test_a_start_note_is_read_first_and_the_prompt_stays_ascii(lrepo, kind, mode
     assert wp.launch_prompt(kind, mode, item, "work/tasks/x/STATUS.md", start_note=True).isascii()
 
 
+@pytest.mark.parametrize("mode", ["go", "report"])
+def test_an_inbox_start_with_an_order_never_closes_on_its_own(mode):
+    """28.10.: a handed chat said "I want to analyse it more closely" and its tab closed the item after 31 s with
+    "nothing to do". With the person's sentence the tab notes its result and asks before closing; a close it proposes
+    is a question, a note that begins with 'Question:'. Without one the overtaken rule stays as it was."""
+    plain = wp.launch_prompt("inbox", mode, INBOX_ID)
+    noted = wp.launch_prompt("inbox", mode, INBOX_ID, start_note=True)
+    assert "close it without asking" in plain and "do not close the item on your own" not in plain
+    assert "do not close the item on your own" in noted and "a proposal to close is a question" in noted
+    assert f"python3 scripts/inbox.py note {INBOX_ID} 'Question: " in noted
+    # the order comes after the base prompt, so it wins where the two disagree
+    assert noted.index("close it without asking") < noted.index("do not close the item on your own")
+    assert noted.isascii()
+    # a task tab closes no inbox item: its start note prompt keeps its own words
+    assert "do not close the item" not in wp.launch_prompt("task", mode, "x", "work/tasks/x/STATUS.md", start_note=True)
+
+
+def test_the_go_prompt_marks_a_question_on_the_item():
+    """The cockpit tells a question from a result by its head (returns.py QUESTION_HEADS): the go prompt asks for it"""
+    assert "begin a question with 'Question:'" in wp.launch_prompt("inbox", "go", INBOX_ID)
+
+
 def test_launch_cli_takes_start_note(lrepo, capsys):
     # a dry run (no --yes) prints the plan with the command
     assert wp.main(["--root", str(lrepo), "launch", "--items", "payments-incident", "--mode", "go",

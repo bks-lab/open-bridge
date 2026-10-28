@@ -15,7 +15,9 @@ Where a start stands is read from what the Bridge already has, nothing is asked 
 - result    it left an answer: a filed inbox item (the tab's `filed_by`), a note on its inbox item
             written after the start (work/inbox/<id>/events/<UTC stamp>-...-note.yaml), or a note on its
             task since the day of the start, after the cockpit's own start line of that day, that begins
-            with the result head ("Result:", "Ergebnis:")
+            with the result head ("Result:", "Ergebnis:"). A newest note on its inbox item that begins with
+            the question head ("Question:", "Frage:") asks instead, also once its tab is gone, until its tab
+            works again or the item ends; the result then says `asks: true`
 - done      its inbox item was ended after the start (closed, executed, dropped, rejected), or its task
             moved to work/done/
 - lost      no tab, no answer, and the start is a while ago
@@ -49,6 +51,9 @@ SHOW_MAX = 12
 GRACE_MS = 3 * 60 * 1000        # a start without a tab counts as starting this long
 INBOX_ID_RE = re.compile(r"^\d{8}-\d{4}-[a-z0-9-]{1,80}\Z")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}\Z")
+CONV_RE = re.compile(r"^q[0-9a-f]{10}\Z")       # a quick chat (quick.py CONV_RE)
+# the person's own sentence for a start (actions_work.py start_noted), on the item before the agent reads it
+START_NOTE = "Start note:"
 STAMP_RE = re.compile(r"^(\d{8}T\d{6}Z)")
 ANSWER_VERBS = ("note", "close", "executed", "failed")
 MODES = ("go", "report", "context")
@@ -75,7 +80,8 @@ class Launches:
         atomic_write_json(self.path, {"v": 1, "launches": self._items})
 
     def record(self, entries: list) -> None:
-        """Keep the starts that ran: [{key, item, title, mode, model?, effort?, routed_by?, by?}], newest first"""
+        """Keep the starts that ran: [{key, item, title, mode, model?, effort?, routed_by?, by?, conv?}], newest first;
+        `conv` is the quick chat a start was handed on from, so its card leads back to that question"""
         now = self.clock()
         with self.lock:
             for e in entries:
@@ -85,7 +91,8 @@ class Launches:
                 self._items.insert(0, {"key": e["key"], "item": e["item"], "title": str(e.get("title") or e["item"])[:200],
                                        "mode": e.get("mode") if e.get("mode") in MODES else "go", "at_ms": now,
                                        # what the agent started with, when the cockpit chose it (launch.py)
-                                       **{k: e[k] for k in PICK_FIELDS if isinstance(e.get(k), str)}})
+                                       **{k: e[k] for k in PICK_FIELDS if isinstance(e.get(k), str)},
+                                       **({"conv": e["conv"]} if isinstance(e.get("conv"), str) and CONV_RE.match(e["conv"]) else {})})
             self._items = [x for x in self._items if now - float(x.get("at_ms") or 0) < KEEP_MS][:KEEP_MAX]
             self._save()
 
@@ -138,8 +145,8 @@ def inbox_answers(root: Path, item: str, since_ms: float) -> list:
             continue
         if isinstance(ev, dict) and ev.get("verb") in ANSWER_VERBS:
             text = ev.get("text") or ev.get("note") or ""
-            if ev["verb"] == "note" and str(text).strip().startswith(OWN_HEADS):
-                continue   # the cockpit's own start and "no word" lines, in any language, are no answer
+            if ev["verb"] == "note" and str(text).strip().startswith((*OWN_HEADS, START_NOTE)):
+                continue   # the cockpit's own start and "no word" lines, in any language, and the person's order are no answer
             out.append({"verb": ev["verb"], "text": str(text).strip()[:600], "at_ms": at})
     return out
 
@@ -265,8 +272,14 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
             done = task_done(root, item)
             if not result:
                 result = task_result(root, item, at)
+        if result and not done and result["kind"] == "note" and str(result.get("text") or "").startswith(QUESTION_HEADS):
+            result["asks"] = True
         if done:
             stage = "done"
+        elif result and result.get("asks") and not (tab and tab.get("state") == "working"):
+            stage = "asks"
+        elif result and result.get("asks"):
+            stage = "working"     # its tab took the question up again
         elif result:
             stage = "result"
         elif tab and tab.get("state") == "working":
@@ -278,6 +291,7 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
         else:
             stage = "lost"
         out.append({"key": x["key"], "item": item, "title": x.get("title") or item, "mode": x.get("mode", "go"), "at_ms": at,
+                    "conv": x.get("conv"),
                     "stage": stage, "in_briefing": x["key"] in rows,
                     "tab": {"ref": tab["ref"], "state": tab.get("state"), "since_ms": tab.get("since_ms"),
                             "last": str(tab.get("last") or "")[:300]} if tab else None,
@@ -288,6 +302,7 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
 LINES = {code: TABLES[code]["returns"] for code in TABLES}   # the words live in text.py
 OWN_HEADS = tuple(f"{w['head']}:" for w in LINES.values())
 RESULT_HEADS = tuple(f"{w['result']}:" for w in LINES.values())
+QUESTION_HEADS = tuple(f"{w['question']}:" for w in LINES.values())
 START_LINES = frozenset(f"{w['head']}: {w['start'].format(mode=w['mode'].get(mode, mode))}"
                          for w in LINES.values() for mode in MODES)
 

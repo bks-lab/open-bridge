@@ -4326,6 +4326,32 @@ test('handoffStatus finds the started tab by its inbox item', () => {
   assert.equal(logic.handoffStatus({ to: 'tab', at_ms: 1, status: 'starting', inbox_id: 'i1' }, [], tabs).word, 'starting')
 })
 
+test('handoffStatus reads what came back from the item: a result, a question, a close without a word', () => {
+  // 28.10.: the chat still said "arrived in the tab" after the tab had closed the item with its note
+  const tabs = [{ ref: 'surface:21', name: 'Fix the printer', item: 'i1' }]
+  const st = (outcome, t = []) => logic.handoffStatus({ to: 'tab', at_ms: 1, status: 'started', inbox_id: 'i1', outcome }, [], t)
+  assert.deepEqual(st({ text: 'Result: the bot runs', closed: true, at_ms: 5, asks: false }),
+    { word: 'result', tone: 'success', action: null, text: 'the bot runs', at_ms: 5 })
+  assert.deepEqual(st({ text: 'Question: close it?', closed: false, at_ms: 5, asks: true }, tabs),
+    { word: 'asks', tone: 'warning', action: 'jump', ref: 'surface:21', tab: 'Fix the printer', text: 'close it?', at_ms: 5 })
+  assert.equal(st({ text: 'Vendor wants 3.0', closed: false, at_ms: 5, asks: false }).tone, 'info')
+  assert.deepEqual(st({ text: '', closed: true, at_ms: 5, asks: false }), { word: 'closed', tone: 'success', action: null, text: '', at_ms: 5 })
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang].handoff
+    assert.match(t.result('x1'), /x1/)
+    assert.match(t.asks('x2'), /x2/)
+    assert.ok(t.closed)
+  }
+  assert.equal(text.TABLES.de.handoff.result('ok'), 'Ergebnis: ok')
+  assert.equal(text.TABLES.de.handoff.asks('ok?'), 'Fragt dich: ok?')
+})
+
+test('a start whose item note asks stays a question when its tab is gone, and works once its tab works again', () => {
+  const r = { key: 'inbox:i1', item: 'i1', at_ms: 1000, stage: 'asks', tab: null, result: { kind: 'note', text: 'Question: close it?', asks: true } }
+  assert.equal(logic.liveStage(r, [], 9e9), 'asks')
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:3', item: 'i1', state: 'working' }], 9e9), 'working')
+})
+
 test('ChatFoot never offers a one click control handoff', () => {
   const foot = readComponents().match(/function ChatFoot\([\s\S]*?\n\}/)[0]
   assert.doesNotMatch(foot, /to: 'control'/)

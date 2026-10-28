@@ -331,3 +331,40 @@ def test_a_start_keeps_who_decided_it_and_only_as_a_word(tmp_path):
     got = {x["key"]: x for x in returns.Launches(tmp_path / "state", clock).all()}
     assert got["task:alpha"]["by"] == "instruction"
     assert "by" not in got["task:beta"] and "by" not in got["task:gamma"]
+
+
+def test_a_note_that_asks_the_person_is_a_question_not_a_result(tmp_path):
+    """A note that begins with the question head (the prompt asks for 'Question:', German 'Frage:') stands as a
+    question of the start, also after its tab is gone; any other note is its result, and a close settles both"""
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    for i, (head, stage) in enumerate((("Question: close it, nothing left to do?", "asks"),
+                                       ("Frage: close it?", "asks"), ("Result: the vendor has it", "result"))):
+        event(tmp_path, ITEM, T0 + (2 + i) * MIN, "note", head)
+        out = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 10 * MIN)}
+        assert out[f"inbox:{ITEM}"]["stage"] == stage, head
+        assert out[f"inbox:{ITEM}"]["result"].get("asks", False) is (stage == "asks")
+    # its tab at work again: it took up the answer, the question is not the stage any more
+    event(tmp_path, ITEM, T0 + 6 * MIN, "note", "Question: and the old page?")
+    out = {x["key"]: x for x in returns.build(b.all(), [tab("working", item=ITEM)], {}, tmp_path, T0 + 10 * MIN)}
+    assert out[f"inbox:{ITEM}"]["stage"] == "working"
+    event(tmp_path, ITEM, T0 + 7 * MIN, "close", "closed on your word")
+    out = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 10 * MIN)}
+    assert out[f"inbox:{ITEM}"]["stage"] == "done" and "asks" not in out[f"inbox:{ITEM}"]["result"]
+
+
+def test_the_persons_start_note_is_no_answer(tmp_path):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    event(tmp_path, ITEM, T0 + MIN, "note", "Start note: I want to analyse it more closely")
+    out = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 2 * MIN)}
+    assert out[f"inbox:{ITEM}"]["stage"] == "started" and out[f"inbox:{ITEM}"]["result"] is None
+
+
+def test_a_start_keeps_the_chat_it_came_from(tmp_path):
+    clock = Clock(T0)
+    b = returns.Launches(tmp_path / "state", clock)
+    b.record([{"key": f"inbox:{ITEM}", "item": ITEM, "title": "T", "mode": "go", "conv": "q0123456789"},
+              {"key": "task:alpha", "item": "alpha", "title": "A", "mode": "go", "conv": "not a chat"}])
+    out = {x["key"]: x for x in returns.build(returns.Launches(tmp_path / "state", clock).all(), [], {}, tmp_path, T0)}
+    assert out[f"inbox:{ITEM}"]["conv"] == "q0123456789" and out["task:alpha"]["conv"] is None

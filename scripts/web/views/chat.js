@@ -122,10 +122,11 @@ export function ChatThread({ s, c, conv }) {
 }
 
 /** The status line of a chat handed on (logic.js handoffStatus) with the one step it offers: try again, open
- *  the tab it arrived in, or type it into the waiting control tab */
+ *  the tab it arrived in, or type it into the waiting control tab; once the item answered, what it said */
 function HandoffLine({ s, c, st, onRetry, relayId }) {
   const t = T()
-  const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : t.handoff[st.word]
+  const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : ['result', 'asks'].includes(st.word) ? t.handoff[st.word](short(st.text, 200))
+    : t.handoff[st.word]
   const action = st.action === 'retry' && onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.retry}</button>`
     : st.action === 'jump' && canTab(s, 'focus') ? html`<button type="button" class="btn-link small" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.jump}</button>`
     : st.action === 'ask_via_tab' && relayId ? html`<button type="button" class="btn-link small" onClick=${() => c.act('ask_via_tab', { relay_id: relayId })}>${t.handoff.askViaTab}</button>`

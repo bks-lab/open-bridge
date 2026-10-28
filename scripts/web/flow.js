@@ -62,7 +62,8 @@ export const FLOW_RETURN_MAX_MS = 4 * 3600000
 export const FLOW_QUADRANTS = ['now', 'plan', 'hand', 'drop']
 
 // the group a start of the return channel stands in by where it stands now: started and working run (Running now), a
-// done one is settled. `idle` (a quiet tab with no question, returns.py) counts as finished; a stage the page does
+// done one is settled, unless it ended with a note: that one stays with the finished to look at, until taken off
+// the list (28.10.). `idle` (a quiet tab with no question, returns.py) counts as finished; a stage the page does
 // not know falls to the tabs that ask, since its tab no longer works
 const STAGE_GROUP = { started: 'lane', working: 'lane', asks: 'asks', idle: 'result', result: 'result', lost: 'lost', done: null }
 
@@ -316,7 +317,7 @@ export function flowParts(s) {
       let stage = flowStage(r, allTabs, nowMs)
       // answered from here: it works again, as far as the page knows, until the next read of its tab
       if (stage === 'asks' && mine.length && !mine.some(asking)) stage = 'working'
-      const group = Object.hasOwn(STAGE_GROUP, stage) ? STAGE_GROUP[stage] : 'asks'
+      const group = stage === 'done' && r.result?.text ? 'result' : Object.hasOwn(STAGE_GROUP, stage) ? STAGE_GROUP[stage] : 'asks'
       if (!group || used.has(r.key)) continue
       const row = uni.get(r.key) ?? null
       const tab = tabOf(r.tab?.ref) ?? mine[0] ?? null
@@ -1066,7 +1067,7 @@ export function flowLive(x, s) {
 
 /** A start's result line without its own head word ("Result: ..." or "Ergebnis: ...", returns.py RESULT_HEADS): the
  *  card says Result above it already */
-export const resultText = text => String(text ?? '').replace(/^\s*(?:Result|Ergebnis)\s*:\s*/i, '')
+export const resultText = text => String(text ?? '').replace(/^\s*(?:Result|Ergebnis|Question|Frage)\s*:\s*/i, '')
 
 /** The short name of an issue, a pull request or a merge request by its address ("owner/repo#7"; one path segment
  *  before it gives "repo#7"); null for any other link */

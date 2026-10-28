@@ -3989,6 +3989,28 @@ def test_a_conversation_hands_on_to_an_agent_tab_or_the_control_session(world):
     assert writes(world)[1] == launch_argv(world, new_id, "go")
 
 
+def test_the_order_of_a_handoff_goes_as_a_start_note_the_tab_reads_first(world):
+    """28.10.: "I want to analyse it more closely" stood only at the end of the item's detail and the tab closed the
+    item after 31 s without asking. Now the order is the start note on the item and the launch says so (--start-note:
+    read it first, ask before closing, workplace.py); the start knows the chat it came from"""
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab", text="I want to analyse it more closely")
+    calls = writes(world)
+    assert world.runner.key(calls[0]) == "inbox.add"
+    assert calls[1] == I(world, "note", new_id, "--", "Start note: I want to analyse it more closely")
+    assert calls[2] == launch_argv(world, new_id, "go", "area", "--start-note")
+    assert world.app.launches.all()[0]["conv"] == conv
+    # without an order the launch is the one it was, and no note is written
+    world.clock.advance(20)
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab")
+    assert [world.runner.key(x) for x in writes(world)] == ["inbox.add", "workplace.launch"]
+    assert writes(world)[1] == launch_argv(world, new_id, "go")
+
+
 def test_a_long_order_on_a_long_conversation_reaches_the_end_whole_within_the_cap(world, monkeypatch):
     from lib.bridge_cockpit.actions import HANDOFF_MAX, HANDOFF_ORDER_MAX
     from lib.bridge_cockpit.text import EN
@@ -7186,6 +7208,12 @@ def test_a_handed_chat_leaves_with_its_inbox_item(world):
     world.clock.advance(QUIET)
     assert sweep(world) is False
     end_item(world, new_id, world.app.clock() - 60_000, "executed")
+    # a handed chat carries what came back, and stays cockpit.chat_keep_hours after the end to be read
+    sweep(world)
+    assert conv_of(world, conv)["handed"]["outcome"]["closed"] is True
+    world.clock.advance(23 * 3600)
+    assert sweep(world) is False and conv_of(world, conv)
+    world.clock.advance(3600)
     assert sweep(world) is True and conv_of(world, conv) is None
     # a chat that already has its row keeps that one when it is handed on
     row_conv = chat_on(world, "row", key=f"inbox:{YES2_ID}")
@@ -7207,7 +7235,45 @@ def test_an_info_chat_without_an_item_takes_the_item_it_is_handed_on_as(world):
     assert conv_of(world, conv)["about"] == {"kind": "handoff", "inbox": new_id}
     world.clock.advance(QUIET)
     end_item(world, new_id, world.app.clock() - 60_000, "executed")
+    world.clock.advance(24 * 3600)
     assert sweep(world) is True and conv_of(world, conv) is None
+
+
+def note_item(world, item, at_ms, text):
+    """A note event of an inbox item, the way inbox.py writes it"""
+    events = world.root / "work" / "inbox" / item / "events"
+    events.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.fromtimestamp(at_ms / 1000, dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (events / f"{stamp}-05-tab-note.yaml").write_text(f"verb: note\nby: tab\ntext: {json.dumps(text)}\n", encoding="utf-8")
+
+
+def test_a_handed_chat_learns_what_came_back_from_its_item(world):
+    """28.10.: the close note stood only on the closed item, the chat still said "arrived in the tab". The sweep reads
+    the item's events onto the chat (`handed.outcome`): the newest note, closed or open, and when; a question asks.
+    The person's own start note is no outcome"""
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("quick_handoff", conv=conv, to="tab", text="look closer")
+    now = world.app.clock()
+    note_item(world, new_id, now + 1000, "Start note: look closer")
+    world.clock.advance(60)
+    sweep(world)
+    assert "outcome" not in conv_of(world, conv)["handed"]
+    note_item(world, new_id, now + 30_000, "Question: close it, the bot runs fine?")
+    assert sweep(world) is True       # nothing left, but the pages are told what changed
+    out = conv_of(world, conv)["handed"]["outcome"]
+    assert out == {"text": "Question: close it, the bot runs fine?", "closed": False, "asks": True,
+                   "at_ms": out["at_ms"]} and abs(out["at_ms"] - (now + 30_000)) < 1000
+    assert sweep(world) is False      # read again, the same: nothing to tell
+    end_item(world, new_id, now + 50_000)
+    note_item(world, new_id, now + 49_000, "Result: the bot runs, nothing to change")
+    sweep(world)
+    out = conv_of(world, conv)["handed"]["outcome"]
+    assert out["closed"] is True and out["asks"] is False and out["text"] == "Result: the bot runs, nothing to change"
+    # kept: the quiet time counts from the end, and a handed chat stays a day after it
+    world.clock.advance(QUIET)
+    assert conv_of(world, conv)
 
 
 def test_settle_verbs_trigger_the_sweep_on_the_next_poll(world):
