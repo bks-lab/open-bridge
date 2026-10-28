@@ -262,6 +262,9 @@ const en = {
   btnNo: 'No',
   btnGoOn: '"Keep going"',
   btnCloseTab: 'Close tab',
+  // round 6d (views/detail.js TabClose): what stands behind a tab ends with it, or the tab alone; unseen answers ask first
+  btnDoneCloseTab: 'Done and close tab', btnCloseTabOnly: 'Close tab only',
+  closeTabSure: label => `${label}: sure?`, closeTabUnseen: 'Its answers have not been looked at here yet: a second click closes the tab',
   btnToTab: 'Go to tab',
   cardMore: 'more',
   cardLess: 'less',
@@ -1875,6 +1878,8 @@ const de = {
   btnNo: 'Nein',
   btnGoOn: '„Mach weiter“',
   btnCloseTab: 'Tab schließen',
+  btnDoneCloseTab: 'Erledigt und Tab schließen', btnCloseTabOnly: 'Nur Tab schließen',
+  closeTabSure: label => `${label}: sicher?`, closeTabUnseen: 'Seine Antworten hast du hier noch nicht angesehen: ein zweiter Klick schließt den Tab',
   btnToTab: 'Zum Tab',
   cardMore: 'mehr',
   cardLess: 'weniger',

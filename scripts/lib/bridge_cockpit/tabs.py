@@ -148,6 +148,7 @@ class TabPoller:
                     "idle": t.get("idle") is True and not is_control,
                     "is_control": is_control, "filed_by": filed["key"] if filed else None,
                     "settled": None if is_control else ret.tab_settled(self.app.root, t),
+                    "behind": None if is_control else ret.tab_behind(self.app.root, t),
                     "since_ms": int(seen.get("since_ms", 0)), "long": None if is_control else m.long_state(t, self.seen, now),
                     "ask": None if is_control or ask is None else dict(ask, options=[dict(o) for o in ask["options"]]),
                 })

@@ -2335,7 +2335,8 @@ def test_tab_jump_send_go_on_close(world):
                              W(world, "send", "surface:7", "--", "please continue"),
                              W(world, "send", "surface:13", "--", "Keep going."),
                              W(world, "close", "surface:8")]
-    for verb, ref in (("tab_go_on", "surface:8"), ("tab_close", "surface:13"), ("tab_send", "surface:12")):
+    # round 6d: any tab that neither works nor asks closes, so the refused close is one at work
+    for verb, ref in (("tab_go_on", "surface:8"), ("tab_close", "surface:11"), ("tab_send", "surface:12")):
         with pytest.raises(ActionError) as err:
             world.act(verb, tab_ref=ref, **({"text": "x"} if verb == "tab_send" else {}))
         assert err.value.code == "not_applicable"
@@ -5307,6 +5308,100 @@ def test_the_waiting_tab_of_an_executed_item_can_be_closed(world):
     world.runner.calls.clear()
     world.act("tab_close", tab_ref="surface:14")
     assert writes(world) == [W(world, "close", "surface:14")]
+
+
+def test_tab_behind_names_only_the_open_task_and_the_open_item(tmp_path):
+    from lib.bridge_cockpit.returns import tab_behind
+    item = "20261017-1238-some-item-abcd"
+    events = tmp_path / "work" / "inbox" / item / "events"
+    events.mkdir(parents=True)
+    task = tmp_path / "work" / "tasks" / "a-task"
+    task.mkdir(parents=True)
+    (task / "STATUS.md").write_text("x", encoding="utf-8")
+    stream = tmp_path / "work" / "streams" / "a-stream"
+    stream.mkdir(parents=True)
+    (stream / "STATUS.md").write_text("x", encoding="utf-8")
+    assert tab_behind(tmp_path, {"slug": "a-task", "item": item}) == {"task": "a-task", "item": item}
+    # a stream never ends, a task folder that is not there is nothing, a bad name is nothing
+    assert tab_behind(tmp_path, {"slug": "a-stream"}) is None
+    assert tab_behind(tmp_path, {"slug": "gone-task"}) is None
+    assert tab_behind(tmp_path, {"slug": "../x", "item": "../y"}) is None
+    assert tab_behind(tmp_path, {}) is None
+    # an item that ended is no longer behind the tab
+    (events / "20261017T105000Z-00-host-close.yaml").write_text("verb: close\n", encoding="utf-8")
+    assert tab_behind(tmp_path, {"slug": "a-task", "item": item}) == {"task": "a-task", "item": None}
+
+
+def tab_on(world, **fields):
+    """The workplace lists one more tab, waiting at its prompt (surface:20), polled at once"""
+    tab = {"name": "behind tab", "workspace": "Demo", "ref": "surface:20", "ws_ref": "workspace:2", "state": "waiting",
+           "id": "TAB-20", **fields}
+    world.runner.handlers["workplace.status"] = lambda argv: ok(STATUS + [tab])
+    world.app.tabs.poll()
+    return {t["ref"]: t for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+
+
+def test_the_tab_state_says_what_stands_behind_a_tab(world):
+    tabs = tab_on(world, slug="demo-task", item=YES_ID)
+    assert tabs["surface:20"]["behind"] == {"task": "demo-task", "item": YES_ID}
+    assert tabs["surface:13"]["behind"] is None             # wait-task has no folder under work/tasks/
+    assert tabs["surface:3"]["behind"] is None              # the control tab stands for nothing
+
+
+def test_tab_close_takes_any_quiet_tab_but_not_one_that_works_asks_or_is_the_control(world):
+    world.runner.calls.clear()
+    world.act("tab_close", tab_ref="surface:13")           # waiting, nothing filed, nothing settled
+    world.act("tab_close", tab_ref="surface:12")           # back at its shell
+    assert writes(world) == [W(world, "close", "surface:13"), W(world, "close", "surface:12")]
+    for ref in ("surface:11", "surface:7", "surface:3"):    # works, asks (a dialog), the control tab
+        with pytest.raises(ActionError) as err:
+            world.act("tab_close", tab_ref=ref)
+        assert err.value.code == "not_applicable", ref
+
+
+def test_tab_close_leaves_a_waiting_tab_that_asks_a_question(world):
+    world.runner.handlers["workplace.screen"] = lambda argv: ok({"text": "⏺ Shall I go on?\n"})
+    world.app.asks_enabled = True
+    world.app.tabs.poll()
+    assert world.app.tabs.asks_now().get("surface:13")
+    with pytest.raises(ActionError) as err:
+        world.act("tab_close", tab_ref="surface:13")
+    assert err.value.code == "not_applicable"
+
+
+def test_tab_done_closes_the_task_and_the_item_the_way_done_does_then_the_tab(world):
+    tab_on(world, slug="demo-task", item=YES_ID)
+    world.runner.calls.clear()
+    res = world.act("tab_done", tab_ref="surface:20")
+    calls = writes(world)
+    keys = [world.runner.key(c) for c in calls]
+    assert keys == ["task.close", "inbox.close", "workplace.close"], keys
+    # the same argv as Done of Work (settle, task.py close): status done, folder moved, board, log row
+    assert calls[0][:6] == K(world, "close", "demo-task")
+    assert calls[1][-2] == "--note" and calls[1][-1]
+    assert calls[2] == W(world, "close", "surface:20")
+    assert res["ok"] is True and "behind tab" in res["note"]
+
+
+def test_tab_done_keeps_the_tab_open_when_a_step_fails_and_says_which(world):
+    tab_on(world, slug="demo-task", item=YES_ID)
+    world.runner.handlers["task.close"] = lambda argv: fail("STATUS.md is locked")
+    world.runner.calls.clear()
+    res = world.act("tab_done", tab_ref="surface:20")
+    keys = [world.runner.key(c) for c in writes(world)]
+    assert "workplace.close" not in keys and "inbox.close" in keys     # each step is tried, the tab stays
+    assert res["ok"] is False and "behind tab" in res["note"] and world.row("task:demo-task")["title"] in res["note"]
+
+
+def test_tab_done_needs_something_behind_the_tab(world):
+    tab_on(world)
+    with pytest.raises(ActionError) as err:
+        world.act("tab_done", tab_ref="surface:20")
+    assert err.value.code == "not_applicable"
+    for ref in ("surface:11", "surface:3"):                   # a tab at work, the control tab
+        with pytest.raises(ActionError) as err:
+            world.act("tab_done", tab_ref=ref)
+        assert err.value.code == "not_applicable", ref
 
 
 # ---------------------------------------------------------------- the model an agent starts with (launch.py)

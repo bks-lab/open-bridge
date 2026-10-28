@@ -964,6 +964,59 @@ test('a start that ended with a note stays a card to look at, with its note and 
   assert.equal(text.TABLES.de.flow.kind.done, 'Zum Ansehen')
 })
 
+// ---------------------------------------------------------------- round 6d: Close tab on every point with a tab
+
+test('28.10.: a finished start whose item already left the list still closes its tab', () => {
+  // the tab closed its item itself; under Work only To tab, View and Forget stood there (flowside.js FinishedActs)
+  const ID = '20261028-0736-telegram-bot-b257'
+  const done = { key: `inbox:${ID}`, item: ID, title: 'Telegram bot job', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'done', in_briefing: false,
+    tab: { ref: 'surface:21' }, result: { kind: 'close', text: 'Result: the bot runs, nothing to change', key: null, at_ms: NOW - MIN } }
+  const tab = { ref: 'surface:21', name: 'inbox-telegram-bot', item: ID, state: 'waiting', settled: 'item', behind: null, since_ms: NOW - 20 * MIN }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ tabs: [tab], returns: [done] }))} c=${c} />`)
+  const can = el.$('.flow-aside .flow-can')
+  assert.ok(can.$('.tab-close'), 'the one close of a tab')
+  assert.deepEqual(can.$('.tab-close').$$('button').map(b => b.text()), [en.btnCloseTab], 'nothing open behind it: the tab alone')
+  can.$('.tab-close').$$('button')[0].click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'tab_close', { tab_ref: 'surface:21' }])
+})
+
+test('a finished start with its task behind the tab: Done and close the tab ends both on the server, Close tab only beside it', () => {
+  const row = task('fin')
+  const live = { ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', behind: { task: 'fin', item: null }, since_ms: NOW - 25 * MIN }
+  const c = recorder()
+  const s = cockpitState(NOW, state({ work: [row], tabs: [live],
+    returns: [startOf('fin', 'result', { tab: { ref: 'surface:10' }, result: { kind: 'note', text: 'Result: nothing to do', key: null, at_ms: null } })] }))
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const can = el.$$('.flow-aside .flow-can button')
+  assert.equal(can.filter(b => b.text() === en.flow.doneClose).length, 1, 'one Done')
+  assert.ok(can.some(b => b.text() === en.btnCloseTabOnly))
+  assert.ok(!can.some(b => b.text() === en.btnDoneCloseTab), 'the bar holds the Done')
+  can.find(b => b.text() === en.flow.doneClose).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'act').at(-1), ['act', 'tab_done', { tab_ref: 'surface:10' }])
+})
+
+test('a point whose tab waits at its prompt: its close stands with the tab ways, and Done once where the close ends the point', () => {
+  const tab = { ref: 'surface:12', name: 'a research', slug: 'a', state: 'waiting', behind: { task: 'a', item: null }, since_ms: NOW - 14 * MIN }
+  const s = pointState({ rows: [task('a', { area: 'Ops' })], tabs: [tab] })
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  const can = el.$$('.flow-aside .flow-can button').map(b => b.text())
+  assert.ok(can.includes(en.btnDoneCloseTab) && can.includes(en.btnCloseTabOnly), can.join(' | '))
+  assert.ok(!can.includes(en.flow.verbs.done), can.join(' | '))
+  // at work it neither closes nor loses its Done
+  const busy = mount(html`<${FlowPage} s=${pointState({ rows: [task('a', { area: 'Ops' })], tabs: [{ ...tab, state: 'working' }] })} c=${recorder()} />`)
+  assert.ok(!busy.$('.flow-aside .tab-close'))
+  assert.ok(busy.$$('.flow-aside .flow-can button').some(b => b.text() === en.flow.verbs.done))
+})
+
+test('Running now: an entry of the strip holds the same close (a session card holds it through its tab controls)', () => {
+  const tab = { ref: 'surface:12', name: 'a research', slug: 'a', state: 'waiting', idle: true, since_ms: NOW - 14 * MIN }
+  const lane = [{ group: 'doing', lane: true, id: 'tab:surface:12', kind: 'tab', row: task('a'), tab, stage: 'idle', how: 'tab', title: 'a', at: NOW - MIN }]
+  const s = cockpitState(NOW, state({ work: [task('a')], tabs: [tab] }))
+  const el = mount(html`<${views.flowrun.RunningStrip} lane=${lane} s=${s} c=${recorder()} />`)
+  assert.ok(el.$('.flow-runstrip-acts .tab-close'))
+})
+
 test('Improve: words to the tab while it lives (tab_send through the reply guard), else a new start with them', async () => {
   const row = task('fin')
   const live = { ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', since_ms: NOW - 25 * MIN }

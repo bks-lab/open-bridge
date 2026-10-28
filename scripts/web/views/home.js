@@ -13,7 +13,7 @@ import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
 import { GuideCard, guideTabs } from './guide.js'
 import { TabCard } from './tabs.js'
-import { DayPages, DayView } from './detail.js'
+import { DayPages, DayView, TabClose } from './detail.js'
 import { PageBadge } from './header.js'
 import {
   AGENTS_PAGE, ASK_MAX, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle,
@@ -70,7 +70,8 @@ export function ReturnCard({ r, s, c }) {
   const ago = duration((s.now || Date.now()) - r.at_ms)
   const tab = (s.tabs?.tabs ?? []).find(x => x.ref === r.tab?.ref) ?? null
   const row = indexRows(s.model).get(r.key)
-  // settled (its item closed, its task done) and its tab only waits: the tab can go
+  // settled (its item closed, its task done) and its tab only waits: the tab can go, its close leads; any other tab
+  // that neither works nor asks closes too (TabClose), less loudly
   const closable = r.live === 'done' && tab && !tab.is_control && tab.state === 'waiting' && canTab(s, 'close')
   return html`<article class=${`rcard tk-${stageTone(r.live)}`}>
     <header class="rcard-head">
@@ -87,8 +88,7 @@ export function ReturnCard({ r, s, c }) {
     ${r.live === 'lost' ? html`<p class="rcard-answer"><span class="label-caps">${h.returnStage.lost}</span> ${h.returnLostHint}</p>` : null}
     ${closable ? html`<p class="small"><${StateLine} token="success" word=${h.returnSettled} /></p>` : null}
     <div class="hcard-acts">
-      ${closable ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[tab.ref]}
-        onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>` : null}
+      ${tab ? html`<${TabClose} tab=${tab} s=${s} c=${c} strong=${closable} />` : null}
       ${r.result?.key ? html`<${Btn} size="xs" variant=${closable ? 'secondary' : 'primary'} onClick=${() => c.openItem(r.result.key, null)}>${h.returnOpenAnswer}<//>` : null}
       ${tab ? html`<${Btn} size="xs" variant=${r.result?.key || closable ? 'secondary' : 'primary'} onClick=${() => jumpToTab(s, c, tab.ref)}>${h.toTab}<//>
         <${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${h.view}<//>` : null}

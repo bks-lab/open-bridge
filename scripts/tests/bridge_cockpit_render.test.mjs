@@ -26,6 +26,11 @@ const MIN = 60000
 
 const tabOf = (s, ref) => s.tabs.tabs.find(t => t.ref === ref)
 const labels = el => el.$$('button').map(b => b.text())
+const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+/** Waits for an effect with a bounded loop of ticks (slow runners take more than one) */
+async function until(done, n = 100) {
+  for (let i = 0; i < n && !done(); i++) await tick()
+}
 
 /** One start in the return channel, in the shape the server sends (model.returns) */
 function start(over = {}) {
@@ -77,7 +82,8 @@ test('return card: an answer shows its text and opens as the first way on, the t
   const answer = { text: 'Three labels renamed, two merged.', key: 'inbox:20261009-1130-result-0f0f' }
   const { el, c } = renderReturn(start({ stage: 'result', result: answer }))
   assert.equal(el.$('.rcard-answer').text(), `${en.home.returnAnswer} ${answer.text}`)
-  assert.equal(el.button(en.btnCloseTab), null)
+  // round 6d: its tab only waits, so it can close too, less loudly than the answer
+  assert.ok(el.button(en.btnCloseTab)?.hasClass('btn-secondary'), labels(el).join(' | '))
   const open = el.button(en.home.returnOpenAnswer)
   assert.ok(open.hasClass('btn-primary'))
   assert.ok(el.button(en.home.toTab).hasClass('btn-secondary'))
@@ -141,6 +147,7 @@ test('tab controls, slim: a tab that asks offers yes and no, and yes reaches the
 })
 
 test('tab controls, slim: a waiting tab goes on; once its start settled, or it settled on its own, it closes', () => {
+  // it asks a question: it goes on, its close waits until it settled
   assert.deepEqual(labels(renderControls('surface:12').el), [en.btnGoOn])
   const settledByStart = renderControls('surface:12', { returns: [start({ stage: 'done', tab: { ref: 'surface:12' } })] })
   assert.deepEqual(labels(settledByStart.el), [en.btnCloseTab])
@@ -209,9 +216,51 @@ test('session card: a session whose tab asks is loud, reads the full tab and ans
 })
 
 test('session card: a tab settled on its own says so and offers to close', () => {
-  const { el } = renderSession('d8db96ad', {}, { ref: 'surface:7', state: 'waiting', settled: 'item' })
+  const { el } = renderSession('d8db96ad', {}, { ref: 'surface:7', state: 'waiting', settled: 'item', ask: null })
   assert.match(el.text(), new RegExp(en.tabSettled.item.slice(0, 20)))
   assert.deepEqual(el.$('.sess-foot').$$('button').map(b => b.text()), [en.btnCloseTab])
+})
+
+// ---------------------------------------------------------------- TabClose (round 6d): one close of a tab in every place
+
+test('tab close: a tab with a task and an item behind it offers Done and close tab first, Close tab only beside it', () => {
+  const { el, c } = renderControls('surface:13', { tab: { ask: null, behind: { task: 'demo-task', item: '20261009-0910-tidy-labels-c3d4' } } })
+  assert.deepEqual(labels(el), [en.btnGoOn, en.btnDoneCloseTab, en.btnCloseTabOnly])
+  assert.ok(el.button(en.btnDoneCloseTab).hasClass('btn-primary'))
+  assert.ok(el.button(en.btnCloseTabOnly).hasClass('btn-secondary'))
+  el.button(en.btnDoneCloseTab).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'tab_done', { tab_ref: 'surface:13' }])
+})
+
+test('tab close: unseen answers ask first, a second click closes, a settled tab closes at once', async () => {
+  const { el, c } = renderControls('surface:13', { tab: { ask: null } })
+  const close = () => el.$('.tab-close').$$('button')[0]
+  assert.equal(close().text(), en.btnCloseTab)
+  close().click()
+  await until(() => close().text() === en.closeTabSure(en.btnCloseTab))
+  assert.equal(close().text(), en.closeTabSure(en.btnCloseTab))
+  assert.equal(close().getAttribute('title'), en.closeTabUnseen)
+  assert.equal(c.calls.filter(x => x[0] === 'act').length, 0)
+  close().click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'tab_close', { tab_ref: 'surface:13' }])
+  const settled = renderControls('surface:13', { tab: { ask: null, settled: 'item' } })
+  settled.el.button(en.btnCloseTab).click()
+  assert.deepEqual(settled.c.calls.at(-1), ['act', 'tab_close', { tab_ref: 'surface:13' }])
+})
+
+test('tab close: a tab at work, one that asks and the control tab offer no close', () => {
+  for (const [ref, patch] of [['surface:8', {}], ['surface:12', {}], ['surface:7', {}], ['surface:3', { settled: 'item' }]]) {
+    assert.ok(!renderControls(ref, { tab: patch }).el.$('.tab-close'), ref)
+    assert.ok(!renderControls(ref, { slim: false, tab: patch }).el.$('.tab-close'), ref)
+  }
+})
+
+test('tab close: the full controls, the return card and a session card hold the same one close', () => {
+  assert.ok(renderControls('surface:13', { slim: false, tab: { ask: null } }).el.$('.tab-close'), 'full controls')
+  const card = renderReturn(start({ stage: 'result', tab: { ref: 'surface:10' }, result: { text: 'Done.', key: null } }))
+  assert.ok(card.el.$('.tab-close'), 'a return card whose answer came back')
+  const sess = renderSession('d8db96ad', {}, { ref: 'surface:7', state: 'waiting', ask: null })
+  assert.ok(sess.el.$('.sess-foot .tab-close'), 'a session card')
 })
 
 test('session card: the control session shows its chips, its running agents and its workflow', () => {
@@ -603,10 +652,17 @@ test('an answer sent from the open tab goes on to the next one, a jump to the te
 test('the open tab can be closed from its head, and the walk goes on', async () => {
   const c = recorder()
   const cc = new Proxy(c, { get: (o, p) => (p === 'act' ? async (...a) => { o.calls.push(['act', ...a]); return { ok: true } } : o[p]) })
-  const el = tabPane('surface:13', cc)
-  el.$('.rooms-main .tabview-head').button(en.btnCloseTab).click()
-  await tick()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'act' || x[0] === 'walkTab'), [['act', 'tab_close', { tab_ref: 'surface:13' }], ['walkTab', 'surface:7']])
+  // round 6d: the one close of every place (TabClose); a tab with a draft in its prompt asks and keeps it
+  assert.ok(!tabPane('surface:13', cc).$('.rooms-main .tabview-head .tab-close'))
+  const el = tabPane('surface:10', cc)
+  const close = () => el.$('.rooms-main .tabview-head .tab-close').$$('button')[0]
+  assert.equal(close().text(), en.btnCloseTab)
+  close().click()
+  await until(() => close().text() === en.closeTabSure(en.btnCloseTab))
+  assert.equal(c.calls.filter(x => x[0] === 'act').length, 0, 'its filed result is not seen yet: a second click')
+  close().click()
+  await until(() => c.calls.some(x => x[0] === 'walkTab'))
+  assert.deepEqual(c.calls.filter(x => x[0] === 'act' || x[0] === 'walkTab'), [['act', 'tab_close', { tab_ref: 'surface:10' }], ['walkTab', 'surface:12']])
 })
 
 test('the answer that tells a session to keep going says so, it is never read as the way to the next tab', () => {
@@ -632,7 +688,17 @@ test('a click anywhere in a waiting row opens its tab, its buttons keep their ow
 const { TabReply } = views.reply
 const replyRows = el => el.$$('.reply-group .reply-row')
 const replyRow = (el, name) => replyRows(el).find(r => r.$('.reply-name').text() === name) ?? null
-const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+
+test('the sidebar: a line of Waiting for you closes its tab once it asks nothing, with the one close of every place', () => {
+  const s = cockpitState(NOW, { guide: null })
+  s.tabs = { ...s.tabs, tabs: s.tabs.tabs.map(t => (t.ref === 'surface:12' ? { ...t, ask: null } : t)) }
+  const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const rows = el.$$('.reply-group .reply-row')
+  const quiet = rows.find(r => r.$('.reply-name').text() === 'demo-task research')
+  assert.ok(quiet?.$('.tab-close'), 'a waiting tab that asks nothing')
+  const asking = rows.find(r => r.$('.reply-name').text() === 'alpha-release')
+  assert.ok(asking && !asking.$('.tab-close'), 'a dialog keeps its question')
+})
 
 test('the sidebar shows Waiting for you with the question and option buttons', () => {
   // without the decision guide: the question as read off the screen (with it, see the guide tests below)

@@ -637,6 +637,7 @@ def test_the_undo_of_a_task_closed_in_review_parses_with_task_py(tmp_path):
 STATE_FIELDS = {
     "sessions.sessions[].tab.ws_ref": (str, type(None)),
     "tabs.tabs[].ask": (dict, type(None)),
+    "tabs.tabs[].behind": (dict, type(None)),       # the open task and inbox item behind a tab (returns.py)
     "tabs.tabs[].state_source": (str, type(None)),   # hook | glyph where the driver says, else None
     "agents.keep_hours": (int, float),                # A2A conversations untouched this long leave (0: never)
     "quick.convs[].about": (dict, type(None)),        # the row or item a chat is about; None for a free one

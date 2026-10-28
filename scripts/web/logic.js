@@ -1735,17 +1735,40 @@ export function railOn(s, hidden = s?.ui?.railHidden) {
   return railShown(s?.ui?.page, s?.rooms?.layout, hidden) && !(s?.ui?.page === 'briefing' && workViewIn(s) === 'flow')
 }
 
+/** Whether a tab may close (round 6d): it neither works nor asks (waiting at its prompt with no question or draft
+ *  read off its screen, or back at its shell; a settled one asks nothing any more, as the server's quiet rule has
+ *  it), it is no control tab, and the driver closes tabs; `can(right)` as canTab. The server holds the same rule
+ *  (actions_tabs.py closable) */
+export function tabCloses(tab, can, settled = false) {
+  return !!tab && !tab.is_control && (tab.state === 'waiting' || tab.state === 'shell') && !(tab.ask && !settled && !tab.settled)
+    && can('close')
+}
+
+/** The close of a tab wherever a point or a card has one (views/detail.js TabClose), null where it may not close
+ *  (tabCloses). `done`: an open task or inbox item stands behind it (the server's `behind`), so Done and close the
+ *  tab leads and Close tab only stands beside it; `unseen`: nothing behind it is settled yet (its item closed, its
+ *  task done, here or by its start), so its answers may be unread and a close asks first; `keys` the row keys of
+ *  what stands behind it */
+export function tabCloseOffer(tab, s) {
+  const settled = !!tab?.settled || (!!tab && settledRefs(s?.model?.returns, s?.tabs?.tabs, s?.now || Date.now()).has(tab.ref))
+  if (!tabCloses(tab, v => canTab(s, v), settled)) return null
+  const keys = [tab.behind?.task ? `task:${tab.behind.task}` : null, tab.behind?.item ? `inbox:${tab.behind.item}` : null].filter(Boolean)
+  return { done: keys.length > 0, unseen: !settled, keys }
+}
+
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab
  *  that filed its result or whose start is settled, else go to the tab; `can(right)` says what this cockpit
- *  may do with a tab (canTab) */
+ *  may do with a tab (canTab). Round 6d: a tab that may close (tabCloses) offers the close beside going on or
+ *  going to it, so `close` stands for the one close of every place (views/detail.js TabClose) */
 export function tabNextStep(tab, can, settled = false) {
   const own = !tab.is_control
   const finished = !!tab.filed_by || settled
+  const closes = tabCloses(tab, can, settled)
   if (tab.state === 'needs-you' && can('key')) return ['yes', 'no']
-  if (tab.state === 'waiting' && own && finished && can('close')) return ['close']
-  if (tab.state === 'waiting' && own && !tab.filed_by) return ['go_on']
-  if (can('focus')) return ['jump']
-  return can('screen') ? ['view'] : []
+  if (tab.state === 'waiting' && own && finished && closes) return ['close']
+  if (tab.state === 'waiting' && own && !tab.filed_by) return closes ? ['go_on', 'close'] : ['go_on']
+  const way = can('focus') ? ['jump'] : can('screen') ? ['view'] : []
+  return closes ? [...way, 'close'] : way
 }
 
 /** The time a page section names beside its title: only when its source measured at another time than
