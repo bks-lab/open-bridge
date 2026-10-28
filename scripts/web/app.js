@@ -18,7 +18,7 @@ import {
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, ghFilterKept,
-  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS,
+  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -102,6 +102,12 @@ function loadGhFilter() {
   } catch {
     return {}
   }
+}
+
+/** The room of the Chat this viewer had open last (round 6d C3, views/nav.js keeps it on every pick), marked as
+ *  kept: one that is gone by now shows the chat (logic.js roomShown). A convenience, never state */
+function lastRoom() {
+  return roomKept(load('bridge-cockpit.chatRoom', null))
 }
 
 /** The last question this viewer opened (round 6d), so a reload and the header's Ask find it again; a
@@ -203,7 +209,7 @@ const store = createStore({
     // under their board, both kept in this browser
     ghFilter: loadGhFilter(), ghGroup: load('bridge-cockpit.ghGroup', 'on') !== 'off',
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
-    busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: lastAsk(), asksAll: false, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
+    busy: {}, snapshotText: null, openMsg: null, tabView: null, room: lastRoom(), quickConv: lastAsk(), asksAll: false, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
     chatArea: load('bridge-cockpit.chatArea', 'work') === 'a2a' ? 'a2a' : 'work',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
@@ -1497,6 +1503,12 @@ const ctl = {
     if (await act('inbox_unmute', { id })) ctl.loadNoise()
   },
   openAsk: conv => setUi(ui => ({ tabView: '@ask', openMsg: null, quickConv: conv === undefined ? ui.quickConv : conv })),
+  // the header's Ask on the Chat (round 6d C4): no window over the chat already open, the cursor goes into its field;
+  // as cmux the chat comes to the right side first
+  askHere: () => {
+    if (chatAsWorkspaces(store.get()) && store.get().ui.room?.kind !== 'chat') ctl.pickRoom({ kind: 'chat' })
+    setTimeout(() => document.getElementById('quick-input')?.focus(), 0)
+  },
   // the chat as a tab of its own: the open conversation goes along, the window closes
   chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi({ page: CHAT_PAGE, tabView: null, pageDetail: false }) },
   pickQuick: conv => setUi({ quickConv: conv }),

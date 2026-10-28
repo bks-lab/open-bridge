@@ -1234,7 +1234,7 @@ test('the chat decides per message: ask (read only) or solve it in a real Claude
   assert.match(box, /e\.metaKey \|\| e\.ctrlKey/)                                   // Cmd or Ctrl Enter takes the second way
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang]
-    for (const k of ['chatAsk', 'chatSolve', 'chatSolveTitle', 'chatSolveHint']) assert.ok(t[k], `${lang} ${k}`)
+    for (const k of ['chatAsk', 'chatSolve', 'chatSolveTitle']) assert.ok(t[k], `${lang} ${k}`)
   }
 })
 
@@ -4274,44 +4274,117 @@ test('apply is disabled until one item is ticked', () => {
   assert.equal(t.canApply({ 'ws_color:workspace:2': true }, null), false)
 })
 
-// ---------------------------------------------------------------- the chat: route chip, situation, handoff status (package 5)
+// ---------------------------------------------------------------- the chat: one field, two fixed buttons (round 6d C4), handoff status (package 5)
 
-const routeTo = t => logic.routeOf(t).to
-
-test('routeOf sends a trailing question mark and question words to the quick chat', () => {
-  for (const q of ['Is the build green?', 'what waits for me', 'Wie viele Agenten laufen gerade', 'Gibt es offene Reviews',
-    'Warum hängt der Test', 'Fix the build?', 'which tabs wait']) {
-    assert.deepEqual([q, routeTo(q)], [q, 'quick'])
-  }
-  assert.equal(logic.routeOf('what waits for me').by, 'words')
-  assert.equal(logic.routeOf('Fix the build?').by, 'words')
-})
-
-test('routeOf sends German and English imperatives to an agent tab', () => {
-  for (const q of ['Fix the flaky test in the demo repo', 'Create a task for the release', 'Set up the new board',
-    'Mach den Release fertig', 'Bitte erstelle eine Aufgabe für das Review', 'Leg eine Aufgabe für den Bericht an',
-    'Räum die alten Tabs auf', 'Ändere den Titel', 'Benenn den Tab um', 'Richte das Board ein', 'please refactor the parser']) {
-    assert.deepEqual([q, routeTo(q)], [q, 'tab'])
-    assert.equal(logic.routeOf(q).by, 'words')
-  }
-})
-
-test('routeOf sends unclear text to the quick chat', () => {
-  for (const q of ['the release notes', 'Bericht von gestern', 'hello', '   ']) {
-    assert.deepEqual([q, logic.routeOf(q).to, logic.routeOf(q).by], [q, 'quick', 'default'])
-  }
-})
-
-test('routeOf honours ? and ! prefixes and strips them', () => {
-  assert.deepEqual(logic.routeOf('? fix the build'), { to: 'quick', by: 'prefix', text: 'fix the build' })
-  assert.deepEqual(logic.routeOf('!what is open'), { to: 'tab', by: 'prefix', text: 'what is open' })
-  assert.deepEqual(logic.routeOf('  Mach den Release  '), { to: 'tab', by: 'words', text: 'Mach den Release' })
-  // the word lists are language data, the same keys in both languages
+test('6d C4: the chat no longer guesses a route: no routeOf, no route word lists, no hint under the field', () => {
+  assert.equal(logic.routeOf, undefined)
   for (const lang of ['en', 'de']) {
-    const r = text.TABLES[lang].route
-    assert.ok(Array.isArray(r.orderWords) && r.orderWords.length >= 10, lang)
-    assert.ok(Array.isArray(r.questionWords) && r.questionWords.length >= 10, lang)
+    const t = text.TABLES[lang]
+    assert.equal(t.route, undefined, lang)
+    assert.equal(t.chatSolveHint, undefined, lang)
+    assert.ok(t.chatPlaceholder && !/Cmd|Ctrl|Enter/.test(t.chatPlaceholder), lang)
   }
+  assert.equal(text.TABLES.de.chatPlaceholder, 'Frage oder Auftrag')
+  assert.equal(text.TABLES.de.chatAsk, 'Fragen')
+  assert.equal(text.TABLES.de.chatSolve, 'AI machen lassen')
+})
+
+// ---------------------------------------------------------------- the questions kept a week (round 6d C1)
+
+test('6d C1: the questions say how long they stay, in days from a day on, else in hours, and nothing when kept for good', () => {
+  const de = text.TABLES.de.asks.kept
+  const en = text.TABLES.en.asks.kept
+  assert.equal(de(168), 'Fragen bleiben 7 Tage in der Liste, danach stehen sie im Archiv.')
+  assert.equal(en(24), 'Questions stay in the list for 1 day, then they stand in the archive.')
+  assert.equal(en(36), 'Questions stay in the list for 36 hours, then they stand in the archive.')
+  assert.equal(de(1), 'Fragen bleiben 1 Stunde in der Liste, danach stehen sie im Archiv.')
+  assert.equal(de(0), 'Fragen bleiben in der Liste, bis du sie entfernst.')
+  assert.equal(logic.keepHoursOf({ keep_hours: 168 }), 168)
+  assert.equal(logic.keepHoursOf({}), 24, 'the server default (config.py chat_keep_hours)')
+  assert.equal(logic.keepHoursOf(null), 24)
+})
+
+// ---------------------------------------------------------------- the Chat opens where you were (round 6d C3)
+
+test('6d C3: the room kept in this browser is read back only in its known shapes', () => {
+  assert.deepEqual(logic.roomKept('{"kind":"tab","id":"surface:12"}'), { kind: 'tab', id: 'surface:12', kept: true })
+  assert.deepEqual(logic.roomKept('{"kind":"chat"}'), { kind: 'chat', kept: true })
+  assert.deepEqual(logic.roomKept('{"kind":"ws","id":"workspace:2"}'), { kind: 'ws', id: 'workspace:2', kept: true })
+  for (const bad of [null, '', 'surface:12', '{"kind":"tab"}', '{"kind":"door","id":"x"}', '[1]', '{"kind":"tab","id":5}',
+    JSON.stringify({ kind: 'tab', id: 'x'.repeat(300) })]) {
+    assert.equal(logic.roomKept(bad), null, String(bad))
+  }
+  // what is written is the room without its mark
+  assert.equal(logic.roomToKeep({ kind: 'tab', id: 'surface:12', kept: true }), '{"kind":"tab","id":"surface:12"}')
+  assert.equal(logic.roomToKeep({ kind: 'chat' }), '{"kind":"chat"}')
+  assert.equal(logic.roomToKeep(null), null)
+})
+
+test('6d C3: a kept room that is gone gives way to the chat, a room picked by hand keeps saying it is closed', () => {
+  const tabs = { tabs: [{ ref: 'surface:7', name: 'a', state: 'waiting' }] }
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:9', kept: true } }, tabs }), { kind: 'chat' })
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:7', kept: true } }, tabs }), { kind: 'tab', id: 'surface:7', kept: true })
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:9' } }, tabs }), { kind: 'tab', id: 'surface:9' })
+  // before the first list of tabs nothing is known gone yet
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:9', kept: true } }, tabs: null }), { kind: 'tab', id: 'surface:9', kept: true })
+  assert.deepEqual(logic.roomShown({ ui: { room: null } }), { kind: 'chat' })
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'ws', id: 'workspace:9', kept: true } }, tabs: { ...tabs, workspaces: [] } }), { kind: 'chat' })
+})
+
+test('6d C3: with nothing kept the Chat picks once: an open or freshly answered question, else the first tab that wants you', () => {
+  const now = 1_000_000_000
+  const conv = (id, ago, a = 'An answer.') => ({ id, started_ms: now - ago, last_ms: now - ago, running: false, turns: [{ q: `q ${id}`, a, error: null }] })
+  const waiting = { tabs: [{ ref: 'surface:3', is_control: true, state: 'waiting' }, { ref: 'surface:7', name: 'x', state: 'needs-you', since_ms: now - 60000 }] }
+  const s = (convs, tabs = waiting) => ({ now, quick: { convs, keep_hours: 168 }, tabs, model: null, ui: { room: null, quickConv: null } })
+  assert.deepEqual(logic.chatLanding(s([conv('q0000000001', 5 * 60000)]), 'en'), { room: { kind: 'chat' }, conv: 'q0000000001' })
+  assert.deepEqual(logic.chatLanding(s([conv('q0000000002', 3 * 3600000, null)]), 'en'), { room: { kind: 'chat' }, conv: 'q0000000002' })
+  // answered long ago: the tab that wants you comes first
+  assert.deepEqual(logic.chatLanding(s([conv('q0000000003', 3 * 3600000)]), 'en'), { room: { kind: 'tab', id: 'surface:7' }, conv: null })
+  assert.equal(logic.chatLanding(s([], { tabs: [] }), 'en'), null)
+  // something kept or picked already: no landing
+  assert.equal(logic.chatLanding({ ...s([conv('q0000000001', 60000)]), ui: { room: { kind: 'chat' }, quickConv: null } }, 'en'), null)
+  assert.equal(logic.chatLanding({ ...s([conv('q0000000001', 60000)]), ui: { room: null, quickConv: 'q0000000001' } }, 'en'), null)
+})
+
+// ---------------------------------------------------------------- where a tab came from (round 6d C5)
+
+test('6d C5: a tab names what it came from: the question it was handed on from, a job, an inbox item or a task', () => {
+  const conv = { id: 'q00000000c5', started_ms: 1, last_ms: 2, running: false, turns: [{ q: 'Why did the bot fail?', a: 'It ran out.' }],
+    about: { kind: 'handoff', inbox: '20261028-0736-why-did-the-bot-b257' } }
+  const model = {
+    sections: [{ rows: [
+      { key: 'inbox:20261028-0736-why-did-the-bot-b257', title: 'Why did the bot fail?', inbox_key: 'q00000000c5' },
+      { key: 'inbox:20261028-0800-job-b6b6', title: 'Background job chat-bot on homebox: last run failed', inbox_key: 'worker:homebox:chat-bot' },
+      { key: 'inbox:20261028-0900-label-tidy-c1c1', title: 'Tidy the labels', inbox_key: null },
+    ] }],
+    task_rows: [{ key: 'task:demo-task', title: 'The demo task' }],
+    returns: [
+      { key: 'inbox:20261028-0736-why-did-the-bot-b257', item: '20261028-0736-why-did-the-bot-b257', title: 'Why did the bot fail?', conv: 'q00000000c5', tab: { ref: 'surface:21' } },
+      { key: 'inbox:20261028-0800-job-b6b6', item: '20261028-0800-job-b6b6', title: 'Background job chat-bot on homebox', tab: { ref: 'surface:22' } },
+      { key: 'task:other-task', item: 'other-task', title: 'Step text of the start', tab: { ref: 'surface:25' } },
+    ],
+  }
+  const s = { now: 3, model, quick: { convs: [conv] }, workers: { data: { runs: [{ host: 'homebox', id: 'chat-bot', title: 'Chat bot', state: 'last_run_failed' }] } } }
+  const of = tab => logic.tabOrigin(s, tab, 'en')
+  assert.deepEqual(of({ ref: 'surface:21', item: '20261028-0736-why-did-the-bot-b257' }),
+    { kind: 'ask', key: 'ask:q00000000c5', conv: 'q00000000c5', title: 'Why did the bot fail?' })
+  // the question is found by its handoff too, with no start on record
+  assert.equal(logic.tabOrigin({ ...s, model: { ...model, returns: [] } }, { ref: 'surface:29', item: '20261028-0736-why-did-the-bot-b257' }, 'en').kind, 'ask')
+  assert.deepEqual(of({ ref: 'surface:22', item: '20261028-0800-job-b6b6' }),
+    { kind: 'job', key: 'worker:homebox:chat-bot', title: 'Chat bot · homebox' })
+  assert.deepEqual(of({ ref: 'surface:23', item: '20261028-0900-label-tidy-c1c1' }),
+    { kind: 'item', key: 'inbox:20261028-0900-label-tidy-c1c1', title: 'Tidy the labels' })
+  assert.deepEqual(of({ ref: 'surface:24', slug: 'demo-task' }), { kind: 'task', key: 'task:demo-task', title: 'The demo task' })
+  // a start found by its tab alone: the task's own title before the step text of the start
+  assert.deepEqual(of({ ref: 'surface:25' }), { kind: 'task', key: 'task:other-task', title: 'other-task' })
+  assert.equal(of({ ref: 'surface:3', is_control: true, item: '20261028-0900-label-tidy-c1c1' }), null)
+  assert.equal(of({ ref: 'surface:26' }), null)
+  assert.equal(of(null), null)
+  // an item without a row keeps the title its start carried
+  assert.deepEqual(logic.tabOrigin({ ...s, model: { returns: [{ key: 'inbox:20261028-1000-gone-a1a1', item: '20261028-1000-gone-a1a1', title: 'Gone from the page', tab: null }] } },
+    { ref: 'surface:27', item: '20261028-1000-gone-a1a1' }, 'en'), { kind: 'item', key: 'inbox:20261028-1000-gone-a1a1', title: 'Gone from the page' })
+  for (const lang of ['en', 'de']) assert.equal(typeof text.TABLES[lang].rooms.from, 'function', lang)
+  assert.equal(text.TABLES.de.rooms.from('Tidy the labels'), 'aus: Tidy the labels')
 })
 
 const H = (over = {}) => ({ to: 'control', at_ms: 1000, status: 'queued', relay_id: 'r1', ...over })
@@ -5506,7 +5579,7 @@ test('6d fix: a handed question whose tab is gone and that brought nothing back 
 test('6d fix: no keyboard hints in the question fields and on the button that starts a tab', () => {
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang]
-    for (const said of [t.quickReply, t.route.placeholder, t.chatSolveTitle]) {
+    for (const said of [t.quickReply, t.chatPlaceholder, t.chatSolveTitle]) {
       assert.doesNotMatch(said, /Cmd|Ctrl|Enter|[?!] (asks|fragt|starts|startet|hands|gibt)/, `${lang}: ${said}`)
     }
   }

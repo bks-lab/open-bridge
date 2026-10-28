@@ -3,7 +3,7 @@
 // fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FILES_PAGE, FLOW_PAGE, checkInFlow, filesOn, jobCounts, listedChats, reviewHome, sessionsInFlow, subPageTile, walkRefs, workPageOf, workViewIn, workViewsIn } from '../logic.js'
+import { FILES_PAGE, FLOW_PAGE, checkInFlow, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -34,6 +34,19 @@ export function openTabRoom(s, c, ref) {
   c.closeTabView()
   c.setPage(CHAT_PAGE)
   c.pickRoom({ kind: 'tab', id: ref })
+}
+
+/** Open what a tab came from (logic.js tabOrigin, round 6d C5): its question in the Chat, its job on the
+ *  Workers page, its inbox item or task in the drawer */
+export function openOrigin(s, c, from) {
+  if (from.kind === 'ask') {
+    c.pickQuick(from.conv)
+    c.pickRoom({ kind: 'chat' })
+  } else if (from.kind === 'job') {
+    c.setPage(WORKERS_PAGE)
+  } else {
+    c.openItem(from.key, from.kind === 'task' ? { task: from.key.slice(5), title: from.title } : { title: from.title })
+  }
 }
 
 /** The name of the way to the live sessions, as the place it opens: Running now where Work through lists them
@@ -68,8 +81,12 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
     setUi(patch)
   }
   // a room of the work (a tab, a workspace, a Bridge, a chat) shows on the Work area: an A2A area left
-  // open in this browser would hide it
-  const room = (r, more = {}) => apply({ room: r, ...more, chatArea: 'work' })
+  // open in this browser would hide it. This browser keeps it, so the Chat opens there again (round 6d C3)
+  const room = (r, more = {}) => {
+    const kept = roomToKeep(r)
+    if (kept) save('bridge-cockpit.chatRoom', kept)
+    apply({ room: r, ...more, chatArea: 'work' })
+  }
   return {
     // the area the Chat as cmux shows: its work or the A2A agents
     setChatArea: area => apply({ chatArea: area === 'a2a' && a2aArea(get()).chatArea ? 'a2a' : 'work' }),

@@ -615,65 +615,54 @@ test('the answer that tells a session to keep going says so, it is never read as
   assert.notEqual(text.TABLES.de.reply.goOn, text.TABLES.de.nextOpen)
 })
 
-test('a click anywhere in a waiting row opens its tab, its buttons keep their own work', () => {
+test('6d C2: a waiting tab is one short line, its name, one word and how long; a click opens it, its answers stand only on the right', () => {
   const s = cockpitState(NOW, { guide: null })
   const c = recorder()
   const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
-  const row = el.$$('.reply-group .reply-row').find(r => r.$('.reply-name').text() === 'demo-task research')
-  row.$('.reply-ask').click()                                                 // the question text, not the name
+  const row = replyRow(el, 'demo-task research')
+  assert.deepEqual(row.$$('.room-meta').map(x => x.text()), [en.state.waiting, '11 min'])
+  assert.equal(row.getAttribute('title'), tabOf(s, 'surface:12').ask.text)
+  // nothing to answer in the list: no option, no yes, no field, no reading of the guide
+  const group = el.$('.reply-group')
+  assert.equal(group.$$('button').length, replyRows(el).length, 'one button per row, the row itself')
+  assert.equal(group.$('textarea'), null)
+  assert.equal(group.$('.reply-ask'), null)
+  assert.equal(group.$('.guide-line-about'), null)
+  row.click()
   assert.deepEqual(c.calls.filter(x => x[0] === 'pickRoom'), [['pickRoom', { kind: 'tab', id: 'surface:12' }]])
-  c.calls.length = 0
-  row.button(en.reply.goOn).click()
-  assert.equal(c.calls.some(x => x[0] === 'pickRoom'), false)                  // an answer button does not also switch
+  // in its workspace below it is a grey line that only says it waits; the others keep their state
+  const own = tabRow(el, 'demo-task research')
+  assert.ok(own.hasClass('is-dim'))
+  assert.equal(own.$('.room-meta').text(), en.state.waiting)
+  assert.ok(tabRow(el, 'alpha-release').hasClass('is-dim'))
+  assert.equal(tabRow(el, 'alpha-release').$('.room-meta').text(), en.state.waiting)
+  assert.ok(!tabRow(el, 'notes').hasClass('is-dim'))
+  // by status there is no Waiting for you above, so nothing is greyed
+  const byStatus = mount(html`<${Sidebar} s=${cockpitState(NOW, { ui: { roomsSort: 'status' } })} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  assert.equal(byStatus.$$('.room-tab.is-dim').length, 0)
 })
 
 // ---------------------------------------------------------------- what a tab waits for, answered from the page
 
 const { TabReply } = views.reply
-const replyRows = el => el.$$('.reply-group .reply-row')
-const replyRow = (el, name) => replyRows(el).find(r => r.$('.reply-name').text() === name) ?? null
+const replyRows = el => el.$$('.reply-group .room-wait')
+const replyRow = (el, name) => replyRows(el).find(r => r.$('.room-name').text() === name) ?? null
 const tick = () => new Promise(resolve => setTimeout(resolve, 20))
 
-test('the sidebar shows Waiting for you with the question and option buttons', () => {
-  // without the decision guide: the question as read off the screen (with it, see the guide tests below)
+test('the sidebar shows Waiting for you, the most urgent first, above the workspaces', () => {
   const s = cockpitState(NOW, { guide: null })
   const c = recorder()
   const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
   const group = el.$('.reply-group')
   assert.equal(group.$('h3').text(), en.reply.asks)
   // the most urgent first, the control tab never; the group stands above the workspaces
-  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research', 'changelog'])
+  assert.deepEqual(replyRows(el).map(r => r.$('.room-name').text()), ['alpha-release', 'report-draft', 'demo-task research', 'changelog'])
   const side = el.$('nav')
   const firstWs = el.$$('section.room-ws').find(x => !(x.getAttribute('class') ?? '').includes('room-asks'))
   assert.ok(side.childNodes.indexOf(group) < side.childNodes.indexOf(firstWs))
-  const alpha = replyRow(el, 'alpha-release')
-  const ask = tabOf(s, 'surface:7').ask
-  assert.match(alpha.$('.reply-ask').text(), /Do you want to make this edit\?/)
-  assert.match(alpha.text(), /Ops/)
-  // one button per option the dialog shows, labelled with it, and the tab one click away; no free text into a dialog
-  for (const o of ask.options) assert.ok(alpha.button(o.label), o.label)
-  assert.ok(alpha.button(en.reply.openTab))
-  assert.equal(alpha.$('textarea'), null)
-  alpha.button(ask.options[1].label).click()
-  assert.deepEqual(c.calls.at(-1).slice(0, 3), ['reply', 'tab_option', { tab_ref: 'surface:7', n: 2, seen: ask.hash, name: 'alpha-release' }])
-  // a yes or no question: yes and no as words, go on, and the answer field behind one click
-  const research = replyRow(el, 'demo-task research')
-  assert.ok(research.button(en.reply.yes) && research.button(en.reply.no) && research.button(en.reply.goOn))
-  assert.equal(research.$('textarea'), null)
-  research.button(en.reply.yes).click()
-  assert.deepEqual(c.calls.at(-1).slice(0, 3), ['reply', 'tab_send', { tab_ref: 'surface:12', text: en.reply.yesText, expect: 'waiting',
-    seen: tabOf(s, 'surface:12').ask.hash, name: 'demo-task research' }])
-  assert.ok(research.button(en.reply.placeholder))
-  // the name opens the tab on the right; the tab's own row in its workspace reads the question as its title
-  research.$('.reply-head').click()
-  assert.deepEqual(c.calls.at(-1), ['pickRoom', { kind: 'tab', id: 'surface:12' }])
+  assert.equal(replyRow(el, 'alpha-release').$('.room-meta').text(), en.state['needs-you'])
+  // the tab's own row in its workspace reads the question as its title
   assert.equal(tabRow(el, 'demo-task research').getAttribute('title'), tabOf(s, 'surface:12').ask.text)
-  // a filed result offers no go on and carries no question (the poll reads none for a filed tab)
-  const report = replyRow(el, 'report-draft')
-  assert.equal(report.button(en.reply.goOn), null)
-  assert.doesNotMatch(report.text(), new RegExp(en.reply.draft))
-  // a typed draft in a tab that waits is named
-  assert.match(replyRow(el, 'changelog').text(), new RegExp(en.reply.draft))
 })
 
 test('a tab_moved answer keeps the draft and shows the note', async () => {
@@ -708,15 +697,15 @@ test('a row that left stays greyed for one poll', () => {
   const moved = { ...s, tabs: { ...s.tabs, at_ms: s.tabs.at_ms + 3000,
     tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, state: 'working', waiting: false, ask: null } : t) } }
   renderSide(moved, el)
-  // still where it stood, greyed, with nothing left to press on it
-  assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research', 'changelog'])
+  // still where it stood, greyed, saying it moved on
+  assert.deepEqual(replyRows(el).map(r => r.$('.room-name').text()), ['alpha-release', 'report-draft', 'demo-task research', 'changelog'])
   const row = replyRow(el, 'demo-task research')
   assert.ok(row.hasClass('is-left'))
-  assert.match(row.text(), new RegExp(en.reply.movedOn))
-  assert.equal(row.button(en.reply.yes), null)
-  // answered from here, it says what the answer was
+  assert.equal(row.$('.room-meta').text(), en.reply.movedOn)
+  // answered from here, it says so, and what the answer was on its title
   renderSide({ ...moved, ui: { ...moved.ui, answered: { 'surface:12': { hash: tabOf(s, 'surface:12').ask.hash, q: 'Yes' } } } }, el)
-  assert.match(replyRow(el, 'demo-task research').text(), new RegExp(en.reply.answered('Yes')))
+  assert.equal(replyRow(el, 'demo-task research').$('.room-meta').text(), en.reply.answeredWord)
+  assert.equal(replyRow(el, 'demo-task research').getAttribute('title'), en.reply.answered('Yes'))
   // the next poll: gone
   renderSide({ ...moved, tabs: { ...moved.tabs, at_ms: moved.tabs.at_ms + 3000 } }, el)
   assert.equal(replyRow(el, 'demo-task research'), null)
@@ -1046,11 +1035,12 @@ test('a tab that runs for an hour stands in Waiting for you without claiming it 
   const name = tabOf(long, 'surface:8').name
   const row = replyRow(el, name)
   assert.ok(row, 'the long runner is listed')
-  assert.doesNotMatch(row.text(), new RegExp(en.reply.unreadable))
-  assert.equal(row.$('.reply-ask'), null)
-  // a tab that waits and whose question cannot be read says so
-  const blind = { ...s, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, ask: null, last: '' } : t) } }
-  assert.match(replyRow(renderSide(blind), 'demo-task research').$('.reply-ask').text(), new RegExp(en.reply.unreadable))
+  assert.equal(row.$('.room-meta').text(), en.state.working)
+  assert.ok(!tabRow(el, name).hasClass('is-dim'), 'it works, so its own row keeps saying so')
+  // a tab that waits and whose question cannot be read says so where it is answered, on the right
+  const blind = { ...s, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, ask: null, last: '' } : t) }, guide: null,
+    ui: { ...s.ui, room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } }
+  assert.match(mount(html`<${RoomsPage} s=${blind} c=${recorder()} />`).$('.reply-pane .reply-ask').text(), new RegExp(en.reply.unreadable))
 })
 
 const { RoomsPage } = views.rooms
@@ -1253,7 +1243,7 @@ test('the demo proposes every kind and applies the ticked ones', async () => {
   assert.equal((await act('organize_apply', { proposal: 'o9999999999', items: [prop.items[0].id] })).error.code, 'stale_proposal')
 })
 
-// ---------------------------------------------------------------- the chat: one input with a visible route (package 5)
+// ---------------------------------------------------------------- the chat: one field, two fixed buttons (package 5, round 6d C4)
 
 const { ChatFoot, ChatThread, QuickChat } = views.chat
 const ANSWERED = { id: 'q0123456789', kind: 'free', started_ms: NOW, session: null, total_usd: 0, running: false, last_ms: NOW,
@@ -1267,73 +1257,45 @@ function renderFoot({ conv = null, over = {} } = {}) {
 }
 const acts = c => c.calls.filter(x => x[0] === 'act' || x[0] === 'ask')
 
-test('the route chip shows the guess and a click flips it', async () => {
+test('6d C4: one field with two fixed buttons, Ask and Let AI do it, whatever is typed; no route chip, no hint under it', async () => {
   const { el } = renderFoot()
-  assert.equal(el.$('.route-chip'), null, 'no chip while the field is empty')
-  typeInto(el.$('#quick-input'), 'Fix the flaky test')
-  await settle()
-  assert.equal(el.$('.route-chip').text(), en.route.toTab)
-  assert.equal(el.$('.route-chip').getAttribute('title'), en.route.flip)
-  el.$('.route-chip').click()
-  await settle()
-  assert.equal(el.$('.route-chip').text(), en.route.toQuick)
-  // the flip holds while typing goes on, and ends when the field is cleared
-  typeInto(el.$('#quick-input'), 'Fix the flaky test now')
-  await settle()
-  assert.equal(el.$('.route-chip').text(), en.route.toQuick)
-  typeInto(el.$('#quick-input'), '')
-  await settle()
-  typeInto(el.$('#quick-input'), 'Fix it')
-  await settle()
-  assert.equal(el.$('.route-chip').text(), en.route.toTab)
-  typeInto(el.$('#quick-input'), 'what is open?')
-  await settle()
-  assert.equal(el.$('.route-chip').text(), en.route.toQuick)
+  const names = () => el.$('.send-btns').$$('button').map(b => b.text())
+  assert.deepEqual(names(), [en.chatAsk, en.chatSolve])
+  assert.equal(el.$('#quick-input').getAttribute('placeholder'), en.chatPlaceholder)
+  for (const typed of ['Fix the flaky test', 'what is open?', '!tidy the labels', 'the release notes']) {
+    typeInto(el.$('#quick-input'), typed)
+    await settle()
+    assert.deepEqual(names(), [en.chatAsk, en.chatSolve], typed)
+    assert.equal(el.$('.route-chip'), null, typed)
+  }
+  assert.equal(el.$('.chat-hint'), null)
+  assert.doesNotMatch(el.$('.tabview-foot').text(), /Cmd|Ctrl|Enter/)
 })
 
-test('Enter on a tab route without a conversation calls chat_tab, inside a conversation quick_handoff', async () => {
-  const fresh = renderFoot()
-  typeInto(fresh.el.$('#quick-input'), 'Fix the flaky test')
-  await settle()
-  keydown(fresh.el.$('#quick-input'), 'Enter')
-  await settle()
-  assert.deepEqual(acts(fresh.c), [['act', 'chat_tab', { text: 'Fix the flaky test', routed: 'words' }]])
-  // a question asks here; a ! prefix is stripped and starts a tab
+test('6d C4: Ask and Enter answer here, read only, as typed; Let AI do it starts a tab, inside a conversation it hands it on', async () => {
   const ask = renderFoot()
-  typeInto(ask.el.$('#quick-input'), 'what waits for me?')
+  typeInto(ask.el.$('#quick-input'), 'Fix the flaky test')
   await settle()
   keydown(ask.el.$('#quick-input'), 'Enter')
+  await settle()
   typeInto(ask.el.$('#quick-input'), '!tidy the labels')
   await settle()
-  keydown(ask.el.$('#quick-input'), 'Enter')
+  ask.el.button(en.chatAsk).click()
   await settle()
-  assert.deepEqual(acts(ask.c), [['ask', 'free', { text: 'what waits for me?' }],
-    ['act', 'chat_tab', { text: 'tidy the labels', routed: 'prefix' }]])
-  // a flipped chip says so
-  const flipped = renderFoot()
-  typeInto(flipped.el.$('#quick-input'), 'the release notes')
+  assert.deepEqual(acts(ask.c), [['ask', 'free', { text: 'Fix the flaky test' }], ['ask', 'free', { text: '!tidy the labels' }]])
+  const solve = renderFoot()
+  typeInto(solve.el.$('#quick-input'), 'what waits for me?')
   await settle()
-  flipped.el.$('.route-chip').click()
+  solve.el.button(en.chatSolve).click()
   await settle()
-  keydown(flipped.el.$('#quick-input'), 'Enter')
-  await settle()
-  assert.deepEqual(acts(flipped.c), [['act', 'chat_tab', { text: 'the release notes', routed: 'flipped' }]])
-  // inside an answered conversation the tab route hands the chat on, with the text as the order
+  assert.deepEqual(acts(solve.c), [['act', 'chat_tab', { text: 'what waits for me?', routed: 'forced' }]])
+  // inside an answered conversation it hands the chat on, with the text as the order
   const inConv = renderFoot({ conv: ANSWERED })
   typeInto(inConv.el.$('#quick-input'), 'Update the docs too')
   await settle()
-  keydown(inConv.el.$('#quick-input'), 'Enter')
+  inConv.el.button(en.chatSolve).click()
   await settle()
   assert.deepEqual(acts(inConv.c), [['act', 'quick_handoff', { conv: ANSWERED.id, to: 'tab', text: 'Update the docs too' }]])
-})
-
-test('Cmd+Enter starts a tab at once', async () => {
-  const { el, c } = renderFoot()
-  typeInto(el.$('#quick-input'), 'what waits for me?')
-  await settle()
-  el.$('#quick-input').dispatch('keydown', { key: 'Enter', metaKey: true })
-  await settle()
-  assert.deepEqual(acts(c), [['act', 'chat_tab', { text: 'what waits for me?', routed: 'forced' }]])
 })
 
 test('a handed chat shows its status and disables the handoff buttons only while starting', async () => {
@@ -1363,11 +1325,10 @@ test('a handed chat shows its status and disables the handoff buttons only while
   const control = renderFoot({ conv: { ...ANSWERED, handed: { to: 'control', at_ms: NOW, status: 'queued', relay_id: 'r9' } },
     over: { relay: { ...s0.relay, records: [{ id: 'r9', status: 'submitted' }] } } })
   assert.match(control.el.$('.handoff-status').text(), new RegExp(en.handoff.arrived))
-  // while typing, the chip stands where the status was
+  // typing on keeps the status where it is: there is no chip to give way to
   typeInto(arrived.el.$('#quick-input'), 'and the docs?')
   await settle()
-  assert.equal(arrived.el.$('.handoff-status'), null)
-  assert.ok(arrived.el.$('.route-chip'))
+  assert.ok(arrived.el.$('.handoff-status'))
 })
 
 test('a handed chat says what came back from its item: the result, or the question it asks', () => {
@@ -1614,7 +1575,7 @@ test('an organize item checkbox is named by its row: the kind, what it was and w
 test('Waiting for you holds its order while the pointer is in it; a new row goes last until it leaves', async () => {
   const s = cockpitState(NOW)
   const el = renderSide(s)
-  const names = () => replyRows(el).map(r => r.$('.reply-name').text())
+  const names = () => replyRows(el).map(r => r.$('.room-name').text())
   const before = names()
   el.$('.reply-group').dispatch('pointerenter')
   // docs-refresh starts asking: sorted, it would stand on top, right where the pointer is
@@ -1636,14 +1597,14 @@ test('an answered row comes back with its buttons when the same question is aske
   const mark = loadedRooms.logic.answerMark(tab, 'Yes', NOW)
   const el = renderSide({ ...s, ui: { ...s.ui, answered: { 'surface:12': mark } } })
   const row = replyRow(el, 'demo-task research')
-  assert.ok(row.hasClass('is-left') && row.button(en.reply.yes) === null)
-  assert.match(row.text(), new RegExp(en.reply.answered('Yes')))
+  assert.ok(row.hasClass('is-left'))
+  assert.equal(row.$('.room-meta').text(), en.reply.answeredWord)
   // the agent worked and asks the identical question again: a new state since, the same hash
   const again = { ...s, tabs: { ...s.tabs, at_ms: s.tabs.at_ms + 3000, tabs: s.tabs.tabs.map(t => t.ref === 'surface:12'
     ? { ...t, since_ms: NOW - 1000 } : t) }, ui: { ...s.ui, answered: { 'surface:12': mark } } }
   const back = replyRow(renderSide(again), 'demo-task research')
   assert.ok(!back.hasClass('is-left'))
-  assert.ok(back.button(en.reply.yes))
+  assert.equal(back.$('.room-meta').text(), en.state.waiting)
 })
 
 test('an answer the tab did not take is not marked answered and keeps what was typed', async () => {
@@ -1663,26 +1624,6 @@ test('an answer the tab did not take is not marked answered and keeps what was t
   await tick()
   assert.ok(!calls.some(x => x[0] === 'markAnswered'), 'nothing went out, nothing is marked')
   assert.equal(el.$('textarea').value, 'all three please')
-})
-
-test('the route chip keeps the route picked by hand while the guess changes under typing', async () => {
-  const { el, c } = renderFoot()
-  typeInto(el.$('#quick-input'), 'Schreib mir')
-  await settle()
-  const guess = el.$('.route-chip').text()
-  el.$('.route-chip').click()
-  await settle()
-  const picked = el.$('.route-chip').text()
-  assert.notEqual(picked, guess)
-  // typing on turns the guess around (a trailing question mark): the picked route stays
-  typeInto(el.$('#quick-input'), 'Schreib mir eine kurze Zusammenfassung, geht das?')
-  await settle()
-  assert.equal(el.$('.route-chip').text(), picked)
-  keydown(el.$('#quick-input'), 'Enter')
-  await settle()
-  const sent = acts(c)
-  assert.equal(sent.length, 1)
-  assert.equal(picked === en.route.toQuick ? sent[0][0] : sent[0][1], picked === en.route.toQuick ? 'ask' : 'chat_tab')
 })
 
 // ---------------------------------------------------------------- the decision guide (views/guide.js)
@@ -1768,15 +1709,14 @@ test('guide: while Haiku reads, what the session is about already shows', () => 
   assert.equal(mount(html`<${GuideLine} tab=${tabOf(st, 'surface:12')} s=${st} />`).$('.guide-line-about').text(), 'Sources for the team page')
 })
 
-test('guide: a row of Waiting for you that was read shows what it is about and where it stands instead of the screen words', () => {
+test('guide: a row of Waiting for you stays one short line, the reading of the guide stands on the right', () => {
   const s = cockpitState(NOW)
   const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
   const research = replyRow(el, 'demo-task research')
-  assert.equal(research.$('.guide-line-about').text(), 'Sources for the team page of the demo project')
+  assert.equal(research.$('.guide-line-about'), null)
   assert.equal(research.$('.reply-ask'), null)
-  assert.ok(research.button(en.reply.goOn), 'the answers stay')
-  // a tab not read yet keeps the words off its screen
-  assert.match(replyRow(el, 'changelog').$('.reply-ask').text(), /Changelog entry written/)
+  const pane = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } })} c=${recorder()} />`)
+  assert.ok(pane.$('.rooms-main .guide'), 'the reading of the guide stands with the tab')
 })
 
 test('guide: a waiting tab shows where it stands and one branch per step, the recommended one marked', () => {
@@ -1886,8 +1826,6 @@ test('guide: in the chat the view switches between reading, both and terminal', 
   const el = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } })} c=${c} />`)
   el.$('.guide-view').button(en.guide.view.screen).click()
   assert.deepEqual(c.calls.at(-1), ['setGuideView', 'screen'])
-  const side = mount(html`<${Sidebar} s=${cockpitState(NOW, { ui: { guideView: 'screen' } })} c=${recorder()} rooms=${roomsOf(cockpitState(NOW))} here=${{ kind: 'chat' }} />`)
-  assert.match(replyRow(side, 'demo-task research').$('.reply-ask').text(), /Should I summarise them/)
 })
 
 test('guide: a chosen step brings its box into view and puts the cursor in it, Send in reach', async () => {
@@ -3608,13 +3546,18 @@ test('6d fix: the buttons of a job row are written alike', () => {
   }
 })
 
-test('6d fix: in the Chat the questions stand above the tabs waiting for you, and an empty archive says so', async () => {
+test('6d C1: in the Chat the questions stand right under the tabs waiting for you, in every order, and an empty archive says so', async () => {
   const { s } = asksState({ rooms: { ...cockpitState(NOW).rooms, layout: 'workspaces' } })
+  for (const roomsSort of ['terminal', 'urgency', 'status']) {
+    const sorted = { ...s, ui: { ...s.ui, roomsSort } }
+    const el = mount(html`<${Sidebar} s=${sorted} c=${recorder()} rooms=${roomsOf(sorted)} here=${{ kind: 'chat' }} />`)
+    const heads = el.$$('h3').map(h => h.text())
+    const waits = heads.findIndex(h => h.includes(en.reply.asks))
+    const asks = heads.findIndex(h => h.includes(en.rooms.chats))
+    // by status Waiting for you gives way to the groups, and the questions come first after the order
+    assert.equal(asks, roomsSort === 'status' ? 0 : waits + 1, `${roomsSort}: ${heads.join(' | ')}`)
+  }
   const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
-  const heads = el.$$('h3').map(h => h.text())
-  const waits = heads.findIndex(h => h.includes(en.reply.asks))
-  assert.ok(waits >= 0, heads.join(' | '))
-  assert.ok(heads.findIndex(h => h.includes(en.rooms.chats)) < waits, heads.join(' | '))
   const empty = { ...s, chatArchive: { status: 'ok', convs: [] }, ui: { ...s.ui, asksAll: true } }
   const all = mount(html`<${Sidebar} s=${empty} c=${recorder()} rooms=${roomsOf(empty)} here=${{ kind: 'chat' }} />`)
   assert.match(all.$('.room-asks').text(), new RegExp(en.asks.noneArchived(7)))
@@ -3638,4 +3581,124 @@ test('6d fix: in the Chat\'s questions the marker stands beside the clipped titl
   const marked = el.$$('.room-asks .room-chat').filter(b => b.$('.ask-mark'))
   assert.ok(marked.length >= 2)
   for (const b of marked) assert.ok(!b.$('.room-name .ask-mark'), b.text())
+})
+
+// ---------------------------------------------------------------- round 6d, the Chat (chat.md C1 to C5)
+
+test('6d C1: the questions group carries the way to a new question in its head, and an empty chat says how long questions stay', () => {
+  const { s } = asksState({ rooms: { ...cockpitState(NOW).rooms, layout: 'workspaces' } })
+  const c = recorder()
+  const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const head = el.$('.room-asks .room-group-head')
+  assert.equal(head.$('h3').text(), en.rooms.chats)
+  head.button(`+ ${en.rooms.newAsk}`).click()
+  assert.deepEqual(c.calls.filter(x => ['newQuick', 'pickRoom'].includes(x[0])), [['newQuick'], ['pickRoom', { kind: 'chat' }]])
+  // no row of its own for it among the questions
+  assert.ok(!el.$$('.room-asks .room-chats button').some(b => b.text().includes(en.quickNew)))
+  const week = cockpitState(NOW, { quick: { ...s.quick, keep_hours: 168 }, ui: { room: { kind: 'chat' }, quickConv: null } })
+  const page = mount(html`<${RoomsPage} s=${week} c=${recorder()} />`)
+  assert.equal(page.$('.rooms-main .quick-kept').text(), en.asks.kept(168))
+  assert.match(page.$('.rooms-main .quick-kept').text(), /7 days/)
+  const win = mount(html`<${QuickChat} s=${{ ...week, ui: { ...week.ui, tabView: '@ask' } }} c=${recorder()} />`)
+  assert.equal(win.$('.quick-kept').text(), en.asks.kept(168))
+})
+
+test('6d C3: a kept tab that is gone opens the chat; one closed under the hand still says so', () => {
+  const kept = cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:77', kept: true }, quickConv: null, tabView: 'surface:99' } })
+  const el = mount(html`<${RoomsPage} s=${kept} c=${recorder()} />`)
+  assert.ok(el.$('.rooms-main #quick-input'), 'the chat with its field')
+  assert.doesNotMatch(el.text(), new RegExp(en.rooms.gone))
+  const picked = cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:77' }, quickConv: null, tabView: 'surface:99' } })
+  assert.match(mount(html`<${RoomsPage} s=${picked} c=${recorder()} />`).text(), new RegExp(en.rooms.gone))
+  // a kept tab that is there opens as it was left
+  const there = cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12', kept: true }, tabView: 'surface:99' } })
+  assert.equal(mount(html`<${RoomsPage} s=${there} c=${recorder()} />`).$('#room-title').text(), 'demo-task research')
+})
+
+test('6d C3: with nothing kept the Chat picks once on entering, and never again on its own', async () => {
+  const { s } = asksState({ ui: { room: null, quickConv: null } })
+  const c = recorder()
+  const root = mount(html`<${RoomsPage} s=${s} c=${c} />`)
+  for (let i = 0; i < 10 && !c.calls.some(x => x[0] === 'pickRoom'); i++) await settle()
+  const first = c.calls.filter(x => ['pickQuick', 'pickRoom'].includes(x[0]))
+  assert.equal(first.length, 2, JSON.stringify(first))
+  assert.equal(first[0][0], 'pickQuick')
+  assert.deepEqual(first[1], ['pickRoom', { kind: 'chat' }])
+  // a new poll, a tab that starts asking: no second pick
+  const later = { ...s, tabs: { ...s.tabs, at_ms: s.tabs.at_ms + 3000 } }
+  loadedRooms.render(html`<${RoomsPage} s=${later} c=${c} />`, root)
+  for (let i = 0; i < 5; i++) await settle()
+  assert.equal(c.calls.filter(x => x[0] === 'pickRoom').length, 1)
+})
+
+test('6d C3: every room picked is kept in this browser, the chat, a tab and a workspace alike', () => {
+  const saved = []
+  let s = cockpitState(NOW)
+  const acts = views.nav.chatAreaActions({ get: () => s, setUi: p => { s = { ...s, ui: { ...s.ui, ...p } } }, save: (k, v) => saved.push([k, v]), now: () => NOW })
+  acts.pickRoom({ kind: 'tab', id: 'surface:12' })
+  acts.pickRoom({ kind: 'chat' })
+  acts.walkTab('surface:7')
+  assert.deepEqual(saved.filter(x => x[0] === 'bridge-cockpit.chatRoom'), [['bridge-cockpit.chatRoom', '{"kind":"tab","id":"surface:12"}'],
+    ['bridge-cockpit.chatRoom', '{"kind":"chat"}'], ['bridge-cockpit.chatRoom', '{"kind":"tab","id":"surface:7"}']])
+})
+
+test('6d C4: on the Chat the header\'s Ask puts the cursor into the page\'s field, elsewhere it opens the window', () => {
+  const c = recorder()
+  mount(html`<${Header} s=${cockpitState(NOW, { ui: { page: '@chat', tabView: null } })} c=${c} />`).$('.hdr-ask').click()
+  const other = recorder()
+  mount(html`<${Header} s=${cockpitState(NOW, { ui: { page: 'briefing' } })} c=${other} />`).$('.hdr-ask').click()
+  assert.deepEqual([c.calls.map(x => x[0]), other.calls.map(x => x[0])], [['askHere'], ['openAsk']])
+})
+
+/** A tab handed on from a question, one from a job and one from an inbox item, each with the start that opened it */
+function originState(over = {}) {
+  const s0 = cockpitState(NOW)
+  const conv = { ...ANSWERED, id: 'q00000000c5', turns: [{ ...ANSWERED.turns[0], q: 'Why did the chat bot fail this morning?' }],
+    handed: { to: 'tab', at_ms: NOW - 5 * MIN, status: 'started', inbox_id: '20261009-1150-why-did-the-chat-c5c5' } }
+  const tabs = { ...s0.tabs, tabs: [...s0.tabs.tabs,
+    { ref: 'surface:31', ws_ref: 'workspace:3', name: 'Inbox why-did-the-chat-c5c5', workspace: 'Demo', state: 'working', last: 'Reading the log',
+      slug: null, item: '20261009-1150-why-did-the-chat-c5c5', team: null, role: null, live: true, waiting: false, is_control: false,
+      filed_by: null, since_ms: NOW - 4 * MIN, long: null, ask: null },
+  ] }
+  return cockpitState(NOW, { tabs, quick: { ...s0.quick, convs: [conv, ...(s0.quick?.convs ?? [])] }, ...over })
+}
+
+test('6d C5: a tab handed on from a question says so in its head and its row, and the title opens that question', () => {
+  const s = originState({ ui: { room: { kind: 'tab', id: 'surface:31' }, tabView: 'surface:99' } })
+  const c = recorder()
+  const el = mount(html`<${RoomsPage} s=${s} c=${c} />`)
+  const link = el.$('.tabview-head .room-from-link')
+  assert.equal(link.text(), en.rooms.from('Why did the chat bot fail this morning?'))
+  assert.equal(link.getAttribute('data-from'), 'ask')
+  link.click()
+  assert.deepEqual(c.calls.filter(x => ['pickQuick', 'pickRoom'].includes(x[0])), [['pickQuick', 'q00000000c5'], ['pickRoom', { kind: 'chat' }]])
+  const row = tabRow(el, 'Inbox why-did-the-chat-c5c5')
+  assert.equal(row.$('.room-from').text(), en.rooms.from('Why did the chat bot fail this morning?'))
+  // its own task is no origin to name: a task tab keeps its task link alone
+  const task = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } })} c=${recorder()} />`)
+  assert.equal(task.$('.tabview-head .room-from-link'), null)
+  assert.ok(task.$('.tabview-head .room-task'))
+  assert.equal(tabRow(task, 'demo-task research').$('.room-from'), null)
+})
+
+test('6d C5: a tab from an inbox item or a job opens that item in the drawer or the job on its page', () => {
+  const s0 = cockpitState(NOW)
+  const row = { key: 'inbox:20261009-1150-job-b6b6', title: 'Background job chat-bot on homebox: last run failed', inbox_key: 'worker:homebox:chat-bot' }
+  const model = { ...s0.model, task_rows: [...(s0.model.task_rows ?? []), row] }
+  const tab = { ref: 'surface:32', ws_ref: 'workspace:3', name: 'Inbox job-b6b6', workspace: 'Demo', state: 'working', last: '', slug: null,
+    item: '20261009-1150-job-b6b6', team: null, role: null, live: true, waiting: false, is_control: false, filed_by: null, since_ms: NOW, long: null, ask: null }
+  const s = cockpitState(NOW, { model, tabs: { ...s0.tabs, tabs: [...s0.tabs.tabs, tab] }, ui: { room: { kind: 'tab', id: 'surface:32' }, tabView: 'surface:99' } })
+  const c = recorder()
+  const link = mount(html`<${RoomsPage} s=${s} c=${c} />`).$('.tabview-head .room-from-link')
+  assert.equal(link.getAttribute('data-from'), 'job')
+  assert.equal(link.text(), en.rooms.from('chat-bot · homebox'))
+  link.click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'setPage'), [['setPage', '@workers']])
+  // the demo's report tab came from an inbox item: it opens in the drawer
+  const report = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:10' }, tabView: 'surface:99' } })} c=${c} />`)
+  const item = report.$('.tabview-head .room-from-link')
+  assert.equal(item.getAttribute('data-from'), 'item')
+  item.click()
+  assert.equal(c.calls.at(-1)[0], 'openItem')
+  assert.match(c.calls.at(-1)[1], /^inbox:/)
 })
