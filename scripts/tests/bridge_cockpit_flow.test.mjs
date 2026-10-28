@@ -932,6 +932,38 @@ test('a finished or quiet start whose item is not in the list (put off, resting)
   }
 })
 
+test('a start that ended with a note stays a card to look at, with its note and the way back to its question', () => {
+  // 28.10.: the tab closed the item with its note, and Running now showed nothing at all
+  const ID = '20261028-0736-telegram-bot-b257'
+  const done = (over = {}) => ({ key: `inbox:${ID}`, item: ID, title: 'Telegram bot job', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'done',
+    in_briefing: false, tab: null, conv: 'q0123456789', result: { kind: 'close', text: 'Result: the bot runs, nothing to change', key: null, at_ms: NOW - MIN }, ...over })
+  let parts = logic.flowParts(state({ returns: [done()] }))
+  assert.deepEqual(parts.result.map(x => [x.start.key, x.stage]), [[`inbox:${ID}`, 'done']])
+  // ended without a word it is settled, as before
+  parts = logic.flowParts(state({ returns: [done({ result: { kind: 'close', text: '', key: null, at_ms: NOW - MIN } })] }))
+  assert.deepEqual(parts.result, [])
+  const c = recorder()
+  const s = cockpitState(NOW, state({ returns: [done()], quick: { convs: [{ id: 'q0123456789', turns: [{ q: 'what is with the bot?', a: 'x' }] }] } }))
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const card = el.$('.flow-card')
+  assert.match(card.text(), new RegExp(en.flow.kind.done))
+  assert.match(card.$('.flow-answer').text(), /the bot runs, nothing to change/)
+  el.button(en.flow.toQuestion).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'openAsk'), ['openAsk', 'q0123456789'])
+  // seen: taken off the list
+  el.button(text.TABLES.en.home.returnForget).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'return_forget', { key: `inbox:${ID}` }])
+  // its question is gone from the chats (archived): no way back offered
+  const gone = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ returns: [done()], quick: { convs: [] } }))} c=${recorder()} />`)
+  assert.ok(!gone.button(en.flow.toQuestion), 'no link to an archived question')
+  // a note that asks: the card asks under the question's own head
+  const asks = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ returns: [done({ stage: 'asks',
+    result: { kind: 'note', text: 'Question: close it?', asks: true, key: null, at_ms: NOW - MIN } })] }))} c=${recorder()} />`)
+  assert.equal(asks.$('.flow-card .flow-answer').text(), `${en.flow.question} close it?`)
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.kind.done && text.TABLES[lang].flow.toQuestion && text.TABLES[lang].flow.question)
+  assert.equal(text.TABLES.de.flow.kind.done, 'Zum Ansehen')
+})
+
 test('Improve: words to the tab while it lives (tab_send through the reply guard), else a new start with them', async () => {
   const row = task('fin')
   const live = { ref: 'surface:10', name: 'fin', slug: 'fin', state: 'waiting', since_ms: NOW - 25 * MIN }

@@ -24,7 +24,9 @@ class ChatVerbs:
         (the workplace's agent model, Sonnet or more, never the quick model), "control" gives it to the
         control session through the relay. The chat carries how that went (quick.py `handed`): claimed as
         `starting` once every check passed, then the launch outcome or the relay's queued / offline, and
-        `failed` whatever goes wrong on the way, so a second click is refused only while one is starting."""
+        `failed` whatever goes wrong on the way, so a second click is refused only while one is starting.
+        What the person adds is the order: at the end of the item's detail, and on the item as its start note,
+        which the tab reads first and which keeps it from closing the item without asking (workplace.py)."""
         app = self.app
         order = (text or "").strip()
         if len(order) > HANDOFF_ORDER_MAX:
@@ -58,7 +60,10 @@ class ChatVerbs:
             done = {"status": "failed", "inbox_id": new_id}
             # a chat that is about nothing yet is now about this item: it leaves when the item ends
             app.quick.set_about(conv, {"kind": "handoff", "inbox": new_id})
-            got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first}], "go", app.cfg.target)
+            # the order as the start note; a note that cannot be written leaves the order in the detail alone
+            noted = bool(order) and self.write_note(ctx, {"inbox_id": new_id}, f"Start note: {order}")
+            got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first, "conv": conv}], "go",
+                              app.cfg.target, start_note=noted)
             done = {"status": got, "inbox_id": new_id}
             if got == "busy" and order:
                 # the tab of this chat is already on its way: the new words reach the item as a note, not that tab

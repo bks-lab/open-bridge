@@ -334,8 +334,9 @@ EN: dict = {
     "returns": {"head": "With AI", "start": "agent started from the cockpit ({mode})",
            "mode": {"go": "let AI do it", "report": "advise", "context": "collect context"},
            "filed": "answer filed, {text} ({key})", "lost": "the tab ended without a word",
-           # the head of the note an agent leaves on its task when it is through (a task's result line)
-           "result": "Result"},
+           # the head of the note an agent leaves on its task when it is through (a task's result line), and of the
+           # note that asks the person something (workplace.py asks for it, returns.py reads it as a question)
+           "result": "Result", "question": "Question"},
     # the words of a card (card.py): a user story as one sentence, the next step an inbox item or a row asks
     # for, and how an item closes on its own (its closes_when probe, the same words as text.js `probe`)
     "card": {"story": "As {as}, I want {want}, so that {so_that}.",
@@ -675,7 +676,7 @@ DE: dict = {
     "returns": {"head": "Bei der AI", "start": "Agent gestartet aus dem Cockpit ({mode})",
            "mode": {"go": "AI machen lassen", "report": "Beraten", "context": "Infos sammeln"},
            "filed": "Antwort abgelegt, {text} ({key})", "lost": "Tab beendet ohne Rückmeldung",
-           "result": "Ergebnis"},
+           "result": "Ergebnis", "question": "Frage"},
     "card": {"story": "Als {as} möchte ich {want}, damit {so_that}.",
              "next": {"decide": "entscheiden", "answer": "beantworten", "yes": "dein Ja geben", "read": "lesen",
                       "check": "Ergebnis prüfen", "closes": "schließt sich selbst, wenn {probe}",

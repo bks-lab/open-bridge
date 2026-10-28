@@ -26,9 +26,13 @@ kept: not in `turns`, not in quick.json, not in a transcript.
 A chat may be about something: `about` names the briefing row it was asked on and the inbox item or task
 behind it, or the inbox item it was handed on as. Once that item has ended after the chat started (an inbox
 item closed, executed, dropped or rejected and not reopened, a task moved to work/done/) and the chat has
-been quiet for SETTLE_QUIET_MS, the sweep takes it into the archive (why `settled`). The sweep rides on the
-tab poll, reads the files at most every SETTLE_EVERY_MS unless a verb that ends an item asked for it
-(settle_soon), and never touches a chat that is answering, has no item, or changed while it read.
+been quiet for SETTLE_QUIET_MS, the sweep takes it into the archive (why `settled`); a chat handed to a tab
+stays cockpit.chat_keep_hours after the later of its handoff, what came back and the end, so what came back
+can be read (0 keeps it). The sweep rides on the tab poll, reads the files at most every
+SETTLE_EVERY_MS unless a verb that ends an item asked for it (settle_soon), and never touches a chat that is
+answering, has no item, or changed while it read. On the same read a chat handed to a tab gets what came back
+from its inbox item (`handed.outcome`, handoff_outcome): the newest note or close note since the handoff,
+whether the item is closed, when, and whether that note asks the person (returns.py QUESTION_HEADS).
 """
 from __future__ import annotations
 
@@ -158,6 +162,29 @@ def parse_answer(out: str) -> dict | None:
             "model": answered, "error": bool(data.get("is_error"))}
 
 
+def handoff_outcome(root: Path, handed: dict) -> dict | None:
+    """What came back from the inbox item a chat was handed on as, read from its events since the handoff:
+    {text, closed, at_ms, asks}, or None while nothing did (the person's start note is no outcome)"""
+    item, since = handed.get("inbox_id"), float(handed.get("at_ms") or 0)
+    if not isinstance(item, str) or not ret.INBOX_ID_RE.match(item):
+        return None
+    said = [a for a in ret.inbox_answers(root, item, since) if a["text"]]
+    ended = ret.ended_at(root, item)
+    closed = ended is not None and ended >= since
+    if not said and not closed:
+        return None
+    last = said[-1] if said else {"text": "", "at_ms": ended}
+    return {"text": last["text"], "closed": closed, "at_ms": int(ended if closed else last["at_ms"]),
+            "asks": not closed and last["text"].startswith(ret.QUESTION_HEADS)}
+
+
+def _since(c: dict) -> int:
+    """When a chat last moved: its last answer or question, its handoff, or what came back from it"""
+    handed = c.get("handed") if isinstance(c.get("handed"), dict) else {}
+    outcome = handed.get("outcome") if isinstance(handed.get("outcome"), dict) else {}
+    return int(max(c.get("last_ms") or c["started_ms"], handed.get("at_ms") or 0, outcome.get("at_ms") or 0))
+
+
 class Live:
     """Reads the stream of one answer: the text of the message being written and what it is reading."""
 
@@ -276,7 +303,7 @@ class Quick:
         cutoff = now - hours * 3600 * 1000
         gone = False
         for c in list(self.convs.values()):
-            if c.get("running") or (c.get("last_ms") or c["started_ms"]) >= cutoff:
+            if c.get("running") or _since(c) >= cutoff:
                 continue
             if not self._archive(c, "expired", now):
                 self.expire_failed_ms = now   # the archive is down: keep them all, try again in an hour
@@ -403,34 +430,55 @@ class Quick:
 
     def sweep_settled(self, now: float, force: bool = False) -> bool:
         """Chats about an item that has ended since the chat started go to the archive (why `settled`), once
-        they have been quiet for SETTLE_QUIET_MS. Reads files outside the lock and checks again under it that
-        nothing changed meanwhile. True when a chat left."""
+        they have been quiet for SETTLE_QUIET_MS, a chat handed to a tab only chat_keep_hours after the end.
+        A chat handed to a tab gets what came back from its item (handoff_outcome). Reads files outside the lock and checks again under it that nothing changed
+        meanwhile. True when a chat left or what came back changed."""
         now = int(now)
         if not force and not self.settle_due and now - self.settle_at_ms < SETTLE_EVERY_MS:
             return False
         if now - self.expire_failed_ms < 3600 * 1000:
             return False                  # the archive refused lately: try again after the back-off
         self.settle_at_ms, self.settle_due = now, False
+        hours = getattr(getattr(self.app, "cfg", None), "chat_keep_hours", 24)
         with self.lock:
-            candidates = [(c["id"], c.get("last_ms") or c["started_ms"], c["started_ms"], dict(c["about"]))
+            candidates = [(c["id"], c.get("last_ms") or c["started_ms"], c["started_ms"], dict(c["about"]),
+                           _since(c), (c.get("handed") or {}).get("to") == "tab")
                           for c in self.convs.values()
                           if not c.get("running") and isinstance(c.get("about"), dict)
                           and (c["about"].get("inbox") or c["about"].get("task"))]
+            handoffs = [(c["id"], dict(c["handed"])) for c in self.convs.values()
+                        if isinstance(c.get("handed"), dict) and c["handed"].get("to") == "tab" and c["handed"].get("inbox_id")]
         root = self.app.root
+        came = [(cid, handed, got) for cid, handed in handoffs
+                if (got := handoff_outcome(root, handed)) is not None and got != handed.get("outcome")]
         settled = []
-        for cid, last, started, about in candidates:
-            if now - last < SETTLE_QUIET_MS:
-                continue
+        for cid, last, started, about, since, handed in candidates:
+            if handed and not hours:
+                continue                  # chat_keep_hours 0: a handed chat is kept
             inbox, task = about.get("inbox"), about.get("task")
             if inbox:
                 at = ret.ended_at(root, str(inbox))
                 ended = at is not None and at >= started
             else:
+                at = None
                 ended = ret.task_done(root, str(task))
-            if ended:
+            # a handed chat counts from the end too: its last answer came before the tab took the item on (28.10.)
+            quiet, mark = (max(SETTLE_QUIET_MS, hours * 3600 * 1000), max(since, at or 0)) if handed else (SETTLE_QUIET_MS, last)
+            if ended and now - mark >= quiet:
                 settled.append((cid, last, about))
+        told = False
+        if came:
+            with self.lock:
+                for cid, handed, got in came:
+                    c = self.convs.get(cid)
+                    # handed on again meanwhile: the next read is about that one
+                    if c is not None and isinstance(c.get("handed"), dict) and c["handed"].get("at_ms") == handed.get("at_ms"):
+                        c["handed"]["outcome"] = got
+                        told = True
+                if told:
+                    self.save()
         if not settled:
-            return False
+            return told
         gone = False
         with self.lock:
             for cid, last, about in settled:
@@ -445,7 +493,7 @@ class Quick:
                 gone = True
             if gone:
                 self.save()
-        return gone
+        return gone or told
 
     def forget(self, conv: str) -> None:
         """Take a chat off the list into the archive; one still answering stays until it is done."""

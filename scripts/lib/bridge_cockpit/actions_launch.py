@@ -160,7 +160,8 @@ class LaunchSteps:
         # the return channel follows every start that ran (returns.py)
         if launched and getattr(app, "launches", None) is not None:
             app.launches.record([{"key": r["key"], "item": m.launch_item(r), "title": r.get("title"), "mode": mode,
-                                  **(chosen or {}), **({"by": ctx.by} if ctx.by else {})}
+                                  **(chosen or {}), **({"by": ctx.by} if ctx.by else {}),
+                                  **({"conv": r["conv"]} if r.get("conv") else {})}
                                  for r in launched if r.get("key") and m.launch_item(r)])
             # and the item's own log says so, for every other reader (returns.py)
             line = ret.start_line(mode, app.cfg.language)

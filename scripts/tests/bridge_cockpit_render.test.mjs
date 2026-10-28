@@ -1366,6 +1366,16 @@ test('a handed chat shows its status and disables the handoff buttons only while
   assert.ok(arrived.el.$('.route-chip'))
 })
 
+test('a handed chat says what came back from its item: the result, or the question it asks', () => {
+  const handed = outcome => ({ ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'started', inbox_id: '20261009-1200-what-next-a1b2', outcome } })
+  const done = renderFoot({ conv: handed({ text: 'Result: the bot runs', closed: true, at_ms: NOW, asks: false }) })
+  assert.equal(done.el.$('.handoff-status').getAttribute('data-status'), 'result')
+  assert.match(done.el.$('.handoff-status').text(), new RegExp(en.handoff.result('the bot runs')))
+  const asks = renderFoot({ conv: handed({ text: 'Question: close it?', closed: false, at_ms: NOW, asks: true }) })
+  assert.match(asks.el.$('.handoff-status').text(), /Asks you: close it\?/)
+  assert.doesNotMatch(asks.el.$('.handoff-status').text(), /Question:/)
+})
+
 test('every handed chat of the demo shows a worded status line', () => {
   const s = cockpitState(NOW)
   const handed = s.quick.convs.filter(x => x.handed)

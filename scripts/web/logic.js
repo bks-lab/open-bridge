@@ -2827,6 +2827,8 @@ export const RETURN_STAGES = ['started', 'working', 'asks', 'result', 'done']
 export function liveStage(r, tabs, nowMs) {
   if (r.stage === 'result' || r.stage === 'done') return r.stage
   const mine = (tabs ?? []).filter(t => !t.is_control && (t.ref === r.tab?.ref || t.slug === r.item || t.item === r.item))
+  // a question it left on its item (returns.py `asks`) stands without a tab too, until its tab works again
+  if (r.result?.asks && !mine.some(t => t.state === 'working')) return 'asks'
   if (mine.some(t => t.state !== 'working')) return r.stage === 'idle' && !mine.some(t => t.state === 'needs-you') ? 'idle' : 'asks'
   if (mine.length) return 'working'
   return nowMs - r.at_ms < 180000 ? 'started' : 'lost'
@@ -3134,11 +3136,14 @@ export function routeOf(raw) {
 }
 
 const HANDOFF_FAILED = new Set(['failed', 'partly', 'aborted', 'error', 'rejected'])
+// the head of a note on an item, which the status line names in its own words
+const NOTE_HEAD_RE = /^\s*(?:Result|Ergebnis|Question|Frage)\s*:\s*/i
 
 /** The status line of a chat that was handed on (quick.py `handed`, or the page's own record of a chat_tab
  *  reply): `word` is a key of text.js handoff, `tone` a state token, `action` what a button beside it does
  *  (retry, jump to the tab, ask_via_tab). The control route reads its relay record; the tab route finds the
- *  tab that carries the inbox item. null without a record */
+ *  tab that carries the inbox item, and once something came back from that item (`outcome`, quick.py
+ *  handoff_outcome) says it: its question, its result, or a close without a word. null without a record */
 export function handoffStatus(handed, relayRecords, tabs) {
   if (!handed?.status) return null
   const out = (word, tone, action = null, extra = {}) => ({ word, tone, action, ...extra })
@@ -3159,6 +3164,14 @@ export function handoffStatus(handed, relayRecords, tabs) {
     return out('failed', 'danger', 'retry')
   }
   const tab = handed.inbox_id ? (tabs ?? []).find(t => t?.item === handed.inbox_id) : null
+  const back = handed.outcome
+  if (back) {
+    const said = { text: String(back.text ?? '').replace(NOTE_HEAD_RE, ''), at_ms: back.at_ms ?? null }
+    const jump = tab ? ['jump', { ref: tab.ref, tab: tab.name }] : [null, {}]
+    if (back.asks) return out('asks', 'warning', jump[0], { ...jump[1], ...said })
+    if (said.text) return out('result', back.closed ? 'success' : 'info', null, said)
+    if (back.closed) return out('closed', 'success', null, said)
+  }
   if (tab && ['started', 'running', 'busy'].includes(handed.status)) return out('inTab', 'success', 'jump', { ref: tab.ref, tab: tab.name })
   if (handed.status === 'started') return out('started', 'info')
   if (handed.status === 'running' || handed.status === 'busy') return out('running', 'info')
