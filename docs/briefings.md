@@ -416,7 +416,9 @@ type `draft`, with its title, status and assignees but no number and no link,
 and never its text. It offers only Analyse and Make it a task, each told that
 there is no issue and that the card's text stays where it is; a section's own
 step reaches it only when its `types` name `draft`. `default_steps: false` turns
-the built-in steps off; a section adds its own:
+the built-in steps off; a section adds its own. `cards: all` brings every open card of the boards; a card that is
+not yours (`others`: neither assigned to you nor opened by you, nor found by your search) is a row of the page and its
+filters only, never a row of the briefing's buckets, so the work view keeps to yours as with `cards: mine`:
 
 ```yaml
 - kind: tracker
@@ -617,7 +619,8 @@ Every row also carries `id`, its source id, which keys the item the dashboard fi
 A page with `under: <page id>` is a sub page of that page: no tab of its own; in the cockpit
 its parent becomes a folder with a bar of its places under the tabs (the overview, then each
 sub page in the order `view.pages` lists them) and a ▾ at its tab with the same places, and
-`overview: true` on the sub page gives it a head card of one line per section. It names another page of `view.pages`,
+`overview: true` on the sub page gives it a head card of one line per section, and no token or noise card unless
+its own `cards:` names one (they stand on the folder's overview). It names another page of `view.pages`,
 not itself, one level deep, and neither side has `group: work` or `group: day`; `validate`
 says which rule an entry breaks. The cockpit's own Background jobs page is placed the same
 way by an entry of `id` and `under` only: `{id: "@workers", under: ops}`.

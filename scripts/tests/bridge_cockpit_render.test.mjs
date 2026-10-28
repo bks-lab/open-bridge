@@ -374,8 +374,13 @@ test('header as the menu has it (decision 6): Notes is the bell, Help ? holds Ex
   const items = () => el.$$('.help-menu [role=menuitem]')
   help.click()
   await tick()
-  const topics = ['rows', 'act', 'keys', 'trust']
+  // the topic Keyboard only while the shortcuts are on: off (the default), no key does anything
+  const topics = ['rows', 'act', 'trust']
   assert.deepEqual(items().map(b => b.text()), [en.hints.button, ...topics.map(id => en.help.tabs[id]), en.tour.again])
+  const keyed = mount(html`<${Header} s=${{ ...s, ui: { ...s.ui, shortcuts: true } }} c=${recorder()} />`)
+  keyed.$('.hdr-help > button').click()
+  await tick()
+  assert.ok(keyed.$$('.help-menu [role=menuitem]').some(b => b.text() === en.help.tabs.keys), 'with the shortcuts on')
   assert.match(el.$('.help-menu').text(), new RegExp(en.settings.lookupTitle))
   const want = [['setHints', true], ...topics.map(id => ['openLookup', id]), ['tourStart']]
   for (let k = 0; k < want.length; k++) {
@@ -2390,7 +2395,7 @@ test('origin: no origin still draws a neutral Other source, unknown, and breaks 
   assert.ok(mount(html`<${RowMeta} row=${{ key: 'x', title: 'x', origin: null }} s=${s} />`).$('.kind'))
 })
 
-test('origin: By source, the board list and the detail show both tags, the detail the raw text in full beside the sources', () => {
+test('origin: By source and the detail show both tags, the board list its ref for a GitHub row, the detail the raw text in full beside the sources', () => {
   const { PageSection } = views.pages
   const s = cockpitState(NOW)
   const page = s.model.pages.find(p => p.id === 'trackers')
@@ -2403,8 +2408,9 @@ test('origin: By source, the board list and the detail show both tags, the detai
   const { GitHubList } = views.github
   const mine = page.sections.find(x => x.id === 'mine')
   const gh = mount(html`<${GitHubList} items=${mine.items} page=${page.id} section=${mine.id} s=${s} c=${recorder()} byKey=${new Map()} />`)
-  assert.ok(gh.$$('.origin').length >= 1)
-  assert.equal(gh.$('.origin-word').text(), en.origin.github)
+  // a GitHub row says where it comes from by its repo#n; the chip GitHub beside it would say it twice (6c fix)
+  assert.ok(gh.$('.ghl-ref'))
+  assert.ok(!gh.$$('.ghl-row').some(r => r.$('.origin-word')?.text() === en.origin.github))
   // the detail: the kind and the origin in its head, the raw text in the facts, the sources row kept
   const { DetailColumn } = views.detail
   const { indexRows } = loadedRooms.logic
@@ -2818,6 +2824,27 @@ test('machines: one line per machine a job runs on or a sub page names, the alwa
   assert.deepEqual([gpu.jobs, gpu.state, gpu.tone, gpu.places.map(p => p.state)], [0, 'offline', 'dim', ['off']])
 })
 
+test('machines: the rows as the server sends them (collector.info_out: a key, no id) still give a machine its state and its lab place', () => {
+  // info_out carries `key` (item:<page>/<section>/<source id>) and `row_id`, never `id`; a lab row names its machine
+  // in tags.Remote or its id pc:<name>, whatever its title says
+  const served = (page, sec, id, title, tone, detail, extra = {}) => ({ ...opsRow(0, title, tone), key: `item:${page}/${sec}/${id}`,
+    row_id: null, detail, ...extra })
+  const s = opsState()
+  const pages = s.model.pages.map(p => (p.id === 'inv' ? { ...p, sections: [opsSec('machines', 'Machines', [
+    served('inv', 'machines', 'machine:homebox', 'homebox', null, 'macos · macOS 27.0 · online · always on', { tags: { Device: 'macos' } }),
+    served('inv', 'machines', 'machine:gpu-box', 'gpu-box', 'dim', 'windows · Windows 11 · offline', { tags: { Device: 'windows' } })])] }
+    : p.id === 'lab' ? { ...p, sections: [opsSec('remotes', 'Remotes', [
+      served('lab', 'remotes', 'pc:gpu-box', 'GPU box (lab)', 'dim', 'off', { row_id: 'pc:gpu-box', tags: { Remote: 'gpu-box' } })])] } : p))
+  const lines = loadedLogic.machineLines({ runs: [hostRun('mail', 'homebox')], hosts: ['homebox'], pages })
+  assert.deepEqual(lines.map(x => x.name), ['homebox', 'gpu-box'], 'a machine with no job still has its line through its lab row')
+  const [box, gpu] = lines
+  assert.deepEqual(box.places, [], 'the inventory row is the state, never a place of its own')
+  // the state without its device word, which the tags already say
+  assert.equal(gpu.state, 'Windows 11 · offline')
+  assert.equal(gpu.tone, 'dim')
+  assert.deepEqual(gpu.places.map(p => [p.page, p.state]), [['lab', 'off']])
+})
+
 test('machines: the block on the overview opens the jobs of a machine, a lab state opens the lab', () => {
   const { MachineLines } = views.pages
   const runs = [hostRun('mail', 'homebox'), hostRun('backup', 'homebox', 'high'), hostRun('sync', 'laptop', 'medium')]
@@ -3107,4 +3134,98 @@ test('round 6 b S4: the Chat warns when the tab list is broken or no driver list
   assert.deepEqual(open('surface:14'), ['task:search-index', t.infoOpenTask])
   // a tab of no task: no link
   assert.equal(open('surface:11'), null)
+})
+
+// ---------------------------------------------------------------- round 6 c fix: the small fixes block on the day
+
+test('the day names its housekeeping block in plain words and says per line what to do, the text where it has no kind', () => {
+  const { DayView } = views.detail
+  const base = cockpitState(NOW)
+  const tend = [
+    { kind: 'no_next', text: '2 tasks without a next step: a, b', n: 2, names: ['alpha', 'beta'] },
+    { kind: 'untasked', text: 'GitHub: assigned to you without a task: 12', n: 12, names: [], title: 'GitHub' },
+    { kind: 'muted', text: '2 muted', n: 2, names: [] },
+    { kind: 'note', text: '9 tasks active, 5 is the cap', n: null, names: [] },
+  ]
+  const s = { ...base, model: { ...base.model, extras: { ...base.model.extras, hygiene: tend.map(x => x.text), tend } } }
+  const el = mount(html`<${DayView} s=${s} c=${recorder()} />`)
+  const block = el.$$('.ov-block').find(b => b.$('h3')?.text() === en.hygieneTitle)
+  assert.ok(block, 'the block under its title')
+  const lines = block.$$('li').map(li => li.text().trim())
+  assert.deepEqual(lines, [en.tend.no_next(tend[0]), en.tend.untasked(tend[1]), en.tend.muted(tend[2]), tend[3].text])
+  // without facts (an older server) the lines stand as they came
+  const old = { ...base, model: { ...base.model, extras: { ...base.model.extras, hygiene: ['x line'], tend: undefined } } }
+  assert.ok(mount(html`<${DayView} s=${old} c=${recorder()} />`).text().includes('x line'))
+  // the word nobody understood is gone from every German text that names this block
+  const de = text.TABLES.de
+  assert.doesNotMatch(`${de.hygieneTitle} ${de.allAreas} ${de.settings.explainOption['d:day']}`, /Aufräumen/)
+  for (const k of ['no_next', 'untasked', 'muted', 'error', 'repos_skipped', 'owed', 'hidden']) {
+    assert.equal(typeof de.tend[k], 'function', k)
+    assert.match(de.tend[k]({ n: 2, names: ['a', 'b'], title: 'X', reason: 'r' }), /\.$/, `${k} is a sentence`)
+  }
+})
+
+test('background jobs answer to the words Worker and Workflow, name every machine they list, and the header says AI runs', () => {
+  const run = (id, host, kind, extra = {}) => ({ ...opsRun(id, null), host, kind, system: '', ...extra })
+  const runs = [run('mail', 'homebox', 'daemon'), run('nightly', 'homebox', 'recurring'), run('poll', 'laptop', 'interval'), run('eye', 'homebox', 'watch')]
+  const ids = q => loadedLogic.filterWorkers(runs, { q }).map(r => r.id)
+  assert.deepEqual(ids('workflow'), ['nightly', 'poll'], 'scheduled and interval runs are the workflows')
+  assert.deepEqual(ids('Worker'), ['mail', 'nightly', 'poll', 'eye'], 'every background job is a worker')
+  assert.deepEqual(ids('termin'), ['nightly'], 'the German kind word too')
+  assert.deepEqual(ids('dienst'), ['mail'])
+  const s = opsState({ runs, ui: { page: '@workers' } })
+  const el = mount(html`<${views.sessions.WorkersPage} s=${s} c=${recorder()} />`)
+  assert.match(el.$('.page-head').text(), /homebox, laptop/, 'the head names both machines')
+  assert.equal(el.$('.workers-intro').text(), en.workersIntro)
+  // the retired label Worker stays retired in the texts (one word per thing); the search answers to it all the same
+  assert.match(text.TABLES.de.workersIntro, /Workflows/)
+  // a search that finds nothing does not add the count of units the machine runs without a declaration
+  const none = mount(html`<${views.sessions.WorkersPage} s=${{ ...s, ui: { ...s.ui, workersFilter: { q: 'zzz' } },
+    workers: { ...s.workers, data: { ...s.workers.data, elsewhere: { undeclared: { counted: 9 } } } } }} c=${recorder()} />`)
+  assert.ok(!none.text().includes(en.workersElsewhere(9)))
+  // the header's count of Claude workflows no longer says Workflows, which are the jobs of the machines to the person
+  for (const lang of ['en', 'de']) assert.doesNotMatch(text.TABLES[lang].header.working(1, 0, 2), /[Ww]orkflow/, lang)
+})
+
+test('lab: a head line that folds more than two parts names the first and counts the rest, the whole list as its tooltip', () => {
+  const rest = { ...opsRow(0, 'Lab not running', 'dim'), detail: 'the box is off' }
+  const lab = { id: 'lab', title: 'Lab', overview: true, under: 'ops', sections: [
+    opsSec('gpu', 'GPU', [rest]), opsSec('llm', 'Model', [rest]), opsSec('guests', 'Guests', [rest]), opsSec('disk', 'Storage', [rest])] }
+  const base = opsState({ ui: { page: 'lab' } })
+  const s = { ...base, model: { ...base.model, pages: base.model.pages.map(p => (p.id === 'lab' ? { ...p, ...lab } : p)) } }
+  const line = mount(html`<${views.pages.PageSummary} page=${s.model.pages.find(p => p.id === 'lab')} s=${s} c=${recorder()} />`).$('.psum-line')
+  assert.equal(line.$('.psum-title').text(), en.summaryParts(['GPU', 'Model', 'Guests', 'Storage']))
+  assert.equal(line.$('.psum-title').getAttribute('title'), 'GPU, Model, Guests, Storage')
+  assert.equal(en.summaryParts(['GPU', 'Model']), 'GPU, Model')
+})
+
+test('a drawn list shows the When column only where a row has a time, and names its actions column for a screen reader only', () => {
+  const { PageSection } = views.pages
+  const s = opsState({ ui: { page: 'inv' } })
+  const page = s.model.pages.find(p => p.id === 'inv')
+  const plain = opsSec('gpu', 'GPU', [{ ...opsRow(0, 'card 0'), detail: '40 %' }])
+  const el = mount(html`<${PageSection} page=${page} section=${plain} s=${s} c=${recorder()} />`)
+  assert.ok(!el.$('th.c-when') && !el.$('td.c-when'), 'no empty When column')
+  assert.ok(el.$('th.c-acts .sr-only'), 'the actions head is not drawn as a word')
+  const timed = opsSec('gpu', 'GPU', [{ ...opsRow(0, 'card 0'), when: '09:12' }])
+  assert.ok(mount(html`<${PageSection} page=${page} section=${timed} s=${s} c=${recorder()} />`).$('td.c-when'))
+})
+
+test('github (6c fix): a board column spelled two ways is one option, the rows drop the GitHub tag their ref already says', () => {
+  const rows = ghBarRows().map(r => (r.index === 2 ? { ...r, gh: { ...r.gh, status: 'In progress' } }
+    : r.index === 3 ? { ...r, gh: { ...r.gh, board: 'Demo board', status: 'Todo' } } : r))
+  const { el, picked } = ghBar(null, rows)
+  const status = el.$('.ghf-field[data-dim="status"] select')
+  assert.deepEqual(status.$$('option').map(o => o.text()), [en.gh.bar.all(3), 'In Progress (2)', 'Todo (1)'])
+  status.value = 'in progress'
+  status.dispatch('change')
+  const f = picked.at(-1)
+  assert.equal(rows.filter(it => loadedLogic.ghPasses(it, f)).length, 2, 'the pick holds both spellings')
+  // the settings link says what it does: which boards are fetched, not a second board filter
+  assert.notEqual(en.gh.boardsSettings, en.gh.bar.dim.board)
+  assert.match(text.TABLES.de.gh.boardsSettings, /laden/)
+  const { GitHubList } = views.github
+  const s = cockpitState(NOW)
+  const list = mount(html`<${GitHubList} items=${ghBarRows()} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${recorder()} byKey=${new Map()} />`)
+  assert.ok(list.$('.ghl-ref') && !list.$('.ghl-row .origin'), 'repo#n, no GitHub chip')
 })

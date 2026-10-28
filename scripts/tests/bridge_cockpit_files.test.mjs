@@ -493,16 +493,13 @@ async function typeAndSend(el, selector, value) {
   await tick()
 }
 
-test('the files view has a search field of its own; what is typed there is searched, never run as a code', async () => {
+test('the files view has no search field of its own: the one search is the start\'s, the head leads back to it', () => {
   const { DossierView } = views.dossier
-  const c = answering()
+  const c = recorder()
   const el = mount(html`<${DossierView} s=${filesOn()} c=${c} />`)
-  const form = el.$('form.dz-find')
-  assert.ok(form && form.getAttribute('role') === 'search')
-  assert.equal(el.$('form.dz-find input').getAttribute('placeholder'), en.dossier.find.placeholder)
-  await typeAndSend(el, '.dz-find', '  2a vendor  ')
-  assert.deepEqual(c.calls.filter(x => x[0] === 'findFiles'), [['findFiles', '2a vendor']])
-  assert.equal(c.calls.filter(x => x[0] === 'act' || x[0] === 'runCommand').length, 0)
+  assert.ok(!el.$('form.dz-find'), 'no second field')
+  el.button(en.dossier.start.back).click()
+  assert.deepEqual(c.calls.at(-1), ['filesHome'])
 })
 
 test('the results come by file, best first; a click opens a file, a closed one too; a log line has none to open', () => {
@@ -613,26 +610,6 @@ test('a file without a next step offers a suggestion; the answer shows read only
 })
 
 // ---------------------------------------------------------------- the files view: review fixes of E2
-
-test('files: the search field shows the words searched last, also when they came from the command box', async () => {
-  const { DossierView } = views.dossier
-  const field = el => boxValue(el.$('form.dz-find input'))
-  const el = mount(html`<${DossierView} s=${filesOn({ find: { q: 'vendor export', status: 'ok', data: FOUND } })} c=${recorder()} />`)
-  await tick()
-  assert.equal(field(el), 'vendor export')
-  // ?invoice in the command box while the view is open: the field follows
-  loadedRooms.render(html`<${DossierView} s=${filesOn({ find: { q: 'invoice', status: 'loading', data: null } })} c=${recorder()} />`, el)
-  await tick()
-  assert.equal(field(el), 'invoice')
-  // what is typed stays while the search stays the same
-  const input = el.$('form.dz-find input')
-  input.value = 'invoice vendor'
-  input.dispatch('input')
-  await tick()
-  loadedRooms.render(html`<${DossierView} s=${filesOn({ find: { q: 'invoice', status: 'ok', data: FOUND } })} c=${recorder()} />`, el)
-  await tick()
-  assert.equal(field(el), 'invoice vendor')
-})
 
 test('files: a found closed file opens by its folder, so a slug open and closed are two files', () => {
   const { DossierView } = views.dossier
@@ -1050,7 +1027,7 @@ test('the start of the files tab lists the records, newest change first, filtere
   assert.deepEqual(logic.recordList(tabState()).rows.map(r => r.slug), ['invoice-onboarding', 'versicherung-bestand', 'ops-watch'])
   assert.deepEqual(logic.recordList(tabState({ filesState: 'done' })).rows.map(r => r.slug), ['old-report'])
   assert.deepEqual(logic.recordList(tabState({ filesState: 'all', filesKind: 'stream' })).rows.map(r => r.slug), ['ops-watch'])
-  assert.deepEqual(logic.recordList(tabState({ filesState: 'all', filesKind: 'done' })).rows.map(r => r.slug), ['old-report'])
+  assert.deepEqual(logic.recordList(tabState({ filesState: 'all', filesKind: 'done' })).rows.map(r => r.slug).length, 4, 'closed is a state, no kind')
   // the words over title, slug, area and theme, every word; the area filter as everywhere
   assert.deepEqual(logic.recordList(tabState({ filesState: 'all', filesQ: 'invoice VENDOR' })).rows.map(r => r.slug), ['invoice-onboarding'])
   assert.deepEqual(logic.recordList(tabState({ filesState: 'all', filesQ: 'acme' })).rows.map(r => r.slug), ['invoice-onboarding'])
@@ -1073,8 +1050,8 @@ test('the question to the AI holds back every record a word of the block list na
   assert.deepEqual(one, { paths: [], held: { n: 1, words: ['Gesundheit'] } })
   const many = Array.from({ length: 20 }, (_, i) => ({ ...rows[0], path: `work/tasks/t-${i}` }))
   assert.equal(logic.askPlan([...many, ...many], []).paths.length, 12, 'at most twelve, each once')
-  assert.equal(en.dossier.start.held(3, ['Versicherung', 'Gesundheit']), '3 records stay private: Versicherung, Gesundheit')
-  assert.equal(text.TABLES.de.dossier.start.held(3, ['Versicherung', 'Gesundheit']), '3 Akten bleiben privat: Versicherung, Gesundheit')
+  assert.equal(en.dossier.start.held(3, ['Versicherung', 'Gesundheit']), '3 records stay private: Versicherung, Gesundheit.')
+  assert.equal(text.TABLES.de.dossier.start.held(3, ['Versicherung', 'Gesundheit']), '3 Akten bleiben privat: Versicherung, Gesundheit.')
 })
 
 test('the files tab starts on its search: the field, the chips, the records, the AI only on a click', async () => {
@@ -1101,8 +1078,8 @@ test('the files tab starts on its search: the field, the chips, the records, the
   assert.deepEqual(c.calls.filter(x => x[0] === 'setFilesFilter').at(-1), ['setFilesFilter', { filesState: 'done' }])
   // the AI: nothing sent by itself; the note says before the click how many go and which stay private
   assert.equal(c.calls.filter(x => x[0] === 'askRecords').length, 0)
-  assert.equal(el.$('.fs-ask-note').text(), `${en.dossier.start.sends(2)} ${en.dossier.start.held(1, ['Versicherung'])}`)
-  el.button(en.dossier.start.ask).click()
+  assert.equal(el.$('.fs-ask-note').text(), `${en.dossier.start.sends(2)} ${en.dossier.start.held(1, ['Versicherung'])} ${en.dossier.start.left(5)}`)
+  el.button(en.dossier.start.ask(2)).click()
   await tick()
   assert.deepEqual(c.calls.filter(x => x[0] === 'askRecords'), [['askRecords', en.dossier.start.askDefault, ['work/tasks/invoice-onboarding', 'work/streams/ops-watch']]])
   // the walk through the active files stays one click away
@@ -1130,4 +1107,108 @@ test('a record open in the files tab leads back to the search; the walk too', ()
   assert.ok(el.$('.dz-cover'), 'the walk shows its file')
   el.button(en.dossier.start.back).click()
   assert.deepEqual(c.calls.at(-1), ['filesHome'])
+})
+
+// ---------------------------------------------------------------- round 6 c fixes: the start of the files tab
+
+test('6c fix: the preview counts what the server holds back, by the words it names per record', () => {
+  // the server checks the text that goes too (actions_work.record_check): a record clean by its title is held all
+  // the same when it says so, and one it lets through goes
+  const rows = [{ ...REC('school-board'), held: ['Versicherung'] }, { ...REC('plain'), held: [] }, REC('older-server')]
+  const plan = logic.askPlan(rows, ['Versicherung'])
+  assert.deepEqual(plan.paths, ['work/tasks/plain', 'work/tasks/older-server'])
+  assert.deepEqual(plan.held, { n: 1, words: ['Versicherung'] })
+})
+
+test('6c fix: the question to the AI has its own field, says before the click what a click sends and how many are left', async () => {
+  const { DossierView } = views.dossier
+  const f = en.dossier.start
+  const c = answering()
+  const el = mount(html`<${DossierView} s=${tabState()} c=${c} />`)
+  assert.equal(el.$('.fs-ask-note').text(), `${f.sends(2)} ${f.held(1, ['Versicherung'])} ${f.left(5)}`)
+  const q = el.$('.fs-askq input')
+  assert.ok(q, 'a field of its own for the question')
+  q.value = 'Which one waits on the vendor?'
+  q.dispatch('input')
+  await tick()
+  el.button(f.ask(2)).click()
+  await tick()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'askRecords'),
+    [['askRecords', 'Which one waits on the vendor?', ['work/tasks/invoice-onboarding', 'work/streams/ops-watch']]])
+  assert.match(f.sends(2), /^A click/)
+  // the search words are never the question
+  assert.ok(!c.calls.some(x => x[0] === 'askRecords' && x[1] === 'runs'))
+  // none left today: the button waits, the note says so
+  const spent = tabState({}, { work: { ...cockpitState(NOW).work, files_search: { enabled: true, block: [], left: 0 } } })
+  const none = mount(html`<${DossierView} s=${spent} c=${recorder()} />`)
+  assert.ok(none.button(f.ask(3)).hasAttribute('disabled'))
+  assert.match(none.$('.fs-ask-note').text(), new RegExp(f.noneLeft))
+  // no record listed: no line about privacy, there is nothing to keep back
+  const empty = mount(html`<${DossierView} s=${tabState({ filesQ: 'qqxyzzy' })} c=${recorder()} />`)
+  assert.equal(empty.$('.fs-ask-note').text(), f.noneToSend)
+  // the German words: AI as everywhere in the cockpit, plain sentences without config keys or semicolons
+  const de = text.TABLES.de
+  for (const k of ['ask', 'asking', 'answer', 'noneToSend', 'nothingToSend', 'noneLeft']) {
+    const v = typeof de.dossier.start[k] === 'function' ? de.dossier.start[k](2) : de.dossier.start[k]
+    assert.doesNotMatch(v, /\bKI\b/, k)
+  }
+  for (const [k, v] of Object.entries(de.errors).filter(([k]) => k.startsWith('files_ask_'))) {
+    assert.doesNotMatch(v, /[;(]|cockpit\.|workflow\//, k)
+    assert.doesNotMatch(v, /\bKI\b/, k)
+  }
+})
+
+test('6c fix: the chips are labelled, Kind is task or stream, a closed task counts as a task', () => {
+  const { DossierView } = views.dossier
+  const el = mount(html`<${DossierView} s=${tabState()} c=${recorder()} />`)
+  const f = en.dossier.start
+  assert.deepEqual(el.$$('.fs-chip-label').map(x => x.text()), [f.area, f.stateLabel, f.kindLabel])
+  assert.ok(!el.$$('.fs-chips button').some(b => b.text() === f.state.done && b.parentNode.getAttribute('aria-label') === f.kindLabel),
+    'closed is a state, not a kind')
+  assert.deepEqual(logic.recordList(tabState({ filesState: 'all', filesKind: 'task' })).rows.map(r => r.slug),
+    ['invoice-onboarding', 'versicherung-bestand', 'old-report'])
+})
+
+test('6c fix: the matching line reads as text: no Markdown marks, no table pipes, never a slug line', () => {
+  const group = (lines) => ({ q: 'irrtum', status: 'ok', data: { ok: true, total: 1, truncated: false, groups: [{ slug: 'old-report', kind: 'done',
+    path: 'work/done/2026-09/old-report', title: 'September report', rank: 1, count: lines.length,
+    hits: lines.map((text, i) => ({ path: 'work/done/2026-09/old-report/STATUS.md', line: i + 1, text })) }] } })
+  const hitOf = lines => logic.recordList(tabState({ filesState: 'all', filesQ: 'irrtum' }, { find: group(lines) })).rows[0].hit
+  assert.equal(hitOf(['**Korrigierter Irrtum:** the `vendor` sent _twice_']), 'Korrigierter Irrtum: the vendor sent twice')
+  assert.equal(hitOf(['| 2026-10-26 20:36 | 📋 | old-report | irrtum fixed |']), '2026-10-26 20:36 · 📋 · old-report · irrtum fixed')
+  assert.equal(hitOf(['slug: old-report', '## Irrtum noted']), 'Irrtum noted')
+  assert.equal(hitOf(['slug: old-report']), null)
+  // a cut snippet of a log row, and a front matter line, read as their text
+  assert.equal(hitOf(['| 2026-10-26 20:36 | 📋 | old-report | irrtum fixed in the run…']), '2026-10-26 20:36 · 📋 · old-report · irrtum fixed in the run…')
+  assert.equal(hitOf(['…the run | irrtum fixed |']), '…the run · irrtum fixed')
+  assert.equal(hitOf(['…ops, mail, cockpit | Irrtum fixed in the run, …']), '…ops, mail, cockpit · Irrtum fixed in the run, …')
+  assert.equal(hitOf(['headline: "Irrtum in the September report"']), 'Irrtum in the September report')
+  assert.equal(en.dossier.start.ask(0), 'Ask the AI')
+  // a line that only repeats the title says nothing more
+  assert.equal(hitOf(['headline: "September report"']), null)
+})
+
+test('6c fix: a record opened from the search has one way back and no second search; its area is the one the list named', () => {
+  const { DossierView } = views.dossier
+  const recs = RECORDS.map(r => (r.slug === 'ops-watch' ? { ...r, area: 'ops' } : r))
+  const s = tabState({ dossierOpen: 'ops-watch' }, {
+    records: { status: 'ok', data: { ok: true, total: 4, truncated: false, records: recs } },
+    details: { task: { 'ops-watch': { status: 'ok', ver: 0, data: { kind: 'stream', work_kind: 'stream', front: { status: 'doing' }, files: [] } } } } })
+  assert.equal(logic.recordList({ ...s, ui: { ...s.ui, filesQ: 'watch' } }).rows[0].area, 'ops')
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${s} c=${c} />`)
+  assert.ok(!el.$('form.dz-find'), 'no second search field')
+  assert.equal(el.$$('button').filter(b => b.text() === en.dossier.start.back).length, 1)
+  assert.match(el.$('.dz-cover .dz-eyebrow-end').text(), /ops/)
+  const what = el.$('.dz-eyebrow-what').text()
+  assert.equal((what.match(/stream/gi) ?? []).length, 1, what)
+})
+
+test('6c fix: the walk stands beside the search, in one form of words', () => {
+  const { DossierView } = views.dossier
+  const el = mount(html`<${DossierView} s=${tabState()} c=${recorder()} />`)
+  assert.ok(el.$('.fs-top .fs-walk button'), 'beside the field')
+  assert.equal(en.dossier.start.walk(1), 'Walk through the active records (1)')
+  assert.equal(text.TABLES.de.dossier.start.walk(4), 'Aktive Akten durchgehen (4)')
+  assert.equal(text.TABLES.de.dossier.start.walk(1), 'Aktive Akten durchgehen (1)')
 })

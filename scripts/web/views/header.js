@@ -158,7 +158,7 @@ const LOOKUP_TOPICS = ['rows', 'act', 'keys', 'trust']
 
 /** Help, "?", the last part of the header (decision 6, menue.md): a menu with Explain first (the notes over the page;
  *  the key ? with the shortcuts on), then the topics of the look-up card under Settings, Appearance (c.openLookup
- *  opens it on that topic), then the tour. A pick closes the menu */
+ *  opens it on that topic; Keyboard only while the shortcuts are on), then the tour. A pick closes the menu */
 function HelpMenu({ s, c }) {
   const t = T()
   const [open, setOpen] = useState(false)
@@ -172,7 +172,7 @@ function HelpMenu({ s, c }) {
       <button type="button" role="menuitem" class="settle-item" title=${explain} onClick=${pick(() => c.setHints(true))}>
         <${Icon} name="bulb" size=${14} /><span>${t.hints.button}</span></button>
       <span class="settle-hint label-caps muted" role="presentation">${t.settings.lookupTitle}</span>
-      ${LOOKUP_TOPICS.map(id => html`<button key=${id} type="button" role="menuitem" class="settle-item"
+      ${LOOKUP_TOPICS.filter(id => id !== 'keys' || s.ui.shortcuts).map(id => html`<button key=${id} type="button" role="menuitem" class="settle-item"
         onClick=${pick(() => c.openLookup(id))}><span>${t.help.tabs[id]}</span></button>`)}
       <button type="button" role="menuitem" class="settle-item" onClick=${pick(() => c.tourStart())}><span>${t.tour.again}</span></button>
     </span>` : null}

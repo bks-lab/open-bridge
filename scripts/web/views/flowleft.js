@@ -14,16 +14,17 @@
 // item in its drawer, a row with steps of its own on a page the info drawer that holds them), its kind, when (in Later:
 // why), its area, and in Later Back on in one click where the row can come back.
 // The watched rows stand under a head per repository. No instruction line and no walk bar here.
-// Round 6 c: under Not now the row Check tasks (CheckRow) with the open suggestions of the last task check
-// (logic.js checkOpen), on every width; a click shows the check in the middle (CheckList, view `check`): Back to
-// overview, its name and run button, one plain line what it does, then the check of its own tab (views/check.js
-// ReviewBody: how it ran, the verdict filter and sort, ticked rows closed or kept at once, the table). It replaces
-// the tab Tidy up where Work through is on (logic.js checkInFlow).
+// Round 6 c: above Not now the row Check tasks (CheckRow), a block of its own, with how many decisions the last task
+// check left (logic.js checkOpen: close and stale, never waiting or unclear), on every width; a click shows the check
+// in the middle (CheckList, view `check`): Back to overview, its name and a run button that says it asks the AI and
+// what the last run cost, one plain line what it does, then the check of its own tab (views/check.js ReviewBody,
+// `compact`: the verdict filter and sort, ticked rows closed or kept at once, the table, and how it ran folded into
+// one line under them). It replaces the tab Tidy up where Work through is on (logic.js checkInFlow).
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { activityWhen, checkOpen, formatDay, LEFT_VERBS, leftPlan, pageStepsOf, rowProject, short } from '../logic.js'
+import { activityWhen, centsText, checkOpen, formatDay, LEFT_VERBS, leftPlan, pageStepsOf, rowProject, short } from '../logic.js'
 import { T, language } from '../text.js'
 import { CheckButton, ReviewBody } from './check.js'
 import { KindTag } from './day.js'
@@ -64,7 +65,7 @@ export function NotNowNarrow({ left, open = null, c }) {
   </details>`
 }
 
-/** Check tasks under Not now: its name, the open suggestions of the last check (none run yet, or running), marked
+/** Check tasks above Not now: its name, the decisions the last check left (none run yet, or running), marked
  *  while the check is open in the middle; the plain line what it does as its tooltip */
 export function CheckRow({ s, c, on = false }) {
   const f = T().flow.check
@@ -79,16 +80,20 @@ export function CheckRow({ s, c, on = false }) {
   </div>`
 }
 
-/** The task check in the middle: Back to overview, its name and run button, the plain line, the check itself */
+/** The task check in the middle: Back to overview, its name and run button (what it costs), the plain line, the
+ *  check itself with the verdicts first */
 export function CheckList({ s, c }) {
   const t = T()
+  const f = t.flow.check
+  const last = s.model?.review?.last
+  const label = last?.cost_known ? f.again(t.reviewCost(centsText(last.cost_ct, language()), true)) : f.first
   return html`<section class="flow-checklist" aria-labelledby="flow-check-h">
     <header class="flow-main-head">
       <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${t.flow.point.back}<//>
       <h2 id="flow-check-h" class="flow-main-title">${t.reviewTab}</h2>
-      <${CheckButton} s=${s} c=${c} variant="primary" />
+      <${CheckButton} s=${s} c=${c} variant="primary" label=${label} />
     </header>
-    <${ReviewBody} s=${s} c=${c} intro=${html`<p class="flow-check-intro">${t.flow.check.intro}</p>`} />
+    <${ReviewBody} s=${s} c=${c} compact intro=${html`<p class="flow-check-intro">${f.intro}</p>`} />
   </section>`
 }
 

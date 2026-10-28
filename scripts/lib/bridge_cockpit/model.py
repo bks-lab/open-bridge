@@ -520,6 +520,12 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         "since": as_text_or_null(v.get("since")),
         "extras": {"clear": [as_text(x) for x in _list(v.get("clear"))],
                    "hygiene": [as_text(x) for x in _list(v.get("hygiene"))],
+                   # the same lines as kind and facts (briefing_view tend), for the page to word each one
+                   "tend": [{"kind": as_text(x.get("kind")), "text": as_text(x.get("text")), "n": _number(x.get("n"), None),
+                             "names": [as_text(n) for n in _list(x.get("names"))],
+                             "title": as_text(x.get("title")) if isinstance(x.get("title"), str) else "",
+                             "reason": as_text(x.get("reason")) if isinstance(x.get("reason"), str) else ""}
+                            for x in (_dict(t) for t in _list(v.get("tend"))) if x.get("kind")],
                    "workplace": as_text_or_null(v.get("workplace"))},
         "collected_at": clock_time(now),
         "collected_ms": int(now),
@@ -836,7 +842,8 @@ def merge_view(base: dict, fresh: dict) -> dict:
     fresh_extras = fresh.get("extras") or {"clear": [], "hygiene": [], "workplace": None}
     base_extras = base.get("extras") or {}
     extras = ({**fresh_extras, "clear": list(base_extras.get("clear") or []),
-               "hygiene": list(base_extras.get("hygiene") or [])} if fresh_is_partial else fresh_extras)
+               "hygiene": list(base_extras.get("hygiene") or []), "tend": list(base_extras.get("tend") or [])}
+              if fresh_is_partial else fresh_extras)
     return {
         **fresh,
         "extras": extras,

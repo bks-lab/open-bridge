@@ -127,7 +127,9 @@ export const FLOW = {
     // round 6 c: the task check, a row under Not now (views/flowleft.js CheckRow), the check in the middle
     check: {
       intro: 'The AI looks through your task folders and suggests what looks done, left lying or waiting. Nothing happens without your click.',
-      count: n => `${n} ${n === 1 ? 'suggestion' : 'suggestions'}`, none: 'not run yet', running: 'running',
+      count: n => (n ? `${n} to decide` : 'nothing to decide'), none: 'not run yet', running: 'running',
+      again: cost => `Check again (about ${cost})`, first: 'Have it checked (asks the AI, costs a few cents)',
+      how: 'How it was checked',
     },
     merge: {
       button: 'Merge', run: 'Merge', only: 'Only open tasks can be merged: no streams, no inbox items.', title: 'Which task stays?',
@@ -319,7 +321,9 @@ export const FLOW = {
     },
     check: {
       intro: 'Die KI schaut deine Aufgabenordner durch und schlägt vor, was erledigt, liegen geblieben oder wartend aussieht. Nichts passiert ohne deinen Klick.',
-      count: n => `${n} ${n === 1 ? 'Vorschlag' : 'Vorschläge'}`, none: 'noch nicht gelaufen', running: 'läuft',
+      count: n => (n ? `${n} zum Entscheiden` : 'nichts zu entscheiden'), none: 'noch nicht gelaufen', running: 'läuft',
+      again: cost => `Neu prüfen lassen (ca. ${cost})`, first: 'Prüfen lassen (fragt die KI, kostet ein paar Cent)',
+      how: 'Wie geprüft wurde',
     },
     merge: {
       button: 'Zusammenführen', run: 'Zusammenführen', only: 'Nur offene Aufgaben lassen sich zusammenführen, keine Streams und keine Posteingangspunkte.',

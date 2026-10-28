@@ -178,6 +178,22 @@ def test_housekeeping_goes_last_and_names_tasks_without_a_next_step():
     assert out.index("Waiting") < out.index("9 tasks active")
 
 
+def test_housekeeping_also_comes_as_facts_one_per_line_so_a_page_can_say_what_to_do():
+    # the cockpit writes its own sentence per kind (views/detail.js), the terminal keeps the label text
+    r = sample()
+    r["sections"][3] = sec("gh", "tracker", [], status="error", reason="API rate limit")
+    view = bv.build(r, profile(view={"style": "triage", "buckets": [{"id": "do"}, {"id": "plan"}]},
+                               mutes=[{"section": "advise", "when": {"check": "quiet"}}]))
+    tend = view["tend"]
+    assert [x["text"] for x in tend] == view["hygiene"]
+    kinds = {x["kind"]: x for x in tend}
+    assert kinds["error"]["title"] and kinds["error"]["reason"] == "API rate limit"
+    assert kinds["no_next"]["n"] == len(kinds["no_next"]["names"]) and "bare" in kinds["no_next"]["names"]
+    assert kinds["muted"]["n"] == 1
+    assert kinds["hidden"]["n"] >= 1 and kinds["hidden"]["names"]
+    assert {x["kind"] for x in tend} <= {"error", "untasked", "repos_skipped", "note", "owed", "no_next", "muted", "hidden"}
+
+
 def test_waiting_shows_how_long_and_nudges_after_the_threshold():
     view = bv.build(sample(), profile(view={"style": "triage",
                                             "buckets": [{"id": "waiting", "nudge_after_days": 7}]}))
@@ -1053,3 +1069,11 @@ def test_the_date_in_the_greeting_says_coming_up_not_next():
     # one screen had two different "next". The list keeps "Next up", the date says what it is
     assert bv.LABELS["next_date"].startswith("coming up:")
     assert bv.LABELS_DE["next_date"].startswith("demnächst:")
+
+
+def test_a_long_tag_value_is_cut_at_a_word_with_an_ellipsis_never_mid_word():
+    tags = bv.tags_of({"Setup": "Proxmox on SSD 2 (lab), Windows on SSD 1; RTX 4090 passed through to the guest", "Short": "ok"})
+    assert tags["Short"] == "ok"
+    assert len(tags["Setup"]) <= 60 and tags["Setup"].endswith("…")
+    assert tags["Setup"] == "Proxmox on SSD 2 (lab), Windows on SSD 1; RTX 4090 passed…"
+    assert bv.tags_of({"One": "x" * 80})["One"] == "x" * 59 + "…"

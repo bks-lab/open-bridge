@@ -90,7 +90,7 @@ their defaults:
 | `files_search.enabled` | `false` | Ask AI on the start of the Files tab: one model call without tools, only on a click, over at most 12 of the records listed, see [The Files tab](#the-files-tab). Off, the button does not show and the verb refuses |
 | `files_search.budget_per_day` | `20` | how many questions a day may go to the model; `0` none |
 | `files_search.model` | none | the model, `haiku`, `sonnet` or `opus`; none: the service `cockpit-files` of `workflow/ai-services/` (default Haiku) |
-| `files_search.block` | `[]` | words that keep a record private: a record whose area, theme, path or title holds one (case folded) never reaches the model; the server drops it before the request is built, and the page says how many stay back and by which words. At most 50 words of 60 characters |
+| `files_search.block` | `[]` | words that keep a record private: a record whose area (front matter and row), context, theme, path, title or the text that would go (the start of its STATUS.md, front matter and `related:` included) holds one, case folded, never reaches the model; the server drops it before the request is built, and the page says how many stay back and by which words (the records carry the server's decision, so the count before the click is the server's). A word also matches inside a longer one: `Steuer` holds back a record on `Steuerung` too, it holds back more, never less. At most 50 words of 60 characters |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
 | `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
 | `flow.enabled` | `false` | the view Work through of the work tab: everything open grouped by theme or area, one point at a time as a card with five verbs, or as a list with suggestions and a batch, see [Work through](#work-through-flow). Off, the view does not exist |
@@ -243,13 +243,18 @@ Jev picture (the matrix and the plan) fed by the work page's order, and it
 stands only where that page has `jev:` and Jev is on. With such a page the Jev
 tab goes too: it is the By Jev view now, and an old link to it or to the work
 page opens the matching view. The day moves to Start as well: dates, status,
-what is clear or needs tidying and the workplace stand there as cards in a shelf
+what is clear, the small fixes and the workplace stand there as cards in a shelf
 "The day", above the areas and the project chips since those do not filter it, and the pages of
 `group: day` close the start page as shelves of their own. Both show in the
 bridge and tiles views only; the overview has no shelves. The middle of Due
-shows the day in full in every case (headline, dates, status, what is clear or
-needs tidying, the workplace, the pages of `group: day`), under the same area
-filter as the rows beside it.
+shows the day in full in every case (headline, dates, status, what is clear,
+the small fixes, the workplace, the pages of `group: day`), under the same area
+filter as the rows beside it. **Small fixes** (de: Kleine Handgriffe) holds
+what runs beside the work: tasks without a next step, issues assigned to you
+with no task, a source that failed, rows muted or in a group the profile does
+not show; each line is one sentence that says what to do ("2 tasks have no next
+step (a, b). Open it and write one in."), worded from the facts the view
+carries (`tend`), the server's text for a kind the page has no sentence for.
 
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the
@@ -316,11 +321,14 @@ cockpit:
 
 ### The Files tab
 
-**Files** is a tab of its own, right after the work tab. It opens on a search: a large field, chips for
-area, state and kind, and the records changed last; a click opens a record as a file with its next step,
-its drawers and a question to the file, and "Back to the search" keeps the words typed. Walking the active
-files one at a time is one click away, and **Ask AI** (`cockpit.files_search`, off by default) asks a model
-about the records listed, only on a click. It has a page of its own: [`cockpit-files.md`](cockpit-files.md).
+**Files** is a tab of its own, right after the work tab. It opens on a search: a large field with **Walk
+through the active records (n)** beside it, chips for area, state and kind (task or stream, a closed one by what it
+was), each group under its label, and the records changed last with the matching line as plain text; a click opens a
+record as a file with its next step, its drawers and a question to the file, and the one "Back to the search" in its
+head keeps the words typed (the start's field is the one search). With `cockpit.files_search` on (off by default) a
+question to the AI has its own field and a button "Ask the AI about these n records"; a line under it says what a
+click sends, how many stay private and how many questions are left today, and the search words are never the
+question. It has a page of its own: [`cockpit-files.md`](cockpit-files.md).
 
 ### Work through (`@flow`)
 
@@ -341,13 +349,17 @@ out a workspace:
   one entered marked, All leads back, and its points stand in the middle only.
   A theme entered can be renamed. With Jev a third order, **Prio**, stands
   beside Themes and Areas (below). On top stands **Running now** as one row
-  with its count while an agent works (below), at the foot **Not now** with its
-  groups (below) and under it **Check tasks**, the task check with its open
-  suggestions ("5 suggestions"; "running" during a run, "not run yet" before the
-  first): a click shows the check in the middle, with Back, its run button, one
-  plain line of what it does, then the verdict filter, the sort and closing many
-  at once, and no right column, instruction line or walk bar beside it. A
-  suggestion is a task whose verdict is not continue and that nobody kept open.
+  with its count while an agent works (below), at the foot **Check tasks** as a
+  block of its own with what the last check left to decide ("2 to decide",
+  "nothing to decide"; "running" during a run, "not run yet" before the first),
+  and under it **Not now** with its groups (below): a click on Check tasks shows
+  the check in the middle, with Back, a run button that says it asks the AI and
+  what the last run cost ("Check again (about 0.33 ct)"), one plain line of what
+  it does, then the verdict filter, the sort, closing many at once and the table,
+  and under it how the check ran folded into one line (its stations inside); no
+  right column, instruction line or walk bar beside it. What counts to decide is
+  a task whose verdict is close or stale and that nobody kept open; waiting,
+  unclear and continue only say how it stands.
   What one of them opens in the middle is scrolled into view.
   On a narrow screen the list is one select over the middle, Running now a
   strip over it and Not now folded under it.
@@ -802,7 +814,7 @@ with the rest of the start page, `home_tiles` ids `d:waiting`, `d:guide`,
 *Waiting on you* (the section of Work, with its actions and the star),
 *Decision guide* (the reading of the next tab that waits on you, the chat's
 own card with its guards, Next and Previous through the others), *Agent
-tabs* (the cards beside Work) and *The day* (dates, status and tidying up of
+tabs* (the cards beside Work) and *The day* (dates, status and small fixes of
 the middle of Work; commits and the log of today stay there). They stand
 in the order chosen there (arrows move one); on a wide screen the guide and
 the tabs stand side by side. Each follows the area filter as Work does, the
@@ -1231,8 +1243,8 @@ already runs; the row then offers "Go to tab". A tab in state `shell` (the
 command never started, or the agent ended) blocks nothing: its row offers
 Restart beside "Go to tab".
 
-**Checking and closing tasks.** "⟳ Check tasks" (in Work through under
-Check tasks, where Work through is on; else on the Check tasks tab; in the
+**Checking and closing tasks.** "⟳ Check tasks" (in Work through the button
+of Check tasks, where Work through is on; else on the Check tasks tab; in the
 header of Your tasks, and on every page that lists tasks) runs
 `task.py review` in the background: a small model reads every task in doing or
 review (steps, log, commits, linked issues resolved in one GitHub call) and
@@ -1368,10 +1380,14 @@ and the page is a tab again, in the place its listing gives it.
 
 **Machines.** The overview of a folder lists each machine once, right under its
 head: every host a background job runs on, and every machine a sub page names in
-a row whose title is a known machine (a job's host, or a machine of
-`bridge-resources.py machines`). A line names the machine, "always on" for the
-always-on one, how many jobs run there, how many are down and to tend, and a chip
-for each sub page that names it with what it says there ("Lab: online"). A click
+a row of its own that names a known machine (a job's host, or a machine of
+`bridge-resources.py machines`, read by the row's source id `machine:<name>`):
+by its tag `Remote`, its id `pc:<name>`, else its title. A line names the
+machine, "always on" for the always-on one, else its state from the inventory
+without the device word ("Windows 11 Pro · offline"), how many jobs run there,
+how many are down and to tend, and a chip for each sub page that names it with
+what it says there ("Lab: off"); a machine no job runs on still has its line
+when a sub page names it. A click
 on the line opens Background jobs filtered to that machine (or the page that
 names it when no job runs there), a chip opens its page. Machines nothing runs on
 and no sub page names (a printer, a watch) are not listed.
@@ -1382,7 +1398,12 @@ with its count, "n down" and "n to tend" in its head. Inside a machine stand its
 systems, those with an outage first, each job worst first; a row names its kind
 before its purpose (appointment, interval, service, agent, watcher), and under its schedule
 the last run and the next one ("last run 21:01 · next run 06:05", the day in
-front when not today). Only findings are marked. The chips filter by machine
+front when not today). Only findings are marked. The head names every machine
+the list holds, a line under it says the scheduled workflows are these jobs too,
+and the search answers to a job's kind in both languages and to the words a
+person uses for them: every job to "worker" and "job", an appointment or
+interval to "workflow". The count of units a machine runs without a declaration
+stands only while the filter leaves a job. The chips filter by machine
 first, then by state, kind and area; "Only with a finding" and "Only outages"
 are filters there, off by default. The figures on top count In service, Down,
 To tend, Not reported and Retired. A section with `hide_ok: true` is drawn only while one of
@@ -1403,7 +1424,8 @@ cards:
 ```
 
 A page with `overview: true` and no `cards:` shows tokens and noise at the end,
-as before. A card named twice stands where it is first named; when the page
+as before; a sub page (`under:` a folder) shows none, since they stand on the
+folder's overview. A card named twice stands where it is first named; when the page
 shows Jev's order instead of its sections, cards placed after a section move to
 the end.
 
@@ -1675,24 +1697,27 @@ zero (wanting your review, blocked, quiet, yours without a task); a click on one
 filters the rows, a second clears it. Under them a filter bar: **Board** (each
 board, and "no board"), **Person** ("Me" first, then every assignee and author by
 count, "nobody assigned" last), **Repository**, **Kind** (issue, pull request, draft
-card) and **Board status** (the column, rows on a board only), each a compact
+card) and **Board status** (the column, rows on a board only, one option whatever its case), each a compact
 select that shows only with two values or more, every option with how many rows
 it would leave given the other choices. The choices combine with each other,
 with the figures and with the search (which also reads author and board); "n of N
 rows" and "Reset all filters" stand beside them while one is set. The choice is
 kept per section in this browser. Your own login is read from the rows (the
 author of a row you opened, else the one assignee of a row assigned to you);
-where no row says, the login stands beside Me. A row names repo#number, its
+where no row says, the login stands beside Me. A row names repo#number (no GitHub chip beside it, the ref says so), its
 column, up to three people and three labels with "+n" for the rest, "by @x" when
 the person who opened it is not the assignee, and for a pull request draft,
-review and checks (the first 80 rows, read in the call that finds the pull
-requests that close an issue, no extra call). "Group by board" (on by default)
+review and checks (80 rows at most, yours before a teammate's card and pull
+requests first among them, read in the call that finds the pull requests that
+close an issue, no extra call). "Group by board" (on by default)
 switches to one flat list where each row names its board. The line "n on
 GitHub" in Work through leads here with the filter cleared, so the page shows
 the rows it counted. Under each board's head in the list stand its facts: whose cards
 (yours or every card), how many are open on the board, the count per state
 with its dot, and the cut where the board was read only in part. Which cards a
-board shows (Off, Mine, All) is set in Settings, GitHub boards. Opening a row reads its
+board loads (Off, Mine, All) is set in Settings, GitHub boards ("Which boards to
+load" above the rows leads there). With All a teammate's card stands here and in
+the filters, never among the rows of Work. Opening a row reads its
 issue or pull request (description, last comments, labels, boards, review and
 checks) and shows its steps as buttons. A row has one start, a split button: its
 lead step on the left, ▾ beside it with the other steps, and **To tab** in the
@@ -2135,8 +2160,10 @@ the workspace ref (`ws_ref`, carried on the session's tab), so two workspaces
 with the same title never share a count. A session that sits in no tab of this
 Bridge (another folder, another Bridge here) counts nowhere in the sidebar; the
 header names it only in its tooltip ("elsewhere on this machine"). The header
-chip ("3 working · 5 subagents · 2 workflows") adds up this Bridge's tabs and
-opens the Sessions page on a click.
+chip ("3 working · 5 subagents · 2 AI runs") adds up this Bridge's tabs and
+opens the Sessions page on a click. It says AI runs, not workflows, for the
+Claude workflows of a session: to a person the workflows are what the machines
+run, under Background jobs, which its tooltip names.
 
 **Order.** Three ways, picked at the top of the sidebar and kept in this
 browser. "Terminal order" keeps the terminal's order. "Most urgent first" orders
@@ -2372,7 +2399,8 @@ Introduction; Help in the header opens it on any of its topics) shows one topic
 at a time: **Rows** says what a row's mark and
 its section mean; **Acting** covers the panel, Let AI do it, Advise, Close and
 Ask; **Keys** lists the shortcuts while they are on, and while they are off says
-only that they are off and where to switch them on (mouse first: no key named);
+only that they are off and where to switch them on (mouse first: no key named;
+the Help menu offers Keys only while they are on);
 **Costs and safety** says what spends tokens and what leaves the
 machine. What a part of the page is for, Explain shows on the page itself.
 
@@ -3036,7 +3064,7 @@ below only go further.
    words that keep a record from the model. The verb `files_ask` refuses while
    it is off; its calls count in `flow-activity.json` under `files`.
 3. **The task check.** Where Work through is on, the check is the row Check
-   tasks under Not now, and its tab goes; a stored page, the ticker, Start and
+   tasks above Not now, and its tab goes; a stored page, the ticker, Start and
    every link to it land there. With By source on as well, the check no longer
    stands on that page, which shows one line with a link to Work through.
    Without Work through nothing changes but the name: the tab is Check tasks
@@ -3054,6 +3082,20 @@ below only go further.
    browser (`bridge-cockpit.ghFilter`), the grouping too
    (`bridge-cockpit.ghGroup`). Board cards of every person come with
    `cards: all` on the section's query or with All in Settings, GitHub boards.
+   A card that is not yours (`others`: neither assigned to you nor opened by
+   you, nor found by your search) stands on the GitHub page and in its filters
+   only, never among the rows of Work, so `cards: all` leaves Due and Work
+   through as `cards: mine` had them. Board columns spelled two ways ("In
+   Progress", "In progress") are one option of the filter.
+6. **Small fixes.** The block of the day once titled Housekeeping (de:
+   Aufräumen) is Small fixes (de: Kleine Handgriffe), and each line is a
+   sentence that says what to do. The view carries the lines as facts beside
+   their text (`tend`: kind, n, names, title, reason); a page of this version
+   words a known kind itself, an older one keeps the text.
+7. **Smaller.** A sub page with `overview: true` and no `cards:` has no token
+   and noise cards any more. The help menu shows Keyboard only while the
+   shortcuts are on. The header counts Claude workflows as "AI runs". A drawn
+   list shows its When column only where a row has a time.
 
 ### Upgrading: quiet tabs and the result line
 

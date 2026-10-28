@@ -126,7 +126,7 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
 
 /** The left column, a table of contents (round 5): Running now as one row on top (views/flowrun.js RunningRow, the
  *  entries stand in the middle), the list of themes, areas or squares (logic.js flowSides) with the one entered
- *  marked, Not now at the foot with Check tasks under it; `running` and `left` the page's (logic.js runningOf, flowParts), `view` what the middle shows, `open` the
+ *  marked, Check tasks as a block of its own above Not now at the foot; `running` and `left` the page's (logic.js runningOf, flowParts), `view` what the middle shows, `open` the
  *  group of Not now open there */
 export function FlowSide({ sides, entered, mode, all, view, running = null, left = null, run = null, open = null, s, c }) {
   const f = T().flow.side
@@ -140,8 +140,8 @@ export function FlowSide({ sides, entered, mode, all, view, running = null, left
     <${NotNowNarrow} left=${left} open=${open} c=${c} />
     <${RunningRow} running=${running} on=${view === 'running' || view === 'run'} c=${c} />
     <${SideList} sides=${sides} entered=${entered} mode=${mode} points=${all} marked=${view === 'overview' || view === 'point'} s=${s} c=${c} />
-    <${NotNowBlock} left=${left} open=${open} c=${c} />
     <${CheckRow} s=${s} c=${c} on=${view === 'check'} />
+    <${NotNowBlock} left=${left} open=${open} c=${c} />
   </aside>`
 }
 

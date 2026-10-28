@@ -12,7 +12,8 @@ query keys (all optional):
   everything the github provider takes: assignee, owners, repos, kinds, labels,
                 review_requested, authored, others_prs, limit
   boards        [slug, ...]  only these boards (the others start switched off)
-  cards         mine (default) | all   board cards: only yours, or every open card
+  cards         mine (default) | all   board cards: only yours, or every open card; a card that is not
+                yours (`others`) stands on the page only, never among the rows of Work
                 A person switches each board on a dashboard (off, mine, all); that choice is kept
                 in .bridge/github-boards.json, beside the profile, never in it, and wins over both.
                 The same file may hold the person's default for boards not switched yet, which wins
@@ -144,6 +145,11 @@ def collect(section: dict, ctx) -> list:
         card["by_me"] = bool(me and card.get("author") == me)
     me_only = {b["slug"] for b in boards if mode_of[b["slug"]] == "mine"}
     carded = [c for c in carded if c["board"]["slug"] not in me_only or c.get("assigned_to_me")]
+    # a card of a board on `all` that is neither assigned to you nor opened by you is a teammate's: it stands on the
+    # page (its filters by board and person), never among the rows of Work (briefing_view skips `others`), so
+    # cards: all does not flood Due and Work through; merge clears it when the search found the card for you
+    for card in carded:
+        card["others"] = not (card.get("assigned_to_me") or card.get("by_me"))
     # one entry per registered board, in the registry's order, each with its mode: a dashboard draws them as
     # the switches, a board switched off included (without counts: it was not asked)
     by_slug = {b.get("slug"): b for b in counted}
@@ -198,6 +204,7 @@ def merge(searched: list, carded: list) -> list:
                         "group": hit.get("project") or rid.split("#")[0]}
             continue
         row["assigned_to_me"] = bool(row.get("assigned_to_me") or hit.get("assigned_to_me"))
+        row["others"] = False                      # the search brought it: asked of you, by you or for you
         for key in ("labels", "assignee", "assignees", "changed_at", "url", "author"):
             if not row.get(key) and hit.get(key):
                 row[key] = hit[key]
@@ -227,9 +234,11 @@ def fold(rows: list) -> list:
 def _links(rows: list, ctx) -> None:
     """Which open pull requests close each issue, and which issues each pull request closes: one
     GraphQL call for all rows, split in halves when one row cannot be answered (as the board dates).
-    The same call asks a pull request's draft flag, review decision and the checks of its last commit."""
-    wanted = [(i, ISSUE_ID.match(str(r.get("id")))) for i, r in enumerate(rows[:LINK_LIMIT])]
-    wanted = [(i, m) for i, m in wanted if m]
+    The same call asks a pull request's draft flag, review decision and the checks of its last commit.
+    At most LINK_LIMIT rows: yours before a teammate's card (`others`), pull requests first among them."""
+    order = sorted(range(len(rows)), key=lambda i: (rows[i].get("others") is True, rows[i].get("type") != "pr", i))
+    wanted = [(i, ISSUE_ID.match(str(rows[i].get("id")))) for i in order]
+    wanted = [(i, m) for i, m in wanted if m][:LINK_LIMIT]
     _ask_halving(wanted, rows, ctx)
 
 

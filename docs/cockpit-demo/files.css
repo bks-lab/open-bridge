@@ -12,20 +12,11 @@
 .dz-page { display: flex; flex-direction: column; gap: var(--space-md); width: 100%; max-width: 880px; margin: 0 auto; min-width: 0; padding-bottom: var(--space-2xl); }
 .dz-head { flex-wrap: wrap; justify-content: space-between; gap: 10px 16px; padding: 2px 0; }
 .dz-head .work-switch { margin: 0; }
-/* the search: small and quiet in the head of the view */
-.dz-find {
-  display: flex; align-items: center; gap: 6px; flex: 0 1 320px; min-width: 0; height: 34px; padding: 0 4px 0 12px;
-  border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--surface-raised); color: var(--on-surface-muted);
-  transition: border-color var(--motion);
-}
-.dz-find:focus-within { border-color: var(--accent-line); }
-.dz-find .icon { flex: none; }
-.dz-find-input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); }
-.dz-find-input::placeholder { color: var(--on-surface-muted); }
-.dz-find .btn { border-radius: var(--radius-full); }
 /* the start of the files tab (FilesStart): the search first, large; the chips; the records on hairlines */
 .dz-head .dz-home { margin-right: auto; }
 .fs-start { padding-top: var(--space-md); }
+.fs-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fs-top .fs-find { flex: 1 1 auto; }
 .fs-find { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .fs-find-box {
   display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; height: 48px; padding: 0 16px;
@@ -36,10 +27,13 @@
 .fs-find-box .icon { flex: none; }
 .fs-find-input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: var(--text-body); }
 .fs-find-input::placeholder { color: var(--on-surface-muted); }
-.fs-ask { flex: none; }
-.fs-ask-note { margin: -8px 0 0; padding-left: 16px; }
+.fs-ask { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fs-askq { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fs-askq .input { flex: 1 1 auto; min-width: 0; }
+.fs-ask-note { margin: 0; }
 .fs-chips { display: flex; flex-wrap: wrap; gap: 8px 20px; }
-.fs-chip-group { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.fs-chip-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fs-chip-label { margin-right: 2px; }
 .fs-chip[aria-pressed="true"] { border-color: var(--accent-line); color: var(--ink); }
 .fs-answer { display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 16px; border: 1px solid var(--accent-line); border-radius: var(--radius-xl); background: var(--surface); }
 .fs-answer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -52,7 +46,7 @@
 .fs-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 2px; }
 .fs-area { display: inline-flex; align-items: center; gap: 6px; color: var(--on-surface); }
 .fs-hit { margin: 4px 0 0; overflow-wrap: anywhere; }
-.fs-walk { margin: 0; }
+.fs-walk { margin: 0; flex: none; }
 
 /* what the search found: a quiet list on hairlines, above the file */
 .dz-results { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 20px 16px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); }
@@ -222,9 +216,10 @@
 .dz-open .dz-foot .dz-walk { justify-content: flex-start; }
 
 @media (max-width: 700px) {
-  .dz-find { flex: 1 1 100%; }
   .fs-find { flex-wrap: wrap; }
   .fs-find-box { flex-basis: 100%; }
+  .fs-top, .fs-askq { flex-wrap: wrap; }
+  .fs-top .fs-find, .fs-askq .input { flex-basis: 100%; }
   .dz-file { padding: 20px 16px 0; gap: 16px; }
   .dz-file > .dz-drawers:not(:empty) + .dz-ask, .dz-file > .dz-ask + .dz-foot, .dz-file > .dz-drawers:not(:empty) + .dz-foot { margin-top: -16px; }
   .dz-drawers, .dz-ask, .dz-foot { margin: 0 -16px; }

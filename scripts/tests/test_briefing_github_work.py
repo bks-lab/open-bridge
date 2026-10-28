@@ -136,6 +136,25 @@ def test_cards_all_brings_every_open_card_of_the_boards(tmp_path):
     assert listed[-2:] == ["--query", "is:open"]
 
 
+def test_a_teammates_card_from_cards_all_stands_on_the_page_but_never_in_the_work_rows(tmp_path):
+    # cards: all lets the GitHub page filter by every person; Work (Due, Work through) keeps to what is yours, as
+    # with cards: mine, so a teammate's card never floods it
+    section = dict(SECTION, query={"owners": ["example-org"], "cards": "all"})
+    root = bridge(tmp_path)
+    rows, _ = collect(root, section)
+    assert rows["example-org/tool#50"]["others"] is True
+    assert rows["example-org/tool#12"].get("others") is not True, "assigned to you"
+    assert all(r.get("others") is not True for rid, r in rows.items() if rid != "example-org/tool#50"), "the search's rows are yours"
+    c = bf.Context(root, now=NOW, run=FakeRun(answers()))
+    result = bf.collect(root, {"id": "p", "sections": [dict(section)]}, c)
+    built = bf._view().build(result, {"id": "p", "sections": [dict(section)]})
+    titles = [i["title"] for b in built["buckets"] for i in b["items"]]
+    assert "Someone else's card" not in titles
+    assert "Board import drops emoji states" in titles
+    page = next(s for s in result["sections"] if s["id"] == "work")
+    assert any(i["id"] == "example-org/tool#50" for i in page["items"]), "still a row of the page"
+
+
 def test_a_pull_request_that_closes_a_listed_issue_stands_in_its_row(tmp_path):
     rows, _ = collect(bridge(tmp_path))
     assert "example-org/tool#31" not in rows
@@ -864,3 +883,21 @@ def test_the_facts_carry_board_column_people_author_labels_and_pr_state_to_the_p
     odd = model.parse_gh({**f, "pr": {"draft": "yes", "review": "<b>", "checks": 3}, "author": 5, "board": ["x"]})
     assert odd["pr"] == {"draft": False, "review": None, "checks": None} and odd["author"] is None and odd["board"] is None
     assert model.parse_gh({**f, "pr": None})["pr"] is None
+
+
+def test_past_the_link_limit_your_rows_and_pull_requests_are_asked_first(tmp_path):
+    # the links call covers LINK_LIMIT rows: a teammate's card never pushes your pull request out of it
+    gw = bf._providers().get("github-work")
+    rows = [{"id": f"example-org/tool#{n}", "type": "issue", "others": True} for n in range(1, gw.LINK_LIMIT + 6)]
+    rows.append({"id": "example-org/tool#900", "type": "pr", "others": False})
+    asked = []
+
+    class Ctx:
+        timeout = 5
+
+        def run(self, argv, timeout=5):
+            asked.extend(int(n) for n in re.findall(r"issueOrPullRequest\(number: (\d+)\)", argv[-1]))
+            return json.dumps({"data": {}})
+
+    gw._links(rows, Ctx())
+    assert 900 in asked and len(asked) == gw.LINK_LIMIT

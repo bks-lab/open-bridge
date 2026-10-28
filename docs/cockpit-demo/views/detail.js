@@ -41,10 +41,14 @@ function Overview({ s, c }) {
   </div>`
 }
 
-/** The day: dates, status, what is clear, what needs tidying, the workplace and the pages of group day.
+/** The lines of Small fixes: each one in the page's own sentence for its kind (extras.tend, briefing_view), the
+ *  text the server wrote for a kind it has none for and for an older server that sends no facts */
+const tendLines = (ex, t) => (Array.isArray(ex.tend) && ex.tend.length ? ex.tend.map(x => t.tend[x.kind]?.(x) ?? x.text) : ex.hygiene)
+
+/** The day: dates, status, what is clear, the small fixes, the workplace and the pages of group day.
  *  In the middle of Today as one panel, or on Start where a work tab exists as one card per block,
  *  where the pages of group day stand as a shelf of their own (DayPages); `pages` false leaves those out
- *  (the overview's day: dates, status and tidying, the long log stays on Work) */
+ *  (the overview's day: dates, status and small fixes, the long log stays on Work) */
 export function DayView({ s, c, cards = false, pages = true }) {
   const t = T()
   const m = s.model
@@ -60,7 +64,7 @@ export function DayView({ s, c, cards = false, pages = true }) {
     (ex.clear ?? []).length ? { id: 'clear', title: t.clearTitle,
       body: html`<ul class="plain">${ex.clear.map((x, i) => html`<li key=${i}><${StateLine} token="success" word=${x} /></li>`)}</ul>` } : null,
     (ex.hygiene ?? []).length ? { id: 'hygiene', title: t.hygieneTitle,
-      body: html`<ul class="plain">${ex.hygiene.map((x, i) => html`<li key=${i}><${StateLine} token="warning" word=${x} /></li>`)}</ul>` } : null,
+      body: html`<ul class="plain">${tendLines(ex, t).map((x, i) => html`<li key=${i}><${StateLine} token="warning" word=${x} /></li>`)}</ul>` } : null,
     ex.workplace ? { id: 'workplace', title: t.workplaceTitle,
       body: html`<p class="row-in">${ex.workplace.replace(/\s*\S+\?$/, '')}
         ${wpPage ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(wpPage.id)}>${t.workplaceOpen}<//>` : null}</p>` } : null,

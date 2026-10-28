@@ -3375,12 +3375,14 @@ const checkUi = (ui = {}) => demoFlow({ rvFilter: 'all', rvSort: 'verdict', rvPi
 
 test('round 6 c P1: Check tasks stands under Not now with its open verdicts, a click shows the check in the middle', () => {
   const s = checkUi()
-  // the demo's check judged three tasks: close, stale and waiting, none kept, all three open suggestions
-  assert.equal(logic.checkOpen(s.model), 3)
+  // the demo's check judged three tasks: close, stale and waiting, none kept; close and stale want a decision,
+  // waiting only says so
+  assert.equal(logic.checkOpen(s.model), 2)
   const judged = (slug, review) => task(slug, { review: { verdict: 'close', kept: false, ...review } })
-  const kept = { sections: [{ id: 'work', rows: [judged('a'), judged('b', { kept: true }), judged('c', { verdict: 'continue' })] }],
-    review: { keys: ['task:a', 'task:b', 'task:c', 'task:gone'] } }
-  assert.equal(logic.checkOpen(kept), 1, 'a kept verdict, a continue and a task closed since are no suggestions')
+  const kept = { sections: [{ id: 'work', rows: [judged('a'), judged('b', { kept: true }), judged('c', { verdict: 'continue' }),
+    judged('d', { verdict: 'waiting' }), judged('e', { verdict: 'unclear' }), judged('f', { verdict: 'stale' })] }],
+    review: { keys: ['task:a', 'task:b', 'task:c', 'task:d', 'task:e', 'task:f', 'task:gone'] } }
+  assert.equal(logic.checkOpen(kept), 2, 'a kept verdict, a continue, waiting, unclear and a task closed since are nothing to decide')
   assert.equal(logic.checkOpen({ review: { keys: [] } }), 0)
   assert.equal(logic.checkOpen(null), 0)
   const c = recorder()
@@ -3388,7 +3390,12 @@ test('round 6 c P1: Check tasks stands under Not now with its open verdicts, a c
   const row = el.$('aside .flow-check .flow-check-row')
   assert.ok(row, 'a row Check tasks in the left column')
   assert.equal(row.$('.flow-side-label').text(), en.reviewTab)
-  assert.equal(row.$('.flow-side-open').text().trim(), en.flow.check.count(3))
+  assert.equal(row.$('.flow-side-open').text().trim(), en.flow.check.count(2))
+  // its own block above Not now, not one of its groups
+  const aside = el.$('aside')
+  assert.ok(!aside.$('.flow-notnow .flow-check-row'), 'not under the head Not now')
+  const kids = aside.childNodes.filter(n => n.nodeType === 1)
+  assert.ok(kids.findIndex(n => n.hasClass('flow-check')) < kids.findIndex(n => n.hasClass('flow-notnow')), 'above Not now')
   assert.equal(row.getAttribute('title'), en.flow.check.intro)
   assert.ok(!row.hasClass('is-on'))
   row.click()
@@ -3406,18 +3413,31 @@ test('round 6 c P1: Check tasks stands under Not now with its open verdicts, a c
   assert.ok(main.$('.review-bar'), 'the verdict filter')
   assert.ok(main.$('.review-top .seg'), 'the sort')
   assert.ok(main.$('.tbl-review'), 'the table with its boxes')
+  // the verdicts come first; how the check ran is one folded line under them, its stations inside
+  const how = main.$('details.review-how')
+  assert.ok(how && !how.getAttribute('open'), 'the run folded')
+  assert.ok(how.$('summary').text().length > 0)
+  assert.ok(!main.$('.review-top .flow-wrap'), 'no drawn check above the verdicts')
+  const parts = main.$('.flow-checklist').childNodes.filter(n => n.nodeType === 1)
+  assert.ok(parts.findIndex(n => n.hasClass('psec')) < parts.findIndex(n => n.hasClass('review-how')), 'the table above the run')
   assert.ok(!main.$('.flow-overview'), 'not the overview')
   assert.ok(!mid.$('.flow-aside'), 'no right column')
   assert.ok(!main.$('.flow-dock'), 'no instruction line under the check')
   main.button(en.flow.point.back).click()
   assert.deepEqual(c2.calls.at(-1), ['flowOverview'])
-  main.button(en.btnReviewAll).click()
+  // the run button says it checks again and what the last check cost, never the heading's words
+  const last = checkUi().model.review.last
+  const again = en.flow.check.again(en.reviewCost(logic.centsText(last.cost_ct, 'en'), last.cost_known))
+  assert.notEqual(again, en.reviewTab)
+  main.button(again).click()
   assert.deepEqual(c2.calls.at(-1), ['review'])
+  assert.match(en.flow.check.first, /AI/, 'the first run says that it asks the AI')
   // the German line says what the check does, in plain words
   assert.equal(text.TABLES.de.flow.check.intro,
     'Die KI schaut deine Aufgabenordner durch und schlägt vor, was erledigt, liegen geblieben oder wartend aussieht. Nichts passiert ohne deinen Klick.')
-  assert.equal(text.TABLES.de.flow.check.count(5), '5 Vorschläge')
-  assert.equal(text.TABLES.de.flow.check.count(1), '1 Vorschlag')
+  assert.equal(text.TABLES.de.flow.check.count(5), '5 zum Entscheiden')
+  assert.equal(text.TABLES.de.flow.check.count(0), 'nichts zu entscheiden')
+  assert.equal(text.TABLES.de.flow.check.again('0,33 ct'), 'Neu prüfen lassen (ca. 0,33 ct)')
 })
 
 test('round 6 c P2: where Work through is on, the check has no tab and every way to it lands there; without it the tab stays', () => {

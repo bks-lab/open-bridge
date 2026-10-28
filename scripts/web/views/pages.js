@@ -142,7 +142,7 @@ export function rowEntry(it, page, section, byKey) {
 /** The rows of a list in the order it shows them, as the queue its details walk through */
 export const rowQueue = (rows, byKey) => rows.map(r => rowEntry(r.it, r.page, r.section, byKey)).filter(Boolean)
 
-function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue = null, steps = 'menu' }) {
+function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue = null, steps = 'menu', timed = true }) {
   const t = T()
   const tri = s.triage?.items?.[triageKey(it)] ?? null
   const [open, setOpen] = useState(false)
@@ -156,7 +156,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
   return html`<tr class=${`${tone ? `tone-${tone}` : ''} row-opens`} tabindex="0"
     onClick=${e => { if (rowClickOpens(e)) openIt() }}
     onKeyDown=${e => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); openIt() } }}>
-    <td class="c-when mono">${it.when}</td>
+    ${timed ? html`<td class="c-when mono">${it.when}</td>` : null}
     <td class=${`c-item${tri ? ' has-gist' : ''}`}>
       ${tri ? html`<${TriageGist} tri=${tri} keyRow=${actionRow(it, byKey)} c=${c} s=${s} />` : null}
       <div class="info-title">
@@ -536,15 +536,15 @@ export function PageSection({ page, section, s, c }) {
     // board: the rows under their group (a GitHub row's board), the groups in the order the rows first name them
     const lanes = section.kind === 'tasks' ? TASK_LANES.map(id => [id, items.filter(it => taskLane(it) === id)]).filter(([, l]) => l.length)
       : section.view === 'board' ? [...new Set(items.map(it => it.group ?? ''))].map(g => [g, items.filter(it => (it.group ?? '') === g)]) : []
-    // the order the rows are shown in is the order a detail walks on to the next
+    // the shown order is the one a detail walks on; When only where a row has a time; the actions head for a reader only
     const shown = lanes.length > 1 ? lanes.flatMap(([, l]) => l) : items
-    const queue = rowQueue(shown.map(it => ({ it, page: page.id, section: section.id })), byKey)
-    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} queue=${queue} steps=${section.steps ?? 'menu'} />`
+    const queue = rowQueue(shown.map(it => ({ it, page: page.id, section: section.id })), byKey), timed = items.some(it => it.when)
+    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} queue=${queue} steps=${section.steps ?? 'menu'} timed=${timed} />`
     body = html`<div class="table-wrap" tabindex="0" role="region" aria-label=${section.title}>
       <table class="tbl">
-        <thead><tr><th scope="col" class="c-when">${t.col.when}</th><th scope="col">${t.col.item}</th><th scope="col" class="c-acts">${t.col.actions}</th></tr></thead>
+        <thead><tr>${timed ? html`<th scope="col" class="c-when">${t.col.when}</th>` : null}<th scope="col">${t.col.item}</th><th scope="col" class="c-acts"><span class="sr-only">${t.col.actions}</span></th></tr></thead>
         ${lanes.length > 1 ? lanes.map(([id, list]) => html`<tbody key=${id} class=${section.view === 'board' ? 'lane-group' : `lane-${id}`}>
-          <tr class="lane-head"><th scope="rowgroup" colspan="3"><span class="label-caps">${section.view === 'board' ? (id || t.groupOther) : t.lane[id]}</span> <span class="sec-count mono">${list.length}</span></th></tr>
+          <tr class="lane-head"><th scope="rowgroup" colspan=${timed ? 3 : 2}><span class="label-caps">${section.view === 'board' ? (id || t.groupOther) : t.lane[id]}</span> <span class="sec-count mono">${list.length}</span></th></tr>
           ${list.map(row)}</tbody>`)
           : html`<tbody>${items.map(row)}</tbody>`}
       </table>
@@ -681,7 +681,7 @@ export function PageSummary({ page, s, c }) {
   return html`<section class="panel panel-pad psum" aria-label=${t.summaryLabel(page.title)}>
     <ul class="psum-list">${lines.map(x => html`<li key=${x.ids[0]}>
       <button type="button" class="psum-line" onClick=${() => jumpTo(`ps-${page.id}-${x.ids[0]}`)} aria-label=${t.overviewJump(x.titles[0])}>
-        <${Dot} token=${x.tone === 'neutral' ? 'on-surface-muted' : x.tone} /><span class="psum-title">${x.titles.join(', ')}</span>
+        <${Dot} token=${x.tone === 'neutral' ? 'on-surface-muted' : x.tone} /><span class="psum-title" title=${x.titles.join(', ')}>${t.summaryParts(x.titles)}</span>
         <span class="psum-text">${say(x)}</span>
       </button></li>`)}</ul>
   </section>`

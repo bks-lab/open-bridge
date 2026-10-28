@@ -288,8 +288,14 @@ function WorkerRow({ r, now, nowPct, c, i }) {
   </li>`
 }
 
+// the machines a view lists jobs of, in the order the page draws them (groupByHost), for its head
+const hostsOf = (runs, view) => groupByHost(runs, { hosts: view?.hosts ?? (view?.host ? [view.host] : []) }).map(m => m.host)
+  .filter(h => h !== '?').join(', ') || view?.host || '?'
+
 /** Every declared run of the always-on machines, drawn by this page from `workload view --json`: by machine, the
- *  always-on first, every job in view and only the findings marked; a filter (the machine first) narrows it */
+ *  always-on first, every job in view and only the findings marked; a filter (the machine first) narrows it. A line
+ *  under the head says that the scheduled workflows of the machines are these jobs too; the count of
+ *  units a machine runs without a declaration stands only while the filter leaves a job */
 export function WorkersPage({ s, c }) {
   const t = T()
   const w = s.workers ?? {}
@@ -319,9 +325,10 @@ export function WorkersPage({ s, c }) {
     <${FolderBar} s=${s} c=${c} />
     <header class="page-head">
       <h2 class="detail-title">${t.workersTab}</h2>
-      ${view ? html`<span class="muted small">${t.workersFrom(view.host, Number.isFinite(at) ? formatClock(at, language()).slice(0, 5) : '?')}</span>` : null}
+      ${view ? html`<span class="muted small">${t.workersFrom(hostsOf(runs, view), Number.isFinite(at) ? formatClock(at, language()).slice(0, 5) : '?')}</span>` : null}
       <button type="button" class="btn-link small" onClick=${() => c.loadWorkers()}>${t.reload}</button>
     </header>
+    <p class="muted small workers-intro">${t.workersIntro}</p>
     ${w.status === 'none' ? html`<div class="panel panel-pad"><p class="muted">${t.workersNone}</p></div>` : !view
       ? html`<div class="panel panel-pad"><${Skeleton} lines=${6} /></div>` : html`
       <dl class="stats">
@@ -362,6 +369,6 @@ export function WorkersPage({ s, c }) {
           </div>`
         })}
       </section>`)}
-      ${(view.elsewhere?.undeclared?.counted ?? 0) ? html`<p class="muted small">${t.workersElsewhere(view.elsewhere.undeclared.counted)}</p>` : null}`}
+      ${(view.elsewhere?.undeclared?.counted ?? 0) && shown.length ? html`<p class="muted small">${t.workersElsewhere(view.elsewhere.undeclared.counted)}</p>` : null}`}
   </div>`
 }

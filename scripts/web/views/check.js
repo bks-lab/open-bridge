@@ -95,13 +95,13 @@ function VerdictBar({ counts, c }) {
   })}</div>`
 }
 
-/** "Check tasks"; while a check runs it says so with the seconds, the server allows one at a time */
-export function CheckButton({ s, c, size = 'sm', variant = 'secondary' }) {
+/** "Check tasks", or the caller's `label`; while a check runs it says so with the seconds, the server allows one at a time */
+export function CheckButton({ s, c, size = 'sm', variant = 'secondary', label = null }) {
   const t = T()
   const running = s.model?.review?.running
   const sec = running ? Math.max(0, Math.round((s.now - running.started_ms) / 1000)) : 0
   return html`<${Btn} size=${size} variant=${variant} disabled=${!!running} busy=${!!s.ui.busy.task_review}
-    onClick=${() => c.review()}>${running ? t.reviewing(sec) : t.btnReviewAll}<//>`
+    onClick=${() => c.review()}>${running ? t.reviewing(sec) : label ?? t.btnReviewAll}<//>`
 }
 
 function reviewStripText(s) {
@@ -175,8 +175,9 @@ export function ReviewPage({ s, c }) {
 
 /** The check itself: its run, the verdict filter and sort, what is picked, the table. Its own tab, or the
  *  tasks label of the page where inbox and tasks stand together (then with the run button on top), or the middle of
- *  Work through (views/flowleft.js CheckList: its own `intro`, the plain line in place of the model's) */
-export function ReviewBody({ s, c, inline = false, intro = null }) {
+ *  Work through (views/flowleft.js CheckList: its own `intro`, the plain line in place of the model's, and `compact`:
+ *  the verdicts first, how it ran folded into one line under the table) */
+export function ReviewBody({ s, c, inline = false, intro = null, compact = false }) {
   const t = T()
   const byKey = indexRows(s.model)
   const rv = s.model?.review ?? {}
@@ -195,8 +196,9 @@ export function ReviewBody({ s, c, inline = false, intro = null }) {
     <div class="panel panel-pad review-top">
       ${inline ? html`<header class="psec-head"><h2 class="sec-title">${t.reviewTitle}</h2><${CheckButton} s=${s} c=${c} size="xs" /></header>` : null}
       ${intro ?? html`<p class="muted small">${t.reviewIntro}</p>`}
-      <${CheckFlow} s=${s} />
-      ${rv.last ? html`<p class="small">${reviewStripText(s)}${rv.last.mismatch ? html` · <${StateLine} token="warning" word=${t.reviewMismatch} />` : null}</p>` : null}
+      ${compact ? null : html`<${CheckFlow} s=${s} />`}
+      ${rv.last && !compact ? html`<p class="small">${reviewStripText(s)}${rv.last.mismatch ? html` · <${StateLine} token="warning" word=${t.reviewMismatch} />` : null}</p>` : null}
+      ${compact && rv.running ? html`<${CheckFlow} s=${s} />` : null}
       ${rv.error ? html`<p><${StateLine} token="danger" strong word=${t.reviewFailedLine(rv.error)} /></p>` : null}
       ${all.length ? html`<${VerdictBar} counts=${counts} c=${c} /><div class="review-bar" role="group" aria-label=${t.rvCol.verdict}>
           ${filters.map(([id, label]) => html`<button key=${id} type="button" aria-pressed=${String(filter === id)}
@@ -239,5 +241,9 @@ export function ReviewBody({ s, c, inline = false, intro = null }) {
           </tr>`)}</tbody>
         </table>
       </div>`}
-    </section>`
+    </section>
+    ${compact && rv.last ? html`<details class="panel panel-pad review-how">
+      <summary class="small"><span class="label-caps">${t.flow.check.how}</span> ${reviewStripText(s)}${rv.last.mismatch ? html` · <${StateLine} token="warning" word=${t.reviewMismatch} />` : null}</summary>
+      <${CheckFlow} s=${s} />
+    </details>` : null}`
 }

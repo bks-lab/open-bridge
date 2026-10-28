@@ -33,6 +33,13 @@ test('a page without cards keeps what overview alone drew: usage and noise at it
   assert.deepEqual(logic.cardPlan({ sections: [{ id: 'a' }] }), { after: {}, end: [] })
 })
 
+test('a sub page with overview and no cards draws none: the tokens and the noise stand on its folder overview', () => {
+  assert.deepEqual(logic.cardPlan({ overview: true, under: 'ops', sections: [{ id: 'a' }], cards: null }), { after: {}, end: [] })
+  // its own cards: still stand where it names them
+  assert.deepEqual(logic.cardPlan({ overview: true, under: 'ops', sections: [{ id: 'a' }], cards: [{ id: 'usage', after: 'a' }] }),
+    { after: { a: ['usage'] }, end: [] })
+})
+
 test('cards stand after their section in the listed order, each once; an unknown section sends a card to the end', () => {
   const page = { overview: true, sections: [{ id: 'systeme' }, { id: 'x' }],
     cards: [{ id: 'costs', after: 'systeme' }, { id: 'usage', after: 'systeme' }, { id: 'noise', after: null }, { id: 'usage', after: 'gone' }] }

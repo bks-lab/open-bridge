@@ -3482,11 +3482,27 @@ def test_merge_keeps_clear_hygiene_and_since_of_sections_a_partial_run_left_out(
     delta = view(skipped=["github", "calendar"], since="since 08:40: 1 new", headline="partial",
                  extras={"clear": [], "hygiene": [], "workplace": "Tabs: 2"})
     out = m.merge_view(full, delta)
-    assert out["extras"] == {"clear": ["GitHub board: all clear"], "hygiene": ["Tracker x: error"], "workplace": "Tabs: 2"}
+    assert out["extras"] == {"clear": ["GitHub board: all clear"], "hygiene": ["Tracker x: error"], "tend": [], "workplace": "Tabs: 2"}
     assert out["since"] == "since 08:40: 3 new"
     again = m.merge_view(full, view(skipped=[], since="since 09:00: 0 new", headline="h",
                                     extras={"clear": [], "hygiene": [], "workplace": None}))
     assert again["extras"]["clear"] == [] and again["since"] == "since 09:00: 0 new"
+    # the facts of the housekeeping lines (`tend`) stay with their lines
+    tended = m.merge_view(view(skipped=[], extras={"clear": [], "hygiene": ["x"], "tend": [{"kind": "muted", "text": "x", "n": 2}],
+                                                   "workplace": None}),
+                          view(skipped=["github"], extras={"clear": [], "hygiene": [], "tend": [], "workplace": None}))
+    assert tended["extras"]["tend"] == [{"kind": "muted", "text": "x", "n": 2}]
+
+
+def test_the_page_model_carries_the_housekeeping_facts_beside_its_lines():
+    data = {"view": {"hygiene": ["2 muted", "odd", "x"], "tend": [{"kind": "muted", "text": "2 muted", "n": 2},
+                                                                {"kind": "no_next", "text": "odd", "n": "x", "names": ["a", 3]},
+                                                                {"kind": "untasked", "text": "x", "n": 3, "title": "GitHub", "reason": 4},
+                                                                "junk"]}}
+    tend = m.parse_view(data, True, NOW)["extras"]["tend"]
+    assert tend == [{"kind": "muted", "text": "2 muted", "n": 2, "names": [], "title": "", "reason": ""},
+                    {"kind": "no_next", "text": "odd", "n": None, "names": ["a", "3"], "title": "", "reason": ""},
+                    {"kind": "untasked", "text": "x", "n": 3, "names": [], "title": "GitHub", "reason": ""}]
 
 
 def test_server_texts_name_the_configured_control_workspace():
@@ -7936,7 +7952,8 @@ def test_asking_the_records_is_off_by_default_within_its_budget_and_refuses_what
         assert bad.value.code == "invalid_argument"
         with pytest.raises(ActionError) as gone:
             w.act("files_ask", text="anything?", paths=["work/tasks/no-such-task"])
-        assert gone.value.code == "files_ask_held"
+        # nothing held back, the record is gone since the page read it: the page is stale, not the block list
+        assert gone.value.code == "files_ask_stale"
         w.act("files_ask", text="anything?", paths=ASKED[:1])
         with pytest.raises(ActionError) as spent:
             w.act("files_ask", text="again?", paths=ASKED[:1])
@@ -7951,6 +7968,54 @@ def test_asking_the_records_is_off_by_default_within_its_budget_and_refuses_what
         assert e.value.code == "files_ask_off" and off.runner.of("claude.p") == []
     finally:
         off.close()
+
+
+def test_a_record_whose_text_names_a_blocked_word_is_held_back_too(tmp_path):
+    """The text that goes out (the start of STATUS.md, with its front matter and `related:`) is checked as well as its
+    area, theme, path and title: a word inside a longer one holds it too (Krankenversicherung, by Versicherung)"""
+    w = files_ask_world(tmp_path)
+    try:
+        put = lambda rel, text: ((w.root / rel).parent.mkdir(parents=True, exist_ok=True), (w.root / rel).write_text(text, encoding="utf-8"))
+        put("work/tasks/school-board/STATUS.md", "---\nstatus: doing\nheadline: Parents board\n---\nAsk about the Krankenversicherung form\n")
+        put("work/tasks/tax-prep/STATUS.md", "---\nstatus: doing\nheadline: Prep\nrelated: [versicherung-bestand]\n---\nnothing else\n")
+        before = len(w.runner.calls)
+        res = w.act("files_ask", text="which?", paths=["work/tasks/demo-task", "work/tasks/school-board", "work/tasks/tax-prep"])
+        prompt = w.runner.calls[before:][0][-1]
+        for held in ("school-board", "Krankenversicherung", "tax-prep", "versicherung-bestand"):
+            assert held not in prompt, held
+        assert res["ask"]["sent"] == 1 and res["ask"]["held"] == {"n": 2, "words": ["Versicherung"]}
+    finally:
+        w.close()
+
+
+def test_the_records_name_what_the_block_list_holds_back_so_the_page_counts_as_the_server_does(tmp_path):
+    w = files_ask_world(tmp_path)
+    try:
+        status, _, body = w.request("GET", "/api/records", headers=w.cookie)
+        by = {r["slug"]: r for r in json.loads(body)["records"]}
+        assert status == 200
+        assert by["versicherung-bestand"]["held"] == ["Versicherung"] and by["doctor-visit"]["held"] == ["Gesundheit"]
+        assert by["demo-task"]["held"] == []
+    finally:
+        w.close()
+    off = World(tmp_path / "off")
+    try:
+        recs = json.loads(off.request("GET", "/api/records", headers=off.cookie)[2])["records"]
+        assert all("held" not in r for r in recs), "no block list, nothing read for it"
+    finally:
+        off.close()
+
+
+def test_the_budget_is_read_again_once_the_lock_is_taken(tmp_path):
+    w = files_ask_world(tmp_path, budget=3)
+    try:
+        left = iter([1, 0])
+        w.app.activity.budget_left = lambda service: next(left, 0)
+        with pytest.raises(ActionError) as spent:
+            w.act("files_ask", text="anything?", paths=ASKED[:1])
+        assert spent.value.code == "files_ask_budget" and w.runner.of("claude.p") == []
+    finally:
+        w.close()
 
 
 def test_asking_a_file_names_it_for_an_open_task_and_never_for_a_closed_one(world):

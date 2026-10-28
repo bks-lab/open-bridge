@@ -868,8 +868,13 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
         if isinstance(b, dict) and b.get("id") == "waiting":
             nudge_days = _int(b.get("nudge_after_days"), nudge_days, 1)
 
-    out = {"rows": {}, "order": [], "hygiene": [], "no_next": [], "muted": 0, "events": [], "workplace": None,
+    out = {"rows": {}, "order": [], "hygiene": [], "tend": [], "no_next": [], "muted": 0, "events": [], "workplace": None,
            "activity": [], "boards": [], "clear": [], "status": []}
+
+    def tend(kind: str, text: str, **facts) -> None:
+        # a housekeeping line: its text for the terminal, its kind and facts for a page that words it (`tend`)
+        out["hygiene"].append(text)
+        out["tend"].append({"kind": kind, "text": text, **facts})
 
     def items_of(s):
         # The section's own `max:` still caps what it contributes.
@@ -951,7 +956,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                                   "health": sections_cfg.get(sid, {}).get("report_ok") is True,
                                   **({"left_out": True} if s.get("left_out") else {})})
         if s.get("status") == "error":
-            out["hygiene"].append(labels["error"].format(title=s.get("title") or sid, reason=s.get("reason", "")))
+            tend("error", labels["error"].format(title=s.get("title") or sid, reason=s.get("reason", "")),
+                 title=s.get("title") or sid, reason=s.get("reason", ""))
             continue
         if not usable(s):
             continue
@@ -965,7 +971,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             # issues assigned to you that no task tracks: counted over every row, not only the capped ones
             untracked = sum(1 for i in s.get("all") or items_of(s) if i.get("untasked") is True and not muted(sid, i))
             if untracked:
-                out["hygiene"].append(labels["untasked"].format(title=title, n=untracked))
+                tend("untasked", labels["untasked"].format(title=title, n=untracked), title=title, n=untracked)
         if cfg.get("report_ok") is True and not any(
                 not muted(sid, i) and i.get("state") not in ("done", "removed") for i in items_of(s)):
             # Green says so: an empty source is otherwise indistinguishable from one that never ran.
@@ -983,8 +989,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             if rows:
                 out["activity"].append({"days": days or 7, "rows": rows})
             if s.get("skipped"):
-                out["hygiene"].append(labels["repos_skipped"].format(n=len(s["skipped"]),
-                                                                     names=", ".join(s["skipped"])))
+                tend("repos_skipped", labels["repos_skipped"].format(n=len(s["skipped"]), names=", ".join(s["skipped"])),
+                     n=len(s["skipped"]), names=list(s["skipped"]))
             continue
         if s.get("summary"):
             have = {(b.get("org"), b.get("number")) for b in out["boards"]}
@@ -996,7 +1002,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             tabs = [i for i in items_of(s) if i.get("state") != "warning"]
             for i in items_of(s):
                 if i.get("state") == "warning":
-                    out["hygiene"].append(str(i.get("title")))
+                    tend("note", str(i.get("title")))
             if tabs:
                 out["workplace"] = labels["workplace"].format(
                     n=len(tabs), new=sum(1 for t in tabs if t.get("state") == "new"),
@@ -1044,7 +1050,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             elif kind == "advise":
                 check = item.get("check")
                 if check == "wip":
-                    out["hygiene"].append(str(item.get("title")))
+                    tend("note", str(item.get("title")))
                 elif check == "quiet":
                     add(f"task:{item.get('task')}", row(sid, item, forced or "drop", item.get("title"), (), 5))
                 elif check == "collision":
@@ -1097,6 +1103,9 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             else:   # tracker, command
                 state = item.get("state")
                 if state in ("done", "removed"):
+                    continue
+                if item.get("others") is True:
+                    # a teammate's board card (github-work, cards: all): on its page only, never a row of Work
                     continue
                 if item.get("category") == "qa" or state == "review":
                     bucket = "do"
@@ -1190,17 +1199,22 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
             r["new"] = r["changed"] = False
     rows.sort(key=lambda r: (URGENCY[r["bucket"]], r["rank"], str(_when(r.get("due")) or "9999")))
 
-    hygiene = list(data["hygiene"]) + [str(n) for n in result.get("housekeeping") or []]
+    # each line once as text (the terminal) and once as its kind and facts (`tend`, a page words it itself)
+    tend = list(data["tend"]) + [{"kind": "note", "text": str(n)} for n in result.get("housekeeping") or []]
     if result.get("owed"):
-        hygiene.append(labels["owed"].format(streams=", ".join(result["owed"])))
+        tend.append({"kind": "owed", "text": labels["owed"].format(streams=", ".join(result["owed"])),
+                     "names": list(result["owed"])})
     if data["no_next"]:
-        hygiene.append(labels["no_next"].format(n=len(data["no_next"]), slugs=", ".join(data["no_next"])))
+        tend.append({"kind": "no_next", "text": labels["no_next"].format(n=len(data["no_next"]), slugs=", ".join(data["no_next"])),
+                     "n": len(data["no_next"]), "names": list(data["no_next"])})
     if data["muted"]:
-        hygiene.append(labels["muted"].format(n=data["muted"]))
+        tend.append({"kind": "muted", "text": labels["muted"].format(n=data["muted"]), "n": data["muted"]})
     hidden = [r for r in rows if r["bucket"] in hidden_ids]
     if hidden:
         ids = sorted({r["bucket"] for r in hidden}, key=lambda b: URGENCY[b])
-        hygiene.append(labels["hidden"].format(n=len(hidden), ids=", ".join(ids)))
+        tend.append({"kind": "hidden", "text": labels["hidden"].format(n=len(hidden), ids=", ".join(ids)),
+                     "n": len(hidden), "names": ids})
+    hygiene = [x["text"] for x in tend]
     visible = [r for r in rows if r["bucket"] not in hidden_ids]
 
     plan_cfg: dict = view["plan"] if isinstance(view.get("plan"), dict) else {}
@@ -1212,7 +1226,7 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
 
     width = view.get("width")
     out = {"style": style, "collected_at": result.get("collected_at"), "headline": None, "since": None,
-           "buckets": [], "hygiene": hygiene, "workplace": data["workplace"], "more": 0, "titles": titles,
+           "buckets": [], "hygiene": hygiene, "tend": tend, "workplace": data["workplace"], "more": 0, "titles": titles,
            "answer_keys": view.get("answer_keys", True) is not False,
            "show_hygiene": view.get("hygiene", "bottom") != "hide",
            "color": view.get("color", "auto"), "width": width if _pos_int(width) and width >= 40 else 100,
@@ -2053,14 +2067,28 @@ def github_metrics(items: list, done: object, now: dt.datetime) -> list:
 ACCOUNT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}\Z")
 
 
+TAG_MAX = 60
+
+
+def _cut_word(text: str, cap: int) -> str:
+    """`text` within `cap` characters: whole, or cut at the last space past its middle with an ellipsis, never mid word
+    (a word longer than that is cut where it must)"""
+    if len(text) <= cap:
+        return text
+    head = text[:cap - 1]
+    space = head.rfind(" ")
+    return (head[:space] if space > cap // 2 else head).rstrip(" ,;:") + "…"
+
+
 def tags_of(value: object) -> dict | None:
-    """A row's {label: value} for a dashboard's filter chips: up to 6 short strings, the rest dropped."""
+    """A row's {label: value} for a dashboard's filter chips: up to 6 short strings, the rest dropped; a long value is
+    cut at a word (_cut_word)."""
     if not isinstance(value, dict):
         return None
     out = {}
     for k, v in value.items():
         if isinstance(k, str) and isinstance(v, str) and 0 < len(k.strip()) <= 24 and v.strip():
-            out[k.strip()] = v.strip()[:60]
+            out[k.strip()] = _cut_word(v.strip(), TAG_MAX)
         if len(out) == 6:
             break
     return out or None

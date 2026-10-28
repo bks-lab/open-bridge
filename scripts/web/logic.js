@@ -374,6 +374,20 @@ export function ghMyLogin(items) {
   return null
 }
 
+/** A board column as one value whatever its case and spaces ("In Progress" and "In progress" are one column);
+ *  the bar shows the first spelling it meets (ghStatusWords) */
+export const ghStatusKey = v => String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+
+/** The spelling the bar shows for each column key: the first a row has */
+export function ghStatusWords(items) {
+  const out = new Map()
+  for (const it of items ?? []) {
+    const raw = String(it.gh?.status ?? '').replace(/\s+/g, ' ').trim()
+    if (raw && !out.has(ghStatusKey(raw))) out.set(ghStatusKey(raw), raw)
+  }
+  return out
+}
+
 /** The values a row has in one dimension: the boards it stands on (no board as GH_NONE; an older server names the
  *  board only as the group, unless that group is the repository), Me and the people assigned or who opened it
  *  (nobody assigned as GH_NONE), its repository, its kind, and its column on a board */
@@ -383,7 +397,7 @@ export function ghValues(it, dim, me = null) {
   if (dim === 'board') return board ? [board, ...(g.also_on ?? [])] : [GH_NONE]
   if (dim === 'repo') return g.repo ? [g.repo] : []
   if (dim === 'type') return [g.type ?? 'issue']
-  if (dim === 'status') return board && g.status ? [g.status] : []
+  if (dim === 'status') return board && g.status ? [ghStatusKey(g.status)] : []
   const people = g.people ?? []
   const flags = it.flags ?? []
   const mine = flags.includes('mine') || flags.includes('my_pr') || g.by_me === true || (!!me && (people.includes(me) || g.author === me))
@@ -396,7 +410,7 @@ export function ghValues(it, dim, me = null) {
 export function ghPasses(it, f, me = null, skip = null) {
   if (!f) return true
   if (f.flag && f.flag !== 'open' && !(it.flags ?? []).includes(f.flag)) return false
-  return GH_DIMS.every(d => d === skip || f[d] == null || ghValues(it, d, me).includes(f[d]))
+  return GH_DIMS.every(d => d === skip || f[d] == null || ghValues(it, d, me).includes(d === 'status' ? ghStatusKey(f[d]) : f[d]))
 }
 
 /** Whether anything is chosen */
@@ -413,7 +427,8 @@ export function ghFacets(items, f, me = null, order = {}) {
     for (const it of items ?? []) {
       if (ghPasses(it, f, me, d)) for (const v of new Set(ghValues(it, d, me))) n.set(v, (n.get(v) ?? 0) + 1)
     }
-    if (f?.[d] != null && !n.has(f[d])) n.set(f[d], 0)
+    const kept = f?.[d] == null ? null : d === 'status' ? ghStatusKey(f[d]) : f[d]
+    if (kept != null && !n.has(kept)) n.set(kept, 0)
     const pos = v => { const i = (order[d] ?? []).indexOf(v); return i < 0 ? 999 : i }
     out[d] = [...n].map(([value, count]) => ({ value, n: count }))
       .sort((a, b) => edge(a.value) - edge(b.value) || pos(a.value) - pos(b.value) || b.n - a.n || String(a.value).localeCompare(String(b.value)))
@@ -1331,10 +1346,30 @@ export function groupByHost(runs, { hosts = [], systems = [] } = {}) {
   return out.sort((a, b) => b.always - a.always || b.failing - a.failing || b.runs.length - a.runs.length || a.host.localeCompare(b.host))
 }
 
+/** The source id of a page item: `id` where a row has one, else the end of its key (collector.info_out sends
+ *  `key` item:<page>/<section>/<id> and `row_id`, never `id`) */
+function sourceId(it, page, sec) {
+  if (typeof it?.id === 'string') return it.id
+  const head = `item:${page?.id}/${sec?.id}/`
+  const key = String(it?.key ?? '')
+  return key.startsWith(head) ? key.slice(head.length) : typeof it?.row_id === 'string' ? it.row_id : ''
+}
+
+/** The machine a row of another page names: its tag Remote, its id pc:<name>, else its title */
+const rowMachine = (it, id) => String(it?.tags?.Remote ?? (id.startsWith('pc:') ? id.slice(3) : it?.title ?? '')).toLowerCase()
+
+/** A machine's state without its device word (bridge-resources.py machines leads with it, the tags say it already) */
+function machineState(it) {
+  const parts = String(it?.detail ?? '').split(' · ')
+  const device = Object.values(it?.tags ?? {}).map(v => String(v).toLowerCase())
+  return (parts.length > 1 && device.includes(parts[0].toLowerCase()) ? parts.slice(1) : parts).join(' · ')
+}
+
 /** The machines of a folder's overview, one line each: every machine a background job runs on and every machine
  *  a page of the folder names in a row of its own (a lab's remote). A row `machine:<name>` (bridge-resources.py
- *  machines) gives a machine its state and makes it known; a row of another page titled with a known name puts
- *  the machine on that page (`places`). The always-on machines first, then those with an outage, the most jobs */
+ *  machines, its source id read by sourceId) gives a machine its state and makes it known; a row of another page
+ *  that names a known machine (its tag Remote, its id pc:<name>, else its title) puts the machine on that page
+ *  (`places`). The always-on machines first, then those with an outage, the most jobs */
 export function machineLines({ runs = [], hosts = [], pages = [] } = {}) {
   const live = (runs ?? []).filter(r => !r.retired && r.host)
   const inventory = new Map()
@@ -1342,9 +1377,12 @@ export function machineLines({ runs = [], hosts = [], pages = [] } = {}) {
   for (const p of pages ?? []) {
     for (const sec of p.sections ?? []) {
       for (const it of sec.items ?? []) {
-        const name = String(it.title ?? '').toLowerCase()
-        if (typeof it.id === 'string' && it.id.startsWith('machine:')) inventory.set(name, it)
-        else if (name) rows.push({ name, page: p, it })
+        const id = sourceId(it, p, sec)
+        if (id.startsWith('machine:')) inventory.set((id.slice(8) || String(it.title ?? '')).toLowerCase(), it)
+        else {
+          const name = rowMachine(it, id)
+          if (name) rows.push({ name, page: p, it })
+        }
       }
     }
   }
@@ -1357,7 +1395,7 @@ export function machineLines({ runs = [], hosts = [], pages = [] } = {}) {
   for (const r of live) line(r.host).runs.push(r)
   for (const { name, page, it } of rows) {
     if (!lines.has(name) && !inventory.has(name)) continue
-    const x = line(lines.get(name)?.name ?? inventory.get(name).title)
+    const x = line(lines.get(name)?.name ?? inventory.get(name).title ?? name)
     if (!x.places.some(p => p.page === page.id)) x.places.push({ page: page.id, title: page.title, tone: it.tone ?? null, state: it.detail ?? '' })
   }
   const always = new Set((hosts ?? []).map(h => String(h).toLowerCase()))
@@ -1365,7 +1403,7 @@ export function machineLines({ runs = [], hosts = [], pages = [] } = {}) {
     const inv = inventory.get(x.name.toLowerCase())
     const failing = x.runs.filter(r => jobSeverity(r) === 'high').length
     return { name: x.name, always: always.has(x.name.toLowerCase()), jobs: x.runs.length, failing,
-      upkeep: x.runs.filter(r => jobSeverity(r) === 'medium').length, state: inv?.detail ?? '',
+      upkeep: x.runs.filter(r => jobSeverity(r) === 'medium').length, state: inv ? machineState(inv) : '',
       tone: failing ? 'bad' : inv?.tone ?? null, places: x.places }
   }).sort((a, b) => b.always - a.always || b.failing - a.failing || b.jobs - a.jobs || a.name.localeCompare(b.name))
 }
@@ -1389,7 +1427,13 @@ export function workerFacets(runs, filter = {}) {
   return out
 }
 
-/** Search, facets and "only with a finding" */
+// the words a background job answers to beside its own: its kind in both languages, and the words a person uses for
+// them (every job is a worker, a scheduled or interval run a workflow)
+const JOB_WORDS = { interval: 'interval intervall workflow', daemon: 'service dienst daemon', recurring: 'appointment termin scheduled geplant workflow',
+  agent: 'agent', watch: 'watcher beobachter' }
+const jobWords = r => `worker job hintergrundjob ${JOB_WORDS[r.kind] ?? ''}`
+
+/** Search (its id, title, purpose, system, and the words of its kind, jobWords), facets and "only with a finding" */
 export function filterWorkers(runs, { q = '', kind = null, sphere = null, state = null, host = null, attention = false, outage = false } = {}) {
   const needle = q.trim().toLowerCase()
   return (runs ?? []).filter(r => (!kind || r.kind === kind) && (!sphere || r.sphere === sphere)
@@ -1397,7 +1441,7 @@ export function filterWorkers(runs, { q = '', kind = null, sphere = null, state 
     && (!attention || (r.findings ?? []).some(serious))
     // an outage as jobCounts counts it (the engine's high), what the red tile of Background jobs opens on
     && (!outage || jobSeverity(r) === 'high')
-    && (!needle || `${r.id} ${r.title ?? ''} ${r.purpose ?? ''} ${r.system ?? ''}`.toLowerCase().includes(needle)))
+    && (!needle || `${r.id} ${r.title ?? ''} ${r.purpose ?? ''} ${r.system ?? ''} ${jobWords(r)}`.toLowerCase().includes(needle)))
 }
 
 /** Runs grouped by system in the order the view lists its systems, the rest after them */
@@ -1795,11 +1839,12 @@ export function usageToday(usage) {
 // ---------------------------------------------------------------- live cards on a page, stacked bars, cloud costs
 
 /** Where a page's live cards stand: `after` maps a section id to the cards right after it, `end` the cards at the
- *  end of the page. A page without `cards:` keeps what `overview: true` alone drew (usage and noise at the end);
+ *  end of the page. A page without `cards:` keeps what `overview: true` alone drew (usage and noise at the end),
+ *  but for a sub page (`under:` a folder), whose tokens and noise stand on the folder's overview already;
  *  a card after a section the page does not show goes to the end */
 export function cardPlan(page) {
   const cards = Array.isArray(page?.cards) ? page.cards
-    : page?.overview ? [{ id: 'usage', after: null }, { id: 'noise', after: null }] : []
+    : page?.overview && !page?.under ? [{ id: 'usage', after: null }, { id: 'noise', after: null }] : []
   const ids = new Set((page?.sections ?? []).map(sec => sec.id))
   const plan = { after: {}, end: [] }
   const seen = new Set()
@@ -2104,11 +2149,15 @@ export function checkInFlow(s) {
   return sessionsInFlow(s)
 }
 
-/** How many suggestions the last task check left open: the tasks it judged that are still open, whose verdict is not
- *  continue and that nobody kept as they are (the count on the row of Work through) */
+// the verdicts that want a decision (close, stale; verdictToken): waiting, unclear and continue only say how it stands
+const DECIDE_VERDICTS = new Set(['close', 'stale'])
+
+/** How many decisions the last task check left open: the tasks it judged that are still open, whose verdict wants a
+ *  decision (close or stale) and that nobody kept as they are (the count on the row of Work through) */
 export function checkOpen(model) {
   const byKey = indexRows(model)
-  return (model?.review?.keys ?? []).map(k => byKey.get(k)).filter(r => r?.review && !r.review.kept && r.review.verdict !== 'continue').length
+  return (model?.review?.keys ?? []).map(k => byKey.get(k))
+    .filter(r => r?.review && !r.review.kept && DECIDE_VERDICTS.has(r.review.verdict)).length
 }
 
 /** Where a page id leads that is a view now: the Work through page (@flow, a stored page or a link of an older

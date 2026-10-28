@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // The cockpit's GitHub work: the figures with a cause above a github-work section (round 6: no tile per board and
 // no switch on the page) and the filter bar under them (round 6c: Board, Person, Repository, Kind, Board status, each
-// with its counts, combined, kept per viewer), its rows under a head per board that names the board's facts (or in one
-// list, "Group by board" off), each row with its board and column, people, labels, who opened it and a pull request's
-// draft, review and checks, and the detail of one issue or pull request (briefing.py detail, through /api/github).
+// with its counts, combined, kept per viewer, a column spelled two ways one option), its rows under a head per board
+// that names the board's facts (or in one list, "Group by board" off), each row with its repo#number (no GitHub chip,
+// the ref says it), board and column, people, labels, who opened it and a pull request's draft, review and checks, and the detail of one issue or pull request (briefing.py detail, through /api/github).
 // Everything here reads; a row has one start, its lead step with the other steps under ▾ (row_action, an agent tab)
 // and Close beside it; a board's switch is the person's own choice, made in the settings, which list every board with
 // the mode a new one starts with (github_board, github_board_default).
@@ -11,7 +11,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
-import { GH_DIMS, GH_ME, GH_NONE, actionRow, canTab, ghFacets, ghFiltered, ghMyLogin, ghPasses, ghSortRows, itemRow, pageItemActs, rowActionKey } from '../logic.js'
+import { GH_DIMS, GH_ME, GH_NONE, actionRow, canTab, ghFacets, ghFiltered, ghMyLogin, ghPasses, ghSortRows, ghStatusKey, ghStatusWords, itemRow, pageItemActs, rowActionKey } from '../logic.js'
 import { OriginTag, SettleMenu, StartMenu } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
@@ -51,8 +51,9 @@ function GhFilterBar({ items, filter, setFilter, order }) {
   const b = t.gh.bar
   const me = ghMyLogin(items)
   const facets = ghFacets(items, filter, me, { board: order })
+  const columns = ghStatusWords(items)
   const word = (d, v) => (v === GH_NONE ? (d === 'person' ? b.nobody : b.noBoard) : v === GH_ME ? b.me
-    : d === 'person' ? `@${v}` : d === 'type' ? b.kind[v] ?? v : v)
+    : d === 'person' ? `@${v}` : d === 'type' ? b.kind[v] ?? v : d === 'status' ? columns.get(v) ?? v : v)
   const dims = GH_DIMS.filter(d => facets[d].length > 1 || filter?.[d] != null)
   const on = ghFiltered(filter)
   if (!dims.length && !on) return null
@@ -60,7 +61,7 @@ function GhFilterBar({ items, filter, setFilter, order }) {
   return html`<div class="ghf" role="group" aria-label=${b.label}>
     ${dims.map(d => html`<label key=${d} class="ghf-field" data-dim=${d}>
       <span class="ghf-label muted small">${b.dim[d]}</span>
-      <select class="input input-sm" value=${filter?.[d] ?? ''} onChange=${e => pick(d, e.currentTarget.value)}>
+      <select class="input input-sm" value=${filter?.[d] == null ? '' : d === 'status' ? ghStatusKey(filter[d]) : filter[d]} onChange=${e => pick(d, e.currentTarget.value)}>
         <option value="">${b.all(items.filter(it => ghPasses(it, filter, me, d)).length)}</option>
         ${facets[d].map(o => html`<option key=${o.value} value=${o.value}>${word(d, o.value)} (${o.n})</option>`)}
       </select></label>`)}
@@ -290,7 +291,7 @@ function GhRow({ it, page, section, s, c, byKey, grouped = true }) {
     <div class="ghl-main">
       <p class="ghl-title">${g.title || it.title}</p>
       <p class="ghl-meta">
-        <${OriginTag} row=${itemRow(it)} origin=${it.origin ?? { category: 'github', word_key: null, detail: g.repo ?? null, raw: null, ref: null, via_cockpit: false }} />
+        ${it.origin && it.origin.category !== 'github' ? html`<${OriginTag} row=${itemRow(it)} origin=${it.origin} />` : null}
         ${g.number ? html`<span class="ghl-ref mono muted" title=${g.repo ?? ''}>${repoName}#${g.number}</span>` : null}
         ${!grouped && g.board ? html`<span class="ghl-chip ghl-chip-board" title=${g.also_on?.length ? t.gh.alsoOn(g.also_on.join(', ')) : g.board}>${g.board}</span>` : null}
         ${g.type === 'draft' ? html`<span class="ghl-chip ghl-chip-draft" title=${t.gh.draftCardTitle}>${t.gh.draftCard}</span>` : null}

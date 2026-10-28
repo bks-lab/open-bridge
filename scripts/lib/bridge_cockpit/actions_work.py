@@ -23,6 +23,24 @@ FILES_ASK_TIMEOUT = 90
 _FILES_ASKING = threading.Lock()
 
 
+def record_check(app, words: list[str], themes, path: str, slug: str, kind: str) -> dict:
+    """What the block list says of one record (cockpit.files_search.block): its front matter, title, row, theme, the
+    text a question would send (work_find.ask_text) and `held`, the words any of them holds: its area (front matter
+    and row, every area name), context, theme, path, title and that text, so a word in the body or in `related:`
+    holds it as well. A word also matches inside a longer one (Steuer holds Steuerberater and Steuerung alike): it
+    holds back more, never less. The question (v_files_ask) and the records the page lists (GET /api/records) both
+    read it, so the page counts what the server sends"""
+    whole = wf.status_text(app.root, path)      # read once, by the search's rules (no symlink, no huge file)
+    front = wf.front_from(whole)
+    title = wf.title_from(whole, slug)
+    row = {} if kind == "done" else ((app.collector.resolve(f"task:{slug}") or {}).get("out") or {})
+    theme = app.themes.theme_name(themes, f"task:{slug}")
+    text = (whole or "")[:wf.ASK_TEXT_MAX]
+    held = wf.held_by([front.get("area"), front.get("context"), row.get("area"), *(row.get("area_names") or []),
+                       theme, path, title, text], words)
+    return {"front": front, "title": title, "row": row, "theme": theme, "text": text, "held": held}
+
+
 def merge_marks(slug: str) -> tuple[str, str]:
     """The two lines a merged section stands between in the kept task's STATUS.md, as task.py merge writes them
     (task.py _marks); an undo is only taken while both are there"""
@@ -768,9 +786,11 @@ class WorkVerbs:
 
     def v_files_ask(self, ctx: Ctx, text: str, paths: list) -> None:
         """One question over the records the page shows (cockpit.files_search, lib/work_find.py ask_*). A record a word
-        of the block list names in its area (front matter and row), theme, path or title is held back before anything
-        is built, so it never reaches the model; a folder that is no record is left out. Off by default, within
-        budget_per_day (counted in activity.py's store), one at a time. The answer names records by number only"""
+        of the block list names in its area (front matter and row), theme, path, title or the text that would go
+        (record_check) is held back before anything is built, so it never reaches the model; a folder that is no
+        record is left out, and when only such folders came the page is stale (files_ask_stale). Off by default,
+        within budget_per_day (counted in activity.py's store, read again once the lock is taken), one at a time.
+        The answer names records by number only"""
         app = self.app
         tx = TABLES["de" if str(getattr(app.cfg, "language", "en")).startswith("de") else "en"]["files_ask"]
         cfg = act.block(app, "files")
@@ -784,19 +804,18 @@ class WorkVerbs:
             if path not in known:
                 continue
             slug, kind = known[path]
-            front = wf.front_of(app.root, path)
-            title = wf.title_of(app.root, path, slug)
-            row = {} if kind == "done" else ((app.collector.resolve(f"task:{slug}") or {}).get("out") or {})
-            theme = app.themes.theme_name(themes, f"task:{slug}")
-            hit = wf.held_by([front.get("area"), front.get("context"), row.get("area"), *(row.get("area_names") or []),
-                              theme, path, title], words)
-            if hit:
-                held.append(hit)
+            x = record_check(app, words, themes, path, slug, kind)
+            if x["held"]:
+                held.append(x["held"])
                 continue
-            recs.append({"slug": slug, "path": path, "title": title, "status": front.get("status") or kind,
-                         "area": row.get("area") or front.get("area") or front.get("context"), "theme": theme,
-                         "updated": next((str(front[k])[:10] for k in ("last_updated", "closed", "created") if front.get(k)), None)})
+            front, row = x["front"], x["row"]
+            recs.append({"slug": slug, "path": path, "title": x["title"], "status": front.get("status") or kind,
+                         "area": row.get("area") or front.get("area") or front.get("context"), "theme": x["theme"],
+                         "updated": next((str(front[k])[:10] for k in ("last_updated", "closed", "created") if front.get(k)), None),
+                         "text": x["text"]})
         held_words = [w for w in words if any(w in h for h in held)]
+        if not recs and not held:
+            raise ActionError(409, "files_ask_stale", tx["stale"])
         if not recs:
             raise ActionError(409, "files_ask_held", tx["held"].format(n=len(held)))
         model = act.select_model(app, "files", act.FILES_SERVICE)
@@ -807,8 +826,11 @@ class WorkVerbs:
         if not _FILES_ASKING.acquire(blocking=False):
             raise ActionError(409, "files_ask_running", tx["running"])
         try:
+            # a second click that came in as the first call let go of the lock passed the read above: read it again
+            if app.activity.budget_left("files") <= 0:
+                raise ActionError(429, "files_ask_budget", tx["budget"])
             data = [{"n": i + 1, **{k: app.scrub(str(r[k])) if r[k] else r[k] for k in ("title", "slug", "status", "area", "theme", "updated")},
-                     "text": app.scrub(wf.ask_text(app.root, r["path"]))} for i, r in enumerate(recs)]
+                     "text": app.scrub(r["text"])} for i, r in enumerate(recs)]
             from .describe import language
             system, prompt = wf.ask_prompt(app.scrub(text), data, language(app.root))
             argv = wf.ask_argv(app.runner.claude, model, system, prompt)

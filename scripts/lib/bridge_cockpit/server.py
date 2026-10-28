@@ -447,6 +447,19 @@ class App:
                                  "left": self.activity.budget_left("files")},
                 **({"person": person} if person else {})}
 
+    def records_held(self, res: dict) -> dict:
+        """The records of the files tab, each with `held`: the words of the block list that keep it from a question
+        (actions_work.record_check, the check the question makes). Only with the question on and a block list, so
+        a Bridge without either reads nothing more than the records"""
+        cfg = act.block(self, "files")
+        words = list(cfg.get("block") or [])
+        if not cfg.get("enabled") or not words:
+            return res
+        from .actions_work import record_check
+        themes = self.themes.load()
+        return {**res, "records": [{**r, "held": record_check(self, words, themes, r["path"], r["slug"], r["kind"])["held"]}
+                                   for r in res.get("records") or []]}
+
     def tour_state(self) -> dict:
         """The first-run tour: whether a first visit offers it (cockpit.tour) and how it ended, if it did"""
         return {"enabled": bool(getattr(self.cfg, "tour", True)), "done": self.store.tour()}
@@ -1027,8 +1040,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
         elif path == "/api/records":
             # the start of the files tab: every task, stream and closed task as a record (lib/work_find.py records),
-            # read in place, read only
-            self.send_json(200, app.scrub_tree(work_find.records(app.root)))
+            # read in place, read only; with the question on and a block list, each with the words that hold it
+            # back (actions_work.record_check), so the page counts what a question would send as the server does
+            self.send_json(200, app.scrub_tree(app.records_held(work_find.records(app.root))))
         elif path == "/api/inbox":
             item_id = one("id")
             if not details.INBOX_ID_RE.match(item_id):

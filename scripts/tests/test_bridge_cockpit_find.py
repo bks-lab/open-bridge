@@ -309,6 +309,20 @@ def test_the_text_a_record_brings_to_a_question_is_its_status_md_cut_short(bridg
     assert wf.ask_text(bridge, "work/tasks/missing") == ""
 
 
+def test_a_record_never_follows_a_symlinked_or_oversized_status_md(bridge, tmp_path):
+    outside = tmp_path / "outside.md"
+    outside.write_text("---\nstatus: doing\nheadline: Secret outside\n---\nsecret text\n", encoding="utf-8")
+    (bridge / "work/tasks/linked").mkdir(parents=True)
+    (bridge / "work/tasks/linked/STATUS.md").symlink_to(outside)
+    put(bridge, "work/tasks/huge/STATUS.md", "---\nstatus: doing\nheadline: Huge\n---\n" + "x" * (wf.FILE_MAX + 10))
+    for folder, slug in (("work/tasks/linked", "linked"), ("work/tasks/huge", "huge")):
+        assert wf.ask_text(bridge, folder) == "", folder
+        assert wf.front_of(bridge, folder) == {}, folder
+        assert wf.title_of(bridge, folder, slug) == slug, folder
+    rec = {r["slug"]: r for r in wf.records(bridge)["records"]}
+    assert rec["linked"]["title"] == "linked" and rec["linked"]["status"] is None
+
+
 def test_the_ask_argv_is_one_exact_shape_without_tools():
     argv = wf.ask_argv("/fake/bin/claude", "claude-haiku-5-5", "Answer it.", "data")
     assert argv[:12] == ["/fake/bin/claude", "-p", "--model", "claude-haiku-5-5", "--output-format", "json",

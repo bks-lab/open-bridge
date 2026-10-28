@@ -1,5 +1,5 @@
 ---
-summary: "The cockpit's Files tab: a search over every record first, Ask AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file behind the queue, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
+summary: "The cockpit's Files tab: a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file behind the queue, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
 type: guide
 last_updated: 2026-10-28
 related:
@@ -26,33 +26,49 @@ this tab once and leaves the work tab on the view it falls back to.
 
 ## The search first
 
-The tab opens on a search. A large field takes the focus; under it stand chips
-for **Area** (the areas the records name, at most 12), **State** (open, done,
-all; open at first) and **Kind** (task, stream, closed), and the records changed
-last, newest first (at most 30 shown, "30 of 120 shown"). Typing narrows the
-list at once, over title, slug, area and theme, and over the text of every
-STATUS.md through the same search as below (`/api/find`, a moment after the last
-key), with the line that matched under the record. A click opens the record as a
-file (below); "Back to the search" at its head and at its foot leads back with
-the words still typed. "Walk through the n active records" starts the walk over
-the queue, one file at a time.
+The tab opens on a search. A large field takes the focus, with "Walk through
+the active records (n)" beside it, which starts the walk over the queue, one file
+at a time. Under it stand chips, each group under its small label: **Area** (the
+areas the records name, at most 12), **State** (open, done, all; open at first)
+and **Kind** (task or stream; a closed record counts by what it was, so Task with
+State all lists the closed tasks too), and the records changed last, newest first
+(at most 30 shown, "30 of 120 shown"). Typing narrows the list at once, over
+title, slug, area and theme, and over the text of every STATUS.md through the
+same search as below (`/api/find`, a moment after the last key), with the line
+that matched under the record as plain text (no Markdown marks, a table row's
+cells joined by a dot, never a `slug:` line). A click opens the record as a file
+(below); "Back to the search" at its head leads back with the words still typed.
+The start's field is the one search of the tab: an opened record has no second
+one.
 
 The records come from `GET /api/records`, a read: every folder of `work/tasks/`,
 `work/streams/` and `work/done/`, its front matter read in place (status,
 priority, area or context, the last change, title, kind), newest first, at most
-2000. A closed record shows the area its front matter names, not the cockpit's
-area name; open ones carry the area of their row.
+2000. A record's area comes from one place for the list and the opened record:
+the area of its row, else of its file of `model.files`, else the one its front
+matter names (`area`, else `context`).
 
-**Ask AI** (de: Mit KI suchen) stands under the list where
-`cockpit.files_search.enabled` is true. It sends one question, yours or a
-default one, with at most 12 of the records listed to a model, in one call with
-no tools, no settings and no session (the verb `files_ask`), and only on the
-click. The answer stands under the button with a link to each record it names.
-Before the click a line says how many records go and which words keep others
-private ("Sends 2 records to the AI. 1 record stays private: insurance"). The
-block list is `cockpit.files_search.block`: a record whose area, theme, path or
-title holds one of its words (case folded) is dropped on the server before the
-request is built, so it never reaches the prompt. The calls of a day are capped
+**Ask the AI** (de: Die AI fragen) stands under the chips where
+`cockpit.files_search.enabled` is true: a field of its own for the question and
+a button "Ask the AI about these n records". It sends that question, or a
+default one when the field is empty, with at most 12 of the records listed to a
+model, in one call with no tools, no settings and no session (the verb
+`files_ask`), and only on the click; the search words are never the question.
+The answer stands under it with a link to each record it names. Before the click
+a line says what a click sends, which words keep others private and how many
+questions are left today ("A click sends 2 records to the AI. 1 record stays
+private: insurance. 19 questions left today."); with none left the button
+waits, and with no record listed the line says so and nothing about privacy.
+The block list is `cockpit.files_search.block`: a record whose area (front
+matter and row), context, theme, path, title or the text that would go (the
+start of its STATUS.md, with its front matter and `related:`) holds one of its
+words, case folded, is dropped on the server before the request is built, so it
+never reaches the prompt. A word also matches inside a longer one (`tax` holds
+back `taxonomy` too): the list holds back more, never less. `GET /api/records`
+names, per record, the words that hold it (`held`, only with the question on and
+a block list), so the count before the click is the server's. When every record
+sent is gone since the page read them, the answer is "the records have changed,
+search again", not the block list. The calls of a day are capped
 by `budget_per_day` (20) and counted in `.bridge/cockpit/flow-activity.json`;
 the model is `model`, else the service `cockpit-files` of `workflow/ai-services/`
 (default Haiku).
@@ -69,8 +85,7 @@ cockpit:
 
 The walk shows one task at a time as
 a file, on one framed surface centred at a reading width (it stays in the
-middle when the sidebar is hidden). Above it stand "Back to the search" and a
-small search field. On the surface: an eyebrow (File, "2 of 16", status, kind and
+middle when the sidebar is hidden). Above it stands "Back to the search". On the surface: an eyebrow (File, "2 of 16", status, kind and
 priority, the slug on the right), the task's title as the one heading, and the
 situation in one sentence (the `headline` of its STATUS.md, else what the
 triage made of it, always with where that comes from and its date). Under it
@@ -165,7 +180,7 @@ place, Markdown as formatted text and anything else as it stands, with its
 path (`GET /api/task?slug=&file=`, which reads only a file that list names).
 A folder with only STATUS.md shows no Files drawer.
 
-On top of the Files view stands a search field of its own. It searches every
+The search (the field of the start, or a search from elsewhere such as the command box) searches every
 task, stream and closed task (`work/tasks/`, `work/streams/`, `work/done/`),
 `work/log.md` and `work/archive/`: every `*.md` and `*.yaml`, never inside a
 `video/` or `deliverables/` folder, never a hidden file, a link or anything
@@ -214,7 +229,7 @@ the Files tab go further, each off by default:
 
 - `files_scope: all` makes every task and stream a file (below). The default
   `active` keeps the queue alone, as it always was.
-- `files_search` switches on Ask AI and holds its block list (above).
+- `files_search` switches on Ask the AI and holds its block list (above).
 
 They take effect with the next start of the cockpit (`bridge-cockpit.py stop`,
 then `open`) and a reload of the page. The page says which page and view it opened: every opening of a tab, the work

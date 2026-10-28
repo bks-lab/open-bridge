@@ -226,6 +226,8 @@
 /* round 6 c: Check tasks under Not now, on every width (no .flow-side-body), the check's plain line in the middle */
 .flow-check { padding-top: 8px; border-top: 1px solid var(--border); }
 .flow-check-intro { margin: 0 0 8px; }
+.review-how summary { cursor: pointer; }
+.review-how .flow-wrap { margin-top: 8px; }
 .flow-run .flow-side-group, .flow-notnow .flow-side-group { margin-top: 0; }
 .flow-run-list, .flow-runstrip-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .flow-run-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px; border: 1px solid transparent; border-radius: var(--radius-md); }
