@@ -322,9 +322,7 @@ class PageVerbs:
 
     def forget_section(self, section: str) -> None:
         """The section's cached answer is void after a step: the next pass asks it again."""
-        for cached in (self.app.root / ".bridge" / "briefing-cache").glob(f"*/{section}.json"):
-            cached.unlink(missing_ok=True)
-        self.app.collector.request("full")
+        self.app.collector.forget(section)
 
     def v_row_action(self, ctx: Ctx, page: str, section: str, index: int, action: str) -> None:
         found = self.app.collector.page_item(page, section, index)
@@ -340,6 +338,8 @@ class PageVerbs:
         if data is None:
             return
         label = str(data.get("did") or steps[action])
+        # a step whose effect comes later (a PC rebooting) names when its section should be read again
+        self.app.collector.recheck(section, data.get("recheck"))
         launch = data.get("launch")
         if isinstance(launch, dict) and all(isinstance(launch.get(k), str) and launch[k].strip()
                                             for k in ("summary", "prompt", "key")):

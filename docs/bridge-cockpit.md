@@ -2137,7 +2137,8 @@ any other failed action.
 
 A command row that offers steps of its own (`actions`, docs/briefings.md) shows
 an "Action" menu: two clicks run one through `row_action {page, section, index,
-action}`, which calls `briefing.py act` and voids the section's cache. A step
+action}`, which calls `briefing.py act` and voids the section's cache, and again
+after each wait of a `recheck` the step returned (docs/briefings.md). A step
 whose command returned an undo token is in the history and in the toast with
 "take back" (`row_undo {section, row, action}`), the same way as a close.
 

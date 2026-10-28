@@ -583,7 +583,10 @@ shows it) next to its `id`. Its section then names how a step runs:
 runs the step only when that row still offers it, then prints the command's JSON.
 When that JSON carries `undo: "restore:..."`, the token goes back to the same
 command unchecked by act (the row may be gone by then), so the command itself
-must check it. The cockpit shows the steps as a two-click menu on the row
+must check it. A step whose effect only shows later (a machine rebooting) may carry
+`recheck: [seconds, ...]`: the cockpit then reads that section again after each wait
+(whole seconds from 15 to 1800, eight at most) and stops after the last, so the row
+moves on without a standing poll. The cockpit shows the steps as a two-click menu on the row
 and keeps every step in its history, with "take back" where an undo came back.
 A page entry with `steps: buttons` sets every step out as a button of its own, on the row,
 on a tile and in the detail: the first click arms it ("Switch off: sure?"), the second runs it,

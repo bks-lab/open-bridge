@@ -1752,6 +1752,29 @@ def test_a_row_step_runs_without_the_write_lock_and_only_once_at_a_time(world):
     assert len(world.runner.of("briefing.act")) == 1
 
 
+def test_a_row_step_that_asks_for_rechecks_reads_its_section_again_then_stops(world):
+    # a reboot answers at once and switches later: the step names when to look again, the cockpit voids the
+    # section's cache and runs a full pass at each, and nothing after the last (no standing poll)
+    world.runner.handlers["briefing.act"] = act_answer(did="Reboot to the other system", recheck=[75, 150, "x", -5, 99999])
+    world.act("row_action", page="tasks", section="apps", index=0, action="turned_down")
+    collector = world.app.collector
+    collector.drain()
+    cached = world.root / ".bridge" / "briefing-cache" / "demo" / "apps.json"
+    cached.parent.mkdir(parents=True, exist_ok=True)
+
+    def passes_after(seconds):
+        cached.write_text("{}", encoding="utf-8")
+        world.runner.calls.clear()
+        world.clock.advance(seconds)
+        collector.tick(1)
+        collector.drain()
+        return len(world.runner.of("briefing.collect")), cached.exists()
+    assert passes_after(74) == (0, True)
+    assert passes_after(2) == (1, False)
+    assert passes_after(75) == (1, False)
+    assert passes_after(400) == (0, True)
+
+
 def test_a_row_step_that_returns_a_tab_files_it_and_starts_it(world):
     # a calendar step ("Prepare weekly") runs nothing itself: briefing.py act hands back the prompt, the
     # cockpit files it as a decision under the event's key and starts an agent tab on it, as Do it does

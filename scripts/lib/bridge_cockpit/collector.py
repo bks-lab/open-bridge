@@ -50,6 +50,7 @@ ITEM_CAP = 50
 DRAWN_CAP = 300
 ADOPT_CAP = 4
 START_HOLD_MS = 15000
+RECHECK_S = (15, 1800)  # the shortest and longest wait a step may ask for before its section is read again
 
 
 def make_link(url: str | None, root: Path) -> dict | None:
@@ -447,6 +448,8 @@ class Collector:
         self.starting: dict[str, float] = {}
         # when the last full pass started, successful or not: tick waits full_minutes from it
         self.full_attempt_ms = 0.0
+        # [due ms, section]: a step asked to read its section again at these times (recheck), each once
+        self.rechecks: list[list] = []
         # the task list: a delta reads it only when an action asked or the task tree changed since the last read
         self.pending_tasks = False
         self.tasks_seen: dict[str, int] | None = None
@@ -866,9 +869,32 @@ class Collector:
         if expired:
             self.rebuild()
 
+    def forget(self, section: str) -> None:
+        """Void the section's cached answer and queue a full pass, so the next pass asks it again."""
+        for cached in (self.app.root / ".bridge" / "briefing-cache").glob(f"*/{section}.json"):
+            cached.unlink(missing_ok=True)
+        self.request("full")
+
+    def recheck(self, section: str, delays: object) -> None:
+        """Read `section` again after each of `delays` seconds (a reboot answers at once and switches later):
+        whole numbers from 15 s to 30 min, eight at most, anything else dropped."""
+        if not isinstance(delays, list):
+            return
+        now = self.app.clock()
+        due = [now + d * 1000 for d in delays if type(d) is int and RECHECK_S[0] <= d <= RECHECK_S[1]][:8]
+        with self.lock:
+            self.rechecks += [[t, section] for t in due]
+
     def tick(self, clients: int) -> None:
-        """Every WORK_SCAN_S: end launch holds; while a page is open, one full pass every full_minutes."""
+        """Every WORK_SCAN_S: end launch holds, run the rechecks that are due; while a page is open, one
+        full pass every full_minutes."""
         self.expire_starting()
+        now = self.app.clock()
+        with self.lock:
+            due = sorted({sec for t, sec in self.rechecks if t <= now})
+            self.rechecks = [r for r in self.rechecks if r[0] > now]
+        for section in due:
+            self.forget(section)
         with self.lock:
             view = self.view
         if clients <= 0 or view is None or not self.is_idle():
