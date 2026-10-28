@@ -54,6 +54,8 @@ LIVE_EVERY = 0.3
 LIVE_KEEP = 20000        # the most of a live text a page is sent in one piece
 SETTLE_EVERY_MS = 60_000     # the settle sweep reads the item files at most this often on plain polls
 SETTLE_QUIET_MS = 600_000    # a chat about an item that ended leaves only after this long untouched
+ARCHIVE_DAYS = 14           # the page reads the questions archived in at most this many days (/api/chats/archive)
+ARCHIVE_LIST = 60           # and at most this many of them, the newest
 OUTPUT = ["--output-format", "stream-json", "--verbose", "--include-partial-messages"]
 SESSION_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 CONV_RE = re.compile(r"^q[0-9a-f]{10}\Z")
@@ -460,6 +462,26 @@ class Quick:
             del self.convs[conv]
             self.save()
         self.app.broadcast("quick", self.state())
+
+    def archived(self, days: int) -> list[dict]:
+        """The questions archived in the last `days` (1 to ARCHIVE_DAYS), newest first and at most ARCHIVE_LIST, each
+        with `archived` (why and when), for the page's "all" (round 6d). Read only. Left out: one the person took off
+        (removed), one that had a place of its own, and one back in the list."""
+        from .store import read_archive
+        if self.path is None:
+            return []
+        now = int(self.app.clock())
+        days = max(1, min(ARCHIVE_DAYS, days))
+        with self.lock:
+            live = set(self.convs)
+        rows = read_archive(self.path.parent, "quick", now - days * 86_400_000, now)
+        out: dict[str, dict] = {}
+        for row in rows:
+            c = row["conv"]
+            if row.get("why") in ("removed", "replaced") or c.get("place") or c.get("id") in live or not c.get("turns"):
+                continue
+            out[c["id"]] = {**c, "running": False, "archived": {"why": row.get("why"), "at_ms": row["at_ms"]}}
+        return sorted(out.values(), key=lambda c: c["archived"]["at_ms"], reverse=True)[:ARCHIVE_LIST]
 
     def _archive(self, c: dict, why: str, now: int) -> bool:
         """Called under the lock: True when the chat is kept in the archive (or there is no state dir)."""

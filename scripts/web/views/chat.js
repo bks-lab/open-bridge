@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the chat: the quick chat window and its page, on whose head the control session's notice stands (round 6,
-// views/header.js ControlNotice, from the Sessions page).
+// views/header.js ControlNotice, from the Sessions page). Round 6d: a question reads by its title (logic.js askList),
+// a handed one carries its marker and what it came back with, and Open the tab opens the tab in the cockpit.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, listedChats, reminderArgs, routeOf } from '../logic.js'
+import { short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, listedChats, reminderArgs, routeOf } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { ControlNotice } from './header.js'
 import { LaunchPick } from './launch.js'
-import { ASK_MAX } from './nav.js'
+import { ASK_MAX, CHAT_PAGE, chatAsWorkspaces } from './nav.js'
 import { useFocusOnOpen } from './overlays.js'
 import { Btn, Dot, StateLine, useClock } from './parts.js'
 import { Prose } from './prose.js'
@@ -101,12 +102,16 @@ function ReminderCard({ s, c, reminder }) {
   </div>`
 }
 
-/** The turns of one chat; the turn being answered shows its text while it is written and what it reads */
+/** The turns of one chat; the turn being answered shows its text while it is written and what it reads. A handed
+ *  question that came back shows what its tab said under the last turn (logic.js askOutcome) */
 export function ChatThread({ s, c, conv }) {
   const t = T()
   const lang = language()
   const live = useQuickLive(conv?.id)
-  return conv.turns.map((x, i) => {
+  const outcome = askOutcome(conv)
+  const back = outcome?.text ? html`<div class="qoutcome" key="outcome"><${StateLine} token=${outcome.asks ? 'warning' : 'success'}
+    word=${outcome.asks ? t.handoff.asksYou : t.handoff.done} /><${Prose} cls="qa" text=${outcome.text} /></div>` : null
+  return [...conv.turns.map((x, i) => {
     const open = !x.a && !x.error && i === conv.turns.length - 1 && conv.running
     const done = x.a ? chatReminders(x.a) : null
     return html`<div class="qturn row-in" key=${i} style=${{ '--i': 0 }}>
@@ -118,19 +123,31 @@ export function ChatThread({ s, c, conv }) {
         : live?.text ? t.quickWriting : t.quickThinking(t.quickModel[x.model_asked] ?? x.model_asked)} />` : null}
       ${x.a ? html`<div class="qmeta mono small muted">${x.model ?? x.model_asked}${x.cost_usd != null ? ` · ${costText(x.cost_usd, lang)}` : ''}</div>` : null}
     </div>`
-  })
+  }), back]
+}
+
+/** Open the tab a question went to in the cockpit: as cmux its room in the Chat (as flowrun.js SessionCards
+ *  does), else the tab's window; the terminal is the second way (round 6d) */
+export function openTabIn(s, c, ref) {
+  if (!chatAsWorkspaces(s)) return c.openTabView(ref)
+  c.closeTabView()
+  c.setPage(CHAT_PAGE)
+  c.pickRoom({ kind: 'tab', id: ref })
 }
 
 /** The status line of a chat handed on (logic.js handoffStatus) with the one step it offers: try again, open
- *  the tab it arrived in, or type it into the waiting control tab */
+ *  the tab it arrived in (in the cockpit, and in the terminal beside it), or type it into the waiting control
+ *  tab. What the tab came back with stands after it */
 function HandoffLine({ s, c, st, onRetry, relayId }) {
   const t = T()
   const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : t.handoff[st.word]
   const action = st.action === 'retry' && onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.retry}</button>`
-    : st.action === 'jump' && canTab(s, 'focus') ? html`<button type="button" class="btn-link small" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.jump}</button>`
+    : st.action === 'jump' ? html`<button type="button" class="btn-link small" onClick=${() => openTabIn(s, c, st.ref)}>${t.handoff.jump}</button>
+      ${canTab(s, 'focus') ? html`<button type="button" class="btn-link small muted" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.inTerminal}</button>` : null}`
     : st.action === 'ask_via_tab' && relayId ? html`<button type="button" class="btn-link small" onClick=${() => c.act('ask_via_tab', { relay_id: relayId })}>${t.handoff.askViaTab}</button>`
     : null
-  return html`<p class="handoff-status small" role="status" data-status=${st.word}><${StateLine} token=${st.tone} word=${word} />${action ? ' ' : null}${action}</p>`
+  return html`<p class="handoff-status small" role="status" data-status=${st.word}><${StateLine} token=${st.tone} word=${word} />${action ? ' ' : null}${action}
+    ${st.text ? html`<span class="handoff-result">${t.handoff.result(short(st.text, 160))}</span>` : null}</p>`
 }
 
 /** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat). One input:
@@ -154,7 +171,7 @@ export function ChatFoot({ s, c, conv, autofocus }) {
   const route = pinned ? { ...guess, to: pinned, by: 'flipped' } : guess
   // where the last handoff went: the chat's own record, or for a new problem the page's record of its start
   const handed = conv ? conv.handed ?? null : (s.ui.sent ?? []).at(-1) ?? null
-  const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs)
+  const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs, conv ? askOutcome(conv) : null)
   const starting = status?.word === 'starting'
   const answered = !!(conv && last?.a && !conv.running)
   // the second way: a real Claude session in a cmux tab, which may act. A new problem opens one at once;
@@ -198,6 +215,14 @@ export function ChatFoot({ s, c, conv, autofocus }) {
   </footer>`
 }
 
+/** The marker of a handed question beside its title: in its tab, done, or asks you (logic.js askMark) */
+export function AskMark({ mark, archived = false }) {
+  const t = T()
+  const word = archived ? 'archived' : mark?.word
+  if (!word) return null
+  return html` <span class=${`ask-mark chip-tk tk-${archived ? 'muted' : mark.tone}`} data-mark=${word} title=${mark?.text ?? undefined}>${t.asks.mark[word]}</span>`
+}
+
 function ModelPick({ s, c }) {
   const t = T()
   const model = s.ui.quickModel ?? s.quick?.default ?? 'haiku'
@@ -222,7 +247,7 @@ export function useStickToEnd(conv, live) {
 export function QuickChat({ s, c }) {
   const t = T()
   const q = s.quick ?? {}
-  const convs = listedChats(q.convs, q.keep_hours, s.now)
+  const asks = askList(listedChats(q.convs, q.keep_hours, s.now), s, language())
   const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const dialog = useFocusOnOpen(true)
@@ -236,10 +261,10 @@ export function QuickChat({ s, c }) {
         ${s.tabs?.control?.ref ? html`<button type="button" class="btn-link small" onClick=${c.openClaude}>${t.quickToControl}</button>` : null}
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${c.closeTabView} />
       </header>
-      ${convs.length ? html`<nav class="quick-convs" aria-label=${t.quickChats}>
+      ${asks.length ? html`<nav class="quick-convs" aria-label=${t.quickChats}>
         <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.quickNew}</button>
-        ${convs.slice(0, 8).map(x => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
-          title=${x.turns[0]?.q} onClick=${() => c.pickQuick(x.id)}>${x.running ? html`<${Dot} token="info" pulse /> ` : null}${short(x.turns[0]?.q ?? '', 34)}</button>`)}
+        ${asks.slice(0, 8).map(({ conv: x, title, mark }) => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
+          title=${x.turns[0]?.q} onClick=${() => c.pickQuick(x.id)}>${x.running ? html`<${Dot} token="info" pulse /> ` : null}${title}<${AskMark} mark=${mark} /></button>`)}
       </nav>` : null}
       <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
         ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
@@ -257,6 +282,7 @@ export function ChatPage({ s, c }) {
   const lang = language()
   const q = s.quick ?? {}
   const convs = listedChats(q.convs, q.keep_hours, s.now)
+  const asks = new Map(askList(convs, s, lang).map(x => [x.conv.id, x]))
   const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const [forgetArmed, setForgetArmed] = useState(null)
@@ -276,7 +302,7 @@ export function ChatPage({ s, c }) {
           const lastTurn = x.turns[x.turns.length - 1]
           return html`<button type="button" key=${x.id} class=${`chat-item${x.id === conv?.id ? ' is-on' : ''}`} onClick=${() => c.pickQuick(x.id)}
             aria-current=${x.id === conv?.id ? 'true' : undefined}>
-            <span class="chat-item-q">${x.running ? html`<${Dot} token="info" pulse /> ` : null}${short(x.turns[0]?.q ?? '', 70)}</span>
+            <span class="chat-item-q">${x.running ? html`<${Dot} token="info" pulse /> ` : null}${asks.get(x.id)?.title}<${AskMark} mark=${asks.get(x.id)?.mark} /></span>
             <span class="chat-item-meta mono small muted">${[chatStamp(x.last_ms ?? x.started_ms, s.now, lang), t.quickTurns(x.turns.length),
               t.quickModel[lastTurn?.model_asked] ?? lastTurn?.model_asked, !costKnown ? t.quickCostUnknown : cost ? costText(cost, lang) : null].filter(Boolean).join(' · ')}</span>
           </button>`

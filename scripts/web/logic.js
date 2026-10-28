@@ -3138,11 +3138,16 @@ const HANDOFF_FAILED = new Set(['failed', 'partly', 'aborted', 'error', 'rejecte
 /** The status line of a chat that was handed on (quick.py `handed`, or the page's own record of a chat_tab
  *  reply): `word` is a key of text.js handoff, `tone` a state token, `action` what a button beside it does
  *  (retry, jump to the tab, ask_via_tab). The control route reads its relay record; the tab route finds the
- *  tab that carries the inbox item. null without a record */
-export function handoffStatus(handed, relayRecords, tabs) {
+ *  tab that carries the inbox item, and what the tab came back with (askOutcome, round 6d) or that it asks
+ *  you takes the place of the launch outcome. null without a record */
+export function handoffStatus(handed, relayRecords, tabs, outcome = null) {
   if (!handed?.status) return null
   const out = (word, tone, action = null, extra = {}) => ({ word, tone, action, ...extra })
   if (handed.status === 'starting') return out('starting', 'info')
+  const carrier = handed.to === 'tab' && handed.inbox_id ? (tabs ?? []).find(t => t?.item === handed.inbox_id) : null
+  const at = carrier ? { ref: carrier.ref, tab: carrier.name } : {}
+  if (handed.to === 'tab' && (outcome?.asks || carrier?.state === 'needs-you')) return out('asksYou', 'warning', carrier ? 'jump' : null, { ...at, text: outcome?.text ?? null })
+  if (handed.to === 'tab' && outcome) return out('done', 'success', carrier ? 'jump' : null, { ...at, text: outcome.text })
   if (handed.to === 'control') {
     const rec = (relayRecords ?? []).find(r => r?.id && r.id === handed.relay_id)
     const status = rec?.status ?? handed.status
@@ -3166,6 +3171,89 @@ export function handoffStatus(handed, relayRecords, tabs) {
   if (handed.status === 'nothing') return out('nothing', 'warning', 'retry')
   if (HANDOFF_FAILED.has(handed.status)) return out('failed', 'danger', 'retry')
   return out('failed', 'danger', 'retry')
+}
+
+// ---------------------------------------------------------------- questions found again (round 6d)
+
+/** What a handed question came back with: the outcome the handoff writes onto the conversation (`outcome`, or
+ *  on its `handed` record), a text or { text | note | summary, stage }; `asks` when the tab came back with a
+ *  question for you instead. null while nothing came back */
+export function askOutcome(conv) {
+  const raw = conv?.outcome ?? conv?.handed?.outcome ?? conv?.handed?.result ?? null
+  if (typeof raw === 'string') return raw.trim() ? { text: raw.trim(), asks: false } : null
+  if (!raw || typeof raw !== 'object') return null
+  const text = [raw.text, raw.note, raw.summary].find(v => typeof v === 'string' && v.trim())
+  return { text: text?.trim() ?? null, asks: raw.asks === true || raw.stage === 'asks' || raw.kind === 'asks' }
+}
+
+const TAB_LIVE = new Set(['started', 'running', 'busy'])
+
+/** The marker of a handed question in every list: `asksYou` (its tab asks you, or came back with a question),
+ *  `done` (it came back, `text` its outcome), `inTab` (its tab took it and works); null for a question
+ *  never handed on, or one whose start failed. `ref` the tab that carries it, while there is one */
+export function askMark(conv, tabs) {
+  const handed = conv?.handed
+  if (!handed || handed.to !== 'tab') return null
+  const tab = handed.inbox_id ? (tabs ?? []).find(t => t?.item === handed.inbox_id) ?? null : null
+  const outcome = askOutcome(conv)
+  const ref = tab?.ref ?? null
+  if (outcome?.asks || (tab?.state === 'needs-you' && TAB_LIVE.has(handed.status))) return { word: 'asksYou', tone: 'warning', text: outcome?.text ?? null, ref }
+  if (outcome) return { word: 'done', tone: 'success', text: outcome.text, ref }
+  return TAB_LIVE.has(handed.status) ? { word: 'inTab', tone: 'info', text: null, ref } : null
+}
+
+/** "heute 07:34", "gestern 07:34", "20.10. 07:34": when a question was asked, for titles that read alike */
+export function askStamp(ms, nowMs, lang) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return ''
+  const w = (TABLES[lang] ?? TABLES.en).asks
+  const d = new Date(ms)
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (isoDate(ms) === isoDate(nowMs)) return `${w.today} ${hm}`
+  if (isoDate(ms) === isoDate(nowMs - DAY)) return `${w.yesterday} ${hm}`
+  return chatStamp(ms, nowMs, lang)
+}
+
+const WORKER_KEY = /^worker:([^:]+):(.+)$/
+
+/** The title of a question: what it is about (a job with its machine and state, the row or task it was asked
+ *  on, the inbox item it became), else its first sentence, or the title in guillemets a row's prompt carries,
+ *  cut at a word */
+export function askTitle(conv, s, lang) {
+  const about = conv?.about && typeof conv.about === 'object' ? conv.about : {}
+  const job = WORKER_KEY.exec(about.key ?? '')
+  if (job) {
+    const [, host, id] = job
+    const run = (s?.workers?.data?.runs ?? []).find(r => r?.host === host && r?.id === id)
+    const state = run?.state ?? about.state
+    const words = (TABLES[lang] ?? TABLES.en).workerState ?? {}
+    return [run?.title || id, host, state ? words[state] ?? state : null].filter(Boolean).join(' · ')
+  }
+  if (typeof about.title === 'string' && about.title.trim()) return short(about.title, 80)
+  const rows = indexRows(s?.model)
+  for (const key of [about.key, about.task && `task:${about.task}`, about.inbox && `inbox:${about.inbox}`]) {
+    const title = key ? rows.get(key)?.title : null
+    if (title) return short(title, 80)
+  }
+  const text = String(conv?.turns?.[0]?.q ?? '').replace(/\s+/g, ' ').trim()
+  const quoted = /«([^»]{3,})»/.exec(text)
+  return short(quoted ? quoted[1] : text.split(/(?<=[.!?])\s/)[0], 60)
+}
+
+/** The questions a list shows, each with its title, marker and whether it is open (answering, unanswered or
+ *  handed on): the open ones first, then the answered, the newest first in each. Titles that read alike carry
+ *  when they were asked */
+export function askList(convs, s, lang) {
+  const tabs = s?.tabs?.tabs
+  const out = (convs ?? []).map(conv => {
+    const mark = askMark(conv, tabs)
+    const last = conv.turns?.at(-1)
+    return { conv, title: askTitle(conv, s, lang), mark, open: !!(conv.running || mark || (last && !last.a && !last.error)) }
+  })
+  const seen = new Map()
+  for (const x of out) seen.set(x.title, (seen.get(x.title) ?? 0) + 1)
+  for (const x of out) if (seen.get(x.title) > 1) x.title = `${x.title} · ${askStamp(x.conv.started_ms, s?.now, lang)}`
+  const at = x => x.conv.last_ms ?? x.conv.started_ms ?? 0
+  return out.sort((a, b) => (b.open ? 1 : 0) - (a.open ? 1 : 0) || at(b) - at(a))
 }
 
 const VERDICT_KEYS = { first: ['zuerst', 'first'], then: ['dann', 'then'], later: ['kann warten', 'can wait'] }

@@ -5464,6 +5464,25 @@ def test_a_chat_untouched_for_a_day_goes_to_the_archive(world):
     assert [c["id"] for c in json.loads((world.app.state_dir / "quick.json").read_text())] == [fresh]
 
 
+def test_the_page_reads_the_questions_archived_in_the_last_days(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    old = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "gestern"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.clock.advance(25 * 3600)
+    gone = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "weg damit"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.act("quick_forget", conv=gone)                       # one the person took off stays off
+    archive = lambda q="": json.loads(world.request("GET", f"/api/chats/archive{q}", headers=world.cookie)[2])  # noqa: E731
+    got = archive("?days=7")
+    assert got["ok"] is True and [c["id"] for c in got["convs"]] == [old]
+    assert got["convs"][0]["archived"] == {"why": "expired", "at_ms": int(world.clock())}
+    assert got["convs"][0]["turns"][0]["q"] == "gestern"
+    assert archive("?days=bogus")["convs"] == got["convs"]     # a word that is no number reads the default
+    world.clock.advance(8 * 86400)
+    assert archive("?days=7")["convs"] == []                   # past the window
+    assert [c["id"] for c in archive("?days=99")["convs"]] == [old]   # at most the longest window
+
+
 def test_an_expiry_the_archive_refuses_is_tried_again_only_after_an_hour(world, monkeypatch):
     world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
     conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "alt"}, "via": "quick"})[2])["conv"]

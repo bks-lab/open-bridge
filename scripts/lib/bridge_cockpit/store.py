@@ -5,7 +5,8 @@ The mod keeps its own hidden rows and team runs in its `$.store`; the web keeps
 these separately (documented, not synced: contract section 13). Every write is
 atomic (tmp file + os.replace). Also the small file helpers the other modules share:
 atomic JSON writes, log files rotated at 1 MB, and the chat archive (chats/<name>-YYYY-MM.jsonl), where a
-conversation goes when it leaves its list, so no chat is ever dropped.
+conversation goes when it leaves its list, so no chat is ever dropped, and which the page reads back for the
+questions of the last days (read_archive).
 """
 from __future__ import annotations
 
@@ -68,6 +69,34 @@ def archive_conv(state_dir: Path, name: str, conv: dict, why: str, now_ms: int) 
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+
+
+def read_archive(state_dir: Path, name: str, since_ms: int, now_ms: int) -> list[dict]:
+    """The rows archive_conv wrote from `since_ms` on, oldest first: the files of the months between then and
+    `now_ms` (local time), a line that cannot be read skipped. Read only."""
+    folder = Path(state_dir) / "chats"
+    months, at = [], since_ms
+    while True:
+        month = time.strftime("%Y-%m", time.localtime(at / 1000))
+        if month not in months:
+            months.append(month)
+        if at >= now_ms:
+            break
+        at = min(now_ms, at + 86_400_000 * 28)
+    rows: list[dict] = []
+    for month in months:
+        try:
+            lines = (folder / f"{name}-{month}.jsonl").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and isinstance(row.get("conv"), dict) and isinstance(row.get("at_ms"), int) and row["at_ms"] >= since_ms:
+                rows.append(row)
+    return rows
 
 
 _log_lock = threading.Lock()

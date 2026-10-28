@@ -104,6 +104,13 @@ function loadGhFilter() {
   }
 }
 
+/** The last question this viewer opened (round 6d), so a reload and the header's Ask find it again; a
+ *  convenience, never state: a question the server no longer has opens a new one */
+function lastAsk() {
+  const v = load('bridge-cockpit.lastAsk', null)
+  return typeof v === 'string' && /^q[0-9a-f]{10}$/.test(v) ? v : null
+}
+
 // ---------------------------------------------------------------- store
 
 function createStore(initial) {
@@ -199,7 +206,7 @@ const store = createStore({
     // under their board, both kept in this browser
     ghFilter: loadGhFilter(), ghGroup: load('bridge-cockpit.ghGroup', 'on') !== 'off',
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
-    busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
+    busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: lastAsk(), asksAll: false, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
     chatArea: load('bridge-cockpit.chatArea', 'work') === 'a2a' ? 'a2a' : 'work',
     railHidden: load('bridge-cockpit.rail', 'shown') === 'hidden',
@@ -227,6 +234,15 @@ const store = createStore({
   records: null,
   // the files tab's question to the AI (verb files_ask): { status: loading|ok|error, data, error }; null: none asked
   filesAsk: null,
+  // the questions archived in the last days (/api/chats/archive), read once "all" is asked for: { status, convs }
+  chatArchive: null,
+})
+
+// a question opened is kept as the last one; a new chat keeps the one before for the next reload
+let keptAsk = store.get().ui.quickConv
+store.subscribe(s => {
+  const id = s.ui.quickConv
+  if (id && id !== keptAsk) { keptAsk = id; save('bridge-cockpit.lastAsk', id) }
 })
 
 const setUi = patch => store.set(s => ({ ...s, ui: { ...s.ui, ...(typeof patch === 'function' ? patch(s.ui) : patch) } }))
@@ -669,7 +685,9 @@ async function ask(kind, args = {}) {
   const ui = store.get().ui
   return withBusy(`ask:${kind}`, kind, async () => {
     const onChat = ui.page === CHAT_PAGE && !ui.tabView
-    const conv = kind === 'free' && (ui.tabView === '@ask' || onChat) ? ui.quickConv : null
+    // one kept from before a reload that the server has archived since is no conversation to go on in
+    const known = (store.get().quick?.convs ?? []).some(x => x.id === ui.quickConv)
+    const conv = kind === 'free' && (ui.tabView === '@ask' || onChat) && known ? ui.quickConv : null
     // a free question carries what the page shows right now, as data beside it (the core asks without it)
     const context = kind === 'free' ? askContext(store.get(), language()) : ''
     const res = await api.ask(kind, context ? { ...args, context } : args, { via: 'quick', model: ui.quickModel, ...(conv ? { conv } : {}), ...quickKeys(ui) })
@@ -1475,6 +1493,16 @@ const ctl = {
   // the chat as a tab of its own: the open conversation goes along, the window closes
   chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi({ page: CHAT_PAGE, tabView: null, pageDetail: false }) },
   pickQuick: conv => setUi({ quickConv: conv }),
+  // "all" under the questions: every one of the last days, the archived ones read once from the server
+  showAllAsks: on => {
+    setUi({ asksAll: !!on })
+    if (on && store.get().chatArchive?.status !== 'ok') ctl.loadChatArchive()
+  },
+  loadChatArchive: async () => {
+    store.set(s => ({ ...s, chatArchive: { status: 'loading', convs: s.chatArchive?.convs ?? [] } }))
+    const res = await api.get('/api/chats/archive?days=7')
+    store.set(s => ({ ...s, chatArchive: res.ok ? { status: 'ok', convs: res.data.convs ?? [] } : { status: 'error', convs: s.chatArchive?.convs ?? [] } }))
+  },
   newQuick: () => setUi({ quickConv: null }),
   // what a chat_tab start from the chat answered (inbox item and launch outcome), for its status line; the last few
   noteSent: rec => setUi(ui => ({ sent: [...(ui.sent ?? []).slice(-4), rec] })),
