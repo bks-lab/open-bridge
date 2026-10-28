@@ -605,7 +605,7 @@ The cockpit's Setup page starts this mode too: "Let AI do it" on one of its
 catalogue rows opens an agent tab on the row, whose detail names the
 feature's Activate: step (`/bridge-onboard --add <feature>` or the config key).
 Run that step as here, with the person confirming; the page itself writes only
-`deferred` and `silenced` into `onboarding-state.yaml` (its Later and Not for
+`deferred` and `silenced` into `onboarding-state.yaml` (its Ask again in 30 days and Not for
 me), never the config.
 
 ## Personas — Explicit Note

@@ -310,6 +310,75 @@ def test_the_command_checks_its_undo_token_itself(tmp_path):
         assert bs.act(root, "remotes", bad, today=TODAY)[0] == 2, bad
 
 
+def test_a_stale_or_crafted_undo_never_replaces_a_newer_decision(tmp_path):
+    root = bridge(tmp_path)
+    _, first = bs.act(root, "remotes", "later", today=TODAY)
+    _, second = bs.act(root, "remotes", "silence", today=TODAY)
+    # the undo of the first step is stale: the entry is what the second wrote
+    assert bs.act(root, "remotes", first["undo"], today=TODAY)[0] == 2
+    assert state(root)["suggestions"]["remotes"]["status"] == "silenced"
+    # a token with another earlier status, or another hash, is refused as well
+    head, _, digest = second["undo"].rpartition(".")
+    for bad in (second["undo"].replace(".deferred.", ".accepted."), f"{head}.{'0' * len(digest)}"):
+        assert bs.act(root, "remotes", bad, today=TODAY)[0] == 2, bad
+    assert state(root)["suggestions"]["remotes"]["status"] == "silenced"
+    assert bs.act(root, "remotes", second["undo"], today=TODAY)[0] == 0
+    assert state(root)["suggestions"]["remotes"]["status"] == "deferred"
+
+
+def test_the_undo_restores_the_earlier_entry_exactly_with_its_decided_at(tmp_path):
+    root = bridge(tmp_path)
+    before = {"status": "declined", "decided_at": "2026-05-16T14:34:00+02:00", "decline_count": 1}
+    write_state(root, {"remotes": dict(before)})
+    _, out = bs.act(root, "remotes", "silence", today=TODAY)
+    assert len(out["undo"]) <= 128
+    assert bs.act(root, "remotes", out["undo"], today=TODAY)[0] == 0
+    assert state(root)["suggestions"]["remotes"] == before
+
+
+@pytest.mark.parametrize("text", ["suggestions: [unclosed\n", "- a list\n", "suggestions: [1, 2]\n"])
+def test_a_state_file_it_cannot_read_is_never_overwritten(tmp_path, text):
+    root = bridge(tmp_path)
+    (root / "work").mkdir()
+    path = root / "work" / "onboarding-state.yaml"
+    path.write_text(text, encoding="utf-8")
+    assert bs.act(root, "remotes", "later", today=TODAY)[0] == 2
+    assert bs.act(root, "remotes", "restore:remotes.none._._.0000000000", today=TODAY)[0] == 2
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_the_state_file_keeps_its_mode(tmp_path):
+    root = bridge(tmp_path)
+    write_state(root, {})
+    path = root / "work" / "onboarding-state.yaml"
+    path.chmod(0o644)
+    bs.act(root, "remotes", "later", today=TODAY)
+    assert path.stat().st_mode & 0o777 == 0o644
+
+
+def test_steps_side_by_side_lose_no_decision(tmp_path):
+    import subprocess
+    root = bridge(tmp_path)
+    write_state(root, {})
+    picks = ["personas", "doc-system", "accounts", "mandants", "calendar", "channels", "remotes", "backups"]
+    procs = [subprocess.Popen([sys.executable, str(ROOT / "scripts" / "bridge-setup.py"), "--root", str(root), "act",
+                               fid, "later"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE) for fid in picks]
+    assert all(p.wait(timeout=60) == 0 for p in procs)
+    keys = {e["state_key"] for e in bs.features() if e["id"] in picks}
+    assert keys <= set(state(root)["suggestions"])
+
+
+def test_a_profile_whose_sections_are_no_list_is_no_crash(tmp_path):
+    root = bridge(tmp_path, profile=None)
+    (root / "workflow" / "briefings" / "odd.yaml").write_text("id: odd\nsections: 5\n", encoding="utf-8")
+    assert ids(checks(root)) == []
+
+
+def test_the_available_steps_say_they_are_the_onboarding_decision():
+    assert "30" in bv.LABELS["setup_later"] and bv.LABELS["setup_later"] != "Later"
+    assert bv.LABELS["setup_later"].split()[0] not in ("Later", "Later:")
+
+
 def test_act_refuses_what_it_does_not_know(tmp_path):
     root = bridge(tmp_path)
     assert bs.act(root, "no-such-feature", "later", today=TODAY)[0] == 2
@@ -395,6 +464,36 @@ def test_a_profile_that_places_the_setup_sections_itself_keeps_them_there():
     assert [s["id"] for s in pages["ops"]["sections"]] == ["setup-checks"]
     assert [s["id"] for s in pages["setup"]["sections"]] == ["setup-available", "setup-on"]
     assert "more" not in pages
+
+
+def test_a_profile_page_named_setup_takes_the_sections_only_when_it_names_one():
+    result = {"collected_at": "2026-10-28T09:00", "sections": [
+        {"id": sid, "kind": "command", "title": sid, "status": "ok", "items": [], "total": 0}
+        for sid in [*SETUP_IDS, "probes"]]}
+    own = {"id": "p", "view": {"pages": [{"id": "setup", "title": "Install", "sections": ["probes"]}]}}
+    pages = {p["id"]: p for p in bv.pages(result, own)}
+    assert [s["id"] for s in pages["setup"]["sections"]] == ["probes"]
+    other = next(p for p in pages.values() if p["id"] != "setup" and "setup-checks" in [s["id"] for s in p["sections"]])
+    assert [s["id"] for s in other["sections"]] == SETUP_IDS
+    named = {"id": "p", "view": {"pages": [{"id": "setup", "sections": ["probes", "setup-on"]}]}}
+    pages = {p["id"]: p for p in bv.pages(result, named)}
+    assert [s["id"] for s in pages["setup"]["sections"]] == ["probes", "setup-on", "setup-checks", "setup-available"]
+
+
+def test_a_failed_setup_section_adds_no_status_or_housekeeping_line_to_the_briefing():
+    result = {"collected_at": "2026-10-28T09:00", "sections": [
+        {"id": "inbox", "kind": "inbox", "title": "Inbox", "status": "ok", "items": [], "total": 0},
+        {"id": "setup-checks", "kind": "command", "title": "Setup", "status": "error", "reason": "boom",
+         "items": [], "total": 0},
+        {"id": "setup-on", "kind": "command", "title": "On", "status": "skipped", "reason": "left out",
+         "left_out": True, "items": [], "total": 0}]}
+    profile = {"id": "p", "sections": [{"kind": "inbox"}, {"kind": "command", "id": "setup-checks", "bucket": "none"},
+                                       {"kind": "command", "id": "setup-on", "bucket": "none"}],
+               "view": {"style": "triage"}}
+    view = bv.build(result, profile)
+    text = json.dumps(view, ensure_ascii=False)
+    assert "boom" not in text and "Setup" not in json.dumps(view.get("status"), ensure_ascii=False)
+    assert not [s for s in view.get("status") or [] if s.get("title") in ("Setup", "On")]
 
 
 def test_validate_reserves_the_setup_ids_but_a_page_may_name_them(tmp_path):

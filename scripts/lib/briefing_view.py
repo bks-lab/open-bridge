@@ -230,7 +230,7 @@ LABELS = {
     "setup_config_error_detail": "{error}",
     "setup_activate": "{when} Switch it on: {command}",
     "setup_deferred": "Put off until {date}. {when} Switch it on: {command}",
-    "setup_later": "Later (30 days)",
+    "setup_later": "Ask again in 30 days",
     "setup_silence": "Not for me",
     "until": "until {time}",
     "commits_today": "{n} today",
@@ -418,7 +418,7 @@ LABELS_DE = {
     "setup_config_error_detail": "{error}",
     "setup_activate": "{when} Einschalten: {command}",
     "setup_deferred": "Zurückgestellt bis {date}. {when} Einschalten: {command}",
-    "setup_later": "Später (30 Tage)",
+    "setup_later": "In 30 Tagen wieder fragen",
     "setup_silence": "Nichts für mich",
     "until": "bis {time}",
     "commits_today": "{n} heute",
@@ -436,6 +436,7 @@ REST_PAGE = "more"
 # the cockpit's Setup page (briefing.py collect --setup, scripts/bridge-setup.py): its three sections and how each
 # stands there; a profile may place any of them on a page of its own, the rest stand on this page
 SETUP_PAGE = "setup"
+SETUP_PAGE_ALT = "bridge-setup"     # its id when a page of the profile is called setup already
 SETUP_ENTRIES = ({"id": "setup-checks"},
                  {"id": "setup-available", "actionable": True, "badge": False},
                  {"id": "setup-on", "actionable": False, "badge": False})
@@ -1025,6 +1026,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
     forced_ids = {sid for sid, c in sections_cfg.items() if c.get("bucket") in BUCKETS}
     for s in result.get("sections") or []:
         sid, kind = s.get("id"), s.get("kind")
+        if sid in SETUP_SECTIONS:      # the cockpit's Setup page says itself when it fails; the briefing never
+            continue
         cfg = sections_cfg.get(sid, {})
         # the kinds without status rows of their own still get one when they cannot run on this machine: a calendar
         # skipped for want of icalBuddy was otherwise just missing, with no word why (18.10.)
@@ -2312,15 +2315,17 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     # collected for something else (a file another page reads), shown nowhere
     skip = view.get("page_skip") if isinstance(view.get("page_skip"), list) else []
     placed = {e["id"] for _, _, entries, _, _, _ in plan for e in entries} | {x for x in skip if isinstance(x, str)}
-    # the Setup page: what the profile did not place itself, on a page of its own (a page `setup` of the profile
-    # takes it), never on the rest page
+    # the Setup page: what the profile did not place itself, on a page of its own, never on the rest page. A page
+    # `setup` of the profile takes the rest only when it names a setup section itself; one that merely has that id
+    # keeps its own, and the Setup page takes another id
     setup = [dict(e) for e in SETUP_ENTRIES if e["id"] in sections and e["id"] not in placed]
     if setup:
-        own = next((p for p in plan if p[0] == SETUP_PAGE), None)
+        own = next((p for p in plan if p[0] == SETUP_PAGE and any(e["id"] in SETUP_SECTIONS for e in p[2])), None)
         if own is not None:
             own[2].extend(setup)
         else:
-            plan.append((SETUP_PAGE, labels["page_setup"], setup, "more", False, None))
+            pid = SETUP_PAGE if all(p[0] != SETUP_PAGE for p in plan) else SETUP_PAGE_ALT
+            plan.append((pid, labels["page_setup"], setup, "more", False, None))
         placed |= {e["id"] for e in setup}
     if configured is None or view.get("page_rest", "show") != "hide":
         rest = [{"id": sid} for sid, s in sections.items()

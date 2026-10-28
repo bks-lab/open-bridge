@@ -2529,15 +2529,20 @@ the row to the inbox and starts an agent tab on it; once the problem is fixed th
 after the next full pass the cockpit closes the item it filed, so a fixed problem disappears by
 itself. A row of the catalogue offers Let AI do it too, and the agent tab runs the catalogue's own
 step for it (`/bridge-onboard --add <feature>`, or the config key it names), where the person
-confirms. Its own steps are **Later** (30 days) and **Not for me**.
+confirms. Its own steps are the onboarding's decisions, **Ask again in 30 days** and **Not for
+me**; the cockpit's Later beside them only hides the row on this page until a day.
 
 What the page never does: switch a feature on, or write `bridge-config.yaml`. Its checks read only
 this Bridge's files (so `discovery.mode: confined` holds), with two probes of five seconds each:
 the terminal driver through the Bridge's own `workplace.py`, and `gh auth status` only while
-`integrations.github.enabled` is true. It never scans the machine. The one write is Later and Not for
-me: `work/onboarding-state.yaml`, in the schema of the onboarding's Discovery State (`deferred` with
-`remind_after` 30 days on, or `silenced`), through `briefing.py act` like any step of a command row,
-with an undo the script checks itself (it is refused once the entry changed since). The catalogue
+`integrations.github.enabled` is true. It never scans the machine. The one write is Ask again in 30
+days and Not for me: `work/onboarding-state.yaml`, in the schema of the onboarding's Discovery State
+(`deferred` with `remind_after` 30 days on, or `silenced`), through `briefing.py act` like any step
+of a command row. A file it cannot read, or one that is not a mapping, is refused and left as it
+is; a step reads, changes and replaces it under a lock (`.bridge/setup.lock`), so two clicks side
+by side lose nothing, and the file keeps its mode, but not its comments. The undo token carries
+what stood there before (status, `remind_after`, `decided_at`) and a digest of what the step
+wrote: the script restores that entry exactly, and refuses once the entry changed since. The catalogue
 behind the page is `skills/bridge-onboard/references/features.yaml`, one entry per feature of
 `feature-catalog.md`; a test holds the two equal. A profile can place any of the three sections
 on a page of its own (`view.pages`); the ids are reserved, so no profile section may take one.
@@ -2774,7 +2779,7 @@ nothing a stranger could trigger:
   `inbox.runner` ([`inbox.md`](inbox.md));
 - the Setup page switches nothing on and never writes `bridge-config.yaml`: its rows are
   `briefing.py` command sections of `scripts/bridge-setup.py`, which reads only this Bridge's files
-  and probes `gh` only while GitHub is switched on; its one write is Later and Not for me into
+  and probes `gh` only while GitHub is switched on; its one write is Ask again in 30 days and Not for me into
   `work/onboarding-state.yaml`, through the same row step and undo as any command row, no verb of
   its own ([The Setup page](#the-setup-page));
 - the server collects with `--no-save`: the page never moves the "since last

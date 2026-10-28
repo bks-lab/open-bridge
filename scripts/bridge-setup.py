@@ -27,6 +27,8 @@ Contract: scripts/tests/test_bridge_cockpit_setup.py.
 from __future__ import annotations
 
 import argparse
+import base64
+import contextlib
 import datetime as dt
 import hashlib
 import json
@@ -39,6 +41,11 @@ import tempfile
 from pathlib import Path
 
 import yaml
+
+try:
+    import fcntl
+except ImportError:          # Windows: no advisory lock, one click at a time is then the person's
+    fcntl = None
 
 CODE = Path(__file__).resolve().parents[1]
 if str(CODE / "scripts") not in sys.path:
@@ -56,7 +63,9 @@ PROBE_TIMEOUT = 5            # each probe; a section has 30 s for all of them
 # the statuses of Discovery State; `act` writes deferred and silenced, an undo restores any of them
 STATUSES = ("accepted", "deferred", "declined", "silenced", "nothing_found", "not_evaluated")
 HIDDEN = ("silenced", "declined")      # the person said no: never offered here again
-UNDO_RE = re.compile(r"^restore:([a-z][a-z0-9_]{0,39})\.([a-z_]{1,20})\.(\d{4}-\d{2}-\d{2}|_)\Z")
+# restore:<key>.<earlier status or none>.<earlier remind_after or _>.<earlier decided_at or _>.<digest of what was written>
+UNDO_RE = re.compile(r"^restore:([a-z][a-z0-9_]{0,39})\.([a-z_]{1,20})\.(\d{4}-\d{2}-\d{2}|_)\.([TYS][A-Za-z0-9_-]{1,80}|_)"
+                     r"\.([0-9a-f]{10})\Z")
 
 
 # ---------------------------------------------------------------- reading
@@ -225,7 +234,8 @@ def check_profiles(root: Path, words: dict) -> list:
         data = read_yaml(path)
         pid = path.stem
         spots = [(str(k), v) for k, v in data.items() if k != "sections"]
-        spots += [(str(s.get("id") or s.get("kind")), s) for s in data.get("sections") or [] if isinstance(s, dict)]
+        sections = data.get("sections") if isinstance(data.get("sections"), list) else []   # validate names the rest
+        spots += [(str(s.get("id") or s.get("kind")), s) for s in sections if isinstance(s, dict)]
         for where, value in spots:
             mark = _holding(value, marks)
             if mark:
@@ -316,25 +326,88 @@ def check_part(root: Path, part: str, cfg: dict | None = None, probes=None, toda
 
 # ---------------------------------------------------------------- act: the one write
 
+LOCK = Path(".bridge") / "setup.lock"     # beside the state, so two clicks side by side lose no decision
+
+
+@contextlib.contextmanager
+def _locked(root: Path):
+    """One step at a time: read, change and replace work/onboarding-state.yaml under an exclusive lock."""
+    path = Path(root) / LOCK
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        if fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
 def _write_state(root: Path, data: dict) -> None:
+    """Replace the file whole (its comments are not kept), with the mode it had."""
     path = Path(root) / STATE
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        mode = path.stat().st_mode & 0o777
+    else:
+        mask = os.umask(0)
+        os.umask(mask)
+        mode = 0o666 & ~mask
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".onboarding-state.", suffix=".yaml")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
 
 
-def _state_doc(root: Path) -> tuple[dict, dict] | None:
-    data = read_yaml(Path(root) / STATE)
-    sugg = data.setdefault("suggestions", {})
+def _state_doc(root: Path) -> tuple[dict, dict] | str:
+    """The state file as it stands, read strictly: missing is empty, anything it cannot read is a refusal (a reason),
+    never an empty file to write over."""
+    path = Path(root) / STATE
+    if not path.exists():
+        data: object = {}
+    else:
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+            return f"{STATE} cannot be read ({exc.__class__.__name__}): nothing written"
+        data = {} if data is None else data
+    if not isinstance(data, dict):
+        return f"{STATE} is not a mapping: nothing written"
+    sugg = data.get("suggestions")
     if sugg is None:
         sugg = data["suggestions"] = {}
-    return (data, sugg) if isinstance(sugg, dict) else None
+    if not isinstance(sugg, dict):
+        return f"{STATE}: suggestions is not a mapping: nothing written"
+    return data, sugg
+
+
+def _stamp(value) -> str:
+    """An earlier decided_at as one token part: _ for none, else its kind (T a timestamp, Y a date, S text) and the
+    text in base64url, so the undo writes back exactly what stood there."""
+    if value is None:
+        return "_"
+    kind = "T" if isinstance(value, dt.datetime) else "Y" if isinstance(value, dt.date) else "S"
+    text = value.isoformat() if kind != "S" else str(value)
+    return kind + base64.urlsafe_b64encode(text.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _unstamp(part: str):
+    if part == "_":
+        return None
+    raw = base64.urlsafe_b64decode(part[1:] + "=" * (-len(part[1:]) % 4)).decode("utf-8")
+    return dt.datetime.fromisoformat(raw) if part[0] == "T" else dt.date.fromisoformat(raw) if part[0] == "Y" else raw
+
+
+def _digest(key: str, prev: str, entry: dict) -> str:
+    """Binds an undo to the entry its step wrote and to the earlier values it carries: any change refuses it."""
+    body = json.dumps({"key": key, "prev": prev, "entry": entry}, sort_keys=True, default=str, ensure_ascii=False)
+    return hashlib.sha1(body.encode("utf-8")).hexdigest()[:10]
 
 
 def act(root: Path, fid: str, action: str, today: dt.date | None = None) -> tuple[int, dict | str]:
@@ -345,62 +418,74 @@ def act(root: Path, fid: str, action: str, today: dt.date | None = None) -> tupl
     feature = next((e for e in features() if e["id"] == fid), None)
     if feature is None:
         return 2, f"no feature {fid!r} in the catalogue"
-    key = feature["state_key"]
     if action.startswith("restore:"):
-        return _restore(root, feature, action)
+        with _locked(root):
+            return _restore(root, feature, action)
     if action not in ACTIONS:
         return 2, f"not a step of the Setup page: {action!r}"
-    doc = _state_doc(root)
-    if doc is None:
-        return 2, f"{STATE}: suggestions is not a mapping"
-    data, sugg = doc
-    before = sugg.get(key) if isinstance(sugg.get(key), dict) else None
-    status, until = (before or {}).get("status"), _date((before or {}).get("remind_after"))
-    undo = None
-    if before is None or status in STATUSES:
-        undo = f"restore:{key}.{status if before is not None else 'none'}.{until.isoformat() if until else '_'}"
-    entry = dict(before or {})
-    entry["status"] = "deferred" if action == "later" else "silenced"
-    entry["decided_at"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
-    if action == "later":
-        entry["remind_after"] = today + dt.timedelta(days=DEFER_DAYS)
-    else:
-        entry.pop("remind_after", None)
-    sugg[key] = entry
-    _write_state(root, data)
+    key = feature["state_key"]
+    with _locked(root):
+        doc = _state_doc(root)
+        if isinstance(doc, str):
+            return 2, doc
+        data, sugg = doc
+        if key in sugg and not isinstance(sugg[key], dict):
+            return 2, f"{STATE}: suggestions.{key} is not a mapping: nothing written"
+        before = sugg.get(key)
+        entry = dict(before or {})
+        entry["status"] = "deferred" if action == "later" else "silenced"
+        entry["decided_at"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+        if action == "later":
+            entry["remind_after"] = today + dt.timedelta(days=DEFER_DAYS)
+        else:
+            entry.pop("remind_after", None)
+        undo = None
+        status = (before or {}).get("status")
+        if before is None or status in STATUSES:
+            until = _date((before or {}).get("remind_after"))
+            prev = (f"{status if before is not None else 'none'}.{until.isoformat() if until else '_'}."
+                    f"{_stamp((before or {}).get('decided_at'))}")
+            token = f"restore:{key}.{prev}.{_digest(key, prev, entry)}"
+            undo = token if UNDO_RE.match(token) and len(token) <= 128 else None
+        sugg[key] = entry
+        _write_state(root, data)
     return 0, {"ok": True, "did": action, "id": fid, **({"undo": undo} if undo else {})}
 
 
 def _restore(root: Path, feature: dict, token: str) -> tuple[int, dict | str]:
-    """The token says what stood there before: the feature's key, its status (none: no entry) and its date. It is
-    taken only while the entry is still what a step of this page wrote, so a later decision is never overwritten."""
+    """The token says what stood there before (status or none, remind_after, decided_at) and carries a digest of
+    the entry its step wrote. It is taken only while the entry is exactly that, so neither a later decision nor a
+    token with other earlier values is ever written."""
     found = UNDO_RE.match(token)
     if not found or found.group(1) != feature["state_key"]:
         return 2, "not an undo of this feature"
-    key, status, date = found.groups()
+    key, status, date, stamp, digest = found.groups()
     if status != "none" and status not in STATUSES:
         return 2, f"not a status: {status!r}"
     until = None if date == "_" else _date(date)
     if date != "_" and until is None:
         return 2, f"not a date: {date!r}"
+    try:
+        decided = _unstamp(stamp)
+    except (ValueError, UnicodeDecodeError):
+        return 2, "not an undo of this feature"
     doc = _state_doc(root)
-    if doc is None:
-        return 2, f"{STATE}: suggestions is not a mapping"
+    if isinstance(doc, str):
+        return 2, doc
     data, sugg = doc
     now = sugg.get(key) if isinstance(sugg.get(key), dict) else None
-    if now is None or now.get("status") not in ("deferred", "silenced"):
+    if now is None or _digest(key, f"{status}.{date}.{stamp}", now) != digest:
         return 2, "the entry changed since this step: nothing restored"
     if status == "none":
         del sugg[key]
     else:
         entry = dict(now)
         entry["status"] = status
-        if until:
-            entry["remind_after"] = until
-        else:
-            entry.pop("remind_after", None)
-        if status in ("not_evaluated", "nothing_found"):
-            entry.pop("decided_at", None)      # nothing was decided (Discovery State)
+        for field, value in (("remind_after", until), ("decided_at", decided)):
+            if value is None:
+                entry.pop(field, None)
+            else:
+                entry[field] = value
         sugg[key] = entry
     _write_state(root, data)
     return 0, {"ok": True, "did": "restored", "id": feature["id"]}
