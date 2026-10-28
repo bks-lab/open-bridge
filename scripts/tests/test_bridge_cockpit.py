@@ -7855,6 +7855,104 @@ def test_find_says_so_when_the_search_fails_and_never_shows_the_token(world):
     assert world.app.token.encode() not in body
 
 
+FILES_ASK_CONFIG = ("cockpit:\n  enabled: true\n  language: en\n  files_search:\n    enabled: {on}\n    budget_per_day: {budget}\n"
+                    "    block: [Versicherung, Gesundheit]\nworkplace:\n  control:\n    name: Control\n")
+
+
+def files_ask_world(tmp_path, on="true", budget=3):
+    w = World(tmp_path, config=FILES_ASK_CONFIG.format(on=on, budget=budget))
+    put = lambda rel, text: ((w.root / rel).parent.mkdir(parents=True, exist_ok=True), (w.root / rel).write_text(text, encoding="utf-8"))
+    put("work/tasks/versicherung-bestand/STATUS.md", "---\nstatus: doing\nheadline: Policies in review\n---\nsecret policy number 42\n")
+    put("work/done/2026-09/doctor-visit/STATUS.md", "---\nstatus: done\nheadline: Gesundheit check-up\n---\nblood values\n")
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "is_error": False, "total_cost_usd": 0.002,
+                                                     "modelUsage": {"claude-haiku-5-5": {}}, "result": "",
+                                                     "structured_output": {"answer": "The demo waits.", "files": [{"n": 1, "why": "it is the demo"}]}})
+    return w
+
+
+ASKED = ["work/tasks/demo-task", "work/tasks/versicherung-bestand", "work/done/2026-09/doctor-visit"]
+
+
+def test_the_records_of_the_files_tab_come_by_folder_read_only_and_need_the_cookie(world):
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/records", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    [rec] = [r for r in data["records"] if r["slug"] == "demo-task"]
+    assert rec["path"] == "work/tasks/demo-task" and rec["title"] == "Demo task" and rec["status"] == "doing"
+    assert rec["updated"] == "2026-10-08" and rec["priority"] == "P1"
+    assert world.runner.calls == []                                               # read in place, nothing run
+    assert world.request("GET", "/api/records")[0] == 401
+
+
+def test_the_work_state_says_whether_the_files_tab_may_ask_a_model_and_what_it_holds_back(tmp_path):
+    w = files_ask_world(tmp_path)
+    try:
+        fs = w.app.work_state()["files_search"]
+        assert fs == {"enabled": True, "block": ["Versicherung", "Gesundheit"], "left": 3}
+    finally:
+        w.close()
+    off = World(tmp_path / "off")
+    try:
+        assert off.app.work_state()["files_search"] == {"enabled": False, "block": [], "left": 20}
+    finally:
+        off.close()
+
+
+def test_asking_the_records_never_sends_one_the_block_list_holds_back(tmp_path):
+    w = files_ask_world(tmp_path)
+    try:
+        before = len(w.runner.calls)
+        res = w.act("files_ask", text="Which one\nwaits?", paths=ASKED)
+        calls = w.runner.calls[before:]
+        assert [w.runner.key(c) for c in calls] == ["claude.p"]
+        prompt = calls[0][-1]
+        # what the block list names never reaches the model: not its path, title, slug or text
+        for held in ("versicherung", "Policies in review", "policy number", "doctor-visit", "Gesundheit", "blood values"):
+            assert held not in prompt, held
+        head, data, label, question = prompt.split("\n", 3)
+        [rec] = json.loads(data)["records"]
+        assert rec["n"] == 1 and rec["slug"] == "demo-task" and rec["title"] == "Demo task" and "Ship the demo." in rec["text"]
+        assert question == "Which one waits?"
+        ask = res["ask"]
+        assert ask["answer"] == "The demo waits." and ask["sent"] == 1
+        assert ask["files"] == [{"n": 1, "why": "it is the demo", "slug": "demo-task", "path": "work/tasks/demo-task", "title": "Demo task"}]
+        assert ask["held"] == {"n": 2, "words": ["Versicherung", "Gesundheit"]}
+        assert ask["model"] == "haiku" and ask["left"] == 2
+    finally:
+        w.close()
+
+
+def test_asking_the_records_is_off_by_default_within_its_budget_and_refuses_what_it_cannot_send(tmp_path):
+    w = files_ask_world(tmp_path, budget=1)
+    try:
+        # only held back records: nothing to send, no call
+        with pytest.raises(ActionError) as none:
+            w.act("files_ask", text="anything?", paths=ASKED[1:])
+        assert none.value.code == "files_ask_held" and w.runner.of("claude.p") == []
+        # a folder that is no record is left out, a path outside work/ refused before anything runs
+        with pytest.raises(ActionError) as bad:
+            w.act("files_ask", text="anything?", paths=["../etc/passwd"])
+        assert bad.value.code == "invalid_argument"
+        with pytest.raises(ActionError) as gone:
+            w.act("files_ask", text="anything?", paths=["work/tasks/no-such-task"])
+        assert gone.value.code == "files_ask_held"
+        w.act("files_ask", text="anything?", paths=ASKED[:1])
+        with pytest.raises(ActionError) as spent:
+            w.act("files_ask", text="again?", paths=ASKED[:1])
+        assert spent.value.code == "files_ask_budget" and spent.value.status == 429
+        assert len(w.runner.of("claude.p")) == 1
+    finally:
+        w.close()
+    off = files_ask_world(tmp_path / "off", on="false")
+    try:
+        with pytest.raises(ActionError) as e:
+            off.act("files_ask", text="anything?", paths=ASKED[:1])
+        assert e.value.code == "files_ask_off" and off.runner.of("claude.p") == []
+    finally:
+        off.close()
+
+
 def test_asking_a_file_names_it_for_an_open_task_and_never_for_a_closed_one(world):
     world.runner.handlers["claude.p"] = lambda argv: claude_answer("It waits on the vendor.", 0.001)
     done = world.root / "work" / "done" / "2026-09" / "gone-task"

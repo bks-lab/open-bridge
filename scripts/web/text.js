@@ -17,8 +17,8 @@ import { CHAT } from './text-chat.js'
 const cliName = e => /\bthe (\S+) CLI\b/.exec(String(e?.message ?? ''))?.[1] ?? null
 
 // every view the work tab's switch can offer, in its order (logic.js workViews): the words of the switch's hint name
-// these where no list is given
-const WORK_VIEWS_ALL = ['due', 'area', 'jev', 'dossier', 'flow']
+// these where no list is given. The files are a tab of their own (round 6c), never a view of the switch
+const WORK_VIEWS_ALL = ['due', 'area', 'jev', 'flow']
 
 const en = {
   appName: 'Bridge',
@@ -270,6 +270,7 @@ const en = {
   btnStartControlShort: 'Start',
   startControlTitle: 'Opens a new Claude tab in the {ws} workspace (created when missing); the page asks it from then on',
   sessionsTab: 'Sessions',
+  filesTab: 'Files',
   sessionsTitle: 'Claude sessions',
   sessionsIntro: 'Every Claude Code session running on this machine, with its subagents. Click a card to jump to its tab.',
   sessionsEmpty: 'No Claude session runs right now.',
@@ -369,7 +370,7 @@ const en = {
   workOrder: {
     label: 'Order of this page',
     viewLabel: 'View of the work tab',
-    views: { due: 'Due', area: 'By source', jev: 'By Jev', dossier: 'Files', flow: 'Work through' },
+    views: { due: 'Due', area: 'By source', jev: 'By Jev', flow: 'Work through' },
     byArea: 'By area',
     byJev: 'By Jev',
     run: 'Order with Jev',
@@ -835,8 +836,14 @@ const en = {
       snap: { title: 'Layout backup', body: 'Saves how your tabs stand in the terminal, so the layout comes back after a restart.' },
       // the views the switch offers, in its order (logic.js hintsFor gives them, hintText fills them in; none given: all)
       workSwitch: { title: 'How the work is ordered', body: views => (Array.isArray(views) ? views : WORK_VIEWS_ALL).map(v => ({ due: 'Due: by date.', area: 'By source: by origin.',
-        jev: 'By Jev: in the order Jev suggests.', dossier: 'Files: task by task, closed ones too.',
+        jev: 'By Jev: in the order Jev suggests.',
         flow: 'Work through: everything open exactly once, point by point.' })[v]).filter(Boolean).join(' ') },
+      // the files tab's start (views/dossier.js FilesStart)
+      filesFind: { title: 'Search the records', body: 'Type and the list narrows at once: titles, areas, themes and the text of every STATUS.md, closed records too.' },
+      filesAsk: { title: 'Ask AI', body: 'Only on a click: your question and the records listed go to the AI. Records the block list names stay private, the line below says how many.' },
+      filesChips: { title: 'Narrow it down', body: 'By area, by state (open, done, all) and by kind (task, stream, closed).' },
+      filesList: { title: 'The records', body: 'Changed last first, with area, state, the day of the last change and the line that matched. A click opens the record.' },
+      filesWalk: { title: 'One after the other', body: 'Walks the active records one at a time, each with its next step.' },
       chatModel: { title: 'Model for answers', body: 'Which model answers here. Haiku is quick and cheap, Opus thinks longest.' },
       chatList: { title: 'Your chats', body: 'Earlier questions with their answers. A click opens one again, New starts a fresh one.' },
       chatBox: { title: 'Ask', body: 'Claude reads and changes nothing. A bigger job goes on from the answer into an agent tab.' },
@@ -924,9 +931,10 @@ const en = {
     reset: 'Offer it again on the next visit',
     steps: {
       welcome: { title: 'Welcome to the cockpit', body: 'The cockpit watches and steers your Bridge from one page: what is due, your tasks, the agent tabs and the sessions. The tour takes about a minute. Skip it if you like, Help starts it again at any time.' },
-      pages: { title: 'The tabs on top', body: 'Each tab is one view: Start, Today, Chat, Sessions and the pages of your briefing profile. Tabs you use less fold behind More when the bar is full.' },
+      pages: { title: 'The tabs on top', body: 'Each tab is one view: Start, Today, Files, Chat, Sessions and the pages of your briefing profile. Tabs you use less fold behind More when the bar is full.' },
       start: { title: 'Start', body: 'Your day at a glance: one line with what waits on you, your areas as a table (each number leads to the page that holds it, the area as its filter) and what comes next. Settings, Start page chooses another view and what else stands here.' },
       work: { title: 'Today', body: 'Your inbox and your tasks, sorted by what is due. Pick a row for its details. The buttons on a row act at once: give a yes, move it to another day, or let AI do it in an agent tab of its own.' },
+      files: { title: 'Files', body: 'Every task and stream as a record, closed ones too. It starts with the search: type, narrow by area or state, open a record with a click. Ask AI sends your question with the records listed, never the ones your block list keeps private.' },
       tabs: { title: 'Agent tabs', body: 'Every agent that runs in your terminal stands here. A tab that waits for you is marked, and you answer it right from the cockpit.' },
       ask: { title: 'Ask', body: 'A quick question about your Bridge, answered by Claude without changing anything. Work that needs more goes on from there into an agent tab.' },
       sessions: { title: 'Sessions', body: 'Every running Claude session with its subagents, and what the AI has left for you to look at.' },
@@ -1384,6 +1392,13 @@ const en = {
     instruct_running: 'A sentence is being read already.',
     instruct_unavailable: 'The instruction line needs the claude CLI (workflow/ai-services/cockpit-instruct.yaml).',
     instruct_failed: 'The sentence could not be read. Try again, or use the buttons.',
+    files_ask_off: 'Ask AI is switched off (cockpit.files_search.enabled).',
+    files_ask_held: 'Every record listed stays private by the block list (cockpit.files_search.block).',
+    files_ask_unavailable: 'Ask AI needs the claude CLI (workflow/ai-services/cockpit-files.yaml).',
+    files_ask_budget: 'Today\'s questions to the records are used up. The search still works.',
+    files_ask_running: 'A question is being answered already.',
+    files_ask_too_big: 'The records do not fit into one question. Narrow the search.',
+    files_ask_failed: 'The AI gave no usable answer. Try again shortly.',
     attach_off: 'Attaching documents is switched off (cockpit.flow.attach.enabled).',
     attach_no_task: 'Only a point with an open task takes a document.',
     attach_too_big: 'The document is larger than the limit (cockpit.flow.attach.max_mb).',
@@ -1788,6 +1803,7 @@ const de = {
   btnStartControlShort: 'Starten',
   startControlTitle: 'Öffnet einen neuen Claude-Tab im Workspace {ws} (legt ihn an, wenn er fehlt); die Seite fragt ab dann dort',
   sessionsTab: 'Sitzungen',
+  filesTab: 'Akten',
   sessionsTitle: 'Claude-Sitzungen',
   sessionsIntro: 'Jede Claude-Code-Sitzung, die auf diesem Rechner läuft, mit ihren Subagenten. Ein Klick auf die Karte springt in ihren Tab.',
   sessionsEmpty: 'Gerade läuft keine Claude-Sitzung.',
@@ -1883,7 +1899,7 @@ const de = {
   workOrder: {
     label: 'Reihenfolge dieser Seite',
     viewLabel: 'Ansicht des Arbeit-Reiters',
-    views: { due: 'Dran', area: 'Nach Quelle', jev: 'Nach Jev', dossier: 'Akten', flow: 'Abarbeiten' },
+    views: { due: 'Dran', area: 'Nach Quelle', jev: 'Nach Jev', flow: 'Abarbeiten' },
     byArea: 'Nach Bereichen',
     byJev: 'Nach Jev',
     run: 'Mit Jev ordnen',
@@ -2342,8 +2358,13 @@ const de = {
       snap: { title: 'Sicherung der Anordnung', body: 'Hält fest, wie deine Tabs im Terminal stehen, damit die Anordnung nach einem Neustart zurückkommt.' },
       // the views the switch offers, in its order (logic.js hintsFor gives them, hintText fills them in; none given: all)
       workSwitch: { title: 'Wie die Arbeit geordnet ist', body: views => (Array.isArray(views) ? views : WORK_VIEWS_ALL).map(v => ({ due: 'Dran: nach Datum.', area: 'Nach Quelle: nach Herkunft.',
-        jev: 'Nach Jev: in Jevs Reihenfolge.', dossier: 'Akten: Aufgabe für Aufgabe, auch erledigte.',
+        jev: 'Nach Jev: in Jevs Reihenfolge.',
         flow: 'Abarbeiten: alles Offene genau einmal, Punkt für Punkt.' })[v]).filter(Boolean).join(' ') },
+      filesFind: { title: 'Akten durchsuchen', body: 'Tippen, und die Liste wird sofort kürzer: Titel, Bereiche, Themen und der Text jeder STATUS.md, auch erledigte Akten.' },
+      filesAsk: { title: 'Mit KI suchen', body: 'Nur auf Klick: deine Frage und die gelisteten Akten gehen an die KI. Akten, die die Sperrliste nennt, bleiben privat, die Zeile darunter sagt wie viele.' },
+      filesChips: { title: 'Eingrenzen', body: 'Nach Bereich, nach Stand (offen, erledigt, alle) und nach Art (Aufgabe, Stream, erledigt).' },
+      filesList: { title: 'Die Akten', body: 'Zuletzt geänderte zuerst, mit Bereich, Stand, dem Tag der letzten Änderung und der Zeile, die passte. Ein Klick öffnet die Akte.' },
+      filesWalk: { title: 'Eine nach der anderen', body: 'Geht die aktiven Akten einzeln durch, jede mit ihrem nächsten Schritt.' },
       chatModel: { title: 'Modell für Antworten', body: 'Welches Modell hier antwortet. Haiku ist schnell und günstig, Opus denkt am längsten.' },
       chatList: { title: 'Deine Chats', body: 'Frühere Fragen mit ihren Antworten. Ein Klick öffnet eine wieder, Neu beginnt eine frische.' },
       chatBox: { title: 'Fragen', body: 'Claude liest und ändert nichts. Größere Arbeit geht von der Antwort aus in einen Agenten-Tab.' },
@@ -2431,9 +2452,10 @@ const de = {
     reset: 'Beim nächsten Besuch wieder anbieten',
     steps: {
       welcome: { title: 'Willkommen im Cockpit', body: 'Das Cockpit beobachtet und steuert deine Bridge von einer Seite aus: was ansteht, deine Aufgaben, die Agenten-Tabs und die Sitzungen. Die Einführung dauert etwa eine Minute. Du kannst sie überspringen, die Hilfe startet sie jederzeit wieder.' },
-      pages: { title: 'Die Reiter oben', body: 'Jeder Reiter ist eine Ansicht: Start, Heute, Chat, Sitzungen und die Seiten deines Briefing-Profils. Seltener genutzte Reiter wandern hinter Mehr, wenn die Leiste voll ist.' },
+      pages: { title: 'Die Reiter oben', body: 'Jeder Reiter ist eine Ansicht: Start, Heute, Akten, Chat, Sitzungen und die Seiten deines Briefing-Profils. Seltener genutzte Reiter wandern hinter Mehr, wenn die Leiste voll ist.' },
       start: { title: 'Start', body: 'Dein Tag auf einen Blick: eine Zeile mit dem, was auf dich wartet, deine Bereiche als Tabelle (jede Zahl führt auf die Seite dazu, mit dem Bereich als Filter) und was als Nächstes kommt. In Einstellungen, Startseite wählst du eine andere Ansicht und was sonst hier steht.' },
       work: { title: 'Heute', body: 'Dein Posteingang und deine Aufgaben, sortiert nach dem, was fällig ist. Wähle eine Zeile für die Einzelheiten. Die Knöpfe einer Zeile handeln sofort: ein Ja geben, auf einen anderen Tag schieben oder die KI in einem eigenen Agenten-Tab machen lassen.' },
+      files: { title: 'Akten', body: 'Jede Aufgabe und jeder Stream als Akte, auch erledigte. Es beginnt mit der Suche: tippen, nach Bereich oder Stand eingrenzen, eine Akte mit einem Klick öffnen. Mit KI suchen schickt deine Frage mit den gelisteten Akten, nie die, die deine Sperrliste privat hält.' },
       tabs: { title: 'Agenten-Tabs', body: 'Jeder Agent, der in deinem Terminal läuft, steht hier. Ein Tab, der auf dich wartet, ist markiert, und du antwortest ihm direkt aus dem Cockpit.' },
       ask: { title: 'Fragen', body: 'Eine schnelle Frage zu deiner Bridge, Claude antwortet, ohne etwas zu ändern. Braucht es mehr, geht es von dort in einen Agenten-Tab weiter.' },
       sessions: { title: 'Sitzungen', body: 'Jede laufende Claude-Sitzung mit ihren Subagenten, und was die KI dir zum Ansehen hinterlassen hat.' },
@@ -2885,6 +2907,13 @@ const de = {
     instruct_running: 'Ein Satz wird schon gelesen.',
     instruct_unavailable: 'Die Anweisungszeile braucht die claude-CLI (workflow/ai-services/cockpit-instruct.yaml).',
     instruct_failed: 'Der Satz ließ sich nicht lesen. Noch einmal versuchen oder die Knöpfe nehmen.',
+    files_ask_off: 'Mit KI suchen ist ausgeschaltet (cockpit.files_search.enabled).',
+    files_ask_held: 'Alle gelisteten Akten bleiben durch die Sperrliste privat (cockpit.files_search.block).',
+    files_ask_unavailable: 'Mit KI suchen braucht die claude-CLI (workflow/ai-services/cockpit-files.yaml).',
+    files_ask_budget: 'Die Fragen an die Akten sind für heute aufgebraucht. Die Suche geht weiter.',
+    files_ask_running: 'Eine Frage wird schon beantwortet.',
+    files_ask_too_big: 'Die Akten passen nicht in eine Frage. Enger suchen.',
+    files_ask_failed: 'Die KI gab keine brauchbare Antwort. Gleich noch einmal versuchen.',
     attach_off: 'Dokumente anhängen ist ausgeschaltet (cockpit.flow.attach.enabled).',
     attach_no_task: 'Nur ein Punkt mit offener Aufgabe nimmt ein Dokument.',
     attach_too_big: 'Das Dokument ist größer als erlaubt (cockpit.flow.attach.max_mb).',

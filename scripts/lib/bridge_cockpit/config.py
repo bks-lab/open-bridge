@@ -16,6 +16,7 @@ import re
 import yaml
 
 from .. import model_route as mr
+from .. import work_find as wf
 from . import activity as act
 from . import describe as dsc
 from . import guide as gd
@@ -133,8 +134,11 @@ class WebConfig:
     # max_running, rank_max_age_days, rerank_per_day, ahead_days, infer_sessions, ...}; off by default
     flow: dict = field(default_factory=lambda: flow_defaults())
     # the views the work tab's switch offers (cockpit.work_views, work_views_of): all of them unless the config
-    # names fewer; files is always among them, every "open the file" link leads there
+    # names fewer; files is always among them, every "open the file" link leads there (the files tab, round 6c)
     work_views: tuple = WORK_VIEWS
+    # the files tab's question to its records (cockpit.files_search, files_search_of): {enabled, budget_per_day,
+    # model, block}; off by default, block empty
+    files_search: dict = field(default_factory=lambda: files_search_defaults())
     # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
     # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
     a2a_sources: tuple = ()
@@ -174,6 +178,33 @@ def flow_defaults() -> dict:
             **{key: default for key, default, _low in FLOW_INTS}, "infer_sessions": True, "themes": thm.defaults(),
             "summary": act.ai_defaults(act.SUMMARY_BUDGET), "instruct": act.ai_defaults(act.INSTRUCT_BUDGET),
             "attach": act.attach_defaults()}
+
+
+def files_search_defaults() -> dict:
+    return {**act.ai_defaults(act.FILES_BUDGET), "block": []}
+
+
+def files_search_of(value: Any) -> dict:
+    """cockpit.files_search on top of the defaults, key by key (activity.py ai_of); block keeps the words that fit
+    (work_find.block_words)"""
+    out = {**act.ai_of(value, act.FILES_BUDGET), "block": []}
+    if isinstance(value, dict):
+        out["block"] = wf.block_words(value.get("block"))
+    return out
+
+
+def _check_files_search(value: Any, used: dict, where: str) -> list[str]:
+    """One warning per unknown key or value files_search_of replaced, naming what is used instead"""
+    if not isinstance(value, dict):
+        return [f"{where}: must be a mapping, got {_show(value)}; using enabled false"]
+    out = act.ai_check({k: v for k, v in value.items() if k != "block"}, used, where, act.FILES_SERVICE)
+    words = value.get("block")
+    if words is not None and not isinstance(words, list):
+        out.append(f"{where}.block: must be a list of words, got {_show(words)}; using none")
+    elif isinstance(words, list) and len(wf.block_words(words)) < len(words):
+        out.append(f"{where}.block: a word that is no text of 1 to {wf.BLOCK_WORD_MAX} characters, said twice or past "
+                   f"the first {wf.BLOCK_MAX} is ignored")
+    return out
 
 
 def _flow_reasons(value: Any) -> tuple[list[str], list[str]]:
@@ -299,7 +330,7 @@ BLOCK = {
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
     "files_scope": ("choice", "files_scope", FILES_SCOPES),
     "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
-    "flow": ("flow",), "work_views": ("work_views",),
+    "flow": ("flow",), "work_views": ("work_views",), "files_search": ("files_search",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -527,6 +558,9 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
         if kind == "work_views":
             out += work_views_of(value)[1]
             continue
+        if kind == "files_search":
+            out += _check_files_search(value, cfg.files_search, at)
+            continue
         if kind == "block":
             if not isinstance(value, dict):
                 used = ", ".join(f"{name} {_show(getattr(cfg, r[1]))}" for name, r in rule[1].items())
@@ -622,7 +656,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
                     a2a_sources=a2a_sources_of(w.get("a2a_sources"), root)[0],
-                    flow=flow,
+                    flow=flow, files_search=files_search_of(w.get("files_search")),
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)

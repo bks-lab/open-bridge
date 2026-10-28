@@ -2161,7 +2161,9 @@ test('with cockpit.focus_to_files a focus of one step still offers the files vie
 
 test('the demo shows the work tab as the default config does, and ?work=files&focus_to_files=1&files_scope=all as the switches do', () => {
   const { mock } = loadedRooms
-  const work = st => { const { flow, views, ...rest } = st.work; return rest }
+  const work = st => { const { flow, views, files_search: _fs, ...rest } = st.work; return rest }
+  // the files tab's question to its records is on in the demo, the Health area kept private (round 6c)
+  assert.deepEqual(mock.buildState(NOW).work.files_search, { enabled: true, block: ['Health'], left: 20 })
   // every view of the work tab (cockpit.work_views), ?views=files,flow narrows it
   assert.deepEqual(mock.buildState(NOW).work.views, ['due', 'source', 'jev', 'files', 'flow'])
   assert.deepEqual(mock.buildState(NOW, { views: ['files', 'flow'] }).work.views, ['files', 'flow'])

@@ -198,10 +198,14 @@ work:
 #   chat_keep_hours: 24    # an untouched quick chat leaves the list into the archive after this many hours; 0 = only the limit of 30
 #   a2a_sources: []       # further A2A peers from a skill's script (broker, access proxy), docs/bridge-cockpit.md
 #   #   - {name: broker, script: skills/<skill>/scripts/<name>.py}
-#   work_view: due         # the view the work tab opens on: due | source | jev | files (a click on its switch still picks another)
-#   work_views: [due, source, jev, files, flow]   # the views the work tab's switch offers; files is always kept
+#   work_view: due         # the view the work tab opens on: due | source | jev | flow (files: the files tab; a click on its switch still picks another)
+#   work_views: [due, source, jev, files, flow]   # the views on offer; files is the files tab beside Work, always kept
 #   focus_to_files: false  # true: when the start page's focus runs out, it leads on into the files view of the work tab
 #   files_scope: active    # active | all = every task and stream is a file, the backlog behind the queue on chips
+#   files_search:          # the files tab's "Ask AI": one model call over the records shown, only on a click
+#     enabled: false
+#     budget_per_day: 20
+#     block: []            # words: a record whose area, theme, path or title holds one never goes to the model
 #   origin_map:            # how the work tab names a source the built-in rules cannot tell: name or glob -> github | tracker
 #                          # | calendar | bot | session | skill | work | person | bridge | other (docs/bridge-cockpit.md)
 #     notes-bot: bot

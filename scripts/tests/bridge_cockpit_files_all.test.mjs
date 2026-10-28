@@ -52,7 +52,7 @@ function model() {
 /** The state as the files view sees it, under the filters of Work (components.js hands it areaScope) */
 function seen(ui = {}, over = {}) {
   const s = cockpitState(NOW, { model: model(), tabs: { tabs: [] }, sessions: { runs: [] }, work: { view: 'files', focus_to_files: false, files_scope: 'all' },
-    ...over, ui: { page: 'briefing', workView: 'dossier', ...ui } })
+    ...over, ui: { page: '@files', filesWalk: true, ...ui } })
   return logic.areaScope(s)
 }
 
@@ -281,7 +281,7 @@ test('the texts stand in both languages under the same keys, German with the wor
 
 test('the demo with ?files_scope=all shows the shelves with its backlog, and a backlog file opens beside the queue', () => {
   const { DossierView } = views.dossier
-  const s0 = cockpitState(NOW, { ui: { page: 'briefing', workView: 'dossier', fileShelf: 'backlog' } })
+  const s0 = cockpitState(NOW, { ui: { page: '@files', filesWalk: true, fileShelf: 'backlog' } })
   const s = logic.areaScope({ ...s0, work: { ...s0.work, files_scope: 'all' } })
   const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
   const backlog = el.$$('.dz-shelf-chip')[3].text()

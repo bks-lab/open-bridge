@@ -435,12 +435,16 @@ class App:
         page's focus leads on into the files view (cockpit.focus_to_files), which tasks are files (cockpit.files_scope),
         the Work through page (cockpit.flow: on or off, its reasons to drop, its return delay) and the views its
         switch offers (cockpit.work_views). With Work through on also who the person is (cockpit.person_name):
-        a task whose next step names them waits on nobody else"""
+        a task whose next step names them waits on nobody else. The files tab's question to its records
+        (cockpit.files_search): on or off, the words of its block list and the questions left today"""
         flow = dict(getattr(self.cfg, "flow", None) or flow_defaults())
         person = getattr(self.cfg, "person_name", None) if flow.get("enabled") is True else None
         return {"view": getattr(self.cfg, "work_view", "due"), "focus_to_files": bool(getattr(self.cfg, "focus_to_files", False)),
                 "files_scope": getattr(self.cfg, "files_scope", "active"), "flow": flow,
                 "views": list(getattr(self.cfg, "work_views", None) or WORK_VIEWS),
+                "files_search": {"enabled": bool(act.block(self, "files").get("enabled")),
+                                 "block": list(act.block(self, "files").get("block") or []),
+                                 "left": self.activity.budget_left("files")},
                 **({"person": person} if person else {})}
 
     def tour_state(self) -> dict:
@@ -1021,6 +1025,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, app.scrub_tree(data))
             else:
                 self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
+        elif path == "/api/records":
+            # the start of the files tab: every task, stream and closed task as a record (lib/work_find.py records),
+            # read in place, read only
+            self.send_json(200, app.scrub_tree(work_find.records(app.root)))
         elif path == "/api/inbox":
             item_id = one("id")
             if not details.INBOX_ID_RE.match(item_id):

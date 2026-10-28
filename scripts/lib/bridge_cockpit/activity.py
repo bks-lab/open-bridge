@@ -33,7 +33,8 @@ The summary (verb flow_activity_summary): the rows of the last SUMMARY_DAYS (non
 most SUMMARY_ROWS, go to a small model as data, scrubbed; it answers at most three sentences. Kept per key in
 STATE_FILE with the fingerprint of the rows; the same rows answer the kept one without a call. Within
 cockpit.flow.summary.budget_per_day, one at a time, the model of the block, else the service SERVICE (default haiku).
-STATE_FILE also counts the calls of the instruction line (instruct.py).
+STATE_FILE also counts the calls of the instruction line (instruct.py) and of the files tab's question to its records
+(verb files_ask, cockpit.files_search).
 """
 from __future__ import annotations
 
@@ -83,6 +84,8 @@ DEDUPE_MS = 5 * 60_000         # an inbox state event this close to a decision o
 SUMMARY_BUDGET = 10
 INSTRUCT_BUDGET = 30           # the instruction line's calls a day (instruct.py), counted in the same file
 INSTRUCT_SERVICE = "cockpit-instruct"
+FILES_BUDGET = 20             # the files tab's questions to its records a day (cockpit.files_search), counted here too
+FILES_SERVICE = "cockpit-files"
 SUMMARY_DAYS = 7
 SUMMARY_NEWEST = 40
 SUMMARY_ROWS = 60
@@ -167,7 +170,10 @@ def flow_on(app: Any) -> bool:
 
 
 def block(app: Any, name: str) -> dict:
-    """cockpit.flow.<name> as parsed (summary, instruct, attach), the defaults when the config has none"""
+    """cockpit.flow.<name> as parsed (summary, instruct, attach), the defaults when the config has none; `files` is
+    cockpit.files_search, the block of the files tab's question to its records"""
+    if name == "files":
+        return getattr(app.cfg, "files_search", None) or ai_defaults(FILES_BUDGET)
     got = (getattr(app.cfg, "flow", None) or {}).get(name)
     if isinstance(got, dict):
         return got
@@ -1150,7 +1156,7 @@ class Activity:
                      if isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("text"), str)}
         calls = data.get("calls") if isinstance(data.get("calls"), dict) else {}
         calls = {name: [c for c in calls.get(name) or [] if isinstance(c, list) and len(c) == 2
-                        and isinstance(c[0], (int, float))] for name in ("summary", "instruct")}
+                        and isinstance(c[0], (int, float))] for name in ("summary", "instruct", "files")}
         return {"version": 1, "summaries": summaries, "calls": calls}
 
     def save(self, data: dict) -> None:
@@ -1170,7 +1176,8 @@ class Activity:
         return max(0, int(block(self.app, name).get("budget_per_day") or 0) - sum(1 for c in data["calls"][name] if c[0] >= start))
 
     def count_call(self, name: str, cost: float | None) -> None:
-        """One call of the summary or the instruction line, kept for the day's budget (yesterday's go)"""
+        """One call of the summary, the instruction line or the files tab's question, kept for the day's budget
+        (yesterday's go)"""
         with self.store_lock:
             data = self.load()
             keep = self._day_start_ms() - 24 * 3600 * 1000

@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the files view of the work tab (logic.js workViews 'dossier'): one task at a time as a file, on
-// one framed surface, centred at a reading width. In the head of the view the view switch and a small search
-// field. On the surface: the eyebrow (File, "2 of 16", status, kind, priority, the slug on the right), the
-// title as the one heading, the situation in one sentence with where it comes from and its date, then the next
+// The cockpit, the files tab (logic.js FILES_PAGE, a tab of its own beside Work since round 6c). It starts on its
+// search (FilesStart): a large field that takes the focus, under it the chips Area, State (open, done, all) and Kind
+// (task, stream, closed) and the records changed last (GET /api/records, logic.js recordList), narrowed live as one
+// types by title, slug, area and theme and by what the server's search (/api/find) found in the STATUS.md text, each
+// with its area, state, last change and the matching line; a click opens one. "Ask AI" beside the field (only with
+// cockpit.files_search on) sends the question and the records listed to the model on a click, never by itself; the
+// line under it says beforehand how many go and how many the block list keeps private (logic.js askPlan), and the
+// answer links the records it names. Under the list the walk through the active files, one at a time.
+// A record opened, or the walk, shows one task at a time as a file, on one framed surface, centred at a reading
+// width. In the head the way back to the search and a small search field. On the surface: the eyebrow (File,
+// "2 of 16", status, kind, priority, the slug on the right), the title as the one heading, the situation in one sentence with where it comes from and its date, then the next
 // step in the hero of the start page focus, set as a tinted block with the four verbs, then the file's drawers
 // as rows on hairlines, folded (result, inbox, history, files, references, sections), a question to the file,
 // and at its foot the walk: Previous, where it stands (a click shows the whole queue to pick from), the title of
@@ -25,7 +32,7 @@
 // same rule as the line), and a file outside the queue that rests, is dropped, put off or waits names why as a chip
 // on its cover. The line of what the queue leaves out leads to the chips, scrolled into view and focused, instead
 // of saying the backlog is not shown.
-// The search field of the view (/api/find) puts what it found above the file: by file, best first, a click
+// The search field in the head (/api/find) puts what it found above the file: by file, best first, a click
 // opens a file, a closed one too, beside the queue (ui.dossierOpen) on the same surface with the way back at
 // its foot, the results then folded to their head. A question asked in a file carries its folder and cover as
 // data (logic.js fileContext) and names an open task, never a closed one; with no file open, a question about
@@ -36,13 +43,13 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  detailNeedsLoad, dossierStep, duration, FILE_SHELVES, fileContext, fileFacts, fileFolder, fileOf, fileQueue, fileReason,
+  askPlan, detailNeedsLoad, dossierStep, duration, FILE_SHELVES, fileContext, fileFacts, fileFolder, fileOf, fileQueue, fileReason,
   fileResults, filesAll, fileShelves, findContext, focusIndex, formatDay, indexRows, placeKind, prioToken, projectTone,
-  queueLeftOut, rowProject, short, stepAge, suggestedStep, tabOfTask,
+  queueLeftOut, RECORD_KINDS, RECORD_STATES, recordList, rowProject, short, stepAge, suggestedStep, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCard, cardOf, describeOf } from './card.js'
-import { KindTag, OriginTag, WorkSwitch } from './day.js'
+import { KindTag, OriginTag } from './day.js'
 import { Calm, Hero } from './focus.js'
 import { ReturnCard } from './home.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
@@ -295,7 +302,8 @@ function FindResults({ s, c, open }) {
   const [folded, setFolded] = useState(!!open)
   const was = useRef(open)
   if (was.current !== open) { was.current = open; if (folded !== !!open) setFolded(!!open) }
-  if (!found) return null
+  // what the start of the files tab searched stands in its own list there, not above a file opened from it
+  if (!found || found.from === 'start') return null
   const groups = found.status === 'ok' ? found.data?.groups ?? [] : []
   // the search is across every area on purpose: a hit names its area, looked up in the whole model
   const rows = indexRows(s.wholeModel ?? s.model)
@@ -385,8 +393,9 @@ function OpenFile({ open, s, c, queued = false }) {
   // opened from far down the results: its head comes into view
   const top = useRef(null)
   useEffect(() => { top.current?.scrollIntoView?.({ block: 'nearest' }) }, [])
+  // opened from the walk it goes back there, opened from the search start back to the search
   const back = html`<footer class="dz-foot"><div class="dz-walk">
-    <${Btn} variant="secondary" size="sm" icon="back" cls="dz-walk-btn" onClick=${() => c.closeFile()}>${d.back}<//></div></footer>`
+    <${Btn} variant="secondary" size="sm" icon="back" cls="dz-walk-btn" onClick=${() => c.closeFile()}>${s.ui.filesWalk ? d.back : d.start.back}<//></div></footer>`
   return html`<article ref=${top} class="dz-file dz-open" aria-labelledby="dz-title">
     ${entry?.status === 'error' ? html`<p class="muted" role="status">${d.noFile}</p>` : html`
       <${Cover} x=${x} s=${s} c=${c} data=${data} where=${[d.opened, facts.kind === 'task' ? null : d.find.kind[facts.kind]]}
@@ -529,6 +538,89 @@ function Shelves({ s, c, queue = [] }) {
   </section>`
 }
 
+/** One chip of the start's filters: pressed while its value is the one set */
+const StartChip = ({ on, onClick, children }) => html`<button type="button" class="chip fs-chip" aria-pressed=${String(!!on)}
+  onClick=${onClick}>${children}</button>`
+
+/** The answer of the AI to the records (s.filesAsk from c.askRecords): its text, how many records it read, and a
+ *  link to each record it names */
+function AskAnswer({ ask, s, c }) {
+  const f = T().dossier.start
+  if (!ask) return null
+  const data = ask.data ?? null
+  return html`<section class="fs-answer" aria-live="polite">
+    <header class="fs-answer-head"><p class="dz-eyebrow">${f.answer}${data ? html`<span class="dz-sep" aria-hidden="true">·</span><span class="muted">${f.answerFrom(data.sent, data.model)}</span>` : null}</p>
+      <${Btn} variant="ghost" size="xs" icon="close" onClick=${() => c.clearFilesAsk()}>${f.close}<//></header>
+    ${ask.status === 'loading' ? html`<p class="muted small" role="status">${f.asking}</p>`
+      : ask.status === 'error' ? html`<p class="muted small" role="status">${ask.error}</p>`
+      : html`<p class="fs-answer-text">${data?.answer}</p>
+        ${(data?.files ?? []).length ? html`<ul class="fs-answer-files">${data.files.map(x => html`<li key=${x.path}>
+          <button type="button" class="btn-link fs-open" onClick=${() => c.openFile(x.slug, x.path)}>${x.title || x.slug}</button>
+          ${x.why ? html` <span class="muted small">${x.why}</span>` : null}</li>`)}</ul>` : null}`}
+  </section>`
+}
+
+/** The start of the files tab (module head): the search first, its chips, the records, the AI on a click, the walk */
+function FilesStart({ s, c, queue }) {
+  const t = T()
+  const f = t.dossier.start
+  const lang = language()
+  const list = recordList(s)
+  const fs = s.work?.files_search ?? null
+  const q = s.ui.filesQ ?? ''
+  const field = useRef(null)
+  // the records come fresh on every visit (the controller keeps a read of the last minute); the field takes the focus
+  useEffect(() => { c.loadRecords(); field.current?.focus?.() }, [])
+  const plan = askPlan(list.rows, fs?.block ?? [])
+  const state = RECORD_STATES.includes(s.ui.filesState) ? s.ui.filesState : 'open'
+  const shown = list.rows.slice(0, 30)
+  const ask = () => c.askRecords(q.replace(/\s+/g, ' ').trim() || f.askDefault, plan.paths)
+  const note = plan.paths.length ? [f.sends(plan.paths.length), plan.held.n ? f.held(plan.held.n, plan.held.words) : null].filter(Boolean).join(' ')
+    : f.nothingToSend
+  return html`<div class="col col-page dz">
+    <div class="dz-page fs-start">
+      <form class="fs-find" role="search" onSubmit=${e => e.preventDefault()}>
+        <label class="sr-only" for="files-start-find">${f.label}</label>
+        <span class="fs-find-box"><${Icon} name="search" />
+          <input id="files-start-find" ref=${field} class="fs-find-input" type="search" autocomplete="off" spellcheck="false"
+            maxlength="200" autofocus placeholder=${f.placeholder} value=${q} onInput=${e => c.setFilesFilter({ filesQ: e.currentTarget.value })} /></span>
+        ${fs?.enabled ? html`<span class="fs-ask"><${Btn} variant="secondary" size="sm" icon="spark" disabled=${!plan.paths.length}
+          busy=${s.filesAsk?.status === 'loading'} onClick=${ask}>${f.ask}<//></span>` : null}
+      </form>
+      ${fs?.enabled ? html`<p class="fs-ask-note muted small">${note}</p>` : null}
+      <div class="fs-chips">
+        ${list.areas.length ? html`<span class="fs-chip-group" role="group" aria-label=${f.area}>
+          <${StartChip} on=${!s.ui.area} onClick=${() => c.setArea(null)}>${f.allAreas}<//>
+          ${list.areas.slice(0, 12).map(a => html`<${StartChip} key=${a} on=${String(s.ui.area ?? '').toLowerCase() === a.toLowerCase()}
+            onClick=${() => c.setArea(a)}>${a}<//>`)}</span>` : null}
+        <span class="fs-chip-group" role="group" aria-label=${f.stateLabel}>
+          ${RECORD_STATES.map(k => html`<${StartChip} key=${k} on=${state === k} onClick=${() => c.setFilesFilter({ filesState: k })}>${f.state[k]}<//>`)}</span>
+        <span class="fs-chip-group" role="group" aria-label=${f.kindLabel}>
+          ${RECORD_KINDS.map(k => html`<${StartChip} key=${k} on=${s.ui.filesKind === k}
+            onClick=${() => c.setFilesFilter(s.ui.filesKind === k ? { filesKind: null } : { filesKind: k, ...(k === 'done' ? { filesState: 'done' } : {}) })}>${f.kind[k]}<//>`)}</span>
+      </div>
+      <${AskAnswer} ask=${s.filesAsk} s=${s} c=${c} />
+      <section class="fs-records" aria-label=${f.label}>
+        <p class="dz-eyebrow">${q.trim() ? f.found(list.rows.length) : f.recent}${list.rows.length > shown.length
+          ? html`<span class="dz-sep" aria-hidden="true">·</span><span class="muted">${f.shown(shown.length, list.rows.length)}</span>` : null}</p>
+        ${shown.length ? html`<ol class="fs-list">${shown.map(r => html`<li key=${r.path} class="fs-item">
+          <button type="button" class="btn-link fs-open" onClick=${() => c.openFile(r.slug, r.path)}>${r.title || r.slug}</button>
+          <span class="fs-meta small">
+            ${r.area ? html`<span class="fs-area"><span class=${`home-area-dot tk-${projectTone(r.area)}`} aria-hidden="true"></span>${r.area}</span>` : null}
+            <span class="muted">${[t.taskState[r.status] ?? r.status, r.kind === 'done' ? null : f.kind[r.work_kind === 'stream' ? 'stream' : 'task']].filter(Boolean).join(' · ')}</span>
+            ${r.updated ? html`<span class="muted">${f.changed(formatDay(String(r.updated).slice(0, 10), lang))}</span>` : null}
+            ${r.theme ? html`<span class="muted">${r.theme}</span>` : null}</span>
+          ${r.hit ? html`<p class="fs-hit small muted">${r.hit}</p>` : null}
+        </li>`)}</ol>`
+          : html`<p class="muted small" role="status">${list.status === 'loading' || !list.status ? f.loading
+            : list.status === 'error' ? f.failed(list.error ?? '') : f.none}</p>`}
+      </section>
+      ${queue.length ? html`<p class="fs-walk"><${Btn} variant="ghost" size="sm" icon="forward"
+        onClick=${() => c.dossierWalk(queue[0].id, 0)}>${f.walk(queue.length)}<//></p>` : null}
+    </div>
+  </div>`
+}
+
 export function DossierView({ s, c }) {
   const d = T().dossier
   const t = T()
@@ -538,11 +630,14 @@ export function DossierView({ s, c }) {
   const x = queue[i] ?? null
   const entry = x ? s.details?.task?.[x.slug] : null
   const ver = s.model?.collected_ms ?? 0
-  useEffect(() => { if (x && detailNeedsLoad(entry, ver)) c.loadTask(x.slug) }, [x?.slug, ver, entry?.stale])
+  const open = s.ui.dossierOpen ?? null
+  // the files tab starts on its search: the walk only once asked for (ui.filesWalk), a record once opened
+  const start = !open && !s.ui.filesWalk
+  useEffect(() => { if (!start && x && detailNeedsLoad(entry, ver)) c.loadTask(x.slug) }, [start, x?.slug, ver, entry?.stale])
+  if (start) return html`<${FilesStart} s=${s} c=${c} queue=${queue} />`
   const data = entry?.data ?? null
   const nowMs = s.now || Date.now()
   const step = x ? dossierStep(x) : null
-  const open = s.ui.dossierOpen ?? null
   const context = x ? fileContext(fileFacts(x.slug, data, x.row), language()) : ''
   // the active tasks the queue leaves out, and in an empty queue the sentence that says why (the star keeps its
   // own sentence before the reasons; the backlog sentence stands in the list only)
@@ -551,7 +646,8 @@ export function DossierView({ s, c }) {
   const why = (sub, keep = false) => (gaps.total ? (keep ? `${sub} ${reasons()}` : reasons()) : sub)
   return html`<div class="col col-page dz">
     <div class="dz-page">
-      <header class="page-head dz-head"><${WorkSwitch} s=${s} c=${c} /><${FindField} s=${s} c=${c} /></header>
+      <header class="page-head dz-head"><${Btn} variant="ghost" size="sm" icon="back" cls="dz-home"
+        onClick=${() => c.filesHome()}>${d.start.back}<//><${FindField} s=${s} c=${c} /></header>
       <${FindResults} s=${s} c=${c} open=${open} />
       ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} queued=${queue.some(q => q.slug === open)} />` : x ? html`<article class="dz-file" aria-labelledby="dz-title">
         <${Cover} key=${`c${x.id}`} x=${x} s=${s} c=${c} data=${data} where=${[d.label, t.nextPos(i + 1, queue.length)]} />

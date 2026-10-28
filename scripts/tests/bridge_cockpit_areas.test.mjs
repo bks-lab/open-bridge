@@ -176,7 +176,7 @@ test('a number of the areas jumps to the page that holds those things, the area 
   assert.deepEqual(logic.areaJump('overdue', a), { page: 'briefing', view: 'due' })
   assert.deepEqual(logic.areaJump('tasks', a), { page: 'briefing' })
   // the name of an area opens its files (the files view stands on every Bridge)
-  assert.deepEqual(logic.areaJump('name', a), { page: 'briefing', view: 'dossier' })
+  assert.deepEqual(logic.areaJump('name', a), { page: '@files' })
   // homeAreas says how many of the waiting are tabs
   const areas = logic.homeAreas([{ ref: 't', workspace: 'ACME', state: 'needs-you', waiting: true }],
     [{ id: 'now', rows: [{ key: 'inbox:1', area: 'ACME' }] }], [], 0)
@@ -397,7 +397,7 @@ test('areas in the control view: the name opens Work for that area instead of fi
   assert.equal(picks[1].getAttribute('aria-pressed'), null)
   picks[1].click()
   picks[0].click()
-  assert.deepEqual(c.calls, [['goArea', 'ACME', { page: 'briefing', view: 'dossier' }], ['goArea', null, { page: 'briefing', view: 'dossier' }]])
+  assert.deepEqual(c.calls, [['goArea', 'ACME', { page: '@files' }], ['goArea', null, { page: '@files' }]])
 })
 
 test('areas: with nothing in any area a short line says so', () => {
@@ -464,7 +464,7 @@ test('areas: what has no area stands last as "No area", its numbers jump without
   assert.match(lines.at(-1).text(), new RegExp(en.home.noArea))
   lines.at(-1).$('td button').click()
   lines.at(-1).$('button.home-area-pick').click()
-  assert.deepEqual(c.calls, [['goArea', null, { page: 'briefing', view: 'due' }], ['goArea', null, { page: 'briefing', view: 'dossier' }]])
+  assert.deepEqual(c.calls, [['goArea', null, { page: 'briefing', view: 'due' }], ['goArea', null, { page: '@files' }]])
   // a table also for screen readers when the narrow layout draws it as blocks
   assert.equal(el.$('table').getAttribute('role'), 'table')
   assert.equal(lines[0].getAttribute('role'), 'row')

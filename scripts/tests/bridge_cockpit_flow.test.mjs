@@ -335,7 +335,7 @@ test('the page: Work through is a view of the work tab with cockpit.flow.enabled
   for (const enabled of [false, true]) assert.ok(!pageOrder({ work: { flow: { enabled } } }).includes('@flow'))
   // a view of the work tab: last in its switch, only while the page is switched on
   assert.ok(!logic.workViews(null, null, false).includes('flow'))
-  assert.deepEqual(logic.workViews(null, null, true), ['due', 'dossier', 'flow'])
+  assert.deepEqual(logic.workViews(null, null, true), ['due', 'flow'])
   assert.equal(logic.workViewOf('flow', null, null, false), 'due')
   assert.equal(logic.workViewOf('flow', null, null, true), 'flow')
   // cockpit.work_view may name it
@@ -2448,10 +2448,12 @@ test('E, Prio: offered while Jev orders the work page; four squares in Jev order
 test('F, the work views: cockpit.work_views keeps the views it names, an older server keeps them all', () => {
   const page = { id: 'work', group: 'work', jev: true }
   const jev = { enabled: true, ready: true }
-  assert.deepEqual(logic.workViews(page, jev, true), ['due', 'area', 'jev', 'dossier', 'flow'])
-  assert.deepEqual(logic.workViews(page, jev, true, ['files', 'flow']), ['dossier', 'flow'])
+  // the files are a tab of their own since round 6c, never a view of the switch
+  assert.deepEqual(logic.workViews(page, jev, true), ['due', 'area', 'jev', 'flow'])
+  assert.deepEqual(logic.workViews(page, jev, true, ['files', 'flow']), ['flow'])
   assert.deepEqual(logic.workViews(page, jev, true, ['source']), ['area'])
-  assert.deepEqual(logic.workViews(page, jev, true, []), ['due', 'area', 'jev', 'dossier', 'flow'], 'nothing left: unfiltered')
+  assert.deepEqual(logic.workViews(page, jev, true, []), ['due', 'area', 'jev', 'flow'], 'nothing left: unfiltered')
+  assert.deepEqual(logic.workViews(page, jev, true, ['files']), ['due'], 'only the files: what is due')
   // round 6 B: a view switched off falls back to Work through where it is kept, the first view kept only without it
   assert.equal(logic.workViewOf('due', page, jev, true, ['files', 'flow']), 'flow', 'Work through kept')
   assert.equal(logic.workViewOf('due', page, jev, true, ['files', 'source']), 'area', 'the first view kept')
@@ -2749,13 +2751,16 @@ test('the Sessions page names a task recognised from the session and offers Not 
   assert.deepEqual(c.calls.at(-1), ['act', 'session_unlink', { session: '6b1d9e20-0000-4000-8000-000000000004' }])
 })
 
-test('F: the work tab shows only the views cockpit.work_views keeps', () => {
+test('F: the work tab shows only the views cockpit.work_views keeps; one left, no switch at all', () => {
   const page = { id: 'work', group: 'work', jev: true, sections: [] }
-  const s = cockpitState(NOW, { work: { ...cockpitState(NOW).work, views: ['files', 'flow'] }, jev: { enabled: true, ready: true },
-    ui: { page: 'briefing', workView: 'flow' } })
-  s.model = { ...s.model, pages: [...s.model.pages, page] }
-  const sw = mount(html`<${views.day.WorkSwitch} s=${s} c=${recorder()} />`)
-  assert.deepEqual(sw.$$('[role=radio]').map(b => b.text()), [en.workOrder.views.dossier, en.workOrder.views.flow])
+  const at = views_ => {
+    const s = cockpitState(NOW, { work: { ...cockpitState(NOW).work, views: views_ }, jev: { enabled: true, ready: true },
+      ui: { page: 'briefing', workView: 'flow' } })
+    s.model = { ...s.model, pages: [...s.model.pages, page] }
+    return mount(html`<${views.day.WorkSwitch} s=${s} c=${recorder()} />`)
+  }
+  assert.deepEqual(at(['files', 'due', 'flow']).$$('[role=radio]').map(b => b.text()), [en.workOrder.views.due, en.workOrder.views.flow])
+  assert.ok(!at(['files', 'flow']).$('.work-switch'), 'the files and Work through: Work through alone, no switch')
 })
 
 test('the demo merges two tasks and takes it back; the refusals as the server words them', async () => {
@@ -3023,12 +3028,12 @@ test('R6B 1a: a view not on offer falls back to Work through where it is on, and
   assert.equal(logic.workViewOf('due', page, jev, false, ['files', 'source']), 'area', 'without Work through: the first view kept')
   assert.equal(logic.workViewOf('due', page, jev, true), 'due', 'a view on offer stays')
   const s = { model: { pages: [page] }, jev, work: { flow: { enabled: true }, views: ['files', 'flow'] }, ui: { workView: 'due' } }
-  assert.deepEqual(logic.workViewsIn(s), ['dossier', 'flow'])
+  assert.deepEqual(logic.workViewsIn(s), ['flow'])
   assert.equal(logic.workViewIn(s), 'flow')
   // a way names the view it wants: one on offer is taken and kept, one switched off lands on Work through, unkept
   assert.deepEqual(logic.workViewGo(s, 'area'), { view: 'flow', save: false })
   assert.deepEqual(logic.workViewGo(s, 'jev'), { view: 'flow', save: false })
-  assert.deepEqual(logic.workViewGo(s, 'dossier'), { view: 'dossier', save: true })
+  assert.deepEqual(logic.workViewGo(s, 'dossier'), { view: 'flow', save: false }, 'the files are a tab, never a view kept')
   assert.deepEqual(logic.workViewGo({ ...s, work: { flow: { enabled: true } } }, 'area'), { view: 'area', save: true })
   // the task check keeps a tab of its own once By source is off: its place on the work page is gone with that view
   const pages = [{ id: 'work', group: 'work', sections: [{ id: 'inbox', kind: 'inbox', total: 1 }, { id: 'tasks', kind: 'tasks', total: 1 }] }]

@@ -1845,13 +1845,12 @@ export function workPageOf(pages) {
   return (pages ?? []).find(p => p?.group === 'work') ?? null
 }
 
-/** The views of the work tab: what is due (the four blocks) always, by source where a work page exists,
- *  by Jev where that page asks for an order and Jev is switched on and has its key, the files (one task
- *  at a time, views/dossier.js) always, and Work through (views/flow.js) last while cockpit.flow.enabled is on
- *  (`flow`): extra views, the default only where cockpit.work_view says so. `allowed`, the words of
- *  cockpit.work_views (work_state views), keeps only the views it names; nothing left, or an older server that sends
- *  none, keeps them all */
-export function workViews(page, jev, flow = false, allowed = null) {
+/** The views on offer: what is due (the four blocks) always, by source where a work page exists, by Jev where
+ *  that page asks for an order and Jev is switched on and has its key, the files (one task at a time,
+ *  views/dossier.js) always, and Work through (views/flow.js) last while cockpit.flow.enabled is on (`flow`): extra
+ *  views, the default only where cockpit.work_view says so. `allowed`, the words of cockpit.work_views (work_state
+ *  views), keeps only the views it names; nothing left, or an older server that sends none, keeps them all */
+function viewsOnOffer(page, jev, flow = false, allowed = null) {
   const all = ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : []), 'dossier', ...(flow ? ['flow'] : [])]
   if (!Array.isArray(allowed)) return all
   const ids = new Set(allowed.map(workViewId).filter(Boolean))
@@ -1859,9 +1858,32 @@ export function workViews(page, jev, flow = false, allowed = null) {
   return kept.length ? kept : all
 }
 
+/** The views of the work tab: those on offer (viewsOnOffer) but the files, which are a tab of their own beside it
+ *  (round 6c, FILES_PAGE); where the list keeps only the files, what is due */
+export function workViews(page, jev, flow = false, allowed = null) {
+  const kept = viewsOnOffer(page, jev, flow, allowed).filter(v => v !== 'dossier')
+  return kept.length ? kept : ['due']
+}
+
+// the files tab (views/dossier.js): the records of the work system, searched first, beside the work tab
+export const FILES_PAGE = '@files'
+
+/** Whether the files tab stands in the bar: the files view is on offer (cockpit.work_views keeps it; this server
+ *  always does) */
+export function filesOn(s) {
+  return viewsOnOffer(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null).includes('dossier')
+}
+
+/** A work tab view 'dossier' a browser or the config (work_view: files) still names, now that the files are a tab of
+ *  their own: null for none, else {view, page}, the view the work tab shows instead (to keep) and the files tab where
+ *  the work tab was open */
+export function filesMoved(s) {
+  if (s?.ui?.workView !== 'dossier') return null
+  return { view: workViewIn(s), page: s.ui.page === 'briefing' && filesOn(s) ? FILES_PAGE : null }
+}
+
 /** The view the work tab shows: the remembered one (none remembered: what is due, as app.js loads it) where it can,
- *  else Work through where it is on offer (a Bridge that switched the other views off never lands in the files),
- *  else the first view kept */
+ *  else Work through where it is on offer, else the first view kept */
 export function workViewOf(view, page, jev, flow = false, allowed = null) {
   const views = workViews(page, jev, flow, allowed)
   const want = view ?? 'due'
@@ -3488,8 +3510,9 @@ export function tourIndex(s) {
 
 /** The tour's steps in order. A step names its texts (text.js tour.steps.<id>), the page it opens and the
  *  area it lights (a CSS selector); one without a target stands in the middle. The tab column is left out
- *  where the layout shows none (narrow: its own switch at the foot); the sessions are Running now where Work
- *  through lists them (sessionsInFlow: the same page id, app.js setPage leads it there) */
+ *  where the layout shows none (narrow: its own switch at the foot); the files tab where it stands in the bar
+ *  (filesOn); the sessions are Running now where Work through lists them (sessionsInFlow: the same page id,
+ *  app.js setPage leads it there) */
 export function tourSteps(s) {
   const narrow = s?.layout === 'narrow'
   return [
@@ -3497,6 +3520,7 @@ export function tourSteps(s) {
     { id: 'pages', target: '.pagebar' },
     { id: 'start', page: '@start', target: '#main' },
     { id: 'work', page: 'briefing', target: '#main' },
+    ...(filesOn(s) ? [{ id: 'files', page: FILES_PAGE, target: '#main' }] : []),
     ...(narrow ? [] : [{ id: 'tabs', target: '#tabs-column, .hdr-tabs' }]),
     { id: 'ask', target: '.hdr-ask' },
     { id: sessionsInFlow(s) ? 'running' : 'sessions', page: '@sessions', target: '#main' },
@@ -3534,6 +3558,9 @@ const HINTS = {
   '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'],
     ['stations', '.station'], ['core', '.core-button'], ['today', '.stage-card'], ['projects', '.home-chips'],
     ['tabCards', '.hcard:not(.hcard-row)'], ['rowCards', '.hcard-row'], ['starts', '.home-starts']],
+  // the files tab on its search start: the field, its chips, the question to the AI, the records, the walk
+  '@files': [['filesFind', '.fs-find'], ['filesAsk', '.fs-ask'], ['filesChips', '.fs-chips'], ['filesList', '.fs-list'],
+    ['filesWalk', '.fs-walk']],
   briefing: [['alarm', '.col-day .alarm'], ['secHead', '.col-day .sec-head'], ['rowMain', '.col-day .row-main'],
     ['rowActs', '.col-day .row-acts'], ['secTools', '.col-day .sec-tools'], ['hiddenRows', '.col-day .hidden-rows'],
     ['detail', '.col-detail'], ['tabcol', '#tabs-column'], ['tabWait', '#tabs-column .tabcard.st-needs-you'], ['snap', '#tabs-column .snap']],
