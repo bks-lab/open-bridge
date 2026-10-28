@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the chat: the quick chat window and its page, on whose head the control session's notice stands (round 6,
 // views/header.js ControlNotice, from the Sessions page). Round 6d: a question reads by its title (logic.js askList),
-// a handed one carries its marker and what it came back with, and Open the tab opens the tab in the cockpit.
+// a handed one carries its marker and what it came back with, and Open the tab opens the tab in the cockpit. One field
+// with two fixed buttons, Ask and Let AI do it, no guessed route (C4); an empty chat says how long questions stay (C1).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, listedChats, reminderArgs, routeOf } from '../logic.js'
+import { short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, keepHoursOf, listedChats, reminderArgs } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { ControlNotice } from './header.js'
@@ -143,25 +144,18 @@ function HandoffLine({ s, c, st, onRetry, relayId }) {
   return html`<p class="handoff-status small" role="status" data-status=${st.word}><${StateLine} token=${st.tone} word=${word} />${action ? ' ' : null}${action}</p>`
 }
 
-/** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat). One input:
- *  the chip under the field says where Enter goes (logic.js routeOf: a read-only answer here, or an agent tab),
- *  a click on it switches until the field is empty again. Cmd Enter starts a tab at once. Once handed on, the
- *  chip gives way to the status line: where it went and how that went. No countdown, no timer */
+/** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat). One field with
+ *  two fixed buttons (round 6d C4): Ask answers here and only reads, Let AI do it hands it to an agent tab; Enter
+ *  asks. Under the field the status line: where a handed chat went and how that went. No countdown, no timer */
 export function ChatFoot({ s, c, conv, autofocus }) {
   const t = T()
   const lang = language()
-  const [text, setTextRaw] = useState('')
-  // the route picked by hand on the chip ('quick' or 'tab'), held until the field is empty: never a flip of
-  // the guess, which typing on may turn around (a trailing question mark) and so invert the choice
-  const [pinned, setPinned] = useState(null)
-  const setText = v => { setTextRaw(v); if (!v.trim()) setPinned(null) }
+  const [text, setText] = useState('')
   const model = s.ui.quickModel ?? s.quick?.default ?? 'haiku'
   const last = conv?.turns?.[conv.turns.length - 1]
   const total = conv ? conv.turns.reduce((n, x) => n + (x.cost_usd ?? 0), 0) : 0
   const costKnown = !conv || conv.turns.every(x => !x.a || x.cost_usd != null)
   const asked = last?.model_asked
-  const guess = routeOf(text)
-  const route = pinned ? { ...guess, to: pinned, by: 'flipped' } : guess
   // where the last handoff went: the chat's own record, or for a new problem the page's record of its start
   const handed = conv ? conv.handed ?? null : (s.ui.sent ?? []).at(-1) ?? null
   const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs, s.now || Date.now())
@@ -178,13 +172,13 @@ export function ChatFoot({ s, c, conv, autofocus }) {
     return r
   }
   const send = async () => {
-    if (!text.trim() || conv?.running) return
-    const v = route.text
-    const done = route.to === 'tab' ? await toTab(v, route.by) : v ? await c.ask('free', { text: v }) : false
-    if (done) setText('')
+    const v = text.trim()
+    if (!v || conv?.running) return
+    if (await c.ask('free', { text: v })) setText('')
   }
+  // picked by hand on its button: the audit keeps `forced`, the one way to a tab from here
   const solve = async () => {
-    if (await toTab(routeOf(text).text, 'forced')) setText('')
+    if (await toTab(text.trim(), 'forced')) setText('')
   }
   // only a tab start is tried again from here: a chat never goes to the control session with one click
   const retry = handed?.to === 'tab' ? () => conv ? c.act('quick_handoff', { conv: conv.id, to: 'tab' }) : toTab(handed.text, handed.routed ?? 'default') : null
@@ -196,16 +190,19 @@ export function ChatFoot({ s, c, conv, autofocus }) {
       <span class="muted small quick-total">${costKnown ? t.quickTotal(costText(total, lang)) : t.quickCostUnknown}${asked && asked !== model ? ` · ${t.quickSwitch(t.quickModel[model])}` : ''}</span>
     </div>` : null}
     <${SendBox} id="quick-input" label=${t.askLabel} value=${text} setValue=${setText} onSend=${send} max=${ASK_MAX} autofocus=${autofocus}
-      placeholder=${conv ? t.quickReply : t.route.placeholder} busy=${route.to === 'tab' ? solveBusy : !!s.ui.busy['ask:free']}
-      disabled=${!!conv?.running || (route.to === 'tab' && starting)} sendLabel=${route.to === 'tab' ? t.chatSolve : t.chatAsk}
+      placeholder=${conv ? t.quickReply : t.chatPlaceholder} busy=${!!s.ui.busy['ask:free']}
+      disabled=${!!conv?.running} sendLabel=${t.chatAsk}
       alt=${{ label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
-    ${text.trim() ? html`<p class="route-line small"><button type="button" class=${`chip route-chip is-${route.to}`} title=${t.route.flip}
-        aria-label=${`${route.to === 'tab' ? t.route.toTab : t.route.toQuick}. ${t.route.flip}`} data-route=${route.to}
-        onClick=${() => setPinned(route.to === 'tab' ? 'quick' : 'tab')}>${route.to === 'tab' ? t.route.toTab : t.route.toQuick}</button></p>`
-      : status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
+    ${status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
     <${LaunchPick} s=${s} c=${c} />
-    <p class="muted small chat-hint">${t.chatSolveHint}</p>
   </footer>`
+}
+
+/** What an empty chat says: what a question is, and how long it stays in the list (the server's
+ *  cockpit.chat_keep_hours, round 6d C1) */
+export function ChatIntro({ q }) {
+  const t = T()
+  return html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p><p class="muted small quick-kept">${t.asks.kept(keepHoursOf(q))}</p></div>`
 }
 
 /** The marker of a handed question beside its title: in its tab, done, or asks you (logic.js askMark) */
@@ -261,7 +258,7 @@ export function QuickChat({ s, c }) {
       </nav>` : null}
       <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
         ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
-        ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
+        ${!conv ? html`<${ChatIntro} q=${q} />` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
       </div>
       <${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus />
     </div>
@@ -304,7 +301,7 @@ export function ChatPage({ s, c }) {
       <section class="panel chat-main" aria-label=${t.askTitle}>
         <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
           ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
-          ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
+          ${!conv ? html`<${ChatIntro} q=${q} />` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
         </div>
         <${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus=${false} />
       </section>

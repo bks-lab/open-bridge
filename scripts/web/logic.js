@@ -3154,27 +3154,7 @@ export function askContext(s, lang = 'de') {
   return out.length <= CONTEXT_MAX ? out : ''
 }
 
-// ---------------------------------------------------------------- the chat's one input: where Enter goes
-
-/** Where a text typed into the chat goes: `quick` (a read-only answer here) or `tab` (an agent tab that may
- *  act), and why: a leading ? or ! (`prefix`, stripped), the first words (`words`: a trailing ? or a
- *  question word asks, an order word starts a tab, in English and German), or `default` (unclear asks).
- *  The word lists are language data in text.js (route) */
-export function routeOf(raw) {
-  const text = String(raw ?? '').trim()
-  if (text.startsWith('?')) return { to: 'quick', by: 'prefix', text: text.slice(1).trim() }
-  if (text.startsWith('!')) return { to: 'tab', by: 'prefix', text: text.slice(1).trim() }
-  const lists = key => Object.values(TABLES).flatMap(t => t.route?.[key] ?? []).map(w => w.toLowerCase())
-  const filler = new Set(lists('fillerWords'))
-  let words = text.toLowerCase().replace(/[.,:;!?]+/g, ' ').split(/\s+/).filter(Boolean)
-  while (words.length > 1 && filler.has(words[0])) words = words.slice(1)
-  // a list entry of two words matches the first two, or its first word alone (German puts the particle last:
-  // "leg eine Aufgabe an")
-  const hit = list => list.some(w => w === words[0] || w === words.slice(0, 2).join(' ') || (w.includes(' ') && w.split(' ')[0] === words[0]))
-  if (text.endsWith('?') || hit(lists('questionWords'))) return { to: 'quick', by: 'words', text }
-  if (hit(lists('orderWords'))) return { to: 'tab', by: 'words', text }
-  return { to: 'quick', by: 'default', text }
-}
+// ---------------------------------------------------------------- the status line of a chat handed on
 
 const HANDOFF_FAILED = new Set(['failed', 'partly', 'aborted', 'error', 'rejected'])
 // the launch outcomes after which a tab works on what it was handed
@@ -3319,6 +3299,89 @@ export function askList(convs, s, lang) {
   for (const x of out) if (seen.get(x.title) > 1) x.title = `${x.title} · ${askStamp(x.conv.started_ms, s?.now, lang)}`
   const at = x => x.conv.last_ms ?? x.conv.started_ms ?? 0
   return out.sort((a, b) => (b.open ? 1 : 0) - (a.open ? 1 : 0) || at(b) - at(a))
+}
+
+/** How many hours a question stays in the list (quick.py state keep_hours, cockpit.chat_keep_hours); 24 when
+ *  the server did not say, its own default (config.py) */
+export const keepHoursOf = quick => (Number.isFinite(quick?.keep_hours) ? quick.keep_hours : 24)
+
+// the rooms of the Chat as cmux a browser keeps (round 6d C3), and how long a question counts as just answered
+const KEPT_ROOMS = new Set(['tab', 'ws', 'bridge', 'chat'])
+const FRESH_ANSWER_MS = 3600000
+
+/** The room this browser kept (localStorage bridge-cockpit.chatRoom), read back only in its known shapes and
+ *  marked `kept`: a kept room that is gone gives way to the chat (roomShown). null for anything else */
+export function roomKept(raw) {
+  let v
+  try { v = JSON.parse(raw) } catch { return null }
+  if (!v || typeof v !== 'object' || Array.isArray(v) || !KEPT_ROOMS.has(v.kind)) return null
+  if (v.kind === 'chat') return { kind: 'chat', kept: true }
+  return typeof v.id === 'string' && v.id && v.id.length <= 200 ? { kind: v.kind, id: v.id, kept: true } : null
+}
+
+/** What this browser keeps of a picked room: the room without its mark, or null */
+export function roomToKeep(room) {
+  if (!room || !KEPT_ROOMS.has(room.kind)) return null
+  return JSON.stringify(room.kind === 'chat' ? { kind: 'chat' } : { kind: room.kind, id: room.id })
+}
+
+/** The room the right side shows: the one picked, else the chat. One kept from before a reload whose tab,
+ *  workspace or Bridge is gone shows the chat; one picked by hand stays and says it is closed */
+export function roomShown(s) {
+  const room = s?.ui?.room ?? null
+  if (!room) return { kind: 'chat' }
+  if (!room.kept) return room
+  const gone = room.kind === 'tab' ? Array.isArray(s.tabs?.tabs) && !s.tabs.tabs.some(x => x.ref === room.id)
+    : room.kind === 'ws' ? Array.isArray(s.tabs?.workspaces) && !roomsOf(s).workspaces.some(w => w.key === room.id)
+    : room.kind === 'bridge' ? Array.isArray(s.rooms?.bridges) && !s.rooms.bridges.some(b => b.id === room.id)
+    : false
+  return gone ? { kind: 'chat' } : room
+}
+
+/** Where the Chat opens once when nothing is kept or picked (round 6d C3): a question that is open or was
+ *  answered within the hour, else the first tab that wants you; null for nothing, or when a room or a question
+ *  is picked already. { room, conv } */
+export function chatLanding(s, lang) {
+  if (s?.ui?.room || s?.ui?.quickConv) return null
+  const now = s?.now || Date.now()
+  const asks = askList(listedChats(s?.quick?.convs, s?.quick?.keep_hours, now), s, lang)
+  const fresh = asks.find(x => x.open || now - (x.conv.last_ms ?? x.conv.started_ms ?? 0) < FRESH_ANSWER_MS)
+  if (fresh) return { room: { kind: 'chat' }, conv: fresh.conv.id }
+  const ref = walkRefs(s?.tabs?.tabs)[0]
+  return ref ? { room: { kind: 'tab', id: ref }, conv: null } : null
+}
+
+// an inbox item's id (inbox.py: date, time, slug, hash); a start on anything else is a task's
+const INBOX_ITEM_RE = /^\d{8}-\d{4}-/
+
+/** Where a tab came from (round 6d C5): the start that opened it (model.returns, by its tab, else by its item
+ *  or task), the question it was handed on from (the start's conv, or the question handed on as its item), the
+ *  job, inbox item or task behind it. { kind: ask | job | item | task, key, title, conv? }, null for the control
+ *  session and a tab of nothing known */
+export function tabOrigin(s, tab, lang) {
+  if (!tab || tab.is_control) return null
+  const returns = s?.model?.returns ?? []
+  const own = tab.item ?? tab.slug ?? null
+  const start = returns.find(r => r.tab?.ref === tab.ref) ?? (own ? returns.find(r => r.item === own) : null) ?? null
+  const item = tab.item ?? (start && INBOX_ITEM_RE.test(start.item ?? '') ? start.item : null)
+  const convs = [...(s?.quick?.convs ?? []), ...(s?.chatArchive?.convs ?? [])]
+  const conv = (start?.conv ? convs.find(x => x.id === start.conv) : null)
+    ?? (item ? convs.find(x => x.handed?.inbox_id === item || (x.about?.kind === 'handoff' && x.about?.inbox === item)) : null)
+  if (conv) return { kind: 'ask', key: `ask:${conv.id}`, conv: conv.id, title: askTitle(conv, s, lang) }
+  const rows = indexRows(s?.model)
+  if (item) {
+    const row = rows.get(`inbox:${item}`)
+    const job = WORKER_KEY.exec(row?.inbox_key ?? '')
+    if (job) {
+      const [key, host, id] = job
+      const run = (s?.workers?.data?.runs ?? []).find(r => r?.host === host && r?.id === id)
+      return { kind: 'job', key, title: `${run?.title || id} · ${host}` }
+    }
+    return { kind: 'item', key: `inbox:${item}`, title: short(row?.title ?? start?.title ?? item, 80) }
+  }
+  const slug = tab.slug ?? (start && !INBOX_ITEM_RE.test(start.item ?? '') ? start.item : null)
+  if (!slug) return null
+  return { kind: 'task', key: `task:${slug}`, title: short(rows.get(`task:${slug}`)?.title ?? slug, 80) }
 }
 
 const VERDICT_KEYS = { first: ['zuerst', 'first'], then: ['dann', 'then'], later: ['kann warten', 'can wait'] }

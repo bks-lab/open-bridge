@@ -184,10 +184,11 @@ test('a room of the work shows on Work even when the Chat was left on A2A: pick,
   assert.deepEqual(h.get().ui.tabWalk, [tab.ref, 'other'])
   h.acts.walkFrom([])
   assert.deepEqual(h.get().ui.room, { kind: 'tab', id: tab.ref }, 'an empty walk changes nothing')
-  // the area stays as it was where nothing changes: a pick on Work does not write the browser again
+  // the area stays as it was where nothing changes: a pick on Work does not write the area again (only the room it
+  // picked, which the Chat opens on next time, round 6d C3)
   const w = harness(state({ ui: { chatArea: 'work' } }))
   w.acts.pickRoom({ kind: 'chat' })
-  assert.deepEqual(w.saved, {})
+  assert.deepEqual(w.saved, { 'bridge-cockpit.chatRoom': '{"kind":"chat"}' })
 })
 
 test('the switch above the sidebar: Work and A2A with the number of agents, only where a peer exists', () => {

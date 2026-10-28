@@ -5778,6 +5778,24 @@ def test_the_page_learns_how_long_a_chat_stays(world):
     assert world.app.quick.state()["keep_hours"] == 24
 
 
+def test_a_week_of_chat_keep_hours_keeps_a_question_six_days_and_archives_it_after_the_week(tmp_path):
+    """Round 6d C1: the questions stay a week where the instance sets chat_keep_hours: 168, and the page is told so"""
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  chat_keep_hours: 168\n")
+    try:
+        w.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+        conv = json.loads(w.post("/api/ask", {"kind": "free", "args": {"text": "was ist offen?"}, "via": "quick"})[2])["conv"]
+        wait_quick(w)
+        assert w.app.quick.state()["keep_hours"] == 168
+        w.clock.advance(6 * 24 * 3600)
+        assert [c["id"] for c in w.app.quick.state()["convs"]] == [conv]
+        w.clock.advance(24 * 3600 + 60)
+        assert w.app.quick.state()["convs"] == []
+        _, rows = archived(w, "quick")
+        assert [(r["conv"]["id"], r["why"]) for r in rows] == [(conv, "expired")]
+    finally:
+        w.close()
+
+
 def test_a_removed_agent_conversation_is_archived(world):
     a2a_peers(world, "alpha")
     world.runner.handlers["a2a.ask"] = lambda argv: a2a_answer(text="Antwort.")
