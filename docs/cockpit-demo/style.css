@@ -1709,7 +1709,10 @@ kbd {
 .quickchat { display: flex; flex-direction: column; }
 .quickchat > .quick-body { flex: 1 1 auto; min-height: 0; }
 .quickchat > .quick-convs { flex: none; align-items: center; }
-.quick-conv { flex: none; max-width: 280px; overflow: hidden; text-overflow: ellipsis; padding: 4px 12px; border-radius: var(--radius-full); }
+.quick-conv { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: 420px; padding: 4px 12px; border-radius: var(--radius-full); }
+/* only the title is clipped, the marker beside it stays in view (round 6d) */
+.quick-conv-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.quick-conv .ask-mark { flex: none; }
 
 /* A2A agents: the agents as cards on the left, the conversation with one on the right */
 .agents-grid { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }

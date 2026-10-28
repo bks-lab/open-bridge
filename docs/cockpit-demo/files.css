@@ -48,6 +48,8 @@
    records in the left column, which scrolls in itself and keeps where it stood; the record open marked by a bar on its
    left; the record in the middle at the width it gets, Work through's right column beside it */
 .dz-side .fs-top { flex-direction: column; align-items: stretch; }
+/* the question to the AI in the left column: its field over its button, as the search over the walk */
+.dz-side .fs-askq { flex-direction: column; align-items: stretch; }
 .dz-side .fs-find-box { height: 40px; padding: 0 12px; }
 .dz-side .fs-chips { gap: 8px 12px; }
 .fs-item.is-on { padding-left: 10px; box-shadow: inset 3px 0 0 var(--accent-line); background: var(--surface-raised); }

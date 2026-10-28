@@ -1426,6 +1426,19 @@ test('the question window lists recent questions by title, with time stamps for 
   assert.ok(stamped.every(x => x.includes(en.asks.today)), stamped.join(' | '))
 })
 
+test('a question chip clips only its title, so its marker stays in view however long the title', async () => {
+  // walk 28.10.: the chip cut at its width took the marker with it
+  const { s } = asksState({ ui: { tabView: '@ask' } })
+  const el = mount(html`<${QuickChat} s=${s} c=${recorder()} />`)
+  const chip = el.$$('.quick-conv').find(b => b.$('.ask-mark'))
+  assert.ok(chip, 'a chip with a marker')
+  assert.ok(chip.$('.quick-conv-title'), 'the title has a part of its own')
+  assert.ok(!chip.$('.quick-conv-title .ask-mark'), 'the marker is not part of the clipped title')
+  const fs = await import('node:fs')
+  const css = fs.readFileSync(new URL('../web/style.css', import.meta.url), 'utf8')
+  assert.match(css, /\.quick-conv-title \{[^}]*text-overflow: ellipsis/)
+})
+
 test('a handed question that came back shows its outcome under the question and in its status line', () => {
   const { s } = asksState()
   const conv = s.quick.convs.find(x => x.id === 'q0000000005')
@@ -3428,4 +3441,11 @@ test('6d: the files tab stands on the grid of Work through, so it stacks where W
   assert.ok(el.$('.col.flow'), 'inside the page of Work through, whose column height the side columns keep')
   const css = fs.readFileSync(new URL('../web/flow.css', import.meta.url), 'utf8')
   assert.match(css, /@media \(max-width: 960px\) \{\n {2}\.flow-grid, \.flow-grid\.no-aside \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+})
+
+test('6d: in the narrow left column of the files tab the AI question field stands over its button, never squeezed beside it', async () => {
+  // walk 28.10.: with a record open the field shrank to a sliver beside "Ask the AI about these n records"
+  const fs = await import('node:fs')
+  const css = fs.readFileSync(new URL('../web/files.css', import.meta.url), 'utf8')
+  assert.match(css, /\.dz-side \.fs-askq \{ flex-direction: column; align-items: stretch; \}/)
 })

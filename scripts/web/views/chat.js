@@ -255,7 +255,7 @@ export function QuickChat({ s, c }) {
       ${asks.length ? html`<nav class="quick-convs" aria-label=${t.quickChats}>
         <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.quickNew}</button>
         ${asks.slice(0, 8).map(({ conv: x, title, mark }) => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
-          title=${x.turns[0]?.q} onClick=${() => c.pickQuick(x.id)}>${x.running ? html`<${Dot} token="info" pulse /> ` : null}${title}<${AskMark} mark=${mark} /></button>`)}
+          title=${x.turns[0]?.q} onClick=${() => c.pickQuick(x.id)}>${x.running ? html`<${Dot} token="info" pulse /> ` : null}<span class="quick-conv-title">${title}</span><${AskMark} mark=${mark} /></button>`)}
       </nav>` : null}
       <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
         ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
