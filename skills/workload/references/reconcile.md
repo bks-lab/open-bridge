@@ -43,7 +43,9 @@ flag the dampening state is not touched either.
 line when the run ENDS, so a `daemon` or `agent` that the service manager reports
 running now started after its newest line. When that line is a failure at least
 ten minutes old (`RESTARTED_MARGIN_SEC`, so a crash loop between two restarts
-still speaks), the report carries one calm `info` note ("restarted after exit 75
+still speaks) and the trace holds no other failure in the day before it
+(`RESTARTED_WINDOW_SEC`, so a slow loop that crashes every hour still speaks),
+the report carries one calm `info` note ("restarted after exit 75
 at ... and has been running since") instead of `last_run_failed`. Guards rendered
 since the `started` line need no such reading; older ones on a machine do. A
 scheduled run keeps the rule above: idle between firings, `running` says nothing.

@@ -228,8 +228,9 @@ function ActionsBlock({ row, s, c }) {
  *  tab only beside it, else Close tab alone; nothing while the tab works or asks. A close whose answers went unseen
  *  arms on the first click (the second-click pattern of RowSteps, falling back after a few seconds). `strong` makes
  *  the lead button primary, `only` leaves out Done and close tab where the place offers its own (FlowAside's Done),
- *  `onClosed` runs after a close or a Done that went through (the Chat walks on) */
-export function TabClose({ tab, s, c, size = 'xs', strong = false, only = false, onClosed = null }) {
+ *  `looking` where the tab's screen stands beside it (the Chat's room: what it handed back is in view, so no second
+ *  click), `onClosed` runs after a close or a Done that went through (the Chat walks on) */
+export function TabClose({ tab, s, c, size = 'xs', strong = false, only = false, looking = false, onClosed = null }) {
   const t = T()
   const offer = tabCloseOffer(tab, s)
   const [armed, setArmed] = useState(false)
@@ -242,7 +243,7 @@ export function TabClose({ tab, s, c, size = 'xs', strong = false, only = false,
   const busy = !!s.ui?.busy?.[tab.ref]
   const went = r => { if (r?.ok) onClosed?.(r) }
   const close = async () => {
-    if (offer.unseen && !armed) { setArmed(true); return }
+    if (offer.unseen && !looking && !armed) { setArmed(true); return }
     setArmed(false)
     went(await c.act('tab_close', { tab_ref: tab.ref }))
   }

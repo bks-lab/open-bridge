@@ -123,6 +123,14 @@ class SettledStore:
         return set(latest), {k: {"fp": d["fp"], "day": str(d.get("day") or ""), "note": str(d.get("note") or ""),
                                  "inbox": str(d.get("inbox") or "")} for k, d in latest.items() if d["act"] == "ack"}
 
+    def read_inboxes(self) -> set:
+        """Every inbox item a finding was ever marked seen by, in any decision kept, the taken back ones too: its
+        close has been read, so an undo on any machine is not taken back by that close again"""
+        self._decisions()
+        with self.lock:
+            return {str(d["inbox"]) for d in self._read.values()
+                    if d["key"].startswith(ACK_PREFIX) and isinstance(d.get("inbox"), str) and d["inbox"]}
+
     def dismissed(self) -> dict:
         return self.state("")[2]
 

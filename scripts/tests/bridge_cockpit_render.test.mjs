@@ -233,7 +233,7 @@ test('tab close: a tab with a task and an item behind it offers Done and close t
 })
 
 test('tab close: unseen answers ask first, a second click closes, a settled tab closes at once', async () => {
-  const { el, c } = renderControls('surface:13', { tab: { ask: null } })
+  const { el, c } = renderControls('surface:13', { tab: { ask: null, filed_by: 'ref:issue-1' } })
   const close = () => el.$('.tab-close').$$('button')[0]
   assert.equal(close().text(), en.btnCloseTab)
   close().click()
@@ -243,9 +243,13 @@ test('tab close: unseen answers ask first, a second click closes, a settled tab 
   assert.equal(c.calls.filter(x => x[0] === 'act').length, 0)
   close().click()
   assert.deepEqual(c.calls.at(-1), ['act', 'tab_close', { tab_ref: 'surface:13' }])
-  const settled = renderControls('surface:13', { tab: { ask: null, settled: 'item' } })
+  const settled = renderControls('surface:13', { tab: { ask: null, settled: 'item', filed_by: 'ref:issue-1' } })
   settled.el.button(en.btnCloseTab).click()
   assert.deepEqual(settled.c.calls.at(-1), ['act', 'tab_close', { tab_ref: 'surface:13' }])
+  // a tab from which nothing came back closes at the first click
+  const plain = renderControls('surface:13', { tab: { ask: null } })
+  plain.el.$('.tab-close').$$('button')[0].click()
+  assert.deepEqual(plain.c.calls.at(-1), ['act', 'tab_close', { tab_ref: 'surface:13' }])
 })
 
 test('tab close: a tab at work, one that asks and the control tab offer no close', () => {
@@ -657,9 +661,7 @@ test('the open tab can be closed from its head, and the walk goes on', async () 
   const el = tabPane('surface:10', cc)
   const close = () => el.$('.rooms-main .tabview-head .tab-close').$$('button')[0]
   assert.equal(close().text(), en.btnCloseTab)
-  close().click()
-  await until(() => close().text() === en.closeTabSure(en.btnCloseTab))
-  assert.equal(c.calls.filter(x => x[0] === 'act').length, 0, 'its filed result is not seen yet: a second click')
+  // its filed result stands on the screen beside the close: one click closes (round 6d fix, no second click here)
   close().click()
   await until(() => c.calls.some(x => x[0] === 'walkTab'))
   assert.deepEqual(c.calls.filter(x => x[0] === 'act' || x[0] === 'walkTab'), [['act', 'tab_close', { tab_ref: 'surface:10' }], ['walkTab', 'surface:12']])
@@ -671,13 +673,21 @@ test('the answer that tells a session to keep going says so, it is never read as
   assert.notEqual(text.TABLES.de.reply.goOn, text.TABLES.de.nextOpen)
 })
 
-test('6d C2: a waiting tab is one short line, its name, one word and how long; a click opens it, its answers stand only on the right', () => {
+test('6d C2: a waiting tab is a short entry, its dot, name and how long, and one line of where it stands; a click opens it, its answers stand only on the right', () => {
   const s = cockpitState(NOW, { guide: null })
   const c = recorder()
   const el = mount(html`<${Sidebar} s=${s} c=${c} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
   const row = replyRow(el, 'demo-task research')
-  assert.deepEqual(row.$$('.room-meta').map(x => x.text()), [en.state.waiting, '11 min'])
-  assert.equal(row.getAttribute('title'), tabOf(s, 'surface:12').ask.text)
+  // "waits" is the group's own heading, so the line does not say it again (walk of 28.10.)
+  assert.deepEqual(row.$$('.room-meta').map(x => x.text()), ['11 min'])
+  const tab = tabOf(s, 'surface:12')
+  assert.equal(row.$('.room-lage').text(), loadedRooms.logic.waitLage(tab))
+  assert.ok(loadedRooms.logic.waitLage(tab).includes(tab.ask.text.split('\n').find(Boolean).trim().slice(0, 20)), loadedRooms.logic.waitLage(tab))
+  assert.equal(row.getAttribute('title'), tab.ask.text)
+  // two tabs of the same name tell apart by their workspace and their last words
+  const twin = { ref: 'surface:90', name: 'Claude Code', workspace: 'Home', state: 'waiting', last: 'Tests pass, ready to commit', ask: null }
+  assert.notEqual(loadedRooms.logic.waitLage(twin), loadedRooms.logic.waitLage({ ...twin, workspace: 'Work', last: 'Which board?' }))
+  assert.equal(loadedRooms.logic.waitLage(twin), 'Home · Tests pass, ready to commit')
   // nothing to answer in the list: no option, no yes, no field, no reading of the guide
   const group = el.$('.reply-group')
   // one button per row, the row itself; a quiet tab's close stands under its line (round 6d item 9), never an answer
@@ -1441,12 +1451,25 @@ function asksState(over = {}) {
   return { s: cockpitState(NOW, { tabs, quick: { ...s0.quick, keep_hours: 24, convs }, ...over }), tab }
 }
 
+test('a question in the Chat list keeps its title on a line of its own, its marker and time under it', async () => {
+  // 28.10. at 1280: "Tab ended" and the time took the row and cut the titles to "Backgrou…"
+  const { s } = asksState()
+  const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const row = el.$$('.room-asks .room-chat').find(r => r.$('.ask-mark'))
+  assert.ok(row, 'a handed question is listed')
+  const sub = row.$('.room-sub')
+  assert.ok(sub && sub.$('.ask-mark') && sub.$('.room-meta'), 'marker and time stand under the title')
+  assert.equal(sub.$('.room-name'), null)
+  const fs = await import('node:fs')
+  assert.match(fs.readFileSync(new URL('../web/style.css', import.meta.url), 'utf8'), /\.room-sub \{[^}]*flex: 1 0 100%/)
+})
+
 test('the question window lists recent questions by title, with time stamps for equal ones and their markers', () => {
   const { s } = asksState({ ui: { tabView: '@ask' } })
   const el = mount(html`<${QuickChat} s=${s} c=${recorder()} />`)
   const chips = el.$$('.quick-conv').map(b => b.text())
   // open and handed first, the new chat button before them
-  assert.match(chips[1], /Background job chat-bot on mini: last run failed\./)
+  assert.match(chips[1], /^chat-bot · mini · last run failed/)          // by job, machine and state, never the prompt
   assert.match(chips[1], new RegExp(en.asks.mark.inTab))
   assert.match(chips[2], new RegExp(en.asks.mark.done))
   assert.ok(chips.some(x => x.includes('What is new?')), chips.join(' | '))
@@ -1672,7 +1695,7 @@ test('an answered row comes back with its buttons when the same question is aske
     ? { ...t, since_ms: NOW - 1000 } : t) }, ui: { ...s.ui, answered: { 'surface:12': mark } } }
   const back = replyRow(renderSide(again), 'demo-task research')
   assert.ok(!back.hasClass('is-left'))
-  assert.equal(back.$('.room-meta').text(), en.state.waiting)
+  assert.ok(!back.$$('.room-meta').some(x => x.text() === en.reply.answeredWord), 'no longer marked answered')
 })
 
 test('an answer the tab did not take is not marked answered and keeps what was typed', async () => {
@@ -2039,6 +2062,30 @@ test('hints: "What bothers you here?" keeps a sentence with the page and the are
   assert.equal(text.TABLES.de.hints.noteOpen, 'Was stört hier?')
 })
 
+test('hints: while "What bothers you here?" is open a click beside a note keeps the field and its words', async () => {
+  // 28.10.: a slight miss while picking a note closed the whole layer, and the sentence was gone without a word
+  const layout = { view: { width: 1400, height: 900 }, away: [], rounds: [{ group: 'page', placed: [
+    { id: 'chatList', n: 1, shape: 'frame', ring: { top: 110, left: 10, width: 620, height: 500 },
+      note: { top: 150, left: 50, width: 260, height: 80 }, arrow: null }] }] }
+  const sent = []
+  const c = { setHints: on => sent.push(['setHints', on]), tourStart() {}, explainNote: async () => ({ ok: true }) }
+  const el = mount(html`<${HintsLayer} layout=${layout} c=${c} place=${{ page: '@chat', view: '-' }} />`)
+  el.button(en.hints.noteOpen).click()
+  await tick()
+  typeInto(el.$('.hints-say input'), 'The list jumps')
+  await tick()
+  assert.doesNotMatch(el.$('.hints-bar').text(), new RegExp(en.hints.barOne), 'the bar no longer says a click beside closes')
+  el.$('.hints').click()
+  await tick()
+  assert.deepEqual(sent, [], 'nothing closed')
+  assert.equal(el.$('.hints-say input').value, 'The list jumps')
+  // Cancel closes the field, then a click beside closes the layer as before
+  el.button(en.hints.noteCancel).click()
+  await tick()
+  el.$('.hints').click()
+  assert.deepEqual(sent, [['setHints', false]])
+})
+
 test('hints: nothing in view says so instead of an empty overlay', () => {
   const el = mount(html`<${HintsLayer} layout=${{ view: { width: 800, height: 600 }, rounds: [], away: ['ask'] }} c=${recorder()} />`)
   assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.none.slice(0, 20)))
@@ -2281,9 +2328,10 @@ test('github filter bar (6c G1, 6d): Board, Assigned to, Opened by, Repository, 
   sel.value = 'Demo board'
   sel.dispatch('change')
   assert.deepEqual(picked.at(-1), { board: 'Demo board' })
-  // a choice keeps the others: Person on top of Board; under that board every row is an issue, so Kind steps aside
+  // a choice keeps the others: Person on top of Board; under that board every row is an issue, and Kind stays in its
+  // place with that one value, so the bar does not jump (walk of 28.10.)
   const two = ghBar({ board: 'Demo board' })
-  assert.ok(!two.el.$('.ghf-field[data-dim="type"]'), 'one kind left: no select')
+  assert.deepEqual(two.el.$('.ghf-field[data-dim="type"] select').$$('option').map(o => o.text()), [en.gh.bar.all(2), `${en.gh.bar.kind.issue} (2)`])
   const person = two.el.$('.ghf-field[data-dim="assignee"] select')
   person.value = 'teammate'
   person.dispatch('change')
@@ -3195,6 +3243,10 @@ test('background jobs: Seen stands last beside the analysis, and a seen row offe
   const red = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [hostRun('bot', 'homebox', 'high')], ui: { page: '@workers' } })} c=${recorder()} />`).$('.wrow')
   await openRow(red)
   assert.deepEqual(words(red), [en.btnWorkerAdvise, en.btnAsk, en.findingSeen.btn])
+  // a button like its neighbours, never a bare word (walk of 28.10.)
+  const seen = red.$$('.wrow-detail .btn-row button').find(b => b.text() === en.findingSeen.btn)
+  assert.ok(seen.hasClass('btn-secondary') && !seen.hasClass('act-quiet'), seen.getAttribute('class'))
+  assert.equal(text.TABLES.de.findingSeen.undo, 'Wieder anzeigen')
   // seen: grey, "show again" only, the job needs nothing more until it fails anew
   const acked = { ...hostRun('bot', 'homebox', 'high'), acked: { day: '2026-10-28', note: 'the bot runs' } }
   const calm = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [acked], ui: { page: '@workers' } })} c=${recorder()} />`).$('.wrow')
@@ -3690,7 +3742,7 @@ test('6d C1: the questions group carries the way to a new question in its head, 
   head.button(`+ ${en.rooms.newAsk}`).click()
   assert.deepEqual(c.calls.filter(x => ['newQuick', 'pickRoom'].includes(x[0])), [['newQuick'], ['pickRoom', { kind: 'chat' }]])
   // no row of its own for it among the questions
-  assert.ok(!el.$$('.room-asks .room-chats button').some(b => b.text().includes(en.quickNew)))
+  assert.ok(!el.$$('.room-asks .room-chats button').some(b => b.text().includes(en.rooms.newAsk)))
   const week = cockpitState(NOW, { quick: { ...s.quick, keep_hours: 168 }, ui: { room: { kind: 'chat' }, quickConv: null } })
   const page = mount(html`<${RoomsPage} s=${week} c=${recorder()} />`)
   assert.equal(page.$('.rooms-main .quick-kept').text(), en.asks.kept(168))

@@ -6,6 +6,8 @@
 // the page does not show right now is left out. A click anywhere or Esc closes it; it changes nothing.
 // "What bothers you here?" in its bar takes a short sentence for the page it was opened on, and the area of a
 // note clicked meanwhile, and keeps it as a proposal for the next round (verb explain_note); nothing is sent.
+// While its field is open a click beside a note closes nothing, so a slight miss never loses the sentence;
+// Cancel closes the field, Close the layer.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { hintRounds, hintsFor, hintText, isTypingTarget, usagePlace } from '../logic.js'
@@ -132,7 +134,7 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c, place = null }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [i, rounds.length])
   const last = i >= rounds.length - 1
-  return html`<div class="hints" ref=${ref} role="dialog" aria-modal="true" aria-label=${t.buttonTitle} onClick=${close}>
+  return html`<div class="hints" ref=${ref} role="dialog" aria-modal="true" aria-label=${t.buttonTitle} onClick=${saying ? undefined : close}>
     <div class="hints-scrim" aria-hidden="true"></div>
     <svg class="hints-svg" width=${view.width} height=${view.height} viewBox=${`0 0 ${view.width} ${view.height}`} aria-hidden="true" focusable="false">
       <defs><marker id="hints-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -166,7 +168,7 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c, place = null }) {
     <div class="hints-bar" role="status" onClick=${e => e.stopPropagation()}>
       ${round ? html`<span class="hints-where small"><b>${t.groups[round.group]}</b>${rounds.length > 1
         ? html` <span class="muted mono">${t.round(i + 1, rounds.length)}</span>` : null}</span>` : null}
-      <span class="small muted hints-bar-text">${layout && !rounds.length ? t.none : below && round?.group === 'page' ? t.below(below) : rounds.length > 1 ? t.bar : t.barOne}</span>
+      <span class="small muted hints-bar-text">${saying ? t.barSaying : layout && !rounds.length ? t.none : below && round?.group === 'page' ? t.below(below) : rounds.length > 1 ? t.bar : t.barOne}</span>
       ${place && noted && !saying ? html`<span class="small hints-noted">${t.noteSaved}</span>` : null}
       ${place && !saying ? html`<button type="button" class="btn btn-ghost btn-xs" data-u="explain-note" onClick=${() => { setSaying(true); setNoted(false) }}>
         <span class="btn-label">${t.noteOpen}</span></button>` : null}

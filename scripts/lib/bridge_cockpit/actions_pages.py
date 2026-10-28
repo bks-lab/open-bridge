@@ -185,15 +185,19 @@ class PageVerbs:
                  go={"kind": "item", "key": f"task:{run['task']}"})
         self.app.broadcast("sessions", self.app.sessions_state())
 
-    def finding(self, key: str) -> tuple[str, str]:
-        """(fingerprint, title) of a finding as it stands now: a job of the workers view or a page row"""
+    def finding_of(self, key: str) -> tuple[str, str]:
+        """(fingerprint, title) of a finding as it stands now: a job of the workers view or a page row; ("", "")
+        for a key that names neither, and an empty fingerprint for one that finds nothing loud"""
         if key.startswith("worker:"):
             run = next((r for r in (self.app.workers_view() or {}).get("runs", [])
                         if isinstance(r, dict) and m.worker_key(r) == key), None)
-            fp, title = (m.run_fingerprint(run), str(run.get("title") or run.get("id"))) if run else ("", "")
-        else:
-            found = self.app.collector.page_item_by_key(key)
-            fp, title = (m.item_fingerprint(found[2]), str(found[2].get("title") or "")) if found else ("", "")
+            return (m.run_fingerprint(run), str(run.get("title") or run.get("id"))) if run else ("", "")
+        found = self.app.collector.page_item_by_key(key)
+        return (m.item_fingerprint(found[2]), str(found[2].get("title") or "")) if found else ("", "")
+
+    def finding(self, key: str) -> tuple[str, str]:
+        """finding_of, refused where nothing loud stands under the key"""
+        fp, title = self.finding_of(key)
         if not fp:
             raise ActionError(409, "stale_row", "no finding under that key", "key")
         return fp, title
@@ -212,7 +216,9 @@ class PageVerbs:
         if not self.app.store.unack(key):
             raise self.not_applicable("the finding is not marked seen")
         self.app.collector.rebuild()
-        ctx.note(self.tx["finding_shown"].format(title=m.short(key.split(":")[-1].split("/")[-1], 60)))
+        # the title of the job or the row; the key's last part only where neither is there any more
+        title = self.finding_of(key)[1] or key.split(":", 1)[-1].split("/")[-1]
+        ctx.note(self.tx["finding_shown"].format(title=m.short(title, 60)))
         self.app.broadcast("acks", {"keys": [key]})
 
     def v_pin(self, ctx: Ctx, key: str, on: bool) -> None:

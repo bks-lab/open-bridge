@@ -1056,8 +1056,26 @@ def _naming_drift(w, stamp, appointment_name: str = "") -> "Finding | None":
 #: `running` too; ten minutes without a new line is a service that stayed up.
 RESTARTED_MARGIN_SEC = 600
 
+#: How far before its newest failure a daemon must have no other one for that
+#: failure to count as history. A slow crash loop (a crash every half hour or
+#: hour, restarted at once) is up and quiet for most of each cycle; the
+#: failures before the newest one are what tell it from a single exit.
+RESTARTED_WINDOW_SEC = 24 * 3600
 
-def _restarted_since(w, newest, now, running) -> bool:
+
+def _failed_before(text, newest) -> bool:
+    """True when the trace holds another failure in the window before the newest line."""
+    from datetime import datetime, timezone
+    for when, rc, _verdict, _key in _trace_strip({"": text or ""}):
+        if rc in (None, 0):
+            continue
+        moment = datetime.strptime(when, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if moment < newest[0] and (newest[0] - moment).total_seconds() <= RESTARTED_WINDOW_SEC:
+            return True
+    return False
+
+
+def _restarted_since(w, newest, now, running, text="") -> bool:
     """True when a continuous run is up now and has not ended since its failure.
 
     The guard writes its line when it ENDS, so a guard that is running now
@@ -1066,6 +1084,8 @@ def _restarted_since(w, newest, now, running) -> bool:
     service ran for weeks (2026-10-28: a daemon that exited with 75 on purpose,
     restarted at once, stayed red with nothing anyone could do to calm it).
     A scheduled run is idle between firings, so `running` says nothing there.
+    A failure with another one within RESTARTED_WINDOW_SEC before it is a
+    loop, not a restart, and keeps speaking.
     """
     from datetime import datetime, timezone
     if running is not True or _kind_of(w) not in model.CONTINUOUS_KINDS:
@@ -1074,7 +1094,7 @@ def _restarted_since(w, newest, now, running) -> bool:
         now = datetime.now(timezone.utc)
     elif isinstance(now, str):
         now = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    return (now - newest[0]).total_seconds() >= RESTARTED_MARGIN_SEC
+    return (now - newest[0]).total_seconds() >= RESTARTED_MARGIN_SEC and not _failed_before(text, newest)
 
 
 def _trace_findings(w, text, stamp, now, finding, appointment=None, booted=None,
@@ -1091,7 +1111,7 @@ def _trace_findings(w, text, stamp, now, finding, appointment=None, booted=None,
     newest = _newest_trace(text or "")
 
     if "failure" in wants and newest is not None and newest[1] not in (None, 0) \
-            and _restarted_since(w, newest, now, running):
+            and _restarted_since(w, newest, now, running, text):
         # History, not a finding: said once, calm, so the record is not lost.
         who = str(getattr(stamp, "state_key", "") or "") or w.id
         out.append(finding(

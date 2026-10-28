@@ -19,7 +19,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, walkRefs, tabStateKey, wantsYou } from '../logic.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -137,7 +137,8 @@ function TabItem({ tab, on, s, c, where = false, dim = false }) {
   <//>`
 }
 
-/** The questions (logic.js askList): open and handed ones first, each by its title with its marker; "all"
+/** The questions (logic.js askList): open and handed ones first, each by its title on a line of its own (what tells
+ *  questions apart: the job, the machine, the state), its marker and time under it; "all"
  *  shows every one of the last days, the archived ones too (s.chatArchive, read once), greyed and without ×, or
  *  says that the archive holds none */
 function Chats({ convs, s, c, here }) {
@@ -152,8 +153,9 @@ function Chats({ convs, s, c, here }) {
       <${Item} on=${here.kind === 'chat' && s.ui.quickConv === x.id} cls="room-chat" title=${x.turns[0]?.q}
         onClick=${() => { c.pickQuick(x.id); c.pickRoom({ kind: 'chat' }) }}>
         ${x.running ? html`<${Dot} token="info" pulse />` : html`<span class="room-glyph"><${Icon} name="chat" size=${12} /></span>`}
-        <span class="room-name">${title}</span><${AskMark} mark=${mark} archived=${archived} />
-        <span class="room-meta muted small">${chatStamp(x.last_ms ?? x.started_ms, s.now, language())}</span>
+        <span class="room-name">${title}</span>
+        <span class="room-sub"><${AskMark} mark=${mark} archived=${archived} />
+          <span class="room-meta muted small">${chatStamp(x.last_ms ?? x.started_ms, s.now, language())}</span></span>
       <//>
       ${x.running || archived ? null : html`<button type="button" class="room-x" title=${t.quickForgetHint} aria-label=${t.quickForget} onClick=${() => c.quickForget(x.id)}>×</button>`}
     </div>`)}
@@ -201,21 +203,25 @@ function useLeaving(list, atMs) {
   return out
 }
 
-/** One tab that waits for you, as a short line (round 6d C2): its dot, name, one word for where it stands and how
- *  long; a click opens it on the right, where its question and the answers stand (they are never repeated here).
- *  A row that left, or was answered here and still shows that very question (the same words in the same stretch
- *  of its state, logic.js isAnswered), stays one poll longer, greyed with what happened */
+/** One tab that waits for you, as a short entry (round 6d C2): its dot, name and how long, and one line of where it
+ *  stands (logic.js waitLage: its workspace, what it asks or its last words); a state other than waiting says its
+ *  word, "waits" being the group's heading. A click opens it on the right, where its question and the answers stand
+ *  (they are never repeated here). A row that left, or was answered here and still shows that very question (the
+ *  same words in the same stretch of its state, logic.js isAnswered), stays one poll longer, greyed with what happened */
 function WaitLine({ tab, left, s, c, here }) {
   const t = T()
   const answered = s.ui?.answered?.[tab.ref] ?? null
   const done = left || isAnswered(answered, tab)
-  const word = done ? (answered ? t.reply.answeredWord : t.reply.movedOn) : t.state[tabStateKey(tab)] ?? tab.state
+  const key = tabStateKey(tab)
+  const word = done ? (answered ? t.reply.answeredWord : t.reply.movedOn) : key === 'waiting' ? null : t.state[key] ?? tab.state
+  const lage = waitLage(tab)
   return html`<${Item} on=${here.kind === 'tab' && here.id === tab.ref} cls=${`room-wait${done ? ' is-left' : ''}`}
     title=${done && answered ? t.reply.answered(answered.q) : tab.ask?.text || tab.last || tab.name} onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
-    <${Dot} token=${stateToken(tabStateKey(tab))} pulse=${tab.state === 'working'} />
+    <${Dot} token=${stateToken(key)} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.name}</span>
-    <span class="room-meta muted small" data-word=${done ? 'done' : tabStateKey(tab)}>${word}</span>
+    ${word ? html`<span class="room-meta muted small" data-word=${done ? 'done' : key}>${word}</span>` : null}
     <span class="room-meta muted small mono">${duration(s.now - (tab.since_ms || s.now))}</span>
+    ${lage ? html`<span class="room-lage muted small">${lage}</span>` : null}
   <//>`
 }
 
@@ -382,7 +388,7 @@ function TabPane({ s, c, tab }) {
   return html`<section class=${`panel chat-main rooms-main has-walk${replying ? ' has-reply' : ''}${view === 'guide' ? ' is-guide-only' : ''}`} aria-labelledby="room-title">
     <header class="tabview-head">
       <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
-      <h2 class="sec-title tabview-title" id="room-title" title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : undefined}>
+      <h2 class="sec-title tabview-title" id="room-title" title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : tab.is_control ? undefined : tab.name}>
         ${tab.is_control ? t.controlSession : tab.name}</h2>
       ${canRename(s, tab) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
         onClick=${() => c.startRename('tab', tab.ref)} />` : null}
@@ -395,8 +401,10 @@ function TabPane({ s, c, tab }) {
         : screen ? t.tabViewLive : t.loading}</span>
       ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
         values=${GUIDE_VIEWS.map(v => [v, t.guide.view[v]])} onPick=${v => c.setGuideView(v)} /></span>` : null}
-      <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
-      <${TabClose} tab=${tab} s=${s} c=${c} onClosed=${onward} />
+      <span class="room-head-acts">
+        <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
+        <${TabClose} tab=${tab} s=${s} c=${c} looking onClosed=${onward} />
+      </span>
     </header>
     ${replying ? html`<div class="reply-pane">
       ${view === 'guide' ? null : html`<${AskLine} tab=${tab} />`}
@@ -421,7 +429,7 @@ function ChatPane({ s, c }) {
   const conv = live ?? archived
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   return html`<section class="panel chat-main rooms-main" aria-label=${t.askTitle}>
-    <header class="tabview-head"><h2 class="sec-title tabview-title">${conv ? askList([conv], s, language())[0].title : t.quickNew}</h2>
+    <header class="tabview-head"><h2 class="sec-title tabview-title">${conv ? askList([conv], s, language())[0].title : t.rooms.newAsk}</h2>
       ${archived ? html`<${AskMark} archived />` : null}
       <span class="muted small">${t.rooms.chatHint}</span></header>
     <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>

@@ -79,6 +79,14 @@ def test_a_click_keeps_its_place_and_control_and_drops_what_it_was_about(tmp_pat
     assert TITLE not in raw and "title" not in raw and "a b" not in raw and "inbox:" not in raw
 
 
+def test_a_page_is_one_the_cockpit_has_never_a_word_sent_as_one(tmp_path):
+    # the page field takes the cockpit's own @ pages, the briefing and the profile's page ids (`pages`), nothing else
+    log = tmp_path / "usage.jsonl"
+    events = [{"kind": "click", "page": p, "control": "row"} for p in ("@chat", "briefing", "ops", "jane_doe", "a.b@example")]
+    assert st.append_clicks(log, events, 0, pages={"ops"}) == 3
+    assert [json.loads(x)["page"] for x in log.read_text().splitlines()] == ["@chat", "briefing", "ops"]
+
+
 def test_the_click_log_is_capped_and_keeps_one_older_file(tmp_path):
     log = tmp_path / "usage.jsonl"
     one = [{"kind": "click", "page": "@chat", "area": "chatList", "control": "chat-row"}]
@@ -344,3 +352,37 @@ def test_write_note_follows_the_format_for_a_place_without_an_area(tmp_path):
     assert path.stem == "2026-10-28-cockpit-usage-note-briefing-flow"
     assert data["severity"] == "P2"
     assert "Too many buttons" in path.read_text(encoding="utf-8")
+
+
+def test_two_notes_on_one_place_at_once_both_land(tmp_path, monkeypatch):
+    # the name is picked, then the file opened: a second note in between takes that name, and the first moves on
+    root, _state = bridge(tmp_path)
+    first = cu.write_note(root, "One", "briefing", "flow", None, dt.date(2026, 10, 28), "en")
+    taken = iter([first.stem])
+    real = cu.free_id
+    monkeypatch.setattr(cu, "free_id", lambda proposals, base: next(taken, None) or real(proposals, base))
+    second = cu.write_note(root, "Two", "briefing", "flow", None, dt.date(2026, 10, 28), "en")
+    assert second != first and second.stem.endswith("-2")
+    assert "One" in first.read_text(encoding="utf-8") and "Two" in second.read_text(encoding="utf-8")
+
+
+def test_the_script_runs_by_its_shebang_like_its_siblings():
+    script = ROOT / "scripts" / "cockpit-usage.py"
+    assert script.read_text(encoding="utf-8").startswith("#!/usr/bin/env python3")
+    assert script.stat().st_mode & 0o111, "committed as 100755, as scripts/usage-export.py"
+
+
+def test_candidates_over_the_cap_come_back_on_the_next_run(tmp_path, monkeypatch):
+    # left_at_once and back_and_forth are counted only over the period since the last run: one cut by the cap
+    # would be lost if the run moved on, so a run that cut some keeps the start of its period
+    root, state = bridge(tmp_path)
+    fill(state)
+    monkeypatch.setattr(cu, "MAX_PROPOSALS", 1)
+    start = NOW - dt.timedelta(days=14)
+    (state / "usage-run.json").write_text(json.dumps({"last": start.isoformat()}), encoding="utf-8")
+    assert cu.main(["--root", str(root), "--now", NOW.isoformat()]) == 0
+    first = set((root / "work" / "_learning" / "proposals").glob("*.md"))
+    assert len(first) == 1
+    assert json.loads((state / "usage-run.json").read_text())["last"] == start.isoformat(timespec="seconds")
+    assert cu.main(["--root", str(root), "--now", (NOW + dt.timedelta(hours=1)).isoformat()]) == 0
+    assert len(set((root / "work" / "_learning" / "proposals").glob("*.md"))) == 2

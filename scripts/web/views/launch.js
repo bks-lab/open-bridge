@@ -10,9 +10,10 @@ import { Chip } from './parts.js'
 
 /** Model and effort for the next start, beside the start buttons. One choice for every block (ui.launchModel,
  *  ui.launchEffort); app.js act() sends it along with every start verb. `items` are the rows the block starts
- *  ({ key, title }): with Auto chosen and one row in view, its recommendation is fetched once and shown.
- *  Nothing at all while launch is off or the server does not know it */
-export function LaunchPick({ s, c, items = [] }) {
+ *  ({ key, title }): with Auto chosen and one row in view, its recommendation is fetched once and shown. `label`
+ *  names the picker where another one stands near (the Chat: its Ask has a model of its own, so this one says it is
+ *  for Let AI do it). Nothing at all while launch is off or the server does not know it */
+export function LaunchPick({ s, c, items = [], label = null }) {
   const opts = launchOptions(s.launch)
   const choice = launchChoice(s.launch, s.ui)
   const one = items.length === 1 ? items[0] : null
@@ -32,8 +33,8 @@ export function LaunchPick({ s, c, items = [] }) {
     : null
   return html`<div class="launch-pick">
     ${opts.models.length === 0 ? null : opts.readOnly
-      ? html`<${Chip} title=${w.readOnlyTitle}>${w.label}: ${w.model.auto}<//>`
-      : html`<span class="muted small">${w.label}</span><${Segmented} label=${w.label} current=${choice.model} values=${opts.models.map(m => [m, w.model[m] ?? m])}
+      ? html`<${Chip} title=${w.readOnlyTitle}>${label ?? w.label}: ${w.model.auto}<//>`
+      : html`<span class="muted small">${label ?? w.label}</span><${Segmented} label=${label ?? w.label} current=${choice.model} values=${opts.models.map(m => [m, w.model[m] ?? m])}
           onPick=${m => c.setLaunchModel(m)} />`}
     ${opts.efforts.length ? html`<span class="muted small">${w.effortLabel}</span><${Segmented} label=${w.effortLabel} current=${choice.effort}
       values=${opts.efforts.map(e => [e, w.effort[e] ?? e])} onPick=${e => c.setLaunchEffort(e)} />` : null}

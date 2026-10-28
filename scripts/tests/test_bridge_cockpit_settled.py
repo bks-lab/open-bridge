@@ -293,3 +293,6 @@ def test_a_finding_marked_seen_is_shared_and_its_undo_too(tmp_path):
     assert other.hidden() == {} and other.dismissed() == {}  # a finding key never reads as a hidden row
     assert other.unack("worker:mini:chat-bot") and one.acks() == {}
     assert not one.unack("worker:mini:chat-bot")
+    # the undo holds on the machine that took it back: the close it came from stays read there too, so its next
+    # pass over the inbox does not mark the finding seen again
+    assert "20261010-0900-x-ab12" in other.acks_read()

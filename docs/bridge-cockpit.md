@@ -675,7 +675,9 @@ With the decision guide on, its steps stand under them. Every answer names
 the question it answers, so nothing reaches a tab that moved on; once sent,
 the card leaves the queue until the tab asks anew. The right column offers no
 start (the tab takes no sentence while it asks): **To tab** first, **View**,
-then the other verbs.
+then the other verbs. A tab that waits at its prompt with nothing asked on its
+screen (no question, no options, nothing typed) is headed **A tab waits** (de:
+Tab wartet) instead, so the head never says it asks beside its close.
 
 **Finished or quiet.** A finished start shows its answer, or its result line
 (a note "Result: ..." on its task since the start), and a quiet one says that
@@ -1251,11 +1253,15 @@ schließen) with **Close tab only** beside it, else **Close tab** alone. Done an
 close tab ends each of them the way Done does (`task.py close`: status done,
 moved to `work/done/YYYY-MM/`, board and log row; `inbox.py close` with the
 done note) and closes the tab only when every end went through; otherwise the
-tab stays open and the message names what is not done. A close of a tab whose
-answers nobody has seen asks once more ("Close tab: sure?") on the first click,
-and falls back after a few seconds. Where a point offers its own Done for the
-same row, only one Done stands there. The server sends what stands behind a
-tab as `behind` (`{task, item}`, null for the control tab).
+tab stays open and the message names what is not done. A close of a tab that
+handed back something nobody has looked at here yet (it filed a row, or a start
+of it holds a result) asks once more ("Close tab: sure?") on the first click,
+and falls back after a few seconds; in the head of a tab open in the Chat, where
+its screen stands beside the button, it closes at once. Where a point offers its
+own Done for the same row, only one Done stands there. The server sends what
+stands behind a tab as `behind` (`{task, item}`, null for the control tab): its
+task, or for a tab known by its name alone (no task in its binding) the task of
+the session working in it, the one its head names, and its inbox item.
 
 **Agent tabs.** Let AI do it and Advise open an agent tab per item through
 `workplace.py launch` and the terminal driver in the `workplace:` block of
@@ -1464,10 +1470,13 @@ it; a page row (`InfoRow`) does the same under its own key. A job with a high or
 that is bad or warn has it among its buttons, "Settled this time: grey until the finding
 changes"): the finding as it stands now turns grey with the day and the close note, and counts
 toward no red tile, no badge and no alarm; a new finding (another fingerprint: state and
-detail, so a new failure time) is red again, and "show again" takes it back. A seen row offers no new analysis while no item of it is open. Closing the inbox
+detail, so a new failure time; a span of time in the words, "4210s ago" or "3 h ago", counts as
+one mark, so a finding that only grows older stays seen) is red again, and **Show again** takes it back. A seen row offers no new analysis while no item of it is open. Closing the inbox
 item of a job (key `worker:<host>:<id>`, which is the item Analyse in a tab files, or a question handed over
 about it) does the same
-with its close note, when the close came after the job's newest failure. The decision lives in
+with its close note, when the close came after the job's newest failure; the cockpit sees that close on
+its next look at the inbox, an item that was already there included. A close it read once stays read on
+every machine, so Show again holds. The decision lives in
 `work/cockpit/settled/` beside the hides, as act `ack`. A section with `hide_ok: true` is drawn only while one of
 its rows is bad or its source fails; it still feeds the page's number, the
 alarm and what other cards read from it ([`briefings.md`](briefings.md)
@@ -1761,8 +1770,9 @@ board, and "no board"), **Assigned to** ("Me" first, then every assignee by
 count, "nobody" last), **Opened by** ("Me", then every author; a draft card names
 its creator), **Repository**, **Kind** (issue, pull request, draft
 card) and **Board status** (the column, rows on a board only, one option whatever its case), each a compact
-select that shows only with two values or more, every option with how many rows
-it would leave given the other choices. The choices combine with each other,
+select that shows only with two values or more among all rows (one that another
+choice narrowed to a single value keeps its place with that value), every option
+with how many rows it would leave given the other choices. The choices combine with each other,
 with the figures and with the search (which also reads author and board); "n of N
 rows" and "Reset all filters" stand beside them while one is set. The choice is
 kept per section in this browser. Your own login is read from the rows (the
@@ -2162,9 +2172,12 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   own task only the task link shows. The head carries the tab's close (above,
   **One close for every tab**) beside it.
 - **In Work, near the top**, "Waiting for you" lists the tabs that wait for
-  you or need you, the most urgent first (the control tab never), one short line
-  each: its name, one word for its state and how long it has been in it; its
-  question is the line's tooltip. A click on the line opens the tab on the right,
+  you or need you, the most urgent first (the control tab never), one short entry
+  each: its dot, its name and how long it has been in its state (one word more
+  only where that state is not waiting), and under it one line of where it
+  stands, its workspace and what it asks or its last words, so two tabs of one
+  name read apart; its whole question is the entry's tooltip. How long survives
+  a restart of the server (`tabs-seen.json`). A click on the line opens the tab on the right,
   where its question and the answers stand, see [Answering a tab from
   here](#answering-a-tab-from-here); the list itself answers nothing and closes
   nothing: a tab that asks nothing closes from its head on the right, which then
@@ -2185,8 +2198,10 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   right under the order bar), so a question just asked is found without
   scrolling: open and handed questions first, then the answered ones, newest
   first in each. Its head has "+ New question". A question stays in the list
-  `chat_keep_hours` and then stands in the archive. Each carries
-  its title (below) and, once handed on, its marker. "all of the last days"
+  `chat_keep_hours` after it last moved (its last turn, its handoff or what came
+  back from it) and then stands in the archive. Each carries
+  its title (below) on a line of its own and under it, once handed on, its marker
+  and its time. "Earlier questions too"
   also reads the archive (`GET /api/chats/archive?days=7`, read only: at most
   14 days and 60 questions, newest first, without the ones you removed); those
   stand greyed, have no ×, and open read only, and an archive with none says so.
@@ -2486,7 +2501,8 @@ anywhere or `Esc` closes it, and its bar starts the tour. It sends nothing.
 
 **What bothers you here?** (de: Was stört hier?) in the bar opens a short field
 (300 characters). While it is open, a click on a note picks that area instead of
-closing the window. **Note it** keeps the sentence with the page, view and area
+closing the window, and a click beside the notes closes nothing, so a slight miss
+never loses the sentence; **Cancel** closes the field. **Note it** keeps the sentence with the page, view and area
 as a proposal in `work/_learning/proposals/` for the next round of
 `/bridge-learn` (verb `explain_note`); the window says it was noted and that
 nothing was sent. The audit line names the place, never the sentence.
@@ -2803,7 +2819,10 @@ again** and **Open the item**, and its question carries the marker "tab ended"
 instead of "in its tab".
 
 **Titles of questions.** A question is named by what it is about: the job with
-its machine and state, else the row, task or inbox item it was asked on, else
+its machine and state, and for a failure its day ("chat-bot · mini · last run
+failed 10/16"; a question about a job from before it carried that is read from
+its own opening words, never the trace copied into it), else the row, task or
+inbox item it was asked on, else
 its first sentence (or the title in «» of a row's prompt), cut at a word.
 Titles that read alike carry when they were asked ("today 07:34", "yesterday
 ...", "20.10. ..."). The question window, the Chat page, the cmux sidebar and
@@ -2996,6 +3015,7 @@ share or clean up.
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
 | `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |
+| `tabs-seen.json` | since when each agent tab is in its state, so how long a tab has waited survives a restart of the server | no: tab ids and times only |
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
 | `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |
 | `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |

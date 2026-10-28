@@ -42,7 +42,7 @@ LEAVE_S = 5              # a page left within this many seconds, with nothing do
 LEFT_MIN = 3             # ... this often, and in at least half of its views, makes a candidate
 BACK_S = 30              # a step from one page to another and back, each within this many seconds
 BACK_MIN = 3             # ... this often makes a candidate
-MAX_PROPOSALS = 10       # the most proposals one run writes; the rest wait for the next
+MAX_PROPOSALS = 10       # the most proposals one run writes; the rest wait for the next (the run keeps its start)
 KINDS = ("unused_page", "left_at_once", "back_and_forth", "unused_area", "unused_control")
 RECOUNT = "python3 scripts/cockpit-usage.py --days 14 --dry-run"
 HINTS_RE = re.compile(r"^const HINTS = \{\n(.*?)^\}", re.S | re.M)
@@ -316,15 +316,22 @@ def write_note(root: Path, text: str, page: str, view: str | None, area: str | N
     place = place_of(page, view)
     proposals = root / "work" / "_learning" / "proposals"
     proposals.mkdir(parents=True, exist_ok=True)
-    pid = free_id(proposals, f"{today.isoformat()}-cockpit-usage-note-{slug(place)}" + (f"-{slug(area)}" if area else ""))
     quoted = "\n".join(f"> {line}".rstrip() for line in text.strip().splitlines())
     where = words["where"].format(page=page, view=view or "-", area=area or "-", control="-")
     body = f"{quoted}\n\n## {words['where_head']}\n\n{where}\n\n{words['note_from'].format(date=today.isoformat())}\n"
     audit = rel(root, Path(state or default_state(root)) / "audit.log")
+    base = f"{today.isoformat()}-cockpit-usage-note-{slug(place)}" + (f"-{slug(area)}" if area else "")
+    pid = free_id(proposals, base)
     path = proposals / f"{pid}.md"
-    with open(path, "x", encoding="utf-8") as handle:
-        handle.write(render(pid, today, "P2", [f"{audit}#explain_note"], words["note_title"].format(place=place), body))
-    return path
+    while True:
+        # two notes on one place in the same instant: the one that finds its name taken picks the next one
+        try:
+            with open(path, "x", encoding="utf-8") as handle:
+                handle.write(render(pid, today, "P2", [f"{audit}#explain_note"], words["note_title"].format(place=place), body))
+            return path
+        except FileExistsError:
+            pid = free_id(proposals, base)
+            path = proposals / f"{pid}.md"
 
 
 # ---------------------------------------------------------------- the command
@@ -355,6 +362,7 @@ def main(argv=None) -> int:
             continue
         seen.add(topic)
         planned.append((f"{now.date().isoformat()}-cockpit-usage-{topic}", text))
+    cut = len(planned) > MAX_PROPOSALS
     planned = planned[:MAX_PROPOSALS]
     if args.json:
         print(json.dumps({**rep, "proposals": [pid for pid, _ in planned]}, ensure_ascii=False, indent=2))
@@ -372,7 +380,10 @@ def main(argv=None) -> int:
         (proposals / f"{pid}.md").write_text(text, encoding="utf-8")
         print(f"wrote work/_learning/proposals/{pid}.md")
     state.mkdir(parents=True, exist_ok=True)
-    (state / "usage-run.json").write_text(json.dumps({"last": now.isoformat(timespec="seconds")}) + "\n", encoding="utf-8")
+    # with candidates cut by the cap the next run counts from the same start, so the ones counted over this period
+    # alone (left at once, back and forth) come back; the ones written stay proposed and are not written again
+    last = start if cut else now
+    (state / "usage-run.json").write_text(json.dumps({"last": last.isoformat(timespec="seconds")}) + "\n", encoding="utf-8")
     return 0
 
 

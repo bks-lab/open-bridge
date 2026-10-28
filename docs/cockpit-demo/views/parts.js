@@ -216,17 +216,18 @@ export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, bus
   </button>`
 }
 
-/** "Let AI do it" for a briefing section that cannot run on this machine: files the reason as a decision and
- *  starts an agent tab on it (verb chat_tab), the way the chat hands on a problem */
 /** "Seen" on a finding (a job, worker:<host>:<id>, or a page row): grey until it changes; on a seen one its
- *  "show again". Nothing where there is no finding to mark (`loud` false and not seen) */
+ *  "Show again". A button like the ones beside it (Analyse in a tab, Ask), never a bare word. Nothing where there
+ *  is no finding to mark (`loud` false and not seen) */
 export function SeenBtn({ k, acked, loud, c }) {
   const t = T().findingSeen
   if (!acked && !loud) return null
-  return acked ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" u="seen-undo" onClick=${() => c.ackFinding(k, false)}>${t.undo}<//>`
-    : html`<${Btn} size="xs" variant="ghost" cls="act-quiet" u="seen" title=${t.title} onClick=${() => c.ackFinding(k, true)}>${t.btn}<//>`
+  return acked ? html`<${Btn} size="xs" variant="secondary" u="seen-undo" onClick=${() => c.ackFinding(k, false)}>${t.undo}<//>`
+    : html`<${Btn} size="xs" variant="secondary" u="seen" title=${t.title} onClick=${() => c.ackFinding(k, true)}>${t.btn}<//>`
 }
 
+/** "Let AI do it" for a briefing section that cannot run on this machine: files the reason as a decision and
+ *  starts an agent tab on it (verb chat_tab), the way the chat hands on a problem */
 export function SkipFix({ s, c, title, reason }) {
   const t = T()
   return html`<${Btn} size="xs" variant="secondary" busy=${!!s?.ui?.busy?.chat_tab}

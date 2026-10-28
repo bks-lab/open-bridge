@@ -380,18 +380,31 @@ def worker_key(run: dict) -> str:
     return f"worker:{as_text(run.get('host'))}:{as_text(run.get('id'))}"
 
 
+# a span of time in a finding's words ("4210s ago", "3 h ago", "vor 2 Std."): it grows on every read without
+# anything new happening, so a fingerprint reads it as one mark
+AGE_RE = re.compile(r"(?<![\w.:-])\d+(?:[.,]\d+)?\s?(?:s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?"
+                    r"|Sek\.?|Min\.?|Minuten|Std\.?|Stunden?|Tagen?|Tage)(?![\w-])")
+
+
+def steady(text: Any) -> str:
+    """A finding's words without the spans of time in them (AGE_RE): what stays while nothing new happens"""
+    return AGE_RE.sub("#", as_text(text))
+
+
 def run_fingerprint(run: dict) -> str:
-    """What a job's finding is: its loud findings (high, medium), state and detail. The detail of a failed
+    """What a job's finding is: its loud findings (high, medium), state and detail, the detail without its spans
+    of time (steady: an overdue job's seconds since its last line grow on every refresh). The detail of a failed
     run carries the time of the failure, so a NEW failure has another fingerprint; empty when nothing is loud"""
     loud = [f for f in run.get("findings") or [] if isinstance(f, dict) and f.get("severity") in LOUD_SEVERITIES]
-    return "\n".join(f"{as_text(f.get('state'))}:{as_text(f.get('detail'))}" for f in loud)[:ACK_FP_MAX]
+    return "\n".join(f"{as_text(f.get('state'))}:{steady(f.get('detail'))}" for f in loud)[:ACK_FP_MAX]
 
 
 def item_fingerprint(it: dict) -> str:
-    """What a page row's finding is: its tone, title and detail; empty for a row that is not bad or warn"""
+    """What a page row's finding is: its tone, title and detail without their spans of time (steady); empty for a
+    row that is not bad or warn"""
     if it.get("tone") not in ("bad", "warn"):
         return ""
-    return f"{it['tone']}:{as_text(it.get('title'))}:{as_text(it.get('detail'))}"[:ACK_FP_MAX]
+    return f"{it['tone']}:{steady(it.get('title'))}:{steady(it.get('detail'))}"[:ACK_FP_MAX]
 
 
 def _seen(ack: dict) -> dict:

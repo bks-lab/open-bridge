@@ -1045,6 +1045,13 @@ kbd {
 }
 .tabview-title { margin: 0; }
 .tabview-live { margin-left: auto; }
+/* a tab open in the Chat keeps its head on one line where it fits: a long name (a terminal's folder) gives way first,
+   cut short, and Write and the close stay together on the right */
+.rooms-main .tabview-title { flex: 1 1 10em; min-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rooms-main .tabview-head .room-task, .rooms-main .tabview-head .room-from-link {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.room-head-acts { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 6px; flex-shrink: 0; }
 .tabview-body {
   overflow-y: auto; padding: 14px 18px; background: var(--surface); font-family: var(--font-mono);
   font-size: var(--text-code); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -1148,9 +1155,16 @@ kbd {
    a handed question came back with, under it and in its status line */
 .ask-mark { font-size: var(--text-label); font-weight: 600; color: var(--tk, var(--on-surface-muted)); white-space: nowrap; }
 .room-chat-row.is-archived .room-name { color: var(--on-surface-muted); }
+/* a question's title takes its whole line, its marker and time stand under it (round 6d fix) */
+.room-chat { flex-wrap: wrap; row-gap: 0; }
+.room-chat .room-name { flex: 1 1 0; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; }
+.room-sub { flex: 1 0 100%; display: flex; gap: 8px; align-items: baseline; min-width: 0; padding-left: 20px; }
 /* round 6d: a waiting tab as a short line (C2), greyed in its workspace below; what a tab came from (C5), as a
    second line of its row and as a link in its head */
-.room-wait { padding-left: 16px; }
+.room-wait { padding-left: 16px; flex-wrap: wrap; row-gap: 0; }
+.room-wait .room-name { flex: 1 1 0; }
+.room-lage { flex: 1 0 100%; min-width: 0; padding-left: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-wait.is-left { opacity: 0.55; }
 .room-item.is-dim .room-name { color: var(--on-surface-muted); }
 .room-item.has-from { flex-wrap: wrap; row-gap: 0; }

@@ -167,11 +167,11 @@ class TabVerbs:
 
     def v_tab_done(self, ctx: Ctx, tab_ref: str) -> None:
         """Done and close the tab: what stands behind it, read on the server (returns.py tab_behind: its open task,
-        its open inbox item), ends the way Done of Work ends a row (v_settle: task.py close moves the task to
+        else the task of the session working in it, and its open inbox item), ends the way Done of Work ends a row (v_settle: task.py close moves the task to
         work/done/ with board and log row, inbox.py close with the done note), each step on its own; only when
         every one went through the tab closes, else it stays open and the note names what is not done yet."""
         tab = self.closable(tab_ref)
-        behind = ret.tab_behind(self.app.root, tab)
+        behind = ret.tab_behind(self.app.root, tab, self.app.tab_tasks().get(tab_ref))
         if behind is None:
             raise self.not_applicable("nothing open stands behind this tab: close it alone", "tab_ref")
         missed = []

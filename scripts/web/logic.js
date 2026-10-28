@@ -614,13 +614,18 @@ const SIDEBAR_STATE = { waiting: 'waiting', 'needs input': 'needs-you', running:
  *  another Bridge's clone, and the quick chats in the control workspace; then the other Bridges on this
  *  machine that have no workspace, and the A2A agents. A workspace the list does not name (or no list
  *  at all) still shows from its tabs, marked known: false */
+/** When a chat last moved, as the server keeps it (quick.py _since): its last answer or question, its handoff, or
+ *  what came back from it */
+export const chatSince = x => Math.max(x.last_ms ?? x.started_ms ?? 0, x.handed?.at_ms ?? 0, x.handed?.outcome?.at_ms ?? 0)
+
 /** The chats a list shows, quick chats and A2A conversations alike: none with a place of its own (the start page's
- *  core and a file's suggested next step: their panels show them, a new one replaces the last) and none untouched past keep_hours (the server archives it with its
- *  next look); one still answering, or an A2A task its owner still holds, always */
+ *  core and a file's suggested next step: their panels show them, a new one replaces the last) and none untouched past keep_hours
+ *  (chatSince, so a handed question whose result came back stays; the server archives it with its next look); one still
+ *  answering, or an A2A task its owner still holds, always */
 export function listedChats(convs, keepHours, nowMs) {
   const cutoff = keepHours > 0 && Number.isFinite(nowMs) ? nowMs - keepHours * 3600000 : null
   return (convs ?? []).filter(x => !x.place && (x.running || x.turns?.at(-1)?.waiting || cutoff == null
-    || (x.last_ms ?? x.started_ms) >= cutoff))
+    || chatSince(x) >= cutoff))
 }
 
 export function roomsOf(s) {
@@ -1744,6 +1749,13 @@ export function tabCloses(tab, can, settled = false) {
     && can('close')
 }
 
+/** Where a waiting tab stands, in one line for its entry under Waiting for you (round 6d C2): its workspace, then the
+ *  first line of what it asks, else its last words; two tabs of one name (two "Claude Code") tell apart by it */
+export function waitLage(tab) {
+  const line = previewText(String(tab?.ask?.text ?? '').split('\n').find(x => x.trim()) ?? '') || previewText(tab?.last)
+  return [tab?.workspace, line].filter(Boolean).join(' · ')
+}
+
 /** Whether the words read off a waiting tab's screen ask anything (model.py asks_something): a question (yes or no,
  *  a question mark at the end), options, or a draft in its prompt. Every waiting tab has its last words read, so
  *  words alone ask nothing; a tab that said it is done closes */
@@ -1753,14 +1765,15 @@ export function asksSomething(ask) {
 
 /** The close of a tab wherever a point or a card has one (views/detail.js TabClose), null where it may not close
  *  (tabCloses). `done`: an open task or inbox item stands behind it (the server's `behind`), so Done and close the
- *  tab leads and Close tab only stands beside it; `unseen`: nothing behind it is settled yet (its item closed, its
- *  task done, here or by its start), so its answers may be unread and a close asks first; `keys` the row keys of
- *  what stands behind it */
+ *  tab leads and Close tab only stands beside it; `unseen`: something came back from it (it filed a row, or a start
+ *  of it holds a result) and nothing behind it is settled yet (its item closed, its task done, here or by its start),
+ *  so a close asks first; `keys` the row keys of what stands behind it */
 export function tabCloseOffer(tab, s) {
   const settled = !!tab?.settled || (!!tab && settledRefs(s?.model?.returns, s?.tabs?.tabs, s?.now || Date.now()).has(tab.ref))
   if (!tabCloses(tab, v => canTab(s, v), settled)) return null
   const keys = [tab.behind?.task ? `task:${tab.behind.task}` : null, tab.behind?.item ? `inbox:${tab.behind.item}` : null].filter(Boolean)
-  return { done: keys.length > 0, unseen: !settled, keys }
+  const back = !!tab.filed_by || (s?.model?.returns ?? []).some(r => r.tab?.ref === tab.ref && r.result?.text)
+  return { done: keys.length > 0, unseen: back && !settled, keys }
 }
 
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab
@@ -3267,18 +3280,34 @@ export function askStamp(ms, nowMs, lang) {
 
 const WORKER_KEY = /^worker:([^:]+):(.+)$/
 
-/** The title of a question: what it is about (a job with its machine and state, the row or task it was asked
- *  on, the inbox item it became), else its first sentence, or the title in guillemets a row's prompt carries,
- *  cut at a word */
+// the words a question about a job opens with (text.py ask_worker, both languages): its id, machine and state
+const WORKER_ASK = /^(?:Background job|Hintergrundjob) (\S+) (?:on|auf) ([^\s:]+): ([^.]{1,60})\./
+
+/** The day of a job's newest failure (its strip), short: 16.10. (de), 10/16 (en); null without one */
+function failedDay(run, lang) {
+  const at = (run?.strip ?? []).filter(e => e?.verdict === 'failed' || e?.verdict === 'expired').map(e => Date.parse(e.at))
+    .filter(Number.isFinite).sort((a, b) => b - a)[0]
+  if (at === undefined) return null
+  const d = new Date(at)
+  return String(lang).startsWith('de') ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.` : `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+/** The title of a question: what it is about (a job with its machine, its state and the day of its failure, the
+ *  row or task it was asked on, the inbox item it became; a question about a job from before it carried that, by
+ *  its opening words), else its first sentence, or the title in guillemets a row's prompt carries, cut at a word */
 export function askTitle(conv, s, lang) {
   const about = conv?.about && typeof conv.about === 'object' ? conv.about : {}
-  const job = WORKER_KEY.exec(about.key ?? '')
+  const said = WORKER_ASK.exec(String(conv?.turns?.[0]?.q ?? '').trim())
+  const job = WORKER_KEY.exec(about.key ?? '') ?? (said ? [null, said[2], said[1]] : null)
   if (job) {
     const [, host, id] = job
     const run = (s?.workers?.data?.runs ?? []).find(r => r?.host === host && r?.id === id)
     const state = run?.state ?? about.state
     const words = (TABLES[lang] ?? TABLES.en).workerState ?? {}
-    return [run?.title || id, host, state ? words[state] ?? state : null].filter(Boolean).join(' · ')
+    const word = state ? words[state] ?? state : said && !about.key ? said[3].trim() : null
+    // the day only where the state is the failure (a job in order since keeps no old date)
+    const day = word && (state === 'last_run_failed' || !state) ? failedDay(run, lang) : null
+    return [run?.title || id, host, word && day ? `${word} ${day}` : word].filter(Boolean).join(' · ')
   }
   if (typeof about.title === 'string' && about.title.trim()) return short(about.title, 80)
   const rows = indexRows(s?.model)

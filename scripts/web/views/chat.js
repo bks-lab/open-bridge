@@ -190,11 +190,11 @@ export function ChatFoot({ s, c, conv, autofocus }) {
       <span class="muted small quick-total">${costKnown ? t.quickTotal(costText(total, lang)) : t.quickCostUnknown}${asked && asked !== model ? ` · ${t.quickSwitch(t.quickModel[model])}` : ''}</span>
     </div>` : null}
     <${SendBox} id="quick-input" label=${t.askLabel} value=${text} setValue=${setText} onSend=${send} max=${ASK_MAX} autofocus=${autofocus}
-      placeholder=${conv ? t.quickReply : t.chatPlaceholder} busy=${!!s.ui.busy['ask:free']}
+      placeholder=${t.chatPlaceholder} busy=${!!s.ui.busy['ask:free']}
       disabled=${!!conv?.running} sendLabel=${t.chatAsk} u="chat-ask"
       alt=${{ u: 'chat-ai', label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
     ${status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
-    <${LaunchPick} s=${s} c=${c} />
+    <${LaunchPick} s=${s} c=${c} label=${t.launch.forSolve} />
   </footer>`
 }
 
@@ -252,7 +252,7 @@ export function QuickChat({ s, c }) {
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${c.closeTabView} />
       </header>
       ${asks.length ? html`<nav class="quick-convs" aria-label=${t.quickChats}>
-        <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.quickNew}</button>
+        <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.rooms.newAsk}</button>
         ${asks.slice(0, 8).map(({ conv: x, title, mark }) => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
           title=${x.turns[0]?.q} onClick=${() => c.pickQuick(x.id)}>${x.running ? html`<${Dot} token="info" pulse /> ` : null}<span class="quick-conv-title">${title}</span><${AskMark} mark=${mark} /></button>`)}
       </nav>` : null}
@@ -285,7 +285,7 @@ export function ChatPage({ s, c }) {
     <${ControlNotice} s=${s} c=${c} />
     <div class="chat-grid">
       <nav class="panel chat-list" aria-label=${t.quickChats}>
-        <button type="button" class=${`chat-item chat-new${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.quickNew}</button>
+        <button type="button" class=${`chat-item chat-new${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.rooms.newAsk}</button>
         ${convs.length ? convs.map(x => {
           const costKnown = x.turns.every(y => !y.a || y.cost_usd != null)
           const cost = costKnown ? x.turns.reduce((n, y) => n + (y.cost_usd ?? 0), 0) : null

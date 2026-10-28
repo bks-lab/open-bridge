@@ -2120,12 +2120,16 @@ test('a tab closes only while it neither works nor asks, never the control tab, 
   assert.equal(offer({ state: 'waiting', ask: { text: 'Shall I?' } }), null)
   assert.equal(offer({ state: 'waiting', is_control: true }), null)
   assert.equal(logic.tabCloseOffer({ ref: 'surface:1', state: 'waiting' }, { ...s, driver: { caps: ['focus'] } }), null)
-  // nothing behind it and nothing settled: only Close tab, which asks first
-  assert.deepEqual(offer({ state: 'waiting' }), { done: false, unseen: true, keys: [] })
+  // nothing behind it and nothing came back from it: only Close tab, at once (round 6d fix: unseen means a result
+  // came back that nobody looked at, not merely that nothing is settled)
+  assert.deepEqual(offer({ state: 'waiting' }), { done: false, unseen: false, keys: [] })
+  const back = { ...s, model: { returns: [{ key: 'inbox:x', item: 'x', stage: 'result', tab: { ref: 'surface:1' }, result: { text: 'Done.' }, at_ms: 0 }] } }
+  assert.equal(logic.tabCloseOffer({ ref: 'surface:1', state: 'waiting' }, back).unseen, true)
+  assert.equal(offer({ state: 'waiting', filed_by: 'ref:issue-1' }).unseen, true)
   assert.deepEqual(offer({ state: 'shell', settled: 'item' }), { done: false, unseen: false, keys: [] })
   // what the server says stands behind it, never a guess from its name
-  assert.deepEqual(offer({ state: 'waiting', name: 'inbox-some-item', behind: { task: 'a-task', item: '20261028-0736-x-b257' } }),
-    { done: true, unseen: true, keys: ['task:a-task', 'inbox:20261028-0736-x-b257'] })
+  assert.deepEqual(offer({ state: 'waiting', name: 'inbox-some-item', behind: { task: 'a-task', item: '20261028-0736-x-a1b2' } }),
+    { done: true, unseen: false, keys: ['task:a-task', 'inbox:20261028-0736-x-a1b2'] })
   assert.deepEqual(offer({ state: 'waiting', name: 'a-task' }).keys, [])
   // a start of it that settled counts as seen
   const settled = { ...s, tabs: { tabs: [{ ref: 'surface:1', state: 'waiting' }] }, model: { returns: [{ key: 'inbox:x', item: 'x', stage: 'done', tab: { ref: 'surface:1' }, at_ms: 0 }] } }
@@ -2277,7 +2281,7 @@ test('launch: the route cache fetches once per key and again when the title chan
 test('launch: the picker stands in every start block and only there through one shared component', () => {
   const comp = readComponents()
   const pick = read('views/launch.js')
-  assert.match(pick, /export function LaunchPick\(\{ s, c, items = \[\] \}\)/)
+  assert.match(pick, /export function LaunchPick\(\{ s, c, items = \[\], label = null \}\)/)
   assert.match(pick, /const opts = launchOptions\(s\.launch\)/)
   assert.match(pick, /if \(!opts\) return null/)
   // one central choice, kept in this browser
@@ -3463,6 +3467,16 @@ test('listedChats: the picture of the day and chats past keep_hours stay out of 
   assert.match(read('views/chat.js'), /listedChats\(q\.convs, q\.keep_hours, s\.now\)/)       // the Chat tab lists the same
 })
 
+test('listedChats: a handed question counts from its handoff or what came back, as the server keeps it (quick.py _since)', () => {
+  const now = Date.UTC(2026, 9, 18, 20)
+  const h = 3600000
+  const convs = [
+    { id: 'back', started_ms: now - 40 * h, last_ms: now - 30 * h, handed: { at_ms: now - 29 * h, outcome: { text: 'Done', at_ms: now - h } } },
+    { id: 'handed', started_ms: now - 40 * h, last_ms: now - 30 * h, handed: { at_ms: now - 2 * h } },
+    { id: 'old', started_ms: now - 40 * h, last_ms: now - 30 * h, handed: { at_ms: now - 29 * h } }]
+  assert.deepEqual(logic.listedChats(convs, 24, now).map(x => x.id), ['back', 'handed'])
+})
+
 test('agents list hides conversations past keep_hours like chats', () => {
   const now = Date.UTC(2026, 9, 18, 20)
   const h = 3600000
@@ -4380,26 +4394,26 @@ test('6d C3: with nothing kept the Chat picks once: an open or freshly answered 
 
 test('6d C5: a tab names what it came from: the question it was handed on from, a job, an inbox item or a task', () => {
   const conv = { id: 'q00000000c5', started_ms: 1, last_ms: 2, running: false, turns: [{ q: 'Why did the bot fail?', a: 'It ran out.' }],
-    about: { kind: 'handoff', inbox: '20261028-0736-why-did-the-bot-b257' } }
+    about: { kind: 'handoff', inbox: '20261028-0736-why-did-the-bot-c3d4' } }
   const model = {
     sections: [{ rows: [
-      { key: 'inbox:20261028-0736-why-did-the-bot-b257', title: 'Why did the bot fail?', inbox_key: 'q00000000c5' },
+      { key: 'inbox:20261028-0736-why-did-the-bot-c3d4', title: 'Why did the bot fail?', inbox_key: 'q00000000c5' },
       { key: 'inbox:20261028-0800-job-b6b6', title: 'Background job chat-bot on homebox: last run failed', inbox_key: 'worker:homebox:chat-bot' },
       { key: 'inbox:20261028-0900-label-tidy-c1c1', title: 'Tidy the labels', inbox_key: null },
     ] }],
     task_rows: [{ key: 'task:demo-task', title: 'The demo task' }],
     returns: [
-      { key: 'inbox:20261028-0736-why-did-the-bot-b257', item: '20261028-0736-why-did-the-bot-b257', title: 'Why did the bot fail?', conv: 'q00000000c5', tab: { ref: 'surface:21' } },
+      { key: 'inbox:20261028-0736-why-did-the-bot-c3d4', item: '20261028-0736-why-did-the-bot-c3d4', title: 'Why did the bot fail?', conv: 'q00000000c5', tab: { ref: 'surface:21' } },
       { key: 'inbox:20261028-0800-job-b6b6', item: '20261028-0800-job-b6b6', title: 'Background job chat-bot on homebox', tab: { ref: 'surface:22' } },
       { key: 'task:other-task', item: 'other-task', title: 'Step text of the start', tab: { ref: 'surface:25' } },
     ],
   }
   const s = { now: 3, model, quick: { convs: [conv] }, workers: { data: { runs: [{ host: 'homebox', id: 'chat-bot', title: 'Chat bot', state: 'last_run_failed' }] } } }
   const of = tab => logic.tabOrigin(s, tab, 'en')
-  assert.deepEqual(of({ ref: 'surface:21', item: '20261028-0736-why-did-the-bot-b257' }),
+  assert.deepEqual(of({ ref: 'surface:21', item: '20261028-0736-why-did-the-bot-c3d4' }),
     { kind: 'ask', key: 'ask:q00000000c5', conv: 'q00000000c5', title: 'Why did the bot fail?' })
   // the question is found by its handoff too, with no start on record
-  assert.equal(logic.tabOrigin({ ...s, model: { ...model, returns: [] } }, { ref: 'surface:29', item: '20261028-0736-why-did-the-bot-b257' }, 'en').kind, 'ask')
+  assert.equal(logic.tabOrigin({ ...s, model: { ...model, returns: [] } }, { ref: 'surface:29', item: '20261028-0736-why-did-the-bot-c3d4' }, 'en').kind, 'ask')
   assert.deepEqual(of({ ref: 'surface:22', item: '20261028-0800-job-b6b6' }),
     { kind: 'job', key: 'worker:homebox:chat-bot', title: 'Chat bot · homebox' })
   assert.deepEqual(of({ ref: 'surface:23', item: '20261028-0900-label-tidy-c1c1' }),
@@ -4503,9 +4517,17 @@ test('askTitle: by what it is about (job and state, row, task), else the first s
   assert.equal(logic.askTitle(conv({ kind: 'handoff', inbox: 'i7' }), s, 'en'), 'Renew the test certificate')
   assert.equal(logic.askTitle(conv({ kind: 'free', key: 'task:alpha', task: 'alpha' }), s, 'en'), 'Ship the alpha')
   assert.equal(logic.askTitle(conv({ title: 'Named by the page' }), s, 'en'), 'Named by the page')
+  // the Stand of a failure is its day (spec 6d item 3: job, machine, state and day, never the copied trace)
+  const failed = { ...s, workers: { data: { runs: [{ host: 'mini', id: 'chat-bot', title: 'chat-bot', state: 'last_run_failed',
+    strip: [{ at: '2026-10-12T12:00:00Z', verdict: 'ok' }, { at: '2026-10-16T12:00:00Z', verdict: 'failed' }] }] } } }
+  assert.equal(logic.askTitle(conv({ kind: 'worker', key: 'worker:mini:chat-bot' }), failed, 'de'), 'chat-bot · mini · letzter Lauf fehlgeschlagen 16.10.')
+  // a question asked about a job before it carried what it is about: read from its own words, never the English trace
+  assert.equal(logic.askTitle(conv(null, 'Hintergrundjob chat-bot auf mini: letzter Lauf fehlgeschlagen. the last run of chat-bot ended with 75 Was ist zu tun und warum?'), failed, 'de'),
+    'chat-bot · mini · letzter Lauf fehlgeschlagen 16.10.')
+  assert.equal(logic.askTitle(conv(null, 'Background job other on box: last run failed. It ended with 75. What now?'), s, 'en'),
+    'other · box · last run failed')
   // nothing known: the first sentence, or the title in guillemets a row's prompt carries, cut at a word
-  assert.equal(logic.askTitle(conv(null, 'Background job chat-bot on mini: last run failed. It ended with 75. What now?'), s, 'en'),
-    'Background job chat-bot on mini: last run failed.')
+  assert.equal(logic.askTitle(conv(null, 'Look at the backup. It ended with 75. What now?'), s, 'en'), 'Look at the backup.')
   assert.equal(logic.askTitle(conv(null, 'Briefing item: «Renew the old demo certificate» («demo»). Look at it.'), s, 'en'), 'Renew the old demo certificate')
   const long = logic.askTitle(conv(null, 'word '.repeat(40)), s, 'en')
   assert.ok(long.length <= 60 && long.endsWith('…') && !/wor…$/.test(long), long)
@@ -5613,6 +5635,25 @@ test('6d fix: no keyboard hints in the question fields and on the button that st
       assert.doesNotMatch(said, /Cmd|Ctrl|Enter|[?!] (asks|fragt|starts|startet|hands|gibt)/, `${lang}: ${said}`)
     }
   }
+})
+
+test('6d fix: no key named in the notes and hints a mouse reads, and one name for a new question', () => {
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const said of [t.hints.items.prompt.body, t.panelStartHint, t.inner.hint, t.inner.hintTour, t.inner.search]) {
+      assert.doesNotMatch(said, /Cmd|Ctrl|Enter|Esc|Space|Leertaste|\(\/\)/, `${lang}: ${said}`)
+    }
+  }
+  // the Chat page and the questions window call a new one the same, and an open question's field reads as C4 says
+  const chat = read('views/chat.js')
+  assert.doesNotMatch(chat, /t\.quickNew/)
+  assert.doesNotMatch(chat, /t\.quickReply/)
+  assert.doesNotMatch(read('views/rooms.js'), /t\.quickNew/)
+  assert.equal(text.TABLES.de.rooms.allAsks, 'Auch frühere Fragen')
+  // the model picker under the Chat's field says which button it is for: Ask has its own picker on top
+  assert.match(chat, /<\$\{LaunchPick\} s=\$\{s\} c=\$\{c\} label=\$\{t\.launch\.forSolve\} \/>/)
+  assert.equal(text.TABLES.de.launch.forSolve, 'Modell für AI machen lassen')
+  assert.match(read('views/launch.js'), /export function LaunchPick\(\{ s, c, items = \[\], label = null \}\)/)
 })
 
 // ---------------------------------------------------------------- the click origin log (round 6d, item 10)

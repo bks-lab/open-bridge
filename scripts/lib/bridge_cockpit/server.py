@@ -522,6 +522,19 @@ class App:
                 out[sid] = {"task": saw["task"], "how": "seen", "since_ms": saw.get("since_ms")}
         return out
 
+    def tab_tasks(self) -> dict:
+        """{tab ref: task} of the live sessions that work on one (session_tasks), the newest session of a tab
+        deciding, as the page reads it (views/rooms.js taskOfTab); the control tab is left to the caller"""
+        tasks = self.session_tasks()
+        out: dict[str, tuple] = {}
+        for x in self.sessions.state():
+            ref = (x.get("tab") or {}).get("ref")
+            task = (tasks.get(x.get("sid") or "") or {}).get("task")
+            started = x.get("started_ms") if isinstance(x.get("started_ms"), (int, float)) else 0
+            if isinstance(ref, str) and ref and task and (ref not in out or started > out[ref][0]):
+                out[ref] = (started, task)
+        return {ref: task for ref, (_, task) in out.items()}
+
     def sessions_state(self) -> dict:
         """The live sessions, each with the task it works on (session_tasks: task, task_how, task_since_ms), and
         every kept link: the page shows a task's sessions, the live ones with their tab, the ended ones to go on in"""
@@ -619,10 +632,18 @@ class App:
     def ack_closed_findings(self) -> None:
         """A job's inbox item closed (its own, worker:<host>:<id>, or a question handed over about it) marks the
         job's finding seen, with the close note: the person or the tab that closed it looked. Read from the
-        inbox folder itself, again only when an item changed; a failure here never stops a pass"""
+        inbox folder itself, again only when an item changed: its folder or its events/ folder, where inbox.py
+        writes a close (a file added there leaves the item folder's own time as it was); a failure here never
+        stops a pass"""
         folder = self.root / "work" / "inbox"
+
+        def events_ns(path: str) -> int:
+            try:
+                return os.stat(os.path.join(path, "events")).st_mtime_ns
+            except OSError:
+                return 0
         try:
-            sign = tuple(sorted((e.name, e.stat().st_mtime_ns) for e in os.scandir(folder) if e.is_dir()))
+            sign = tuple(sorted((e.name, e.stat().st_mtime_ns, events_ns(e.path)) for e in os.scandir(folder) if e.is_dir()))
         except OSError:
             return
         view = self.workers_view()
@@ -1383,7 +1404,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, {"ok": True, "kept": 0, "off": True})
                     return
                 try:
-                    kept = append_clicks(app.state_dir / "usage.jsonl", body.get("events"), app.clock(), verbs=SPEC)
+                    pages = {p.get("id") for p in (app.collector.model or {}).get("pages") or [] if isinstance(p, dict)}
+                    kept = append_clicks(app.state_dir / "usage.jsonl", body.get("events"), app.clock(), verbs=SPEC, pages=pages)
                 except ValueError as error:
                     raise ActionError(400, "invalid_argument", str(error), "events") from None
                 self.send_json(200, {"ok": True, "kept": kept})

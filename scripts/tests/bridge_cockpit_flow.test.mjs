@@ -934,8 +934,8 @@ test('a finished or quiet start whose item is not in the list (put off, resting)
 
 test('a start that ended with a note stays a card to look at, with its note and the way back to its question', () => {
   // 28.10.: the tab closed the item with its note, and Running now showed nothing at all
-  const ID = '20261028-0736-telegram-bot-b257'
-  const done = (over = {}) => ({ key: `inbox:${ID}`, item: ID, title: 'Telegram bot job', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'done',
+  const ID = '20261028-0736-chat-bot-a1b2'
+  const done = (over = {}) => ({ key: `inbox:${ID}`, item: ID, title: 'Chat bot job', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'done',
     in_briefing: false, tab: null, conv: 'q0123456789', result: { kind: 'close', text: 'Result: the bot runs, nothing to change', key: null, at_ms: NOW - MIN }, ...over })
   let parts = logic.flowParts(state({ returns: [done()] }))
   assert.deepEqual(parts.result.map(x => [x.start.key, x.stage]), [[`inbox:${ID}`, 'done']])
@@ -968,10 +968,10 @@ test('a start that ended with a note stays a card to look at, with its note and 
 
 test('28.10.: a finished start whose item already left the list still closes its tab', () => {
   // the tab closed its item itself; under Work only To tab, View and Forget stood there (flowside.js FinishedActs)
-  const ID = '20261028-0736-telegram-bot-b257'
-  const done = { key: `inbox:${ID}`, item: ID, title: 'Telegram bot job', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'done', in_briefing: false,
+  const ID = '20261028-0736-chat-bot-a1b2'
+  const done = { key: `inbox:${ID}`, item: ID, title: 'Chat bot job', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'done', in_briefing: false,
     tab: { ref: 'surface:21' }, result: { kind: 'close', text: 'Result: the bot runs, nothing to change', key: null, at_ms: NOW - MIN } }
-  const tab = { ref: 'surface:21', name: 'inbox-telegram-bot', item: ID, state: 'waiting', settled: 'item', behind: null, since_ms: NOW - 20 * MIN }
+  const tab = { ref: 'surface:21', name: 'inbox-chat-bot', item: ID, state: 'waiting', settled: 'item', behind: null, since_ms: NOW - 20 * MIN }
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ tabs: [tab], returns: [done] }))} c=${c} />`)
   const can = el.$('.flow-aside .flow-can')
@@ -994,6 +994,19 @@ test('a finished start with its task behind the tab: Done and close the tab ends
   assert.ok(!can.some(b => b.text() === en.btnDoneCloseTab), 'the bar holds the Done')
   can.find(b => b.text() === en.flow.doneClose).click()
   assert.deepEqual(c.calls.filter(x => x[0] === 'act').at(-1), ['act', 'tab_done', { tab_ref: 'surface:10' }])
+})
+
+test('a tab card says the tab waits where it asks nothing, and asks only where it asks: never "asks" beside its close', () => {
+  // 28.10.: the card head read "A tab asks" while the aside offered Close tab (wantsYou against asksSomething)
+  const said = { ref: 'surface:12', name: 'Claude Code', state: 'waiting', since_ms: NOW - 14 * MIN, ask: { text: 'Done, the report is filed.', options: [] } }
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ tabs: [said] }))} c=${recorder()} />`)
+  assert.equal(el.$('.flow-card .fx-kind').text(), en.flow.kind.waits)
+  assert.ok(el.$('.flow-aside .tab-close'), 'it closes')
+  const asking = { ...said, ask: { text: 'Shall I go on?', yes_no: true, options: [] } }
+  const ask = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ tabs: [asking] }))} c=${recorder()} />`)
+  assert.equal(ask.$('.flow-card .fx-kind').text(), en.flow.kind.asks)
+  assert.ok(!ask.$('.flow-aside .tab-close'), 'no close while it asks')
+  assert.equal(text.TABLES.de.flow.kind.waits, 'Tab wartet')
 })
 
 test('a point whose tab waits at its prompt: its close stands with the tab ways, and Done once where the close ends the point', () => {

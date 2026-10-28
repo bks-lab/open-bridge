@@ -44,8 +44,9 @@ function ago(iso) {
   return days <= 0 ? t.gh.today : days === 1 ? t.gh.yesterday : t.gh.daysAgo(days)
 }
 
-/** The filter bar (round 6c): a select per field that has more than one value (or a choice), each option with the
- *  rows it would show beside the other choices; with a choice, how many rows show and one reset for every filter */
+/** The filter bar (round 6c): a select per field that has more than one value over all rows (or a choice), each
+ *  option with the rows it would show beside the other choices; a field another choice narrowed to one value keeps
+ *  its place with that value, so the bar never jumps; with a choice, how many rows show and one reset for every filter */
 function GhFilterBar({ items, filter, setFilter, order }) {
   const t = T()
   const b = t.gh.bar
@@ -55,7 +56,8 @@ function GhFilterBar({ items, filter, setFilter, order }) {
   const person = d => d === 'assignee' || d === 'author'
   const word = (d, v) => (v === GH_NONE ? (person(d) ? b.nobody : b.noBoard) : v === GH_ME ? b.me
     : person(d) ? `@${v}` : d === 'type' ? b.kind[v] ?? v : d === 'status' ? columns.get(v) ?? v : v)
-  const dims = GH_DIMS.filter(d => facets[d].length > 1 || filter?.[d] != null)
+  const whole = filter ? ghFacets(items, null, me, { board: order }) : facets
+  const dims = GH_DIMS.filter(d => whole[d].length > 1 || filter?.[d] != null)
   const on = ghFiltered(filter)
   if (!dims.length && !on) return null
   const pick = (d, v) => setFilter({ ...(filter ?? {}), [d]: v || null })

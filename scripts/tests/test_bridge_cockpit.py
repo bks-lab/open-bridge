@@ -5349,6 +5349,40 @@ def test_the_tab_state_says_what_stands_behind_a_tab(world):
     assert tabs["surface:3"]["behind"] is None              # the control tab stands for nothing
 
 
+def test_a_tab_known_by_its_name_has_the_task_of_its_session_behind_it(world, tmp_path):
+    # most tabs carry no slug or item (bound by their name): the task comes from the session linked in it, as the
+    # page reads it (rooms.js taskOfTab), so Done and close tab stands there too and closes that task
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    world.app.sessions.base = claude_home(tmp_path, world.root, now_ms)
+    world.runner.handlers["eww.-o"] = lambda argv: ok(f"claude CMUX_SURFACE_ID={SURF} X=1\n")
+    tab_on(world, id=SURF)
+    world.act("session_link", session=SID, slug="demo-task")
+    tabs = {t["ref"]: t for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    assert tabs["surface:20"]["behind"] == {"task": "demo-task", "item": None}
+    world.runner.calls.clear()
+    world.act("tab_done", tab_ref="surface:20")
+    assert [world.runner.key(c) for c in writes(world)] == ["task.close", "workplace.close"]
+
+
+def test_how_long_a_tab_waits_outlives_a_restart_of_the_server(world):
+    # 28.10.: every line of Waiting for you read "waiting 0 min" after a restart, the walk order with it
+    from lib.bridge_cockpit.tabs import TabPoller
+    world.app.tabs.poll()
+    first = {t["ref"]: t["since_ms"] for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    world.clock.now += 6 * 60_000
+    world.app.tabs = TabPoller(world.app)        # the server started again on the same state folder
+    world.app.tabs.poll()
+    again = {t["ref"]: t["since_ms"] for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    assert again["surface:13"] == first["surface:13"] and again["surface:13"] < world.clock.now - 5 * 60_000
+    # a tab whose state changed meanwhile starts again from now
+    world.runner.handlers["workplace.status"] = lambda argv: ok([dict(t, state="working") if t["ref"] == "surface:13" else t
+                                                                 for t in STATUS])
+    world.app.tabs = TabPoller(world.app)
+    world.app.tabs.poll()
+    assert {t["ref"]: t["since_ms"] for t in world.app.tabs.state(world.app.collector.view)["tabs"]}["surface:13"] == world.clock.now
+
+
 def test_tab_close_takes_any_quiet_tab_but_not_one_that_works_asks_or_is_the_control(world):
     world.runner.calls.clear()
     world.act("tab_close", tab_ref="surface:13")           # waiting, nothing filed, nothing settled
@@ -9063,6 +9097,24 @@ def test_a_job_finding_seen_stays_calm_until_it_changes(world):
     refused(world, "invalid_argument", "finding_ack", key="worker:../x")
 
 
+def test_a_finding_seen_stays_seen_while_only_its_age_grows(world):
+    # an overdue job's detail counts the seconds since its last line, a check row its hours: that alone is no news
+    put_workers(world, "chat-bot last wrote a line 4210s ago and its declared cadence is 300s")
+    world.act("finding_ack", key="worker:mini:chat-bot")
+    put_workers(world, "chat-bot last wrote a line 4570s ago and its declared cadence is 300s")
+    assert "acked" in served_runs(world)["chat-bot"]
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "probes", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all green", "items": [{"id": "copy", "title": "Copy", "detail": "last copy 3 h ago", "tone": "warn"}]}]}
+    with_pages(world, ops)
+    world.act("finding_ack", key="item:ops/probes/copy")
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "ops"]
+    ops["sections"][0]["items"][0]["detail"] = "last copy 5 h ago"
+    model = with_pages(world, ops)
+    it = next(p for p in model["pages"] if p["id"] == "ops")["sections"][0]["items"][0]
+    assert it["tone"] == "dim" and it["acked"]["tone"] == "warn"
+
+
 def test_a_page_finding_seen_leaves_the_badge_and_the_alarm_until_it_changes(world):
     ops = {"id": "ops", "title": "Ops", "sections": [
         {"id": "probes", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
@@ -9085,6 +9137,17 @@ def test_a_page_finding_seen_leaves_the_badge_and_the_alarm_until_it_changes(wor
     world.act("finding_ack", key=key)
     world.act("finding_unack", key=key)
     assert [a["count"] for a in world.app.collector.model["alarms"] if a["page_id"] == "ops"] == [1]
+
+
+def test_shown_again_names_the_row_by_its_title_also_without_an_id(world):
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "probes", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all green", "items": [{"title": "Disk of the archive", "detail": "92 % full", "tone": "bad"}]}]}
+    model = with_pages(world, ops)
+    key = next(p for p in model["pages"] if p["id"] == "ops")["sections"][0]["items"][0]["key"]
+    world.act("finding_ack", key=key)
+    res = world.act("finding_unack", key=key)
+    assert "Disk of the archive" in res["note"] and "/h" not in res["note"]
 
 
 def close_item(world, item_id: str, *, key: str, summary: str, note: str, at: str = "2026-10-08T06:36:47+00:00"):
@@ -9112,6 +9175,27 @@ def test_closing_the_item_of_a_job_marks_its_finding_seen_with_the_close_note(wo
     world.act("finding_unack", key="worker:mini:chat-bot")
     world.app.ack_closed_findings()
     assert "acked" not in served_runs(world)["chat-bot"]
+
+
+def test_closing_an_item_that_was_already_there_marks_its_finding_seen_on_the_next_pass(world):
+    # inbox.py close writes into <id>/events/, which leaves the item folder's own time as it was: the pass reads
+    # the events folders too, so a close of an existing item is seen without another item changing
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-job-chat-bot-a1b2", key="worker:mini:chat-bot",
+               summary="Background job chat-bot on mini: last run failed", note="exit 75 was a restart, nothing to do")
+    events = world.root / "work" / "inbox" / "20261008-0736-job-chat-bot-a1b2" / "events"
+    close = next(events.iterdir())
+    body = close.read_text(encoding="utf-8")
+    close.unlink()
+    item = events.parent
+    stamp = item.stat().st_mtime_ns
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+    os.utime(events, ns=(stamp - 10_000_000_000, stamp - 10_000_000_000))
+    (events / close.name).write_text(body, encoding="utf-8")
+    os.utime(item, ns=(stamp, stamp))
+    world.app.ack_closed_findings()
+    assert served_runs(world)["chat-bot"]["acked"]["note"] == "exit 75 was a restart, nothing to do"
 
 
 def test_a_handoff_question_about_a_job_counts_like_its_own_item(world):

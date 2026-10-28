@@ -36,7 +36,7 @@ CLICK_N_MAX = 999
 CLICK_KINDS = ("click", "verb")
 # what a field may hold: a name from the page's code (an area of the explain overlay, a class or data-u of a
 # control), never words, an item key (no colon) or a path (no slash). A page id is the profile's own, as /api/seen
-# takes it, but without a colon either
+# takes it, but without a colon either, and the server keeps it only when it names a page there is (clean_clicks)
 CLICK_NAME_RE = re.compile(r"^@?[A-Za-z][A-Za-z0-9_-]{0,47}(\.[A-Za-z][A-Za-z0-9_-]{0,47}){0,2}\Z")
 CLICK_PAGE_RE = re.compile(r"^[^\s/\\:\x00-\x1f\x7f]{1,64}\Z")
 CLICK_VERB_RE = re.compile(r"^[a-z][a-z0-9_]{0,47}\Z")
@@ -131,10 +131,11 @@ def append_log(path: Path, line: str, max_bytes: int = LOG_MAX_BYTES) -> None:
             pass
 
 
-def clean_clicks(events: Any, verbs: Any = None) -> list[dict]:
+def clean_clicks(events: Any, verbs: Any = None, pages: Any = None) -> list[dict]:
     """The events of one batch as usage.jsonl keeps them: {kind, page, view, area, control, verb, n}, each field a
     name or "-". A field the page should not have sent (a title, a text) is left out; an event whose page, view,
-    area or control is no name, or whose verb is none the server knows (`verbs`), is dropped whole. ValueError for
+    area or control is no name, whose page is none the cockpit has (`pages`: the profile's page ids, beside its own
+    @ pages and the briefing), or whose verb is none the server knows (`verbs`), is dropped whole. ValueError for
     a batch that is no list or longer than CLICKS_MAX."""
     if not isinstance(events, list) or len(events) > CLICKS_MAX:
         raise ValueError(f"events must be a list of up to {CLICKS_MAX}")
@@ -155,16 +156,20 @@ def clean_clicks(events: Any, verbs: Any = None) -> list[dict]:
         else:
             if row["page"] == "-" or (row["verb"] != "-" and verbs is not None and row["verb"] not in verbs):
                 continue
+            if pages is not None and not (row["page"] in pages or row["page"] == "briefing"
+                                          or (row["page"].startswith("@") and CLICK_NAME_RE.match(row["page"]))):
+                continue
             n = ev.get("n", 1)
             row["n"] = min(n, CLICK_N_MAX) if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 1
             out.append(row)
     return out
 
 
-def append_clicks(path: Path, events: Any, now_ms: float, verbs: Any = None, max_bytes: int = CLICKS_MAX_BYTES) -> int:
+def append_clicks(path: Path, events: Any, now_ms: float, verbs: Any = None, max_bytes: int = CLICKS_MAX_BYTES,
+                  pages: Any = None) -> int:
     """One batch of the page's clicks into the click origin log (usage.jsonl), stamped to the minute, rotated at
     max_bytes like every log here; how many events were kept"""
-    rows = clean_clicks(events, verbs)
+    rows = clean_clicks(events, verbs, pages)
     if rows:
         at = dt.datetime.fromtimestamp(now_ms / 1000).isoformat(timespec="minutes")
         append_log(path, "\n".join(json.dumps({"at": at, **r}, separators=(",", ":")) for r in rows), max_bytes)
@@ -444,9 +449,12 @@ class WebStore:
             return had
 
     def acks_read(self) -> set:
+        """The inbox items whose close was read for a finding: this machine's, and from the shared record every
+        item an ack named, also one taken back since (settled.py read_inboxes), so an undo holds on every machine"""
         with self.lock:
             read = set(self._acks_read)
-        return read | {v.get("inbox") for v in self.acks().values() if v.get("inbox")}
+            shared = self.settled.read_inboxes() if self.settled is not None else set()
+        return read | shared | {v.get("inbox") for v in self.acks().values() if v.get("inbox")}
 
     def read_inbox(self, item_id: str) -> None:
         """An inbox item whose close was read for a finding, so an undo is not taken back by it (lock held)"""

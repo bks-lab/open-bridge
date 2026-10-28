@@ -247,11 +247,12 @@ def tab_settled(root: Path, tab: dict) -> str | None:
     return None
 
 
-def tab_behind(root: Path, tab: dict) -> dict | None:
+def tab_behind(root: Path, tab: dict, task: str | None = None) -> dict | None:
     """What still stands behind a tab and can be done with it: its open task (a folder under work/tasks/, never a
     stream) and its open inbox item (there, not ended), as {task, item}, each None where it has none; None when
-    neither stands. Read from the Bridge by the tab's binding (its slug, its item), never from the tab's words"""
-    item, slug = tab.get("item"), tab.get("slug")
+    neither stands. Read from the Bridge by the tab's binding (its slug, its item), never from the tab's words; a
+    tab known by its name alone (no slug) takes `task`, the task of the session that works in it (server.py tab_tasks)"""
+    item, slug = tab.get("item"), tab.get("slug") or task
     task = slug if isinstance(slug, str) and SLUG_RE.match(slug) and (Path(root, "work", "tasks", slug, "STATUS.md")).is_file() else None
     open_item = (item if isinstance(item, str) and INBOX_ID_RE.match(item) and Path(root, "work", "inbox", item).is_dir()
                  and not inbox_settled(root, item) else None)

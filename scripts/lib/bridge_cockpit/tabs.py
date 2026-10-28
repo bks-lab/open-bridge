@@ -5,7 +5,9 @@ The server is the only poller (never two status calls at once) and runs while at
 one page is shown, every `tabs_seconds` (every HIDDEN_TABS_S while the only open pages sit in
 background browser tabs, so their title count stays roughly current), plus follow-up polls after
 a launch (+5 s), a key or a message (+3 s), a close (+1 s) and an adopt (now). It keeps
-since when each tab is in its state (tab_seen), raises alerts for tabs that newly wait
+since when each tab is in its state (tab_seen), in SEEN_FILE under the state folder too, so a restart of the
+server keeps how long a tab has waited (the first poll after it takes the kept time of a tab still in the same
+state, and forgets the tabs that are gone), raises alerts for tabs that newly wait
 or wait or run for an hour, and marks the control tab, which never counts as waiting.
 With `cockpit.chat_layout: workspaces` each poll also asks `workplace.py workspaces --json` for the
 workspaces as the terminal shows them (read only); None when the driver cannot say.
@@ -19,6 +21,7 @@ import json
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from . import asks as ak
@@ -33,6 +36,7 @@ HIDDEN_TABS_S = 60   # the poll interval while every open page is hidden
 ASK_REFRESH_MS = 60_000   # a question unchanged in its state is read again after a minute
 ASK_READS_PER_POLL = 4
 ASK_BUDGET_S = 3
+SEEN_FILE = "tabs-seen.json"   # since when each tab is in its state, kept across restarts
 
 
 class TabPoller:
@@ -44,7 +48,7 @@ class TabPoller:
         self.tabs: list[dict] = []
         self.workspaces: list[dict] | None = None
         self.workspaces_ms = 0.0
-        self.seen: dict[str, dict] = {}
+        self.seen: dict[str, dict] = self._load_seen()
         self.asks: dict[str, tuple] = {}   # ref -> ((state, last, since_ms), ask or None, read at ms)
         self.error: dict | None = None
         self.at_ms = 0
@@ -54,6 +58,37 @@ class TabPoller:
         self.last_poll = 0.0
         self.stop = False
         self.monotonic = time.monotonic   # the loop's clock; tests replace it
+
+    # ------------------------------------------------------------ since when, kept
+
+    def _seen_path(self):
+        folder = getattr(self.app, "state_dir", None)
+        return None if folder is None else os.path.join(str(folder), SEEN_FILE)
+
+    def _load_seen(self) -> dict[str, dict]:
+        """The kept since of each tab ({ref: {state, since_ms, warned}}); empty when there is none or it does not read"""
+        path = self._seen_path()
+        try:
+            with open(path, encoding="utf-8") as handle:     # type: ignore[arg-type]
+                data = json.load(handle)
+        except (OSError, TypeError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {ref: {"state": v["state"], "since_ms": float(v["since_ms"]), "warned": bool(v.get("warned"))}
+                for ref, v in data.items() if isinstance(ref, str) and isinstance(v, dict) and isinstance(v.get("state"), str)
+                and isinstance(v.get("since_ms"), (int, float))}
+
+    def _save_seen(self, seen: dict) -> None:
+        """Write the since of each tab when a tab came, went or changed its state; a failed write keeps it in memory"""
+        path = self._seen_path()
+        if path is None:
+            return
+        try:
+            from .store import atomic_write_json
+            atomic_write_json(Path(path), seen)
+        except OSError:
+            pass
 
     # ------------------------------------------------------------ reads
 
@@ -134,6 +169,8 @@ class TabPoller:
         """TabsState (contract section 8.1)."""
         self.control_ref()                 # the pick follows the heartbeats, not only the last poll
         now = self.app.clock()
+        # the task of the session in each tab, for a tab known by its name alone (read outside the lock)
+        tasks = self.app.tab_tasks() if hasattr(self.app, "tab_tasks") else {}
         with self.lock:
             tabs = []
             for t in self.tabs:
@@ -148,7 +185,7 @@ class TabPoller:
                     "idle": t.get("idle") is True and not is_control,
                     "is_control": is_control, "filed_by": filed["key"] if filed else None,
                     "settled": None if is_control else ret.tab_settled(self.app.root, t),
-                    "behind": None if is_control else ret.tab_behind(self.app.root, t),
+                    "behind": None if is_control else ret.tab_behind(self.app.root, t, tasks.get(t["ref"])),
                     "since_ms": int(seen.get("since_ms", 0)), "long": None if is_control else m.long_state(t, self.seen, now),
                     "ask": None if is_control or ask is None else dict(ask, options=[dict(o) for o in ask["options"]]),
                 })
@@ -220,7 +257,10 @@ class TabPoller:
                         seen[t["ref"]] = {**entry, "warned": True}
                         alerts.append({"kind": "tab_long", "ref": t["ref"], "name": t["name"],
                                        "workspace": t["workspace"], "state": t["state"]})
+                changed = seen != self.seen
                 self.tabs, self.seen, self.control = new, seen, control
+                if changed:
+                    self._save_seen(seen)
                 self.polled_once = True
                 self.at_ms = int(now)
         if app.cfg.chat_layout != "workspaces":
