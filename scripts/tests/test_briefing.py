@@ -335,6 +335,30 @@ def test_github_board_asks_only_what_a_row_needs_page_by_page(tmp_path):
     assert len([c for c in run.calls if c[:3] == ["gh", "api", "graphql"]]) == 2    # two pages, no date call
 
 
+def test_github_board_a_draft_card_names_who_made_it(tmp_path):
+    """A draft card has no author, GitHub names its creator: the row says who opened it like any other (round 6d)."""
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
+        {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
+    issue = lean_card(1, "Todo")
+    issue["content"]["author"] = {"login": "hubot"}
+    draft = {"id": "PVTI_d", "fieldValueByName": {"name": "Todo"},
+             "content": {"__typename": "DraftIssue", "title": "Idea", "creator": {"login": "octo"},
+                         "assignees": {"nodes": []}}}
+    asked = []
+
+    def graphql(argv):
+        asked.append(next(a for a in argv if a.startswith("query=")))
+        return lean_page([issue, draft])
+    run = FakeRun({("gh", "api", "graphql"): graphql})
+    section = {"kind": "tracker", "provider": "github-board", "query": {}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    assert "creator { login }" in asked[0]
+    by = {i.get("type"): i.get("author") for i in sec["items"]}
+    assert by == {"issue": "hubot", "draft": "octo"}
+
+
 def _registry(root, board=None, state_map=None):
     """A registry for the Tool board (example-org #3), with a `board:` block when given."""
     path = root / "workflow" / "projects" / "tool.yaml"

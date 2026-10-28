@@ -1695,8 +1695,9 @@ plain table stops at 50 with "more n"), so search and filter see them all.
 Above the rows stand only the figures that have a cause and a count above
 zero (wanting your review, blocked, quiet, yours without a task); a click on one
 filters the rows, a second clears it. Under them a filter bar: **Board** (each
-board, and "no board"), **Person** ("Me" first, then every assignee and author by
-count, "nobody assigned" last), **Repository**, **Kind** (issue, pull request, draft
+board, and "no board"), **Assigned to** ("Me" first, then every assignee by
+count, "nobody" last), **Opened by** ("Me", then every author; a draft card names
+its creator), **Repository**, **Kind** (issue, pull request, draft
 card) and **Board status** (the column, rows on a board only, one option whatever its case), each a compact
 select that shows only with two values or more, every option with how many rows
 it would leave given the other choices. The choices combine with each other,
@@ -1705,12 +1706,14 @@ rows" and "Reset all filters" stand beside them while one is set. The choice is
 kept per section in this browser. Your own login is read from the rows (the
 author of a row you opened, else the one assignee of a row assigned to you);
 where no row says, the login stands beside Me. A row names repo#number (no GitHub chip beside it, the ref says so), its
-column, up to three people and three labels with "+n" for the rest, "by @x" when
-the person who opened it is not the assignee, and for a pull request draft,
+column, up to three labels with "+n" for the rest, "assigned: @a, @b" (up to three,
+or "nobody assigned") and "opened by @x" ("opened by you" for yours), and for a pull request draft,
 review and checks (80 rows at most, yours before a teammate's card and pull
 requests first among them, read in the call that finds the pull requests that
 close an issue, no extra call). "Group by board" (on by default)
-switches to one flat list where each row names its board. The line "n on
+switches to one flat list where each row names its board. A click on a name on a
+row sets that filter (Assigned to or Opened by) beside the other choices; a
+Person kept before round 6d reads back as Assigned to. The line "n on
 GitHub" in Work through leads here with the filter cleared, so the page shows
 the rows it counted. Under each board's head in the list stand its facts: whose cards
 (yours or every card), how many are open on the board, the count per state

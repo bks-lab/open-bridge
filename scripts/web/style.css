@@ -961,7 +961,10 @@ kbd {
 .ghl-chip-board { border-color: var(--info); color: var(--on-surface); }
 .ghl-pr { border-color: var(--tk); color: var(--on-surface); }
 .ghl-side { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
-.ghl-people { display: flex; gap: 6px; }
+.ghl-people { display: block; }
+/* round 6d: a name on a row is a button that filters by it, drawn as the name */
+.ghl-pick { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.ghl-pick:hover, .ghl-pick:focus-visible { text-decoration: underline; }
 .ghl-acts { justify-content: flex-end; flex-wrap: nowrap; }
 @media (max-width: 860px) {
   .ghl-row { grid-template-columns: 22px minmax(0, 1fr); }

@@ -2121,15 +2121,21 @@ function ghBar(filter = null, items = ghBarRows()) {
   return { el, picked }
 }
 
-test('github filter bar (6c G1): Board, Person, Repository, Kind and Board status with counts, a choice combines with the others', () => {
+test('github filter bar (6c G1, 6d): Board, Assigned to, Opened by, Repository, Kind and Board status with counts, combined', () => {
   const { el, picked } = ghBar()
   const field = d => el.$(`.ghf-field[data-dim="${d}"] select`)
-  for (const d of ['board', 'person', 'repo', 'type', 'status']) assert.ok(field(d), `a select for ${d}`)
+  for (const d of ['board', 'assignee', 'author', 'repo', 'type', 'status']) assert.ok(field(d), `a select for ${d}`)
+  assert.ok(!field('person'), 'Person is split in two')
+  assert.equal(el.$('.ghf-field[data-dim="assignee"] .ghf-label').text(), en.gh.bar.dim.assignee)
+  assert.equal(el.$('.ghf-field[data-dim="author"] .ghf-label').text(), en.gh.bar.dim.author)
   const opts = d => field(d).$$('option').map(o => o.text())
   assert.deepEqual(opts('board'), [en.gh.bar.all(3), 'Demo board (2)', `${en.gh.bar.noBoard} (1)`])
   // Me first, then the most rows, your own login only as Me
-  assert.deepEqual(opts('person'), [en.gh.bar.all(3), `${en.gh.bar.me} (2)`, '@teammate (2)', '@fourth-dev (1)', '@other-dev (1)',
-    '@second-dev (1)', '@third-dev (1)'])
+  assert.deepEqual(opts('assignee'), [en.gh.bar.all(3), `${en.gh.bar.me} (1)`, '@fourth-dev (1)', '@other-dev (1)',
+    '@second-dev (1)', '@teammate (1)', '@third-dev (1)'])
+  assert.deepEqual(opts('author'), [en.gh.bar.all(3), `${en.gh.bar.me} (1)`, '@other-dev (1)', '@teammate (1)'])
+  const nobody = ghBar(null, [...ghBarRows(), { ...ghBarRows()[0], index: 4, flags: [], gh: { ...ghBarRows()[0].gh, people: [] } }])
+  assert.equal(nobody.el.$('.ghf-field[data-dim="assignee"] select').$$('option').at(-1).text(), `${en.gh.bar.nobody} (1)`, 'nobody last')
   assert.deepEqual(opts('type'), [en.gh.bar.all(3), `${en.gh.bar.kind.issue} (2)`, `${en.gh.bar.kind.pr} (1)`])
   assert.deepEqual(opts('status'), [en.gh.bar.all(3), 'In Progress (1)', 'Todo (1)'], 'only rows on a board have a column')
   assert.ok(!el.$('.ghf-reset'), 'nothing chosen: no reset')
@@ -2140,10 +2146,10 @@ test('github filter bar (6c G1): Board, Person, Repository, Kind and Board statu
   // a choice keeps the others: Person on top of Board; under that board every row is an issue, so Kind steps aside
   const two = ghBar({ board: 'Demo board' })
   assert.ok(!two.el.$('.ghf-field[data-dim="type"]'), 'one kind left: no select')
-  const person = two.el.$('.ghf-field[data-dim="person"] select')
-  person.value = '@me'
+  const person = two.el.$('.ghf-field[data-dim="assignee"] select')
+  person.value = 'teammate'
   person.dispatch('change')
-  assert.deepEqual(two.picked.at(-1), { board: 'Demo board', person: '@me' })
+  assert.deepEqual(two.picked.at(-1), { board: 'Demo board', assignee: 'teammate' })
   // back to all in one dimension leaves the rest
   const all = two.el.$('.ghf-field[data-dim="board"] select')
   all.value = ''
@@ -2152,7 +2158,7 @@ test('github filter bar (6c G1): Board, Person, Repository, Kind and Board statu
 })
 
 test('github filter bar (6c G1): with a choice it says how many rows it shows and resets every filter in one click', () => {
-  const { el, picked } = ghBar({ person: '@me', flag: 'mine' })
+  const { el, picked } = ghBar({ assignee: '@me', flag: 'mine' })
   assert.equal(el.$('.ghf-count').text(), en.gh.bar.count(1, 3), 'Me and the figure yours: the one row assigned to you')
   const reset = el.$('.ghf-reset')
   assert.equal(reset.text(), en.gh.bar.reset)
@@ -2161,7 +2167,7 @@ test('github filter bar (6c G1): with a choice it says how many rows it shows an
   // a dimension with one value only and nothing chosen stays out of the way
   const lone = ghBar(null, ghBarRows().filter(r => r.gh.repo === 'example/app'))
   assert.ok(!lone.el.$('.ghf-field[data-dim="repo"]'), 'one repository: no select')
-  assert.ok(lone.el.$('.ghf-field[data-dim="person"]'))
+  assert.ok(lone.el.$('.ghf-field[data-dim="assignee"]') && lone.el.$('.ghf-field[data-dim="author"]'))
 })
 
 test('github rows (6c G2): repository and number, board and column, people, labels three and +n, who opened it, a PR\'s state', () => {
@@ -2179,18 +2185,52 @@ test('github rows (6c G2): repository and number, board and column, people, labe
   assert.deepEqual(first.$$('.ghl-meta .gh-label').map(x => x.text()), ['bug', 'ci', 'parser'])
   assert.equal(first.$('.ghl-more').text(), '+2')
   assert.equal(first.$('.ghl-more').getAttribute('title'), 'p1, flaky')
+  // round 6d: who it is assigned to and who opened it, both on every row; you as you
   assert.equal(first.$('.ghl-author').text(), en.gh.by('teammate'))
+  assert.equal(first.$('.ghl-people').text(), `${en.gh.assigned} ${en.gh.you}`)
   const docs = row('Write the docs')
+  assert.equal(docs.$('.ghl-people-label').text(), en.gh.assigned)
   assert.deepEqual(docs.$$('.ghl-people .gh-person').map(x => x.text()), ['@teammate', '@second-dev', '@third-dev', '+1'])
   assert.equal(docs.$('.ghl-author').text(), en.gh.byYou, 'opened by you')
   const pr = row('Bump the schema')
   assert.ok(!pr.$('.ghl-chip-board'), 'on no board')
   assert.deepEqual(pr.$$('.ghl-pr').map(x => x.text()), [en.gh.draft, en.gh.reviewState.changes_requested, en.gh.checksShort.failure])
-  assert.ok(!pr.$('.ghl-author'), 'opened by the one assigned: named once')
+  assert.equal(pr.$('.ghl-author').text(), en.gh.by('other-dev'), 'opened by the one assigned: both still said')
+  assert.deepEqual(pr.$$('.ghl-people .gh-person').map(x => x.text()), ['@other-dev'])
+  // nobody assigned says so; a row whose author is unknown names none
+  const bare = mount(html`<${GitHubList} items=${[{ ...rows[0], flags: [], gh: { ...rows[0].gh, people: [], author: null } }]} page="github"
+    section=${{ id: 'boards', boards: [] }} s=${s} c=${recorder()} byKey=${new Map()} />`)
+  assert.equal(bare.$('.ghl-nobody').text(), en.gh.nobodyAssigned)
+  assert.ok(!bare.$('.ghl-author') && !bare.$('.ghl-people .gh-person'))
   // grouped (the default): the heads stand, the rows leave the board out
   const grouped = mount(html`<${GitHubList} items=${rows} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${recorder()} byKey=${new Map()} />`)
   assert.ok(grouped.$('.ghl-head'))
   assert.ok(!grouped.$('.ghl-chip-board'))
+})
+
+test('github rows (6d): a click on a name sets that filter, beside the choices made; the search finds a person by @login', async () => {
+  const { GitHubList } = views.github
+  const s = cockpitState(NOW)
+  const picked = []
+  const el = mount(html`<${GitHubList} items=${ghBarRows()} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${recorder()}
+    byKey=${new Map()} filter=${{ board: 'Demo board' }} setFilter=${f => picked.push(f)} />`)
+  const row = n => el.$$('.ghl-row').find(r => r.$('.ghl-title').text() === n)
+  row('Write the docs').$$('.ghl-people .gh-person').find(x => x.text() === '@second-dev').click()
+  assert.deepEqual(picked.at(-1), { board: 'Demo board', assignee: 'second-dev' })
+  row('Fix the parser').$('.ghl-people .gh-person').click()
+  assert.deepEqual(picked.at(-1), { board: 'Demo board', assignee: '@me' }, 'you are Me')
+  row('Fix the parser').$('.ghl-author .gh-person').click()
+  assert.deepEqual(picked.at(-1), { board: 'Demo board', author: 'teammate' })
+  row('Write the docs').$('.ghl-author .gh-person').click()
+  assert.deepEqual(picked.at(-1), { board: 'Demo board', author: '@me' })
+  // without a filter to set (an older caller) the names are plain text
+  const plain = mount(html`<${GitHubList} items=${ghBarRows()} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${recorder()} byKey=${new Map()} />`)
+  assert.ok(!plain.$('button.gh-person'))
+  const box = el.$('.ghl-search')
+  box.value = '@second-dev'
+  box.dispatch('input')
+  for (let i = 0; i < 20 && el.$$('.ghl-row').length !== 1; i++) await tick()
+  assert.deepEqual(el.$$('.ghl-title').map(x => x.text()), ['Write the docs'])
 })
 
 test('github list (6c G2): "Group by board" switches the heads off and on, kept for the viewer', () => {

@@ -52,7 +52,7 @@ LEAN_QUERY = """query($login: String!, $number: Int!, $q: String!, $after: Strin
                        assignees(first: 5) { nodes { login } } labels(first: 5) { nodes { name } } }
         ... on PullRequest { number title url updatedAt repository { nameWithOwner } author { login }
                              assignees(first: 5) { nodes { login } } labels(first: 5) { nodes { name } } }
-        ... on DraftIssue { title updatedAt assignees(first: 5) { nodes { login } } } }
+        ... on DraftIssue { title updatedAt creator { login } assignees(first: 5) { nodes { login } } } }
     } } } } } }"""
 PRIORITY_FIELD = """
       priority: fieldValueByName(name: $priority) { ... on ProjectV2ItemFieldSingleSelectValue { name } }"""
@@ -126,7 +126,8 @@ def _lean_cards(board: dict, wanted: str, limit: int, ctx) -> dict:
             card = {"id": node.get("id"), "status": (node.get("fieldValueByName") or {}).get("name") or "",
                     "priority": (node.get("priority") or {}).get("name") or None,
                     "title": content.get("title"), "assignees": people, "labels": labels,
-                    "author": (content.get("author") or {}).get("login"),
+                    # who opened it; a draft card has no author, GitHub names its creator instead
+                    "author": (content.get("author") or content.get("creator") or {}).get("login"),
                     "content": {"type": content.get("__typename"), "title": content.get("title"),
                                 "updatedAt": content.get("updatedAt")}}
             if content.get("number") is not None:
