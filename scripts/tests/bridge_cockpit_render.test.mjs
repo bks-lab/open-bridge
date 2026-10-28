@@ -1797,7 +1797,8 @@ test('guide: a chosen step brings its box into view and puts the cursor in it, S
   proto.focus = function () { seen.push(['focus', this.tagName?.toLowerCase?.() ?? this.nodeName]) }
   try {
     el.$$('.guide-opt')[0].click()
-    await tick()
+    // the effect runs after paint: a busy runner needs more than one tick
+    for (let i = 0; i < 50 && !seen.some(x => x[0] === 'scroll'); i++) await tick()
     assert.deepEqual(seen.find(x => x[0] === 'scroll'), ['scroll', 'guide-compose', 'nearest'])
     assert.ok(seen.some(x => x[0] === 'focus' && /textarea/i.test(x[1])), JSON.stringify(seen))
     assert.ok(el.$('.guide-compose').button(en.guide.send))
