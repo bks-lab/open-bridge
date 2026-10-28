@@ -126,6 +126,8 @@ code { font-size: 12px; overflow-wrap: anywhere; }
 .icon-btn:hover { background: var(--surface-muted); }
 
 .btn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* the one close of a tab (views/detail.js TabClose) lays its buttons into the row it stands in */
+.tab-close { display: contents; }
 
 /* ---------------------------------------------------------------- chips */
 

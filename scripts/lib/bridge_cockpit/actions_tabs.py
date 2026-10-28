@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Verbs on agent tabs through the terminal driver: adopt, press, answer an option, send, jump, close, rename a
+"""Verbs on agent tabs through the terminal driver: adopt, press, answer an option, send, jump, close, done and close
+(what stands behind the tab ends as Done does, then the tab closes), rename a
 tab or a workspace, organize with AI, the control tab, the layout snapshot, and a relay question handed to the
 control tab.
 """
@@ -141,17 +142,54 @@ class TabVerbs:
             tab, _ = self.guard_fresh(ctx, tab_ref, "waiting", seen, name, True)
         self.send_to(ctx, tab, self.tx["go_on"])
 
-    def v_tab_close(self, ctx: Ctx, tab_ref: str) -> None:
+    def closable(self, tab_ref: str) -> dict:
+        """The tab, when it may close: it neither works nor asks (waiting at its prompt with no question read off its
+        screen, or back at its shell; a settled one asks nothing any more, as the quiet rule has it, model.py is_idle)
+        and is not the control tab. Whether answers in it went unseen the page asks before the click, so a close
+        never needs a result filed or a settled item"""
         tab = self.tab(tab_ref)
-        if tab["state"] != "waiting" or (m.filed_by(tab, self.app.collector.view) is None
-                                         and ret.tab_settled(self.app.root, tab) is None):
-            raise self.not_applicable("close is for waiting tabs whose result is filed or whose item or task is settled", "tab_ref")
-        run = ctx.call("workplace.close", tab_ref, self.app.workplace("close", tab_ref), CMUX_TIMEOUT)
+        if (tab["state"] not in ("waiting", "shell") or tab_ref == self.app.tabs.control_ref()
+                or (tab_ref in self.app.tabs.asks_now() and ret.tab_settled(self.app.root, tab) is None)):
+            raise self.not_applicable("close is for tabs that neither work nor ask, never the control tab", "tab_ref")
+        return tab
+
+    def close_tab(self, ctx: Ctx, tab: dict, word: str = "tab_closed") -> None:
+        run = ctx.call("workplace.close", tab["ref"], self.app.workplace("close", tab["ref"]), CMUX_TIMEOUT)
         if run.ok:
-            ctx.note(self.tx["tab_closed"].format(name=m.short(tab["name"], 30)))
+            ctx.note(self.tx[word].format(name=m.short(tab["name"], 30)))
         else:
             ctx.note(self.tx["close_failed"].format(err=m.short(run.err.strip(), 100)), bad=True)
         ctx.tabs_after(1)
+
+    def v_tab_close(self, ctx: Ctx, tab_ref: str) -> None:
+        self.close_tab(ctx, self.closable(tab_ref))
+
+    def v_tab_done(self, ctx: Ctx, tab_ref: str) -> None:
+        """Done and close the tab: what stands behind it, read on the server (returns.py tab_behind: its open task,
+        its open inbox item), ends the way Done of Work ends a row (v_settle: task.py close moves the task to
+        work/done/ with board and log row, inbox.py close with the done note), each step on its own; only when
+        every one went through the tab closes, else it stays open and the note names what is not done yet."""
+        tab = self.closable(tab_ref)
+        behind = ret.tab_behind(self.app.root, tab)
+        if behind is None:
+            raise self.not_applicable("nothing open stands behind this tab: close it alone", "tab_ref")
+        missed = []
+        for key in ([f"task:{behind['task']}"] if behind["task"] else []) + ([f"inbox:{behind['item']}"] if behind["item"] else []):
+            found = self.app.collector.resolve(key) or self.page_entry(key)
+            title = ((found or {}).get("row") or {}).get("title") or key.split(":", 1)[1]
+            before = len(ctx.history)
+            try:
+                self.v_settle(ctx, [key], "done")
+            except ActionError as exc:
+                ctx.note(m.short(exc.message, 100), bad=True)
+            # the done path records every end it made (its undo): no record, no end
+            if len(ctx.history) == before:
+                missed.append(m.short(title, 40))
+        if missed:
+            ctx.note(self.tx["tab_done_partial"].format(name=m.short(tab["name"], 30), missed=", ".join(missed)), bad=True)
+            ctx.tabs_after(1)
+            return
+        self.close_tab(ctx, tab, "tab_done_closed")
 
     def renamed(self, ctx: Ctx, run) -> None:
         """What a rename through workplace.py came to. Its refusal (exit 2: a name in use or managed, a ref

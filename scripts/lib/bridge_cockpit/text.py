@@ -200,6 +200,8 @@ EN: dict = {
     "key_sent": "{name}: {said}",
     "tab_closed": "Tab \"{name}\" closed",
     "close_failed": "Closing failed: {err}",
+    "tab_done_closed": "Tab \"{name}\" done and closed",
+    "tab_done_partial": "Tab \"{name}\" stays open: not done yet: {missed}",
     "sent_to": "to {name}: {text}",
     "send_failed": "Sending failed: {err}",
     "organize_system": ("You tidy up the workspaces and tabs of a terminal for one person. The data below lists them: "
@@ -559,6 +561,8 @@ DE: dict = {
     "key_sent": "{name}: {said}",
     "tab_closed": "Tab „{name}“ geschlossen",
     "close_failed": "Schließen ging nicht: {err}",
+    "tab_done_closed": "Tab „{name}“ erledigt und geschlossen",
+    "tab_done_partial": "Tab „{name}“ bleibt offen, noch nicht erledigt: {missed}",
     "sent_to": "an {name}: {text}",
     "send_failed": "Senden fehlgeschlagen: {err}",
     "organize_system": ("Du räumst die Workspaces und Tabs eines Terminals für eine Person auf. Die Daten unten nennen sie: "

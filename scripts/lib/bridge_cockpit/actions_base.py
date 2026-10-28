@@ -116,6 +116,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
                  "expect": ("tab_state", False), "name": ("tab_name", False)},
     "tab_go_on": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
     "tab_close": {"tab_ref": ("tab_ref", True)},
+    # the task and the inbox item behind a tab end as Done does (settle), then the tab closes (actions_tabs.py)
+    "tab_done": {"tab_ref": ("tab_ref", True), "by": ("by", False)},
     # a name of a tab or a workspace; task tabs and configured workspaces keep theirs (workplace.py managed_names)
     "tab_rename": {"tab_ref": ("tab_ref", True), "title": ("title", True)},
     "workspace_rename": {"ws_ref": ("ws_ref", True), "title": ("title", True)},
@@ -237,7 +239,7 @@ LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
-NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_jump": "focus", "tab_close": "close",
+NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
              "tab_rename": "rename", "workspace_rename": "rename_workspace"}
 
 

@@ -1328,7 +1328,10 @@ test('a slim tab card offers one next step: answer, go on, close, else go to the
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const all = () => true
   assert.deepEqual(logic.tabNextStep({ state: 'needs-you' }, all), ['yes', 'no'])
-  assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, all), ['go_on'])
+  // round 6d: a tab that neither works nor asks offers its close beside going on (or going to it at its shell)
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, all), ['go_on', 'close'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { text: 'Go on?' } }, all), ['go_on'])
+  assert.deepEqual(logic.tabNextStep({ state: 'shell' }, all), ['jump', 'close'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', filed_by: 'x' }, all), ['close'])
   assert.deepEqual(logic.tabNextStep({ state: 'working' }, all), ['jump'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', is_control: true }, all), ['jump'])
@@ -2100,6 +2103,26 @@ test('a tab whose start is settled (its item closed, its task done) offers to cl
   assert.deepEqual(logic.tabNextStep({ state: 'needs-you' }, all, true), ['yes', 'no'])
   // without the close right it stays at going to the tab
   assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, k => k !== 'close', true), ['go_on'])
+})
+
+test('a tab closes only while it neither works nor asks, never the control tab, and says what stands behind it', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const s = { driver: { caps: ['close'] }, tabs: { tabs: [] }, model: { returns: [] }, now: 1 }
+  const offer = tab => logic.tabCloseOffer({ ref: 'surface:1', ...tab }, s)
+  for (const state of ['working', 'needs-you']) assert.equal(offer({ state }), null, state)
+  assert.equal(offer({ state: 'waiting', ask: { text: 'Shall I?' } }), null)
+  assert.equal(offer({ state: 'waiting', is_control: true }), null)
+  assert.equal(logic.tabCloseOffer({ ref: 'surface:1', state: 'waiting' }, { ...s, driver: { caps: ['focus'] } }), null)
+  // nothing behind it and nothing settled: only Close tab, which asks first
+  assert.deepEqual(offer({ state: 'waiting' }), { done: false, unseen: true, keys: [] })
+  assert.deepEqual(offer({ state: 'shell', settled: 'item' }), { done: false, unseen: false, keys: [] })
+  // what the server says stands behind it, never a guess from its name
+  assert.deepEqual(offer({ state: 'waiting', name: 'inbox-some-item', behind: { task: 'a-task', item: '20261028-0736-x-b257' } }),
+    { done: true, unseen: true, keys: ['task:a-task', 'inbox:20261028-0736-x-b257'] })
+  assert.deepEqual(offer({ state: 'waiting', name: 'a-task' }).keys, [])
+  // a start of it that settled counts as seen
+  const settled = { ...s, tabs: { tabs: [{ ref: 'surface:1', state: 'waiting' }] }, model: { returns: [{ key: 'inbox:x', item: 'x', stage: 'done', tab: { ref: 'surface:1' }, at_ms: 0 }] } }
+  assert.equal(logic.tabCloseOffer({ ref: 'surface:1', state: 'waiting' }, settled).unseen, false)
 })
 
 test('the starts handed to the AI fall into: to check, done, needs you, working, no word', async () => {

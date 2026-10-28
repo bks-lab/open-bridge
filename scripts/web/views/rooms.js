@@ -11,14 +11,16 @@
 // TabWarnings); a tab's pane names the task it works on, which opens in the drawer over the Chat.
 // Round 6d: the questions stand on top of the sidebar, by title, open and handed ones first with their markers,
 // and "all" reaches the ones archived in the last days (read only: an archived one opens without its box).
+// The open tab's head and each line of Waiting for you close a tab that neither works nor asks through the one close
+// of every place (views/detail.js TabClose: Done and close tab where a task or an item stands behind it).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, indexRows, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, indexRows, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabCloseOffer, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
-import { Segmented } from './detail.js'
+import { Segmented, TabClose } from './detail.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { GuideLine, GuideTree } from './guide.js'
 import { ControlNotice } from './header.js'
@@ -221,6 +223,7 @@ function AskRow({ tab, left, s, c }) {
       ${done || guideView(s) === 'screen' ? null : html`<${GuideLine} tab=${tab} s=${s} />`}`}
     ${done ? html`<p class="reply-done muted small">${answered ? t.reply.answered(answered.q) : t.reply.movedOn}</p>`
       : html`<${TabReply} tab=${tab} s=${s} c=${c} compact />`}
+    ${left || !tabCloseOffer(tab, s) ? null : html`<div class="btn-row"><${TabClose} tab=${tab} s=${s} c=${c} /></div>`}
   </div>`
 }
 
@@ -374,7 +377,6 @@ function TabPane({ s, c, tab }) {
     if (r?.ok && verb !== 'tab_jump') onward()
     return r
   } }
-  const closeTab = async () => { const r = await c.act('tab_close', { tab_ref: tab.ref }); if (r?.ok) onward() }
   // the task it works on, opened in the drawer over the Chat (round 6)
   const slug = taskOfTab(s, tab)
   const taskTitle = slug ? indexRows(s.model).get(`task:${slug}`)?.title ?? slug : null
@@ -393,8 +395,7 @@ function TabPane({ s, c, tab }) {
       ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
         values=${GUIDE_VIEWS.map(v => [v, t.guide.view[v]])} onPick=${v => c.setGuideView(v)} /></span>` : null}
       <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
-      ${tab.is_control || !canTab(s, 'close') || (tab.state !== 'waiting' && tab.state !== 'shell') ? null
-        : html`<${Btn} size="xs" variant="ghost" icon="close" onClick=${closeTab}>${t.btnCloseTab}<//>`}
+      <${TabClose} tab=${tab} s=${s} c=${c} onClosed=${onward} />
     </header>
     ${replying ? html`<div class="reply-pane">
       ${view === 'guide' ? null : html`<${AskLine} tab=${tab} />`}
