@@ -25,6 +25,8 @@ SESSION_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 TAB_REF_RE = re.compile(r"^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}\Z")
 # a workspace the same way (workspace:2 in cmux, $2 in tmux)
 WS_REF_RE = re.compile(r"^[A-Za-z0-9$%@][A-Za-z0-9:%_.@$/-]{0,63}\Z")
+# a background job and the machine it runs on as the workers view names them (workers-view.json `id`, `host`)
+WORKER_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 TITLE_MAX = 80
 TEAM_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}\Z")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
@@ -159,6 +161,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "row_action": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                    "action": ("row_step", True)},
     "row_undo": {"section": ("page_id", True), "row": ("row_ref", True), "action": ("undo_token", True)},
+    # a background job of the workers view filed under worker:<host>:<id> and started as an advising tab
+    "worker_advise": {"host": ("worker_ref", True), "id": ("worker_ref", True)},
     "inbox_reopen": {"id": ("inbox_id", True), "note": ("text", False)},
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
     "task_running": {"slug": ("slug", True)},

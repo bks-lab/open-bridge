@@ -1326,6 +1326,14 @@ export function runTimes(run, now) {
   return { last, next: starts.filter(x => x > now).sort((a, b) => a - b)[0] ?? null }
 }
 
+/** The newest quick chat a row was asked in: the conversation whose `about.key` (quick.py) is the row's key, a job's
+ *  worker:<host>:<id> or a page row's item:<page>/<section>/<id>; null when the row was never asked */
+export function rowConv(convs, key) {
+  if (!key) return null
+  return (convs ?? []).filter(c => c?.about?.key === key)
+    .sort((a, b) => (b.last_ms ?? b.started_ms ?? 0) - (a.last_ms ?? a.started_ms ?? 0))[0] ?? null
+}
+
 /** The background jobs by machine: the always-on machines first (`hosts`, the ones the view was drawn for), then
  *  those with an outage, then the most jobs. Inside a machine its systems (groupBySystem), those with an outage
  *  first, then those with upkeep, each run worst first */

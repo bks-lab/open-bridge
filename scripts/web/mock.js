@@ -2100,7 +2100,9 @@ export function createMockTransport(opts = {}) {
         let conv = state.quick.convs.find(c => c.id === body.conv)
         if (!conv) {
           conv = { id: `q${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, kind: body.kind, started_ms: now(), session: null, total_usd: 0, turns: [], running: false,
-            ...(body.place ? { place: body.place } : {}) }
+            ...(body.place ? { place: body.place } : {}),
+            // a job row's question names its row, as actions_chats.py ask does for kind worker
+            about: body.kind === 'worker' ? { kind: 'worker', key: `worker:${body.args?.host}:${body.args?.id}` } : null }
           // a new conversation of the core takes the place of the last
           state.quick = { ...state.quick, convs: [conv, ...state.quick.convs.filter(c => !body.place || c.place !== body.place || c.running)] }
         }
@@ -2424,6 +2426,7 @@ export function createMockTransport(opts = {}) {
         if (verb === 'inbox_unmute') mockMutes.splice(0, mockMutes.length, ...mockMutes.filter(r => r.id !== args.id))
         if (verb === 'snapshot_list') result.note = 'Mock: 3 snapshots, latest 09:00'
         if (verb === 'row_action') result.note = `Mock: the step ${args.action} would start an agent tab on this row`
+        if (verb === 'worker_advise') result.note = `Mock: ${args.id} on ${args.host} would be analysed in an advising tab`
         if (verb === 'launch_settings' || verb === 'launch_settings_reset') {
           const next = verb === 'launch_settings' ? { ...state.launch.settings, ...(args.settings ?? {}) } : LAUNCH_CONFIG
           state.launch = launchState(next, !!createMockJev)

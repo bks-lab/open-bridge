@@ -21,6 +21,25 @@ EN: dict = {
     # prompt templates
     "ask_about": "Briefing item: {title}{where}. Take a look and suggest the next step. Nothing goes out without my yes.",
     "ask_info": "{section}: {title}{extra}. Take a look and suggest the next step. Nothing goes out without my yes.",
+    # a background job of the workers view (actions_pages.py worker_brief): the question on its row, the item and
+    # the brief Analyse in a tab files, the job's state in words (as text.js workerState)
+    "ask_worker": "Background job {id} on {host}: {state}. {detail} What should be done, and why?",
+    "worker_summary": "Background job {id} on {host}: {state}",
+    "worker_brief": ("Analyse the background job {id} on {host} and advise: read and propose, change nothing.\n\n"
+                     "Job: {title} ({id}), kind {kind}, schedule {when}\nMachine: {host}\nUnit: {unit} ({runtime})\n"
+                     "Program: {program}\nLog: {log}\nLast run: {last}\nNext run: {next}\nFindings:\n{findings}\n\n"
+                     "Read workflow/workloads/{id}.yaml. Use the workload and remote skills (infra/remotes/{host}.yaml) to "
+                     "check the unit and its log live on {host}. Name the cause, propose a fix, and change nothing: no "
+                     "restart, no provisioning, no edit, until I say yes."),
+    "worker_finding": "{state}: {detail}{hint}",
+    "worker_hint": " (advised: {hint})",
+    "worker_unknown": "not known",
+    "worker_state": {"last_run_failed": "last run failed", "in_sync": "in order", "observed": "observed",
+                     "intentionally_absent": "parked", "absent": "missing", "disabled": "switched off",
+                     "drifted": "differs", "inventory_missing": "no inventory entry", "source_drift": "source changed",
+                     "inventory_stale": "inventory stale", "not_provisioned": "never installed", "unknown": "unknown",
+                     "not reported": "not reported"},
+    "btn_worker_advise": "Analyse in a tab",
     "follow_up": "Draft a short follow-up message for: {title}{why}. Draft only, do not send anything.",
     "overview_head": "My briefing state from the dashboard ({at}): {headline}",
     "overview_tail": "Sort it briefly: what comes first, what can go, what do I hand to a tab. No action without my yes.",
@@ -364,6 +383,23 @@ DE: dict = {
 
     "ask_about": "Briefing-Punkt: {title}{where}. Schau es dir an und schlag den nächsten Schritt vor. Nichts nach außen ohne mein Ja.",
     "ask_info": "{section}: {title}{extra}. Schau es dir an und schlag den nächsten Schritt vor. Nichts nach außen ohne mein Ja.",
+    "ask_worker": "Hintergrundjob {id} auf {host}: {state}. {detail} Was ist zu tun und warum?",
+    "worker_summary": "Hintergrundjob {id} auf {host}: {state}",
+    "worker_brief": ("Analysiere den Hintergrundjob {id} auf {host} und berate: lesen und vorschlagen, nichts ändern.\n\n"
+                     "Job: {title} ({id}), Art {kind}, Zeitplan {when}\nRechner: {host}\nUnit: {unit} ({runtime})\n"
+                     "Programm: {program}\nLog: {log}\nLetzter Lauf: {last}\nNächster Lauf: {next}\nBefunde:\n{findings}\n\n"
+                     "Lies workflow/workloads/{id}.yaml. Prüfe mit den Skills workload und remote (infra/remotes/{host}.yaml) "
+                     "die Unit und ihr Log live auf {host}. Nenne die Ursache, schlag eine Lösung vor und ändere nichts: kein "
+                     "Neustart, keine Einrichtung, keine Änderung, bis ich ja sage."),
+    "worker_finding": "{state}: {detail}{hint}",
+    "worker_hint": " (empfohlen: {hint})",
+    "worker_unknown": "nicht bekannt",
+    "worker_state": {"last_run_failed": "letzter Lauf fehlgeschlagen", "in_sync": "in Ordnung", "observed": "beobachtet",
+                     "intentionally_absent": "geparkt", "absent": "fehlt", "disabled": "abgeschaltet",
+                     "drifted": "weicht ab", "inventory_missing": "ohne Inventar", "source_drift": "Quelle geändert",
+                     "inventory_stale": "Inventar veraltet", "not_provisioned": "nie installiert", "unknown": "unbekannt",
+                     "not reported": "nicht gemeldet"},
+    "btn_worker_advise": "Im Tab analysieren",
     "follow_up": "Entwirf eine kurze Nachfass-Nachricht für: {title}{why}. Nur als Entwurf, nichts senden.",
     "overview_head": "Mein Briefing-Stand aus dem Dashboard ({at}): {headline}",
     "overview_tail": "Ordne kurz ein: was zuerst, was kann weg, was gebe ich an einen Tab ab. Keine Aktion ohne mein Ja.",

@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: MIT
 """Verbs of the start page and the settings page (tiles, pins, the first-run tour, launch and ticker settings, the decision
-guide, the return channel) and of a briefing page's own rows (an account's status, a board's mode, a command row's steps).
+guide, the return channel), of a briefing page's own rows (an account's status, a board's mode, a command row's steps)
+and of a background job of the workers view (Analyse in a tab).
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
+import re
 
 from . import model as m
 from .guide import GuideError
 from .launch import LaunchError
 from .ticker import TickerError
-from .actions_base import CONTROL_RE, SHORT_TIMEOUT, UNDO_TOKEN_RE, ActionError, Ctx
+from .actions_base import CONTROL_RE, INBOX_ID_RE, SHORT_TIMEOUT, UNDO_TOKEN_RE, ActionError, Ctx
 
 
 class PageVerbs:
@@ -288,6 +291,82 @@ class PageVerbs:
                             "undo": {"verb": "row_undo", "args": {"section": section, "row": row, "action": undo}}
                             if isinstance(undo, str) and UNDO_TOKEN_RE.match(undo) else None})
         ctx.note(self.tx["step_done"].format(title=m.short(str(it.get("title") or row), 60), did=label), go={"kind": "page", "id": page})
+
+    def worker_run(self, host: str, ident: str) -> dict | None:
+        """The background job `ident` on `host` as the kept workers view holds it (GET /api/workers), a retired one
+        never; None when the view or the job is not there"""
+        try:
+            view = json.loads((self.app.root / ".bridge" / "resources" / "workers-view.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        runs = view.get("runs") if isinstance(view, dict) else None
+        return next((r for r in runs if isinstance(r, dict) and r.get("host") == host and r.get("id") == ident
+                     and not r.get("retired")), None) if isinstance(runs, list) else None
+
+    def worker_state(self, run: dict) -> str:
+        state = str(run.get("state") or "unknown")
+        return self.tx["worker_state"].get(state, state)
+
+    def worker_items(self, runs: list) -> None:
+        """Every job filed under worker:<host>:<id> gets `advise`: the newest item of that key, {inbox, state}, so its
+        row shows the tab and its result instead of offering a second start; the others are left as they are"""
+        newest: dict[str, dict] = {}
+        for e in self.app.inbox_listing() or []:
+            key = str(e.get("key") or "") if isinstance(e, dict) else ""
+            if key.startswith("worker:") and INBOX_ID_RE.match(str(e.get("id"))) and e["id"] > newest.get(key, {}).get("id", ""):
+                newest[key] = e
+        for r in runs:
+            found = newest.get(f"worker:{r.get('host')}:{r.get('id')}") if isinstance(r, dict) else None
+            if found:
+                r["advise"] = {"inbox": found["id"], "state": str(found.get("state") or "")}
+
+    def worker_brief(self, run: dict) -> str:
+        """What the advising tab is told, all of it from the workers view: job, machine, unit, schedule, program, log,
+        every finding with its hint, the last and the next run, and what it reads and checks"""
+        tx, none = self.tx, self.tx["worker_unknown"]
+        last = (run.get("strip") or [None])[-1]
+        last_text = (f"{last.get('at')} ({last.get('verdict') or '?'}, rc {last.get('rc')})"
+                     if isinstance(last, dict) and last.get("at") else none)
+        next_text = none
+        every = re.match(r"^every (\d+)s$", str(run.get("when") or ""))
+        stamp = last.get("at") if isinstance(last, dict) else None
+        if every and stamp:
+            try:
+                at = dt.datetime.fromisoformat(str(stamp).replace("Z", "+00:00")) + dt.timedelta(seconds=int(every[1]))
+                next_text = at.isoformat(timespec="seconds")
+            except ValueError:
+                pass
+        elif not every:
+            now = dt.datetime.fromtimestamp(self.app.clock() / 1000)
+            pct = (now.hour * 60 + now.minute) / 14.4
+            later = [x for x in (run.get("day") or {}).get("marks") or []
+                     if isinstance(x, dict) and x.get("today") and float(x.get("at_pct") or 0) > pct]
+            next_text = str(later[0].get("label") or none) if later else none
+        findings = "\n".join("- " + tx["worker_finding"].format(
+            state=tx["worker_state"].get(str(f.get("state")), str(f.get("state") or "?")), detail=f.get("detail") or "",
+            hint=tx["worker_hint"].format(hint=f["hint"]) if f.get("hint") else "")
+            for f in run.get("findings") or [] if isinstance(f, dict)) or none
+        program = str(run.get("program") or "") + m.paren(str(run.get("program_where") or "")) if run.get("program") else ""
+        text = tx["worker_brief"].format(
+            id=run["id"], host=run["host"], title=run.get("title") or run["id"], kind=run.get("kind") or none,
+            when=run.get("when") or none, unit=run.get("unit") or none, runtime=run.get("runtime") or none,
+            program=program or none, log=run.get("log") or none, last=last_text, next=next_text, findings=findings)
+        return CONTROL_RE.sub(" ", text)[:3500]
+
+    def v_worker_advise(self, ctx: Ctx, host: str, id: str) -> None:
+        """Analyse in a tab on a background job: filed under worker:<host>:<id> with a brief built here from the
+        workers view (never from the page), and started in mode report (Advise: read and propose, change nothing).
+        A second click finds the same item, so its tab opens instead of a second one, as for a row's step"""
+        run = self.worker_run(host, id)
+        if run is None:
+            raise self.not_applicable("the workers view holds no such job", "id")
+        key = f"worker:{host}:{id}"
+        ctx.subject = key
+        summary = self.tx["worker_summary"].format(id=id, host=host, state=self.worker_state(run))
+        new_id = self.inbox_add(ctx, key, summary, self.worker_brief(run), key=key)
+        if new_id is not None:
+            self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": summary}], "report",
+                        self.app.cfg.target, word=self.tx["btn_worker_advise"])
 
     def v_row_undo(self, ctx: Ctx, section: str, row: str, action: str) -> None:
         ctx.subject = f"{section}/{row}"

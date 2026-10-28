@@ -1769,6 +1769,69 @@ def test_a_row_step_that_returns_a_tab_files_it_and_starts_it(world):
     assert launch_argv(world, new_id, "go") in calls
 
 
+WORKER_RUN = {"id": "chat-bot", "title": "Chat bot", "host": "homebox", "kind": "daemon", "when": "continuous",
+              "unit": "bridge.chat-bot", "runtime": "launchd", "log": "~/.bridge/workloads/chat-bot.out",
+              "program": "/opt/bridge/skills/chat/start.sh", "program_where": "in this repository",
+              "state": "last_run_failed", "retired": False,
+              "findings": [{"state": "last_run_failed", "severity": "high", "detail": "the last run ended with 75",
+                            "hint": "read the unit's log for that run"},
+                           {"state": "in_sync", "severity": "info", "detail": "matches its stamp", "hint": ""}],
+              "strip": [{"at": "2026-10-16T07:45:56Z", "rc": 75, "verdict": "failed"}], "day": {"marks": []}}
+
+
+def write_workers(world, runs):
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "workers-view.json").write_text(json.dumps({"schema": 1, "runs": runs}), encoding="utf-8")
+
+
+def test_analyse_in_a_tab_files_the_job_under_its_own_key_and_starts_an_advising_tab(world):
+    # the brief comes from the kept workers view, never from the page: the verb names only machine and job
+    write_workers(world, [WORKER_RUN])
+    new_id = "20261028-0736-background-job-chat-bot-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.calls.clear()
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    calls = writes(world)
+    add = next(c for c in calls if world.runner.key(c) == "inbox.add")
+    assert "--key=worker:homebox:chat-bot" in add
+    assert "--summary=Background job chat-bot on homebox: last run failed" in add
+    detail = next(a for a in add if a.startswith("--detail="))
+    for part in ("chat-bot", "homebox", "bridge.chat-bot", "continuous", "/opt/bridge/skills/chat/start.sh",
+                 "in this repository", "~/.bridge/workloads/chat-bot.out", "the last run ended with 75",
+                 "read the unit's log for that run", "matches its stamp", "2026-10-16T07:45:56Z",
+                 "workflow/workloads/chat-bot.yaml", "infra/remotes/homebox.yaml", "workload", "remote", "change nothing"):
+        assert part in detail, part
+    assert launch_argv(world, new_id, "report") in calls
+    # the same key again: inbox.py hands back the same item, so the second click starts (or finds) that one
+    world.runner.calls.clear()
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    assert "--key=worker:homebox:chat-bot" in next(c for c in writes(world) if world.runner.key(c) == "inbox.add")
+
+
+def test_analyse_in_a_tab_refuses_a_job_the_view_does_not_hold(world):
+    write_workers(world, [WORKER_RUN, {**WORKER_RUN, "id": "old-job", "retired": True}])
+    world.runner.calls.clear()
+    refused(world, "not_applicable", "worker_advise", host="homebox", id="other")
+    refused(world, "not_applicable", "worker_advise", host="laptop", id="chat-bot")      # the job runs elsewhere
+    refused(world, "not_applicable", "worker_advise", host="homebox", id="old-job")
+    refused(world, "invalid_argument", "worker_advise", host="homebox", id="../x")
+    assert writes(world) == []
+
+
+def test_the_workers_view_names_the_item_a_job_was_filed_as(world):
+    write_workers(world, [WORKER_RUN, {**WORKER_RUN, "id": "quiet"}])
+    world.runner.handlers["inbox.list"] = lambda argv: ok([
+        {"id": "20261028-0736-background-job-chat-bot-a1b2", "state": "done", "key": "worker:homebox:chat-bot"},
+        {"id": "20261028-0900-background-job-chat-bot-c3d4", "state": "open", "key": "worker:homebox:chat-bot"},
+        {"id": "20261028-0901-other-e5f6", "state": "open", "key": "worker:laptop:quiet"}])
+    world.app.inbox_cache = (0.0, None)
+    status, _, body = world.request("GET", "/api/workers", headers=world.cookie)
+    runs = {r["id"]: r for r in json.loads(body)["view"]["runs"]}
+    assert runs["chat-bot"]["advise"] == {"inbox": "20261028-0900-background-job-chat-bot-c3d4", "state": "open"}
+    assert "advise" not in runs["quiet"]        # filed for another machine
+
+
 def test_a_row_step_the_row_does_not_offer_or_a_row_without_steps_is_refused(world):
     world.runner.calls.clear()
     for args, code in (({"index": 0, "action": "won"}, "not_applicable"), ({"index": 1, "action": "turned_down"}, "not_applicable"),
@@ -7117,6 +7180,20 @@ def test_a_chat_from_an_info_row_finds_its_inbox_item(world):
     assert conv_of(world, other)["about"]["inbox"] is None
     world.clock.advance(QUIET)
     assert sweep(world) is False and conv_of(world, other)
+
+
+def test_a_question_on_a_job_row_is_built_from_the_view_and_names_the_row(world):
+    write_workers(world, [WORKER_RUN])
+    conv = chat_on(world, "worker", host="homebox", id="chat-bot")
+    c = conv_of(world, conv)
+    assert c["about"] == {"kind": "worker", "key": "worker:homebox:chat-bot", "inbox": None}
+    assert c["turns"][0]["q"].startswith("Background job chat-bot on homebox: last run failed. the last run ended with 75")
+    # an item the job was filed as (Analyse in a tab) is what the chat waits for
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": YES_ID, "state": "open", "key": "worker:homebox:chat-bot"}])
+    world.app.inbox_cache = (0.0, None)
+    assert conv_of(world, chat_on(world, "worker", host="homebox", id="chat-bot"))["about"]["inbox"] == YES_ID
+    status, _, body = world.post("/api/ask", {"kind": "worker", "args": {"host": "homebox", "id": "gone"}, "via": "quick"})
+    assert status == 409 and json.loads(body)["error"]["code"] == "stale_row"
 
 
 def test_a_chat_on_a_task_row_leaves_when_the_task_moves_to_done(world):
