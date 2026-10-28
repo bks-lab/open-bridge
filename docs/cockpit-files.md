@@ -29,8 +29,9 @@ one layout. The left column holds the search, "Walk through the active records",
 the chips and the list of records; the middle shows the open record; the right
 column is Work through's own side column (`views/flowside.js FlowAside`) for the
 point that record is in Work through, with the same buttons (Let AI do it,
-Advise, Done, Later, Drop, To tab and View where a tab exists, then Details and
-the fields; `files.js recordPoint` picks that point). No button stands twice: a
+Advise, Done, Later, Drop, To tab and View where a tab exists, the tab's close
+when it neither works nor asks (Done and close tab where its task or item is
+still open), then Details and the fields; `files.js recordPoint` picks that point). No button stands twice: a
 step in the walk has its verbs only on the right. A closed record, or a task no
 row names, has no right column, since its buttons would act on nothing. A click
 in the list opens the record beside it (`openRecord` in app.js) and marks it in

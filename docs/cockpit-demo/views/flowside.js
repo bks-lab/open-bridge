@@ -22,6 +22,8 @@
 // the reports All seen; a row with steps of its own on a page (an application, logic.js pageStepsOf) its steps, which
 // open the info drawer where they stand (round 6 B). Under the verbs Details opens the row's drawer (an inbox item, a
 // task) or its detail column (any other row), where every verb of Due stands (round 6 B).
+// Round 6d: a tab's ways end with its close (views/detail.js TabClose) while it neither works nor asks, a finished start
+// whose item left the list too; where that close offers Done and close tab for the point itself, Done leaves the verbs.
 // Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
 // else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source (its
 // chip, STATUS.md to the files view, an issue or a pull request by its ref on the web), Created, Moved. No Status
@@ -32,11 +34,11 @@
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
-  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, short, triageRunning, workPageOf, workViewsIn,
+  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, short, tabCloseOffer, triageRunning, verbsFor, workPageOf, workViewsIn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
-import { Segmented } from './detail.js'
+import { Segmented, TabClose } from './detail.js'
 import { CheckRow, NotNowBlock, NotNowNarrow } from './flowleft.js'
 import { Suggestion } from './flowlist.js'
 import { PrioFoot } from './flowprio.js'
@@ -182,12 +184,22 @@ export function ThemePick({ row, s, c, compact = false }) {
 const ASKING_VERBS = ['advise', 'done', 'later', 'drop']
 
 /** To tab and View for the tab of a point: the jump is remembered for the return card (c.flowJump). `strong`: the
- *  tab is live (logic.js flowLive), so To tab is the strong way; View always in the style of the stack */
-export function TabWays({ tab, row, title, s, c, strong = false }) {
+ *  tab is live (logic.js flowLive), so To tab is the strong way; View always in the style of the stack. Round 6d: then
+ *  the one close of a tab (views/detail.js TabClose) while it neither works nor asks; `close` 'only' where the card's
+ *  own Done closes the tab already, false for none */
+export function TabWays({ tab, row, title, s, c, strong = false, close = true }) {
   const f = T().flow
   if (!tab || !flowDriver(s)) return null
   return html`<${Btn} size="sm" variant=${strong ? 'primary' : 'secondary'} onClick=${() => c.flowJump({ key: row?.key ?? null, ref: tab.ref, title: title ?? tab.name })}>${f.toTab}<//>
-    <${Btn} size="sm" variant="secondary" onClick=${() => c.openTabView(tab.ref)}>${f.view}<//>`
+    <${Btn} size="sm" variant="secondary" onClick=${() => c.openTabView(tab.ref)}>${f.view}<//>
+    ${close ? html`<${TabClose} tab=${tab} s=${s} c=${c} size="sm" only=${close === 'only'} />` : null}`
+}
+
+/** The verbs of a point beside its tab's close: where the close offers Done and close tab for this very row (what
+ *  stands behind the tab is the row), Done leaves the bar, so one Done stands there */
+function besideClose(verbs, row, tab, s) {
+  const offer = row && tab ? tabCloseOffer(tab, s) : null
+  return offer?.done && offer.keys.includes(row.key) ? (verbs ?? verbsFor(row)).filter(v => v !== 'done') : verbs
 }
 
 /** Improve on a finished start: what is still to do, as words to the tab while its agent waits there (tab_send
@@ -240,7 +252,11 @@ function FinishedActs({ x, s, c, sug, forget }) {
   const live = !!tab && tab.state === 'waiting' && canTab(s, 'send')
   const tomorrow = isoDate((s.now || Date.now()) + DAY)
   if (!row) return html`<div class="fx-do"><${TabWays} tab=${tab} row=${null} title=${r.title} s=${s} c=${c} />${forget}</div>`
+  // what stands behind the tab is this row: the server ends it and closes the tab in one (tab_done), else the row
+  // settles and the tab closes after it
+  const offer = tab ? tabCloseOffer(tab, s) : null
   const doneClose = async by => {
+    if (offer?.done && offer.keys.includes(row.key)) return c.act('tab_done', { tab_ref: tab.ref, ...(by ? { by } : {}) })
     const res = await c.act('settle', { keys: [row.key], outcome: 'done', ...(by ? { by } : {}) })
     if (res?.ok) await c.act('tab_close', { tab_ref: tab.ref })
     return res
@@ -249,7 +265,7 @@ function FinishedActs({ x, s, c, sug, forget }) {
   const more = html`<${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>
     <${Btn} size="sm" variant="secondary" onClick=${() => c.act('runs_on', { keys: [row.key], until: tomorrow })}>${f.runsOn}<//>
     ${r.result?.key ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openItem(r.result.key, null)}>${t.home.returnOpenAnswer}<//>` : null}
-    <${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} />`
+    <${TabWays} tab=${tab} row=${row} title=${r.title} s=${s} c=${c} close="only" />`
   return html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary=${said ?? 'done'} suggested=${!!said}
       words=${tab ? { done: f.doneClose } : {}} handlers=${tab ? { done: doneClose } : {}} yes=${false} extra=${more} stack />
     ${fix ? html`<${Improve} row=${row} tab=${live ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
@@ -292,7 +308,7 @@ function PointActs({ x, s, c, sug }) {
     const running = !!live || (x.kind === 'start' && ['started', 'working'].includes(x.stage))
     const verbs = running ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']
     const said = verbs.includes(sug?.verb) ? sug.verb : null
-    return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
+    return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${besideClose(verbs, row, live || tab, s)} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
       words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${html`${steps}${ways}${unlink}`} stack />`
   }
   if (x.kind === 'start') {
@@ -304,15 +320,15 @@ function PointActs({ x, s, c, sug }) {
     }
     if (x.group === 'result') return html`<${FinishedActs} x=${x} s=${s} c=${c} sug=${sug} forget=${forget} />`
     // a start whose tab asks: its ways, then the verbs that leave the tab its question
-    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} yes=${false} extra=${ways} stack />`
+    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} extra=${ways} stack />`
       : ways ? html`<div class="fx-do">${ways}</div>` : null}`
   }
   if (x.kind === 'tab') return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${row
-    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${ASKING_VERBS} primary=${false} yes=${false} stack />` : null}`
+    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} stack />` : null}`
   // a question or a task: its verbs, the one the AI suggests the strong one where the card has it
   const verb = sug?.verb
   const primary = live ? false : ['do', 'done', 'later', 'drop'].includes(verb) ? verb : null
-  return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${live ? ASKING_VERBS : null} primary=${primary} suggested=${!!primary} yes=${!live}
+  return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${besideClose(live ? ASKING_VERBS : null, row, live || tab, s)} primary=${primary} suggested=${!!primary} yes=${!live}
     extra=${html`${steps}${ways}`} stack />`
 }
 

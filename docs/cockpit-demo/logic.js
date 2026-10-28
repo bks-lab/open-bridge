@@ -1735,17 +1735,40 @@ export function railOn(s, hidden = s?.ui?.railHidden) {
   return railShown(s?.ui?.page, s?.rooms?.layout, hidden) && !(s?.ui?.page === 'briefing' && workViewIn(s) === 'flow')
 }
 
+/** Whether a tab may close (round 6d): it neither works nor asks (waiting at its prompt with no question or draft
+ *  read off its screen, or back at its shell; a settled one asks nothing any more, as the server's quiet rule has
+ *  it), it is no control tab, and the driver closes tabs; `can(right)` as canTab. The server holds the same rule
+ *  (actions_tabs.py closable) */
+export function tabCloses(tab, can, settled = false) {
+  return !!tab && !tab.is_control && (tab.state === 'waiting' || tab.state === 'shell') && !(tab.ask && !settled && !tab.settled)
+    && can('close')
+}
+
+/** The close of a tab wherever a point or a card has one (views/detail.js TabClose), null where it may not close
+ *  (tabCloses). `done`: an open task or inbox item stands behind it (the server's `behind`), so Done and close the
+ *  tab leads and Close tab only stands beside it; `unseen`: nothing behind it is settled yet (its item closed, its
+ *  task done, here or by its start), so its answers may be unread and a close asks first; `keys` the row keys of
+ *  what stands behind it */
+export function tabCloseOffer(tab, s) {
+  const settled = !!tab?.settled || (!!tab && settledRefs(s?.model?.returns, s?.tabs?.tabs, s?.now || Date.now()).has(tab.ref))
+  if (!tabCloses(tab, v => canTab(s, v), settled)) return null
+  const keys = [tab.behind?.task ? `task:${tab.behind.task}` : null, tab.behind?.item ? `inbox:${tab.behind.item}` : null].filter(Boolean)
+  return { done: keys.length > 0, unseen: !settled, keys }
+}
+
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab
  *  that filed its result or whose start is settled, else go to the tab; `can(right)` says what this cockpit
- *  may do with a tab (canTab) */
+ *  may do with a tab (canTab). Round 6d: a tab that may close (tabCloses) offers the close beside going on or
+ *  going to it, so `close` stands for the one close of every place (views/detail.js TabClose) */
 export function tabNextStep(tab, can, settled = false) {
   const own = !tab.is_control
   const finished = !!tab.filed_by || settled
+  const closes = tabCloses(tab, can, settled)
   if (tab.state === 'needs-you' && can('key')) return ['yes', 'no']
-  if (tab.state === 'waiting' && own && finished && can('close')) return ['close']
-  if (tab.state === 'waiting' && own && !tab.filed_by) return ['go_on']
-  if (can('focus')) return ['jump']
-  return can('screen') ? ['view'] : []
+  if (tab.state === 'waiting' && own && finished && closes) return ['close']
+  if (tab.state === 'waiting' && own && !tab.filed_by) return closes ? ['go_on', 'close'] : ['go_on']
+  const way = can('focus') ? ['jump'] : can('screen') ? ['view'] : []
+  return closes ? [...way, 'close'] : way
 }
 
 /** The time a page section names beside its title: only when its source measured at another time than
@@ -3131,27 +3154,7 @@ export function askContext(s, lang = 'de') {
   return out.length <= CONTEXT_MAX ? out : ''
 }
 
-// ---------------------------------------------------------------- the chat's one input: where Enter goes
-
-/** Where a text typed into the chat goes: `quick` (a read-only answer here) or `tab` (an agent tab that may
- *  act), and why: a leading ? or ! (`prefix`, stripped), the first words (`words`: a trailing ? or a
- *  question word asks, an order word starts a tab, in English and German), or `default` (unclear asks).
- *  The word lists are language data in text.js (route) */
-export function routeOf(raw) {
-  const text = String(raw ?? '').trim()
-  if (text.startsWith('?')) return { to: 'quick', by: 'prefix', text: text.slice(1).trim() }
-  if (text.startsWith('!')) return { to: 'tab', by: 'prefix', text: text.slice(1).trim() }
-  const lists = key => Object.values(TABLES).flatMap(t => t.route?.[key] ?? []).map(w => w.toLowerCase())
-  const filler = new Set(lists('fillerWords'))
-  let words = text.toLowerCase().replace(/[.,:;!?]+/g, ' ').split(/\s+/).filter(Boolean)
-  while (words.length > 1 && filler.has(words[0])) words = words.slice(1)
-  // a list entry of two words matches the first two, or its first word alone (German puts the particle last:
-  // "leg eine Aufgabe an")
-  const hit = list => list.some(w => w === words[0] || w === words.slice(0, 2).join(' ') || (w.includes(' ') && w.split(' ')[0] === words[0]))
-  if (text.endsWith('?') || hit(lists('questionWords'))) return { to: 'quick', by: 'words', text }
-  if (hit(lists('orderWords'))) return { to: 'tab', by: 'words', text }
-  return { to: 'quick', by: 'default', text }
-}
+// ---------------------------------------------------------------- the status line of a chat handed on
 
 const HANDOFF_FAILED = new Set(['failed', 'partly', 'aborted', 'error', 'rejected'])
 // the launch outcomes after which a tab works on what it was handed
@@ -3296,6 +3299,89 @@ export function askList(convs, s, lang) {
   for (const x of out) if (seen.get(x.title) > 1) x.title = `${x.title} · ${askStamp(x.conv.started_ms, s?.now, lang)}`
   const at = x => x.conv.last_ms ?? x.conv.started_ms ?? 0
   return out.sort((a, b) => (b.open ? 1 : 0) - (a.open ? 1 : 0) || at(b) - at(a))
+}
+
+/** How many hours a question stays in the list (quick.py state keep_hours, cockpit.chat_keep_hours); 24 when
+ *  the server did not say, its own default (config.py) */
+export const keepHoursOf = quick => (Number.isFinite(quick?.keep_hours) ? quick.keep_hours : 24)
+
+// the rooms of the Chat as cmux a browser keeps (round 6d C3), and how long a question counts as just answered
+const KEPT_ROOMS = new Set(['tab', 'ws', 'bridge', 'chat'])
+const FRESH_ANSWER_MS = 3600000
+
+/** The room this browser kept (localStorage bridge-cockpit.chatRoom), read back only in its known shapes and
+ *  marked `kept`: a kept room that is gone gives way to the chat (roomShown). null for anything else */
+export function roomKept(raw) {
+  let v
+  try { v = JSON.parse(raw) } catch { return null }
+  if (!v || typeof v !== 'object' || Array.isArray(v) || !KEPT_ROOMS.has(v.kind)) return null
+  if (v.kind === 'chat') return { kind: 'chat', kept: true }
+  return typeof v.id === 'string' && v.id && v.id.length <= 200 ? { kind: v.kind, id: v.id, kept: true } : null
+}
+
+/** What this browser keeps of a picked room: the room without its mark, or null */
+export function roomToKeep(room) {
+  if (!room || !KEPT_ROOMS.has(room.kind)) return null
+  return JSON.stringify(room.kind === 'chat' ? { kind: 'chat' } : { kind: room.kind, id: room.id })
+}
+
+/** The room the right side shows: the one picked, else the chat. One kept from before a reload whose tab,
+ *  workspace or Bridge is gone shows the chat; one picked by hand stays and says it is closed */
+export function roomShown(s) {
+  const room = s?.ui?.room ?? null
+  if (!room) return { kind: 'chat' }
+  if (!room.kept) return room
+  const gone = room.kind === 'tab' ? Array.isArray(s.tabs?.tabs) && !s.tabs.tabs.some(x => x.ref === room.id)
+    : room.kind === 'ws' ? Array.isArray(s.tabs?.workspaces) && !roomsOf(s).workspaces.some(w => w.key === room.id)
+    : room.kind === 'bridge' ? Array.isArray(s.rooms?.bridges) && !s.rooms.bridges.some(b => b.id === room.id)
+    : false
+  return gone ? { kind: 'chat' } : room
+}
+
+/** Where the Chat opens once when nothing is kept or picked (round 6d C3): a question that is open or was
+ *  answered within the hour, else the first tab that wants you; null for nothing, or when a room or a question
+ *  is picked already. { room, conv } */
+export function chatLanding(s, lang) {
+  if (s?.ui?.room || s?.ui?.quickConv) return null
+  const now = s?.now || Date.now()
+  const asks = askList(listedChats(s?.quick?.convs, s?.quick?.keep_hours, now), s, lang)
+  const fresh = asks.find(x => x.open || now - (x.conv.last_ms ?? x.conv.started_ms ?? 0) < FRESH_ANSWER_MS)
+  if (fresh) return { room: { kind: 'chat' }, conv: fresh.conv.id }
+  const ref = walkRefs(s?.tabs?.tabs)[0]
+  return ref ? { room: { kind: 'tab', id: ref }, conv: null } : null
+}
+
+// an inbox item's id (inbox.py: date, time, slug, hash); a start on anything else is a task's
+const INBOX_ITEM_RE = /^\d{8}-\d{4}-/
+
+/** Where a tab came from (round 6d C5): the start that opened it (model.returns, by its tab, else by its item
+ *  or task), the question it was handed on from (the start's conv, or the question handed on as its item), the
+ *  job, inbox item or task behind it. { kind: ask | job | item | task, key, title, conv? }, null for the control
+ *  session and a tab of nothing known */
+export function tabOrigin(s, tab, lang) {
+  if (!tab || tab.is_control) return null
+  const returns = s?.model?.returns ?? []
+  const own = tab.item ?? tab.slug ?? null
+  const start = returns.find(r => r.tab?.ref === tab.ref) ?? (own ? returns.find(r => r.item === own) : null) ?? null
+  const item = tab.item ?? (start && INBOX_ITEM_RE.test(start.item ?? '') ? start.item : null)
+  const convs = [...(s?.quick?.convs ?? []), ...(s?.chatArchive?.convs ?? [])]
+  const conv = (start?.conv ? convs.find(x => x.id === start.conv) : null)
+    ?? (item ? convs.find(x => x.handed?.inbox_id === item || (x.about?.kind === 'handoff' && x.about?.inbox === item)) : null)
+  if (conv) return { kind: 'ask', key: `ask:${conv.id}`, conv: conv.id, title: askTitle(conv, s, lang) }
+  const rows = indexRows(s?.model)
+  if (item) {
+    const row = rows.get(`inbox:${item}`)
+    const job = WORKER_KEY.exec(row?.inbox_key ?? '')
+    if (job) {
+      const [key, host, id] = job
+      const run = (s?.workers?.data?.runs ?? []).find(r => r?.host === host && r?.id === id)
+      return { kind: 'job', key, title: `${run?.title || id} · ${host}` }
+    }
+    return { kind: 'item', key: `inbox:${item}`, title: short(row?.title ?? start?.title ?? item, 80) }
+  }
+  const slug = tab.slug ?? (start && !INBOX_ITEM_RE.test(start.item ?? '') ? start.item : null)
+  if (!slug) return null
+  return { kind: 'task', key: `task:${slug}`, title: short(rows.get(`task:${slug}`)?.title ?? slug, 80) }
 }
 
 const VERDICT_KEYS = { first: ['zuerst', 'first'], then: ['dann', 'then'], later: ['kann warten', 'can wait'] }
@@ -3991,6 +4077,91 @@ export function hintsFor(s) {
  *  filled in, any other as it stands */
 export function hintText(words, vars = []) {
   return typeof words?.body === 'function' ? { ...words, body: words.body(...vars) } : words
+}
+
+// ---------------------------------------------------------------- the click origin log (round 6d, item 10)
+
+// which control was used from which place, never what about: the page, its view, the area of the explain overlay the
+// click stood in and the control's name from the code, counted and sent in small batches (POST /api/clicks, usage.jsonl
+// on the server, counted by scripts/cockpit-usage.py); only while the server's bootstrap says clicks: true
+export const USAGE_FLUSH_MS = 30000
+export const USAGE_VERB_MS = 2000      // a verb this soon after a click was sent by it
+const USAGE_MAX = 40
+const USAGE_CONTROL = new Set(['button', 'a', 'input', 'select', 'summary', 'label', 'textarea'])
+const USAGE_ROLES = new Set(['button', 'tab', 'menuitem', 'option', 'switch', 'checkbox', 'radio', 'link'])
+// classes that say how a control looks or stands, not which it is
+const USAGE_PLAIN = /^(btn|is-|has-|on$|off$|active$|small$|muted$|mono$|tone-|st-|sr-only$)/
+const USAGE_NAME = /^@?[A-Za-z][A-Za-z0-9_-]{0,47}$/
+
+/** The page and view a click is counted on: the work tab's view, the start page's view, else none (as /api/seen) */
+export function usagePlace(s) {
+  const page = s?.ui?.page ?? '-'
+  const view = page === 'briefing' ? workViewIn(s) : page === '@start' ? homeView(homeChosen(s?.model, s?.home)) : null
+  return { page, view: typeof view === 'string' && USAGE_NAME.test(view) ? view : '-' }
+}
+
+/** The name of the control a click stands in: its data-u, else up to two of its own classes (none that says how it
+ *  looks, none with a digit), else its role or tag. Never its words. null where the click hit no control */
+export function usageControl(target) {
+  for (let n = target; n && n.nodeType === 1; n = n.parentNode) {
+    const tag = String(n.tagName ?? '').toLowerCase()
+    const role = n.getAttribute?.('role') ?? null
+    const u = n.getAttribute?.('data-u') ?? null
+    if (!USAGE_CONTROL.has(tag) && !USAGE_ROLES.has(role) && !u) continue
+    if (u && USAGE_NAME.test(u)) return u
+    const own = String(n.getAttribute?.('class') ?? n.className ?? '').split(/\s+/)
+      .filter(c => c && USAGE_NAME.test(c) && !/\d/.test(c) && !USAGE_PLAIN.test(c) && c === c.toLowerCase())
+    if (own.length) return own.slice(0, 2).join('.')
+    return role && USAGE_NAME.test(role) ? role : tag || null
+  }
+  return null
+}
+
+/** The innermost area of the explain overlay (hintsFor: the page's, then the header's) the click stands in; a dialog
+ *  without one says dialog; else '-' */
+export function usageArea(s, target) {
+  const hints = hintsFor(s)
+  for (let n = target; n && n.nodeType === 1; n = n.parentNode) {
+    for (const h of hints) {
+      try { if (n.matches?.(h.target)) return h.id } catch { /* a selector this browser does not know */ }
+    }
+    if (n.getAttribute?.('role') === 'dialog') return 'dialog'
+  }
+  return '-'
+}
+
+/** The page's click log: click({page, view, area, control}) and verb(name) count, flush() sends what was counted as
+ *  one batch, and a batch of `max` different events goes by itself. Only the named fields are kept, so a title
+ *  handed in by mistake never leaves the page. A verb without a click just before it is no use of a control */
+export function createUsageLog({ send, now = Date.now, max = USAGE_MAX }) {
+  let counts = new Map()
+  let last = null
+  const name = v => (typeof v === 'string' && v ? v : '-')
+  function flush() {
+    if (!counts.size) return
+    const events = [...counts.values()]
+    counts = new Map()
+    send(events)
+  }
+  const add = ev => {
+    const key = [ev.kind, ev.page, ev.view, ev.area, ev.control, ev.verb].join('|')
+    const had = counts.get(key)
+    counts.set(key, had ? { ...had, n: had.n + 1 } : { ...ev, n: 1 })
+    if (counts.size >= max) flush()
+  }
+  return {
+    click(at) {
+      if (!at || name(at.control) === '-') return
+      const ev = { kind: 'click', page: name(at.page), view: name(at.view), area: name(at.area), control: name(at.control), verb: '-' }
+      last = { ev, at: now() }
+      add(ev)
+    },
+    verb(verb) {
+      if (!last || now() - last.at > USAGE_VERB_MS || typeof verb !== 'string') return
+      add({ ...last.ev, kind: 'verb', verb })
+    },
+    flush,
+  }
 }
 
 const HINT_MARGIN = 12    // the notes keep this far off the screen's edges

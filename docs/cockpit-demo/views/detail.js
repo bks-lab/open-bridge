@@ -5,7 +5,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
-  stateToken, canTab, settledRefs, statusSplit, tabNextStep, areaScope, homeAreas,
+  stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas,
   skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -145,9 +145,9 @@ function MetaList({ row, s }) {
   return html`<dl class="meta">${items.map(([k, v]) => html`<div class="meta-item" key=${k}><dt>${t.meta[k]}</dt><dd>${v}</dd></div>`)}</dl>`
 }
 
-export function Segmented({ label, values, current, onPick, busy }) {
+export function Segmented({ label, values, current, onPick, busy, u }) {
   return html`<div class="seg" role="group" aria-label=${label}>
-    ${values.map(([v, word]) => html`<button type="button" key=${v} class=${`seg-btn${current === v ? ' is-on' : ''}`}
+    ${values.map(([v, word]) => html`<button type="button" key=${v} class=${`seg-btn${current === v ? ' is-on' : ''}`} data-u=${u ? `${u}-${v}` : undefined}
       aria-pressed=${String(current === v)} disabled=${busy} onClick=${() => current !== v && onPick(v)}>${word}</button>`)}
   </div>`
 }
@@ -223,6 +223,39 @@ function ActionsBlock({ row, s, c }) {
   </div>`
 }
 
+/** The one close of a tab, wherever a point or a card has one (round 6d; the rule is logic.js tabCloseOffer): with
+ *  an open task or inbox item behind the tab Done and close tab (verb tab_done, which the server resolves) and Close
+ *  tab only beside it, else Close tab alone; nothing while the tab works or asks. A close whose answers went unseen
+ *  arms on the first click (the second-click pattern of RowSteps, falling back after a few seconds). `strong` makes
+ *  the lead button primary, `only` leaves out Done and close tab where the place offers its own (FlowAside's Done),
+ *  `onClosed` runs after a close or a Done that went through (the Chat walks on) */
+export function TabClose({ tab, s, c, size = 'xs', strong = false, only = false, onClosed = null }) {
+  const t = T()
+  const offer = tabCloseOffer(tab, s)
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return undefined
+    const id = setTimeout(() => setArmed(false), 4000)
+    return () => clearTimeout(id)
+  }, [armed])
+  if (!offer) return null
+  const busy = !!s.ui?.busy?.[tab.ref]
+  const went = r => { if (r?.ok) onClosed?.(r) }
+  const close = async () => {
+    if (offer.unseen && !armed) { setArmed(true); return }
+    setArmed(false)
+    went(await c.act('tab_close', { tab_ref: tab.ref }))
+  }
+  const both = offer.done && !only
+  const word = offer.done ? t.btnCloseTabOnly : t.btnCloseTab
+  return html`<span class="tab-close">
+    ${both ? html`<${Btn} size=${size} variant=${strong ? 'primary' : 'secondary'} busy=${busy}
+      u="tab-done" onClick=${async () => went(await c.act('tab_done', { tab_ref: tab.ref }))}>${t.btnDoneCloseTab}<//>` : null}
+    <${Btn} size=${size} variant=${strong && !both ? 'primary' : 'secondary'} busy=${busy} pressed=${armed ? true : undefined}
+      u="tab-close" title=${armed ? t.closeTabUnseen : undefined} onClick=${close}>${armed ? t.closeTabSure(word) : word}<//>
+  </span>`
+}
+
 export function TabControls({ tab, s, c, compact = false, slim = false }) {
   const t = T()
   const busy = !!s.ui.busy[tab.ref]
@@ -244,7 +277,7 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
       yes: () => html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>`,
       no: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>`,
       go_on: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>`,
-      close: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>`,
+      close: () => html`<${TabClose} tab=${tab} s=${s} c=${c} strong />`,
       jump: () => html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>`,
       view: () => html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>`,
     }
@@ -257,8 +290,7 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}
       ${tab.state === 'waiting' && !tab.filed_by && !settled && !tab.is_control ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
         onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>` : null}
-      ${tab.state === 'waiting' && (tab.filed_by || settled) && !tab.is_control && canTab(s, 'close') ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
-        onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>` : null}
+      <${TabClose} tab=${tab} s=${s} c=${c} strong />
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}
       ${canTab(s, 'screen') ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>` : null}
       ${tab.live ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => c.setOpenMsg(open ? null : tab.ref)}>${t.btnMessage}<//>` : null}

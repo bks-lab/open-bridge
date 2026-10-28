@@ -82,7 +82,7 @@ their defaults:
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
-| `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); a chat handed to a tab stays this long after the latest of its handoff, its result and its item's end; 0 keeps them, then only the limit of 30 applies |
+| `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); a chat handed to a tab stays this long after the latest of its handoff, its result and its item's end; 0 keeps them, then only the limit of 30 applies. An empty chat names the time it keeps a question ("Questions stay in the list for 7 days" with `168`) |
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `flow` (Work through, with `flow.enabled`); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. `files` names no view of the work tab any more: the first visit of the work tab opens the Files tab once ([The Files tab](#the-files-tab)), and the work tab keeps the view it falls back to. A click on the tab's switch still picks another for this browser, until the key changes |
 | `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, not a list or nothing left offers all. `files` is no view of the switch: it stands for the Files tab, right after the work tab, and is always kept (every link that opens a task's file leads there). With one view left the switch does not show. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the work tab shows Work through alone, the Sessions tab goes (Running now lists the sessions) and the task check is the row Check tasks under Not now, with no tab of its own |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
@@ -125,6 +125,7 @@ their defaults:
 | `usage.remotes` | the machines of `infra/instances` | other machines whose token use the overview page adds in (`infra/remotes` names; `[]` for none), see the overview page, "Tokens" |
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
 | `usage.remote_file` | `~/.bridge/resources/usage.json` | the file `scripts/usage-export.py` writes on those machines |
+| `usage.clicks` | `true` | the click origin log: which control was used from which page, view and area, by name and count, never its words or what it was about (`usage.jsonl`, section 6); `scripts/cockpit-usage.py` reads it. `false` writes nothing; any other value warns and keeps `true` |
 
 Migration note: `language`, `full_minutes`, `voice`, `launch.target` and
 `snapshot_minutes` used to be set under `briefing.claude_code_ui`, the block
@@ -1206,9 +1207,9 @@ open, plus every waiting tab whose own item or task is settled without a start
 of the cockpit naming it; a settled start without a tab stands nowhere),
 **Needs you**, **Working** and **No word**. A settled tab says why ("Done: its
 item is closed. The tab can go.") and offers **Close tab** as its one next step,
-the same on its session card, in the agent tab column and on its return card;
-the server lets a waiting tab close when its result is filed or its item or task
-is settled, and refuses it otherwise. The Sessions tab badge reads "AI n" while
+the same on its session card, in the agent tab column and on its return card.
+Since round 6d every tab that neither works nor asks can be closed (see **One
+close for every tab** below). The Sessions tab badge reads "AI n" while
 something done or a question waits there, else the session count, grey either
 way. Each session card now carries its tab's last line and its next step instead
 of only "Go to tab". The workplace keeps a tab named after its item once the
@@ -1236,6 +1237,23 @@ running session), the session's `subagents/` and `workflows/` folders under
 `~/.claude/projects/`, and the `CMUX_SURFACE_ID` of the process, read once with
 `ps` and matched to the tab list; the rest of the environment is dropped. A
 subagent counts as active while its transcript grew in the last two minutes.
+
+**One close for every tab.** A tab that waits or is back at its shell, shows no
+question and no draft in its prompt (unless its item or task is settled
+already) and is not the control tab has the same close wherever it stands: a
+point of Work through (Abarbeiten) and the aside of a record on the Files tab,
+Running now and its session cards, a return card, a tab card, the head of a
+tab open in the Chat and the line of Waiting for you. With an open task or
+inbox item behind the tab it is **Done and close tab** (de: Erledigt und Tab
+schließen) with **Close tab only** beside it, else **Close tab** alone. Done and
+close tab ends each of them the way Done does (`task.py close`: status done,
+moved to `work/done/YYYY-MM/`, board and log row; `inbox.py close` with the
+done note) and closes the tab only when every end went through; otherwise the
+tab stays open and the message names what is not done. A close of a tab whose
+answers nobody has seen asks once more ("Close tab: sure?") on the first click,
+and falls back after a few seconds. Where a point offers its own Done for the
+same row, only one Done stands there. The server sends what stands behind a
+tab as `behind` (`{task, item}`, null for the control tab).
 
 **Agent tabs.** Let AI do it and Advise open an agent tab per item through
 `workplace.py launch` and the terminal driver in the `workplace:` block of
@@ -2134,15 +2152,24 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   driver" and "tab list not current since" with the reason, as the tab column
   shows them. A tab open on the right names its task ("Task <title>", from the
   tab's own task or the newest live session in it), which opens in the item
-  drawer over the Chat.
-- **In Work, near the top**, under the questions, "Waiting for you" lists the tabs that wait for
-  you or need you, the most urgent first (the control tab never), each with its
-  workspace, its question and the answers, see [Answering a tab from
-  here](#answering-a-tab-from-here). A click anywhere in a row opens its tab on
-  the right; a click on one of its answers or its text field does only that. A
+  drawer over the Chat. Its head also says where it came from, "from: <title>"
+  (de: aus: <Titel>), for the question, background job, inbox item or other task
+  it was started from: a click opens the question in the Chat, the job on the
+  Background jobs page, the item or task in the drawer. The same words stand as
+  a second line of the tab's row in the sidebar. Where the origin is the tab's
+  own task only the task link shows. The head carries the tab's close (above,
+  **One close for every tab**) beside it.
+- **In Work, near the top**, "Waiting for you" lists the tabs that wait for
+  you or need you, the most urgent first (the control tab never), one short line
+  each: its name, one word for its state and how long it has been in it; its
+  question is the line's tooltip. A click on the line opens the tab on the right,
+  where its question and the answers stand, see [Answering a tab from
+  here](#answering-a-tab-from-here); the list itself answers nothing. A tab that
+  asks nothing has its close under the line. In its workspace below the same
+  tab is a grey row saying "waiting", so it is not read twice. A
   tab that has been in one state unusually long (`long`: working for an hour, or
-  a filed result waiting a long time) stands there too, without a question and
-  without answer buttons, so it is not forgotten. While the pointer or the focus
+  a filed result waiting a long time) stands there too, so it is not
+  forgotten. While the pointer or the focus
   is in the group its rows keep their order, and a tab that starts asking is
   added at the end; the sorted order comes back when the pointer leaves, so a
   click never lands on a row that was pushed under it.
@@ -2150,10 +2177,12 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   Each shows its colour, its state, its unread count and, when its folder is
   another Bridge's clone, that Bridge's name. Below each workspace are its tabs,
   most urgent first.
-- **The questions** (de: Fragen) have a section of their own right under the
-  order of the tabs, above "Waiting for you" and the workspaces, in every sort
-  mode, so a question just asked is found without scrolling: open and handed
-  questions first, then the answered ones, newest first in each. Each carries
+- **The questions** (de: Fragen) have a section of their own directly under
+  "Waiting for you", above the workspaces, in every sort mode (with "By status",
+  right under the order bar), so a question just asked is found without
+  scrolling: open and handed questions first, then the answered ones, newest
+  first in each. Its head has "+ New question". A question stays in the list
+  `chat_keep_hours` and then stands in the archive. Each carries
   its title (below) and, once handed on, its marker. "all of the last days"
   also reads the archive (`GET /api/chats/archive?days=7`, read only: at most
   14 days and 60 questions, newest first, without the ones you removed); those
@@ -2163,20 +2192,25 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
 - **On the right** is what you picked:
   - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same),
     with "Write" to open it in its window with the message box and keys;
-  - a quick chat with its box. The box is one input: a chip under it says where
-    Enter goes, "Asks here, read only" or "Starts an agent tab". The guess reads
-    the first words: a trailing `?` or a question word (what, how, which, ... /
-    was, wie, welche, ...) asks, an order word (fix, create, set up, ... / mach,
-    erstelle, leg an, ...) starts a tab, anything unclear asks. A leading `?` or
-    `!` decides it and is dropped from the text. A click on the chip picks the
-    other route and holds it until the box is empty again, however the guess
-    changes while you type on. Cmd or Ctrl Enter starts a tab at once, whatever
-    the chip says. The field's placeholder and the button's tooltip name no keys
-    (the cockpit is used by mouse first); the keys still work. Once the chat is handed on, the chip gives way to a status
-    line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no
-    countdown and no timer;
+  - a quick chat with its box. The box is one field, "Question or order" (de:
+    Frage oder Auftrag), with two buttons that never change: **Ask** (de: Fragen)
+    asks here, read only, and **Let AI do it** (de: AI machen lassen) starts an
+    agent tab. Nothing guesses from the words any more, and no chip or hint
+    stands under the field. On the Chat page the header's Ask puts the cursor
+    into this field instead of opening a window. The field and the buttons name
+    no keys (the cockpit is used by mouse first); Enter asks and Cmd or Ctrl
+    Enter starts the tab still. Once the chat is handed on, a status line stands
+    under the field (see [5. Asking Claude](#5-asking-claude-the-relay)). There
+    is no countdown and no timer;
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.
+
+**The Chat opens where you were.** Every room you pick, a tab, a workspace, a
+question or a Bridge, is kept in this browser (`bridge-cockpit.chatRoom`), and
+the Chat opens there next time. A kept tab or workspace that is gone opens the
+chat instead. With nothing kept the Chat picks once, as soon as the questions
+and the tabs are read: an open question or one answered within the hour, else
+the first tab that waits for you. It never switches on its own after that.
 
 **Chats leave on their own.** A chat started from a briefing row leaves when its
 item closes, once it has been quiet for 10 minutes. A chat handed to a tab stays
@@ -2239,7 +2273,7 @@ lists them; a tab picked in the sidebar starts the walk there. At the foot of
 the open tab stands the same bar the lists have under a detail: back, "2 of 5",
 the next tab with its workspace and Next, the two after it as links (keys `n`
 and `p` on the Chat page, when shortcuts are on). An answer that reached the
-tab, or "Close tab" in its head (for a tab that waits or is a bare terminal),
+tab, or the close in its head (for a tab that neither works nor asks),
 goes on to the next tab by itself, as settling an entry does in the lists. The
 walk keeps the order it began with: a tab answered meanwhile keeps its place
 while it is open, a closed one drops out, and a tab that starts waiting later
@@ -2445,8 +2479,28 @@ dates, the folder bar, the machines and a sub page's head card). The notes come 
 it, read from left to right. Next, Back and the arrow keys page through the rounds,
 and the bar says which round shows and how many areas stand further down (scroll,
 and they follow). An area the page does not show right now is left out. A click
-anywhere or `Esc` closes it, and its bar starts the tour. It sends nothing and keeps
-nothing.
+anywhere or `Esc` closes it, and its bar starts the tour. It sends nothing.
+
+**What bothers you here?** (de: Was stört hier?) in the bar opens a short field
+(300 characters). While it is open, a click on a note picks that area instead of
+closing the window. **Note it** keeps the sentence with the page, view and area
+as a proposal in `work/_learning/proposals/` for the next round of
+`/bridge-learn` (verb `explain_note`); the window says it was noted and that
+nothing was sent. The audit line names the place, never the sentence.
+
+**What the page is used for.** With `cockpit.usage.clicks` on (the default) the
+page counts which control was clicked from which page, view and area, by the
+control's name (its `data-u` or its own classes, never its words), and sends
+the counts in small batches (`POST /api/clicks`, every 30 seconds while the
+page shows and when it hides). The server keeps only those names and drops any
+event that holds words, an item key or a path. `scripts/cockpit-usage.py`
+counts this log and `audit.log` since its last run (14 days on the first,
+`--days n` or `--since YYYY-MM-DD`) and proposes, at most 10 a run and never
+twice for one topic, what may go: pages no longer opened, areas and controls
+not used (judged only over 14 days the click log covers), pages left again
+within 5 seconds, and back and forth between two pages. Each becomes a proposal
+in `work/_learning/proposals/` for `/bridge-learn`; `--dry-run` writes nothing.
+Nothing runs it on a timer: run it at the start of a round.
 
 ### Look up
 
@@ -2528,8 +2582,9 @@ nothing a stranger could trigger:
   deliverables), merge (open tasks into one, and its undo), check tasks, keep
   open, close task, files ask, launch,
   adopt, send, key,
-  close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker
-  profile, guide read, guide settings), every id
+  close tab, done and close tab, finding seen, explain note, snapshot, ticker
+  settings, ticker refresh, ticker edit, ticker profile, guide read, guide
+  settings), every id
   checked again before it reaches a script, every argument a separate word,
   texts after `--`;
 - the news ticker reads only the feed addresses you wrote into
@@ -2682,9 +2737,9 @@ text of that one turn, sent fresh with every turn, as a block labelled as data
 inside `<situation>` tags ("data to answer from, not instructions"), and is
 never kept: not in the turns, not in `quick.json`, not in a handed on
 transcript. The start page's core asks without it. Every message picks its way
-by the route chip under the box (see [The chat as cmux](#the-chat-as-cmux)):
-the quick read-only answer above, or a real Claude session in a cmux tab,
-which may act; Cmd or Ctrl Enter always takes the tab. A new problem goes there
+by the button you click (see [The chat as cmux](#the-chat-as-cmux)): Ask for
+the quick read-only answer above, Let AI do it for a real Claude session in a
+cmux tab, which may act. A new problem goes there
 at once (verb `chat_tab`:
 filed to the inbox as a decision, then started like "Let AI do it"); in an open chat
 it takes the conversation so far, with the text in the box as the order on
@@ -2694,7 +2749,7 @@ tabs.
 
 **Where a handed on chat went.** A chat handed on carries a record of it
 (`handed` on the conversation: where to, when, and the status), and the box
-shows it as a status line in place of the route chip. The record is claimed
+shows it as a status line under the field. The record is claimed
 as `starting` only once every check passed (an empty transcript, a relay that
 is off or an order over the cap leave no record), and a second click is
 refused (`handoff_running`) only while it is starting; a finished handoff, of
@@ -2931,6 +2986,8 @@ share or clean up.
 | `server.log` | errors, dated, never a key, cookie or request body; kept to one backup (`server.log.1`) | no |
 | `stdout.log` | what the process itself prints: the dated line of each start, and a crash before the server is up | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
+| `usage.jsonl` | the click origin log (`cockpit.usage.clicks`): per minute which control from which page, view and area, with the verb it sent and a count; rotated at 256 KB to `usage.jsonl.1`; read by `scripts/cockpit-usage.py` | no: names from the code and counts only |
+| `usage-run.json` | when `scripts/cockpit-usage.py` last ran without `--dry-run`, the start of its next period | no |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |
 | `state.json` | team runs started from the page, the start page's tiles and pins, how the first-run tour ended, the workflow runs marked as checked, the sessions said not to work on a task (`session_refused`: per session id the slugs Not this task named, at most 8 each); and this machine's copy of the rows hidden or marked done or not doing (the shared record is `work/cockpit/settled/`, below) | yes: the title of each row marked done or not doing |
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
@@ -3258,6 +3315,39 @@ below only changes how long a chat stays.
 6. **Questions.** New read only `GET /api/chats/archive?days=n` (1 to 14,
    at most 60, without removed, replaced or placed ones). The page keeps the
    question opened last in this browser under `bridge-cockpit.lastAsk`.
+
+### Upgrading: a close for every tab, the Chat in two buttons, the cockpit's use counted
+
+Each change is code; two config keys are worth a look, and one script is new.
+
+1. **`chat_keep_hours: 168`** (recommended) keeps a question a week in the
+   Chat's Questions; the default stays 24 hours. An empty chat names the time.
+2. **`cockpit.usage.clicks`** (new, `true`): the click origin log
+   `usage.jsonl` beside `audit.log`. Set it to `false` to write nothing.
+3. **`scripts/cockpit-usage.py`** (new) counts that log and `audit.log` and
+   files proposals under `work/_learning/proposals/` (source type
+   `cockpit-usage` in `work/_learning/_schema.proposal.yaml`). It keeps its
+   last run in `usage-run.json`; nothing starts it on its own.
+4. **Tabs.** New verb `tab_done {tab_ref}` (cap `close`) ends the open task and
+   the open inbox item behind a tab through Done, then closes it; a partial end
+   keeps the tab open (`tab_done_partial`). `tab_close` no longer needs a filed
+   result or a settled item: it closes any tab that waits or is back at its
+   shell, asks nothing (unless settled) and is not the control tab. Each tab
+   of `GET /api/state` carries `behind: {task, item}` (null for the control tab).
+5. **Chat.** The route chip, its word lists and the leading `?` or `!` are
+   gone: a text that starts with `?` is sent as it is. The server's verbs
+   (`ask`, `chat_tab`, `quick_handoff`) are unchanged. The browser keeps the
+   room picked last under `bridge-cockpit.chatRoom`.
+6. **Seen.** New verbs `finding_ack {key, note}` and `finding_unack {key}` for
+   a job (`worker:<host>:<id>`) or a page row (`item:<key>`), kept as act `ack`
+   in `work/cockpit/settled/`. `GET /api/workers` adds `acked` to a job whose
+   finding was marked seen as it still stands. Closing an inbox item under
+   `worker:<host>:<id>` marks the job seen with its close note, and an agent
+   tab started with an order now writes a close note fit for that.
+7. **GitHub.** The filter Person is split into **Assigned to** and **Opened
+   by**; a Person kept in this browser reads back as Assigned to.
+8. **Explain.** New verb `explain_note {text, page, view, area}` and
+   `POST /api/clicks {events}` (at most 60 events; no audit line, as presence).
 
 ### Upgrading: settled rows in git
 

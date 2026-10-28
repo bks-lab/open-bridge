@@ -76,13 +76,14 @@ layout now").
 | `scripts/lib/bridge_cockpit/guide.py` | the decision guide: settings (`cockpit.session_guide` plus `guide.json`), a waiting tab's last turns from its transcript (`turns_of`, the screen as fallback), its first ask (`first_ask`) and its task's headline (`task_headline`) for the `about` line, the Haiku prompt and the parse of its answer (only steps safe to offer, a dialog step only one of the dialog's numbers, `RISKY_RE`), the auto reading after each tab poll (`on_tabs`, `per_hour`), one worker thread, `state()` as the `guide` key and SSE event |
 | `scripts/lib/bridge_cockpit/net.py` | the one outbound fetcher, `fetch`, for feeds (ticker) and agent cards (agents): a scheme allowlist that also holds for redirects, no redirect into a private network unless the configured address is there, a size cap and a wall-clock deadline per caller |
 | `scripts/lib/bridge_cockpit/details.py` | read-only detail endpoints: a task's STATUS.md and the files of its folder (`folder_files`, one read by `task_file`), an inbox item |
-| `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json`, and the questions of the waiting tabs (`_refresh_asks`) |
+| `scripts/lib/bridge_cockpit/tabs.py` | tab poller over `workplace.py status --json`, and the questions of the waiting tabs (`_refresh_asks`); each tab's `behind` (`returns.py tab_behind`: its open task and inbox item, for Done and close tab) |
 | `scripts/lib/bridge_cockpit/asks.py` | pure: what a waiting tab asks, read off its screen (`question_of`: text, options, hash, yes or no, draft; `draft_of`: only whether something is typed in the prompt) |
 | `scripts/lib/bridge_cockpit/organize.py` | Organize with AI: `gather` (this Bridge's workspaces and tabs, scrubbed, `fit` within the prompt limit), `prompt`, `argv` and `argv_ok` (the one `claude -p` shape the runner lets through for it), `parse`, `items` (the checks that drop what is not safe to offer), `failure_code`, `Proposals` (in memory, 15 minutes) |
 | `scripts/lib/bridge_cockpit/server.py` `driver_caps`, `backup_layout` | what the terminal driver serves; the cmux layout backup every `snapshot_minutes` |
 | `scripts/lib/bridge_cockpit/watch.py` | stat-only watcher of `work/` and the relay folder |
 | `scripts/lib/bridge_cockpit/relay.py` | relay records, HMAC signing, heartbeat reading |
-| `scripts/lib/bridge_cockpit/store.py` | `state.json` (hidden rows, team runs) and `view.json` (last view); `read_archive` reads the monthly chat archive |
+| `scripts/lib/bridge_cockpit/store.py` | `state.json` (hidden rows, team runs) and `view.json` (last view); `read_archive` reads the monthly chat archive; `clean_clicks` and `append_clicks` the click origin log `usage.jsonl` of `POST /api/clicks` (only code names and counts, rotated at 256 KB) |
+| `scripts/cockpit-usage.py` | counts `usage.jsonl` and `audit.log` since its last run and writes the cockpit's unused or confusing places as proposals for `/bridge-learn`; `write_note` is the one writer of that format, also for the verb `explain_note` |
 | `scripts/lib/bridge_cockpit/settled.py` | `work/cockpit/settled/`: every hide, settle and "show again" as one new file, tracked by git, so a settled row stays settled on every machine; the legacy keys of `state.json` migrate in once |
 | `scripts/lib/bridge_cockpit/server.py` | HTTP: routes, auth, static files, SSE |
 | `scripts/lib/bridge_cockpit/text.py` | server texts (notes, prompts to Claude), de and en |
@@ -108,7 +109,7 @@ layout now").
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, A2A connections): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
 | `scripts/web/views/organize.js` | `OrganizeView`: the proposal grouped by workspace, nothing ticked, the ticks, Apply, and the applied, skipped and failed items in words |
 | `scripts/web/views/guide.js` | the decision guide: `GuideTree` (the reading as a tree; a branch fills the box, Send or Press goes through `logic.js guideChoices`; To tab, Watch, What was read), `GuideLine`, `GuideBoard` on the Sessions page, `GuideSettings` |
-| `scripts/web/views/hints.js` | the explain overlay: `HintsOverlay` measures the areas `logic.js hintsFor` names for the page (its own parts, group `page`, then the header, group `head`), `hintRounds` splits them into rounds so every note has room (the page first, the header from left to right, an area scrolled away counted as `away`), `hintLayout` places a numbered note beside each area of a round (never over another), `HintsLayer` draws the round's notes, rings (an ellipse for a small area, a frame for a long or large one) and arrows, and pages on with Next, Back and the arrow keys; nothing is sent or kept |
+| `scripts/web/views/hints.js` | the explain overlay: `HintsOverlay` measures the areas `logic.js hintsFor` names for the page (its own parts, group `page`, then the header, group `head`), `hintRounds` splits them into rounds so every note has room (the page first, the header from left to right, an area scrolled away counted as `away`), `hintLayout` places a numbered note beside each area of a round (never over another), `HintsLayer` draws the round's notes, rings (an ellipse for a small area, a frame for a long or large one) and arrows, and pages on with Next, Back and the arrow keys; nothing is sent, except a sentence noted under "What bothers you here?" (verb `explain_note`) |
 | `scripts/web/views/tour.js` | the first-run tour: `Tour` (the welcome, one step per area with the area lit, Next, Back, Skip); the steps are `logic.js tourSteps`, where the box stands `tourPlace`, whether a visit offers it `tourOffered`; the end goes to the server as `tour_done` (`store.py` keeps it in `state.json`) |
 | `scripts/web/views/reply.js` | `AskLine` and `TabReply`: a waiting tab's question and the answers to it (`logic.js replyOptions`), in the sidebar, the tab pane and the tab window |
 | `scripts/web/views/prose.js` | `Prose`: draws what `markdown.js` read as elements, links in a new tab with `noopener noreferrer` |
@@ -544,6 +545,12 @@ COCKPIT_DEMO_SMOKE=require ~/.venvs/cockpit-smoke/bin/pytest -q scripts/tests/te
   complete at rest, its moving layer only adds (`DESIGN.md`, form 3).
 - The relay only ever prompts the control session, never during a turn, never
   an agent tab.
+- A control the click log cannot tell apart by its own classes (a `btn` alone,
+  one `seg-btn` among others) gets a name: `Btn` and `Segmented` take `u`,
+  written as `data-u`, which `logic.js usageControl` prefers. Never its words.
+- A tab is closed through `views/detail.js TabClose` and the one rule
+  `logic.js tabCloses` and `tabCloseOffer`, in every place; no view writes a
+  close of its own.
 
 ## 8. Moving it to open-bridge
 

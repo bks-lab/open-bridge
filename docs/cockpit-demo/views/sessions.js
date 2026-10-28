@@ -263,7 +263,7 @@ function WorkerAdvise({ r, ret, s, c }) {
   const t = T()
   const open = ADVISE_OPEN.includes(r.advise?.state)
   if (r.acked && !open) return null
-  const start = html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`
+  const start = html`<${Btn} size="xs" variant="secondary" u="worker-advise" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`
   if (open && ret?.tab) return html`<${Chip} token="info">${t.workerInTab}<//>
     <${Btn} size="xs" variant="secondary" onClick=${() => openTabRoom(s, c, ret.tab.ref)}>${t.workerToTab}<//>`
   if (open && ret?.live === 'started') return html`<${Chip} token="info">${t.workerStarting}<//>`
