@@ -280,8 +280,10 @@ MUTATIONS = (
     Mutation(
         name="a-failed-run-reads-as-a-clean-one",
         file="engine/reconcile.py",
-        search='    if "failure" in wants and newest is not None and newest[1] not in (None, 0) \\',
-        replace='    if False and newest is not None and newest[1] not in (None, 0) \\',
+        search='    if "failure" in wants and newest is not None and newest[1] not in (None, 0) \\\n'
+               '            and not _transient_blip(',
+        replace='    if False and newest is not None and newest[1] not in (None, 0) \\\n'
+                '            and not _transient_blip(',
         test="tests.test_reconcile.TheTraceIsReadBackOrTheEvidenceIsDecoration"
              ".test_the_newest_line_deciding_it_failed_is_reported",
         scar="the run ended non zero and wrote it down; a report that calls that "
