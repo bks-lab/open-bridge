@@ -174,8 +174,9 @@ export function ReviewPage({ s, c }) {
 }
 
 /** The check itself: its run, the verdict filter and sort, what is picked, the table. Its own tab, or the
- *  tasks label of the page where inbox and tasks stand together (then with the run button on top) */
-export function ReviewBody({ s, c, inline = false }) {
+ *  tasks label of the page where inbox and tasks stand together (then with the run button on top), or the middle of
+ *  Work through (views/flowleft.js CheckList: its own `intro`, the plain line in place of the model's) */
+export function ReviewBody({ s, c, inline = false, intro = null }) {
   const t = T()
   const byKey = indexRows(s.model)
   const rv = s.model?.review ?? {}
@@ -193,7 +194,7 @@ export function ReviewBody({ s, c, inline = false }) {
   return html`
     <div class="panel panel-pad review-top">
       ${inline ? html`<header class="psec-head"><h2 class="sec-title">${t.reviewTitle}</h2><${CheckButton} s=${s} c=${c} size="xs" /></header>` : null}
-      <p class="muted small">${t.reviewIntro}</p>
+      ${intro ?? html`<p class="muted small">${t.reviewIntro}</p>`}
       <${CheckFlow} s=${s} />
       ${rv.last ? html`<p class="small">${reviewStripText(s)}${rv.last.mismatch ? html` · <${StateLine} token="warning" word=${t.reviewMismatch} />` : null}</p>` : null}
       ${rv.error ? html`<p><${StateLine} token="danger" strong word=${t.reviewFailedLine(rv.error)} /></p>` : null}

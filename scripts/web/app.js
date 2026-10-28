@@ -1336,8 +1336,8 @@ const ctl = {
   // a found file opens in the queue where it stands there, else beside it (a backlog task); a closed one always
   // beside it, by its folder, since a slug can be open and closed at once
   // under the area filter: in the filtered queue, one of another area beside it (logic.js fileOpen).
-  // Outside the files view the click shows the task where it is seen (logic.js fileClick): an open one in the
-  // item drawer over the page (one opened from a drawer leads back to it), a closed one in the files view
+  // Outside the files tab the click opens that tab with the record (files.js fileClick); only where the files are
+  // switched off an open task shows in the item drawer over the page (one opened from a drawer leads back to it)
   openFile(slug, path) {
     const s = store.get()
     const to = fileClick(s, slug, path)

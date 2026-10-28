@@ -883,8 +883,9 @@ kbd {
   .cal-mo-title { display: none; }
 }
 
-/* GitHub work (views/github.js): the figures with a cause, the boards' facts in the list, an opened issue or pull request;
-   the switch of a board (.ghb-mode) stands in the settings */
+/* GitHub work (views/github.js): the figures with a cause, the filter bar (.ghf, round 6c), the boards' facts in the
+   list, an opened issue or pull request; the switch of a board (.ghb-mode) stands in the settings. The rows are compact
+   (round 6c) so more of them fit */
 .ghb { display: grid; gap: 14px; margin: 4px 0 14px; }
 .ghb-figures { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .ghb-figure {
@@ -916,8 +917,10 @@ kbd {
 .board-set-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .board-set-row.is-off .board-set-name { color: var(--on-surface-muted); }
 .board-set-name { font-weight: 600; overflow-wrap: anywhere; }
-.ghb-filter { display: flex; align-items: center; gap: 8px; margin: 0; }
-.ghb-people { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
+.ghf { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
+.ghf-field { display: grid; gap: 2px; min-width: 0; }
+.ghf-field select { max-width: 220px; }
+.ghf-count { align-self: center; }
 .ghl { display: grid; gap: 12px; }
 .ghl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .ghl-search {
@@ -938,14 +941,14 @@ kbd {
 .ghl-chev.is-open { transform: rotate(90deg); }
 .ghl-rows { list-style: none; margin: 0; padding: 0; display: grid; }
 .ghl-row {
-  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 4px 14px;
-  padding: 10px 8px; border-bottom: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer;
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 2px 12px;
+  padding: 5px 8px; border-bottom: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer;
 }
 .ghl-row:hover { background: var(--surface-muted); }
 .ghl-row:focus-visible { outline: 2px solid var(--secondary); outline-offset: -2px; }
 .ghl-row.is-quiet .ghl-title { color: var(--on-surface-muted); }
 .ghl-icon { color: var(--tk); align-self: start; margin-top: 2px; }
-.ghl-main { min-width: 0; display: grid; gap: 4px; }
+.ghl-main { min-width: 0; display: grid; gap: 2px; }
 .ghl-title { margin: 0; font-size: var(--text-sm); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .ghl-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--text-xs, 11px); }
 .ghl-state { display: inline-flex; align-items: center; gap: 5px; color: var(--on-surface); }
@@ -955,6 +958,8 @@ kbd {
 .ghl-chip-quiet { border-color: var(--warning); color: var(--on-surface); }
 .ghl-chip-untasked { border-color: var(--warning); border-style: dashed; color: var(--on-surface); }
 .ghl-chip-draft { border-style: dashed; }
+.ghl-chip-board { border-color: var(--info); color: var(--on-surface); }
+.ghl-pr { border-color: var(--tk); color: var(--on-surface); }
 .ghl-side { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
 .ghl-people { display: flex; gap: 6px; }
 .ghl-acts { justify-content: flex-end; flex-wrap: nowrap; }
@@ -1016,6 +1021,15 @@ kbd {
 .route-chip.is-tab { font-weight: 600; }
 .handoff-status { margin: 6px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ptab-more { display: inline-flex; }
+/* a folder's tab with its ▾ (views/header.js FolderTab); the tab keeps its own button, the marker measures it */
+.ptab-folder { display: inline-flex; align-items: stretch; }
+.ptab-caret {
+  position: relative; display: inline-flex; align-items: center; padding: 0 10px 0 6px; margin-left: -8px; border: 0; background: transparent;
+  color: var(--on-surface-muted); font-size: 15px; cursor: pointer;
+}
+.ptab-caret:hover, .ptab-caret[aria-expanded="true"] { color: var(--on-surface); background: var(--surface-muted); }
+.more-menu.folder-menu .settle-item { justify-content: flex-start; gap: 8px; }
+.folder-menu .folder-note { margin-left: auto; }
 .more-menu { position: fixed; right: auto; min-width: 220px; z-index: 70; }
 .more-menu .settle-item { justify-content: space-between; }
 .more-menu .settle-item.is-on { font-weight: 600; background: var(--accent-subtle); }
@@ -1249,6 +1263,9 @@ kbd {
 .wfacet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .wfacet .label-caps { min-width: 72px; }
 .wgroup { display: grid; gap: 10px; }
+/* one panel per machine, its systems inside (views/sessions.js WorkersPage) */
+.wmachine { display: grid; gap: 14px; }
+.wgroup-title { font-size: var(--text-sm); }
 .wlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .wrow { border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius-lg); background: var(--surface-raised); }
 .wrow-main {
@@ -1418,6 +1435,36 @@ kbd {
 .otile-big { font-size: 26px; font-weight: 600; line-height: 1.15; color: var(--ink); }
 .otile.tk-danger .otile-big, .otile.tk-warning .otile-big { color: var(--tk); }
 .otile-sub { font-size: var(--text-sm); color: var(--on-surface-muted); }
+
+/* the bar of a folder on top of its pages (views/header.js FolderBar): stays in view while the page scrolls */
+.folderbar {
+  position: sticky; top: 0; z-index: 5; flex: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin;
+  margin: -4px 0 0; padding: 4px 0 8px; background: var(--surface);
+}
+.folder-chip { flex: none; padding: 6px 12px; font-size: var(--text-sm); }
+.folder-name { font-weight: 600; }
+.folder-note { color: var(--on-surface-muted); }
+/* the machines of a folder's overview, one line each (views/pages.js MachineLines) */
+.mlines { display: grid; gap: 8px; }
+.mlines-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.mline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.mline-main {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 8px; border: 0; border-radius: var(--radius-md);
+  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.mline-main:hover { background: var(--surface-muted); }
+.mline-name { font-size: var(--text-sm); }
+.mline-bad { color: var(--danger); font-weight: 600; }
+/* the head card of a sub page (views/pages.js PageSummary) */
+.psum-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.psum-line {
+  width: 100%; display: grid; grid-template-columns: auto minmax(120px, 220px) minmax(0, 1fr); align-items: center; gap: 10px;
+  padding: 5px 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: inherit; font: inherit;
+  font-size: var(--text-sm); text-align: left; cursor: pointer;
+}
+.psum-line:hover { background: var(--surface-muted); }
+.psum-title { font-weight: 600; }
+.psum-text { color: var(--on-surface-muted); overflow-wrap: anywhere; }
 .otile-note { font-size: var(--text-label); color: var(--on-surface); overflow: hidden;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
@@ -1545,6 +1592,10 @@ kbd {
   .cmd-input { padding-right: 8px; }
   .btn-sm { min-height: 34px; padding: 0 9px; }
   .pagebar-tabs { padding: 0 8px; }
+  /* the folder bar scrolls with the page under the sticky header; the head card's lines wrap */
+  .folderbar { position: static; }
+  .psum-line { grid-template-columns: auto minmax(0, 1fr); }
+  .psum-text { grid-column: 2; }
   /* More stays in view at the right edge while the tabs scroll under it (review C21) */
   .ptab-more { position: sticky; right: 0; z-index: 1; background: var(--surface); }
   .panel-pad { padding: 14px 14px; }

@@ -1,7 +1,7 @@
 ---
-summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the news ticker, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
+summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-27
+last_updated: 2026-10-28
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -83,10 +83,14 @@ their defaults:
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
-| `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev), `files` (Files) or `flow` (Work through, with `flow.enabled`), see [The files view](cockpit-files.md); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. A click on the tab's switch still picks another for this browser, until the key changes |
-| `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, `files` is always kept (every link that opens a task's file leads there), not a list or nothing left offers all. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the Sessions tab then goes (Running now lists the sessions) and, without By source, the task check has its tab Tidy up again (behind More only when the bar is full) |
+| `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `flow` (Work through, with `flow.enabled`); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. `files` names no view of the work tab any more: the first visit of the work tab opens the Files tab once ([The Files tab](#the-files-tab)), and the work tab keeps the view it falls back to. A click on the tab's switch still picks another for this browser, until the key changes |
+| `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, not a list or nothing left offers all. `files` is no view of the switch: it stands for the Files tab, right after the work tab, and is always kept (every link that opens a task's file leads there). With one view left the switch does not show. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the work tab shows Work through alone, the Sessions tab goes (Running now lists the sessions) and the task check is the row Check tasks under Not now, with no tab of its own |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
 | `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue on top and the rest behind it on the chips Active, Waiting, Resting, Backlog and All, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
+| `files_search.enabled` | `false` | Ask AI on the start of the Files tab: one model call without tools, only on a click, over at most 12 of the records listed, see [The Files tab](#the-files-tab). Off, the button does not show and the verb refuses |
+| `files_search.budget_per_day` | `20` | how many questions a day may go to the model; `0` none |
+| `files_search.model` | none | the model, `haiku`, `sonnet` or `opus`; none: the service `cockpit-files` of `workflow/ai-services/` (default Haiku) |
+| `files_search.block` | `[]` | words that keep a record private: a record whose area, theme, path or title holds one (case folded) never reaches the model; the server drops it before the request is built, and the page says how many stay back and by which words. At most 50 words of 60 characters |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
 | `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
 | `flow.enabled` | `false` | the view Work through of the work tab: everything open grouped by theme or area, one point at a time as a card with five verbs, or as a list with suggestions and a batch, see [Work through](#work-through-flow). Off, the view does not exist |
@@ -210,13 +214,15 @@ Help (`?`) last: Explain first in it, then the topics of the look-up card and th
 tour. The colours (auto, light, dark) and the look-up card stand in Settings,
 Appearance. Under it sits the page bar. In front stand the
 tabs of every day: "Start" (a new visit opens on it, a reload stays where it
-was), "Today" (the briefing), "Chat", then the profile's pages with the
+was), "Today" (the briefing), "Files" (the records, a search first, see [The Files
+tab](#the-files-tab)), "Chat", then the profile's pages with the
 default `group: main` (Work and Operations in a typical profile). Behind them
 come Sessions (only without Work through: with it, Running now lists the
 sessions, see below), Background jobs (unless the profile places it under a page,
 see Sub pages), A2A connections (only with the classic chat: with
 `chat_layout: workspaces` the agents are an area of the Chat, see [The chat as
-cmux](#the-chat-as-cmux)), Tidy up, Jev and every profile page with `group: more`. While the bar is wide enough every tab stands in it; when
+cmux](#the-chat-as-cmux)), Check tasks (only without Work through: with it, the
+check is a row under Not now, see [Today](#today-the-briefing), Checking and closing tasks), Jev and every profile page with `group: more`. While the bar is wide enough every tab stands in it; when
 they would overflow, that second group folds, from the last tab forward,
 behind a last tab, "More", which carries the name of the page open behind it,
 else a dot in the strongest colour a tab behind it wears for a reason: red for
@@ -228,7 +234,7 @@ happened today" in the middle of the Today page.
 
 A page with `group: work` has no tab either: it folds into the Today tab, which
 then carries that page's title (Work, say) and a switch over its left column
-with three views. **Due** is the four blocks below, and the tab opens on it
+with its views (none when only one is left). **Due** is the four blocks below, and the tab opens on it
 unless `cockpit.work_view` names another view. A view the switch does not offer
 (`cockpit.work_views`) falls back to Work through where it is on, in the page and
 on the server, and is never stored.
@@ -308,16 +314,18 @@ cockpit:
     alex: person
 ```
 
-### The files view
+### The Files tab
 
-**Files** is one more view of the work tab, beside Due: one task at a time as a file, with its next
-step, its drawers, a search across every task and a question to the file. It has a page of its own:
-[`cockpit-files.md`](cockpit-files.md).
+**Files** is a tab of its own, right after the work tab. It opens on a search: a large field, chips for
+area, state and kind, and the records changed last; a click opens a record as a file with its next step,
+its drawers and a question to the file, and "Back to the search" keeps the words typed. Walking the active
+files one at a time is one click away, and **Ask AI** (`cockpit.files_search`, off by default) asks a model
+about the records listed, only on a click. It has a page of its own: [`cockpit-files.md`](cockpit-files.md).
 
 ### Work through (`@flow`)
 
 **Work through** is a view of the work tab, last in its switch beside Due, By
-source, By Jev and Files, there only with `cockpit.flow.enabled: true`
+source and By Jev, there only with `cockpit.flow.enabled: true`
 (`cockpit.work_view: flow` opens the tab on it). It is laid out as cmux lays
 out a workspace:
 
@@ -334,7 +342,13 @@ out a workspace:
   A theme entered can be renamed. With Jev a third order, **Prio**, stands
   beside Themes and Areas (below). On top stands **Running now** as one row
   with its count while an agent works (below), at the foot **Not now** with its
-  groups (below); what one of them opens in the middle is scrolled into view.
+  groups (below) and under it **Check tasks**, the task check with its open
+  suggestions ("5 suggestions"; "running" during a run, "not run yet" before the
+  first): a click shows the check in the middle, with Back, its run button, one
+  plain line of what it does, then the verdict filter, the sort and closing many
+  at once, and no right column, instruction line or walk bar beside it. A
+  suggestion is a task whose verdict is not continue and that nobody kept open.
+  What one of them opens in the middle is scrolled into view.
   On a narrow screen the list is one select over the middle, Running now a
   strip over it and Not now folded under it.
 - **In the middle**, on entering a theme (and at the level of all of them),
@@ -1217,7 +1231,8 @@ already runs; the row then offers "Go to tab". A tab in state `shell` (the
 command never started, or the agent ended) blocks nothing: its row offers
 Restart beside "Go to tab".
 
-**Checking and closing tasks.** "⟳ Check tasks" (on the Check tab, in the
+**Checking and closing tasks.** "⟳ Check tasks" (in Work through under
+Check tasks, where Work through is on; else on the Check tasks tab; in the
 header of Your tasks, and on every page that lists tasks) runs
 `task.py review` in the background: a small model reads every task in doing or
 review (steps, log, commits, linked issues resolved in one GitHub call) and
@@ -1228,8 +1243,8 @@ the finished check arrives as a note with its cost. Rows then carry a verdict
 chip (close?, stale?, waiting, unclear?). A task's detail shows the
 recommendation with its reason, confidence, model and evidence, with Close ▾,
 Keep open (until the task changes), Check again and, for unclear or guessed
-answers, Check closer with the stronger model. The Check tab is the overview of
-the last run: a filter per verdict and "changed", sort by verdict, priority or
+answers, Check closer with the stronger model. Check tasks (the row in Work
+through, or the tab without it) is the overview of the last run: a filter per verdict and "changed", sort by verdict, priority or
 quiet, and a selection for Let AI do it (n) ▾, Close n ▾, Keep open and Check
 closer. Both doors work as on every other row: Close ▾ on a
 task the check would close starts with the check's reason in the sentence, and
@@ -1314,34 +1329,63 @@ sends, Shift+Enter a new line). Escape or a click outside closes it.
 **Overview pages and tokens.** A profile page with `overview: true` opens
 with a board of tiles: one per section, with its count, its loudest row and a
 colour for the worst tone (a quota gauge shows its fullest value, a plain gauge
-its counts), plus one for the background jobs of the Background jobs tab, one for the tokens
+its counts), plus one for the background jobs (only where Background jobs keep a
+tab of their own; under a page they stand in its folder bar), one for the tokens
 of the week and, when the page places the cost card, one for the cloud costs
 (yesterday, the month so far and seven small bars). A click on a section tile
 scrolls to that section, the cost tile to the cost card, the workers
-tile opens the Background jobs tab.
+tile opens the Background jobs tab on every job. A sub page with `overview: true`
+(Sub pages, below) has no tiles: it heads with one card of one line per section
+drawn (a dot, the title, what it says: "1 fine, 1 off", "4 warnings: <section>"),
+where neighbours that say the same of their one row fold into one line; a click
+jumps to the section. Jobs, tokens and costs do not stand there.
 
 **Only an outage is red.** A background job counts as down when the engine
 files it with severity high (gone, disabled, stopped, its last run failed),
 as upkeep when medium (drifted, a unit without its marker, a program outside
 the repository). Only the jobs that are down colour anything: the Background
-jobs tab (a red count, none for upkeep), its tile on Operations and on Start
+jobs tab or its place in the folder bar (a red count, none for upkeep), its tile on Start
 (red with the count, neutral with upkeep alone, green when nothing), the news
 band. The tile's line reads "3 down, 25 to tend, 59 of 87 fine". The engine's
 own page keeps its own count.
 
-**Sub pages.** A profile page with `under: <page>` has no tab: the page it
-stands under opens with one tile per sub page over its board (drawn with
-`overview: true` or with sub pages), and its tab stays lit while a sub page is
-open and turns red with the findings of its sub pages. A sub page heads with
-"‹ <parent>" as the way back. The Background jobs page is placed the same way
-with an entry of its own, `{id: "@workers", under: <page>}`; its tile opens it
-on "Only outages" while one is down (red), else on "Only with a finding" while it
-has findings. A sub page's tile is red with findings or an unreadable source,
+**Sub pages and folders.** A profile page with `under: <page>` has no tab: the
+page it stands under becomes a folder. Under the tabs, on the folder and on each
+of its pages, stands one bar of its places: "Overview" (the folder page itself),
+then each sub page in the order `view.pages` lists them, each with a dot and a
+short note ("1 down", "4 warnings", "unreadable"), the open one marked. The bar
+is the way back on every width (it scrolls sideways on a narrow screen). The
+folder's tab keeps its badge, lit while a sub page is open and red with the
+outages and findings of its sub pages (upkeep and warnings never colour it), and
+carries a small ▾ beside its name with the same places and marks; a click on the
+tab itself always opens the overview. The Background jobs page is placed the same
+way with an entry of its own, `{id: "@workers", under: <page>}`. A place is red
+with findings or an unreadable source (Background jobs only with an outage),
 orange with warnings (one by its title, several as "n warnings in <section>"),
-else neutral, and
-green only where an alarm section of that page reports nothing, so rows that
-nothing measures live never look in order. Drop the line `under:` and the
-page is a tab again. A section with `hide_ok: true` is drawn only while one of
+else neutral, and green only where an alarm section of that page reports nothing,
+so rows that nothing measures live never look in order. Drop the line `under:`
+and the page is a tab again, in the place its listing gives it.
+
+**Machines.** The overview of a folder lists each machine once, right under its
+head: every host a background job runs on, and every machine a sub page names in
+a row whose title is a known machine (a job's host, or a machine of
+`bridge-resources.py machines`). A line names the machine, "always on" for the
+always-on one, how many jobs run there, how many are down and to tend, and a chip
+for each sub page that names it with what it says there ("Lab: online"). A click
+on the line opens Background jobs filtered to that machine (or the page that
+names it when no job runs there), a chip opens its page. Machines nothing runs on
+and no sub page names (a printer, a watch) are not listed.
+
+**Background jobs.** Every way in shows every job, grouped by machine: the
+always-on machine first, then those with an outage, then by the most jobs, each
+with its count, "n down" and "n to tend" in its head. Inside a machine stand its
+systems, those with an outage first, each job worst first; a row names its kind
+before its purpose (appointment, interval, service, agent, watcher), and under its schedule
+the last run and the next one ("last run 21:01 · next run 06:05", the day in
+front when not today). Only findings are marked. The chips filter by machine
+first, then by state, kind and area; "Only with a finding" and "Only outages"
+are filters there, off by default. The figures on top count In service, Down,
+To tend, Not reported and Retired. A section with `hide_ok: true` is drawn only while one of
 its rows is bad or its source fails; it still feeds the page's number, the
 alarm and what other cards read from it ([`briefings.md`](briefings.md)
 § Dashboard pages).
@@ -1447,8 +1491,9 @@ button orders anew. The same filter applies to both.
 
 A page holding inbox and task rows together also filters by kind: one chip
 per label (Inbox, Task, or a section's short title) with its count, for the
-sections, the triage strip and Jev's list alike. Such a page is also where the
-task check stands: its own tab goes, and the Task chip shows the check (run,
+sections, the triage strip and Jev's list alike. Without Work through such a
+page is also where the task check stands (with Work through on, the check is its
+row under Not now, and this page shows one line with a link there): its own tab goes, and the Task chip shows the check (run,
 verdict filter, sort, picking, closing many at once) with the tasks it has not
 seen yet below it. A stored link to the old tab lands there.
 
@@ -1626,9 +1671,25 @@ before P2 before P3, a row without one last; offered only when a row carries
 one) or newest first. Every row of the section is loaded (up to 300, where a
 plain table stops at 50 with "more n"), so search and filter see them all.
 Above the rows stand only the figures that have a cause and a count above
-zero (wanting your review, blocked, quiet, yours without a task) and the
-people the rows are with; a click on any of them filters the rows, a second
-clears it. Under each board's head in the list stand its facts: whose cards
+zero (wanting your review, blocked, quiet, yours without a task); a click on one
+filters the rows, a second clears it. Under them a filter bar: **Board** (each
+board, and "no board"), **Person** ("Me" first, then every assignee and author by
+count, "nobody assigned" last), **Repository**, **Kind** (issue, pull request, draft
+card) and **Board status** (the column, rows on a board only), each a compact
+select that shows only with two values or more, every option with how many rows
+it would leave given the other choices. The choices combine with each other,
+with the figures and with the search (which also reads author and board); "n of N
+rows" and "Reset all filters" stand beside them while one is set. The choice is
+kept per section in this browser. Your own login is read from the rows (the
+author of a row you opened, else the one assignee of a row assigned to you);
+where no row says, the login stands beside Me. A row names repo#number, its
+column, up to three people and three labels with "+n" for the rest, "by @x" when
+the person who opened it is not the assignee, and for a pull request draft,
+review and checks (the first 80 rows, read in the call that finds the pull
+requests that close an issue, no extra call). "Group by board" (on by default)
+switches to one flat list where each row names its board. The line "n on
+GitHub" in Work through leads here with the filter cleared, so the page shows
+the rows it counted. Under each board's head in the list stand its facts: whose cards
 (yours or every card), how many are open on the board, the count per state
 with its dot, and the cut where the board was read only in part. Which cards a
 board shows (Off, Mine, All) is set in Settings, GitHub boards. Opening a row reads its
@@ -2292,11 +2353,11 @@ still start it. In mock mode it stays closed unless the link carries `&tour=1`.
 stands: each area the page shows gets a numbered note beside it, a ring around it
 (an ellipse for a button or a chip, a frame for a row or a column) and an arrow from
 the note to the ring. Every page explains its own parts: Start, Today, Chat,
-Sessions, Background jobs, A2A connections, Tidy up, Jev and Settings each have their
+Files, Sessions, Background jobs, A2A connections, Check tasks, Jev and Settings each have their
 own list, and a page of the briefing profile explains the parts it is built from
 (the count beside its title, the overview tiles, the sorting bars, a section's
-head, its rows, the GitHub figures and boards, the quota gauges, the costs, the
-dates). The notes come in rounds so none covers another: the page first, the header
+head, its rows, the GitHub figures, filters and boards, the quota gauges, the costs, the
+dates, the folder bar, the machines and a sub page's head card). The notes come in rounds so none covers another: the page first, the header
 (views, As of, Tabs, Ask, History, Notes, Claude, Help) in a round of its own after
 it, read from left to right. Next, Back and the arrow keys page through the rounds,
 and the bar says which round shows and how many areas stand further down (scroll,
@@ -2381,7 +2442,7 @@ nothing a stranger could trigger:
   close, settle (done or not doing), shelve (a task parked as an idea, with its
   reason), urgency, priority, note, attach (a document into a task's
   deliverables), merge (open tasks into one, and its undo), check tasks, keep
-  open, close task, launch,
+  open, close task, files ask, launch,
   adopt, send, key,
   close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker
   profile, guide read, guide settings), every id
@@ -2418,8 +2479,11 @@ nothing a stranger could trigger:
   shapes of section 5, `codex exec --sandbox read-only`, the Haiku judge of how
   complex an item is (no tools, no settings, no session), "Organize with AI"
   (one call, no tools, it keeps only tab refs and task slugs from the answer),
-  the summary of a point's Activity and the instruction line of Work through
-  (each one call with no tools, no settings and no session, its own JSON schema;
+  the summary of a point's Activity, the instruction line of Work through and
+  Ask AI on the Files tab (each one call with no tools, no settings and no
+  session, its own JSON schema; Ask AI sends at most 12 records as data, never
+  one the block list of `cockpit.files_search` holds, and keeps only the record
+  numbers its answer names;
   the instruction line's answer is only a plan the page shows, checked against
   the verbs each point offers, and nothing runs before your click on Run), two
   read-only `git log` shapes over one task's `deliverables/` and its
@@ -2481,6 +2545,9 @@ nothing a stranger could trigger:
   runner's allowlist with the words as one argument after `--`, leaves no
   line, and refuses a query shorter than 2 or longer than 200 characters or
   one with a control character before anything runs.
+  `GET /api/records` is a read too: the records of the Files tab's start
+  (every task, stream and closed task, its front matter read in place, newest
+  first, at most 2000), no runner call and no line.
   `/api/seen` is the page's own measure: opening a page or a view of it
   leaves `page_view`, the page id and `view=` (the work tab's view, the start
   page's view, else `-`), nothing more. The first line waits for the model, so
@@ -2760,7 +2827,7 @@ share or clean up.
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
 | `jev-pages.json` | Jev's order per page | yes: the titles |
 | `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, the runs of the last day (the budget), and the last 500 moves of a point from one theme to another (the names as they were, by the AI or a person) for its Activity | yes: theme names and the reasons of the suggestions |
-| `flow-activity.json` | Activity of Work through (`activity.py`): the summary of each point kept with the fingerprint of the rows it read, and the calls of the summary and of the instruction line per day (their budgets) | yes: the summaries |
+| `flow-activity.json` | Activity of Work through (`activity.py`): the summary of each point kept with the fingerprint of the rows it read, and the calls of the summary, of the instruction line and of Ask AI on the Files tab (under `files`) per day (their budgets) | yes: the summaries |
 | `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
 | `relay/done/` | what became of each (written by that session) | yes: the answers |
 | `relay/heartbeat/` | one file per Claude Code session with the relay on | no |
@@ -2949,6 +3016,44 @@ a Bridge go further.
 6. **Dates.** Two figures, and the month only from four weeks of dates. To keep
    due rows off the dates page, take their section off the page and add it to
    `view.page_skip`, since `page_rest: show` would put it on a tab More.
+
+### Upgrading: Files as a tab, the check in Work through, Operations as a folder
+
+Nothing has to be done by hand: each change is code, and the profile keys
+below only go further.
+
+1. **Files is a tab.** The work tab's switch no longer offers Files; the Files
+   tab stands right after the work tab and opens on its search. A stored or
+   configured `files` view (`cockpit.work_view: files`, or a click kept in the
+   browser) opens the Files tab once and is replaced by the view the work tab
+   falls back to. Every link that opened a task's file opens the tab with that
+   record; only a Bridge whose `work_views` keeps no `files` still shows the
+   item drawer. With `work_views: [files, flow]` the work tab shows Work
+   through alone, without a switch. The page reads the records from the new
+   read-only `GET /api/records`, so page and server go together.
+2. **Ask AI on the records.** `cockpit.files_search` is a new block, off by
+   default: `enabled`, `budget_per_day` (20), `model` and `block`, a list of
+   words that keep a record from the model. The verb `files_ask` refuses while
+   it is off; its calls count in `flow-activity.json` under `files`.
+3. **The task check.** Where Work through is on, the check is the row Check
+   tasks under Not now, and its tab goes; a stored page, the ticker, Start and
+   every link to it land there. With By source on as well, the check no longer
+   stands on that page, which shows one line with a link to Work through.
+   Without Work through nothing changes but the name: the tab is Check tasks
+   (de: Aufgaben prüfen), no longer Tidy up.
+4. **Operations as a folder.** A page with sub pages draws the folder bar on
+   top in place of its sub page tiles and the "‹ <parent>" link, and its tab
+   carries a ▾ with the same places. The order in `view.pages` is the order of
+   the tabs and of the bar. `overview: true` on a sub page gives it a head card
+   in place of the tiles. Background jobs always open on every job, grouped by
+   machine; a filter kept from before is cleared on the way in.
+5. **GitHub.** Rows carry the optional fields `author`, `by_me`, `board`,
+   `also_on` and, for a pull request, `pr: {draft, review, checks}`; people and
+   labels go up to 10 each, and `untasked` now reaches the page. A reader that
+   does not know them skips them. The filters of a section are kept in this
+   browser (`bridge-cockpit.ghFilter`), the grouping too
+   (`bridge-cockpit.ghGroup`). Board cards of every person come with
+   `cards: all` on the section's query or with All in Settings, GitHub boards.
 
 ### Upgrading: quiet tabs and the result line
 

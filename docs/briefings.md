@@ -1,7 +1,7 @@
 ---
 summary: "Briefing profiles: each person describes the briefing they want in workflow/briefings/<id>.yaml (sections, trackers, queries, inbox rules, and a view: how it is shown); scripts/briefing.py executes it and the agent advises on the result. Section kinds, provider query keys, selection, views (sources, triage, brevity, plan), change marks, inbox rules, org profiles."
 type: guide
-last_updated: 2026-10-27
+last_updated: 2026-10-28
 related:
   - bridge-cockpit.md
   - ../workflow/briefings/_schema.yaml
@@ -614,8 +614,10 @@ toward its tab and its alarm (a cloud section the account tiles read, say);
 on every row of the section. Without it, a row is actionable when it is a finding (red or
 yellow) or a tracker row; a row that already has an inbox item or a task keeps that path.
 Every row also carries `id`, its source id, which keys the item the dashboard files for it.
-A page with `under: <page id>` is a sub page of that page: no tab of its own, a tile on its
-parent, "‹ <parent>" as the way back in the cockpit. It names another page of `view.pages`,
+A page with `under: <page id>` is a sub page of that page: no tab of its own; in the cockpit
+its parent becomes a folder with a bar of its places under the tabs (the overview, then each
+sub page in the order `view.pages` lists them) and a ▾ at its tab with the same places, and
+`overview: true` on the sub page gives it a head card of one line per section. It names another page of `view.pages`,
 not itself, one level deep, and neither side has `group: work` or `group: day`; `validate`
 says which rule an entry breaks. The cockpit's own Background jobs page is placed the same
 way by an entry of `id` and `under` only: `{id: "@workers", under: ops}`.

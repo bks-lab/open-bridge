@@ -181,7 +181,7 @@
 .flow-theme-pick > .label-caps, .flow-side-rename > .label-caps { margin: 0; }
 
 /* the overview: the sticky batch bar, then a table of the points grouped, a box, the title, stage, area, suggestion */
-.flow-overview { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-overview, .flow-checklist { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .flow-ov-top { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: 8px; background: var(--surface); padding-bottom: 2px; }
 .flow-ov-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .flow-ov-sum { flex: 1 1 120px; min-width: 0; }
@@ -223,6 +223,9 @@
    one open marked; on a narrow screen both fold under the select, a compact line per entry (dot, title, tab, stage) */
 .flow-run, .flow-notnow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .flow-notnow { padding-top: 8px; border-top: 1px solid var(--border); }
+/* round 6 c: Check tasks under Not now, on every width (no .flow-side-body), the check's plain line in the middle */
+.flow-check { padding-top: 8px; border-top: 1px solid var(--border); }
+.flow-check-intro { margin: 0 0 8px; }
 .flow-run .flow-side-group, .flow-notnow .flow-side-group { margin-top: 0; }
 .flow-run-list, .flow-runstrip-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .flow-run-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px; border: 1px solid transparent; border-radius: var(--radius-md); }

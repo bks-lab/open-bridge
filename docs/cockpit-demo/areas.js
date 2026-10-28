@@ -115,19 +115,19 @@ const NONE = '\u0000none'   // no area name can be this
 /** Where a number of the areas leads, the area as the filter there (ui.area): tabs alone that want you
  *  are answered in the chat, one after the other (its walk); rows, or rows and tabs, wait in Work, what is due first, as do
  *  overdue rows; what runs and what is to review are the sessions and the starts of the Sessions page;
- *  the tasks open Work in the view it was left in, the area's name the files view */
+ *  the tasks open Work in the view it was left in, the area's name the files tab */
 export function areaJump(kind, area) {
   if (kind === 'waiting') return area?.waitingTabs && !area.waitingRows ? { page: '@chat', walk: true } : { page: 'briefing', view: 'due' }
   if (kind === 'running' || kind === 'review') return { page: '@sessions' }
   if (kind === 'overdue') return { page: 'briefing', view: 'due' }
-  // the area's name opens its files (one task at a time; the files view stands on every Bridge)
-  if (kind === 'name') return { page: 'briefing', view: 'dossier' }
+  // the area's name opens its files (the files tab, logic.js FILES_PAGE, stands on every Bridge)
+  if (kind === 'name') return { page: '@files' }
   return { page: 'briefing' }
 }
 
-// the pages the area filter (ui.area) acts on; '@flow' is the Work through page (flow.js FLOW_PAGE), named here as
-// a literal since this file is evaluated before flow.js when logic.js loads
-export const AREA_PAGES = new Set(['briefing', '@chat', '@sessions', '@flow'])
+// the pages the area filter (ui.area) acts on; '@flow' is the Work through page (flow.js FLOW_PAGE), '@files' the files
+// tab (logic.js FILES_PAGE), named here as literals since this file is evaluated before them when logic.js loads
+export const AREA_PAGES = new Set(['briefing', '@chat', '@sessions', '@flow', '@files'])
 
 // the view areaScope asks for when Work through takes the rows as Due scopes them: no view of the work tab, so the
 // work tab's fallback (a Due switched off falls back to Work through) never leads back into Work through
@@ -146,7 +146,8 @@ function itemRow(it, byKey) {
 export function areaScope(s) {
   const page = s?.ui?.page
   const area = AREA_PAGES.has(page) ? s.ui.area || null : null
-  const pins = page === 'briefing' && s.ui.pinnedOnly ? new Set(s.home?.pins ?? []) : null
+  // Work's star keeps only the pinned rows, in the files tab too (it was a view of Work before round 6c)
+  const pins = (page === 'briefing' || page === '@files') && s.ui.pinnedOnly ? new Set(s.home?.pins ?? []) : null
   if (!area && !pins) return s
   const byKey = indexRows(s.model)
   const tabs = s.tabs?.tabs ?? []
@@ -170,7 +171,8 @@ export function areaScope(s) {
     return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn), ...files },
       sessions: s.sessions && area ? { ...s.sessions, sessions: (s.sessions.sessions ?? []).filter(keepSession) } : s.sessions }
   }
-  if (page === 'briefing') {
+  // the files tab takes the rows as Work does (it was Work's view until round 6c)
+  if (page === 'briefing' || page === '@files') {
     const keepRow = r => !!r && inProject(r, area) && (!pins || pins.has(r.key))
     const keepItem = it => {
       const row = itemRow(it, byKey)

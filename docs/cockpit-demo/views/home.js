@@ -602,7 +602,8 @@ export function AreaBar({ s, c }) {
   const chosen = homeChosen(s.model, s.home)
   const start = page === START_PAGE && (homeView(chosen) !== 'areas' || chosen.some(id => id.startsWith('d:')))
   if (!AREA_PAGES.has(page) && !start) return null
-  const work = page === 'briefing' && workViewNow(s) !== 'flow'
+  // the star of Work acts in the files tab too (areas.js areaScope), so its chip stands there as well
+  const work = (page === 'briefing' && workViewNow(s) !== 'flow') || page === '@files'
   const pins = s.home?.pins ?? []
   if (!s.ui.area && !(work && (pins.length || s.ui.pinnedOnly))) return null
   // Chat under an area without an agent tab says so and offers every area, rather than an empty page

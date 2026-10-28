@@ -5,7 +5,8 @@
 // Why), Ideas and backlog, Streams, Watching (the issues and pull requests, by repository), and the watched rows a
 // GitHub list holds (`github`, round 6). NotNowBlock is its part at the foot of the left column, on every side and in
 // every mode: one button per group with its count, the one open marked, the GitHub rows as one quiet line "n on
-// GitHub" that opens that page at its list (c.openSection), since they stand there; on a narrow screen NotNowNarrow
+// GitHub" that opens that page at its list (c.openSection) with every row, its filter bar reset (round 6c), since
+// they stand there; on a narrow screen NotNowNarrow
 // folds it under the select. A click on a group shows it as a list in the middle (LeftList, view `left`): Back to
 // overview, its name, count and what it holds, the batch bar with the group's verbs (logic.js LEFT_VERBS and leftPlan:
 // Back on, Later, Done, Drop or Let AI do it, Merge where two or more ticked rows are open tasks), then a table: a box,
@@ -13,12 +14,18 @@
 // item in its drawer, a row with steps of its own on a page the info drawer that holds them), its kind, when (in Later:
 // why), its area, and in Later Back on in one click where the row can come back.
 // The watched rows stand under a head per repository. No instruction line and no walk bar here.
+// Round 6 c: under Not now the row Check tasks (CheckRow) with the open suggestions of the last task check
+// (logic.js checkOpen), on every width; a click shows the check in the middle (CheckList, view `check`): Back to
+// overview, its name and run button, one plain line what it does, then the check of its own tab (views/check.js
+// ReviewBody: how it ran, the verdict filter and sort, ticked rows closed or kept at once, the table). It replaces
+// the tab Tidy up where Work through is on (logic.js checkInFlow).
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { activityWhen, formatDay, LEFT_VERBS, leftPlan, pageStepsOf, rowProject, short } from '../logic.js'
+import { activityWhen, checkOpen, formatDay, LEFT_VERBS, leftPlan, pageStepsOf, rowProject, short } from '../logic.js'
 import { T, language } from '../text.js'
+import { CheckButton, ReviewBody } from './check.js'
 import { KindTag } from './day.js'
 import { ageDays, BatchBar } from './flowlist.js'
 import { Btn } from './parts.js'
@@ -29,7 +36,7 @@ function GroupButtons({ left, open, c }) {
   const f = T().flow.notnow
   return html`<ul class="flow-side-list">${left.groups.map(g => g.at ? html`<li key=${g.reason}>
     <button type="button" class="flow-notnow-line" title=${f.onPageTitle(g.at.title)}
-      onClick=${() => c.openSection(g.at.page, g.at.section)}>${f.onPage(g.rows.length, g.at.title)}</button></li>` : html`<li key=${g.reason}>
+      onClick=${() => c.openSection(g.at.page, g.at.section, null)}>${f.onPage(g.rows.length, g.at.title)}</button></li>` : html`<li key=${g.reason}>
     <button type="button" class=${`flow-notnow-item${open === g.reason ? ' is-on' : ''}`} aria-current=${open === g.reason ? 'true' : undefined}
       onClick=${() => c.flowLeft(g.reason)}>
       <span class="flow-side-name"><span class="flow-side-label">${f.group[g.reason]}</span></span>
@@ -55,6 +62,34 @@ export function NotNowNarrow({ left, open = null, c }) {
     <summary><span class="label-caps">${f.label}</span> <span class="mono">${left.total}</span></summary>
     <${GroupButtons} left=${left} open=${open} c=${c} />
   </details>`
+}
+
+/** Check tasks under Not now: its name, the open suggestions of the last check (none run yet, or running), marked
+ *  while the check is open in the middle; the plain line what it does as its tooltip */
+export function CheckRow({ s, c, on = false }) {
+  const f = T().flow.check
+  const rv = s.model?.review ?? {}
+  const count = rv.running ? f.running : rv.last ? f.count(checkOpen(s.model)) : f.none
+  return html`<div class="flow-check">
+    <button type="button" class=${`flow-notnow-item flow-check-row${on ? ' is-on' : ''}`} aria-current=${on ? 'true' : undefined}
+      title=${f.intro} onClick=${() => c.flowCheck()}>
+      <span class="flow-side-name"><span class="flow-side-label">${T().reviewTab}</span></span>
+      <span class="flow-side-open mono muted">${count}</span>
+    </button>
+  </div>`
+}
+
+/** The task check in the middle: Back to overview, its name and run button, the plain line, the check itself */
+export function CheckList({ s, c }) {
+  const t = T()
+  return html`<section class="flow-checklist" aria-labelledby="flow-check-h">
+    <header class="flow-main-head">
+      <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${t.flow.point.back}<//>
+      <h2 id="flow-check-h" class="flow-main-title">${t.reviewTab}</h2>
+      <${CheckButton} s=${s} c=${c} variant="primary" />
+    </header>
+    <${ReviewBody} s=${s} c=${c} intro=${html`<p class="flow-check-intro">${t.flow.check.intro}</p>`} />
+  </section>`
 }
 
 /** When a row of Not now comes or is due: the day it comes back (Later, or an idea put off) and its due, else its age */

@@ -183,8 +183,9 @@ def test_every_start_page_view_mounts_without_console_errors(base_url, browser, 
 
 
 @pytest.mark.parametrize("lang", ["en", "de"])
-def test_the_demo_opens_the_work_tab_on_the_files_view_the_config_names(base_url, browser, lang):
-    # ?work=files and ?focus_to_files=1 stand for cockpit.work_view: files and cockpit.focus_to_files: true
+def test_the_demo_opens_the_files_tab_once_where_the_config_names_the_files_view(base_url, browser, lang):
+    # ?work=files and ?focus_to_files=1 stand for cockpit.work_view: files and cockpit.focus_to_files: true; since
+    # round 6c the files are a tab of their own: the work tab's first visit lands there once (logic.js filesMoved)
     problems: list[str] = []
     where = ["files"]
     ctx = browser.new_context(viewport={"width": 1440, "height": 1000})
@@ -193,25 +194,27 @@ def test_the_demo_opens_the_work_tab_on_the_files_view_the_config_names(base_url
     page.goto(f"{base_url}?lang={lang}&work=files&focus_to_files=1")
     page.wait_for_selector(".pagebar-tabs [role=tab]")
     page.set_default_timeout(10_000)
-    page.evaluate("() => window.localStorage.clear()")   # a fresh browser: nothing remembered, nothing seen
+    # a fresh browser that was on the work tab: nothing else remembered, nothing seen; the reload keeps the page
+    page.evaluate("() => { window.localStorage.clear(); window.localStorage.setItem('bridge-cockpit.page', 'briefing') }")
     page.reload()
     page.wait_for_selector(".pagebar-tabs [role=tab]")
-    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()   # the work tab stands right after Start
-    page.wait_for_selector("#main .dz .fx-hero")
-    assert page.locator("#main .dz .fx-hero").count() == 1
+    files_tab = page.locator(".pagebar-tabs > [role=tab]").filter(has_text=re.compile("^(Files|Akten)"))
+    assert files_tab.count() == 1
+    page.wait_for_selector("#main .fs-start")
+    assert files_tab.first.get_attribute("aria-selected") == "true"
     page.wait_for_timeout(250)
 
-    # a click on Due holds on the next visit, the config unchanged (logic.js workViewWrites)
-    where[0] = "click holds"
-    page.locator("#main .fchip").first.click()
-    page.wait_for_selector("#main .dz", state="detached")
-    page.reload()
-    page.wait_for_selector(".pagebar-tabs [role=tab]")
-    page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
-    page.wait_for_function("() => (document.getElementById('main')?.textContent ?? '').trim().length > 0")
-    page.wait_for_timeout(250)
-    assert page.locator("#main .dz").count() == 0
-    assert "is-on" in (page.locator("#main .fchip").first.get_attribute("class") or "")
+    # once only: the work tab now shows its own view, also after a reload, the config unchanged
+    where[0] = "work tab after"
+    for reload in (False, True):
+        if reload:
+            page.reload()
+            page.wait_for_selector(".pagebar-tabs [role=tab]")
+        page.locator(".pagebar-tabs > [role=tab]").nth(1).click()   # the work tab stands right after Start
+        page.wait_for_function("() => (document.getElementById('main')?.textContent ?? '').trim().length > 0")
+        page.wait_for_timeout(250)
+        assert page.locator("#main .fs-start").count() == 0
+        assert page.locator("#main .dz").count() == 0
 
     # the focus of the start page, walked with its bar to the end, leads on into the files view (focus_to_files)
     where[0] = "focus to files"
@@ -232,7 +235,7 @@ def test_the_demo_opens_the_work_tab_on_the_files_view_the_config_names(base_url
         page.locator("#main .fx-work .next-up-go button").click()
         page.wait_for_timeout(50)
     onward.first.click()
-    page.wait_for_selector("#main .dz")
+    page.wait_for_selector("#main .dz .fx-hero")   # the walk, not the search start
     page.wait_for_timeout(250)
     ctx.close()
     assert not problems, "\n".join(problems)
