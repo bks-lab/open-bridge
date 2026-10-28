@@ -477,7 +477,7 @@ function AreaSwitch({ s, c, area }) {
   const peers = s.agents?.peers ?? []
   if (!peers.length) return null
   return html`<div class="rooms-area">
-    <${Segmented} label=${t.chatArea.label} current=${area} onPick=${v => c.setChatArea(v)}
+    <${Segmented} label=${t.chatArea.label} u="chat" current=${area} onPick=${v => c.setChatArea(v)}
       values=${[['work', t.chatArea.work], ['a2a', html`${t.chatArea.a2a(peers.length)}<${AgentMark} kind=${agentBadge(s)} />`]]} />
   </div>`
 }

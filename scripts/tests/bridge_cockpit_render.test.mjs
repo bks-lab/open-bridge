@@ -2012,6 +2012,34 @@ test('hints: more than one round pages on with Next, Back and the arrow keys, th
   assert.deepEqual(went.at(-1), 1)
 })
 
+test('hints: "What bothers you here?" keeps a sentence with the page and the area of a note clicked, calmly', async () => {
+  const layout = { view: { width: 1400, height: 900 }, away: [], rounds: [{ group: 'page', placed: [
+    { id: 'chatList', n: 1, shape: 'frame', ring: { top: 110, left: 10, width: 620, height: 500 },
+      note: { top: 150, left: 50, width: 260, height: 80 }, arrow: null }] }] }
+  const sent = []
+  const c = { setHints: on => sent.push(['setHints', on]), tourStart() {}, explainNote: async args => { sent.push(['note', args]); return { ok: true } } }
+  // without a place (an older caller) there is no field
+  assert.equal(mount(html`<${HintsLayer} layout=${layout} c=${c} />`).$$('.hints-bar button').filter(b => b.text() === en.hints.noteOpen).length, 0)
+  const el = mount(html`<${HintsLayer} layout=${layout} c=${c} place=${{ page: '@chat', view: '-' }} />`)
+  el.button(en.hints.noteOpen).click()
+  await tick()
+  assert.ok(el.$('.hints-say'), 'the field opens above the bar')
+  assert.match(el.$('.hints-say').text(), new RegExp(en.hints.notePick))
+  // a click on a note picks its area and does not close the overlay
+  el.$('.hints-note').click()
+  await tick()
+  assert.deepEqual(sent, [])
+  assert.match(el.$('.hints-say').text(), new RegExp(en.hints.noteArea(en.hints.items.chatList.title)))
+  typeInto(el.$('.hints-say input'), '  The question is gone after a reload  ')
+  await tick()
+  el.button(en.hints.noteSave).click()
+  for (let i = 0; i < 20 && !el.$('.hints-noted'); i++) await tick()
+  assert.deepEqual(sent, [['note', { text: 'The question is gone after a reload', page: '@chat', area: 'chatList' }]])
+  assert.equal(el.$('.hints-say'), null, 'the field closes once noted')
+  assert.equal(el.$('.hints-noted').text(), en.hints.noteSaved)
+  assert.equal(text.TABLES.de.hints.noteOpen, 'Was stört hier?')
+})
+
 test('hints: nothing in view says so instead of an empty overlay', () => {
   const el = mount(html`<${HintsLayer} layout=${{ view: { width: 800, height: 600 }, rounds: [], away: ['ask'] }} c=${recorder()} />`)
   assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.none.slice(0, 20)))
@@ -3777,4 +3805,20 @@ test('6d C5: a tab from an inbox item or a job opens that item in the drawer or 
   item.click()
   assert.equal(c.calls.at(-1)[0], 'openItem')
   assert.match(c.calls.at(-1)[1], /^inbox:/)
+})
+
+// ---------------------------------------------------------------- 6d: the click log tells the new buttons apart
+
+test('6d: the click log names each new button of this round on its own, never by its words', async () => {
+  const name = b => loadedLogic.usageControl(b)
+  const { el } = renderControls('surface:13', { tab: { ask: null, behind: { task: 'demo-task', item: '20261009-0910-tidy-labels-c3d4' } } })
+  assert.deepEqual([name(el.button(en.btnDoneCloseTab)), name(el.button(en.btnCloseTabOnly))], ['tab-done', 'tab-close'])
+  const { el: foot } = renderFoot()
+  assert.deepEqual([name(foot.button(en.chatAsk)), name(foot.button(en.chatSolve))], ['chat-ask', 'chat-ai'])
+  const head = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:10' }, tabView: 'surface:99' } })} c=${recorder()} />`)
+  assert.equal(name(head.$('.room-from-link')), 'room-from-link')
+  const base = opsState({ runs: [hostRun('bot', 'homebox', 'high')], ui: { page: '@workers' } })
+  const row = await openRow(mount(html`<${views.sessions.WorkersPage} s=${base} c=${recorder()} />`).$('.wrow'))
+  assert.equal(name(row.button(en.btnWorkerAdvise)), 'worker-advise')
+  assert.equal(name(row.button(en.findingSeen.btn)), 'seen')
 })

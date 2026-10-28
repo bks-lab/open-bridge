@@ -18,7 +18,7 @@ import {
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, ghFilterKept,
-  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept,
+  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -1580,6 +1580,9 @@ const ctl = {
   tourStart: () => setUi(ui => ({ tour: { id: 'welcome', from: ui.page }, hints: false, drawer: null, item: null, tabView: null })),
   // the explain overlay: notes over the page as it stands; drawers and the tab window close, so it sees the page
   setHints: on => setUi(on ? { hints: true, drawer: null, item: null, tabView: null } : { hints: false }),
+  // "What bothers you here?" of the explain window: the sentence with its place, kept as a proposal (verb explain_note);
+  // the window says itself that it was noted
+  explainNote: args => act('explain_note', args),
   tourGo(n) {
     const s = store.get()
     const step = tourSteps(s)[n]
@@ -2001,6 +2004,23 @@ async function boot() {
   store.set(s => ({ ...s, boot: { status: 'ok', error: null, version: b.data.version, config: b.data.config ?? {}, scratch: b.data.scratch ?? null,
     warnings: Array.isArray(b.data.config_warnings) ? b.data.config_warnings : [] } }))
   if (MOCK) pushNote({ text: T().mockNote, tone: 'info' }, { toast: false })
+
+  // the click origin log (logic.js createUsageLog): only where the server keeps it, never content; a verb a click sent
+  // carries the click's place. Sent every USAGE_FLUSH_MS while shown, and when the page goes to the background
+  if (b.data.config?.clicks === true) {
+    const usage = createUsageLog({ send: events => api.clicks(events) })
+    const action = api.action
+    api.action = (verb, args) => {
+      usage.verb(verb)
+      return action(verb, args)
+    }
+    document.addEventListener('click', e => {
+      const control = usageControl(e.target)
+      if (control) usage.click({ ...usagePlace(store.get()), area: usageArea(store.get(), e.target), control })
+    }, true)
+    setInterval(whenShown(document, usage.flush), USAGE_FLUSH_MS)
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') usage.flush() })
+  }
 
   // the page view at boot is measured in applyState, once the model and the home settings came
   openStream(api, handlers, onConn, { apply: applyState, fail: failNote })

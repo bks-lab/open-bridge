@@ -33,7 +33,7 @@ from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as A
 from .quick import CONV_RE
 from .relay import RELAY_ID_RE
 from .history import REOPEN_AS
-from .store import append_log
+from .store import CLICK_NAME_RE, CLICK_PAGE_RE, append_log
 # every shared name stays importable from here (ActionError, SPEC, the patterns): callers never changed
 from .actions_base import *  # noqa: F401,F403
 from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, BY_CHOICES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
@@ -76,6 +76,8 @@ PATTERN_KINDS: dict[str, tuple[re.Pattern, str]] = {
     "organize_id": (og.ID_RE, "not a proposal id"),
     "describe_id": (dsc.PROPOSAL_RE, "not a proposal id"),
     "theme_id": (thm.THEME_ID_RE, "not a theme id"),
+    "click_page": (CLICK_PAGE_RE, "not a page id"),
+    "click_name": (CLICK_NAME_RE, "not an area or view name"),
 }
 _LAUNCH_MODELS = ("auto", *mr.MODELS)
 _LAUNCH_EFFORTS = ("auto", "standard", *mr.EFFORTS)

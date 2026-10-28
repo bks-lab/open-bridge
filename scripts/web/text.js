@@ -896,6 +896,14 @@ const en = {
     round: (n, of) => `${n} of ${of}`,
     below: n => `${n} more further down`,
     none: 'Nothing in view here to explain. Scroll to an area and press Explain again.',
+    // "What bothers you here?": a sentence with the page and the area, kept as a proposal for the next round
+    noteOpen: 'What bothers you here?',
+    notePlaceholder: 'A short sentence, kept for the next round',
+    notePick: 'A click on a note picks its area.',
+    noteArea: title => `Area: ${title}`,
+    noteSave: 'Note it',
+    noteCancel: 'Cancel',
+    noteSaved: 'Noted. It waits as a proposal for the next round, nothing was sent.',
     items: {
       prompt: { title: 'Ask the Bridge', body: 'Type a question and press Enter. Claude answers in the chat and changes nothing.' },
       signals: { title: 'What needs a look', body: 'Findings and alarms of your checks, jobs and Bridge. A click opens the page where they stand.' },
@@ -2486,6 +2494,13 @@ const de = {
     round: (n, of) => `${n} von ${of}`,
     below: n => `${n} weitere weiter unten`,
     none: 'Hier ist gerade nichts zu erklären. Scrolle zu einem Bereich und drücke wieder Erklären.',
+    noteOpen: 'Was stört hier?',
+    notePlaceholder: 'Ein kurzer Satz, er wartet auf die nächste Runde',
+    notePick: 'Ein Klick auf eine Notiz wählt ihren Bereich.',
+    noteArea: title => `Bereich: ${title}`,
+    noteSave: 'Notieren',
+    noteCancel: 'Abbrechen',
+    noteSaved: 'Notiert. Es wartet als Vorschlag auf die nächste Runde, nichts wurde gesendet.',
     items: {
       prompt: { title: 'Die Bridge fragen', body: 'Tippe eine Frage und drücke Enter. Claude antwortet im Chat und ändert nichts.' },
       signals: { title: 'Was einen Blick braucht', body: 'Befunde und Alarme deiner Prüfungen, Jobs und der Bridge. Ein Klick öffnet die Seite, auf der sie stehen.' },

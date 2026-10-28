@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: MIT
 """Verbs of the start page and the settings page (tiles, pins, the first-run tour, launch and ticker settings, the decision
-guide, the return channel), of a briefing page's own rows (an account's status, a board's mode, a command row's steps)
-and of a background job of the workers view (Analyse in a tab).
+guide, the return channel), of a briefing page's own rows (an account's status, a board's mode, a command row's steps),
+of a background job of the workers view (Analyse in a tab) and of the explain window ("What bothers you here?").
 """
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import re
+import sys
+from pathlib import Path
 
 from . import model as m
 from .guide import GuideError
@@ -22,6 +25,18 @@ def _pct(value) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _usage_script():
+    """scripts/cockpit-usage.py, the one writer of the proposals the cockpit leaves for /bridge-learn"""
+    name = "_cockpit_usage"
+    mod = sys.modules.get(name)
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[2] / "cockpit-usage.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return mod
 
 
 class PageVerbs:
@@ -41,6 +56,14 @@ class PageVerbs:
         """Offer the tour again on the next visit"""
         self.app.store.set_tour(None)
         self.tour_changed(ctx)
+
+    def v_explain_note(self, ctx: Ctx, text: str, page: str, view: str | None = None, area: str | None = None) -> None:
+        """"What bothers you here?" of the explain window: the sentence with the place it was opened on, as a pending
+        proposal in work/_learning/proposals/ for /bridge-learn; nothing is sent anywhere. The window confirms it
+        itself, so no note; the audit line names the place, never the sentence"""
+        path = _usage_script().write_note(self.app.root, text, page, view, area, self.today(), self.app.cfg.language)
+        ctx.extra["proposal"] = path.stem
+        self.audit_line("explain_note", page, view=view or "-", area=area or "-")
 
     def tour_changed(self, ctx: Ctx) -> None:
         state = self.app.tour_state()

@@ -142,6 +142,9 @@ class WebConfig:
     # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
     # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
     a2a_sources: tuple = ()
+    # the click origin log (cockpit.usage.clicks, store.append_clicks): which control was used from which place,
+    # never what it was about, kept in usage.jsonl for scripts/cockpit-usage.py; on unless switched off
+    usage_clicks: bool = True
     # what the check of the block found (check_block): unknown keys and values the loader replaced, each
     # naming the key and the value used instead; shown by `status` and on the settings page, never fatal
     config_warnings: tuple = ()
@@ -332,7 +335,7 @@ BLOCK = {
     "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
     "flow": ("flow",), "work_views": ("work_views",), "files_search": ("files_search",),
 }
-USAGE_KEYS = ("remotes", "remote_file", "host")      # read by usage.remote_hosts, not by the loader
+USAGE_KEYS = ("remotes", "remote_file", "host", "clicks")   # read by usage.remote_hosts, clicks by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 BLOCK_KEYS = tuple(BLOCK)
 
@@ -404,7 +407,7 @@ def _check_ticker(value: Any, cfg: WebConfig, where: str) -> list[str]:
 
 def _check_usage(value: Any, where: str) -> list[str]:
     """cockpit.usage: remotes (infra/remotes slugs; a list, empty for none), remote_file (text) and host (this machine). usage.py
-    skips what does not fit, so each warning says what is used instead."""
+    skips what does not fit, so each warning says what is used instead. clicks (true or false) is the click origin log."""
     if not isinstance(value, dict):
         return [f"{where}: must be a mapping, got {_show(value)}; using the machines of infra/instances"]
     out = []
@@ -422,6 +425,9 @@ def _check_usage(value: Any, where: str) -> list[str]:
                 bad = [x for x in v if not isinstance(x, str) or not HOST_SLUG_RE.fullmatch(x)]
                 if bad:
                     out.append(f"{at}: {', '.join(_show(x) for x in bad[:3])} is no machine name; skipped")
+        elif key == "clicks":
+            if not isinstance(v, bool):
+                out.append(f"{at}: must be true or false, got {_show(v)}; using true")
         elif key == "host":
             if not isinstance(v, str) or not HOST_SLUG_RE.fullmatch(v):
                 out.append(f"{at}: {_show(v)} is no machine name; using the infra/remotes entry that matches this machine")
@@ -659,5 +665,6 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     flow=flow, files_search=files_search_of(w.get("files_search")),
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
-                    chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24)
+                    chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24,
+                    usage_clicks=_dict(w.get("usage")).get("clicks") is not False)
     return replace(cfg, config_warnings=check_block(raw.get("cockpit"), cfg))

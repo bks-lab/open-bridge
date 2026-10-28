@@ -145,9 +145,9 @@ function MetaList({ row, s }) {
   return html`<dl class="meta">${items.map(([k, v]) => html`<div class="meta-item" key=${k}><dt>${t.meta[k]}</dt><dd>${v}</dd></div>`)}</dl>`
 }
 
-export function Segmented({ label, values, current, onPick, busy }) {
+export function Segmented({ label, values, current, onPick, busy, u }) {
   return html`<div class="seg" role="group" aria-label=${label}>
-    ${values.map(([v, word]) => html`<button type="button" key=${v} class=${`seg-btn${current === v ? ' is-on' : ''}`}
+    ${values.map(([v, word]) => html`<button type="button" key=${v} class=${`seg-btn${current === v ? ' is-on' : ''}`} data-u=${u ? `${u}-${v}` : undefined}
       aria-pressed=${String(current === v)} disabled=${busy} onClick=${() => current !== v && onPick(v)}>${word}</button>`)}
   </div>`
 }
@@ -250,9 +250,9 @@ export function TabClose({ tab, s, c, size = 'xs', strong = false, only = false,
   const word = offer.done ? t.btnCloseTabOnly : t.btnCloseTab
   return html`<span class="tab-close">
     ${both ? html`<${Btn} size=${size} variant=${strong ? 'primary' : 'secondary'} busy=${busy}
-      onClick=${async () => went(await c.act('tab_done', { tab_ref: tab.ref }))}>${t.btnDoneCloseTab}<//>` : null}
+      u="tab-done" onClick=${async () => went(await c.act('tab_done', { tab_ref: tab.ref }))}>${t.btnDoneCloseTab}<//>` : null}
     <${Btn} size=${size} variant=${strong && !both ? 'primary' : 'secondary'} busy=${busy} pressed=${armed ? true : undefined}
-      title=${armed ? t.closeTabUnseen : undefined} onClick=${close}>${armed ? t.closeTabSure(word) : word}<//>
+      u="tab-close" title=${armed ? t.closeTabUnseen : undefined} onClick=${close}>${armed ? t.closeTabSure(word) : word}<//>
   </span>`
 }
 

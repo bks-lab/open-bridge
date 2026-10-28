@@ -2418,11 +2418,12 @@ def test_every_post_path_but_reload_leaves_exactly_one_audit_line_without_texts(
             ("/api/flow/attach", {"key": "task:demo-task", "name": f"{marker}.txt", "data": "aGk="}, "flow_attach"),
         ]
         # every POST path the server knows is in the list above, so a new endpoint cannot skip its line;
-        # reload and presence change no record and send nothing on, and presence fires on every tab switch
+        # reload and presence change no record and send nothing on, and presence fires on every tab switch; clicks
+        # keeps its own log beside this one (usage.jsonl, test_cockpit_usage.py)
         known = set(re.findall(r'path == "(/api/[a-z/]+)"', inspect.getsource(server.Handler.post)))
         known |= {p for p in re.findall(r'"(/api/jev/[a-z]+)"', inspect.getsource(jev.handle_post))}
-        assert "/api/presence" in known
-        assert known - {"/api/reload", "/api/presence"} == {path for path, _, _ in cases}
+        assert "/api/presence" in known and "/api/clicks" in known
+        assert known - {"/api/reload", "/api/presence", "/api/clicks"} == {path for path, _, _ in cases}
         for path, body, verb in cases:
             before = log.read_text().splitlines() if log.exists() else []
             status, _, data = w.post(path, body)

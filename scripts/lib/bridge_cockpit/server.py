@@ -43,7 +43,7 @@ from . import details
 from .. import work_find
 from . import model as m
 from .actions import ActionError, Actions
-from .actions_base import note_go
+from .actions_base import SPEC, note_go
 from .collector import Collector
 from .daybook import DayBook
 from .returns import Launches
@@ -67,7 +67,7 @@ from .guide import Guide
 from .usage import Usage
 from .runner import Runner, RunnerRefused
 from .design import stylesheet
-from .store import WebStore, append_log, atomic_write_json
+from .store import WebStore, append_clicks, append_log, atomic_write_json
 try:                       # Jev is an optional integration: without its file it is simply off
     from . import jev
 except ImportError:
@@ -963,7 +963,7 @@ class Handler(BaseHTTPRequestHandler):
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
                                             "control": cfg.control, "profile": cfg.profile,
-                                            "areas": list(cfg.areas)}})
+                                            "areas": list(cfg.areas), "clicks": bool(getattr(cfg, "usage_clicks", True))}})
         elif path == "/api/state":
             self.send_json(200, app.state_payload())
         elif path == "/api/events":
@@ -1373,6 +1373,20 @@ class Handler(BaseHTTPRequestHandler):
                     raise ActionError(400, "invalid_argument", "view must be a view id", "view")
                 app.actions.audit_line("page_view", page, view=view or "-")
                 self.send_json(200, {"ok": True})
+            elif path == "/api/clicks":
+                # the click origin log: which control from which place, a batch of names and counts into usage.jsonl
+                # beside audit.log, never a title or a text (store.clean_clicks); cockpit.usage.clicks: false, nothing
+                for name in body:
+                    if name != "events":
+                        raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
+                if not getattr(app.cfg, "usage_clicks", True):
+                    self.send_json(200, {"ok": True, "kept": 0, "off": True})
+                    return
+                try:
+                    kept = append_clicks(app.state_dir / "usage.jsonl", body.get("events"), app.clock(), verbs=SPEC)
+                except ValueError as error:
+                    raise ActionError(400, "invalid_argument", str(error), "events") from None
+                self.send_json(200, {"ok": True, "kept": kept})
             elif path == "/api/flow/attach":
                 # a document attached to a point's task (verb flow_attach, under the write lock)
                 self.send_json(200, app.actions.execute("flow_attach", body))

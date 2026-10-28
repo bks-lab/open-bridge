@@ -6,12 +6,15 @@ these separately (documented, not synced: contract section 13). Every write is
 atomic (tmp file + os.replace). Also the small file helpers the other modules share:
 atomic JSON writes, log files rotated at 1 MB, and the chat archive (chats/<name>-YYYY-MM.jsonl), where a
 conversation goes when it leaves its list, so no chat is ever dropped, and which the page reads back for the
-questions of the last days (read_archive).
+questions of the last days (read_archive). And the click origin log (usage.jsonl, append_clicks): which control was
+used from which place, never what it was about, for scripts/cockpit-usage.py.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -25,6 +28,18 @@ LOG_MAX_BYTES = 1024 * 1024
 RUNS_SEEN_MAX = 300         # the newest workflow runs marked as checked; an older run has long left the files view
 SESSION_LINKS_MAX = 300      # the newest links of sessions to tasks; an older one has long been resumed or forgotten
 REFUSED_PER_SESSION = 8      # the tasks a session was said not to work on ("Not this task"), the newest kept
+# the click origin log: at this size usage.jsonl becomes usage.jsonl.1, so both together stay under half a megabyte;
+# a batch from the page holds at most CLICKS_MAX events, each counted up to CLICK_N_MAX
+CLICKS_MAX_BYTES = 256 * 1024
+CLICKS_MAX = 60
+CLICK_N_MAX = 999
+CLICK_KINDS = ("click", "verb")
+# what a field may hold: a name from the page's code (an area of the explain overlay, a class or data-u of a
+# control), never words, an item key (no colon) or a path (no slash). A page id is the profile's own, as /api/seen
+# takes it, but without a colon either
+CLICK_NAME_RE = re.compile(r"^@?[A-Za-z][A-Za-z0-9_-]{0,47}(\.[A-Za-z][A-Za-z0-9_-]{0,47}){0,2}\Z")
+CLICK_PAGE_RE = re.compile(r"^[^\s/\\:\x00-\x1f\x7f]{1,64}\Z")
+CLICK_VERB_RE = re.compile(r"^[a-z][a-z0-9_]{0,47}\Z")
 
 
 def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
@@ -114,6 +129,46 @@ def append_log(path: Path, line: str, max_bytes: int = LOG_MAX_BYTES) -> None:
                 handle.write(line.rstrip("\n") + "\n")
         except OSError:
             pass
+
+
+def clean_clicks(events: Any, verbs: Any = None) -> list[dict]:
+    """The events of one batch as usage.jsonl keeps them: {kind, page, view, area, control, verb, n}, each field a
+    name or "-". A field the page should not have sent (a title, a text) is left out; an event whose page, view,
+    area or control is no name, or whose verb is none the server knows (`verbs`), is dropped whole. ValueError for
+    a batch that is no list or longer than CLICKS_MAX."""
+    if not isinstance(events, list) or len(events) > CLICKS_MAX:
+        raise ValueError(f"events must be a list of up to {CLICKS_MAX}")
+    out = []
+    for ev in events:
+        if not isinstance(ev, dict) or ev.get("kind") not in CLICK_KINDS:
+            continue
+        row = {"kind": ev["kind"]}
+        for name, pattern in (("page", CLICK_PAGE_RE), ("view", CLICK_NAME_RE), ("area", CLICK_NAME_RE),
+                              ("control", CLICK_NAME_RE), ("verb", CLICK_VERB_RE)):
+            value = ev.get(name)
+            if value is None or value == "-":
+                row[name] = "-"
+            elif isinstance(value, str) and pattern.match(value):
+                row[name] = value
+            else:
+                break
+        else:
+            if row["page"] == "-" or (row["verb"] != "-" and verbs is not None and row["verb"] not in verbs):
+                continue
+            n = ev.get("n", 1)
+            row["n"] = min(n, CLICK_N_MAX) if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 1
+            out.append(row)
+    return out
+
+
+def append_clicks(path: Path, events: Any, now_ms: float, verbs: Any = None, max_bytes: int = CLICKS_MAX_BYTES) -> int:
+    """One batch of the page's clicks into the click origin log (usage.jsonl), stamped to the minute, rotated at
+    max_bytes like every log here; how many events were kept"""
+    rows = clean_clicks(events, verbs)
+    if rows:
+        at = dt.datetime.fromtimestamp(now_ms / 1000).isoformat(timespec="minutes")
+        append_log(path, "\n".join(json.dumps({"at": at, **r}, separators=(",", ":")) for r in rows), max_bytes)
+    return len(rows)
 
 
 class WebStore:

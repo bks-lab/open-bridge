@@ -207,8 +207,9 @@ export function Dot({ token, pulse }) {
   return html`<span class=${`dot tk-${token}${pulse ? ' dot-pulse' : ''}`} aria-hidden="true"></span>`
 }
 
-export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, busy, title, pressed, children, label, icon, cls = '' }) {
-  return html`<button type="button" class=${`btn btn-${variant} btn-${size} ${cls}`} onClick=${onClick}
+/** A button; `u` names it for the click log (logic.js usageControl) where its classes cannot */
+export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, busy, title, pressed, children, label, icon, cls = '', u }) {
+  return html`<button type="button" class=${`btn btn-${variant} btn-${size} ${cls}`} data-u=${u} onClick=${onClick}
     disabled=${disabled || busy} aria-busy=${busy ? 'true' : undefined} title=${title} aria-label=${label}
     aria-pressed=${pressed === undefined ? undefined : String(!!pressed)}>
     ${icon ? html`<${Icon} name=${icon} />` : null}${children ? html`<span class="btn-label">${children}</span>` : null}
@@ -222,8 +223,8 @@ export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, bus
 export function SeenBtn({ k, acked, loud, c }) {
   const t = T().findingSeen
   if (!acked && !loud) return null
-  return acked ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${() => c.ackFinding(k, false)}>${t.undo}<//>`
-    : html`<${Btn} size="xs" variant="ghost" cls="act-quiet" title=${t.title} onClick=${() => c.ackFinding(k, true)}>${t.btn}<//>`
+  return acked ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" u="seen-undo" onClick=${() => c.ackFinding(k, false)}>${t.undo}<//>`
+    : html`<${Btn} size="xs" variant="ghost" cls="act-quiet" u="seen" title=${t.title} onClick=${() => c.ackFinding(k, true)}>${t.btn}<//>`
 }
 
 export function SkipFix({ s, c, title, reason }) {

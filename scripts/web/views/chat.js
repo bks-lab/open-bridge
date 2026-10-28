@@ -70,8 +70,8 @@ export function Thinking({ label }) {
 
 /** The message box of a chat or a tab: Enter sends, Shift+Enter breaks the line */
 /** A text box with its send button. `alt` adds a second way to send ({ label, title, onSend, ready, busy }):
- *  Enter takes the first, Cmd or Ctrl Enter the second */
-export function SendBox({ id, label, value, setValue, onSend, max, placeholder, busy, disabled, sendLabel, autofocus = true, alt = null }) {
+ *  Enter takes the first, Cmd or Ctrl Enter the second; `u` and `alt.u` name the buttons for the click log */
+export function SendBox({ id, label, value, setValue, onSend, max, placeholder, busy, disabled, sendLabel, autofocus = true, alt = null, u }) {
   const t = T()
   return html`<div class="field-row tabview-send">
     <label class="sr-only" for=${id}>${label}</label>
@@ -83,8 +83,8 @@ export function SendBox({ id, label, value, setValue, onSend, max, placeholder, 
         if (alt && (e.metaKey || e.ctrlKey)) { if (alt.ready) alt.onSend() } else onSend()
       }}></textarea>
     <span class="send-btns">
-      <${Btn} size="sm" variant=${alt ? 'secondary' : 'primary'} icon="send" busy=${busy} disabled=${!value.trim() || disabled} onClick=${onSend}>${sendLabel ?? t.btnSend}<//>
-      ${alt ? html`<${Btn} size="sm" variant="primary" icon="tabs" busy=${alt.busy} disabled=${!alt.ready} title=${alt.title} onClick=${alt.onSend}>${alt.label}<//>` : null}
+      <${Btn} size="sm" variant=${alt ? 'secondary' : 'primary'} icon="send" u=${u} busy=${busy} disabled=${!value.trim() || disabled} onClick=${onSend}>${sendLabel ?? t.btnSend}<//>
+      ${alt ? html`<${Btn} size="sm" variant="primary" icon="tabs" u=${alt.u} busy=${alt.busy} disabled=${!alt.ready} title=${alt.title} onClick=${alt.onSend}>${alt.label}<//>` : null}
     </span>
   </div>`
 }
@@ -191,8 +191,8 @@ export function ChatFoot({ s, c, conv, autofocus }) {
     </div>` : null}
     <${SendBox} id="quick-input" label=${t.askLabel} value=${text} setValue=${setText} onSend=${send} max=${ASK_MAX} autofocus=${autofocus}
       placeholder=${conv ? t.quickReply : t.chatPlaceholder} busy=${!!s.ui.busy['ask:free']}
-      disabled=${!!conv?.running} sendLabel=${t.chatAsk}
-      alt=${{ label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
+      disabled=${!!conv?.running} sendLabel=${t.chatAsk} u="chat-ask"
+      alt=${{ u: 'chat-ai', label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
     ${status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
     <${LaunchPick} s=${s} c=${c} />
   </footer>`

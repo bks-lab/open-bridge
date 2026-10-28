@@ -632,6 +632,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_cloud_costs.py",
     "scripts/usage-export.py",                # tokens per Bridge, exported for a cockpit on another machine
     "scripts/tests/test_usage_export.py",
+    "scripts/cockpit-usage.py",               # the cockpit's clicks counted, candidates left as proposals for /bridge-learn
+    "scripts/tests/test_cockpit_usage.py",
     "scripts/tests/test_cockpit_costs_contract.py",
     "scripts/lib/bridge_cockpit/server.py",
     "scripts/tests/test_bridge_cockpit.py",

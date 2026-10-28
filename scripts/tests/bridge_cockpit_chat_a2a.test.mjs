@@ -198,6 +198,8 @@ test('the switch above the sidebar: Work and A2A with the number of agents, only
   const sw = el.$('.rooms-area')
   assert.ok(sw, 'a switch above the sidebar')
   assert.deepEqual(sw.$$('button').map(b => b.text()), [en.chatArea.work, en.chatArea.a2a(s.agents.peers.length)])
+  // the click log tells the two apart by name (round 6d), the words never leave the page
+  assert.deepEqual(sw.$$('button').map(b => b.getAttribute('data-u')), ['chat-work', 'chat-a2a'])
   assert.equal(sw.button(en.chatArea.work).getAttribute('aria-pressed'), 'true')
   sw.button(en.chatArea.a2a(s.agents.peers.length)).click()
   assert.deepEqual(c.calls.filter(x => x[0] === 'setChatArea'), [['setChatArea', 'a2a']])

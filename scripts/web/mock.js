@@ -2099,6 +2099,8 @@ export function createMockTransport(opts = {}) {
       if (path === '/api/presence') return { status: 200, ok: true, data: { ok: true }, error: null }
       // nor an audit log: a page view is simply acknowledged
       if (path === '/api/seen') return { status: 200, ok: true, data: { ok: true }, error: null }
+      // nor a click origin log: a batch of clicks is counted and dropped
+      if (path === '/api/clicks') return { status: 200, ok: true, data: { ok: true, kept: (body?.events ?? []).length }, error: null }
       if (path === '/api/reload') {
         const loading = { pass: 'quick', fresh: !!body?.fresh, started_ms: now(), eta_ms: 3000, queued: 'full', last_error: null }
         state.loading = loading
@@ -2191,6 +2193,8 @@ export function createMockTransport(opts = {}) {
         const result = { ok: true, verb, note: MOCK_NOTES[verb] ?? `Mock: ${verb} ${keys.join(', ') || args.tab_ref || ''}`.trim(), steps: [], settled: [],
           reload: 'none', jump: null, relay: null, confirm: null }
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
+        // "What bothers you here?": the window says itself that it was noted, the demo keeps no proposal
+        if (verb === 'explain_note') return ok({ ...result, note: '' })
         // the files tab's question to its records: the demo names the first record it was sent
         if (verb === 'files_ask') {
           const fs = state.work.files_search

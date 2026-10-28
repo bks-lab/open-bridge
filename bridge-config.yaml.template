@@ -281,6 +281,8 @@ work:
 #     remotes: []            # infra/remotes names to read token use from; leave out: the machines of infra/instances
 #     remote_file: ~/.bridge/resources/usage.json   # what scripts/usage-export.py writes there
 #     host: my-laptop        # this machine's infra/remotes name; leave out: found by hostname or Bonjour name
+#     clicks: true           # write down which control is used from which place, never what about (.bridge/cockpit/usage.jsonl,
+#                            # counted by scripts/cockpit-usage.py); false = off
 
 
 # ─── Orchestrator ─────────────────────────────────────────────────────
