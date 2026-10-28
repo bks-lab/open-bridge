@@ -3993,6 +3993,91 @@ export function hintText(words, vars = []) {
   return typeof words?.body === 'function' ? { ...words, body: words.body(...vars) } : words
 }
 
+// ---------------------------------------------------------------- the click origin log (round 6d, item 10)
+
+// which control was used from which place, never what about: the page, its view, the area of the explain overlay the
+// click stood in and the control's name from the code, counted and sent in small batches (POST /api/clicks, usage.jsonl
+// on the server, counted by scripts/cockpit-usage.py); only while the server's bootstrap says clicks: true
+export const USAGE_FLUSH_MS = 30000
+export const USAGE_VERB_MS = 2000      // a verb this soon after a click was sent by it
+const USAGE_MAX = 40
+const USAGE_CONTROL = new Set(['button', 'a', 'input', 'select', 'summary', 'label', 'textarea'])
+const USAGE_ROLES = new Set(['button', 'tab', 'menuitem', 'option', 'switch', 'checkbox', 'radio', 'link'])
+// classes that say how a control looks or stands, not which it is
+const USAGE_PLAIN = /^(btn|is-|has-|on$|off$|active$|small$|muted$|mono$|tone-|st-|sr-only$)/
+const USAGE_NAME = /^@?[A-Za-z][A-Za-z0-9_-]{0,47}$/
+
+/** The page and view a click is counted on: the work tab's view, the start page's view, else none (as /api/seen) */
+export function usagePlace(s) {
+  const page = s?.ui?.page ?? '-'
+  const view = page === 'briefing' ? workViewIn(s) : page === '@start' ? homeView(homeChosen(s?.model, s?.home)) : null
+  return { page, view: typeof view === 'string' && USAGE_NAME.test(view) ? view : '-' }
+}
+
+/** The name of the control a click stands in: its data-u, else up to two of its own classes (none that says how it
+ *  looks, none with a digit), else its role or tag. Never its words. null where the click hit no control */
+export function usageControl(target) {
+  for (let n = target; n && n.nodeType === 1; n = n.parentNode) {
+    const tag = String(n.tagName ?? '').toLowerCase()
+    const role = n.getAttribute?.('role') ?? null
+    const u = n.getAttribute?.('data-u') ?? null
+    if (!USAGE_CONTROL.has(tag) && !USAGE_ROLES.has(role) && !u) continue
+    if (u && USAGE_NAME.test(u)) return u
+    const own = String(n.getAttribute?.('class') ?? n.className ?? '').split(/\s+/)
+      .filter(c => c && USAGE_NAME.test(c) && !/\d/.test(c) && !USAGE_PLAIN.test(c) && c === c.toLowerCase())
+    if (own.length) return own.slice(0, 2).join('.')
+    return role && USAGE_NAME.test(role) ? role : tag || null
+  }
+  return null
+}
+
+/** The innermost area of the explain overlay (hintsFor: the page's, then the header's) the click stands in; a dialog
+ *  without one says dialog; else '-' */
+export function usageArea(s, target) {
+  const hints = hintsFor(s)
+  for (let n = target; n && n.nodeType === 1; n = n.parentNode) {
+    for (const h of hints) {
+      try { if (n.matches?.(h.target)) return h.id } catch { /* a selector this browser does not know */ }
+    }
+    if (n.getAttribute?.('role') === 'dialog') return 'dialog'
+  }
+  return '-'
+}
+
+/** The page's click log: click({page, view, area, control}) and verb(name) count, flush() sends what was counted as
+ *  one batch, and a batch of `max` different events goes by itself. Only the named fields are kept, so a title
+ *  handed in by mistake never leaves the page. A verb without a click just before it is no use of a control */
+export function createUsageLog({ send, now = Date.now, max = USAGE_MAX }) {
+  let counts = new Map()
+  let last = null
+  const name = v => (typeof v === 'string' && v ? v : '-')
+  function flush() {
+    if (!counts.size) return
+    const events = [...counts.values()]
+    counts = new Map()
+    send(events)
+  }
+  const add = ev => {
+    const key = [ev.kind, ev.page, ev.view, ev.area, ev.control, ev.verb].join('|')
+    const had = counts.get(key)
+    counts.set(key, had ? { ...had, n: had.n + 1 } : { ...ev, n: 1 })
+    if (counts.size >= max) flush()
+  }
+  return {
+    click(at) {
+      if (!at || name(at.control) === '-') return
+      const ev = { kind: 'click', page: name(at.page), view: name(at.view), area: name(at.area), control: name(at.control), verb: '-' }
+      last = { ev, at: now() }
+      add(ev)
+    },
+    verb(verb) {
+      if (!last || now() - last.at > USAGE_VERB_MS || typeof verb !== 'string') return
+      add({ ...last.ev, kind: 'verb', verb })
+    },
+    flush,
+  }
+}
+
 const HINT_MARGIN = 12    // the notes keep this far off the screen's edges
 const HINT_GAP = 40       // and this far from their area, room for the arrow
 const HINT_RING = 6       // the ring stands this far outside the area

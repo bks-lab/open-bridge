@@ -5511,3 +5511,78 @@ test('6d fix: no keyboard hints in the question fields and on the button that st
     }
   }
 })
+
+// ---------------------------------------------------------------- the click origin log (round 6d, item 10)
+
+/** A stand-in for an element as the click log reads it: tag, classes, role, data-u, a parent and the selectors it
+ *  matches (this file has no DOM) */
+function el({ tag = 'div', cls = '', role = null, u = null, parent = null, sels = [], text = '' } = {}) {
+  return { nodeType: 1, tagName: tag.toUpperCase(), className: cls, parentNode: parent, textContent: text,
+    getAttribute: name => (name === 'role' ? role : name === 'data-u' ? u : name === 'class' ? cls : null),
+    matches: sel => sels.includes(sel) }
+}
+
+test('usage: a control is named by data-u or its own classes, never by its words', () => {
+  const list = el({ sels: ['.chat-list'] })
+  const row = el({ tag: 'button', cls: 'btn btn-ghost btn-xs chat-row is-on', parent: list, text: 'Telegram bot exit 75' })
+  const label = el({ tag: 'span', cls: 'btn-label', parent: row, text: 'Telegram bot exit 75' })
+  assert.equal(logic.usageControl(label), 'chat-row')                      // the button it stands in, its own class
+  assert.equal(logic.usageControl(el({ tag: 'button', cls: 'btn chat-row', u: 'chat-sort' })), 'chat-sort')
+  assert.equal(logic.usageControl(el({ tag: 'button', cls: 'btn row-12 tab-3f9a' })), 'button')   // no class with a digit
+  assert.equal(logic.usageControl(el({ cls: 'seg', role: 'tab' })), 'seg')
+  assert.equal(logic.usageControl(el({ tag: 'a', cls: 'A Title With Words' })), 'a')            // nothing that is not a name
+  assert.equal(logic.usageControl(el({ cls: 'chat-list', parent: el() })), null)               // no control: no click
+  assert.equal(logic.usageControl(null), null)
+})
+
+test('usage: the area is the innermost area of the explain overlay the click stands in', () => {
+  const s = { ui: { page: '@chat' }, layout: 'wide' }
+  const list = el({ sels: ['.chat-list'] })
+  const row = el({ tag: 'button', cls: 'chat-row', parent: list })
+  assert.equal(logic.usageArea(s, row), 'chatList')
+  assert.equal(logic.usageArea(s, el({ tag: 'button', parent: el({ sels: ['.hdr-ask'] }) })), 'ask')   // the header too
+  assert.equal(logic.usageArea(s, el({ tag: 'button', parent: el({ role: 'dialog' }) })), 'dialog')
+  assert.equal(logic.usageArea(s, el({ tag: 'button' })), '-')
+  assert.deepEqual(logic.usagePlace(s), { page: '@chat', view: '-' })
+  assert.deepEqual(logic.usagePlace({ ui: { page: 'briefing', workView: 'flow' }, work: { flow: { enabled: true } } }),
+    { page: 'briefing', view: 'flow' })
+})
+
+test('usage: clicks are counted, sent in small batches, and a verb keeps the place of the click before it', () => {
+  const sent = []
+  let now = 1000
+  const log = logic.createUsageLog({ send: events => sent.push(events), now: () => now, max: 3 })
+  const at = { page: '@chat', view: '-', area: 'chatList', control: 'chat-row' }
+  log.click({ ...at, title: 'Telegram bot exit 75' })
+  log.click(at)
+  now += 500
+  log.verb('advise')                          // half a second after the click: from there
+  now += 10_000
+  log.verb('flow_themes_run')                 // no click before it: no use of a control, not counted
+  assert.equal(sent.length, 0)
+  log.flush()
+  assert.deepEqual(sent, [[{ kind: 'click', ...at, verb: '-', n: 2 }, { kind: 'verb', ...at, verb: 'advise', n: 1 }]])
+  assert.ok(!JSON.stringify(sent).includes('Telegram'), 'a title passed by mistake is not sent')
+  log.flush()
+  assert.equal(sent.length, 1, 'nothing to send, nothing sent')
+  for (const area of ['a', 'b', 'c']) log.click({ ...at, area })
+  assert.equal(sent.length, 2, 'the batch goes once it holds max events')
+  assert.equal(sent[1].length, 3)
+  log.click({ page: '@chat' })                // a click outside any control is no use
+  log.flush()
+  assert.equal(sent.length, 2)
+})
+
+test('usage: the page sends clicks only where the server says so, and the explain window holds the field', () => {
+  // asserted as booleans: a whole file as `actual` would print it entire on a failure
+  assert.ok(/config\?\.clicks === true/.test(read('app.js')), 'app.js sends clicks only when the server says so')
+  assert.ok(/'\/api\/clicks'/.test(read('api.js')), 'api.js posts to /api/clicks')
+  assert.ok(/explainNote/.test(read('views/hints.js')), 'the explain window saves its note')
+  for (const lang of ['en', 'de']) {
+    const h = text.TABLES[lang].hints
+    for (const w of [h.noteOpen, h.notePlaceholder, h.notePick, h.noteSaved]) {
+      assert.ok(w && !/Esc|Enter|key|Taste/i.test(w), `${lang}: ${w}`)
+    }
+  }
+  assert.equal(text.TABLES.de.hints.noteOpen, 'Was stört hier?')
+})

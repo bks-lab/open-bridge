@@ -2005,6 +2005,34 @@ test('hints: more than one round pages on with Next, Back and the arrow keys, th
   assert.deepEqual(went.at(-1), 1)
 })
 
+test('hints: "What bothers you here?" keeps a sentence with the page and the area of a note clicked, calmly', async () => {
+  const layout = { view: { width: 1400, height: 900 }, away: [], rounds: [{ group: 'page', placed: [
+    { id: 'chatList', n: 1, shape: 'frame', ring: { top: 110, left: 10, width: 620, height: 500 },
+      note: { top: 150, left: 50, width: 260, height: 80 }, arrow: null }] }] }
+  const sent = []
+  const c = { setHints: on => sent.push(['setHints', on]), tourStart() {}, explainNote: async args => { sent.push(['note', args]); return { ok: true } } }
+  // without a place (an older caller) there is no field
+  assert.equal(mount(html`<${HintsLayer} layout=${layout} c=${c} />`).$$('.hints-bar button').filter(b => b.text() === en.hints.noteOpen).length, 0)
+  const el = mount(html`<${HintsLayer} layout=${layout} c=${c} place=${{ page: '@chat', view: '-' }} />`)
+  el.button(en.hints.noteOpen).click()
+  await tick()
+  assert.ok(el.$('.hints-say'), 'the field opens above the bar')
+  assert.match(el.$('.hints-say').text(), new RegExp(en.hints.notePick))
+  // a click on a note picks its area and does not close the overlay
+  el.$('.hints-note').click()
+  await tick()
+  assert.deepEqual(sent, [])
+  assert.match(el.$('.hints-say').text(), new RegExp(en.hints.noteArea(en.hints.items.chatList.title)))
+  typeInto(el.$('.hints-say input'), '  The question is gone after a reload  ')
+  await tick()
+  el.button(en.hints.noteSave).click()
+  for (let i = 0; i < 20 && !el.$('.hints-noted'); i++) await tick()
+  assert.deepEqual(sent, [['note', { text: 'The question is gone after a reload', page: '@chat', area: 'chatList' }]])
+  assert.equal(el.$('.hints-say'), null, 'the field closes once noted')
+  assert.equal(el.$('.hints-noted').text(), en.hints.noteSaved)
+  assert.equal(text.TABLES.de.hints.noteOpen, 'Was stört hier?')
+})
+
 test('hints: nothing in view says so instead of an empty overlay', () => {
   const el = mount(html`<${HintsLayer} layout=${{ view: { width: 800, height: 600 }, rounds: [], away: ['ask'] }} c=${recorder()} />`)
   assert.match(el.$('.hints-bar').text(), new RegExp(en.hints.none.slice(0, 20)))

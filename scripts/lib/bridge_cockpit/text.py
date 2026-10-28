@@ -335,6 +335,34 @@ EN: dict = {
                   "running": "A question is being answered already. Try again in a moment.",
                   "too_big": "The records do not fit into one question. Search more narrowly.",
                   "failed": "The AI gave no usable answer: {why}"},
+    # scripts/cockpit-usage.py: the proposals it leaves for /bridge-learn, one per candidate of the click origin log, and
+    # the sentence of "What bothers you here?" in the explain window. Places and controls are the code's own names
+    "usage": {
+        "title": {"unused_page": "Cockpit: {place} was not opened",
+                  "unused_area": "Cockpit: {area} on {place} was not used",
+                  "unused_control": "Cockpit: {control} in {area} on {place} was not used",
+                  "left_at_once": "Cockpit: {place} is left again at once",
+                  "back_and_forth": "Cockpit: back and forth between {place}"},
+        "finding": {"unused_page": "{place} was opened {before} times before {start}, and not once from {start} to {end}.",
+                    "unused_area": "{place} was opened {views} times from {start} to {end}; nobody clicked in {area}.",
+                    "unused_control": "{control} in {area} on {place} was clicked {before} times before {start}, and not "
+                                      "once from {start} to {end}, while {area} had {clicks} clicks.",
+                    "left_at_once": "{place} was opened {views} times from {start} to {end}, and {left} times left "
+                                    "again within {seconds} seconds, before anything was done there.",
+                    "back_and_forth": "From {start} to {end} the page went from one to the other and back {times} "
+                                      "times, each step within {seconds} seconds: {place}."},
+        "next": {"unused_page": "Hide it at your place for two weeks, then delete it or keep it (decision 3).",
+                 "unused_area": "Hide the area at your place for two weeks, then delete it or keep it (decision 3).",
+                 "unused_control": "Hide the control at your place for two weeks, then delete it or keep it (decision 3).",
+                 "left_at_once": "Look at what is expected there and is not found: a wrong way in, or a page that "
+                                 "should show it at first sight.",
+                 "back_and_forth": "Look at what one page needs from the other: perhaps it belongs on one of them."},
+        "finding_head": "Finding", "next_head": "Proposal", "where_head": "Where",
+        "where": "Page {page}, view {view}, area {area}, control {control}.",
+        "recount": "Count again with this command:",
+        "note_title": "Cockpit: what bothers here, on {place}",
+        "note_from": "Written in the explain window on {date}.",
+    },
     "jev": {
         "who": "the user", "who_subject": "the user", "today": "today", "tasks": "tasks",
         "about": "{who_subject}, works with a team and with AI agents",
@@ -697,6 +725,32 @@ DE: dict = {
                   "running": "Es wird schon eine Frage beantwortet. Gleich noch einmal versuchen.",
                   "too_big": "Die Akten passen nicht in eine Frage. Enger suchen.",
                   "failed": "Die AI gab keine brauchbare Antwort: {why}"},
+    "usage": {
+        "title": {"unused_page": "Cockpit: {place} wurde nicht geöffnet",
+                  "unused_area": "Cockpit: {area} auf {place} wurde nicht benutzt",
+                  "unused_control": "Cockpit: {control} in {area} auf {place} wurde nicht benutzt",
+                  "left_at_once": "Cockpit: {place} wird gleich wieder verlassen",
+                  "back_and_forth": "Cockpit: hin und her zwischen {place}"},
+        "finding": {"unused_page": "{place} wurde vor dem {start} {before} Mal geöffnet, vom {start} bis {end} kein Mal.",
+                    "unused_area": "{place} wurde vom {start} bis {end} {views} Mal geöffnet, in {area} hat niemand geklickt.",
+                    "unused_control": "{control} in {area} auf {place} wurde vor dem {start} {before} Mal geklickt, vom "
+                                      "{start} bis {end} kein Mal, während {area} {clicks} Klicks hatte.",
+                    "left_at_once": "{place} wurde vom {start} bis {end} {views} Mal geöffnet und {left} Mal innerhalb "
+                                    "von {seconds} Sekunden wieder verlassen, bevor dort etwas geschah.",
+                    "back_and_forth": "Vom {start} bis {end} ging es {times} Mal von der einen Seite zur anderen und "
+                                      "zurück, jeder Schritt innerhalb von {seconds} Sekunden: {place}."},
+        "next": {"unused_page": "Bei dir zwei Wochen ausblenden, dann löschen oder behalten (Entscheidung 3).",
+                 "unused_area": "Den Bereich bei dir zwei Wochen ausblenden, dann löschen oder behalten (Entscheidung 3).",
+                 "unused_control": "Den Knopf bei dir zwei Wochen ausblenden, dann löschen oder behalten (Entscheidung 3).",
+                 "left_at_once": "Prüfen, was dort erwartet und nicht gefunden wird: ein falscher Weg hinein, oder eine "
+                                 "Seite, die es auf den ersten Blick zeigen sollte.",
+                 "back_and_forth": "Prüfen, was die eine Seite von der anderen braucht: vielleicht gehört es auf eine von beiden."},
+        "finding_head": "Befund", "next_head": "Vorschlag", "where_head": "Wo",
+        "where": "Seite {page}, Ansicht {view}, Fläche {area}, Knopf {control}.",
+        "recount": "Nachzählen mit diesem Befehl:",
+        "note_title": "Cockpit: was hier stört, auf {place}",
+        "note_from": "Geschrieben im Erklären-Fenster am {date}.",
+    },
     "jev": {
         "who": "dem Nutzer", "who_subject": "der Nutzer", "today": "heute", "tasks": "aufgaben",
         "about": "{who_subject}, arbeitet mit einem Team und mit KI-Agenten",

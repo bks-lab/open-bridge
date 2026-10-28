@@ -4,9 +4,11 @@
 // is logic.js hintsFor, where note, ring and arrow stand is logic.js hintLayout, and hintRounds splits them
 // so every note has room: the page first, the header after it, Next and the arrow keys page on. An area
 // the page does not show right now is left out. A click anywhere or Esc closes it; it changes nothing.
+// "What bothers you here?" in its bar takes a short sentence for the page it was opened on, and the area of a
+// note clicked meanwhile, and keeps it as a proposal for the next round (verb explain_note); nothing is sent.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { hintRounds, hintsFor, hintText } from '../logic.js'
+import { hintRounds, hintsFor, hintText, isTypingTarget, usagePlace } from '../logic.js'
 import { T } from '../text.js'
 import { useFocusOnOpen } from './overlays.js'
 
@@ -69,7 +71,7 @@ function HintsMeasured({ s, c }) {
   }, [s.ui.page, s.layout, s.model?.seq])   // new data can move or add an area: measure again
   // another page starts at its first round; new data or a resize keeps the round (HintsLayer clamps it)
   useLayoutEffect(() => setAt(0), [s.ui.page])
-  return html`<${HintsLayer} layout=${layout} at=${at} go=${setAt} c=${c} />`
+  return html`<${HintsLayer} layout=${layout} at=${at} go=${setAt} c=${c} place=${usagePlace(s)} />`
 }
 
 /** A gentle curve from the note to the ring: the middle pushed off to one side by a fifth of the length */
@@ -84,8 +86,8 @@ function curve({ x1, y1, x2, y2 }) {
 }
 
 /** The drawn overlay for a layout (hintRounds' rounds, the view they were placed in and the words measured), its
- *  round `at`; `go(n)` shows another round */
-export function HintsLayer({ layout, at = 0, go = () => {}, c }) {
+ *  round `at`; `go(n)` shows another round. With `place` ({page, view}) its bar offers "What bothers you here?" */
+export function HintsLayer({ layout, at = 0, go = () => {}, c, place = null }) {
   const t = T().hints
   const ref = useFocusOnOpen(true)
   const rounds = layout?.rounds ?? []
@@ -95,12 +97,34 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c }) {
   const view = layout?.view ?? { width: 0, height: 0 }
   const below = (layout?.away ?? []).length
   const close = () => c.setHints(false)
+  // the field of "What bothers you here?": open or not, its words, the area of the note clicked, noted once
+  const [saying, setSaying] = useState(false)
+  const [said, setSaid] = useState('')
+  const [area, setArea] = useState(null)
+  const [noted, setNoted] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const save = async e => {
+    e?.preventDefault?.()
+    const text = said.trim()
+    if (!text || busy) return
+    setBusy(true)
+    const r = await c.explainNote({ text, page: place.page, ...(place.view && place.view !== '-' ? { view: place.view } : {}),
+      ...(area ? { area } : {}) })
+    setBusy(false)
+    if (r?.ok) {
+      setNoted(true)
+      setSaying(false)
+      setSaid('')
+      setArea(null)
+    }
+  }
+  const titleOf = id => (layout?.words?.[id] ?? hintText(t.items[id]))?.title ?? id
   // the arrows page on wherever the focus stands; the round's main button takes the focus once it is drawn
   useEffect(() => {
     ref.current?.querySelector?.('[data-autofocus]')?.focus?.()
     if (typeof document === 'undefined' || !document.addEventListener) return undefined
     const onKey = e => {
-      if (e.altKey || e.metaKey || e.ctrlKey) return
+      if (e.altKey || e.metaKey || e.ctrlKey || isTypingTarget(e.target)) return
       if (e.key === 'ArrowRight' && i < rounds.length - 1) { e.preventDefault(); go(i + 1) }
       else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); go(i - 1) }
     }
@@ -121,17 +145,31 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c }) {
     </svg>
     ${placed.map(p => {
       const words = layout?.words?.[p.id] ?? hintText(t.items[p.id])
-      return html`<div key=${p.id} class="hints-note" data-hint=${p.id}
+      // while the field is open, a click on a note picks its area instead of closing
+      const pick = saying ? e => { e.stopPropagation(); setArea(p.id) } : undefined
+      return html`<div key=${p.id} class=${`hints-note${saying && area === p.id ? ' is-picked' : ''}`} data-hint=${p.id} onClick=${pick}
         style=${{ top: `${Math.round(p.note.top)}px`, left: `${Math.round(p.note.left)}px`, width: `${p.note.width}px` }}>
         <span class="hints-n mono" aria-hidden="true">${p.n}</span>
         <b class="hints-title">${words.title}</b>
         <p class="hints-body">${words.body}</p>
       </div>`
     })}
+    ${place && saying ? html`<form class="hints-say" onClick=${e => e.stopPropagation()} onSubmit=${save}>
+      <span class="small muted">${area ? t.noteArea(titleOf(area)) : t.notePick}</span>
+      <input class="input" type="text" maxlength="300" autocomplete="off" placeholder=${t.notePlaceholder} aria-label=${t.noteOpen}
+        value=${said} onInput=${e => setSaid(e.currentTarget.value)} />
+      <span class="hints-say-acts">
+        <button type="button" class="btn btn-ghost btn-xs" onClick=${() => setSaying(false)}><span class="btn-label">${t.noteCancel}</span></button>
+        <button type="button" class="btn btn-primary btn-xs" disabled=${!said.trim() || busy} onClick=${save}><span class="btn-label">${t.noteSave}</span></button>
+      </span>
+    </form>` : null}
     <div class="hints-bar" role="status" onClick=${e => e.stopPropagation()}>
       ${round ? html`<span class="hints-where small"><b>${t.groups[round.group]}</b>${rounds.length > 1
         ? html` <span class="muted mono">${t.round(i + 1, rounds.length)}</span>` : null}</span>` : null}
       <span class="small muted hints-bar-text">${layout && !rounds.length ? t.none : below && round?.group === 'page' ? t.below(below) : rounds.length > 1 ? t.bar : t.barOne}</span>
+      ${place && noted && !saying ? html`<span class="small hints-noted">${t.noteSaved}</span>` : null}
+      ${place && !saying ? html`<button type="button" class="btn btn-ghost btn-xs" onClick=${() => { setSaying(true); setNoted(false) }}>
+        <span class="btn-label">${t.noteOpen}</span></button>` : null}
       <button type="button" class="btn btn-ghost btn-xs" onClick=${() => c.tourStart()}><span class="btn-label">${t.tour}</span></button>
       ${i > 0 ? html`<button type="button" class="btn btn-secondary btn-xs" onClick=${() => go(i - 1)}><span class="btn-label">${t.back}</span></button>` : null}
       ${last ? html`<button type="button" class="btn btn-primary btn-xs" data-autofocus onClick=${close}><span class="btn-label">${t.close}</span></button>`

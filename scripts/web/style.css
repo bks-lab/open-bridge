@@ -3061,6 +3061,15 @@ pre.guide-read-text { font-family: var(--font-mono); }
 }
 .hints-bar .btn { white-space: nowrap; }
 .hints-where, .hints-bar-text { white-space: nowrap; }
+/* "What bothers you here?": its field stands above the bar, a note it can pick from is ringed */
+.hints-say {
+  position: fixed; left: 50%; bottom: 68px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px;
+  width: min(460px, calc(100vw - 32px)); background: var(--surface-raised); border: 1px solid var(--border); cursor: default;
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-float); padding: 10px 12px;
+}
+.hints-say-acts { display: flex; justify-content: flex-end; gap: 8px; }
+.hints-note.is-picked { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-line), var(--shadow-float); }
+.hints-noted { color: var(--on-surface-muted); }
 @media (max-width: 599px) {
   .hints-bar-text { display: none; }
   .hints-bar { padding-left: 8px; }

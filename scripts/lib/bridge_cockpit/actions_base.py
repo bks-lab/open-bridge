@@ -194,6 +194,10 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # the first-run tour: finished or skipped (v: the page's tour version), and taken back to offer it again
     "tour_done": {"how": ("tour_how", True), "v": ("index", True)},
     "tour_reset": {},
+    # "What bothers you here?" of the explain window: a sentence and the place it was opened on, kept as a proposal
+    # for /bridge-learn (scripts/cockpit-usage.py write_note); the place as the click origin log names it
+    "explain_note": {"text": ("text", True), "page": ("click_page", True), "view": ("click_name", False),
+                     "area": ("click_name", False)},
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
     "github_board": {"section": ("page_id", True), "slug": ("page_id", True), "mode": ("board_mode", True)},
@@ -231,7 +235,7 @@ READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
-                         "tour_done", "tour_reset", "flow_themes_run", "flow_theme_move", "flow_theme_new",
+                         "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
                          "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
