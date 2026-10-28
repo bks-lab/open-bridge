@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Pure helpers of the cockpit's files view: the queue of files, what a file's drawers hold, its next step,
 // the search and what a question asked in a file carries along, and the start of the files tab (its records, their
-// filters, what its question to the AI sends and holds back). No DOM, no network, no state. logic.js
+// filters, what its question to the AI sends and holds back, the point of Work through its right column shows). No DOM, no network, no state. logic.js
 // passes every name on, so a view may import it from either; the frontend test imports this file under node.
 import { TABLES } from './text.js'
-import { CONTEXT_MAX, FILES_PAGE, filesOn, indexRows, liveStage, queueOf } from './logic.js'
+import { CONTEXT_MAX, FILES_PAGE, filesOn, flowParts, flowQueue, flowUniverse, indexRows, liveStage, queueOf } from './logic.js'
 import { areaScope, inProject, rowProject } from './areas.js'
 
 /** The files the files view walks under the filters of the files tab (areaScope as there, whatever page is open):
@@ -107,6 +107,20 @@ export function askPlan(rows, words) {
     if (by.length) { held += 1; by.forEach(w => hit.add(w)) } else paths.push(r.path)
   }
   return { paths, held: { n: held, words: block.filter(w => hit.has(w)) } }
+}
+
+/** The point a record open in the files tab stands for in its right column (views/flowside.js FlowAside, round 6d):
+ *  the open task's row (flowUniverse, across every area), as Work through shows it where it holds that row (a point
+ *  or an entry of Running now, flowParts), else as a task point of its own. `open` is a slug, or the folder of a
+ *  closed copy, which has none, as a task no row names has none: its verbs would act on nothing */
+export function recordPoint(s, open) {
+  if (!open || String(open).includes('/')) return null
+  const key = `task:${open}`
+  const row = flowUniverse({ ...s, model: s?.wholeModel ?? s?.model }).get(key)
+  if (!row) return null
+  const parts = flowParts(s)
+  return [...flowQueue(parts, 'all'), ...parts.lane].find(x => x.kind !== 'reports' && x.row?.key === key)
+    ?? { group: 'task', id: key, kind: 'row', row }
 }
 
 /** Where a found file opens: at its place in the filtered queue, the walk on (ui.filesWalk), else beside the queue

@@ -1122,6 +1122,9 @@ const ctl = {
   dossierWalk: (id, i) => setUi({ dossierAt: { id, i }, dossierOpen: null, filesWalk: true }),
   // the files tab back on its search, the walk off and no record open
   filesHome: () => setUi({ filesWalk: false, dossierOpen: null }),
+  // a record of the list on the left opens beside it, the walk off: its Next and Previous walk that list (round 6d);
+  // a closed one by its folder, since a slug can be open and closed at once
+  openRecord: (slug, path) => setUi({ dossierOpen: String(path ?? '').startsWith('work/done/') ? path : slug, filesWalk: false }),
   // the records of its start: read again when a minute old, the last ones shown meanwhile
   async loadRecords() {
     const had = store.get().records

@@ -3230,3 +3230,14 @@ test('github (6c fix): a board column spelled two ways is one option, the rows d
   const list = mount(html`<${GitHubList} items=${ghBarRows()} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${recorder()} byKey=${new Map()} />`)
   assert.ok(list.$('.ghl-ref') && !list.$('.ghl-row .origin'), 'repo#n, no GitHub chip')
 })
+
+test('6d: the files tab stands on the grid of Work through, so it stacks where Work through stacks', async () => {
+  const fs = await import('node:fs')
+  const s = cockpitState(NOW, { ui: { page: '@files', filesWalk: true } })
+  const el = mount(html`<${views.dossier.DossierView} s=${s} c=${recorder()} />`)
+  const grid = el.$('.flow-grid')
+  assert.ok(grid && grid.$('.flow-side.dz-side') && grid.$('.flow-main.dz-main'), 'the columns of Work through')
+  assert.ok(el.$('.col.flow'), 'inside the page of Work through, whose column height the side columns keep')
+  const css = fs.readFileSync(new URL('../web/flow.css', import.meta.url), 'utf8')
+  assert.match(css, /@media \(max-width: 960px\) \{\n {2}\.flow-grid, \.flow-grid\.no-aside \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+})

@@ -6,15 +6,12 @@
  */
 
 /* the files tab (views/dossier.js): one framed surface per file, a sibling of the start page's
-   cards. The column stays the scroller; the page inside it is centred at a reading width, so a hidden sidebar
-   leaves the file in the middle rather than on the left */
+   cards, in the middle of Work through's grid (round 6d, flow.css .flow-grid). The column stays the scroller */
 .dz { min-width: 0; }
-.dz-page { display: flex; flex-direction: column; gap: var(--space-md); width: 100%; max-width: 880px; margin: 0 auto; min-width: 0; padding-bottom: var(--space-2xl); }
 .dz-head { flex-wrap: wrap; justify-content: space-between; gap: 10px 16px; padding: 2px 0; }
 .dz-head .work-switch { margin: 0; }
-/* the start of the files tab (FilesStart): the search first, large; the chips; the records on hairlines */
+/* the left column of the files tab (FilesList): the search first, large; the chips; the records on hairlines */
 .dz-head .dz-home { margin-right: auto; }
-.fs-start { padding-top: var(--space-md); }
 .fs-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .fs-top .fs-find { flex: 1 1 auto; }
 .fs-find { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -47,6 +44,15 @@
 .fs-area { display: inline-flex; align-items: center; gap: 6px; color: var(--on-surface); }
 .fs-hit { margin: 4px 0 0; overflow-wrap: anywhere; }
 .fs-walk { margin: 0; flex: none; }
+/* round 6d: the tab laid out as Work through (flow.css .flow-grid, its breakpoints too): the search, its chips and the
+   records in the left column, which scrolls in itself and keeps where it stood; the record open marked by a bar on its
+   left; the record in the middle at the width it gets, Work through's right column beside it */
+.dz-side .fs-top { flex-direction: column; align-items: stretch; }
+.dz-side .fs-find-box { height: 40px; padding: 0 12px; }
+.dz-side .fs-chips { gap: 8px 12px; }
+.fs-item.is-on { padding-left: 10px; box-shadow: inset 3px 0 0 var(--accent-line); background: var(--surface-raised); }
+.dz-main .dz-head { padding: 0; }
+.dz-pick { margin: 0; padding: var(--space-xl) 0; text-align: center; }
 
 /* what the search found: a quiet list on hairlines, above the file */
 .dz-results { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 20px 16px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); }
@@ -69,7 +75,7 @@
   animation: fx-in 0.3s ease-out 1;
 }
 .dz-cover { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.dz-eyebrow {
+.dz-eyebrow, .fs-eyebrow {
   margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px;
   color: var(--secondary); font-size: var(--text-label); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
 }

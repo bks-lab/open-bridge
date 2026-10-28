@@ -146,7 +146,7 @@ test('behind the queue the chips name their counts, a click picks one, and a fil
   const c = recorder()
   const el = mount(html`<${DossierView} s=${seen()} c=${c} />`)
   // the queue stays on top: the file of the queue first, the shelves after it
-  const kids = [...el.$('.dz-page').childNodes].filter(k => k.nodeType === 1).map(k => k.getAttribute('class') ?? '')
+  const kids = [...el.$('.dz-main').childNodes].filter(k => k.nodeType === 1).map(k => k.getAttribute('class') ?? '')
   assert.ok(kids.findIndex(k => k.includes('dz-file')) < kids.findIndex(k => k.includes('dz-shelves')), 'queue first')
   const chips = el.$$('.dz-shelf-chip')
   const sh = en.dossier.shelf
