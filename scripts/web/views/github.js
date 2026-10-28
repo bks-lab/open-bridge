@@ -52,8 +52,9 @@ function GhFilterBar({ items, filter, setFilter, order }) {
   const me = ghMyLogin(items)
   const facets = ghFacets(items, filter, me, { board: order })
   const columns = ghStatusWords(items)
-  const word = (d, v) => (v === GH_NONE ? (d === 'person' ? b.nobody : b.noBoard) : v === GH_ME ? b.me
-    : d === 'person' ? `@${v}` : d === 'type' ? b.kind[v] ?? v : d === 'status' ? columns.get(v) ?? v : v)
+  const person = d => d === 'assignee' || d === 'author'
+  const word = (d, v) => (v === GH_NONE ? (person(d) ? b.nobody : b.noBoard) : v === GH_ME ? b.me
+    : person(d) ? `@${v}` : d === 'type' ? b.kind[v] ?? v : d === 'status' ? columns.get(v) ?? v : v)
   const dims = GH_DIMS.filter(d => facets[d].length > 1 || filter?.[d] != null)
   const on = ghFiltered(filter)
   if (!dims.length && !on) return null
@@ -245,7 +246,9 @@ function TypeIcon({ type, token }) {
 function matches(it, q) {
   if (!q) return true
   const g = it.gh ?? {}
-  const hay = [it.title, g.title, g.repo, g.number && `#${g.number}`, g.status, g.priority, ...(g.labels ?? []), ...(g.people ?? []), g.author, g.board, g.task]
+  // a person as the row shows them too: @login
+  const hay = [it.title, g.title, g.repo, g.number && `#${g.number}`, g.status, g.priority, ...(g.labels ?? []),
+    ...[...(g.people ?? []), g.author].filter(Boolean).map(p => `@${p}`), g.board, g.task]
     .filter(Boolean).join(' ').toLowerCase()
   return q.toLowerCase().split(/\s+/).every(w => hay.includes(w))
 }
@@ -271,13 +274,22 @@ const PR_TOKEN = { ...REVIEW_TOKEN, ...CHECKS_TOKEN }
 const SHOWN_LABELS = 3
 const SHOWN_PEOPLE = 3
 
-function GhRow({ it, page, section, s, c, byKey, grouped = true }) {
+/** A login on a row: you as you; with a filter to set (round 6d), a button that filters the rows by it */
+function RowPerson({ login, me, dim, pick }) {
+  const t = T()
+  const mine = login === me
+  const word = mine ? t.gh.you : `@${login}`
+  return pick ? html`<button type="button" class="gh-person mono ghl-pick" title=${t.gh.pickTitle[dim]}
+    onClick=${e => { e.stopPropagation(); pick(dim, mine ? GH_ME : login) }}>${word}</button>` : html`<span class="gh-person mono">${word}</span>`
+}
+
+function GhRow({ it, page, section, s, c, byKey, grouped = true, me = null, pick = null }) {
   const t = T()
   const g = it.gh ?? {}
   const labels = g.labels ?? []
   const people = g.people ?? []
-  // who opened it, when that is not the one already named as assigned
-  const opener = g.author && !people.includes(g.author) ? (g.by_me ? t.gh.byYou : t.gh.by(g.author)) : null
+  // who opened it, always beside who it is assigned to (round 6d); you as you
+  const byMe = g.by_me === true || (!!me && g.author === me)
   const token = STATE_TOKEN[g.state] ?? 'info'
   const found = (pageItemActs(it) || it.inbox || (it.task && byKey.has(`task:${it.task}`))) ? actionRow(it, byKey) : null
   // the row the close door acts on, with the agent tab the page item names
@@ -308,13 +320,17 @@ function GhRow({ it, page, section, s, c, byKey, grouped = true }) {
         ${g.untasked ? html`<span class="ghl-chip ghl-chip-untasked" title=${t.gh.untaskedChipTitle}>${t.gh.untaskedChip}</span>` : null}
         ${it.tab ? html`<${Chip} token=${it.tab.live ? 'success' : 'on-surface-muted'}>${t.gh.agentChip(t.state?.[it.tab.state] ?? it.tab.state)}<//>` : null}
         ${g.quiet ? html`<span class="ghl-chip ghl-chip-quiet">${t.gh.quietChip(g.quiet)}</span>` : null}
-        ${opener ? html`<span class="ghl-author muted">${opener}</span>` : null}
+        ${g.author ? html`<span class="ghl-author muted">${byMe ? (pick ? html`<button type="button" class="gh-person ghl-pick"
+          title=${t.gh.pickTitle.author} onClick=${e => { e.stopPropagation(); pick('author', GH_ME) }}>${t.gh.byYou}</button>` : t.gh.byYou)
+          : html`${t.gh.openedBy} <${RowPerson} login=${g.author} me=${me} dim="author" pick=${pick} />`}</span>` : null}
         ${g.note ? html`<span class="muted small">${g.note}</span>` : null}
       </p>
     </div>
     <div class="ghl-side">
-      ${people.length ? html`<span class="ghl-people">${people.slice(0, SHOWN_PEOPLE).map(p => html`<span key=${p} class="gh-person mono">@${p}</span>`)}
-        ${people.length > SHOWN_PEOPLE ? html`<span class="gh-person mono muted" title=${people.slice(SHOWN_PEOPLE).map(p => `@${p}`).join(', ')}>+${people.length - SHOWN_PEOPLE}</span>` : null}</span>` : null}
+      ${people.length ? html`<span class="ghl-people"><span class="ghl-people-label muted small">${t.gh.assigned}</span> ${people.slice(0, SHOWN_PEOPLE)
+          .map((p, i) => html`${i ? ', ' : ''}<${RowPerson} key=${p} login=${p} me=${me} dim="assignee" pick=${pick} />`)}${people.length > SHOWN_PEOPLE
+          ? html`, <span class="gh-person mono muted" title=${people.slice(SHOWN_PEOPLE).map(p => `@${p}`).join(', ')}>+${people.length - SHOWN_PEOPLE}</span>` : null}</span>`
+        : html`<span class="ghl-people ghl-nobody muted small">${t.gh.nobodyAssigned}</span>`}
       <span class="muted small" title=${g.changed ?? ''}>${ago(g.changed)}</span>
     </div>
     <div class="ghl-acts btn-row">
@@ -343,8 +359,10 @@ function BoardFacts({ b }) {
 /** The rows of a github-work section under their board: a one-line head per board (its count and a bar of
  *  its rows' states) that folds, the board's facts under it, the rows in the work's order or newest first, a
  *  search over everything a row names. "Group by board" off (kept per viewer): one list, each row names its board */
-export function GitHubList({ items, page, section, s, c, byKey }) {
+export function GitHubList({ items, page, section, s, c, byKey, filter = null, setFilter = null, me = ghMyLogin(items) }) {
   const t = T()
+  // a click on a name on a row sets that filter beside the choices made (round 6d)
+  const pick = setFilter ? (d, v) => setFilter({ ...(filter ?? {}), [d]: v }) : null
   const grouped = s.ui?.ghGroup !== false
   const [q, setQ] = useState('')
   const [by, setBy] = useState('state')
@@ -380,7 +398,7 @@ export function GitHubList({ items, page, section, s, c, byKey }) {
       ${grouped && groups.length > 1 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${foldAll}>${allFolded ? t.gh.unfoldAll : t.gh.foldAll}<//>` : null}
     </div>
     ${!shown.length ? html`<p class="muted">${t.filterNone}</p>` : !grouped ? html`<ul class="ghl-rows">${ghSortRows(shown, by).map(it => html`<${GhRow}
-      key=${it.index} it=${it} page=${page} section=${section.id} s=${s} c=${c} byKey=${byKey} grouped=${false} />`)}</ul>` : groups.map(g => {
+      key=${it.index} it=${it} page=${page} section=${section.id} s=${s} c=${c} byKey=${byKey} grouped=${false} me=${me} pick=${pick} />`)}</ul>` : groups.map(g => {
       const rows = ghSortRows(shown.filter(it => (it.group ?? '') === g), by)
       const isFolded = folded.has(g)
       const counts = rows.reduce((n, it) => ({ ...n, [it.gh?.state ?? 'new']: (n[it.gh?.state ?? 'new'] ?? 0) + 1 }), {})
@@ -395,7 +413,7 @@ export function GitHubList({ items, page, section, s, c, byKey }) {
         </button>
         ${board ? html`<${BoardFacts} b=${board} />` : null}
         ${isFolded ? null : html`<ul class="ghl-rows">${rows.map(it => html`<${GhRow} key=${it.index} it=${it} page=${page}
-          section=${section.id} s=${s} c=${c} byKey=${byKey} />`)}</ul>`}
+          section=${section.id} s=${s} c=${c} byKey=${byKey} me=${me} pick=${pick} />`)}</ul>`}
       </section>`
     })}
   </div>`

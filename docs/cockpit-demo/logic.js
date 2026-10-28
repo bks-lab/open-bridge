@@ -360,9 +360,10 @@ export function ghSortRows(rows, by) {
     : (by === 'priority' ? prioRank(a.gh?.priority) - prioRank(b.gh?.priority) : 0) || state(a) - state(b) || at(b).localeCompare(at(a)))
 }
 
-// the GitHub page's filter bar (round 6c, views/github.js): Board, Person, Repository, Kind and Board status, one
-// choice each, combined with the figure picked; GH_ME stands for you, GH_NONE for no board and for nobody assigned
-export const GH_DIMS = ['board', 'person', 'repo', 'type', 'status']
+// the GitHub page's filter bar (round 6c, views/github.js): Board, Assigned to, Opened by (round 6d: the one Person
+// split in two), Repository, Kind and Board status, one choice each, combined with the figure picked; GH_ME stands
+// for you, GH_NONE for no board and for nobody assigned
+export const GH_DIMS = ['board', 'assignee', 'author', 'repo', 'type', 'status']
 export const GH_ME = '@me'
 export const GH_NONE = '-'
 
@@ -389,8 +390,8 @@ export function ghStatusWords(items) {
 }
 
 /** The values a row has in one dimension: the boards it stands on (no board as GH_NONE; an older server names the
- *  board only as the group, unless that group is the repository), Me and the people assigned or who opened it
- *  (nobody assigned as GH_NONE), its repository, its kind, and its column on a board */
+ *  board only as the group, unless that group is the repository), the people assigned (you as Me, nobody as GH_NONE),
+ *  who opened it (you as Me, none when the server does not say), its repository, its kind, and its column on a board */
 export function ghValues(it, dim, me = null) {
   const g = it.gh ?? {}
   const board = g.board !== undefined ? g.board : (it.group && it.group !== g.repo ? it.group : null)
@@ -398,11 +399,15 @@ export function ghValues(it, dim, me = null) {
   if (dim === 'repo') return g.repo ? [g.repo] : []
   if (dim === 'type') return [g.type ?? 'issue']
   if (dim === 'status') return board && g.status ? [ghStatusKey(g.status)] : []
-  const people = g.people ?? []
   const flags = it.flags ?? []
-  const mine = flags.includes('mine') || flags.includes('my_pr') || g.by_me === true || (!!me && (people.includes(me) || g.author === me))
-  const others = [...new Set([...people, ...(g.author ? [g.author] : [])])].filter(p => p !== me)
-  return [...(mine ? [GH_ME] : []), ...others, ...(people.length ? [] : [GH_NONE])]
+  if (dim === 'author') {
+    const mine = flags.includes('my_pr') || g.by_me === true || (!!me && g.author === me)
+    return mine ? [GH_ME] : g.author ? [g.author] : []
+  }
+  const people = g.people ?? []
+  const mine = flags.includes('mine') || (!!me && people.includes(me))
+  const others = [...new Set(people)].filter(p => p !== me)
+  return [...(mine ? [GH_ME] : []), ...others, ...(people.length || mine ? [] : [GH_NONE])]
 }
 
 /** A row passes the filter: it carries the figure picked (open is every row) and, in each dimension chosen, the
@@ -437,11 +442,13 @@ export function ghFacets(items, f, me = null, order = {}) {
 }
 
 /** The filters kept in this browser, read back clean: per section ("page/section") the dimensions and the figure
- *  that hold a text; anything else, and a section with nothing chosen, is dropped */
+ *  that hold a text; anything else, and a section with nothing chosen, is dropped. A Person kept before round 6d
+ *  becomes Assigned to (Me, a login and nobody pick the same rows assigned there), unless that is chosen already */
 export function ghFilterKept(raw) {
   const out = {}
-  for (const [key, f] of Object.entries(raw && typeof raw === 'object' ? raw : {})) {
-    if (!/^[^/]+\/[^/]+$/.test(key) || !f || typeof f !== 'object') continue
+  for (const [key, kept0] of Object.entries(raw && typeof raw === 'object' ? raw : {})) {
+    if (!/^[^/]+\/[^/]+$/.test(key) || !kept0 || typeof kept0 !== 'object') continue
+    const f = typeof kept0.person === 'string' && kept0.assignee == null ? { ...kept0, assignee: kept0.person } : kept0
     const kept = Object.fromEntries([...GH_DIMS, 'flag'].filter(d => typeof f[d] === 'string' && f[d]).map(d => [d, f[d].slice(0, 120)]))
     if (Object.keys(kept).length) out[key] = kept
   }
