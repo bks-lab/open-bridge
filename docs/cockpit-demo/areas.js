@@ -170,7 +170,11 @@ export function areaScope(s) {
     // the files of the area too (round 4: a backlog task or a stream of model.files is an open row of the page); the
     // files view keeps reading every file through wholeModel
     const files = Array.isArray(v.model?.files) && area ? { files: v.model.files.filter(f => inProject({ area_names: f.area_names }, area)) } : {}
-    return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn), ...files },
+    // the open tasks a page names and the items put off past the window are rows of the page too (flow.js universeOf):
+    // under an area only that area's (28.10.: another area's closable task stood in every area)
+    const rest = area && v.model ? { task_rows: (v.model.task_rows ?? []).filter(r => inProject(r, area)),
+      deferred: (v.model.deferred ?? []).filter(r => inProject(r, area)) } : {}
+    return { ...v, ui: s.ui, model: v.model && { ...v.model, returns: (s.model?.returns ?? []).filter(keepReturn), ...files, ...rest },
       sessions: s.sessions && area ? { ...s.sessions, sessions: (s.sessions.sessions ?? []).filter(keepSession) } : s.sessions }
   }
   // the files tab takes the rows as Work does (it was Work's view until round 6c)

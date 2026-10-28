@@ -5,7 +5,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
-  stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas,
+  stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas, startWaiting,
   skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -25,9 +25,10 @@ function Overview({ s, c }) {
   if (!m) return html`<div class="panel panel-pad"><${Skeleton} lines=${6} /></div>`
   // under an area filter the count is the area's, as its line on the overview has it; the rest of the
   // headline (free time, what comes) is the day's
+  // with Work through on the count is its own, the start page's line for the area (flow.js startWaiting)
   const area = s.ui.area ? homeAreas(s.tabs?.tabs, m.sections, [], s.now || Date.now())
     .find(a => !a.none && a.name.toLowerCase() === s.ui.area.trim().toLowerCase()) : null
-  const waiting = s.ui.area ? area?.waiting ?? 0 : m.briefing_badge ?? 0
+  const waiting = startWaiting(s, s.ui.area) ?? (s.ui.area ? area?.waiting ?? 0 : m.briefing_badge ?? 0)
   const head = html`
     <span class="eyebrow">${t.overviewTitle}</span>
     <h2 class="detail-title">${t.forYouNow(waiting)}${m.headline_rest ? ` · ${m.headline_rest}` : ''}</h2>

@@ -565,15 +565,21 @@ test('Work under an area filter: the tab column shows and counts that area, the 
   assert.match(col.text(), /acme-one/)
   assert.doesNotMatch(col.text(), /orbit-one|orbit-two/)
   assert.match(col.$('#tabs-title').text(), /2/)
-  // the middle: what waits in the area (its row and its tab), as the area's line on the overview counts it
-  const mid = mount(html`<${DetailColumn} s=${s} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  // with Work through on the middle counts what Work through holds there, the start page's line for the area: the
+  // tab that asks (the row is no ask, a point of its own, the start page's tasks)
+  const flowMid = mount(html`<${DetailColumn} s=${s} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  assert.equal(logic.startWaiting(s, 'ACME'), 1)
+  assert.match(flowMid.$('.detail-title').text(), new RegExp(en.forYouNow(1)))
+  // without Work through: what waits in the area (its row and its tab), as the area's line on the overview counts it
+  const old = { ...s, work: { ...s.work, flow: { ...(s.work?.flow ?? {}), enabled: false } } }
+  const mid = mount(html`<${DetailColumn} s=${old} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
   assert.match(mid.$('.detail-title').text(), new RegExp(en.forYouNow(2)))
   assert.doesNotMatch(mid.$('.detail-title').text(), /11/)
   assert.match(mid.$('.detail-title').text(), /free for the rest of the day/)
   // what stays global says so
   assert.match(mid.text(), new RegExp(en.allAreas))
   // without a filter the server's number stands
-  const whole = mount(html`<${DetailColumn} s=${{ ...s, ui: { ...s.ui, area: null } }} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  const whole = mount(html`<${DetailColumn} s=${{ ...old, ui: { ...s.ui, area: null } }} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
   assert.match(whole.$('.detail-title').text(), new RegExp(en.forYouNow(11)))
   assert.doesNotMatch(whole.text(), new RegExp(en.allAreas))
 })

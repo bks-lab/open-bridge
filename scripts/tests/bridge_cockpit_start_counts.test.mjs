@@ -127,3 +127,35 @@ test('the start page, its tiles and the page bar read the one count', () => {
   assert.ok(/startWaiting\(/.test(stage))
   assert.ok(/startWaiting\(/.test(home))
 })
+
+test('areaScope: Work through under an area holds no other area\'s task_rows or deferred items', () => {
+  const s = state({ work: [task('a1', { area_names: ['ACME'] })] })
+  s.model.task_rows = [task('b-closable', { area_names: ['Beta'], closable: true })]
+  s.model.deferred = [ask('20261009-0905-b-later', { area_names: ['Beta'], inbox_state: 'deferred', until: '2026-11-01' })]
+  const scoped = logic.areaScope({ ...s, ui: { ...s.ui, page: '@flow', area: 'ACME' } })
+  assert.deepEqual(scoped.model.task_rows, [])
+  assert.deepEqual(scoped.model.deferred, [])
+  const acme = logic.flowAreas(s).areas.find(a => a.name === 'ACME')
+  assert.equal(acme.tasks, 1)
+  assert.ok(logic.flowAreas(s).areas.find(a => a.name === 'Beta'))
+})
+
+test('flowAreas: a question without an area that covers a task of an area is not counted under No area', () => {
+  const s = state({ now: [ask('20261009-0900-x-q', { task: 'a1' })], work: [task('a1', { area_names: ['ACME'] })] })
+  const { areas } = logic.flowAreas(s)
+  assert.equal(areas.find(a => a.none), undefined)
+})
+
+test('flowAreas: the counts follow a tab within seconds, not a minute', () => {
+  const tab = { ref: 'surface:5', name: 'x', workspace: 'ACME', state: 'needs-you', since_ms: NOW - 3 * MIN }
+  const s = state({ tabs: [tab] })
+  assert.equal(logic.flowAreas(s).all.waiting, 1)
+  const later = { ...s, now: NOW + 10000, tabs: s.tabs }
+  // same tabs object, ten seconds on: computed anew (the memo keys on a few seconds)
+  assert.notEqual(logic.flowAreas(later), logic.flowAreas(s))
+})
+
+test('the overview of Work reads the start page\'s count', () => {
+  const detail = fs.readFileSync(new URL('../web/views/detail.js', import.meta.url), 'utf8')
+  assert.ok(/startWaiting\(s, s\.ui\.area\)/.test(detail))
+})

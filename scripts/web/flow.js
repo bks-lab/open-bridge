@@ -1229,7 +1229,7 @@ function startFigures(parts, nowMs) {
 
 // whether a row, a tab or a session carries an area: then a filter of the start page holds it, else "No area" does
 const named = o => !!(o && (o.workspace || o.area || o.area_names?.length || o.mark?.label))
-const itemNamed = x => named(x?.row) || named(x?.tab) || named(x?.start?.tab) || (!!x?.session && named({ workspace: x.session.project }))
+const itemNamed = x => named(x?.row) || named(x?.task) || named(x?.tab) || named(x?.start?.tab) || (!!x?.session && named({ workspace: x.session.project }))
 
 /** The parts of Work through with only what carries no area, for the line "No area" */
 function withoutArea(parts) {
@@ -1249,12 +1249,17 @@ let startMemo = { key: null, out: null }
  *  area of a row of several. {areas, all}; an area with no number drops out as in homeAreas */
 export function flowAreas(s) {
   const nowMs = s?.now || Date.now()
+  // a start goes quiet or is lost by the clock (liveStage, flowArm), so the memo keeps a few seconds only
   const key = [s?.model, s?.tabs, s?.sessions, s?.driver, s?.work, s?.ui?.answered, s?.ui?.flowJump, s?.ui?.flowEarly, s?.jevOrder,
-    Math.floor(nowMs / 60000)]
+    s?.triage, s?.jev, Math.floor(nowMs / 5000)]
   if (startMemo.key && startMemo.key.every((v, i) => v === key[i])) return startMemo.out
   const base = { ...s, ui: { ...(s?.ui ?? {}), page: FLOW_PAGE, area: null } }
   const whole = flowParts(base)
-  const rows = [...flowUniverse(s).values()].flatMap(r => (r.area_names?.length ? r.area_names : [rowProject(r)]).map(a => ({ area: a })))
+  // every area a row names (inProject matches each of them), else the one rowProject gives
+  const rows = [...flowUniverse(s).values()].flatMap(r => {
+    const all = [...new Set([r.area, ...(r.area_names ?? [])].filter(Boolean))]
+    return (all.length ? all : [rowProject(r)]).map(a => ({ area: a }))
+  })
   const names = homeProjects((s?.tabs?.tabs ?? []).filter(t => !t.is_control), rows)
   const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), flow: true, ...x, total: x.waiting + x.running + x.review + x.overdue, ...extra })
   const areas = names.map(name => line(name, startFigures(flowParts(areaScope({ ...base, ui: { ...base.ui, area: name } })), nowMs)))

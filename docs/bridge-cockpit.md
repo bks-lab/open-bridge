@@ -845,7 +845,10 @@ watched issues) counts in no column, and a tab answered here stops waiting at
 once. A row of two areas stands in both lines; the line All counts what Work
 through shows unfiltered, each thing once, so it can be less than the sum of
 the lines. The head line, the tile "waiting" and the work tab's count in the
-page bar are the line All's waiting. A click on waiting, to review or overdue
+page bar are the line All's waiting; the overview of Work ("N for you now")
+is the line of the area it is filtered to. Under an area Work through holds
+that area's open tasks a page names and items put off past the window only
+(`task_rows`, `deferred`), no other area's. A click on waiting, to review or overdue
 opens Work through on its overview under that area, running opens Running now.
 Without Work through the start page keeps its own count (`homeAreas`: the asks
 of Now and the tabs that want you, the line All their sum).
