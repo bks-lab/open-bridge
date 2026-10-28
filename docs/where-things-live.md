@@ -1,7 +1,7 @@
 ---
 summary: "A question-to-location map: the question in the words somebody asks it on the left, the file that answers it on the right. CORE ships the CORE rows; an instance appends its own in work/where-things-live.md"
 type: reference
-last_updated: 2026-09-24
+last_updated: 2026-10-28
 related:
   - ../rules/knowledge-growth.md
   - structure.md
@@ -102,6 +102,7 @@ searches again.
 | What does my briefing show, from which trackers, and how do I change it? | [`docs/briefings.md`](briefings.md) |
 | How do I choose the cockpit's tabs, columns, marks and language? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) § 8 |
 | How do I see and steer the whole Bridge in a browser (inbox, tasks, agent tabs, machines)? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) (early version) |
+| What still keeps my cockpit from working well, and which features can I still switch on? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) "The Setup page" (`scripts/bridge-setup.py`) |
 | What is in `mods/`, and how do I install or test a mod? | [`mods/README.md`](../mods/README.md) |
 | How do the day's agent tabs get planned and steered, with or without a terminal tool? | [`docs/workplace.md`](workplace.md) |
 | How does a machine that is always on become the arm of my Bridge? | [`docs/always-on-machine.md`](always-on-machine.md) |

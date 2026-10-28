@@ -4027,6 +4027,21 @@ export function tourSteps(s) {
   ]
 }
 
+/** The Setup page (docs/bridge-cockpit.md, The Setup page): the page that holds its checks (a profile may place
+ *  them on a page of its own) and how many of their rows are findings, red or yellow; null without the section */
+export function setupPageOf(model) {
+  for (const p of model?.pages ?? []) {
+    const sec = (p.sections ?? []).find(x => x?.id === 'setup-checks')
+    if (sec) return { page: p.id, findings: (sec.items ?? []).filter(it => it?.tone === 'bad' || it?.tone === 'warn').length }
+  }
+  return null
+}
+
+/** Whether the welcome offers "Set up first": something on the Setup page still keeps the cockpit from working well */
+export function setupWanted(model) {
+  return (setupPageOf(model)?.findings ?? 0) > 0
+}
+
 /** Where the tour's box stands beside the lit area `rect` ({top, left, width, height}, null: none): below
  *  when it fits, else above, else beside it (a tall column), else inside it at its top (the whole page);
  *  always 16px off the edges */
@@ -4076,6 +4091,9 @@ const HINTS = {
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
+  // the Setup page (briefing.py collect --setup): its three lists, each a section of the page
+  setup: [['setupChecks', '.psec[aria-labelledby="ps-setup-setup-checks"]'], ['setupAvailable', '.psec[aria-labelledby="ps-setup-setup-available"]'],
+    ['setupOn', '.psec[aria-labelledby="ps-setup-setup-on"]'], ['rowActs', '.psec td.c-acts']],
   // Work through, a view of the work tab (its parts are explained there, hintsFor), with the session cards of Running now
   // and the row of the task check under Not now with the check's filter and table in the middle (round 6 c)
   '@flow': [['flowSide', '.flow-side'], ['flowOverview', '.flow-overview'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],

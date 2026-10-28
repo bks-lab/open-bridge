@@ -1,0 +1,232 @@
+# The feature catalogue as data: one entry per `### ` heading of feature-catalog.md.
+#
+# feature-catalog.md is the prose a person reads; this file is what a program reads
+# (scripts/bridge-setup.py, the cockpit's Setup page). Both describe the same
+# features, so scripts/tests/test_bridge_cockpit_setup.py fails when a heading has
+# no entry here or an entry names a heading the catalogue does not have.
+#
+# One entry is either a feature the Setup page can tell is on or off:
+#
+#   - id: github-projects            # stable, lowercase, the row id on the Setup page
+#     catalog: "GitHub Projects"     # the exact `### ` heading in feature-catalog.md
+#     group: integrations            # the catalogue group's focus slug
+#     title: "GitHub"                # short, as a row title
+#     when: "..."                    # the "when you need it" in one line
+#     enabled_when:                  # it counts as on when ANY of these holds
+#       - {config: integrations.github.enabled}      # a bridge-config.yaml path that is true / not empty
+#       - {files: "infra/remotes/*.yaml"}            # a glob inside the Bridge, `_` paths left out; `dir/` for folders
+#       - {exists: infra/backups/topology.yaml}      # one path inside the Bridge
+#     activate: "/bridge-onboard --add github-projects"   # the catalogue's Activate: step, verbatim in spirit
+#     state_key: github_projects     # its key under suggestions: in work/onboarding-state.yaml
+#     offer_only_when:               # optional: ALL must hold before it is offered (same tests as enabled_when),
+#       - {config: cockpit.enabled}  # or the word `never` for an entry that is never offered
+#     doc: docs/briefings.md         # optional: a file of this Bridge the row links to
+#
+# or an entry the Setup page leaves out, with the reason:
+#
+#   - catalog: "Voice Messages"
+#     skip: "not shipped with open-bridge"
+#
+# Nothing here switches a feature on. The Setup page only names `activate`; the agent
+# tab that "Let AI do it" opens runs that step, where the person confirms.
+
+schema_version: 1
+features:
+  # 1. Identity & Filing
+  - id: personas
+    catalog: "Personas"
+    group: identity
+    title: "Personas"
+    when: "You write or file under more than one identity (freelancer, company, private)."
+    enabled_when: [{files: "identity/personas/*.yaml"}]
+    activate: "/bridge-onboard --add personas"
+    state_key: personas
+    doc: docs/personas.md
+  - id: doc-system
+    catalog: "Document Sensor"
+    group: identity
+    title: "Document sensor"
+    when: "You drop scans into an inbox folder and want them filed without sorting by hand."
+    enabled_when: [{config: doc_sensor.enabled}]
+    activate: "/bridge-onboard --add doc-system"
+    state_key: doc_system
+  - id: accounts
+    catalog: "Mail / Calendar Accounts"
+    group: identity
+    title: "Mail and calendar accounts"
+    when: "Skills should know which mail or calendar account to sign in to."
+    enabled_when: [{files: "identity/accounts/*.yaml"}]
+    activate: "/bridge-onboard --add accounts"
+    state_key: accounts
+    doc: docs/cloud-accounts.md
+
+  # 2. Communication & Calendar
+  - id: mandants
+    catalog: "Mandants"
+    group: communication
+    title: "Mandants (recipient groups)"
+    when: "You send the same kind of message to the same people again and again."
+    enabled_when: [{config: mandants.enabled}, {files: "identity/mandants/*.yaml"}]
+    activate: "/bridge-onboard --add mandants"
+    state_key: mandants
+    doc: docs/mandants.md
+  - id: calendar
+    catalog: "Calendar"
+    group: communication
+    title: "Scheduled sends"
+    when: "You send something to a group on a schedule (a weekly report, a reminder)."
+    enabled_when: [{config: calendar.enabled}]
+    activate: "/bridge-onboard --add calendar"
+    state_key: calendar
+    doc: docs/calendar.md
+  - id: channels
+    catalog: "Channels"
+    group: communication
+    title: "Channels"
+    when: "The Bridge should send through a transport of its own (mail, chat, bot)."
+    enabled_when: [{config: channels.enabled}, {files: "infra/channels/*.yaml"}]
+    activate: "/bridge-onboard --add channels"
+    state_key: channels
+    doc: docs/channels.md
+  - catalog: "Voice Messages"
+    skip: "not shipped with open-bridge (a private or org-overlay skill idea)"
+
+  # 3. Infrastructure
+  - id: remotes
+    catalog: "Remotes"
+    group: infrastructure
+    title: "Machines (remotes)"
+    when: "You want to wake, reach or check the machines you look after by name."
+    enabled_when: [{config: remotes.enabled}, {files: "infra/remotes/*.yaml"}]
+    activate: "/bridge-onboard --add remotes"
+    state_key: remotes
+    doc: docs/always-on-machine.md
+  - id: schedule
+    catalog: "Scheduled Jobs"
+    group: infrastructure
+    title: "Scheduled jobs"
+    when: "Something should run on a timer on one of your machines."
+    enabled_when: [{exists: infra/channels/_scheduled.yaml}, {files: "workflow/workloads/*.yaml"}]
+    activate: "/bridge-onboard --add schedule"
+    state_key: schedule
+    offer_only_when: [{exists: skills/schedule}]
+    doc: docs/workloads.md
+  - id: backups
+    catalog: "Backups"
+    group: infrastructure
+    title: "Backups"
+    when: "You back up to more than one place and want one description of all of it."
+    enabled_when: [{exists: infra/backups/topology.yaml}]
+    activate: "/bridge-onboard --add backups"
+    state_key: backups
+    doc: infra/backups/README.md
+  - catalog: "M365 / Exchange Admin (example of an org-overlay skill)"
+    skip: "an example of an org-overlay skill, nothing to switch on here"
+
+  # 4. Productivity & Knowledge
+  - id: task-management
+    catalog: "Task Management"
+    group: productivity
+    title: "Task management"
+    when: "Claude should remember what you did yesterday: log, tasks, board."
+    enabled_when: [{config: work.enabled}]
+    activate: "set work.enabled: true in bridge-config.yaml"
+    state_key: task_management
+    # the Setup page's checks name it when it is off (check work-off), with what it costs
+    offer_only_when: never
+    doc: docs/work-system.md
+  - catalog: "Knowledge / Wiki Repo"
+    skip: "lives in another repository; no file of this Bridge tells whether it is wired"
+  - id: transcription
+    catalog: "Meeting Transcription & Debrief"
+    group: productivity
+    title: "Meeting transcription"
+    when: "You record meetings and want transcripts handed to /debrief by themselves."
+    enabled_when: [{config: integrations.transcription}]
+    activate: "add the integrations.transcription block to bridge-config.yaml (docs/transcription-worker.md)"
+    state_key: transcription
+    doc: docs/transcription-worker.md
+  - catalog: "Banking / Finance"
+    skip: "the skill loads on its trigger, there is no switch"
+  - catalog: "Sub-Agents (Claude Code only)"
+    skip: "a file in .claude/agents/ is the whole activation, there is no switch"
+  - id: bridge-agent
+    catalog: "Bridge-Agent (persistent, addressable A2A endpoint)"
+    group: productivity
+    title: "Bridge-Agent (A2A endpoint)"
+    when: "An always-on agent should answer others on your behalf."
+    enabled_when: [{files: "agents/*/agent.yaml"}]
+    activate: "start from agents/_template (docs/representative-agent.md)"
+    state_key: bridge_agent
+    doc: docs/representative-agent.md
+
+  # 5. Integrations
+  - id: github-projects
+    catalog: "GitHub Projects"
+    group: integrations
+    title: "GitHub"
+    when: "You track work in GitHub issues, pull requests and Projects boards."
+    enabled_when: [{config: integrations.github.enabled}]
+    activate: "/bridge-onboard --add github-projects"
+    state_key: github_projects
+  - id: ado
+    catalog: "Azure DevOps Boards"
+    group: integrations
+    title: "Azure DevOps Boards"
+    when: "You work in an organisation that tracks work on Azure Boards."
+    enabled_when: [{config: integrations.ado.enabled}]
+    activate: "set integrations.ado.enabled: true in bridge-config.yaml (trackers/ado.md)"
+    state_key: ado
+    doc: trackers/ado.md
+  - id: context-sources
+    catalog: "Context Sources (Teams / Outlook)"
+    group: integrations
+    title: "Context sources (chat, mail, calendar)"
+    when: "Your briefing should know today's meetings and recent chats without pasting them."
+    enabled_when: [{config: integrations.context_sources.teams.enabled}, {config: integrations.context_sources.outlook.enabled}]
+    activate: "switch on an entry of integrations.context_sources in bridge-config.yaml and wire its skill"
+    state_key: context_sources
+  - id: upstreams
+    catalog: "Multi-Upstream Promote"
+    group: integrations
+    title: "Upstreams for promote"
+    when: "You contribute to an open-source Bridge, an org overlay, or both."
+    enabled_when: [{config: upstreams}]
+    activate: "/bridge-onboard --upstream"
+    state_key: upstreams
+    doc: docs/org-overlays.md
+
+  # 6. Visualisation & Polish
+  - catalog: "Bridge-Deck (pixel-art visualiser) — not yet public, coming soon"
+    skip: "not public yet: never offered"
+  - id: cockpit
+    catalog: "Bridge Cockpit (watch and steer, early version)"
+    group: visualization
+    title: "Cockpit"
+    when: "Everything at a glance in a browser tab, with buttons that act."
+    enabled_when: [{config: cockpit.enabled}]
+    activate: "/bridge-onboard --add cockpit"
+    state_key: cockpit
+    doc: docs/bridge-cockpit.md
+  - id: cockpit-relay
+    catalog: "Cockpit relay (Claude Code mod, early access)"
+    group: visualization
+    title: "Cockpit relay"
+    when: "Questions from the cockpit should reach your Claude Code control session."
+    enabled_when: [{config: cockpit.relay}]
+    activate: "claude plugin marketplace add ./mods --scope local, then claude plugin install cockpit-relay@open-bridge-mods --scope local, then cockpit.relay: true"
+    state_key: cockpit_relay
+    offer_only_when: [{config: cockpit.enabled}, {exists: mods/cockpit-relay}]
+    doc: mods/cockpit-relay/README.md
+  - id: jev
+    catalog: "Jev in the cockpit (optional integration)"
+    group: visualization
+    title: "Jev in the cockpit"
+    when: "You have a Jev (TypeSafe) key and want a second opinion on what to do first."
+    enabled_when: [{config: integrations.typesafe.enabled}]
+    activate: "set integrations.typesafe.enabled: true in bridge-config.yaml (the key stays in the keychain, key_ref)"
+    state_key: jev
+    # only with a key configured: without one it is off and costs nothing, so it is never mentioned
+    offer_only_when: [{config: cockpit.enabled}, {config: integrations.typesafe.key_ref}]
+  - catalog: "Themes"
+    skip: "chosen during onboarding (theme: in bridge-config.yaml), not a switch"

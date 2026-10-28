@@ -1,5 +1,5 @@
 ---
-summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
+summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
 last_updated: 2026-10-28
 related:
@@ -121,6 +121,7 @@ their defaults:
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
 | `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Settings, Help and Explain still start it), see [The first-run tour](#the-first-run-tour) |
+| `setup` | `true` | the Setup page: what still keeps the cockpit from working well, and the catalogue's features that are off, each with how it is switched on; `false` collects no such page, see [The Setup page](#the-setup-page) |
 | `session_guide` | off | the decision guide: Claude Haiku reads a waiting tab's session and offers its next steps as buttons, in the chat and on the Sessions page (section 3, "The decision guide") |
 | `usage.remotes` | the machines of `infra/instances` | other machines whose token use the overview page adds in (`infra/remotes` names; `[]` for none), see the overview page, "Tokens" |
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
@@ -2497,6 +2498,54 @@ click on the branch leaves it. Cmd or Ctrl Enter in the box sends as well.
 The settings page switches `enabled` and `auto` on top of the config, kept in
 `.bridge/cockpit/guide.json`, with its own "Reset to config".
 
+### The Setup page
+
+The first time someone opens the cockpit it should help them set the Bridge up; opened again later,
+the same place should say what still keeps the cockpit from working well. That place is the page
+**Setup** (de: Einrichtung), behind More in the page bar. It is made of three ordinary `command`
+sections of `scripts/bridge-setup.py`, which the cockpit collects with `briefing.py collect --setup`
+(`cockpit.setup: false` leaves the page out):
+
+- **What keeps the cockpit from working well** (`setup-checks`): a row only when something is
+  actually wrong, none when all is well. Task management is off (`work.enabled`), so the work pages
+  stay empty; no terminal driver starts agent tabs, so Let AI do it starts nothing (asked through
+  `workplace.py caps`, the same answer `bridge-cockpit.py status` reads; no answer is no finding);
+  no machine is named in `inbox.runner`, so a yes given on the page runs on whichever machine calls
+  `inbox.py run` ([`inbox.md`](inbox.md)); only the built-in briefing profile, or a profile copied
+  from `workflow/briefings/_template.yaml` that still holds a placeholder of the template (such as
+  `your-org` in the owners of its GitHub section), which finds nothing and reports no error; GitHub
+  switched on but `gh` missing or not signed in (red); and the keys of the `cockpit:` block that do
+  not work as written (the warnings of `status`). Each detail says what to do, with the exact key
+  or command.
+- **Can be switched on** (`setup-available`): the features of the onboarding catalogue that are off
+  here and offered (Jev only with a key configured, the relay only when `mods/cockpit-relay/`
+  exists, the Bridge-Deck never), each with the step that switches it on, in the order
+  `purpose.focus` gives. A feature put off shows dim with its date until `remind_after` and then as
+  before; one silenced, or declined during onboarding, never shows.
+- **Switched on** (`setup-on`): what is on, information only.
+
+A finding gets the steps every finding has: Let AI do it, Advise, Close and Later. Let AI do it files
+the row to the inbox and starts an agent tab on it; once the problem is fixed the row is gone, and
+after the next full pass the cockpit closes the item it filed, so a fixed problem disappears by
+itself. A row of the catalogue offers Let AI do it too, and the agent tab runs the catalogue's own
+step for it (`/bridge-onboard --add <feature>`, or the config key it names), where the person
+confirms. Its own steps are **Later** (30 days) and **Not for me**.
+
+What the page never does: switch a feature on, or write `bridge-config.yaml`. Its checks read only
+this Bridge's files (so `discovery.mode: confined` holds), with two probes of five seconds each:
+the terminal driver through the Bridge's own `workplace.py`, and `gh auth status` only while
+`integrations.github.enabled` is true. It never scans the machine. The one write is Later and Not for
+me: `work/onboarding-state.yaml`, in the schema of the onboarding's Discovery State (`deferred` with
+`remind_after` 30 days on, or `silenced`), through `briefing.py act` like any step of a command row,
+with an undo the script checks itself (it is refused once the entry changed since). The catalogue
+behind the page is `skills/bridge-onboard/references/features.yaml`, one entry per feature of
+`feature-catalog.md`; a test holds the two equal. A profile can place any of the three sections
+on a page of its own (`view.pages`); the ids are reserved, so no profile section may take one.
+
+The first visit's welcome offers **Set up first** beside Start the tour and Skip while the checks
+have a row: it opens the Setup page and closes the welcome without ending the tour, so the next
+visit offers the tour again.
+
 ### The first-run tour
 
 The first time the page opens it offers a short tour, the way other tools introduce
@@ -2505,7 +2554,8 @@ that area lit up and the rest dimmed: the tabs on top, Start, Today, the agent t
 (not on a narrow screen), Ask, Sessions (Running now where Work through lists the
 sessions), Help and settings. Next and Back go
 through it (also the arrow keys), a step opens the page it shows, and the end goes
-back to the page where it began. Skip or `Esc` ends it at any step.
+back to the page where it began. Skip or `Esc` ends it at any step. While the Setup page has a finding the welcome also offers
+**Set up first** ([The Setup page](#the-setup-page)).
 
 How it ended (finished or skipped, with the date) is kept on the server in
 `state.json`, key `tour`, so another browser does not offer it again. Help in the
@@ -2521,8 +2571,8 @@ still start it. In mock mode it stays closed unless the link carries `&tour=1`.
 stands: each area the page shows gets a numbered note beside it, a ring around it
 (an ellipse for a button or a chip, a frame for a row or a column) and an arrow from
 the note to the ring. Every page explains its own parts: Start, Today, Chat,
-Files, Sessions, Background jobs, A2A connections, Check tasks, Jev and Settings each have their
-own list, and a page of the briefing profile explains the parts it is built from
+Files, Sessions, Background jobs, A2A connections, Check tasks, Jev, Setup and Settings each have
+their own list, and a page of the briefing profile explains the parts it is built from
 (the count beside its title, the overview tiles, the sorting bars, a section's
 head, its rows, the GitHub figures, filters and boards, the quota gauges, the costs, the
 dates, the folder bar, the machines and a sub page's head card). The notes come in rounds so none covers another: the page first, the header
@@ -2722,6 +2772,11 @@ nothing a stranger could trigger:
 - nothing goes out without your click, and an inbox action approved on the
   page still runs only at the next `inbox.py run`, on the machine named in
   `inbox.runner` ([`inbox.md`](inbox.md));
+- the Setup page switches nothing on and never writes `bridge-config.yaml`: its rows are
+  `briefing.py` command sections of `scripts/bridge-setup.py`, which reads only this Bridge's files
+  and probes `gh` only while GitHub is switched on; its one write is Later and Not for me into
+  `work/onboarding-state.yaml`, through the same row step and undo as any command row, no verb of
+  its own ([The Setup page](#the-setup-page));
 - the server collects with `--no-save`: the page never moves the "since last
   time" baseline of your text briefing;
 - every POST except `/api/reload` and `/api/presence` (whether a page is

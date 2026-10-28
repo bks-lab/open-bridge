@@ -67,6 +67,7 @@ except ImportError:
 
 from lib.bridge_cockpit import VERSION  # noqa: E402  (path set above)
 from lib.bridge_cockpit.config import WebConfigError, load_web_config  # noqa: E402
+from lib.bridge_cockpit.launch import can_launch  # noqa: E402  (also read by scripts/bridge-setup.py)
 from lib.bridge_cockpit.server import default_state_dir  # noqa: E402
 from lib.bridge_cockpit.store import read_json  # noqa: E402
 
@@ -345,18 +346,6 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
             print("warning: agent tabs cannot start: no terminal driver serves launch "
                   "(workplace.driver in bridge-config.yaml, docs/workplace.md)")
     return 0 if info else 1
-
-
-def can_launch(root: Path) -> bool | None:
-    """Whether the terminal driver starts agent tabs, asked from the driver (`workplace.py caps`) like the server
-    does; None when it did not answer. A cockpit switched on without a driver failed on its first start (18.10.)."""
-    try:
-        run = subprocess.run([sys.executable, str(root / "scripts" / "workplace.py"), "--root", str(root), "caps", "--json"],
-                             capture_output=True, text=True, timeout=15)
-        caps = json.loads(run.stdout).get("caps") if run.returncode == 0 and run.stdout.strip() else None
-    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
-        return None
-    return "launch" in caps if isinstance(caps, list) else None
 
 
 def is_our_server(pid: int) -> bool:

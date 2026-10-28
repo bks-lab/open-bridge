@@ -37,7 +37,7 @@ CORE = _cc.SCRIPTS_CORE_ALLOWLIST
 # text files only: the fonts and icons the page serves itself are binary and name nothing
 DASHBOARD = sorted(p for p in CORE if not p.endswith((".woff2", ".png", ".ico")) and p.startswith(("scripts/web/", "scripts/lib/bridge_cockpit/")) or p in (
     "scripts/bridge-cockpit.py", "scripts/bridge-resources.py", "scripts/cloud-inventory.py", "scripts/cloud-costs.py",
-    "scripts/usage-export.py", "scripts/cockpit-usage.py", "scripts/lib/briefing_view.py"))
+    "scripts/usage-export.py", "scripts/cockpit-usage.py", "scripts/bridge-setup.py", "scripts/lib/briefing_view.py"))
 
 JS_STATIC = re.compile(r"""^\s*(?:import|export)\b[^'"]*?\bfrom\s+['"](\.{1,2}/[^'"]+)['"]|^\s*import\s+['"](\.{1,2}/[^'"]+)['"]""", re.M)
 HTML_REF = re.compile(r"""<(?:script|link)\b[^>]*?\b(?:src|href)=["'](?!https?:|//|#)([^"']+)["']""")

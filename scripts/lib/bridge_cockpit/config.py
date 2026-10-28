@@ -116,6 +116,9 @@ class WebConfig:
     # the first-run tour of the page (cockpit.tour): offered on a first visit unless switched off;
     # Help and Settings start it by hand either way
     tour: bool = True
+    # the Setup page (cockpit.setup): what still keeps the cockpit from working well and what can be switched on,
+    # collected with `briefing.py collect --setup` (scripts/bridge-setup.py); on unless switched off
+    setup: bool = True
     # the view the work tab opens on until a click on its switch picks another (cockpit.work_view); "due" is
     # what the tab always opened on, so a Bridge without the key sees no change
     work_view: str = "due"
@@ -329,7 +332,7 @@ BLOCK = {
     "chat_layout": ("choice", "chat_layout", CHAT_LAYOUTS), "chat_keep_hours": ("number", "chat_keep_hours", 0),
     "launch": ("block", {"target": ("choice", "target", TARGETS)}),
     "launch_model": ("launch_model",), "ticker": ("ticker",), "usage": ("usage",),
-    "session_guide": ("session_guide",), "tour": ("bool", "tour"),
+    "session_guide": ("session_guide",), "tour": ("bool", "tour"), "setup": ("bool", "setup"),
     "work_view": ("choice", "work_view", WORK_VIEWS), "focus_to_files": ("bool", "focus_to_files"),
     "files_scope": ("choice", "files_scope", FILES_SCOPES),
     "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
@@ -657,6 +660,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),
                     session_guide=gd.guide_of(w.get("session_guide")),
                     tour=w["tour"] if isinstance(w.get("tour"), bool) else True,
+                    setup=w["setup"] if isinstance(w.get("setup"), bool) else True,
                     work_view=work_view if work_view in work_views else fallback, work_views=work_views,
                     focus_to_files=w.get("focus_to_files") is True,
                     files_scope=w["files_scope"] if w.get("files_scope") in FILES_SCOPES else "active",

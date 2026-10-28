@@ -1973,6 +1973,29 @@ test('tour: a middle step counts, goes back and on, the last one ends it as fini
   assert.deepEqual(c.calls.at(-1), ['tourEnd', 'finished'])
 })
 
+// the Setup page (docs/bridge-cockpit.md, The Setup page): a welcome with something to set up offers it first
+const SETUP_MODEL = model => ({ ...model, pages: [...(model?.pages ?? []), { id: 'setup', title: 'Setup', sections: [
+  { id: 'setup-checks', items: [{ index: 0, title: 'Task management is off', tone: 'warn' }] },
+  { id: 'setup-available', items: [{ index: 1, title: 'GitHub', tone: null }] }] }] })
+
+test('tour: with a finding on the Setup page the welcome offers Set up first, which opens that page', () => {
+  const base = cockpitState(NOW, { tour: { enabled: true, done: null }, ui: { tour: { id: 'welcome' } } })
+  const s = { ...base, model: SETUP_MODEL(base.model) }
+  const c = recorder()
+  const el = mount(html`<${Tour} s=${s} c=${c} />`)
+  assert.ok(labels(el).includes(en.tour.setupFirst))
+  assert.ok(labels(el).includes(en.tour.start) && labels(el).includes(en.tour.skip))
+  assert.match(el.text(), new RegExp(en.tour.setupHint))
+  el.button(en.tour.setupFirst).click()
+  assert.deepEqual(c.calls.at(-1), ['tourSetup', 'setup'])
+  // nothing to set up: the welcome as before
+  const plain = mount(html`<${Tour} s=${base} c=${recorder()} />`)
+  assert.ok(!labels(plain).includes(en.tour.setupFirst))
+  // a later step never offers it
+  const later = mount(html`<${Tour} s=${{ ...s, ui: { ...s.ui, tour: { id: 'start' } } }} c=${recorder()} />`)
+  assert.ok(!labels(later).includes(en.tour.setupFirst))
+})
+
 test('tour: closed, it draws nothing', () => {
   const s = cockpitState(NOW, { tour: { enabled: true, done: null }, ui: { tour: null } })
   assert.equal(mount(html`<${Tour} s=${s} c=${recorder()} />`).text(), '')

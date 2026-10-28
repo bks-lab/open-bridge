@@ -4990,6 +4990,24 @@ test('tourOffered: a tour that ended for an older version is offered again', () 
   assert.equal(logic.tourOffered(done('skipped'), 2), true)
 })
 
+test('setupPageOf: the page that holds the setup checks and how many of its rows are findings', () => {
+  const page = (id, sections) => ({ id, sections })
+  const checks = items => ({ id: 'setup-checks', items })
+  assert.equal(logic.setupPageOf(null), null)
+  assert.equal(logic.setupPageOf({ pages: [page('work', [{ id: 'inbox', items: [] }])] }), null)
+  assert.deepEqual(logic.setupPageOf({ pages: [page('setup', [checks([])])] }), { page: 'setup', findings: 0 })
+  const found = logic.setupPageOf({ pages: [page('ops', [checks([{ tone: 'warn' }, { tone: 'bad' }, { tone: 'dim' }, { tone: null }])])] })
+  assert.deepEqual(found, { page: 'ops', findings: 2 })       // a profile may place the section on a page of its own
+  assert.equal(logic.setupWanted({ pages: [page('setup', [checks([])])] }), false)
+  assert.equal(logic.setupWanted({ pages: [page('setup', [checks([{ tone: 'warn' }])])] }), true)
+})
+
+test('hintsFor: the Setup page explains its three lists', () => {
+  const ids = logic.hintsFor({ ui: { page: 'setup' }, layout: 'wide' }).filter(h => h.group === 'page').map(h => h.id)
+  for (const id of ['setupChecks', 'setupAvailable', 'setupOn']) assert.ok(ids.includes(id), id)
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].tour.setupFirst && text.TABLES[lang].tour.setupHint, lang)
+})
+
 test('tourIndex: the step is kept by id, so a narrow layout without the tab step does not move it', () => {
   const wide = { layout: 'wide', ui: { tour: { id: 'ask' } } }
   const narrow = { ...wide, layout: 'narrow' }
@@ -5039,7 +5057,7 @@ test('tourPlace: below the area when it fits, above when not, inside a large one
 
 // ---------------------------------------------------------------- the explain overlay (views/hints.js)
 
-const HINT_PAGES = ['@start', 'briefing', '@files', '@flow', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'some-profile-page']
+const HINT_PAGES = ['@start', 'briefing', '@files', '@flow', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'setup', 'some-profile-page']
 const WORK_AREA = { ui: { page: 'briefing', workView: 'area' }, layout: 'wide', model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
 
 test('hintsFor: the page\'s own areas first, then the header, each once, each with its words in both languages', () => {

@@ -13,7 +13,7 @@ were prose an agent re-read every run, and a run could skip one.
     python3 scripts/briefing.py list                 # profiles this Bridge knows
     python3 scripts/briefing.py show [<id>]          # the resolved profile
     python3 scripts/briefing.py offer "<text>"       # profiles whose offer_on matches
-    python3 scripts/briefing.py collect [<id>] [--json] [--file] [--no-save]
+    python3 scripts/briefing.py collect [<id>] [--json] [--file] [--no-save] [--setup]
     python3 scripts/briefing.py render [<id>]        # collect + terminal text
     python3 scripts/briefing.py validate             # every profile, exit 1 on a problem
 
@@ -417,6 +417,33 @@ def builtin_profile(cfg: dict) -> dict:
             "_path": "(built-in)"}
 
 
+SETUP_SCRIPT = Path(__file__).resolve().parent / "bridge-setup.py"
+
+
+def setup_sections(root: Path, cfg: dict, view: dict | None = None) -> list:
+    """The cockpit's Setup page as three command sections of scripts/bridge-setup.py (`collect --setup`): what still
+    keeps the cockpit from working well, what can be switched on (steps later and not for me), and what is on.
+    Never in a briefing's buckets (bucket none); briefing_view.pages gives them a page of their own. Their titles
+    are the labels section_setup_*, in the Bridge's language unless the profile's view.labels say otherwise."""
+    words = _view()._labels(view if isinstance(view, dict) else {}, conversation_language(cfg))
+    base = ["python3", str(SETUP_SCRIPT), "--root", str(root)]
+
+    def one(sid: str, part: str, title: str, **extra) -> dict:
+        return {"kind": "command", "id": sid, "title": words[title], "bucket": "none",
+                "argv": [*base, "check", "--part", part, "--json"], **extra}
+    return [one("setup-checks", "checks", "section_setup_checks"),
+            one("setup-available", "available", "section_setup_available",
+                actions_argv=[*base, "act", "{id}", "{action}"]),
+            one("setup-on", "on", "section_setup_on")]
+
+
+def with_setup(profile: dict, root: Path, cfg: dict) -> dict:
+    """The profile with the Setup page's sections after its own (validate keeps their ids free)."""
+    own = {section_id(s) for s in profile.get("sections") or [] if isinstance(s, dict)}
+    return {**profile, "sections": [*(profile.get("sections") or []),
+                                    *(s for s in setup_sections(root, cfg, profile.get("view")) if s["id"] not in own)]}
+
+
 def select(root: Path, cfg: dict, pid: str | None = None) -> dict:
     profiles = load_profiles(root)
     by_id = {p.get("id"): p for p in profiles}
@@ -659,6 +686,8 @@ def profile_problems(data, stem: str) -> list:
         sid = section_id(s)
         if sid in seen:
             out.append(f"{where}: id {sid!r} used twice (give one section an `id:`)")
+        if sid in _view().SETUP_SECTIONS:
+            out.append(f"{where}: id {sid!r} is reserved for the cockpit's Setup page (briefing.py collect --setup)")
         seen.add(sid)
         for key in sorted(set(s) - SECTION_KEYS):
             out.append(f"{where}: unknown key {key}")
@@ -692,7 +721,7 @@ def profile_problems(data, stem: str) -> list:
                                 data.get("mutes") if isinstance(data.get("mutes"), list) else None)
         ids = {section_id(s) for s in sections or [] if isinstance(s, dict)}
         for n, sid in _view().page_section_ids(data.get("view") if isinstance(data.get("view"), dict) else {}):
-            if sid not in ids:
+            if sid not in ids and sid not in _view().SETUP_SECTIONS:   # the Setup page's come with --setup
                 out.append(f"view.pages {n}: no section {sid!r} in this profile")
         for n, m in enumerate(data.get("mutes") if isinstance(data.get("mutes"), list) else [], 1):
             if isinstance(m, dict) and isinstance(m.get("section"), str) and m["section"] not in ids:
@@ -2151,6 +2180,8 @@ def act(root: Path, cfg: dict, profile: dict, section_ref: str, row_id: str, act
     """Run one step of one row: the section must declare actions_argv, and the row, asked for again,
     must still offer the step. An undo token a step returned goes to the command unchecked here
     (the row may be gone by then); the command checks it. Returns (exit code, output or reason)."""
+    if section_ref in _view().SETUP_SECTIONS:      # the Setup page's steps, whether or not this run collected it
+        profile = with_setup(profile, root, cfg)
     section = next((s for s in profile.get("sections") or [] if section_id(s) == section_ref), None)
     if section and section.get("kind") == "calendar":
         return _act_calendar(root, cfg, section, row_id, action)
@@ -2400,6 +2431,8 @@ def main(argv=None) -> int:
                        help="show this run in another view than the profile's view.style")
         if name == "collect":
             p.add_argument("--json", action="store_true")
+            p.add_argument("--setup", action="store_true",
+                           help="add the cockpit's Setup page (scripts/bridge-setup.py); the cockpit passes it")
         else:
             p.add_argument("--color", choices=("auto", "always", "never"), default="auto")
     sub.add_parser("validate")
@@ -2485,6 +2518,8 @@ def main(argv=None) -> int:
         # a dashboard that pages itself wants every row of a section, not the first `max:` of them:
         # a cut row would vanish from its page without a trace (an inbox item set to later, 14.10.)
         profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, "_whole": True}
+    if getattr(args, "setup", False):
+        profile = with_setup(profile, root, cfg)
     ctx = Context(root, cfg=cfg)
     ctx.fresh = bool(getattr(args, "fresh", False))
     previous = load_snapshot(root, profile["id"])

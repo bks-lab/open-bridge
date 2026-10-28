@@ -1596,6 +1596,12 @@ const ctl = {
     }
     setUi(ui => ({ tour: { ...ui.tour, id: step.id }, drawer: null, tabView: null }))
   },
+  // "Set up first" on the welcome: the tour closes without being ended (the next visit offers it again) and the
+  // Setup page opens instead of the page it began on; nothing is sent
+  tourSetup(page) {
+    setUi({ tour: null })
+    if (typeof page === 'string' && page) ctl.setPage(page)
+  },
   // the tour closes and the page goes back to where it began; nothing is sent
   tourClose() {
     const from = store.get().ui.tour?.from

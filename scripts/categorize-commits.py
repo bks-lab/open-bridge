@@ -634,6 +634,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_usage_export.py",
     "scripts/cockpit-usage.py",               # the cockpit's clicks counted, candidates left as proposals for /bridge-learn
     "scripts/tests/test_cockpit_usage.py",
+    "scripts/bridge-setup.py",                # the Setup page: what keeps the cockpit from working well, what can be switched on
+    "scripts/tests/test_bridge_cockpit_setup.py",
     "scripts/tests/test_cockpit_costs_contract.py",
     "scripts/lib/bridge_cockpit/server.py",
     "scripts/tests/test_bridge_cockpit.py",

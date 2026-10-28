@@ -551,6 +551,8 @@ class Collector:
         if app.cfg.profile:
             argv.append(app.cfg.profile)
         argv += ["--json", "--no-save", "--max-items", "500", *PASS_FLAGS[kind]]
+        if getattr(app.cfg, "setup", True):
+            argv.append("--setup")      # the Setup page (scripts/bridge-setup.py), on every pass: a pass that leaves it out keeps it
         if fresh:
             argv.append("--fresh")
         if self.ask_triage:

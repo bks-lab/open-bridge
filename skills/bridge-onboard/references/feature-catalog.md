@@ -1,7 +1,7 @@
 ---
 description: Read-only catalogue of every Bridge feature with "when you need it" + how to activate. Surfaced in Phase E of onboarding (no questions, just info) and as the body of /bridge-onboard --features. Source of truth for what Bridge can do without making the user feel quizzed.
 type: reference
-last_updated: 2026-10-13
+last_updated: 2026-10-28
 ---
 
 # Feature Catalogue — What Bridge Can Do
@@ -14,6 +14,11 @@ sense to activate. Used in two contexts:
    re-entry path
 2. **`/bridge-onboard --features`** — interactive walk through the same
    catalogue when the user wants to explore later
+3. **The cockpit's Setup page** lists the features that are off here, each
+   with its **Activate:** step, read from [`features.yaml`](features.yaml),
+   this catalogue as data (one entry per `### ` heading below, or a skip
+   with its reason; `scripts/tests/test_bridge_cockpit_setup.py` holds the
+   two equal, so a new heading needs its entry there)
 
 ## Display Principles
 
@@ -275,7 +280,7 @@ skills.
 
 **When you need it:** You want everything at a glance in a browser tab and to act from there, not via CLI commands.
 
-**Activate:** asked in the wizard (Phase D, D1e) whenever task management is on; otherwise `cockpit.enabled: true` in `bridge-config.yaml` (or `/bridge-onboard --add cockpit`), then `/cockpit`. The first visit opens with a short tour of the page (skippable, `cockpit.tour: false` switches the offer off), and "Explain this page" lays notes over any page. Guide: `docs/bridge-cockpit.md`.
+**Activate:** asked in the wizard (Phase D, D1e) whenever task management is on; otherwise `cockpit.enabled: true` in `bridge-config.yaml` (or `/bridge-onboard --add cockpit`), then `/cockpit`. The first visit opens with a short tour of the page (skippable, `cockpit.tour: false` switches the offer off), and "Explain this page" lays notes over any page. While something still keeps the cockpit from working well (task management off, no terminal driver, no inbox runner, only the built-in or a template-copied briefing profile, GitHub on without a signed-in `gh`), the welcome offers its **Setup** page first; that page also lists the features of this catalogue that are off, each with its Activate: step, and runs that step only in the agent tab "Let AI do it" opens (`cockpit.setup: false` leaves the page out). Guide: `docs/bridge-cockpit.md`.
 
 ### Cockpit relay (Claude Code mod, early access)
 **What:** Lets the cockpit hand a question to the Claude Code session that steers the others ("To the control session" on the page). It only heartbeats and submits signed questions; no card, no command. Claude Code only (function hooks).

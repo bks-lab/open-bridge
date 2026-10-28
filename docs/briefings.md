@@ -51,6 +51,7 @@ python3 scripts/briefing.py collect --skip tracker --skip calendar   # the quick
 python3 scripts/briefing.py collect --only tracker --only calendar   # only these kinds, the rest listed as skipped
 python3 scripts/briefing.py collect --json --max-items 500   # every row, for a dashboard that pages itself
 python3 scripts/briefing.py collect --fresh       # ask every source now, whatever cache_minutes allows
+python3 scripts/briefing.py collect --json --setup  # also the cockpit's Setup page (scripts/bridge-setup.py)
 python3 scripts/briefing.py owed [<id>]           # streams the profile does not cover, and how to run them
 python3 scripts/briefing.py validate              # every profile; exit 1 on a problem
 ```
@@ -269,7 +270,7 @@ the person's language: `yours_today`, `free_until`, `free_rest`, `busy_until`,
 `no_next`, `muted`, `hidden`, `error`, `workplace`, `more`, `end`, `why`,
 `meanwhile`, `later`, `shutdown`, `activity_title`, `commits`, `boards_title`,
 `st_new`, `st_ready`, `st_in_progress`, `st_review`, `st_blocked`, `agenda_title`,
-`clashes`, `clash_row`, `parallel`, `info_tag`, `all_clear`, `owed`, `overview_file`, `untasked`, and for `report` `report_title`, `lage`, `first_title`, `bucket_more` and the table columns `col_when`, `col_what`, `col_note`, `col_board`, `col_repo`, `col_branch`, `col_days`, `col_commits`. Placeholders in braces stay as they are: a label may use only the placeholders
+`clashes`, `clash_row`, `parallel`, `info_tag`, `all_clear`, `owed`, `overview_file`, `untasked`, the Setup page's `page_setup`, `section_setup_checks`, `section_setup_available` and `section_setup_on` (the `setup_*` words of its rows come from `scripts/bridge-setup.py` in the Bridge's language and are not renamed by a profile), and for `report` `report_title`, `lage`, `first_title`, `bucket_more` and the table columns `col_when`, `col_what`, `col_note`, `col_board`, `col_repo`, `col_branch`, `col_days`, `col_commits`. Placeholders in braces stay as they are: a label may use only the placeholders
 its default has (`validate` names them), and one that would not format falls
 back to the default wording instead of breaking the briefing.
 
@@ -639,6 +640,19 @@ tabs unless a page names them. Tab names come from the labels `page_status`,
 `page_dates`, `page_trackers`, `page_today`, `page_more`; `validate` names a page
 section the profile does not have. Two page ids are taken: `briefing` (the
 briefing page itself) and `more` (the page for the rest).
+
+**The Setup page.** `collect --setup` (the cockpit passes it, the terminal briefing never does)
+appends three `command` sections of `scripts/bridge-setup.py`: `setup-checks` (what still keeps the
+cockpit from working well, findings only), `setup-available` (the onboarding catalogue's features
+that are off, with the steps `later` and `silence` through `actions_argv`) and `setup-on` (what is
+on, dim). All three are `bucket: none`, so they never reach the briefing's buckets. `pages` gives
+them a page of their own, id `setup` (label `page_setup`), behind More, never the rest page:
+`setup-available` with `actionable: true` and `badge: false`, `setup-on` with `actionable: false`
+and `badge: false`. A profile may name any of the three in `view.pages` and place it on a page of
+its own; a page of its own with the id `setup` takes the ones it does not name. The three ids are
+reserved: `validate` refuses a profile section that takes one. `act <profile> setup-available <id>
+<step>` works whether or not the run collected the page. Model and safety: [`bridge-cockpit.md`](bridge-cockpit.md)
+§ The Setup page.
 
 A dashboard can load in two runs: first a run of its own with
 `--skip tracker --skip command` (the kinds that wait on a service; a few

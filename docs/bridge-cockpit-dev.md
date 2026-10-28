@@ -83,6 +83,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/watch.py` | stat-only watcher of `work/` and the relay folder |
 | `scripts/lib/bridge_cockpit/relay.py` | relay records, HMAC signing, heartbeat reading |
 | `scripts/lib/bridge_cockpit/store.py` | `state.json` (hidden rows, team runs) and `view.json` (last view); `read_archive` reads the monthly chat archive; `clean_clicks` and `append_clicks` the click origin log `usage.jsonl` of `POST /api/clicks` (only code names and counts, rotated at 256 KB) |
+| `scripts/bridge-setup.py` | the Setup page: `check --part checks|available|on` prints a command section's rows (findings, the catalogue's features that are off, the ones that are on, from `skills/bridge-onboard/references/features.yaml`), `act` the one write (later, not for me, its undo) into `work/onboarding-state.yaml`; run only by `briefing.py collect --setup` and `briefing.py act` |
 | `scripts/cockpit-usage.py` | counts `usage.jsonl` and `audit.log` since its last run and writes the cockpit's unused or confusing places as proposals for `/bridge-learn`; `write_note` is the one writer of that format, also for the verb `explain_note` |
 | `scripts/lib/bridge_cockpit/settled.py` | `work/cockpit/settled/`: every hide, settle and "show again" as one new file, tracked by git, so a settled row stays settled on every machine; the legacy keys of `state.json` migrate in once |
 | `scripts/lib/bridge_cockpit/server.py` | HTTP: routes, auth, static files, SSE |

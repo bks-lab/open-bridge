@@ -197,6 +197,41 @@ LABELS = {
     "section_calendar": "Calendar",
     "section_activity": "Activity",
     "section_workplace": "Workplace",
+    # the cockpit's Setup page (briefing.py collect --setup, scripts/bridge-setup.py)
+    "page_setup": "Setup",
+    "section_setup_checks": "What keeps the cockpit from working well",
+    "section_setup_available": "Can be switched on",
+    "section_setup_on": "Switched on",
+    "setup_work_off": "Task management is off",
+    "setup_work_off_detail": ("The work pages stay empty and Claude remembers nothing between sessions. Set "
+                              "work.enabled: true in bridge-config.yaml."),
+    "setup_no_driver": "Let AI do it starts nothing: no terminal driver",
+    "setup_no_driver_detail": ("Agent tabs open through the terminal driver. Set workplace.driver in bridge-config.yaml "
+                               "(cmux or tmux, docs/workplace.md)."),
+    "setup_no_runner": "No machine is named to run inbox approvals",
+    "setup_no_runner_detail": ("A yes given on the page runs only at the next python3 scripts/inbox.py run, on the "
+                               "machine named in inbox.runner; without the key every machine that calls it runs the "
+                               "approved actions. Name the one machine as inbox.runner in bridge-config.yaml and run "
+                               "inbox.py run there on a schedule (docs/inbox.md, Two machines, one inbox)."),
+    "setup_builtin_profile": "Only the built-in briefing profile",
+    "setup_builtin_profile_detail": ("The pages follow each section's kind and show only what the built-in profile "
+                                     "collects. Copy workflow/briefings/_template.yaml to workflow/briefings/<id>.yaml "
+                                     "and make it yours (docs/bridge-cockpit.md section 8)."),
+    "setup_placeholder": "{profile}: the template's {value} is still in it",
+    "setup_placeholder_detail": ("workflow/briefings/{profile}.yaml, {where}: {value} comes from the template, so this "
+                                 "part finds nothing and reports no error. Put in your own value."),
+    "setup_gh_missing": "GitHub is on, but the gh CLI is not installed",
+    "setup_gh_missing_detail": "The GitHub sections cannot ask anything. Install the GitHub CLI gh, then run gh auth login.",
+    "setup_gh_signed_out": "GitHub is on, but gh is not signed in",
+    "setup_gh_signed_out_detail": "The GitHub sections fail until gh has a login. Run gh auth login in a terminal.",
+    "setup_config": "A cockpit key does not work as written",
+    "setup_config_detail": "{warning}. Fix it in the cockpit: block of bridge-config.yaml (docs/bridge-cockpit.md section 1).",
+    "setup_config_error": "The cockpit: block of bridge-config.yaml is invalid",
+    "setup_config_error_detail": "{error}",
+    "setup_activate": "{when} Switch it on: {command}",
+    "setup_deferred": "Put off until {date}. {when} Switch it on: {command}",
+    "setup_later": "Later (30 days)",
+    "setup_silence": "Not for me",
     "until": "until {time}",
     "commits_today": "{n} today",
 }
@@ -348,6 +383,43 @@ LABELS_DE = {
     "section_calendar": "Termine",
     "section_activity": "Aktivität",
     "section_workplace": "Arbeitsplatz",
+    "page_setup": "Einrichtung",
+    "section_setup_checks": "Was dem Cockpit noch fehlt",
+    "section_setup_available": "Lässt sich einschalten",
+    "section_setup_on": "Eingeschaltet",
+    "setup_work_off": "Die Aufgabenverwaltung ist aus",
+    "setup_work_off_detail": ("Die Arbeitsseiten bleiben leer, und Claude erinnert sich zwischen Sitzungen an nichts. "
+                              "Setze work.enabled: true in bridge-config.yaml."),
+    "setup_no_driver": "AI machen lassen startet nichts: kein Terminal-Treiber",
+    "setup_no_driver_detail": ("Agenten-Tabs öffnen sich über den Terminal-Treiber. Setze workplace.driver in "
+                               "bridge-config.yaml (cmux oder tmux, docs/workplace.md)."),
+    "setup_no_runner": "Kein Rechner ist benannt, der Freigaben im Posteingang ausführt",
+    "setup_no_runner_detail": ("Ein Ja auf der Seite läuft erst beim nächsten python3 scripts/inbox.py run, auf dem "
+                               "Rechner aus inbox.runner; ohne den Schlüssel führt jeder Rechner, der es aufruft, die "
+                               "freigegebenen Aktionen aus. Trage den einen Rechner als inbox.runner in bridge-config.yaml "
+                               "ein und lass inbox.py run dort nach Zeitplan laufen (docs/inbox.md, Two machines, one inbox)."),
+    "setup_builtin_profile": "Nur das eingebaute Briefing-Profil",
+    "setup_builtin_profile_detail": ("Die Seiten folgen der Art jedes Abschnitts und zeigen nur, was das eingebaute Profil "
+                                     "sammelt. Kopiere workflow/briefings/_template.yaml nach workflow/briefings/<id>.yaml "
+                                     "und mach es zu deinem (docs/bridge-cockpit.md Abschnitt 8)."),
+    "setup_placeholder": "{profile}: {value} aus der Vorlage steht noch drin",
+    "setup_placeholder_detail": ("workflow/briefings/{profile}.yaml, {where}: {value} stammt aus der Vorlage, darum findet "
+                                 "dieser Teil nichts und meldet keinen Fehler. Setze deinen eigenen Wert ein."),
+    "setup_gh_missing": "GitHub ist an, aber die gh-CLI fehlt",
+    "setup_gh_missing_detail": ("Die GitHub-Abschnitte können nichts abfragen. Installiere die GitHub-CLI gh und führe "
+                                "dann gh auth login aus."),
+    "setup_gh_signed_out": "GitHub ist an, aber gh ist nicht angemeldet",
+    "setup_gh_signed_out_detail": ("Die GitHub-Abschnitte schlagen fehl, bis gh angemeldet ist. Führe gh auth login in "
+                                   "einem Terminal aus."),
+    "setup_config": "Ein Cockpit-Schlüssel wirkt nicht wie geschrieben",
+    "setup_config_detail": ("{warning}. Korrigiere es im cockpit:-Block von bridge-config.yaml (docs/bridge-cockpit.md "
+                            "Abschnitt 1)."),
+    "setup_config_error": "Der cockpit:-Block in bridge-config.yaml ist ungültig",
+    "setup_config_error_detail": "{error}",
+    "setup_activate": "{when} Einschalten: {command}",
+    "setup_deferred": "Zurückgestellt bis {date}. {when} Einschalten: {command}",
+    "setup_later": "Später (30 Tage)",
+    "setup_silence": "Nichts für mich",
     "until": "bis {time}",
     "commits_today": "{n} heute",
 }
@@ -361,6 +433,13 @@ DEFAULT_PAGES = ("work", "status", "dates", "trackers", "today")
 # where a default page sits: work and status in front, the rest behind More, today's activity under the day list
 DEFAULT_PAGE_GROUP = {"work": "main", "status": "main", "dates": "more", "trackers": "more", "today": "day"}
 REST_PAGE = "more"
+# the cockpit's Setup page (briefing.py collect --setup, scripts/bridge-setup.py): its three sections and how each
+# stands there; a profile may place any of them on a page of its own, the rest stand on this page
+SETUP_PAGE = "setup"
+SETUP_ENTRIES = ({"id": "setup-checks"},
+                 {"id": "setup-available", "actionable": True, "badge": False},
+                 {"id": "setup-on", "actionable": False, "badge": False})
+SETUP_SECTIONS = tuple(e["id"] for e in SETUP_ENTRIES)
 PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev", "cards", "under"}
 # the cockpit's own pages a profile may place under one of its pages (`{id: "@workers", under: ops}`): an id
 # and `under`, never sections; the page then has no tab, the bar of the folder it stands in opens it
@@ -2227,11 +2306,22 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     else:
         for pid in DEFAULT_PAGES:
             plan.append((pid, labels[f"page_{pid}"],
-                         [{"id": sid} for sid, s in sections.items() if PAGE_OF_KIND.get(s.get("kind")) == pid],
+                         [{"id": sid} for sid, s in sections.items()
+                          if PAGE_OF_KIND.get(s.get("kind")) == pid and sid not in SETUP_SECTIONS],
                          DEFAULT_PAGE_GROUP[pid], False, None))
     # collected for something else (a file another page reads), shown nowhere
     skip = view.get("page_skip") if isinstance(view.get("page_skip"), list) else []
     placed = {e["id"] for _, _, entries, _, _, _ in plan for e in entries} | {x for x in skip if isinstance(x, str)}
+    # the Setup page: what the profile did not place itself, on a page of its own (a page `setup` of the profile
+    # takes it), never on the rest page
+    setup = [dict(e) for e in SETUP_ENTRIES if e["id"] in sections and e["id"] not in placed]
+    if setup:
+        own = next((p for p in plan if p[0] == SETUP_PAGE), None)
+        if own is not None:
+            own[2].extend(setup)
+        else:
+            plan.append((SETUP_PAGE, labels["page_setup"], setup, "more", False, None))
+        placed |= {e["id"] for e in setup}
     if configured is None or view.get("page_rest", "show") != "hide":
         rest = [{"id": sid} for sid, s in sections.items()
                 if sid not in placed and s.get("kind") not in BRIEFING_KINDS]
