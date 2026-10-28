@@ -631,10 +631,12 @@ export function DossierView({ s, c }) {
   // the right column: Work through's for the point the record's task stands for
   const point = recordPoint(s, open ?? x?.slug ?? null)
   const some = !!open || walking
+  // nothing open and no search from elsewhere to show: the search and its list take the whole width, as before 6d
+  const home = !some && !(s.find && s.find.from !== 'start')
   return html`<div class="col col-page flow dz">
-    <div class=${`flow-grid dz-grid${point ? '' : ' no-aside'}${some ? ' is-open' : ''}`}>
+    <div class=${`flow-grid dz-grid${point ? '' : ' no-aside'}${some ? ' is-open' : ''}${home ? ' is-home' : ''}`}>
       <${FilesList} s=${s} c=${c} queue=${queue} list=${list} shown=${shown} open=${open} walked=${x?.slug ?? null} busy=${some} />
-      <section class="flow-main dz-main" aria-label=${d.label}>
+      ${home ? null : html`<section class="flow-main dz-main" aria-label=${d.label}>
         ${some ? html`<header class="page-head dz-head"><${Btn} variant="ghost" size="sm" icon="close" cls="dz-home"
           onClick=${() => c.filesHome()}>${d.start.back}<//></header>` : null}
         <${FindResults} s=${s} c=${c} open=${open} />
@@ -658,7 +660,7 @@ export function DossierView({ s, c }) {
           <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setArea(null)}>${d.allAreas}<//></div>
           <${LeftOut} gaps=${gaps} s=${s} c=${c} areaButton=${false} />`
         : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${why(d.emptySub)} action=${false} /><${LeftOut} gaps=${gaps} s=${s} c=${c} />`}
-      </section>
+      </section>`}
       ${point ? html`<${FlowAside} x=${point} s=${s} c=${c} />` : null}
     </div>
   </div>`

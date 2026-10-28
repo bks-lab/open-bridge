@@ -1274,7 +1274,12 @@ test('6d: the question to the AI stays in one place, under the filters of the le
   }
   assert.ok(!none.$('.flow-aside'), 'no right column while nothing is open')
   assert.ok(none.$('.flow-grid.no-aside'))
-  assert.ok(none.$('.flow-main').text().includes(en.dossier.start.pick))
+  // nothing open: the search and its list take the whole width, as before 6d; a click opens the three columns
+  assert.ok(none.$('.dz-grid.is-home'), 'the list alone while nothing is open')
+  assert.ok(!none.$('.flow-main'), 'no empty middle while nothing is open')
+  assert.ok(!open.$('.dz-grid.is-home'))
+  const css = fs.readFileSync(new URL('../web/files.css', import.meta.url), 'utf8')
+  assert.match(css, /\.dz-grid\.is-home \{ grid-template-columns: minmax\(0, 1fr\); \}/)
   // the block list's line holds as before
   assert.match(open.$('.fs-ask-note').text(), new RegExp(en.dossier.start.held(1, ['Versicherung']).replace(/[.]/g, '\\.')))
 })

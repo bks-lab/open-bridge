@@ -55,6 +55,15 @@
 .fs-item.is-on { padding-left: 10px; box-shadow: inset 3px 0 0 var(--accent-line); background: var(--surface-raised); }
 .dz-main .dz-head { padding: 0; }
 .dz-pick { margin: 0; padding: var(--space-xl) 0; text-align: center; }
+/* nothing open (DossierView is-home): the search, its chips and the records take the whole width, the search beside
+   its walk, the records in columns; the first click on one opens the three columns */
+.flow-grid.dz-grid.is-home { grid-template-columns: minmax(0, 1fr); }
+.dz-grid.is-home > .dz-side { position: static; max-height: none; overflow: visible; gap: 14px; }
+.dz-grid.is-home .fs-top { flex-direction: row; align-items: center; }
+.dz-grid.is-home .fs-askq { flex-direction: row; align-items: center; }
+.dz-grid.is-home .fs-find-box { height: 48px; padding: 0 16px; }
+.dz-grid.is-home .fs-chips { gap: 8px 20px; }
+.dz-grid.is-home .fs-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); column-gap: var(--space-lg); }
 /* where the columns stack (flow.css, 960 px) an open record and its buttons come before the list, so a click in the
    list shows its record at once and never below every entry */
 @media (max-width: 960px) {

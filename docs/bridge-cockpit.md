@@ -322,7 +322,8 @@ cockpit:
 
 ### The Files tab
 
-**Files** is a tab of its own, right after the work tab, laid out in the three columns of Work through. The left
+**Files** is a tab of its own, right after the work tab. While no record is open, the search and its list take the
+whole width, the records in columns; once one opens, the tab is laid out in the three columns of Work through. The left
 column holds a large search field with **Walk through the active records (n)** beside it, chips for area, state and
 kind (task or stream, a closed one by what it was), each group under its label, and the records changed last with the
 matching line as plain text; a click opens a record in the middle as a file with its next step, its drawers and a
