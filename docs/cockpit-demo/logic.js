@@ -1281,13 +1281,16 @@ const WORKER_TONE = { in_sync: 'ok', observed: 'ok', intentionally_absent: 'dim'
 
 /** A run's state as a tone: ok, warn, bad, dim; anything unknown is warn, never silently ok */
 export function workerTone(run) {
-  if (run?.retired) return 'dim'
+  // a finding marked seen (`acked`, server.py workers_with_acks) is grey until it changes
+  if (run?.retired || run?.acked) return 'dim'
   return WORKER_TONE[run?.state] ?? (run?.state ? 'warn' : 'ok')
 }
 
 /** The severity of a run's worst finding as the engine files it (high, medium, info), or null: the run's own
  *  `severity` where the view names one, else read off its findings */
 export function jobSeverity(run) {
+  // seen as it stands: no outage and no upkeep, so no red tile, no badge and no alarm count it
+  if (run?.acked) return 'info'
   if (typeof run?.severity === 'string' && run.severity && run.severity !== 'none') return run.severity
   const sev = (run?.findings ?? []).map(f => f?.severity)
   return ['high', 'medium', 'info'].find(x => sev.includes(x)) ?? null
@@ -1446,7 +1449,7 @@ export function filterWorkers(runs, { q = '', kind = null, sphere = null, state 
   const needle = q.trim().toLowerCase()
   return (runs ?? []).filter(r => (!kind || r.kind === kind) && (!sphere || r.sphere === sphere)
     && (!state || r.state === state) && (!host || r.host === host)
-    && (!attention || (r.findings ?? []).some(serious))
+    && (!attention || (!r.acked && (r.findings ?? []).some(serious)))
     // an outage as jobCounts counts it (the engine's high), what the red tile of Background jobs opens on
     && (!outage || jobSeverity(r) === 'high')
     && (!needle || `${r.id} ${r.title ?? ''} ${r.purpose ?? ''} ${r.system ?? ''} ${jobWords(r)}`.toLowerCase().includes(needle)))
@@ -3566,7 +3569,7 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   }
   // 21 the background jobs
   for (const run of s?.workers?.data?.runs ?? []) {
-    if (run.retired) continue
+    if (run.retired || run.acked) continue
     const lastRun = (run.strip ?? []).at(-1)
     // an outage is news in red; upkeep the engine files medium is no news at all, only a run without a severity
     // keeps the orange of its state

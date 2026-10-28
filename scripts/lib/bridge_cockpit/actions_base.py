@@ -153,6 +153,10 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "return_forget": {"key": ("key", True)},
     # the files view: a workflow run's result checked, so it no longer waits in its task's file
     "run_seen": {"id": ("run_id", True)},
+    # a finding marked seen (a job, worker:<host>:<id>, or a page row): grey and counted nowhere until it changes,
+    # and taken back ("show again"); note: what settled it, shown beside it
+    "finding_ack": {"key": ("finding_key", True), "note": ("text", False)},
+    "finding_unack": {"key": ("finding_key", True)},
     "start_control": {},
     "snapshot_list": {},
     "ask_via_tab": {"relay_id": ("relay_id", True)},
@@ -204,6 +208,9 @@ ROW_STEP_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}\Z")
 UNDO_TOKEN_RE = re.compile(r"^restore:[A-Za-z0-9._~-]{1,120}\Z")
 ROW_REF_RE = re.compile(r"^[A-Za-z0-9][^\x00-\x1f]{0,199}\Z")
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
+# a finding that can be marked seen: a background job (worker:<host>:<id>, model.worker_key) or a page row
+FINDING_KEY_RE = re.compile(r"^(?:worker:[A-Za-z0-9][A-Za-z0-9._-]{0,79}:[A-Za-z0-9][A-Za-z0-9._-]{0,119}"
+                            r"|item:(?!(?:.*/)?\.\.(?:/|\Z))[^\x00-\x1f]{1,240})\Z")
 ASK_HASH_RE = re.compile(r"^[0-9a-f]{16}\Z")   # the hash of a tab's question (asks.py)
 TAB_STATES = ("needs-you", "waiting", "working")
 TOUR_HOW = ("finished", "skipped")   # how the first-run tour ended (store.py tour)
@@ -223,7 +230,7 @@ GO_FIELDS = {
 READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
-                         "launch_settings_reset", "session_link", "run_seen", "guide_read", "guide_settings", "guide_settings_reset",
+                         "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "flow_themes_run", "flow_theme_move", "flow_theme_new",
                          "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock

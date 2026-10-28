@@ -7,7 +7,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, scheduleText,
+  duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, serious, scheduleText,
   dayNoteText, weekdayNames, filterWorkers, groupByHost, jobCounts, runTimes, stripMark, workerFacets, workerTone, aiGroups, previewText,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -18,7 +18,7 @@ import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
 import { FolderBar, StartControl, canStartControl } from './header.js'
 import { openTabRoom } from './nav.js'
-import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
+import { Btn, Chip, CountNum, Dot, Empty, SeenBtn, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
 
@@ -256,10 +256,13 @@ const ADVISE_OPEN = ['open', 'approved', 'waiting', 'deferred']
 /** A job's Analyse in a tab (actions_pages.py worker_advise): while its item is open and its tab is there the row
  *  says "in a tab" and opens the tab, in its room of the Chat where the Chat lays out its tabs (as views/flowrun.js
  *  SessionCards); just started it says so and waits; with no tab left it says the tab ended and offers a new start,
- *  which finds the same item. Never "in a tab" without one */
+ *  which finds the same item. Never "in a tab" without one. A job whose finding was marked seen (or whose analysis
+ *  closed its item, server.py ack_closed_findings) needs no new start until it fails anew: the row then offers only
+ *  "show again" beside the question, and the way to a tab still at work */
 function WorkerAdvise({ r, ret, s, c }) {
   const t = T()
   const open = ADVISE_OPEN.includes(r.advise?.state)
+  if (r.acked && !open) return null
   const start = html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`
   if (open && ret?.tab) return html`<${Chip} token="info">${t.workerInTab}<//>
     <${Btn} size="xs" variant="secondary" onClick=${() => openTabRoom(s, c, ret.tab.ref)}>${t.workerToTab}<//>`
@@ -287,7 +290,7 @@ function WorkerRow({ r, s, now, nowPct, c, i }) {
           times.next != null ? t.workerNext(runClock(times.next, now)) : ''].filter(Boolean).join(' · ')}</span>` : null}</span>
       <span class="wrow-strip"><${RunStrip} strip=${r.strip} continuous=${r.continuous} /></span>
       <span class="wrow-state"><span class=${`chip chip-tk tk-${runToken(tone)}`}>
-        <${Dot} token=${runToken(tone)} /><span>${t.workerState[r.state] ?? r.state}</span></span>
+        <${Dot} token=${runToken(tone)} /><span>${r.acked ? t.findingSeen.on(r.acked.day, '') : t.workerState[r.state] ?? r.state}</span></span>
         ${advised?.result?.text ? html`<span class="chip chip-tk tk-info wrow-result">${t.workerResultIn}</span>` : null}</span>
     </button>
     ${open ? html`<div class="wrow-detail">
@@ -299,13 +302,15 @@ function WorkerRow({ r, s, now, nowPct, c, i }) {
       ${week.length ? html`<div class="wweek" role="group" aria-label=${t.workerWeek}>${week.map((on, k) => html`<span key=${k} class=${`wday${on ? ' is-on' : ''}`}>${days[k]}</span>`)}
         ${(r.ran_days ?? []).length ? html`<span class="muted small">${t.workerRanDays(r.ran_days.length)}</span>` : null}</div>` : null}
       ${(r.findings ?? []).some(f => f.severity !== 'info') ? html`<ul class="wfind">${r.findings.filter(f => f.severity !== 'info').map((f, k) => html`<li key=${k}>
-        <${StateLine} token=${f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${f.severity === 'high'}
+        <${StateLine} token=${r.acked ? 'info' : f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${!r.acked && f.severity === 'high'}
           word=${`${t.workerState[f.state] ?? f.state}${f.detail ? `: ${t.workerQuote(f.detail)}` : ''}`} />
         ${f.hint ? html`<p class="muted small wfind-hint">${t.workerHint(f.hint)}</p>` : null}</li>`)}</ul>` : null}
       ${advised?.result?.text ? html`<p class="muted small wfind-hint">${t.workerResult(short(advised.result.text, 300))}</p>` : null}
+      ${r.acked ? html`<p class="muted small">${t.findingSeen.on(r.acked.day, r.acked.note)}</p>` : null}
       <div class="btn-row">
         <${WorkerAdvise} r=${r} ret=${advised} s=${s} c=${c} />
         <${RowAsk} s=${s} c=${c} rowKey=${`worker:${r.host}:${r.id}`} variant="secondary" cls="" onAsk=${() => c.ask('worker', { host: r.host, id: r.id })} />
+        <${SeenBtn} k=${`worker:${r.host}:${r.id}`} acked=${r.acked} loud=${(r.findings ?? []).some(serious)} c=${c} />
       </div>
     </div>` : null}
   </li>`

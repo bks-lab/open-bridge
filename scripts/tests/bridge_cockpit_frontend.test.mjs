@@ -875,6 +875,17 @@ test('background jobs: an outage is what the engine files high, upkeep what it f
   assert.equal(logic.workerTone({ state: 'drifted' }), 'warn')
 })
 
+test('a job finding marked seen is grey and counts toward no tile, badge, alarm or attention filter', () => {
+  const failed = { id: 'chat-bot', host: 'mini', state: 'last_run_failed', severity: 'high', findings: [{ severity: 'high', state: 'last_run_failed' }] }
+  const seen = { ...failed, acked: { day: '2026-10-28', note: 'a planned restart' } }
+  assert.equal(logic.jobSeverity(seen), 'info')
+  assert.equal(logic.workerTone(seen), 'dim')
+  assert.deepEqual(logic.jobCounts({ runs: [seen] }), { all: 1, failing: 0, upkeep: 0, ok: 1 })
+  assert.deepEqual(logic.jobCounts({ runs: [failed] }), { all: 1, failing: 1, upkeep: 0, ok: 0 })
+  assert.deepEqual(logic.filterWorkers([seen], { outage: true }), [])
+  assert.deepEqual(logic.filterWorkers([seen], { attention: true }), [])
+})
+
 test('a sub page tile: red with its findings, orange with what needs a look, green only where an alarm reports nothing', () => {
   const sec = (id, items, extra = {}) => ({ id, title: id, status: 'ok', items, count: items.length, total: items.length,
     bad: items.filter(x => x.tone === 'bad').length, ...extra })

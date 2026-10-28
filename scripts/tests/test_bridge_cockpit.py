@@ -8897,3 +8897,136 @@ def test_a_page_task_carries_its_status_from_the_task_list(tmp_path):
         assert rows["task:parked"]["status"] == "backlog"
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- a finding marked seen ("Seen", round 6d)
+
+def put_workers(world, detail: str, at: str = "2026-10-07T07:45:56Z") -> None:
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    run = {"id": "chat-bot", "host": "mini", "kind": "daemon", "state": "last_run_failed", "severity": "high",
+           "findings": [{"state": "last_run_failed", "severity": "high", "detail": detail, "hint": ""},
+                        {"state": "in_sync", "severity": "info", "detail": "matches its stamp", "hint": ""}],
+           "strip": [{"at": at, "rc": 75, "verdict": "failed", "key": "chat-bot"}]}
+    (folder / "workers-view.json").write_text(json.dumps({"schema": 1, "runs": [run, {"id": "calm", "host": "mini"}]}),
+                                              encoding="utf-8")
+
+
+def served_runs(world) -> dict:
+    status, _, body = world.request("GET", "/api/workers", headers=world.cookie)
+    assert status == 200
+    return {r["id"]: r for r in json.loads(body)["view"]["runs"]}
+
+
+def test_a_job_finding_seen_stays_calm_until_it_changes(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    assert "acked" not in served_runs(world)["chat-bot"]
+    world.act("finding_ack", key="worker:mini:chat-bot")
+    runs = served_runs(world)
+    assert runs["chat-bot"]["acked"]["day"] and "acked" not in runs["calm"]
+    # kept in the shared record beside the other decisions, so a restart and every machine keep it
+    assert any(p.name.endswith("-ack.yaml") for p in (world.root / "work" / "cockpit" / "settled").glob("*.yaml"))
+    # a NEW failure has another fingerprint: red again
+    put_workers(world, "the last run of chat-bot ended with 1 at 2026-10-08T10:00:00+00:00", at="2026-10-08T10:00:00Z")
+    assert "acked" not in served_runs(world)["chat-bot"]
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    assert "acked" in served_runs(world)["chat-bot"]
+    world.act("finding_unack", key="worker:mini:chat-bot")       # "show again"
+    assert "acked" not in served_runs(world)["chat-bot"]
+    refused(world, "stale_row", "finding_ack", key="worker:mini:nothing")
+    refused(world, "invalid_argument", "finding_ack", key="worker:../x")
+
+
+def test_a_page_finding_seen_leaves_the_badge_and_the_alarm_until_it_changes(world):
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "probes", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all green", "items": [{"id": "disk", "title": "Disk", "detail": "92 % full", "tone": "bad"}]}]}
+    model = with_pages(world, ops)
+    key = "item:ops/probes/disk"
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    world.act("finding_ack", key=key)
+    model = world.app.collector.model
+    pg = next(p for p in model["pages"] if p["id"] == "ops")
+    it = pg["sections"][0]["items"][0]
+    assert it["tone"] == "dim" and it["acked"]["tone"] == "bad" and it["acked"]["day"]
+    assert pg["sections"][0]["bad"] == 0 and pg["badge"]["kind"] != "bad"
+    assert not [a for a in model["alarms"] if a["page_id"] == "ops"]
+    # the finding changed: red again
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "ops"]
+    ops["sections"][0]["items"][0]["detail"] = "99 % full"
+    model = with_pages(world, ops)
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    world.act("finding_ack", key=key)
+    world.act("finding_unack", key=key)
+    assert [a["count"] for a in world.app.collector.model["alarms"] if a["page_id"] == "ops"] == [1]
+
+
+def close_item(world, item_id: str, *, key: str, summary: str, note: str, at: str = "2026-10-08T06:36:47+00:00"):
+    item = world.root / "work" / "inbox" / item_id
+    (item / "events").mkdir(parents=True)
+    (item / "item.yaml").write_text(yaml_dump({"schema_version": 1, "created": "2026-10-08T07:36", "from": "watcher",
+                                               "kind": "alert", "summary": summary, "key": key}), encoding="utf-8")
+    (item / "events" / "20261008T063647Z-00-mac-close.yaml").write_text(
+        yaml_dump({"verb": "close", "by": "mac", "at": at, "text": note}), encoding="utf-8")
+
+
+def yaml_dump(data: dict) -> str:
+    import yaml
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
+def test_closing_the_item_of_a_job_marks_its_finding_seen_with_the_close_note(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-job-chat-bot-a1b2", key="worker:mini:chat-bot",
+               summary="Background job chat-bot on mini: last run failed", note="exit 75 was a restart, nothing to do")
+    world.app.ack_closed_findings()
+    run = served_runs(world)["chat-bot"]
+    assert run["acked"]["note"] == "exit 75 was a restart, nothing to do"
+    # undone by hand, the same close does not mark it again
+    world.act("finding_unack", key="worker:mini:chat-bot")
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+
+
+def test_a_handoff_question_about_a_job_counts_like_its_own_item(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-question-c3d4", key="web:q0123456789",
+               summary="Background job chat-bot on mini: last run failed. What should be done, and why?",
+               note="a planned restart")
+    world.app.ack_closed_findings()
+    assert served_runs(world)["chat-bot"]["acked"]["note"] == "a planned restart"
+
+
+def test_a_close_before_the_failure_does_not_mark_it_seen(world):
+    put_workers(world, "the last run of chat-bot ended with 1 at 2026-10-08T09:00:00+00:00", at="2026-10-08T09:00:00Z")
+    close_item(world, "20261008-0736-job-chat-bot-e5f6", key="worker:mini:chat-bot",
+               summary="Background job chat-bot on mini", note="older trouble")
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+
+
+def test_another_item_that_only_names_the_job_and_its_machine_does_not_mark_it_seen(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-chat-bot-on-mini-halted-a7b8", key="watcher:chat-bot",
+               summary="chat-bot on mini halted", note="another matter")
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+
+
+def test_closing_the_item_analyse_in_a_tab_filed_marks_the_job_seen_and_keeps_its_item_on_the_row(world):
+    # the analysis files under worker:<host>:<id>, the key a close is read by: its close note greys the job
+    run = {**WORKER_RUN, "strip": [{"at": "2026-10-07T07:45:56Z", "rc": 75, "verdict": "failed"}]}
+    write_workers(world, [run])
+    new_id = "20261008-0736-background-job-chat-bot-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    add = next(c for c in writes(world) if world.runner.key(c) == "inbox.add")
+    key = next(a for a in add if a.startswith("--key="))[len("--key="):]
+    close_item(world, new_id, key=key, summary="Background job chat-bot on homebox: last run failed",
+               note="exit 75 was a planned restart")
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": new_id, "state": "done", "key": key}])
+    world.app.inbox_cache = (0.0, None)
+    world.app.ack_closed_findings()
+    served = served_runs(world)["chat-bot"]
+    assert served["acked"]["note"] == "exit 75 was a planned restart"
+    assert served["advise"] == {"inbox": new_id, "state": "done"}

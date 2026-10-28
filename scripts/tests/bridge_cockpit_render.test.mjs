@@ -2840,6 +2840,30 @@ test('Background jobs opened on their outages: only those, the chip says so and 
   assert.ok(!calm.$$('.wfilters .fchip').some(b => b.text().includes(en.workerOutage)))
 })
 
+test('a job finding marked seen: "Seen" on the open row, then grey with its note and "show again"', async () => {
+  const opened = async el => {
+    el.$('.wrow-main').click()
+    for (let i = 0; i < 20 && !el.$('.wrow-detail'); i++) await new Promise(r => setTimeout(r, 0))
+  }
+  const failed = { ...opsRun('chat-bot', 'high'), host: 'mini' }
+  const c = recorder()
+  const el = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [failed], ui: { page: '@workers' } })} c=${c} />`)
+  await opened(el)
+  const seen = el.$$('.wrow-detail button').find(b => b.text() === en.findingSeen.btn)
+  assert.ok(seen, 'the Seen button')
+  assert.equal(seen.getAttribute('title'), en.findingSeen.title)
+  seen.click()
+  assert.deepEqual(c.calls.at(-1), ['ackFinding', 'worker:mini:chat-bot', true])
+  const acked = { ...failed, acked: { day: '2026-10-28', note: 'a planned restart' } }
+  const c2 = recorder()
+  const calm = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [acked], ui: { page: '@workers' } })} c=${c2} />`)
+  assert.ok(!calm.$('.wrow').hasClass('rt-bad'), calm.$('.wrow').getAttribute('class'))
+  await opened(calm)
+  assert.match(calm.$('.wrow-detail').text(), /a planned restart/)
+  calm.$$('.wrow-detail button').find(b => b.text() === en.findingSeen.undo).click()
+  assert.deepEqual(c2.calls.at(-1), ['ackFinding', 'worker:mini:chat-bot', false])
+})
+
 test('operations: the folder bar names the overview and every sub page with its mark, on each of them', () => {
   const { FolderBar } = views.header
   const runs = [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')]
@@ -3090,6 +3114,26 @@ test('background jobs: a job filed for a tab shows that tab while its item is op
   await openRow(done)
   assert.match(done.$('.wrow-detail').text(), /the finding is old, the bot runs/)
   assert.ok(done.button(en.btnWorkerAdvise), 'an ended analysis may run again')
+})
+
+test('background jobs: Seen stands last beside the analysis, and a seen row offers no new analysis until its item is open', async () => {
+  const words = row => row.$$('.wrow-detail .btn-row button').map(b => b.text())
+  const red = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [hostRun('bot', 'homebox', 'high')], ui: { page: '@workers' } })} c=${recorder()} />`).$('.wrow')
+  await openRow(red)
+  assert.deepEqual(words(red), [en.btnWorkerAdvise, en.btnAsk, en.findingSeen.btn])
+  // seen: grey, "show again" only, the job needs nothing more until it fails anew
+  const acked = { ...hostRun('bot', 'homebox', 'high'), acked: { day: '2026-10-28', note: 'the bot runs' } }
+  const calm = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [acked], ui: { page: '@workers' } })} c=${recorder()} />`).$('.wrow')
+  await openRow(calm)
+  assert.deepEqual(words(calm), [en.btnAsk, en.findingSeen.undo])
+  // seen while its analysis still works in a tab: the way to that tab stays
+  const id = '20261028-0736-background-job-bot-a1b2'
+  const base = opsState({ runs: [{ ...acked, advise: { inbox: id, state: 'open' } }], ui: { page: '@workers' } })
+  const s = { ...base, model: { ...base.model, returns: [{ key: `inbox:${id}`, item: id, title: 'bot', mode: 'report', at_ms: NOW - 60000,
+    stage: 'working', in_briefing: false, tab: { ref: 'surface:9', state: 'working', since_ms: NOW, last: '' }, result: null }] } }
+  const busy = mount(html`<${views.sessions.WorkersPage} s=${s} c=${recorder()} />`).$('.wrow')
+  await openRow(busy)
+  assert.deepEqual(words(busy), [en.workerToTab, en.btnAsk, en.findingSeen.undo])
 })
 
 test('a page row asked before shows that question and opens it instead of asking again', () => {

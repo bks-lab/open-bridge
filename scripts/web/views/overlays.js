@@ -21,7 +21,7 @@ import {
 import { MeterBar, RowSteps, StatusMenu } from './pages.js'
 import { GH_REF, GitHubDetail } from './github.js'
 import { CalendarFacts } from './dates.js'
-import { Btn, Dot, Empty, Icon, Spinner, StateLine } from './parts.js'
+import { Btn, Dot, Empty, Icon, SeenBtn, Spinner, StateLine } from './parts.js'
 import { TaskSessions } from './sessions.js'
 import { TabsColumn } from './tabs.js'
 
@@ -346,6 +346,7 @@ export function InfoDrawer({ s, c }) {
           : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} as=${sec?.steps ?? 'menu'} />`) : null}
         ${cur.account?.status ? html`<${StatusMenu} it=${cur} page=${page} section=${section} c=${c} />` : null}
         <${PageItemActions} it=${cur} s=${s} c=${c} after=${close} />
+        <${SeenBtn} k=${cur.key} acked=${cur.acked} loud=${cur.tone === 'bad' || cur.tone === 'warn'} c=${c} />
         ${cur.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { close(); c.ask('info', { page, section, index: cur.index }) }}>${t.btnAsk}<//>` : null}
       </div>
       <div class="idrawer-body">
@@ -353,6 +354,7 @@ export function InfoDrawer({ s, c }) {
           skip=${['source', 'summary', 'state']} cls="idrawer-sec idrawer-card" />
         ${ghRef ? html`<${GitHubDetail} gref=${ghRef} c=${c} />` : null}
         ${onHost.length ? html`<section class="idrawer-sec"><${StateLine} token=${onHostBad ? 'warning' : 'success'} word=${t.workersOnHost(onHost.length, onHostBad)} /></section>` : null}
+        ${cur.acked ? html`<section class="idrawer-sec"><p class="muted">${t.findingSeen.on(cur.acked.day, cur.acked.note)}</p></section>` : null}
         ${cur.detail && !cur.cal ? html`<section class="idrawer-sec"><p class="info-detail-full"><${Linked} text=${detailText(cur.detail, t)} /></p></section>` : null}
         ${cur.meter ? html`<section class="idrawer-sec"><${MeterBar} meter=${cur.meter} scale=${0} tone=${cur.tone} /></section>` : null}
         ${cur.cal ? html`<${CalendarFacts} it=${cur} />` : null}

@@ -135,6 +135,11 @@ INBOX_OVERTAKEN = (
     " If the item is already done, overtaken, or answered by facts you can check yourself, note the finding "
     "with its sources and close it without asking: python3 scripts/inbox.py close {id} --note '<what settled "
     "it>'. The person undoes that with python3 scripts/inbox.py reopen {id}.")
+# Closing the item of a background job (key worker:<host>:<id>, or a question about one) marks the job's
+# finding seen in the cockpit: grey until it changes (bridge_cockpit/server.py ack_closed_findings).
+INBOX_JOB_SEEN = (
+    " If the item is about a background job, closing it marks that job's finding seen in the cockpit: grey "
+    "until the job fails anew. So say in the close note what you found and why the finding needs nothing more.")
 INBOX_REPORT_HEAD = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
     "names, if any. Then print at most eight lines: what it is, what would settle it, and whether you "
@@ -152,9 +157,9 @@ INBOX_ASK_ONLY = (
     "cannot be undone.")
 INBOX_GO_PROMPT = (
     INBOX_GO_HEAD + " When it is settled, close the item with python3 scripts/inbox.py close "
-    "{id} --note '<what settled it>'." + INBOX_OVERTAKEN + " Local follow-ups that only write down what is "
-    "already decided (a plan, STATUS.md, the log) make yourself and name them in the close note." + INBOX_ASK_ONLY +
-    " The click that started you releases the close even when the item says gate: only-you or "
+    "{id} --note '<what settled it>'." + INBOX_OVERTAKEN + INBOX_JOB_SEEN + " Local follow-ups that only write "
+    "down what is already decided (a plan, STATUS.md, the log) make yourself and name them in the close note." +
+    INBOX_ASK_ONLY + " The click that started you releases the close even when the item says gate: only-you or "
     "closer: person, as long as you decide nothing new. Never close a tab or a workspace.")
 # With the person's order (a start note) the base prompt keeps no word about closing: INBOX_ORDER_TAIL says how
 # the tab ends instead, so the two never disagree (28.10.: the overtaken rule closed an item the order asked about)
@@ -433,7 +438,7 @@ INBOX_ORDER_TAIL = (
     " The person gave you an order for this start, so do not close the item on your own, not even when it looks "
     "done or overtaken: put your result on the item with python3 scripts/inbox.py note {id} 'Result: <what you "
     "found>', and ask before closing, since a proposal to close is a question: python3 scripts/inbox.py note {id} "
-    "'Question: <what you propose>'. Close it only once the person said so.")
+    "'Question: <what you propose>'. Close it only once the person said so." + INBOX_JOB_SEEN)
 START_NOTE_HEAD = ("The person gave you a sentence for this start: it is the newest note that begins with "
                    "'Start note:' on this item ({where}). Read it before anything else; it comes before everything else "
                    "below when the two disagree. ")

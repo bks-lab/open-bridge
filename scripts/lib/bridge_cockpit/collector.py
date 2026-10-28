@@ -117,13 +117,14 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 seq: int, stale: bool, profile: str | None, tx: dict,
                 review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
                 describe: dict | None = None, files: list[dict] | None = None,
-                carry_deferred: bool = False, pairs: dict | None = None) -> tuple[dict, dict]:
+                carry_deferred: bool = False, pairs: dict | None = None, acks: dict | None = None) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
     triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py).
     `carry_deferred` (Work through on) adds `deferred`: the inbox items a page lists that are put off past the
     briefing's window, as rows (deferred_rows). `pairs` (model.page_twins of the view) is worked out here when the
     caller has none: a row of Due and the page items of the same thing take one decision (model.decision_twins),
-    and a row names the GitHub list it stands in (`on_board`, model.board_places)."""
+    and a row names the GitHub list it stands in (`on_board`, model.board_places). `acks` (store.acks) are the
+    findings marked seen: such a page row stays, grey, and counts toward no badge and no alarm (model.ack_item)."""
     today = m.iso_date(now)
     pairs = m.page_twins(view) if pairs is None else pairs
     twins = m.decision_twins(pairs)
@@ -279,8 +280,11 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             # badge, the section head and the alarm never count a row the page does not show (a row weighs unless
             # it is dim, briefing_view._page_section; a section that does not count stays at 0)
             gone = [i for i in shown if i not in items]
-            bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad"))
-            weight = max(0, s["weight"] - sum(1 for i in gone if i.get("tone") != "dim"))
+            # a finding marked seen stays on the page, grey, and counts like a row put off (model.ack_item)
+            marked = [i for i in items if m.ack_item(i, acks or {})]
+            bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad")
+                      - sum(1 for i in marked if i["acked"]["tone"] == "bad"))
+            weight = max(0, s["weight"] - sum(1 for i in gone if i.get("tone") != "dim") - len(marked))
             sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "as_of")}
             sec["left_out"] = s.get("left_out") is True    # a section asked again on its own has no such key
             for extra in ("stale", "boards", "metrics", "cal_figures"):
@@ -633,6 +637,7 @@ class Collector:
         self.rebuild()
         if kind == "full":
             self.sweep_filed(fresh_view)
+        app.ack_closed_findings()
 
     def sweep_filed(self, view: dict) -> None:
         """Close the inbox items Get it done filed for page rows (`briefing:<profile>:<section>:<id>`, from the
@@ -733,7 +738,7 @@ class Collector:
                 stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
                 origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks,
                 carry_deferred=(getattr(app.cfg, "flow", None) or {}).get("enabled") is True, pairs=pairs,
-                **app.card_sources())
+                acks=app.store.acks(), **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)

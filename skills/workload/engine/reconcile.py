@@ -1051,8 +1051,34 @@ def _naming_drift(w, stamp, appointment_name: str = "") -> "Finding | None":
         appointment=appointment_name)
 
 
+#: How long a daemon must have been up, with no newer line, before its last
+#: failure counts as history. Between two restarts a crash loop shows
+#: `running` too; ten minutes without a new line is a service that stayed up.
+RESTARTED_MARGIN_SEC = 600
+
+
+def _restarted_since(w, newest, now, running) -> bool:
+    """True when a continuous run is up now and has not ended since its failure.
+
+    The guard writes its line when it ENDS, so a guard that is running now
+    started after the newest line it wrote. Older guards write no `started`
+    line, and for them the failure stayed the newest thing they said while the
+    service ran for weeks (2026-10-28: a daemon that exited with 75 on purpose,
+    restarted at once, stayed red with nothing anyone could do to calm it).
+    A scheduled run is idle between firings, so `running` says nothing there.
+    """
+    from datetime import datetime, timezone
+    if running is not True or _kind_of(w) not in model.CONTINUOUS_KINDS:
+        return False
+    if now is None:
+        now = datetime.now(timezone.utc)
+    elif isinstance(now, str):
+        now = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return (now - newest[0]).total_seconds() >= RESTARTED_MARGIN_SEC
+
+
 def _trace_findings(w, text, stamp, now, finding, appointment=None, booted=None,
-                    switched_off=False):
+                    switched_off=False, running=None):
     """What the run itself wrote, read back. Empty when nobody asked."""
     from datetime import datetime, timezone
 
@@ -1063,6 +1089,17 @@ def _trace_findings(w, text, stamp, now, finding, appointment=None, booted=None,
         return out
 
     newest = _newest_trace(text or "")
+
+    if "failure" in wants and newest is not None and newest[1] not in (None, 0) \
+            and _restarted_since(w, newest, now, running):
+        # History, not a finding: said once, calm, so the record is not lost.
+        who = str(getattr(stamp, "state_key", "") or "") or w.id
+        out.append(finding(
+            state.in_sync, sev.info,
+            f"{who} restarted after exit {newest[1]} at {newest[0].isoformat()} "
+            f"and has been running since",
+            "", source="machine"))
+        wants = tuple(x for x in wants if x != "failure")
 
     if "failure" in wants and newest is not None and newest[1] not in (None, 0) \
             and not _transient_blip(w, text or ""):
@@ -1314,7 +1351,8 @@ def classify(workloads: Sequence, host_obs: HostObservation,
                     workload_id=w.id, state=st, severity=sv, detail=detail,
                     hint=hint, source=source, appointment=appointment_name),
                 appointment=mine_appointment, booted=booted,
-                switched_off=switched_off))
+                switched_off=switched_off,
+                running=getattr(unit, "running", None)))
 
         # ONCE per declaration, after the units, and deliberately NOT inside the
         # loop above. An outdated declaration is a fact about the FILE, the same

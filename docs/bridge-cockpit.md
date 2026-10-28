@@ -1440,7 +1440,15 @@ on (the item is added beside it). A row asked before shows that question
 instead of a second one, as "question open", "answered", "no answer" (its last
 turn failed) or, once handed on, the marker every question list shows (in its
 tab, done, asks you, tab ended), with **Open** and a quiet **Ask again** beside
-it; a page row (`InfoRow`) does the same under its own key. A section with `hide_ok: true` is drawn only while one of
+it; a page row (`InfoRow`) does the same under its own key. A job with a high or medium finding has **Seen** on its open row, last after Analyse in a tab and Ask (a page row
+that is bad or warn has it among its buttons, "Settled this time: grey until the finding
+changes"): the finding as it stands now turns grey with the day and the close note, and counts
+toward no red tile, no badge and no alarm; a new finding (another fingerprint: state and
+detail, so a new failure time) is red again, and "show again" takes it back. A seen row offers no new analysis while no item of it is open. Closing the inbox
+item of a job (key `worker:<host>:<id>`, which is the item Analyse in a tab files, or a question handed over
+about it) does the same
+with its close note, when the close came after the job's newest failure. The decision lives in
+`work/cockpit/settled/` beside the hides, as act `ack`. A section with `hide_ok: true` is drawn only while one of
 its rows is bad or its source fails; it still feeds the page's number, the
 alarm and what other cards read from it ([`briefings.md`](briefings.md)
 § Dashboard pages).
@@ -2958,7 +2966,7 @@ it must reach every machine:
 
 | File | What | Inbox or chat text |
 |---|---|---|
-| `work/cockpit/settled/` | every hide ("not now until <day>"), every row marked done or not doing, every "show again", one YAML file each (`<UTC stamp>-<seq>-<rand>-<act>.yaml`, or `legacy-<hash>-<act>.yaml` for an entry migrated from `state.json`), written once, never changed; the newest file for a row decides | yes: the row titles |
+| `work/cockpit/settled/` | every hide ("not now until <day>"), every row marked done or not doing, every finding marked seen, every "show again", one YAML file each (`<UTC stamp>-<seq>-<rand>-<act>.yaml`, or `legacy-<hash>-<act>.yaml` for an entry migrated from `state.json`), written once, never changed; the newest file for a row decides | yes: the row titles |
 
 ### Upgrading: Work through as a view, its themes and the advice
 

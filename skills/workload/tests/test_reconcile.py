@@ -1298,6 +1298,47 @@ class TheTraceIsReadBackOrTheEvidenceIsDecoration(ReconcileBase):
         self.assertIn(model.WorkloadState.last_run_failed, states,
                       "a deadline cut the run off; that is not the program asking to retry")
 
+    # -- a daemon that failed once and has been up ever since -------------
+    # A guard provisioned before the `started` line existed writes a line only
+    # when it ends. A daemon that exited with 75 on purpose, was restarted by
+    # its service manager at once and has run for days kept that line as its
+    # newest, so the report called a healthy service broken, forever: nothing
+    # it does while running writes a newer line.
+    def daemon_findings(self, *, running, when="2026-08-16T07:45:56Z",
+                        now="2026-08-23T08:01:00Z", wid="watched-daemon"):
+        w = self.load(wid)
+        unit = self.live(f"gui/{FIXTURE_UID}/bridge.{wid}", marker_id=wid, running=running)
+        obs = dataclasses.replace(self.host_obs([unit], {wid: self.stamp(wid)}),
+                                  traces={wid: self.trace_line(wid, rc=75, when=when, verdict="failed")})
+        return [f for f in reconcile.classify([w], obs, self.inv(), {}, now=now)
+                if f.workload_id == wid]
+
+    def test_a_daemon_running_since_its_failure_is_history_not_a_finding(self):
+        found = self.daemon_findings(running=True)
+        self.assertNotIn(model.WorkloadState.last_run_failed, {f.state for f in found},
+                         "the service is up and its guard has not ended since the failure")
+        notes = [f for f in found if "75" in f.detail]
+        self.assertEqual(len(notes), 1, "the failure stays visible as one calm note")
+        self.assertIs(notes[0].severity, model.Severity.info)
+
+    def test_a_daemon_that_is_not_running_keeps_the_failure(self):
+        found = self.daemon_findings(running=False)
+        self.assertIn(model.WorkloadState.last_run_failed, {f.state for f in found})
+
+    def test_a_daemon_that_failed_minutes_ago_keeps_the_failure(self):
+        # A crash loop is `running` between two restarts. Only a failure older
+        # than the margin, with no newer line, proves the service stayed up.
+        found = self.daemon_findings(running=True, when="2026-08-23T07:58:00Z")
+        self.assertIn(model.WorkloadState.last_run_failed, {f.state for f in found})
+
+    def test_a_scheduled_run_keeps_the_existing_rule(self):
+        states = self.states("calendar-export",
+                             {"calendar-export": self.trace_line(
+                                 "calendar-export", rc=75, when="2026-08-16T07:45:56Z", verdict="failed")},
+                             now="2026-08-23T08:01:00Z")
+        self.assertIn(model.WorkloadState.last_run_failed, states,
+                      "a cadence run is idle between firings; running says nothing about it")
+
 
     # -- a run that never came --------------------------------------------
     def test_a_cadence_that_stopped_firing_is_overdue(self):
