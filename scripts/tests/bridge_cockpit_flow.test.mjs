@@ -3470,3 +3470,17 @@ test('round 6 c P2: where Work through is on, the check has no tab and every way
   assert.ok(hints.some(([id, target]) => id === 'flowCheck' && target === '.flow-check-row'))
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].hints.items.flowCheck?.body, lang)
 })
+
+test('6d: a record open in the files tab carries the right column of Work through for its point, the same verbs', () => {
+  const s = cockpitState(NOW, { ui: { page: '@files' } })
+  const parts = logic.flowParts(s)
+  const point = logic.flowQueue(parts, 'all').find(x => x.kind === 'row' && x.row?.task)
+  assert.ok(point, 'the demo has a task point')
+  const words = el => el.$$('.flow-aside .flow-can button').map(b => b.text().trim())
+  const flow = mount(html`<${views.flowside.FlowAside} x=${point} s=${s} c=${recorder()} />`)
+  const files = mount(html`<${views.dossier.DossierView} s=${{ ...s, ui: { ...s.ui, dossierOpen: point.row.task } }} c=${recorder()} />`)
+  assert.ok(words(flow).length > 2)
+  assert.deepEqual(words(files), words(flow))
+  // the list opens a record beside it, the walk off (app.js)
+  assert.match(APP, /openRecord: \(slug, path\) => setUi\(\{ dossierOpen: String\(path \?\? ''\)\.startsWith\('work\/done\/'\) \? path : slug, filesWalk: false \}\)/)
+})

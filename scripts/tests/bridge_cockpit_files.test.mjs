@@ -403,7 +403,9 @@ test('a file whose next step comes from STATUS.md says so, with its age, and the
   const hero = el.$('.fx-hero')
   assert.equal(hero.$('.fx-title').text().trim(), x.row.next.what)
   assert.ok(hero.text().includes(en.dossier.from.status), 'where the step comes from')
-  assert.ok(el.$('.fx-hero .fx-do'), 'the verbs of the row')
+  // round 6d: the verbs stand on the right, as in Work through, not twice under the step
+  assert.ok(el.$('.flow-aside .verbbar'), 'the verbs of the row')
+  assert.ok(!el.$('.fx-hero .fx-do'), 'not under the step')
 })
 
 test('a file a tab asks about keeps the verbs of its task, the tab named beside them', () => {
@@ -412,9 +414,9 @@ test('a file a tab asks about keeps the verbs of its task, the tab named beside 
   const queue = dossierQueue(s)
   assert.equal(queue[0].reason, 'tab', 'the demo has a tab that asks about a task')
   const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
-  const acts = el.$('.fx-hero .fx-do')
-  assert.ok(acts.text().includes(en.settle), 'the close door of the row')
-  assert.ok(!acts.text().includes(en.home.view), 'not the bare tab buttons')
+  // round 6d: the verbs of its task on the right, Done among them, as Work through has them for that point
+  const acts = el.$('.flow-aside .flow-can')
+  assert.ok(acts.text().includes(en.flow.verbs.done), 'the close door of the row')
   assert.ok(el.$('.fx-hero .fx-meta').text().includes(queue[0].tab.name), 'the tab that asks, named')
 })
 
@@ -1066,8 +1068,9 @@ test('the files tab starts on its search: the field, the chips, the records, the
   const items = el.$$('.fs-list > li')
   assert.equal(items.length, 3)
   assert.ok(items[0].text().includes('Onboard the invoice vendor') && items[0].text().includes('acme'))
+  // round 6d: it opens beside the list (c.openRecord), the list stays
   items[0].$('button.fs-open').click()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [['openFile', 'invoice-onboarding', 'work/tasks/invoice-onboarding']])
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openRecord'), [['openRecord', 'invoice-onboarding', 'work/tasks/invoice-onboarding']])
   // typing filters live and asks the server's search for the words
   field.value = 'runs'
   field.dispatch('input')
@@ -1211,4 +1214,85 @@ test('6c fix: the walk stands beside the search, in one form of words', () => {
   assert.equal(en.dossier.start.walk(1), 'Walk through the active records (1)')
   assert.equal(text.TABLES.de.dossier.start.walk(4), 'Aktive Akten durchgehen (4)')
   assert.equal(text.TABLES.de.dossier.start.walk(1), 'Aktive Akten durchgehen (1)')
+})
+
+// ---------------------------------------------------------------- round 6d: the records in the layout of Work through
+
+/** The tab with a record of the demo's queue in the list (its task has a row, so Work through has its verbs) */
+function laidOut(ui = {}) {
+  const base = tabState()
+  const queue = views.dossier.dossierQueue(base)
+  const x = queue.find(q => q.reason === 'task') ?? queue[0]
+  const recs = [REC(x.slug, { title: x.row.title, updated: '2026-10-09' }), ...RECORDS]
+  return { x, queue, s: tabState(ui, { records: { status: 'ok', data: { ok: true, total: recs.length, truncated: false, records: recs } } }) }
+}
+
+test('6d: the files tab lays out as Work through: the list left, the record in the middle, its verbs and facts right', () => {
+  const { DossierView } = views.dossier
+  const { x, s } = laidOut()
+  const c = recorder()
+  const opened = { ...s, ui: { ...s.ui, dossierOpen: x.slug } }
+  const el = mount(html`<${DossierView} s=${opened} c=${c} />`)
+  const grid = el.$('.flow-grid')
+  assert.ok(grid, 'the grid of Work through')
+  assert.ok(grid.$('.flow-side .fs-find input') && grid.$('.flow-side .fs-chips') && grid.$('.flow-side .fs-list'), 'left: search, chips, list')
+  assert.ok(grid.$('.flow-main .dz-cover'), 'middle: the record')
+  const aside = grid.$('.flow-aside')
+  assert.ok(aside, 'right: the column of Work through')
+  assert.ok(aside.text().includes(en.flow.verbs.done) && aside.text().includes(en.flow.verbs.later), 'the verbs of a task point')
+  assert.ok(aside.$('.flow-details') && aside.$('.flow-fields'), 'Details and the fields')
+  // the record open is marked in the list, the list stays
+  const items = el.$$('.fs-list > li')
+  assert.equal(items[0].getAttribute('aria-current'), 'true')
+  assert.ok(!items[1].getAttribute('aria-current'), 'only the one open')
+  // a click in the list opens the record beside it, without leaving the list
+  items[1].$('button.fs-open').click()
+  assert.deepEqual(c.calls.filter(k => k[0] === 'openRecord'), [['openRecord', 'invoice-onboarding', 'work/tasks/invoice-onboarding']])
+  // Next walks the list in its order
+  el.$('.dz-walk').button(en.dossier.listWalk.next).click()
+  assert.deepEqual(c.calls.filter(k => k[0] === 'openRecord').at(-1), ['openRecord', 'invoice-onboarding', 'work/tasks/invoice-onboarding'])
+  // one way to close it, no second search
+  el.button(en.dossier.start.back).click()
+  assert.deepEqual(c.calls.at(-1), ['filesHome'])
+  assert.ok(!el.$('form.dz-find'))
+})
+
+test('6d: nothing open, the question to the AI stands above the middle; a record open, at the top of the left column', () => {
+  const { DossierView } = views.dossier
+  const { x, s } = laidOut()
+  const none = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+  assert.ok(none.$('.flow-main .fs-ask'), 'above the middle')
+  assert.ok(!none.$('.flow-side .fs-ask'))
+  assert.ok(!none.$('.flow-aside'), 'no right column while nothing is open')
+  assert.ok(none.$('.flow-grid.no-aside'))
+  assert.ok(none.$('.flow-main').text().includes(en.dossier.start.pick))
+  const open = mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, dossierOpen: x.slug } }} c=${recorder()} />`)
+  assert.ok(open.$('.flow-side .fs-ask'), 'at the top of the left column')
+  assert.ok(!open.$('.flow-main .fs-ask'))
+  // the block list's line holds as before
+  assert.match(open.$('.fs-ask-note').text(), new RegExp(en.dossier.start.held(1, ['Versicherung']).replace(/[.]/g, '\\.')))
+})
+
+test('6d: the walk shows the step without verbs of its own, the right column carries them, the record marked in the list', () => {
+  const { DossierView } = views.dossier
+  const { x, queue, s } = laidOut()
+  const k = queue.indexOf(x)
+  const el = mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, filesWalk: true, dossierAt: { id: x.id, i: k } } }} c=${recorder()} />`)
+  assert.ok(el.$('.flow-main .fx-hero'), 'the next step in the middle')
+  assert.ok(!el.$('.fx-hero .fx-acts'), 'no verbs twice')
+  assert.ok(el.$('.flow-aside').text().includes(en.flow.verbs.done))
+  assert.equal(el.$$('.fs-list > li')[0].getAttribute('aria-current'), 'true')
+  // the walk of the queue keeps its words
+  assert.ok(el.$('.dz-walk').button(en.dossier.walk.next))
+})
+
+test('6d: a record\'s right column is the point Work through shows for its row; a closed one has none', () => {
+  const { x, s } = laidOut()
+  const parts = logic.flowParts(s)
+  const shown = [...logic.flowQueue(parts, 'all'), ...parts.lane].find(p => p.row?.key === `task:${x.slug}`)
+  const point = logic.recordPoint(s, x.slug)
+  assert.equal(point.row.key, `task:${x.slug}`)
+  if (shown) assert.deepEqual([point.id, point.kind, point.group], [shown.id, shown.kind, shown.group], 'the same point as Work through')
+  assert.equal(logic.recordPoint(s, 'work/done/2026-09/old-report'), null)
+  assert.equal(logic.recordPoint(s, 'no-such-task'), null)
 })
