@@ -770,3 +770,97 @@ def test_the_view_marks_a_draft_and_gives_it_no_link():
     assert row["row_id"] == DRAFT_ID and "link" not in row
     assert row["gh"]["type"] == "draft" and row["gh"]["number"] is None and row["gh"]["repo"] is None
     assert model.parse_gh(row["gh"])["type"] == "draft"
+
+
+# ---------------------------------------------------------------- what the GitHub page filters by and shows (round 6c)
+# The page filters by board, person, repository, kind and board column, and a row names its board and column, who is
+# on it and who opened it, its labels and, for a pull request, draft, review and checks. Every field is optional: a
+# board listed the old way (item-list) or an older cache simply leaves it out.
+
+def _view_and_model():
+    if str(ROOT / "scripts" / "lib") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import briefing_view as bv   # noqa: E402
+    from bridge_cockpit import model   # noqa: E402
+    return bv, model
+
+
+def test_the_search_asks_who_opened_a_row_and_marks_the_ones_you_opened(tmp_path):
+    a = answers()
+    hits = json.loads((FIX / "github" / "search-issues.json").read_text())
+    hits[0]["author"], hits[1]["author"] = {"login": "hubot"}, {"login": "octo"}
+    a[("gh", "search", "issues")] = json.dumps(hits)
+    rows, run = collect(bridge(tmp_path), run=FakeRun(a))
+    assert rows["example-org/site#7"]["author"] == "octo" and rows["example-org/site#7"]["by_me"] is True
+    # a board card the search also found takes the author from the search
+    assert rows["example-org/tool#12"]["author"] == "hubot" and rows["example-org/tool#12"]["by_me"] is False
+    asked = [c for c in run.calls if c[:3] == ["gh", "search", "issues"] and "title" in c[-1]]
+    assert asked and all("author" in c[-1].split(",") for c in asked)
+    others = [c for c in run.calls if c[:3] == ["gh", "search", "prs"] and "--updated" in c]
+    assert all(c[-1].split(",").count("author") == 1 for c in others), "author asked once, not twice"
+
+
+def lean_board(node_content: dict):
+    """A graphql answer that serves the lean board query with one card, and the links query with CLOSING"""
+    def answer(argv):
+        if any(a.startswith("query=") and "projectV2" in a for a in argv):
+            return json.dumps({"data": {"repositoryOwner": {"projectV2": {"items": {
+                "pageInfo": {"hasNextPage": False, "endCursor": None},
+                "nodes": [{"id": "PVTI_1", "fieldValueByName": {"name": "In Progress"}, "content": node_content}]}}}}})
+        return graphql(argv)
+    return answer
+
+
+def test_a_board_card_names_who_opened_it_through_the_lean_query(tmp_path):
+    a = answers()
+    a[("gh", "api", "graphql")] = lean_board({
+        "__typename": "Issue", "number": 60, "title": "Card only", "url": "https://github.com/example-org/tool/issues/60",
+        "updatedAt": "2026-10-03T08:00:00Z", "repository": {"nameWithOwner": "example-org/tool"},
+        "author": {"login": "hubot"}, "assignees": {"nodes": [{"login": "octo"}]}, "labels": {"nodes": []}})
+    rows, run = collect(bridge(tmp_path), run=FakeRun(a))
+    row = rows["example-org/tool#60"]
+    assert row["author"] == "hubot" and row["by_me"] is False and row["board"]["name"] == "Tool board"
+    lean = next(x for c in run.calls for x in c if x.startswith("query=") and "projectV2" in x)
+    assert "author { login }" in lean
+
+
+def test_a_pull_request_row_says_whether_it_is_a_draft_its_review_and_its_checks(tmp_path):
+    a = answers()
+    state = {"isDraft": True, "reviewDecision": "CHANGES_REQUESTED",
+             "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "FAILURE"}}}]}}
+
+    def answer(argv):
+        out = json.loads(graphql(argv))
+        for alias, number in re.findall(r'(i\d+): repository\(owner: "[^"]+", name: "[^"]+"\) \{ issueOrPullRequest\(number: (\d+)\)', argv[-1]):
+            if number == "40":
+                out["data"][alias]["issueOrPullRequest"] = state
+        return json.dumps(out)
+    a[("gh", "api", "graphql")] = answer
+    rows, run = collect(bridge(tmp_path), run=FakeRun(a))
+    assert rows["example-org/tool#40"]["pr_status"] == {"draft": True, "review": "changes_requested", "checks": "failure"}
+    assert "pr_status" not in rows["example-org/site#7"], "an issue has none"
+    links = next(c[-1] for c in run.calls if c[:3] == ["gh", "api", "graphql"] and "closingIssuesReferences" in c[-1])
+    assert "reviewDecision" in links and "statusCheckRollup { state }" in links
+
+
+def test_the_facts_carry_board_column_people_author_labels_and_pr_state_to_the_page():
+    bv, model = _view_and_model()
+    row = {"id": "example-org/tool#40", "title": "Bump", "type": "pr", "state": "review", "raw_state": "🔍 In Review",
+           "assignees": [f"dev{i}" for i in range(6)], "author": "octo", "by_me": True,
+           "labels": [f"l{i}" for i in range(7)], "board": {"name": "Tool board", "slug": "tool"}, "also_on": ["Theme board"],
+           "pr_status": {"draft": False, "review": "approved", "checks": "success"}, "untasked": True}
+    f = bv.github_facts(row, NOW)
+    assert f["board"] == "Tool board" and f["also_on"] == ["Theme board"] and f["status"] == "In Review"
+    assert f["people"] == row["assignees"] and f["author"] == "octo" and f["by_me"] is True
+    assert f["labels"] == row["labels"], "every label: the page shows three and counts the rest"
+    assert f["pr"] == {"draft": False, "review": "approved", "checks": "success"}
+    page = model.parse_gh(f)
+    for key in ("board", "also_on", "people", "author", "by_me", "labels", "pr", "untasked"):
+        assert page[key] == f[key], key
+    # a row the search alone found: no board, an issue has no pull request state
+    plain = bv.github_facts({"id": "example-org/site#7", "title": "Page", "type": "issue", "state": "ready", "raw_state": "open"}, NOW)
+    assert plain["board"] is None and plain["also_on"] == [] and plain["pr"] is None and plain["author"] is None
+    # the page checks again: a word it does not know is no state
+    odd = model.parse_gh({**f, "pr": {"draft": "yes", "review": "<b>", "checks": 3}, "author": 5, "board": ["x"]})
+    assert odd["pr"] == {"draft": False, "review": None, "checks": None} and odd["author"] is None and odd["board"] is None
+    assert model.parse_gh({**f, "pr": None})["pr"] is None

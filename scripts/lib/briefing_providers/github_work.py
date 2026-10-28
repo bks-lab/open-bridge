@@ -4,8 +4,8 @@ cards of the registered boards (the `github-board` provider), merged by their id
 
 Two sections showed the same card twice and disagreed (an issue `open` in one, `In Progress` in the
 other, live 2026-10-17). Here the board's status wins, the search adds what only it knows (asked to
-review, your own pull request), and each row names the board it sits on and the pull requests that
-close it. briefing.py adds the Bridge task that syncs the issue and the inbox item an agent was
+review, your own pull request), and each row names the board it sits on, who opened it, the pull requests
+that close it and, for a pull request, its draft flag, review and checks (`pr_status`). briefing.py adds the Bridge task that syncs the issue and the inbox item an agent was
 started on (`link`), and the steps a person can start on the row (`tracker_steps`).
 
 query keys (all optional):
@@ -141,6 +141,7 @@ def collect(section: dict, ctx) -> list:
     for card in carded:
         if me and me in (card.get("assignees") or []):
             card["assigned_to_me"] = True
+        card["by_me"] = bool(me and card.get("author") == me)
     me_only = {b["slug"] for b in boards if mode_of[b["slug"]] == "mine"}
     carded = [c for c in carded if c["board"]["slug"] not in me_only or c.get("assigned_to_me")]
     # one entry per registered board, in the registry's order, each with its mode: a dashboard draws them as
@@ -197,9 +198,10 @@ def merge(searched: list, carded: list) -> list:
                         "group": hit.get("project") or rid.split("#")[0]}
             continue
         row["assigned_to_me"] = bool(row.get("assigned_to_me") or hit.get("assigned_to_me"))
-        for key in ("labels", "assignee", "assignees", "changed_at", "url"):
+        for key in ("labels", "assignee", "assignees", "changed_at", "url", "author"):
             if not row.get(key) and hit.get(key):
                 row[key] = hit[key]
+        row["by_me"] = bool(row.get("by_me") or hit.get("by_me"))
         if hit.get("category") == "qa":            # asked to review it: the reading that needs you
             row["category"] = "qa"
             row["state"] = "review"
@@ -224,7 +226,8 @@ def fold(rows: list) -> list:
 
 def _links(rows: list, ctx) -> None:
     """Which open pull requests close each issue, and which issues each pull request closes: one
-    GraphQL call for all rows, split in halves when one row cannot be answered (as the board dates)."""
+    GraphQL call for all rows, split in halves when one row cannot be answered (as the board dates).
+    The same call asks a pull request's draft flag, review decision and the checks of its last commit."""
     wanted = [(i, ISSUE_ID.match(str(r.get("id")))) for i, r in enumerate(rows[:LINK_LIMIT])]
     wanted = [(i, m) for i, m in wanted if m]
     _ask_halving(wanted, rows, ctx)
@@ -243,7 +246,8 @@ def _ask(wanted: list, rows: list, ctx) -> bool:
              f'... on Issue {{ closedByPullRequestsReferences(first: 3, includeClosedPrs: false) '
              f'{{ nodes {{ number url isDraft repository {{ nameWithOwner }} }} }} }} '
              f'... on PullRequest {{ closingIssuesReferences(first: 3) '
-             f'{{ nodes {{ number repository {{ nameWithOwner }} }} }} }} }} }}' for i, m in wanted]
+             f'{{ nodes {{ number repository {{ nameWithOwner }} }} }} isDraft reviewDecision '
+             f'commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state }} }} }} }} }} }} }}' for i, m in wanted]
     try:
         data = load_json(ctx.run(["gh", "api", "graphql", "-f", "query={ " + " ".join(parts) + " }"],
                                  timeout=ctx.timeout), "linked pull requests").get("data") or {}
@@ -260,4 +264,10 @@ def _ask(wanted: list, rows: list, ctx) -> bool:
         if issues:
             rows[i]["closes"] = [f"{(x.get('repository') or {}).get('nameWithOwner')}#{x.get('number')}"
                                  for x in issues if isinstance(x, dict) and x.get("number")]
+        if "isDraft" in node or "reviewDecision" in node:          # only a pull request answers these
+            last = (((node.get("commits") or {}).get("nodes") or [{}])[-1] or {}).get("commit") or {}
+            rollup = last.get("statusCheckRollup") or {}
+            rows[i]["pr_status"] = {"draft": node.get("isDraft") is True,
+                                    "review": str(node.get("reviewDecision") or "").lower() or None,
+                                    "checks": str(rollup.get("state") or "").lower() or None}
     return True

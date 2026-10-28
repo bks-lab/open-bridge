@@ -24,7 +24,7 @@ import datetime as dt
 
 from . import load_json
 
-FIELDS = "number,title,url,state,updatedAt,labels,assignees,repository"
+FIELDS = "number,title,url,state,updatedAt,labels,assignees,repository,author"
 BLOCKED_LABELS = {"blocked", "status:blocked", "on hold", "waiting"}
 
 
@@ -63,6 +63,7 @@ def normalize(raw: dict, *, is_pr: bool, me: str | None, assignee_query: str | N
     repo = (raw.get("repository") or {}).get("nameWithOwner") if isinstance(raw.get("repository"), dict) \
         else raw.get("repository")
     mine = review or (me in assignees if me else assignee_query == "@me")
+    author = (raw.get("author") or {}).get("login") if isinstance(raw.get("author"), dict) else None
     state = _state(raw, is_pr, labels)
     item = {
         "id": f"{repo}#{raw.get('number')}",
@@ -73,6 +74,8 @@ def normalize(raw: dict, *, is_pr: bool, me: str | None, assignee_query: str | N
         "assignee": assignees[0] if assignees else None,
         "assignees": assignees,
         "assigned_to_me": bool(mine),
+        "author": author,                                   # who opened it, and whether that is you
+        "by_me": bool(me and author == me),
         "url": raw.get("url"),
         "changed_at": raw.get("updatedAt"),
         "project": repo,
@@ -107,7 +110,7 @@ def collect(section: dict, ctx) -> list:
     scoped = bool(query.get("owners") or query.get("repos"))   # never all of GitHub
     if isinstance(days, int) and not isinstance(days, bool) and days > 0 and scoped:
         since = (ctx.now.date() - dt.timedelta(days=days)).isoformat()
-        argv = ["gh", "search", "prs", *base, "--updated", f">={since}", "--sort", "updated", "--json", FIELDS + ",isDraft,author"]
+        argv = ["gh", "search", "prs", *base, "--updated", f">={since}", "--sort", "updated", "--json", FIELDS + ",isDraft"]
         for raw in load_json(ctx.run(argv, timeout=ctx.timeout), "gh search prs (others)"):
             author = raw.get("author") or {}
             login = str(author.get("login") or "")

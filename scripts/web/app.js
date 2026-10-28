@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, ghFilterKept,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -89,6 +89,15 @@ function save(key, value) {
 function loadEarly() {
   try {
     return flowEarlyKept(JSON.parse(load('bridge-cockpit.flowEarly', '{}')), isoDate(Date.now()))
+  } catch {
+    return {}
+  }
+}
+
+/** The filters of the GitHub page kept in this browser, per section (round 6c); a convenience, never state */
+function loadGhFilter() {
+  try {
+    return ghFilterKept(JSON.parse(load('bridge-cockpit.ghFilter', '{}')))
   } catch {
     return {}
   }
@@ -184,6 +193,9 @@ const store = createStore({
     // filter of its Activity, and the plan the instruction line made of a sentence, waiting for Run
     flowTab: ['desc', 'steps', 'activity', 'related'].find(v => v === load('bridge-cockpit.flowTab', 'desc')) ?? 'desc',
     flowFilter: 'all', flowPlan: null,
+    // the GitHub page (views/github.js, round 6c): the filter bar's choice per section and whether the rows stand
+    // under their board, both kept in this browser
+    ghFilter: loadGhFilter(), ghGroup: load('bridge-cockpit.ghGroup', 'on') !== 'off',
     settingsSection: load('bridge-cockpit.settingsSection', 'start'),
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: null, quickConv: null, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
@@ -917,10 +929,22 @@ const ctl = {
     ctl.setWorkKind(home.label)
     if (workViewGo(store.get(), 'area').save) ctl.setWorkView('area')
   },
-  // a page at one of its sections, its head brought into view once drawn (Not now's line of the GitHub rows)
-  openSection(page, section) {
+  // a page at one of its sections, its head brought into view once drawn (Not now's line of the GitHub rows); a
+  // filter given (null: all rows) replaces the one the GitHub list of that section keeps
+  openSection(page, section, ghFilter) {
+    if (ghFilter !== undefined) ctl.setGhFilter(`${page}/${section}`, ghFilter)
     ctl.setPage(page)
     requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(`ps-${page}-${section}`)?.scrollIntoView({ block: 'start' })))
+  },
+  // the GitHub page's filter bar: one choice per section, kept in this browser; and the rows under their board or not
+  setGhFilter(key, f) {
+    const next = ghFilterKept({ ...store.get().ui.ghFilter, [key]: f ?? {} })
+    save('bridge-cockpit.ghFilter', JSON.stringify(next))
+    setUi({ ghFilter: next })
+  },
+  setGhGroup(on) {
+    save('bridge-cockpit.ghGroup', on ? 'on' : 'off')
+    setUi({ ghGroup: !!on })
   },
   // the Workers tab with a filter set (the machine whose workers a tile or a drawer asked for)
   openWorkers(filter) {

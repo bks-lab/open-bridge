@@ -9,7 +9,7 @@ import {
   sectionStamp, triageKey, triageShows, sectionTile, subPageTile, jobCounts, tokenText, usageToday, tabStateKey,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
-  cardPlan, moneyText, costBoard, itemRow,
+  cardPlan, moneyText, costBoard, itemRow, ghFiltered, ghMyLogin,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -494,19 +494,21 @@ function GroupsView({ items, page, section, c }) {
 export function PageSection({ page, section, s, c }) {
   const byKey = indexRows(s.model)
   const t = T()
-  // a GitHub section's figures and boards filter its rows: kept in the section, gone with a new page
-  const [ghFilter, setGhFilter] = useState(null)
+  // a GitHub section's figures and filter bar filter its rows: kept per section in this browser (round 6c)
+  const ghKey = `${page.id}/${section.id}`
+  const ghFilter = s.ui.ghFilter?.[ghKey] ?? null
+  const setGhFilter = f => c.setGhFilter(ghKey, f)
   const gh = !!(section.metrics?.length || section.boards?.length)
   const stamp = sectionStamp(section.as_of, s.model?.collected_at)
   const more = section.whole ? null : s.more[`${page.id}/${section.id}`]   // whole: the caller already took every row
   // a task or inbox section follows the triage filter on top of its page
   const all = more ? more.items : (section.items ?? [])
   const items = section.kind === 'tasks' || section.kind === 'inbox'
-    ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter)) : all
+    ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all))) : all
   const left = more ? 0 : section.more ?? 0
   const scale = meterScale(items)
   // nothing found: a section that says so in one quiet line, or none at all when the profile asks
-  const quiet = !items.length && section.status !== 'error' && section.status !== 'skipped' && !(gh && ghFilter)
+  const quiet = !items.length && section.status !== 'error' && section.status !== 'skipped' && !(gh && ghFiltered(ghFilter))
   if (quiet && section.hide_empty) return null
   // kept on the page for what reads it there (an account's services, the badge, the alarm): drawn only with a finding
   if (section.hide_ok && !section.bad && section.status !== 'error') return null
@@ -556,8 +558,8 @@ export function PageSection({ page, section, s, c }) {
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </header>
     ${section.stale ? html`<p class="muted small"><${StateLine} token="warning" word=${section.stale} /></p>` : null}
-    ${gh ? html`<${GitHubBoard} section=${section} filter=${ghFilter} setFilter=${setGhFilter} s=${s} c=${c} />` : null}
-    ${gh && ghFilter && !items.length ? html`<${Empty}>${t.filterNone}<//>` : body}
+    ${gh ? html`<${GitHubBoard} section=${section} items=${all} filter=${ghFilter} setFilter=${setGhFilter} s=${s} c=${c} />` : null}
+    ${gh && ghFiltered(ghFilter) && !items.length ? html`<${Empty}>${t.filterNone}<//>` : body}
     ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${section.scoped ? t.btnMoreScoped(left) : t.btnMore(left)}<//>` : null}
   </section>`
 }

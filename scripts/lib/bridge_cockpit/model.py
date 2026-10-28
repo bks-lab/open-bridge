@@ -206,17 +206,31 @@ def parse_cal_figures(value: Any) -> dict | None:
             if free else None}
 
 
+GH_REVIEWS = ("approved", "changes_requested", "review_required")
+GH_CHECKS = ("success", "failure", "error", "pending", "expected")
+
+
 def parse_gh(value: Any) -> dict | None:
     """A GitHub row's facts (briefing_view.github_facts), checked again: the view file is input."""
     if not isinstance(value, dict):
         return None
     texts = lambda v, n: [x for x in _list(v) if isinstance(x, str)][:n]   # noqa: E731
+    pr = value.get("pr") if isinstance(value.get("pr"), dict) else None
     return {"title": as_text(value.get("title")), "repo": as_text_or_null(value.get("repo")),
             "number": value.get("number") if isinstance(value.get("number"), int) else None,
             "type": value["type"] if value.get("type") in ("pr", "draft") else "issue", "state": as_text_or_null(value.get("state")),
             "status": as_text_or_null(value.get("status")), "priority": as_text_or_null(value.get("priority")),
-            "labels": texts(value.get("labels"), 4),
-            "people": texts(value.get("people"), 3),
+            "labels": texts(value.get("labels"), 10),
+            "people": texts(value.get("people"), 10),
+            # round 6c: who opened it, the board and column it stands in, a pull request's state (the page's filters)
+            "author": as_text_or_null(value.get("author")),
+            "by_me": value.get("by_me") is True,
+            "board": as_text_or_null(value.get("board")),
+            "also_on": texts(value.get("also_on"), 3),
+            "pr": {"draft": pr.get("draft") is True,
+                   "review": pr["review"] if pr.get("review") in GH_REVIEWS else None,
+                   "checks": pr["checks"] if pr.get("checks") in GH_CHECKS else None} if pr else None,
+            "untasked": value.get("untasked") is True,
             "prs": [{"n": p["n"], "draft": p.get("draft") is True} for p in _list(value.get("prs"))
                     if isinstance(p, dict) and isinstance(p.get("n"), int)][:3],
             "task": as_text_or_null(value.get("task")), "stream": value.get("stream") is True,
