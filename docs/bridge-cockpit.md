@@ -1406,7 +1406,14 @@ interval to "workflow". The count of units a machine runs without a declaration
 stands only while the filter leaves a job. The chips filter by machine
 first, then by state, kind and area; "Only with a finding" and "Only outages"
 are filters there, off by default. The figures on top count In service, Down,
-To tend, Not reported and Retired. A section with `hide_ok: true` is drawn only while one of
+To tend, Not reported and Retired. A job with a finding has **Seen** on its open row (a page row
+that is bad or warn has it among its buttons, "Settled this time: grey until the finding
+changes"): the finding as it stands now turns grey with the day and the close note, and counts
+toward no red tile, no badge and no alarm; a new finding (another fingerprint: state and
+detail, so a new failure time) is red again, and "show again" takes it back. Closing the inbox
+item of a job (key `worker:<host>:<id>`, or a question handed over about it) does the same
+with its close note, when the close came after the job's newest failure. The decision lives in
+`work/cockpit/settled/` beside the hides, as act `ack`. A section with `hide_ok: true` is drawn only while one of
 its rows is bad or its source fails; it still feeds the page's number, the
 alarm and what other cards read from it ([`briefings.md`](briefings.md)
 § Dashboard pages).
@@ -2878,7 +2885,7 @@ it must reach every machine:
 
 | File | What | Inbox or chat text |
 |---|---|---|
-| `work/cockpit/settled/` | every hide ("not now until <day>"), every row marked done or not doing, every "show again", one YAML file each (`<UTC stamp>-<seq>-<rand>-<act>.yaml`, or `legacy-<hash>-<act>.yaml` for an entry migrated from `state.json`), written once, never changed; the newest file for a row decides | yes: the row titles |
+| `work/cockpit/settled/` | every hide ("not now until <day>"), every row marked done or not doing, every finding marked seen, every "show again", one YAML file each (`<UTC stamp>-<seq>-<rand>-<act>.yaml`, or `legacy-<hash>-<act>.yaml` for an entry migrated from `state.json`), written once, never changed; the newest file for a row decides | yes: the row titles |
 
 ### Upgrading: Work through as a view, its themes and the advice
 

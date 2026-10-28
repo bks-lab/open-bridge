@@ -38,7 +38,7 @@ from .store import append_log
 from .actions_base import *  # noqa: F401,F403
 from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, BY_CHOICES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
-                           READ_ONLY_VERBS, REASON_MAX, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
+                           READ_ONLY_VERBS, REASON_MAX, FINDING_KEY_RE, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
                            STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
                            Ctx, bad_arg, check_date, check_key, check_text)
 from .actions_chats import ChatVerbs
@@ -64,6 +64,7 @@ PATTERN_KINDS: dict[str, tuple[re.Pattern, str]] = {
     "slug": (SLUG_RE, "not a task slug"),
     "session_id": (SESSION_ID_RE, "not a session id"),
     "run_id": (RUN_ID_RE, "not a workflow run id"),
+    "finding_key": (FINDING_KEY_RE, "not a finding key"),
     "inbox_id": (INBOX_ID_RE, "not an inbox id"),
     "page_id": (PAGE_ID_RE, "not a page or section id"),
     "row_step": (ROW_STEP_RE, "not a step"),

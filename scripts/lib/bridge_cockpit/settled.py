@@ -10,8 +10,9 @@ nothing to merge. Taking a decision back ("show again", an undo) is a record too
 never a deletion: a delete on one side and an older copy on the other would be the one git conflict
 this layout avoids.
 
-A file is `<UTC stamp>-<seq>-<rand>-<act>.yaml` with `key`, `act` (dismiss, hide, unsettle) and, by
-act, `outcome` and `title`, or `until`. The latest file for a key decides (by name: the stamp sorts,
+A file is `<UTC stamp>-<seq>-<rand>-<act>.yaml` with `key`, `act` (dismiss, hide, ack, unsettle) and, by
+act, `outcome` and `title`, or `until`, or for a finding marked seen (`ack`, its key `ack:<row key>`) the
+finding's fingerprint `fp`, the close `note` and the inbox item that closed it, if any. The latest file for a key decides (by name: the stamp sorts,
 seq orders one machine's decisions within a second, rand keeps two machines' names apart). Entries
 migrated from state.json are `legacy-<hash>-<act>.yaml`: the name is the hash of the entry, so two
 machines migrating the same entry write the same file, and they sort before every dated decision.
@@ -35,7 +36,8 @@ import yaml
 from .model import SETTLE_OUTCOMES, iso_date
 
 SCHEMA_VERSION = 1
-ACTS = ("dismiss", "hide", "unsettle")
+ACTS = ("dismiss", "hide", "ack", "unsettle")
+ACK_PREFIX = "ack:"
 LEGACY_PREFIX = "legacy-"
 DATE_LEN = len("YYYY-MM-DD")
 
@@ -50,6 +52,9 @@ def _valid(data: object) -> dict | None:
             return None
     elif act == "hide":
         if not isinstance(data.get("until"), str) or len(data["until"]) != DATE_LEN:
+            return None
+    elif act == "ack":
+        if not isinstance(data.get("fp"), str) or not data["fp"]:
             return None
     elif act != "unsettle":
         return None
@@ -112,6 +117,12 @@ class SettledStore:
     def hidden(self, today: str) -> dict:
         return self.state(today)[1]
 
+    def acks(self) -> tuple[set, dict]:
+        """(the finding keys the record decides, the findings marked seen: row key -> {fp, day, note, inbox})"""
+        latest = {k[len(ACK_PREFIX):]: d for k, d in self._decisions().items() if k.startswith(ACK_PREFIX)}
+        return set(latest), {k: {"fp": d["fp"], "day": str(d.get("day") or ""), "note": str(d.get("note") or ""),
+                                 "inbox": str(d.get("inbox") or "")} for k, d in latest.items() if d["act"] == "ack"}
+
     def dismissed(self) -> dict:
         return self.state("")[2]
 
@@ -158,6 +169,12 @@ class SettledStore:
 
     def unsettle(self, key: str) -> None:
         self._record(key, "unsettle")
+
+    def ack(self, key: str, fp: str, note: str = "", inbox: str = "") -> None:
+        self._record(ACK_PREFIX + key, "ack", fp=fp, note=str(note)[:400] or None, inbox=inbox or None)
+
+    def unack(self, key: str) -> None:
+        self._record(ACK_PREFIX + key, "unsettle")
 
     def migrate(self, hidden: dict, dismissed: dict) -> int:
         """Copy the legacy entries of state.json in, once: a key the record already knows is left to it

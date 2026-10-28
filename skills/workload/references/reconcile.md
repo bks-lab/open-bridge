@@ -39,6 +39,15 @@ flag the dampening state is not touched either.
 | `integrity` | `retired_but_live`, `grant_orphaned` | **no** |
 | nobody | everything else, including `unknown` | n/a |
 
+**A daemon that failed and has been up since is history.** The guard writes its
+line when the run ENDS, so a `daemon` or `agent` that the service manager reports
+running now started after its newest line. When that line is a failure at least
+ten minutes old (`RESTARTED_MARGIN_SEC`, so a crash loop between two restarts
+still speaks), the report carries one calm `info` note ("restarted after exit 75
+at ... and has been running since") instead of `last_run_failed`. Guards rendered
+since the `started` line need no such reading; older ones on a machine do. A
+scheduled run keeps the rule above: idle between firings, `running` says nothing.
+
 **`notify_on` does not cover everything that speaks, and that is deliberate.**
 Opt-in fails exactly where the declaration is out of date: nobody edits
 `notify_on` on the way out while retiring a run, so `retired_but_live` (the

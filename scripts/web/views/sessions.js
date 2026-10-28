@@ -17,7 +17,7 @@ import { ReturnCard } from './home.js'
 import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
 import { FolderBar, StartControl, canStartControl } from './header.js'
-import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
+import { Btn, Chip, CountNum, Dot, Empty, SeenBtn, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
 
@@ -267,7 +267,7 @@ function WorkerRow({ r, now, nowPct, c, i }) {
           times.next != null ? t.workerNext(runClock(times.next, now)) : ''].filter(Boolean).join(' · ')}</span>` : null}</span>
       <span class="wrow-strip"><${RunStrip} strip=${r.strip} continuous=${r.continuous} /></span>
       <span class="wrow-state"><span class=${`chip chip-tk tk-${runToken(tone)}`}>
-        <${Dot} token=${runToken(tone)} /><span>${t.workerState[r.state] ?? r.state}</span></span></span>
+        <${Dot} token=${runToken(tone)} /><span>${r.acked ? t.findingSeen.on(r.acked.day, '') : t.workerState[r.state] ?? r.state}</span></span></span>
     </button>
     ${open ? html`<div class="wrow-detail">
       <dl class="wmeta">
@@ -278,11 +278,13 @@ function WorkerRow({ r, now, nowPct, c, i }) {
       ${week.length ? html`<div class="wweek" role="group" aria-label=${t.workerWeek}>${week.map((on, k) => html`<span key=${k} class=${`wday${on ? ' is-on' : ''}`}>${days[k]}</span>`)}
         ${(r.ran_days ?? []).length ? html`<span class="muted small">${t.workerRanDays(r.ran_days.length)}</span>` : null}</div>` : null}
       ${(r.findings ?? []).some(f => f.severity !== 'info') ? html`<ul class="wfind">${r.findings.filter(f => f.severity !== 'info').map((f, k) => html`<li key=${k}>
-        <${StateLine} token=${f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${f.severity === 'high'}
+        <${StateLine} token=${r.acked ? 'info' : f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${!r.acked && f.severity === 'high'}
           word=${`${t.workerState[f.state] ?? f.state}: ${f.detail ?? ''}`} />
         ${f.hint ? html`<p class="muted small wfind-hint">${t.workerHint(f.hint)}</p>` : null}</li>`)}</ul>` : null}
+      ${r.acked ? html`<p class="muted small">${t.findingSeen.on(r.acked.day, r.acked.note)}</p>` : null}
       <div class="btn-row">
         <${Btn} size="xs" variant="secondary" onClick=${() => c.ask('free', { text: t.workerAsk(r.id, r.host, t.workerState[r.state] ?? r.state, top?.detail ?? '') })}>${t.btnAsk}<//>
+        <${SeenBtn} k=${`worker:${r.host}:${r.id}`} acked=${r.acked} loud=${(r.findings ?? []).some(serious)} c=${c} />
       </div>
     </div>` : null}
   </li>`

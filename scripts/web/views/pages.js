@@ -19,7 +19,7 @@ import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { Lines } from './detail.js'
 import { ReturnChip } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
-import { Btn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
+import { Btn, SeenBtn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
 import { WORKERS_PAGE, folderOf, subPagesOf } from './nav.js'
 import { DatesAgenda } from './dates.js'
@@ -176,7 +176,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
         ${it.starting ? html`<${Chip} token="info">${t.startingTab}<//>` : null}
         <${ReturnChip} s=${s} rowKey=${[itemKey, it.task ? `task:${it.task}` : null]} />
       </div>
-      ${detail ? html`<div class="info-detail muted">${detail}</div>` : null}
+      ${detail || it.acked ? html`<div class="info-detail muted">${[detail, it.acked && t.findingSeen.on(it.acked.day, it.acked.note)].filter(Boolean).join(' · ')}</div>` : null}
       ${it.meter ? html`<${MeterBar} meter=${it.meter} scale=${scale} tone=${tone} />` : null}
       ${open && (it.lines ?? []).length ? html`<${Lines} lines=${it.lines} />` : null}
     </td>
@@ -184,7 +184,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${14} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" cls="act-quiet" title=${it.link.path} onClick=${() => c.copy(it.link.path)}>${t.copyPath}<//>` : null}
-      <${PageItemActions} it=${it} s=${s} c=${c} />
+      <${PageItemActions} it=${it} s=${s} c=${c} /><${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />
       ${it.ask ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
       ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}

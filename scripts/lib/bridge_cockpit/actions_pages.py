@@ -151,6 +151,36 @@ class PageVerbs:
                  go={"kind": "item", "key": f"task:{run['task']}"})
         self.app.broadcast("sessions", self.app.sessions_state())
 
+    def finding(self, key: str) -> tuple[str, str]:
+        """(fingerprint, title) of a finding as it stands now: a job of the workers view or a page row"""
+        if key.startswith("worker:"):
+            run = next((r for r in (self.app.workers_view() or {}).get("runs", [])
+                        if isinstance(r, dict) and m.worker_key(r) == key), None)
+            fp, title = (m.run_fingerprint(run), str(run.get("title") or run.get("id"))) if run else ("", "")
+        else:
+            found = self.app.collector.page_item_by_key(key)
+            fp, title = (m.item_fingerprint(found[2]), str(found[2].get("title") or "")) if found else ("", "")
+        if not fp:
+            raise ActionError(409, "stale_row", "no finding under that key", "key")
+        return fp, title
+
+    def v_finding_ack(self, ctx: Ctx, key: str, note: str | None = None) -> None:
+        """The "Seen" of a finding: as it stands now it is grey and counts toward no badge, tile or alarm; a new one
+        (another fingerprint) is red again. Kept beside the other decisions (store.py acks, settled.py)"""
+        fp, title = self.finding(key)
+        self.app.store.ack(key, fp, note or "")
+        self.app.collector.rebuild()
+        ctx.note(self.tx["finding_seen"].format(title=m.short(title, 60)))
+        self.app.broadcast("acks", {"keys": [key]})
+
+    def v_finding_unack(self, ctx: Ctx, key: str) -> None:
+        """The "show again" of a finding marked seen: it counts again"""
+        if not self.app.store.unack(key):
+            raise self.not_applicable("the finding is not marked seen")
+        self.app.collector.rebuild()
+        ctx.note(self.tx["finding_shown"].format(title=m.short(key.split(":")[-1].split("/")[-1], 60)))
+        self.app.broadcast("acks", {"keys": [key]})
+
     def v_pin(self, ctx: Ctx, key: str, on: bool) -> None:
         """A row on the start page's pinned shelf; it stays until taken off, whatever the briefing says"""
         self.app.store.pin(key, on)

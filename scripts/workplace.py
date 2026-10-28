@@ -135,6 +135,11 @@ INBOX_OVERTAKEN = (
     " If the item is already done, overtaken, or answered by facts you can check yourself, note the finding "
     "with its sources and close it without asking: python3 scripts/inbox.py close {id} --note '<what settled "
     "it>'. The person undoes that with python3 scripts/inbox.py reopen {id}.")
+# Closing the item of a background job (key worker:<host>:<id>, or a question about one) marks the job's
+# finding seen in the cockpit: grey until it changes (bridge_cockpit/server.py ack_closed_findings).
+INBOX_JOB_SEEN = (
+    " If the item is about a background job, closing it marks that job's finding seen in the cockpit: grey "
+    "until the job fails anew. So say in the close note what you found and why the finding needs nothing more.")
 INBOX_REPORT_PROMPT = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
     "names, if any. Then print at most eight lines: what it is, what would settle it, and whether you "
@@ -146,7 +151,7 @@ INBOX_GO_PROMPT = (
     "names, if any. " + GO_TAIL + " Whenever you stop to ask or to show a draft, first put the question or "
     "the draft on the item with python3 scripts/inbox.py note {id} '<text>': the cockpit sees the item, not "
     "this chat. When it is settled, close the item with python3 scripts/inbox.py close "
-    "{id} --note '<what settled it>'." + INBOX_OVERTAKEN + " Local follow-ups that only write down what is "
+    "{id} --note '<what settled it>'." + INBOX_OVERTAKEN + INBOX_JOB_SEEN + " Local follow-ups that only write down what is "
     "already decided (a plan, STATUS.md, the log) make yourself and name them in the close note. Ask only for "
     "a decision that is still the person's, for anything that leaves this machine, or for what cannot be "
     "undone. The click that started you releases the close even when the item says gate: only-you or "

@@ -280,3 +280,16 @@ def test_the_watcher_sees_a_new_decision(tmp_path):
     SettledStore(tmp_path / "work" / "cockpit" / "settled", Clock()).dismiss(KEY, "done", "t")
     after = watch.snapshot(tmp_path)
     assert after != before and str(tmp_path / "work" / "cockpit" / "settled") in after
+
+
+def test_a_finding_marked_seen_is_shared_and_its_undo_too(tmp_path):
+    folder, clock = tmp_path / "settled", Clock()
+    one = WebStore(tmp_path / "one", clock, settled_dir=folder)
+    other = WebStore(tmp_path / "other", clock, settled_dir=folder)
+    one.ack("worker:mini:chat-bot", "last_run_failed:ended with 75", "a planned restart", "20261010-0900-x-ab12")
+    assert other.acks() == {"worker:mini:chat-bot": {"fp": "last_run_failed:ended with 75", "day": TODAY,
+                                                     "note": "a planned restart", "inbox": "20261010-0900-x-ab12"}}
+    assert "20261010-0900-x-ab12" in other.acks_read()      # the close is read on every machine, once
+    assert other.hidden() == {} and other.dismissed() == {}  # a finding key never reads as a hidden row
+    assert other.unack("worker:mini:chat-bot") and one.acks() == {}
+    assert not one.unack("worker:mini:chat-bot")

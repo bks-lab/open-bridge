@@ -435,6 +435,9 @@ const en = {
   workerRanDays: n => `ran on ${n} days`,
   workerHint: h => `Advised: ${h}`,
   workerAsk: (id, host, state, detail) => `Background job ${id} on ${host}: ${state}. ${detail} What should be done, and why?`,
+  // a finding marked seen: grey until it changes (server.py workers_with_acks, model.ack_item), and its undo
+  findingSeen: { btn: 'Seen', title: 'Settled this time: grey until the finding changes', undo: 'show again',
+    on: (day, note) => `seen ${day}${note ? `: ${note}` : ''}` },
   workerStat: { in_service: 'In service', failing: 'Down', upkeep: 'To tend', not_reported: 'Not reported', retired: 'Retired' },
   // when a job ran last and runs next (logic.js runTimes)
   workerLast: time => `last run ${time}`,
@@ -2001,6 +2004,8 @@ const de = {
   workerRanDays: n => `an ${n} Tagen gelaufen`,
   workerHint: h => `Empfohlen: ${h}`,
   workerAsk: (id, host, state, detail) => `Hintergrundjob ${id} auf ${host}: ${state}. ${detail} Was ist zu tun und warum?`,
+  findingSeen: { btn: 'Gesehen', title: 'Diesmal erledigt: grau, bis sich der Befund ändert', undo: 'wieder anzeigen',
+    on: (day, note) => `gesehen am ${/^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day.slice(8)}.${day.slice(5, 7)}.` : day}${note ? `: ${note}` : ''}` },
   workerStat: { in_service: 'In Betrieb', failing: 'Ausgefallen', upkeep: 'Zur Pflege', not_reported: 'Nicht gemeldet', retired: 'Stillgelegt' },
   workerLast: time => `letzter Lauf ${time}`,
   workerNext: time => `nächster Lauf ${time}`,

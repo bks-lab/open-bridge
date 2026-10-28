@@ -517,6 +517,11 @@ const handlers = {
     if (tr?.done && !s.tour?.done && s.ui.tour) ctl.tourClose()
     store.set(x => ({ ...x, tour: tr ?? x.tour }))
   },
+  // a finding marked seen or shown again, here, in another browser or by an inbox item closed for a job: the
+  // page rows come with the next model, the jobs with the workers view read again
+  acks() {
+    if (store.get().workers.data) ctl.loadWorkers()
+  },
   // the start page's choice of tiles, made in this or another browser
   home(h) {
     store.set(s => ({ ...s, home: h ?? s.home }))
@@ -1094,6 +1099,10 @@ const ctl = {
     const r = await act('a2a_forget', { conv })
     if (r) setUi(ui => ({ agentConv: ui.agentConv === conv ? null : ui.agentConv }))
     return !!r
+  },
+  // "Seen" on a finding (a job, worker:<host>:<id>, or a page row): grey until it changes; and its "show again"
+  async ackFinding(key, on) {
+    if (await act(on ? 'finding_ack' : 'finding_unack', { key }) && key.startsWith('worker:')) await ctl.loadWorkers()
   },
   loadWorkers: async () => {
     store.set(s => ({ ...s, workers: { ...s.workers, status: s.workers.data ? 'ok' : 'loading' } }))

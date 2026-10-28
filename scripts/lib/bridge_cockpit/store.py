@@ -140,6 +140,12 @@ class WebStore:
         # the workflow runs whose result was checked in the files view: {run id: at_ms}
         seen_runs = data.get("runs_seen") if isinstance(data.get("runs_seen"), dict) else {}
         self._runs_seen = {k: v for k, v in seen_runs.items() if isinstance(k, str) and isinstance(v, (int, float))}
+        # findings marked seen ("Seen", or the close of their inbox item): {finding key: {fp, day, note, inbox}},
+        # shared like a hide (settled.py); and the inbox items whose close was already read for one
+        acks = data.get("acks") if isinstance(data.get("acks"), dict) else {}
+        self._acks = {k: v for k, v in acks.items() if isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("fp"), str)}
+        read = data.get("acks_read")
+        self._acks_read = [x for x in read if isinstance(x, str)] if isinstance(read, list) else []
         self.prune()
         self.settled = SettledStore(settled_dir, clock) if settled_dir is not None else None
         if self.settled is not None:
@@ -155,7 +161,10 @@ class WebStore:
         atomic_write_json(self.path, {"v": 1, "hidden": self._hidden, "dismissed": self._dismissed,
                                       "team_runs": self._runs, "home_tiles": self._home, "home_seen": self._seen,
                                       "pins": self._pins, "session_links": self._links, "tour": self._tour,
-                                      "runs_seen": self._runs_seen, "session_refused": self._refused})
+                                      "runs_seen": self._runs_seen, "session_refused": self._refused,
+                                      # only once there is one: a store without findings marked seen reads as before
+                                      **({"acks": self._acks, "acks_read": self._acks_read}
+                                         if self._acks or self._acks_read else {})})
 
     def prune(self) -> bool:
         """Drop hidden entries whose date has come (hidden while date > today)."""
@@ -318,6 +327,52 @@ class WebStore:
                 self._refused.pop(sid, None)
             self._save()
             return True
+
+    def acks(self) -> dict:
+        """The findings marked seen: the shared record for every key it knows, this machine's for the rest"""
+        with self.lock:
+            acks = json.loads(json.dumps(self._acks))
+            if self.settled is None:
+                return acks
+            known, shared = self.settled.acks()
+            return {k: v for k, v in acks.items() if k not in known} | shared
+
+    def ack(self, key: str, fp: str, note: str = "", inbox: str = "") -> None:
+        """A finding marked seen as it stands now (fp): calm until its fingerprint changes"""
+        with self.lock:
+            self._acks[key] = {"fp": fp, "day": iso_date(self.clock()), "note": str(note)[:400], "inbox": inbox}
+            if inbox:
+                self.read_inbox(inbox)
+            self._save()
+            self._share(lambda s: s.ack(key, fp, note, inbox))
+
+    def unack(self, key: str) -> bool:
+        """The "show again" of a finding: it counts again; True when it was marked"""
+        with self.lock:
+            had = key in self._acks
+            if self.settled is not None:
+                known, shared = self.settled.acks()
+                had = key in shared or (had and key not in known)    # the record decides every key it knows
+                if key in shared:
+                    self.settled.unack(key)      # a record, not a deletion (settled.py)
+            self._acks.pop(key, None)
+            self._save()
+            return had
+
+    def acks_read(self) -> set:
+        with self.lock:
+            read = set(self._acks_read)
+        return read | {v.get("inbox") for v in self.acks().values() if v.get("inbox")}
+
+    def read_inbox(self, item_id: str) -> None:
+        """An inbox item whose close was read for a finding, so an undo is not taken back by it (lock held)"""
+        if item_id not in self._acks_read:
+            self._acks_read = [*self._acks_read, item_id][-RUNS_SEEN_MAX:]
+
+    def mark_inbox_read(self, item_id: str) -> None:
+        with self.lock:
+            self.read_inbox(item_id)
+            self._save()
 
     def runs_seen(self) -> dict:
         with self.lock:

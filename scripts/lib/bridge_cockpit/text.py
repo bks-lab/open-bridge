@@ -160,6 +160,8 @@ EN: dict = {
     "merge_heading": "Merged from {slug}", "merged": "{names} merged into {title}",
     "merge_failed": "Could not merge {title}: {err}", "merge_undone": "Merge of {title} taken back",
     "run_seen": "Checked: the result of {name} ({slug})",
+    # a finding marked seen ("Seen"): grey until it changes, and its undo
+    "finding_seen": "Seen: {title}, grey until the finding changes", "finding_shown": "Shown again: {title}",
     "btn_resume": "Go on in the session",
     "runs_on_note": "Runs on, look again {until}",
     "running_again": "{slug} is worked on again",
@@ -498,6 +500,7 @@ DE: dict = {
     "merge_heading": "Zusammengeführt aus {slug}", "merged": "{names} in {title} zusammengeführt",
     "merge_failed": "{title} ließ sich nicht zusammenführen: {err}", "merge_undone": "Zusammenführung von {title} zurückgenommen",
     "run_seen": "Geprüft: das Ergebnis von {name} ({slug})",
+    "finding_seen": "Gesehen: {title}, grau, bis sich der Befund ändert", "finding_shown": "Wieder angezeigt: {title}",
     "btn_resume": "In der Sitzung weitermachen",
     "runs_on_note": "Läuft noch, nachsehen {until}",
     "running_again": "{slug} ist wieder dran",

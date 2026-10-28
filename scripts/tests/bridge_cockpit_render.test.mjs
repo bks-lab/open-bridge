@@ -2736,6 +2736,30 @@ test('Background jobs opened on their outages: only those, the chip says so and 
   assert.ok(!calm.$$('.wfilters .fchip').some(b => b.text().includes(en.workerOutage)))
 })
 
+test('a job finding marked seen: "Seen" on the open row, then grey with its note and "show again"', async () => {
+  const opened = async el => {
+    el.$('.wrow-main').click()
+    for (let i = 0; i < 20 && !el.$('.wrow-detail'); i++) await new Promise(r => setTimeout(r, 0))
+  }
+  const failed = { ...opsRun('chat-bot', 'high'), host: 'mini' }
+  const c = recorder()
+  const el = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [failed], ui: { page: '@workers' } })} c=${c} />`)
+  await opened(el)
+  const seen = el.$$('.wrow-detail button').find(b => b.text() === en.findingSeen.btn)
+  assert.ok(seen, 'the Seen button')
+  assert.equal(seen.getAttribute('title'), en.findingSeen.title)
+  seen.click()
+  assert.deepEqual(c.calls.at(-1), ['ackFinding', 'worker:mini:chat-bot', true])
+  const acked = { ...failed, acked: { day: '2026-10-28', note: 'a planned restart' } }
+  const c2 = recorder()
+  const calm = mount(html`<${views.sessions.WorkersPage} s=${opsState({ runs: [acked], ui: { page: '@workers' } })} c=${c2} />`)
+  assert.ok(!calm.$('.wrow').hasClass('rt-bad'), calm.$('.wrow').getAttribute('class'))
+  await opened(calm)
+  assert.match(calm.$('.wrow-detail').text(), /a planned restart/)
+  calm.$$('.wrow-detail button').find(b => b.text() === en.findingSeen.undo).click()
+  assert.deepEqual(c2.calls.at(-1), ['ackFinding', 'worker:mini:chat-bot', false])
+})
+
 test('operations: the folder bar names the overview and every sub page with its mark, on each of them', () => {
   const { FolderBar } = views.header
   const runs = [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')]

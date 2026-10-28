@@ -17,6 +17,7 @@ scripts/web/ with a fixed set of extensions.
 from __future__ import annotations
 
 import collections
+import datetime as dt
 import hashlib
 import hmac
 import json
@@ -607,6 +608,47 @@ class App:
         by key. A failure here never stops the page: the cards are built without them."""
         return {"triage": self.card_triage(), "describe": self.describe_items()}
 
+    def workers_view(self) -> dict | None:
+        """The worker view the Resources section keeps (scripts/bridge-resources.py workers), None without one"""
+        try:
+            data = json.loads((self.root / ".bridge" / "resources" / "workers-view.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) and isinstance(data.get("runs"), list) else None
+
+    def ack_closed_findings(self) -> None:
+        """A job's inbox item closed (its own, worker:<host>:<id>, or a question handed over about it) marks the
+        job's finding seen, with the close note: the person or the tab that closed it looked. Read from the
+        inbox folder itself, again only when an item changed; a failure here never stops a pass"""
+        folder = self.root / "work" / "inbox"
+        try:
+            sign = tuple(sorted((e.name, e.stat().st_mtime_ns) for e in os.scandir(folder) if e.is_dir()))
+        except OSError:
+            return
+        view = self.workers_view()
+        if sign == getattr(self, "_acks_inbox_sign", None) or view is None:
+            return
+        try:
+            from .describe import _module
+            inbox = _module("_cockpit_inbox", "inbox.py").Inbox(folder, actor="web")
+            items = []
+            for it in inbox.items():
+                closes = [e for e in it.events if e.verb in ("close", "executed")]
+                if it.state == "done" and closes:
+                    items.append({"id": it.id, "key": it.key, "summary": it.summary, "detail": it.detail,
+                                  "closed_at": closes[-1].at, "note": closes[-1].data.get("text") or ""})
+            now = dt.datetime.fromtimestamp(self.clock() / 1000, dt.timezone.utc)
+            found = m.closed_acks(items, view, self.store.acks_read(), now)
+        except Exception as exc:  # noqa: BLE001 - an unreadable inbox leaves the findings as they are
+            self.log_error(f"acks from the inbox: {exc!r}")
+            return
+        self._acks_inbox_sign = sign
+        for key, fp, note, item_id in found:
+            self.store.ack(key, fp, note, item_id)
+        if found:
+            self.collector.rebuild()
+            self.broadcast("acks", {"keys": sorted({k for k, *_ in found})})
+
     def card_triage(self) -> dict:
         try:
             return self.triage.state().get("items") or {}
@@ -947,13 +989,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/workers":
             # the full worker view the Resources section keeps (scripts/bridge-resources.py workers), read only
             # a Bridge without one (no workers declared) is no error: view null, and the page shows no Worker tab
-            path_ = app.root / ".bridge" / "resources" / "workers-view.json"
-            try:
-                data = json.loads(path_.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                data = None
-            ok = isinstance(data, dict) and isinstance(data.get("runs"), list)
-            self.send_json(200, {"ok": True, "view": data if ok else None})
+            # a job whose finding was marked seen carries `acked` (model.workers_with_acks)
+            data = app.workers_view()
+            self.send_json(200, {"ok": True, "view": m.workers_with_acks(data, app.store.acks()) if data else None})
         elif path == "/api/ticker":
             # the news ticker as the page gets it in the state payload and the `ticker` event (ticker.py)
             self.send_json(200, {"ok": True, "ticker": app.ticker.state()})
