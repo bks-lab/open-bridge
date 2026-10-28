@@ -2906,6 +2906,88 @@ test('background jobs: a row names its kind, when it ran last and when it runs n
   assert.match(row.$('.wrow-times').text(), /18:05/)
 })
 
+// a question a row was asked (quick.py `about`), as the server sends the conversations
+const rowChat = (id, key, running, last_ms = NOW) => ({ id, about: { kind: 'worker', key }, running, last_ms, started_ms: last_ms - 1000, turns: [] })
+// a job row opened: its detail lands on a later render, waited for in bounded ticks
+async function openRow(row) {
+  row.$('.wrow-main').click()
+  for (let k = 0; k < 100 && !row.$('.wrow-detail'); k++) await new Promise(r => setTimeout(r, 10))
+  return row
+}
+
+test('background jobs: a row asks about its job and analyses it in a tab, both by machine and job only', async () => {
+  const s = opsState({ runs: [hostRun('bot', 'homebox', 'high')], ui: { page: '@workers' } })
+  const c = recorder()
+  const row = mount(html`<${views.sessions.WorkersPage} s=${s} c=${c} />`).$('.wrow')
+  await openRow(row)
+  row.button(en.btnWorkerAdvise).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'worker_advise', { host: 'homebox', id: 'bot' }])
+  row.button(en.btnAsk).click()
+  assert.deepEqual(c.calls.at(-1), ['ask', 'worker', { host: 'homebox', id: 'bot' }])
+})
+
+test('background jobs: a row asked before shows that question and opens it, a new one only on ask again', async () => {
+  assert.equal(loadedLogic.rowConv([rowChat('g0000000001', 'worker:homebox:bot', false, NOW - 5000), rowChat('g0000000002', 'worker:homebox:bot', true),
+    rowChat('g0000000003', 'worker:homebox:mail', false, NOW + 1)], 'worker:homebox:bot').id, 'g0000000002', 'the newest of that row')
+  assert.equal(loadedLogic.rowConv([rowChat('g0000000001', 'worker:homebox:bot', false)], 'worker:laptop:bot'), null)
+  const base = opsState({ runs: [hostRun('bot', 'homebox', 'high')], ui: { page: '@workers' } })
+  for (const [running, word] of [[true, en.askRunning], [false, en.askAnswered]]) {
+    const s = { ...base, quick: { ...(base.quick ?? {}), convs: [rowChat('g0000000002', 'worker:homebox:bot', running)] } }
+    const c = recorder()
+    const row = mount(html`<${views.sessions.WorkersPage} s=${s} c=${c} />`).$('.wrow')
+    await openRow(row)
+    assert.match(row.$('.wrow-detail').text(), new RegExp(word))
+    assert.ok(!row.button(en.btnAsk), 'no second question beside the open one')
+    row.button(en.askOpenConv).click()
+    assert.deepEqual(c.calls.at(-1), ['openAsk', 'g0000000002'])
+    row.button(en.btnAskAgain).click()
+    assert.deepEqual(c.calls.at(-1), ['ask', 'worker', { host: 'homebox', id: 'bot' }])
+  }
+})
+
+test('background jobs: a job filed for a tab shows that tab while its item is open, and its result once it ended', async () => {
+  const id = '20261028-0736-background-job-bot-a1b2'
+  const base = opsState({ runs: [{ ...hostRun('bot', 'homebox', 'high'), advise: { inbox: id, state: 'open' } }], ui: { page: '@workers' } })
+  const ret = (stage, result, tab) => ({ key: `inbox:${id}`, item: id, title: 'bot', mode: 'report', at_ms: NOW - 60000, stage, in_briefing: false, tab, result })
+  const s = { ...base, model: { ...base.model, returns: [ret('working', null, { ref: 'surface:9', state: 'working', since_ms: NOW, last: '' })] } }
+  const c = recorder()
+  const row = mount(html`<${views.sessions.WorkersPage} s=${s} c=${c} />`).$('.wrow')
+  await openRow(row)
+  assert.match(row.$('.wrow-detail').text(), new RegExp(en.workerInTab))
+  assert.ok(!row.button(en.btnWorkerAdvise), 'no second start while the item is open')
+  row.button(en.workerToTab).click()
+  assert.deepEqual(c.calls.at(-1), ['openTabView', 'surface:9'])
+  // where the Chat lays out its tabs, the way goes to that tab's room there
+  const rooms = { ...s, rooms: { ...(s.rooms ?? {}), layout: 'workspaces' } }
+  const c2 = recorder()
+  const row2 = mount(html`<${views.sessions.WorkersPage} s=${rooms} c=${c2} />`).$('.wrow')
+  await openRow(row2)
+  row2.button(en.workerToTab).click()
+  assert.deepEqual(c2.calls.slice(-2), [['setPage', '@chat'], ['pickRoom', { kind: 'tab', id: 'surface:9' }]])
+  const ended = { ...base, workers: { ...base.workers, data: { ...base.workers.data, runs: [{ ...hostRun('bot', 'homebox', 'high'), advise: { inbox: id, state: 'done' } }] } },
+    model: { ...base.model, returns: [ret('done', { kind: 'close', text: 'the finding is old, the bot runs', key: null, at_ms: NOW }, null)] } }
+  const done = mount(html`<${views.sessions.WorkersPage} s=${ended} c=${recorder()} />`).$('.wrow')
+  await openRow(done)
+  assert.match(done.$('.wrow-detail').text(), /the finding is old, the bot runs/)
+  assert.ok(done.button(en.btnWorkerAdvise), 'an ended analysis may run again')
+})
+
+test('a page row asked before shows that question and opens it instead of asking again', () => {
+  const sec = opsSec('checks', 'Checks', [{ ...opsRow(0, 'Backup', 'bad'), key: 'item:ops/checks/backup', ask: true }])
+  const page = { id: 'ops', title: 'Operations', sections: [sec] }
+  const base = cockpitState(NOW)
+  const c = recorder()
+  const fresh = mount(html`<${views.pages.PageSection} page=${page} section=${sec} s=${base} c=${c} />`)
+  fresh.button(en.btnAsk).click()
+  assert.deepEqual(c.calls.at(-1), ['ask', 'info', { page: 'ops', section: 'checks', index: 0 }])
+  const s = { ...base, quick: { ...(base.quick ?? {}), convs: [{ ...rowChat('g0000000005', 'item:ops/checks/backup', false), about: { kind: 'info', key: 'item:ops/checks/backup' } }] } }
+  const el = mount(html`<${views.pages.PageSection} page=${page} section=${sec} s=${s} c=${c} />`)
+  assert.match(el.text(), new RegExp(en.askAnswered))
+  assert.ok(!el.button(en.btnAsk), 'no second question')
+  el.button(en.askOpenConv).click()
+  assert.deepEqual(c.calls.at(-1), ['openAsk', 'g0000000005'])
+})
+
 test('lab: a sub page with overview shows a head card of its own parts, folded where they say the same, no jobs and no tokens', () => {
   const rest = { ...opsRow(0, 'Lab not running', 'dim'), detail: 'the box is off' }
   const lab = { id: 'lab', title: 'Lab', overview: true, under: 'ops', sections: [

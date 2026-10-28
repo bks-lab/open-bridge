@@ -953,6 +953,9 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError):
                 data = None
             ok = isinstance(data, dict) and isinstance(data.get("runs"), list)
+            if ok:
+                # a job filed by Analyse in a tab names its item, so its row shows that tab (actions_pages.py)
+                app.actions.worker_items(data["runs"])
             self.send_json(200, {"ok": True, "view": data if ok else None})
         elif path == "/api/ticker":
             # the news ticker as the page gets it in the state payload and the `ticker` event (ticker.py)

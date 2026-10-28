@@ -17,7 +17,7 @@ import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
 import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { Lines } from './detail.js'
-import { ReturnChip } from './home.js'
+import { ReturnChip, RowAsk } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
 import { Btn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
@@ -185,7 +185,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
         <${Icon} name="external" size=${14} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" cls="act-quiet" title=${it.link.path} onClick=${() => c.copy(it.link.path)}>${t.copyPath}<//>` : null}
       <${PageItemActions} it=${it} s=${s} c=${c} />
-      ${it.ask ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
+      ${it.ask ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
       ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}
       ${actionRow(it, byKey) && (it.inbox || it.task) ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}

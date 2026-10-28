@@ -7,16 +7,17 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, serious, scheduleText,
+  duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, scheduleText,
   dayNoteText, weekdayNames, filterWorkers, groupByHost, jobCounts, runTimes, stripMark, workerFacets, workerTone, aiGroups, previewText,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Skeleton } from './day.js'
 import { TabControls } from './detail.js'
-import { ReturnCard } from './home.js'
+import { ReturnCard, RowAsk, returnsOf } from './home.js'
 import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
 import { FolderBar, StartControl, canStartControl } from './header.js'
+import { CHAT_PAGE, chatAsWorkspaces } from './nav.js'
 import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
@@ -249,11 +250,27 @@ function runClock(ms, now) {
     : `${new Date(ms).toLocaleDateString(lang, { day: 'numeric', month: 'numeric' })} ${hm}`
 }
 
-function WorkerRow({ r, now, nowPct, c, i }) {
+// an item Analyse in a tab filed that is still open (inbox.py states), so the row offers its tab, not a second one
+const ADVISE_OPEN = ['open', 'approved', 'waiting', 'deferred']
+
+/** A job's Analyse in a tab (actions_pages.py worker_advise): while its item is open the row says so and opens the
+ *  tab, in its room of the Chat where the Chat lays out its tabs (as views/flowrun.js SessionCards); a start
+ *  without a tab may run again, and finds the same item */
+function WorkerAdvise({ r, ret, s, c }) {
+  const t = T()
+  const open = ADVISE_OPEN.includes(r.advise?.state)
+  const toRoom = ref => (chatAsWorkspaces(s) ? (c.setPage(CHAT_PAGE), c.pickRoom({ kind: 'tab', id: ref })) : c.openTabView(ref))
+  return html`${open ? html`<${Chip} token="info">${t.workerInTab}<//>` : null}
+    ${open && ret?.tab ? html`<${Btn} size="xs" variant="secondary" onClick=${() => toRoom(ret.tab.ref)}>${t.workerToTab}<//>`
+      : html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`}`
+}
+
+function WorkerRow({ r, s, now, nowPct, c, i }) {
   const t = T()
   const [open, setOpen] = useState(false)
   const tone = workerTone(r)
-  const top = (r.findings ?? []).find(serious) ?? (r.findings ?? [])[0]
+  // the result of its last analysis in a tab (the return channel, returns.py), under its findings
+  const advised = r.advise ? returnsOf(s).find(x => x.key === `inbox:${r.advise.inbox}`) ?? null : null
   const days = weekdayNames(language())
   const week = r.week?.length === 7 ? [...r.week.slice(1), r.week[0]] : []
   // what kind of job it is and when it ran and runs, so a scheduled workflow reads apart from a service
@@ -281,8 +298,10 @@ function WorkerRow({ r, now, nowPct, c, i }) {
         <${StateLine} token=${f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${f.severity === 'high'}
           word=${`${t.workerState[f.state] ?? f.state}: ${f.detail ?? ''}`} />
         ${f.hint ? html`<p class="muted small wfind-hint">${t.workerHint(f.hint)}</p>` : null}</li>`)}</ul>` : null}
+      ${advised?.result?.text ? html`<p class="muted small wfind-hint">${t.workerResult(short(advised.result.text, 300))}</p>` : null}
       <div class="btn-row">
-        <${Btn} size="xs" variant="secondary" onClick=${() => c.ask('free', { text: t.workerAsk(r.id, r.host, t.workerState[r.state] ?? r.state, top?.detail ?? '') })}>${t.btnAsk}<//>
+        <${WorkerAdvise} r=${r} ret=${advised} s=${s} c=${c} />
+        <${RowAsk} s=${s} c=${c} rowKey=${`worker:${r.host}:${r.id}`} variant="secondary" cls="" onAsk=${() => c.ask('worker', { host: r.host, id: r.id })} />
       </div>
     </div>` : null}
   </li>`
@@ -365,7 +384,7 @@ export function WorkersPage({ s, c }) {
               <span class="rgroup-count">${['ok', 'warn', 'bad', 'dim'].filter(k => n(k)).map(k => html`
                 <span key=${k} class="rgroup-n"><span class=${`fdot fdot-${k}`} aria-hidden="true"></span><span class="mono">${n(k)}</span></span>`)}</span>
             </header>
-            <ul class="wlist rview">${g.runs.map((r, i) => html`<${WorkerRow} key=${r.id} r=${r} i=${i} now=${nowMs} nowPct=${nowPct} c=${c} />`)}</ul>
+            <ul class="wlist rview">${g.runs.map((r, i) => html`<${WorkerRow} key=${r.id} r=${r} s=${s} i=${i} now=${nowMs} nowPct=${nowPct} c=${c} />`)}</ul>
           </div>`
         })}
       </section>`)}

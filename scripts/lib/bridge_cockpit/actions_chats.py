@@ -13,7 +13,7 @@ from .history import item as history_item
 from .quick import CONV_RE, ORIGINS as QUICK_ORIGINS
 from .relay import KINDS as ASK_KINDS
 from .actions_base import (CONTEXT_MAX, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, QUICK_PLACES, SHORT_TIMEOUT, SLUG_RE,
-                           ActionError, Ctx, bad_arg, check_key, check_text)
+                           WORKER_REF_RE, ActionError, Ctx, bad_arg, check_key, check_text)
 
 
 class ChatVerbs:
@@ -232,7 +232,7 @@ class ChatVerbs:
         if not isinstance(args, dict):
             raise bad_arg("args", "must be an object")
         allowed = {"row": {"key"}, "follow_up": {"key"}, "info": {"page", "section", "index"}, "free": {"text"},
-                   "overview": set(), "plan_day": set(), "evening": set()}[kind]
+                   "worker": {"host", "id"}, "overview": set(), "plan_day": set(), "evening": set()}[kind]
         # may come along, never required: what the page shows right now, for a free quick question only
         optional = {"free": {"context", "task"}}.get(kind, set())
         for name in args:
@@ -278,6 +278,20 @@ class ChatVerbs:
             prompt = m.ask_info(re.sub(r"\s*\(.*?\)", "", sec["title"]), info, tx)
             about = {"kind": "info", "key": m.item_key(page, sec["id"], info),
                      "inbox": self.info_inbox(sec, info) if via == "quick" else None}
+        elif kind == "worker":
+            # a background job's row: the question is built from the kept workers view, never from the page's words
+            host, ident = args["host"], args["id"]
+            if not all(isinstance(x, str) and WORKER_REF_RE.match(x) for x in (host, ident)):
+                raise bad_arg("id", "not a job or machine name")
+            run = self.worker_run(host, ident)
+            if run is None:
+                raise ActionError(409, "stale_row", "the workers view holds no such job", "id")
+            top = next((f for f in run.get("findings") or [] if isinstance(f, dict) and f.get("severity") != "info"),
+                       (run.get("findings") or [{}])[0])
+            prompt = tx["ask_worker"].format(id=ident, host=host, state=self.worker_state(run),
+                                             detail=(top.get("detail") if isinstance(top, dict) else "") or "")
+            key = f"worker:{host}:{ident}"
+            about = {"kind": "worker", "key": key, "inbox": self.filed_page_item(key, None) if via == "quick" else None}
         elif kind == "free":
             prompt = check_text(args["text"], "text", 4000)
         else:

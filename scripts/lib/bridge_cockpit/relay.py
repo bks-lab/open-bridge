@@ -37,7 +37,7 @@ from .text import TABLES
 
 RELAY_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}\Z")
 SESSION_RE = re.compile(r"^[A-Za-z0-9-]{8,64}\Z")
-KINDS = ("row", "info", "follow_up", "overview", "plan_day", "evening", "free")
+KINDS = ("row", "info", "follow_up", "overview", "plan_day", "evening", "free", "worker")
 DONE_STATUSES = {"submitted", "answered", "aborted", "error", "expired", "stuck", "rejected"}
 ANSWERED = {"answered", "aborted", "error"}
 HEARTBEAT_FRESH_MS = 15000
