@@ -124,6 +124,11 @@ export const FLOW = {
       onPage: (n, page) => `${n} on ${page}`,
       onPageTitle: page => `Issues and pull requests of your boards: they stand on ${page}, a click shows them there`,
     },
+    // round 6 c: the task check, a row under Not now (views/flowleft.js CheckRow), the check in the middle
+    check: {
+      intro: 'The AI looks through your task folders and suggests what looks done, left lying or waiting. Nothing happens without your click.',
+      count: n => `${n} ${n === 1 ? 'suggestion' : 'suggestions'}`, none: 'not run yet', running: 'running',
+    },
     merge: {
       button: 'Merge', run: 'Merge', only: 'Only open tasks can be merged: no streams, no inbox items.', title: 'Which task stays?',
       proposal: 'Suggested: the one with more activity', proposalRunning: 'Suggested: the one an agent works on right now',
@@ -311,6 +316,10 @@ export const FLOW = {
         resting: d => `ruht seit ${d}`, rests: 'ruht' },
       onPage: (n, page) => `${n} auf ${page}`,
       onPageTitle: page => `Issues und Pull Requests deiner Boards: sie stehen auf ${page}, ein Klick zeigt sie dort`,
+    },
+    check: {
+      intro: 'Die KI schaut deine Aufgabenordner durch und schlägt vor, was erledigt, liegen geblieben oder wartend aussieht. Nichts passiert ohne deinen Klick.',
+      count: n => `${n} ${n === 1 ? 'Vorschlag' : 'Vorschläge'}`, none: 'noch nicht gelaufen', running: 'läuft',
     },
     merge: {
       button: 'Zusammenführen', run: 'Zusammenführen', only: 'Nur offene Aufgaben lassen sich zusammenführen, keine Streams und keine Posteingangspunkte.',

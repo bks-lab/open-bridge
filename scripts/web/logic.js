@@ -1918,13 +1918,29 @@ export function sessionsInFlow(s) {
   return workViews(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null).includes('flow')
 }
 
+/** Whether the task check stands in Work through rather than on a tab of its own (round 6 c): the same rule as the
+ *  sessions (sessionsInFlow), the work tab offers Work through. Then its row stands under Not now and every way to the
+ *  check leads there (flowPageFor); a Bridge without Work through keeps the tab, or the check's place on a page */
+export function checkInFlow(s) {
+  return sessionsInFlow(s)
+}
+
+/** How many suggestions the last task check left open: the tasks it judged that are still open, whose verdict is not
+ *  continue and that nobody kept as they are (the count on the row of Work through) */
+export function checkOpen(model) {
+  const byKey = indexRows(model)
+  return (model?.review?.keys ?? []).map(k => byKey.get(k)).filter(r => r?.review && !r.review.kept && r.review.verdict !== 'continue').length
+}
+
 /** Where a page id leads that is a view now: the Work through page (@flow, a stored page or a link of an older
  *  page) is the work tab in its view Work through; the Sessions page (@sessions) is its Running now (flowView
  *  running) where that lists the live sessions (sessionsInFlow of `s`), so every way to the tab lands there: a
- *  link, a note, the band, the tour, an area's number, a page stored by an older cockpit. Null for every other id */
+ *  link, a note, the band, the tour, an area's number, a page stored by an older cockpit; the task check's page
+ *  (@check) is its Check tasks (flowView check) the same way (checkInFlow). Null for every other id */
 export function flowPageFor(id, s = null) {
   if (id === '@flow') return { page: 'briefing', view: 'flow' }
   if (id === '@sessions' && sessionsInFlow(s)) return { page: 'briefing', view: 'flow', flowView: 'running' }
+  if (id === '@check' && checkInFlow(s)) return { page: 'briefing', view: 'flow', flowView: 'check' }
   return null
 }
 
@@ -2004,8 +2020,10 @@ export function workKinds(sections, kinds) {
 
 /** Where the task check stands when inbox and tasks share a page: that page and the label of its tasks
  *  section ({page, label}), else null and the check keeps a tab of its own. `views`, the views of the work tab
- *  on offer (workViewsIn): the work page is the check's place only while By source (`area`) is among them */
+ *  on offer (workViewsIn): the work page is the check's place only while By source (`area`) is among them; where
+ *  Work through (`flow`) is among them, no page is (round 6 c: the check stands in Work through, checkInFlow) */
 export function reviewHome(pages, kinds, views = null) {
+  if (Array.isArray(views) && views.includes('flow')) return null
   for (const p of pages ?? []) {
     const tasks = (p.sections ?? []).find(sec => sec.kind === 'tasks')
     if (!tasks || !workKinds(p.sections, kinds).length) continue
@@ -3578,8 +3596,10 @@ const HINTS = {
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
   // Work through, a view of the work tab (its parts are explained there, hintsFor), with the session cards of Running now
+  // and the row of the task check under Not now with the check's filter and table in the middle (round 6 c)
   '@flow': [['flowSide', '.flow-side'], ['flowOverview', '.flow-overview'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
-    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk'], ['sessCards', '.flow-sessions']],
+    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk'], ['sessCards', '.flow-sessions'], ['flowCheck', '.flow-check-row'],
+    ['reviewFilter', '.review-bar'], ['reviewTable', '.tbl-review']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
 const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],

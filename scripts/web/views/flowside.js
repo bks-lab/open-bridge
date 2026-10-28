@@ -3,7 +3,8 @@
 // FlowSide, the left column as a table of contents, like a mail app's folders (round 5: it lists no point, the middle
 // does). On top Running now as one row with its count (views/flowrun.js RunningRow: what runs is no point; a click shows
 // its entries in the middle), at the foot Not now (views/flowleft.js NotNowBlock: the open rows that are no point now,
-// by group), both on every side and in every mode. Between them Themes, Areas or Prio where two of them are on offer
+// by group), under it Check tasks (views/flowleft.js CheckRow, round 6 c: the task check in the middle), all on every
+// side and in every mode. Between them Themes, Areas or Prio where two of them are on offer
 // (logic.js flowModes, flowMode), then All themes (or All areas, All squares) and one entry per theme or area that holds
 // a point (its colour, its name, how many need you in the warning tone, how many are open), No theme yet or No area
 // last; a click enters it. Entered, the list stays the same with the one entered marked and All leads back. Under the
@@ -36,7 +37,7 @@ import {
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Segmented } from './detail.js'
-import { NotNowBlock, NotNowNarrow } from './flowleft.js'
+import { CheckRow, NotNowBlock, NotNowNarrow } from './flowleft.js'
 import { Suggestion } from './flowlist.js'
 import { PrioFoot } from './flowprio.js'
 import { RunningNarrow, RunningRow } from './flowrun.js'
@@ -125,7 +126,7 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
 
 /** The left column, a table of contents (round 5): Running now as one row on top (views/flowrun.js RunningRow, the
  *  entries stand in the middle), the list of themes, areas or squares (logic.js flowSides) with the one entered
- *  marked, Not now at the foot; `running` and `left` the page's (logic.js runningOf, flowParts), `view` what the middle shows, `open` the
+ *  marked, Not now at the foot with Check tasks under it; `running` and `left` the page's (logic.js runningOf, flowParts), `view` what the middle shows, `open` the
  *  group of Not now open there */
 export function FlowSide({ sides, entered, mode, all, view, running = null, left = null, run = null, open = null, s, c }) {
   const f = T().flow.side
@@ -140,6 +141,7 @@ export function FlowSide({ sides, entered, mode, all, view, running = null, left
     <${RunningRow} running=${running} on=${view === 'running' || view === 'run'} c=${c} />
     <${SideList} sides=${sides} entered=${entered} mode=${mode} points=${all} marked=${view === 'overview' || view === 'point'} s=${s} c=${c} />
     <${NotNowBlock} left=${left} open=${open} c=${c} />
+    <${CheckRow} s=${s} c=${c} on=${view === 'check'} />
   </aside>`
 }
 

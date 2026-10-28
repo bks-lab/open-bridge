@@ -3039,12 +3039,14 @@ test('R6B 1a: a view not on offer falls back to Work through where it is on, and
   const pages = [{ id: 'work', group: 'work', sections: [{ id: 'inbox', kind: 'inbox', total: 1 }, { id: 'tasks', kind: 'tasks', total: 1 }] }]
   const kinds = en.workOrder.kinds
   assert.equal(logic.reviewHome(pages, kinds)?.page, 'work')
-  assert.equal(logic.reviewHome(pages, kinds, ['due', 'area', 'dossier', 'flow'])?.page, 'work')
-  assert.equal(logic.reviewHome(pages, kinds, ['dossier', 'flow']), null)
-  const off = { model: { pages }, work: { flow: { enabled: true }, views: ['files', 'flow'] }, ui: { page: 'briefing', workView: 'flow' } }
+  assert.equal(logic.reviewHome(pages, kinds, ['due', 'area', 'dossier'])?.page, 'work')
+  assert.equal(logic.reviewHome(pages, kinds, ['dossier']), null)
+  // round 6 c P2: where Work through is on the check stands there, never on the work page (and no tab either)
+  assert.equal(logic.reviewHome(pages, kinds, ['due', 'area', 'dossier', 'flow']), null)
+  const off = { model: { pages }, work: { flow: { enabled: false }, views: ['files'] }, ui: { page: 'briefing', workView: 'dossier' } }
   assert.equal(views.nav.reviewHomeOf(off), null)
   assert.ok(views.nav.pageOrder(off).includes('@check'), 'the check tab is back')
-  assert.equal(views.nav.reviewHomeOf({ ...off, work: { flow: { enabled: true } } })?.page, 'work')
+  assert.equal(views.nav.reviewHomeOf({ ...off, work: { flow: { enabled: false } } })?.page, 'work')
   // every way of the controller that names a view goes through workViewGo, so none stores a view switched off
   for (const head of ['setPage(id) {', 'setWorkView:', 'openReview() {']) assert.match(method(head), /workViewGo\(/, head)
   assert.match(method('openReview() {'), /reviewHome\(.*workViewsIn\(s\)\)/)
@@ -3364,4 +3366,86 @@ test('round 6 b: the tour shows Running now where it lists the sessions, the Ses
   // the explain overlay names the session cards where they stand now
   const hints = logic.hintsFor({ ...on, ui: { page: 'briefing', workView: 'flow' } }).map(h => [h.id, h.target])
   assert.ok(hints.some(([id, target]) => id === 'sessCards' && target === '.flow-sessions'))
+})
+
+// ---------------------------------------------------------------- round 6 c: the task check in Work through
+
+const checkUi = (ui = {}) => demoFlow({ rvFilter: 'all', rvSort: 'verdict', rvPicked: [], ...ui })
+
+test('round 6 c P1: Check tasks stands under Not now with its open verdicts, a click shows the check in the middle', () => {
+  const s = checkUi()
+  // the demo's check judged three tasks: close, stale and waiting, none kept, all three open suggestions
+  assert.equal(logic.checkOpen(s.model), 3)
+  const judged = (slug, review) => task(slug, { review: { verdict: 'close', kept: false, ...review } })
+  const kept = { sections: [{ id: 'work', rows: [judged('a'), judged('b', { kept: true }), judged('c', { verdict: 'continue' })] }],
+    review: { keys: ['task:a', 'task:b', 'task:c', 'task:gone'] } }
+  assert.equal(logic.checkOpen(kept), 1, 'a kept verdict, a continue and a task closed since are no suggestions')
+  assert.equal(logic.checkOpen({ review: { keys: [] } }), 0)
+  assert.equal(logic.checkOpen(null), 0)
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const row = el.$('aside .flow-check .flow-check-row')
+  assert.ok(row, 'a row Check tasks in the left column')
+  assert.equal(row.$('.flow-side-label').text(), en.reviewTab)
+  assert.equal(row.$('.flow-side-open').text().trim(), en.flow.check.count(3))
+  assert.equal(row.getAttribute('title'), en.flow.check.intro)
+  assert.ok(!row.hasClass('is-on'))
+  row.click()
+  assert.deepEqual(c.calls.at(-1), ['flowCheck'])
+  // no run yet: the row stands all the same, the way to the first run
+  const none = mount(html`<${FlowPage} s=${{ ...s, model: { ...s.model, review: { running: null, error: null, last: null, keys: [] } } }} c=${recorder()} />`)
+  assert.equal(none.$('aside .flow-check-row .flow-side-open').text().trim(), en.flow.check.none)
+  // the middle: Back, the name, the run button, the plain line on top, then the check itself
+  const c2 = recorder()
+  const mid = mount(html`<${FlowPage} s=${checkUi({ flowView: 'check' })} c=${c2} />`)
+  assert.ok(mid.$('aside .flow-check-row').hasClass('is-on'), 'the row is marked while the check is open')
+  const main = mid.$('.flow-main')
+  assert.equal(main.$('.flow-main-title').text().trim(), en.reviewTab)
+  assert.equal(main.$('.flow-check-intro').text(), en.flow.check.intro)
+  assert.ok(main.$('.review-bar'), 'the verdict filter')
+  assert.ok(main.$('.review-top .seg'), 'the sort')
+  assert.ok(main.$('.tbl-review'), 'the table with its boxes')
+  assert.ok(!main.$('.flow-overview'), 'not the overview')
+  assert.ok(!mid.$('.flow-aside'), 'no right column')
+  assert.ok(!main.$('.flow-dock'), 'no instruction line under the check')
+  main.button(en.flow.point.back).click()
+  assert.deepEqual(c2.calls.at(-1), ['flowOverview'])
+  main.button(en.btnReviewAll).click()
+  assert.deepEqual(c2.calls.at(-1), ['review'])
+  // the German line says what the check does, in plain words
+  assert.equal(text.TABLES.de.flow.check.intro,
+    'Die KI schaut deine Aufgabenordner durch und schlägt vor, was erledigt, liegen geblieben oder wartend aussieht. Nichts passiert ohne deinen Klick.')
+  assert.equal(text.TABLES.de.flow.check.count(5), '5 Vorschläge')
+  assert.equal(text.TABLES.de.flow.check.count(1), '1 Vorschlag')
+})
+
+test('round 6 c P2: where Work through is on, the check has no tab and every way to it lands there; without it the tab stays', () => {
+  const on = state()
+  const off = { ...on, work: { flow: { enabled: false } } }
+  const kept = { ...on, work: { ...on.work, views: ['files'] } }
+  assert.equal(logic.checkInFlow(on), true)
+  assert.equal(logic.checkInFlow(off), false)
+  assert.equal(logic.checkInFlow(kept), false, 'cockpit.work_views without flow keeps the tab')
+  assert.equal(logic.checkInFlow(null), false)
+  // a stored page, a deep link, a note: the page id leads to Work through with the check in the middle
+  assert.deepEqual(logic.flowPageFor('@check', on), { page: 'briefing', view: 'flow', flowView: 'check' })
+  assert.equal(logic.flowPageFor('@check', off), null)
+  assert.equal(logic.flowPageFor('@check'), null)
+  assert.equal(logic.tickerPage(on, '@check', views.nav.pageOrder(on)), '@check')
+  assert.ok(!views.nav.pageOrder(on).includes('@check'), 'no tab of its own')
+  assert.ok(views.nav.pageOrder(off).includes('@check'), 'without Work through the tab stays')
+  const tabsOf = s => mount(html`<${views.header.PageBar} s=${s} c=${recorder()} />`).$$('[role=tab]')
+  assert.ok(!tabsOf(cockpitState(NOW, { ui: { page: 'briefing' } })).some(b => b.text().startsWith(en.reviewTab)))
+  const demoOff = cockpitState(NOW, { work: { flow: { enabled: false }, views: ['files'] }, ui: { page: 'briefing' } })
+  assert.ok(tabsOf(demoOff).some(b => b.text().startsWith(en.reviewTab)), 'the tab, named Check tasks')
+  // the ticker and the start page go through openReview, which falls to setPage(CHECK_PAGE) where no page holds the
+  // check, and setPage leads the id through flowPageFor; a stored @check without its tab goes the same way (fixPage)
+  assert.match(method('openReview() {'), /if \(!home\) return ctl\.setPage\(CHECK_PAGE\)/)
+  assert.match(method('setPage(id) {'), /flowPageFor\(id, s\)/)
+  assert.match(APP, /CHECK_PAGE && !pageOrder\(s\)\.includes\(CHECK_PAGE\)\) ctl\.openReview\(\)/)
+  assert.match(APP, /flowCheck: \(\) => setUi\(\{ flowView: 'check'/)
+  // the explain overlay names the row in Work through, in both languages
+  const hints = logic.hintsFor({ ...on, ui: { page: 'briefing', workView: 'flow' } }).map(h => [h.id, h.target])
+  assert.ok(hints.some(([id, target]) => id === 'flowCheck' && target === '.flow-check-row'))
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].hints.items.flowCheck?.body, lang)
 })
