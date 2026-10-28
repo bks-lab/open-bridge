@@ -5,7 +5,7 @@ Every script call of the server goes through `Runner.run`. Before a process star
 `check` refuses any argv that is not one of the eight Bridge scripts of SCRIPT_PATHS (run
 with this interpreter) or one of the exact shapes below it lets through: an A2A ask, a quick
 question, codex read-only, the Haiku judge, organize, describe, the themes of Work through, the summary of
-a point's activity and the instruction line, the two git logs the activity reads, and ps for one
+a point's activity and the instruction line, the files tab's question to its records, the two git logs the activity reads, and ps for one
 pid. No call adds to the
 clean env. The cmux CLI is
 never called directly; tabs go through workplace.py and its terminal driver. Tests inject a
@@ -31,6 +31,7 @@ from . import instruct
 from . import organize
 from . import themes
 from ..model_route import haiku_argv_ok
+from ..work_find import ask_argv_ok as files_argv_ok
 from .quick import argv_ok, resolve_claude
 from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
 
@@ -124,6 +125,9 @@ class Runner:
             return
         # the summary of a point's activity and the instruction line: one call each with data and a fixed schema
         if activity.summary_argv_ok(argv, self.claude) or instruct.argv_ok(argv, self.claude):
+            return
+        # the files tab's question to its records: one call with the records as data and a fixed schema (work_find.py)
+        if files_argv_ok(argv, self.claude, CLAUDE_MODELS.values()):
             return
         # what git knows of a task's documents and status changes: two exact log shapes (activity.py)
         if activity.git_argv_ok(argv, self.git, str(self.root)):

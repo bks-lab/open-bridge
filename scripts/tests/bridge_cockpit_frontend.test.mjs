@@ -1002,7 +1002,7 @@ test('jev is optional: the page loads without scripts/web/jev/, no tab, no call,
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     const pages = { model: { pages: [{ id: 'x' }] } }
     // the daily tabs first, then what stands behind More (Sessions, Workers, Agents, Check, Jev, pages with group more)
-    assert.deepEqual(comp.pageOrder({ ...pages, jev: { enabled: false } }), ['@start', 'briefing', '@chat', 'x', '@sessions', '@workers', '@check', '@settings'])
+    assert.deepEqual(comp.pageOrder({ ...pages, jev: { enabled: false } }), ['@start', 'briefing', '@files', '@chat', 'x', '@sessions', '@workers', '@check', '@settings'])
     assert.ok(!comp.pageOrder({ ...pages }).includes('@jev'))                       // no jev state at all: off
     assert.ok(comp.pageOrder({ ...pages, jev: { enabled: true, ready: false } }).includes('@jev'))
     // the demo mode runs without the Jev files too, and shows Jev as off
@@ -1039,7 +1039,7 @@ test('agents: the Agents tab only where the Bridge knows a peer, and a message o
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     assert.ok(!comp.pageOrder({ agents: { peers: [] } }).includes('@agents'))
     assert.ok(!comp.pageOrder({}).includes('@agents'))
-    assert.deepEqual(comp.pageOrder({ agents: { peers: [{ id: 'a' }] } }).slice(3, 6), ['@sessions', '@workers', '@agents'])
+    assert.deepEqual(comp.pageOrder({ agents: { peers: [{ id: 'a' }] } }).slice(4, 7), ['@sessions', '@workers', '@agents'])
     assert.ok(comp.morePages({ agents: { peers: [{ id: 'a' }] } }).has('@agents'))
     // the Chat as cmux carries the agents as its A2A area: no tab of their own there (bridge_cockpit_chat_a2a.test.mjs)
     assert.ok(!comp.pageOrder({ agents: { peers: [{ id: 'a' }] }, rooms: { layout: 'workspaces' } }).includes('@agents'))
@@ -1196,7 +1196,7 @@ test('the page bar keeps the daily tabs in front and the rest behind More, in th
     fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     const s = { model: { pages: [{ id: 'inbox' }, { id: 'llm', group: 'more' }, { id: 'tasks', group: 'main' }, { id: 'today', group: 'day' }] } }
-    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'inbox', 'tasks', '@sessions', '@workers', '@check', 'llm', '@settings'])
+    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@files', '@chat', 'inbox', 'tasks', '@sessions', '@workers', '@check', 'llm', '@settings'])
     assert.deepEqual([...comp.morePages(s)], ['@sessions', '@workers', '@check', 'llm', '@settings'])
     // a page of group day has no tab: its sections stand under the day list of Today
     assert.ok(!comp.pageOrder(s).includes('today'))
@@ -1444,7 +1444,7 @@ test('a page of group work folds into the work tab, and with it the Jev tab', as
     const pages = [{ id: 'work', title: 'Work', group: 'work', jev: true }, { id: 'ops' }]
     const s = { model: { pages }, jev: { enabled: true, ready: true } }
     // no tab for the work page and none for Jev: both are views of the one work tab
-    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'ops', '@sessions', '@workers', '@check', '@settings'])
+    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@files', '@chat', 'ops', '@sessions', '@workers', '@check', '@settings'])
     // without a work page the Jev tab stays where it was
     assert.ok(comp.pageOrder({ model: { pages: [{ id: 'ops' }] }, jev: { enabled: true } }).includes('@jev'))
   } finally {
@@ -1457,10 +1457,11 @@ test('the work tab opens on what is due and switches to by source and by Jev', (
   assert.equal(logic.workPageOf([{ id: 'ops' }, work]), work)
   assert.equal(logic.workPageOf([{ id: 'ops' }]), null)
   const ready = { enabled: true, ready: true }
-  assert.deepEqual(logic.workViews(work, ready), ['due', 'area', 'jev', 'dossier'])
-  assert.deepEqual(logic.workViews(work, { enabled: false }), ['due', 'area', 'dossier'])
-  assert.deepEqual(logic.workViews({ ...work, jev: false }, ready), ['due', 'area', 'dossier'])
-  assert.deepEqual(logic.workViews(null, ready), ['due', 'dossier'])
+  // the files are a tab of their own beside it (round 6c)
+  assert.deepEqual(logic.workViews(work, ready), ['due', 'area', 'jev'])
+  assert.deepEqual(logic.workViews(work, { enabled: false }), ['due', 'area'])
+  assert.deepEqual(logic.workViews({ ...work, jev: false }, ready), ['due', 'area'])
+  assert.deepEqual(logic.workViews(null, ready), ['due'])
   // a remembered view the tab cannot show falls back to what is due, the default
   assert.equal(logic.workViewOf('jev', work, ready), 'jev')
   assert.equal(logic.workViewOf('jev', work, { enabled: false }), 'due')
@@ -4674,7 +4675,10 @@ test('tourSteps: a welcome first and an end last, the tab column only where the 
   assert.ok(!wide.some(x => x.id === 'explain' || x.target === '.hdr-explain'))
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].tour.steps.help && !text.TABLES[lang].tour.steps.explain, lang)
   // a step that shows a page names one the page knows
-  assert.ok(wide.filter(x => x.page).every(x => ['@start', 'briefing', '@sessions', '@chat', '@settings'].includes(x.page)))
+  assert.ok(wide.filter(x => x.page).every(x => ['@start', 'briefing', '@files', '@sessions', '@chat', '@settings'].includes(x.page)))
+  // the files tab has its step where it stands in the bar (round 6c), none where cockpit.work_views leaves it out
+  assert.equal(wide[wide.findIndex(x => x.id === 'work') + 1]?.id, 'files')
+  assert.ok(!logic.tourSteps({ layout: 'wide', work: { views: ['flow'], flow: { enabled: true } } }).some(x => x.id === 'files'))
 })
 
 test('tourPlace: below the area when it fits, above when not, inside a large one, never off the screen', () => {
@@ -4698,7 +4702,7 @@ test('tourPlace: below the area when it fits, above when not, inside a large one
 
 // ---------------------------------------------------------------- the explain overlay (views/hints.js)
 
-const HINT_PAGES = ['@start', 'briefing', '@flow', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'some-profile-page']
+const HINT_PAGES = ['@start', 'briefing', '@files', '@flow', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'some-profile-page']
 const WORK_AREA = { ui: { page: 'briefing', workView: 'area' }, layout: 'wide', model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
 
 test('hintsFor: the page\'s own areas first, then the header, each once, each with its words in both languages', () => {
@@ -4728,19 +4732,21 @@ test('hintsFor: the page\'s own areas first, then the header, each once, each wi
 })
 
 test('hints: the work switch explains the views it offers, no other (round 6 B)', () => {
-  const s = { ui: { page: 'briefing', workView: 'flow' }, layout: 'wide', work: { flow: { enabled: true }, views: ['files', 'flow'] },
+  const s = { ui: { page: 'briefing', workView: 'flow' }, layout: 'wide', work: { flow: { enabled: true }, views: ['files', 'due', 'flow'] },
     model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
   const sw = logic.hintsFor(s).find(h => h.id === 'workSwitch')
-  assert.deepEqual(sw.vars, [['dossier', 'flow']])
+  assert.deepEqual(sw.vars, [['due', 'flow']])
   const de = logic.hintText(text.TABLES.de.hints.items.workSwitch, sw.vars).body
-  assert.equal(de, 'Akten: Aufgabe für Aufgabe, auch erledigte. Abarbeiten: alles Offene genau einmal, Punkt für Punkt.')
-  for (const gone of ['Dran', 'Nach Quelle', 'Nach Jev']) assert.ok(!de.includes(gone), gone)
+  assert.equal(de, 'Dran: nach Datum. Abarbeiten: alles Offene genau einmal, Punkt für Punkt.')
+  // the files are a tab of their own (round 6c): the switch's words never name them
+  for (const gone of ['Akten', 'Nach Quelle', 'Nach Jev']) assert.ok(!de.includes(gone), gone)
   const en = logic.hintText(text.TABLES.en.hints.items.workSwitch, sw.vars).body
-  assert.ok(en.startsWith('Files: ') && en.includes('Work through: ') && !/Due|By source|By Jev/.test(en), en)
+  assert.ok(en.startsWith('Due: ') && en.includes('Work through: ') && !/Files|By source|By Jev/.test(en), en)
   // every view on offer names itself, in the order of the switch
   const all = logic.hintsFor({ ...WORK_AREA, work: { flow: { enabled: true } } }).find(h => h.id === 'workSwitch')
-  assert.deepEqual(all.vars, [['due', 'area', 'dossier', 'flow']])
-  assert.match(logic.hintText(text.TABLES.de.hints.items.workSwitch, all.vars).body, /^Dran: .*Nach Quelle: .*Akten: .*Abarbeiten: /)
+  assert.deepEqual(all.vars, [['due', 'area', 'flow']])
+  assert.match(logic.hintText(text.TABLES.de.hints.items.workSwitch, all.vars).body, /^Dran: .*Nach Quelle: .*Abarbeiten: /)
+  assert.ok(!logic.hintText(text.TABLES.de.hints.items.workSwitch).body.includes('Akten'), 'nor without a list')
   // a hint whose words do not depend on the page stays as it is
   assert.equal(logic.hintText(text.TABLES.en.hints.items.ask), text.TABLES.en.hints.items.ask)
   // the overlay measures and draws the words of the page it explains
@@ -4762,7 +4768,7 @@ test('hints: every explanation in the texts belongs to an area some page points 
     assert.deepEqual(Object.keys(items).filter(id => !used.has(id)), [], `${lang}: words no page uses`)
     for (const [id, w] of Object.entries(items)) {
       // words that name what the page offers (the work switch): the fewest and the most it can name
-      const bodies = typeof w.body === 'function' ? [w.body(['dossier', 'flow']), w.body(['due', 'area', 'jev', 'dossier', 'flow'])] : [w.body]
+      const bodies = typeof w.body === 'function' ? [w.body(['due', 'flow']), w.body(['due', 'area', 'jev', 'flow'])] : [w.body]
       for (const b of bodies) assert.ok(b.length >= 30 && b.length <= (bodies.length > 1 ? 200 : 160), `${lang} ${id}: ${b.length} characters`)
     }
   }
@@ -5238,9 +5244,11 @@ test('with cockpit.focus_to_files, n on the last step of the focus leads on into
   const body = app.match(/\/\/ n \/ p on the start page in the focus view[\s\S]*?\n  \}/)[0]
   assert.match(body, /focusStep\(queue, s\.ui\.focusAt, key, !!s\.work\?\.focus_to_files\)/)
   assert.match(body, /step\?\.files \? ctl\.openFiles\(\)/)
-  // the search of the command box opens the files view the same way, for this visit only
-  assert.match(app.match(/openFiles\(\) \{[\s\S]*?\n  \},/)[0], /setUi\(\{ workView: 'dossier', dossierOpen: null \}\)/)
-  assert.doesNotMatch(app.match(/openFiles\(\) \{[\s\S]*?\n  \},/)[0], /save\('bridge-cockpit\.workTab'/)
+  // into the files tab, walking (the search of the command box opens it on its search); the work tab's view stays
+  const open = app.match(/openFiles\(q = null\) \{[\s\S]*?\n  \},/)[0]
+  assert.match(open, /\{ dossierOpen: null, filesWalk: true \}/)
+  assert.match(open, /ctl\.setPage\(FILES_PAGE\)/)
+  assert.doesNotMatch(open, /save\('bridge-cockpit\.workTab'/)
 })
 
 test('the demo takes the two work switches from its address: ?work=files and ?focus_to_files=1', () => {

@@ -48,7 +48,7 @@ const tabs = [{ ref: 't', workspace: 'ACME', state: 'needs-you', slug: 'q', name
 
 /** The state as the files view sees it, under the filters of Work (components.js hands it areaScope) */
 function seen(ui = {}, over = {}) {
-  const s = cockpitState(NOW, { model: model(), tabs: { tabs }, sessions: { runs: [] }, ...over, ui: { page: 'briefing', workView: 'dossier', ...ui } })
+  const s = cockpitState(NOW, { model: model(), tabs: { tabs }, sessions: { runs: [] }, ...over, ui: { page: '@files', filesWalk: true, ...ui } })
   return logic.areaScope(s)
 }
 

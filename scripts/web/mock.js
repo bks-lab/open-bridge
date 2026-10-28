@@ -1050,6 +1050,8 @@ export function buildState(now = Date.now(), opts = {}) {
       // the Work through page (cockpit.flow): on in the demo, ?flow=0 shows the cockpit without it
       // the views the work tab offers (cockpit.work_views): all of them, ?views=files,flow narrows
       views: Array.isArray(opts.views) && opts.views.length ? opts.views : ['due', 'source', 'jev', 'files', 'flow'],
+      // the files tab's question to its records (cockpit.files_search): on in the demo, the Health area kept private
+      files_search: { enabled: true, block: ['Health'], left: 20 },
       flow: { enabled: opts.flow !== false, drop_reasons: ['resolves_itself', 'not_needed', 'someone_else', 'not_worth_it'], return_after_s: 20,
         // round 4: a point comes up two days before its due; a session's task is recognised from what it did
         ahead_days: 2, infer_sessions: true,
@@ -1178,6 +1180,28 @@ function githubDetail(ref) {
 // a closed task the search finds in work/done/ (the queue never holds one): invented, like everything here
 const DONE_FILE = { slug: 'release-notes-2026-09', title: 'Release notes for September', month: '2026-09',
   lines: ['Release notes for September went out on the 30th.', 'The vendor export timed out twice, fixed with a retry.'] }
+
+// the records of the files tab's start (/api/records, work_find.py records): every task and stream of the demo, the
+// closed one above and a closed one in an area the demo's block list keeps private (cockpit.files_search.block)
+function mockRecords(state) {
+  const out = new Map()
+  const put = (slug, kind, title, status, area, updated, priority = null) => {
+    if (slug && !out.has(slug)) {
+      out.set(slug, { slug, kind, path: `work/${kind === 'stream' ? 'streams' : 'tasks'}/${slug}`, title, status, priority, area, updated,
+        work_kind: kind })
+    }
+  }
+  for (const f of state?.model?.files ?? []) put(f.slug, f.kind, f.title, f.status, f.area_names?.[0] ?? null, f.updated, f.priority)
+  for (const r of (state?.model?.sections ?? []).flatMap(x => x.rows ?? []).filter(x => x.task && !x.inbox_id)) {
+    put(r.task, r.stream || r.work_kind === 'stream' ? 'stream' : 'task', r.title, r.status ?? 'doing', r.area ?? null, null, r.priority ?? null)
+  }
+  const done = (slug, title, area, month, day) => ({ slug, kind: 'done', path: `work/done/${month}/${slug}`, title, status: 'done',
+    priority: null, area, updated: `${month}-${day}`, work_kind: 'done_task' })
+  const records = [...out.values(), done(DONE_FILE.slug, DONE_FILE.title, 'Docs', DONE_FILE.month, '30'),
+    done('health-check-booking', 'Book the yearly check-up', 'Health', '2026-09', '12')]
+  records.sort((a, b) => String(b.updated ?? '').localeCompare(String(a.updated ?? '')))
+  return { ok: true, total: records.length, truncated: false, records }
+}
 
 // the search (work-find.py through /api/find): every word in the slug, title or a line of an invented file, the
 // files whose slug or title holds every word first, then the rest; the same shape the server answers with
@@ -1969,6 +1993,7 @@ export function createMockTransport(opts = {}) {
         const { hash, ...feed } = feedOf(row)
         return ok(feed)
       }
+      if (url.pathname === '/api/records') return ok(mockRecords(state))
       if (url.pathname === '/api/find') {
         const q = String(url.searchParams.get('q') ?? '')
         if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
@@ -2141,6 +2166,19 @@ export function createMockTransport(opts = {}) {
         const result = { ok: true, verb, note: MOCK_NOTES[verb] ?? `Mock: ${verb} ${keys.join(', ') || args.tab_ref || ''}`.trim(), steps: [], settled: [],
           reload: 'none', jump: null, relay: null, confirm: null }
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
+        // the files tab's question to its records: the demo names the first record it was sent
+        if (verb === 'files_ask') {
+          const fs = state.work.files_search
+          if (!fs?.enabled) return fail(409, 'files_ask_off', 'asking the records is off')
+          const recs = mockRecords(state).records.filter(r => (args.paths ?? []).includes(r.path))
+          if (!recs.length) return fail(409, 'files_ask_held', 'no record left to send')
+          if (!fs.left) return fail(429, 'files_ask_budget', 'no questions left today')
+          await new Promise(r => wait(r, 800))
+          state.work = { ...state.work, files_search: { ...fs, left: fs.left - 1 } }
+          return ok({ ...result, note: '', ask: { answer: `Start with ${recs[0].title}: it changed last and names the next step.`,
+            files: [{ n: 1, why: 'it changed last', slug: recs[0].slug, path: recs[0].path, title: recs[0].title }], sent: recs.length,
+            held: { n: 0, words: [] }, model: 'haiku', left: fs.left - 1, at_ms: now() } })
+        }
         // Work through, round 3: an attachment, the summary of a point's Activity, the plan of an instruction
         if (['flow_attach', 'flow_activity_summary', 'flow_instruct'].includes(verb)) {
           const off = flowOff()

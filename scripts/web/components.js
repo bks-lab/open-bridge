@@ -23,7 +23,7 @@ import { FlowPage } from './views/flow.js'
 import { Header, PageBadge, PageBar, ParentLink } from './views/header.js'
 import { AreaBar, HomePage, jumpToTab, useHomeTitle } from './views/home.js'
 import {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FLOW_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, onPageOf, reviewHomeOf,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, FLOW_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, onPageOf, reviewHomeOf,
   headBadgeOf, subPagesOf, workViewNow,
 } from './views/nav.js'
 import {
@@ -40,7 +40,7 @@ import { HintsOverlay } from './views/hints.js'
 export { useHomeTitle } from './views/home.js'
 export { quickLive } from './views/chat.js'
 export {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FLOW_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, FLOW_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, agentsLanding, chatAreaActions, chatAsWorkspaces,
   morePages, pageOrder, parentOf, workViewNow,
 } from './views/nav.js'
 
@@ -70,11 +70,12 @@ function PageView({ s, c }) {
   if (s.ui.page === WORKERS_PAGE) return html`<${WorkersPage} s=${s} c=${c} />`
   if (s.ui.page === CHAT_PAGE) return s.rooms?.layout === 'workspaces' ? html`<${RoomsPage} s=${s} c=${c} />` : html`<${ChatPage} s=${s} c=${c} />`
   if (s.ui.page === SETTINGS_PAGE) return html`<${SettingsPage} s=${s} c=${c} />`
+  // the files tab (round 6c): its search first, a record or the walk through the active ones on a click; it needs
+  // no work page, it walks the tasks of the model
+  if (s.ui.page === FILES_PAGE) return html`<${DossierView} s=${s} c=${c} />`
   // as cmux the agents live in the Chat (its A2A area): a stored or stray @agents shows the Chat until the controller moves it there
   if (s.ui.page === AGENTS_PAGE && (s.agents?.peers ?? []).length) return s.rooms?.layout === 'workspaces' ? html`<${RoomsPage} s=${s} c=${c} />` : html`<${AgentsPage} s=${s} c=${c} />`
   const view = workViewNow(s)
-  // the files view (one task at a time) needs no work page: it walks the tasks of the model
-  if (view === 'dossier') return html`<${DossierView} s=${s} c=${c} />`
   // Work through (cockpit.flow.enabled) needs none either: it walks every open point of the model
   if (view === 'flow') return html`<${FlowPage} s=${s} c=${c} />`
   const work = view === 'due' ? null : workPageOf(s.model?.pages)

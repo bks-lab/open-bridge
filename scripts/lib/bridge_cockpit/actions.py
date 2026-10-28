@@ -20,6 +20,7 @@ import threading
 from typing import Any, Callable
 
 from .. import model_route as mr
+from .. import work_find as wf
 from . import model as m
 from . import activity as act
 from . import describe as dsc
@@ -48,6 +49,8 @@ from .actions_work import WorkVerbs
 
 #: the verbs of Work through's rounds 3 and 4, refused with flow_off before their arguments are checked
 FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach", "flow_merge"})
+#: a folder of one record, as work_find.known_folders names it (a question to the records names them so)
+RECORD_PATH_RE = re.compile(r"^work/(?:(?:tasks|streams)|done/[0-9]{4}-[0-9]{2})/[a-z0-9][a-z0-9-]{0,79}\Z")
 
 
 # The argument types of SPEC. Most are one pattern or one list of words with the message a refusal names;
@@ -105,6 +108,18 @@ def _keys(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str
     if len(set(keys)) != len(keys):
         raise bad_arg(name, "duplicate keys")
     return keys
+
+
+def _record_paths(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
+    """The folders of a question to the records: 1 to ASK_FILES_MAX, each work/tasks|streams/<slug> or
+    work/done/<month>/<slug>, each once"""
+    if not isinstance(value, list) or not 1 <= len(value) <= wf.ASK_FILES_MAX:
+        raise bad_arg(name, f"must be a list of 1 to {wf.ASK_FILES_MAX} folders")
+    if not all(isinstance(x, str) and RECORD_PATH_RE.match(x) for x in value):
+        raise bad_arg(name, "not a folder of a task")
+    if len(set(value)) != len(value):
+        raise bad_arg(name, "duplicate folders")
+    return list(value)
 
 
 def _settings(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
@@ -246,10 +261,11 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "instruct_text": lambda actions, value, name, today: ins.fold(value, name),
     "attach_name": _attach_name,
     "attach_data": _attach_data,
+    "record_paths": _record_paths,
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
 # the verbs after which the Activity tab's kept feeds stand: they change nothing a feed reads
-KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct"}
+KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct", "files_ask"}
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):

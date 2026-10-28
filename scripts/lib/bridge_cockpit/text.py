@@ -302,6 +302,14 @@ EN: dict = {
                  "budget": "Today's instructions are used up",
                  "running": "An instruction is being read already; try again in a moment",
                  "failed": "The model gave no usable steps: {why}"},
+    # the files tab's question to its records (actions_work.py v_files_ask)
+    "files_ask": {"off": "Asking the records is switched off (cockpit.files_search.enabled)",
+                  "held": "No record left to send: {n} stay private by the block list",
+                  "unavailable": "Asking the records is not available: the service cockpit-files needs a Claude model",
+                  "budget": "Today's questions to the records are used up",
+                  "running": "A question is being answered already; try again in a moment",
+                  "too_big": "The records do not fit into one question; search more narrowly",
+                  "failed": "The model gave no usable answer: {why}"},
     "jev": {
         "who": "the user", "who_subject": "the user", "today": "today", "tasks": "tasks",
         "about": "{who_subject}, works with a team and with AI agents",
@@ -635,6 +643,13 @@ DE: dict = {
                  "budget": "Die Anweisungen sind für heute aufgebraucht",
                  "running": "Es wird schon eine Anweisung gelesen; gleich noch einmal versuchen",
                  "failed": "Das Modell gab keine brauchbaren Schritte: {why}"},
+    "files_ask": {"off": "Die KI-Suche in den Akten ist ausgeschaltet (cockpit.files_search.enabled)",
+                  "held": "Keine Akte bleibt zum Senden übrig: {n} bleiben durch die Sperrliste privat",
+                  "unavailable": "Die KI-Suche geht nicht: der Dienst cockpit-files braucht ein Claude-Modell",
+                  "budget": "Die Fragen an die Akten sind für heute aufgebraucht",
+                  "running": "Es wird schon eine Frage beantwortet; gleich noch einmal versuchen",
+                  "too_big": "Die Akten passen nicht in eine Frage; enger suchen",
+                  "failed": "Das Modell gab keine brauchbare Antwort: {why}"},
     "jev": {
         "who": "dem Nutzer", "who_subject": "der Nutzer", "today": "heute", "tasks": "aufgaben",
         "about": "{who_subject}, arbeitet mit einem Team und mit KI-Agenten",

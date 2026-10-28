@@ -245,18 +245,21 @@ def test_a_wrong_work_view_or_focus_switch_keeps_the_default_and_says_so(tmp_pat
     assert len(out) == 1 and out[0].startswith(key + ":") and out[0].endswith("using " + used), out
 
 
+OFF = {"enabled": False, "block": [], "left": 20}     # the files tab's question to its records, as the default leaves it
+
+
 def test_the_state_hands_the_work_view_and_the_focus_switch_to_the_page(tmp_path):
     base = "cockpit:\n  enabled: true\n  language: en\n"
     w = World(tmp_path / "a", config=base, serve=False, prepare=False)
     try:
         assert w.app.state_payload()["work"] == {"view": "due", "focus_to_files": False, "files_scope": "active",
-                                                 "flow": cf.flow_defaults(), "views": list(cf.WORK_VIEWS)}
+                                                 "flow": cf.flow_defaults(), "views": list(cf.WORK_VIEWS), "files_search": OFF}
     finally:
         w.close()
     w = World(tmp_path / "b", config=base + "  work_view: files\n  focus_to_files: true\n", serve=False, prepare=False)
     try:
         assert w.app.state_payload()["work"] == {"view": "files", "focus_to_files": True, "files_scope": "active",
-                                                 "flow": cf.flow_defaults(), "views": list(cf.WORK_VIEWS)}
+                                                 "flow": cf.flow_defaults(), "views": list(cf.WORK_VIEWS), "files_search": OFF}
     finally:
         w.close()
 
@@ -464,3 +467,30 @@ def test_the_state_hands_the_work_views_to_the_page(tmp_path):
         assert work["views"] == ["files", "flow"] and work["view"] == "files"
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- round 6c: the files tab's question to its records
+
+def test_the_files_search_block_is_off_by_default_and_keeps_the_words_that_fit(tmp_path):
+    cfg = load_web_config(tmp_path, {})
+    assert cfg.files_search == {"enabled": False, "budget_per_day": 20, "model": None, "block": []}
+    cfg = load_web_config(tmp_path, {"cockpit": {"files_search": {"enabled": True, "budget_per_day": 5, "model": "sonnet",
+                                                                 "block": ["Versicherung", "Gesundheit", "Steuer", "Familie"]}}})
+    assert cfg.files_search == {"enabled": True, "budget_per_day": 5, "model": "sonnet",
+                                "block": ["Versicherung", "Gesundheit", "Steuer", "Familie"]}
+    assert cfg.config_warnings == ()
+
+
+@pytest.mark.parametrize("value, word", [
+    ({"block": "Versicherung"}, "list of words"),
+    ({"block": ["ok", "", 3]}, "is ignored"),
+    ({"enabled": "yes"}, "true or false"),
+    ({"model": "gpt"}, "cockpit-files"),
+    ({"ask": True}, "unknown key"),
+    ("on", "mapping"),
+])
+def test_a_wrong_files_search_block_says_what_it_uses(tmp_path, value, word):
+    cfg = load_web_config(tmp_path, {"cockpit": {"files_search": value}})
+    assert cfg.files_search["block"] == (["ok"] if isinstance(value, dict) and value.get("block") == ["ok", "", 3] else [])
+    assert len(cfg.config_warnings) == 1 and cfg.config_warnings[0].startswith("cockpit.files_search")
+    assert word in cfg.config_warnings[0], cfg.config_warnings

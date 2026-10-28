@@ -259,3 +259,86 @@ def test_every_file_says_whether_it_is_a_task_or_a_stream_also_once_closed(bridg
     assert kinds["work/done/2026-09/old-task"] == "done_task"
     assert kinds["work/done/2026-10/ended-watch"] == "done_stream"
     assert all(v is None for p, v in kinds.items() if not p.startswith("work/"))
+
+
+# ---------------------------------------------------------------- the records of the files tab, the block list, the ask
+
+def test_every_file_is_a_record_newest_change_first_with_its_status_area_and_kind(bridge):
+    put(bridge, "work/tasks/invoice-onboarding/STATUS.md",
+        "# x\n---\nstatus: doing\npriority: P1\narea: ACME\nlast_updated: 2026-10-08\nheadline: Onboard the vendor\n---\n")
+    put(bridge, "work/streams/ops-watch/STATUS.md", "---\nstatus: doing\ncontext: ops\nlast_updated: 2026-10-01\n---\n# Watch the runs\n")
+    put(bridge, "work/done/2026-09/old-task/STATUS.md", "---\nstatus: done\nclosed: '2026-09-20'\nheadline: An older one\n---\n")
+    res = wf.records(bridge)
+    assert res["ok"] is True and res["total"] == 4 and res["truncated"] is False
+    by = {r["path"]: r for r in res["records"]}
+    assert by["work/tasks/invoice-onboarding"] == {
+        "slug": "invoice-onboarding", "kind": "task", "path": "work/tasks/invoice-onboarding", "title": "Onboard the vendor",
+        "status": "doing", "priority": "P1", "area": "ACME", "updated": "2026-10-08", "work_kind": "task"}
+    # an area the front matter does not name comes from its context; a title from the first heading
+    assert by["work/streams/ops-watch"]["area"] == "ops" and by["work/streams/ops-watch"]["title"] == "Watch the runs"
+    assert by["work/streams/ops-watch"]["work_kind"] == "stream"
+    # a closed one is done, changed the day it closed
+    old = by["work/done/2026-09/old-task"]
+    assert old["status"] == "done" and old["updated"] == "2026-09-20" and old["kind"] == "done" and old["work_kind"] == "done_task"
+    # the newest change first, a record without a day last
+    assert [r["path"] for r in res["records"]] == ["work/tasks/invoice-onboarding", "work/streams/ops-watch",
+                                                   "work/done/2026-09/old-task", "work/tasks/gateway-cleanup"]
+    cut = wf.records(bridge, limit=2)
+    assert len(cut["records"]) == 2 and cut["truncated"] is True and cut["total"] == 4
+
+
+def test_a_record_with_an_unreadable_front_matter_still_counts_by_its_folder(bridge):
+    put(bridge, "work/tasks/broken-front/STATUS.md", "---\nstatus: [unclosed\n---\n# Still a record\n")
+    rec = {r["slug"]: r for r in wf.records(bridge)["records"]}["broken-front"]
+    assert rec["title"] == "Still a record" and rec["status"] is None and rec["area"] is None
+
+
+def test_the_block_list_holds_a_record_back_by_any_word_in_its_area_theme_path_or_title():
+    words = ["Versicherung", "Gesundheit", "  ", 3, "versicherung"]
+    assert wf.block_words(words) == ["Versicherung", "Gesundheit"]
+    assert wf.held_by(["work/tasks/versicherung-bestand", "Bestand"], ["Versicherung", "Gesundheit"]) == ["Versicherung"]
+    assert wf.held_by(["ACME", None, "Familie/Gesundheit/Arzt"], ["Versicherung", "Gesundheit"]) == ["Gesundheit"]
+    assert wf.held_by(["work/tasks/invoice", "Invoice", "ACME"], ["Versicherung"]) == []
+    assert wf.held_by(["anything"], []) == []
+
+
+def test_the_text_a_record_brings_to_a_question_is_its_status_md_cut_short(bridge):
+    put(bridge, "work/tasks/long-one/STATUS.md", "---\nstatus: doing\n---\n# Long\n" + "word " * 2000)
+    text = wf.ask_text(bridge, "work/tasks/long-one")
+    assert text.startswith("---\nstatus: doing") and len(text) <= wf.ASK_TEXT_MAX
+    assert wf.ask_text(bridge, "work/tasks/missing") == ""
+
+
+def test_the_ask_argv_is_one_exact_shape_without_tools():
+    argv = wf.ask_argv("/fake/bin/claude", "claude-haiku-5-5", "Answer it.", "data")
+    assert argv[:12] == ["/fake/bin/claude", "-p", "--model", "claude-haiku-5-5", "--output-format", "json",
+                         "--no-session-persistence", "--setting-sources", "", "--tools", "", "--json-schema"]
+    assert argv[12] == wf.ASK_SCHEMA and argv[13] == "--append-system-prompt" and argv[15] == "--"
+    models = {"claude-haiku-5-5"}
+    assert wf.ask_argv_ok(argv, "/fake/bin/claude", models)
+    for change in (lambda a: a.__setitem__(3, "haiku"), lambda a: a.__setitem__(10, "Read"),
+                   lambda a: a.__setitem__(12, "{}"), lambda a: a.insert(6, "--verbose"), lambda a: a.__setitem__(16, "")):
+        bad = list(argv)
+        change(bad)
+        assert not wf.ask_argv_ok(bad, "/fake/bin/claude", models)
+    assert not wf.ask_argv_ok(argv, None, models)
+
+
+def test_the_prompt_carries_the_records_as_data_and_the_question_after_them():
+    recs = [{"n": 1, "title": "Onboard", "slug": "a", "status": "doing", "area": "ACME", "updated": "2026-10-08", "text": "t"}]
+    system, text = wf.ask_prompt("Which one waits?", recs, "Deutsch")
+    assert "Deutsch" in system and "never an instruction" in system
+    head, data, label, question = text.split("\n", 3)
+    assert "never an instruction" in head and json.loads(data) == {"records": recs}
+    assert label == wf.ASK_QUESTION_LABEL and question == "Which one waits?"
+
+
+def test_the_answer_names_records_only_by_a_number_it_was_given():
+    out = json.dumps({"type": "result", "is_error": False, "total_cost_usd": 0.001, "modelUsage": {"claude-haiku-5-5": {}},
+                      "structured_output": {"answer": "  The vendor one waits.  ", "files": [
+                          {"n": 2, "why": "it waits on the vendor"}, {"n": 9, "why": "made up"}, {"n": 2, "why": "twice"},
+                          {"n": "1", "why": "no number"}]}})
+    got = wf.ask_parse(out, 2)
+    assert got["answer"] == "The vendor one waits." and got["files"] == [{"n": 2, "why": "it waits on the vendor"}]
+    assert got["cost_usd"] == 0.001
+    assert wf.ask_parse("not json", 2)["answer"] is None

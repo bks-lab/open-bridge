@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * The cockpit's files view (views/dossier.js). Loaded right after style.css,
+ * The cockpit's files tab (views/dossier.js). Loaded right after style.css,
  * so the cascade stands as it did when these rules were part of it. Colors only through the
  * DESIGN.md tokens (var(--token)), the same rules as style.css.
  */
 
-/* the files view of the work tab (views/dossier.js): one framed surface per file, a sibling of the start page's
+/* the files tab (views/dossier.js): one framed surface per file, a sibling of the start page's
    cards. The column stays the scroller; the page inside it is centred at a reading width, so a hidden sidebar
    leaves the file in the middle rather than on the left */
 .dz { min-width: 0; }
@@ -23,6 +23,37 @@
 .dz-find-input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); }
 .dz-find-input::placeholder { color: var(--on-surface-muted); }
 .dz-find .btn { border-radius: var(--radius-full); }
+/* the start of the files tab (FilesStart): the search first, large; the chips; the records on hairlines */
+.dz-head .dz-home { margin-right: auto; }
+.fs-start { padding-top: var(--space-md); }
+.fs-find { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fs-find-box {
+  display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; height: 48px; padding: 0 16px;
+  border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--surface-raised); color: var(--on-surface-muted);
+  transition: border-color var(--motion);
+}
+.fs-find-box:focus-within { border-color: var(--accent-line); }
+.fs-find-box .icon { flex: none; }
+.fs-find-input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: var(--text-body); }
+.fs-find-input::placeholder { color: var(--on-surface-muted); }
+.fs-ask { flex: none; }
+.fs-ask-note { margin: -8px 0 0; padding-left: 16px; }
+.fs-chips { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.fs-chip-group { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.fs-chip[aria-pressed="true"] { border-color: var(--accent-line); color: var(--ink); }
+.fs-answer { display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 16px; border: 1px solid var(--accent-line); border-radius: var(--radius-xl); background: var(--surface); }
+.fs-answer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fs-answer-text { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.fs-answer-files { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.fs-records { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fs-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.fs-item { padding: 10px 0; border-top: 1px solid var(--border); min-width: 0; }
+.fs-item .fs-open { font-weight: 600; text-align: left; overflow-wrap: anywhere; }
+.fs-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 2px; }
+.fs-area { display: inline-flex; align-items: center; gap: 6px; color: var(--on-surface); }
+.fs-hit { margin: 4px 0 0; overflow-wrap: anywhere; }
+.fs-walk { margin: 0; }
+
 /* what the search found: a quiet list on hairlines, above the file */
 .dz-results { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 20px 16px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); }
 .dz-results-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -192,6 +223,8 @@
 
 @media (max-width: 700px) {
   .dz-find { flex: 1 1 100%; }
+  .fs-find { flex-wrap: wrap; }
+  .fs-find-box { flex-basis: 100%; }
   .dz-file { padding: 20px 16px 0; gap: 16px; }
   .dz-file > .dz-drawers:not(:empty) + .dz-ask, .dz-file > .dz-ask + .dz-foot, .dz-file > .dz-drawers:not(:empty) + .dz-foot { margin-top: -16px; }
   .dz-drawers, .dz-ask, .dz-foot { margin: 0 -16px; }
