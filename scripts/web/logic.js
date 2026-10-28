@@ -2600,7 +2600,8 @@ export function homeCatalog(model, { workers = true } = {}) {
   for (const id of ['c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done']) {
     if (id !== 'c:workers' || workers) out.push({ id, kind: 'count' })
   }
-  for (const p of model?.pages ?? []) out.push({ id: `p:${p.id}`, kind: 'page', label: p.title, page: p })
+  // a page of the settings group (the Setup page) is no page of its own: it stands in Settings, Setup
+  for (const p of model?.pages ?? []) if (p.group !== 'settings') out.push({ id: `p:${p.id}`, kind: 'page', label: p.title, page: p })
   for (const x of HOME_SHELVES) out.push({ id: `s:${x}`, kind: 'shelf' })
   for (const x of HOME_OPTIONS) out.push({ id: `o:${x}`, kind: 'option' })
   for (const x of HOME_CORE) out.push({ id: `k:${x}`, kind: 'core' })
@@ -4037,6 +4038,19 @@ export function setupPageOf(model) {
   return null
 }
 
+/** The Settings area a page of the group settings opens (the Setup page, briefing_view SETUP_GROUP): it has no tab
+ *  and no place behind More, its sections stand in Settings, Setup; null for every other page */
+export function settingsAreaOf(model, id) {
+  return (model?.pages ?? []).some(p => p.id === id && p.group === 'settings') ? 'setup' : null
+}
+
+/** What the Settings tab carries: the badge of the Setup page while it stands in Settings and counts something (a
+ *  finding of its checks); null otherwise, also when a profile placed the checks on a page of its own, whose tab counts them */
+export function settingsBadgeOf(model) {
+  const badge = (model?.pages ?? []).find(p => p.group === 'settings')?.badge
+  return badge && (badge.kind === 'bad' || badge.kind === 'count') ? badge : null
+}
+
 /** Whether the welcome offers "Set up first": something on the Setup page still keeps the cockpit from working well */
 export function setupWanted(model) {
   return (setupPageOf(model)?.findings ?? 0) > 0
@@ -4091,9 +4105,10 @@ const HINTS = {
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
-  // the Setup page (briefing.py collect --setup): its three lists, each a section of the page
-  setup: [['setupChecks', '.psec[aria-labelledby="ps-setup-setup-checks"]'], ['setupAvailable', '.psec[aria-labelledby="ps-setup-setup-available"]'],
-    ['setupOn', '.psec[aria-labelledby="ps-setup-setup-on"]'], ['rowActs', '.psec td.c-acts']],
+  // Settings at its area Setup (briefing.py collect --setup): the three lists, each a section drawn as on a page
+  '@settings/setup': [['settingsNav', '.settings-nav'], ['setupChecks', '.settings-body .psec[aria-labelledby$="-setup-checks"]'],
+    ['setupAvailable', '.settings-body .psec[aria-labelledby$="-setup-available"]'],
+    ['setupOn', '.settings-body .psec[aria-labelledby$="-setup-on"]'], ['rowActs', '.settings-body .psec td.c-acts']],
   // Work through, a view of the work tab (its parts are explained there, hintsFor), with the session cards of Running now
   // and the row of the task check under Not now with the check's filter and table in the middle (round 6 c)
   '@flow': [['flowSide', '.flow-side'], ['flowOverview', '.flow-overview'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
@@ -4120,7 +4135,8 @@ export function hintsFor(s) {
   const view = page === 'briefing' ? workViewIn(s) : null
   const dayColumns = page !== 'briefing' || view === 'due'
   const own = view === 'flow' ? [['workSwitch', '.work-switch'], ...HINTS['@flow']] : !dayColumns ? [['workSwitch', '.work-switch'], ...PAGE_HINTS, ['tabcol', '#tabs-column']]
-    : HINTS[page] ?? [...PAGE_HINTS, ['tabcol', '#tabs-column']]
+    : (page === '@settings' && s?.ui?.settingsSection === 'setup' ? HINTS['@settings/setup'] : null) ?? HINTS[page]
+      ?? [...PAGE_HINTS, ['tabcol', '#tabs-column']]
   // the work switch names the views it offers, no other (round 6 B): its words get them as `vars` (hintText)
   const vars = id => (id === 'workSwitch' ? { vars: [workViewsIn(s)] } : {})
   return [...own.map(([id, target]) => ({ id, target, group: 'page', ...vars(id) })),

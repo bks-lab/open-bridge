@@ -2340,8 +2340,8 @@ test('settings: a page of its own behind More, always there, with the launch gro
   }
   const page = read('views/settings.js')
   assert.match(page, /export function SettingsPage\(\{ s, c \}\)/)
-  assert.match(page, /const SECTIONS = \['start', 'look', 'launch', 'ticker', 'guide', 'boards'\]/)          // the areas; a later one joins the list
-  assert.match(page, /const AREAS = \{ start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings \}/)
+  assert.match(page, /const SECTIONS = \['setup', 'start', 'look', 'launch', 'ticker', 'guide', 'boards'\]/)          // the areas; a later one joins the list
+  assert.match(page, /const AREAS = \{ setup: SetupArea, start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings \}/)
   // the ticker's group draws with the page's own parts, no copies of them
   for (const part of ['Switch', 'Card', 'Row']) assert.match(page, new RegExp(`^export function ${part}\\(`, 'm'), part)
   const tickerView = read('views/ticker.js')
@@ -5002,9 +5002,32 @@ test('setupPageOf: the page that holds the setup checks and how many of its rows
   assert.equal(logic.setupWanted({ pages: [page('setup', [checks([{ tone: 'warn' }])])] }), true)
 })
 
-test('hintsFor: the Setup page explains its three lists', () => {
-  const ids = logic.hintsFor({ ui: { page: 'setup' }, layout: 'wide' }).filter(h => h.group === 'page').map(h => h.id)
+test('settingsBadgeOf: a finding of the setup checks in Settings shows on its tab, nothing else does', () => {
+  const sp = (badge, group = 'settings') => ({ pages: [{ id: 'setup', group, badge, sections: [] }] })
+  assert.equal(logic.settingsBadgeOf(null), null)
+  assert.equal(logic.settingsBadgeOf(sp({ kind: 'ok' })), null)
+  assert.equal(logic.settingsBadgeOf(sp({ kind: 'none' })), null)
+  assert.deepEqual(logic.settingsBadgeOf(sp({ kind: 'count', n: 2, warn: true })), { kind: 'count', n: 2, warn: true })
+  assert.deepEqual(logic.settingsBadgeOf(sp({ kind: 'bad', n: 1 })), { kind: 'bad', n: 1 })
+  // placed on a page of the profile's own, the checks count on that page's tab, not twice
+  assert.equal(logic.settingsBadgeOf(sp({ kind: 'bad', n: 1 }, 'main')), null)
+})
+
+test('settingsPageOf: a page of the settings group opens Settings at its area, any other page is its own', () => {
+  const model = { pages: [{ id: 'setup', group: 'settings', sections: [] }, { id: 'ops', group: 'main', sections: [] }] }
+  assert.equal(logic.settingsAreaOf(model, 'setup'), 'setup')
+  assert.equal(logic.settingsAreaOf(model, 'ops'), null)
+  assert.equal(logic.settingsAreaOf(model, '@start'), null)
+  // the start page offers no tile of it: it is no page of its own
+  assert.ok(!logic.homeCatalog(model).some(x => x.id === 'p:setup'))
+  assert.ok(logic.homeCatalog(model).some(x => x.id === 'p:ops'))
+})
+
+test('hintsFor: Settings at its Setup area explains the three lists', () => {
+  const ids = logic.hintsFor({ ui: { page: '@settings', settingsSection: 'setup' }, layout: 'wide' }).filter(h => h.group === 'page').map(h => h.id)
   for (const id of ['setupChecks', 'setupAvailable', 'setupOn']) assert.ok(ids.includes(id), id)
+  const look = logic.hintsFor({ ui: { page: '@settings', settingsSection: 'look' }, layout: 'wide' }).map(h => h.id)
+  assert.ok(!look.includes('setupChecks'))
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].tour.setupFirst && text.TABLES[lang].tour.setupHint, lang)
 })
 
@@ -5057,7 +5080,7 @@ test('tourPlace: below the area when it fits, above when not, inside a large one
 
 // ---------------------------------------------------------------- the explain overlay (views/hints.js)
 
-const HINT_PAGES = ['@start', 'briefing', '@files', '@flow', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'setup', 'some-profile-page']
+const HINT_PAGES = ['@start', 'briefing', '@files', '@flow', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'some-profile-page']
 const WORK_AREA = { ui: { page: 'briefing', workView: 'area' }, layout: 'wide', model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
 
 test('hintsFor: the page\'s own areas first, then the header, each once, each with its words in both languages', () => {
@@ -5116,7 +5139,8 @@ test('hints: the bar of Explain speaks of the mouse, it names no key (mouse firs
 })
 
 test('hints: every explanation in the texts belongs to an area some page points at, in both languages alike', () => {
-  const used = new Set([...HINT_PAGES.map(page => ({ ui: { page }, layout: 'wide' })), WORK_AREA]
+  const used = new Set([...HINT_PAGES.map(page => ({ ui: { page }, layout: 'wide' })), WORK_AREA,
+    { ui: { page: '@settings', settingsSection: 'setup' }, layout: 'wide' }]
     .flatMap(s => logic.hintsFor(s).map(h => h.id)))
   for (const lang of ['en', 'de']) {
     const items = text.TABLES[lang].hints.items

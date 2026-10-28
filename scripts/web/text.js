@@ -599,6 +599,7 @@ const en = {
     configWarnings: 'The config has keys the cockpit does not use as written',
     configWarningsExplain: 'The cockpit runs with the fallback each line names. Fix the key under cockpit: in bridge-config.yaml and restart the cockpit.',
     section: {
+      setup: { title: 'Setup', sub: 'What still keeps the cockpit from working well, what can be switched on' },
       start: { title: 'Start page', sub: 'Overview or another view, stations, sections' },
       look: { title: 'Appearance', sub: 'Colours, keys, look up' },
       launch: { title: 'Model choice', sub: 'What an agent tab starts with' },
@@ -1021,7 +1022,7 @@ const en = {
     skip: 'Skip',
     // the welcome while the Setup page has a finding (docs/bridge-cockpit.md, The Setup page)
     setupFirst: 'Set up first',
-    setupHint: 'A few things still keep the cockpit from working well. The Setup page lists them, each with a button that hands it to an agent.',
+    setupHint: 'A few things still keep the cockpit from working well. Settings, Setup lists them, each with a button that hands it to an agent.',
     next: 'Next',
     back: 'Back',
     finish: 'Done',
@@ -2213,6 +2214,7 @@ const de = {
     configWarnings: 'Die Config hat Schlüssel, die das Cockpit so nicht verwendet',
     configWarningsExplain: 'Das Cockpit läuft mit dem Ersatzwert, den jede Zeile nennt. Korrigiere den Schlüssel unter cockpit: in bridge-config.yaml und starte das Cockpit neu.',
     section: {
+      setup: { title: 'Einrichtung', sub: 'Was dem Cockpit noch fehlt, was sich einschalten lässt' },
       start: { title: 'Startseite', sub: 'Überblick oder eine andere Ansicht, Stationen, Abschnitte' },
       look: { title: 'Darstellung', sub: 'Farben, Tasten, Nachschlagen' },
       launch: { title: 'Modellwahl', sub: 'Womit ein Agenten-Tab startet' },
@@ -2623,7 +2625,7 @@ const de = {
     start: 'Einführung starten',
     skip: 'Überspringen',
     setupFirst: 'Erst einrichten',
-    setupHint: 'Ein paar Dinge halten das Cockpit noch davon ab, gut zu arbeiten. Die Seite Einrichtung listet sie, jedes mit einem Knopf, der es einem Agenten übergibt.',
+    setupHint: 'Ein paar Dinge halten das Cockpit noch davon ab, gut zu arbeiten. Einstellungen, Einrichtung listet sie, jedes mit einem Knopf, der es einem Agenten übergibt.',
     next: 'Weiter',
     back: 'Zurück',
     finish: 'Fertig',

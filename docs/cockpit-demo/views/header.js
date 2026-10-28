@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, short, railOn, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
@@ -331,7 +331,9 @@ export function PageBar({ s, c }) {
         : toClose > 0 ? html`<span class="pbadge"><span class="mono">${toClose}</span></span>` : null)}
       ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`, s.jev.ready ? null : 'warning') : null}
       ${pages.map(p => { const b = tabBadgeOf(s, p); return tab(p.id, p.title, html`<${PageBadge} badge=${b} title=${badgeTitle(p)} />`, b?.kind === 'bad' ? 'danger' : null) })}
-      ${tab(SETTINGS_PAGE, t.settings.title, null)}
+      ${(() => { const b = settingsBadgeOf(s.model)   // a finding of the setup checks shows without opening Settings
+        return tab(SETTINGS_PAGE, t.settings.title, b ? html`<${PageBadge} badge=${b} title=${t.settings.section.setup.title} />` : null,
+          b?.kind === 'bad' ? 'danger' : b?.warn ? 'warning' : null) })()}
       ${order.filter(id => made.has(id) && !folded.has(id)).map(button)}
       ${fold ? html`<${MoreTab} items=${order.filter(id => folded.has(id) && made.has(id)).map(id => ({ id, ...made.get(id) }))}
         s=${s} c=${c} lit=${lit} open=${open} setOpen=${setOpen} box=${moreBox} />` : null}

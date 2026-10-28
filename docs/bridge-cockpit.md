@@ -1717,8 +1717,8 @@ sends counts as Auto's recommendation and stays under `max_model`. The effort
 and priority go to the
 judge, never its detail or a path.
 
-The page **Settings** (behind More) has three areas: Start page, Appearance
-and Model choice. Model choice shows every key above in three cards (the
+The page **Settings** (behind More) opens on Setup ([The Setup page](#the-setup-page)) and has
+the areas Start page, Appearance and Model choice. Model choice shows every key above in three cards (the
 main switch, the choice by hand, Auto) and changes it on top of the config;
 Auto's details show only while Auto is on, and the Jev and Haiku tables carry
 a scale from 0 to 3 that shows which model each rating gets. A change is kept
@@ -2501,10 +2501,15 @@ The settings page switches `enabled` and `auto` on top of the config, kept in
 ### The Setup page
 
 The first time someone opens the cockpit it should help them set the Bridge up; opened again later,
-the same place should say what still keeps the cockpit from working well. That place is the page
-**Setup** (de: Einrichtung), behind More in the page bar. It is made of three ordinary `command`
-sections of `scripts/bridge-setup.py`, which the cockpit collects with `briefing.py collect --setup`
-(`cockpit.setup: false` leaves the page out):
+the same place should say what still keeps the cockpit from working well. That place is the area
+**Setup** (de: Einrichtung) of **Settings**, the first of its areas. It is made of three ordinary
+`command` sections of `scripts/bridge-setup.py`, which the cockpit collects with `briefing.py
+collect --setup` (`cockpit.setup: false` leaves them and the area out). They travel as a page of
+the view like any other (id `setup`, group `settings`), so a row keeps its key, its filing and its
+sweep, but that page has no tab and no place behind More: Settings, Setup draws its sections with
+the same rows and steps a page has. A finding of the checks shows without opening Settings: the
+Settings tab carries the count (red for a red finding, and More wears its colour when Settings is
+folded behind it), and a link, a tile or the band that names the page opens Settings at Setup:
 
 - **What keeps the cockpit from working well** (`setup-checks`): a row only when something is
   actually wrong, none when all is well. Task management is off (`work.enabled`), so the work pages
@@ -2545,10 +2550,11 @@ what stood there before (status, `remind_after`, `decided_at`) and a digest of w
 wrote: the script restores that entry exactly, and refuses once the entry changed since. The catalogue
 behind the page is `skills/bridge-onboard/references/features.yaml`, one entry per feature of
 `feature-catalog.md`; a test holds the two equal. A profile can place any of the three sections
-on a page of its own (`view.pages`); the ids are reserved, so no profile section may take one.
+on a page of its own (`view.pages`), where it stands with a tab as before and counts there; the
+ids are reserved, so no profile section may take one.
 
 The first visit's welcome offers **Set up first** beside Start the tour and Skip while the checks
-have a row: it opens the Setup page and closes the welcome without ending the tour, so the next
+have a row: it opens Settings at Setup and closes the welcome without ending the tour, so the next
 visit offers the tour again.
 
 ### The first-run tour
@@ -2576,8 +2582,8 @@ still start it. In mock mode it stays closed unless the link carries `&tour=1`.
 stands: each area the page shows gets a numbered note beside it, a ring around it
 (an ellipse for a button or a chip, a frame for a row or a column) and an arrow from
 the note to the ring. Every page explains its own parts: Start, Today, Chat,
-Files, Sessions, Background jobs, A2A connections, Check tasks, Jev, Setup and Settings each have
-their own list, and a page of the briefing profile explains the parts it is built from
+Files, Sessions, Background jobs, A2A connections, Check tasks, Jev and Settings each have
+their own list (Settings at its area Setup one of the three lists there), and a page of the briefing profile explains the parts it is built from
 (the count beside its title, the overview tiles, the sorting bars, a section's
 head, its rows, the GitHub figures, filters and boards, the quota gauges, the costs, the
 dates, the folder bar, the machines and a sub page's head card). The notes come in rounds so none covers another: the page first, the header

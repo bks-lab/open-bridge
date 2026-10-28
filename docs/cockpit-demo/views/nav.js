@@ -135,7 +135,7 @@ export function reviewHomeOf(s) {
 export function subPagesOf(s, id) {
   const pages = s?.model?.pages ?? []
   const page = pages.find(p => p.id === id)
-  if (!page || page.under || page.group === 'day' || page.group === 'work') return []
+  if (!page || page.under || page.group === 'day' || page.group === 'work' || page.group === 'settings') return []
   return (page.subs ?? []).filter(x => (x === WORKERS_PAGE ? s.workers?.status !== 'none' : x !== id && pages.some(p => p.id === x)))
 }
 
@@ -207,14 +207,16 @@ function pageList(s) {
   // Chat is the classic one (as cmux the agents are a tab inside the Chat, chatAreaOf), Sessions only where Work through
   // does not list the live sessions in its Running now (round 6, sessionsInFlow), the task check only where no page holds
   // it and Work through does not (round 6 c, checkInFlow: its row stands under Not now);
-  // a page of group `day` has no tab, its sections stand under the day list of Today (DayColumn); a sub page
+  // a page of group `day` has no tab, its sections stand under the day list of Today (DayColumn); a page of group
+  // `settings` (the Setup page) has none either, it stands in Settings, Setup, whose tab carries its count; a sub page
   // (parentOf: a profile page with `under:`, or the Workers page placed under one) has none either, the bar of
   // its folder and the menu at its parent's tab open it; Settings is the last of all
   return [{ id: START_PAGE }, { id: 'briefing' }, ...(filesOn(s) ? [{ id: FILES_PAGE }] : []), { id: CHAT_PAGE }, ...(sessionsInFlow(s) ? [] : [{ id: SESSIONS_PAGE, more: true }]),
     ...(s.workers?.status === 'none' || parentOf(s, WORKERS_PAGE) ? [] : [{ id: WORKERS_PAGE, more: true }]),
     ...((s.agents?.peers ?? []).length && !chatAsWorkspaces(s) ? [{ id: AGENTS_PAGE, more: true }] : []), ...(reviewHomeOf(s) || checkInFlow(s) ? [] : [{ id: CHECK_PAGE, more: true }]),
     ...(s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? [{ id: JEV_PAGE, more: true }] : []),
-    ...(s.model?.pages ?? []).filter(p => p.group !== 'day' && p.group !== 'work' && !parentOf(s, p.id)).map(p => ({ id: p.id, more: p.group === 'more' })),
+    ...(s.model?.pages ?? []).filter(p => p.group !== 'day' && p.group !== 'work' && p.group !== 'settings' && !parentOf(s, p.id))
+      .map(p => ({ id: p.id, more: p.group === 'more' })),
     { id: SETTINGS_PAGE, more: true }]
 }
 

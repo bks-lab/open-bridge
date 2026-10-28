@@ -575,7 +575,7 @@ Phase F step 8 after the first briefing; run by `--add cockpit`, at once. Openin
 never the login link of `url`. A refusal: the table in `skills/cockpit/SKILL.md`.
 Without a terminal driver (`workplace.driver`), say in one line that "Let AI do it"
 starts nothing until one is set (D1d). The first visit offers the cockpit's **Setup**
-page before the tour while it has a finding (`docs/bridge-cockpit.md`, The Setup page):
+area (Settings, Setup) before the tour while it has a finding (`docs/bridge-cockpit.md`, The Setup page):
 mention it in the same line when D1 left task management off or no driver is set.
 
 **Record** the answer in `work/onboarding-state.yaml` either way: `cockpit: {status:
@@ -601,7 +601,7 @@ If a feature has prerequisite evidence missing (e.g. `--add doc-system`
 but no docs_root detected), prompt for the path inline rather than
 re-running the full scan.
 
-The cockpit's Setup page starts this mode too: "Let AI do it" on one of its
+The cockpit's Setup area (Settings, Setup) starts this mode too: "Let AI do it" on one of its
 catalogue rows opens an agent tab on the row, whose detail names the
 feature's Activate: step (`/bridge-onboard --add <feature>` or the config key).
 Run that step as here, with the person confirming; the page itself writes only

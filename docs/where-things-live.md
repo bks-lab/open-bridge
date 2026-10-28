@@ -102,7 +102,7 @@ searches again.
 | What does my briefing show, from which trackers, and how do I change it? | [`docs/briefings.md`](briefings.md) |
 | How do I choose the cockpit's tabs, columns, marks and language? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) § 8 |
 | How do I see and steer the whole Bridge in a browser (inbox, tasks, agent tabs, machines)? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) (early version) |
-| What still keeps my cockpit from working well, and which features can I still switch on? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) "The Setup page" (`scripts/bridge-setup.py`) |
+| What still keeps my cockpit from working well, and which features can I still switch on? | the cockpit's Settings, Setup: [`docs/bridge-cockpit.md`](bridge-cockpit.md) "The Setup page" (`scripts/bridge-setup.py`) |
 | What is in `mods/`, and how do I install or test a mod? | [`mods/README.md`](../mods/README.md) |
 | How do the day's agent tabs get planned and steered, with or without a terminal tool? | [`docs/workplace.md`](workplace.md) |
 | How does a machine that is always on become the arm of my Bridge? | [`docs/always-on-machine.md`](always-on-machine.md) |

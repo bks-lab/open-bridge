@@ -312,6 +312,10 @@ def parse_cards(value) -> list[dict] | None:
             for c in value if isinstance(c, dict) and c.get("id") in CARD_IDS]
 
 
+# the sections of the Setup page (briefing_view.SETUP_SECTIONS, a test holds them equal)
+SETUP_SECTIONS = ("setup-checks", "setup-available", "setup-on")
+
+
 def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
     pages = []
     for p in _list(_dict(data).get("pages")):
@@ -341,8 +345,11 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                              "days": g.get("days") if isinstance(g.get("days"), int) else None}
                             for g in _list(x.get("metrics")) if isinstance(g, dict) and isinstance(g.get("id"), str)][:12] or None,
             })
+        # the Setup page (briefing_view SETUP_GROUP) stands in Settings, Setup: only a page of the setup sections alone
+        setup_only = bool(sections) and all(x["id"] in SETUP_SECTIONS for x in sections)
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
-                "group": p.get("group") if p.get("group") in ("more", "work", "day") else "main", "overview": p.get("overview") is True,
+                "group": p.get("group") if p.get("group") in ("more", "work", "day") or (p.get("group") == "settings" and setup_only)
+                else "main", "overview": p.get("overview") is True,
                 "cards": parse_cards(p.get("cards")),
                 # where the page stands: under another (no tab, the bar of that page's folder opens it), and the sub
                 # pages a page names in their order, the cockpit's own @workers among them (briefing_view.pages)

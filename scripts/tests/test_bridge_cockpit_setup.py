@@ -434,6 +434,7 @@ def test_the_setup_page_stands_on_its_own_and_never_on_the_rest_page(tmp_path, c
     pages = {p["id"]: p for p in collected(root, "--setup", capsys=capsys)["pages"]}
     setup = pages["setup"]
     assert setup["title"] == "Setup"
+    assert setup["group"] == "settings"           # no tab and not behind More: the cockpit shows it in Settings, Setup
     assert [s["id"] for s in setup["sections"]] == SETUP_IDS
     by = {s["id"]: s for s in setup["sections"]}
     assert by["setup-checks"]["items"][0]["actionable"] is True and by["setup-checks"]["weight"] >= 1
@@ -546,3 +547,27 @@ def test_collect_argv_carries_setup_on_every_pass_unless_switched_off(tmp_path):
         assert "--setup" not in w.app.collector.collect_argv("full", False)
     finally:
         w.close()
+
+
+def test_the_cockpit_model_keeps_the_setup_page_in_its_settings_group():
+    from lib.bridge_cockpit import model as cm
+    sec = {"id": "setup-checks", "kind": "command", "title": "Checks", "status": "ok", "total": 1,
+           "items": [{"id": "work-off", "title": "Task management is off", "tone": "warn", "detail": "", "when": "",
+                      "ask": True, "mark": None, "actionable": True}], "weight": 1, "bad": 0}
+    pages = cm.parse_pages({"pages": [{"id": "setup", "title": "Setup", "group": "settings", "sections": [sec]},
+                                      {"id": "ops", "title": "Ops", "group": "settings", "sections": [{**sec, "id": "x"}]}]})
+    assert [p["group"] for p in pages] == ["settings", "main"]   # only the Setup page may stand in Settings
+
+
+def test_a_profile_cannot_put_a_page_of_its_own_into_settings(tmp_path):
+    root = bridge(tmp_path)
+    path = root / "workflow" / "briefings" / "mine.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["view"] = {"pages": [{"id": "ops", "group": "settings", "sections": ["gh"]}]}
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    assert any("group" in p for p in bf.validate(root))
+
+
+def test_the_cockpit_knows_the_setup_sections_the_briefing_reserves():
+    from lib.bridge_cockpit import model as cm
+    assert cm.SETUP_SECTIONS == bv.SETUP_SECTIONS

@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
+  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace,
@@ -208,7 +208,7 @@ const store = createStore({
     // the GitHub page (views/github.js, round 6c): the filter bar's choice per section and whether the rows stand
     // under their board, both kept in this browser
     ghFilter: loadGhFilter(), ghGroup: load('bridge-cockpit.ghGroup', 'on') !== 'off',
-    settingsSection: load('bridge-cockpit.settingsSection', 'start'),
+    settingsSection: load('bridge-cockpit.settingsSection', 'setup'),   // Setup first, where the view carries it (settings.js)
     busy: {}, snapshotText: null, openMsg: null, tabView: null, room: lastRoom(), quickConv: lastAsk(), asksAll: false, agentPeer: null, agentConv: null, agentMode: 'question', agentsListHidden: load('bridge-cockpit.agentsList', 'shown') === 'hidden',
     // the area the Chat as cmux shows, its work or the A2A agents (views/nav.js chatAreaOf); kept in this browser
     chatArea: load('bridge-cockpit.chatArea', 'work') === 'a2a' ? 'a2a' : 'work',
@@ -943,6 +943,13 @@ const ctl = {
     }
     // a page of group day has no tab: a tile or link to it opens Today, where its sections stand
     if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = 'briefing'
+    // a page of group settings (the Setup page) has none either: it opens Settings at its area
+    const area = settingsAreaOf(s.model, id)
+    if (area) {
+      save('bridge-cockpit.settingsSection', area)
+      setUi({ settingsSection: area })
+      id = SETTINGS_PAGE
+    }
     // the work page and the Jev tab are views of the work tab where a page of group work exists; with By source or
     // By Jev switched off the way lands in Work through (workViewGo, nothing stored), Jev's with Prio on the left
     const work = workPageOf(s.model?.pages)

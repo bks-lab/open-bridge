@@ -35,7 +35,7 @@ machine has (cmux: `skills/cmux/scripts/cmux_driver.py`, tmux: `skills/tmux/scri
 detected as in `bridge-onboard` D1d), written only on a yes, then `stop` and `open` again. `null`
 means the driver did not answer: say nothing.
 
-On a first open, add one line: the page **Setup** (behind More) lists what still keeps the cockpit
+On a first open, add one line: **Settings, Setup** (the first area of Settings, whose tab carries a count while something is wrong) lists what still keeps the cockpit
 from working well and what can be switched on, and the first visit's welcome offers it before the tour.
 
 ## When it refuses

@@ -436,6 +436,7 @@ REST_PAGE = "more"
 # the cockpit's Setup page (briefing.py collect --setup, scripts/bridge-setup.py): its three sections and how each
 # stands there; a profile may place any of them on a page of its own, the rest stand on this page
 SETUP_PAGE = "setup"
+SETUP_GROUP = "settings"     # no tab and not behind More: a dashboard shows it in its settings (cockpit: Settings, Setup)
 SETUP_PAGE_ALT = "bridge-setup"     # its id when a page of the profile is called setup already
 SETUP_ENTRIES = ({"id": "setup-checks"},
                  {"id": "setup-available", "actionable": True, "badge": False},
@@ -2325,7 +2326,7 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
             own[2].extend(setup)
         else:
             pid = SETUP_PAGE if all(p[0] != SETUP_PAGE for p in plan) else SETUP_PAGE_ALT
-            plan.append((pid, labels["page_setup"], setup, "more", False, None))
+            plan.append((pid, labels["page_setup"], setup, SETUP_GROUP, False, None))
         placed |= {e["id"] for e in setup}
     if configured is None or view.get("page_rest", "show") != "hide":
         rest = [{"id": sid} for sid, s in sections.items()

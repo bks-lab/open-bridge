@@ -646,10 +646,12 @@ appends three `command` sections of `scripts/bridge-setup.py`: `setup-checks` (w
 cockpit from working well, findings only), `setup-available` (the onboarding catalogue's features
 that are off, with the steps `later` and `silence` through `actions_argv`) and `setup-on` (what is
 on, dim). All three are `bucket: none`, so they never reach the briefing's buckets. `pages` gives
-them a page of their own, id `setup` (label `page_setup`), behind More, never the rest page:
+them a page of their own, id `setup` (label `page_setup`, `bridge-setup` when a profile page has
+that id) in the group `settings`, never the rest page; a dashboard shows that group in its
+settings (the cockpit: Settings, Setup) instead of a tab, and a profile cannot set the group:
 `setup-available` with `actionable: true` and `badge: false`, `setup-on` with `actionable: false`
 and `badge: false`. A profile may name any of the three in `view.pages` and place it on a page of
-its own; a page of its own with the id `setup` takes the ones it does not name. The three ids are
+its own; a page of its own with the id `setup` that names one of them takes the ones it does not name. The three ids are
 reserved: `validate` refuses a profile section that takes one. `act <profile> setup-available <id>
 <step>` works whether or not the run collected the page. Model and safety: [`bridge-cockpit.md`](bridge-cockpit.md)
 § The Setup page.

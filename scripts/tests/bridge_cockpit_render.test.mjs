@@ -1974,7 +1974,7 @@ test('tour: a middle step counts, goes back and on, the last one ends it as fini
 })
 
 // the Setup page (docs/bridge-cockpit.md, The Setup page): a welcome with something to set up offers it first
-const SETUP_MODEL = model => ({ ...model, pages: [...(model?.pages ?? []), { id: 'setup', title: 'Setup', sections: [
+const SETUP_MODEL = model => ({ ...model, pages: [...(model?.pages ?? []), { id: 'setup', title: 'Setup', group: 'settings', sections: [
   { id: 'setup-checks', items: [{ index: 0, title: 'Task management is off', tone: 'warn' }] },
   { id: 'setup-available', items: [{ index: 1, title: 'GitHub', tone: null }] }] }] })
 
@@ -1994,6 +1994,24 @@ test('tour: with a finding on the Setup page the welcome offers Set up first, wh
   // a later step never offers it
   const later = mount(html`<${Tour} s=${{ ...s, ui: { ...s.ui, tour: { id: 'start' } } }} c=${recorder()} />`)
   assert.ok(!labels(later).includes(en.tour.setupFirst))
+})
+
+test('settings: the Setup area shows the setup sections with their rows, the area only where the page exists', () => {
+  const { SettingsPage } = views.settings
+  const base = cockpitState(NOW, { ui: { page: '@settings', settingsSection: 'setup' } })
+  const model = { ...base.model, pages: [...(base.model?.pages ?? []), { id: 'setup', title: 'Setup', group: 'settings', badge: { kind: 'count', n: 1, warn: true },
+    sections: [{ id: 'setup-checks', title: 'What keeps the cockpit from working well', kind: 'command', status: 'ok', total: 1, items: [
+      { index: 0, key: 'item:setup/setup-checks/work-off', id: 'work-off', title: 'Task management is off', detail: 'Set work.enabled: true', tone: 'warn', actionable: true }] }] }] }
+  const el = mount(html`<${SettingsPage} s=${{ ...base, model }} c=${recorder()} />`)
+  assert.ok(el.$$('.settings-nav-item').some(b => b.text().includes(en.settings.section.setup.title)))
+  assert.match(el.$('.settings-body').text(), /Task management is off/)
+  assert.ok(el.$('.settings-body .psec'), 'drawn as a page section, with the rows and steps every page has')
+  // the page has no tab and no place behind More; the Settings tab carries its count
+  assert.ok(!views.nav.pageOrder({ ...base, model }).includes('setup'))
+  assert.ok(views.nav.pageOrder({ ...base, model }).includes('@settings'))
+  // a Bridge without the page (cockpit.setup false): no such area, and a stored choice of it falls back
+  const none = mount(html`<${SettingsPage} s=${base} c=${recorder()} />`)
+  assert.ok(!none.$$('.settings-nav-item').some(b => b.text().includes(en.settings.section.setup.title)))
 })
 
 test('tour: closed, it draws nothing', () => {
