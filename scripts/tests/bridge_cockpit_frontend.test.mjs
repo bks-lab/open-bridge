@@ -3103,6 +3103,79 @@ test('github rows: the board priority shows as a chip and sorts P1 before P2 bef
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].gh.sort.priority, lang)
 })
 
+// ---------------------------------------------------------------- the GitHub page's filter bar (round 6c)
+
+/** Rows in the shape the server sends (model.parse_gh): two boards, a row the search alone found, a draft card */
+function ghRows() {
+  const row = (index, gh, flags = []) => ({ index, flags, gh: { type: 'issue', people: [], labels: [], also_on: [], ...gh } })
+  return [
+    row(1, { repo: 'example/app', board: 'Demo board', status: 'In Progress', people: ['demo-user'], author: 'teammate' }, ['mine']),
+    row(2, { repo: 'example/app', board: 'Demo board', status: 'Todo', people: ['teammate'], author: 'demo-user', by_me: true }),
+    row(3, { repo: 'example/tools', board: 'Docs board', status: 'Todo', people: [], type: 'pr', also_on: ['Demo board'] }),
+    row(4, { repo: 'example/tools', board: null, status: 'open', people: ['other-dev'], type: 'pr', author: 'other-dev' }, ['ask_review']),
+    row(5, { repo: null, board: 'Docs board', status: 'Todo', people: [], type: 'draft' }),
+  ]
+}
+
+test('github filter bar: each row has its values per dimension, you as Me, nobody and no board as their own value', () => {
+  const rows = ghRows()
+  const me = logic.ghMyLogin(rows)
+  assert.equal(me, 'demo-user', 'the author of a row you opened')
+  assert.equal(logic.ghMyLogin([rows[0]]), 'demo-user', 'else the only assignee of a row assigned to you')
+  assert.equal(logic.ghMyLogin([rows[2]]), null)
+  const v = (i, d) => logic.ghValues(rows[i], d, me)
+  assert.deepEqual(v(0, 'person'), [logic.GH_ME, 'teammate'], 'yours, your own login not twice')
+  assert.deepEqual(v(1, 'person'), [logic.GH_ME, 'teammate'], 'you opened it')
+  assert.deepEqual(v(2, 'person'), [logic.GH_NONE], 'nobody assigned')
+  assert.deepEqual(v(2, 'board'), ['Docs board', 'Demo board'], 'a card on two boards stands on both')
+  assert.deepEqual(v(3, 'board'), [logic.GH_NONE])
+  assert.deepEqual(v(3, 'status'), [], 'a row on no board has no board column')
+  assert.deepEqual(v(4, 'repo'), [], 'a draft card has no repository')
+  assert.deepEqual(v(3, 'type'), ['pr'])
+  // an older server sends no board: the group stands in for it unless it is the repository
+  assert.deepEqual(logic.ghValues({ group: 'Demo board', gh: { repo: 'example/app', status: 'Todo' } }, 'board'), ['Demo board'])
+  assert.deepEqual(logic.ghValues({ group: 'example/app', gh: { repo: 'example/app', status: 'open' } }, 'board'), [logic.GH_NONE])
+})
+
+test('github filter bar: the choices combine, a figure filters too, and each option counts beside the other choices', () => {
+  const rows = ghRows()
+  const me = logic.ghMyLogin(rows)
+  const shown = f => rows.filter(it => logic.ghPasses(it, f, me)).map(it => it.index)
+  assert.deepEqual(shown(null), [1, 2, 3, 4, 5])
+  assert.deepEqual(shown({ board: 'Demo board' }), [1, 2, 3])
+  assert.deepEqual(shown({ board: 'Demo board', type: 'pr' }), [3])
+  assert.deepEqual(shown({ person: logic.GH_ME }), [1, 2])
+  assert.deepEqual(shown({ person: logic.GH_NONE }), [3, 5])
+  assert.deepEqual(shown({ board: logic.GH_NONE }), [4])
+  assert.deepEqual(shown({ status: 'Todo', repo: 'example/tools' }), [3])
+  assert.deepEqual(shown({ flag: 'ask_review' }), [4])
+  assert.deepEqual(shown({ flag: 'open', board: 'Docs board' }), [3, 5], 'the figure open is every row')
+  assert.equal(logic.ghFiltered(null), false)
+  assert.equal(logic.ghFiltered({ board: null, person: null }), false)
+  assert.equal(logic.ghFiltered({ type: 'pr' }), true)
+  const facets = logic.ghFacets(rows, { type: 'issue' }, me, { board: ['Docs board', 'Demo board'] })
+  // the boards in the registry's order, no board last; the counts as if Board were open, beside Kind issue
+  assert.deepEqual(facets.board.map(o => [o.value, o.n]), [['Demo board', 2]])
+  // Me first, nobody last, the others by count
+  assert.deepEqual(logic.ghFacets(rows, null, me).person.map(o => [o.value, o.n]),
+    [[logic.GH_ME, 2], ['teammate', 2], ['other-dev', 1], [logic.GH_NONE, 2]])
+  assert.deepEqual(logic.ghFacets(rows, null, me, { board: ['Docs board', 'Demo board'] }).board.map(o => o.value),
+    ['Docs board', 'Demo board', logic.GH_NONE])
+  // a value chosen earlier that no row has any more stays listed with 0, so the choice can be seen and taken back
+  assert.deepEqual(logic.ghFacets(rows, { repo: 'example/gone' }, me).repo.find(o => o.value === 'example/gone'), { value: 'example/gone', n: 0 })
+})
+
+test('github filter bar: the kept choice is read back clean, per section, a broken one is no choice', () => {
+  assert.deepEqual(logic.ghFilterKept({ 'github/boards': { board: 'Demo board', person: 5, flag: 'quiet', evil: 'x' }, bad: 'x', '': {} }),
+    { 'github/boards': { board: 'Demo board', flag: 'quiet' } })
+  assert.deepEqual(logic.ghFilterKept(null), {})
+  assert.deepEqual(logic.ghFilterKept({ 'a/b': {} }), {}, 'nothing chosen is not kept')
+  const app = read('app.js')
+  assert.match(app, /ghFilter: loadGhFilter\(\)/)
+  assert.match(app, /save\('bridge-cockpit\.ghFilter', /)
+  assert.match(app, /save\('bridge-cockpit\.ghGroup', /)
+})
+
 // ---------------------------------------------------------------- the chat as cmux: roomsOf
 
 test('roomsOf: workspaces in the terminal order, pinned first, with their tabs, the chats in the control one', () => {

@@ -2650,7 +2650,8 @@ test('Not now: the rows a GitHub list holds fold into one line that leads there,
   assert.equal(line.text().trim(), en.flow.notnow.onPage(2, 'GitHub'))
   assert.equal(line.getAttribute('title'), en.flow.notnow.onPageTitle('GitHub'))
   line.click()
-  assert.deepEqual(c.calls.at(-1), ['openSection', 'github', 'boards'])
+  // round 6c G4: the line opens the list with every row, so a filter kept there does not hide what it counted
+  assert.deepEqual(c.calls.at(-1), ['openSection', 'github', 'boards', null])
   // a list on a page the model does not name keeps its id as the word
   const lone = state({ later: [ref('acme/app', 2, { on_board: { page: 'boards', section: 'work' } })] })
   assert.deepEqual(logic.flowParts(lone).leftOut.groups[0].at, { page: 'boards', section: 'work', title: 'boards' })

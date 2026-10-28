@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
 // The cockpit's GitHub work: the figures with a cause above a github-work section (round 6: no tile per board and
-// no switch on the page), its rows under a head per board that names the board's facts, and the detail of one issue
-// or pull request (briefing.py detail, through /api/github). Everything here reads; a row has one start, its lead
-// step with the other steps under ▾ (row_action, an agent tab) and Close beside it; a board's switch is the person's
-// own choice, made in the settings, which list every board with the mode a new one starts with (github_board,
-// github_board_default).
+// no switch on the page) and the filter bar under them (round 6c: Board, Person, Repository, Kind, Board status, each
+// with its counts, combined, kept per viewer), its rows under a head per board that names the board's facts (or in one
+// list, "Group by board" off), each row with its board and column, people, labels, who opened it and a pull request's
+// draft, review and checks, and the detail of one issue or pull request (briefing.py detail, through /api/github).
+// Everything here reads; a row has one start, its lead step with the other steps under ▾ (row_action, an agent tab)
+// and Close beside it; a board's switch is the person's own choice, made in the settings, which list every board with
+// the mode a new one starts with (github_board, github_board_default).
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
-import { actionRow, canTab, ghSortRows, itemRow, pageItemActs, rowActionKey } from '../logic.js'
+import { GH_DIMS, GH_ME, GH_NONE, actionRow, canTab, ghFacets, ghFiltered, ghMyLogin, ghPasses, ghSortRows, itemRow, pageItemActs, rowActionKey } from '../logic.js'
 import { OriginTag, SettleMenu, StartMenu } from './day.js'
 import { RowSteps } from './pages.js'
 import { rowClickOpens } from './overlays.js'
@@ -28,12 +30,9 @@ const STATE_TOKEN = { new: 'on-surface-muted', ready: 'info', in_progress: 'seco
 // the figures that are a reason to look: shown loud when not zero
 const LOUD = { ask_review: 'warning', blocked: 'danger', quiet: 'warning', untasked: 'warning' }
 
-/** A row passes the dashboard's filter: a figure (a flag the row carries) or a board (its group) */
-export function ghShows(it, filter) {
-  if (!filter) return true
-  if (filter.kind === 'flag') return filter.id === 'open' || (it.flags ?? []).includes(filter.id)
-  if (filter.kind === 'person') return (it.who ?? '') === filter.id
-  return (it.group ?? '') === filter.id
+/** A row passes the page's filter: the figure picked and the choice of each field of the bar (logic.js ghPasses) */
+export function ghShows(it, filter, me = null) {
+  return ghPasses(it, filter, me)
 }
 
 function ago(iso) {
@@ -45,23 +44,45 @@ function ago(iso) {
   return days <= 0 ? t.gh.today : days === 1 ? t.gh.yesterday : t.gh.daysAgo(days)
 }
 
-/** The figures with a cause above the rows (one a person should look at, not zero), who the rows are with, and the
- *  boards switched off; a click on a figure or a person filters the rows below, a second one clears it */
-export function GitHubBoard({ section, filter, setFilter, c }) {
+/** The filter bar (round 6c): a select per field that has more than one value (or a choice), each option with the
+ *  rows it would show beside the other choices; with a choice, how many rows show and one reset for every filter */
+function GhFilterBar({ items, filter, setFilter, order }) {
+  const t = T()
+  const b = t.gh.bar
+  const me = ghMyLogin(items)
+  const facets = ghFacets(items, filter, me, { board: order })
+  const word = (d, v) => (v === GH_NONE ? (d === 'person' ? b.nobody : b.noBoard) : v === GH_ME ? b.me
+    : d === 'person' ? `@${v}` : d === 'type' ? b.kind[v] ?? v : v)
+  const dims = GH_DIMS.filter(d => facets[d].length > 1 || filter?.[d] != null)
+  const on = ghFiltered(filter)
+  if (!dims.length && !on) return null
+  const pick = (d, v) => setFilter({ ...(filter ?? {}), [d]: v || null })
+  return html`<div class="ghf" role="group" aria-label=${b.label}>
+    ${dims.map(d => html`<label key=${d} class="ghf-field" data-dim=${d}>
+      <span class="ghf-label muted small">${b.dim[d]}</span>
+      <select class="input input-sm" value=${filter?.[d] ?? ''} onChange=${e => pick(d, e.currentTarget.value)}>
+        <option value="">${b.all(items.filter(it => ghPasses(it, filter, me, d)).length)}</option>
+        ${facets[d].map(o => html`<option key=${o.value} value=${o.value}>${word(d, o.value)} (${o.n})</option>`)}
+      </select></label>`)}
+    ${on ? html`<span class="ghf-count muted small">${b.count(items.filter(it => ghPasses(it, filter, me)).length, items.length)}</span>
+      <${Btn} size="xs" variant="ghost" icon="close" cls="ghf-reset" onClick=${() => setFilter(null)}>${b.reset}<//>` : null}
+  </div>`
+}
+
+/** The figures with a cause above the rows (one a person should look at, not zero), the boards switched off, and the
+ *  filter bar; a click on a figure filters the rows below on top of the bar, a second one clears it */
+export function GitHubBoard({ section, items = section.items ?? [], filter, setFilter, c }) {
   const t = T()
   const metrics = (section.metrics ?? []).filter(m => LOUD[m.id] && m.n > 0)
   // a board switched off leaves the page: one line names them and leads to the settings, where it comes back
   const hidden = (section.boards ?? []).filter(b => b.mode === 'off')
-  const pick = f => setFilter(filter && filter.kind === f.kind && filter.id === f.id ? null : f)
-  // who the rows are with, the busiest first: a chip each, a filter like the figures
-  const people = Object.entries((section.items ?? []).reduce((n, it) => (it.who ? { ...n, [it.who]: (n[it.who] ?? 0) + 1 } : n), {}))
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 16)
+  const pick = id => setFilter({ ...(filter ?? {}), flag: filter?.flag === id ? null : id })
   return html`<div class="ghb">
     ${metrics.length ? html`<ul class="ghb-figures" aria-label=${t.gh.figuresLabel}>${metrics.map(m => {
-      const on = filter?.kind === 'flag' && filter.id === m.id
+      const on = filter?.flag === m.id
       return html`<li key=${m.id}>
         <button type="button" class=${`ghb-figure tk-${LOUD[m.id]} is-loud${on ? ' is-on' : ''}`}
-          aria-pressed=${String(on)} title=${t.gh.figureTitle[m.id]?.(m) ?? ''} onClick=${() => pick({ kind: 'flag', id: m.id })}>
+          aria-pressed=${String(on)} title=${t.gh.figureTitle[m.id]?.(m) ?? ''} onClick=${() => pick(m.id)}>
           <span class="ghb-n mono">${m.n}</span>
           <span class="ghb-label">${t.gh.figure[m.id] ?? m.id}</span>
         </button></li>`
@@ -69,16 +90,7 @@ export function GitHubBoard({ section, filter, setFilter, c }) {
     ${section.boards?.length ? html`<p class="ghb-hidden muted small">
       ${hidden.length ? html`<span>${t.gh.hiddenBoards(hidden.map(b => b.name).join(', '))}</span>` : null}
       <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.openSettings('boards')}>${t.gh.boardsSettings}<//></p>` : null}
-    ${people.length > 1 ? html`<p class="ghb-people" role="group" aria-label=${t.gh.peopleLabel}>
-      <span class="muted small">${t.gh.peopleLabel}</span>
-      ${people.map(([who, n]) => {
-        const on = filter?.kind === 'person' && filter.id === who
-        return html`<button type="button" key=${who} class=${`fchip${on ? ' is-on' : ''}`} aria-pressed=${String(on)}
-          onClick=${() => pick({ kind: 'person', id: who })}>@${who} <span class="mono muted">${n}</span></button>`
-      })}</p>` : null}
-    ${filter ? html`<p class="ghb-filter small"><span class="muted">${t.gh.filtered}</span>
-      <strong>${filter.kind === 'flag' ? t.gh.figure[filter.id] : filter.kind === 'person' ? `@${filter.id}` : filter.id}</strong>
-      <${Btn} size="xs" variant="ghost" icon="close" onClick=${() => setFilter(null)}>${t.gh.filterClear}<//></p>` : null}
+    <${GhFilterBar} items=${items} filter=${filter} setFilter=${setFilter} order=${(section.boards ?? []).map(x => x.name)} />
   </div>`
 }
 
@@ -232,7 +244,7 @@ function TypeIcon({ type, token }) {
 function matches(it, q) {
   if (!q) return true
   const g = it.gh ?? {}
-  const hay = [it.title, g.title, g.repo, g.number && `#${g.number}`, g.status, g.priority, ...(g.labels ?? []), ...(g.people ?? []), g.task]
+  const hay = [it.title, g.title, g.repo, g.number && `#${g.number}`, g.status, g.priority, ...(g.labels ?? []), ...(g.people ?? []), g.author, g.board, g.task]
     .filter(Boolean).join(' ').toLowerCase()
   return q.toLowerCase().split(/\s+/).every(w => hay.includes(w))
 }
@@ -253,9 +265,18 @@ function GhStart({ it, row, page, section, s, c }) {
   return head ?? (row ? html`<${StartMenu} row=${row} s=${s} c=${c} />` : null)
 }
 
-function GhRow({ it, page, section, s, c, byKey }) {
+// a pull request's state on its row: a draft, its review, the checks of its last commit
+const PR_TOKEN = { ...REVIEW_TOKEN, ...CHECKS_TOKEN }
+const SHOWN_LABELS = 3
+const SHOWN_PEOPLE = 3
+
+function GhRow({ it, page, section, s, c, byKey, grouped = true }) {
   const t = T()
   const g = it.gh ?? {}
+  const labels = g.labels ?? []
+  const people = g.people ?? []
+  // who opened it, when that is not the one already named as assigned
+  const opener = g.author && !people.includes(g.author) ? (g.by_me ? t.gh.byYou : t.gh.by(g.author)) : null
   const token = STATE_TOKEN[g.state] ?? 'info'
   const found = (pageItemActs(it) || it.inbox || (it.task && byKey.has(`task:${it.task}`))) ? actionRow(it, byKey) : null
   // the row the close door acts on, with the agent tab the page item names
@@ -270,21 +291,29 @@ function GhRow({ it, page, section, s, c, byKey }) {
       <p class="ghl-title">${g.title || it.title}</p>
       <p class="ghl-meta">
         <${OriginTag} row=${itemRow(it)} origin=${it.origin ?? { category: 'github', word_key: null, detail: g.repo ?? null, raw: null, ref: null, via_cockpit: false }} />
-        ${g.number ? html`<span class="mono muted" title=${g.repo ?? ''}>${repoName}#${g.number}</span>` : null}
+        ${g.number ? html`<span class="ghl-ref mono muted" title=${g.repo ?? ''}>${repoName}#${g.number}</span>` : null}
+        ${!grouped && g.board ? html`<span class="ghl-chip ghl-chip-board" title=${g.also_on?.length ? t.gh.alsoOn(g.also_on.join(', ')) : g.board}>${g.board}</span>` : null}
         ${g.type === 'draft' ? html`<span class="ghl-chip ghl-chip-draft" title=${t.gh.draftCardTitle}>${t.gh.draftCard}</span>` : null}
         <${PrioChip} priority=${g.priority} />
         ${g.status || g.state ? html`<span class=${`ghl-state tk-${token}`}><span class="ghl-dot"></span>${g.status || t.gh.state[g.state] || g.state}</span>` : null}
-        ${(g.labels ?? []).map(l => html`<span key=${l} class="gh-label">${l}</span>`)}
+        ${labels.slice(0, SHOWN_LABELS).map(l => html`<span key=${l} class="gh-label">${l}</span>`)}
+        ${labels.length > SHOWN_LABELS ? html`<span class="ghl-more muted" title=${labels.slice(SHOWN_LABELS).join(', ')}>+${labels.length - SHOWN_LABELS}</span>` : null}
+        ${g.pr ? [g.pr.draft ? ['draft', t.gh.draft, 'on-surface-muted'] : null,
+          g.pr.review ? [g.pr.review, t.gh.reviewState[g.pr.review] ?? g.pr.review, PR_TOKEN[g.pr.review]] : null,
+          g.pr.checks ? [`checks-${g.pr.checks}`, t.gh.checksShort[g.pr.checks] ?? g.pr.checks, PR_TOKEN[g.pr.checks]] : null]
+          .filter(Boolean).map(([k, word, token]) => html`<span key=${k} class=${`ghl-chip ghl-pr tk-${token ?? 'info'}`}>${word}</span>`) : null}
         ${(g.prs ?? []).map(p => html`<span key=${p.n} class="ghl-chip">PR #${p.n}${p.draft ? ` · ${t.gh.draft}` : ''}</span>`)}
         ${g.task ? html`<span class="ghl-chip ghl-chip-task" title=${t.gh.taskChipTitle}>${ghPlaceChip(it, g, t)}</span>` : null}
         ${g.untasked ? html`<span class="ghl-chip ghl-chip-untasked" title=${t.gh.untaskedChipTitle}>${t.gh.untaskedChip}</span>` : null}
         ${it.tab ? html`<${Chip} token=${it.tab.live ? 'success' : 'on-surface-muted'}>${t.gh.agentChip(t.state?.[it.tab.state] ?? it.tab.state)}<//>` : null}
         ${g.quiet ? html`<span class="ghl-chip ghl-chip-quiet">${t.gh.quietChip(g.quiet)}</span>` : null}
+        ${opener ? html`<span class="ghl-author muted">${opener}</span>` : null}
         ${g.note ? html`<span class="muted small">${g.note}</span>` : null}
       </p>
     </div>
     <div class="ghl-side">
-      ${(g.people ?? []).length ? html`<span class="ghl-people">${g.people.map(p => html`<span key=${p} class="gh-person mono">@${p}</span>`)}</span>` : null}
+      ${people.length ? html`<span class="ghl-people">${people.slice(0, SHOWN_PEOPLE).map(p => html`<span key=${p} class="gh-person mono">@${p}</span>`)}
+        ${people.length > SHOWN_PEOPLE ? html`<span class="gh-person mono muted" title=${people.slice(SHOWN_PEOPLE).map(p => `@${p}`).join(', ')}>+${people.length - SHOWN_PEOPLE}</span>` : null}</span>` : null}
       <span class="muted small" title=${g.changed ?? ''}>${ago(g.changed)}</span>
     </div>
     <div class="ghl-acts btn-row">
@@ -312,9 +341,10 @@ function BoardFacts({ b }) {
 
 /** The rows of a github-work section under their board: a one-line head per board (its count and a bar of
  *  its rows' states) that folds, the board's facts under it, the rows in the work's order or newest first, a
- *  search over everything a row names */
+ *  search over everything a row names. "Group by board" off (kept per viewer): one list, each row names its board */
 export function GitHubList({ items, page, section, s, c, byKey }) {
   const t = T()
+  const grouped = s.ui?.ghGroup !== false
   const [q, setQ] = useState('')
   const [by, setBy] = useState('state')
   const [folded, setFolded] = useState(readFolded)
@@ -345,9 +375,11 @@ export function GitHubList({ items, page, section, s, c, byKey }) {
         ${sorts.map(k => html`<button type="button" key=${k} class=${`ghb-mode-btn${by === k ? ' is-on' : ''}`}
           aria-pressed=${String(by === k)} onClick=${() => setBy(k)}>${t.gh.sort[k]}</button>`)}
       </div>
-      ${groups.length > 1 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${foldAll}>${allFolded ? t.gh.unfoldAll : t.gh.foldAll}<//>` : null}
+      <${Btn} size="xs" variant="ghost" cls="ghl-group-toggle" pressed=${grouped} onClick=${() => c.setGhGroup(!grouped)}>${t.gh.groupByBoard}<//>
+      ${grouped && groups.length > 1 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${foldAll}>${allFolded ? t.gh.unfoldAll : t.gh.foldAll}<//>` : null}
     </div>
-    ${!shown.length ? html`<p class="muted">${t.filterNone}</p>` : groups.map(g => {
+    ${!shown.length ? html`<p class="muted">${t.filterNone}</p>` : !grouped ? html`<ul class="ghl-rows">${ghSortRows(shown, by).map(it => html`<${GhRow}
+      key=${it.index} it=${it} page=${page} section=${section.id} s=${s} c=${c} byKey=${byKey} grouped=${false} />`)}</ul>` : groups.map(g => {
       const rows = ghSortRows(shown.filter(it => (it.group ?? '') === g), by)
       const isFolded = folded.has(g)
       const counts = rows.reduce((n, it) => ({ ...n, [it.gh?.state ?? 'new']: (n[it.gh?.state ?? 'new'] ?? 0) + 1 }), {})

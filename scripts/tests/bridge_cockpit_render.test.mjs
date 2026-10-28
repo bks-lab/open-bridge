@@ -2039,7 +2039,7 @@ test('github page (G4): only the figures with a cause stand above the list, no t
   const picked = []
   const f = mount(html`<${GitHubBoard} section=${section} filter=${null} setFilter=${x => picked.push(x)} c=${c} s=${s} />`)
   f.$$('.ghb-figure')[1].click()
-  assert.deepEqual(picked, [{ kind: 'flag', id: 'quiet' }])
+  assert.deepEqual(picked, [{ flag: 'quiet' }])
 })
 
 test('github list (G4): the head of a board names its facts, the cards it shows, how many are open by state, a cut', () => {
@@ -2092,6 +2092,132 @@ test('github rows (G4): one split start, the lead step left and the other steps 
   // a row with no step of its own: the general start is its one start
   const bare = list({ ...it, actions: null }).$('.ghl-acts')
   assert.ok(bare.$('.start') && !bare.$('.btn-split'))
+})
+
+// round 6c: a filter bar over the GitHub rows (Board, Person, Repository, Kind, Board status) and more on each row
+function ghBarRows() {
+  const row = (index, gh, over = {}) => ({ index, key: `item:github/boards/${index}`, title: gh.title, flags: [], actionable: true,
+    gh: { type: 'issue', state: 'ready', people: [], labels: [], also_on: [], prs: [], ...gh }, ...over })
+  return [
+    row(1, { title: 'Fix the parser', repo: 'example/app', number: 1, board: 'Demo board', status: 'In Progress', people: ['demo-user'],
+      labels: ['bug', 'ci', 'parser', 'p1', 'flaky'], author: 'teammate' }, { flags: ['mine'], group: 'Demo board' }),
+    row(2, { title: 'Write the docs', repo: 'example/app', number: 2, board: 'Demo board', status: 'Todo',
+      people: ['teammate', 'second-dev', 'third-dev', 'fourth-dev'], author: 'demo-user', by_me: true }, { group: 'Demo board' }),
+    row(3, { title: 'Bump the schema', repo: 'example/tools', number: 3, board: null, status: 'open', type: 'pr', author: 'other-dev',
+      people: ['other-dev'], pr: { draft: true, review: 'changes_requested', checks: 'failure' } }, { flags: ['ask_review'], group: 'example/tools' }),
+  ]
+}
+
+function ghBar(filter = null, items = ghBarRows()) {
+  const picked = []
+  const section = { id: 'boards', items, boards: [{ name: 'Demo board', slug: 'demo', mode: 'mine', counts: {} }], metrics: [{ id: 'open', n: 3 }] }
+  const el = mount(html`<${GitHubBoard} section=${section} items=${items} filter=${filter} setFilter=${f => picked.push(f)} c=${recorder()} s=${cockpitState(NOW)} />`)
+  return { el, picked }
+}
+
+test('github filter bar (6c G1): Board, Person, Repository, Kind and Board status with counts, a choice combines with the others', () => {
+  const { el, picked } = ghBar()
+  const field = d => el.$(`.ghf-field[data-dim="${d}"] select`)
+  for (const d of ['board', 'person', 'repo', 'type', 'status']) assert.ok(field(d), `a select for ${d}`)
+  const opts = d => field(d).$$('option').map(o => o.text())
+  assert.deepEqual(opts('board'), [en.gh.bar.all(3), 'Demo board (2)', `${en.gh.bar.noBoard} (1)`])
+  // Me first, then the most rows, your own login only as Me
+  assert.deepEqual(opts('person'), [en.gh.bar.all(3), `${en.gh.bar.me} (2)`, '@teammate (2)', '@fourth-dev (1)', '@other-dev (1)',
+    '@second-dev (1)', '@third-dev (1)'])
+  assert.deepEqual(opts('type'), [en.gh.bar.all(3), `${en.gh.bar.kind.issue} (2)`, `${en.gh.bar.kind.pr} (1)`])
+  assert.deepEqual(opts('status'), [en.gh.bar.all(3), 'In Progress (1)', 'Todo (1)'], 'only rows on a board have a column')
+  assert.ok(!el.$('.ghf-reset'), 'nothing chosen: no reset')
+  const sel = field('board')
+  sel.value = 'Demo board'
+  sel.dispatch('change')
+  assert.deepEqual(picked.at(-1), { board: 'Demo board' })
+  // a choice keeps the others: Person on top of Board; under that board every row is an issue, so Kind steps aside
+  const two = ghBar({ board: 'Demo board' })
+  assert.ok(!two.el.$('.ghf-field[data-dim="type"]'), 'one kind left: no select')
+  const person = two.el.$('.ghf-field[data-dim="person"] select')
+  person.value = '@me'
+  person.dispatch('change')
+  assert.deepEqual(two.picked.at(-1), { board: 'Demo board', person: '@me' })
+  // back to all in one dimension leaves the rest
+  const all = two.el.$('.ghf-field[data-dim="board"] select')
+  all.value = ''
+  all.dispatch('change')
+  assert.deepEqual(two.picked.at(-1), { board: null })
+})
+
+test('github filter bar (6c G1): with a choice it says how many rows it shows and resets every filter in one click', () => {
+  const { el, picked } = ghBar({ person: '@me', flag: 'mine' })
+  assert.equal(el.$('.ghf-count').text(), en.gh.bar.count(1, 3), 'Me and the figure yours: the one row assigned to you')
+  const reset = el.$('.ghf-reset')
+  assert.equal(reset.text(), en.gh.bar.reset)
+  reset.click()
+  assert.deepEqual(picked.at(-1), null)
+  // a dimension with one value only and nothing chosen stays out of the way
+  const lone = ghBar(null, ghBarRows().filter(r => r.gh.repo === 'example/app'))
+  assert.ok(!lone.el.$('.ghf-field[data-dim="repo"]'), 'one repository: no select')
+  assert.ok(lone.el.$('.ghf-field[data-dim="person"]'))
+})
+
+test('github rows (6c G2): repository and number, board and column, people, labels three and +n, who opened it, a PR\'s state', () => {
+  const { GitHubList } = views.github
+  const s = cockpitState(NOW)
+  const rows = ghBarRows()
+  const el = mount(html`<${GitHubList} items=${rows} page="github" section=${{ id: 'boards', boards: [{ name: 'Demo board', mode: 'mine' }] }}
+    s=${{ ...s, ui: { ...s.ui, ghGroup: false } }} c=${recorder()} byKey=${new Map()} />`)
+  assert.ok(!el.$('.ghl-head'), 'not grouped: one list without board heads')
+  const row = n => el.$$('.ghl-row').find(r => r.$('.ghl-title').text() === n)
+  const first = row('Fix the parser')
+  assert.equal(first.$('.ghl-ref').text(), 'app#1')
+  assert.equal(first.$('.ghl-chip-board').text(), 'Demo board', 'not grouped: the row names its board')
+  assert.equal(first.$('.ghl-state').text(), 'In Progress')
+  assert.deepEqual(first.$$('.ghl-meta .gh-label').map(x => x.text()), ['bug', 'ci', 'parser'])
+  assert.equal(first.$('.ghl-more').text(), '+2')
+  assert.equal(first.$('.ghl-more').getAttribute('title'), 'p1, flaky')
+  assert.equal(first.$('.ghl-author').text(), en.gh.by('teammate'))
+  const docs = row('Write the docs')
+  assert.deepEqual(docs.$$('.ghl-people .gh-person').map(x => x.text()), ['@teammate', '@second-dev', '@third-dev', '+1'])
+  assert.equal(docs.$('.ghl-author').text(), en.gh.byYou, 'opened by you')
+  const pr = row('Bump the schema')
+  assert.ok(!pr.$('.ghl-chip-board'), 'on no board')
+  assert.deepEqual(pr.$$('.ghl-pr').map(x => x.text()), [en.gh.draft, en.gh.reviewState.changes_requested, en.gh.checksShort.failure])
+  assert.ok(!pr.$('.ghl-author'), 'opened by the one assigned: named once')
+  // grouped (the default): the heads stand, the rows leave the board out
+  const grouped = mount(html`<${GitHubList} items=${rows} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${recorder()} byKey=${new Map()} />`)
+  assert.ok(grouped.$('.ghl-head'))
+  assert.ok(!grouped.$('.ghl-chip-board'))
+})
+
+test('github list (6c G2): "Group by board" switches the heads off and on, kept for the viewer', () => {
+  const { GitHubList } = views.github
+  const s = cockpitState(NOW)
+  const c = recorder()
+  const el = mount(html`<${GitHubList} items=${ghBarRows()} page="github" section=${{ id: 'boards', boards: [] }} s=${s} c=${c} byKey=${new Map()} />`)
+  const toggle = el.$('.ghl-group-toggle')
+  assert.equal(toggle.text(), en.gh.groupByBoard)
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true')
+  toggle.click()
+  assert.deepEqual(c.calls.at(-1), ['setGhGroup', false])
+})
+
+test('github page (6c G1): the section reads its kept filter, a new choice goes to the controller under page and section', () => {
+  const { PageSection } = views.pages
+  const base = cockpitState(NOW)
+  const page = base.model.pages.find(p => p.id === 'trackers')
+  const section = ghSection(base)
+  const c = recorder()
+  const s = cockpitState(NOW, { ui: { ghFilter: { 'trackers/mine': { type: 'pr' } } } })
+  const el = mount(html`<${PageSection} page=${page} section=${section} s=${s} c=${c} />`)
+  assert.deepEqual(el.$$('.ghl-title').map(x => x.text()), ['Release checklist'], 'only the pull request')
+  assert.ok(el.$('.ghf-reset'))
+  const board = el.$('.ghf-field[data-dim="type"] select')
+  board.value = ''
+  board.dispatch('change')
+  assert.deepEqual(c.calls.at(-1), ['setGhFilter', 'trackers/mine', { type: null }])
+  // a kept choice no row matches: the bar stays, so it can be taken back, and the list says nothing matches
+  const none = mount(html`<${PageSection} page=${page} section=${section} c=${recorder()}
+    s=${cockpitState(NOW, { ui: { ghFilter: { 'trackers/mine': { repo: 'example/gone' } } } })} />`)
+  assert.ok(none.$('.ghf-reset') && !none.$('.ghl-row'))
+  assert.match(none.text(), new RegExp(en.filterNone))
 })
 
 test('github boards: the settings list every board, the hidden ones too, and the default for new boards', () => {

@@ -360,6 +360,79 @@ export function ghSortRows(rows, by) {
     : (by === 'priority' ? prioRank(a.gh?.priority) - prioRank(b.gh?.priority) : 0) || state(a) - state(b) || at(b).localeCompare(at(a)))
 }
 
+// the GitHub page's filter bar (round 6c, views/github.js): Board, Person, Repository, Kind and Board status, one
+// choice each, combined with the figure picked; GH_ME stands for you, GH_NONE for no board and for nobody assigned
+export const GH_DIMS = ['board', 'person', 'repo', 'type', 'status']
+export const GH_ME = '@me'
+export const GH_NONE = '-'
+
+/** Your GitHub login as the rows tell it: the author of a row you opened, else the one assignee of a row assigned to
+ *  you; null when no row says (the filter then lists your login beside Me) */
+export function ghMyLogin(items) {
+  for (const it of items ?? []) if (it.gh?.by_me && it.gh.author) return it.gh.author
+  for (const it of items ?? []) if ((it.flags ?? []).includes('mine') && it.gh?.people?.length === 1) return it.gh.people[0]
+  return null
+}
+
+/** The values a row has in one dimension: the boards it stands on (no board as GH_NONE; an older server names the
+ *  board only as the group, unless that group is the repository), Me and the people assigned or who opened it
+ *  (nobody assigned as GH_NONE), its repository, its kind, and its column on a board */
+export function ghValues(it, dim, me = null) {
+  const g = it.gh ?? {}
+  const board = g.board !== undefined ? g.board : (it.group && it.group !== g.repo ? it.group : null)
+  if (dim === 'board') return board ? [board, ...(g.also_on ?? [])] : [GH_NONE]
+  if (dim === 'repo') return g.repo ? [g.repo] : []
+  if (dim === 'type') return [g.type ?? 'issue']
+  if (dim === 'status') return board && g.status ? [g.status] : []
+  const people = g.people ?? []
+  const flags = it.flags ?? []
+  const mine = flags.includes('mine') || flags.includes('my_pr') || g.by_me === true || (!!me && (people.includes(me) || g.author === me))
+  const others = [...new Set([...people, ...(g.author ? [g.author] : [])])].filter(p => p !== me)
+  return [...(mine ? [GH_ME] : []), ...others, ...(people.length ? [] : [GH_NONE])]
+}
+
+/** A row passes the filter: it carries the figure picked (open is every row) and, in each dimension chosen, the
+ *  value chosen; `skip` leaves one dimension open (to count its options) */
+export function ghPasses(it, f, me = null, skip = null) {
+  if (!f) return true
+  if (f.flag && f.flag !== 'open' && !(it.flags ?? []).includes(f.flag)) return false
+  return GH_DIMS.every(d => d === skip || f[d] == null || ghValues(it, d, me).includes(f[d]))
+}
+
+/** Whether anything is chosen */
+export const ghFiltered = f => !!f && (!!f.flag || GH_DIMS.some(d => f[d] != null))
+
+/** The options of each dimension, each with the rows it would show beside the other choices: Me first, nobody and no
+ *  board last, the boards in the registry's order (`order.board`), the rest the most first; a value chosen earlier
+ *  that no row has any more stays listed with 0, so it can be seen and taken back */
+export function ghFacets(items, f, me = null, order = {}) {
+  const out = {}
+  const edge = v => (v === GH_ME ? -1 : v === GH_NONE ? 1 : 0)
+  for (const d of GH_DIMS) {
+    const n = new Map()
+    for (const it of items ?? []) {
+      if (ghPasses(it, f, me, d)) for (const v of new Set(ghValues(it, d, me))) n.set(v, (n.get(v) ?? 0) + 1)
+    }
+    if (f?.[d] != null && !n.has(f[d])) n.set(f[d], 0)
+    const pos = v => { const i = (order[d] ?? []).indexOf(v); return i < 0 ? 999 : i }
+    out[d] = [...n].map(([value, count]) => ({ value, n: count }))
+      .sort((a, b) => edge(a.value) - edge(b.value) || pos(a.value) - pos(b.value) || b.n - a.n || String(a.value).localeCompare(String(b.value)))
+  }
+  return out
+}
+
+/** The filters kept in this browser, read back clean: per section ("page/section") the dimensions and the figure
+ *  that hold a text; anything else, and a section with nothing chosen, is dropped */
+export function ghFilterKept(raw) {
+  const out = {}
+  for (const [key, f] of Object.entries(raw && typeof raw === 'object' ? raw : {})) {
+    if (!/^[^/]+\/[^/]+$/.test(key) || !f || typeof f !== 'object') continue
+    const kept = Object.fromEntries([...GH_DIMS, 'flag'].filter(d => typeof f[d] === 'string' && f[d]).map(d => [d, f[d].slice(0, 120)]))
+    if (Object.keys(kept).length) out[key] = kept
+  }
+  return out
+}
+
 /** Design token for an item tone */
 export function toneToken(tone) {
   return { bad: 'danger', warn: 'warning', dim: 'on-surface-muted' }[tone] ?? 'info'
@@ -3713,7 +3786,7 @@ const PAGE_HINTS = [['folderbar', '.folderbar'], ['pageBadge', '.col-page > .pag
   ['oboard', '.oboard'], ['psum', '.psum'], ['kinds', '.tri-kinds'],
   ['triage', '.tri-sort'], ['reviewStrip', '.review-strip'], ['jorder', '.jorder'], ['sectionHead', '.psec .psec-head'],
   ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghl-facts'],
-  ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
+  ['ghFilters', '.ghf'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
   ['calFigures', '.calf'], ['calBar', '.calbar'], ['calDays', '.cal-day']]
 // the as-of time is the reload button; the notes stand under the bell and in the history by day; Help, last, holds
 // Explain first, then the look-up topics and the tour (decision 6, menue.md)

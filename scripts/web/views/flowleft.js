@@ -5,7 +5,8 @@
 // Why), Ideas and backlog, Streams, Watching (the issues and pull requests, by repository), and the watched rows a
 // GitHub list holds (`github`, round 6). NotNowBlock is its part at the foot of the left column, on every side and in
 // every mode: one button per group with its count, the one open marked, the GitHub rows as one quiet line "n on
-// GitHub" that opens that page at its list (c.openSection), since they stand there; on a narrow screen NotNowNarrow
+// GitHub" that opens that page at its list (c.openSection) with every row, its filter bar reset (round 6c), since
+// they stand there; on a narrow screen NotNowNarrow
 // folds it under the select. A click on a group shows it as a list in the middle (LeftList, view `left`): Back to
 // overview, its name, count and what it holds, the batch bar with the group's verbs (logic.js LEFT_VERBS and leftPlan:
 // Back on, Later, Done, Drop or Let AI do it, Merge where two or more ticked rows are open tasks), then a table: a box,
@@ -35,7 +36,7 @@ function GroupButtons({ left, open, c }) {
   const f = T().flow.notnow
   return html`<ul class="flow-side-list">${left.groups.map(g => g.at ? html`<li key=${g.reason}>
     <button type="button" class="flow-notnow-line" title=${f.onPageTitle(g.at.title)}
-      onClick=${() => c.openSection(g.at.page, g.at.section)}>${f.onPage(g.rows.length, g.at.title)}</button></li>` : html`<li key=${g.reason}>
+      onClick=${() => c.openSection(g.at.page, g.at.section, null)}>${f.onPage(g.rows.length, g.at.title)}</button></li>` : html`<li key=${g.reason}>
     <button type="button" class=${`flow-notnow-item${open === g.reason ? ' is-on' : ''}`} aria-current=${open === g.reason ? 'true' : undefined}
       onClick=${() => c.flowLeft(g.reason)}>
       <span class="flow-side-name"><span class="flow-side-label">${f.group[g.reason]}</span></span>

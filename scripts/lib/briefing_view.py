@@ -1999,9 +1999,13 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
     """A GitHub row's facts as a dashboard draws them, one field each instead of a detail line: the plain
     title, repository and number, the normalized state and the board's own word for it, the board's priority
     (board.priority_field), labels, people, the pull requests that close it, the task that syncs it (or that none
-    does), when it last changed and how long it has been quiet."""
+    does), when it last changed and how long it has been quiet. Round 6c, for the page's filters and its rows: the
+    board it stands on and the others that hold it too, who opened it (and whether you did), every assignee and
+    label (the page shows a few and counts the rest), and a pull request's draft flag, review and checks."""
     m = GH_ID_RE.match(_text(item.get("id")))
-    people = [p for p in (item.get("assignees") or [item.get("assignee")]) if isinstance(p, str) and p][:3]
+    people = [p for p in (item.get("assignees") or [item.get("assignee")]) if isinstance(p, str) and p][:10]
+    board = item.get("board") if isinstance(item.get("board"), dict) else {}
+    pr = item.get("pr_status") if isinstance(item.get("pr_status"), dict) and item.get("type") == "pr" else None
     linked = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
     changed = _when(item.get("changed_at"))
     quiet = (now - changed).days if changed is not None else None
@@ -2011,7 +2015,12 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
             "type": item["type"] if item.get("type") in ("pr", "draft") else "issue",
             "state": _text(item.get("state")) or None, "status": status[:40] or None,
             "priority": _text(item.get("priority"))[:20] or None,
-            "labels": [_text(x)[:40] for x in item.get("labels") or [] if _text(x)][:4], "people": people,
+            "labels": [_text(x)[:40] for x in item.get("labels") or [] if _text(x)][:10], "people": people,
+            "author": _text(item.get("author"))[:60] or None, "by_me": item.get("by_me") is True,
+            "board": _text(board.get("name"))[:80] or None,
+            "also_on": [_text(x)[:80] for x in item.get("also_on") or [] if _text(x)][:3],
+            "pr": {"draft": pr.get("draft") is True, "review": _text(pr.get("review"))[:24] or None,
+                   "checks": _text(pr.get("checks"))[:24] or None} if pr else None,
             "prs": [{"n": int(str(p["id"]).rsplit("#", 1)[-1]), "draft": bool(p.get("draft"))}
                     for p in item.get("prs") or [] if isinstance(p, dict) and str(p.get("id", "")).rsplit("#", 1)[-1].isdigit()][:3],
             "task": _text(linked.get("slug")) or None,

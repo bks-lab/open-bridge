@@ -883,8 +883,9 @@ kbd {
   .cal-mo-title { display: none; }
 }
 
-/* GitHub work (views/github.js): the figures with a cause, the boards' facts in the list, an opened issue or pull request;
-   the switch of a board (.ghb-mode) stands in the settings */
+/* GitHub work (views/github.js): the figures with a cause, the filter bar (.ghf, round 6c), the boards' facts in the
+   list, an opened issue or pull request; the switch of a board (.ghb-mode) stands in the settings. The rows are compact
+   (round 6c) so more of them fit */
 .ghb { display: grid; gap: 14px; margin: 4px 0 14px; }
 .ghb-figures { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .ghb-figure {
@@ -916,8 +917,10 @@ kbd {
 .board-set-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .board-set-row.is-off .board-set-name { color: var(--on-surface-muted); }
 .board-set-name { font-weight: 600; overflow-wrap: anywhere; }
-.ghb-filter { display: flex; align-items: center; gap: 8px; margin: 0; }
-.ghb-people { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
+.ghf { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
+.ghf-field { display: grid; gap: 2px; min-width: 0; }
+.ghf-field select { max-width: 220px; }
+.ghf-count { align-self: center; }
 .ghl { display: grid; gap: 12px; }
 .ghl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .ghl-search {
@@ -938,14 +941,14 @@ kbd {
 .ghl-chev.is-open { transform: rotate(90deg); }
 .ghl-rows { list-style: none; margin: 0; padding: 0; display: grid; }
 .ghl-row {
-  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 4px 14px;
-  padding: 10px 8px; border-bottom: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer;
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 2px 12px;
+  padding: 5px 8px; border-bottom: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer;
 }
 .ghl-row:hover { background: var(--surface-muted); }
 .ghl-row:focus-visible { outline: 2px solid var(--secondary); outline-offset: -2px; }
 .ghl-row.is-quiet .ghl-title { color: var(--on-surface-muted); }
 .ghl-icon { color: var(--tk); align-self: start; margin-top: 2px; }
-.ghl-main { min-width: 0; display: grid; gap: 4px; }
+.ghl-main { min-width: 0; display: grid; gap: 2px; }
 .ghl-title { margin: 0; font-size: var(--text-sm); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .ghl-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--text-xs, 11px); }
 .ghl-state { display: inline-flex; align-items: center; gap: 5px; color: var(--on-surface); }
@@ -955,6 +958,8 @@ kbd {
 .ghl-chip-quiet { border-color: var(--warning); color: var(--on-surface); }
 .ghl-chip-untasked { border-color: var(--warning); border-style: dashed; color: var(--on-surface); }
 .ghl-chip-draft { border-style: dashed; }
+.ghl-chip-board { border-color: var(--info); color: var(--on-surface); }
+.ghl-pr { border-color: var(--tk); color: var(--on-surface); }
 .ghl-side { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
 .ghl-people { display: flex; gap: 6px; }
 .ghl-acts { justify-content: flex-end; flex-wrap: nowrap; }
