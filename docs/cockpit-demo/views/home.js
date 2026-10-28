@@ -7,7 +7,7 @@ import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
-  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage,
+  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -21,7 +21,7 @@ import {
 } from './nav.js'
 import { HomeFocusView } from './focus.js'
 import { HomeList } from './list.js'
-import { Btn, Dot, Empty, Icon, PrioChip, StateLine } from './parts.js'
+import { Btn, Chip, Dot, Empty, Icon, PrioChip, StateLine } from './parts.js'
 import { BridgeStage, leadOf, stationOf } from './stage.js'
 import { TickerBand, TickerStatusList } from './ticker.js'
 
@@ -109,6 +109,19 @@ export function ReturnChip({ s, rowKey }) {
   if (!r || r.live === 'done') return null
   return html`<span class=${`chip chip-tk tk-${stageTone(r.live)} rchip`}><${Dot} token=${stageTone(r.live)} pulse=${r.live === 'working'} />
     <span>${T().home.returnStage[r.live]}</span></span>`
+}
+
+/** A row's ask (a job of the workers page, a page row): the question it was asked last (logic.js rowConv) as
+ *  question open or answered, or once handed on with the marker every question list shows (logic.js askMark:
+ *  in its tab, done, asks you), with Open, and ask again beside it; a row never asked has only ask */
+export function RowAsk({ s, c, rowKey, onAsk, variant = 'ghost', cls = 'act-quiet' }) {
+  const t = T()
+  const conv = rowConv(s.quick?.convs, rowKey)
+  if (!conv) return html`<${Btn} size="xs" variant=${variant} cls=${cls} onClick=${onAsk}>${t.btnAsk}<//>`
+  const mark = conv.running ? null : askMark(conv, s.tabs?.tabs)
+  return html`<${Chip} token=${conv.running ? 'info' : mark?.tone ?? 'success'}>${conv.running ? t.askRunning : mark ? t.asks.mark[mark.word] : t.askAnswered}<//>
+    <${Btn} size="xs" variant="secondary" onClick=${() => c.openAsk(conv.id)}>${t.askOpenConv}<//>
+    <${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${onAsk}>${t.btnAskAgain}<//>`
 }
 
 /** The return channel inside a task or an inbox item: the steps, what the tab said last or its answer, and

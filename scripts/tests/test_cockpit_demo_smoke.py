@@ -200,7 +200,7 @@ def test_the_demo_opens_the_files_tab_once_where_the_config_names_the_files_view
     page.wait_for_selector(".pagebar-tabs [role=tab]")
     files_tab = page.locator(".pagebar-tabs > [role=tab]").filter(has_text=re.compile("^(Files|Akten)"))
     assert files_tab.count() == 1
-    page.wait_for_selector("#main .fs-start")
+    page.wait_for_selector("#main .dz-side")
     assert files_tab.first.get_attribute("aria-selected") == "true"
     page.wait_for_timeout(250)
 
@@ -213,7 +213,7 @@ def test_the_demo_opens_the_files_tab_once_where_the_config_names_the_files_view
         page.locator(".pagebar-tabs > [role=tab]").nth(1).click()   # the work tab stands right after Start
         page.wait_for_function("() => (document.getElementById('main')?.textContent ?? '').trim().length > 0")
         page.wait_for_timeout(250)
-        assert page.locator("#main .fs-start").count() == 0
+        assert page.locator("#main .dz-side").count() == 0
         assert page.locator("#main .dz").count() == 0
 
     # the focus of the start page, walked with its bar to the end, leads on into the files view (focus_to_files)

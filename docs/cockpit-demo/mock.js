@@ -1461,6 +1461,12 @@ export const HANDED_EXAMPLES = [
   ['Plan the next demo sprint', { to: 'control', status: 'queued', relay_id: '20261009T113000-0a0b0c01' }],
   ['Check the open demo reviews', { to: 'control', status: 'queued', relay_id: '20261009T113100-0a0b0c02' }],
   ['Sort the demo inbox', { to: 'control', status: 'offline', relay_id: '20261009T113200-0a0b0c03' }],
+  // two that came back from their item (round 6d, quick.py handoff_outcome): a result that closed it, and a
+  // question. The outcome stands under the question and in its status line
+  ['Look into the failed nightly demo job', { to: 'tab', status: 'started',
+    outcome: { text: 'Result: Nothing to do, the next run went through.', closed: true, at_ms: null, asks: false } }],
+  ['Clean up the old demo labels', { to: 'tab', status: 'started',
+    outcome: { text: 'Question: Close the item, or keep it for the next sprint?', closed: false, at_ms: null, asks: true } }],
 ]
 
 export function handedConvs(now) {
@@ -1473,6 +1479,16 @@ export function handedConvs(now) {
       // a chat handed to a tab is about the item it became: it leaves with that item (quick.py sweep_settled)
       about: inbox ? { kind: 'handoff', inbox } : null,
       handed: { at_ms: at + MIN, ...handed, ...(inbox ? { inbox_id: inbox } : {}) } }
+  })
+}
+
+/** The questions archived in the last days (/api/chats/archive): read once "all" is asked for under the questions */
+function archivedConvs(now) {
+  return [['Which demo labels overlap?', 2, 'expired'], ['What did the last demo release change?', 4, 'settled']].map(([q, days, why], i) => {
+    const at = now - days * 24 * 60 * MIN
+    return { id: `qe${String(i + 1).padStart(9, '0')}`, kind: 'free', started_ms: at, session: null, total_usd: 0.001, running: false, last_ms: at,
+      about: null, archived: { why, at_ms: at + 25 * 60 * MIN },
+      turns: [{ q, a: 'Example answer from the mock, kept in the archive.', model_asked: 'haiku', model: 'haiku-5-5', cost_usd: 0.001, at_ms: at, error: null }] }
   })
 }
 
@@ -2047,6 +2063,7 @@ export function createMockTransport(opts = {}) {
         return ok(url.searchParams.get('since') === hash ? { ...head, unchanged: true } : { ...head, text })
       }
       if (url.pathname === '/api/history') return ok({ ok: true, entries: history })
+      if (url.pathname === '/api/chats/archive') return ok({ ok: true, convs: archivedConvs(now()) })
       if (url.pathname === '/api/agents') return ok({ ok: true, ...state.agents })
       if (url.pathname === '/api/ticker') return ok({ ok: true, ticker: state.ticker })
       if (url.pathname === '/api/usage') {
@@ -2100,7 +2117,9 @@ export function createMockTransport(opts = {}) {
         let conv = state.quick.convs.find(c => c.id === body.conv)
         if (!conv) {
           conv = { id: `q${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, kind: body.kind, started_ms: now(), session: null, total_usd: 0, turns: [], running: false,
-            ...(body.place ? { place: body.place } : {}) }
+            ...(body.place ? { place: body.place } : {}),
+            // a job row's question names its row, as actions_chats.py ask does for kind worker
+            about: body.kind === 'worker' ? { kind: 'worker', key: `worker:${body.args?.host}:${body.args?.id}` } : null }
           // a new conversation of the core takes the place of the last
           state.quick = { ...state.quick, convs: [conv, ...state.quick.convs.filter(c => !body.place || c.place !== body.place || c.running)] }
         }
@@ -2424,6 +2443,7 @@ export function createMockTransport(opts = {}) {
         if (verb === 'inbox_unmute') mockMutes.splice(0, mockMutes.length, ...mockMutes.filter(r => r.id !== args.id))
         if (verb === 'snapshot_list') result.note = 'Mock: 3 snapshots, latest 09:00'
         if (verb === 'row_action') result.note = `Mock: the step ${args.action} would start an agent tab on this row`
+        if (verb === 'worker_advise') result.note = `Mock: ${args.id} on ${args.host} would be analysed in an advising tab`
         if (verb === 'launch_settings' || verb === 'launch_settings_reset') {
           const next = verb === 'launch_settings' ? { ...state.launch.settings, ...(args.settings ?? {}) } : LAUNCH_CONFIG
           state.launch = launchState(next, !!createMockJev)

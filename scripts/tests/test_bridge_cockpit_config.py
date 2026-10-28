@@ -199,13 +199,16 @@ def test_status_of_a_valid_config_prints_no_warning(tmp_path):
 
 
 def test_the_doc_says_chat_keep_hours_covers_quick_chats_and_a2a_conversations():
-    """chat_keep_hours now also lets A2A conversations go, and a chat about an item leaves with it: the doc says both"""
+    """chat_keep_hours now also lets A2A conversations go, a chat about an item leaves with it, and a chat handed to a
+    tab stays chat_keep_hours after its item ended (round 6d): the doc says all three"""
     doc = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
     row = next(line for line in doc.splitlines() if line.startswith("| `chat_keep_hours` |"))
     assert "quick chats and A2A agent conversations untouched this long go to the archive" in row
+    assert "a chat handed to a tab stays this long after the latest of its handoff, its result and its item's end" in row
     assert "0 keeps them" in row
-    assert ("a chat started from a briefing row or handed to a tab leaves when its item closes, "
-            "once it has been quiet for 10 minutes") in " ".join(doc.split()).lower()
+    flat = " ".join(doc.split()).lower()
+    assert "a chat started from a briefing row leaves when its item closes, once it has been quiet for 10 minutes" in flat
+    assert "a chat handed to a tab stays `chat_keep_hours`" in flat
 
 
 # ---------------------------------------------------------------- cockpit.usage (read by usage.remote_hosts)

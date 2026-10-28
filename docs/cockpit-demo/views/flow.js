@@ -77,8 +77,8 @@ function cardTitle(x) {
   return x.row.title
 }
 
-/** A card's kind in a word: its group, a quiet start by its stage */
-const cardKind = x => T().flow.kind[x.stage === 'idle' ? 'idle' : x.group]
+/** A card's kind in a word: its group, a quiet start and one ended with a note (to look at) by its stage */
+const cardKind = x => T().flow.kind[x.stage === 'idle' || x.stage === 'done' ? x.stage : x.group]
 
 /** What a tab asks, answered on the card: the answers to its question as one row of buttons (a dialog's options, yes
  *  and no, go on, a field), and the decision guide's steps folded under one button, without the guide's own line what
@@ -109,19 +109,23 @@ function BackCard({ x, s }) {
   </article>`
 }
 
-/** A start of the return channel that wants you: its tab asks, it finished (or went quiet), or it got lost. The card
- *  says what came back (the result line, without its own head word) and what its tab asks; since when it runs is the
- *  field Who works on it, the criteria of its brief stand in Description, what to do with it stands on the right */
+/** A start of the return channel that wants you: its tab asks, it finished (or went quiet, or ended with a note), or
+ *  it got lost. The card says what came back (the result line or the question noted on its item, without its own head
+ *  word) and what its tab asks, and leads back to the chat it was handed on from while that chat is kept; since when it
+ *  runs is the field Who works on it, the criteria of its brief stand in Description, what to do with it on the right */
 function StartCard({ x, s, c }) {
   const t = T()
   const f = t.flow
   const r = x.start
   const tab = x.tab
   const lines = r.result?.text ? [] : tailLines(tab?.last ?? r.tab?.last)
+  const head = r.result?.asks ? f.question : r.result?.kind === 'note' || x.stage === 'done' ? f.result : t.home.returnAnswer
+  const chat = r.conv && (s.quick?.convs ?? []).some(v => v.id === r.conv)
   return html`<article class=${`fx-hero tk-${stageTone(x.stage === 'idle' ? 'result' : x.stage)}`} aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span></header>
     <h2 id="flow-title" class="fx-title">${r.title}</h2>
-    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${r.result.kind === 'note' ? f.result : t.home.returnAnswer}</span> ${short(resultText(r.result.text), 400)}</p>` : null}
+    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${head}</span> ${short(resultText(r.result.text), 400)}</p>` : null}
+    ${chat ? html`<p><button type="button" class="btn-link small" onClick=${() => c.openAsk(r.conv)}>${f.toQuestion}</button></p>` : null}
     ${x.stage === 'idle' && !r.result?.text ? html`<p class="muted">${f.idleSub}</p>` : null}
     ${x.group === 'lost' ? html`<p class="muted">${f.lostSub}</p>` : null}
     ${x.group === 'asks' ? html`<${AskLine} tab=${tab} />` : null}

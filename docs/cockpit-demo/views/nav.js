@@ -27,6 +27,15 @@ export { FILES_PAGE }
 /** Whether the Chat is laid out as cmux (cockpit.chat_layout: workspaces): the agents then live in it, not on a page */
 export const chatAsWorkspaces = s => s?.rooms?.layout === 'workspaces'
 
+/** Open an agent tab in the cockpit: as cmux its room in the Chat (as flowrun.js SessionCards does), else the
+ *  tab's window. Used where a question or a job went on in a tab (round 6d); the terminal is the second way */
+export function openTabRoom(s, c, ref) {
+  if (!chatAsWorkspaces(s)) return c.openTabView(ref)
+  c.closeTabView()
+  c.setPage(CHAT_PAGE)
+  c.pickRoom({ kind: 'tab', id: ref })
+}
+
 /** The name of the way to the live sessions, as the place it opens: Running now where Work through lists them
  *  (logic.js sessionsInFlow), else the Sessions tab */
 export const sessionsName = s => (sessionsInFlow(s) ? T().flow.run.label : T().sessionsTab)

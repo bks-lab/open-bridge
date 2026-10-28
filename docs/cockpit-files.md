@@ -1,5 +1,5 @@
 ---
-summary: "The cockpit's Files tab: a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file behind the queue, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
+summary: "The cockpit's Files tab: three columns as Work through (the list, the open record, its point's buttons), a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file behind the queue, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
 type: guide
 last_updated: 2026-10-28
 related:
@@ -24,9 +24,27 @@ right after the work tab (de: Akten). It is no view of the work tab any more: th
 work tab's switch never offers it, and a stored or configured `files` view opens
 this tab once and leaves the work tab on the view it falls back to.
 
+**Three columns, as Arbeit > Abarbeiten** (Work through, round 6d). The tab has
+one layout. The left column holds the search, "Walk through the active records",
+the chips and the list of records; the middle shows the open record; the right
+column is Work through's own side column (`views/flowside.js FlowAside`) for the
+point that record is in Work through, with the same buttons (Let AI do it,
+Advise, Done, Later, Drop, To tab and View where a tab exists, then Details and
+the fields; `files.js recordPoint` picks that point). No button stands twice: a
+step in the walk has its verbs only on the right. A closed record, or a task no
+row names, has no right column, since its buttons would act on nothing. A click
+in the list opens the record beside it (`openRecord` in app.js) and marks it in
+the list, which keeps where it was scrolled; Previous record and Next record then
+walk the list in its order, while "Walk through the active records" walks the queue as
+before. The head of an open record has one button, "Close the record" (de: Akte
+schließen). The question to the AI stands on top of the left column while a
+record is open, else on top of the middle. On a narrow screen the columns stack
+at the widths Work through stacks (1180 px: the side column under the middle;
+960 px: one column).
+
 ## The search first
 
-The tab opens on a search. A large field takes the focus, with "Walk through
+The tab opens on a search in its left column. A large field takes the focus, with "Walk through
 the active records (n)" beside it, which starts the walk over the queue, one file
 at a time. Under it stand chips, each group under its small label: **Area** (the
 areas the records name, at most 12), **State** (open, done, all; open at first)
@@ -37,9 +55,8 @@ title, slug, area and theme, and over the text of every STATUS.md through the
 same search as below (`/api/find`, a moment after the last key), with the line
 that matched under the record as plain text (no Markdown marks, a table row's
 cells joined by a dot, never a `slug:` line). A click opens the record as a file
-(below); "Back to the search" at its head leads back with the words still typed.
-The start's field is the one search of the tab: an opened record has no second
-one.
+in the middle (below), and the list with the words typed stays beside it.
+The field is the one search of the tab: an opened record has no second one.
 
 The records come from `GET /api/records`, a read: every folder of `work/tasks/`,
 `work/streams/` and `work/done/`, its front matter read in place (status,
@@ -84,12 +101,12 @@ cockpit:
 ## One task at a time
 
 The walk shows one task at a time as
-a file, on one framed surface centred at a reading width (it stays in the
-middle when the sidebar is hidden). Above it stands "Back to the search". On the surface: an eyebrow (File, "2 of 16", status, kind and
+a file, on one framed surface in the middle column, with "Close the record"
+above it. On the surface: an eyebrow (File, "2 of 16", status, kind and
 priority, the slug on the right), the task's title as the one heading, and the
 situation in one sentence (the `headline` of its STATUS.md, else what the
 triage made of it, always with where that comes from and its date). Under it
-the next step as the one strong block, with the four verbs as buttons, then the
+the next step as the one strong block (its verbs stand in the right column), then the
 file's drawers as rows on hairlines, folded: Result, Inbox, History, Files,
 References (the `related:` paths of STATUS.md) and Sections, each only when it
 holds something, and a question to the file. At the foot of the surface walk

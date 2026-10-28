@@ -68,11 +68,13 @@ export const FILES = {
       left: n => (n === 1 ? '1 question left today.' : `${n} questions left today.`), noneLeft: 'No question left today.',
       nothingToSend: 'Every record shown stays private.', noneToSend: 'No record to send.',
       answer: 'The AI answers', answerFrom: (n, model) => `from ${n === 1 ? '1 record' : `${n} records`}${model ? `, ${model}` : ''}`, close: 'Close',
-      walk: n => `Walk through the active records (${n})`, back: 'Back to the search',
+      walk: n => `Walk through the active records (${n})`, back: 'Close the record', pick: 'A record from the list opens here.',
       changed: day => `changed ${day}`,
     },
     back: 'Back to the queue', opened: 'Opened from the search', noFile: 'This file can no longer be read.',
     walk: { label: 'Walk through the files', prev: 'Previous file', next: 'Next file', queue: 'Show the whole queue' },
+    // Next and Previous of a record opened from the list on the left: they walk that list in its order (round 6d)
+    listWalk: { label: 'Walk through the list', prev: 'Previous record', next: 'Next record', queue: 'Show the whole list' },
     ask: {
       label: 'Ask this file', placeholder: 'Ask this file...', button: 'Ask',
       results: 'Ask about these results', resultsPlaceholder: 'Ask about what the search found...',
@@ -153,11 +155,12 @@ export const FILES = {
       left: n => (n === 1 ? 'Heute noch 1 Frage frei.' : `Heute noch ${n} Fragen frei.`), noneLeft: 'Für heute ist keine Frage mehr frei.',
       nothingToSend: 'Alle gezeigten Akten bleiben privat.', noneToSend: 'Keine Akte zum Senden.',
       answer: 'Antwort der AI', answerFrom: (n, model) => `aus ${n === 1 ? '1 Akte' : `${n} Akten`}${model ? `, ${model}` : ''}`, close: 'Schließen',
-      walk: n => `Aktive Akten durchgehen (${n})`, back: 'Zurück zur Suche',
+      walk: n => `Aktive Akten durchgehen (${n})`, back: 'Akte schließen', pick: 'Eine Akte aus der Liste öffnet sich hier.',
       changed: day => `geändert ${day}`,
     },
     back: 'Zurück zur Schlange', opened: 'Aus der Suche geöffnet', noFile: 'Diese Akte lässt sich nicht mehr lesen.',
     walk: { label: 'Durch die Akten gehen', prev: 'Vorherige Akte', next: 'Nächste Akte', queue: 'Die ganze Schlange zeigen' },
+    listWalk: { label: 'Durch die Liste gehen', prev: 'Vorherige Akte', next: 'Nächste Akte', queue: 'Die ganze Liste zeigen' },
     ask: {
       label: 'Akte fragen', placeholder: 'Akte fragen ...', button: 'Fragen',
       results: 'Zu diesen Treffern fragen', resultsPlaceholder: 'Zu dem fragen, was die Suche gefunden hat ...',

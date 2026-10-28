@@ -82,7 +82,7 @@ their defaults:
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
-| `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
+| `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); a chat handed to a tab stays this long after the latest of its handoff, its result and its item's end; 0 keeps them, then only the limit of 30 applies |
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `flow` (Work through, with `flow.enabled`); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. `files` names no view of the work tab any more: the first visit of the work tab opens the Files tab once ([The Files tab](#the-files-tab)), and the work tab keeps the view it falls back to. A click on the tab's switch still picks another for this browser, until the key changes |
 | `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, not a list or nothing left offers all. `files` is no view of the switch: it stands for the Files tab, right after the work tab, and is always kept (every link that opens a task's file leads there). With one view left the switch does not show. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the work tab shows Work through alone, the Sessions tab goes (Running now lists the sessions) and the task check is the row Check tasks under Not now, with no tab of its own |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
@@ -321,11 +321,13 @@ cockpit:
 
 ### The Files tab
 
-**Files** is a tab of its own, right after the work tab. It opens on a search: a large field with **Walk
-through the active records (n)** beside it, chips for area, state and kind (task or stream, a closed one by what it
-was), each group under its label, and the records changed last with the matching line as plain text; a click opens a
-record as a file with its next step, its drawers and a question to the file, and the one "Back to the search" in its
-head keeps the words typed (the start's field is the one search). With `cockpit.files_search` on (off by default) a
+**Files** is a tab of its own, right after the work tab, laid out in the three columns of Work through. The left
+column holds a large search field with **Walk through the active records (n)** beside it, chips for area, state and
+kind (task or stream, a closed one by what it was), each group under its label, and the records changed last with the
+matching line as plain text; a click opens a record in the middle as a file with its next step, its drawers and a
+question to the file, while the list stays where it was (the field is the one search). The right column carries the
+buttons of that record's point in Work through, the same ones, never a second set; **Close the record** in the
+middle's head closes it. With `cockpit.files_search` on (off by default) a
 question to the AI has its own field and a button "Ask the AI about these n records"; a line under it says what a
 click sends, how many stay private and how many questions are left today, and the search words are never the
 question. It has a page of its own: [`cockpit-files.md`](cockpit-files.md).
@@ -479,7 +481,14 @@ compact card of the Sessions page (state, title as the jump to its tab, its
 agents, two lines of its tab, one next step, a task to link), one card per tab;
 an entry in a session's tab is that card, and **View in chat** opens the tab in
 the Chat where the Chat lays out its tabs (`chat_layout: workspaces`). A tab
-that asks is a point (A tab asks), never here. Which
+that asks is a point (A tab asks), never here. A start that ended with a note does not
+vanish: it stays as a card **To look at** with that note (headed Question when
+the note asks) and, while the chat it was handed from is still kept, **Open
+the question it came from** (each start remembers its chat, `conv` in
+`launches.json`); **Take off the list** removes it. A start that ended
+without a note leaves as before. A note headed `Question:` or `Frage:` keeps
+its start at the stage `asks`, also once its tab is gone, until a tab works on
+it again or the item closes. Which
 task a session works on: a link by hand (the Sessions page), else its tab's own
 task (every start from the cockpit), else, with `flow.infer_sessions` (on by
 default), the task it is **recognised** on. For that the server reads the end
@@ -1406,7 +1415,22 @@ interval to "workflow". The count of units a machine runs without a declaration
 stands only while the filter leaves a job. The chips filter by machine
 first, then by state, kind and area; "Only with a finding" and "Only outages"
 are filters there, off by default. The figures on top count In service, Down,
-To tend, Not reported and Retired. A section with `hide_ok: true` is drawn only while one of
+To tend, Not reported and Retired. An open job row offers two things.
+**Analyse in a tab** (verb `worker_advise {host, id}`) files the job to the
+inbox under the fixed key `worker:<host>:<id>` with a brief the server builds
+from `workers-view.json` (job, machine, unit, kind, schedule, program, log,
+last and next run, every finding with its hint) and starts a reporting tab
+that reads the job's declaration, checks unit and log live, names the cause
+and proposes a fix without changing anything. A second click finds the same
+item, and while it is open the row says "in a tab" with **Open tab**;
+once it ended, its result from the return channel stands under the findings
+and the analysis is offered again. **Ask** asks the quick chat about the job
+(kind `worker`): the server words the question from the view and ties it to
+the row (`about.key: worker:<host>:<id>`). A row asked before shows that
+question instead of a second one, as "question open", "answered" or, once
+handed on, the marker every question list shows (in its tab, done, asks you),
+with **Open** and a quiet **ask again** beside it; a page row (`InfoRow`) does
+the same under its own key. A section with `hide_ok: true` is drawn only while one of
 its rows is bad or its source fails; it still feeds the page's number, the
 alarm and what other cards read from it ([`briefings.md`](briefings.md)
 § Dashboard pages).
@@ -2104,8 +2128,14 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
 - **Below it** stand the workspaces in the terminal's order, pinned ones first.
   Each shows its colour, its state, its unread count and, when its folder is
   another Bridge's clone, that Bridge's name. Below each workspace are its tabs,
-  most urgent first. The quick chats sit in the control workspace
-  (`workplace.control`), the newest six and "all" for the rest.
+  most urgent first.
+- **The questions** (de: Fragen) have a section of their own on top of the
+  workspaces, in every sort mode: open and handed questions first, then the
+  answered ones, newest first in each. Each carries its title (below) and,
+  once handed on, its marker. "all of the last days" also reads the archive
+  (`GET /api/chats/archive?days=7`, read only: at most 14 days and 60
+  questions, newest first, without the ones you removed); those stand greyed,
+  have no ×, and open read only.
 - **Below the workspaces** come the other Bridges on this machine that have no
   workspace ("Bridges on this machine"). The A2A agents stand in their own area.
 - **On the right** is what you picked:
@@ -2125,8 +2155,11 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.
 
-**Chats leave on their own.** A chat started from a briefing row or handed to a
-tab leaves when its item closes, once it has been quiet for 10 minutes. The chat
+**Chats leave on their own.** A chat started from a briefing row leaves when its
+item closes, once it has been quiet for 10 minutes. A chat handed to a tab stays
+`chat_keep_hours` (a day by default; 0 keeps it) after the latest of its
+handoff, what came back from its item and the item's end, so its result can
+still be read there. The chat
 keeps what it is about (`about`: the row, and the inbox item or task behind it,
 or the inbox item it was handed on as). On the tab poll, at most once a minute
 and at once after a verb that closes, drops or reopens an item, the cockpit
@@ -2573,9 +2606,11 @@ nothing a stranger could trigger:
   runner's allowlist with the words as one argument after `--`, leaves no
   line, and refuses a query shorter than 2 or longer than 200 characters or
   one with a control character before anything runs.
-  `GET /api/records` is a read too: the records of the Files tab's start
+  `GET /api/records` is a read too: the records of the Files tab's list
   (every task, stream and closed task, its front matter read in place, newest
-  first, at most 2000), no runner call and no line.
+  first, at most 2000), no runner call and no line. So is
+  `GET /api/chats/archive?days=n`: the questions of the archive of the last
+  1 to 14 days, at most 60, never the removed ones.
   `/api/seen` is the page's own measure: opening a page or a view of it
   leaves `page_view`, the page id and `view=` (the work tab's view, the start
   page's view, else `-`), nothing more. The first line waits for the model, so
@@ -2653,7 +2688,10 @@ started" (`nothing`). To the control session it follows the relay record:
 session" only once it is `submitted`, then "Answered", "Expired unanswered",
 "No answer for a long time" (`stuck`), and "Control session offline" with
 "Type it into the control tab" while that tab waits. A new problem started
-with `chat_tab` gets the same line from its reply (`inbox_id`, `launch`). The
+with `chat_tab` gets the same line from its reply (`inbox_id`, `launch`). **Open the tab** opens the tab in the cockpit (its
+room in the Chat as cmux, else its window); **Show in the terminal** beside it,
+where the driver can focus, is the second way. A tab that waits on you says
+"Its tab asks you". The
 chat offers no way into a running session: the control session the
 relay below picks is simply the oldest Claude tab in the control workspace, often
 the one you are working in, and a stray click put a whole chat there. With
@@ -2661,6 +2699,28 @@ the one you are working in, and a stray click put a whole chat there. With
 on a row without a task files it to the inbox and starts a reporting tab, and a
 question `via` control answers `relay_disabled`. An answer that arrives while
 the chat is not in view shows as a note with "View".
+
+**What came back.** On each sweep the cockpit copies onto the chat what came
+from its inbox item since the handoff (`handed.outcome`: `{text, closed,
+at_ms, asks}`, quick.py `handoff_outcome`; the person's own start note does
+not count). The status line then reads "Result: ..." (a note, closed or not),
+"Asks you: ..." (a note headed `Question:` or `Frage:`) or "Done, without a
+note"; the same text stands under the last turn, and every question list marks
+the chat (logic.js `askOutcome`, `askMark`). An order typed with the handoff
+(`quick_handoff` with `text`) goes on the new item as "Start note: ..." and
+the tab starts with it, told never to close the item on its own: it writes its
+result as a note `Result: ...` and asks before closing with a note
+`Question: ...`. Every start of an inbox item with a start note gets that
+rule, and so does "Let AI do it" or "Advise" with a note typed on an inbox row.
+
+**Titles of questions.** A question is named by what it is about: the job with
+its machine and state, else the row, task or inbox item it was asked on, else
+its first sentence (or the title in «» of a row's prompt), cut at a word.
+Titles that read alike carry when they were asked ("today 07:34", "yesterday
+...", "20.10. ..."). The question window, the Chat page, the cmux sidebar and
+the head of an open chat use them. The question opened last is kept in this
+browser (`bridge-cockpit.lastAsk`), so a reload and the header's Ask open it
+again; a follow up goes on in it only while the server still lists it.
 
 The chat only reads, but it is told what the Bridge can do: its system text
 names the "Let AI do it" button and says to point there when something needs
@@ -3127,6 +3187,42 @@ The return channel used to call every start whose tab stopped working
    through page asks for ahead of a card keeps within
    `describe.budget_per_hour` and is refused with `describe_budget` once it is
    spent. A click sends no `ahead` and runs as before.
+
+### Upgrading: Files in three columns, jobs analysed in a tab, questions found again
+
+Nothing has to be done by hand: each change is code, and the one profile key
+below only changes how long a chat stays.
+
+1. **Files.** The Files tab has one layout, the three columns of Work through:
+   list on the left, the open record in the middle, its point's buttons on the
+   right. The separate start page and the page that replaced the list are
+   gone; every link that opened a record lands in this layout, and the head
+   button is Close the record (de: Akte schließen).
+2. **Background jobs.** New verb `worker_advise {host, id}`, refused
+   (`not_applicable`) for a job `workers-view.json` does not hold or one that
+   is retired; it files under `worker:<host>:<id>` and starts mode `report`.
+   `GET /api/workers` adds `advise: {inbox, state}` to a job filed under its
+   key. The quick chat takes the kind `worker {host, id}` (`stale_row` for a
+   job the view no longer holds), with `about: {kind: worker, key, inbox}`;
+   the page no longer words a job's question itself.
+3. **Handoff with an order.** `quick_handoff` with `text` writes the order on
+   the new item as "Start note: ..." and starts the tab with `--start-note`;
+   when that note cannot be written the tab starts without it, as before. An
+   inbox start with a start note tells the agent never to close on its own.
+   The go prompt asks every question to begin with `Question:`.
+4. **What came back.** A handed chat gets `handed.outcome` on the sweep
+   (`{text, closed, at_ms, asks}`); a reader that does not know it skips it.
+   `model.returns[].result` carries `asks: true` for a note headed
+   `Question:` or `Frage:` (only when true), and a note "Start note: ..." is
+   no answer any more. Each launch row keeps `conv`, the chat it came from.
+5. **`chat_keep_hours`.** It now also says how long a chat handed to a tab
+   stays after the latest of its handoff, its outcome and its item's end (24
+   hours by default, 0 keeps it); other chats still leave 10 minutes after
+   their item ended. To have handed chats leave as quickly as before, set it
+   low, which also shortens how long untouched chats are kept.
+6. **Questions.** New read only `GET /api/chats/archive?days=n` (1 to 14,
+   at most 60, without removed, replaced or placed ones). The page keeps the
+   question opened last in this browser under `bridge-cockpit.lastAsk`.
 
 ### Upgrading: settled rows in git
 
