@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the header and the page bar.
+// The cockpit, the header, the page bar and the bar of a folder (a page with sub pages, `under:` in the profile).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
@@ -7,7 +7,7 @@ import { agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, tabsButtonCou
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
-  litTab, morePages, pageOrder, parentOf, reviewHomeOf, tabBadgeOf,
+  folderOf, folderPlaces, litTab, morePages, pageOrder, reviewHomeOf, tabBadgeOf,
 } from './nav.js'
 import { AgentMark, agentBadge } from './agents.js'
 import { usePopover } from './pages.js'
@@ -288,9 +288,15 @@ export function PageBar({ s, c }) {
     made.set(id, { label, badge, flag, keyHint: s.ui.shortcuts && i >= 0 && i < 9 ? `${label} (Alt ${i + 1})` : undefined })
     return null
   }
-  const button = id => { const x = made.get(id); return html`<button key=${id} type="button" role="tab" class=${`ptab${lit === id ? ' is-active' : ''}`}
-    aria-selected=${String(lit === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
-    <span>${x.label}</span>${x.badge}</button>` }
+  // a folder's tab carries a ▾ beside it that lists its places; the tab itself always opens the folder's overview
+  const button = id => {
+    const x = made.get(id)
+    const tabBtn = html`<button key=${id} type="button" role="tab" class=${`ptab${lit === id ? ' is-active' : ''}`}
+      aria-selected=${String(lit === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
+      <span>${x.label}</span>${x.badge}</button>`
+    const places = folderPlaces(s, id)
+    return places.length ? html`<${FolderTab} key=${id} label=${x.label} places=${places} s=${s} c=${c}>${tabBtn}<//>` : tabBtn
+  }
   // what waits for you: Today and Work through carry the same number, no counter of their own
   const n = s.model?.briefing_badge ?? 0
   const aiLeft = aiWaiting(s.model?.returns, s.tabs?.tabs, s.now || Date.now())   // what the AI left for you (sessions page)
@@ -354,14 +360,48 @@ function MoreTab({ items, s, c, lit, open, setOpen, box }) {
   </span>`
 }
 
-/** "‹ Operations" at the head of a sub page: the way back to the page it stands under (parentOf), none elsewhere */
-export function ParentLink({ s, c }) {
+/** A place's name and its mark, as the folder bar and the menu at the folder's tab draw it */
+function FolderPlace({ x }) {
+  return html`<${Dot} token=${x.tone} /><span class="folder-name">${x.label}</span>${x.note ? html`<span class="folder-note">${x.note}</span>` : null}`
+}
+
+/** The tab of a folder with its ▾: a menu of the folder's places and their marks, so a sub page is found from the top.
+ *  The bar scrolls sideways and would clip a menu inside it, so the menu stands fixed under the ▾ (as More's) */
+function FolderTab({ label, places, s, c, children }) {
   const t = T()
-  const up = parentOf(s, s.ui.page)
-  const page = up ? (s.model?.pages ?? []).find(p => p.id === up) : null
-  if (!page) return null
-  return html`<button type="button" class="btn-link page-up" aria-label=${t.parentBackLabel(page.title)}
-    onClick=${() => c.setPage(up)}>${t.parentBack(page.title)}</button>`
+  const [open, setOpen] = useState(false)
+  const box = usePopover(open, setOpen)
+  const [at, setAt] = useState(null)
+  const toggle = e => {
+    const r = e.currentTarget.getBoundingClientRect?.()
+    if (r) setAt({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left - 120, window.innerWidth - 268)) })
+    setOpen(!open)
+  }
+  const pick = id => { setOpen(false); c.setPage(id) }
+  return html`<span class="ptab-folder" ref=${box}>
+    ${children}
+    <button type="button" class="ptab-caret" aria-haspopup="menu" aria-expanded=${String(open)} aria-label=${t.folderMenu(label)}
+      title=${t.folderMenu(label)} onClick=${toggle}><span aria-hidden="true">▾</span></button>
+    ${open ? html`<span class="settle-menu more-menu folder-menu" role="menu" aria-label=${t.folderMenu(label)}
+      style=${at ? { top: `${at.top}px`, left: `${at.left}px` } : undefined}>
+      ${places.map(x => html`<button key=${x.id} type="button" role="menuitem" class=${`settle-item${x.id === s.ui.page ? ' is-on' : ''}`}
+        title=${x.title} onClick=${() => pick(x.id)}><${FolderPlace} x=${x} /></button>`)}
+    </span>` : null}
+  </span>`
+}
+
+/** The bar of a folder under the page tabs, on the folder page and on each of its sub pages: the overview and every
+ *  sub page with its mark, the open one current. It is the way between them; a sub page needs no way back of its own */
+export function FolderBar({ s, c }) {
+  const t = T()
+  const folder = folderOf(s)
+  const places = folder ? folderPlaces(s, folder) : []
+  if (!places.length) return null
+  const title = (s.model?.pages ?? []).find(p => p.id === folder)?.title ?? ''
+  return html`<nav class="folderbar fbar-chips" aria-label=${t.folderLabel(title)}>
+    ${places.map(x => html`<button key=${x.id} type="button" class=${`fchip folder-chip${x.id === s.ui.page ? ' is-on' : ''}`}
+      aria-current=${x.id === s.ui.page ? 'page' : undefined} title=${x.title} onClick=${() => c.setPage(x.id)}><${FolderPlace} x=${x} /></button>`)}
+  </nav>`
 }
 
 export function AlarmBanner({ s, c }) {

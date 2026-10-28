@@ -145,10 +145,10 @@ $defs:
           else: {required: [sections]}
           properties:
             id: {type: string, minLength: 1, not: {enum: [briefing, more]}, description: "briefing and more are taken: the briefing page and the page for the rest. @workers places the cockpit's Background jobs page (with under, nothing else)."}
-            under: {type: string, minLength: 1, description: "The id of another page of this list: this page gets no tab, a tile on that page opens it, and that page's tab stays lit while it is open. One level deep; neither page may be of group work or day."}
+            under: {type: string, minLength: 1, description: "The id of another page of this list: this page gets no tab; that page becomes a folder: a bar on top of it and of each page under it lists them all, a ▾ at its tab opens the same list, and its tab stays lit while one of them is open. The order of this list is the order of the bar and of the tabs. Without under the page is a tab of its own again. One level deep; neither page may be of group work or day."}
             title: {type: string, description: "Tab name. Default: the label page_<id>, else the id."}
             group: {enum: [main, more, work, day], description: "main (default): a tab in the page bar. more: after the daily tabs, and folded behind a More menu when the bar is too narrow. work: no tab of its own; the page is the by-source view of the work tab, beside what is due and, with jev:, by Jev (the Jev tab then folds into it too). day: no tab of its own; its sections stand under the day list of the Today page."}
-            overview: {type: boolean, description: "true: a dashboard opens the page with a board of tiles, one per section (its count and its loudest row), each a jump to its section. Default false."}
+            overview: {type: boolean, description: "true: a dashboard opens the page with a board of tiles, one per section (its count and its loudest row), each a jump to its section. On a page with under it is a head card instead, one line per section, without the live tiles (jobs, tokens, costs) of the folder's own page. Default false."}
             cards:
               type: array
               description: |

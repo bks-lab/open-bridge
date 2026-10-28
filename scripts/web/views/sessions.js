@@ -8,7 +8,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, serious, scheduleText,
-  dayNoteText, weekdayNames, filterWorkers, groupBySystem, jobCounts, stripMark, workerFacets, workerTone, aiGroups, previewText,
+  dayNoteText, weekdayNames, filterWorkers, groupByHost, jobCounts, runTimes, stripMark, workerFacets, workerTone, aiGroups, previewText,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Skeleton } from './day.js'
@@ -16,7 +16,7 @@ import { TabControls } from './detail.js'
 import { ReturnCard } from './home.js'
 import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
-import { ParentLink, StartControl, canStartControl } from './header.js'
+import { FolderBar, StartControl, canStartControl } from './header.js'
 import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
@@ -241,18 +241,30 @@ function RunStrip({ strip, continuous }) {
     ${last.map((e, i) => { const [shape, tone] = stripMark(e); return html`<span key=${i} class=${`strip-m sm-${tone}`} title=${`${e.at ?? ''} ${e.verdict ?? ''}`}>${shape}</span>` })}</span>`
 }
 
-function WorkerRow({ r, nowPct, c, i }) {
+/** A moment of a run: the time of day, with the day in front when it is not today */
+function runClock(ms, now) {
+  const lang = language()
+  const hm = formatClock(ms, lang).slice(0, 5)
+  return new Date(ms).toDateString() === new Date(now).toDateString() ? hm
+    : `${new Date(ms).toLocaleDateString(lang, { day: 'numeric', month: 'numeric' })} ${hm}`
+}
+
+function WorkerRow({ r, now, nowPct, c, i }) {
   const t = T()
   const [open, setOpen] = useState(false)
   const tone = workerTone(r)
   const top = (r.findings ?? []).find(serious) ?? (r.findings ?? [])[0]
   const days = weekdayNames(language())
   const week = r.week?.length === 7 ? [...r.week.slice(1), r.week[0]] : []
+  // what kind of job it is and when it ran and runs, so a scheduled workflow reads apart from a service
+  const times = runTimes(r, now)
   return html`<li class=${`wrow rt-${tone} row-in${open ? ' is-open' : ''}`} style=${{ '--i': Math.min(i, 16) }}>
     <button type="button" class="wrow-main" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>
       <span class=${`rdot rdot-${tone}`} aria-hidden="true"></span>
-      <span class="wrow-name"><strong>${r.title || r.id}</strong><span class="muted small">${r.purpose ?? ''}</span></span>
-      <span class="wrow-when"><span class="small" title=${r.when ?? ''}>${scheduleText(r.when, language())}</span><${DayAxis} day=${r.day} nowPct=${nowPct} /></span>
+      <span class="wrow-name"><strong>${r.title || r.id}</strong><span class="muted small">${[t.workerKind[r.kind] ?? r.kind, r.purpose].filter(Boolean).join(' · ')}</span></span>
+      <span class="wrow-when"><span class="small" title=${r.when ?? ''}>${scheduleText(r.when, language())}</span><${DayAxis} day=${r.day} nowPct=${nowPct} />
+        ${times.last != null || times.next != null ? html`<span class="muted small wrow-times">${[times.last != null ? t.workerLast(runClock(times.last, now)) : '',
+          times.next != null ? t.workerNext(runClock(times.next, now)) : ''].filter(Boolean).join(' · ')}</span>` : null}</span>
       <span class="wrow-strip"><${RunStrip} strip=${r.strip} continuous=${r.continuous} /></span>
       <span class="wrow-state"><span class=${`chip chip-tk tk-${runToken(tone)}`}>
         <${Dot} token=${runToken(tone)} /><span>${t.workerState[r.state] ?? r.state}</span></span></span>
@@ -276,7 +288,8 @@ function WorkerRow({ r, nowPct, c, i }) {
   </li>`
 }
 
-/** Every declared run of the always-on machines, drawn by this page from `workload view --json` */
+/** Every declared run of the always-on machines, drawn by this page from `workload view --json`: by machine, the
+ *  always-on first, every job in view and only the findings marked; a filter (the machine first) narrows it */
 export function WorkersPage({ s, c }) {
   const t = T()
   const w = s.workers ?? {}
@@ -286,9 +299,11 @@ export function WorkersPage({ s, c }) {
   const runs = (view?.runs ?? []).filter(r => !r.retired)
   const shown = filterWorkers(runs, flt)
   const facets = workerFacets(runs, flt)
-  const groups = groupBySystem(shown, view?.systems)
-  const now = new Date()
+  const machines = groupByHost(shown, { hosts: view?.hosts ?? (view?.host ? [view.host] : []), systems: view?.systems })
+  const nowMs = s.now || Date.now()
+  const now = new Date(nowMs)
   const nowPct = (now.getHours() * 60 + now.getMinutes()) / 1440
+  const jobs = jobCounts(view)
   const at = Date.parse(view?.generated_at ?? '')
   const set = patch => setFlt(f => ({ ...f, ...patch }))
   const facetRow = name => {
@@ -301,8 +316,9 @@ export function WorkersPage({ s, c }) {
         ${name === 'state' ? (t.workerState[v] ?? v) : name === 'kind' ? (t.workerKind[v] ?? v) : v} <span class="mono">${n}</span></button>`)}</span></div>`
   }
   return html`<div class="col col-page">
+    <${FolderBar} s=${s} c=${c} />
     <header class="page-head">
-      <${ParentLink} s=${s} c=${c} /><h2 class="detail-title">${t.workersTab}</h2>
+      <h2 class="detail-title">${t.workersTab}</h2>
       ${view ? html`<span class="muted small">${t.workersFrom(view.host, Number.isFinite(at) ? formatClock(at, language()).slice(0, 5) : '?')}</span>` : null}
       <button type="button" class="btn-link small" onClick=${() => c.loadWorkers()}>${t.reload}</button>
     </header>
@@ -310,7 +326,8 @@ export function WorkersPage({ s, c }) {
       ? html`<div class="panel panel-pad"><${Skeleton} lines=${6} /></div>` : html`
       <dl class="stats">
         <div><dt>${t.workerStat.in_service}</dt><dd><${CountNum} value=${view.stats?.in_service ?? runs.length} /></dd></div>
-        <div><dt>${t.workerStat.with_findings}</dt><dd><${CountNum} value=${view.stats?.with_findings ?? 0} /></dd></div>
+        <div><dt>${t.workerStat.failing}</dt><dd><${CountNum} value=${jobs.failing} /></dd></div>
+        <div><dt>${t.workerStat.upkeep}</dt><dd><${CountNum} value=${jobs.upkeep} /></dd></div>
         <div><dt>${t.workerStat.not_reported}</dt><dd><${CountNum} value=${view.stats?.not_reported ?? 0} /></dd></div>
         <div><dt>${t.workerStat.retired}</dt><dd><${CountNum} value=${view.stats?.retired ?? 0} /></dd></div>
       </dl>
@@ -320,23 +337,31 @@ export function WorkersPage({ s, c }) {
             onInput=${e => set({ q: e.currentTarget.value })} />
           <button type="button" class=${`fchip${flt.attention ? ' is-on' : ''}`} aria-pressed=${String(flt.attention)}
             onClick=${() => set({ attention: !flt.attention })}><span class="fdot fdot-warn" aria-hidden="true"></span>${t.workerAttention}</button>
-          ${flt.outage || jobCounts(view).failing ? html`<button type="button" class=${`fchip${flt.outage ? ' is-on' : ''}`} aria-pressed=${String(flt.outage)}
+          ${flt.outage || jobs.failing ? html`<button type="button" class=${`fchip${flt.outage ? ' is-on' : ''}`} aria-pressed=${String(flt.outage)}
             onClick=${() => set({ outage: !flt.outage })}><span class="fdot fdot-bad" aria-hidden="true"></span>${t.workerOutage}</button>` : null}
           <span class="muted small">${t.workersShown(shown.length, runs.length)}</span>
         </div>
-        ${['state', 'kind', 'sphere', 'host'].map(facetRow)}
+        ${['host', 'state', 'kind', 'sphere'].map(facetRow)}
       </section>
-      ${!shown.length ? html`<div class="panel panel-pad"><${Empty}>${t.filterNone}<//></div>` : groups.map(g => {
-        const n = k => g.runs.filter(r => workerTone(r) === k).length
-        return html`<section class="panel panel-pad wgroup" key=${g.id}>
-          <header class="rgroup-head"><h3 class="rgroup-title">${g.id === '_standalone' || !g.title ? t.workerAlone : g.id === '_undecided' ? t.workerUndecided : g.title}</h3>
-            <span class="sec-count mono">${g.runs.length}</span>
-            <span class="rgroup-count">${['ok', 'warn', 'bad', 'dim'].filter(k => n(k)).map(k => html`
-              <span key=${k} class="rgroup-n"><span class=${`fdot fdot-${k}`} aria-hidden="true"></span><span class="mono">${n(k)}</span></span>`)}</span>
-          </header>
-          <ul class="wlist rview">${g.runs.map((r, i) => html`<${WorkerRow} key=${r.id} r=${r} i=${i} nowPct=${nowPct} c=${c} />`)}</ul>
-        </section>`
-      })}
+      ${!shown.length ? html`<div class="panel panel-pad"><${Empty}>${t.filterNone}<//></div>` : machines.map(m => html`<section class="panel panel-pad wmachine" key=${m.host}>
+        <header class="rgroup-head wmachine-head"><h3 class="rgroup-title">${m.host}</h3>
+          ${m.always ? html`<span class="chip">${t.machineAlways}</span>` : null}
+          <span class="sec-count mono">${m.runs.length}</span>
+          ${m.failing ? html`<span class="chip chip-tk tk-danger"><${Dot} token="danger" /><span>${t.folderOutages(m.failing)}</span></span>` : null}
+          ${m.upkeep ? html`<span class="muted small">${t.machineUpkeep(m.upkeep)}</span>` : null}
+        </header>
+        ${m.groups.map(g => {
+          const n = k => g.runs.filter(r => workerTone(r) === k).length
+          return html`<div class="wgroup" key=${g.id}>
+            <header class="rgroup-head"><h4 class="rgroup-title wgroup-title">${g.id === '_standalone' || !g.title ? t.workerAlone : g.id === '_undecided' ? t.workerUndecided : g.title}</h4>
+              <span class="sec-count mono">${g.runs.length}</span>
+              <span class="rgroup-count">${['ok', 'warn', 'bad', 'dim'].filter(k => n(k)).map(k => html`
+                <span key=${k} class="rgroup-n"><span class=${`fdot fdot-${k}`} aria-hidden="true"></span><span class="mono">${n(k)}</span></span>`)}</span>
+            </header>
+            <ul class="wlist rview">${g.runs.map((r, i) => html`<${WorkerRow} key=${r.id} r=${r} i=${i} now=${nowMs} nowPct=${nowPct} c=${c} />`)}</ul>
+          </div>`
+        })}
+      </section>`)}
       ${(view.elsewhere?.undeclared?.counted ?? 0) ? html`<p class="muted small">${t.workersElsewhere(view.elsewhere.undeclared.counted)}</p>` : null}`}
   </div>`
 }

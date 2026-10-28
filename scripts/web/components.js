@@ -20,17 +20,17 @@ import { DayColumn, WorkSwitch } from './views/day.js'
 import { DetailColumn } from './views/detail.js'
 import { DossierView } from './views/dossier.js'
 import { FlowPage } from './views/flow.js'
-import { Header, PageBadge, PageBar, ParentLink } from './views/header.js'
+import { FolderBar, Header, PageBadge, PageBar } from './views/header.js'
 import { AreaBar, HomePage, jumpToTab, useHomeTitle } from './views/home.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, FLOW_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, onPageOf, reviewHomeOf,
-  headBadgeOf, subPagesOf, workViewNow,
+  headBadgeOf, parentOf, workViewNow,
 } from './views/nav.js'
 import {
   AuthPanel, BootPanel, ConfirmDialog, HistoryDrawer, InfoDrawer, ItemDrawer, MobileSwitch, NotesDrawer,
   TabsDrawer, Toasts,
 } from './views/overlays.js'
-import { JevList, KindBar, OverviewBoard, PageCard, PageSection, WorkOrder } from './views/pages.js'
+import { JevList, KindBar, MachineLines, OverviewBoard, PageCard, PageSection, PageSummary, WorkOrder } from './views/pages.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
 import { SettingsPage } from './views/settings.js'
@@ -116,12 +116,18 @@ function PageView({ s, c }) {
   // the order by Jev stands in place of the sections, so a card placed after one moves to the end
   const jevList = !!(page.jev && !work && s.jev?.enabled && s.jev?.ready && s.ui.workView === 'jev' && s.jevOrder[page.id]?.order)
   const card = id => html`<${PageCard} key=${`@${id}`} id=${id} page=${page} s=${s} c=${c} />`
+  // a folder's bar stands on top of the folder page and of each of its sub pages; the folder page names its
+  // machines first, a sub page with `overview` gets a head card of its own parts instead of the tiles
+  const sub = !!parentOf(s, whole.id)
   return html`<div class="col col-page">
+    ${work ? null : html`<${FolderBar} s=${s} c=${c} />`}
     <header class="page-head">
-      ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : html`<${ParentLink} s=${s} c=${c} /><h2 class="detail-title">${page.title}</h2>`}
+      ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : html`<h2 class="detail-title">${page.title}</h2>`}
       <${PageBadge} badge=${headBadgeOf(s, whole)} />
     </header>
-    ${page.overview || subPagesOf(s, whole.id).length ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
+    ${work ? null : html`<${MachineLines} page=${whole} s=${s} c=${c} />`}
+    ${page.overview && sub ? html`<${PageSummary} page=${page} s=${s} c=${c} />`
+      : page.overview ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
     ${kinds.length > 1 ? html`<${KindBar} kinds=${kinds} active=${kind} c=${c} />` : null}
     ${page.sections?.some(sec => sec.kind === 'tasks' || sec.kind === 'inbox') ? html`<${TriageBar} s=${s} c=${c} byKey=${indexRows(s.model)}
       items=${(kind ? whole.sections.filter(sec => kind.sections.includes(sec.id)) : whole.sections)

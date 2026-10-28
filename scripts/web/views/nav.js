@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the pages: which tab stands where, which page stands under another, and the fixed page ids.
+// The cockpit, the pages: which tab stands where, which page stands under another (a folder and its places), and the
+// fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
 import { FILES_PAGE, FLOW_PAGE, checkInFlow, filesOn, jobCounts, listedChats, reviewHome, sessionsInFlow, subPageTile, walkRefs, workPageOf, workViewIn, workViewsIn } from '../logic.js'
@@ -113,9 +114,41 @@ export function subPagesOf(s, id) {
 }
 
 /** The page a sub page stands under, or null: the sub page has no tab of its own, the parent's tab stays lit while
- *  it is open, and it carries the way back. A parent the model does not carry leaves the page its own tab */
+ *  it is open, and the bar of the folder stands on both (views/header.js FolderBar). A parent the model does not
+ *  carry leaves the page its own tab */
 export function parentOf(s, id) {
   return (s?.model?.pages ?? []).find(p => p.id !== id && subPagesOf(s, p.id).includes(id))?.id ?? null
+}
+
+/** The folder a page belongs to: the page itself where it names sub pages, else the page it stands under, else null */
+export function folderOf(s, id = s?.ui?.page) {
+  return subPagesOf(s, id).length ? id : parentOf(s, id)
+}
+
+/** The places of a folder for its bar and its tab's menu: the folder page first (its overview), then its sub pages,
+ *  each with a mark: `tone` for its dot and a short `note` ("3 down", "4 warnings") only where something stands out.
+ *  Red with an outage or a finding, orange with warnings (logic.js subPageTile), green on a live all clear */
+export function folderPlaces(s, id) {
+  const t = T()
+  const pages = s?.model?.pages ?? []
+  const page = pages.find(p => p.id === id)
+  const subs = subPagesOf(s, id)
+  if (!page || !subs.length) return []
+  const own = page.badge?.kind === 'bad' ? { tone: 'danger', note: t.folderFindings(page.badge.n) }
+    : { tone: page.badge?.kind === 'ok' ? 'success' : 'on-surface-muted', note: null }
+  return [{ id, label: t.folderOverview, ...own }, ...subs.map(x => {
+    if (x === WORKERS_PAGE) {
+      const j = jobCounts(s.workers?.data)
+      return { id: x, label: t.workersTab, tone: j.failing ? 'danger' : j.upkeep ? 'on-surface-muted' : 'success',
+        note: j.failing ? t.folderOutages(j.failing) : null, title: t.overviewWorkers(j.ok, j.all, j.failing, j.upkeep) }
+    }
+    const sub = pages.find(p => p.id === x)
+    const tile = subPageTile(sub)
+    const note = tile.error ? t.folderUnreadable : tile.tone === 'danger' ? t.folderFindings(tile.big)
+      : tile.tone === 'warning' ? t.folderWarnings(tile.big) : null
+    return { id: x, label: sub.title, tone: tile.tone === 'neutral' ? 'on-surface-muted' : tile.tone, note,
+      title: tile.warnIn ? t.subPageWarn(tile.big, tile.warnIn) : tile.error ? t.unreadable(tile.note) : tile.note ?? undefined }
+  })]
 }
 
 /** A page's badge in the bar: its own, or red with every finding of its sub pages and the outages of the Workers
@@ -149,8 +182,8 @@ function pageList(s) {
   // does not list the live sessions in its Running now (round 6, sessionsInFlow), the task check only where no page holds
   // it and Work through does not (round 6 c, checkInFlow: its row stands under Not now);
   // a page of group `day` has no tab, its sections stand under the day list of Today (DayColumn); a sub page
-  // (parentOf: a profile page with `under:`, or the Workers page placed under one) has none either, a tile of
-  // its parent opens it; Settings is the last of all
+  // (parentOf: a profile page with `under:`, or the Workers page placed under one) has none either, the bar of
+  // its folder and the menu at its parent's tab open it; Settings is the last of all
   return [{ id: START_PAGE }, { id: 'briefing' }, ...(filesOn(s) ? [{ id: FILES_PAGE }] : []), { id: CHAT_PAGE }, ...(sessionsInFlow(s) ? [] : [{ id: SESSIONS_PAGE, more: true }]),
     ...(s.workers?.status === 'none' || parentOf(s, WORKERS_PAGE) ? [] : [{ id: WORKERS_PAGE, more: true }]),
     ...((s.agents?.peers ?? []).length && !chatAsWorkspaces(s) ? [{ id: AGENTS_PAGE, more: true }] : []), ...(reviewHomeOf(s) || checkInFlow(s) ? [] : [{ id: CHECK_PAGE, more: true }]),

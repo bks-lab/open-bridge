@@ -897,7 +897,7 @@ test('a sub page tile: red with its findings, orange with what needs a look, gre
   assert.deepEqual([many.tone, many.big, many.note, many.warnIn], ['warning', 4, null, ['Logs (24 h)']])
   assert.equal(text.TABLES.en.subPageWarn(4, ['Logs (24 h)']), '4 warnings in Logs (24 h)')
   assert.equal(text.TABLES.de.subPageWarn(4, ['Logs (24 h)']), '4 Warnungen in Logs (24 h)')
-  assert.match(read('views/pages.js'), /x\.warnIn \? t\.subPageWarn\(x\.big, x\.warnIn\)/)
+  assert.match(read('views/nav.js'), /tile\.warnIn \? t\.subPageWarn\(tile\.big, tile\.warnIn\)/)
   // a source that could not be read says why, in red
   const broken = logic.subPageTile({ sections: [sec('Remotes', [], { status: 'error', reason: 'ssh failed' }), quiet] })
   assert.deepEqual([broken.tone, broken.error, broken.note], ['danger', true, 'ssh failed'])

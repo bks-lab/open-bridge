@@ -2575,31 +2575,20 @@ test('operations: Background jobs keep their own tab red only for an outage, nev
   assert.equal(down.$('.pbadge .mono').text(), '1')
 })
 
-test('operations: tiles on top open the sub pages, Background jobs on its outages when red, else on the runs with a finding', () => {
+test('operations: the tiles on top show the parent\'s own parts, its sub pages stand in the folder bar instead', () => {
   const { OverviewBoard } = views.pages
   const s = opsState({ runs: [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')] })
+  const el = mount(html`<${OverviewBoard} page=${s.model.pages[0]} s=${s} c=${recorder()} />`)
+  assert.deepEqual(el.$$('.otile').map(x => x.$('.otile-title').text()), ['Checks'])
+  // Background jobs with a tab of their own keep their tile on an overview, and it opens on every job
+  const free = { ...s, model: { ...s.model, pages: s.model.pages.map(p => ({ ...p, subs: [], under: null })) } }
   const c = recorder()
-  const el = mount(html`<${OverviewBoard} page=${s.model.pages[0]} s=${s} c=${c} />`)
-  const tiles = el.$$('.otile')
-  assert.deepEqual(tiles.map(x => x.$('.otile-title').text()), [en.workersTab, 'Inventory', 'Lab', 'Checks'])
-  const [jobs, inv, lab] = tiles
+  const jobs = mount(html`<${OverviewBoard} page=${free.model.pages[0]} s=${free} c=${c} />`).$$('.otile')
+    .find(x => x.$('.otile-title').text() === en.workersTab)
   assert.ok(jobs.hasClass('tk-danger'), jobs.getAttribute('class'))
   assert.equal(jobs.$('.otile-big').text(), '1')
   jobs.click()
-  assert.deepEqual(c.calls.at(-1), ['openWorkers', { outage: true }])
-  // devices nothing measures live never look in order; the lab's quiet findings are a live all clear
-  assert.ok(inv.hasClass('tk-neutral'), inv.getAttribute('class'))
-  assert.equal(inv.$('.otile-big').text(), '3')
-  assert.match(inv.$('.otile-sub').text(), /^Machines: /)
-  inv.click()
-  assert.deepEqual(c.calls.at(-1), ['setPage', 'inv'])
-  assert.ok(lab.hasClass('tk-success'), lab.getAttribute('class'))
-  // upkeep alone keeps the jobs tile calm, and it opens on the runs with a finding
-  const c2 = recorder()
-  const calm = mount(html`<${OverviewBoard} page=${s.model.pages[0]} s=${opsState()} c=${c2} />`).$('.otile')
-  assert.ok(calm.hasClass('tk-neutral'), calm.getAttribute('class'))
-  calm.click()
-  assert.deepEqual(c2.calls.at(-1), ['openWorkers', { attention: true }])
+  assert.deepEqual(c.calls.at(-1), ['openWorkers', {}])
 })
 
 test('Background jobs opened on their outages: only those, the chip says so and takes it back', () => {
@@ -2614,15 +2603,175 @@ test('Background jobs opened on their outages: only those, the chip says so and 
   assert.ok(!calm.$$('.wfilters .fchip').some(b => b.text().includes(en.workerOutage)))
 })
 
-test('operations: a sub page carries the way back to the page it stands under', () => {
+test('operations: the folder bar names the overview and every sub page with its mark, on each of them', () => {
+  const { FolderBar } = views.header
+  const runs = [opsRun('mail', null), opsRun('pilot', 'medium'), opsRun('backup', 'high')]
+  const warnLab = s => ({ ...s, model: { ...s.model, pages: s.model.pages.map(p => (p.id === 'lab'
+    ? { ...p, sections: [...p.sections, opsSec('logs', 'Logs', [opsRow(0, 'journal', 'warn'), opsRow(1, 'tasks', 'warn')])] } : p)) } })
+  for (const page of ['ops', 'inv', 'lab']) {
+    const c = recorder()
+    const bar = mount(html`<${FolderBar} s=${warnLab(opsState({ runs, ui: { page } }))} c=${c} />`).$('.folderbar')
+    assert.ok(bar, page)
+    const items = bar.$$('button')
+    assert.deepEqual(items.map(b => b.$('.folder-name').text()), [en.folderOverview, en.workersTab, 'Inventory', 'Lab'], page)
+    const current = items.filter(b => b.getAttribute('aria-current') === 'page').map(b => b.$('.folder-name').text())
+    assert.deepEqual(current, [page === 'ops' ? en.folderOverview : page === 'inv' ? 'Inventory' : 'Lab'])
+    const [, jobs, inv, lab] = items
+    assert.ok(jobs.$('.tk-danger'), jobs.text())
+    assert.equal(jobs.$('.folder-note').text(), en.folderOutages(1))
+    assert.equal(lab.$('.folder-note').text(), en.folderWarnings(2))
+    assert.ok(!inv.$('.folder-note'), inv.text())
+    items[3].click()
+    assert.deepEqual(c.calls.at(-1), ['setPage', 'lab'])
+    items[0].click()
+    assert.deepEqual(c.calls.at(-1), ['setPage', 'ops'])
+  }
+  assert.ok(mount(html`<${views.sessions.WorkersPage} s=${opsState({ ui: { page: '@workers' } })} c=${recorder()} />`).$('.folderbar'),
+    'on Background jobs too')
+  assert.ok(!mount(html`<${FolderBar} s=${opsState({ ui: { page: 'briefing' } })} c=${recorder()} />`).$('.folderbar'), 'none outside a folder')
+  // no way back of its own: the bar is the way
+  assert.ok(!mount(html`<${views.sessions.WorkersPage} s=${opsState({ ui: { page: '@workers' } })} c=${recorder()} />`).button('‹ Operations'))
+})
+
+test('operations: the parent tab opens its overview, its ▾ opens a menu of the same pages with their marks', async () => {
+  const proto = Object.getPrototypeOf(document.body)
+  proto.focus ??= function focus() { document.activeElement = this }
   const c = recorder()
-  const back = mount(html`<${views.header.ParentLink} s=${opsState({ ui: { page: 'inv' } })} c=${c} />`).button('‹ Operations')
-  assert.ok(back, 'the back link')
-  back.click()
+  const bar = pageBar(opsState({ runs: [opsRun('mail', null), opsRun('backup', 'high')], ui: { page: 'inv' } }), c)
+  bar.$$('[role=tab]').find(b => b.text().startsWith('Operations')).click()
   assert.deepEqual(c.calls.at(-1), ['setPage', 'ops'])
-  const head = mount(html`<${views.sessions.WorkersPage} s=${opsState({ ui: { page: '@workers' } })} c=${recorder()} />`)
-  assert.ok(head.$('.page-head').button('‹ Operations'), 'on Background jobs too')
-  assert.ok(!mount(html`<${views.header.ParentLink} s=${opsState({ ui: { page: 'ops' } })} c=${recorder()} />`).$('button'), 'none on the parent')
+  const caret = bar.button(en.folderMenu('Operations'))
+  assert.ok(caret, 'the ▾ beside the tab')
+  assert.equal(caret.getAttribute('aria-haspopup'), 'menu')
+  assert.ok(!bar.$('.folder-menu'), 'closed until clicked')
+  caret.click()
+  await tick()
+  const items = bar.$$('.folder-menu [role=menuitem]')
+  assert.deepEqual(items.map(b => b.$('.folder-name').text()), [en.folderOverview, en.workersTab, 'Inventory', 'Lab'])
+  assert.equal(items[1].$('.folder-note').text(), en.folderOutages(1))
+  items[3].click()
+  await tick()
+  assert.deepEqual(c.calls.at(-1), ['setPage', 'lab'])
+  assert.ok(!bar.$('.folder-menu'), 'a pick closes it')
+})
+
+test('operations: the tab order follows the listing, and a page without under is a tab of its own again', () => {
+  const { pageOrder, subPagesOf } = views.nav
+  const s = opsState()
+  const gh = { id: 'gh', title: 'GitHub', group: 'main', badge: { kind: 'ok' }, overview: false, cards: null, jev: false, under: null, subs: [], sections: [] }
+  const order = pages => pageOrder({ ...s, model: { ...s.model, pages } }).filter(id => ['ops', 'gh'].includes(id))
+  assert.deepEqual(order([...s.model.pages, gh]), ['ops', 'gh'])
+  assert.deepEqual(order([gh, ...s.model.pages]), ['gh', 'ops'])
+  const free = { ...s, model: { ...s.model, pages: s.model.pages.map(p => (p.id === 'lab' ? { ...p, under: null }
+    : p.id === 'ops' ? { ...p, subs: ['@workers', 'inv'] } : p)) } }
+  assert.ok(pageOrder(free).includes('lab'))
+  assert.deepEqual(subPagesOf(free, 'ops'), ['@workers', 'inv'])
+  assert.ok(!mount(html`<${views.header.FolderBar} s=${{ ...free, ui: { ...free.ui, page: 'lab' } }} c=${recorder()} />`).$('.folderbar'))
+})
+
+/** Runs on machines: the always-on box with an outage and a job in order, the laptop with one */
+const hostRun = (id, host, severity = null, extra = {}) => ({ ...opsRun(id, severity), host, system: '', kind: 'interval', ...extra })
+const machinePages = () => {
+  const s = opsState()
+  const inv = s.model.pages.find(p => p.id === 'inv')
+  const lab = s.model.pages.find(p => p.id === 'lab')
+  const mrow = (i, name, tone, detail) => ({ ...opsRow(i, name, tone), id: `machine:${name}`, detail })
+  return s.model.pages.map(p => (p === inv ? { ...inv, sections: [opsSec('machines', 'Machines',
+    [mrow(0, 'homebox', null, 'always on'), mrow(1, 'laptop', null, 'online'), mrow(2, 'gpu-box', 'dim', 'offline'), mrow(3, 'printer', 'dim', 'outside')])] }
+    : p === lab ? { ...lab, sections: [opsSec('remotes', 'Remotes', [{ ...opsRow(0, 'gpu-box', 'dim'), detail: 'off' }, { ...opsRow(1, 'homebox'), detail: 'on' }])] } : p))
+}
+
+test('machines: one line per machine a job runs on or a sub page names, the always-on first; a printer is not one', () => {
+  const runs = [hostRun('mail', 'homebox'), hostRun('backup', 'homebox', 'high'), hostRun('sync', 'laptop', 'medium')]
+  const lines = loadedLogic.machineLines({ runs, hosts: ['homebox'], pages: machinePages() })
+  assert.deepEqual(lines.map(x => x.name), ['homebox', 'laptop', 'gpu-box'])
+  const [box, laptop, gpu] = lines
+  assert.deepEqual([box.always, box.jobs, box.failing, box.upkeep, box.tone], [true, 2, 1, 0, 'bad'])
+  assert.deepEqual(box.places.map(p => [p.page, p.title, p.state]), [['lab', 'Lab', 'on']])
+  assert.deepEqual([laptop.always, laptop.jobs, laptop.upkeep, laptop.state, laptop.places.length], [false, 1, 1, 'online', 0])
+  assert.deepEqual([gpu.jobs, gpu.state, gpu.tone, gpu.places.map(p => p.state)], [0, 'offline', 'dim', ['off']])
+})
+
+test('machines: the block on the overview opens the jobs of a machine, a lab state opens the lab', () => {
+  const { MachineLines } = views.pages
+  const runs = [hostRun('mail', 'homebox'), hostRun('backup', 'homebox', 'high'), hostRun('sync', 'laptop', 'medium')]
+  const base = opsState({ runs, ui: { page: 'ops' } })
+  const s = { ...base, model: { ...base.model, pages: machinePages() }, workers: { ...base.workers, data: { ...base.workers.data, hosts: ['homebox'] } } }
+  const c = recorder()
+  const el = mount(html`<${MachineLines} page=${s.model.pages[0]} s=${s} c=${c} />`)
+  assert.equal(el.$('.mlines-title').text(), en.machinesTitle)
+  const rows = el.$$('.mline')
+  assert.deepEqual(rows.map(r => r.$('.mline-name').text()), ['homebox', 'laptop', 'gpu-box'])
+  assert.match(rows[0].text(), new RegExp(en.machineAlways))
+  assert.match(rows[0].text(), new RegExp(en.machineJobs(2)))
+  assert.ok(rows[0].$('.mline-main .tk-danger'), 'an outage is red')
+  rows[0].$('.mline-main').click()
+  assert.deepEqual(c.calls.at(-1), ['openWorkers', { host: 'homebox' }])
+  rows[0].button(en.machinePlace('Lab', 'on')).click()
+  assert.deepEqual(c.calls.at(-1), ['setPage', 'lab'])
+  rows[2].$('.mline-main').click()
+  assert.deepEqual(c.calls.at(-1), ['setPage', 'lab'])
+  // a page outside a folder draws none
+  assert.ok(!mount(html`<${MachineLines} page=${s.model.pages[1]} s=${s} c=${recorder()} />`).$('.mlines'))
+})
+
+test('background jobs: by machine, the always-on first, the systems with an outage first, every job in view', () => {
+  const runs = [hostRun('sync', 'laptop', null, { system: 'notes' }), hostRun('mail', 'homebox', null, { system: 'mail' }),
+    hostRun('backup', 'homebox', 'high', { system: 'store' }), hostRun('pilot', 'homebox', 'medium', { system: 'mail' })]
+  const groups = loadedLogic.groupByHost(runs, { hosts: ['homebox'], systems: [{ id: 'mail', title: 'Mail' }, { id: 'store', title: 'Store' }] })
+  assert.deepEqual(groups.map(g => [g.host, g.always, g.runs.length, g.failing, g.upkeep]), [['homebox', true, 3, 1, 1], ['laptop', false, 1, 0, 0]])
+  assert.deepEqual(groups[0].groups.map(g => [g.id, g.runs.map(r => r.id)]), [['store', ['backup']], ['mail', ['pilot', 'mail']]])
+  const base = opsState({ runs, ui: { page: '@workers' } })
+  const s = { ...base, workers: { ...base.workers, data: { ...base.workers.data, hosts: ['homebox'], systems: [{ id: 'mail', title: 'Mail' }] } } }
+  const el = mount(html`<${views.sessions.WorkersPage} s=${s} c=${recorder()} />`)
+  const heads = el.$$('.wmachine > .wmachine-head')
+  assert.deepEqual(heads.map(h => h.$('.rgroup-title').text()), ['homebox', 'laptop'])
+  assert.match(heads[0].text(), new RegExp(en.machineAlways))
+  assert.equal(el.$$('.wrow').length, 4, 'every job, not only those with a finding')
+  // the machine is the first filter, as chips
+  const first = el.$('.wfilters .wfacet')
+  assert.equal(first.$('.label-caps').text(), en.workerFacet.host)
+  assert.deepEqual(first.$$('.fchip').map(b => b.text().split(' ')[0]), ['homebox', 'laptop'])
+})
+
+test('background jobs: a row names its kind, when it ran last and when it runs next', () => {
+  const now = new Date(2026, 9, 9, 12, 0).getTime()
+  const at = (h, m) => new Date(2026, 9, 9, h, m).toISOString()
+  const daily = { when: 'FREQ=DAILY at 06:05; FREQ=DAILY at 18:05', day: { marks: [{ at_pct: 25, today: true }] }, strip: [{ at: at(6, 6), verdict: 'ok' }] }
+  assert.deepEqual(loadedLogic.runTimes(daily, now), { last: Date.parse(at(6, 6)), next: new Date(2026, 9, 9, 18, 5).getTime() })
+  const every = { when: 'every 900s', day: { marks: [] }, strip: [{ at: at(11, 50), verdict: 'ok' }] }
+  assert.deepEqual(loadedLogic.runTimes(every, now), { last: Date.parse(at(11, 50)), next: Date.parse(at(12, 5)) })
+  assert.deepEqual(loadedLogic.runTimes({ when: 'continuous', strip: [] }, now), { last: null, next: null })
+  // a weekly run not due today names no time today
+  assert.equal(loadedLogic.runTimes({ when: 'FREQ=WEEKLY;BYDAY=SU at 10:30', day: { marks: [] }, strip: [] }, now).next, null)
+  const run = hostRun('mail', 'homebox', null, { kind: 'recurring', ...daily, title: 'Mail digest', purpose: 'sends the digest' })
+  const s = opsState({ runs: [run], ui: { page: '@workers' } })
+  const row = mount(html`<${views.sessions.WorkersPage} s=${{ ...s, now }} c=${recorder()} />`).$('.wrow')
+  assert.match(row.$('.wrow-name').text(), new RegExp(en.workerKind.recurring))
+  assert.match(row.$('.wrow-times').text(), /06:06/)
+  assert.match(row.$('.wrow-times').text(), /18:05/)
+})
+
+test('lab: a sub page with overview shows a head card of its own parts, folded where they say the same, no jobs and no tokens', () => {
+  const rest = { ...opsRow(0, 'Lab not running', 'dim'), detail: 'the box is off' }
+  const lab = { id: 'lab', title: 'Lab', overview: true, under: 'ops', sections: [
+    opsSec('remotes', 'Remotes', [opsRow(0, 'gpu-box', 'dim'), opsRow(1, 'homebox')]),
+    opsSec('findings', 'Findings', [], { alarm: true, empty: 'Lab quiet' }),
+    opsSec('gpu', 'GPU', [rest]), opsSec('llm', 'Model', [rest]),
+    opsSec('logs', 'Logs', [opsRow(0, 'journal', 'warn'), opsRow(1, 'tasks', 'warn')])] }
+  const lines = loadedLogic.pageSummary(lab)
+  assert.deepEqual(lines.map(x => [x.titles.join('+'), x.kind, x.tone]), [['Remotes', 'rows', 'neutral'], ['Findings', 'empty', 'success'],
+    ['GPU+Model', 'one', 'neutral'], ['Logs', 'loud', 'warning']])
+  const base = opsState({ ui: { page: 'lab' } })
+  const s = { ...base, usage: { status: 'ok', data: { days: [], outliers: [] } }, model: { ...base.model, pages: base.model.pages.map(p => (p.id === 'lab' ? { ...p, ...lab } : p)) } }
+  const c = recorder()
+  const el = mount(html`<${views.pages.PageSummary} page=${s.model.pages.find(p => p.id === 'lab')} s=${s} c=${c} />`)
+  const rows = el.$$('.psum-line')
+  assert.equal(rows.length, 4)
+  assert.match(rows[0].text(), new RegExp(`Remotes.*${en.summaryRows(1, 1)}`))
+  assert.match(rows[2].text(), /GPU, Model.*Lab not running/)
+  assert.match(rows[3].text(), new RegExp(`Logs.*${en.folderWarnings(2)}`))
+  assert.ok(!el.text().includes(en.workersTab) && !el.text().includes(en.usageTitle), el.text())
 })
 
 test('operations: a section with hide_ok is drawn only while one of its rows is a finding', () => {
