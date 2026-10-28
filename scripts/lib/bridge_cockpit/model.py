@@ -330,8 +330,8 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
                 "group": p.get("group") if p.get("group") in ("more", "work", "day") else "main", "overview": p.get("overview") is True,
                 "cards": parse_cards(p.get("cards")),
-                # where the page stands: under another (no tab, a tile of that page opens it), and the sub pages a
-                # page names in their order, the cockpit's own @workers among them (briefing_view.pages)
+                # where the page stands: under another (no tab, the bar of that page's folder opens it), and the sub
+                # pages a page names in their order, the cockpit's own @workers among them (briefing_view.pages)
                 "under": as_text_or_null(p.get("under")),
                 "subs": [x for x in _list(p.get("subs")) if isinstance(x, str) and x][:12],
                 # the order by Jev: the words stay on the server (jev.rank), the page only learns there is one

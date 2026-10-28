@@ -792,7 +792,7 @@ def test_cards_are_valid_for_the_schema_too():
 
 
 def test_a_page_can_stand_under_another_and_the_parent_names_its_sub_pages():
-    # `under:` gives a page no tab of its own: it opens from a tile on the page it names. The parent learns its
+    # `under:` gives a page no tab of its own: the bar of the folder it names opens it. The parent learns its
     # sub pages in the listed order (`subs`), the cockpit's own Background jobs page (@workers) among them
     view = {"pages": [{"id": "ops", "sections": ["probes"], "overview": True},
                       {"id": "@workers", "under": "ops"},
@@ -806,6 +806,22 @@ def test_a_page_can_stand_under_another_and_the_parent_names_its_sub_pages():
     # a sub page without a section (gone) is no page, so its parent does not name it
     assert _page(pages, "ops")["subs"] == ["@workers", "week"]
     assert "under" not in _page(pages, "ops") and "subs" not in _page(pages, "log")
+
+
+def test_a_folder_keeps_the_listed_order_and_a_page_without_under_is_a_tab_again():
+    # the listing decides the order of the tabs and of a folder's bar: ops before trackers here, the lab after the
+    # jobs; a sub page keeps its overview (its head card). Dropping `under` makes the lab a page of its own again
+    view = {"pages": [{"id": "ops", "sections": ["probes"]}, {"id": "board", "sections": ["cal"]},
+                      {"id": "@workers", "under": "ops"},
+                      {"id": "lab", "sections": ["commits"], "under": "ops", "overview": True}]}
+    assert bv._page_problems(view) == []
+    pages = bv.pages(_result(), _profile(view))
+    assert [p["id"] for p in pages][:3] == ["ops", "board", "lab"]
+    assert _page(pages, "ops")["subs"] == ["@workers", "lab"]
+    assert _page(pages, "lab")["under"] == "ops" and _page(pages, "lab")["overview"] is True
+    del view["pages"][3]["under"]
+    pages = bv.pages(_result(), _profile(view))
+    assert "under" not in _page(pages, "lab") and _page(pages, "ops")["subs"] == ["@workers"]
 
 
 def test_under_must_name_a_page_of_its_own_one_level_deep():

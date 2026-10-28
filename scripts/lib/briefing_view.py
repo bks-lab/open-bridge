@@ -363,7 +363,7 @@ DEFAULT_PAGE_GROUP = {"work": "main", "status": "main", "dates": "more", "tracke
 REST_PAGE = "more"
 PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev", "cards", "under"}
 # the cockpit's own pages a profile may place under one of its pages (`{id: "@workers", under: ops}`): an id
-# and `under`, never sections; the page then has no tab, it opens from a tile on the page it stands under
+# and `under`, never sections; the page then has no tab, the bar of the folder it stands in opens it
 PLACED_PAGES = ("@workers",)
 # the live cards a dashboard may place after a section of a page (bridge_cockpit.model.CARD_IDS)
 PAGE_CARDS = ("costs", "usage", "noise")

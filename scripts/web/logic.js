@@ -1216,6 +1216,87 @@ export function jobCounts(view) {
   return { all, failing, upkeep, ok: Math.max(0, all - failing - upkeep) }
 }
 
+// worst first: an outage, then upkeep, then the rest (jobSeverity)
+const SEVERITY_RANK = { high: 0, medium: 1 }
+const severityRank = run => SEVERITY_RANK[jobSeverity(run)] ?? 2
+
+/** When a run ran last and starts next, in ms or null: the last of its recorded runs, and its next start today, read
+ *  off its schedule: an `at HH:MM` still to come on a day its marks say it is due, or `every Ns` after the last run */
+export function runTimes(run, now) {
+  const stamp = Date.parse((run?.strip ?? []).at(-1)?.at ?? run?.day?.trace_at ?? '')
+  const last = Number.isFinite(stamp) ? stamp : null
+  const when = String(run?.when ?? '')
+  const every = when.match(/^every (\d+)s$/)
+  if (every) {
+    const next = last == null ? null : last + Number(every[1]) * 1000
+    return { last, next: next != null && next >= now ? next : null }
+  }
+  if (!(run?.day?.marks ?? []).some(m => m.today)) return { last, next: null }
+  const day = new Date(now)
+  const starts = [...when.matchAll(/\bat (\d\d):(\d\d)\b/g)]
+    .map(m => new Date(day.getFullYear(), day.getMonth(), day.getDate(), Number(m[1]), Number(m[2])).getTime())
+  return { last, next: starts.filter(x => x > now).sort((a, b) => a - b)[0] ?? null }
+}
+
+/** The background jobs by machine: the always-on machines first (`hosts`, the ones the view was drawn for), then
+ *  those with an outage, then the most jobs. Inside a machine its systems (groupBySystem), those with an outage
+ *  first, then those with upkeep, each run worst first */
+export function groupByHost(runs, { hosts = [], systems = [] } = {}) {
+  const byHost = new Map()
+  for (const r of runs ?? []) {
+    const host = r.host || '?'
+    if (!byHost.has(host)) byHost.set(host, [])
+    byHost.get(host).push(r)
+  }
+  const out = [...byHost].map(([host, list]) => {
+    const sorted = [...list].sort((a, b) => severityRank(a) - severityRank(b))
+    const groups = groupBySystem(sorted, systems).map((g, i) => ({ g, i, rank: Math.min(...g.runs.map(severityRank)) }))
+      .sort((a, b) => a.rank - b.rank || a.i - b.i).map(x => x.g)
+    return { host, always: (hosts ?? []).includes(host), runs: sorted, groups,
+      failing: list.filter(r => jobSeverity(r) === 'high').length, upkeep: list.filter(r => jobSeverity(r) === 'medium').length }
+  })
+  return out.sort((a, b) => b.always - a.always || b.failing - a.failing || b.runs.length - a.runs.length || a.host.localeCompare(b.host))
+}
+
+/** The machines of a folder's overview, one line each: every machine a background job runs on and every machine
+ *  a page of the folder names in a row of its own (a lab's remote). A row `machine:<name>` (bridge-resources.py
+ *  machines) gives a machine its state and makes it known; a row of another page titled with a known name puts
+ *  the machine on that page (`places`). The always-on machines first, then those with an outage, the most jobs */
+export function machineLines({ runs = [], hosts = [], pages = [] } = {}) {
+  const live = (runs ?? []).filter(r => !r.retired && r.host)
+  const inventory = new Map()
+  const rows = []
+  for (const p of pages ?? []) {
+    for (const sec of p.sections ?? []) {
+      for (const it of sec.items ?? []) {
+        const name = String(it.title ?? '').toLowerCase()
+        if (typeof it.id === 'string' && it.id.startsWith('machine:')) inventory.set(name, it)
+        else if (name) rows.push({ name, page: p, it })
+      }
+    }
+  }
+  const lines = new Map()
+  const line = name => {
+    const key = name.toLowerCase()
+    if (!lines.has(key)) lines.set(key, { name, runs: [], places: [] })
+    return lines.get(key)
+  }
+  for (const r of live) line(r.host).runs.push(r)
+  for (const { name, page, it } of rows) {
+    if (!lines.has(name) && !inventory.has(name)) continue
+    const x = line(lines.get(name)?.name ?? inventory.get(name).title)
+    if (!x.places.some(p => p.page === page.id)) x.places.push({ page: page.id, title: page.title, tone: it.tone ?? null, state: it.detail ?? '' })
+  }
+  const always = new Set((hosts ?? []).map(h => String(h).toLowerCase()))
+  return [...lines.values()].map(x => {
+    const inv = inventory.get(x.name.toLowerCase())
+    const failing = x.runs.filter(r => jobSeverity(r) === 'high').length
+    return { name: x.name, always: always.has(x.name.toLowerCase()), jobs: x.runs.length, failing,
+      upkeep: x.runs.filter(r => jobSeverity(r) === 'medium').length, state: inv?.detail ?? '',
+      tone: failing ? 'bad' : inv?.tone ?? null, places: x.places }
+  }).sort((a, b) => b.always - a.always || b.failing - a.failing || b.jobs - a.jobs || a.name.localeCompare(b.name))
+}
+
 /** How a recorded run is drawn: a shape and a tone, never colour alone */
 export function stripMark(entry) {
   return { ok: ['●', 'ok'], failed: ['✗', 'bad'], expired: ['◑', 'warn'], skipped: ['○', 'dim'] }[entry?.verdict] ?? ['?', 'warn']
@@ -1601,6 +1682,31 @@ export function subPageTile(page) {
   if (warn.length) return { ...base, tone: 'warning', big: 1, note: warn[0].title ?? null }
   const clear = sections.some(sec => sec.alarm && sec.status === 'ok' && !(sec.total ?? sec.count ?? (sec.items ?? []).length))
   return { ...base, tone: clear ? 'success' : 'neutral' }
+}
+
+/** The head card of a sub page with `overview: true`: one line per drawn section, its tone and what to say (`kind`:
+ *  error, skipped, loud with how many and the first, peak, gauges, empty, one row's title, or rows in order and off),
+ *  never the live sources of the folder's own overview (jobs, tokens, costs). Neighbours that say the same of their
+ *  one row (a lab at rest) fold into one line */
+export function pageSummary(page) {
+  const out = []
+  for (const sec of page?.sections ?? []) {
+    const x = sectionTile(sec)
+    if (sec.hide_empty && !x.count && x.state === 'ok') continue
+    if (sec.hide_ok && !sec.bad && x.state !== 'error') continue
+    const rows = sec.items ?? []
+    const kind = x.state !== 'ok' ? x.state : x.loud ? 'loud' : x.peak ? 'peak' : x.counts ? 'gauges' : !x.count ? 'empty'
+      : rows.length === 1 ? 'one' : 'rows'
+    const line = { ids: [sec.id], titles: [sec.title], tone: x.tone, kind, section: sec, n: x.loud, note: x.note, peak: x.peak, gauges: x.counts,
+      text: kind === 'one' ? rows[0].title ?? '' : kind === 'empty' ? sec.empty ?? '' : '', detail: kind === 'one' ? rows[0].detail ?? '' : '',
+      counts: { ok: rows.filter(toneFilter('ok')).length, off: rows.filter(toneFilter('off')).length } }
+    const prev = out.at(-1)
+    if (kind === 'one' && prev?.kind === 'one' && prev.text === line.text && prev.tone === line.tone) {
+      prev.ids.push(sec.id)
+      prev.titles.push(sec.title)
+    } else out.push(line)
+  }
+  return out
 }
 
 export const USAGE_SOURCES = ['session', 'subagent', 'worker']
@@ -3542,7 +3648,8 @@ const HINTS = {
   '@sessions': [['stats', '.stats'], ['guideBoard', '.guide-board'], ['guideRoot', '.guide-root'],
     ['guideBranches', '.guide-branches'], ['guideFoot', '.guide-foot'], ['sessCards', '.sess-grid'],
     ['sessAgents', '.sess-agent-list'], ['sessFoot', '.sess-foot']],
-  '@workers': [['workerStats', '.stats'], ['wfilters', '.wfilters'], ['wgroup', '.wgroup .rgroup-head'], ['wrow', '.wrow-name'],
+  '@workers': [['folderbar', '.folderbar'], ['workerStats', '.stats'], ['wfilters', '.wfilters'], ['wmachine', '.wmachine-head'],
+    ['wgroup', '.wgroup .rgroup-head'], ['wrow', '.wrow-name'],
     ['wwhen', '.wrow-when'], ['wstrip', '.wrow-strip'], ['wstate', '.wrow-state']],
   '@agents': [['agentList', '.agents-list'], ['agentConvs', '.agent-convs'], ['agentProfile', '.agent-bar'],
     ['agentSkills', '.agent-skill-cards'], ['agentModes', '.agent-modes'], ['agentSend', '.chat-main .tabview-send']],
@@ -3555,7 +3662,8 @@ const HINTS = {
     ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk'], ['sessCards', '.flow-sessions']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
-const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],
+const PAGE_HINTS = [['folderbar', '.folderbar'], ['pageBadge', '.col-page > .page-head .pbadge'], ['machines', '.mlines'],
+  ['oboard', '.oboard'], ['psum', '.psum'], ['kinds', '.tri-kinds'],
   ['triage', '.tri-sort'], ['reviewStrip', '.review-strip'], ['jorder', '.jorder'], ['sectionHead', '.psec .psec-head'],
   ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghl-facts'],
   ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
