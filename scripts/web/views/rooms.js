@@ -13,12 +13,13 @@
 // and "all" reaches the ones archived in the last days (read only: an archived one opens without its box). A waiting
 // tab is a short line there, answered only on the right (C2); the Chat opens where this browser was last (C3); a tab
 // says what it came from, a link to it (C5).
-// The open tab's head and each line of Waiting for you close a tab that neither works nor asks through the one close
-// of every place (views/detail.js TabClose: Done and close tab where a task or an item stands behind it).
+// The open tab's head closes a tab that neither works nor asks through the one close of every place (views/detail.js
+// TabClose: Done and close tab where a task or an item stands behind it) and walks on; a line of Waiting for you
+// stays one line (C2), so its close is that head's.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabCloseOffer, tabOrigin, tabWalkView, walkRefs, tabStateKey, wantsYou } from '../logic.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, walkRefs, tabStateKey, wantsYou } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -209,16 +210,13 @@ function WaitLine({ tab, left, s, c, here }) {
   const answered = s.ui?.answered?.[tab.ref] ?? null
   const done = left || isAnswered(answered, tab)
   const word = done ? (answered ? t.reply.answeredWord : t.reply.movedOn) : t.state[tabStateKey(tab)] ?? tab.state
-  const line = html`<${Item} on=${here.kind === 'tab' && here.id === tab.ref} cls=${`room-wait${done ? ' is-left' : ''}`}
+  return html`<${Item} on=${here.kind === 'tab' && here.id === tab.ref} cls=${`room-wait${done ? ' is-left' : ''}`}
     title=${done && answered ? t.reply.answered(answered.q) : tab.ask?.text || tab.last || tab.name} onClick=${() => c.pickRoom({ kind: 'tab', id: tab.ref })}>
     <${Dot} token=${stateToken(tabStateKey(tab))} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.name}</span>
     <span class="room-meta muted small" data-word=${done ? 'done' : tabStateKey(tab)}>${word}</span>
     <span class="room-meta muted small mono">${duration(s.now - (tab.since_ms || s.now))}</span>
   <//>`
-  // the close stands under the line, never inside its button (one control in another)
-  return left || !tabCloseOffer(tab, s) ? line : html`<div class="room-wait-row">${line}
-    <div class="btn-row room-wait-close"><${TabClose} tab=${tab} s=${s} c=${c} /></div></div>`
 }
 
 /** "Waiting for you" near the top of the sidebar, over the questions: the tabs that want attention (logic.js attentionTabs). While

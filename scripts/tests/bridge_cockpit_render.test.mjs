@@ -681,8 +681,7 @@ test('6d C2: a waiting tab is one short line, its name, one word and how long; a
   // nothing to answer in the list: no option, no yes, no field, no reading of the guide
   const group = el.$('.reply-group')
   // one button per row, the row itself; a quiet tab's close stands under its line (round 6d item 9), never an answer
-  const closes = group.$$('.room-wait-close button')
-  assert.equal(group.$$('button').filter(b => !closes.includes(b)).length, replyRows(el).length, 'one button per row, the row itself')
+  assert.equal(group.$$('button').length, replyRows(el).length, 'one button per row, the row itself')
   assert.equal(group.$('textarea'), null)
   assert.equal(group.$('.reply-ask'), null)
   assert.equal(group.$('.guide-line-about'), null)
@@ -706,16 +705,16 @@ const { TabReply } = views.reply
 const replyRows = el => el.$$('.reply-group .room-wait')
 const replyRow = (el, name) => replyRows(el).find(r => r.$('.room-name').text() === name) ?? null
 
-test('the sidebar: a line of Waiting for you closes its tab once it asks nothing, with the one close of every place', () => {
+test('the sidebar: a line of Waiting for you stays one line, its tab closes from the head on the right and the walk goes on', () => {
+  // round 6d: C2 keeps each waiting tab to one line; a close under every line doubled the list (walk of 28.10.), so
+  // the one close of every place stands in the open tab's head, which walks on to the next tab after it
   const s = cockpitState(NOW, { guide: null })
   s.tabs = { ...s.tabs, tabs: s.tabs.tabs.map(t => (t.ref === 'surface:12' ? { ...t, ask: null } : t)) }
   const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
-  const rows = el.$$('.reply-group .room-wait-row')
-  const quiet = rows.find(r => r.$('.room-name').text() === 'demo-task research')
-  assert.ok(quiet?.$('.room-wait-close .tab-close'), 'a waiting tab that asks nothing')
-  assert.ok(!quiet.$('.room-wait .tab-close'), 'the close stands under the line, not inside its button')
-  assert.ok(replyRow(el, 'alpha-release'), 'the dialog is listed')
-  assert.ok(!rows.some(r => r.$('.room-name').text() === 'alpha-release'), 'a dialog keeps its question')
+  assert.ok(replyRow(el, 'demo-task research'), 'the quiet tab is listed')
+  assert.equal(el.$('.reply-group .tab-close'), null)
+  const pane = mount(html`<${RoomsPage} s=${{ ...s, ui: { ...s.ui, room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } }} c=${recorder()} />`)
+  assert.ok(pane.$('.rooms-main .tabview-head .tab-close'))
 })
 
 test('the sidebar shows Waiting for you, the most urgent first, above the workspaces', () => {
@@ -3821,4 +3820,11 @@ test('6d: the click log names each new button of this round on its own, never by
   const row = await openRow(mount(html`<${views.sessions.WorkersPage} s=${base} c=${recorder()} />`).$('.wrow'))
   assert.equal(name(row.button(en.btnWorkerAdvise)), 'worker-advise')
   assert.equal(name(row.button(en.findingSeen.btn)), 'seen')
+  // the explain window's own field: opening it and noting are told apart from the bar's other buttons
+  const layout = { view: { width: 1400, height: 900 }, away: [], rounds: [{ group: 'page', placed: [] }] }
+  const hints = mount(html`<${HintsLayer} layout=${layout} c=${{ setHints() {}, tourStart() {}, explainNote: async () => ({ ok: true }) }} place=${{ page: '@chat', view: '-' }} />`)
+  assert.equal(name(hints.button(en.hints.noteOpen)), 'explain-note')
+  hints.button(en.hints.noteOpen).click()
+  for (let i = 0; i < 20 && !hints.$('.hints-say'); i++) await tick()
+  assert.deepEqual([name(hints.button(en.hints.noteSave)), name(hints.button(en.hints.noteCancel))], ['explain-note-save', 'explain-note-cancel'])
 })

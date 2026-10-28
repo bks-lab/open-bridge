@@ -5370,6 +5370,18 @@ def test_tab_close_leaves_a_waiting_tab_that_asks_a_question(world):
     assert err.value.code == "not_applicable"
 
 
+def test_tab_close_takes_a_waiting_tab_whose_last_words_ask_nothing(world):
+    # every waiting tab has its last words read off the screen; only a question, options or a draft ask
+    # (model.py is_idle), so a tab that said it is done closes (28.10.: the close stood nowhere live)
+    world.runner.handlers["workplace.screen"] = lambda argv: ok({"text": "⏺ Done, the report is filed.\n"})
+    world.app.asks_enabled = True
+    world.app.tabs.poll()
+    assert world.app.tabs.asks_now().get("surface:13")
+    world.runner.calls.clear()
+    world.act("tab_close", tab_ref="surface:13")
+    assert writes(world) == [W(world, "close", "surface:13")]
+
+
 def test_tab_done_closes_the_task_and_the_item_the_way_done_does_then_the_tab(world):
     tab_on(world, slug="demo-task", item=YES_ID)
     world.runner.calls.clear()

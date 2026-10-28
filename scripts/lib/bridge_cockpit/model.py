@@ -837,7 +837,13 @@ def is_idle(tab: dict, ask: dict | None, since_ms: float, settled: str | None, n
         return True
     if after_ms <= 0 or now - since_ms < after_ms or not ask:
         return False
-    return not ask.get("yes_no") and not ask.get("options") and not ask.get("draft")
+    return not asks_something(ask)
+
+
+def asks_something(ask: dict | None) -> bool:
+    """Whether the words read off a waiting tab's screen ask anything: a question (yes or no, a question mark),
+    options, or something typed in its prompt. Every waiting tab has its last words read, so words alone ask nothing"""
+    return bool(ask) and bool(ask.get("yes_no") or ask.get("options") or ask.get("draft"))
 
 
 def is_live(tab: dict) -> bool:

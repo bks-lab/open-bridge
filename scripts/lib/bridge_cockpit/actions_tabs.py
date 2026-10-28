@@ -143,13 +143,14 @@ class TabVerbs:
         self.send_to(ctx, tab, self.tx["go_on"])
 
     def closable(self, tab_ref: str) -> dict:
-        """The tab, when it may close: it neither works nor asks (waiting at its prompt with no question read off its
-        screen, or back at its shell; a settled one asks nothing any more, as the quiet rule has it, model.py is_idle)
+        """The tab, when it may close: it neither works nor asks (waiting at its prompt with no question, options or
+        draft read off its screen, model.asks_something, or back at its shell; a settled one asks nothing any more, as the quiet rule has it, model.py is_idle)
         and is not the control tab. Whether answers in it went unseen the page asks before the click, so a close
         never needs a result filed or a settled item"""
         tab = self.tab(tab_ref)
         if (tab["state"] not in ("waiting", "shell") or tab_ref == self.app.tabs.control_ref()
-                or (tab_ref in self.app.tabs.asks_now() and ret.tab_settled(self.app.root, tab) is None)):
+                or (m.asks_something(self.app.tabs.asks_now().get(tab_ref))
+                    and ret.tab_settled(self.app.root, tab) is None)):
             raise self.not_applicable("close is for tabs that neither work nor ask, never the control tab", "tab_ref")
         return tab
 

@@ -159,8 +159,8 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c, place = null }) {
       <input class="input" type="text" maxlength="300" autocomplete="off" placeholder=${t.notePlaceholder} aria-label=${t.noteOpen}
         value=${said} onInput=${e => setSaid(e.currentTarget.value)} />
       <span class="hints-say-acts">
-        <button type="button" class="btn btn-ghost btn-xs" onClick=${() => setSaying(false)}><span class="btn-label">${t.noteCancel}</span></button>
-        <button type="button" class="btn btn-primary btn-xs" disabled=${!said.trim() || busy} onClick=${save}><span class="btn-label">${t.noteSave}</span></button>
+        <button type="button" class="btn btn-ghost btn-xs" data-u="explain-note-cancel" onClick=${() => setSaying(false)}><span class="btn-label">${t.noteCancel}</span></button>
+        <button type="button" class="btn btn-primary btn-xs" data-u="explain-note-save" disabled=${!said.trim() || busy} onClick=${save}><span class="btn-label">${t.noteSave}</span></button>
       </span>
     </form>` : null}
     <div class="hints-bar" role="status" onClick=${e => e.stopPropagation()}>
@@ -168,7 +168,7 @@ export function HintsLayer({ layout, at = 0, go = () => {}, c, place = null }) {
         ? html` <span class="muted mono">${t.round(i + 1, rounds.length)}</span>` : null}</span>` : null}
       <span class="small muted hints-bar-text">${layout && !rounds.length ? t.none : below && round?.group === 'page' ? t.below(below) : rounds.length > 1 ? t.bar : t.barOne}</span>
       ${place && noted && !saying ? html`<span class="small hints-noted">${t.noteSaved}</span>` : null}
-      ${place && !saying ? html`<button type="button" class="btn btn-ghost btn-xs" onClick=${() => { setSaying(true); setNoted(false) }}>
+      ${place && !saying ? html`<button type="button" class="btn btn-ghost btn-xs" data-u="explain-note" onClick=${() => { setSaying(true); setNoted(false) }}>
         <span class="btn-label">${t.noteOpen}</span></button>` : null}
       <button type="button" class="btn btn-ghost btn-xs" onClick=${() => c.tourStart()}><span class="btn-label">${t.tour}</span></button>
       ${i > 0 ? html`<button type="button" class="btn btn-secondary btn-xs" onClick=${() => go(i - 1)}><span class="btn-label">${t.back}</span></button>` : null}

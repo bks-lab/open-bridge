@@ -1238,12 +1238,14 @@ running session), the session's `subagents/` and `workflows/` folders under
 `ps` and matched to the tab list; the rest of the environment is dropped. A
 subagent counts as active while its transcript grew in the last two minutes.
 
-**One close for every tab.** A tab that waits or is back at its shell, shows no
-question and no draft in its prompt (unless its item or task is settled
-already) and is not the control tab has the same close wherever it stands: a
+**One close for every tab.** A tab that waits or is back at its shell, asks
+nothing (no question, no options, nothing typed in its prompt; its last words
+alone ask nothing, the rule of the quiet tabs) unless its item or task is
+settled already, and is not the control tab has the same close wherever it stands: a
 point of Work through (Abarbeiten) and the aside of a record on the Files tab,
-Running now and its session cards, a return card, a tab card, the head of a
-tab open in the Chat and the line of Waiting for you. With an open task or
+Running now and its session cards, a return card, a tab card and the head of a
+tab open in the Chat (the lines of Waiting for you stay one line each and lead
+there). With an open task or
 inbox item behind the tab it is **Done and close tab** (de: Erledigt und Tab
 schließen) with **Close tab only** beside it, else **Close tab** alone. Done and
 close tab ends each of them the way Done does (`task.py close`: status done,
@@ -2164,8 +2166,9 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   each: its name, one word for its state and how long it has been in it; its
   question is the line's tooltip. A click on the line opens the tab on the right,
   where its question and the answers stand, see [Answering a tab from
-  here](#answering-a-tab-from-here); the list itself answers nothing. A tab that
-  asks nothing has its close under the line. In its workspace below the same
+  here](#answering-a-tab-from-here); the list itself answers nothing and closes
+  nothing: a tab that asks nothing closes from its head on the right, which then
+  opens the next one, so the list stays one line a tab. In its workspace below the same
   tab is a grey row saying "waiting", so it is not read twice. A
   tab that has been in one state unusually long (`long`: working for an hour, or
   a filed result waiting a long time) stands there too, so it is not
@@ -3332,7 +3335,9 @@ Each change is code; two config keys are worth a look, and one script is new.
    the open inbox item behind a tab through Done, then closes it; a partial end
    keeps the tab open (`tab_done_partial`). `tab_close` no longer needs a filed
    result or a settled item: it closes any tab that waits or is back at its
-   shell, asks nothing (unless settled) and is not the control tab. Each tab
+   shell, asks nothing (unless settled) and is not the control tab. A tab
+   whose screen holds only its last words asks nothing (`model.asks_something`,
+   `logic.js asksSomething`). Each tab
    of `GET /api/state` carries `behind: {task, item}` (null for the control tab).
 5. **Chat.** The route chip, its word lists and the leading `?` or `!` are
    gone: a text that starts with `?` is sent as it is. The server's verbs

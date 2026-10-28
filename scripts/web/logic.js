@@ -1735,13 +1735,20 @@ export function railOn(s, hidden = s?.ui?.railHidden) {
   return railShown(s?.ui?.page, s?.rooms?.layout, hidden) && !(s?.ui?.page === 'briefing' && workViewIn(s) === 'flow')
 }
 
-/** Whether a tab may close (round 6d): it neither works nor asks (waiting at its prompt with no question or draft
- *  read off its screen, or back at its shell; a settled one asks nothing any more, as the server's quiet rule has
+/** Whether a tab may close (round 6d): it neither works nor asks (waiting at its prompt with no question, options
+ *  or draft read off its screen, asksSomething, or back at its shell; a settled one asks nothing any more, as the server's quiet rule has
  *  it), it is no control tab, and the driver closes tabs; `can(right)` as canTab. The server holds the same rule
  *  (actions_tabs.py closable) */
 export function tabCloses(tab, can, settled = false) {
-  return !!tab && !tab.is_control && (tab.state === 'waiting' || tab.state === 'shell') && !(tab.ask && !settled && !tab.settled)
+  return !!tab && !tab.is_control && (tab.state === 'waiting' || tab.state === 'shell') && !(asksSomething(tab.ask) && !settled && !tab.settled)
     && can('close')
+}
+
+/** Whether the words read off a waiting tab's screen ask anything (model.py asks_something): a question (yes or no,
+ *  a question mark at the end), options, or a draft in its prompt. Every waiting tab has its last words read, so
+ *  words alone ask nothing; a tab that said it is done closes */
+export function asksSomething(ask) {
+  return !!ask && !!(ask.yes_no || ask.options?.length || ask.draft || /\?\s*$/.test(ask.text ?? ''))
 }
 
 /** The close of a tab wherever a point or a card has one (views/detail.js TabClose), null where it may not close

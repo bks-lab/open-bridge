@@ -1332,6 +1332,13 @@ test('a slim tab card offers one next step: answer, go on, close, else go to the
   assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, all), ['go_on', 'close'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { text: 'Go on?' } }, all), ['go_on'])
   assert.deepEqual(logic.tabNextStep({ state: 'shell' }, all), ['jump', 'close'])
+  // every waiting tab has its last words read off the screen: only a question, options or a draft ask (the quiet
+  // rule of model.py is_idle), the last words of a tab that finished ask nothing (28.10.: no close anywhere live)
+  const said = { text: 'Done, the report is filed.', options: [], yes_no: false, draft: false }
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: said }, all), ['go_on', 'close'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, yes_no: true } }, all), ['go_on'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, draft: true } }, all), ['go_on'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, options: [{ n: 1, label: 'Yes' }] } }, all), ['go_on'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', filed_by: 'x' }, all), ['close'])
   assert.deepEqual(logic.tabNextStep({ state: 'working' }, all), ['jump'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', is_control: true }, all), ['jump'])
