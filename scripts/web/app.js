@@ -1470,6 +1470,8 @@ const ctl = {
     if (to?.view) setUi({ workView: to.view })
     if (to?.page === FILES_PAGE) setUi({ dossierOpen: null, filesWalk: false })
     ctl.setPage(to?.page ?? 'briefing')
+    // a number led into Work through (flow.js flowAreas): it opens on the overview of the points it counted
+    if (to?.page === '@flow') ctl.flowOverview()
     if (to?.walk) {
       ctl.walkFrom(walkRefs((store.get().tabs?.tabs ?? []).filter(t => inProject(t, area))))
     }

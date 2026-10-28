@@ -5,7 +5,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, indexRows, jobCounts, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
-  asksYou, countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
+  asksYou, countInProject, startWaiting, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
   MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey,
   itemRow, workPageOf,
 } from '../logic.js'
@@ -77,7 +77,7 @@ export function stationOf(x, s, c, chosen, project) {
   }
   if (x.id === 'c:waiting') {
     const nowRows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows ?? []
-    const n = scope ? countInProject(nowRows.filter(asksYou), scope) : counts.now ?? 0
+    const n = startWaiting(s, scope) ?? (scope ? countInProject(nowRows.filter(asksYou), scope) : counts.now ?? 0)
     return { id: x.id, label: h.waitingNow, value: String(n), sub: trend(x.id, n), tone: n ? 'warning' : null, onClick: () => c.setPage('briefing') }
   }
   if (x.id === 'c:tabs') {

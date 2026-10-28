@@ -265,6 +265,10 @@ item, and of the inbox only the asks (decision, question, draft). An idea or a
 report filed for today still stands in Now, it is just not counted, so the
 section's own head can show the larger number ([inbox.md § Arts](inbox.md#arts)).
 The start page's lists named "waiting on you" show the same asks.
+With Work through on, the count is Work through's instead: its points that
+need you, less the finished starts (see "The numbers come from Work through"
+under [The start page](#the-start-page)), so the bar, the start page and Work
+through show one number.
 A finding is red wherever it is; every other count is grey. A page
 badge that adds up several sections names them in its tooltip; a row put off or
 settled weighs in it no more than it counts. A finding on a
@@ -821,6 +825,30 @@ parts and nothing else:
 3. One line **Next up**: the next calendar row that has not begun and the
    quota the defaults take (the first with a window of a day or more), each a
    link to its detail.
+
+**The numbers come from Work through** (when `cockpit.flow` is on). Each line
+of the areas is what Work through shows under that area as its filter, read
+from the same function (`flowParts` under `areaScope`, scripts/web/flow.js
+`flowAreas`), so nothing is counted by a second rule:
+
+| Column | What Work through holds |
+|---|---|
+| waiting | the tabs that ask, the questions, the lost starts and the return card (its groups that need you, less the finished starts); the tabs among them make the "tabs" of the head line |
+| running | what Running now lists, a quiet session too |
+| to review | the finished starts |
+| overdue | the points and entries of Running now past their date |
+| tasks | the tasks, the doing and the issues of the walk |
+
+What Work through puts under Not now (put off, given your yes, waiting on
+others, resting, blocked, due later than the lead time, ideas, streams,
+watched issues) counts in no column, and a tab answered here stops waiting at
+once. A row of two areas stands in both lines; the line All counts what Work
+through shows unfiltered, each thing once, so it can be less than the sum of
+the lines. The head line, the tile "waiting" and the work tab's count in the
+page bar are the line All's waiting. A click on waiting, to review or overdue
+opens Work through on its overview under that area, running opens Running now.
+Without Work through the start page keeps its own count (`homeAreas`: the asks
+of Now and the tabs that want you, the line All their sum).
 
 Between the table and Next up the overview can show four **parts**, each off
 until switched on under Settings, Start page, "Parts of the overview" (saved

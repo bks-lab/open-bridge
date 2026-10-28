@@ -8,6 +8,7 @@ import {
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
+  flowAreas, flowOn, startWaiting,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -427,7 +428,7 @@ function tileMaker(s, c, chosen, project, hud = false) {
     if (x.id === 'c:next') return html`<${NextTile} key=${x.id} s=${s} c=${c} />`
     if (x.id === 'c:done') return html`<${DoneTile} key=${x.id} s=${s} />`
     if (x.id === 'c:waiting') {
-      const n = scope ? countInProject(nowRows.filter(asksYou), scope) : counts.now ?? 0
+      const n = startWaiting(s, scope) ?? (scope ? countInProject(nowRows.filter(asksYou), scope) : counts.now ?? 0)
       return html`<${CountTile} key=${x.id} n=${n} label=${h.waitingNow} tone=${n ? 'warning' : null} scope=${scope}
         before=${scope ? null : before[x.id]} title=${h.openPage(briefingTitle(s))} onClick=${() => c.setPage('briefing')} />`
     }
@@ -479,6 +480,14 @@ function areasAll(areas, name) {
   return { name, ...Object.fromEntries([...AREA_FIGS.map(([k]) => k), 'waitingTabs', 'waitingRows'].map(k => [k, sum(k)])) }
 }
 
+/** The areas of the start page and their line All: with Work through on what it shows under each area (flow.js
+ *  flowAreas, All counted once), else the start page's own count (homeAreas, All their sum) */
+function startAreas(s, allName) {
+  if (flowOn(s)) return flowAreas(s)
+  const areas = homeAreas(s.tabs?.tabs ?? [], s.model?.sections, returnsOf(s), s.now || Date.now())
+  return { areas, all: areasAll(areas, allName) }
+}
+
 /** One line of the areas: the name, then the numbers, each a jump to the page that holds those things
  *  (areaJump, the area as its filter); a zero is damped and leads nowhere. The name picks the area for the
  *  start page (pressed while it is the one shown), in the control view it opens Work for it. A line that
@@ -504,10 +513,10 @@ function AreaRow({ area, name, on, desk, c, onPick }) {
  *  is more than one. On the start page a name shows that area only and a second click all again (the
  *  lines stand in for the project chips); in the control view (`desk`) a name opens Work for that area.
  *  Every number jumps (g a focuses the names, j and k walk them) */
-export function HomeAreas({ areas, project, c, desk = false }) {
+export function HomeAreas({ areas, all: whole = null, project, c, desk = false }) {
   const h = T().home
   const want = String(project ?? '').toLowerCase()
-  const all = areasAll(areas, h.all)
+  const all = whole ? { ...whole, name: h.all } : areasAll(areas, h.all)
   return html`<section class="home-shelf home-areas" aria-labelledby="home-areas">
     <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-areas">${h.areasTitle}</h2></header>
     ${areas.length ? html`<table class="home-area-table" id="home-areas-list" role="table">
@@ -575,12 +584,10 @@ function DeskParts({ s, c, chosen }) {
  *  the areas, and what comes next (the next date, the quota). Everything else has a page of its own */
 function HomeDesk({ s, c }) {
   const h = T().home
-  const tabs = s.tabs?.tabs ?? []
   const now = s.now || Date.now()
   const on = new Set(homeChosen(s.model, s.home))
-  const areas = homeAreas(tabs, s.model?.sections, returnsOf(s), now)
   // the head's number is the line All's: every area and what has none, its jump the same as that number's
-  const all = areasAll(areas, h.all)
+  const { areas, all } = startAreas(s, h.all)
   const waiting = all.waiting
   const relayDown = s.relay?.enabled && !s.relay?.online
   const next = nextEvent(s.model, now)
@@ -597,7 +604,7 @@ function HomeDesk({ s, c }) {
         <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
     </header>
     ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
-    ${on.has('s:areas') ? html`<${HomeAreas} areas=${areas} project=${null} c=${c} desk />` : html`<p class="muted small">${h.areasOff}</p>`}
+    ${on.has('s:areas') ? html`<${HomeAreas} areas=${areas} all=${all} project=${null} c=${c} desk />` : html`<p class="muted small">${h.areasOff}</p>`}
     <${DeskParts} s=${s} c=${c} chosen=${[...on]} />
     <p class="desk-next">
       <span class="label-caps">${h.nextUp}</span>
@@ -674,7 +681,7 @@ function HomeBoard({ s, c }) {
   const catalog = homeCatalog(s.model, { workers: s.workers?.status !== 'none' })
   const chosen = homeChosen(s.model, s.home)
   const on = new Set(chosen)
-  const areas = on.has('s:areas') ? homeAreas(tabs, s.model?.sections, returnsOf(s), s.now || Date.now()) : []
+  const { areas, all: areasWhole } = on.has('s:areas') ? startAreas(s, h.all) : { areas: [], all: null }
   const named = areas.filter(a => !a.none)
   // an area can come from a row the chips do not count (an overdue one elsewhere): picking it still holds
   // one area filter for the whole cockpit (ui.area): the start page shows that area, Work, Chat and Sessions too
@@ -693,7 +700,7 @@ function HomeBoard({ s, c }) {
   const pageBadge = id => (s.model?.pages ?? []).find(p => p.id === id)?.badge
   const byKey = indexRows(s.model)
   const pinned = (s.home?.pins ?? []).map(k => byKey.get(k)).filter(Boolean).filter(r => inProject(r, project))
-  const areasShelf = on.has('s:areas') ? html`<${HomeAreas} areas=${areas} project=${project} c=${c} />` : null
+  const areasShelf = on.has('s:areas') ? html`<${HomeAreas} areas=${areas} all=${areasWhole} project=${project} c=${c} />` : null
   // when every chip has an area line, the lines pick the project and the chips would say it twice
   const chips = projects.length > 1 && !(areasShelf && areasCoverProjects(projects, named)) ? html`<div class="home-chips" role="toolbar" aria-label=${h.projectsLabel}>
       <button type="button" class=${`home-chip${project ? '' : ' is-on'}`} aria-pressed=${String(!project)} onClick=${() => c.setArea(null)}>${h.all}</button>

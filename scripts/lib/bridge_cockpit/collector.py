@@ -333,8 +333,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         "pages": pages, "alarms": alarms,
         "teams": [{"id": t["id"], "label": t["label"], "for_types": t["for_types"],
                    "roles": [{"id": r["id"], "name": r["name"], "mode": r["mode"]} for r in t["roles"]]} for t in teams],
-        # the one coloured number of the page bar (14.10.): what waits for you, the same count as the station
-        # "waits for you" and the lead line of the start page; the approvals stand in their own section
+        # the one coloured number of the page bar (14.10.): the asks of Now, the rows only; the approvals stand in their
+        # own section. With Work through on the page counts its points that need you instead (flow.js flowWaiting,
+        # 28.10.), tabs that ask among them, and so does the start page's head line
         "briefing_badge": asks,
         # every task and stream as a file (cockpit.files_scope all), None while the files view walks the active ones
         "files": files_out,

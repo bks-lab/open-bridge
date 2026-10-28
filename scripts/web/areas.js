@@ -46,7 +46,7 @@ export function projectTone(name) {
 
 /** Is a row past its date? `due_at` or `due`, a day (YYYY-MM-DD, the server's form) or milliseconds;
  *  due today is not overdue */
-function rowOverdue(row, nowMs) {
+export function rowOverdue(row, nowMs) {
   const due = row?.due_at ?? row?.due
   if (typeof due === 'number') return due < nowMs
   return dueWhen(due, nowMs)?.kind === 'overdue'
@@ -117,6 +117,8 @@ const NONE = '\u0000none'   // no area name can be this
  *  overdue rows; what runs and what is to review are the sessions and the starts of the Sessions page;
  *  the tasks open Work in the view it was left in, the area's name the files tab */
 export function areaJump(kind, area) {
+  // with Work through on (flow.js flowAreas) what waits, what is to review and what is overdue are its points
+  if (area?.flow && ['waiting', 'review', 'overdue'].includes(kind)) return { page: '@flow' }
   if (kind === 'waiting') return area?.waitingTabs && !area.waitingRows ? { page: '@chat', walk: true } : { page: 'briefing', view: 'due' }
   if (kind === 'running' || kind === 'review') return { page: '@sessions' }
   if (kind === 'overdue') return { page: 'briefing', view: 'due' }

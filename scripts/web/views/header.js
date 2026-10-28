@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, short, railOn, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
@@ -299,8 +299,9 @@ export function PageBar({ s, c }) {
     const places = folderPlaces(s, id)
     return places.length ? html`<${FolderTab} key=${id} label=${x.label} places=${places} s=${s} c=${c}>${tabBtn}<//>` : tabBtn
   }
-  // what waits for you: Today and Work through carry the same number, no counter of their own
-  const n = s.model?.briefing_badge ?? 0
+  // what waits for you: Today and Work through carry the same number, no counter of their own; with Work through on
+  // it is the number its points that need you make, the start page's head line (flow.js flowWaiting)
+  const n = flowWaiting(s) ?? s.model?.briefing_badge ?? 0
   const aiLeft = aiWaiting(s.model?.returns, s.tabs?.tabs, s.now || Date.now())   // what the AI left for you (sessions page)
   const toClose = s.model?.review?.last?.to_close ?? 0
   // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip. Where

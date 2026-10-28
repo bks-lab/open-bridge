@@ -734,6 +734,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_files_count.test.mjs",
     "scripts/tests/bridge_cockpit_chat_a2a.test.mjs",
     "scripts/tests/bridge_cockpit_toast_go.test.mjs",   # a toast that names its place leads there
+    "scripts/tests/bridge_cockpit_start_counts.test.mjs",   # the start page counts what Work through holds
     "scripts/tests/test_bridge_cockpit_note_go.py",
     "scripts/tests/bridge_cockpit_files_all.test.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the

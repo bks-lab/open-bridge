@@ -415,9 +415,9 @@ test('the control view is the start page: one head line, the areas, next up, and
   assert.ok(desk.$('.home-areas'))
   // no greeting, no ask box, no news band, no other shelf
   for (const sel of ['.home-hero', '.home-ask', '.ticker', '.home-chips', '.home-grid', '.bridge-stage']) assert.equal(el.$(sel), null, sel)
-  // the head counts what waits on you as the column does
-  const sum = el.$$('tbody tr').slice(1).reduce((n, tr) => n + Number(tr.$$('td')[0].text()), 0)
-  assert.match(el.$('.desk-head').text(), new RegExp(en.home.deskWaiting(sum)))
+  // the head counts what waits on you as the line All does (counted once: a row of two areas stands in both lines)
+  const all = Number(el.$$('tbody tr')[0].$$('td')[0].text())
+  assert.match(el.$('.desk-head').text(), new RegExp(en.home.deskWaiting(all)))
   // next up names the next date and the quota, each a link
   assert.ok(el.$$('.desk-next button').length >= 1)
 })

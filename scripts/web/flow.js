@@ -11,8 +11,8 @@
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowProject, tabOfTask, wantsYou,
-  workPageOf } from './logic.js'
+import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowOverdue,
+  rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -1208,4 +1208,72 @@ export function instructCalls(plan, s, lang = 'en') {
     }
   }
   return { calls, skipped }
+}
+
+// ---------------------------------------------------------------- the start page's numbers
+
+/** The numbers of one line of the start page's areas as Work through holds them (28.10.): what waits on you is the
+ *  groups that need you but a finished start (FLOW_YOU less result), the tabs among them those that ask; to review the
+ *  finished starts; running what Running now lists (runningOf); overdue the points and entries of Running now past
+ *  their date; tasks the tasks, the doing and the issues of the walk. What Not now holds counts nowhere */
+function startFigures(parts, nowMs) {
+  const tabs = parts.asks.length
+  const rows = parts.question.length + parts.lost.length + (parts.back ? 1 : 0)
+  const late = new Set()
+  for (const x of [...flowQueue(parts, 'all'), ...parts.lane]) {
+    for (const r of x.kind === 'reports' ? x.rows : [x.row]) if (r?.key && rowOverdue(r, nowMs)) late.add(r.key)
+  }
+  return { waiting: tabs + rows, waitingTabs: tabs, waitingRows: rows, running: runningOf(parts).n, review: parts.result.length,
+    overdue: late.size, tasks: parts.task.length + parts.doing.length + parts.issue.length }
+}
+
+// whether a row, a tab or a session carries an area: then a filter of the start page holds it, else "No area" does
+const named = o => !!(o && (o.workspace || o.area || o.area_names?.length || o.mark?.label))
+const itemNamed = x => named(x?.row) || named(x?.tab) || named(x?.start?.tab) || (!!x?.session && named({ workspace: x.session.project }))
+
+/** The parts of Work through with only what carries no area, for the line "No area" */
+function withoutArea(parts) {
+  const out = { ...parts, back: parts.back && !itemNamed(parts.back) ? parts.back : null }
+  for (const g of ['asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'lane', 'sessions']) out[g] = (parts[g] ?? []).filter(x => !itemNamed(x))
+  out.reports = (parts.reports ?? []).map(x => ({ ...x, rows: x.rows.filter(r => !named(r)) })).filter(x => x.rows.length)
+  return out
+}
+
+// the last answer of flowAreas and what it was computed from: a page draws it several times per state
+let startMemo = { key: null, out: null }
+
+/** The start page's areas read from Work through (28.10.): one line per area with what Work through shows under that
+ *  area as its filter (areaScope, flowParts), the line "No area" for what carries none, and `all` what it shows
+ *  without a filter (counted once, not summed: a row of two areas stands in both lines). Every line carries `flow`, so
+ *  its numbers lead into Work through (areaJump). The names are the areas of the tabs and of every open row, each
+ *  area of a row of several. {areas, all}; an area with no number drops out as in homeAreas */
+export function flowAreas(s) {
+  const nowMs = s?.now || Date.now()
+  const key = [s?.model, s?.tabs, s?.sessions, s?.driver, s?.work, s?.ui?.answered, s?.ui?.flowJump, s?.ui?.flowEarly, s?.jevOrder,
+    Math.floor(nowMs / 60000)]
+  if (startMemo.key && startMemo.key.every((v, i) => v === key[i])) return startMemo.out
+  const base = { ...s, ui: { ...(s?.ui ?? {}), page: FLOW_PAGE, area: null } }
+  const whole = flowParts(base)
+  const rows = [...flowUniverse(s).values()].flatMap(r => (r.area_names?.length ? r.area_names : [rowProject(r)]).map(a => ({ area: a })))
+  const names = homeProjects((s?.tabs?.tabs ?? []).filter(t => !t.is_control), rows)
+  const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), flow: true, ...x, total: x.waiting + x.running + x.review + x.overdue, ...extra })
+  const areas = names.map(name => line(name, startFigures(flowParts(areaScope({ ...base, ui: { ...base.ui, area: name } })), nowMs)))
+  const none = line('', startFigures(withoutArea(whole), nowMs), { none: true, tone: 'muted' })
+  const out = { areas: [...areas, none].filter(a => a.total > 0 || a.tasks > 0), all: line(null, startFigures(whole, nowMs)) }
+  startMemo = { key, out }
+  return out
+}
+
+/** What waits on you as Work through counts it: the start page's head line, its tile, and the work tab's count in the
+ *  page bar; null where Work through is off (the server's briefing_badge counts then) */
+export const flowWaiting = s => startWaiting(s)
+
+/** The same count under an area (a line of the areas, 0 where it has none), or for all without one; null where Work
+ *  through is off */
+export function startWaiting(s, area = null) {
+  if (!flowOn(s)) return null
+  const { areas, all } = flowAreas(s)
+  if (!area) return all.waiting
+  const want = String(area).trim().toLowerCase()
+  return areas.find(a => !a.none && a.name.toLowerCase() === want)?.waiting ?? 0
 }
