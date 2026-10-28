@@ -10,8 +10,8 @@
 // a button naming how many records go) sends that question and the records listed to the model on a click, never by
 // itself and never the search words; the line under it says beforehand what a click sends, how many the block list
 // keeps private (logic.js askPlan, by the server's check of each record) and how many questions are left today, and
-// the answer links the records it names. It stands at the top of the left column while a record is open, else above
-// the middle.
+// the answer links the records it names. It stands in one place, under the chips of the left column, whether a
+// record is open or not, so the search stays the first thing of that column.
 // The middle shows one task at a time as a file, on one framed surface: a record opened, or the walk. In its head the
 // one way to close it. On the surface: the eyebrow (File, "2 of 16", status, kind, priority, the slug on the right),
 // the title as the one heading, the situation in one sentence with where it comes from and its date, then the next
@@ -34,12 +34,10 @@
 // every render and never stored. Under the head of the file one calm line says how many active tasks and streams
 // the queue leaves out and why (logic.js queueLeftOut: resting, dropped, waiting with nothing that asks, deferred,
 // of another area, not pinned); a click lists them, each opens beside the queue, and the empty view names the same.
-// With cockpit.files_scope all every task and stream is a file (model.files): behind the queue the chips Active,
-// Waiting, Resting, Backlog and All with their counts list them (logic.js fileShelves), each opening as a file of the
-// queue does. The shelves split by the queue (Active is the queue, Waiting and Resting what it leaves out, by the
-// same rule as the line), and a file outside the queue that rests, is dropped, put off or waits names why as a chip
-// on its cover. The line of what the queue leaves out leads to the chips, scrolled into view and focused, instead
-// of saying the backlog is not shown.
+// With cockpit.files_scope all every task and stream is a file (model.files) and stands in the list on the left,
+// the backlog too, so the line of what the queue leaves out no longer says the backlog is not shown; a file outside
+// the queue that rests, is dropped, put off or waits names why as a chip on its cover. The middle holds no second
+// list (round 6d: the chips Active, Waiting, Resting, Backlog and All are gone).
 // A search from elsewhere (the command box, /api/find) puts what it found above the file: by file, best first, a click
 // opens a file, a closed one too, beside the queue (ui.dossierOpen) on the same surface (the way back at its foot
 // only when opened from the walk), the results then folded to their head. A question asked in a file carries its folder and cover as
@@ -51,8 +49,8 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  askPlan, detailNeedsLoad, dossierStep, duration, FILE_SHELVES, fileContext, fileFacts, fileFolder, fileOf, fileQueue, fileReason,
-  fileResults, filesAll, fileShelves, findContext, focusIndex, formatDay, indexRows, placeKind, prioToken, projectTone,
+  askPlan, detailNeedsLoad, dossierStep, duration, fileContext, fileFacts, fileOf, fileQueue, fileReason,
+  fileResults, filesAll, findContext, focusIndex, formatDay, indexRows, placeKind, prioToken, projectTone,
   queueLeftOut, RECORD_KINDS, RECORD_STATES, recordArea, recordList, recordPoint, rowProject, short, stepAge, suggestedStep, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -133,8 +131,8 @@ function ReasonChip({ f, queued = false }) {
 
 /** The head of a file: an eyebrow (what it is, where it stands, its status, kind and priority, its area and its
  *  slug on the right), its title as the one heading of the view, and the situation. `where` names its place in the eyebrow:
- *  "2 of 16" in the queue, "Opened from the search" and "closed" for a file found beside it. `file` is the file
- *  the server lists for it (cockpit.files_scope all), whose reason chip it shows unless it is `queued` */
+ *  "2 of 16" in the queue, "Opened from the search" (or "from the list") and "closed" for a file opened beside it.
+ *  `file` is the file the server lists for it (cockpit.files_scope all), whose reason chip it shows unless it is `queued` */
 function Cover({ x, s, c, data, where = [], file = null, queued = false }) {
   const t = T()
   const r = x.row
@@ -350,7 +348,7 @@ function Suggest({ x, s, c, context }) {
   </div>`
 }
 
-/** A file opened from the search, beside the queue: the same surface as a file of the queue, its head from
+/** A file opened from the list or the search, beside the queue: the same surface as a file of the queue, its head from
  *  /api/task, the next step its STATUS.md names (or the suggestion when it names none and the task is open), its
  *  drawers, a question to it, and at its foot the way back, or `foot` (the walk of the list it was opened from) in its
  *  place. `open` is its slug, or the folder of a closed copy
@@ -377,6 +375,9 @@ function OpenFile({ open, s, c, queued = false, foot = null }) {
   const context = fileContext(facts, language())
   // the suggestion writes through the task's row (verb task_set_next): only an open task the model lists
   const suggest = row && facts.kind !== 'done' && !facts.next
+  // opened from what a search found (the field on the left, or the results above), else from the list as it stands
+  const searched = !!String(s.ui.filesQ ?? '').trim()
+    || (s.find?.data?.groups ?? []).some(g => g.path === open || String(g.path ?? '').endsWith(`/${open}`))
   // opened from far down the results: its head comes into view
   const top = useRef(null)
   useEffect(() => { top.current?.scrollIntoView?.({ block: 'nearest' }) }, [])
@@ -385,7 +386,7 @@ function OpenFile({ open, s, c, queued = false, foot = null }) {
     <${Btn} variant="secondary" size="sm" icon="back" cls="dz-walk-btn" onClick=${() => c.closeFile()}>${d.back}<//></div></footer>` : null
   return html`<article ref=${top} class="dz-file dz-open" aria-labelledby="dz-title">
     ${entry?.status === 'error' ? html`<p class="muted" role="status">${d.noFile}</p>` : html`
-      <${Cover} x=${x} s=${s} c=${c} data=${data} where=${[d.opened, facts.kind === 'done' ? d.find.kind.done : null]}
+      <${Cover} x=${x} s=${s} c=${c} data=${data} where=${[searched ? d.opened : d.openedList, facts.kind === 'done' ? d.find.kind.done : null]}
         file=${filesAll(s) && !open.includes('/') ? fileOf(s, slug) : null} queued=${queued} />
       ${facts.next ? html`<section class="dz-step"><p class="dz-step-kind">${d.next}</p><p class="dz-step-title">${facts.next}</p></section>` : null}
       ${suggest ? html`<${Suggest} x=${x} s=${s} c=${c} context=${context} />` : null}
@@ -442,15 +443,13 @@ export function Walk({ queue, i, s, c, go: walkTo = null, words = null, titleFor
 
 /** The active tasks the queue leaves out, in one calm line: where the file stands (none in an empty queue) and
  *  how many more by why; a click lists them by why, each opening beside the queue (c.openFile), with the one
- *  sentence that backlog tasks never show here. Under an area that hides some, every area again with one click
+ *  sentence that backlog tasks never show here unless every task is a file (cockpit.files_scope all). Under an area that hides some, every area again with one click
  *  (`areaButton`, off where the view offers it already). None when nothing is left out */
-// the chip of the shelves a reason of the line leads to (cockpit.files_scope all); area and unpinned have none
-const LEFT_SHELF = { resting: 'resting', drop: 'resting', deferred: 'resting', waiting: 'waiting' }
-
 function LeftOut({ gaps, s, c, pos = null, areaButton = true }) {
   const t = T()
   const d = t.dossier.left
-  const shelves = filesAll(s)
+  // with every task a file (cockpit.files_scope all) the backlog stands in the list on the left too
+  const every = filesAll(s)
   const [open, setOpen] = useState(false)
   if (!gaps.total) return null
   const lang = language()
@@ -459,7 +458,6 @@ function LeftOut({ gaps, s, c, pos = null, areaButton = true }) {
   const detail = (g, x) => (g.reason === 'deferred' ? (x.until ? d.until(formatDay(x.until, lang)) : d.untilShown)
     : g.reason === 'area' ? rowProject(x.row) || t.home.noArea : null)
   const folder = x => `work/${x.row.stream || x.row.work_kind === 'stream' ? 'streams' : 'tasks'}/${x.slug}`
-  const backlog = shelves ? fileShelves(s).lists.backlog.length : 0
   return html`<div class="dz-left">
     <p class="dz-left-head">
       <button type="button" class="dz-left-line" aria-expanded=${String(open)} aria-controls="dz-left-list"
@@ -469,60 +467,15 @@ function LeftOut({ gaps, s, c, pos = null, areaButton = true }) {
     </p>
     ${open ? html`<div id="dz-left-list" class="dz-left-list">
       ${gaps.groups.map(g => html`<section key=${g.reason} class="dz-left-group">
-        <p class="dz-left-why muted small">${why(g)}${shelves && LEFT_SHELF[g.reason] ? html` <button type="button" class="btn-link dz-left-shelf"
-          onClick=${() => c.setFileShelf(LEFT_SHELF[g.reason], true)}>${d.toShelf(t.dossier.shelf.chip[LEFT_SHELF[g.reason]])}</button>` : null}</p>
+        <p class="dz-left-why muted small">${why(g)}</p>
         <ul class="entries">${g.rows.map(x => html`<li key=${x.slug} class="entry">
           <button type="button" class="btn-link dz-left-open" onClick=${() => c.openFile(x.slug, folder(x))}>${x.row.title || x.slug}</button>
           <span class="entry-tags"><${KindTag} row=${x.row} s=${s} />${detail(g, x) ? html`<span class="muted small">${detail(g, x)}</span>` : null}</span>
         </li>`)}</ul>
       </section>`)}
-      ${shelves ? (backlog ? html`<p class="dz-left-backlog muted small"><button type="button" class="btn-link dz-left-shelf"
-          onClick=${() => c.setFileShelf('backlog', true)}>${d.toBacklog(backlog)}</button></p>` : null)
-        : html`<p class="dz-left-backlog muted small">${d.backlog}</p>`}
+      ${every ? null : html`<p class="dz-left-backlog muted small">${d.backlog}</p>`}
     </div>` : null}
   </div>`
-}
-
-/** Every task and stream behind the queue (cockpit.files_scope all, model.files): the chips Active, Waiting,
- *  Resting, Backlog and All, each with its count; a click lists the files of one (ui.fileShelf), sorted by
- *  status, priority and last change, a second click folds it. A file opens as one of the queue does
- *  (c.openFile: at its place in the queue, else beside it). They split by the queue (`queue`, the files it walks):
- *  Active is the queue, the rest by why it is left out. Under an area filter it holds that area, and names how
- *  many stand in the others with the way back to every area. A chip picked from the line of what the queue leaves
- *  out (ui.fileShelfReveal) brings the shelves into view and takes the focus, once */
-function Shelves({ s, c, queue = [] }) {
-  const t = T()
-  const d = t.dossier
-  const sh = fileShelves(s, queue)
-  const queued = new Set(queue.map(x => x.slug))
-  const at = FILE_SHELVES.includes(s.ui.fileShelf) ? s.ui.fileShelf : null
-  const files = at ? sh.lists[at] : []
-  const lang = language()
-  const box = useRef(null)
-  const chips = useRef({})
-  const reveal = Boolean(s.ui.fileShelfReveal && at)
-  useEffect(() => {
-    if (!reveal) return
-    box.current?.scrollIntoView?.({ block: 'start' })
-    chips.current[at]?.focus?.()
-    c.fileShelfShown()
-  }, [reveal, at])
-  return html`<section ref=${box} class="dz-shelves" aria-label=${d.shelf.label}>
-    <div class="dz-shelf-chips">
-      ${FILE_SHELVES.map(k => html`<button key=${k} ref=${el => { chips.current[k] = el }} type="button" class="chip dz-shelf-chip"
-        aria-pressed=${String(at === k)} aria-controls=${at === k ? 'dz-shelf-list' : undefined}
-        onClick=${() => c.setFileShelf(at === k ? null : k)}>${`${d.shelf.chip[k]} (${sh.lists[k].length})`}</button>`)}
-    </div>
-    ${s.ui.area && sh.elsewhere ? html`<p class="dz-shelf-elsewhere muted small">${d.shelf.elsewhere(sh.elsewhere, s.ui.area)}
-      <${Btn} variant="ghost" size="xs" onClick=${() => c.setArea(null)}>${t.home.areaClear}<//></p>` : null}
-    ${at ? files.length ? html`<ul id="dz-shelf-list" class="entries dz-shelf-list">${files.map(f => html`<li key=${f.slug} class="entry">
-        <button type="button" class="btn-link dz-shelf-open" onClick=${() => c.openFile(f.slug, fileFolder(f))}>${f.title || f.slug}</button>
-        <span class="entry-tags"><${Dot} token=${prioToken(f.priority)} /><${KindTag} row=${{ key: `task:${f.slug}`, task: f.slug, work_kind: f.kind }} s=${s} />
-          <span class="muted small">${[t.taskState[f.status] ?? f.status, f.priority].filter(Boolean).join(' · ')}</span>
-          <${ReasonChip} f=${f} queued=${queued.has(f.slug)} />
-          ${f.updated ? html`<span class="muted small">${d.shelf.updated(formatDay(String(f.updated).slice(0, 10), lang))}</span>` : null}</span>
-      </li>`)}</ul>` : html`<p id="dz-shelf-list" class="muted small">${d.shelf.none}</p>` : null}
-  </section>`
 }
 
 /** One chip of the start's filters: pressed while its value is the one set */
@@ -575,7 +528,7 @@ function AskRecords({ s, c, plan, rows }) {
   </div>`
 }
 
-/** The question to the AI and its answer, where the layout puts them (module head) */
+/** The question to the AI and its answer, under the chips of the left column (module head) */
 function RecordsAsk({ s, c, list }) {
   const fs = s.work?.files_search ?? null
   const plan = askPlan(list.rows, fs?.block ?? [])
@@ -588,9 +541,9 @@ function RecordsAsk({ s, c, list }) {
 const isOpenIn = (r, open, walked) => (open ? (open.includes('/') ? r.path === open : r.slug === open && r.kind !== 'done')
   : !!walked && r.slug === walked && r.kind !== 'done')
 
-/** The left column of the files tab (module head): the question to the AI on top while the middle shows a record or
- *  the walk (`busy`), the search with the walk under it, its labelled chips, the records with the one open marked; a
- *  click opens one beside the list. It stays mounted while records open, so the list keeps where it scrolled */
+/** The left column of the files tab (module head): the search with the walk under it, its labelled chips, the
+ *  question to the AI, the records with the one open marked; a click opens one beside the list. It stays mounted while
+ *  records open, so the list keeps where it scrolled; the field takes the focus while the middle shows nothing (`busy`) */
 function FilesList({ s, c, queue, list, shown, open, walked, busy }) {
   const t = T()
   const f = t.dossier.start
@@ -602,7 +555,6 @@ function FilesList({ s, c, queue, list, shown, open, walked, busy }) {
   useEffect(() => { c.loadRecords(); if (!busy) field.current?.focus?.() }, [])
   const state = RECORD_STATES.includes(s.ui.filesState) ? s.ui.filesState : 'open'
   return html`<aside class="flow-side dz-side" aria-label=${f.label}>
-    ${busy ? html`<${RecordsAsk} s=${s} c=${c} list=${list} />` : null}
     <div class="fs-top">
       <form class="fs-find" role="search" onSubmit=${e => e.preventDefault()}>
         <label class="sr-only" for="files-start-find">${f.label}</label>
@@ -624,6 +576,7 @@ function FilesList({ s, c, queue, list, shown, open, walked, busy }) {
         ${RECORD_KINDS.map(k => html`<${StartChip} key=${k} on=${s.ui.filesKind === k}
           onClick=${() => c.setFilesFilter({ filesKind: s.ui.filesKind === k ? null : k })}>${f.kind[k]}<//>`)}<//>
     </div>
+    <${RecordsAsk} s=${s} c=${c} list=${list} />
     <section class="fs-records" aria-label=${f.recent}>
       <p class="fs-eyebrow">${q.trim() ? f.found(list.rows.length) : f.recent}${list.rows.length > shown.length
         ? html`<span class="dz-sep" aria-hidden="true">·</span><span class="muted">${f.shown(shown.length, list.rows.length)}</span>` : null}</p>
@@ -679,11 +632,11 @@ export function DossierView({ s, c }) {
   const point = recordPoint(s, open ?? x?.slug ?? null)
   const some = !!open || walking
   return html`<div class="col col-page flow dz">
-    <div class=${`flow-grid dz-grid${point ? '' : ' no-aside'}`}>
+    <div class=${`flow-grid dz-grid${point ? '' : ' no-aside'}${some ? ' is-open' : ''}`}>
       <${FilesList} s=${s} c=${c} queue=${queue} list=${list} shown=${shown} open=${open} walked=${x?.slug ?? null} busy=${some} />
       <section class="flow-main dz-main" aria-label=${d.label}>
         ${some ? html`<header class="page-head dz-head"><${Btn} variant="ghost" size="sm" icon="close" cls="dz-home"
-          onClick=${() => c.filesHome()}>${d.start.back}<//></header>` : html`<${RecordsAsk} s=${s} c=${c} list=${list} />`}
+          onClick=${() => c.filesHome()}>${d.start.back}<//></header>` : null}
         <${FindResults} s=${s} c=${c} open=${open} />
         ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} queued=${queue.some(q => q.slug === open)} foot=${listFoot} />`
         : !walking ? html`<p class="dz-pick muted">${d.start.pick}</p>`
@@ -705,7 +658,6 @@ export function DossierView({ s, c }) {
           <div class="btn-row dz-empty-acts"><${Btn} variant="secondary" size="sm" onClick=${() => c.setArea(null)}>${d.allAreas}<//></div>
           <${LeftOut} gaps=${gaps} s=${s} c=${c} areaButton=${false} />`
         : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${why(d.emptySub)} action=${false} /><${LeftOut} gaps=${gaps} s=${s} c=${c} />`}
-        ${filesAll(s) ? html`<${Shelves} s=${s} c=${c} queue=${queue} />` : null}
       </section>
       ${point ? html`<${FlowAside} x=${point} s=${s} c=${c} />` : null}
     </div>

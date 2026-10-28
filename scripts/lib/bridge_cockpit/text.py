@@ -23,7 +23,8 @@ EN: dict = {
     "ask_info": "{section}: {title}{extra}. Take a look and suggest the next step. Nothing goes out without my yes.",
     # a background job of the workers view (actions_pages.py worker_brief): the question on its row, the item and
     # the brief Analyse in a tab files, the job's state in words (as text.js workerState)
-    "ask_worker": "Background job {id} on {host}: {state}. {detail} What should be done, and why?",
+    "ask_worker": "Background job {id} on {host}: {state}. What should be done, and why?",
+    "ask_worker_detail": " The finding as the job reports it: «{detail}»",
     "worker_summary": "Background job {id} on {host}: {state}",
     "worker_brief": ("Analyse the background job {id} on {host} and advise: read and propose, change nothing.\n\n"
                      "Job: {title} ({id}), kind {kind}, schedule {when}\nMachine: {host}\nUnit: {unit} ({runtime})\n"
@@ -40,6 +41,8 @@ EN: dict = {
                      "inventory_stale": "inventory stale", "not_provisioned": "never installed", "unknown": "unknown",
                      "not reported": "not reported"},
     "btn_worker_advise": "Analyse in a tab",
+    # the start note of Analyse in a tab: the click is an order, so the tab never closes the item on its own
+    "worker_order": "Analyse and propose, change nothing. Do not close this item on your own; ask before you close it.",
     "follow_up": "Draft a short follow-up message for: {title}{why}. Draft only, do not send anything.",
     "overview_head": "My briefing state from the dashboard ({at}): {headline}",
     "overview_tail": "Sort it briefly: what comes first, what can go, what do I hand to a tab. No action without my yes.",
@@ -164,7 +167,7 @@ EN: dict = {
     "nothing_to_start": "nothing to start",
     "nothing_to_do": "nothing to do",
     "starting_already": "{title} is already starting",
-    "handoff_order_late": "The tab for this chat is already starting: your addition is now a note on its inbox item; type it into the tab too",
+    "handoff_order_late": "The tab for this chat is already on its way: your addition is now a note on its inbox item; type it into the tab too",
     "waits_for_role": "waiting for {name}",
     "prev_role": "the previous role",
     "all_roles_started": "all roles started",
@@ -383,7 +386,8 @@ DE: dict = {
 
     "ask_about": "Briefing-Punkt: {title}{where}. Schau es dir an und schlag den nächsten Schritt vor. Nichts nach außen ohne mein Ja.",
     "ask_info": "{section}: {title}{extra}. Schau es dir an und schlag den nächsten Schritt vor. Nichts nach außen ohne mein Ja.",
-    "ask_worker": "Hintergrundjob {id} auf {host}: {state}. {detail} Was ist zu tun und warum?",
+    "ask_worker": "Hintergrundjob {id} auf {host}: {state}. Was ist zu tun und warum?",
+    "ask_worker_detail": " Der Befund, wie der Job ihn meldet: «{detail}»",
     "worker_summary": "Hintergrundjob {id} auf {host}: {state}",
     "worker_brief": ("Analysiere den Hintergrundjob {id} auf {host} und berate: lesen und vorschlagen, nichts ändern.\n\n"
                      "Job: {title} ({id}), Art {kind}, Zeitplan {when}\nRechner: {host}\nUnit: {unit} ({runtime})\n"
@@ -400,6 +404,7 @@ DE: dict = {
                      "inventory_stale": "Inventar veraltet", "not_provisioned": "nie installiert", "unknown": "unbekannt",
                      "not reported": "nicht gemeldet"},
     "btn_worker_advise": "Im Tab analysieren",
+    "worker_order": "Analysieren und vorschlagen, nichts ändern. Schließe diesen Eintrag nicht selbst; frag, bevor du ihn schließt.",
     "follow_up": "Entwirf eine kurze Nachfass-Nachricht für: {title}{why}. Nur als Entwurf, nichts senden.",
     "overview_head": "Mein Briefing-Stand aus dem Dashboard ({at}): {headline}",
     "overview_tail": "Ordne kurz ein: was zuerst, was kann weg, was gebe ich an einen Tab ab. Keine Aktion ohne mein Ja.",
@@ -520,7 +525,7 @@ DE: dict = {
     "nothing_to_start": "nichts zu starten",
     "nothing_to_do": "nichts zu tun",
     "starting_already": "{title} startet schon",
-    "handoff_order_late": "Der Tab zu diesem Chat startet schon: dein Zusatz steht jetzt als Notiz am Posteingangseintrag; schreib ihn auch in den Tab",
+    "handoff_order_late": "Der Tab zu diesem Chat ist schon unterwegs: dein Zusatz steht jetzt als Notiz am Posteingangseintrag; schreib ihn auch in den Tab",
     "waits_for_role": "wartet auf {name}",
     "prev_role": "die vorige Rolle",
     "all_roles_started": "alle Rollen gestartet",

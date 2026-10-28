@@ -14,7 +14,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, indexRows, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatStamp, guideOf, indexRows, isAnswered, listedChats, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabWalkView, walkRefs, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -123,7 +123,8 @@ function TabItem({ tab, on, s, c, where = false }) {
 }
 
 /** The questions (logic.js askList): open and handed ones first, each by its title with its marker; "all"
- *  shows every one of the last days, the archived ones too (s.chatArchive, read once), greyed and without × */
+ *  shows every one of the last days, the archived ones too (s.chatArchive, read once), greyed and without ×, or
+ *  says that the archive holds none */
 function Chats({ convs, s, c, here }) {
   const t = T()
   const all = !!s.ui.asksAll
@@ -138,13 +139,14 @@ function Chats({ convs, s, c, here }) {
       <${Item} on=${here.kind === 'chat' && s.ui.quickConv === x.id} cls="room-chat" title=${x.turns[0]?.q}
         onClick=${() => { c.pickQuick(x.id); c.pickRoom({ kind: 'chat' }) }}>
         ${x.running ? html`<${Dot} token="info" pulse />` : html`<span class="room-glyph"><${Icon} name="chat" size=${12} /></span>`}
-        <span class="room-name">${title}<${AskMark} mark=${mark} archived=${archived} /></span>
+        <span class="room-name">${title}</span><${AskMark} mark=${mark} archived=${archived} />
         <span class="room-meta muted small">${chatStamp(x.last_ms ?? x.started_ms, s.now, language())}</span>
       <//>
       ${x.running || archived ? null : html`<button type="button" class="room-x" title=${t.quickForgetHint} aria-label=${t.quickForget} onClick=${() => c.quickForget(x.id)}>×</button>`}
     </div>`)}
     ${all && s.chatArchive?.status === 'loading' ? html`<p class="muted small room-more">${t.asks.loading}</p>` : null}
     ${all && s.chatArchive?.status === 'error' ? html`<p class="muted small room-more">${t.asks.failed}</p>` : null}
+    ${all && s.chatArchive?.status === 'ok' && !old.length ? html`<p class="muted small room-more">${t.asks.noneArchived(ASK_ARCHIVE_DAYS)}</p>` : null}
     <button type="button" class="btn-link small room-more" onClick=${() => c.showAllAsks(!all)}>${all ? t.cardLess : t.rooms.allAsks}</button>
   </div>`
 }
@@ -222,7 +224,7 @@ function AskRow({ tab, left, s, c }) {
   </div>`
 }
 
-/** "Waiting for you" on top of the sidebar: the tabs that want attention (logic.js attentionTabs). While
+/** "Waiting for you" near the top of the sidebar, under the questions: the tabs that want attention (logic.js attentionTabs). While
  *  the pointer or the focus is in it, its rows keep the order last shown and a tab that starts asking goes
  *  last: sorted, a new dialog would push every row down by its height, and a click meant for one row's
  *  answer would land on another tab's option. The sorted order comes back when the pointer leaves */
@@ -316,8 +318,9 @@ const tabFacts = (tabs, ref) => {
 }
 
 /** The sidebar of the Work area: the order of the tabs on top, where it is reached without scrolling past
- *  the asks; then Waiting for you (left out by status, whose first groups hold the same tabs), the questions,
- *  the workspaces or the status groups, and the Bridges on this machine. The A2A agents have an area of their own */
+ *  the asks; then the questions, so one just asked is found without scrolling past the waiting tabs (6d point 3),
+ *  Waiting for you (left out by status, whose first groups hold the same tabs), the workspaces or the status
+ *  groups, and the Bridges on this machine. The A2A agents have an area of their own */
 export function Sidebar({ s, c, rooms, here }) {
   const t = T()
   const sort = ['urgency', 'status'].includes(s.ui?.roomsSort) ? s.ui.roomsSort : 'terminal'
@@ -330,9 +333,9 @@ export function Sidebar({ s, c, rooms, here }) {
         values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
       <${WalkStart} s=${s} c=${c} />
     </div>
-    ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} />`}
     <section class="room-ws room-asks"><h3 class="label-caps">${t.rooms.chats}</h3>
       <${Chats} convs=${listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)} s=${s} c=${c} here=${here} /></section>
+    ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} />`}
     <div class="room-group-head">
       <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
       ${canTab(s, 'rename') ? html`<${Btn} size="xs" variant="ghost" title=${t.organize.buttonTitle} busy=${!!s.ui?.organize?.busy}

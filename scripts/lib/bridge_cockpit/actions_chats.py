@@ -12,8 +12,8 @@ from . import model as m
 from .history import item as history_item
 from .quick import CONV_RE, ORIGINS as QUICK_ORIGINS
 from .relay import KINDS as ASK_KINDS
-from .actions_base import (CONTEXT_MAX, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, QUICK_PLACES, SHORT_TIMEOUT, SLUG_RE,
-                           WORKER_REF_RE, ActionError, Ctx, bad_arg, check_key, check_text)
+from .actions_base import (CONTEXT_MAX, CONTROL_RE, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, QUICK_PLACES, SHORT_TIMEOUT,
+                           SLUG_RE, WORKER_DETAIL_MAX, WORKER_REF_RE, ActionError, Ctx, bad_arg, check_key, check_text)
 
 
 class ChatVerbs:
@@ -65,9 +65,9 @@ class ChatVerbs:
             got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first, "conv": conv}], "go",
                               app.cfg.target, start_note=noted)
             done = {"status": got, "inbox_id": new_id}
-            if got == "busy" and order:
-                # the tab of this chat is already on its way: the new words reach the item as a note, not that tab
-                ctx.call("inbox.note", new_id, self.inbox("note", new_id, "--", order[:2000]), SHORT_TIMEOUT)
+            if got in ("busy", "running") and noted:
+                # the tab of this chat is already on its way or at work: the order reached the item as its start note,
+                # never that tab, and is written only once (a second, plain note would read back as the tab's result)
                 ctx.note(self.tx["handoff_order_late"], bad=True)
         finally:
             handed = app.quick.set_handed(conv, **done)
@@ -291,10 +291,13 @@ class ChatVerbs:
             run = self.worker_run(host, ident)
             if run is None:
                 raise ActionError(409, "stale_row", "the workers view holds no such job", "id")
-            top = next((f for f in run.get("findings") or [] if isinstance(f, dict) and f.get("severity") != "info"),
-                       (run.get("findings") or [{}])[0])
-            prompt = tx["ask_worker"].format(id=ident, host=host, state=self.worker_state(run),
-                                             detail=(top.get("detail") if isinstance(top, dict) else "") or "")
+            found = run.get("findings") if isinstance(run.get("findings"), list) else []
+            top = next((f for f in found if isinstance(f, dict) and f.get("severity") != "info"), (found or [{}])[0])
+            # the finding as the job wrote it (often a log line, in English), one short line after the question
+            detail = CONTROL_RE.sub(" ", str((top.get("detail") if isinstance(top, dict) else "") or ""))
+            detail = m.short(" ".join(detail.split()), WORKER_DETAIL_MAX)
+            prompt = tx["ask_worker"].format(id=ident, host=host, state=self.worker_state(run)) \
+                + (tx["ask_worker_detail"].format(detail=detail) if detail else "")
             key = f"worker:{host}:{ident}"
             about = {"kind": "worker", "key": key, "inbox": self.filed_page_item(key, None) if via == "quick" else None}
         elif kind == "free":

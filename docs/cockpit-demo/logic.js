@@ -3148,14 +3148,24 @@ const HANDOFF_FAILED = new Set(['failed', 'partly', 'aborted', 'error', 'rejecte
 const TAB_LIVE = new Set(['started', 'running', 'busy'])
 // the head of a note on an item, which the status line names in its own words
 const NOTE_HEAD_RE = /^\s*(?:Result|Ergebnis|Question|Frage)\s*:\s*/i
+// how long a start without a tab counts as starting (returns.py GRACE_MS, liveStage): later, its tab is gone
+const START_GRACE_MS = 180000
+// how many days of archived questions the Chat's "all of the last days" reads (GET /api/chats/archive)
+export const ASK_ARCHIVE_DAYS = 7
+
+/** A tab start handed on whose tab is gone: no tab carries its item, and its grace is over. A record without
+ *  its time cannot tell, so it is not gone */
+const tabGone = (handed, tab, nowMs) => !tab && TAB_LIVE.has(handed.status) && typeof handed.at_ms === 'number'
+  && nowMs - handed.at_ms >= START_GRACE_MS
 
 /** The status line of a chat that was handed on (quick.py `handed`, or the page's own record of a chat_tab
  *  reply): `word` is a key of text.js handoff, `tone` a state token, `action` what a button beside it does
  *  (retry, jump to the tab, ask_via_tab). The control route reads its relay record; the tab route finds the
  *  tab that carries the inbox item, and once something came back from that item (askOutcome of
  *  `handed.outcome`, quick.py handoff_outcome) says it: its question, its result, or a close without a word.
- *  A tab that waits on you before anything came back says that. null without a record */
-export function handoffStatus(handed, relayRecords, tabs) {
+ *  A tab that waits on you before anything came back says that; a start whose tab is gone with nothing back says
+ *  that too (`gone`, as Work's "Tab gone"), with a new start and its item (`item`). null without a record */
+export function handoffStatus(handed, relayRecords, tabs, nowMs = Date.now()) {
   if (!handed?.status) return null
   const out = (word, tone, action = null, extra = {}) => ({ word, tone, action, ...extra })
   if (handed.status === 'starting') return out('starting', 'info')
@@ -3185,6 +3195,7 @@ export function handoffStatus(handed, relayRecords, tabs) {
   }
   if (tab?.state === 'needs-you' && TAB_LIVE.has(handed.status)) return out('asksYou', 'warning', ...jump)
   if (tab && TAB_LIVE.has(handed.status)) return out('inTab', 'success', ...jump)
+  if (tabGone(handed, tab, nowMs)) return out('gone', 'warning', 'retry', { item: handed.inbox_id ?? null })
   if (handed.status === 'started') return out('started', 'info')
   if (handed.status === 'running' || handed.status === 'busy') return out('running', 'info')
   if (handed.status === 'manual') return out('manual', 'warning')
@@ -3208,9 +3219,9 @@ export function askOutcome(conv) {
 
 /** The marker of a handed question in every list: `asksYou` (its tab asks you, or came back with a question),
  *  `done` (its item closed, or it came back while no tab works on it any more; `text` its outcome), `inTab`
- *  (its tab took it and works); null for a question never handed on, or one whose start failed. `ref` the
- *  tab that carries it, while there is one */
-export function askMark(conv, tabs) {
+ *  (its tab took it and works), `gone` (its tab ended, or never came, and nothing came back); null for a question
+ *  never handed on, or one whose start failed. `ref` the tab that carries it, while there is one */
+export function askMark(conv, tabs, nowMs = Date.now()) {
   const handed = conv?.handed
   if (!handed || handed.to !== 'tab') return null
   const tab = handed.inbox_id ? (tabs ?? []).find(t => t?.item === handed.inbox_id) ?? null : null
@@ -3219,6 +3230,7 @@ export function askMark(conv, tabs) {
   const live = TAB_LIVE.has(handed.status)
   if (outcome?.asks || (!outcome && tab?.state === 'needs-you' && live)) return { word: 'asksYou', tone: 'warning', text: outcome?.text ?? null, ref }
   if (outcome && (outcome.closed || !tab)) return { word: 'done', tone: 'success', text: outcome.text, ref }
+  if (!outcome && tabGone(handed, tab, nowMs)) return { word: 'gone', tone: 'warning', text: null, ref }
   return live || outcome ? { word: 'inTab', tone: 'info', text: outcome?.text ?? null, ref } : null
 }
 
@@ -3265,7 +3277,7 @@ export function askTitle(conv, s, lang) {
 export function askList(convs, s, lang) {
   const tabs = s?.tabs?.tabs
   const out = (convs ?? []).map(conv => {
-    const mark = askMark(conv, tabs)
+    const mark = askMark(conv, tabs, s?.now || Date.now())
     const last = conv.turns?.at(-1)
     return { conv, title: askTitle(conv, s, lang), mark, open: !!(conv.running || mark || (last && !last.a && !last.error)) }
   })

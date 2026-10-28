@@ -416,13 +416,14 @@ class Quick:
 
     def set_about(self, conv: str, about: dict) -> bool:
         """Name what a chat is about when it names no item yet (a handed chat: the inbox item it became). A chat
-        from an info row nobody filed has an `about` without an item: that one takes the handed item too."""
+        from a job row or an info row nobody filed has an `about` without an item: it takes the handed item beside
+        its own kind and row key, so the row still finds its question (logic.js rowConv)."""
         with self.lock:
             c = self.convs.get(conv)
             old = c.get("about") if c is not None else None
             if c is None or isinstance(old, dict) and (old.get("inbox") or old.get("task")):
                 return False
-            c["about"] = dict(about)
+            c["about"] = {**old, "inbox": about.get("inbox")} if isinstance(old, dict) else dict(about)
             self.save()
         return True
 
@@ -433,8 +434,9 @@ class Quick:
     def sweep_settled(self, now: float, force: bool = False) -> bool:
         """Chats about an item that has ended since the chat started go to the archive (why `settled`), once
         they have been quiet for SETTLE_QUIET_MS, a chat handed to a tab only chat_keep_hours after the end.
-        A chat handed to a tab gets what came back from its item (handoff_outcome). Reads files outside the lock and checks again under it that nothing changed
-        meanwhile. True when a chat left or what came back changed."""
+        A chat handed to a tab gets what came back from its item (handoff_outcome). Reads files outside the
+        lock and checks again under it that nothing changed meanwhile. True when a chat left or what came
+        back changed."""
         now = int(now)
         if not force and not self.settle_due and now - self.settle_at_ms < SETTLE_EVERY_MS:
             return False

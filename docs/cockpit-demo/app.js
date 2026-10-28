@@ -18,7 +18,7 @@ import {
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, ghFilterKept,
-  FILES_PAGE, filesMoved,
+  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -180,9 +180,6 @@ const store = createStore({
     dossierAt: null, filesWalk: false, filesQ: '', filesState: 'open', filesKind: null,
     // a file opened from the search beside that queue (its slug), and the suggested next step asked in one: { slug, conv }
     dossierOpen: null, suggest: null,
-    // the shelf of every file behind the queue that lists its files (cockpit.files_scope all), null: none picked;
-    // fileShelfReveal: picked from the line of what the queue leaves out, so the shelves come into view once
-    fileShelf: null, fileShelfReveal: false,
     // the Work through page (views/flow.js): where it stands in its queue (held by the card's id), the chip that
     // filters it, the jump to a tab the return card asks about ({key, ref, title, at, armed}, kept in memory only, so
     // a reload brings no old card back), the row Advise answered ({key, conv}) and how many it decided since load
@@ -1340,8 +1337,6 @@ const ctl = {
   },
   // a chip behind the queue lists its files (views/dossier.js Shelves); null folds the list. `reveal`: picked from
   // the line of what the queue leaves out, far above, so the shelves scroll into view and the chip takes the focus
-  setFileShelf: (k, reveal = false) => setUi({ fileShelf: k ?? null, fileShelfReveal: Boolean(reveal && k) }),
-  fileShelfShown: () => setUi({ fileShelfReveal: false }),
   // the search of the files view: an answer for words no longer asked is dropped. `from` 'start': asked by the start
   // of the files tab, which shows the hits in its own list (the results above a file leave them out)
   async findFiles(q, from = null) {
@@ -1503,7 +1498,7 @@ const ctl = {
   },
   loadChatArchive: async () => {
     store.set(s => ({ ...s, chatArchive: { status: 'loading', convs: s.chatArchive?.convs ?? [] } }))
-    const res = await api.get('/api/chats/archive?days=7')
+    const res = await api.get(`/api/chats/archive?days=${ASK_ARCHIVE_DAYS}`)
     store.set(s => ({ ...s, chatArchive: res.ok ? { status: 'ok', convs: res.data.convs ?? [] } : { status: 'error', convs: s.chatArchive?.convs ?? [] } }))
   },
   newQuick: () => setUi({ quickConv: null }),

@@ -644,7 +644,8 @@ test('the sidebar shows Waiting for you with the question and option buttons', (
   // the most urgent first, the control tab never; the group stands above the workspaces
   assert.deepEqual(replyRows(el).map(r => r.$('.reply-name').text()), ['alpha-release', 'report-draft', 'demo-task research', 'changelog'])
   const side = el.$('nav')
-  assert.ok(side.childNodes.indexOf(group) < side.childNodes.indexOf(el.$('section.room-ws')))
+  const firstWs = el.$$('section.room-ws').find(x => !(x.getAttribute('class') ?? '').includes('room-asks'))
+  assert.ok(side.childNodes.indexOf(group) < side.childNodes.indexOf(firstWs))
   const alpha = replyRow(el, 'alpha-release')
   const ask = tabOf(s, 'surface:7').ask
   assert.match(alpha.$('.reply-ask').text(), /Do you want to make this edit\?/)
@@ -1391,7 +1392,7 @@ test('every handed chat of the demo shows a worded status line', () => {
     assert.doesNotMatch(line.text(), /undefined/)
     seen.add(line.getAttribute('data-status'))
   }
-  for (const word of ['starting', 'started', 'running', 'failed', 'manual', 'nothing', 'waiting', 'arrived', 'offline']) assert.ok(seen.has(word), word)
+  for (const word of ['starting', 'started', 'running', 'failed', 'manual', 'nothing', 'gone', 'waiting', 'arrived', 'offline']) assert.ok(seen.has(word), word)
 })
 
 // ---------------------------------------------------------------- round 6d: finding questions again
@@ -3448,4 +3449,109 @@ test('6d: in the narrow left column of the files tab the AI question field stand
   const fs = await import('node:fs')
   const css = fs.readFileSync(new URL('../web/files.css', import.meta.url), 'utf8')
   assert.match(css, /\.dz-side \.fs-askq \{ flex-direction: column; align-items: stretch; \}/)
+})
+
+// ---------------------------------------------------------------- round 6d review fixes
+
+test('6d fix: a handed question whose tab is gone says so under the chat and offers to start again or open its item', () => {
+  // live 28.10.: "Started, the tab is opening" an hour after the start, while Work said "Tab gone"
+  const s0 = cockpitState(NOW)
+  const conv = asked('q0000000007', JOB_Q, NOW - 70 * MIN, { handed: { to: 'tab', at_ms: NOW - 69 * MIN, status: 'started', inbox_id: 'i-lost' } })
+  const s = cockpitState(NOW, { quick: { ...s0.quick, keep_hours: 24, convs: [conv] } })
+  const c = recorder()
+  const el = mount(html`<${ChatFoot} s=${s} c=${c} conv=${conv} autofocus=${false} />`)
+  const line = el.$('.handoff-status')
+  assert.equal(line.getAttribute('data-status'), 'gone')
+  assert.match(line.text(), new RegExp(en.handoff.gone))
+  el.button(en.handoff.restart).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'act').at(-1), ['act', 'quick_handoff', { conv: 'q0000000007', to: 'tab' }])
+  el.button(en.handoff.openItem).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openItem').at(-1), ['openItem', 'inbox:i-lost', null])
+  // the question lists say the same, never "in its tab"
+  const chips = mount(html`<${QuickChat} s=${{ ...s, ui: { ...s.ui, tabView: '@ask' } }} c=${recorder()} />`).$$('.quick-conv').map(b => b.text())
+  assert.ok(chips.some(x => x.includes(en.asks.mark.gone)) && !chips.some(x => x.includes(en.asks.mark.inTab)), chips.join(' | '))
+})
+
+test('6d fix: a job row whose analysis has no tab says the tab ended and offers a new start, never "in a tab" beside it', async () => {
+  const id = '20261028-0736-background-job-bot-a1b2'
+  const base = opsState({ runs: [{ ...hostRun('bot', 'homebox', 'high'), advise: { inbox: id, state: 'open' } }], ui: { page: '@workers' } })
+  const ret = (stage, at, result = null) => ({ key: `inbox:${id}`, item: id, title: 'bot', mode: 'report', at_ms: at, stage, in_briefing: false, tab: null, result })
+  const row = async st => {
+    const s = { ...base, model: { ...base.model, returns: [st] } }
+    const c = recorder()
+    return [await openRow(mount(html`<${views.sessions.WorkersPage} s=${s} c=${c} />`).$('.wrow')), c]
+  }
+  const [lost, c] = await row(ret('lost', NOW - 60 * MIN))
+  assert.doesNotMatch(lost.$('.wrow-detail').text(), new RegExp(`\\b${en.workerInTab}\\b`))
+  assert.match(lost.$('.wrow-detail').text(), new RegExp(en.workerTabGone))
+  assert.ok(!lost.button(en.workerToTab))
+  lost.button(en.btnWorkerAdvise).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'worker_advise', { host: 'homebox', id: 'bot' }])
+  // just started: it is starting, and there is no second start yet
+  const [fresh] = await row(ret('started', NOW - 30_000))
+  assert.match(fresh.$('.wrow-detail').text(), new RegExp(en.workerStarting))
+  assert.ok(!fresh.button(en.btnWorkerAdvise))
+})
+
+test('6d fix: a collapsed job row shows that an analysis came back', () => {
+  const id = '20261028-0736-background-job-bot-a1b2'
+  const base = opsState({ runs: [{ ...hostRun('bot', 'homebox', 'high'), advise: { inbox: id, state: 'done' } }, hostRun('mail', 'homebox', 'high')], ui: { page: '@workers' } })
+  const s = { ...base, model: { ...base.model, returns: [{ key: `inbox:${id}`, item: id, title: 'bot', mode: 'report', at_ms: NOW - MIN, stage: 'done',
+    in_briefing: false, tab: null, result: { kind: 'close', text: 'the finding is old', key: null, at_ms: NOW } }] } }
+  const rows = mount(html`<${views.sessions.WorkersPage} s=${s} c=${recorder()} />`).$$('.wrow')
+  const bot = rows.find(r => r.text().includes('bot') && !r.text().includes('mail'))
+  assert.ok(bot.$('.wrow-main').text().includes(en.workerResultIn), 'the closed row says a result is there')
+  assert.ok(rows.filter(r => r !== bot).every(r => !r.$('.wrow-main').text().includes(en.workerResultIn)))
+})
+
+test('6d fix: a row question that failed or is still unanswered never reads as answered', async () => {
+  const base = opsState({ runs: [hostRun('bot', 'homebox', 'high')], ui: { page: '@workers' } })
+  const conv = turn => ({ ...rowChat('g0000000005', 'worker:homebox:bot', false), turns: [{ q: 'x', ...turn }] })
+  for (const [turn, word] of [[{ a: null, error: 'timeout' }, en.askFailed], [{ a: null, error: null }, en.askRunning], [{ a: 'yes', error: null }, en.askAnswered]]) {
+    const s = { ...base, quick: { ...(base.quick ?? {}), convs: [conv(turn)] } }
+    const row = await openRow(mount(html`<${views.sessions.WorkersPage} s=${s} c=${recorder()} />`).$('.wrow'))
+    const chip = row.$$('.wrow-detail .chip').map(x => x.text()).join(' | ')
+    assert.ok(chip.includes(word), `${JSON.stringify(turn)}: ${chip}`)
+    if (word !== en.askAnswered) assert.ok(!chip.includes(en.askAnswered), chip)
+  }
+})
+
+test('6d fix: the buttons of a job row are written alike', () => {
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    const words = [t.btnWorkerAdvise, t.btnAsk, t.btnAskAgain, t.askOpenConv, t.workerToTab]
+    assert.ok(words.every(w => w[0] === w[0].toUpperCase()), `${lang}: ${words.join(' | ')}`)
+  }
+})
+
+test('6d fix: in the Chat the questions stand above the tabs waiting for you, and an empty archive says so', async () => {
+  const { s } = asksState({ rooms: { ...cockpitState(NOW).rooms, layout: 'workspaces' } })
+  const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const heads = el.$$('h3').map(h => h.text())
+  const waits = heads.findIndex(h => h.includes(en.reply.asks))
+  assert.ok(waits >= 0, heads.join(' | '))
+  assert.ok(heads.findIndex(h => h.includes(en.rooms.chats)) < waits, heads.join(' | '))
+  const empty = { ...s, chatArchive: { status: 'ok', convs: [] }, ui: { ...s.ui, asksAll: true } }
+  const all = mount(html`<${Sidebar} s=${empty} c=${recorder()} rooms=${roomsOf(empty)} here=${{ kind: 'chat' }} />`)
+  assert.match(all.$('.room-asks').text(), new RegExp(en.asks.noneArchived(7)))
+  const none = mount(html`<${Sidebar} s=${{ ...empty, ui: { ...empty.ui, asksAll: false } }} c=${recorder()} rooms=${roomsOf(empty)} here=${{ kind: 'chat' }} />`)
+  assert.doesNotMatch(none.$('.room-asks').text(), new RegExp(en.asks.noneArchived(7)))
+})
+
+test('6d fix: a finding on a job row quotes the job\'s own words after the state in the page\'s language', async () => {
+  // the view writes its findings in English: in German they read as a quote, never as part of the German sentence
+  const run = { ...hostRun('bot', 'homebox', 'high'), findings: [{ state: 'last_run_failed', severity: 'high', detail: 'the last run ended with 75', hint: '' }] }
+  const s = opsState({ runs: [run], ui: { page: '@workers' } })
+  const row = await openRow(mount(html`<${views.sessions.WorkersPage} s=${s} c=${recorder()} />`).$('.wrow'))
+  assert.match(row.$('.wfind').text(), new RegExp(`${en.workerState.last_run_failed}: ${en.workerQuote('the last run ended with 75')}`))
+  assert.equal(text.TABLES.de.workerQuote('x'), '„x“')
+})
+
+test('6d fix: in the Chat\'s questions the marker stands beside the clipped title, never inside it', () => {
+  // walk 28.10.: "Hintergrundjob telegr…" hid its "Tab beendet" with the rest of the title
+  const { s } = asksState({ rooms: { ...cockpitState(NOW).rooms, layout: 'workspaces' } })
+  const el = mount(html`<${Sidebar} s=${s} c=${recorder()} rooms=${roomsOf(s)} here=${{ kind: 'chat' }} />`)
+  const marked = el.$$('.room-asks .room-chat').filter(b => b.$('.ask-mark'))
+  assert.ok(marked.length >= 2)
+  for (const b of marked) assert.ok(!b.$('.room-name .ask-mark'), b.text())
 })

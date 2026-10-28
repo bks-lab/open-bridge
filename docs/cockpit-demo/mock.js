@@ -1448,7 +1448,8 @@ function historyEntries(now) {
 
 // the other Bridges and A2A agents (agents.py state()): what their cards say and one conversation
 /** Chats handed on, one per status the chat's status line shows (logic.js handoffStatus): a tab start with each
- *  launch outcome, and the control session waiting, arrived and offline (their relay records below) */
+ *  launch outcome (handed a minute ago, so no tab yet is no loss), one whose tab is gone with nothing back, and the
+ *  control session waiting, arrived and offline (their relay records below) */
 export const HANDED_EXAMPLES = [
   ['Tidy the demo board labels', { to: 'tab', status: 'starting' }],
   ['Add a changelog entry for the demo release', { to: 'tab', status: 'started' }],
@@ -1458,6 +1459,8 @@ export const HANDED_EXAMPLES = [
   ['Move the notes into the docs folder', { to: 'tab', status: 'partly' }],
   ['Set up the demo test run', { to: 'tab', status: 'manual' }],
   ['Write the release summary', { to: 'tab', status: 'nothing' }],
+  // an hour ago, and no tab carries it any more: the status line says the tab ended, with a new start
+  ['Check the demo backup report', { to: 'tab', status: 'started', lost: true }],
   ['Plan the next demo sprint', { to: 'control', status: 'queued', relay_id: '20261009T113000-0a0b0c01' }],
   ['Check the open demo reviews', { to: 'control', status: 'queued', relay_id: '20261009T113100-0a0b0c02' }],
   ['Sort the demo inbox', { to: 'control', status: 'offline', relay_id: '20261009T113200-0a0b0c03' }],
@@ -1470,15 +1473,17 @@ export const HANDED_EXAMPLES = [
 ]
 
 export function handedConvs(now) {
-  return HANDED_EXAMPLES.map(([q, handed], i) => {
+  return HANDED_EXAMPLES.map(([q, { lost, ...handed }], i) => {
     const at = now - (60 - i * 4) * MIN
+    // a tab start without its outcome is a minute old (logic.js handoffStatus counts a start without a tab as starting
+    // that long); a lost one keeps its hour
     const inbox = handed.to === 'tab' && handed.status !== 'starting' ? `20261009-11${String(i).padStart(2, '0')}-demo-chat-a1b${i}` : null
     return { id: `qd${String(i + 1).padStart(9, '0')}`, kind: 'free', started_ms: at, session: null, total_usd: 0.002, running: false,
       last_ms: at + MIN, turns: [{ q, a: 'Example answer from the mock: the steps are clear, an agent can take it from here.', model_asked: 'haiku',
         model: 'haiku-5-5', cost_usd: 0.002, at_ms: at, error: null }],
       // a chat handed to a tab is about the item it became: it leaves with that item (quick.py sweep_settled)
       about: inbox ? { kind: 'handoff', inbox } : null,
-      handed: { at_ms: at + MIN, ...handed, ...(inbox ? { inbox_id: inbox } : {}) } }
+      handed: { at_ms: handed.to === 'tab' && !handed.outcome && !lost ? now - MIN : at + MIN, ...handed, ...(inbox ? { inbox_id: inbox } : {}) } }
   })
 }
 

@@ -42,6 +42,8 @@ DROP_REASONS = ("once", "duplicate", "family", "source")
 # typed on handing on may take of it, so some of the conversation always comes along
 HANDOFF_MAX = 3500
 HANDOFF_ORDER_MAX = 3000
+# the finding of a job a question on its row quotes (actions_chats.py ask kind worker): one line, a log excerpt cut
+WORKER_DETAIL_MAX = 300
 # what the page shows right now, sent along with a free quick question (quick.py): refused above this, never cut
 CONTEXT_MAX = 6000
 # where a free quick question may stand outside the chat lists, the newest replacing the last: the start page's core,

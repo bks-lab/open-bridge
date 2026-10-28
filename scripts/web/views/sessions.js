@@ -253,22 +253,26 @@ function runClock(ms, now) {
 // an item Analyse in a tab filed that is still open (inbox.py states), so the row offers its tab, not a second one
 const ADVISE_OPEN = ['open', 'approved', 'waiting', 'deferred']
 
-/** A job's Analyse in a tab (actions_pages.py worker_advise): while its item is open the row says so and opens the
- *  tab, in its room of the Chat where the Chat lays out its tabs (as views/flowrun.js SessionCards); a start
- *  without a tab may run again, and finds the same item */
+/** A job's Analyse in a tab (actions_pages.py worker_advise): while its item is open and its tab is there the row
+ *  says "in a tab" and opens the tab, in its room of the Chat where the Chat lays out its tabs (as views/flowrun.js
+ *  SessionCards); just started it says so and waits; with no tab left it says the tab ended and offers a new start,
+ *  which finds the same item. Never "in a tab" without one */
 function WorkerAdvise({ r, ret, s, c }) {
   const t = T()
   const open = ADVISE_OPEN.includes(r.advise?.state)
-  return html`${open ? html`<${Chip} token="info">${t.workerInTab}<//>` : null}
-    ${open && ret?.tab ? html`<${Btn} size="xs" variant="secondary" onClick=${() => openTabRoom(s, c, ret.tab.ref)}>${t.workerToTab}<//>`
-      : html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`}`
+  const start = html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`
+  if (open && ret?.tab) return html`<${Chip} token="info">${t.workerInTab}<//>
+    <${Btn} size="xs" variant="secondary" onClick=${() => openTabRoom(s, c, ret.tab.ref)}>${t.workerToTab}<//>`
+  if (open && ret?.live === 'started') return html`<${Chip} token="info">${t.workerStarting}<//>`
+  return html`${open && ret ? html`<${Chip} token="warning">${t.workerTabGone}<//>` : null}${start}`
 }
 
 function WorkerRow({ r, s, now, nowPct, c, i }) {
   const t = T()
   const [open, setOpen] = useState(false)
   const tone = workerTone(r)
-  // the result of its last analysis in a tab (the return channel, returns.py), under its findings
+  // the result of its last analysis in a tab (the return channel, returns.py), under its findings, and named on the
+  // closed row too, so a row with an answer reads apart from one never analysed
   const advised = r.advise ? returnsOf(s).find(x => x.key === `inbox:${r.advise.inbox}`) ?? null : null
   const days = weekdayNames(language())
   const week = r.week?.length === 7 ? [...r.week.slice(1), r.week[0]] : []
@@ -283,7 +287,8 @@ function WorkerRow({ r, s, now, nowPct, c, i }) {
           times.next != null ? t.workerNext(runClock(times.next, now)) : ''].filter(Boolean).join(' · ')}</span>` : null}</span>
       <span class="wrow-strip"><${RunStrip} strip=${r.strip} continuous=${r.continuous} /></span>
       <span class="wrow-state"><span class=${`chip chip-tk tk-${runToken(tone)}`}>
-        <${Dot} token=${runToken(tone)} /><span>${t.workerState[r.state] ?? r.state}</span></span></span>
+        <${Dot} token=${runToken(tone)} /><span>${t.workerState[r.state] ?? r.state}</span></span>
+        ${advised?.result?.text ? html`<span class="chip chip-tk tk-info wrow-result">${t.workerResultIn}</span>` : null}</span>
     </button>
     ${open ? html`<div class="wrow-detail">
       <dl class="wmeta">
@@ -295,7 +300,7 @@ function WorkerRow({ r, s, now, nowPct, c, i }) {
         ${(r.ran_days ?? []).length ? html`<span class="muted small">${t.workerRanDays(r.ran_days.length)}</span>` : null}</div>` : null}
       ${(r.findings ?? []).some(f => f.severity !== 'info') ? html`<ul class="wfind">${r.findings.filter(f => f.severity !== 'info').map((f, k) => html`<li key=${k}>
         <${StateLine} token=${f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${f.severity === 'high'}
-          word=${`${t.workerState[f.state] ?? f.state}: ${f.detail ?? ''}`} />
+          word=${`${t.workerState[f.state] ?? f.state}${f.detail ? `: ${t.workerQuote(f.detail)}` : ''}`} />
         ${f.hint ? html`<p class="muted small wfind-hint">${t.workerHint(f.hint)}</p>` : null}</li>`)}</ul>` : null}
       ${advised?.result?.text ? html`<p class="muted small wfind-hint">${t.workerResult(short(advised.result.text, 300))}</p>` : null}
       <div class="btn-row">

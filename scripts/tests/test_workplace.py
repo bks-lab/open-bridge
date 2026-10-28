@@ -1389,8 +1389,10 @@ def test_an_inbox_start_with_an_order_never_closes_on_its_own(mode):
     assert "close it without asking" in plain and "do not close the item on your own" not in plain
     assert "do not close the item on your own" in noted and "a proposal to close is a question" in noted
     assert f"python3 scripts/inbox.py note {INBOX_ID} 'Question: " in noted
-    # the order comes after the base prompt, so it wins where the two disagree
-    assert noted.index("close it without asking") < noted.index("do not close the item on your own")
+    # with an order the base prompt says nothing that contradicts it: no close without asking, no close when settled
+    assert "close it without asking" not in noted and "When it is settled, close" not in noted
+    assert "releases the close" not in noted and f"inbox.py close {INBOX_ID}" not in noted
+    assert f"inbox.py show {INBOX_ID}" in noted and "Never close a tab or a workspace." in noted
     assert noted.isascii()
     # a task tab closes no inbox item: its start note prompt keeps its own words
     assert "do not close the item" not in wp.launch_prompt("task", mode, "x", "work/tasks/x/STATUS.md", start_note=True)

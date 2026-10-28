@@ -55,6 +55,12 @@
 .fs-item.is-on { padding-left: 10px; box-shadow: inset 3px 0 0 var(--accent-line); background: var(--surface-raised); }
 .dz-main .dz-head { padding: 0; }
 .dz-pick { margin: 0; padding: var(--space-xl) 0; text-align: center; }
+/* where the columns stack (flow.css, 960 px) an open record and its buttons come before the list, so a click in the
+   list shows its record at once and never below every entry */
+@media (max-width: 960px) {
+  .dz-grid.is-open > .dz-main { order: -1; }
+  .dz-grid.is-open > .flow-aside { order: -1; }
+}
 
 /* what the search found: a quiet list on hairlines, above the file */
 .dz-results { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 20px 16px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); }
@@ -104,23 +110,12 @@
 .dz-left-group .entries { margin: 4px 0 0; }
 .dz-left-why, .dz-left-backlog { margin: 0; }
 .dz-left-open { text-align: left; overflow-wrap: anywhere; }
-.dz-left-shelf { font-size: inherit; }
-/* why a file stands beside the queue (cockpit.files_scope all): a quiet chip in the eyebrow and on the shelves */
+/* why a file stands beside the queue (cockpit.files_scope all): a quiet chip in the eyebrow */
 .dz-reason { display: inline-flex; align-items: center; font-size: var(--text-label); font-weight: 500; letter-spacing: 0;
   text-transform: none; color: var(--on-surface); }
 .dz-reason-waiting { border-color: var(--info); }
 .dz-reason-resting, .dz-reason-deferred { border-color: var(--warning); }
 .dz-reason-drop { border-color: var(--danger); }
-/* every file behind the queue: the chips with their counts, then the files of the one picked, on hairlines */
-.dz-shelves { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px 20px 16px;
-  border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); }
-.dz-shelf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.dz-shelf-chip { cursor: pointer; font: inherit; font-size: var(--text-sm); color: var(--on-surface); }
-.dz-shelf-chip:hover { border-color: var(--border-strong); }
-.dz-shelf-chip[aria-pressed="true"] { border-color: var(--on-surface); background: var(--surface-muted); }
-.dz-shelf-elsewhere { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
-.dz-shelf-list { margin: 0; }
-.dz-shelf-open { text-align: left; overflow-wrap: anywhere; }
 .dz-slug { font-size: var(--text-mono-label); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--on-surface-muted); overflow-wrap: anywhere; }
 .dz-title { margin: 0; font-family: var(--font-display); font-weight: 500; font-size: clamp(24px, 2.4vw, 31px); line-height: 1.18; color: var(--ink); overflow-wrap: anywhere; }
 .dz-lead { margin: 0; max-width: 68ch; color: var(--on-surface); font-size: var(--text-body); line-height: 1.5; overflow-wrap: anywhere; }

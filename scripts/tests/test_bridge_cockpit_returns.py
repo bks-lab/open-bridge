@@ -353,6 +353,23 @@ def test_a_note_that_asks_the_person_is_a_question_not_a_result(tmp_path):
     assert out[f"inbox:{ITEM}"]["stage"] == "done" and "asks" not in out[f"inbox:{ITEM}"]["result"]
 
 
+def test_a_question_answered_in_the_terminal_does_not_ask_again_once_its_tab_is_still(tmp_path):
+    """The question was answered in the tab: the tab worked and went still again with nothing asked on its screen.
+    Its newest note is still the old question, but the tab has been still since after it, so it no longer asks"""
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    event(tmp_path, ITEM, T0 + 2 * MIN, "note", "Question: close it, nothing left to do?")
+    stage = lambda t: {x["key"]: x for x in returns.build(b.all(), [t], {}, tmp_path, T0 + 20 * MIN)}[f"inbox:{ITEM}"]
+    # still since before the question, or its screen asks, or nothing read off it: it asks
+    assert stage(tab("waiting", item=ITEM, since_ms=T0 + MIN, ask=asking("All done."))) ["stage"] == "asks"
+    assert stage(tab("waiting", item=ITEM, since_ms=T0 + 10 * MIN, ask=asking()))["stage"] == "asks"
+    assert stage(tab("waiting", item=ITEM, since_ms=T0 + 10 * MIN, ask=None))["stage"] == "asks"
+    assert stage(tab("needs-you", item=ITEM, since_ms=T0 + 10 * MIN, ask=asking("All done.")))["stage"] == "asks"
+    # still since well after the question, its screen asks nothing: answered and through
+    got = stage(tab("waiting", item=ITEM, since_ms=T0 + 10 * MIN, ask=asking("All done, the old page redirects now.")))
+    assert got["stage"] == "idle" and not got["result"].get("asks")
+
+
 def test_the_persons_start_note_is_no_answer(tmp_path):
     clock = Clock(T0)
     b = book(tmp_path, clock)

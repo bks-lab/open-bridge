@@ -550,7 +550,7 @@ test('a file opened from the search shows its cover from the task detail and lea
     front: { status: 'done', priority: 'P2', type: 'admin', headline: 'Release notes for September', last_updated: '2026-09-30' },
     sections: [{ heading: 'Notes', text: 'x', truncated: false }], log: [], inbox: [], related: [] }
   const c = answering()
-  const s = filesOn({ details: { inbox: {}, task: { [slug]: { status: 'ok', data, ver: 0 } } }, ui: { dossierOpen: slug } })
+  const s = filesOn({ details: { inbox: {}, task: { [slug]: { status: 'ok', data, ver: 0 } } }, ui: { dossierOpen: slug, filesQ: 'release notes' } })
   const el = mount(html`<${DossierView} s=${s} c=${c} />`)
   assert.ok(el.$('.dz-eyebrow').text().includes(en.dossier.opened))
   assert.ok(el.$('.dz-cover').text().includes(slug) && el.$('.dz-cover').text().includes(en.dossier.find.kind.done))
@@ -1257,20 +1257,46 @@ test('6d: the files tab lays out as Work through: the list left, the record in t
   assert.ok(!el.$('form.dz-find'))
 })
 
-test('6d: nothing open, the question to the AI stands above the middle; a record open, at the top of the left column', () => {
+test('6d: the question to the AI stays in one place, under the filters of the left column, whether a record is open or not', () => {
+  // review 28.10.: it jumped from the top of the middle to the top of the left column on the first click, and pushed
+  // the search down; the search is the anchor at the top of the left column
   const { DossierView } = views.dossier
   const { x, s } = laidOut()
   const none = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
-  assert.ok(none.$('.flow-main .fs-ask'), 'above the middle')
-  assert.ok(!none.$('.flow-side .fs-ask'))
+  const open = mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, dossierOpen: x.slug } }} c=${recorder()} />`)
+  for (const [el, what] of [[none, 'nothing open'], [open, 'a record open']]) {
+    assert.ok(el.$('.flow-side .fs-ask'), what)
+    assert.ok(!el.$('.flow-main .fs-ask'), what)
+    const kids = [...el.$('.flow-side').childNodes].filter(k => k.nodeType === 1).map(k => k.getAttribute('class') ?? '')
+    assert.ok(kids[0].includes('fs-top'), `${what}: the search first, ${kids.join(' | ')}`)
+    assert.ok(kids.findIndex(k => k.includes('fs-chips')) < kids.findIndex(k => k.includes('fs-ask')), `${what}: ${kids.join(' | ')}`)
+    assert.ok(kids.findIndex(k => k.includes('fs-ask')) < kids.findIndex(k => k.includes('fs-records')), `${what}: ${kids.join(' | ')}`)
+  }
   assert.ok(!none.$('.flow-aside'), 'no right column while nothing is open')
   assert.ok(none.$('.flow-grid.no-aside'))
   assert.ok(none.$('.flow-main').text().includes(en.dossier.start.pick))
-  const open = mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, dossierOpen: x.slug } }} c=${recorder()} />`)
-  assert.ok(open.$('.flow-side .fs-ask'), 'at the top of the left column')
-  assert.ok(!open.$('.flow-main .fs-ask'))
   // the block list's line holds as before
   assert.match(open.$('.fs-ask-note').text(), new RegExp(en.dossier.start.held(1, ['Versicherung']).replace(/[.]/g, '\\.')))
+})
+
+test('6d fix: a record opened from the list says so, from the search the search; at a narrow width the open record comes first', () => {
+  const { DossierView } = views.dossier
+  const { x, s } = laidOut()
+  const eyebrow = ui => mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, dossierOpen: x.slug, ...ui } }} c=${recorder()} />`).$('.dz-cover .dz-eyebrow').text()
+  assert.ok(eyebrow({ filesQ: '' }).includes(en.dossier.openedList), eyebrow({ filesQ: '' }))
+  assert.ok(!eyebrow({ filesQ: '' }).includes(en.dossier.opened))
+  assert.ok(eyebrow({ filesQ: x.slug }).includes(en.dossier.opened))
+  // the grid knows a record is open, and below the width where the columns stack that record stands first
+  const open = mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, dossierOpen: x.slug } }} c=${recorder()} />`)
+  assert.ok(open.$('.dz-grid.is-open'))
+  assert.ok(!mount(html`<${DossierView} s=${s} c=${recorder()} />`).$('.dz-grid.is-open'))
+  const css = fs.readFileSync(new URL('../web/files.css', import.meta.url), 'utf8')
+  assert.match(css, /@media \(max-width: 960px\) \{[^}]*\.dz-grid\.is-open > \.dz-main \{ order: -1; \}/)
+  // the two fields of the left column say what they take in words that fit it
+  for (const lang of ['en', 'de']) {
+    const f = text.TABLES[lang].dossier.start
+    assert.ok(f.placeholder.length <= 32 && f.askPlaceholder.length <= 32, `${lang}: ${f.placeholder} | ${f.askPlaceholder}`)
+  }
 })
 
 test('6d: the walk shows the step without verbs of its own, the right column carries them, the record marked in the list', () => {

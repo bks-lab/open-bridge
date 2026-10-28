@@ -1,5 +1,5 @@
 ---
-summary: "The cockpit's Files tab: three columns as Work through (the list, the open record, its point's buttons), a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file behind the queue, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
+summary: "The cockpit's Files tab: three columns as Work through (the list, the open record, its point's buttons), a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file in the one list, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
 type: guide
 last_updated: 2026-10-28
 related:
@@ -37,10 +37,15 @@ in the list opens the record beside it (`openRecord` in app.js) and marks it in
 the list, which keeps where it was scrolled; Previous record and Next record then
 walk the list in its order, while "Walk through the active records" walks the queue as
 before. The head of an open record has one button, "Close the record" (de: Akte
-schließen). The question to the AI stands on top of the left column while a
-record is open, else on top of the middle. On a narrow screen the columns stack
-at the widths Work through stacks (1180 px: the side column under the middle;
-960 px: one column).
+schließen). The question to the AI stands in one place, under the chips of the
+left column, whether a record is open or not, so the search stays the first
+thing there. The eyebrow of a record says where it was opened: "Opened from the
+search" when words stand in the field or the search results hold it, else
+"Opened from the list". On a narrow screen the columns stack at the widths Work
+through stacks (1180 px: the side column under the middle; 960 px: one column);
+in one column an open record and its buttons come first, above the list, so a
+click in the list shows its record at once. The middle holds only the open
+record or the hint to pick one, never a second list.
 
 ## The search first
 
@@ -156,9 +161,8 @@ in other areas. A click on the line lists those tasks by why, each
 opening beside the queue like a found file, and ends with one sentence that
 backlog tasks are not in the files at all: they never reach the model, so the
 page cannot count them. With `cockpit.files_scope: all` (below) that sentence
-goes: each reason of the list leads to its chip behind the queue ("Show them
-under Resting"), and the backlog has a count of its own that opens the Backlog
-chip. Under an area that hides some, **Show every area**
+goes, since the backlog stands in the list on the left like every other record.
+Under an area that hides some, **Show every area**
 beside the line lets the filter go. With nothing in the queue, the empty view
 names the same reasons and offers the same list; with nothing left out there
 is no line.
@@ -259,42 +263,27 @@ so how often each is used can be counted, for instance with
 ## Every task as a file
 
 With `cockpit.files_scope: all` every task and stream is a file, and the queue
-is only the order the view walks them in. The queue stays on top, as above.
-Behind it stand five chips with their counts, "Active (n) | Waiting (n) |
-Resting (n) | Backlog (n) | All (n)"; a click on one lists its files, a second
-click folds the list again. The chips split by the queue, not by the bucket
-alone: **Active** holds the files of the queue (a tab, a result or an open item
-asks about them, or they stand in the work), whatever their bucket. The
-`doing` and `review` files the queue leaves out stand on **Waiting** (nothing
-asks about them) or **Resting** (blocked or quiet, dropped, or put off), by the
-same rule as the line of what the queue leaves out, so the two show the same
-numbers; only a file the star filter hides counts there as not pinned and here
-by its bucket. **Backlog** holds the `backlog` ones and **All** every one. A
-list is sorted by status (`doing`, `review`, `backlog`), then priority, then
-the latest change first. A click on a file opens it the way the queue does: one
-in the queue is walked to, any other opens beside it with "Back to the queue"
-at its foot. A file outside the queue that rests (its tooltip names what blocks
-it), is dropped, is put off (with the day it comes back) or waits says so as a
-chip on its cover and in the lists; a file of the queue never does, since its
-place says why it is there. A reason of the line of what the queue leaves out,
-or its backlog count, picks the chip, brings the chips into view and puts the
-focus on it. The chips keep
-to the area filter like the queue: under an area they hold that area's files,
-and one line says how many stand in the other areas, with **Show every area**
-beside it. Closed tasks never become files here; the search finds them.
+is only the order the view walks them in. Every record, the backlog too, stands
+in the one list on the left; the middle holds no second list (round 6d took out
+the chips Active, Waiting, Resting, Backlog and All, which counted apart from
+that list). A click on a file opens it the way the list does: one in the queue
+is walked to, any other opens beside it. A file outside the queue that rests
+(its tooltip names what blocks it), is dropped, is put off (with the day it
+comes back) or waits says so as a chip on its cover; a file of the queue never
+does, since its place says why it is there. Closed tasks never become files
+here; the search finds them.
 
 The server sends the list apart from the rows (`model.files`), so nothing that
 reads the rows changes: one read of `workplace.py tasks --all --json` per pass
 that reads the tasks, of which the rows, the WIP count and the focus keep the
 `doing` and `review` ones they always had. The list goes out with every poll,
-so each file carries only what the chips and the reason chip read: `slug`,
+so each file carries only what the cover and its reason chip read: `slug`,
 `kind` (`task` or `stream`), `status`, `area_names` (the workspace the task
 maps to and its aliases, as the rows have them), `priority`, `title`,
 `updated`, `blocked_by`, `bucket` (of the row that stands for it, none for a
 backlog task), `deferred` and `deferred_until`. The cover of an opened file
 reads its headline, next step and progress from the task itself
-(`/api/task`), so they stay out of the list until something on the chips
-needs them. With `active` the argv stays `tasks --json` and `model.files` is
+(`/api/task`), so they stay out of the list. With `active` the argv stays `tasks --json` and `model.files` is
 `null`. In the demo page `?files_scope=all` shows it.
 
 **Files and areas.** The files view keeps to the area filter like the rest of

@@ -1802,11 +1802,47 @@ def test_analyse_in_a_tab_files_the_job_under_its_own_key_and_starts_an_advising
                  "read the unit's log for that run", "matches its stamp", "2026-10-16T07:45:56Z",
                  "workflow/workloads/chat-bot.yaml", "infra/remotes/homebox.yaml", "workload", "remote", "change nothing"):
         assert part in detail, part
-    assert launch_argv(world, new_id, "report") in calls
-    # the same key again: inbox.py hands back the same item, so the second click starts (or finds) that one
+    # the click is the order to analyse: it goes on the item as the start note, so the tab never closes the item as
+    # overtaken on its own (28.10.: a tab closed a job's item after 31 s with "nothing to do")
+    assert I(world, "note", new_id, "--", "Start note: " + text_mod.EN["worker_order"]) in calls
+    assert launch_argv(world, new_id, "report", "area", "--start-note") in calls
+    # the same key again: inbox.py hands back the same item, so the second click starts (or finds) that one, and its
+    # start note is there already
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": new_id, "state": "open", "key": "worker:homebox:chat-bot"}])
+    world.app.inbox_cache = (0.0, None)
+    world.clock.advance(20)
     world.runner.calls.clear()
     world.act("worker_advise", host="homebox", id="chat-bot")
-    assert "--key=worker:homebox:chat-bot" in next(c for c in writes(world) if world.runner.key(c) == "inbox.add")
+    again = writes(world)
+    assert "--key=worker:homebox:chat-bot" in next(c for c in again if world.runner.key(c) == "inbox.add")
+    assert [world.runner.key(c) for c in again] == ["inbox.add", "workplace.launch"]
+    assert launch_argv(world, new_id, "report", "area", "--start-note") in again
+
+
+def test_analyse_in_a_tab_on_a_job_whose_item_was_dropped_opens_that_item_again(world):
+    # inbox.py keeps a dropped key dropped and hands back that item: the click is an order, so it is reopened first
+    write_workers(world, [WORKER_RUN])
+    old_id = "20261020-0900-background-job-chat-bot-e5f6"
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": old_id, "state": "dropped", "key": "worker:homebox:chat-bot"}])
+    world.app.inbox_cache = (0.0, None)
+    world.runner.handlers["inbox.add"] = lambda argv: ok(old_id + "\n")
+    world.runner.calls.clear()
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    keys = [world.runner.key(c) for c in writes(world)]
+    assert keys.index("inbox.reopen") < keys.index("workplace.launch"), keys
+    assert launch_argv(world, old_id, "report", "area", "--start-note") in writes(world)
+
+
+def test_the_brief_of_a_job_survives_a_view_of_another_shape(world):
+    # a hand edited or older workers-view.json: every field read is guarded, the brief says "not known" instead of a 500
+    odd = {**WORKER_RUN, "when": "daily at 06:05", "strip": {"at": "x"}, "day": ["no", "dict"], "findings": "none"}
+    write_workers(world, [odd, {**WORKER_RUN, "id": "pct", "when": "daily", "day": {"marks": [{"today": True, "at_pct": "soon"}]}}])
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261028-0736-background-job-chat-bot-a1b2\n")
+    for ident in ("chat-bot", "pct"):
+        world.runner.calls.clear()
+        world.act("worker_advise", host="homebox", id=ident)
+        detail = next(a for a in next(c for c in writes(world) if world.runner.key(c) == "inbox.add") if a.startswith("--detail="))
+        assert "not known" in detail, ident
 
 
 def test_analyse_in_a_tab_refuses_a_job_the_view_does_not_hold(world):
@@ -4799,6 +4835,21 @@ def test_every_launch_outcome_is_recorded_and_manual_nothing_partly_failed_can_b
     assert res["handed"]["status"] == outcome
 
 
+@pytest.mark.parametrize("outcome", ["busy", "running"])
+def test_an_order_for_a_tab_already_on_its_way_is_one_start_note_and_says_so(world, monkeypatch, outcome):
+    """The order goes on the item once, as the start note: a second raw note of the same words read back as the tab's
+    result (handoff_outcome). A tab that runs already is told by the same note as one that is still starting"""
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    monkeypatch.setattr(world.app.actions, "launch", lambda *a, **k: outcome)
+    world.runner.calls.clear()
+    res = world.act("quick_handoff", conv=conv, to="tab", text="Then push it.")
+    notes = [c for c in writes(world) if world.runner.key(c) == "inbox.note"]
+    assert notes == [I(world, "note", new_id, "--", "Start note: Then push it.")]
+    assert text_mod.EN["handoff_order_late"].split(":")[0] in res["note"]
+
+
 def test_a_real_launch_without_a_driver_is_recorded_as_manual(world):
     conv = answered_conv(world)
     world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
@@ -7206,13 +7257,44 @@ def test_a_question_on_a_job_row_is_built_from_the_view_and_names_the_row(world)
     conv = chat_on(world, "worker", host="homebox", id="chat-bot")
     c = conv_of(world, conv)
     assert c["about"] == {"kind": "worker", "key": "worker:homebox:chat-bot", "inbox": None}
-    assert c["turns"][0]["q"].startswith("Background job chat-bot on homebox: last run failed. the last run ended with 75")
+    # the question in the page's language first, the finding as the job wrote it (often English) quoted after it
+    assert c["turns"][0]["q"] == ("Background job chat-bot on homebox: last run failed. What should be done, and why? "
+                                  "The finding as the job reports it: «the last run ended with 75»")
     # an item the job was filed as (Analyse in a tab) is what the chat waits for
     world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": YES_ID, "state": "open", "key": "worker:homebox:chat-bot"}])
     world.app.inbox_cache = (0.0, None)
     assert conv_of(world, chat_on(world, "worker", host="homebox", id="chat-bot"))["about"]["inbox"] == YES_ID
     status, _, body = world.post("/api/ask", {"kind": "worker", "args": {"host": "homebox", "id": "gone"}, "via": "quick"})
     assert status == 409 and json.loads(body)["error"]["code"] == "stale_row"
+
+
+def test_a_question_on_a_job_row_handed_on_keeps_its_row(world):
+    """28.10.: a question asked on the job row, then "Let AI do it": the chat named only the new item and the row lost
+    its question and its marker. The handed item is added to what the chat is about, the row's key stays"""
+    write_workers(world, [WORKER_RUN])
+    conv = chat_on(world, "worker", host="homebox", id="chat-bot")
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("quick_handoff", conv=conv, to="tab", text="I want to analyse it more closely")
+    assert conv_of(world, conv)["about"] == {"kind": "worker", "key": "worker:homebox:chat-bot", "inbox": new_id}
+    # an item the chat names already stays what it is about
+    assert world.app.quick.set_about(conv, {"kind": "handoff", "inbox": "20261010-1400-other-c3d4"}) is False
+    # a chat about nothing yet takes the handoff as it is
+    free = answered_conv(world)
+    world.act("quick_handoff", conv=free, to="tab")
+    assert conv_of(world, free)["about"] == {"kind": "handoff", "inbox": new_id}
+
+
+def test_a_question_on_a_job_row_takes_the_finding_in_one_short_line(world):
+    # a finding may carry a log excerpt: its control characters go and it is cut, so the question and its title stay short
+    write_workers(world, [{**WORKER_RUN, "findings": [{"state": "last_run_failed", "severity": "high",
+                                                       "detail": "line one\nline two\x07 " + "x" * 2000, "hint": ""}]}])
+    q = conv_of(world, chat_on(world, "worker", host="homebox", id="chat-bot"))["turns"][0]["q"]
+    assert "\n" not in q and "\x07" not in q and len(q) < 700, len(q)
+    # without a detail there is no double space
+    write_workers(world, [{**WORKER_RUN, "findings": []}])
+    q = conv_of(world, chat_on(world, "worker", host="homebox", id="chat-bot"))["turns"][0]["q"]
+    assert "  " not in q, q
 
 
 def test_a_chat_on_a_task_row_leaves_when_the_task_moves_to_done(world):
@@ -7320,15 +7402,17 @@ def test_a_handed_chat_leaves_with_its_inbox_item(world):
 
 def test_an_info_chat_without_an_item_takes_the_item_it_is_handed_on_as(world):
     """An info row nobody filed gives its chat an `about` without an item: handed to a tab, the chat is about
-    the inbox item the handoff filed, and leaves with it like any handed chat"""
+    the inbox item the handoff filed as well, and leaves with it like any handed chat"""
     world.runner.handlers["inbox.list"] = lambda argv: ok([])
     world.app.inbox_cache = (0.0, None)
     conv = chat_on(world, "info", page="systems", section="upstream", index=0)
     assert conv_of(world, conv)["about"]["inbox"] is None
     new_id = "20261010-1500-info-chat-a1b2"
     world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    key = conv_of(world, conv)["about"]["key"]
     world.act("quick_handoff", conv=conv, to="tab")
-    assert conv_of(world, conv)["about"] == {"kind": "handoff", "inbox": new_id}
+    # the row's own key stays beside the item, so the row still finds its question (review SRV-1)
+    assert conv_of(world, conv)["about"] == {"kind": "info", "key": key, "inbox": new_id}
     world.clock.advance(QUIET)
     end_item(world, new_id, world.app.clock() - 60_000, "executed")
     world.clock.advance(24 * 3600)

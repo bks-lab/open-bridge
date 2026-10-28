@@ -86,7 +86,7 @@ their defaults:
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `flow` (Work through, with `flow.enabled`); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. `files` names no view of the work tab any more: the first visit of the work tab opens the Files tab once ([The Files tab](#the-files-tab)), and the work tab keeps the view it falls back to. A click on the tab's switch still picks another for this browser, until the key changes |
 | `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, not a list or nothing left offers all. `files` is no view of the switch: it stands for the Files tab, right after the work tab, and is always kept (every link that opens a task's file leads there). With one view left the switch does not show. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the work tab shows Work through alone, the Sessions tab goes (Running now lists the sessions) and the task check is the row Check tasks under Not now, with no tab of its own |
 | `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
-| `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue on top and the rest behind it on the chips Active, Waiting, Resting, Backlog and All, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
+| `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue as the order of the walk and every one in the list on the left, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
 | `files_search.enabled` | `false` | Ask AI on the start of the Files tab: one model call without tools, only on a click, over at most 12 of the records listed, see [The Files tab](#the-files-tab). Off, the button does not show and the verb refuses |
 | `files_search.budget_per_day` | `20` | how many questions a day may go to the model; `0` none |
 | `files_search.model` | none | the model, `haiku`, `sonnet` or `opus`; none: the service `cockpit-files` of `workflow/ai-services/` (default Haiku) |
@@ -488,7 +488,9 @@ the question it came from** (each start remembers its chat, `conv` in
 `launches.json`); **Take off the list** removes it. A start that ended
 without a note leaves as before. A note headed `Question:` or `Frage:` keeps
 its start at the stage `asks`, also once its tab is gone, until a tab works on
-it again or the item closes. Which
+it again or the item closes; a tab still for over a minute after that note,
+with nothing asked on its screen, was answered in the terminal and stands
+`idle`. Which
 task a session works on: a link by hand (the Sessions page), else its tab's own
 task (every start from the cockpit), else, with `flow.infer_sessions` (on by
 default), the task it is **recognised** on. For that the server reads the end
@@ -1421,16 +1423,24 @@ inbox under the fixed key `worker:<host>:<id>` with a brief the server builds
 from `workers-view.json` (job, machine, unit, kind, schedule, program, log,
 last and next run, every finding with its hint) and starts a reporting tab
 that reads the job's declaration, checks unit and log live, names the cause
-and proposes a fix without changing anything. A second click finds the same
-item, and while it is open the row says "in a tab" with **Open tab**;
-once it ended, its result from the return channel stands under the findings
-and the analysis is offered again. **Ask** asks the quick chat about the job
-(kind `worker`): the server words the question from the view and ties it to
-the row (`about.key: worker:<host>:<id>`). A row asked before shows that
-question instead of a second one, as "question open", "answered" or, once
-handed on, the marker every question list shows (in its tab, done, asks you),
-with **Open** and a quiet **ask again** beside it; a page row (`InfoRow`) does
-the same under its own key. A section with `hide_ok: true` is drawn only while one of
+and proposes a fix without changing anything. The click is an order: it goes
+on the item as its start note, so the tab never closes the item on its own,
+not even as overtaken, and asks before it closes (the same rule as a handoff
+with an order, below). A second click finds the same item; an item the person
+dropped for that job is opened again first. While the item is open and its tab
+is there the row says "in a tab" with **Open tab**; just started it says
+"starting"; with no tab left it says "tab ended" and offers the analysis again.
+Once it ended, its result from the return channel stands under the findings,
+and the closed row says "result in". A finding reads as the job wrote it,
+quoted after its state. **Ask** asks the quick chat about the job (kind
+`worker`): the server words the question from the view, the finding quoted at
+its end on one line of at most 300 characters, and ties it to the row
+(`about.key: worker:<host>:<id>`), which the question keeps when it is handed
+on (the item is added beside it). A row asked before shows that question
+instead of a second one, as "question open", "answered", "no answer" (its last
+turn failed) or, once handed on, the marker every question list shows (in its
+tab, done, asks you, tab ended), with **Open** and a quiet **Ask again** beside
+it; a page row (`InfoRow`) does the same under its own key. A section with `hide_ok: true` is drawn only while one of
 its rows is bad or its source fails; it still feeds the page's number, the
 alarm and what other cards read from it ([`briefings.md`](briefings.md)
 § Dashboard pages).
@@ -2114,7 +2124,7 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   shows them. A tab open on the right names its task ("Task <title>", from the
   tab's own task or the newest live session in it), which opens in the item
   drawer over the Chat.
-- **In Work, on top**, "Waiting for you" lists the tabs that wait for
+- **In Work, near the top**, under the questions, "Waiting for you" lists the tabs that wait for
   you or need you, the most urgent first (the control tab never), each with its
   workspace, its question and the answers, see [Answering a tab from
   here](#answering-a-tab-from-here). A click anywhere in a row opens its tab on
@@ -2129,13 +2139,14 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
   Each shows its colour, its state, its unread count and, when its folder is
   another Bridge's clone, that Bridge's name. Below each workspace are its tabs,
   most urgent first.
-- **The questions** (de: Fragen) have a section of their own on top of the
-  workspaces, in every sort mode: open and handed questions first, then the
-  answered ones, newest first in each. Each carries its title (below) and,
-  once handed on, its marker. "all of the last days" also reads the archive
-  (`GET /api/chats/archive?days=7`, read only: at most 14 days and 60
-  questions, newest first, without the ones you removed); those stand greyed,
-  have no ×, and open read only.
+- **The questions** (de: Fragen) have a section of their own right under the
+  order of the tabs, above "Waiting for you" and the workspaces, in every sort
+  mode, so a question just asked is found without scrolling: open and handed
+  questions first, then the answered ones, newest first in each. Each carries
+  its title (below) and, once handed on, its marker. "all of the last days"
+  also reads the archive (`GET /api/chats/archive?days=7`, read only: at most
+  14 days and 60 questions, newest first, without the ones you removed); those
+  stand greyed, have no ×, and open read only, and an archive with none says so.
 - **Below the workspaces** come the other Bridges on this machine that have no
   workspace ("Bridges on this machine"). The A2A agents stand in their own area.
 - **On the right** is what you picked:
@@ -2149,7 +2160,8 @@ With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the termina
     `!` decides it and is dropped from the text. A click on the chip picks the
     other route and holds it until the box is empty again, however the guess
     changes while you type on. Cmd or Ctrl Enter starts a tab at once, whatever
-    the chip says. Once the chat is handed on, the chip gives way to a status
+    the chip says. The field's placeholder and the button's tooltip name no keys
+    (the cockpit is used by mouse first); the keys still work. Once the chat is handed on, the chip gives way to a status
     line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no
     countdown and no timer;
   - an agent with its conversations;
@@ -2710,8 +2722,16 @@ the chat (logic.js `askOutcome`, `askMark`). An order typed with the handoff
 (`quick_handoff` with `text`) goes on the new item as "Start note: ..." and
 the tab starts with it, told never to close the item on its own: it writes its
 result as a note `Result: ...` and asks before closing with a note
-`Question: ...`. Every start of an inbox item with a start note gets that
-rule, and so does "Let AI do it" or "Advise" with a note typed on an inbox row.
+`Question: ...`. Its prompt then keeps no rule to close on its own (neither "close
+it when settled" nor the rule for an overtaken item), so the two never disagree.
+Every start of an inbox item with a start note gets that rule, and so does "Let
+AI do it" or "Advise" with a note typed on an inbox row, and Analyse in a tab on
+a job. A second handoff while the first tab is still starting or already at
+work writes the order once, as the start note, and says to type it into that
+tab too. A handoff whose tab is gone three minutes after the start without a
+word (as Work's "Tab gone") reads "Tab ended without a word" with **Start
+again** and **Open the item**, and its question carries the marker "tab ended"
+instead of "in its tab".
 
 **Titles of questions.** A question is named by what it is about: the job with
 its machine and state, else the row, task or inbox item it was asked on, else
@@ -3204,12 +3224,16 @@ below only changes how long a chat stays.
    `GET /api/workers` adds `advise: {inbox, state}` to a job filed under its
    key. The quick chat takes the kind `worker {host, id}` (`stale_row` for a
    job the view no longer holds), with `about: {kind: worker, key, inbox}`;
-   the page no longer words a job's question itself.
+   the page no longer words a job's question itself. A handoff keeps that
+   `about` and adds the new item as `inbox`. `worker_advise` writes a start
+   note and starts with `--start-note`, and reopens an item of its key that
+   was dropped.
 3. **Handoff with an order.** `quick_handoff` with `text` writes the order on
    the new item as "Start note: ..." and starts the tab with `--start-note`;
    when that note cannot be written the tab starts without it, as before. An
-   inbox start with a start note tells the agent never to close on its own.
-   The go prompt asks every question to begin with `Question:`.
+   inbox start with a start note tells the agent never to close on its own,
+   and its prompt drops the rules to close (settled, overtaken). The go prompt
+   asks every question to begin with `Question:`.
 4. **What came back.** A handed chat gets `handed.outcome` on the sweep
    (`{text, closed, at_ms, asks}`); a reader that does not know it skips it.
    `model.returns[].result` carries `asks: true` for a note headed

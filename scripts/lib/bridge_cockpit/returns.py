@@ -17,7 +17,8 @@ Where a start stands is read from what the Bridge already has, nothing is asked 
             task since the day of the start, after the cockpit's own start line of that day, that begins
             with the result head ("Result:", "Ergebnis:"). A newest note on its inbox item that begins with
             the question head ("Question:", "Frage:") asks instead, also once its tab is gone, until its tab
-            works again or the item ends; the result then says `asks: true`
+            works again or the item ends; the result then says `asks: true`. A tab still since well after
+            the question (ANSWERED_MS) with nothing asked on its screen was answered in the terminal: idle
 - done      its inbox item was ended after the start (closed, executed, dropped, rejected), or its task
             moved to work/done/
 - lost      no tab, no answer, and the start is a while ago
@@ -49,6 +50,7 @@ KEEP_MS = 7 * 24 * 3600 * 1000
 KEEP_MAX = 60
 SHOW_MAX = 12
 GRACE_MS = 3 * 60 * 1000        # a start without a tab counts as starting this long
+ANSWERED_MS = 60 * 1000         # a tab still this long after its question note worked on it since
 INBOX_ID_RE = re.compile(r"^\d{8}-\d{4}-[a-z0-9-]{1,80}\Z")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}\Z")
 CONV_RE = re.compile(r"^q[0-9a-f]{10}\Z")       # a quick chat (quick.py CONV_RE)
@@ -274,7 +276,12 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
                 result = task_result(root, item, at)
         if result and not done and result["kind"] == "note" and str(result.get("text") or "").startswith(QUESTION_HEADS):
             result["asks"] = True
-        if done:
+        if (result and result.get("asks") and not done and tab and tab.get("state") not in ("working", "needs-you")
+                and float(tab.get("since_ms") or 0) > float(result.get("at_ms") or 0) + ANSWERED_MS and not _asks(tab)):
+            # still since well after its question, with nothing asked on its screen: answered in the tab meanwhile
+            result.pop("asks")
+            stage = "idle"
+        elif done:
             stage = "done"
         elif result and result.get("asks") and not (tab and tab.get("state") == "working"):
             stage = "asks"

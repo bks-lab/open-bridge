@@ -4307,7 +4307,8 @@ test('handoffStatus maps queued, submitted, answered, offline, expired and stuck
 })
 
 test('handoffStatus maps every launch outcome', () => {
-  const st = status => logic.handoffStatus({ to: 'tab', at_ms: 1, status, inbox_id: 'i1' }, [], [])
+  // a minute after the start: no tab yet is no loss (a later moment without a tab is `gone`, below)
+  const st = status => logic.handoffStatus({ to: 'tab', at_ms: 1, status, inbox_id: 'i1' }, [], [], 60_000)
   assert.deepEqual(st('started'), { word: 'started', tone: 'info', action: null })
   assert.equal(st('running').word, 'running')
   assert.equal(st('busy').word, 'running')
@@ -5441,4 +5442,37 @@ test('the describe view reaches the page live: the describe event and an action 
   assert.match(app, /model, describe: liveDescribeAfter\(s\.describe, model\), more: freshMore\(s\.more, model\)/)
   // the card reads the live view before what the row carries (views/card.js describeOf)
   assert.match(read('views/card.js'), /s\?\.describe\?\.\[key\]/)
+})
+
+test('6d fix: a handed question whose tab is gone and that brought nothing back says so, with a way to start again', () => {
+  // live 28.10.: at 08:46 the chat still said "Started, the tab is opening" for a handoff at 07:36, its chip "in its tab",
+  // while Work said "Tab gone" for the same item. Past the start's grace (returns.py GRACE_MS) with no tab, both say it
+  const at = 1_000_000
+  const handed = { to: 'tab', at_ms: at, status: 'started', inbox_id: 'i1' }
+  const late = at + 4 * 60_000
+  assert.equal(logic.handoffStatus(handed, [], [], at + 60_000).word, 'started', 'within the grace it is still starting')
+  for (const status of ['started', 'running', 'busy']) {
+    assert.deepEqual(logic.handoffStatus({ ...handed, status }, [], [], late), { word: 'gone', tone: 'warning', action: 'retry', item: 'i1' })
+  }
+  // a tab that carries it, or what came back, wins
+  assert.equal(logic.handoffStatus(handed, [], [{ ref: 'surface:2', name: 'x', item: 'i1' }], late).word, 'inTab')
+  assert.equal(logic.handoffStatus({ ...handed, outcome: { text: 'Result: ok', closed: false, at_ms: at, asks: false } }, [], [], late).word, 'result')
+  const conv = { id: 'q0000000009', turns: [{ q: 'x', a: 'y' }], handed }
+  assert.equal(logic.askMark(conv, [], at + 60_000).word, 'inTab')
+  assert.deepEqual(logic.askMark(conv, [], late), { word: 'gone', tone: 'warning', text: null, ref: null })
+  assert.equal(logic.askList([conv], { now: late, tabs: { tabs: [] } }, 'en')[0].mark.word, 'gone')
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    assert.ok(t.handoff.gone && t.handoff.restart && t.handoff.openItem && t.asks.mark.gone, lang)
+  }
+  assert.equal(text.TABLES.de.asks.mark.gone, 'Tab beendet')
+})
+
+test('6d fix: no keyboard hints in the question fields and on the button that starts a tab', () => {
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const said of [t.quickReply, t.route.placeholder, t.chatSolveTitle]) {
+      assert.doesNotMatch(said, /Cmd|Ctrl|Enter|[?!] (asks|fragt|starts|startet|hands|gibt)/, `${lang}: ${said}`)
+    }
+  }
 })

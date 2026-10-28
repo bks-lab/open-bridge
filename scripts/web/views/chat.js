@@ -128,12 +128,14 @@ export function ChatThread({ s, c, conv }) {
 
 /** The status line of a chat handed on (logic.js handoffStatus) with the one step it offers: try again, open
  *  the tab it arrived in (in the cockpit, and in the terminal beside it), or type it into the waiting control
- *  tab; once the item answered, what it said */
+ *  tab; once the item answered, what it said; once its tab is gone with no word, a new start and its item */
 function HandoffLine({ s, c, st, onRetry, relayId }) {
   const t = T()
   const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : ['result', 'asks'].includes(st.word) ? t.handoff[st.word](short(st.text, 200))
     : t.handoff[st.word]
-  const action = st.action === 'retry' && onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.retry}</button>`
+  const action = st.word === 'gone' ? html`${onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.restart}</button>` : null}
+      ${st.item ? html`<button type="button" class="btn-link small muted" onClick=${() => c.openItem(`inbox:${st.item}`, null)}>${t.handoff.openItem}</button>` : null}`
+    : st.action === 'retry' && onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.retry}</button>`
     : st.action === 'jump' ? html`<button type="button" class="btn-link small" onClick=${() => openTabRoom(s, c, st.ref)}>${t.handoff.jump}</button>
       ${canTab(s, 'focus') ? html`<button type="button" class="btn-link small muted" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.inTerminal}</button>` : null}`
     : st.action === 'ask_via_tab' && relayId ? html`<button type="button" class="btn-link small" onClick=${() => c.act('ask_via_tab', { relay_id: relayId })}>${t.handoff.askViaTab}</button>`
@@ -162,7 +164,7 @@ export function ChatFoot({ s, c, conv, autofocus }) {
   const route = pinned ? { ...guess, to: pinned, by: 'flipped' } : guess
   // where the last handoff went: the chat's own record, or for a new problem the page's record of its start
   const handed = conv ? conv.handed ?? null : (s.ui.sent ?? []).at(-1) ?? null
-  const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs)
+  const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs, s.now || Date.now())
   const starting = status?.word === 'starting'
   const answered = !!(conv && last?.a && !conv.running)
   // the second way: a real Claude session in a cmux tab, which may act. A new problem opens one at once;

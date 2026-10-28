@@ -112,14 +112,19 @@ export function ReturnChip({ s, rowKey }) {
 }
 
 /** A row's ask (a job of the workers page, a page row): the question it was asked last (logic.js rowConv) as
- *  question open or answered, or once handed on with the marker every question list shows (logic.js askMark:
- *  in its tab, done, asks you), with Open, and ask again beside it; a row never asked has only ask */
+ *  question open, answered or without an answer, or once handed on with the marker every question list shows
+ *  (logic.js askMark: in its tab, done, asks you, tab ended), with Open, and ask again beside it; a row never
+ *  asked has only ask */
 export function RowAsk({ s, c, rowKey, onAsk, variant = 'ghost', cls = 'act-quiet' }) {
   const t = T()
   const conv = rowConv(s.quick?.convs, rowKey)
   if (!conv) return html`<${Btn} size="xs" variant=${variant} cls=${cls} onClick=${onAsk}>${t.btnAsk}<//>`
-  const mark = conv.running ? null : askMark(conv, s.tabs?.tabs)
-  return html`<${Chip} token=${conv.running ? 'info' : mark?.tone ?? 'success'}>${conv.running ? t.askRunning : mark ? t.asks.mark[mark.word] : t.askAnswered}<//>
+  const mark = conv.running ? null : askMark(conv, s.tabs?.tabs, s.now || Date.now())
+  // never handed on: open while it is answered or has no answer yet, failed when its last turn ended with an error
+  const last = conv.turns?.at(-1)
+  const [token, word] = conv.running ? ['info', t.askRunning] : mark ? [mark.tone, t.asks.mark[mark.word]]
+    : last?.error ? ['danger', t.askFailed] : last && !last.a ? ['info', t.askRunning] : ['success', t.askAnswered]
+  return html`<${Chip} token=${token}>${word}<//>
     <${Btn} size="xs" variant="secondary" onClick=${() => c.openAsk(conv.id)}>${t.askOpenConv}<//>
     <${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${onAsk}>${t.btnAskAgain}<//>`
 }
