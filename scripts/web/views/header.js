@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, short, railOn, railShown, workPageOf } from '../logic.js'
+import { agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
@@ -317,7 +317,7 @@ export function PageBar({ s, c }) {
         jobs.failing ? 'danger' : null)}
       ${tab(CHAT_PAGE, t.chatTab, html`<${ChatTabMark} kind=${chatTabSignal(s)} />`)}
       ${(s.agents?.peers ?? []).length && !agentsInChat ? tab(AGENTS_PAGE, t.agentsTab, html`<${AgentMark} kind=${agentBadge(s)} />`, agentBadge(s) === 'waiting' ? 'warning' : null) : null}
-      ${reviewHomeOf(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`
+      ${reviewHomeOf(s) || checkInFlow(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`
         : toClose > 0 ? html`<span class="pbadge"><span class="mono">${toClose}</span></span>` : null)}
       ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`, s.jev.ready ? null : 'warning') : null}
       ${pages.map(p => { const b = tabBadgeOf(s, p); return tab(p.id, p.title, html`<${PageBadge} badge=${b} title=${badgeTitle(p)} />`, b?.kind === 'bad' ? 'danger' : null) })}

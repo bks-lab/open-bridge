@@ -137,7 +137,7 @@ test('text tables: one word per thing, the retired words appear nowhere', () => 
   assert.equal(de.home.briefTitle, 'Einschätzung'); assert.equal(en.home.briefTitle, 'Assessment')
   assert.equal(de.home.startTitle, 'Schnellzugriff'); assert.equal(en.home.startTitle, 'Quick access')
   assert.equal(de.workersTab, 'Hintergrundjobs'); assert.equal(en.workersTab, 'Background jobs')
-  assert.equal(de.reviewTab, 'Aufräumen'); assert.equal(en.reviewTab, 'Tidy up')
+  assert.equal(de.reviewTab, 'Aufgaben prüfen'); assert.equal(en.reviewTab, 'Check tasks')
   const flat = t => leaves(t).map(([, v]) => v).join('\n')
   for (const old of ['Erledigen lassen', 'Rückkanal', 'Kern-Klick', 'den Kern', 'Lagebild', 'Startpunkte', 'Arbeitsvorrat',
     'Kann ich abgeben', 'Wartet auf deine Freigabe', 'zum Tab', 'Worker']) assert.ok(!flat(de).includes(old), old)

@@ -23,7 +23,8 @@
 // overview, never in the walk; a title opens one in the middle
 // as view `run`, its card, its tabs and its instruction line, without the walk bar, its way back to the list it came
 // from); what is no point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a
-// list in the middle (view `left`) with its own batch. Round 5: the left column lists no point, the middle does; what
+// list in the middle (view `left`) with its own batch; under it Check tasks, the task check in the middle (view `check`,
+// round 6 c, views/flowleft.js CheckList). Round 5: the left column lists no point, the middle does; what
 // opens in the middle is brought into view where the page scrolled its top away. Prio orders the left column by Jev's
 // squares (views/flowprio.js: the 2x2 grid at the level of all squares). With nothing open the calm card offers up to
 // three ideas to start; before the first state the page says it loads, or why not (round 6 B). Without a terminal
@@ -47,7 +48,7 @@ import {
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
 import { Walk } from './dossier.js'
-import { LeftList } from './flowleft.js'
+import { CheckList, LeftList } from './flowleft.js'
 import { FlowOverview, listRows, walkOrder } from './flowlist.js'
 import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
@@ -238,11 +239,11 @@ function FlowBody({ s, c }) {
   const lane = pointsIn(parts.lane, side, s, mode)
   const runs = runningOf(parts)
   const i = focusIndex(queue, s.ui.flowAt)
-  // the middle: the point open, an entry of Running now, a group of Not now, else the overview; what went (a point
+  // the middle: the point open, an entry of Running now, a group of Not now, the task check, else the overview; what went (a point
   // decided, a start that finished, a group emptied) falls back to the overview
   const running = s.ui.flowView === 'run' ? parts.lane.find(e => e.id === s.ui.flowRunId) ?? null : null
   const group = s.ui.flowView === 'left' ? parts.leftOut.groups.find(g => g.reason === s.ui.flowLeft) ?? null : null
-  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'running' && runs.n ? 'running'
+  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'check' ? 'check' : s.ui.flowView === 'running' && runs.n ? 'running'
     : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
   const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : null
   const driver = flowDriver(s)
@@ -273,7 +274,7 @@ function FlowBody({ s, c }) {
   useEffect(() => { if (work && order === undefined) c.flowPrioOrder(work.id) }, [work?.id, order === undefined])
   const name = sideName(entered, mode)
   // what the instruction line speaks for: the point or the entry open, else the ticked points or every point of the side
-  const scope = view === 'left' ? null : instructScope(x, queue, picked, entered ? name : null, s)
+  const scope = view === 'left' || view === 'check' ? null : instructScope(x, queue, picked, entered ? name : null, s)
   const counts = parts.counts
   const grid = mode === 'prio' && !entered
   // what opens in the middle comes into view: its top scrolled up out of the page column is brought back (round 5)
@@ -293,6 +294,7 @@ function FlowBody({ s, c }) {
         run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
         ${view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} /><p class="muted small flow-main-hint">${f.notnow.hint}</p>`
+          : view === 'check' ? html`<${CheckList} s=${s} c=${c} />`
           : view === 'running' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
               <h2 id="flow-running-h" class="flow-main-title">${f.run.label} <span class="mono muted">${runs.n}</span></h2>

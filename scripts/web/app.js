@@ -908,7 +908,8 @@ const ctl = {
     pageSeen(id)
   },
   // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab,
-  // also where the work tab offers no By source (reviewHome with the views on offer)
+  // also where the work tab offers no By source (reviewHome with the views on offer); where Work through is on, its
+  // page id leads to Check tasks there (setPage, flowPageFor)
   openReview() {
     const s = store.get()
     const home = reviewHome(s.model?.pages, T().workOrder.kinds, workViewsIn(s))
@@ -1124,6 +1125,8 @@ const ctl = {
   flowRun: id => setUi(ui => ({ flowView: 'run', flowRunId: id ?? null, flowRunFrom: ui.flowView === 'running' ? 'running' : 'overview', flowPlan: null })),
   flowRunning: () => setUi({ flowView: 'running', flowRunId: null, flowPlan: null }),
   flowLeft: reason => setUi(ui => ({ flowView: 'left', flowLeft: reason ?? null, flowLeftPicked: ui.flowLeft === reason ? ui.flowLeftPicked : [], flowPlan: null })),
+  // round 6 c: the task check in the middle, its row under Not now
+  flowCheck: () => setUi({ flowView: 'check', flowRunId: null, flowPlan: null }),
   flowLeftPick: (keys, on) => setUi(ui => {
     const picked = new Set(ui.flowLeftPicked ?? [])
     for (const k of keys ?? []) { if (on) picked.add(k); else picked.delete(k) }
