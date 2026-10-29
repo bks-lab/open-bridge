@@ -7,12 +7,13 @@ import {
   duration, indexRows, jobCounts, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
   asksYou, countInProject, startWaiting, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
   MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey,
-  itemRow, workPageOf,
+  itemRow, workPageOf, statusSplit,
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
 import { ChatThread, Thinking, useQuickLive } from './chat.js'
 import { KindTag, OriginTag, RowBar } from './day.js'
+import { tendLines } from './detail.js'
 import {
   DayBars, PinStar, ReturnCard, ReturnChip, jumpToTab, openWhole, pageParts, pageTitleOf, pct, returnsOf, shownTiles,
 } from './home.js'
@@ -445,6 +446,12 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
     if (await onAsk(v, conv?.id)) setText('')
   }
   const brief = s.ui.coreBrief
+  // what the day's cards on the start page say about the briefing itself: a source that failed, was skipped or found
+  // something, the small fixes and the workplace, so the cards can be switched off without losing them
+  const ex = s.model?.extras ?? {}
+  const sources = statusSplit(s.model?.status).loud.filter(x => x.tone === 'danger' || x.tone === 'warning')
+  const tend = tendLines(ex, t) ?? []
+  const wpPage = (s.model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'workplace'))
   return html`<section class="stage-card inspect core-panel" aria-labelledby="stage-card-title">
     <header class="stage-card-head">
       <h2 id="stage-card-title">Bridge</h2>
@@ -469,10 +476,16 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
       <${Btn} size="xs" variant="ghost" busy=${loading} onClick=${c.reload}>${t.reload}<//><//>
     ${(s.model?.alarms ?? []).map(a => html`<${InspectRow} key=${a.page_id + a.section_title} tone="danger" title=${h.alarm(a.count, a.section_title)}
       sub=${a.page_title} onClick=${() => c.setPage(a.page_id)} />`)}
+    ${sources.map(x => html`<${InspectRow} key=${`src:${x.title}`} tone=${x.tone} title=${x.title}
+      sub=${x.state === 'error' ? (x.reason || t.tone.bad) : x.state === 'skipped' ? (x.reason ?? '') : String(x.count)} />`)}
     ${workers ? html`<${InspectRow} tone=${jobs.failing ? 'danger' : jobs.upkeep ? 'muted' : 'success'} title=${h.workersLine(workers.in_service ?? 0)}
       sub=${t.overviewWorkers(jobs.ok, jobs.all, jobs.failing, jobs.upkeep)} onClick=${() => c.setPage(WORKERS_PAGE)} />` : null}
     <${InspectRow} tone=${agents ? 'info' : 'muted'} title=${h.agentsLine(agents)} sub=${h.sessionsLine((s.sessions?.sessions ?? []).length)}
       onClick=${() => c.setPage(SESSIONS_PAGE)} />
+    ${ex.workplace ? html`<${InspectRow} tone="info" title=${t.workplaceTitle} sub=${ex.workplace.replace(/\s*\S+\?$/, '')}
+      onClick=${wpPage ? () => c.setPage(wpPage.id) : undefined} />` : null}
+    ${tend.length ? html`<h3 class="label-caps core-sub">${t.hygieneTitle}</h3>
+      ${tend.map((x, i) => html`<${InspectRow} key=${`tend:${i}`} tone="warning" title=${x} />`)}` : null}
     ${!brief && (conv || busy) ? html`<h3 class="label-caps core-sub">${h.askTitle}</h3>
       <div class="core-brief">${conv ? html`<${ChatThread} s=${s} c=${c} conv=${conv} />` : html`<p class="muted small">${h.briefWaiting}</p>`}
         ${live?.doing ? html`<p class="muted small">${live.doing}</p>` : null}</div>` : null}

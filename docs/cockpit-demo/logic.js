@@ -2159,6 +2159,12 @@ export function filesOn(s) {
   return viewsOnOffer(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null).includes('dossier')
 }
 
+/** Whether the pages of group day stand on the work tab: in the middle of Due, so only where the switch offers Due.
+ *  Without it they close the start page, and a link to one goes there instead of to a view that does not show it */
+export function dayPagesOnWork(views) {
+  return (views ?? []).includes('due')
+}
+
 /** A work tab view 'dossier' a browser or the config (work_view: files) still names, now that the files are a tab of
  *  their own: null for none, else {view, page}, the view the work tab shows instead (to keep) and the files tab where
  *  the work tab was open */
@@ -2574,7 +2580,7 @@ export function tileSlug(text) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
 }
 
-const HOME_SHELVES = ['areas', 'focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
+const HOME_SHELVES = ['day', 'areas', 'focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
 const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'stage', 'classic', 'list', 'focusview']
 const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
 // the parts the overview can show under its table, each off until chosen (Settings, Start page)

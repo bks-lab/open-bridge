@@ -405,7 +405,7 @@ export function catalogLabel(x) {
   const h = T().home
   if (x.kind === 'quota' || x.kind === 'page') return x.label
   return { 'c:waiting': h.waitingNow, 'c:tabs': h.tabsWaiting, 'c:next': h.nextTitle, 'c:done': h.doneTitle,
-    's:areas': h.areasTitle, 's:focus': h.focusTitle, 's:pinned': h.pinnedTitle, 's:continue': h.continueTitle, 's:waiting': h.waitingTitle,
+    's:day': h.dayTitle, 's:areas': h.areasTitle, 's:focus': h.focusTitle, 's:pinned': h.pinnedTitle, 's:continue': h.continueTitle, 's:waiting': h.waitingTitle,
     's:tasks': h.tasksTitle, 's:starts': h.startTitle, 'o:today': h.optToday, 'o:preview': h.optPreview,
     'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:stage': h.optStage,
     'd:waiting': h.deskPart.waiting, 'd:guide': h.deskPart.guide, 'd:tabs': h.deskPart.tabs, 'd:day': h.deskPart.day, 'o:list': h.optList, 'o:focusview': h.optFocusView, 'o:pulse': h.optPulse,
@@ -711,12 +711,14 @@ function HomeBoard({ s, c }) {
   // the row cards in the order the shelves show them: a card opened here walks on through them
   const queue = homeRowQueue([...(on.has('s:pinned') ? pinned : []), ...(on.has('s:waiting') ? waiting.slice(0, 6) : []),
     ...(on.has('s:tasks') ? tasks.slice(0, 8) : [])])
-  // with a work tab the day lives here: dates, status, what happened today
-  const daily = workPageOf(s.model?.pages) ? html`<${HomeShelf} id="home-day" title=${h.dayTitle} empty="">
+  // with a work tab the day lives here: dates, status, what happened today; the cards of the day are a choice
+  // (the bridge's core shows status and small fixes too), the pages of group day have no other place
+  const withDay = !!workPageOf(s.model?.pages)
+  const daily = withDay && on.has('s:day') ? html`<${HomeShelf} id="home-day" title=${h.dayTitle} empty="">
       ${DayView({ s, c, cards: true })}
     <//>` : null
   // what happened today is long and read last, so it closes the page
-  const diary = daily ? html`<${DayPages} s=${s} c=${c} shelf />` : null
+  const diary = withDay ? html`<${DayPages} s=${s} c=${c} shelf />` : null
   const shelves = html`
     ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${h.returnsEmpty}>
       ${backs.slice(0, 8).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}

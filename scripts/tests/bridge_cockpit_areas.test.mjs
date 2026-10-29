@@ -512,6 +512,32 @@ test('start page views: the news band only when switched on for the start page; 
   }
 })
 
+test('the day cards on the stage are a choice; what happened today stays, and the core shows status and small fixes', async () => {
+  const { logic } = loadedRooms
+  const base = cockpitState(NOW, { ui: { page: '@start' } })
+  const day = { id: 'today', title: 'What happened today', group: 'day', sections: [{ id: 'log', title: 'Log', kind: 'list', items: [
+    { key: 'item:today/log/a', title: 'ACME deploy', detail: '', when: '', tone: 'ok' }] }] }
+  const work = { id: 'work', title: 'Work', group: 'work', sections: [{ id: 'tasks', title: 'Tasks', kind: 'tasks', items: [] }] }
+  const model = { ...base.model, pages: [...base.model.pages, work, day],
+    status: [{ title: 'Mail', state: 'error', reason: 'login expired', count: 0 }, { title: 'Tasks', state: 'ok', count: 5 }],
+    extras: { ...(base.model.extras ?? {}), tend: [], hygiene: ['3 tasks without a next step'] } }
+  assert.ok(logic.workPageOf(model.pages), 'the fixture has a work page')
+  const seen = logic.homeCatalog(model).map(x => x.id)
+  const stage = logic.homeViewSet(logic.homeChosen(model, null), 'stage')
+  const shown = mount(html`<${HomePage} s=${{ ...base, model, home: { tiles: stage, seen, pins: [] } }} c=${recorder()} />`)
+  assert.ok(shown.$('[aria-labelledby="home-day"]'))
+  const el = mount(html`<${HomePage} s=${{ ...base, model, home: { tiles: stage.filter(x => x !== 's:day'), seen, pins: [] } }} c=${recorder()} />`)
+  assert.equal(el.$('[aria-labelledby="home-day"]'), null)
+  assert.match(el.text(), /ACME deploy/)
+  el.$('.core-button').click()
+  await new Promise(r => setTimeout(r, 0))     // Preact draws a state change on the next tick
+  const core = el.$('.core-panel').text()
+  assert.match(core, /Mail/)
+  assert.match(core, /login expired/)
+  assert.doesNotMatch(core, /Tasks5/)
+  assert.match(core, /3 tasks without a next step/)
+})
+
 test('one area filter: on the other start views the bar names it, the overview shows none', () => {
   const { AreaBar } = views.home
   const { logic } = loadedRooms

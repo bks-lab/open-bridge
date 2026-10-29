@@ -44,7 +44,7 @@ function Overview({ s, c }) {
 
 /** The lines of Small fixes: each one in the page's own sentence for its kind (extras.tend, briefing_view), the
  *  text the server wrote for a kind it has none for and for an older server that sends no facts */
-const tendLines = (ex, t) => (Array.isArray(ex.tend) && ex.tend.length ? ex.tend.map(x => t.tend[x.kind]?.(x) ?? x.text) : ex.hygiene)
+export const tendLines = (ex, t) => (Array.isArray(ex.tend) && ex.tend.length ? ex.tend.map(x => t.tend[x.kind]?.(x) ?? x.text) : ex.hygiene)
 
 /** The day: dates, status, what is clear, the small fixes, the workplace and the pages of group day.
  *  In the middle of Today as one panel, or on Start where a work tab exists as one card per block,
