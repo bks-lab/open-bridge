@@ -1538,6 +1538,23 @@ function logPage(s, c, page = DAY_PAGE) {
     draw=${(list, q, topic) => list.map(sec => html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} topic=${topic} />`)} />`)
 }
 
+test('the log layout as the page router mounts it: the log in the main column, the repos in the rail, the search filters', async () => {
+  const { PageView } = (await loadCockpit()).components
+  const s = cockpitState(NOW)
+  s.model = { ...s.model, pages: [DAY_PAGE] }
+  s.ui = { ...s.ui, page: DAY_PAGE.id }
+  s.jev = { ...s.jev, enabled: false }
+  const el = mount(html`<${PageView} s=${s} c=${recorder()} />`)
+  assert.ok(el.$('.psearch input'), 'the search field stands')
+  assert.match(el.$('.logp-main').text(), new RegExp(LOG_ROWS[0].title.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.match(el.$('.logp-rail').text(), new RegExp(REPOS[0].title))
+  const box = el.$('.psearch input')
+  box.value = LOG_ROWS[0].title.split(' ')[0]
+  box.dispatch('input')
+  await tick()
+  assert.ok(el.$('.logp-main mark'), 'the typed word is marked in the log')
+})
+
 test('the log layout: which page takes it, the hours of a log, its topics and a sparkline, as pure helpers', () => {
   assert.equal(logic.logLayout(DAY_PAGE), true)
   assert.equal(logic.logLayout({ sections: [{ id: 'a', view: 'groups' }] }), false)
