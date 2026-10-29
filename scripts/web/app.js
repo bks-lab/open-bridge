@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, prioRows, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -1283,7 +1283,9 @@ const ctl = {
     prioAsked.add(page)
     const s = store.get()
     store.set(st => ({ ...st, jevOrder: { ...st.jevOrder, [page]: { ...(st.jevOrder[page] ?? {}), order: st.jevOrder[page]?.order ?? null, running: true, ranker: 'jev', error: null } } }))
-    const res = await api.post('/api/jev/rank', jevReady(s) ? { page, daily: jevReady(s), rows: prioRows(s) } : { page })
+    // the day's order only from a page that read what it shows (prioLoaded); before that only the kept order
+    const daily = jevReady(s) && prioLoaded(s)
+    const res = await api.post('/api/jev/rank', daily ? { page, daily, rows: prioRows(s) } : { page })
     store.set(st => ({ ...st, jevOrder: { ...st.jevOrder, [page]: res.ok ? { order: res.data.order, error: null, running: false }
       : { order: st.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false, ranker: 'jev' } } }))
   },

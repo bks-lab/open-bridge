@@ -555,9 +555,14 @@ export const pointKeys = x => (x?.kind === 'reports' ? x.rows.map(r => r.key) : 
 /** Whether Jev can read in: switched on and with its key */
 export const jevReady = s => !!(s?.jev?.enabled && s?.jev?.ready)
 
-/** Whether Haiku can read in (the server's prio.haiku: a Claude model for the service cockpit-prio); an older server
- *  sends nothing: no */
-export const haikuReady = s => s?.prio?.haiku?.ready === true
+/** Whether Haiku can read in: switched on (cockpit.flow.prio.haiku.enabled, off by default) and a Claude model for
+ *  the service cockpit-prio (the server's prio.haiku); an older server sends nothing: no */
+export const haikuReady = s => s?.prio?.haiku?.enabled === true && s?.prio?.haiku?.ready === true
+
+/** Whether the page has read enough for the day's order to see what it shows: the model, no pass of the collector
+ *  running, and the tabs read once where a terminal driver lists them (their sessions come with them). Before that
+ *  the daily order would rank an early snapshot, so it waits */
+export const prioLoaded = s => !!s?.model && !s?.loading?.pass && (!flowDriver(s) || (s?.tabs?.at_ms ?? 0) > 0 || !!s?.tabs?.error)
 
 /** Whether Prio can order the left column: a work page asks for an order (its `jev:`, with its private words) and one
  *  of the two rankers can read in, Jev or Haiku (Jev may be off) */
@@ -580,19 +585,21 @@ function prioKind(row, tab) {
 }
 
 /** The rows a read-in of Prio sends (POST /api/jev/rank `rows`): every point the work view shows, each of a reports
- *  card by itself, a tab alone by its tab, and what runs under Running now; each once, with its key (which the server
- *  keeps), title, kind, status, due day, since when it exists (an inbox item by its day, else its created day) and
- *  whether an agent works on it. The server holds back what the page's private words name and says how many */
+ *  card by itself, a tab alone by its tab, and what runs under Running now; each once, with its key, title, kind,
+ *  status, due day, since when it exists (an inbox item by its day, else its created day) and whether an agent works
+ *  on it. A point without a title stays out. The server reads only the key and running: it looks the rest up itself,
+ *  drops a key it cannot place, holds back what the page's private words and skip_sections name and says how many */
 export function prioRows(s, parts = flowParts(s)) {
   const out = new Map()
   const put = (row, tab, title, stage, running) => {
     const key = prioKey(row, tab)
-    if (!key || out.has(key)) return
+    // a point without a title of its own goes not at all: never its key in a title's place
+    if (!key || out.has(key) || !String(row?.title ?? title ?? '').trim()) return
     const m = INBOX_DAY_RE.exec(String(row?.inbox_id ?? ''))
     const since = m ? `${m[1]}-${m[2]}-${m[3]}` : DAY_RE.test(String(row?.created ?? '')) ? String(row.created).slice(0, 10) : null
     const status = row?.status ?? row?.inbox_state ?? stage ?? null
     const due = row?.due && DAY_RE.test(String(row.due)) ? String(row.due).slice(0, 10) : null
-    const r = { key, title: String(row?.title ?? title ?? key), kind: prioKind(row, tab) }
+    const r = { key, title: String(row?.title ?? title), kind: prioKind(row, tab) }
     if (status) r.status = String(status)
     if (due) r.due = due
     if (since) r.since = since

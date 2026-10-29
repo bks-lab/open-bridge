@@ -41,7 +41,7 @@ function state({ now = [], work = [], tabs = [], returns = [], ui = {}, ...rest 
       { id: 'track', rows: [] }, { id: 'later', rows: [] }], hidden: [], returns, pages: [WORK_PAGE] },
     tabs: { tabs }, driver: { caps: null }, triage: { items: {} }, jevOrder: {},
     work: { flow: { enabled: true, drop_reasons: ['not_worth_it'], return_after_s: 20 } },
-    themes: { enabled: false }, jev: { enabled: true, ready: true }, prio: { haiku: { ready: true, budget_left: 4 }, fallback: 'none' },
+    themes: { enabled: false }, jev: { enabled: true, ready: true }, prio: { haiku: { enabled: true, ready: true, budget_left: 4 }, fallback: 'none' },
     ui: { page: '@flow', busy: {}, flowAt: null, flowChip: 'all', flowJump: null, flowView: 'overview', flowPicked: [], ...ui }, ...rest,
   }
 }
@@ -77,6 +77,7 @@ test('prioOn: Prio is on offer with Jev or with Haiku, also with Jev switched of
   assert.equal(logic.prioOn({ ...s, prio: { haiku: { ready: false } } }), true, 'Jev alone')
   assert.equal(logic.prioOn({ ...s, jev: { enabled: false }, prio: { haiku: { ready: false } } }), false)
   assert.equal(logic.prioOn({ ...s, prio: undefined, jev: { enabled: false } }), false, 'an older server: no Haiku')
+  assert.equal(logic.prioOn({ ...s, jev: { enabled: false }, prio: { haiku: { enabled: false, ready: false } } }), false, 'Haiku switched off')
 })
 
 test('a tab alone gets its square from the order by its tab key', () => {
@@ -108,7 +109,7 @@ test('a ranker never pre-ticks a Drop, and never suggests one where an agent wor
 function prioState(order, over = {}) {
   const base = mock.buildState(NOW, { workPage: true })
   const st = cockpitState(NOW, { model: base.model, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowMode: 'prio', flowPicked: [] } })
-  return { ...st, prio: { haiku: { ready: true, budget_left: 3 }, fallback: 'none' }, jevOrder: { work: { order, running: false, error: null } }, ...over }
+  return { ...st, prio: { haiku: { enabled: true, ready: true, budget_left: 3 }, fallback: 'none' }, jevOrder: { work: { order, running: false, error: null } }, ...over }
 }
 
 test('the square of now says urgent and important, and "only you" only for what the ranker gave to you', () => {
@@ -147,7 +148,7 @@ test('the foot offers both rankers at all times; each reads in the points of the
   // Jev switched off: only Haiku; Haiku's runs used up: its button is there and grey
   const off = mount(html`<${FlowPage} s=${{ ...prioState(order), jev: { enabled: false } }} c=${recorder()} />`)
   assert.deepEqual(off.$$('aside .flow-prio-foot button').map(b => b.text()), [en.flow.prio.readHaiku])
-  const spent = mount(html`<${FlowPage} s=${prioState(order, { prio: { haiku: { ready: true, budget_left: 0 } } })} c=${recorder()} />`)
+  const spent = mount(html`<${FlowPage} s=${prioState(order, { prio: { haiku: { enabled: true, ready: true, budget_left: 0 } } })} c=${recorder()} />`)
   const hb = spent.$$('aside .flow-prio-foot button').find(b => b.text() === en.flow.prio.readHaiku)
   assert.ok(hb.hasAttribute('disabled'))
   // a Jev read-in that fell back says so
@@ -160,7 +161,7 @@ test('the controller reads in with the rows of the view and the ranker chosen, a
   const read = src.slice(src.indexOf('async flowPrioRead('), src.indexOf('async flowPrioRead(') + 900)
   assert.match(read, /api\.post\('\/api\/jev\/rank', \{ page, force: true, ranker, rows: prioRows\(store\.get\(\)\) \}\)/)
   const daily = src.slice(src.indexOf('async flowPrioOrder('), src.indexOf('async flowPrioOrder(') + 900)
-  assert.match(daily, /daily: jevReady\(s\)/)
+  assert.match(daily, /const daily = jevReady\(s\) && prioLoaded\(s\)/)
   assert.ok(!/ranker: 'haiku'/.test(daily), 'Haiku never orders by itself')
 })
 
@@ -208,4 +209,21 @@ test('a finished tab (quiet at its prompt) no longer runs: its task is a point a
   // a row of a point an agent works on keeps a small marker in the list
   const at = state({ work: [task('w')], returns: [], tabs: [] })
   assert.equal(logic.rowRunning(task('w'), at), false)
+})
+
+test('a point without a title of its own is not sent; its key never stands in for a title', () => {
+  const s = state({ work: [task('named'), task('nameless', { title: '' })], tabs: [{ ref: 'surface:6', name: '', state: 'needs-you', since_ms: NOW - MIN }] })
+  const keys = logic.prioRows(s).map(r => r.key)
+  assert.deepEqual(keys, ['task:named'])
+})
+
+test('the day\'s order waits until the page read what it shows; Haiku switched off has no button', () => {
+  const s = { ...state(), driver: { caps: ['launch', 'tabs'] }, loading: { pass: null } }
+  assert.equal(logic.prioLoaded({ ...s, tabs: { tabs: [], at_ms: 0 } }), false, 'the tabs not read yet')
+  assert.equal(logic.prioLoaded({ ...s, tabs: { tabs: [], at_ms: NOW } }), true)
+  assert.equal(logic.prioLoaded({ ...s, tabs: { tabs: [], at_ms: NOW }, loading: { pass: 'full' } }), false, 'a pass runs')
+  assert.equal(logic.prioLoaded({ ...s, model: null }), false)
+  const order = { at_ms: NOW - 30 * MIN, ranker: 'jev', sent: 1, skipped: {}, items: [] }
+  const off = mount(html`<${FlowPage} s=${prioState(order, { prio: { haiku: { enabled: false, ready: false, budget_left: 6 } } })} c=${recorder()} />`)
+  assert.deepEqual(off.$$('aside .flow-prio-foot button').map(b => b.text()), [en.flow.prio.readJev])
 })

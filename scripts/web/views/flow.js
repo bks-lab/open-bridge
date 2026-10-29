@@ -43,7 +43,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   asksSomething, duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn, runningOf,
-  prepTargets, previewText, prioOn, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
+  prepTargets, previewText, prioLoaded, prioOn, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
@@ -279,7 +279,9 @@ function FlowBody({ s, c }) {
   // new order is a click on Read in with Jev or Read in with Haiku at Prio's foot (round 6 B; Haiku never by itself)
   const work = prioOn(s) ? workPageOf(s.model?.pages) : null
   const order = work ? s.jevOrder?.[work.id] : null
-  useEffect(() => { if (work && order === undefined) c.flowPrioOrder(work.id) }, [work?.id, order === undefined])
+  // only once the page has read what it shows (prioLoaded): the day's order of an early snapshot would rank too little
+  const loaded = prioLoaded(s)
+  useEffect(() => { if (work && order === undefined && loaded) c.flowPrioOrder(work.id) }, [work?.id, order === undefined, loaded])
   const name = sideName(entered, mode)
   // what the instruction line speaks for: the point or the entry open, else the ticked points or every point of the side
   const scope = view === 'left' || view === 'check' ? null : instructScope(x, queue, picked, entered ? name : null, s)

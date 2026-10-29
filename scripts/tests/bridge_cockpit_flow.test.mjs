@@ -3267,7 +3267,8 @@ test('R6B 1f, 2c and 2d: Jev\'s daily order and the themes are asked in every or
     assert.ok(!held.calls.some(x => x[0] === 'flowPrioOrder'), flowMode)
   }
   // the controller's daily order asks without force (the server: the day's first ask orders, every later one reads)
-  assert.match(method('async flowPrioOrder(page) {'), /\{ page, daily: jevReady\(s\), rows: prioRows\(s\) \}/)
+  assert.match(method('async flowPrioOrder(page) {'), /const daily = jevReady\(s\) && prioLoaded\(s\)/)
+  assert.match(method('async flowPrioOrder(page) {'), /daily \? \{ page, daily, rows: prioRows\(s\) \} : \{ page \}/)
   assert.ok(!/force: true/.test(method('async flowPrioOrder(page) {')))
 })
 

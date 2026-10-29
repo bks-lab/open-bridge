@@ -1038,8 +1038,8 @@ export function buildState(now = Date.now(), opts = {}) {
     driver: { caps: DRIVER_CAPS },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: empty ? [] : [aboutConv(now), ...handedConvs(now)] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
-    // Prio's second ranker (prio.py state): Haiku can read in, six runs a day, no fallback
-    prio: { haiku: { ready: true, model: 'haiku', budget_left: 6 }, fallback: 'none' },
+    // Prio's second ranker (prio.py state): switched on in the demo (off by default in a Bridge), six runs a day
+    prio: { haiku: { enabled: true, ready: true, model: 'haiku', budget_left: 6 }, fallback: 'none' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
     triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
@@ -2213,6 +2213,7 @@ export function createMockTransport(opts = {}) {
         const page = state.model.pages.find(p => p.id === body?.page && p.jev)
         if (!page) return fail(404, 'not_found', 'no page with jev: under that id')
         const day = isoIn(0, now())
+        if (ranker === 'haiku' && body.force && !state.prio?.haiku?.enabled) return fail(409, 'prio_off', 'Reading in with Haiku is switched off')
         if (ranker === 'haiku' && body.force && !(state.prio?.haiku?.budget_left > 0)) return fail(429, 'prio_budget', 'Today\'s read-ins with Haiku are used up')
         if (body.force || (body.daily && ranker === 'jev' && orders[page.id]?.day !== day)) {
           await new Promise(res => wait(res, 1200))
