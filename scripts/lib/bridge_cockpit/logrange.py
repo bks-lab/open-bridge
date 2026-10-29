@@ -178,9 +178,10 @@ class LogRange:
                                 "kind": og.work_kind(task or found["about_task"], known)}
             rows.append({"date": r.get("date"), "time": r.get("time"), "glyph": r.get("glyph") or None, "group": group or None,
                          "title": str(r.get("text") or "").replace("**", "")})
+        # what the word filter reads of a row: its context and its text as the log holds it, case folded, the rule the
+        # history (work_find.history, Every day's list) finds a log row by
+        low = [f"{r.get('context') or ''} {r.get('text') or ''}".lower() for r in data["rows"]]
         rows = app.scrub_tree(rows)
-        # what the word filter reads of a row, as the page's own filter does: its text and its context, case folded
-        low = [f"{r['title']} {r['group'] or ''}".lower() for r in rows]
         rev = hashlib.sha256(repr(mark).encode("utf-8")).hexdigest()[:12]
         kept = {"first": data.get("first"), "rows": rows, "low": low, "about": app.scrub_tree(about), "rev": rev}
         with self.lock:

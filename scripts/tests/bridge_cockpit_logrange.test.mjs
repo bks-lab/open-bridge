@@ -128,7 +128,7 @@ test('the own commits of a range per repository, the busiest first, a sparkline 
 
 // ---------------------------------------------------------------- the page, mounted through the router
 
-const { html, components, text } = await loadCockpit()
+const { html, components, text, mock } = await loadCockpit()
 const { mount, recorder } = await import('./cockpit_render.mjs')
 const en = text.TABLES.en, de = text.TABLES.de
 const tick = () => new Promise(resolve => setTimeout(resolve, 20))
@@ -378,6 +378,51 @@ test('Every day switches to All, its chart stacks the log rows with the meetings
   // the chart counts the entries that hold the words: asked for once the typing pauses; all of them stood loaded before
   assert.deepEqual(c.calls.filter(x => x[0] === 'loadLogEvents'), [['loadLogEvents', 'gateway retry']])
   assert.deepEqual(c.calls.filter(x => x[0] === 'loadLogHits').at(-1), ['loadLogHits', { q: 'gateway retry', rev: REV, from: null, to: '2026-10-29' }])
+})
+
+/** What the chart counts: the sum of its bars, every kind */
+const charted = el => el.$$('.logr-chart rect.logr-bar').reduce((n, r) => n + Number(r.getAttribute('data-n')), 0)
+
+test('In range and a topic chip: the list counts what the chart counts', async () => {
+  const el = page(loaded({ logHits: hitsOf('gateway') }))
+  preset(el, '7 days').click()
+  await tick()
+  assert.equal(charted(el), Number(el.$('.logp-main .sec-count').text()))
+  await type(el, 'gateway')
+  assert.equal(charted(el), Number(el.$('.logp-main .sec-count').text()))
+  assert.equal(charted(el), 2)
+  await type(el, '')
+  el.$$('.logp-rail .fchip').find(b => b.text().startsWith('billing')).click()
+  await tick()
+  assert.equal(charted(el), Number(el.$('.logp-main .sec-count').text()))
+  assert.equal(charted(el), 3)
+})
+
+test('Every day: the list counts what the chart counts, for the same range, words and sources, as the demo answers them', async () => {
+  // the demo's own answers of /api/logrange (the rows, the hits, the history beside the log) and /api/timeline, for All
+  const now = Date.now()
+  const t = mock.createMockTransport({ latency: 0 })
+  const get = async path => (await t.get(path)).data
+  const words = 'gateway retry'
+  const range = await get('/api/logrange?commits=commits')
+  const hits = await get(`/api/logrange?q=${encodeURIComponent(words)}&rev=${range.rev}`)
+  const events = await get(`/api/logrange?sources=other&q=${encodeURIComponent(words)}`)
+  const listed = await get(`/api/timeline?q=${encodeURIComponent(words)}&to=${range.today}`)
+  assert.ok(listed.units > 0 && hits.hits.length > 0 && events.events.length > 0)
+  const s = cockpitState(now)
+  s.model = { ...s.model, pages: [PAGE] }
+  s.ui = { ...s.ui, page: PAGE.id }
+  s.jev = { ...s.jev, enabled: false }
+  Object.assign(s, { logRange: { from: null, to: range.today, status: 'ok', data: range, error: null },
+    logHits: { q: words, rev: range.rev, status: 'ok', ids: hits.hits }, logEvents: { q: words, status: 'ok', data: events, error: null },
+    timeline: { q: words, key: `${words}||${range.today}`, status: 'ok', data: listed, error: null } })
+  const el = page(s)
+  radio(el, en.pageSearch.mode.all).click()
+  await tick()
+  await type(el, words)
+  assert.equal(preset(el, 'All').getAttribute('aria-pressed'), 'true')
+  assert.equal(Number(el.$('.logp-main .tl .sec-count').text()), charted(el))
+  assert.equal(charted(el), hits.hits.length + events.events.length)
 })
 
 test('Ask AI asks within the range', async () => {

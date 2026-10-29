@@ -799,8 +799,11 @@ def history(root: Path | str, query: object, *, transcripts: Path | str | None =
     base = transcript_root(transcripts)
     holds = lambda low: all(w in low for w in words)  # noqa: E731
     groups: dict = {}
+    rows: dict = {}   # a log row that stands in two files (a raw week and its summary) counts once, as in log_rows
     for e, body, group, _ in _history_scan(root, base, meetings, holds, holds):
         if not _in_days(e["date"], since, until):
+            continue
+        if group is None and rows.setdefault((e["date"], e["time"], e["source"], body), e["path"]) != e["path"]:
             continue
         e["text"] = snippet(body, words)
         groups.setdefault(group if group is not None else ("row", e["path"], e["line"]), []).append(e)
@@ -810,8 +813,13 @@ def history(root: Path | str, query: object, *, transcripts: Path | str | None =
         for i, e in enumerate(kept):
             out.append({**e, "count": len(list_), "more": len(list_) - len(kept) if i == len(kept) - 1 else 0})
     _newest_first(out)
+    # units: what the list stands for, a log row each, a meeting, a closed task, a transcript one each, the way the log
+    # page's chart counts them (log_rows and history_events with the same words)
+    kinds: dict = {}
+    for list_ in groups.values():
+        kinds[list_[0]["kind"]] = kinds.get(list_[0]["kind"], 0) + 1
     return {"ok": True, "query": text, "words": words, "total": len(out), "truncated": len(out) > limit,
-            "transcripts": base is not None, "entries": out[:limit]}
+            "units": len(groups), "units_by_kind": kinds, "transcripts": base is not None, "entries": out[:limit]}
 
 
 def log_rows(root: Path | str, *, since: str | None = None, until: str | None = None) -> dict:
@@ -846,26 +854,28 @@ def history_events(root: Path | str, *, transcripts: Path | str | None = None, m
                    query: object = None, since: str | None = None, until: str | None = None) -> dict:
     """The history beside the log as one entry each, newest first, for a chart that counts them: a meeting of a day's
     notes (its `## HH:MM` head, else the whole file), a meeting folder, a closed task and a transcript, each
-    {date, time, kind (discussed, closed, transcript), source, path, folder}; with `query` only the ones whose name
-    and text hold every word between them, with `since`/`until` only full days of that range. ValueError for a query check_query refuses"""
+    {date, time, kind (discussed, closed, transcript), source, path, folder}; with `query` only the ones with a line
+    that holds every word (the lines `history` lists), with `since`/`until` only full days of that range. ValueError for a query check_query refuses"""
     root = Path(root).resolve()
     words = check_query(query)[1] if query is not None else []
     base = transcript_root(transcripts)
     holds = lambda low: all(w in low for w in words)  # noqa: E731
     found: dict = {}   # one entry per unit, with the text that decides whether it holds the words
 
-    def add(key, e, line):
-        found.setdefault(key, (e, []))[1].append(line.lower())
+    def add(key, e, hit):
+        unit = found.setdefault(key, [e, False])
+        unit[1] = unit[1] or hit
 
     for e, body, group, _ in _history_scan(root, base, meetings, lambda low: True, lambda low: True):
         if e["kind"] == "did":
             continue
-        # a day's notes count one meeting per time head (group: path and time), the rest one per folder or file
-        add((e["kind"], group), {k: e[k] for k in ("date", "time", "kind", "source", "path", "folder")}, body)
-    # the lines of a day's notes above its first time head (its title) are no meeting of their own
-    headed = {key[1][0] for key in found if isinstance(key[1], tuple) and key[1][1] is not None}
-    out = [e for key, (e, lines) in found.items() if not (isinstance(key[1], tuple) and key[1][1] is None and key[1][0] in headed)
-           and DAY_RE.match(e["date"]) and _in_days(e["date"], since, until) and holds("\n".join([e["source"].lower(), *lines]))]
+        # a day's notes count one meeting per time head (group: path and time), the rest one per folder or file; with
+        # words a unit counts when one of its lines holds every word, the rule `history` lists its lines by
+        add((e["kind"], group), {k: e[k] for k in ("date", "time", "kind", "source", "path", "folder")}, holds(body.lower()))
+    # without words, the lines of a day's notes above its first time head (its title) are no meeting of their own
+    headed = {key[1][0] for key in found if isinstance(key[1], tuple) and key[1][1] is not None} if not words else set()
+    out = [e for key, (e, hit) in found.items() if not (isinstance(key[1], tuple) and key[1][1] is None and key[1][0] in headed)
+           and DAY_RE.match(e["date"]) and _in_days(e["date"], since, until) and hit]
     out.sort(key=lambda e: e["path"])
     out.sort(key=lambda e: (e["date"], e["time"] or ""), reverse=True)
     return {"ok": True, "transcripts": base is not None, "total": len(out), "entries": out}

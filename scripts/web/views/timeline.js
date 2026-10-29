@@ -52,13 +52,14 @@ function TimelineDays({ entries, c, cited = false, words = [] }) {
   </li>`)}</ol>`
 }
 
-/** Every day before (s.timeline from c.searchTimeline): the lines that hold every word, by day */
+/** Every day before (s.timeline from c.searchTimeline): the lines that hold every word, by day; its count the units
+ *  (a log row each, a meeting, a closed task, a transcript one each), what the log page's chart counts for the words */
 function Timeline({ find, c }) {
   const w = T().pageSearch
   if (!find) return null
   const data = find.data
   return html`<section class="tl" aria-live="polite">
-    <header class="tl-head"><p class="dz-eyebrow">${w.timelineTitle(find.q)}${data ? html` <span class="sec-count mono">${data.total}</span>` : null}</p>
+    <header class="tl-head"><p class="dz-eyebrow">${w.timelineTitle(find.q)}${data ? html` <span class="sec-count mono">${data.units ?? data.total}</span>` : null}</p>
       <${Btn} variant="ghost" size="xs" icon="close" onClick=${() => c.clearTimeline()}>${w.close}<//></header>
     ${find.status === 'loading' ? html`<p class="muted small" role="status">${w.searching}</p>`
       : find.status === 'error' ? html`<p class="muted small" role="status">${find.error}</p>`

@@ -221,7 +221,7 @@ function RangeChart({ page, cur, step, series, stacked, now, onPick }) {
       const n = sr.counts[i]
       if (!n) continue
       const kind = RANGE_KINDS.find(([k]) => k === sr.kind) ?? RANGE_KINDS[0]
-      bars.push(html`<rect key=${`${i}-${sr.kind}`} class=${`logr-bar${hover?.i === i && !drag ? ' is-hover' : ''}`} data-i=${i} data-kind=${sr.kind}
+      bars.push(html`<rect key=${`${i}-${sr.kind}`} class=${`logr-bar${hover?.i === i && !drag ? ' is-hover' : ''}`} data-i=${i} data-kind=${sr.kind} data-n=${n}
         x=${x0 + gap / 2} y=${y(base + n)} width=${Math.max(1, bw - gap)} height=${y(base) - y(base + n)} rx=${bw > 6 && !stacked ? 2 : 0}
         fill=${kind[1]} />`)
       base += n

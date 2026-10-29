@@ -636,7 +636,8 @@ def test_the_command_answers_the_rows_and_the_other_history_of_a_range(past):
     run = subprocess.run([sys.executable, str(script), "--root", str(root), "--events", "--json", "--transcripts", str(tr),
                           "--", "vendor"], capture_output=True, text=True, check=False)
     assert run.returncode == 0, run.stderr
-    assert {e["source"] for e in json.loads(run.stdout)["entries"]} == {"vendor-sync", "vendor-call"}
+    # a line that holds the word, as the history lists it: the vendor call's name alone is no hit
+    assert {e["source"] for e in json.loads(run.stdout)["entries"]} == {"vendor-sync"}
     run = subprocess.run([sys.executable, str(script), "--root", str(root), "--rows", "--since", "2026-13-01"],
                          capture_output=True, text=True, check=False)
     assert run.returncode == 2

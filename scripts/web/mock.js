@@ -1302,9 +1302,9 @@ function logDemo(nowMs) {
         if (at <= nowMs) repos[k].ts.push(Math.floor(at / 1000))
       }
     }
-    if (d.getDay() === 1) events.push({ date: iso(d), time: '10:00', kind: 'discussed', source: 'Weekly round', path: `work/archive/days/${iso(d).slice(0, 7)}/${iso(d).slice(8)}_insights.md`, folder: null })
-    if (d.getDay() === 2 || d.getDay() === 4) events.push({ date: iso(d), time: '14:00', kind: 'transcript', source: 'vendor-sync', path: `${iso(d)}_1400_vendor-sync.md`, folder: null })
-    if (back % 5 === 2) events.push({ date: iso(d), time: null, kind: 'closed', source: 'docs-cleanup', path: `work/done/${iso(d).slice(0, 7)}/docs-cleanup/STATUS.md`, folder: `work/done/${iso(d).slice(0, 7)}/docs-cleanup` })
+    if (d.getDay() === 1) events.push({ date: iso(d), time: '10:00', kind: 'discussed', source: 'Weekly round', text: 'Gateway retry and the release notes discussed', path: `work/archive/days/${iso(d).slice(0, 7)}/${iso(d).slice(8)}_insights.md`, folder: null })
+    if (d.getDay() === 2 || d.getDay() === 4) events.push({ date: iso(d), time: '14:00', kind: 'transcript', source: 'vendor-sync', text: 'A: the vendor export ran into the timeout again', path: `${iso(d)}_1400_vendor-sync.md`, folder: null })
+    if (back % 5 === 2) events.push({ date: iso(d), time: null, kind: 'closed', source: 'docs-cleanup', text: 'Docs cleanup closed, the index is fresh', path: `work/done/${iso(d).slice(0, 7)}/docs-cleanup/STATUS.md`, folder: `work/done/${iso(d).slice(0, 7)}/docs-cleanup` })
   }
   rows.sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
   for (const r of repos) r.ts.sort((a, b) => a - b)
@@ -1315,9 +1315,12 @@ function logDemo(nowMs) {
 function logRangeOf(params, nowMs) {
   const demo = logDemo(nowMs)
   if (params.get('sources') === 'other') {
+    // as work_find.history_events: one entry each, with words those with a line that holds every one
     const words = String(params.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean)
-    const events = demo.events.filter(e => words.every(w => `${e.source} ${e.kind}`.toLowerCase().includes(w)))
-    return { ok: true, from: params.get('from'), to: params.get('to') ?? demo.today, transcripts: true, events }
+    const from = params.get('from') || '0000', to = params.get('to') || demo.today
+    const events = demo.events.filter(e => e.date >= from && e.date <= to && words.every(w => e.text.toLowerCase().includes(w)))
+      .map(({ text, ...e }) => e)
+    return { ok: true, from: params.get('from'), to, transcripts: true, events }
   }
   // as logrange.py answers: the rows compact (day, time, group, glyph by index), the text by id, the words found here
   const rev = `${demo.today.replace(/-/g, '')}0000`
@@ -1329,7 +1332,7 @@ function logRangeOf(params, nowMs) {
   const ids = demo.rows.flatMap((r, i) => (r.date >= from && r.date <= to ? [i] : []))
   if (params.get('q')) {
     const words = String(params.get('q')).toLowerCase().split(/\s+/).filter(Boolean)
-    return { ok: true, rev, q: params.get('q'), hits: ids.filter(i => words.every(w => `${demo.rows[i].title} ${demo.rows[i].group}`.toLowerCase().includes(w))) }
+    return { ok: true, rev, q: params.get('q'), hits: ids.filter(i => words.every(w => `${demo.rows[i].group} ${demo.rows[i].title}`.toLowerCase().includes(w))) }
   }
   const days = [], groups = [], glyphs = []
   const at = (list, key, entry = key) => { let i = list.findIndex(x => (x?.name ?? x) === key); if (i < 0) { i = list.length; list.push(entry) } return i }
@@ -1339,11 +1342,23 @@ function logRangeOf(params, nowMs) {
     repos: params.get('commits') ? demo.repos : null, repos_from: params.get('commits') ? demo.first : null, skipped: [] }
 }
 
-function timelineOf(q) {
+function timelineOf(q, params, nowMs) {
+  // as work_find.history over the demo's log: every row and every line of the history beside it that holds every word,
+  // in the range asked, newest first; its units the way the log page's chart counts them
   const words = [...new Set(String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8)
-  const entries = DEMO_HISTORY.filter(e => words.length && words.every(w => `${e.source} ${e.text}`.toLowerCase().includes(w)))
+  const demo = logDemo(nowMs)
+  const from = params?.get('from') || '0000', to = params?.get('to') || demo.today
+  const holds = text => words.length && words.every(w => text.toLowerCase().includes(w))
+  const rows = demo.rows.filter(r => r.date >= from && r.date <= to && holds(`${r.group} ${r.title}`))
+    .map((r, i) => ({ date: r.date, time: r.time, kind: 'did', source: r.group, path: 'work/log.md', line: i + 1, text: r.title, folder: null }))
+  const other = demo.events.filter(e => e.date >= from && e.date <= to && holds(e.text))
+    .map(e => ({ date: e.date, time: e.time, kind: e.kind, source: e.source, path: e.path, line: 1, text: e.text, folder: e.folder }))
+  const entries = [...rows, ...other].sort((a, b) => `${b.date} ${b.time ?? ''}`.localeCompare(`${a.date} ${a.time ?? ''}`))
     .map(e => ({ ...e, count: 1, more: 0 }))
-  return { ok: true, query: String(q ?? '').trim(), words, total: entries.length, truncated: false, transcripts: true, entries }
+  const kinds = {}
+  for (const e of entries) kinds[e.kind] = (kinds[e.kind] ?? 0) + 1
+  return { ok: true, query: String(q ?? '').trim(), words, total: entries.length, truncated: entries.length > 200, units: entries.length,
+    units_by_kind: kinds, transcripts: true, entries: entries.slice(0, 200) }
 }
 
 // the search (work-find.py through /api/find): every word in the slug, title or a line of an invented file, the
@@ -2176,7 +2191,7 @@ export function createMockTransport(opts = {}) {
       if (url.pathname === '/api/timeline') {
         const q = String(url.searchParams.get('q') ?? '')
         if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
-        return ok(timelineOf(q))
+        return ok(timelineOf(q, url.searchParams, now()))
       }
       if (url.pathname === '/api/find') {
         const q = String(url.searchParams.get('q') ?? '')

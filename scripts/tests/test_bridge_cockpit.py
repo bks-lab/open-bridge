@@ -8880,6 +8880,47 @@ def test_the_log_range_of_the_other_history_one_entry_each_with_the_words_one_ar
     assert (data["from"], data["to"], "rows" in data) == ("2026-10-01", "2026-10-09", False)
 
 
+def test_every_day_lists_as_many_entries_as_its_chart_counts_for_the_same_range_words_and_sources(world, tmp_path):
+    # the list of Every day (/api/timeline: its units, a row each, a meeting, a closed task, a transcript one each) and
+    # its chart (the log's hits plus the other history's entries, /api/logrange) read one history by one rule
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    root = world.root
+    log = root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-08 10:00 | x | billing | gateway retry moved |\n", encoding="utf-8")
+    weeks = root / "work" / "archive" / "weeks"
+    weeks.mkdir(parents=True)
+    for name in ("2026-W40.md", "2026-W40-raw.md"):   # one row in a raw week and in its summary: one entry, not two
+        (weeks / name).write_text("## Mi 30.09\n\n| 2026-09-30 08:00 | x | ops | gateway retry planned |\n", encoding="utf-8")
+    meeting = root / "work" / "tasks" / "_meetings" / "2026-10-07-vendor-sync"
+    meeting.mkdir(parents=True)
+    (meeting / "summary.md").write_text("- the gateway retry\n- gateway retry again\n- gateway retry once more\n- and the gateway retry\n",
+                                        encoding="utf-8")
+    tr = tmp_path / "transcripts"
+    tr.mkdir()
+    # the words on two lines of one transcript: no line holds both, so neither the list nor the chart counts it
+    (tr / "2026-10-06_1400_call.md").write_text("A: the gateway\nB: a retry\n", encoding="utf-8")
+    (tr / "2026-10-05_0900_talk.md").write_text("A: gateway retry\n", encoding="utf-8")
+    world.runner.handlers["work-find.--history"] = lambda argv: ok(work_find.history(
+        root, argv[-1], transcripts=tr, since=argv[argv.index("--since") + 1] if "--since" in argv else None,
+        until=argv[argv.index("--until") + 1] if "--until" in argv else None))
+    logrange_handlers(world)
+    world.runner.handlers["work-find.--events"] = lambda argv: ok(work_find.history_events(
+        root, transcripts=tr, query=argv[argv.index("--") + 1] if "--" in argv else None,
+        since=argv[argv.index("--since") + 1], until=argv[argv.index("--until") + 1]))
+    for days in ({}, {"from": "2026-10-01", "to": TODAY}):
+        q = {"q": "gateway retry", **days}
+        listed = json.loads(world.request("GET", "/api/timeline?" + urllib.parse.urlencode(q), headers=world.cookie)[2])
+        rows = json.loads(world.request("GET", "/api/logrange?" + urllib.parse.urlencode(days), headers=world.cookie)[2])
+        hits = json.loads(world.request("GET", "/api/logrange?" + urllib.parse.urlencode({**q, "rev": rows["rev"]}), headers=world.cookie)[2])
+        other = json.loads(world.request("GET", "/api/logrange?" + urllib.parse.urlencode({**q, "sources": "other"}), headers=world.cookie)[2])
+        counted = len(hits["hits"]) + len(other["events"])
+        assert listed["units"] == counted, (days, listed["units"], len(hits["hits"]), other["events"])
+        assert listed["units_by_kind"] == {"did": len(hits["hits"]), **{k: sum(1 for e in other["events"] if e["kind"] == k)
+                                                                         for k in ("discussed", "closed", "transcript") if any(e["kind"] == k for e in other["events"])}}
+    assert listed["units"] == 3   # the row of 08.10, the meeting (four lines, one entry), the transcript of 05.10
+
+
 def test_the_timeline_takes_a_range_of_days(world):
     world.runner.handlers["work-find.--history"] = history_handler(world)
     world.runner.calls.clear()
