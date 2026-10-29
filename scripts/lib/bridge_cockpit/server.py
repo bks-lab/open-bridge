@@ -64,6 +64,7 @@ from .quick import Quick
 from .review import Review
 from .sessions import Sessions
 from .guide import Guide
+from . import prio
 from .usage import Usage
 from .runner import Runner, RunnerRefused
 from .design import stylesheet
@@ -424,6 +425,8 @@ class App:
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
+                # Prio's second ranker: whether Haiku can read in, its runs left today, the fallback (prio.py)
+                "prio": prio.state(self),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
                 "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(),
                 # the model calls of the Activity tab and the instruction line: the runs left today (activity.py)

@@ -114,6 +114,10 @@ their defaults:
 | `flow.instruct.model` | none | the model of the instruction line, `haiku`, `sonnet` or `opus`; none: the service `cockpit-instruct` of `workflow/ai-services/` (default Haiku) |
 | `flow.attach.enabled` | `false` | Attach a document at the foot of a point's Activity: the file goes into the deliverables folder of the point's open task (never elsewhere), see [Work through](#work-through-flow). Off, the button does not show and the route refuses |
 | `flow.attach.max_mb` | `10` | the largest document Attach takes, in megabytes (1 to 25); the page checks the size before it sends |
+| `flow.prio.fallback` | `none` | `haiku`: a read-in with Jev on a click that fails (Jev busy, 5xx, a timeout, no key; never a refusal such as 401 or 403) runs Haiku instead, while `flow.prio.haiku.enabled`, within its budget, and Prio's foot says so; the daily order never falls back. `none`: the failure stands |
+| `flow.prio.haiku.enabled` | `false` | **Read in with Haiku** at Prio's foot: a small Claude model ranks the points as Jev does, see [Work through](#work-through-flow). Off, the button does not show and the route refuses (`prio_off`). Haiku needs no Jev: `integrations.typesafe` may be off |
+| `flow.prio.haiku.budget_per_day` | `6` | how many read-ins a day Haiku may run (the fallback included); `0` none. A run is counted before the call, also when it fails |
+| `flow.prio.haiku.model` | none | the model of Read in with Haiku, `haiku`, `sonnet` or `opus`; none: the service `cockpit-prio` of `workflow/ai-services/` (default Haiku) |
 | `a2a_sources` | none | further sources of A2A peers beside `infra/a2a-peers/`: a list of `{name, script}`, `script` a skill's own `skills/<skill>/scripts/<name>.py` that reaches agents another way (an access proxy, a broker) and keeps its own credentials. At most four; a bad entry is ignored and named in `status`. Contract under [Peers from a script](#5-asking-claude-the-relay) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
@@ -361,9 +365,10 @@ out a workspace:
   yet** or **No area** last, under **All themes** (or All areas), and **Order
   themes again** at the foot. A click enters one: the list stays as it is, the
   one entered marked, All leads back, and its points stand in the middle only.
-  A theme entered can be renamed. With Jev a third order, **Prio**, stands
+  A theme entered can be renamed. With Jev or Haiku a third order, **Prio**, stands
   beside Themes and Areas (below). On top stands **Running now** as one row
-  with its count while an agent works (below), at the foot **Check tasks** as a
+  with its count while an agent works (below), its only place: no strip of it
+  stands over an overview, and the head line counts the same number. At the foot **Check tasks** as a
   block of its own with what the last check left to decide ("2 to decide",
   "nothing to decide"; "running" during a run, "not run yet" before the first),
   and under it **Not now** with its groups (below): a click on Check tasks shows
@@ -477,17 +482,20 @@ open: the calm card offers up to three to start.
 
 **Running now.** What an agent works on right now is not a point and never
 part of the walk, the overview's table or a batch. It stands on top of the left
-column as one row with its count and a dot that pulses while an entry works; a
-click lists every entry in the middle, and the entries of the side entered stand
-as a strip over the overview, each with its tab, stage, since when, how it is
-known, **To tab** and **View**. An entry opened from that list goes back to it. An entry with a task of its own has a box there, in the same
+column as one row with its count and a dot that pulses while an entry works,
+and only there (one count, the same in the head line and on the start page's
+areas); a click lists every entry in the middle, each with its tab, stage,
+since when, how it is known, **To tab** and **View**. A row of a list an agent
+is at work on carries a small "running" marker. An entry opened from that list goes back to it. An entry with a task of its own has a box there, in the same
 selection as the overview's: it is only for **Merge** with a point (the one an
 agent works on is suggested to stay, so no folder moves from under it) and
 **Done**; a batch never starts, puts off or drops what runs, its line says
 "stays out". That is a start of the cockpit that runs, a live session at
-work or quiet at its prompt (stage `idle`, "finished") that works on a task,
-and a task's own tab at work or quiet; one waiting that is not quiet yet wants
-you and is a point. In the middle every live Claude session of the machine stands
+work that works on a task, and a task's own tab at work. A tab quiet at its
+prompt (stage `idle`, "finished") runs no more: its task stands as a point
+again (In progress, Who works on it says finished), a start that finished is a
+card To look at; one waiting that is not quiet yet wants you and is a point. In
+the middle every live Claude session of the machine at work stands
 there too, with a task or without one and even without a terminal driver, as a
 compact card of the Sessions page (state, title as the jump to its tab, its
 agents, two lines of its tab, one next step, a task to link), one card per tab;
@@ -600,17 +608,51 @@ taken back (`merge_changed`); streams and inbox items do not merge
 (`merge_not_task`), and with any of them ticked the button stays grey and says
 so.
 
-**Prio** (while Jev can order the work page). A third order beside Themes and
-Areas, kept in this browser: the open points by Jev's quadrants as a 2x2 grid
-in the middle, columns urgent and not urgent, rows important and not important.
-Each square shows its count, its first four titles and a suggestion; **Not
-rated by Jev yet** stands under the grid while points have no rating (a tab
-alone, an issue: Jev rates no refs). A click on a square enters it, its points
-in Jev's rank, the walk too. The order is the day's order of the work page (the
-Jev view), asked once per page load when there is none, and counts only while
-it is younger than `flow.rank_max_age_days`. Jev also feeds the suggestions,
-after the triage and the themes: Drop for a point that is neither urgent nor
-important, Let AI do it for one that is urgent and not important.
+**Prio** (while a work page with `jev:` exists and Jev or Haiku can read in).
+A third order beside Themes and Areas, kept in this browser: the open points by
+the quadrants of an Eisenhower matrix as a 2x2 grid in the middle, columns
+urgent and not urgent, rows important and not important. Each square shows its
+count, how many of its points only you can do (only where the ranker said so,
+never because of the square), its first four titles and a suggestion; **Not
+rated yet** stands under the grid while points have no rating (new since the
+read-in). A click on a square enters it, its points in the ranker's rank, the
+walk too.
+
+Two rankers read in, both at all times at the foot of Prio's left column:
+**Read in with Jev** (TypeSafe, while `integrations.typesafe` is on and has its
+key) and **Read in with Haiku** (a small Claude model, `prio.py`, the service
+`cockpit-prio`, while `flow.prio.haiku.enabled`, within
+`flow.prio.haiku.budget_per_day`; it works with Jev off). Either takes every
+point the view shows: tasks, inbox items, tabs, issues and pull requests,
+meeting references, what runs under Running now, also the points the triage
+marked. The page only names the points by key: the server looks each one up
+in what it knows itself (its rows, the work page's sections, its tabs), drops a
+key it cannot place, and holds back a point of a section in `skip_sections` and
+one whose title, detail, task, source or gist on the server holds a `private`
+word; the foot says how many the private words held back. Only the same thing
+goes once: one key twice, or a tab that works on a task of its own (that task);
+a title alike is never a reason. Per point only title, kind, status, due in
+words ("tomorrow", "in 3 days", "overdue 2 days", computed in code), whether an
+agent works on it, its age in days, the triage's one-line gist, the section's
+label and the priority leave the machine, all from the server's item, never a
+path, a detail text or an item id; all in one request (above 60 points in
+batches of 60, at most three). A view too big for one Haiku prompt drops the
+gists, then the points of the lowest priority, and counts them as left out.
+Both answer the same per point (urgency, impact and effort on four levels, only
+you or not, a rank; Haiku adds half a sentence of why), so the grid works the
+same; a point left without urgency or impact gets no square and stands under
+Not rated yet. The order names its ranker: the foot reads "Haiku, 29 Oct 14:10,
+18 points", and the newest order wins whichever ranker made it. With
+`flow.prio.fallback: haiku` a Jev read-in on a click that fails runs Haiku
+instead and the foot says so. Without a click Jev orders once a day by itself
+(the first view of the day once the tabs, sessions and triage are read, as the
+Jev view does); it never falls back, and when it fails no reload asks again that
+day, only a click. Haiku never runs by itself. An order counts
+only while it is younger than `flow.rank_max_age_days`. The ranker also feeds
+the suggestions, after the triage and the themes: Let AI do it for a point that
+is urgent and not important, and Drop for one that is neither, but never for a
+point an agent works on or a task in progress or review that moved within the
+last seven days, and **Tick the suggestions** never ticks a ranker's Drop.
 
 **Themes** (`cockpit.flow.themes.enabled: true`). A small model (`themes.py`,
 one `claude -p` call with the points as data: title, kind, area and the goal of
@@ -840,7 +882,7 @@ from the same function (`flowParts` under `areaScope`, scripts/web/flow.js
 | Column | What Work through holds |
 |---|---|
 | waiting | the tabs that ask, the questions, the lost starts and the return card (its groups that need you, less the finished starts); the tabs among them make the "tabs" of the head line |
-| running | what Running now lists, a quiet session too |
+| running | what Running now lists: what is at work, never a finished (quiet) session |
 | to review | the finished starts |
 | overdue | the points and entries of Running now past their date |
 | tasks | the tasks, the doing and the issues of the walk |
@@ -1674,11 +1716,13 @@ impact and effort, 0 to 3, and whether only you can do it) and its label (the
 section), then the rows Jev did not see. Only the click on "Order with Jev"
 sends anything (`POST /api/jev/rank` with `force`); opening the page asks the
 server for the last order, kept per page in `jev-pages.json` beside the state.
-What goes out is title, the triage's one-line gist, the label and the priority.
-Rows stay home when their section is in `skip_sections`, when their title,
-detail, task, source (who filed an inbox item) or gist holds a `private` word,
-or when the triage says they can close or an agent does them. More rows than
-one request holds go in batches of 20, at most three. The strip names how many
+What goes out is title, kind, status, the triage's one-line gist, the label and
+the priority. Rows stay home when their section is in `skip_sections` or when
+their title, detail, task, source (who filed an inbox item) or gist holds a
+`private` word; what the triage marked goes too, and a row without an inbox item
+or a task by its page key. More rows than one request holds (60) go in batches,
+at most three. Prio's read-in on Work through sends the points of its view
+instead (see Prio above). The strip names how many
 were left out and why, and the tokens the order took. A work page of `group:
 work` has no strip: its By Jev view asks with `daily`, so the first look of a
 day orders by itself and every later one that day shows the kept order, and its
@@ -1735,14 +1779,17 @@ carries today's date, the name from `cockpit.person_name` (else "the user"),
 the sentence `integrations.typesafe.person`, and rows of the dashboard, never a
 detail text, a file, a path, a log line or an inbox event:
 
-- **The Jev tab** sends up to 20 rows it shows (briefing sections first, then
+- **The Jev tab** sends up to 60 rows it shows (briefing sections first, then
   tasks) with only these fields where a row has them: title, why, priority,
   urgency, due, area, gate, bucket, section, task type, inbox state. It sends
   every such row; it has no private filter.
-- **A work page with `jev:`** sends only a row's title, the triage's one-line
-  gist, its section and its priority. It leaves out the sections in
-  `skip_sections`, every row whose title, detail, task, source or gist holds a
-  `private` word, and the rows the triage says can go or an agent does.
+- **A work page with `jev:`** sends only a row's title, kind, status, the
+  triage's one-line gist, its section and its priority. It leaves out the
+  sections in `skip_sections` and every row whose title, detail, task, source
+  or gist holds a `private` word.
+- **Prio's read-in** (Work through) sends per point title, kind, status, due in
+  words, running, age in days and the gist, held back only by the work page's
+  `private` words; with Read in with Haiku the same goes to Claude instead.
 
 - **Auto for the model of a start** (`cockpit.launch_model`, below) sends
   only an item's title, kind and priority.
@@ -3195,7 +3242,8 @@ share or clean up.
 | `chats/` | every chat and agent conversation that left its list, whole, one file a month (`quick-YYYY-MM.jsonl`, `agents-YYYY-MM.jsonl`), never deleted (folder and files readable by you only) | yes: the chats |
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
-| `jev-pages.json` | Jev's order per page | yes: the titles |
+| `jev-pages.json` | the order per page, by Jev or by Haiku (Prio's read-in: which ranker made it, when, how many points, held back, merged, the fallback if one ran) | yes: the titles and Haiku's reasons |
+| `flow-prio.json` | the read-ins with Haiku of the last day (`prio.py`, `cockpit.flow.prio.haiku.budget_per_day`): the time and cost of each call | no |
 | `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, the runs of the last day (the budget), and the last 500 moves of a point from one theme to another (the names as they were, by the AI or a person) for its Activity | yes: theme names and the reasons of the suggestions |
 | `flow-activity.json` | Activity of Work through (`activity.py`): the summary of each point kept with the fingerprint of the rows it read, and the calls of the summary, of the instruction line and of Ask AI on the Files tab (under `files`) per day (their budgets) | yes: the summaries |
 | `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
@@ -3349,8 +3397,11 @@ changes in these ways:
    out of a start, Later and Drop (`working`). Back on runs a task again only
    where a blocker stands; a task whose next step names you
    (`cockpit.person_name`, sent as `work.person` while Work through is on) is a
-   point, not Waits on others. Prio has Ask Jev again at the foot of its left
-   column. A session linked to a task that closed (done, merged) counts as no
+   point, not Waits on others. Prio has Read in with Jev and Read in with
+   Haiku at the foot of its left column (`cockpit.flow.prio`; Haiku is off
+   until `flow.prio.haiku.enabled`).
+   A finished tab no longer counts under Running now, and Running now stands
+   only in the left column. A session linked to a task that closed (done, merged) counts as no
    task from then on and is recognised again; the link itself stays for resume.
 
 ### Upgrading: one place for each thing

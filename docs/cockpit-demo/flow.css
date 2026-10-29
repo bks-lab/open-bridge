@@ -199,6 +199,8 @@
 .flow-ov-open { display: block; padding: 0; border: 0; background: transparent; color: var(--on-surface); font: inherit; font-weight: 600; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .flow-ov-open:hover { text-decoration: underline; }
 .flow-ov-sub { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+/* an agent at work on the row: a small marker only, Running now stands in the left column */
+.flow-ov-running { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; color: var(--on-surface-muted); }
 /* a long ref in the kind chip wraps inside the column instead of pushing the table under the right column */
 .flow-ov-sub .kind { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .flow-ov-sug { min-width: 9em; }
@@ -300,6 +302,9 @@
 .flow-prio-titles { display: flex; flex-direction: column; gap: 2px; margin: 0; padding-left: 16px; font-size: var(--text-sm); }
 .flow-prio-titles li { overflow-wrap: anywhere; }
 .flow-prio-hint { margin-top: auto; color: var(--on-surface-muted); }
+/* how many points of a square the ranker gave to you alone; the two read-in buttons at Prio's foot */
+.flow-prio-me { color: var(--on-surface); }
+.flow-prio-reads { display: flex; flex-wrap: wrap; gap: 6px; }
 .flow-prio-none .flow-prio-sq { width: 100%; min-height: 0; }
 
 /* the detail column beside the page (Details on a row that is no inbox item or task, views/flowside.js) halves the

@@ -595,6 +595,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_describe.py",
     "scripts/lib/bridge_cockpit/themes.py",               # the themes of Work through, ordered by a small model
     "scripts/tests/test_bridge_cockpit_themes.py",
+    "scripts/lib/bridge_cockpit/prio.py",                 # Prio's read-in rows and its second ranker, Haiku
+    "scripts/tests/test_bridge_cockpit_prio.py",
     "scripts/lib/bridge_cockpit/activity.py",             # Work through: the Activity of a point, its documents, attach
     "scripts/tests/test_bridge_cockpit_activity.py",
     "scripts/lib/bridge_cockpit/instruct.py",             # Work through: the instruction line's sentence as checked steps
@@ -735,6 +737,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
     "scripts/tests/bridge_cockpit_flow.test.mjs",
+    "scripts/tests/bridge_cockpit_prio.test.mjs",
     "scripts/tests/bridge_cockpit_settle.test.mjs",
     "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",

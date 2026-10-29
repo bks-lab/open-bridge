@@ -1038,6 +1038,8 @@ export function buildState(now = Date.now(), opts = {}) {
     driver: { caps: DRIVER_CAPS },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: empty ? [] : [aboutConv(now), ...handedConvs(now)] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
+    // Prio's second ranker (prio.py state): switched on in the demo (off by default in a Bridge), six runs a day
+    prio: { haiku: { enabled: true, ready: true, model: 'haiku', budget_left: 6 }, fallback: 'none' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
     triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
@@ -1620,10 +1622,12 @@ function triageState(now, running = null) {
     last: { at: localIso(now - 20 * MIN), count: Object.keys(items).length, cost_ct: 0.42, cost_known: true, calls: 2, model: 'haiku-5-5', duration_sec: 18.5 } }
 }
 
-// a Jev order of a work page (jev.py rank()): the page's task and inbox rows, by an invented priority
-function jevOrder(page, now) {
+// an order of a work page (jev.py rank()) by Jev or Haiku: the rows Prio's read-in sent (every point of the view), else
+// the page's task and inbox rows, by an invented priority; Haiku adds its half sentence of why
+function jevOrder(page, now, ranker = 'jev', rows = null) {
   const keys = []
-  for (const sec of page.sections ?? []) for (const it of sec.items ?? []) {
+  if (Array.isArray(rows)) for (const r of rows) { if (r?.key && !keys.some(k => k.key === r.key)) keys.push({ key: r.key, title: r.title }) }
+  else for (const sec of page.sections ?? []) for (const it of sec.items ?? []) {
     const key = it.inbox ? `inbox:${it.inbox}` : it.task ? `task:${it.task}` : null
     if (key && !keys.some(k => k.key === key)) keys.push({ key, title: it.title })
   }
@@ -1632,10 +1636,13 @@ function jevOrder(page, now) {
     const u = [0.9, 0.3, 0.8, 0.2][i % 4], im = [0.8, 0.9, 0.3, 0.2][i % 4], ef = i % 2 ? 0.3 : 0.6, me = i === 0 ? 0.7 : 0.3
     const priority = Math.round((0.42 * u + 0.38 * im + 0.12 * (1 - ef)) * 1000) / 1000
     return { key: k.key, rank: i + 1, title: k.title, urgency: u, impact: im, effort: ef, only_me: me, first: i ? 0.1 : 0.6, priority, confidence: 0.8,
-      quadrant: u >= 0.5 && im >= 0.5 ? 'now' : im >= 0.5 ? 'plan' : u >= 0.5 ? 'hand' : 'drop', who: me >= 0.5 ? 'me' : 'delegate' }
+      quadrant: u >= 0.5 && im >= 0.5 ? 'now' : im >= 0.5 ? 'plan' : u >= 0.5 ? 'hand' : 'drop', who: me >= 0.5 ? 'me' : 'delegate',
+      reason: ranker === 'haiku' ? 'an invented reason of the demo' : null }
   })
-  return { at_ms: now, day: isoIn(0, now), took_ms: 2400, calls: 1, sent: items.length, skipped: { private: 0, section: 0, triage: 0, over: 0 },
-    first: items[0]?.key ?? null, items, usage: { input_tokens: 1840, output_tokens: 220 }, price: null }
+  return { at_ms: now, day: isoIn(0, now), took_ms: 2400, calls: ranker === 'jev' ? 1 : 0, sent: items.length,
+    skipped: { private: 0, section: 0, same: 0, over: 0 }, first: items[0]?.key ?? null, items, ranker,
+    model: ranker === 'haiku' ? 'haiku' : 'jev-1.14.0', fallback: null,
+    usage: ranker === 'jev' ? { input_tokens: 1840, output_tokens: 220 } : { input_tokens: null, output_tokens: null }, price: null }
 }
 
 // ---------------------------------------------------------------- Work through, round 3: the Activity of a point
@@ -2199,14 +2206,21 @@ export function createMockTransport(opts = {}) {
         wait(() => { state.triage = opts.empty ? { ...state.triage, running: null } : triageState(now()); emit('triage', state.triage) }, 3000)
         return { status: 202, ok: true, data: { ok: true, triage: state.triage }, error: null }
       }
-      if (path.startsWith('/api/jev/') && !jev) return fail(404, 'jev_off', 'Jev is off')
+      // Jev off refuses what would call Jev; the kept order and a read-in with Haiku work without it (jev.py _asks_jev)
+      const ranker = body?.ranker ?? 'jev'
+      if (path.startsWith('/api/jev/') && !jev && (path !== '/api/jev/rank' || (ranker === 'jev' && (body?.force || body?.daily)))) return fail(404, 'jev_off', 'Jev is off')
       if (path === '/api/jev/rank') {
         const page = state.model.pages.find(p => p.id === body?.page && p.jev)
         if (!page) return fail(404, 'not_found', 'no page with jev: under that id')
         const day = isoIn(0, now())
-        if (body.force || (body.daily && orders[page.id]?.day !== day)) {
+        if (ranker === 'haiku' && body.force && !state.prio?.haiku?.enabled) return fail(409, 'prio_off', 'Reading in with Haiku is switched off')
+        if (ranker === 'haiku' && body.force && !(state.prio?.haiku?.budget_left > 0)) return fail(429, 'prio_budget', 'Today\'s read-ins with Haiku are used up')
+        if (body.force || (body.daily && ranker === 'jev' && orders[page.id]?.day !== day)) {
           await new Promise(res => wait(res, 1200))
-          orders[page.id] = jevOrder(page, now())
+          orders[page.id] = jevOrder(page, now(), ranker, body.rows)
+          if (ranker === 'haiku') {
+            state.prio = { ...state.prio, haiku: { ...state.prio.haiku, budget_left: state.prio.haiku.budget_left - 1 } }
+          }
         }
         return ok({ ok: true, page: page.id, order: orders[page.id] ?? null, today: { day, ratings: 0, input_tokens: 0, output_tokens: 0, unknown: 0 } })
       }

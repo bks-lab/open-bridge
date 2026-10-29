@@ -21,6 +21,7 @@ from . import activity as act
 from . import describe as dsc
 from . import guide as gd
 from . import origin as og
+from . import prio as pr
 from . import themes as thm
 from . import ticker as tk
 
@@ -47,9 +48,10 @@ FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 
 # Running now as work on that task (sessions.py infer), without a link by hand; only while the page is on
 # themes: the nested block of the themes the page groups its points by (themes.py, cockpit.flow.themes); summary,
 # instruct and attach the nested blocks of the Activity tab and the instruction line (activity.py, instruct.py), each
-# off by default, the two that call a model within a budget a day
+# off by default, the two that call a model within a budget a day; prio the nested block of Prio's second ranker and
+# its fallback (prio.py, cockpit.flow.prio: fallback none or haiku, haiku {enabled, budget_per_day, model}, off)
 FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "infer_sessions",
-             "themes", "summary", "instruct", "attach")
+             "themes", "summary", "instruct", "attach", "prio")
 FLOW_REASON_MAX = 80
 FLOW_REASONS_MAX = 12
 FLOW_RETURN_MAX = 3600
@@ -188,7 +190,7 @@ def flow_defaults() -> dict:
     return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20,
             **{key: default for key, default, _low in FLOW_INTS}, "infer_sessions": True, "themes": thm.defaults(),
             "summary": act.ai_defaults(act.SUMMARY_BUDGET), "instruct": act.ai_defaults(act.INSTRUCT_BUDGET),
-            "attach": act.attach_defaults()}
+            "attach": act.attach_defaults(), "prio": pr.defaults()}
 
 
 def files_search_defaults() -> dict:
@@ -284,6 +286,7 @@ def flow_of(value: Any) -> dict:
     out["summary"] = act.ai_of(value.get("summary"), act.SUMMARY_BUDGET)
     out["instruct"] = act.ai_of(value.get("instruct"), act.INSTRUCT_BUDGET)
     out["attach"] = act.attach_of(value.get("attach"))
+    out["prio"] = pr.prio_of(value.get("prio"))
     return out
 
 
@@ -316,6 +319,8 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
             out += act.ai_check(v, used[key], at, act.SERVICE if key == "summary" else act.INSTRUCT_SERVICE)
         elif key == "attach":
             out += act.attach_check(v, used["attach"], at)
+        elif key == "prio":
+            out += pr.check(v, used["prio"], at)
         elif key in lows:
             if not _is_int(v):
                 out.append(f"{at}: must be a whole number, got {_show(v)}; using {used[key]}")
