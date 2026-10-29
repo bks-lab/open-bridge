@@ -691,6 +691,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/reply.js",
     "scripts/web/views/tabs.js",
     "scripts/web/views/timeline.js",          # a page's search: its rows, every day before, the AI
+    "scripts/web/views/logpage.js",           # a page's log layout: the log by hour, the rail beside it
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",
     "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js

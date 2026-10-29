@@ -99,8 +99,9 @@ function sectionsShort(page, s) {
  *  own rows as one types; Every day (Enter, or the switch to it) lists the history's lines by day (/api/timeline: the
  *  log and its archive, the meetings, the closed tasks, the raw transcripts); Ask AI (only with cockpit.files_search
  *  on, Enter or its button) asks when it was done or discussed. Switching keeps the text; only Today filters the rows.
- *  `render(q)` draws the sections with the words typed, '' when nothing filters */
-export function PageSearch({ page, s, c, render }) {
+ *  `render(q)` draws the sections with the words typed, '' when nothing filters; with `split` (the log layout,
+ *  views/logpage.js) it also gets {mode, answer, timeline} and sets the answer and the timeline itself */
+export function PageSearch({ page, s, c, render, split = false }) {
   const w = T().pageSearch
   const [q, setQ] = useState('')
   const [mode, setMode] = useState('today')
@@ -129,6 +130,8 @@ export function PageSearch({ page, s, c, render }) {
     const wait = setTimeout(() => go('all'), 450)
     return () => clearTimeout(wait)
   }, [now, words])
+  const answer = now === 'ai' ? html`<${TimelineAnswer} ask=${s.timelineAsk} c=${c} />` : null
+  const timeline = now === 'all' ? html`<${Timeline} find=${s.timeline} c=${c} />` : null
   return html`<div class="psearch">
     <form class="psearch-bar" role="search" aria-label=${w.label} onSubmit=${e => { e.preventDefault(); go() }}>
       <label class="sr-only" for=${id}>${w.label}</label>
@@ -145,8 +148,8 @@ export function PageSearch({ page, s, c, render }) {
     ${now === 'ai' && fs?.block?.length ? html`<p class="psearch-note muted small">${w.private(fs.block)}</p>` : null}
     ${filtering && !short.length && !pageHolds(page, s, words) ? html`<p class="psearch-none muted small">${w.todayNone}
       <button type="button" class="btn-link small" onClick=${() => pick('all')}>${w.mode.all}</button></p>` : null}
-    ${now === 'ai' ? html`<${TimelineAnswer} ask=${s.timelineAsk} c=${c} />` : null}
-    ${now === 'all' ? html`<${Timeline} find=${s.timeline} c=${c} />` : null}
+    ${split ? null : answer}
+    ${split ? null : timeline}
   </div>
-  ${render(filtering ? words : '')}`
+  ${split ? render(filtering ? words : '', { mode: now, answer, timeline }) : render(filtering ? words : '')}`
 }

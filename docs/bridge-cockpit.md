@@ -1446,6 +1446,35 @@ anything is built, and a second call answers from the rest with the days and
 the lines it names. Both calls run without tools, settings or session, count
 as one question of `files_search.budget_per_day`, and take its model.
 
+**A page's log layout.** A section with `view: log` draws its rows as a log:
+under sticky hour heads (`13:00`; an earlier day's row under its date), each
+row its time, the glyph of its activity type, its context as a chip and its
+text clamped to two lines (a click opens it in full and offers its detail),
+the typed words marked, the first 100 rows and a button for the next ones. A
+section with `place: rail` stands in a narrow column beside the main one, its
+rows as tiles two to a row: the name, the `when` with its leading number large
+(a `commits` row: "3 today"), the sparkline at the start of its detail as bars,
+the rest (the branch) and the row's web page as the tile's link; a dim row
+(nothing today) is named in one quiet line below. A page with either key takes
+the layout: its head names the day, the title and how many log lines in how
+many topics; the search bar (with `search: true`) spans both columns; the rail
+also carries the log's contexts as topic chips with their counts, and a chip
+filters the log to its topic together with the typed words (the head of the
+log counts the hits and names the topic). In **Every day** the timeline stands
+in the main column in place of the log, in **Ask AI** the answer stands above
+it; the rail stays. Under 900 pixels the columns stack, the rail first.
+
+```yaml
+view:
+  pages:
+    - id: day
+      title: Daily log
+      search: true
+      sections:
+        - {id: activity, view: log}      # the log by hour, topic chips beside it
+        - {id: commits, place: rail}     # repository tiles in the rail
+```
+
 **Overview pages and tokens.** A profile page with `overview: true` opens
 with a board of tiles: one per section, with its count, its loudest row and a
 colour for the worst tone (a quota gauge shows its fullest value, a plain gauge
