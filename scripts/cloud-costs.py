@@ -12,8 +12,13 @@ identity/accounts/*.yaml that opt in with
       provider: azure                 # optional, else cloud.provider, the azure shape or the id prefix
       subscriptions: [<id>]           # azure, default every id under `subscriptions:`
       group_by: service               # azure: service | resource_group | tag:<name>
-      profile: <name>                 # aws CLI profile
+      profile: <name>                 # aws CLI profile, twilio CLI profile
       key_ref: keychain://<service>/<account>     # openai, anthropic: an ADMIN key, in any declared store
+      split: project                  # one entry per part instead of one per account (<id>/<part>):
+                                      #   openai: project; azure: resource_group | tag:<name>
+      parts: {<part>: <name>}         # optional, names a part; parts with the same name are one entry
+      budgets: {<part or name>: 20}   # optional, a budget per part, in `currency`
+      organization_id: <id>           # elastic: the Elastic Cloud organization (default: the key's first)
       bigquery_table: <project.dataset.table>     # gcp: the Cloud Billing export
       budget_month: 50                # optional, in `currency`
       currency: EUR                   # optional, the currency of budget_month (contracts: pricing.currency)
@@ -23,8 +28,8 @@ plus the contracts in identity/contracts/*.yaml with `costs: {enabled: true}`, s
 days. Writes one stamped JSON file ({schema, kind, host, at, currency, days, today, fx, accounts})
 atomically, which scripts/bridge-resources.py turns into rows (`costs --source`).
 
-Logins: azure, aws and gcp use only their CLIs (az, aws, bq) and the login those hold; openai and
-anthropic read an admin key through the secrets skill (skills/secrets), only to make the call, never
+Logins: azure, aws, gcp and twilio use only their CLIs (az, aws, bq, twilio) and the login those hold; openai,
+anthropic and elastic read an admin key through the secrets skill (skills/secrets), only to make the call, never
 stored or printed. A failure says why in its entry and is classified: `auth` (not logged in, expired, no key:
 the entry carries the command to run in `login`), `access` (logged in, a permission missing) or
 `error`. One failing account never stops the others. Amounts are converted to EUR with the ECB's
@@ -57,9 +62,13 @@ TIMEOUT = 60
 ECB_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 AZURE_API = "https://management.azure.com/subscriptions/{sub}/providers/Microsoft.CostManagement/query?api-version=2023-11-01"
 OPENAI_API = "https://api.openai.com/v1/organization/costs"
+OPENAI_PROJECTS = "https://api.openai.com/v1/organization/projects?limit=100&include_archived=true"
 ANTHROPIC_API = "https://api.anthropic.com/v1/organizations/cost_report"
+ELASTIC_API = "https://api.elastic-cloud.com"
 MAX_GROUPS = 8          # per day, the smallest beyond seven summed into "other"
 PROVISIONAL_DAYS = 2    # today and yesterday: providers settle late
+SLOW_TIMEOUT = 600      # the twilio CLI pages through every usage category of every day
+CREDIT_TYPES = {"credit", "refund"}     # aws record types that lower the bill without being usage
 
 
 class CostError(RuntimeError):
@@ -124,17 +133,29 @@ def window(days: int, today: dt.date) -> tuple[dt.date, dt.date]:
     return today - dt.timedelta(days=max(days, 1) - 1), today
 
 
-def _row(day: str, amount: float, currency: str, group: str | None) -> dict:
-    return {"day": day, "amount": float(amount), "currency": (currency or "USD").upper(),
-            "groups": {group or "other": float(amount)}}
+def _row(day: str, amount: float, currency: str, group: str | None, part: str | None = None) -> dict:
+    row = {"day": day, "amount": float(amount), "currency": (currency or "USD").upper(),
+           "groups": {group or "other": float(amount)}}
+    if part is not None:
+        row["part"] = part
+    return row
+
+
+def _credit_row(day: str, amount: float, currency: str) -> dict:
+    """A credit or refund: it lowers what is paid, and is not usage of any group."""
+    return {"day": day, "amount": float(amount), "currency": (currency or "USD").upper(), "groups": {},
+            "credits": float(amount)}
 
 
 def merge_rows(rows: list[dict]) -> dict:
-    """Rows of one account (several per day: per group, per subscription) summed per day."""
+    """Rows of one account (several per day: per group, per subscription) summed per day. `amount` is what is
+    paid; credits, where a provider reports them, are part of it and also kept apart as `credits`."""
     out: dict = {}
     for r in rows:
         d = out.setdefault(r["day"], {"amount": 0.0, "currency": r.get("currency") or "USD", "groups": {}})
         d["amount"] += float(r.get("amount") or 0)
+        if r.get("credits"):
+            d["credits"] = d.get("credits", 0.0) + float(r["credits"])
         for g, v in (r.get("groups") or {}).items():
             d["groups"][g] = d["groups"].get(g, 0.0) + float(v or 0)
     return out
@@ -144,9 +165,9 @@ def _last_line(res) -> str:
     return ((res.stderr or res.stdout or "").strip().splitlines() or ["failed"])[-1][:200]
 
 
-def _cli(argv: list[str], run: Callable, classify: Callable[[str], CostError | None]) -> Any:
+def _cli(argv: list[str], run: Callable, classify: Callable[[str], CostError | None], timeout: int = TIMEOUT) -> Any:
     try:
-        res = run(argv, capture_output=True, text=True, timeout=TIMEOUT)
+        res = run(argv, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError:
         raise CostError(f"{argv[0]} is not installed on this machine")
     if res.returncode != 0:
@@ -183,10 +204,14 @@ def azure(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, 
         raise CostError("no subscriptions declared (costs.subscriptions or subscriptions:)")
     start, end = window(days, today)
     group_by = str(_costs(acc).get("group_by") or "service")
+    split = _split(acc) if _split(acc) == "resource_group" or str(_split(acc) or "").startswith("tag:") else None
+    if split and (group_by == split or group_by.startswith("tag:")):
+        group_by = "service"            # one dimension splits, the other groups: two tags cannot both be read
+    grouping = (azure_grouping(split) if split else []) + azure_grouping(group_by)
     body = json.dumps({"type": "ActualCost", "timeframe": "Custom",
                        "timePeriod": {"from": f"{start}T00:00:00Z", "to": f"{end}T23:59:59Z"},
                        "dataset": {"granularity": "Daily", "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
-                                   "grouping": azure_grouping(group_by)}})
+                                   "grouping": grouping}})
     rows: list[dict] = []
     for sub in subs:
         def classify(text: str, sub=sub) -> CostError | None:
@@ -211,6 +236,7 @@ def azure(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, 
             cost_i = idx.get("Cost", idx.get("PreTaxCost", idx.get("CostUSD")))
             group_i = idx.get("TagValue") if group_by.startswith("tag:") else idx.get(
                 "ResourceGroupName" if group_by == "resource_group" else "ServiceName")
+            part_i = None if not split else idx.get("TagValue") if split.startswith("tag:") else idx.get("ResourceGroupName")
             if cost_i is None or "UsageDate" not in idx:
                 if props.get("rows"):
                     raise CostError("unexpected answer from Cost Management (no Cost or UsageDate column)")
@@ -222,7 +248,8 @@ def azure(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, 
                     if group_by.startswith("tag:") and not group:
                         group = "(untagged)"
                     cur = r[idx["Currency"]] if "Currency" in idx else "EUR"
-                    rows.append(_row(day, float(r[cost_i] or 0), cur, str(group) if group else None))
+                    part = (str(r[part_i] or "") or "(none)") if part_i is not None else None
+                    rows.append(_row(day, float(r[cost_i] or 0), cur, str(group) if group else None, part))
             url, pages = props.get("nextLink"), pages + 1
     return rows
 
@@ -247,7 +274,8 @@ def aws(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, op
     while pages < 20:
         argv = ["aws", "ce", "get-cost-and-usage", "--time-period", f"Start={start},End={end + dt.timedelta(days=1)}",
                 "--granularity", "DAILY", "--metrics", "UnblendedCost",
-                "--group-by", "Type=DIMENSION,Key=SERVICE", "--output", "json"]
+                # one --group-by with both values: the aws CLI keeps only the last of two flags
+                "--group-by", "Type=DIMENSION,Key=SERVICE", "Type=DIMENSION,Key=RECORD_TYPE", "--output", "json"]
         if profile:
             argv += ["--profile", str(profile)]
         if token:
@@ -258,8 +286,13 @@ def aws(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, op
             for g in period.get("Groups") or []:
                 m = (g.get("Metrics") or {}).get("UnblendedCost") or {}
                 amount = float(m.get("Amount") or 0)
-                if day and amount:
-                    rows.append(_row(day, amount, m.get("Unit") or "USD", (g.get("Keys") or [None])[0]))
+                keys = (g.get("Keys") or []) + [None, None]
+                if not (day and amount):
+                    continue
+                if str(keys[1] or "").lower() in CREDIT_TYPES:
+                    rows.append(_credit_row(day, amount, m.get("Unit") or "USD"))
+                else:
+                    rows.append(_row(day, amount, m.get("Unit") or "USD", keys[0]))
         token, pages = data.get("NextPageToken"), pages + 1
         if not token:
             break
@@ -343,21 +376,44 @@ def _paged(url: str, headers: dict, opener: Callable, cap: int = 20) -> list:
     return out
 
 
+def _split(acc: dict) -> str | None:
+    value = _costs(acc).get("split")
+    return str(value) if value else None
+
+
+def openai_projects(headers: dict, opener: Callable) -> dict:
+    """{project id: name} of the organization; empty when the key may not list them (the ids stay)."""
+    try:
+        body = http_json(OPENAI_PROJECTS, headers, opener) or {}
+    except CostError:
+        return {}
+    return {str(p.get("id")): str(p.get("name")) for p in body.get("data") or [] if p.get("id") and p.get("name")}
+
+
 def openai(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run,
            opener: Callable = urllib.request.urlopen, root: Path = ROOT) -> list[dict]:
     key = read_key(_costs(acc).get("key_ref"), run, root)
     if not key.startswith("sk-admin-"):
         raise CostError("needs an admin key (sk-admin-...)", "auth", replace=True)
+    headers = {"Authorization": f"Bearer {key}"}
+    by_project = _split(acc) == "project"
     start, _ = window(days, today)
     since = int(dt.datetime.combine(start, dt.time(), dt.timezone.utc).timestamp())
     url = f"{OPENAI_API}?start_time={since}&bucket_width=1d&limit={min(days, 180)}&group_by=line_item"
+    if by_project:
+        url += "&group_by=project_id"
     rows = []
-    for bucket in _paged(url, {"Authorization": f"Bearer {key}"}, opener):
+    for bucket in _paged(url, headers, opener):
         day = dt.datetime.fromtimestamp(int(bucket.get("start_time") or 0), dt.timezone.utc).date().isoformat()
         for r in bucket.get("results") or []:
             amount = r.get("amount") or {}
             if float(amount.get("value") or 0):
-                rows.append(_row(day, float(amount["value"]), amount.get("currency") or "usd", r.get("line_item")))
+                part = str(r.get("project_id") or "none") if by_project else None
+                rows.append(_row(day, float(amount["value"]), amount.get("currency") or "usd", r.get("line_item"), part))
+    if by_project:
+        names = openai_projects(headers, opener)
+        for r in rows:
+            r["part_name"] = names.get(r["part"])
     return rows
 
 
@@ -377,6 +433,33 @@ def anthropic(acc: dict, days: int, today: dt.date, run: Callable = subprocess.r
             cents = float(r.get("amount") or 0)          # a decimal string, in cents
             if day and cents:
                 rows.append(_row(day, cents / 100, r.get("currency") or "USD", r.get("description")))
+    return rows
+
+
+def elastic(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run,
+            opener: Callable = urllib.request.urlopen, root: Path = ROOT) -> list[dict]:
+    """Elastic Cloud: the organization's daily cost chart (v2 billing API), one group per deployment. Amounts are
+    in ECU, which Elastic bills one to one in USD. Needs an Elastic Cloud API key that may read billing."""
+    key = read_key(_costs(acc).get("key_ref"), run, root)
+    headers = {"Authorization": f"ApiKey {key}"}
+    base = str(_costs(acc).get("api_base") or ELASTIC_API).rstrip("/")
+    org = _costs(acc).get("organization_id")
+    if not org:
+        orgs = (http_json(f"{base}/api/v1/organizations", headers, opener) or {}).get("organizations") or []
+        if not orgs:
+            raise CostError("this key sees no Elastic Cloud organization", "access")
+        org = orgs[0].get("id")
+    start, end = window(days, today)
+    query = urllib.parse.urlencode({"from": f"{start}T00:00:00Z", "to": f"{end + dt.timedelta(days=1)}T00:00:00Z",
+                                    "bucketing_strategy": "daily"}, safe=":")
+    body = http_json(f"{base}/api/v2/billing/organizations/{urllib.parse.quote(str(org))}/charts?{query}", headers, opener) or {}
+    rows = []
+    for item in body.get("data") or []:
+        ts = int(item.get("timestamp") or 0)
+        day = dt.datetime.fromtimestamp(ts / 1000 if ts > 10 ** 11 else ts, dt.timezone.utc).date().isoformat()
+        for v in item.get("values") or []:
+            if float(v.get("value") or 0):
+                rows.append(_row(day, float(v["value"]), "USD", v.get("name") or v.get("id")))
     return rows
 
 
@@ -417,12 +500,65 @@ def gcp(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, op
     return rows
 
 
+TWILIO_AUTH = re.compile(r"twilio login|Could not find profile|Authenticat|\b401\b|credentials", re.I)
+TWILIO_DENIED = re.compile(r"\b403\b|not authori[sz]ed|permission", re.I)
+
+
+def _deepest(priced: dict) -> dict:
+    """Twilio's usage categories nest by name (calls, calls-inbound, calls-inbound-local): keep only the deepest
+    priced ones, so no amount is counted twice."""
+    return {c: v for c, v in priced.items() if not any(o != c and o.startswith(c + "-") for o in priced)}
+
+
+def twilio(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, opener: Callable | None = None) -> list[dict]:
+    """Daily usage records through the logged-in twilio CLI: the day's total is `totalprice`, the groups are the
+    deepest priced categories, and whatever of the total they do not explain is `other`."""
+    start, end = window(days, today)
+    argv = ["twilio", "api:core:usage:records:daily:list", "--start-date", str(start), "--end-date", str(end),
+            "--limit", "100000", "-o", "json"]
+    profile = _costs(acc).get("profile")
+    if profile:
+        argv += ["-p", str(profile)]
+
+    def classify(text: str) -> CostError | None:
+        if TWILIO_AUTH.search(text):
+            return CostError("the twilio CLI has no login on this machine", "auth")
+        if TWILIO_DENIED.search(text):
+            return CostError("this twilio login may not read usage records", "access")
+        return None
+    answer = _cli(argv, run, classify, timeout=SLOW_TIMEOUT)
+    if not isinstance(answer, list):
+        raise CostError("unexpected answer from twilio (no usage records)")
+    per_day: dict = {}
+    for r in answer:
+        price = float(r.get("price") or 0)
+        if price:
+            per_day.setdefault(str(r.get("startDate"))[:10], {})[str(r.get("category"))] = (price, r.get("priceUnit") or "usd")
+    rows = []
+    for day, cats in sorted(per_day.items()):
+        total = cats.pop("totalprice", None)
+        if not total:
+            continue
+        amount, unit = total
+        groups = _deepest({c: v for c, (v, _u) in cats.items()})
+        rest = amount - sum(groups.values())
+        if round(rest, 4) > 0:
+            groups["other"] = groups.get("other", 0.0) + rest
+        row = _row(day, amount, unit, None)
+        row["groups"] = groups
+        rows.append(row)
+    return rows
+
+
 def cloudflare(acc: dict, days: int, today: dt.date, run: Callable | None = None, opener: Callable | None = None) -> list[dict]:
     raise CostError("Cloudflare has no daily cost API; declare the plan as a contract with costs.enabled")
 
 
-ADAPTERS = {"azure": azure, "aws": aws, "openai": openai, "anthropic": anthropic, "gcp": gcp, "cloudflare": cloudflare}
-GROUPING = {"openai": "line_item", "anthropic": "description", "gcp": "service", "cloudflare": None}
+ADAPTERS = {"azure": azure, "aws": aws, "openai": openai, "anthropic": anthropic, "gcp": gcp, "twilio": twilio,
+            "elastic": elastic, "cloudflare": cloudflare}
+KEYED = (openai, anthropic, elastic)     # read a key through the secrets skill of this Bridge
+GROUPING = {"openai": "line_item", "anthropic": "description", "gcp": "service", "twilio": "category",
+            "elastic": "deployment", "cloudflare": None}
 
 
 # ---------------------------------------------------------------- what to run when a login is missing
@@ -443,7 +579,10 @@ def login_argv(acc: dict, provider: str, root: Path = ROOT, replace: bool = Fals
         return ["aws", "login"] + (["--profile", str(profile)] if profile else [])
     if provider == "gcp":
         return ["gcloud", "auth", "login", "--update-adc"]
-    if provider in ("openai", "anthropic"):
+    if provider == "twilio":
+        profile = _costs(acc).get("profile")
+        return ["twilio", "login"] + (["-p", str(profile)] if profile else [])
+    if provider in ("openai", "anthropic", "elastic"):
         ref = _costs(acc).get("key_ref") or f"keychain://{provider}-admin/{acc.get('id')}"
         argv = ["bash", str(Path(root) / "skills" / "secrets" / "secrets.sh"), "store", str(ref),
                 "--root", str(root), "--from", "prompt"]
@@ -453,10 +592,11 @@ def login_argv(acc: dict, provider: str, root: Path = ROOT, replace: bool = Fals
 
 def login_hint(acc: dict, provider: str, host: str) -> str:
     where = {"openai": "platform.openai.com > Settings > Organization > Admin keys",
-             "anthropic": "console.anthropic.com > Settings > Admin keys"}.get(provider)
+             "anthropic": "console.anthropic.com > Settings > Admin keys",
+             "elastic": "cloud.elastic.co > Organization > API keys (a role that may read billing)"}.get(provider)
     if where:
         lead = "" if _costs(acc).get("key_ref") else "Add this key_ref to the account's costs block. "
-        kind = "an admin key" if provider == "openai" else "an Admin API key"
+        kind = {"openai": "an admin key", "elastic": "an Elastic Cloud API key"}.get(provider, "an Admin API key")
         return (f"{lead}Create {kind} at {where}, then store it with this command; the Bridge keeps it in the "
                 "declared secret store and reads it only for the call.")
     return f"Log in on {host} with this command; the next run reads the costs."
@@ -480,9 +620,13 @@ def series(merged: dict, days: int, today: dt.date, factor: float, provisional: 
     for n in range(max(days, 1)):
         day = start + dt.timedelta(days=n)
         d = merged.get(day.isoformat()) or {}
-        out.append({"day": day.isoformat(), "amount": round(float(d.get("amount") or 0) * factor, 2),
-                    "provisional": provisional and (today - day).days < PROVISIONAL_DAYS,
-                    "groups": _round_groups(d.get("groups") or {}, factor)})
+        entry = {"day": day.isoformat(), "amount": round(float(d.get("amount") or 0) * factor, 2),
+                 "provisional": provisional and (today - day).days < PROVISIONAL_DAYS,
+                 "groups": _round_groups(d.get("groups") or {}, factor)}
+        if round(float(d.get("credits") or 0) * factor, 2):
+            entry["credits"] = round(float(d["credits"]) * factor, 2)
+            entry["used"] = round(entry["amount"] - entry["credits"], 2)
+        out.append(entry)
     return out
 
 
@@ -537,27 +681,11 @@ def _budget_currency(con: dict, fallback: str = "EUR") -> str:
 
 def account_entry(acc: dict, days: int, today: dt.date, run: Callable, opener: Callable, rates: dict, host: str,
                   adapter: Callable | None = None, provider: str | None = None, root: Path = ROOT) -> dict:
-    prov = provider or provider_of(acc)
-    entry = _base(acc, prov, "usage")
-    entry["group_by"] = str(_costs(acc).get("group_by") or "service") if prov in ("azure", "aws") else GROUPING.get(prov)
-    fn = adapter or ADAPTERS.get(prov)
-    try:
-        if fn is None:
-            raise CostError(f"no cost adapter for provider {prov} yet")
-        rows = fn(acc, days, today, run, opener, root=root) if fn in (openai, anthropic) else fn(acc, days, today, run, opener)
-        merged = merge_rows(rows)
-    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as e:
-        kind = getattr(e, "kind", "error")
-        entry.update(error=str(e)[:300], error_kind=kind if kind in ("auth", "access") else "error")
-        if entry["error_kind"] == "auth":
-            entry["login"] = {"argv": login_argv(acc, prov, root, replace=bool(getattr(e, "replace", False))),
-                              "hint": login_hint(acc, prov, host)}
-        set_budget(entry, _budget_currency(acc), rates)
-        return entry
-    except Exception as e:      # an answer of an unexpected shape fails this account, never the run
-        entry.update(error=f"unexpected answer from {prov} ({type(e).__name__})", error_kind="error")
-        set_budget(entry, _budget_currency(acc), rates)
-        return entry
+    """The whole account as one entry (a split account summed over its parts)."""
+    return account_entries(acc, days, today, run, opener, rates, host, adapter, provider, root, split=False)[0]
+
+
+def _fill(entry: dict, merged: dict, days: int, today: dt.date, rates: dict, budget_currency: str) -> dict:
     currency = next((d["currency"] for d in merged.values() if d.get("currency")), "EUR")
     factor = _factor(currency, rates)
     entry["original_currency"] = currency
@@ -566,10 +694,72 @@ def account_entry(acc: dict, days: int, today: dt.date, run: Callable, opener: C
     entry["ok"] = True
     entry["days"] = series(merged, days, today, factor, provisional=True)
     entry["last_complete_day"] = (today - dt.timedelta(days=PROVISIONAL_DAYS)).isoformat()
-    set_budget(entry, _budget_currency(acc), rates)
+    set_budget(entry, budget_currency, rates)
     # the provider answered: no rows means nothing cost money in the window, which is 0, not unknown
     entry["month_to_date"], entry["forecast_month"] = month_figures(entry["days"], today)
+    if any("credits" in d for d in entry["days"]):
+        prefix = today.strftime("%Y-%m-")
+        month = [d for d in entry["days"] if d["day"].startswith(prefix)]
+        entry["credits_month"] = round(sum(d.get("credits", 0.0) for d in month), 2)
+        entry["used_month"] = round(entry["month_to_date"] - entry["credits_month"], 2)
     return entry
+
+
+def account_entries(acc: dict, days: int, today: dt.date, run: Callable, opener: Callable, rates: dict, host: str,
+                    adapter: Callable | None = None, provider: str | None = None, root: Path = ROOT,
+                    split: bool = True) -> list[dict]:
+    """The account's entries: one, or with `costs.split` one per part the provider reported (id `<id>/<part>`,
+    `parent` the account), each with its own budget from `costs.budgets`. A failure is one entry for the account."""
+    prov = provider or provider_of(acc)
+    entry = _base(acc, prov, "usage")
+    entry["group_by"] = str(_costs(acc).get("group_by") or "service") if prov in ("azure", "aws") else GROUPING.get(prov)
+    fn = adapter or ADAPTERS.get(prov)
+    try:
+        if fn is None:
+            raise CostError(f"no cost adapter for provider {prov} yet")
+        rows = fn(acc, days, today, run, opener, root=root) if fn in KEYED else fn(acc, days, today, run, opener)
+        merged = merge_rows(rows)
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as e:
+        kind = getattr(e, "kind", "error")
+        entry.update(error=str(e)[:300], error_kind=kind if kind in ("auth", "access") else "error")
+        if entry["error_kind"] == "auth":
+            entry["login"] = {"argv": login_argv(acc, prov, root, replace=bool(getattr(e, "replace", False))),
+                              "hint": login_hint(acc, prov, host)}
+        set_budget(entry, _budget_currency(acc), rates)
+        return [entry]
+    except Exception as e:      # an answer of an unexpected shape fails this account, never the run
+        entry.update(error=f"unexpected answer from {prov} ({type(e).__name__})", error_kind="error")
+        set_budget(entry, _budget_currency(acc), rates)
+        return [entry]
+    parts = sorted({str(r["part"]) for r in rows if r.get("part") is not None})
+    if not (split and _split(acc) and parts):
+        return [_fill(entry, merged, days, today, rates, _budget_currency(acc))]
+    named = _costs(acc).get("parts") if isinstance(_costs(acc).get("parts"), dict) else {}
+    budgets = _costs(acc).get("budgets") if isinstance(_costs(acc).get("budgets"), dict) else {}
+    by_name: dict[str, list[str]] = {}
+    for part in parts:
+        mine = [r for r in rows if str(r.get("part")) == part]
+        name = str(named.get(part) or next((r["part_name"] for r in mine if r.get("part_name")), None) or
+                   ("no project" if part == "none" else part))
+        by_name.setdefault(name, []).append(part)
+    out = []
+    for name, keys in by_name.items():
+        # parts named alike are one entry (two resource groups of one project), id'd by the name
+        mine = [r for r in rows if str(r.get("part")) in keys]
+        budget = next((budgets[k] for k in keys + [name] if k in budgets), None)
+        e = {**entry, "id": f"{entry['id']}/{keys[0] if len(keys) == 1 else _slug(name)}",
+             "display_name": f"{entry['display_name']}: {name}", "parent": entry["id"],
+             "budget_month": float(budget) if isinstance(budget, (int, float)) and not isinstance(budget, bool) else None}
+        if len(keys) == 1:
+            e["part"] = keys[0]
+        else:
+            e["parts"] = keys
+        out.append(_fill(e, merge_rows(mine), days, today, rates, _budget_currency(acc)))
+    return out
+
+
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "part"
 
 
 def monthly_amount(con: dict) -> float | None:
@@ -633,7 +823,7 @@ def collect(root: Path, host: str, days: int, today: dt.date, run: Callable = su
             opener: Callable = urllib.request.urlopen) -> dict:
     fx = ecb_rates(opener)
     rates = fx["rates"]
-    out = [account_entry(acc, days, today, run, opener, rates, host, root=root) for acc in accounts(root, host)]
+    out = [e for acc in accounts(root, host) for e in account_entries(acc, days, today, run, opener, rates, host, root=root)]
     out += [contract_entry(con, days, today, rates) for con in contracts(root, host)]
     return {"schema": 1, "kind": "cloud-costs", "host": host,
             "at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),

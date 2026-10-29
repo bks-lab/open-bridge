@@ -1,7 +1,7 @@
 ---
 summary: "Cloud costs per day for the cockpit's overview page: which accounts and contracts opt in (costs: block), what scripts/cloud-costs.py measures per provider, which login or permission each provider needs, how a missing login becomes a question with the command to run, how to declare the daily workload, and how the cockpit reads the file."
 type: guide
-last_updated: 2026-10-19
+last_updated: 2026-10-29
 related:
   - cloud-accounts.md
   - bridge-cockpit.md
@@ -48,21 +48,51 @@ Its monthly amount (`pricing.monthly_fee`, else `pricing.base_per_year / 12`,
 gross before net) is spread evenly over the days (`monthly * 12 / 365` per day).
 Use this for anything that bills a flat plan and has no daily cost API.
 
+### One entry per project
+
+An account that carries several projects (an OpenAI organization with one
+project per customer, an Azure subscription with one resource group per
+service) can answer as one entry per project instead of one for the account:
+
+```yaml
+costs:
+  enabled: true
+  key_ref: "keychain://openai-admin/me"
+  split: project                        # one entry per project: <id>/<project id>
+  parts: {proj_abc: "Customer A"}       # optional: a name when the key may not list projects
+  budgets: {proj_abc: 30}               # optional: a budget per project, in `currency`
+```
+
+| Provider | `split:` | A part is |
+|---|---|---|
+| `openai` | `project` | a project, named from `/v1/organization/projects` with the same admin key; costs outside any project land in `<id>/none` |
+| `azure` | `resource_group` or `tag:<name>` | a resource group or a tag value (`(none)` when untagged); the groups stay per service |
+
+Each entry carries `parent` (the account id) and `part`, and is named
+`<display_name>: <part name>`. Parts that `parts:` gives the same name are one
+entry, `parts:` then listing them and the id ending in the name's slug: two
+resource groups of one service (pre and prod) read as one project. A budget
+in `budgets:` is keyed by part or by that name; the account's own
+`budget_month` applies only while it is not split. A failure stays one entry
+for the whole account.
+
 ## What each provider needs
 
 Logins come first: Azure, AWS and Google are read through their own CLIs on the
 machine that runs the collector, with the login those CLIs already hold. No
-service principals, no keys for them. OpenAI and Anthropic have no CLI login, so
-they need an admin key, stored once with the secrets skill and named by
+service principals, no keys for them. OpenAI, Anthropic and Elastic Cloud have no CLI
+login, so they need an admin key, stored once with the secrets skill and named by
 reference.
 
 | Provider | How it is read | What it needs |
 |---|---|---|
 | `azure` | `az rest` against the Cost Management query API, daily `ActualCost` per service, resource group or tag, every declared subscription summed | `az login` on that machine, and the **Cost Management Reader** role on each subscription |
-| `aws` | `aws ce get-cost-and-usage`, daily `UnblendedCost` per service | a login for the aws CLI (`aws login`, optionally `--profile`) with **ce:GetCostAndUsage**. Each request costs about 0.01 USD, so once a day is the rhythm |
+| `aws` | `aws ce get-cost-and-usage`, daily `UnblendedCost` per service and record type: usage per service in the groups, credits and refunds apart (see below) | a login for the aws CLI (`aws login`, optionally `--profile`) with **ce:GetCostAndUsage**. Each request costs about 0.01 USD, so once a day is the rhythm |
 | `gcp` | `bq query` over the Cloud Billing export, cost plus credits per day and service | a **Cloud Billing export to BigQuery** (`costs.bigquery_table`), `gcloud auth login --update-adc`, read access to that dataset |
 | `openai` | `GET /v1/organization/costs`, daily per line item | an **admin key** (`sk-admin-...`) from platform.openai.com > Settings > Organization > Admin keys, as `costs.key_ref` |
 | `anthropic` | `GET /v1/organizations/cost_report`, daily per description (amounts come in cents and are converted) | an **Admin API key** (`sk-ant-admin...`) from console.anthropic.com > Settings > Admin keys, as `costs.key_ref` |
+| `twilio` | `twilio api:core:usage:records:daily:list`: the day is `totalprice`, the groups the deepest priced usage categories (so `calls` and `calls-inbound` are not counted twice), the unexplained rest `other` | a login for the twilio CLI (`twilio login`, optionally `costs.profile`). It pages through every category of every day, so a run takes a minute or two |
+| `elastic` | Elastic Cloud `GET /api/v2/billing/organizations/<org>/charts?bucketing_strategy=daily`, one group per deployment, amounts in ECU read as USD | an **Elastic Cloud API key** (cloud.elastic.co > Organization > API keys, a role that may read billing; not a cluster key) as `costs.key_ref`; `costs.organization_id` optional, otherwise the key's first organization |
 | `cloudflare` | no daily cost API | declare the plan as a contract with `costs.enabled`; the account entry says so instead of staying silent |
 
 The key is read through the secrets skill, so `key_ref` may point into any
@@ -96,6 +126,16 @@ account that needs a person (key `cloud-costs-login-<id>`, gate `only-you`) and
 closes it after the next run that reads the account again.
 
 One failing account never stops the others.
+
+## Credits
+
+A provider that pays for usage with credits (AWS promotional credits) would
+show a month at zero while the service runs. The amount stays what is paid, and
+the usage behind it is kept: a day with credits carries `credits` (negative)
+and `used` (before the credits), the account `credits_month` and `used_month`,
+and its groups are usage per service before the credits. The cockpit says
+"used X, credits Y" on such an account, so the usage is visible before the
+credits run out.
 
 ## Currency
 

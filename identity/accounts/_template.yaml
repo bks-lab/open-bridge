@@ -66,16 +66,20 @@ calendar:
 # ---------------------------------------------------------------------------
 # Cloud costs (optional): scripts/cloud-costs.py, guide docs/cloud-costs.md
 # Read once a day on the always-on machine for the cockpit's overview page.
-# azure, aws and gcp use their logged-in CLIs (az, aws, bq); openai and
+# azure, aws, gcp and twilio use their logged-in CLIs (az, aws, bq, twilio); openai and
 # anthropic need an ADMIN key, stored with the secrets skill and named here.
 # ---------------------------------------------------------------------------
 # costs:
 #   enabled: true
-#   provider: azure                # optional: azure | aws | gcp | openai | anthropic (default: guessed)
+#   provider: azure                # optional: azure | aws | gcp | openai | anthropic | twilio | elastic (default: guessed)
 #   subscriptions: [<subscription-id>]   # azure, optional: default every id under `subscriptions:`
 #   group_by: service              # azure: service | resource_group | tag:<name>; aws: service
-#   profile: my-profile            # aws CLI profile (default: the default credentials)
-#   key_ref: "keychain://<service>/<account>"   # openai, anthropic: the admin key, a reference only
+#   profile: my-profile            # aws or twilio CLI profile (default: the CLI's active login)
+#   key_ref: "keychain://<service>/<account>"   # openai, anthropic, elastic: the admin key, a reference only
+#   split: project                 # one entry per part (<id>/<part>): openai project; azure resource_group | tag:<name>
+#   parts: {rg-a-pre: "A", rg-a-prod: "A"}   # optional with split: names parts; the same name is one entry
+#   budgets: {A: 30}               # optional with split: a budget per part or name
+#   organization_id: <id>          # elastic: the Elastic Cloud organization (default: the key's first)
 #   bigquery_table: my-project.billing.export   # gcp: the Cloud Billing export table
 #   budget_month: 50               # optional, in `currency`
 #   currency: EUR                  # optional, default EUR

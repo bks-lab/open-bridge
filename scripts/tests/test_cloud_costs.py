@@ -586,3 +586,162 @@ def test_an_unexpected_answer_fails_only_its_own_account(tmp_path):
     assert by["aws-good"]["ok"] and by["aws-good"]["days"][1]["amount"] == 2.0
     odd = by["gcp-odd"]
     assert odd["ok"] is False and odd["error_kind"] == "error" and "unexpected answer from gcp" in odd["error"]
+
+
+# ---------------------------------------------------------------- aws credits, split accounts, twilio
+
+def test_aws_keeps_credits_apart_from_what_was_used():
+    def run(argv, **kw):
+        i = argv.index("--group-by")
+        assert argv[i + 1:i + 3] == ["Type=DIMENSION,Key=SERVICE", "Type=DIMENSION,Key=RECORD_TYPE"]
+        assert argv.count("--group-by") == 1         # a second flag would replace the first
+        return ok({"ResultsByTime": [{"TimePeriod": {"Start": "2026-10-17"}, "Groups": [
+            {"Keys": ["Claude (Bedrock Edition)", "Usage"], "Metrics": {"UnblendedCost": {"Amount": "1.25", "Unit": "USD"}}},
+            {"Keys": ["Claude (Bedrock Edition)", "Credit"], "Metrics": {"UnblendedCost": {"Amount": "-1.25", "Unit": "USD"}}},
+            {"Keys": ["Tax", "Tax"], "Metrics": {"UnblendedCost": {"Amount": "0.25", "Unit": "USD"}}}]}]})
+    day = cc.merge_rows(cc.aws({"id": "aws-x", "costs": {}}, 3, TODAY, run, None))["2026-10-17"]
+    # paid is what is left after the credits; the groups say what was used, before them
+    assert day["amount"] == 0.25 and day["credits"] == -1.25
+    assert day["groups"] == {"Claude (Bedrock Edition)": 1.25, "Tax": 0.25}
+    e = cc.account_entry({"id": "aws-x", "costs": {}}, 3, TODAY, run, None, {}, "h")
+    d = next(x for x in e["days"] if x["day"] == "2026-10-17")
+    assert d["amount"] == 0.25 and d["credits"] == -1.25 and d["used"] == 1.5
+    assert e["month_to_date"] == 0.25 and e["used_month"] == 1.5 and e["credits_month"] == -1.25
+    assert "credits" not in e["days"][1] and "credits_month" in e
+
+
+def test_an_account_without_credits_carries_no_credit_fields():
+    rows = [{"day": "2026-10-17", "amount": 1.0, "currency": "EUR", "groups": {"x": 1.0}}]
+    e = cc.account_entry({"id": "a", "costs": {}}, 3, TODAY, None, None, {}, "h", adapter=lambda *a, **k: rows, provider="aws")
+    assert "credits_month" not in e and "used_month" not in e and "credits" not in e["days"][0]
+
+
+def test_openai_split_by_project_answers_one_entry_per_project():
+    start = int(dt.datetime(2026, 10, 17, tzinfo=dt.timezone.utc).timestamp())
+
+    def opener(req, timeout=0):
+        if "/organization/projects" in req.full_url:
+            return Resp(json.dumps({"data": [{"id": "proj_a", "name": "Customer A"}, {"id": "proj_b", "name": "Default"}],
+                                    "has_more": False}).encode())
+        assert "group_by=project_id" in req.full_url and "group_by=line_item" in req.full_url
+        return Resp(json.dumps({"data": [{"start_time": start, "results": [
+            {"amount": {"value": 2.16, "currency": "usd"}, "line_item": "realtime", "project_id": "proj_a"},
+            {"amount": {"value": 1.08, "currency": "usd"}, "line_item": "tts", "project_id": "proj_b"},
+            {"amount": {"value": 1.08, "currency": "usd"}, "line_item": "tts", "project_id": "proj_c"}]}],
+            "has_more": False}).encode())
+    acc = {"id": "openai-x", "display_name": "OpenAI X",
+           "costs": {"key_ref": "keychain://openai-admin/me", "split": "project", "parts": {"proj_c": "Lab"},
+                     "budgets": {"proj_a": 30}}}
+    entries = cc.account_entries(acc, 3, TODAY, keychain_run(), opener, {"USD": 1.08}, "h")
+    by = {e["id"]: e for e in entries}
+    assert set(by) == {"openai-x/proj_a", "openai-x/proj_b", "openai-x/proj_c"}
+    a = by["openai-x/proj_a"]
+    assert a["display_name"] == "OpenAI X: Customer A" and a["parent"] == "openai-x" and a["part"] == "proj_a"
+    assert a["ok"] and a["month_to_date"] == 2.0 and a["budget_month"] == 30.0 and a["days"][0]["groups"] == {"realtime": 2.0}
+    assert by["openai-x/proj_c"]["display_name"] == "OpenAI X: Lab" and by["openai-x/proj_c"]["budget_month"] is None
+
+
+def test_a_split_account_that_fails_is_one_failed_entry():
+    acc = {"id": "openai-x", "costs": {"key_ref": "keychain://openai-admin/me", "split": "project"}}
+    entries = cc.account_entries(acc, 3, TODAY, keychain_run(None), lambda *a, **k: None, {}, "h")
+    assert len(entries) == 1 and entries[0]["id"] == "openai-x" and entries[0]["error_kind"] == "auth"
+
+
+def test_a_split_without_project_names_keeps_the_ids():
+    start = int(dt.datetime(2026, 10, 17, tzinfo=dt.timezone.utc).timestamp())
+
+    def opener(req, timeout=0):
+        if "/organization/projects" in req.full_url:
+            raise http_error(req.full_url, 403)
+        return Resp(json.dumps({"data": [{"start_time": start, "results": [
+            {"amount": {"value": 1.0, "currency": "usd"}, "line_item": "x", "project_id": None}]}], "has_more": False}).encode())
+    acc = {"id": "openai-o", "costs": {"key_ref": "keychain://openai-admin/me", "split": "project"}}
+    (e,) = cc.account_entries(acc, 3, TODAY, keychain_run(), opener, {}, "h")
+    assert e["id"] == "openai-o/none" and e["display_name"] == "openai-o: no project" and e["ok"]
+
+
+def twilio_records():
+    rec = lambda day, cat, price: {"category": cat, "startDate": day, "price": price, "priceUnit": "usd"}  # noqa: E731
+    return [rec("2026-10-17", "totalprice", "1.5"), rec("2026-10-17", "trunking-origination", "1.0"),
+            rec("2026-10-17", "trunking-origination-local", "1.0"), rec("2026-10-17", "phonenumbers", "0.25"),
+            rec("2026-10-17", "phonenumbers-local", "0"), rec("2026-10-18", "totalprice", "0"),
+            rec("2026-10-18", "calls", "0")]
+
+
+def test_twilio_reads_the_daily_usage_records_through_the_logged_in_cli():
+    seen = {}
+
+    def run(argv, **kw):
+        seen["argv"], seen["timeout"] = argv, kw.get("timeout")
+        return ok(twilio_records())
+    rows = cc.twilio({"id": "tw", "costs": {"profile": "work"}}, 3, TODAY, run, None)
+    argv = seen["argv"]
+    assert argv[:2] == ["twilio", "api:core:usage:records:daily:list"]
+    assert argv[argv.index("--start-date") + 1] == "2026-10-17" and argv[argv.index("--end-date") + 1] == "2026-10-19"
+    assert argv[argv.index("-p") + 1] == "work" and seen["timeout"] >= 300
+    day = cc.merge_rows(rows)["2026-10-17"]
+    # the total is totalprice; the groups are the deepest priced categories, the rest of the total is "other"
+    assert day == {"amount": 1.5, "currency": "USD",
+                   "groups": {"trunking-origination-local": 1.0, "phonenumbers": 0.25, "other": 0.25}}
+    assert "2026-10-18" not in cc.merge_rows(rows)
+
+
+def test_twilio_without_a_login_asks_for_one():
+    gone = lambda argv, **kw: ok(err="Could not find profile. To create the profile, run: twilio login", code=1)  # noqa: E731
+    e = cc.account_entry({"id": "twilio", "messaging": {"provider": "twilio"}, "costs": {"provider": "twilio"}},
+                         3, TODAY, gone, None, {}, "h")
+    assert e["error_kind"] == "auth" and e["login"]["argv"] == ["twilio", "login"]
+    assert cc.login_argv({"id": "t", "costs": {"profile": "p"}}, "twilio") == ["twilio", "login", "-p", "p"]
+
+
+def test_azure_split_by_resource_group_answers_one_entry_per_project_and_merges_named_groups():
+    def run(argv, **kw):
+        body = json.loads(argv[argv.index("--body") + 1])
+        assert body["dataset"]["grouping"] == [{"type": "Dimension", "name": "ResourceGroupName"},
+                                               {"type": "Dimension", "name": "ServiceName"}]
+        cols = ("Cost", "UsageDate", "ResourceGroupName", "ServiceName", "Currency")
+        return ok(az_answer([[2.0, 20261017, "rg-shop-pre", "Functions", "EUR"],
+                             [3.0, 20261017, "rg-shop-prod", "Functions", "EUR"],
+                             [1.0, 20261017, "rg-shop-prod", "Storage", "EUR"],
+                             [0.5, 20261017, "rg-internal", "Key Vault", "EUR"]], cols))
+    acc = {"id": "azure-x", "display_name": "Azure X", "subscriptions": [{"id": "s1"}],
+           "costs": {"split": "resource_group", "parts": {"rg-shop-pre": "Shop", "rg-shop-prod": "Shop"},
+                     "budgets": {"Shop": 100}}}
+    by = {e["id"]: e for e in cc.account_entries(acc, 3, TODAY, run, None, {}, "h")}
+    assert set(by) == {"azure-x/shop", "azure-x/rg-internal"}
+    shop = by["azure-x/shop"]
+    assert shop["display_name"] == "Azure X: Shop" and shop["parts"] == ["rg-shop-pre", "rg-shop-prod"]
+    assert shop["days"][0]["groups"] == {"Functions": 5.0, "Storage": 1.0} and shop["budget_month"] == 100.0
+    assert by["azure-x/rg-internal"]["part"] == "rg-internal" and by["azure-x/rg-internal"]["month_to_date"] == 0.5
+
+
+def test_elastic_cloud_reads_the_daily_charts_of_the_organization_with_its_key():
+    urls = []
+    ts = int(dt.datetime(2026, 10, 17, tzinfo=dt.timezone.utc).timestamp())
+
+    def opener(req, timeout=0):
+        urls.append(req.full_url)
+        assert req.headers["Authorization"] == "ApiKey ec-key"
+        if req.full_url.endswith("/api/v1/organizations"):
+            return Resp(json.dumps({"organizations": [{"id": "org-1", "name": "Acme"}]}).encode())
+        assert "/api/v2/billing/organizations/org-1/charts" in req.full_url and "bucketing_strategy=daily" in req.full_url
+        return Resp(json.dumps({"data": [{"timestamp": ts, "values": [
+            {"id": "d1", "name": "main", "type": "deployment", "value": 3.5},
+            {"id": "d2", "name": "lab", "type": "deployment", "value": 0}]},
+            {"timestamp": (ts + 86400) * 1000, "values": [{"id": "d1", "name": "main", "value": 1.25}]}]}).encode())
+    acc = {"id": "elastic-x", "costs": {"provider": "elastic", "key_ref": "keychain://elastic/me"}}
+    days = cc.merge_rows(cc.elastic(acc, 3, TODAY, keychain_run("ec-key"), opener))
+    assert days["2026-10-17"] == {"amount": 3.5, "currency": "USD", "groups": {"main": 3.5}}
+    assert days["2026-10-18"]["amount"] == 1.25          # a timestamp in milliseconds reads as well
+    assert len(urls) == 2
+    urls.clear()
+    acc["costs"]["organization_id"] = "org-1"
+    cc.elastic(acc, 3, TODAY, keychain_run("ec-key"), opener)
+    assert len(urls) == 1                                # a declared organization skips the lookup
+
+
+def test_elastic_without_a_key_asks_for_one_through_the_secrets_skill():
+    e = cc.account_entry({"id": "elastic-x", "costs": {"provider": "elastic", "key_ref": "keychain://elastic/me"}},
+                         3, TODAY, keychain_run(None), None, {}, "h")
+    assert e["error_kind"] == "auth" and e["login"]["argv"][2:4] == ["store", "keychain://elastic/me"]
+    assert "cloud.elastic.co" in e["login"]["hint"]
