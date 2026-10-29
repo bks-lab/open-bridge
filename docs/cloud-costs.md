@@ -67,6 +67,27 @@ costs:
 |---|---|---|
 | `openai` | `project` | a project, named from `/v1/organization/projects` with the same admin key; costs outside any project land in `<id>/none` |
 | `azure` | `resource_group` or `tag:<name>` | a resource group or a tag value (`(none)` when untagged); the groups stay per service |
+| `elastic` | `index_size` | a share of the bill by what each project stores in the cluster (below) |
+
+One Elastic deployment often carries several projects (indices per tenant) on
+one bill. `split: index_size` shares each day's amount out by today's index
+sizes, read with a cluster key that may only see sizes (index privilege
+`monitor`, no `read`):
+
+```yaml
+costs:
+  split: index_size
+  cluster_url: https://my-deployment.es.example.cloud.es.io
+  size_key_ref: "azure-keyvault://<vault>/<secret>"
+  shares:                              # first match wins; a leading .ds- is dropped
+    - {match: "*customer-a*", part: "Customer A"}
+    - {match: ".*", part: "Shared (system)"}
+    - {match: "*", part: "Internal"}
+```
+
+An index that matches no rule lands in `other`. Today's sizes stand for every
+day of the window, an approximation each entry names as `split_basis`
+(`{by, bytes, share}`).
 
 Each entry carries `parent` (the account id) and `part`, and is named
 `<display_name>: <part name>`. Parts that `parts:` gives the same name are one

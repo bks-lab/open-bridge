@@ -15,7 +15,11 @@ identity/accounts/*.yaml that opt in with
       profile: <name>                 # aws CLI profile, twilio CLI profile
       key_ref: keychain://<service>/<account>     # openai, anthropic: an ADMIN key, in any declared store
       split: project                  # one entry per part instead of one per account (<id>/<part>):
-                                      #   openai: project; azure: resource_group | tag:<name>
+                                      #   openai: project; azure: resource_group | tag:<name>;
+                                      #   elastic: index_size (the bill shared by what each project stores)
+      shares: [{match: <pattern>, part: <name>}]   # elastic index_size: index pattern to part, first wins
+      cluster_url: <https://...>      # elastic index_size: the cluster whose index sizes share the bill
+      size_key_ref: <ref>             # elastic index_size: a cluster key with index privilege monitor
       parts: {<part>: <name>}         # optional, names a part; parts with the same name are one entry
       budgets: {<part or name>: 20}   # optional, a budget per part, in `currency`
       organization_id: <id>           # elastic: the Elastic Cloud organization (default: the key's first)
@@ -42,6 +46,7 @@ import argparse
 import calendar
 import importlib.util
 import datetime as dt
+import fnmatch
 import json
 import os
 import re
@@ -460,7 +465,44 @@ def elastic(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run
         for v in item.get("values") or []:
             if float(v.get("value") or 0):
                 rows.append(_row(day, float(v["value"]), "USD", v.get("name") or v.get("id")))
+    if _split(acc) == "index_size":
+        rows = share_by_index_size(acc, rows, run, opener, root)
     return rows
+
+
+def share_by_index_size(acc: dict, rows: list[dict], run: Callable, opener: Callable, root: Path = ROOT) -> list[dict]:
+    """One deployment carrying several projects (indices per tenant) has one bill. Share each day's amount out by
+    what each project stores today: `costs.shares` maps index patterns to a part (first match wins, a leading `.ds-`
+    is dropped so a data stream matches its own name), whatever matches none is `other`. Read with a cluster key
+    that may only see sizes (`costs.size_key_ref`, index privilege `monitor`) at `costs.cluster_url`. Today's sizes
+    stand for every day of the window: an approximation, named on each entry as `split_basis`."""
+    url, ref = _costs(acc).get("cluster_url"), _costs(acc).get("size_key_ref")
+    if not url or not ref:
+        raise CostError("split: index_size needs costs.cluster_url and costs.size_key_ref (a cluster key with monitor)")
+    key = read_key(ref, run, root)
+    listing = http_json(f"{str(url).rstrip('/')}/_cat/indices?format=json&bytes=b&h=index,store.size&expand_wildcards=all",
+                        {"Authorization": f"ApiKey {key}"}, opener)
+    if not isinstance(listing, list):
+        raise CostError("unexpected answer from the cluster (_cat/indices)")
+    rules = [(str(r.get("match")), str(r.get("part"))) for r in _costs(acc).get("shares") or []
+             if isinstance(r, dict) and r.get("match") and r.get("part")]
+    size: dict[str, int] = {}
+    for ix in listing:
+        name = re.sub(r"^\.ds-", "", str(ix.get("index") or ""))
+        part = next((p for pattern, p in rules if fnmatch.fnmatchcase(name, pattern)), "other")
+        size[part] = size.get(part, 0) + int(float(ix.get("store.size") or 0))
+    total = sum(size.values())
+    if not total:
+        raise CostError("the cluster reports no index sizes to share the bill by")
+    out = []
+    for r in rows:
+        for part, b in size.items():
+            share = b / total
+            row = {**r, "amount": r["amount"] * share, "groups": {g: v * share for g, v in r["groups"].items()},
+                   "part": _slug(part), "part_name": part,
+                   "basis": {"by": "index_size", "bytes": b, "share": round(share, 4)}}
+            out.append(row)
+    return out
 
 
 # ---------------------------------------------------------------- gcp, cloudflare
@@ -750,6 +792,9 @@ def account_entries(acc: dict, days: int, today: dt.date, run: Callable, opener:
         e = {**entry, "id": f"{entry['id']}/{keys[0] if len(keys) == 1 else _slug(name)}",
              "display_name": f"{entry['display_name']}: {name}", "parent": entry["id"],
              "budget_month": float(budget) if isinstance(budget, (int, float)) and not isinstance(budget, bool) else None}
+        basis = next((r["basis"] for r in mine if r.get("basis")), None)
+        if basis:
+            e["split_basis"] = basis
         if len(keys) == 1:
             e["part"] = keys[0]
         else:

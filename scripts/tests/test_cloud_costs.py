@@ -745,3 +745,43 @@ def test_elastic_without_a_key_asks_for_one_through_the_secrets_skill():
                          3, TODAY, keychain_run(None), None, {}, "h")
     assert e["error_kind"] == "auth" and e["login"]["argv"][2:4] == ["store", "keychain://elastic/me"]
     assert "cloud.elastic.co" in e["login"]["hint"]
+
+
+def test_elastic_split_by_index_size_shares_the_bill_out_by_what_each_project_stores():
+    ts = int(dt.datetime(2026, 10, 17, tzinfo=dt.timezone.utc).timestamp())
+
+    def opener(req, timeout=0):
+        if req.full_url.startswith("https://cluster.example"):
+            assert "/_cat/indices" in req.full_url and "bytes=b" in req.full_url and "expand_wildcards=all" in req.full_url
+            return Resp(json.dumps([{"index": "shop-orders", "store.size": "600"},
+                                    {"index": ".ds-logs-shop_api.otel-prod-2026.10.01-000001", "store.size": "100"},
+                                    {"index": ".kibana_9", "store.size": "100"},
+                                    {"index": "metrics-team.otel-prod", "store.size": "200"}]).encode())
+        if req.full_url.endswith("/api/v1/organizations"):
+            return Resp(json.dumps({"organizations": [{"id": "org-1"}]}).encode())
+        return Resp(json.dumps({"data": [{"timestamp": ts, "values": [{"id": "d1", "name": "main", "value": 10.0}]}]}).encode())
+    acc = {"id": "elastic-x", "display_name": "Elastic X",
+           "costs": {"provider": "elastic", "key_ref": "keychain://elastic/me", "split": "index_size",
+                     "cluster_url": "https://cluster.example", "size_key_ref": "keychain://elastic-size/me",
+                     "shares": [{"match": "*shop*", "part": "Shop"}, {"match": ".*", "part": "Shared"}],
+                     "budgets": {"Shop": 50}}}
+    by = {e["id"]: e for e in cc.account_entries(acc, 3, TODAY, keychain_run("ec-key"), opener, {"USD": 1.0}, "h")}
+    # 700 of 1000 bytes are the shop's, 100 the shared system indices, 200 match nothing and are "other"
+    assert set(by) == {"elastic-x/shop", "elastic-x/shared", "elastic-x/other"}
+    shop = by["elastic-x/shop"]
+    assert shop["display_name"] == "Elastic X: Shop" and shop["parent"] == "elastic-x"
+    assert shop["days"][0]["amount"] == 7.0 and shop["days"][0]["groups"] == {"main": 7.0} and shop["budget_month"] == 50.0
+    assert by["elastic-x/shared"]["days"][0]["amount"] == 1.0 and by["elastic-x/other"]["days"][0]["amount"] == 2.0
+    assert shop["split_basis"] == {"by": "index_size", "bytes": 700, "share": 0.7}
+
+
+def test_elastic_split_without_a_size_key_or_cluster_says_what_is_missing():
+    acc = {"id": "elastic-x", "costs": {"provider": "elastic", "key_ref": "keychain://elastic/me", "split": "index_size"}}
+    ts = int(dt.datetime(2026, 10, 17, tzinfo=dt.timezone.utc).timestamp())
+
+    def opener(req, timeout=0):
+        if req.full_url.endswith("/api/v1/organizations"):
+            return Resp(json.dumps({"organizations": [{"id": "org-1"}]}).encode())
+        return Resp(json.dumps({"data": [{"timestamp": ts, "values": [{"name": "main", "value": 1.0}]}]}).encode())
+    (e,) = cc.account_entries(acc, 3, TODAY, keychain_run("ec-key"), opener, {}, "h")
+    assert not e["ok"] and "cluster_url" in e["error"] and "size_key_ref" in e["error"]
