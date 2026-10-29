@@ -462,6 +462,11 @@ def test_parse_pages():
     assert pages[0]["overview"] is False
     ops = m.parse_pages({"pages": [{"id": "ops", "title": "Betrieb", "overview": True, "sections": [{"id": "a"}]}]})
     assert ops[0]["overview"] is True
+    # `search: true` reaches the page, so the cockpit draws its search field; anything else is no search
+    found = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [{"id": "a"}]},
+                                     {"id": "odd", "title": "Odd", "search": "yes", "sections": [{"id": "a"}]}]})
+    assert [p["search"] for p in found] == [True, False]
+    assert pages[0]["search"] is False
     # an order by Jev: the server keeps the words of `jev:`, the page only learns that there is one
     work = m.parse_pages({"pages": [{"id": "w", "title": "Arbeit", "jev": {"skip_sections": ["b"], "private": ["p"]},
                                      "sections": [{"id": "a"}]}]})

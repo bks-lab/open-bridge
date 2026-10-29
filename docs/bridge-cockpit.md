@@ -1416,10 +1416,12 @@ sends, Shift+Enter a new line). Escape or a click outside closes it.
 **A page's search.** A profile page with `search: true` carries a search field
 above its sections with three modes beside it; switching keeps the text. In
 **Today** typing two characters or more filters the page's own rows to those
-that hold every word, in every section at once (a section of groups shows every
-match unfolded, one without a match says "Nothing matches the filter", and with
-no hit at all a line offers **Every day**). **Every day** (on the switch and on
-Enter) leaves the rows as they are and asks the history with the same words
+that hold every word, in every section at once, its head counting the hits (a
+section that drew only its first rows loads the rest first, so the filter covers
+all of today; a section of groups shows every match unfolded, one without a
+match says "Nothing matches the filter", and with no hit at all a line offers
+**Every day**). **Every day** (on the switch, on Enter, and as one types, once
+the typing pauses) leaves the rows as they are and asks the history with the same words
 (`GET /api/timeline`, `scripts/work-find.py --history`): every line that holds
 every word in the log rows of `work/log.md` and `work/archive/` (an old row with
 only its time takes the day from the `## <weekday> DD.MM` head above it and the

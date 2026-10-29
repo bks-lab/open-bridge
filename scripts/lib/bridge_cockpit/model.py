@@ -350,6 +350,8 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
                 "group": p.get("group") if p.get("group") in ("more", "work", "day") or (p.get("group") == "settings" and setup_only)
                 else "main", "overview": p.get("overview") is True,
+                # a search field above the sections (views/timeline.js PageSearch, profile `search: true`)
+                "search": p.get("search") is True,
                 "cards": parse_cards(p.get("cards")),
                 # where the page stands: under another (no tab, the bar of that page's folder opens it), and the sub
                 # pages a page names in their order, the cockpit's own @workers among them (briefing_view.pages)

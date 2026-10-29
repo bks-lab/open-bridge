@@ -524,7 +524,7 @@ export function PageSection({ page, section, s, c, q = '' }) {
   return html`<section class="panel panel-pad psec" aria-labelledby=${`ps-${page.id}-${section.id}`}>
     <header class="psec-head">
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}
-        ${section.status !== 'skipped' && section.status !== 'error' ? html`<span class="sec-count mono">${section.total ?? section.count}</span>` : null}</h2>
+        ${section.status !== 'skipped' && section.status !== 'error' ? html`<span class="sec-count mono">${words ? items.length : section.total ?? section.count}</span>` : null}</h2>
       ${section.bad ? html`<${StateLine} token="danger" strong word=${t.badgeFindings(section.bad)} />` : null}
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </header>

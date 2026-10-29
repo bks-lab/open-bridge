@@ -1345,11 +1345,11 @@ const TIMELINE = { ok: true, query: 'gateway retry', words: ['gateway', 'retry']
   { date: '2026-09-30', time: null, kind: 'closed', source: 'retry-hardening', path: 'work/done/2026-09/retry-hardening/STATUS.md', line: 5,
     text: 'headline: Gateway retry hardened', folder: 'work/done/2026-09/retry-hardening', count: 1, more: 0 }] }
 
-function searchPage(s, c) {
+function searchPage(s, c, page = LOG_PAGE) {
   const { PageSection } = views.pages
   const { PageSearch } = views.timeline
-  return mount(html`<${PageSearch} page=${LOG_PAGE} s=${s} c=${c}
-    render=${q => LOG_PAGE.sections.map(sec => html`<${PageSection} key=${sec.id} page=${LOG_PAGE} section=${sec} s=${s} c=${c} q=${q} />`)} />`)
+  return mount(html`<${PageSearch} page=${page} s=${s} c=${c}
+    render=${q => page.sections.map(sec => html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} />`)} />`)
 }
 
 const radio = (el, label) => el.$$('.psearch-seg button').find(b => b.text() === label) ?? null
@@ -1403,6 +1403,40 @@ test('Today without a hit says so and offers Every day; a section without a hit 
   await tick()
   assert.deepEqual(c.calls.find(x => x[0] === 'searchTimeline'), ['searchTimeline', 'nothing like this'])
   assert.equal(radio(el, en.pageSearch.mode.all).getAttribute('aria-checked'), 'true')
+})
+
+test('Today searches every row of the page: a section that drew only its first rows loads the rest, and its head counts the hits', async () => {
+  const c = recorder()
+  const long = { ...LOG_PAGE, sections: [{ ...LOG_PAGE.sections[0], count: 5, total: 5, more: 3 }] }
+  const el = searchPage(cockpitState(NOW), c, long)
+  assert.equal(c.calls.filter(x => x[0] === 'loadMore').length, 0, 'nothing loads before a word is typed')
+  await type(el, 'gateway')
+  assert.deepEqual(c.calls.filter(x => x[0] === 'loadMore'), [['loadMore', 'log', 'activity']])
+  assert.equal(el.$('.psec .sec-count').text(), '1')
+  // the rest loaded: a word only in it is found there, and nothing is asked again
+  const rest = [...LOG_PAGE.sections[0].items, { index: 2, title: 'Invoice export renamed', when: '08:00', group: 'billing', tone: 'ok', detail: '' }]
+  const s = { ...cockpitState(NOW), more: { 'log/activity': { items: rest } } }
+  const c2 = recorder()
+  const el2 = searchPage(s, c2, long)
+  await type(el2, 'invoice')
+  assert.match(el2.text(), /Invoice export renamed/)
+  assert.equal(el2.$('.psearch-none'), null)
+  assert.equal(c2.calls.filter(x => x[0] === 'loadMore').length, 0)
+})
+
+test('Every day searches once the typing pauses, not on every key, and not again for the words it already searched', async () => {
+  const c = recorder()
+  const el = searchPage(cockpitState(NOW), c)
+  radio(el, en.pageSearch.mode.all).click()
+  await tick()
+  await type(el, 'gate')
+  await type(el, 'gateway retry')
+  assert.equal(c.calls.filter(x => x[0] === 'searchTimeline').length, 0, 'not while typing')
+  await new Promise(r => setTimeout(r, 500))
+  assert.deepEqual(c.calls.filter(x => x[0] === 'searchTimeline'), [['searchTimeline', 'gateway retry']])
+  el.$('form.psearch-bar').dispatch('submit')
+  await new Promise(r => setTimeout(r, 500))
+  assert.equal(c.calls.filter(x => x[0] === 'searchTimeline').length, 2, 'Enter searches again on purpose, the pause does not')
 })
 
 test('Ask AI is a mode only with the files question on; it names the questions left and waits once none is left', async () => {
