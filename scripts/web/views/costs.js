@@ -6,7 +6,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   formatDay, weekdayNames, tokenText, USAGE_SOURCES, stackBars, shownLabels, sparkPoints, moneyText, budgetBar, costBars,
-  costDay, costTotals, costYesterday, costTone, costSources, costCenterChoices, costScope, clockTime, SERIES_REST, USAGE_RANGES, USAGE_DIMS, NO_BRIDGE, usageParts,
+  costDay, costTotals, costYesterday, costTone, costSources, costCenterChoices, costPersonaChoices, costCenterBudget, costScope, clockTime, SERIES_REST, USAGE_RANGES, USAGE_DIMS, NO_BRIDGE, usageParts,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Btn, Chip, Empty, StateLine } from './parts.js'
@@ -107,13 +107,20 @@ export function CostCard({ page, s, c }) {
   const [range, setRange] = useState('7')
   const [pick, setPick] = useState(null)
   const [center, setCenter] = useState('all')
+  const [persona, setPersona] = useState('all')
   const cur = data?.currency ?? 'EUR'
   const money = n => moneyText(n, lang, cur)
-  // a project (workflow/cost-centers/) narrows the bars, the day, the rows and the totals alike
-  const choices = data ? costCenterChoices(data) : []
-  const shown = choices.includes(center) ? costScope(data, center) : data
+  // a persona and a project (workflow/cost-centers/) narrow the bars, the day, the rows and the totals alike
+  const personas = data ? costPersonaChoices(data) : []
+  const who = personas.includes(persona) ? persona : 'all'
+  const choices = data ? costCenterChoices(data, who) : []
+  const what = choices.includes(center) ? center : 'all'
+  const shown = data ? costScope(data, what, who) : data
+  const budget = data ? costCenterBudget(data, what) : null
   const centerText = v => (v === 'all' ? t.costsCenterAll : v === 'none' ? t.costsCenterNone
     : data?.cost_centers?.find(x => x.id === v)?.title ?? v)
+  const personaText = v => (v === 'all' ? t.costsCenterAll
+    : data?.cost_centers?.find(x => x.persona_ref === v)?.persona_title ?? v)
   const accounts = shown?.accounts ?? []
   const bars = shown ? costBars(shown, range) : null
   const nameOf = key => (key === SERIES_REST ? t.costsRest : accounts.find(a => a.id === key)?.display_name || key)
@@ -130,8 +137,13 @@ export function CostCard({ page, s, c }) {
       <${Btn} size="xs" variant="ghost" icon="reload" label=${t.costsReload} busy=${k.status === 'loading'} onClick=${() => c.loadCosts()} />
     </header>
     ${data?.stale ? html`<p><${StateLine} token="warning" strong word=${t.costsStale} /></p>` : null}
-    ${choices.length ? html`<${ChipPick} label=${t.costsCenterLabel} values=${choices} value=${choices.includes(center) ? center : 'all'}
+    ${personas.length ? html`<${ChipPick} label=${t.costsPersonaLabel} values=${personas} value=${who}
+      textOf=${personaText} onPick=${v => { setPersona(v); setCenter('all'); setPick(null) }} />` : null}
+    ${choices.length ? html`<${ChipPick} label=${t.costsCenterLabel} values=${choices} value=${what}
       textOf=${centerText} onPick=${v => { setCenter(v); setPick(null) }} />` : null}
+    ${budget ? html`<p class="costs-budget"><span class="label-caps">${t.costsCenterBudget}</span>
+      <${BudgetBar} acc=${budget} label=${t.costsOf(money(budget.month_to_date), money(budget.budget_month))} />
+      <span class="muted small">${t.costsOf(money(budget.month_to_date), money(budget.budget_month))} · ${t.costsForecast(money(budget.forecast_month))}</span></p>` : null}
     ${!data ? html`<p class="muted">${k.status === 'error' ? t.unreadable(k.error || '') : k.status === 'none' ? t.costsEmpty : t.costsLoading}</p>` : html`
       ${bars.max ? html`<${StackChart} bars=${bars} label=${t.costsTitle} nameOf=${nameOf} valueText=${money} pick=${sel}
           onPick=${d => setPick(p => (p === d ? null : d))} />

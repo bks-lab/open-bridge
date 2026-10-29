@@ -630,6 +630,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_cloud_inventory.py",
     "scripts/cloud-costs.py",                 # what the cloud accounts cost per day, for the overview page
     "scripts/tests/test_cloud_costs.py",
+    "scripts/cost-ledger.py",                 # a closed month per cost center, and a cost statement from it
+    "scripts/tests/test_cost_ledger.py",
     "scripts/usage-export.py",                # tokens per Bridge, exported for a cockpit on another machine
     "scripts/tests/test_usage_export.py",
     "scripts/cockpit-usage.py",               # the cockpit's clicks counted, candidates left as proposals for /bridge-learn

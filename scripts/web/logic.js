@@ -2075,21 +2075,46 @@ export function costDay(costs, day) {
   }).filter(x => x.amount > 0).sort((x, y) => y.amount - x.amount)
 }
 
-/** The cost card's project chips: all, each cost center, and "none" while an entry belongs to no project; none
- *  at all when no cost center is declared (workflow/cost-centers/) */
-export function costCenterChoices(costs) {
-  const centers = (costs?.cost_centers ?? []).map(c => c.id)
-  if (!centers.length) return []
-  const loose = (costs?.accounts ?? []).some(a => !a.cost_center)
+/** The cost card's persona chips (whose costs: a company, a freelance practice): all and each persona_ref of the
+ *  cost centers, none while fewer than two personas own a project */
+export function costPersonaChoices(costs) {
+  const personas = [...new Set((costs?.cost_centers ?? []).map(c => c.persona_ref).filter(Boolean))]
+  return personas.length > 1 ? ['all', ...personas] : []
+}
+
+/** The cost card's project chips: all, each cost center (of one persona when one is picked), and "none" while an
+ *  entry belongs to no project; none at all when no cost center is declared (workflow/cost-centers/) */
+export function costCenterChoices(costs, persona = 'all') {
+  const centers = (costs?.cost_centers ?? []).filter(c => !persona || persona === 'all' || c.persona_ref === persona).map(c => c.id)
+  if (!(costs?.cost_centers ?? []).length) return []
+  const loose = (!persona || persona === 'all') && (costs?.accounts ?? []).some(a => !a.cost_center)
   return ['all', ...centers, ...(loose ? ['none'] : [])]
 }
 
-/** The cost file seen through one project: its entries only ('none': those of no project, 'all': unchanged), so the
- *  bars, the day and the totals all count the same entries */
-export function costScope(costs, center) {
-  if (!costs || !center || center === 'all') return costs
-  const want = center === 'none' ? null : center
-  return { ...costs, accounts: (costs.accounts ?? []).filter(a => (a.cost_center ?? null) === want) }
+/** The cost file seen through one project and one persona: their entries only ('none': those of no project,
+ *  'all': unchanged), so the bars, the day and the totals all count the same entries */
+export function costScope(costs, center, persona = 'all') {
+  if (!costs) return costs
+  let accounts = costs.accounts ?? []
+  if (persona && persona !== 'all') {
+    const mine = new Set((costs.cost_centers ?? []).filter(c => c.persona_ref === persona).map(c => c.id))
+    accounts = accounts.filter(a => mine.has(a.cost_center))
+  }
+  if (center && center !== 'all') {
+    const want = center === 'none' ? null : center
+    accounts = accounts.filter(a => (a.cost_center ?? null) === want)
+  }
+  return accounts === costs.accounts ? costs : { ...costs, accounts }
+}
+
+/** One project's budget as an account would carry it (for budgetBar): its entries' month so far and forecast
+ *  summed against the project's budget_month; null without a project or a budget */
+export function costCenterBudget(costs, center) {
+  const c = (costs?.cost_centers ?? []).find(x => x.id === center)
+  if (!c || !(Number(c.budget_month) > 0)) return null
+  const mine = (costs.accounts ?? []).filter(a => a.ok !== false && a.cost_center === center)
+  const sum = f => Math.round(mine.reduce((s, a) => s + (Number(a[f]) || 0), 0) * 100) / 100
+  return { month_to_date: sum('month_to_date'), forecast_month: sum('forecast_month'), budget_month: Number(c.budget_month) }
 }
 
 /** The sum over a range and the month so far, over every account that answered */

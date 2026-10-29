@@ -1387,7 +1387,8 @@ function costsView(now) {
     fx: { date: isoIn(-1, now), source: 'ecb', rates: { USD: 1.08 } },
     source: 'ssh:my-server:~/.bridge/resources/costs.json', read_at: new Date(now - 2 * MIN).toISOString(), stale: false,
     // two invented projects across accounts (workflow/cost-centers/); the web hosting belongs to none
-    cost_centers: [{ id: 'customer-a', title: 'Customer A', persona_ref: null }, { id: 'internal', title: 'Internal', persona_ref: null }],
+    cost_centers: [{ id: 'customer-a', title: 'Customer A', persona_ref: 'my-company', persona_title: 'My Company', budget_month: 120 },
+      { id: 'internal', title: 'Internal', persona_ref: 'me', persona_title: 'Freelance' }],
     accounts: [
       usage('azure-example', 'Example Azure', 'azure', 1.2, [['Functions', 0.55], ['Storage', 0.3], ['Key Vault', 0.15]], 50),
       usage('anthropic-example', 'Example Anthropic', 'anthropic', 2.6, [['Claude API, input', 0.4], ['Claude API, output', 0.6]], 60),
