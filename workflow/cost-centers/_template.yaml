@@ -12,6 +12,14 @@ id: customer-a
 title: "Customer A"             # what the chip and the row tag say
 persona_ref: my-company         # optional: whose costs these are (identity/personas/<id>.yaml)
 mandant_ref: customer-a         # optional: who would receive an invoice (identity/mandants/<id>.yaml)
+budget_month: 100              # optional: the project's budget bar on the cost card
+currency: EUR                   # optional, the currency of budget_month (default EUR)
+billing:                        # optional: how `scripts/cost-ledger.py statement` bills a closed month
+  mode: pass-through            #   pass-through | markup (markup_pct on top) | flat (flat_amount) | none
+  basis: paid                   #   paid (after credits) | used (before credits)
+  vat_pct: 19                   #   0 when no VAT applies
+  # markup_pct: 10
+  # flat_amount: 200
 sources:
   - openai-example/proj_abc     # one project of a split account
   - azure-example/customer-a    # resource groups named alike in `costs.parts`

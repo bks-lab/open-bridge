@@ -335,3 +335,24 @@ test('the cost card filters by cost center: all, one project, or what no project
   // every entry has one: no "none" chip
   assert.deepEqual(logic.costCenterChoices({ ...costs, accounts: costs.accounts.slice(0, 2) }), ['all', 'shop', 'team'])
 })
+
+test('a project with a budget gets one budget bar over its entries; personas narrow the projects', () => {
+  const day = (d, a) => ({ day: d, amount: a, provisional: false, groups: {} })
+  const costs = { today: '2026-10-10', currency: 'EUR',
+    cost_centers: [{ id: 'shop', title: 'Shop', persona_ref: 'co', persona_title: 'Company', budget_month: 4 },
+      { id: 'side', title: 'Side', persona_ref: 'me', persona_title: 'Freelance' }],
+    accounts: [
+      { id: 'a', ok: true, cost_center: 'shop', month_to_date: 3, forecast_month: 6, days: [day('2026-10-10', 3)] },
+      { id: 'b', ok: true, cost_center: 'shop', month_to_date: 2, forecast_month: 2, days: [day('2026-10-10', 2)] },
+      { id: 'c', ok: true, cost_center: 'side', month_to_date: 5, forecast_month: 5, days: [day('2026-10-10', 5)] }] }
+  const b = logic.costCenterBudget(costs, 'shop')
+  assert.deepEqual(b, { month_to_date: 5, forecast_month: 8, budget_month: 4 })
+  assert.equal(logic.budgetBar(b).tone, 'danger')
+  assert.equal(logic.costCenterBudget(costs, 'side'), null)
+  assert.equal(logic.costCenterBudget(costs, 'all'), null)
+  assert.deepEqual(logic.costPersonaChoices(costs), ['all', 'co', 'me'])
+  assert.deepEqual(logic.costCenterChoices(costs, 'me'), ['all', 'side'])
+  assert.deepEqual(logic.costScope(costs, 'all', 'co').accounts.map(a => a.id), ['a', 'b'])
+  // one persona only: no persona chips
+  assert.deepEqual(logic.costPersonaChoices({ ...costs, cost_centers: costs.cost_centers.slice(0, 1) }), [])
+})

@@ -172,6 +172,49 @@ project, and "no project" while an entry belongs to none) that narrows the
 bars, the day, the rows and the totals alike. `persona_ref` and `mandant_ref`
 say whose costs these are and who would receive an invoice.
 
+### Whose costs, and a budget per project
+
+`persona_ref` on a cost center says whose costs these are. As soon as two
+personas own projects, the card shows a **Whose** row of chips above the
+projects, and picking one narrows both. A `budget_month` (in `currency`,
+default EUR, converted with the report's rates) gives a picked project one
+budget bar over all its entries: the month so far, the forecast, the budget.
+
+### Closing a month and a cost statement
+
+`scripts/cost-ledger.py close` freezes a month from the same reports the
+cockpit reads, per cost center, into `.bridge/ledger/costs/YYYY-MM.json`
+(`--dir` elsewhere): what was paid, what was used before credits, the credits,
+every entry with its groups, and what no center names as `unassigned`. It
+refuses a month that is not whole and settled in every report (a day missing,
+a provisional day, an account that failed), and it never overwrites a closed
+month unless `--replace`, which keeps the old file beside it.
+
+    cost-ledger.py close --month 2026-10 --source ~/.bridge/resources/costs.json --source ssh:my-server:~/.bridge/resources/costs.json
+
+Close between the 2nd and the 4th of the next month: the providers have settled
+the last day, and a 35-day window still reaches back to the 1st. As a workload,
+monthly on the 3rd (`schedule.rrule: "FREQ=MONTHLY;BYMONTHDAY=3"`), with the
+command above.
+An older month lies outside the reports' window: run the collectors once with
+`--days` reaching back to its 1st, then close it.
+
+`cost-ledger.py statement` turns one center's frozen month into the lines of
+an invoice attachment, as Markdown or CSV on stdout, by the center's optional
+`billing:` block:
+
+| `billing:` key | Meaning |
+|---|---|
+| `mode` | `pass-through` (default, costs one to one), `markup` (`markup_pct` on top), `flat` (`flat_amount`; the costs follow as information), `none` (costs only) |
+| `basis` | `paid` (default, after credits) or `used` (before credits) |
+| `vat_pct` | the VAT on the net amount, default 0 |
+
+    cost-ledger.py statement --month 2026-10 --center customer-a --lang de > statement.md
+
+It is the base of an invoice, not one: number, address and legal lines stay
+with whatever writes the invoice. Whether passed-on costs carry VAT is a
+question for whoever does your tax.
+
 ## Credits
 
 A provider that pays for usage with credits (AWS promotional credits) would

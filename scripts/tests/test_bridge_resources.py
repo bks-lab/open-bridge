@@ -350,6 +350,22 @@ def test_cost_centers_name_the_project_of_each_entry_across_accounts(tmp_path):
     assert rows["costs:azure-example"]["tags"] and "Shop" in json.dumps(rows["costs:azure-example"]["tags"])
 
 
+def test_cost_centers_carry_their_budget_in_eur_and_the_persona_name(tmp_path):
+    cc = tmp_path / "workflow" / "cost-centers"
+    cc.mkdir(parents=True)
+    (cc / "shop.yaml").write_text("schema_version: 1\nscope: user\nid: shop\ntitle: Shop\npersona_ref: me-co\n"
+                                  "budget_month: 54\ncurrency: USD\nsources: [azure-example]\n")
+    pers = tmp_path / "identity" / "personas"
+    pers.mkdir(parents=True)
+    (pers / "me-co.yaml").write_text("id: me-co\ndisplay_name: My Company\n")
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    br.cost_rows(tmp_path, TX, str(src), NOW, 36)
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    (c,) = view["cost_centers"]
+    assert c["budget_month"] == 50.0 and c["budget_currency"] == "USD" and c["persona_title"] == "My Company"
+
+
 def test_without_cost_centers_the_view_has_none(tmp_path):
     src = tmp_path / "costs.json"
     src.write_text(json.dumps(costs_doc()))

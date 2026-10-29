@@ -1611,6 +1611,8 @@ kbd {
 .costs { scroll-margin-top: 12px; }
 .costs-sub { margin-top: 14px; }
 .costs-total { margin-top: 10px; font-size: var(--text-sm); font-weight: 600; }
+.costs-budget { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 4px; }
+.costs-budget .cbudget { flex: 1 1 160px; max-width: 320px; }
 .clist, .blist { display: grid; }
 .crow {
   display: grid; grid-template-columns: minmax(0, 1.4fr) auto auto minmax(120px, 1fr); gap: 4px 18px; align-items: center;
