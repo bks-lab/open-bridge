@@ -7,6 +7,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
+import sys
 import threading
 
 from .. import work_find as wf
@@ -20,6 +22,10 @@ from .quick import MODELS
 from .text import TABLES
 
 FILES_ASK_TIMEOUT = 90
+# the one write path to a GitHub board (skills/github-projects-manager): a few gh calls, each read back
+ISSUE_SCRIPT = "skills/github-projects-manager/scripts/issue_transition.py"
+ISSUE_TIMEOUT = 120
+ISSUE_REF_RE = re.compile(r"^[\w.-]{1,100}/[\w.-]{1,100}#\d{1,9}\Z")
 # one question to the records at a time (v_files_ask), on a lock of its own, never the write lock
 _FILES_ASKING = threading.Lock()
 # one question to the history at a time (v_timeline_ask), on a lock of its own as well
@@ -560,6 +566,46 @@ class WorkVerbs:
                      go=row_go(rows[0][0]) if len(slugs) == 1 else None)
         else:
             ctx.note(self.tx["task_keep_failed"].format(err=m.short(run.err, 100)), bad=True)
+
+    def v_issue_review(self, ctx: Ctx, key: str, text: str | None = None) -> None:
+        self.issue_move(ctx, "review", key, text or "")
+
+    def v_issue_done(self, ctx: Ctx, key: str, text: str | None = None) -> None:
+        self.issue_move(ctx, "done", key, text or "")
+
+    def issue_move(self, ctx: Ctx, to: str, key: str, text: str) -> None:
+        """A GitHub issue to its board's review or done state, on a person's click: the board script writes and reads
+        back (comment, status, close), the cockpit only says what happened. Done takes the row out of the list at
+        once (dismissed, as Done on any other row of a tracker); the next pass no longer lists the closed issue"""
+        row = self.entry(key)["row"]
+        ref = str(row.get("ref") or "")
+        if not key.startswith("ref:") or not ISSUE_REF_RE.match(ref):
+            raise self.not_applicable("only a GitHub issue moves on its board", "key")
+        app = self.app
+        argv = [sys.executable, app.runner.script(ISSUE_SCRIPT), "--root", str(app.root), to, ref,
+                *(["--text", text] if text.strip() else [])]
+        ctx.subject = ref
+        with ctx.unlocked():
+            run = ctx.call(f"issue.{to}", ref, argv, ISSUE_TIMEOUT)
+        try:
+            data = json.loads((run.out or "").strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            data = {}
+        title = m.short(row.get("title") or ref, 60)
+        if not run.ok or not isinstance(data, dict) or not data.get("ok"):
+            why = (data.get("detail") or data.get("error")) if isinstance(data, dict) else None
+            ctx.note(self.tx["issue_failed"].format(title=title, err=m.short(str(why or run.err or "no answer"), 160)), bad=True)
+            return
+        state = next((b.get("now") for b in data.get("boards") or [] if b.get("now")), None) or ""
+        if to == "done":
+            self.clear_twins(key)
+            self.app.store.dismiss(key, "done", row.get("title") or ref)
+            ctx.settled.append(key)
+            ctx.note(self.tx["issue_closed"].format(title=title, state=state))
+        else:
+            ctx.note(self.tx["issue_in_review"].format(title=title, state=state))
+        self.app.collector.request("both")
+        ctx.delta()
 
     def v_note(self, ctx: Ctx, key: str, text: str) -> None:
         row = self.entry(key)["row"]

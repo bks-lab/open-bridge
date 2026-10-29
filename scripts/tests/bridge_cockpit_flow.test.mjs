@@ -1816,6 +1816,95 @@ test('the right column: an issue says Hide for what only leaves this list, Open 
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.hide && text.TABLES[lang].flow.onWeb, lang)
 })
 
+// ---------------------------------------------------------------- an issue on a board: review and done (29.10.2026)
+
+const PLAN = (over = {}) => ({ ok: true, ref: 'acme/app#7', type: 'issue', state: 'OPEN', url: 'https://github.com/acme/app/issues/7', unmatched: [],
+  boards: [{ slug: 'ops', title: 'Ops', owner: 'acme', number: 7, status: 'In Progress', review_state: 'In Review', done_state: 'Done',
+    in_review: false, in_done: false, rules: ['done_requires_review', 'done_only_by_user'] }], ...over })
+/** A recorder whose issuePlan answers with `plan` (GET /api/issue) */
+const withPlan = plan => {
+  const c = recorder()
+  return new Proxy(c, { get: (t, p) => (p === 'issuePlan' ? (ref => { t.calls.push(['issuePlan', ref]); return Promise.resolve(plan) }) : t[p]) })
+}
+const gitIssue = (over = {}) => ref('acme/app', 7, { bucket: 'do', url: 'https://github.com/acme/app/issues/7', ...over })
+const iw = en.flow.issue
+/** Until the card read its board: the line no longer says it is reading */
+const read = el => until(() => el.$('.flow-issue-on') && el.$('.flow-issue-on').text() !== iw.loading)
+
+test('an issue on a board: Set to review and Done after Open on GitHub, the board and its status above them', async () => {
+  const v = en.flow.verbs
+  const c = withPlan({ ok: true, data: PLAN() })
+  const el = right(state({ now: [gitIssue()] }), c)
+  await read(el)
+  assert.deepEqual(c.calls.find(x => x[0] === 'issuePlan'), ['issuePlan', 'acme/app#7'])
+  assert.match(el.$('.flow-issue-on').text(), /Ops: In Progress/)
+  assert.deepEqual(acts(el), [en.flow.onWeb('https://github.com/acme/app/issues/7'), panel(iw.review), panel(iw.done), panel(v.do), v.advise,
+    en.flow.hide, panel(v.later), panel(v.drop)])
+})
+
+test('Set to review asks what is done first, then sends issue_review with it', async () => {
+  const c = withPlan({ ok: true, data: PLAN() })
+  const el = right(state({ now: [gitIssue()] }), c)
+  await read(el)
+  el.$$('.flow-aside button').find(b => b.text() === panel(iw.review)).click()
+  await until(() => el.$('.flow-issue-panel textarea'))
+  const send = () => el.$$('.flow-issue-panel button').find(b => b.text() === iw.sendReview)
+  assert.ok(send().getAttribute('disabled') != null, 'no review comment without a reason')
+  const box = el.$('.flow-issue-panel textarea')
+  box.value = 'Deployed and verified'
+  box.dispatch('input')
+  await until(() => send().getAttribute('disabled') == null)
+  send().click()
+  await until(() => c.calls.some(x => x[0] === 'act'))
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'issue_review', { key: 'ref:acme/app#7', text: 'Deployed and verified' }])
+})
+
+test('Done says what the click will do and the board rules before it sends issue_done', async () => {
+  const c = withPlan({ ok: true, data: PLAN() })
+  const el = right(state({ now: [gitIssue()] }), c)
+  await read(el)
+  el.$$('.flow-aside button').find(b => b.text() === panel(iw.done)).click()
+  await until(() => el.$('.flow-issue-panel'))
+  const p = el.$('.flow-issue-panel').text()
+  assert.ok(p.includes(iw.steps([iw.comment, 'In Review', 'Done', iw.close].join(', '))), p)
+  assert.ok(p.includes(iw.rules('done_requires_review, done_only_by_user')), p)
+  el.$$('.flow-issue-panel button').find(b => b.text() === iw.confirmDone).click()
+  await until(() => c.calls.some(x => x[0] === 'act'))
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'issue_done', { key: 'ref:acme/app#7' }])
+})
+
+test('the AI suggests closing: the button that fits is the strong one, its reason already in the field, Hide stays plain', async () => {
+  const s = state({ now: [gitIssue()], themes: { enabled: true, assign: {}, themes: [], suggest: { 'ref:acme/app#7': { verb: 'done', reason: 'PR #9 is merged', at_ms: NOW } } } })
+  const c = withPlan({ ok: true, data: PLAN() })
+  const el = right(s, c)
+  await read(el)
+  const all = acts(el)
+  assert.equal(all[1], `[${panel(iw.review)}]`, all.join(' | '))
+  assert.ok(all.includes(en.flow.hide), 'Hide is no longer strong')
+  el.$$('.flow-aside button').find(b => b.text() === panel(iw.review)).click()
+  await until(() => el.$('.flow-issue-panel textarea'))
+  const box = el.$('.flow-issue-panel textarea')
+  assert.equal(box.value ?? box.getAttribute('value'), 'PR #9 is merged')
+  // in review already: Done is the one that fits
+  const inReview = PLAN({ boards: [{ ...PLAN().boards[0], status: 'In Review', in_review: true }] })
+  const el2 = right(s, withPlan({ ok: true, data: inReview }))
+  await read(el2)
+  assert.ok(!acts(el2).includes(panel(iw.review)))
+  assert.ok(acts(el2).includes(`[${panel(iw.done)}]`), acts(el2).join(' | '))
+})
+
+test('an issue on no board of workflow/projects/ and a pull request keep Hide only', async () => {
+  const none = right(state({ now: [gitIssue()] }), withPlan({ ok: true, data: PLAN({ boards: [] }) }))
+  await read(none)
+  assert.equal(none.$('.flow-issue-on').text(), iw.none)
+  assert.ok(!acts(none).some(w => w.includes(iw.review) || w.includes(iw.done)))
+  const c = withPlan({ ok: true, data: PLAN() })
+  const pr = right(state({ now: [gitIssue({ url: 'https://github.com/acme/app/pull/7' })] }), c)
+  assert.ok(!pr.$('.flow-issue-on'))
+  assert.ok(!c.calls.some(x => x[0] === 'issuePlan'), 'a pull request reads no board plan')
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.issue.confirmDone, lang)
+})
+
 test('the right column: the return card has one way back, Runs on (E)', () => {
   const v = en.flow.verbs
   const el = right(state({ work: [task('other')], tabs: [onTab('waiting', { ref: 'surface:5', slug: 'other' })],

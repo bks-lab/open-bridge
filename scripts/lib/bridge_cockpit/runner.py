@@ -40,7 +40,7 @@ from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
 CMUX_APP = "/Applications/cmux.app/Contents/Resources/bin/cmux"
 SCRIPT_PATHS = ("scripts/briefing.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
                 "scripts/bridge-resources.py", "scripts/triage.py", "scripts/work-find.py",
-                "skills/cmux/scripts/cmux_layout.py")
+                "skills/cmux/scripts/cmux_layout.py", "skills/github-projects-manager/scripts/issue_transition.py")
 
 
 class RunnerRefused(Exception):

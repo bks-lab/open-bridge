@@ -100,6 +100,8 @@ SCREEN_LINES = 400          # the tab view reads this much of a tab's scrollback
 SCREEN_TIMEOUT = 4
 GITHUB_REF_RE = re.compile(r"^[\w.-]{1,100}/[\w.-]{1,100}#\d{1,9}\Z")
 GITHUB_DETAIL_TIMEOUT = 40
+# what the boards of one issue say now (skills/github-projects-manager/scripts/issue_transition.py plan)
+ISSUE_PLAN_TIMEOUT = 40
 FIND_TIMEOUT = 30      # the search over work/ (scripts/work-find.py); rg answers in well under a second
 SCREEN_MAX = 120_000
 SCREEN_CACHE_MS = 1000      # several pages on one tab share one read of its screen within this window
@@ -1194,6 +1196,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, app.scrub_tree(data))
             else:
                 self.send_error_json("unreadable", app.scrub(str((data or {}).get("error") or "GitHub did not answer"))[:200])
+        elif path == "/api/issue":
+            # the boards of one GitHub issue and what a click would set there (issue_transition.py plan), read only
+            ref = one("ref")
+            if not GITHUB_REF_RE.match(ref):
+                self.send_error_json("invalid_argument", "not an owner/repo#number", "ref", status=400)
+                return
+            run = app.run([app.runner.python, app.runner.script("skills/github-projects-manager/scripts/issue_transition.py"),
+                           "--root", str(app.root), "plan", ref], ISSUE_PLAN_TIMEOUT)
+            try:
+                data = json.loads((run.out or "").strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                data = {"ok": False, "detail": (run.err or "no answer").strip()[-200:]}
+            if run.ok and isinstance(data, dict) and data.get("ok"):
+                self.send_json(200, app.scrub_tree(data))
+            else:
+                why = (data or {}).get("detail") or (data or {}).get("error") or "GitHub did not answer"
+                self.send_error_json("unreadable", app.scrub(str(why))[:200])
         elif path == "/api/relay":
             self.send_json(200, app.relay_state())
         elif path == "/api/graph":
