@@ -3074,7 +3074,8 @@ const FEED_REPEAT_MS = 10 * 60000
  *  that asks again later or a finding that returns is news again */
 export function addFeed(feed, events, cap = 50) {
   const out = [...feed]
-  const about = x => x.key ?? x.ref ?? x.title
+  // a finding is named by its section, which can stand on more than one page
+  const about = x => x.key ?? x.ref ?? (x.page ? `${x.page}/${x.title}` : x.title)
   for (const e of events) {
     const last = out.filter(x => about(x) === about(e)).sort((x, y) => y.at - x.at)[0]
     if (last && last.kind === e.kind && Math.abs(e.at - last.at) < FEED_REPEAT_MS) continue
@@ -3839,12 +3840,13 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   if (s?.relay?.enabled && !s.relay.online) add('relay', 'offline', 'warn', 'controlOffline', [], { kind: 'claude' })
   // 25 the last loud notes of the last quarter hour; a server note replayed on load carries ms 0 and stays out
   const loud = (s?.notes ?? []).filter(x => (x.tone === 'bad' || x.tone === 'warn') && x.ms && now - x.ms < TICKER_NOTE_MS)
-  // a note about a tab the status already names (it waits, it is long in one state) would say it twice
-  const named = new Set(out.filter(x => x.target?.kind === 'tab').map(x => x.target.ref))
+  // a note about a tab the status shows as waiting or long in one state would say it twice; a tab that only
+  // works, or whose kind is switched off, does not stand in for its note
+  const want = new Set(kinds ?? TICKER_KINDS)
+  const named = new Set(out.filter(x => want.has(x.cat) && /^st:tab-(waits|long):/.test(x.id)).map(x => x.target.ref))
   for (const n of loud.filter(x => !(x.go?.kind === 'tab' && named.has(x.go.ref))).slice(-3)) {
     add(`note:${n.at ?? ''}:${n.text}`, 'notes', n.tone, 'note', [n.text], noteGo(n.go))
   }
-  const want = new Set(kinds ?? TICKER_KINDS)
   return out.filter(x => want.has(x.cat))
 }
 

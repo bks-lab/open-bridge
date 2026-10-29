@@ -1800,6 +1800,8 @@ test('the live feed keeps a row that leaves and comes back, and a thing that hap
   assert.equal(logic.addFeed([ask(0)], [ask(60 * min)], 50).length, 2)
   const alarm = at => ({ kind: 'alarm', page: 'ops', title: 'Probes', at })
   assert.equal(logic.addFeed([alarm(0)], [alarm(2 * 60 * min)], 50).length, 2)
+  // a finding of the same name on another page is another thing
+  assert.equal(logic.addFeed([alarm(0)], [{ ...alarm(min), page: 'lab' }], 50).length, 2)
   // an answer is one event: its later step from result to done says nothing new
   const ret = stage => ({ sections: [], returns: [{ key: 'task:x', title: 'X', stage }] })
   assert.deepEqual(logic.feedEvents(ret('result'), ret('done'), [], [], 1).map(e => e.kind), [])
@@ -2680,6 +2682,10 @@ test('ticker: each status rule names its kind, tone and where a click leads', ()
   assert.deepEqual(logic.tickerStatus(twice, NOW, logic.TICKER_KINDS).filter(x => x.key === 'tabWaits' || x.key === 'note').map(x => x.key), ['tabWaits'])
   const other = mk({ tabs: { tabs: [{ ref: 's2', name: 'Other', state: 'needs-you', waiting: true }], error: null }, notes: [tabNote] })
   assert.equal(statusOf(other, 'note').length, 1)
+  // a tab that only works does not stand in for its warning, nor does a waiting tab whose kind is switched off
+  const works = mk({ tabs: { tabs: [{ ref: 's1', name: 'ORBIT', state: 'working' }], error: null }, notes: [tabNote] })
+  assert.equal(statusOf(works, 'note').length, 1)
+  assert.deepEqual(logic.tickerStatus(twice, NOW, ['notes']).map(x => x.key), ['note'])
   // the kinds filter leaves out whole categories
   const loud = mk({ conn: 'down', model: model({ counts: { now: 2 } }) })
   assert.deepEqual(logic.tickerStatus(loud, NOW, ['offline']).map(x => x.key), ['connDown'])
