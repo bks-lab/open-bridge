@@ -92,6 +92,8 @@ class WebConfig:
     # (name, aliases, repo globs) of the workspaces that carry repos: (owner/repo globs): an issue or PR without an
     # area stands in the workspace whose globs match its repository (model.with_repo_areas)
     area_repos: tuple = ()
+    # (alias, name) for every alias of workplace.workspaces: the page folds a tab's or a row's name into its area
+    area_aliases: tuple = ()
     # Jev (TypeSafe): off unless integrations.typesafe.enabled; the key only ever as a keychain reference
     jev_enabled: bool = False
     jev_key_ref: str | None = None
@@ -676,9 +678,20 @@ def area_repos_of(spaces: Any) -> tuple:
         repos = ws.get("repos")
         globs = tuple(g.strip() for g in repos if isinstance(g, str) and g.strip()) if isinstance(repos, list) else ()
         if globs:
-            aliases = tuple(a.strip() for a in ws.get("aliases") or () if isinstance(a, str) and a.strip())
-            out.append((ws["name"].strip(), aliases, globs))
+            out.append((ws["name"].strip(), _aliases(ws), globs))
     return tuple(out)
+
+
+def _aliases(ws: dict) -> tuple:
+    """A workspace's aliases: only a list, only its non-empty strings (a lone string is no list of names)."""
+    raw = ws.get("aliases")
+    return tuple(a.strip() for a in raw if isinstance(a, str) and a.strip()) if isinstance(raw, list) else ()
+
+
+def area_aliases_of(spaces: Any) -> tuple:
+    """(alias, name) for every alias of every named workspace, in their order."""
+    return tuple((alias, ws["name"].strip()) for ws in (spaces if isinstance(spaces, list) else ())
+                 if isinstance(ws, dict) and isinstance(ws.get("name"), str) and ws["name"].strip() for alias in _aliases(ws))
 
 def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     root = Path(root).resolve()
@@ -721,6 +734,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
              if isinstance(ws, dict))
     areas = tuple(dict.fromkeys(n.strip() for n in names if isinstance(n, str) and n.strip()))
     area_repos = area_repos_of(_dict(raw.get("workplace")).get("workspaces"))
+    area_aliases = area_aliases_of(_dict(raw.get("workplace")).get("workspaces"))
 
     ts = _dict(_dict(raw.get("integrations")).get("typesafe"))
     ref = ts.get("key_ref")
@@ -741,7 +755,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
 
     cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
-                    voice=voice, target=target, control=control, areas=areas, area_repos=area_repos, jev_enabled=ts.get("enabled") is True,
+                    voice=voice, target=target, control=control, areas=areas, area_repos=area_repos, area_aliases=area_aliases, jev_enabled=ts.get("enabled") is True,
                     jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                     jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),

@@ -838,3 +838,42 @@ test('the stage carries the areas as one bar under the greeting; a pill filters,
   on.click()
   assert.deepEqual(c.calls.filter(x => x[0] === 'setArea').at(-1), ['setArea', null])
 })
+
+test('area aliases fold into their area for tabs and rows: one pill, its count, its filter (review of #572)', () => {
+  logic.setAreaAliases({ Hm: 'Home' })
+  try {
+    const tabs = [{ ref: 'a', name: 'resting', workspace: 'Hm', state: 'waiting', idle: true },
+      { ref: 'b', name: 'works', workspace: 'home', state: 'working' }]
+    assert.deepEqual(logic.homeProjects(tabs, [{ key: 'task:x', area: 'Hm' }]), ['Home'])
+    assert.equal(logic.restingIn(tabs, 'Home'), 1)
+    assert.ok(logic.inProject(tabs[0], 'Home'))
+    assert.ok(logic.inProject({ area_names: ['Hm'] }, 'home'))
+    const lines = logic.homeAreas(tabs, [{ id: 'now', rows: [] }, { id: 'work', rows: [] }], [], NOW)
+    assert.deepEqual(lines.map(a => [a.name, a.running, a.resting]), [['Home', 1, 1]])
+    assert.deepEqual(logic.areaBar(lines, ['Home', 'Shop']).quiet, ['Shop'])
+  } finally { logic.setAreaAliases({}) }
+})
+
+test('a tab at rest without a workspace counts under No area with Work through on and off (review of #572)', () => {
+  const tabs = [{ ref: 'a', name: 'loose', workspace: '', state: 'waiting', idle: true }]
+  const sections = [{ id: 'now', rows: [] }, { id: 'give', rows: [] }, { id: 'work', rows: [] }, { id: 'track', rows: [] }, { id: 'later', rows: [] }]
+  const home = logic.homeAreas(tabs, sections, [], NOW)
+  assert.equal(home.find(a => a.none)?.resting, 1)
+  assert.equal(logic.restingIn(tabs, ''), 1)
+  const s = cockpitState(NOW, { ui: { page: '@start' } })
+  const flow = { ...s, model: { ...s.model, sections, files: undefined, task_rows: [], deferred: [] }, tabs: { tabs },
+    work: { flow: { enabled: true, drop_reasons: ['not_needed'], return_after_s: 20 } }, sessions: { sessions: [] } }
+  assert.equal(logic.flowAreas(flow).areas.find(a => a.none)?.resting, 1)
+})
+
+test('homeAreas counts a row under every area its filter matches, never an alias as a line (review of #572)', () => {
+  logic.setAreaAliases({ Hm: 'Home' })
+  try {
+    const tabs = [{ ref: 'b', name: 'side', workspace: 'Side', state: 'working' }]
+    const work = [{ key: 'task:x', task: 'x', title: 'X', status: 'doing', area: 'Home', area_names: ['Home', 'Hm', 'Side'] }]
+    const lines = logic.homeAreas(tabs, [{ id: 'now', rows: [] }, { id: 'work', rows: work }], [], NOW)
+    assert.deepEqual(lines.map(a => [a.name, a.tasks]).sort(), [['Home', 1], ['Side', 1]])
+    // the pill's figure is what its filter shows
+    for (const a of lines) assert.equal(work.filter(r => logic.inProject(r, a.name)).length, a.tasks)
+  } finally { logic.setAreaAliases({}) }
+})

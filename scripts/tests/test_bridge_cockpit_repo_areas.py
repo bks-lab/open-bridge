@@ -50,3 +50,16 @@ def test_a_row_of_a_matching_repository_takes_that_area():
     # pure: the view handed in stays as it was, and no rules change nothing
     assert view["buckets"][0]["rows"][0]["area"] is None
     assert m.with_repo_areas(view, ()) == view
+
+
+def test_aliases_are_read_only_as_a_list_of_names(tmp_path):
+    spaces = [
+        {"name": "Lab", "aliases": "L", "repos": ["lab-org/*"]},
+        {"name": "Shop", "aliases": [3, True, "", " Store "], "repos": ["acme/*"]},
+        {"name": "Home", "aliases": 7},
+        {"name": "Desk", "aliases": [" Bench "]},
+    ]
+    cfg = load_web_config(tmp_path, {"workplace": {"workspaces": spaces}})
+    assert cfg.area_repos == (("Lab", (), ("lab-org/*",)), ("Shop", ("Store",), ("acme/*",)))
+    # every alias of every workspace, for the page to fold a tab's or a row's name into its area
+    assert cfg.area_aliases == (("Store", "Shop"), ("Bench", "Desk"))
