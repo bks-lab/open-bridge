@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -248,7 +248,12 @@ page opens the matching view. The day moves to Start as well: dates, status,
 what is clear, the small fixes and the workplace stand there as cards in a shelf
 "The day", above the areas and the project chips since those do not filter it, and the pages of
 `group: day` close the start page as shelves of their own. Both show in the
-bridge and tiles views only; the overview has no shelves. The middle of Due
+bridge and tiles views only; the overview has no shelves. "The day" is a shelf
+like the others (Settings, Start page), on until switched off; the panel of the
+bridge's core repeats what of it concerns the briefing itself: a source that
+failed, was skipped or found something, the small fixes and the workplace. The
+pages of `group: day` have no switch: without Due they have no other place, and
+a link to one opens the start page instead of Work. The middle of Due
 shows the day in full in every case (headline, dates, status, what is clear,
 the small fixes, the workplace, the pages of `group: day`), under the same area
 filter as the rows beside it. **Small fixes** (de: Kleine Handgriffe) holds
