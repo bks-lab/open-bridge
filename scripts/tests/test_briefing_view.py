@@ -257,7 +257,7 @@ def test_the_headline_counts_only_what_asks_you():
         inbox_item("i4", "Which date suits?", kind="question", gate="only-you")]))
     view = bv.build(r, profile(view={"style": "triage"}))
     assert len(buckets(view)["do"]) == 4
-    assert view["headline"].startswith("2 for you today")
+    assert view["headline"].startswith("2 asks for you today · 2 reports")
     assert {i["title"]: i["art"] for i in view["buckets"][0]["items"]}["A dark mode one day"] == "idea"
 
 
@@ -1077,3 +1077,127 @@ def test_a_long_tag_value_is_cut_at_a_word_with_an_ellipsis_never_mid_word():
     assert len(tags["Setup"]) <= 60 and tags["Setup"].endswith("…")
     assert tags["Setup"] == "Proxmox on SSD 2 (lab), Windows on SSD 1; RTX 4090 passed…"
     assert bv.tags_of({"One": "x" * 80})["One"] == "x" * 59 + "…"
+
+
+# ---------------------------------------------------------------- one matter, one line
+
+def _rows_of(view):
+    return [i for b in view["buckets"] for i in b["items"]]
+
+
+def test_a_tracker_row_of_a_task_with_an_inbox_line_becomes_part_of_that_line():
+    # 29.10.: one task stood four times (its inbox item, the issue its STATUS.md syncs, a deadline, its next step)
+    r = result(
+        sec("inbox", "inbox", [inbox_item("i1", "Give feedback on the product review", urgency="today", task="review")]),
+        sec("gh", "tracker", [{"id": "contoso/portal#70", "title": "Product review", "state": "new", "category": "open",
+                               "url": "https://github.com/contoso/portal/issues/70", "task": "review"}]),
+        sec("deadlines", "command", [{"id": "1", "title": "Review due Friday", "about_task": "review",
+                                      "due": "2026-10-09"}]))
+    rows = _rows_of(bv.build(r, profile(view={"style": "triage"})))
+    assert [x["title"] for x in rows] == ["Give feedback on the product review"]
+    assert rows[0]["sources"] == ["inbox", "gh", "deadlines"]
+    assert rows[0]["url"] == "https://github.com/contoso/portal/issues/70"      # a fact the inbox line lacked
+    assert "contoso/portal#70" in rows[0]["why"]
+
+
+def test_a_tracker_row_of_a_task_without_an_inbox_line_stands_alone():
+    r = result(
+        sec("inbox", "inbox", [inbox_item("i1", "Something else", task="other")]),
+        sec("gh", "tracker", [{"id": "contoso/portal#70", "title": "Product review", "state": "new", "category": "open",
+                               "task": "review"}]))
+    assert sorted(x["title"] for x in _rows_of(bv.build(r, profile(view={"style": "triage"})))) == \
+        ["Product review", "Something else"]
+
+
+def test_two_inbox_items_of_one_task_stay_two_lines():
+    r = result(sec("inbox", "inbox", [inbox_item("i1", "Approve the draft", task="review"),
+                                      inbox_item("i2", "Pick a date", task="review", kind="question")]))
+    assert len(_rows_of(bv.build(r, profile(view={"style": "triage"})))) == 2
+
+
+def test_a_task_next_step_folds_into_an_inbox_line_at_least_as_urgent_as_it():
+    r = result(
+        sec("inbox", "inbox", [inbox_item("i1", "Give feedback on the product review", urgency="today", task="review")]),
+        sec("tasks", "tasks", [task_item("review", "Product review", nxt={"what": "Wait for the vendor", "who": "ada"})]))
+    rows = _rows_of(bv.build(r, profile(view={"style": "triage"})))
+    assert [x["title"] for x in rows] == ["Give feedback on the product review"]
+    assert any("Wait for the vendor" in w for w in rows[0]["why"])
+    assert rows[0]["sources"] == ["inbox", "tasks"]
+
+
+def test_a_task_next_step_more_urgent_than_its_inbox_line_keeps_its_own_row():
+    r = result(
+        sec("inbox", "inbox", [inbox_item("i1", "Some day: a better name", urgency="later", task="review")]),
+        sec("tasks", "tasks", [task_item("review", "Product review",
+                                         nxt={"what": "Send the review", "who": "me", "due": "2026-10-05"})]))
+    rows = {x["title"]: x["bucket"] for x in _rows_of(bv.build(r, profile(view={"style": "triage"})))}
+    assert rows == {"Send the review": "do", "Some day: a better name": "plan"}
+
+
+def test_an_inbox_line_in_a_hidden_bucket_folds_nothing_into_it():
+    r = result(
+        sec("inbox", "inbox", [inbox_item("i1", "Some day", urgency="later", task="review")]),
+        sec("gh", "tracker", [{"id": "contoso/portal#70", "title": "Product review", "state": "review", "category": "qa",
+                               "task": "review"}]))
+    view = bv.build(r, profile(view={"style": "triage", "buckets": [{"id": "do"}]}))
+    assert [x["title"] for x in _rows_of(view)] == ["Product review"]
+
+
+def test_an_ask_about_an_inbox_line_joins_that_line():
+    # 29.10.: "ask about this row" filed a second item about the same thing, its title the whole prompt
+    r = result(sec("inbox", "inbox", [
+        inbox_item("20261029-0700-quota-ab12", "Quota raised: switch over", kind="result", task="model-switch"),
+        inbox_item("20261029-0800-check-cd34", "Check: Quota raised: switch over", task="model-switch",
+                   key="ask:20261029-0700-quota-ab12")]))
+    rows = _rows_of(bv.build(r, profile(view={"style": "triage"})))
+    assert [x["title"] for x in rows] == ["Quota raised: switch over"]
+    assert rows[0]["inbox_id"] == "20261029-0700-quota-ab12"
+    assert rows[0]["also_inbox"] == ["20261029-0800-check-cd34"]
+
+
+def test_an_ask_about_a_tracker_row_joins_that_row():
+    r = result(
+        sec("inbox", "inbox", [inbox_item("i7", "Check: Product review", key="ask:contoso/portal#70")]),
+        sec("gh", "tracker", [{"id": "contoso/portal#70", "title": "Product review", "state": "new", "category": "open"}]))
+    rows = _rows_of(bv.build(r, profile(view={"style": "triage"})))
+    assert [x["title"] for x in rows] == ["Product review"] and rows[0]["inbox_id"] == "i7"
+
+
+# ---------------------------------------------------------------- an item that waits for a condition
+
+def test_an_item_waiting_for_a_condition_stands_in_waiting_and_says_so():
+    r = result(sec("inbox", "inbox", [inbox_item("i1", "Quota raised: switch over", kind="result", urgency="now",
+                                                 state="waiting", waits_for=True)]))
+    view = bv.build(r, profile(view={"style": "triage"}))
+    assert buckets(view) == {"waiting": ["Waiting for: Quota raised: switch over"]}
+    de = bv.build(r, profile(view={"style": "triage"}, _language="de"))
+    assert buckets(de) == {"waiting": ["Wartet auf: Quota raised: switch over"]}
+
+
+# ---------------------------------------------------------------- the headline says what it counts
+
+def test_the_headline_names_its_count_as_asks_and_counts_the_rest_of_do_apart():
+    r = result(sec("inbox", "inbox", [
+        inbox_item("i1", "Merge the release", kind="decision"),
+        inbox_item("i3", "Disk at 91 %", kind="finding"),
+        inbox_item("i4", "Build failed", kind="result")]))
+    view = bv.build(r, profile(view={"style": "triage"}))
+    assert view["headline"].startswith("1 ask for you today · 2 reports")
+    de = bv.build(r, profile(view={"style": "triage"}, _language="de"))
+    assert de["headline"].startswith("1 Frage an dich heute · 2 Meldungen")
+    only = bv.build(result(sec("inbox", "inbox", [inbox_item("i1", "Merge it")])), profile(view={"style": "triage"}))
+    assert only["headline"].startswith("1 ask for you today · ") and "report" not in only["headline"]
+    one = bv.build(result(sec("inbox", "inbox", [inbox_item("i1", "Merge it", kind="decision"),
+                                                 inbox_item("i2", "Merge that", kind="decision"),
+                                                 inbox_item("i3", "Disk at 91 %", kind="finding")])),
+                   profile(view={"style": "triage"}, _language="de"))
+    assert one["headline"].startswith("2 Fragen an dich heute · 1 Meldung ")
+
+
+def test_a_blocked_task_folds_into_its_inbox_line_with_why_it_waits():
+    r = result(
+        sec("inbox", "inbox", [inbox_item("i1", "Answer the vendor", urgency="today", task="review")]),
+        sec("tasks", "tasks", [task_item("review", "Product review", blocked_by="vendor test run")]))
+    rows = _rows_of(bv.build(r, profile(view={"style": "triage"})))
+    assert [x["title"] for x in rows] == ["Answer the vendor"]
+    assert "vendor test run" in rows[0]["why"] and not any(w.startswith("next:") for w in rows[0]["why"])

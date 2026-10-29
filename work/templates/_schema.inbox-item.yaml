@@ -4,8 +4,8 @@
 # once and never changes. Events under `work/inbox/<id>/events/` are validated
 # by `python3 scripts/inbox.py validate` (their verb must be one of
 # inbox.VERBS; a `describe` event carries a `brief` as `$defs/brief`, the
-# same shape as the `brief:` block of a STATUS.md). The contract is
-# scripts/inbox.py; this schema mirrors it.
+# same shape as the `brief:` block of a STATUS.md, and a `wait` event a probe
+# as `waits_for`). The contract is scripts/inbox.py; this schema mirrors it.
 #
 # Related:
 #   - work/templates/inbox-item.yaml  (annotated example)
@@ -78,6 +78,9 @@ properties:
         type: string
   closes_when:
     $ref: "#/$defs/probe"
+  waits_for:
+    $ref: "#/$defs/probe"
+    description: "Optional: the item asks nobody (state waiting) until this probe holds; `check` then records a `ready` event and the item is open. Unknown keeps it waiting. A `wait` event sets it on an item already filed (docs/inbox.md, Waiting for a condition)"
   closer:
     type: string
     enum: [probe, reporter, person, bot]

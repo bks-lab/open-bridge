@@ -39,7 +39,7 @@ Daily and on-demand briefing. Read the referenced file ONLY when triggered.
 ## Prerequisites
 
 - `bridge-config.yaml` with `work.enabled: true`. If not: offer setup.
-- Standing orders are loaded at session start (per CLAUDE.md). If `/briefing`
+- Standing orders are loaded at session start (per AGENTS.md, for every agent). If `/briefing`
   is invoked **standalone** (e.g. via cron or a long-running session), manually
   load `protocols/standing-orders/*.md` **and `protocols/standing-orders/user/*.md`**
   before Phase 1 — the `applications` surface logic in Stream C depends on them, and

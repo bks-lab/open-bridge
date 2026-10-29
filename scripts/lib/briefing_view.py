@@ -54,7 +54,11 @@ DEFAULT_BUCKETS = {
     "drop": {"title": "Park or drop", "options": ["park", "keep"]},
 }
 LABELS = {
-    "yours_today": "{n} for you today",
+    # the headline counts the asks (asks_you); what else stands in Do (reports, ideas) is counted apart
+    "yours_today": "{n} asks for you today",
+    "yours_today_one": "{n} ask for you today",
+    "do_reports": "{n} reports",
+    "do_reports_one": "{n} report",
     "free_until": "free until {time}",
     "free_rest": "free for the rest of the day",
     "busy_until": "in {title} until {time}",
@@ -70,6 +74,8 @@ LABELS = {
     "look_again": "look again {when}",
     "with": "with {who}",
     "task": "task {slug}",
+    "next_step": "next: {what}",
+    "waiting_for": "Waiting for: {title}",
     "nudge": "nudge?",
     "new": "new",
     "housekeeping": "Housekeeping",
@@ -239,7 +245,10 @@ LABELS = {
 # English the default and the fallback). The language is bridge-config.yaml language.conversation; a
 # profile's own `view.labels` still win over both.
 LABELS_DE = {
-    "yours_today": "{n} für dich heute",
+    "yours_today": "{n} Fragen an dich heute",
+    "yours_today_one": "{n} Frage an dich heute",
+    "do_reports": "{n} Meldungen",
+    "do_reports_one": "{n} Meldung",
     "free_until": "frei bis {time}",
     "free_rest": "frei für den Rest des Tages",
     "busy_until": "in {title} bis {time}",
@@ -255,6 +264,8 @@ LABELS_DE = {
     "look_again": "nachsehen {when}",
     "with": "bei {who}",
     "task": "Aufgabe {slug}",
+    "next_step": "nächster Schritt: {what}",
+    "waiting_for": "Wartet auf: {title}",
     "nudge": "nachfassen?",
     "new": "neu",
     "housekeeping": "Pflege",
@@ -814,9 +825,16 @@ def _labels(view: dict, language: str | None = None) -> dict:
         try:
             if _fields(text) <= _fields(LABELS[key]):
                 out[key] = text
+                if f"{key}_one" in LABELS and f"{key}_one" not in given:
+                    out[f"{key}_one"] = text   # a profile's own plural without a singular is used for one as well
         except ValueError:
             pass
     return out
+
+
+def _count(labels: dict, key: str, n: int) -> str:
+    """A counted label, with its singular for exactly one when the labels carry one."""
+    return labels.get(f"{key}_one", labels[key]).format(n=n) if n == 1 else labels[key].format(n=n)
 
 
 # ---------------------------------------------------------------- time
@@ -1115,17 +1133,25 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 if item.get("gate") == "only-you":
                     why.append(labels["only_you"])
                 soon = due is not None and due.date() <= horizon
+                title = item.get("title")
                 if item.get("state") == "deferred":
                     bucket = "do" if soon or item.get("gate") == "only-you" else "plan"
+                elif item.get("waits_for") is True:
+                    # filed for when something has happened (inbox.py waits_for): it asks nobody yet, and says so
+                    # instead of stating the hoped-for outcome as a fact (29.10.)
+                    bucket, title = "waiting", labels["waiting_for"].format(title=title)
                 else:
                     bucket = "do" if item.get("urgency") in ("now", "today") or soon else "plan"
                 rank = 0 if item.get("urgency") == "now" else 1 if soon else 2
-                # An item the briefing filed from a tracker row is that row: one line, not two.
+                # An item the briefing filed from a tracker row is that row: one line, not two. So is an item filed
+                # by "ask about this row" on a tracker row (the cockpit's `ask:<owner/repo#n>`).
                 key = f"inbox:{iid}"
                 filed = str(item.get("key") or "").split(":", 3)
                 if filed[0] == "briefing" and len(filed) == 4:
                     key = _item_key(filed[2], filed[3])
-                add(key, row(sid, item, forced or bucket, item.get("title"), why, rank, due=item.get("due"),
+                elif filed[0] == "ask" and GLOBAL_ID.match(str(item.get("key"))[4:]):
+                    key = _item_key(sid, str(item.get("key"))[4:])
+                add(key, row(sid, item, forced or bucket, title, why, rank, due=item.get("due"),
                              filed=key != f"inbox:{iid}", inbox_id=iid, gate=item.get("gate"),
                              urgency=item.get("urgency"), has_action=bool(item.get("has_action")),
                              inbox_state=item.get("state"), inbox_key=item.get("key"),
@@ -1218,7 +1244,71 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             continue
         bucket = {"blocked": "waiting", "due": "do", "waiting": "plan"}[check]
         add(f"advise:{item.get('id')}", row(sid, item, forced or bucket, item.get("title"), (), 2))
+    _fold(out, view, labels)
     return out
+
+
+def _fold(out: dict, view: dict, labels: dict) -> None:
+    """One matter, one line: the inbox line wins and what else names the same matter becomes part of it.
+
+    29.10.: one task stood four times in a morning briefing (its inbox item, the issue its STATUS.md syncs, a
+    deadline row, its own next step), and an item filed by "ask about this row" stood beside the row it asked
+    about. Folded here, after every section added its rows:
+      - an inbox item keyed `ask:<inbox id>` joins the line of that item (its id goes to `also_inbox`);
+      - a tracker or command row about a task (`task` or `about_task`) joins that task's most urgent inbox line;
+      - a task's own row (its next step or what blocks it) joins as a `why` note, but only when that inbox line
+        stands in a bucket at least as urgent, so a next step due today never hides behind a "later" item.
+    Only lines in a shown bucket take anything in: a hidden one would hide the row with it. Two inbox items of
+    one task stay two lines, each is a lever of its own."""
+    rows, order = out["rows"], out["order"]
+    shown = {b["id"] for b in _bucket_cfg(view)[0]}
+
+    def fold(into: str, key: str, why: list) -> None:
+        have, row = rows[into], rows.pop(key)
+        order.remove(key)
+        have["sources"] += [s for s in row["sources"] if s not in have["sources"]]
+        have["why"] += [w for w in why if w and w not in have["why"]]
+        for k in ("url", "due", "ref", "about_task", "about_kind", "task"):
+            if row.get(k) and not have.get(k):
+                have[k] = row[k]
+        if row.get("inbox_id"):
+            have.setdefault("also_inbox", []).append(row["inbox_id"])
+        have["new"] = have["new"] or row["new"]
+        have["changed"] = have["changed"] or row["changed"]
+
+    by_id = {rows[k]["inbox_id"]: k for k in order if rows[k].get("inbox_id")}
+    for key in list(order):
+        r = rows.get(key)
+        target = str((r or {}).get("inbox_key") or "")
+        into = by_id.get(target[4:]) if target.startswith("ask:") else None
+        if into and into != key and into in rows and rows[into]["bucket"] in shown:
+            fold(into, key, [])
+
+    lines = {}            # task -> the key of its most urgent shown inbox line
+    for key in order:
+        r = rows[key]
+        task = r.get("task") or r.get("about_task")
+        if not r.get("inbox_id") or not task or r["bucket"] not in shown:
+            continue
+        best = lines.get(task)
+        if best is None or (URGENCY[r["bucket"]], r["rank"]) < (URGENCY[rows[best]["bucket"]], rows[best]["rank"]):
+            lines[task] = key
+    if not lines:
+        return
+    for key in list(order):
+        r = rows[key]
+        if r.get("inbox_id"):
+            continue
+        kind = r.get("origin_section_kind")
+        into = lines.get(r.get("task") or r.get("about_task") or "")
+        if into is None:
+            continue
+        if kind in ("tracker", "command"):
+            fold(into, key, r["why"])
+        elif kind == "tasks" and key.startswith("task:") and URGENCY[rows[into]["bucket"]] <= URGENCY[r["bucket"]]:
+            # a next-step row is titled by the step and names its task; a blocked one says why it waits
+            step = labels["task"].format(slug=key[5:]) in r["why"]
+            fold(into, key, [labels["next_step"].format(what=_short(r["title"], 80))] if step else r["why"])
 
 
 def build(result: dict, profile: dict, style: str | None = None) -> dict:
@@ -1374,7 +1464,12 @@ def asks_you(row: dict) -> bool:
 
 
 def _headline(rows: list, events: list, now: dt.datetime, labels: dict, day_end: str) -> str:
-    parts = [labels["yours_today"].format(n=sum(1 for r in rows if r["bucket"] == "do" and asks_you(r)))]
+    do = [r for r in rows if r["bucket"] == "do"]
+    asks = sum(1 for r in do if asks_you(r))
+    parts = [_count(labels, "yours_today", asks)]
+    if len(do) > asks:
+        # Do holds reports and ideas too: counted apart, so the number above a longer Do list explains itself (29.10.)
+        parts.append(_count(labels, "do_reports", len(do) - asks))
     current = next((e for e in events if e[0] <= now < e[1]), None)
     upcoming = next((e for e in events if e[0] > now and e[0].date() == now.date()), None)
     if current:

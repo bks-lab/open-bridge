@@ -785,7 +785,9 @@ def sec_inbox(section: dict, ctx: Context) -> list:
         items.append({"id": item.id, "title": item.summary, "state": item.state, "urgency": item.urgency,
                       "kind": item.kind, "gate": item.gate, "task": item.task, "due": item.due,
                       "key": item.key, "changed_at": str(item.created or ""), "has_action": bool(item.action),
-                      "area": item.area, "from": item.source})
+                      "area": item.area, "from": item.source,
+                      # waiting for its condition (inbox.py waits_for), not for a conditional yes: asks nobody yet
+                      **({"waits_for": True} if item.state == "waiting" and item.waits_for else {})})
     if runs_only:
         # "runs on" (inbox.py defer --on): every put-off item that names what it waits on, whatever its day
         for item in filter(wanted, box.items()):
@@ -1402,7 +1404,7 @@ def sec_tracker(section: dict, ctx: Context) -> list:
             item.pop("_category_from_state", None)
             st = item.get("state")
             item["category"] = "done" if st in ("done", "removed") else "qa" if st == "review" else "open"
-    if section.get("link", section.get("provider") == "github-work") is True:
+    if links_local(section):
         link_local(items, ctx)
     words = None
     for item in items:
@@ -1414,6 +1416,17 @@ def sec_tracker(section: dict, ctx: Context) -> list:
             item["actions"] = [{"id": x["id"], "label": x["label"]} for x in steps]
     items.sort(key=lambda i: str(i.get("changed_at") or ""), reverse=True)
     return items
+
+
+#: the providers whose rows are GitHub issues and pull requests: a task's `sync.github` can name them
+GITHUB_PROVIDERS = ("github", "github-board", "github-work")
+
+
+def links_local(section: dict) -> bool:
+    """Whether a tracker section's rows learn what this Bridge knows about them (`link_local`): on by default for
+    the GitHub providers, so a row of an issue a task syncs names that task and the view folds it into the task's
+    inbox line instead of showing the same matter twice (29.10.); `link: false` turns it off."""
+    return section.get("link", section.get("provider") in GITHUB_PROVIDERS) is True
 
 
 GLOBAL_ROW = re.compile(r"^([\w.-]+/[\w.-]+)#(\d+)\Z")

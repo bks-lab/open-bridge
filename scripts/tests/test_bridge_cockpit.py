@@ -4133,6 +4133,35 @@ def test_a_conversation_hands_on_to_an_agent_tab_or_the_control_session(world):
     assert writes(world)[1] == launch_argv(world, new_id, "go")
 
 
+def test_a_chat_about_a_row_hands_on_as_a_short_item_of_the_rows_task(world):
+    """29.10.: a chat asked on a row became an item titled with the whole prompt ("Briefing item: «…» («…»). Take a
+    look …") and without the row's task, so the briefing showed it beside the row it was about. Now its title is short,
+    the prompt stays in the detail, and the item carries the row's task and names the row in its key (ask:<item or
+    ref>), so the briefing folds it into that row"""
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("Merge it.", 0.002)
+    new_id = "20261010-1300-check-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    for key, title, task, about in ((f"inbox:{ONLY_ID}", "Review the demo report", "demo-task", ONLY_ID),
+                                    ("ref:example/repo#12", "Fix the example issue", None, "example/repo#12")):
+        conv = json.loads(world.post("/api/ask", {"kind": "row", "args": {"key": key}, "via": "quick"})[2])["conv"]
+        wait_quick(world)
+        world.clock.advance(20)
+        world.runner.calls.clear()
+        world.act("quick_handoff", conv=conv, to="tab")
+        add = writes(world)[0]
+        assert world.runner.key(add) == "inbox.add"
+        assert f"--summary=Check: {title}" in add
+        assert f"--key=ask:{about}" in add
+        assert (f"--task={task}" in add) if task else not any(a.startswith("--task") for a in add)
+        assert any(a.startswith("--detail=") and f"Briefing item: «{title}»" in a for a in add)
+    # a free chat is about no row: filed as before, its first question the title
+    conv = answered_conv(world)
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab")
+    add = writes(world)[0]
+    assert "--summary=what next?" in add and f"--key=web:{conv}" in add
+
+
 def test_the_order_of_a_handoff_goes_as_a_start_note_the_tab_reads_first(world):
     """28.10.: "I want to analyse it more closely" stood only at the end of the item's detail and the tab closed the
     item after 31 s without asking. Now the order is the start note on the item and the launch says so (--start-note:
