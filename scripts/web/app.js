@@ -354,6 +354,8 @@ function applyState(payload) {
     agents: payload.agents ?? s.agents,
     triage: payload.triage ?? s.triage,
     jev: payload.jev ?? s.jev,
+    // Prio's second ranker: whether Haiku can read in, its runs left today, the fallback (prio.py)
+    prio: payload.prio ?? s.prio,
     loading: payload.loading ?? s.loading,
     relay: payload.relay ?? s.relay,
     cmux: payload.cmux ?? s.cmux,
