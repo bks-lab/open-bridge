@@ -282,7 +282,8 @@ in its STATUS.md: `next: {what: "Draft the request", who: bridge, due: 2026-10-0
 estimate_min: 20}` (`who`: `bridge`, `me`, or a person).
 
 **Labels.** Every word the reader sees has a label name, so a profile can speak
-the person's language: `yours_today`, `do_reports`, `free_until`, `free_rest`, `busy_until`,
+the person's language: `yours_today` and `do_reports` (each with a `_one` singular for a count of
+one; a profile that sets only the plural gets it for one too), `free_until`, `free_rest`, `busy_until`,
 `next_date`, `since`, `today`, `tomorrow`, `due`, `back_on`, `only_you`,
 `collides`, `waiting_days`, `waiting_for`, `with`, `task`, `next_step`, `nudge`, `new`, `housekeeping`,
 `no_next`, `muted`, `hidden`, `error`, `workplace`, `more`, `end`, `why`,

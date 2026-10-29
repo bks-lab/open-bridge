@@ -56,7 +56,9 @@ DEFAULT_BUCKETS = {
 LABELS = {
     # the headline counts the asks (asks_you); what else stands in Do (reports, ideas) is counted apart
     "yours_today": "{n} asks for you today",
+    "yours_today_one": "{n} ask for you today",
     "do_reports": "{n} reports",
+    "do_reports_one": "{n} report",
     "free_until": "free until {time}",
     "free_rest": "free for the rest of the day",
     "busy_until": "in {title} until {time}",
@@ -244,7 +246,9 @@ LABELS = {
 # profile's own `view.labels` still win over both.
 LABELS_DE = {
     "yours_today": "{n} Fragen an dich heute",
+    "yours_today_one": "{n} Frage an dich heute",
     "do_reports": "{n} Meldungen",
+    "do_reports_one": "{n} Meldung",
     "free_until": "frei bis {time}",
     "free_rest": "frei für den Rest des Tages",
     "busy_until": "in {title} bis {time}",
@@ -816,9 +820,16 @@ def _labels(view: dict, language: str | None = None) -> dict:
         try:
             if _fields(text) <= _fields(LABELS[key]):
                 out[key] = text
+                if f"{key}_one" in LABELS and f"{key}_one" not in given:
+                    out[f"{key}_one"] = text   # a profile's own plural without a singular is used for one as well
         except ValueError:
             pass
     return out
+
+
+def _count(labels: dict, key: str, n: int) -> str:
+    """A counted label, with its singular for exactly one when the labels carry one."""
+    return labels.get(f"{key}_one", labels[key]).format(n=n) if n == 1 else labels[key].format(n=n)
 
 
 # ---------------------------------------------------------------- time
@@ -1450,10 +1461,10 @@ def asks_you(row: dict) -> bool:
 def _headline(rows: list, events: list, now: dt.datetime, labels: dict, day_end: str) -> str:
     do = [r for r in rows if r["bucket"] == "do"]
     asks = sum(1 for r in do if asks_you(r))
-    parts = [labels["yours_today"].format(n=asks)]
+    parts = [_count(labels, "yours_today", asks)]
     if len(do) > asks:
         # Do holds reports and ideas too: counted apart, so the number above a longer Do list explains itself (29.10.)
-        parts.append(labels["do_reports"].format(n=len(do) - asks))
+        parts.append(_count(labels, "do_reports", len(do) - asks))
     current = next((e for e in events if e[0] <= now < e[1]), None)
     upcoming = next((e for e in events if e[0] > now and e[0].date() == now.date()), None)
     if current:

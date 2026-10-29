@@ -1182,11 +1182,16 @@ def test_the_headline_names_its_count_as_asks_and_counts_the_rest_of_do_apart():
         inbox_item("i3", "Disk at 91 %", kind="finding"),
         inbox_item("i4", "Build failed", kind="result")]))
     view = bv.build(r, profile(view={"style": "triage"}))
-    assert view["headline"].startswith("1 asks for you today · 2 reports")
+    assert view["headline"].startswith("1 ask for you today · 2 reports")
     de = bv.build(r, profile(view={"style": "triage"}, _language="de"))
-    assert de["headline"].startswith("1 Fragen an dich heute · 2 Meldungen")
+    assert de["headline"].startswith("1 Frage an dich heute · 2 Meldungen")
     only = bv.build(result(sec("inbox", "inbox", [inbox_item("i1", "Merge it")])), profile(view={"style": "triage"}))
-    assert only["headline"].startswith("1 asks for you today · ") and "reports" not in only["headline"]
+    assert only["headline"].startswith("1 ask for you today · ") and "report" not in only["headline"]
+    one = bv.build(result(sec("inbox", "inbox", [inbox_item("i1", "Merge it", kind="decision"),
+                                                 inbox_item("i2", "Merge that", kind="decision"),
+                                                 inbox_item("i3", "Disk at 91 %", kind="finding")])),
+                   profile(view={"style": "triage"}, _language="de"))
+    assert one["headline"].startswith("2 Fragen an dich heute · 1 Meldung ")
 
 
 def test_a_blocked_task_folds_into_its_inbox_line_with_why_it_waits():
