@@ -22,7 +22,8 @@ export function homeProjects(tabs, rows) {
     x.n += 1
     seen.set(key, x)
   }
-  for (const t of tabs ?? []) if (!t.is_control) add(t.workspace)
+  // an empty shell makes no area: nothing is open there
+  for (const t of tabs ?? []) if (!t.is_control && t.state !== 'shell') add(t.workspace)
   for (const r of rows ?? []) add(rowProject(r))
   return [...seen.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).map(x => x.name)
 }
@@ -65,7 +66,7 @@ export function homeAreas(tabs, sections, returns, nowMs) {
   const rows = [...byKey.values()]
   const section = id => (sections ?? []).find(x => x.id === id)?.rows ?? []
   const counts = new Map()
-  const zero = () => ({ waiting: 0, waitingTabs: 0, waitingRows: 0, running: 0, review: 0, overdue: 0, tasks: 0 })
+  const zero = () => ({ waiting: 0, waitingTabs: 0, waitingRows: 0, running: 0, review: 0, overdue: 0, tasks: 0, resting: 0 })
   // what has no area counts under NONE, the line "No area" at the end
   const bump = (name, what) => {
     const key = String(name ?? '').trim().toLowerCase() || NONE
@@ -96,6 +97,7 @@ export function homeAreas(tabs, sections, returns, nowMs) {
     }
     if (t.state === 'working') bump(t.workspace, 'running')
     if (t.idle === true && !answered.has(t.ref)) bump(t.workspace, 'review')
+    if (restingTab(t)) bump(t.workspace, 'resting')
   }
   for (const r of rows) if (rowOverdue(r, nowMs)) bump(rowProject(r), 'overdue')
   const slugs = new Set()
@@ -107,10 +109,40 @@ export function homeAreas(tabs, sections, returns, nowMs) {
   const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), ...x, total: x.waiting + x.running + x.review + x.overdue, ...extra })
   const out = homeProjects(tabs, rows).map(name => line(name, counts.get(name.toLowerCase()) ?? zero()))
   if (counts.has(NONE)) out.push(line('', counts.get(NONE), { none: true, tone: 'muted' }))
-  return out.filter(a => a.total > 0 || a.tasks > 0)
+  return out.filter(a => a.total > 0 || a.tasks > 0 || a.resting > 0)
 }
 
 const NONE = '\u0000none'   // no area name can be this
+
+/** An agent tab at rest: open, not at work and not asking (an empty shell is no agent tab) */
+export const restingTab = t => !!t && !t.is_control && t.state !== 'shell' && t.state !== 'working' && !wantsYou(t)
+
+/** The agent tabs at rest in one area, by their workspace */
+export function restingIn(tabs, name) {
+  const want = String(name ?? '').trim().toLowerCase()
+  return want ? (tabs ?? []).filter(t => restingTab(t) && String(t.workspace ?? '').trim().toLowerCase() === want).length : 0
+}
+
+// the order of the figures a pill of the area bar shows: the first one that is not 0
+const BAR_FIGS = ['waiting', 'running', 'tasks', 'resting']
+
+/** The bar of areas on the stage: a pill per area line (homeAreas, flowAreas) with one figure, what waits on you,
+ *  else what is at work, else the tasks, else the tabs at rest; what waits first, then what works, then the most
+ *  open, the line "No area" last. `configured` (workplace.workspaces) gives the quiet areas: those without a line */
+export function areaBar(lines, configured = []) {
+  const pills = (lines ?? []).map(a => {
+    const kind = BAR_FIGS.find(k => (a[k] ?? 0) > 0) ?? 'tasks'
+    return { ...a, fig: { kind, n: a[kind] ?? 0 } }
+  }).sort((x, y) => (x.none ? 1 : 0) - (y.none ? 1 : 0) || (y.waiting ?? 0) - (x.waiting ?? 0) || (y.running ?? 0) - (x.running ?? 0)
+    || ((y.tasks ?? 0) + (y.resting ?? 0)) - ((x.tasks ?? 0) + (x.resting ?? 0)) || String(x.name).localeCompare(String(y.name)))
+  const have = new Set(pills.filter(p => !p.none).map(p => String(p.name).trim().toLowerCase()))
+  const quiet = [...new Set((configured ?? []).filter(n => typeof n === 'string' && n.trim() && !have.has(n.trim().toLowerCase())))]
+  return { pills, quiet }
+}
+
+/** Every number of a pill in words, for its title */
+export const areaBarTitle = (pill, h) => h.areaBarParts({ waiting: pill.waiting ?? 0, running: pill.running ?? 0,
+  tasks: pill.tasks ?? 0, resting: pill.resting ?? 0 })
 
 /** Where a number of the areas leads, the area as the filter there (ui.area): tabs alone that want you
  *  are answered in the chat, one after the other (its walk); rows, or rows and tabs, wait in Work, what is due first, as do

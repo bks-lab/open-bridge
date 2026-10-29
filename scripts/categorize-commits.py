@@ -580,6 +580,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_daybook.py",
     "scripts/lib/bridge_cockpit/returns.py",              # the return channel of starts handed to tabs
     "scripts/tests/test_bridge_cockpit_returns.py",
+    "scripts/tests/test_bridge_cockpit_repo_areas.py",
     "scripts/lib/bridge_cockpit/graph.py",                # the knowledge graph of the inner room
     "scripts/tests/test_bridge_cockpit_graph.py",
     "scripts/lib/bridge_cockpit/quick.py",

@@ -685,7 +685,7 @@ function HomeBoard({ s, c }) {
   const named = areas.filter(a => !a.none)
   // an area can come from a row the chips do not count (an overdue one elsewhere): picking it still holds
   // one area filter for the whole cockpit (ui.area): the start page shows that area, Work, Chat and Sessions too
-  const project = [...projects, ...named.map(a => a.name)]
+  const project = [...projects, ...named.map(a => a.name), ...(s.boot?.config?.areas ?? [])]
     .find(p => p.toLowerCase() === String(s.ui.area ?? '').trim().toLowerCase()) ?? null
   const cont = homeContinue(tabs, project)
   // the shelf is named waiting on you: the asks of Now, as the tile beside it counts them (an idea asks nothing)
@@ -749,10 +749,8 @@ function HomeBoard({ s, c }) {
   // the bridge stage of the films is the start page; the tiles of before stay a choice ("classic")
   if (homeView(chosen) === 'stage') {
     return html`<div class=${`col col-page home bridge-home`}>
-      <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />
+      <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} areas=${on.has('s:areas') ? areas : null} />
       ${daily}
-      ${areasShelf}
-      ${chips}
       ${shelves}
       ${diary}
     </div>`
