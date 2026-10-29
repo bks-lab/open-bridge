@@ -2030,7 +2030,7 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
     meter = meter_of(item.get("meter"))
     if meter:
         row["meter"] = meter
-    if kind == "calendar" and stamp is not None:     # when it begins, for a countdown
+    if kind in ("calendar", "activity") and stamp is not None:     # when it begins (a countdown), when it was written
         row["at"] = stamp.isoformat(timespec="minutes")
     if kind == "calendar":
         row["cal"] = calendar_facts(item, now)       # one field each, for the agenda view

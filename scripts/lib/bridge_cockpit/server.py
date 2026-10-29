@@ -46,6 +46,7 @@ from . import model as m
 from .actions import ActionError, Actions
 from .actions_base import SPEC, note_go
 from .collector import Collector
+from .logrange import LogRange, Refused, Stale as LogStale, check as check_logrange, check_days as check_range
 from .daybook import DayBook
 from .returns import Launches
 from .launch import LaunchError, LaunchModel
@@ -241,6 +242,7 @@ class App:
         self.instruct = Instruct(self)                 # the instruction line of Work through (instruct.py)
         self.history = History(self.state_dir, self.clock)
         self.collector = Collector(self)
+        self.logrange = LogRange(self)
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
         self.actions = Actions(self)
         self.launch_model = LaunchModel(self)         # the model an agent starts with (launch.py)
@@ -1144,16 +1146,23 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/timeline":
             # when it was done or discussed: the log and its archive, the meetings, the closed tasks and the raw
             # transcripts (scripts/work-find.py --history, logic in lib/work_find.py), read only, the words one argv
-            # word after --; the transcripts only where the config names a folder that is there
+            # word after --; the transcripts only where the config names a folder that is there; from and to (days,
+            # the log page's range) narrow it before the list is cut
             try:
                 q, _ = work_find.check_query(one("q"))
+                days = check_range(one)
+            except Refused as exc:
+                self.send_error_json("invalid_argument", str(exc), exc.field)
+                return
             except ValueError as exc:
                 self.send_error_json("invalid_argument", str(exc), "q")
                 return
             argv = [app.runner.python, app.runner.script("scripts/work-find.py"), "--root", str(app.root), "--history",
                     "--json", "--meetings", app.cfg.meetings]
             transcripts = work_find.transcript_root(app.cfg.transcripts)
-            argv += (["--transcripts", str(transcripts)] if transcripts else []) + ["--", q]
+            argv += (["--transcripts", str(transcripts)] if transcripts else [])
+            argv += (["--since", days["since"]] if days["since"] else []) + (["--until", days["until"]] if days["until"] else [])
+            argv += ["--", q]
             run = app.run(argv, FIND_TIMEOUT)
             try:
                 data = json.loads(run.out.strip().splitlines()[-1]) if run.ok else None
@@ -1163,6 +1172,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, app.scrub_tree(data))
             else:
                 self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
+        elif path == "/api/logrange":
+            # the log page's time range (logrange.py): the rows of the log and its archive for any range of days with
+            # the own commits of the page's commits section, or the meetings, closed tasks and transcripts one entry
+            # each; read only, through work-find.py and briefing.py, the whole log kept until a file of it changes
+            try:
+                params = check_logrange(one)
+            except Refused as exc:
+                self.send_error_json("invalid_argument", str(exc), exc.field)
+                return
+            try:
+                self.send_json(200, app.logrange.view(params))
+            except LogStale as exc:
+                self.send_error_json("stale_row", str(exc))
+            except ValueError as exc:
+                self.send_error_json("unreadable", app.scrub(str(exc))[-200:])
         elif path == "/api/records":
             # the start of the files tab: every task, stream and closed task as a record (lib/work_find.py records),
             # read in place, read only; with the question on and a block list, each with the words that hold it

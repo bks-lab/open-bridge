@@ -557,3 +557,87 @@ def test_the_command_answers_the_history_in_json(past):
     run = subprocess.run([sys.executable, str(script), "--root", str(root), "--history", "--", "night gateway"],
                          capture_output=True, text=True, check=False)
     assert run.returncode == 0 and "2026-10-29 09:15" in run.stdout
+
+
+# ---------------------------------------------------------------- the log over a time range (the cockpit's /api/logrange)
+
+def test_every_log_row_with_its_day_and_glyph_newest_first_and_a_row_in_two_files_once(past):
+    root, _ = past
+    # the same row in a raw week and its summary, and once more in the log: one row
+    put(root, "work/archive/weeks/2026-W43.md", "## Do 22.10\n\n| 2026-10-22 08:00 | 🔧 | billing | one row in two files |\n")
+    put(root, "work/archive/weeks/2026-W43-raw.md", "## Do 22.10\n\n| 2026-10-22 08:00 | 🔧 | billing | one row in two files |\n")
+    res = wf.log_rows(root)
+    assert res["ok"] is True and res["first"] == "2026-03-17"
+    when = [(r["date"], r["time"]) for r in res["rows"]]
+    assert when == sorted(when, reverse=True) and res["total"] == len(res["rows"])
+    assert [r["text"] for r in res["rows"]].count("one row in two files") == 1
+    row = res["rows"][0]
+    assert row == {"date": "2027-01-04", "time": "08:00", "glyph": "x", "context": "ops", "text": "gateway retry in the new year"}
+    texts = {r["text"]: r for r in res["rows"]}
+    # an old row takes its day from the head above it, a summary line is no row, nothing but the log and its archive
+    assert (texts["gateway retry plan drafted"]["date"], texts["gateway retry plan drafted"]["time"]) == ("2026-03-18", "09:30")
+    assert "nothing to see" in texts and not any("summary line" in t or "discussed" in t for t in texts)
+
+
+def test_the_log_rows_of_a_range_of_days(past):
+    root, _ = past
+    got = wf.log_rows(root, since="2026-03-18", until="2026-10-29")
+    assert {r["date"] for r in got["rows"]} == {"2026-03-18", "2026-10-29"}
+    # first stays the first day of the whole log, so a page knows where All starts
+    assert got["first"] == "2026-03-17"
+    assert wf.log_rows(root, since="2028-01-01")["rows"] == []
+
+
+def test_the_other_history_one_entry_per_meeting_talk_closed_task_and_transcript(past):
+    root, tr = past
+    res = wf.history_events(root, transcripts=tr)
+    assert res["ok"] is True and res["transcripts"] is True
+    got = {(e["kind"], e["source"]): e for e in res["entries"]}
+    assert got[("discussed", "Weekly round")] == {"date": "2026-10-28", "time": "18:00", "kind": "discussed",
+                                                  "source": "Weekly round", "path": "work/archive/days/2026-10/28_insights.md",
+                                                  "folder": None}
+    assert got[("discussed", "vendor-sync")]["date"] == "2026-10-20"
+    assert got[("closed", "retry-hardening")]["folder"] == "work/done/2026-09/retry-hardening"
+    assert got[("transcript", "vendor-call")]["time"] == "16:49"
+    # one entry for a transcript of four lines; no open task, no log row, no file without a day
+    assert sum(1 for e in res["entries"] if e["source"] == "vendor-call") == 1
+    assert not any(e["kind"] == "did" for e in res["entries"])
+    assert ("closed", "old-thing") not in got, "a month is no day to stand on in a chart"
+    days = [(e["date"], e["time"] or "") for e in res["entries"]]
+    assert days == sorted(days, reverse=True)
+    assert wf.history_events(root)["transcripts"] is False
+
+
+def test_the_other_history_with_words_keeps_what_holds_every_word_and_a_range_of_days(past):
+    root, tr = past
+    put(root, "work/archive/days/2026-10/27_insights.md", "## 09:00 · Standup\n\n- nothing about it\n\n## 11:00 · Night planning\n\n- the night run\n")
+    got = wf.history_events(root, transcripts=tr, query="night run")
+    assert {(e["kind"], e["source"]) for e in got["entries"]} == {("discussed", "Weekly round"), ("discussed", "Night planning")}
+    ranged = wf.history_events(root, transcripts=tr, since="2026-10-21", until="2026-10-27")
+    assert {e["date"] for e in ranged["entries"]} == {"2026-10-26", "2026-10-27"}
+    with pytest.raises(ValueError):
+        wf.history_events(root, query="x")
+
+
+def test_the_history_takes_a_range_of_days_before_it_cuts(past):
+    root, tr = past
+    res = wf.history(root, "gateway retry", transcripts=tr, since="2026-03-01", until="2026-03-31")
+    assert {e["date"] for e in res["entries"]} == {"2026-03-17", "2026-03-18"} and res["total"] == 2
+
+
+def test_the_command_answers_the_rows_and_the_other_history_of_a_range(past):
+    root, tr = past
+    script = ROOT / "scripts" / "work-find.py"
+    run = subprocess.run([sys.executable, str(script), "--root", str(root), "--rows", "--json", "--since", "2026-10-29",
+                          "--until", "2026-10-29"], capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    data = json.loads(run.stdout)
+    assert [r["text"] for r in data["rows"]] == ["nothing to see", "Gateway retry moved to the night run"]
+    run = subprocess.run([sys.executable, str(script), "--root", str(root), "--events", "--json", "--transcripts", str(tr),
+                          "--", "vendor"], capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    # a line that holds the word, as the history lists it: the vendor call's name alone is no hit
+    assert {e["source"] for e in json.loads(run.stdout)["entries"]} == {"vendor-sync"}
+    run = subprocess.run([sys.executable, str(script), "--root", str(root), "--rows", "--since", "2026-13-01"],
+                         capture_output=True, text=True, check=False)
+    assert run.returncode == 2

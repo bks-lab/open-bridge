@@ -53,6 +53,8 @@ python3 scripts/briefing.py collect --json --max-items 500   # every row, for a 
 python3 scripts/briefing.py collect --fresh       # ask every source now, whatever cache_minutes allows
 python3 scripts/briefing.py collect --json --setup  # also the cockpit's Setup page (scripts/bridge-setup.py)
 python3 scripts/briefing.py owed [<id>]           # streams the profile does not cover, and how to run them
+python3 scripts/briefing.py commits [<id>] --since 2026-10-01 --until 2026-10-31 [--section <id>]
+                                                  # own commits of a commits section over a range, as times (JSON)
 python3 scripts/briefing.py validate              # every profile; exit 1 on a problem
 ```
 
@@ -535,7 +537,7 @@ view:
       title: Daily log
       search: true
       sections:
-        - {id: activity, view: log}        # cockpit: the log by hour, its contexts as topic chips beside it
+        - {id: activity, view: log}        # cockpit: the log by hour with a time range, its contexts as topic chips beside it
         - {id: commits, place: rail}       # cockpit: in the column beside the log, as repository tiles
     - id: work
       title: Work
@@ -556,7 +558,7 @@ columns, **when** (a date, today as its time), **title**, **detail** and a
 | `tracker` | `due`, else `changed_at` | PR, state, project (when the id does not name it and the view is not `board`), priority, note, the pull requests that close it, its task | |
 | `command` | `due` | `raw_state` or `state` (every row is a finding: yellow, `blocked` red) | |
 | `commits` | today's commits | sparkline and branch, busiest first | none today |
-| `activity` | `changed_at` | project | an earlier day |
+| `activity` | `changed_at` (and `at`, the minute) | project | an earlier day |
 | `inbox` | `due`, else `changed_at` | kind, gate (`urgency: now` yellow) | |
 | `tasks` | `due`, else `changed_at` | priority, project, `blocked_by` (blocked: yellow) | |
 | any other | `due`, else `changed_at` | state, project | |
@@ -582,8 +584,9 @@ its board, else its repository). `view: groups` lists short rows under each
 group instead.
 
 `view: log` draws a section (an `activity` section, whose rows carry the glyph
-of their activity type as `glyph`) as a log under its hours, its contexts as
-topic chips that filter it. `place: rail` (`main` is the default) sets a section
+of their activity type as `glyph` and the minute they were written as `at`) as a
+log under its hours, its contexts as topic chips that filter it; on an `activity`
+section the cockpit adds a time range over the whole log and its archive. `place: rail` (`main` is the default) sets a section
 in a narrow column beside the page's main one, its rows as compact tiles. A page
 with either takes the cockpit's log layout ([bridge-cockpit.md](bridge-cockpit.md),
 "A page's log layout").

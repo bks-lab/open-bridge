@@ -105,6 +105,9 @@ function httpTransport() {
   }
 }
 
+/** `&from=…&to=…` of a range of days, each where it is set */
+const rangeQuery = days => `${days?.from ? `&from=${days.from}` : ''}${days?.to ? `&to=${days.to}` : ''}`
+
 /**
  * The API used by the app. `transport` defaults to the real server; the mock mode
  * passes an in-page stand-in with the same three methods.
@@ -137,7 +140,17 @@ export function createApi(transport = httpTransport()) {
     find: q => transport.get(`/api/find?q=${encodeURIComponent(q)}`),
     // when it was done or discussed: every line of the log and its archive, the meetings, the closed tasks and the raw
     // transcripts that holds every word, by day (work-find.py --history)
-    timeline: q => transport.get(`/api/timeline?q=${encodeURIComponent(q)}`),
+    // days: {from, to} of a log page's time range, which narrows it before the list is cut
+    timeline: (q, days) => transport.get(`/api/timeline?q=${encodeURIComponent(q)}${rangeQuery(days)}`),
+    // a log page's time range (bridge_cockpit/logrange.py): the rows of the log for {from, to} (days, null for the log's
+    // first day and today) with the own commits of the rail's commits section; with sources 'other' and q the meetings,
+    // closed tasks and transcripts one entry each
+    // the rows come compact, without their text: `ids` with the answer's `rev` fetch the text of some, `q` with `rev`
+    // the ids of the rows that hold every word
+    logRange: ({ from = null, to = null, commits = null, sources = null, q = null, ids = null, rev = null } = {}) => transport.get(`/api/logrange?${[
+      from ? `from=${from}` : '', to ? `to=${to}` : '', commits ? `commits=${encodeURIComponent(commits)}` : '',
+      sources ? `sources=${encodeURIComponent(sources)}` : '', q ? `q=${encodeURIComponent(q)}` : '',
+      ids ? `ids=${ids.join(',')}` : '', rev ? `rev=${encodeURIComponent(rev)}` : ''].filter(Boolean).join('&')}`),
     // the records of the files tab's start: every task, stream and closed task with its state, area and last change
     records: () => transport.get('/api/records'),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),

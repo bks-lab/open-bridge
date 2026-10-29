@@ -40,7 +40,7 @@ from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, REASON_MAX, FINDING_KEY_RE, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
                            STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WORKER_REF_RE, WS_REF_RE,
-                           ActionError, Ctx, bad_arg, check_date, check_key, check_text)
+                           ActionError, Ctx, bad_arg, check_date, check_day, check_key, check_text)
 from .actions_chats import ChatVerbs
 from .actions_launch import LaunchSteps
 from .actions_pages import PageVerbs
@@ -247,6 +247,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "ticker_settings": _settings,
     "tile_ids": _tile_ids,
     "date": lambda actions, value, name, today: check_date(value, name, today),
+    "day": lambda actions, value, name, today: check_day(value, name),
     "text": lambda actions, value, name, today: check_text(value, name, 2000),
     # what the chat box takes (ASK_MAX on the page): a chat handed to a tab is not cut
     "long_text": lambda actions, value, name, today: check_text(value, name, 4000),
