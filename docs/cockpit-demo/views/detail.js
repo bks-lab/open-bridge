@@ -415,6 +415,16 @@ function rowDetailSkip(row) {
     row.inbox_state || (row.task && !row.inbox_id) ? 'state' : null].filter(Boolean)
 }
 
+/** The asks filed about this line ("ask about this row") that the briefing folded into it (collector.py
+ *  also_inbox): no line of their own, so they stand here, each opening its item. They end with the line */
+function AlsoAsked({ row, c }) {
+  const t = T()
+  const asks = (row.also_inbox ?? []).filter(a => a?.id)
+  if (!asks.length) return null
+  return html`<ul class="also-asked">${asks.map(a => html`<li key=${a.id}>
+    <button type="button" class="btn-link" onClick=${() => c.openItem(`inbox:${a.id}`, { inbox: a.id, title: a.title })}>${t.alsoAsked(short(a.title || a.id, 80))}</button></li>`)}</ul>`
+}
+
 function RowDetail({ row, s, c }) {
   const t = T()
   const n = s.model?.numbers?.[row.key] ?? row.number
@@ -441,6 +451,7 @@ function RowDetail({ row, s, c }) {
     <${MetaList} row=${row} s=${s} />
     ${(row.why ?? []).length ? html`<div class="block"><h3 class="label-caps">${t.whyTitle}</h3>
       <ul class="why">${row.why.map((w, i) => html`<li key=${i}>${w}</li>`)}</ul></div>` : null}
+    <${AlsoAsked} row=${row} c=${c} />
     ${row.inbox_id ? html`<${InboxDetail} id=${row.inbox_id} s=${s} c=${c} />` : null}
     <${TabInfo} row=${row} s=${s} c=${c} />
     <${ActionsBlock} row=${row} s=${s} c=${c} />

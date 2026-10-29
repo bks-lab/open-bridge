@@ -520,3 +520,24 @@ test('card: the demo has a criterion with a link and one with a reference nobody
   assert.ok(parts.some(p => p.unresolved), 'an unresolved one')
   assert.ok(rows.some(r => (r.card?.gaps ?? []).includes('unresolved_ref')))
 })
+
+test('detail: a line lists the asks it took in, each opening its own item, and says nothing of them without', () => {
+  const s = s0({ ui: { page: 'briefing', selectedKey: 'inbox:20261009-0900-review-demo-a1b2' } })
+  const byKey = logic.indexRows(s.model)
+  const row = byKey.get('inbox:20261009-0900-review-demo-a1b2')
+  const asks = [{ id: '20261009-1100-check-review-b2c3', title: 'Check: is the report ready to send?' }]
+  row.also_inbox = asks
+  const c = recorder()
+  const detail = mount(html`<${views.detail.DetailColumn} s=${s} c=${c} byKey=${byKey} />`)
+  const list = detail.$('.also-asked')
+  assert.ok(list, 'the detail lists the folded asks')
+  assert.deepEqual(list.$$('button').map(b => b.text()), [en.alsoAsked(asks[0].title)])
+  list.button(en.alsoAsked(asks[0].title)).click()
+  const open = c.calls.find(x => x[0] === 'openItem')
+  assert.equal(open[1], `inbox:${asks[0].id}`)
+  assert.equal(open[2].inbox, asks[0].id)
+  assert.equal(de.alsoAsked('X'), 'Auch gefragt: X')
+  row.also_inbox = []
+  const none = mount(html`<${views.detail.DetailColumn} s=${s} c=${recorder()} byKey=${byKey} />`)
+  assert.equal(none.$('.also-asked'), null)
+})

@@ -1155,6 +1155,22 @@ def test_an_ask_about_an_inbox_line_joins_that_line():
     assert rows[0]["also_inbox"] == ["20261029-0800-check-cd34"]
 
 
+def test_a_line_that_took_in_asks_says_how_many_in_its_why():
+    # an ask folded into a line is no line of its own: the line says it carries it, in the person's language
+    asks = [inbox_item(f"20261029-08{n}0-check-cd3{n}", f"Check {n}: Product review", task="review",
+                       key="ask:20261029-0700-review-ab12") for n in (1, 2)]
+    line = inbox_item("20261029-0700-review-ab12", "Product review", kind="result", task="review")
+    one = _rows_of(bv.build(result(sec("inbox", "inbox", [line, asks[0]])), profile(view={"style": "triage"})))
+    assert "+1 question" in one[0]["why"]
+    two = _rows_of(bv.build(result(sec("inbox", "inbox", [line, *asks])), profile(view={"style": "triage"})))
+    assert "+2 questions" in two[0]["why"] and "+1 question" not in two[0]["why"]
+    de = _rows_of(bv.build(result(sec("inbox", "inbox", [line, asks[0]])),
+                           profile(view={"style": "triage"}, _language="de")))
+    assert "+1 Frage" in de[0]["why"]
+    alone = _rows_of(bv.build(result(sec("inbox", "inbox", [line])), profile(view={"style": "triage"})))
+    assert not any(w.startswith("+") for w in alone[0]["why"])
+
+
 def test_an_ask_about_a_tracker_row_joins_that_row():
     r = result(
         sec("inbox", "inbox", [inbox_item("i7", "Check: Product review", key="ask:contoso/portal#70")]),

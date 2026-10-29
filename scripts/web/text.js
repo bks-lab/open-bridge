@@ -183,6 +183,8 @@ const en = {
     from: 'Source',
   },
   whyTitle: 'Why it is here',
+  // an ask filed about this line ("ask about this row") that the briefing folded into it; it ends with the line
+  alsoAsked: title => `Also asked: ${title}`,
   actionsTitle: 'Actions',
   dateLabel: 'Date',
   datePlaceholder: '2026-10-14',
@@ -1883,6 +1885,7 @@ const de = {
     from: 'Quelle',
   },
   whyTitle: 'Warum es hier steht',
+  alsoAsked: title => `Auch gefragt: ${title}`,
   actionsTitle: 'Aktionen',
   dateLabel: 'Datum',
   datePlaceholder: '14.10.',

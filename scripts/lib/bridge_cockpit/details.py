@@ -393,7 +393,20 @@ def _deferred(events) -> str | None:
     return day if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) else None
 
 
-def _facts(item: dict, briefs: list, updated, state_at=None, until=None, deferred=None) -> dict:
+def _ended(events) -> str | None:
+    """How the item ended (done, dropped), as scripts/inbox.py Item.state reads it: a reopen takes an end back.
+    None while it is still active"""
+    ended = None
+    for ev in events:
+        verb = ev.get("verb") if isinstance(ev, dict) else None
+        if verb in TERMINAL:
+            ended = TERMINAL[verb]
+        elif verb == "reopen":
+            ended = None
+    return ended
+
+
+def _facts(item: dict, briefs: list, updated, state_at=None, until=None, deferred=None, ended=None) -> dict:
     """What card.inbox_card reads of an item: its detail and how it closes, its brief (the latest
     `describe` event, None when that one took the brief back) through the gate it was written through, its
     last event (`updated`), its last change of state (`state_at`), the day its newest defer names (`until`,
@@ -403,7 +416,8 @@ def _facts(item: dict, briefs: list, updated, state_at=None, until=None, deferre
             "due": _text(item.get("due")), "created": _text(item.get("created")), "task": _text(item.get("task")),
             "area": _text(item.get("area")), "closes_when": _plain(item.get("closes_when")),
             "closer": _text(item.get("closer")), "brief": brief, "updated": _text(updated),
-            "state_at": _text(state_at), "until": until, "deferred": deferred, "summary": _text(item.get("summary"))}
+            "state_at": _text(state_at), "until": until, "deferred": deferred, "summary": _text(item.get("summary")),
+            "ended": ended}
 
 
 _FACTS: dict = {}
@@ -452,7 +466,7 @@ def inbox_facts(root: Path, item_id: str) -> dict | None:
                 read.append(ev)
                 if ev.get("verb") == "describe":
                     briefs.append(ev.get("brief"))
-    facts = _facts(item, briefs, last, _state_at(read), _until(read), _deferred(read))
+    facts = _facts(item, briefs, last, _state_at(read), _until(read), _deferred(read), _ended(read))
     with _FACTS_LOCK:
         if len(_FACTS) >= FACTS_CAP:
             _FACTS.clear()
