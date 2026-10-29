@@ -1218,16 +1218,25 @@ export const meterLevel = v => (v >= 0.67 ? 'high' : v >= 0.34 ? 'mid' : 'low')
 /** Whether a file is too large to attach (cockpit.flow.attach.max_mb): the page says so before it reads it */
 export const attachTooBig = (bytes, s) => Number(bytes) > flowSettings(s).attach.max_mb * 1048576
 
+/** The reports of the card that are ticked (`picked`, ui.flowPicked: one selection with the overview's boxes), in the
+ *  card's order: what Seen on the right settles. None ticked settles none: a report open in the card is not ticked by
+ *  that, its own Seen settles it (29.10.2026: All seen with one report open closed all five) */
+export function reportsTicked(x, picked) {
+  const on = new Set(picked ?? [])
+  return x?.kind === 'reports' ? pointKeys(x).filter(k => on.has(k)) : []
+}
+
 /** What the instruction line speaks for: the open point (and its tab, where a reply can go), the reports card for its
- *  reports (as in the overview: no reply), else in the overview the points ticked there or every point of the side
- *  entered (`name` null: all of them); at most INSTRUCT_MAX keys go. {point, picked, reports, keys, n, cut, total (the
- *  rows of the overview), title, tab, name}, or null where no key stands behind it (a tab alone, a start whose item is
- *  not in the list): there a sentence could act on nothing */
+ *  ticked reports or, none ticked, for all of them (as in the overview: no reply), else in the overview the points
+ *  ticked there or every point of the side entered (`name` null: all of them); at most INSTRUCT_MAX keys go. {point,
+ *  picked, reports, keys, n, cut, total (the rows of the overview), title, tab, name}, or null where no key stands
+ *  behind it (a tab alone, a start whose item is not in the list): there a sentence could act on nothing */
 export function instructScope(x, queue, picked, name, s) {
   const cut = keys => ({ keys: keys.slice(0, INSTRUCT_MAX), n: keys.length, cut: keys.length > INSTRUCT_MAX })
   if (x?.kind === 'reports') {
-    const keys = pointKeys(x)
-    return keys.length ? { point: false, picked: false, reports: true, ...cut(keys), title: null, tab: null, name } : null
+    const ticked = reportsTicked(x, picked)
+    const keys = ticked.length ? ticked : pointKeys(x)
+    return keys.length ? { point: false, picked: ticked.length > 0, reports: true, ...cut(keys), title: null, tab: null, name } : null
   }
   if (x) {
     const row = x.row ?? null

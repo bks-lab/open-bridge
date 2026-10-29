@@ -98,6 +98,7 @@ export const FLOW = {
       note: 'Read only: nothing changes until you pick a verb.',
     },
     reports: n => (n === 1 ? '1 report' : `${n} reports`), seen: 'Seen', allSeen: 'All seen',
+    seenTicked: n => (n ? `Seen (${n} ticked)` : 'Seen'), tickReports: 'Tick the reports you have seen. All ticks every one.',
     details: 'Details', detailsTitle: 'Every field and verb of this row',
     walk: { label: 'Walk through the cards', done: 'That was the last card.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
@@ -300,6 +301,7 @@ export const FLOW = {
       note: 'Nur lesend: nichts ändert sich, bis du ein Verb wählst.',
     },
     reports: n => (n === 1 ? '1 Meldung' : `${n} Meldungen`), seen: 'Gesehen', allSeen: 'Alle gesehen',
+    seenTicked: n => (n ? `Gesehen (${n} angehakt)` : 'Gesehen'), tickReports: 'Hake die Meldungen an, die du gesehen hast. Alle hakt jede an.',
     details: 'Details', detailsTitle: 'Alle Felder und Befehle dieser Zeile',
     walk: { label: 'Durch die Karten gehen', done: 'Das war die letzte Karte.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
