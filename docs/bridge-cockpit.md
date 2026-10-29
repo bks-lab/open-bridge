@@ -699,9 +699,27 @@ that is not over, or a tab of its task) is never suggested for Let AI do it,
 and a batch starts no second agent on it. Later and Drop sent to all or to the
 ticked rows leave such a row out too (`working`); on the one point open they act.
 
-The five verbs stand in the right column under each other, the suggested one
-as the primary button (the triage's verdict, else Advise on a question and Let
-AI do it on a task the AI may do). A verb sent from a suggestion, a batch or the
+The five verbs stand in the right column under each other. Only a suggestion
+makes one the primary button (the triage's verdict, the task check, the themes
+run or Jev); without one there is none, and Advise is never primary by itself. A
+finding that brings an action of its own puts **Give your yes** first as the
+primary button. Each kind of point gets the verbs that fit it:
+
+- **A task in review**: Done (primary), Improve (what is still to do, to its tab
+  while its agent waits there, else as a new start), Later until, Drop because,
+  Advise. No Let AI do it: the work is done and waits for a look.
+- **An issue or a pull request**: **Open on GitHub** (or Open in the tracker)
+  first; its Done says **Hide**, since it only leaves this list and the issue
+  stays open where it lives.
+- **A finished start**: Done and close the tab, then View, Open answer, Improve
+  and Runs on, then Later until and Drop because.
+- **A tab that asks**: To tab, View, Advise and Later until only. Nothing closes
+  or drops what waits for your answer until the tab no longer asks.
+- **The reports**: each with a box and Done, All above them; the button on the
+  right settles only the ticked ones (All done when every one is ticked).
+
+A tab's close, and on a finished start the jump to the tab, stand apart under the
+verbs, never between them. A verb sent from a suggestion, a batch or the
 instruction line says so (`by`: `suggestion`, `batch`, `instruction`; a click of
 your own sends none): the history, the start and the audit line keep it and
 Activity shows it as who decided; nothing acts on it:
@@ -751,8 +769,8 @@ a click on a card's Describe button still always runs.
 **The return card.** **To tab** on a card remembers the jump, in the page's
 memory only (a reload forgets it). When the page is in view again at least
 `cockpit.flow.return_after_s` seconds later (and within four hours), the card
-**Back from the tab ...: How did it go?** stands in front, with Done, Runs on,
-Later until, Drop because and Not yet; any answer forgets the jump. Switching
+**Back from the tab ...: How did it go?** stands in front, with Done, Later
+until, Drop because and Runs on; any answer forgets the jump. Switching
 to another app and back without To tab never brings it.
 
 **The tabs under the card**, as an issue tracker has them: **Description**

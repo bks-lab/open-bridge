@@ -50,14 +50,18 @@ function Advice({ row, s, c, onStart }) {
  *  action (Done that closes the tab too: called with the verb's by, answers what the server answered), `yes` false
  *  leaves out Give your yes (an agent works on the point already), `onDone` runs after a verb went out, whatever it
  *  answered (the return card forgets its jump), `extra` stands after them, `stack` puts them under each other with the
- *  strong one first, every other one in the same style */
+ *  strong one first, every other one in the same style. `first` stands before all of them (Open on GitHub), `lead`
+ *  right after the strong one (View and Improve on a finished start), `tail` apart under the bar (a tab's close, so it
+ *  is no click by mistake); `yesFirst` makes Give your yes the strong one, first, where it is offered */
 export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = false, words = {}, handlers = {}, yes: offerYes = true, onDone = null,
-  extra = null, stack = false }) {
+  extra = null, stack = false, first = null, lead = null, tail = null, yesFirst = false }) {
   const t = T()
   const f = t.flow
   const lang = language()
   const offered = verbsFor(row)
-  const strong = primary === false ? null : primary ?? suggestedVerb(row, s.triage?.items?.[row.key] ?? null)
+  const yes = offerYes && row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved'
+  const yesStrong = yesFirst && yes
+  const strong = primary === false || yesStrong ? null : primary ?? suggestedVerb(row, s.triage?.items?.[row.key] ?? null)
   const given = (verbs ?? offered).filter(v => offered.includes(v))
   const list = stack && given.includes(strong) ? [strong, ...given.filter(v => v !== strong)] : given
   // the strong verb the AI suggested goes out as such; the person's own pick of any other says nothing
@@ -98,7 +102,6 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const nowMs = s.now || Date.now()
   const putOff = iso => send(flowAction('later', row, iso, by('later')))
   const word = v => words[v] ?? f.verbs[v]
-  const yes = offerYes && row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved'
   const pickDay = () => {
     const iso = parseDate(day, s.now)
     if (!iso) return setDayErr(t.noDate(day || ' '))
@@ -107,14 +110,21 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   }
   const why = (other.trim() || (reason ? dropReasonWord(reason, lang) : '')).trim()
   const reasons = flowSettings(s).drop_reasons
+  const btns = list.map(v => html`<${Btn} key=${v} size="sm" variant=${v === strong ? 'primary' : 'secondary'} busy=${busy && v !== 'advise'}
+    pressed=${PANELS.has(v) ? open === v : undefined} onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`)
+  // what `lead` follows: the strong verb where it stands first, else nothing
+  const head = strong && list[0] === strong ? 1 : 0
+  const yesBtn = variant => html`<${Btn} size="sm" variant=${variant} busy=${busy} onClick=${() => send({ verb: 'do_it', args: { keys: [row.key] } })}>${f.approve}<//>`
   return html`<div class=${`verbbar${stack ? ' is-stack' : ''}`} role="group" aria-label=${f.title}>
     <${Advice} row=${row} s=${s} c=${c} onStart=${answer => { setNote(startNote({ title: `${row.title}. ${f.advice.title}: ${short(answer, 500)}` }, lang)); setOpen('do') }} />
     <div class="verbbar-row">
-      ${list.map(v => html`<${Btn} key=${v} size="sm" variant=${v === strong ? 'primary' : 'secondary'} busy=${busy && v !== 'advise'}
-        pressed=${PANELS.has(v) ? open === v : undefined} onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`)}
-      ${yes ? html`<${Btn} size="sm" variant=${stack ? 'secondary' : 'ghost'} busy=${busy} onClick=${() => send({ verb: 'do_it', args: { keys: [row.key] } })}>${f.approve}<//>` : null}
+      ${first}
+      ${yesStrong ? yesBtn('primary') : null}
+      ${btns.slice(0, head)}${lead}${btns.slice(head)}
+      ${yes && !yesStrong ? yesBtn(stack ? 'secondary' : 'ghost') : null}
       ${extra}
     </div>
+    ${tail ? html`<div class="verbbar-row verbbar-tail">${tail}</div>` : null}
     ${open === 'do' ? html`<div class="verbbar-panel">
       <label class="label-caps" for=${`vb-note-${row.key}`}>${f.start.label}</label>
       <textarea id=${`vb-note-${row.key}`} class="input textarea" rows="3" maxlength="2000" value=${note}

@@ -191,15 +191,15 @@ test('flowArm: the return card comes only after a jump to a tab, once return_aft
   assert.deepEqual(q.map(x => [x.group, x.id]), [['back', 'back']])                // its row is not listed again
 })
 
-test('the return card: every answer forgets the jump, Not yet too', async () => {
+test('the return card: every answer forgets the jump', async () => {
   const jump = { key: 'task:a', ref: 'surface:9', title: 'a', at: NOW - 30 * MIN, armed: true }
   const s = cockpitState(NOW, { ...state({ work: [task('a')], tabs: [{ ref: 'surface:9', name: 'a', slug: 'a', state: 'waiting' }] }),
     ui: { ...state().ui, flowJump: jump } })
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
   assert.match(el.$('.flow-card').text(), new RegExp(en.flow.backAsk))
-  el.button(en.flow.notYet).click()
-  assert.deepEqual(c.calls.at(-1), ['flowBack'])
+  // one way back (29.10.2026: Not yet did what Runs on does, so it went)
+  assert.equal(el.button(en.flow.notYet), null)
   el.button(en.flow.runsOn).click()
   assert.deepEqual(c.calls.at(-1), ['flowBack'])
   el.button(en.flow.verbs.done).click()
@@ -232,7 +232,7 @@ test('the return card after a jump from a tab without an item claims nothing was
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   assert.match(el.$('.flow-card').text(), new RegExp(en.flow.backAsk))
   assert.doesNotMatch(el.$('.flow-card').text(), new RegExp(en.flow.backGone))
-  assert.ok(el.button(en.flow.notYet))
+  assert.ok(el.button(en.flow.runsOn))
 })
 
 test('suggestedVerb: the triage verdict, else Advise on a question and Let AI do it on a task the AI may do', () => {
@@ -1754,6 +1754,118 @@ test('the reports: Seen on the right settles only the ticked reports, All seen o
     const f = text.TABLES[lang].flow
     assert.ok(f.tickReports && f.seenTicked(2) !== f.seenTicked(1), `${lang} words`)
   }
+})
+
+// ---------------------------------------------------------------- the buttons on the right by kind (29.10.2026)
+
+/** The ways on the right of a point in their order, the strong one in brackets: every button and every link styled as
+ *  one, Details and the STATUS.md link left out; `tail` only those set apart under the verbs (.verbbar-tail) */
+function acts(el, tail = false) {
+  const out = []
+  const walk = (n, apart) => {
+    if (n.nodeType !== 1) return
+    const there = apart || n.hasClass('verbbar-tail')
+    if (n.localName === 'button' || (n.localName === 'a' && n.hasClass('btn'))) {
+      const w = n.text().trim()
+      if ((!tail || there) && w && w !== en.flow.details && !/STATUS\.md$/.test(w)) out.push(n.hasClass('btn-primary') ? `[${w}]` : w)
+      return
+    }
+    for (const k of n.childNodes) walk(k, there)
+  }
+  walk(el.$('.flow-aside'), false)
+  return out
+}
+const panel = w => `${w} ▾`
+const onTab = (st, over = {}) => ({ ref: 'surface:9', name: 'run', slug: 'run', state: st, since_ms: NOW - 18 * MIN, ...over })
+const right = (st, c = recorder()) => mount(html`<${FlowPage} s=${cockpitState(NOW, st)} c=${c} />`)
+
+test('the right column: no strong button without a suggestion, Advise is one verb among the others (B)', () => {
+  const v = en.flow.verbs
+  assert.deepEqual(acts(right(state({ now: [ask('20261009-0900-a-q')] }))), [panel(v.do), v.advise, v.done, panel(v.later), panel(v.drop)])
+  // a suggestion still makes its verb the strong one, first
+  const s = state({ now: [ask('20261009-0900-a-q')], themes: { enabled: true, assign: {}, themes: [], suggest: { 'inbox:20261009-0900-a-q': { verb: 'later', reason: 'x', at_ms: NOW } } } })
+  assert.equal(acts(right(s))[0], `[${panel(v.later)}]`)
+})
+
+test('the right column: a finding with an action ready gives its yes first and strong (D)', () => {
+  const v = en.flow.verbs
+  const y = ask('20261009-0900-a-y', { gate: 'your-yes', has_action: true, art: 'finding' })
+  assert.deepEqual(acts(right(state({ now: [y] }))), [`[${en.flow.approve}]`, panel(v.do), v.advise, v.done, panel(v.later), panel(v.drop)])
+})
+
+test('the right column: a task in review offers Done strong, then Improve, Later, Drop and Advise, no Let AI do it (C)', async () => {
+  const v = en.flow.verbs
+  const c = recorder()
+  const el = right(state({ work: [task('r', { status: 'review' })] }), c)
+  assert.deepEqual(acts(el), [`[${v.done}]`, panel(en.flow.improve.button), panel(v.later), panel(v.drop), v.advise])
+  // Improve opens the sentence for a new start, which goes out only with words in it
+  el.$$('.flow-aside button').find(b => b.text() === panel(en.flow.improve.button)).click()
+  await until(() => el.$('.flow-aside .flow-improve textarea'))
+  assert.ok(el.$('.flow-aside .flow-improve textarea'), 'the field for what is still to do')
+})
+
+test('the right column: an issue says Hide for what only leaves this list, Open on GitHub first (A)', () => {
+  const v = en.flow.verbs
+  const issue = ref('acme/app', 7, { bucket: 'do' })
+  const el = right(state({ now: [issue] }))
+  assert.deepEqual(acts(el), [en.flow.onWeb(issue.url), panel(v.do), v.advise, en.flow.hide, panel(v.later), panel(v.drop)])
+  assert.equal(en.flow.onWeb('https://github.com/acme/app/issues/7'), 'Open on GitHub')
+  const a = el.$('.flow-aside a.btn')
+  assert.equal(a.getAttribute('href'), issue.url)
+  assert.equal(a.getAttribute('target'), '_blank')
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.hide && text.TABLES[lang].flow.onWeb, lang)
+})
+
+test('the right column: the return card has one way back, Runs on (E)', () => {
+  const v = en.flow.verbs
+  const el = right(state({ work: [task('other')], tabs: [onTab('waiting', { ref: 'surface:5', slug: 'other' })],
+    ui: { flowJump: { key: 'task:other', ref: 'surface:5', title: 'x', at: NOW - MIN, armed: true } } }))
+  assert.deepEqual(acts(el), [`[${v.done}]`, panel(v.later), panel(v.drop), en.flow.runsOn])
+})
+
+test('the right column: a tab waiting at its prompt puts its close last and apart (F)', () => {
+  const v = en.flow.verbs
+  const el = right(state({ work: [task('run')], tabs: [onTab('waiting')] }))
+  const all = acts(el)
+  assert.deepEqual(all.slice(0, 6), [`[${en.flow.toTab}]`, en.flow.view, v.advise, v.done, panel(v.later), panel(v.drop)])
+  assert.deepEqual(acts(el, true), all.slice(6))
+  assert.ok(acts(el, true).includes(en.btnCloseTab), 'the close stands apart')
+})
+
+test('the right column: while a tab asks, only To tab, View, Advise and Later; nothing closes what waits for you (H)', () => {
+  const v = en.flow.verbs
+  assert.deepEqual(acts(right(state({ work: [task('run')], tabs: [onTab('needs-you')] }))),
+    [`[${en.flow.toTab}]`, en.flow.view, v.advise, panel(v.later)])
+})
+
+test('the right column: a finished start, View and Improve right after Done, the tab ways apart at the end (G)', () => {
+  const v = en.flow.verbs
+  const el = right(state({ work: [task('fin')], tabs: [onTab('waiting', { ref: 'surface:10', slug: 'fin' })],
+    returns: [startOf('fin', 'result', { tab: { ref: 'surface:10' }, result: { kind: 'note', text: 'Result: done', key: null, at_ms: null } })] }))
+  const all = acts(el)
+  assert.deepEqual(all.slice(0, 6), [`[${en.flow.doneClose}]`, en.flow.view, panel(en.flow.improve.button), en.flow.runsOn, panel(v.later), panel(v.drop)])
+  assert.deepEqual(acts(el, true)[0], en.flow.toTab)
+  assert.deepEqual(acts(el, true), all.slice(6))
+})
+
+test('the right column: where the close of the tab behind it ends the point, Done and close tab stands with the verbs', () => {
+  // a tab waiting at its prompt with the task behind it: its close offers Done for it (besideClose takes Done out of
+  // the verbs), so that Done stands right after the tab's ways, not apart at the end (review 29.10.2026)
+  const wait = { ref: 'surface:12', name: 'a', slug: 'a', state: 'waiting', behind: { task: 'a', item: null }, since_ms: NOW - 14 * MIN }
+  const v = en.flow.verbs
+  const all = acts(right(state({ work: [task('a')], tabs: [wait] })))
+  assert.deepEqual(all, [`[${en.flow.toTab}]`, en.flow.view, en.btnDoneCloseTab, en.btnCloseTabOnly, v.advise, panel(v.later), panel(v.drop)])
+  // a driver that closes tabs but starts none still shows that Done
+  const noLaunch = acts(right({ ...state({ work: [task('a')], tabs: [wait] }), driver: { caps: ['close'] } }))
+  assert.ok(noLaunch.includes(en.btnDoneCloseTab), noLaunch.join(' | '))
+})
+
+test('the reports say Done like every other card (I)', () => {
+  assert.equal(en.flow.seen, 'Done')
+  assert.equal(en.flow.allSeen, 'All done')
+  assert.equal(text.TABLES.de.flow.seen, 'Erledigt')
+  assert.equal(text.TABLES.de.flow.allSeen, 'Alle erledigt')
+  assert.equal(text.TABLES.de.flow.seenTicked(2), 'Erledigt (2 angehakt)')
 })
 
 test('Details at the point (round 6 B): an inbox item or a task opens its drawer, any other row its detail column, a report its own', () => {

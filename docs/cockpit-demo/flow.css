@@ -368,6 +368,8 @@
 /* the five verbs: one row of buttons, the suggested one primary, a small panel under it for a start, a day, a reason */
 .verbbar { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .verbbar-row, .verbbar-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* a tab's close and its jump, apart under the verbs, so they are no click by mistake (views/verbbar.js tail) */
+.verbbar-tail { padding-top: 8px; border-top: 1px solid var(--border); }
 .verbbar-panel {
   display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border);
   border-radius: var(--radius-lg); background: var(--surface);

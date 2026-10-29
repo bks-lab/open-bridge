@@ -414,9 +414,11 @@ test('a file a tab asks about keeps the verbs of its task, the tab named beside 
   const queue = dossierQueue(s)
   assert.equal(queue[0].reason, 'tab', 'the demo has a tab that asks about a task')
   const el = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
-  // round 6d: the verbs of its task on the right, Done among them, as Work through has them for that point
+  // round 6d: the verbs of its task on the right, as Work through has them for that point; while its tab asks only
+  // Advise and Later, nothing closes what waits for an answer (29.10.2026)
   const acts = el.$('.flow-aside .flow-can')
-  assert.ok(acts.text().includes(en.flow.verbs.done), 'the close door of the row')
+  assert.ok(acts.text().includes(en.flow.verbs.later), 'the verbs of the row')
+  assert.ok(!acts.text().includes(en.flow.verbs.done), 'no Done while the tab asks')
   assert.ok(el.$('.fx-hero .fx-meta').text().includes(queue[0].tab.name), 'the tab that asks, named')
 })
 

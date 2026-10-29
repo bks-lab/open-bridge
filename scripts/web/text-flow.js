@@ -97,8 +97,9 @@ export const FLOW = {
       title: 'Advice', running: 'Asking for advice', failed: 'No answer came back.', start: 'Start from it', close: 'Close',
       note: 'Read only: nothing changes until you pick a verb.',
     },
-    reports: n => (n === 1 ? '1 report' : `${n} reports`), seen: 'Seen', allSeen: 'All seen',
-    seenTicked: n => (n ? `Seen (${n} ticked)` : 'Seen'), tickReports: 'Tick the reports you have seen. All ticks every one.',
+    reports: n => (n === 1 ? '1 report' : `${n} reports`), seen: 'Done', allSeen: 'All done',
+    seenTicked: n => (n ? `Done (${n} ticked)` : 'Done'), tickReports: 'Tick the reports that are done. All ticks every one.',
+    hide: 'Hide', onWeb: url => (/^https?:\/\/(www\.)?github\.com\//.test(String(url)) ? 'Open on GitHub' : 'Open in the tracker'),
     details: 'Details', detailsTitle: 'Every field and verb of this row',
     walk: { label: 'Walk through the cards', done: 'That was the last card.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
@@ -300,8 +301,9 @@ export const FLOW = {
       title: 'Rat', running: 'Rat wird geholt', failed: 'Keine Antwort gekommen.', start: 'Daraus starten', close: 'Schließen',
       note: 'Nur lesend: nichts ändert sich, bis du ein Verb wählst.',
     },
-    reports: n => (n === 1 ? '1 Meldung' : `${n} Meldungen`), seen: 'Gesehen', allSeen: 'Alle gesehen',
-    seenTicked: n => (n ? `Gesehen (${n} angehakt)` : 'Gesehen'), tickReports: 'Hake die Meldungen an, die du gesehen hast. Alle hakt jede an.',
+    reports: n => (n === 1 ? '1 Meldung' : `${n} Meldungen`), seen: 'Erledigt', allSeen: 'Alle erledigt',
+    seenTicked: n => (n ? `Erledigt (${n} angehakt)` : 'Erledigt'), tickReports: 'Hake die Meldungen an, die erledigt sind. Alle hakt jede an.',
+    hide: 'Ausblenden', onWeb: url => (/^https?:\/\/(www\.)?github\.com\//.test(String(url)) ? 'Auf GitHub öffnen' : 'Im Tracker öffnen'),
     details: 'Details', detailsTitle: 'Alle Felder und Befehle dieser Zeile',
     walk: { label: 'Durch die Karten gehen', done: 'Das war die letzte Karte.' },
     // round 4: what runs, what is not now and its lists, a merge, Prio by Jev
