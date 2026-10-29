@@ -18,6 +18,8 @@ const { FlowPage } = views.flow
 const { VerbBar } = views.verbbar
 const en = text.TABLES.en
 const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+// effects run after the render; under a loaded runner 20 ms may not be enough, so wait for what the test expects
+const until = async (ok, ms = 2000) => { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick() }
 // the page bar reads its active tab back with querySelector, listens for resize and measures its tabs (as in the
 // aria suite): a DOM without layout says 0, so it neither folds nor moves its marker
 const proto = Object.getPrototypeOf(document.createElement('div'))
@@ -3256,7 +3258,7 @@ test('R6B 1f, 2c and 2d: Jev\'s daily order and the themes are asked in every or
     const st = cockpitState(NOW, { model: base.model, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowMode, flowPicked: [] } })
     const c = recorder()
     mount(html`<${FlowPage} s=${{ ...st, themes, jevOrder: {} }} c=${c} />`)
-    await tick()
+    await until(() => c.calls.some(x => x[0] === 'flowThemesAuto') && c.calls.some(x => x[0] === 'flowPrioOrder'))
     assert.deepEqual(c.calls.filter(x => x[0] === 'flowPrioOrder'), [['flowPrioOrder', 'work']], flowMode)
     assert.ok(c.calls.some(x => x[0] === 'flowThemesAuto'), `${flowMode}: the points without a theme ask for theirs`)
     assert.ok(!c.calls.some(x => ['flowPrioRead', 'jevRun', 'jevRank', 'jevWork'].includes(x[0])), `${flowMode}: no read-in of its own`)
