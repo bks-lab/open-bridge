@@ -10,6 +10,7 @@ state as a word instead of a sentence) the docstring says so.
 from __future__ import annotations
 
 import datetime as dt
+import fnmatch
 import hashlib
 import json
 import re
@@ -753,6 +754,25 @@ def task_next(task: dict, inbox_rows: list[dict]) -> dict | None:
         return {"what": task["next"], "from": "status", "since": task.get("updated"), "key": None}
     return None
 
+
+
+REPO_OF_REF = re.compile(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#\d+$")
+
+
+def with_repo_areas(view: dict, rules: tuple) -> dict:
+    """A row naming a repository (`owner/repo#n`) without an area of its own takes the first workspace whose
+    `repos:` globs match (config.area_repos), its aliases as further area names; pure, no rules change nothing."""
+    if not rules:
+        return view
+
+    def area_of(r: dict) -> dict:
+        found = REPO_OF_REF.match(r.get("ref") or "") if not r.get("area") and not r.get("area_names") else None
+        repo = found.group(1).lower() if found else None
+        for name, aliases, globs in rules if repo else ():
+            if any(fnmatch.fnmatchcase(repo, g.lower()) for g in globs):
+                return {**r, "area": name, "area_names": [name, *aliases]}
+        return r
+    return {**view, "buckets": [{**b, "rows": [area_of(r) for r in b.get("rows", [])]} for b in view.get("buckets", [])]}
 
 def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
     by_slug = {t["slug"]: t for t in tasks}

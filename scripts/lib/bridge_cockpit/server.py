@@ -1002,7 +1002,8 @@ class Handler(BaseHTTPRequestHandler):
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
                                             "control": cfg.control, "profile": cfg.profile,
-                                            "areas": list(cfg.areas), "clicks": bool(getattr(cfg, "usage_clicks", True))}})
+                                            "areas": list(cfg.areas),
+                                            "area_aliases": dict(getattr(cfg, "area_aliases", ())), "clicks": bool(getattr(cfg, "usage_clicks", True))}})
         elif path == "/api/state":
             self.send_json(200, app.state_payload())
         elif path == "/api/events":

@@ -7,7 +7,7 @@ import {
   duration, indexRows, jobCounts, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
   asksYou, countInProject, startWaiting, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
   MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey,
-  itemRow, workPageOf, statusSplit,
+  itemRow, workPageOf, statusSplit, areaBar, areaBarTitle, areaJump,
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
@@ -159,11 +159,13 @@ function freshKeys(s, ms = 15 * 60000) {
   return new Set((s.feed ?? []).filter(e => e.kind === 'new' && now - e.at < ms).map(e => e.key))
 }
 
-function StageCard({ s, c, tabs, onWeigh }) {
+function StageCard({ s, c, tabs: allTabs, onWeigh, project = null }) {
   const t = T()
   const h = t.home
-  const pick = focusPick(tabs, s.model)
-  const nowRows = (s.model?.sections ?? []).find(x => x.id === 'now')?.rows ?? []
+  // the area picked in the bar holds here too: its rows and its tabs only
+  const tabs = allTabs.filter(x => x.is_control || inProject(x, project))
+  const nowRows = ((s.model?.sections ?? []).find(x => x.id === 'now')?.rows ?? []).filter(r => inProject(r, project))
+  const pick = focusPick(tabs, { ...s.model, sections: (s.model?.sections ?? []).map(x => (x.id === 'now' ? { ...x, rows: nowRows } : x)) })
   const rest = nowRows.filter(r => r.key !== pick?.row?.key).slice(0, pick ? 3 : 4)
   const lang = language()
   const stamp = new Date(s.now || Date.now()).toLocaleString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -497,11 +499,39 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
   </section>`
 }
 
+/** The areas of the stage as one bar under the greeting (areas.js areaBar): All, then a pill per area with something
+ *  open and its one figure, the configured quiet ones behind a toggle. A pill picks the area for the whole cockpit
+ *  (ui.area) and a second click shows every area again; "No area" has no filter and opens the work as a whole */
+function AreaPills({ s, c, areas }) {
+  const h = T().home
+  const [open, setOpen] = useState(false)
+  const { pills, quiet } = areaBar(areas, s.boot?.config?.areas ?? [])
+  const want = String(s.ui.area ?? '').trim().toLowerCase()
+  const isOn = name => !!want && String(name).trim().toLowerCase() === want
+  const fig = p => (p.fig.kind === 'waiting'
+    ? html`<span class="area-pill-fig is-waiting num">${p.fig.n}</span>`
+    : html`<span class=${`area-pill-fig${p.fig.kind === 'running' ? ' is-running' : ''}`}>${h.areaFig[p.fig.kind](p.fig.n)}</span>`)
+  const pill = (name, on, onClick, body, title, cls = '') => html`<button type="button" key=${name || '@none'} class=${`area-pill${on ? ' is-on' : ''}${cls}`}
+    aria-pressed=${String(on)} title=${title} onClick=${onClick}>${body}</button>`
+  return html`<nav class="stage-areas" aria-label=${h.areasTitle}>
+    ${pill('@all', !want, () => c.setArea(null), html`<span class="area-pill-name">${h.all}</span>`, h.areaClear)}
+    ${pills.map(p => (p.none
+      ? pill('', false, () => c.goArea(null, areaJump('name', p)), html`<span class="home-area-dot tk-muted" aria-hidden="true"></span>
+          <span class="area-pill-name">${h.noArea}</span>${fig(p)}`, areaBarTitle(p, h), ' is-none')
+      : pill(p.name, isOn(p.name), () => c.setArea(isOn(p.name) ? null : p.name), html`<span class=${`home-area-dot tk-${p.tone}`} aria-hidden="true"></span>
+          <span class="area-pill-name">${p.name}</span>${fig(p)}`, areaBarTitle(p, h))))}
+    ${open ? quiet.map(name => pill(name, isOn(name), () => c.setArea(isOn(name) ? null : name),
+      html`<span class="home-area-dot tk-muted" aria-hidden="true"></span><span class="area-pill-name">${name}</span>`, h.areaBarParts({}), ' is-quiet')) : null}
+    ${quiet.length ? html`<button type="button" class="area-pill is-toggle" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>
+      ${open ? h.areaQuietLess : h.areaQuiet(quiet.length)}</button>` : null}
+  </nav>`
+}
+
 const DUST = stageDust(70, 41)
 
 /** The stage: the core with its rings, the chosen tiles as stations on curved links with packets running
  *  in, the terminal line top left, the card on the right */
-export function BridgeStage({ s, c, catalog, chosen, project }) {
+export function BridgeStage({ s, c, catalog, chosen, project, areas = null }) {
   const t = T()
   const h = t.home
   const lang = language()
@@ -601,6 +631,7 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
           ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}>
             <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
         </div>` : null}
+        ${areas ? html`<${AreaPills} s=${s} c=${c} areas=${areas} />` : null}
       </div>
       ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
     </div>
@@ -647,7 +678,7 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
       <div class="stage-side">
         ${sel === '@core' ? html`<${CoreInspector} s=${s} c=${c} onClose=${() => setSel(null)} onAsk=${coreAsk} onWeigh=${() => runMode('k:brief')} />`
           : selIdx >= 0 ? html`<${StageInspector} x=${tiles[selIdx]} st=${stations[selIdx]} s=${s} c=${c} tabs=${tabs} onClose=${() => setSel(null)} />`
-          : html`<${StageCard} s=${s} c=${c} tabs=${tabs} onWeigh=${() => runMode('k:brief')} />`}
+          : html`<${StageCard} s=${s} c=${c} tabs=${tabs} project=${project} onWeigh=${() => runMode('k:brief')} />`}
       </div>
     </div>
   </section>`

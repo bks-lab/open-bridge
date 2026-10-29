@@ -12,7 +12,7 @@
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
 import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowOverdue,
-  rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
+  restingIn, rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -1360,16 +1360,19 @@ export function flowAreas(s) {
   if (startMemo.key && startMemo.key.every((v, i) => v === key[i])) return startMemo.out
   const base = { ...s, ui: { ...(s?.ui ?? {}), page: FLOW_PAGE, area: null } }
   const whole = flowParts(base)
-  // every area a row names (inProject matches each of them), else the one rowProject gives
+  // the area a row stands in: its own name (an alias in area_names is never a line of its own), else every area it
+  // names (inProject matches each of them), else the one rowProject gives
   const rows = [...flowUniverse(s).values()].flatMap(r => {
-    const all = [...new Set([r.area, ...(r.area_names ?? [])].filter(Boolean))]
+    const all = r.area ? [r.area] : [...new Set((r.area_names ?? []).filter(Boolean))]
     return (all.length ? all : [rowProject(r)]).map(a => ({ area: a }))
   })
   const names = homeProjects((s?.tabs?.tabs ?? []).filter(t => !t.is_control), rows)
-  const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), flow: true, ...x, total: x.waiting + x.running + x.review + x.overdue, ...extra })
+  const tabs = s?.tabs?.tabs ?? []
+  const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), flow: true, ...x, resting: restingIn(tabs, name),
+    total: x.waiting + x.running + x.review + x.overdue, ...extra })
   const areas = names.map(name => line(name, startFigures(flowParts(areaScope({ ...base, ui: { ...base.ui, area: name } })), nowMs)))
   const none = line('', startFigures(withoutArea(whole), nowMs), { none: true, tone: 'muted' })
-  const out = { areas: [...areas, none].filter(a => a.total > 0 || a.tasks > 0), all: line(null, startFigures(whole, nowMs)) }
+  const out = { areas: [...areas, none].filter(a => a.total > 0 || a.tasks > 0 || a.resting > 0), all: line(null, startFigures(whole, nowMs)) }
   startMemo = { key, out }
   return out
 }

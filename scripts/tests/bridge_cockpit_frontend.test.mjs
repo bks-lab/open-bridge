@@ -2076,7 +2076,7 @@ test('start: one block beside the bridge, Today is a station of the ring that br
   assert.match(src, /const spots = stageSpots\(ring\.length\)/)
   // the station Today clears the selection, the block shows Today when nothing is looked at
   assert.match(src, /st\.id === '@today' \? setSel\(null\)/)
-  assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} onWeigh=\$\{\(\) => runMode\('k:brief'\)\} \/>`\}\n      <\/div>\n    <\/div>/)
+  assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} project=\$\{project\} onWeigh=\$\{\(\) => runMode\('k:brief'\)\} \/>`\}\n      <\/div>\n    <\/div>/)
   assert.doesNotMatch(read('style.css'), /stage-today|has-today/)
 })
 
@@ -2107,7 +2107,7 @@ test('start: the row under the bridge runs now, no focus span, speech sits in th
   const card = src.match(/function StageCard\([\s\S]*?\n\}/)[0]
   assert.match(card, /onWeigh/)
   assert.match(card, /h\.weighDay/)
-  assert.match(stage, /<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} onWeigh=/)
+  assert.match(stage, /<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} project=\$\{project\} onWeigh=/)
   assert.doesNotMatch(src + css + read('app.js'), /focusUntil|clockLeft|c\.setFocus\(|setFocus\(until|in-focus|is-clock|core-mode-pin/)
   assert.equal(logic.clockLeft, undefined)
   const prompt = src.match(/function StagePrompt\([\s\S]*?\n\}/)[0]

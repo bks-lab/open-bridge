@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents, workersDue, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
@@ -2058,6 +2058,8 @@ async function boot() {
     return
   }
   api.setCsrf(b.data.csrf)
+  // the aliases of workplace.workspaces: a tab or a row under an alias stands in its area (areas.js)
+  setAreaAliases(b.data.config?.area_aliases)
   setLanguage(b.data.language)
   setControl(b.data.config?.control)
   document.documentElement.lang = language()

@@ -152,7 +152,8 @@ work:
 #   # cmux users (optional skill, skills/cmux):
 #   # driver: {command: ["python3", "${root}/skills/cmux/scripts/cmux_driver.py"]}
 #   control: {name: Control} # the workspace whose session steers the others (the cockpit finds the control session there)
-#   workspaces:              # optional per entry: description (read by the router), aliases (other titles)
+#   workspaces:              # optional per entry: description (read by the router), aliases (other titles),
+#                            # repos (owner/repo globs: an issue without an area takes this workspace's)
 #     - {name: Bigcorp, contexts: [bigcorp], description: "client work for Bigcorp"}
 #     - {name: Misc, default: true}
 #   limits: {max_workspaces: 4, max_tabs: 3, stale_days: 10, activity_days: 7}
