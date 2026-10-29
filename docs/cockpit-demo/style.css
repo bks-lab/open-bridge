@@ -517,6 +517,9 @@ kbd {
   color: var(--on-surface-muted);
 }
 
+/* the asks a line took in (detail.js AlsoAsked), under its reasons, each a link to its own item */
+.also-asked { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12.5px; }
+
 .inbox-summary { font-weight: 600; margin-bottom: 6px; }
 .runs {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-top: 10px; padding: 8px 10px;

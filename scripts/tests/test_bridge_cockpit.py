@@ -1692,6 +1692,73 @@ def test_settle_closes_or_drops_an_inbox_item_whatever_its_gate(world):
     assert writes(world) == [I(world, "drop", ONLY_ID, "--note", "dropped in the cockpit")]
 
 
+ASK_ID = "20261009-1100-check-review-b2c3"
+ASK2_ID = "20261009-1105-check-again-d4e5"
+
+
+def with_folded_asks(world, ended: tuple = ()):
+    """The line of ONLY_ID took in two asks filed about it ("ask about this row", briefing_view._fold); an id in
+    `ended` was closed meanwhile (an event says so)."""
+    for item_id, summary in ((ASK_ID, "Check: Review the demo report"), (ASK2_ID, "Check again: Review the demo report")):
+        folder = world.root / "work" / "inbox" / item_id
+        (folder / "events").mkdir(parents=True, exist_ok=True)
+        (folder / "item.yaml").write_text(f"schema_version: 1\nsummary: '{summary}'\ngate: only-you\n"
+                                          f"key: 'ask:{ONLY_ID}'\n", encoding="utf-8")
+        if item_id in ended:
+            (folder / "events" / "20261009T1130-close.yaml").write_text("verb: close\nat: '2026-10-09T11:30'\nby: me\n",
+                                                                       encoding="utf-8")
+
+    def collect(argv):
+        data = collect_fixture(world.root)
+        data["view"]["buckets"][0]["items"][0]["also_inbox"] = [ASK_ID, ASK2_ID, "../not-an-id"]
+        return ok(data)
+    world.runner.handlers["briefing.collect"] = collect
+    world.app.collector.request("both")
+    world.app.collector.drain()
+
+
+def test_a_line_carries_the_asks_it_took_in_with_their_titles(world):
+    with_folded_asks(world)
+    assert world.row(f"inbox:{ONLY_ID}")["also_inbox"] == [
+        {"id": ASK_ID, "title": "Check: Review the demo report"},
+        {"id": ASK2_ID, "title": "Check again: Review the demo report"}]
+    assert world.row(f"inbox:{YES_ID}")["also_inbox"] == []
+
+
+def test_the_asks_of_a_line_end_with_it_and_say_which_line(world):
+    with_folded_asks(world, ended=(ASK2_ID,))
+    note = world.app.tx["also_closed_note"].format(title="Review the demo report")
+    world.runner.calls.clear()
+    world.act("done", key=f"inbox:{ONLY_ID}")
+    # only the ask still open, never one closed meanwhile, never an id that fails validation
+    assert writes(world) == [I(world, "close", ONLY_ID, "--note", "marked done in the cockpit"),
+                             I(world, "close", ASK_ID, "--note", note)]
+
+
+def test_settling_a_line_ends_its_asks_the_same_way(world):
+    with_folded_asks(world)
+    note = world.app.tx["also_closed_note"].format(title="Review the demo report")
+    world.runner.calls.clear()
+    world.act("settle", keys=[f"inbox:{ONLY_ID}"], outcome="not_doing")
+    assert writes(world) == [I(world, "drop", ONLY_ID, "--note", "dropped in the cockpit"),
+                             I(world, "drop", ASK_ID, "--note", note), I(world, "drop", ASK2_ID, "--note", note)]
+
+
+def test_dropping_a_line_drops_its_asks(world):
+    with_folded_asks(world)
+    note = world.app.tx["also_closed_note"].format(title="Review the demo report")
+    world.runner.calls.clear()
+    world.act("drop", key=f"inbox:{ONLY_ID}")
+    assert writes(world)[1:] == [I(world, "drop", ASK_ID, "--note", note), I(world, "drop", ASK2_ID, "--note", note)]
+
+
+def test_putting_a_line_off_leaves_its_asks_alone(world):
+    with_folded_asks(world)
+    world.runner.calls.clear()
+    world.act("later", key=f"inbox:{ONLY_ID}", until=TOMORROW)
+    assert all(ASK_ID not in c and ASK2_ID not in c for c in writes(world))
+
+
 PAGE_ID = "20261005-1200-page-only-item-a1b2"
 
 

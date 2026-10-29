@@ -57,6 +57,9 @@ LABELS = {
     # the headline counts the asks (asks_you); what else stands in Do (reports, ideas) is counted apart
     "yours_today": "{n} asks for you today",
     "yours_today_one": "{n} ask for you today",
+    # a line that took in asks filed about it ("ask about this row") says how many it carries
+    "also_asked": "+{n} questions",
+    "also_asked_one": "+{n} question",
     "do_reports": "{n} reports",
     "do_reports_one": "{n} report",
     "free_until": "free until {time}",
@@ -256,6 +259,8 @@ LABELS = {
 LABELS_DE = {
     "yours_today": "{n} Fragen an dich heute",
     "yours_today_one": "{n} Frage an dich heute",
+    "also_asked": "+{n} Fragen",
+    "also_asked_one": "+{n} Frage",
     "do_reports": "{n} Meldungen",
     "do_reports_one": "{n} Meldung",
     "free_until": "frei bis {time}",
@@ -1272,7 +1277,8 @@ def _fold(out: dict, view: dict, labels: dict) -> None:
     29.10.: one task stood four times in a morning briefing (its inbox item, the issue its STATUS.md syncs, a
     deadline row, its own next step), and an item filed by "ask about this row" stood beside the row it asked
     about. Folded here, after every section added its rows:
-      - an inbox item keyed `ask:<inbox id>` joins the line of that item (its id goes to `also_inbox`);
+      - an inbox item keyed `ask:<inbox id>` joins the line of that item (its id goes to `also_inbox`, and the line
+        says "+1 question" among its reasons);
       - a tracker or command row about a task (`task` or `about_task`) joins that task's most urgent inbox line;
       - a task's own row (its next step or what blocks it) joins as a `why` note, but only when that inbox line
         stands in a bucket at least as urgent, so a next step due today never hides behind a "later" item.
@@ -1301,6 +1307,10 @@ def _fold(out: dict, view: dict, labels: dict) -> None:
         into = by_id.get(target[4:]) if target.startswith("ask:") else None
         if into and into != key and into in rows and rows[into]["bucket"] in shown:
             fold(into, key, [])
+    for key in order:
+        # the asks a line took in stand nowhere else: the line says it carries them (label also_asked)
+        if rows[key].get("also_inbox"):
+            rows[key]["why"].append(_count(labels, "also_asked", len(rows[key]["also_inbox"])))
 
     lines = {}            # task -> the key of its most urgent shown inbox line
     for key in order:

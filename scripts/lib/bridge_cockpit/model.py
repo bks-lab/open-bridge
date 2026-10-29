@@ -17,6 +17,9 @@ from typing import Any
 
 from .text import EN
 
+# the most asks one line carries to the page and ends with it (briefing_view._fold folds them in)
+ALSO_MAX = 20
+
 try:
     from ..briefing_view import art_of_kind, asks_you, meter_of
 except ImportError:      # bridge_cockpit loaded as a top-level package, scripts/lib itself on the path
@@ -278,7 +281,9 @@ def _base_row(**extra) -> dict:
            # where the row comes from (origin.py classifies them): the inbox item's `from` or the task's origin, the
            # inbox item's kind, the provider and kind of the section it came from, the task or stream it is about
            "origin_raw": None, "inbox_kind": None, "origin_provider": None, "origin_section_kind": None,
-           "about_task": None, "about_kind": None}
+           "about_task": None, "about_kind": None,
+           # the inbox ids of the asks this line took in (briefing_view._fold): they end with it
+           "also_inbox": []}
     row.update(extra)
     return row
 
@@ -621,6 +626,7 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 origin_section_kind=as_text_or_null(i.get("origin_section_kind")),
                 about_task=as_text_or_null(i.get("about_task")),
                 about_kind=i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None,
+                also_inbox=[x for x in _list(i.get("also_inbox")) if isinstance(x, str)][:ALSO_MAX],
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)

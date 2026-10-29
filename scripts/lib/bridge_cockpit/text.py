@@ -73,6 +73,8 @@ EN: dict = {
     # script notes
     "drop_note": "dropped in the cockpit",
     "done_note": "marked done in the cockpit",
+    # an ask folded into a line ("ask about this row") ends with that line, and says which one it was
+    "also_closed_note": "ended with the line it asked about: {title}",
     "swept_note": "its row is no longer in the briefing",
     "go_on": "Keep going.",
 
@@ -478,6 +480,7 @@ DE: dict = {
 
     "drop_note": "im Cockpit verworfen",
     "done_note": "im Cockpit als erledigt markiert",
+    "also_closed_note": "endet mit der Zeile, zu der gefragt wurde: {title}",
     "swept_note": "die Zeile steht nicht mehr im Briefing",
     "go_on": "Mach weiter.",
 

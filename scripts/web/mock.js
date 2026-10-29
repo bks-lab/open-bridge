@@ -33,6 +33,8 @@ const WORDS = {
     'Idea: dark mode for the weekly report': 'Idee: dunkles Design für den Wochenbericht',
     'Renew the test certificate': 'Das Testzertifikat erneuern',
     'due tomorrow': 'fällig morgen',
+    '+1 question': '+1 Frage',
+    'Check: is the report ready to send?': 'Prüfen: Kann der Bericht raus?',
     'only you': 'nur du',
     'tab asks for permission': 'Tab fragt nach Erlaubnis',
     'needs your yes': 'braucht dein Ja',
@@ -265,6 +267,8 @@ function row(over) {
     updated: null, until: null,
     // round 6: the GitHub list the row also stands in (collector.py on_board)
     on_board: null,
+    // the asks filed about the row that the briefing folded into it (collector.py also_inbox)
+    also_inbox: [],
     ...over,
   }
 }
@@ -554,7 +558,8 @@ export function buildState(now = Date.now(), opts = {}) {
     review: row({
       key: 'inbox:20261009-0900-review-demo-a1b2', bucket: 'do', section: 'now', title: 'Review the demo report',
       origin: O('skill', 'briefing/morning', 'briefing/morning'), work_kind: 'task', inbox_kind: 'decision',
-      why: ['due tomorrow', 'only you'], sources: ['inbox'], inbox_id: '20261009-0900-review-demo-a1b2', gate: 'only-you',
+      why: ['due tomorrow', 'only you', '+1 question'], sources: ['inbox'], inbox_id: '20261009-0900-review-demo-a1b2', gate: 'only-you',
+      also_inbox: [{ id: '20261009-1100-check-review-b2c3', title: 'Check: is the report ready to send?' }],
       task: 'demo-task', urgency: 'today', area: 'Demo', area_names: ['Demo'], task_type: 'feature', due: isoIn(1, now),
       inbox_state: 'open', inbox_key: 'demo-review', mark: { label: 'Demo', color: 'blue' }, is_new: true,
       actions: [A('done', true), A('advise')], selectable: true,
@@ -1140,12 +1145,15 @@ export function buildState(now = Date.now(), opts = {}) {
 }
 
 function inboxDetail(id, state) {
-  const r = [...(state.model?.sections ?? []).flatMap(s => s.rows)].find(x => x.inbox_id === id)
+  const rows = (state.model?.sections ?? []).flatMap(s => s.rows)
+  const r = rows.find(x => x.inbox_id === id)
+  // an ask folded into a row has no row of its own: its title comes from the row that carries it
+  const asked = rows.flatMap(x => x.also_inbox ?? []).find(a => a.id === id)
   const hasAction = !!r?.has_action
   return {
     ok: true, id,
     item: {
-      summary: r?.title ?? 'Example item', detail: 'Invented example detail.\nThe item came from a demo check and carries no real data.',
+      summary: r?.title ?? asked?.title ?? 'Example item', detail: 'Invented example detail.\nThe item came from a demo check and carries no real data.',
       kind: hasAction ? 'approval' : 'todo', gate: r?.gate ?? 'only-you', urgency: r?.urgency ?? null, state: r?.inbox_state ?? 'open',
       task: r?.task ?? null, due: r?.due ?? null, key: r?.inbox_key ?? 'example', from: r?.origin?.raw ?? 'demo-check', created: '2026-10-09T09:00:00',
       action_display: hasAction ? 'python3 scripts/example-tool.py --apply demo' : null, has_closes_when: hasAction,
