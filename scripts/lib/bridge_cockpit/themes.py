@@ -384,7 +384,7 @@ class Themes:
                 chosen = ai.select(self.app.root, SERVICE, DEFAULT_MODEL)
             except ValueError:
                 raise _error(503, "themes_unavailable", tx["unavailable"]) from None
-            if chosen.provider != "claude":
+            if not ai.supports(SERVICE, chosen.provider):
                 raise _error(503, "themes_unavailable", tx["unavailable"])
             model = chosen.model
         if model not in MODELS.values() or not self.app.runner.claude:

@@ -4,6 +4,7 @@
 
 No file tools, no automatic fallback. Input is a prompt argument or stdin; stdout
 is the answer (or a normalized JSON result with --json). --show only reads config.
+--list prints the built-in services and the providers each can run (ai_services.SERVICES).
 """
 from __future__ import annotations
 
@@ -21,13 +22,20 @@ from lib import ai_services as ai
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
-    parser.add_argument("--service", required=True)
+    parser.add_argument("--service")
+    parser.add_argument("--list", action="store_true", help="the built-in services and the providers each can run")
     parser.add_argument("--provider", choices=ai.PROVIDERS, help="explicit override for this invocation")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--show", action="store_true", help="show the selection without calling a model")
     parser.add_argument("prompt", nargs="?")
     args = parser.parse_args(argv)
+    if args.list:
+        print(json.dumps({k: {"providers": list(v["providers"]), "code": v["code"]} for k, v in ai.SERVICES.items()})
+              if args.json else ai.services_table(), end="" if not args.json else "\n")
+        return 0
+    if not args.service:
+        parser.error("--service is required")
     try:
         choice = ai.select(args.root, args.service, provider=args.provider)
         if args.show:

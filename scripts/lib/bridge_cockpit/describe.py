@@ -888,7 +888,7 @@ class Describer:
             chosen = ai.select(app.root, SERVICE, DEFAULT_MODEL)
         except ValueError:
             raise _error(503, "describe_unavailable", tx["unavailable"]) from None
-        if chosen.provider != "claude" or chosen.model not in MODELS.values() or not app.runner.claude:
+        if not ai.supports(SERVICE, chosen.provider) or chosen.model not in MODELS.values() or not app.runner.claude:
             raise _error(503, "describe_unavailable", tx["unavailable"])
         system, text = prompt(item, language(app.root))
         argv_ = argv(app.runner.claude, chosen.model, system, text, self.cfg().get("effort", DEFAULT_EFFORT))

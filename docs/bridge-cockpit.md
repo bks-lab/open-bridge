@@ -2636,8 +2636,10 @@ folded behind it), and a link, a tile or the band that names the page opens Sett
   from `workflow/briefings/_template.yaml` that still holds a placeholder of the template (such as
   `your-org` in the owners of its GitHub section), which finds nothing and reports no error; GitHub
   switched on but `gh` missing or not signed in (red); and the keys of the `cockpit:` block that do
-  not work as written (the warnings of `status`). Each detail says what to do, with the exact key
-  or command.
+  not work as written (the warnings of `status`); a service that is switched on but whose
+  `workflow/ai-services/` file names a provider its code cannot run, or cannot be used
+  (`provider_gaps` of `status`, [`ai-services.md`](ai-services.md)).
+  Each detail says what to do, with the exact key or command.
 - **Can be switched on** (`setup-available`): the features of the onboarding catalogue that are off
   here and offered (Jev only with a key configured, the relay only when `mods/cockpit-relay/`
   exists, the Bridge-Deck never), each with the step that switches it on, in the order

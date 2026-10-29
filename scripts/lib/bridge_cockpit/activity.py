@@ -1120,7 +1120,7 @@ def select_model(app: Any, name: str, service: str) -> str | None:
             picked = ai.select(app.root, service, DEFAULT_MODEL)
         except ValueError:
             return None
-        if picked.provider != "claude":
+        if not ai.supports(service, picked.provider):
             return None
         model = picked.model
     return model if model in MODELS.values() and app.runner.claude else None

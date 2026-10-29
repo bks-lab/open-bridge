@@ -342,7 +342,7 @@ def select_model(app: Any) -> str | None:
             picked = ai.select(app.root, SERVICE, DEFAULT_MODEL)
         except ValueError:
             return None
-        if picked.provider != "claude":
+        if not ai.supports(SERVICE, picked.provider):
             return None
         model = picked.model
     runner = getattr(app, "runner", None)
@@ -421,10 +421,16 @@ def _settle(app: Any, mark: int, cost: float | None) -> None:
 def state(app: Any) -> dict:
     """What the page reads (/api/state `prio`): whether Haiku is switched on and can read in, its model and runs left
     today, the fallback"""
+    from .. import ai_services as ai
+    from .config import ai_uses
     on = bool(haiku_block(app).get("enabled"))
     model = select_model(app) if on else None
-    return {"haiku": {"enabled": on, "ready": model is not None, "model": alias(model), "budget_left": budget_left(app)},
-            "fallback": block(app).get("fallback", "none")}
+    haiku = {"enabled": on, "ready": model is not None, "model": alias(model), "budget_left": budget_left(app)}
+    # why the service file keeps it off ({reason, provider} or {reason, error}), by the one rule of status and Setup
+    gap = ai.gap(app.root, SERVICE, ai_uses(app.cfg).get(SERVICE)) if model is None else None
+    if gap:
+        haiku.update({k: gap[k] for k in ("reason", "provider", "error") if k in gap})
+    return {"haiku": haiku, "fallback": block(app).get("fallback", "none")}
 
 
 def ready(app: Any) -> bool:
