@@ -36,6 +36,7 @@ trackers/
   github.md        ← working provider: gh CLI
   ado.md           ← example provider: az boards (Azure DevOps)
   gitlab.md        ← provider: glab CLI (GitLab issues)
+  linear.md        ← provider: Linear GraphQL API
 ```
 
 Each playbook documents the adapter of the same name in
