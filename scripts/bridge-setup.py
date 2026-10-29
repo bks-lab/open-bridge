@@ -259,6 +259,15 @@ def check_cockpit_config(root: Path, words: dict) -> list:
                  words["setup_config_detail"].format(warning=w), "warn", "docs/bridge-cockpit.md") for w in warnings]
 
 
+def check_providers(root: Path, words: dict) -> list:
+    """One row per AI service whose workflow/ai-services file names a provider its code cannot run"""
+    from lib import ai_services
+    return [_row(f"provider-gap-{g['service']}", words["setup_provider_gap"].format(service=g["service"], provider=g["provider"]),
+                 words["setup_provider_gap_detail"].format(service=g["service"], provider=g["provider"],
+                                                           supported=", ".join(g["supported"])),
+                 "warn", "docs/ai-services.md") for g in ai_services.gaps(root)]
+
+
 def checks(root: Path, cfg: dict, probes, words: dict) -> list:
     """What actually keeps the cockpit from working well; nothing when all is well."""
     out = []
@@ -277,6 +286,7 @@ def checks(root: Path, cfg: dict, probes, words: dict) -> list:
         elif gh == "signed_out":
             out.append(_row("gh-signed-out", words["setup_gh_signed_out"], words["setup_gh_signed_out_detail"], "bad"))
     out += check_cockpit_config(root, words)
+    out += check_providers(root, words)
     return out
 
 

@@ -3354,6 +3354,19 @@ def test_cli_status_says_whether_an_agent_tab_can_start(cli_world):
     assert "agent tabs cannot start" in cli("status").stdout
 
 
+def test_cli_status_lists_a_service_on_a_provider_it_cannot_run(cli_world):
+    # a cockpit service that runs only on Claude, configured for codex, said nothing and stayed off: status names it
+    root, _, cli = cli_world
+    assert json.loads(cli("status", "--json").stdout)["provider_gaps"] == []
+    folder = root / "workflow" / "ai-services"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "cockpit-describe.yaml").write_text("schema_version: 1\nscope: user\nid: cockpit-describe\nprovider: codex\n")
+    gaps = json.loads(cli("status", "--json").stdout)["provider_gaps"]
+    assert gaps == [{"service": "cockpit-describe", "ready": False, "reason": "provider_unsupported", "provider": "codex",
+                     "supported": ["claude"]}]
+    assert "warning: cockpit-describe cannot run on codex" in cli("status").stdout
+
+
 def test_cli_disabled_config_and_occupied_port(cli_world, tmp_path):
     root, state, cli = cli_world
     (root / "bridge-config.yaml").write_text("cockpit:\n  enabled: false\n")

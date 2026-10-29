@@ -446,3 +446,19 @@ def test_call_api_keeps_the_status_jev_answered(monkeypatch):
     with pytest.raises(jev.JevError) as e:
         jev.call_api({}, "k")
     assert (e.value.status, e.value.code) == (504, "jev_timeout")
+
+
+def test_a_codex_service_says_why_haiku_cannot_read_in(tmp_path):
+    # the service file names codex, which Prio's read-in cannot run yet: the state says so instead of hiding it
+    app = rank_app(tmp_path)
+    (tmp_path / "workflow" / "ai-services").mkdir(parents=True)
+    (tmp_path / "workflow" / "ai-services" / "cockpit-prio.yaml").write_text(
+        "schema_version: 1\nscope: user\nid: cockpit-prio\nprovider: codex\n", encoding="utf-8")
+    haiku = prio.state(app)["haiku"]
+    assert haiku["ready"] is False and haiku["reason"] == "provider_unsupported" and haiku["provider"] == "codex"
+    with pytest.raises(jev.JevError) as e:
+        jev.rank(app, {"page": "arbeit", "force": True, "ranker": "haiku", "rows": ROWS}, prio_call=run_haiku)
+    assert e.value.code == "prio_unavailable"
+    # a model pinned in the cockpit block runs on Claude whatever the service file says: no gap then
+    pinned = rank_app(tmp_path, prio_cfg={"haiku": {"model": "haiku"}})
+    assert prio.state(pinned)["haiku"]["ready"] is True and "reason" not in prio.state(pinned)["haiku"]

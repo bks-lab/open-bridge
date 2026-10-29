@@ -1,7 +1,7 @@
 ---
 summary: "Per-family guide: fill the identity/, infra/ and workflow/ folders on demand after onboarding."
 type: guide
-last_updated: 2026-10-24
+last_updated: 2026-10-29
 related:
   - structure.md
   - extension-model.md
@@ -505,8 +505,9 @@ you add one. There is no automatic fallback between providers.
 
 **Schema:** `workflow/ai-services/_schema.yaml`.
 
-**Used by:** the built-in consumers `briefing-chat`, `task-review` and
-`triage`; a worker opts in with `python3 scripts/ai-run.py --service <id>`.
+**Used by:** the built-in consumers, listed with the providers each can run by
+`python3 scripts/ai-run.py --list`; a worker opts in with
+`python3 scripts/ai-run.py --service <id>`.
 Full doc: [`docs/ai-services.md`](ai-services.md).
 
 ## workflow/cost-centers/

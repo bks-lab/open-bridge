@@ -571,9 +571,12 @@ def test_describe_config_takes_its_keys_and_warns_on_bad_values(tmp_path):
     assert plain.describe["auto"] == "off" and plain.config_warnings == ()
 
 
-def test_the_ai_services_template_lists_the_cockpit_services():
+def test_the_cockpit_services_are_declared_where_the_template_points():
+    # the one list is ai_services.SERVICES (ai-run.py --list); the template names the command, not a copy
+    from lib import ai_services
     text = (ROOT / "workflow" / "ai-services" / "_template.yaml").read_text(encoding="utf-8")
-    assert "cockpit-describe" in text and "cockpit-organize" in text
+    assert "ai-run.py --list" in text
+    assert {"cockpit-describe", "cockpit-organize"} <= set(ai_services.SERVICES)
 
 
 def test_the_docs_name_the_describe_keys():

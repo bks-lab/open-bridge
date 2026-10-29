@@ -571,3 +571,29 @@ def test_a_profile_cannot_put_a_page_of_its_own_into_settings(tmp_path):
 def test_the_cockpit_knows_the_setup_sections_the_briefing_reserves():
     from lib.bridge_cockpit import model as cm
     assert cm.SETUP_SECTIONS == bv.SETUP_SECTIONS
+
+
+# ---------------------------------------------------------------- a provider a service cannot run
+
+def service_file(root: Path, service: str, provider: str) -> None:
+    folder = root / "workflow" / "ai-services"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{service}.yaml").write_text(yaml.safe_dump({"schema_version": 1, "scope": "user", "id": service,
+                                                            "provider": provider}), encoding="utf-8")
+
+
+def test_a_service_on_a_provider_it_cannot_run_is_one_finding(tmp_path):
+    root = bridge(tmp_path)
+    service_file(root, "briefing-chat", "codex")          # runs on codex: no finding
+    service_file(root, "cockpit-describe", "claude")
+    assert checks(root) == []
+    service_file(root, "cockpit-themes", "codex")
+    rows = checks(root)
+    assert ids(rows) == ["provider-gap-cockpit-themes"]
+    row = rows[0]
+    assert row["tone"] == "warn" and row["url"] == "docs/ai-services.md"
+    assert row["title"] == bv.LABELS["setup_provider_gap"].format(service="cockpit-themes", provider="codex")
+    assert "workflow/ai-services/cockpit-themes.yaml" in row["detail"] and "claude" in row["detail"]
+    de = bridge(tmp_path / "de", {**GOOD, "language": {"conversation": "de"}})
+    service_file(de, "cockpit-themes", "codex")
+    assert checks(de)[0]["title"] == bv.LABELS_DE["setup_provider_gap"].format(service="cockpit-themes", provider="codex")

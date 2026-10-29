@@ -260,7 +260,7 @@ class TabVerbs:
             chosen = ai.select(app.root, og.SERVICE, og.DEFAULT_MODEL)
         except ValueError:
             raise ActionError(503, "organize_unavailable", tx["organize_unavailable"]) from None
-        if chosen.provider != "claude" or chosen.model not in MODELS.values():
+        if not ai.supports(og.SERVICE, chosen.provider) or chosen.model not in MODELS.values():
             raise ActionError(503, "organize_unavailable", tx["organize_unavailable"])
         if not app.runner.claude:
             raise ActionError(503, "cli_unavailable", "the claude CLI is not available")
