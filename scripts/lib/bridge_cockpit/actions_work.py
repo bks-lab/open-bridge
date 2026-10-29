@@ -4,6 +4,7 @@ files tab's question to its records.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import threading
@@ -21,6 +22,8 @@ from .text import TABLES
 FILES_ASK_TIMEOUT = 90
 # one question to the records at a time (v_files_ask), on a lock of its own, never the write lock
 _FILES_ASKING = threading.Lock()
+# one question to the history at a time (v_timeline_ask), on a lock of its own as well
+_TIMELINE_ASKING = threading.Lock()
 
 
 def record_check(app, words: list[str], themes, path: str, slug: str, kind: str) -> dict:
@@ -850,6 +853,78 @@ class WorkVerbs:
         ctx.extra["ask"] = app.scrub_tree({"answer": got["answer"], "files": files, "sent": len(recs),
                                            "held": {"n": len(held), "words": held_words}, "model": act.alias(got["used"] or model),
                                            "left": app.activity.budget_left("files"), "at_ms": int(app.clock())})
+
+    def v_timeline_ask(self, ctx: Ctx, text: str) -> None:
+        """When was it done or discussed (cockpit.files_search, lib/work_find.py history_*): the first call turns the
+        question into search terms and maybe a range of days, the lines of the history that hold the most of them are
+        picked (history_candidates), every one a word of the block list names in its path, source or text is held back
+        before anything is built, and the second call answers from the rest, naming them by number only. Off with the
+        files tab's question, within its budget_per_day (one question counts once, both calls' cost together), one at
+        a time. Nothing found: no second call, an answer of None"""
+        app = self.app
+        tx = TABLES["de" if str(getattr(app.cfg, "language", "en")).startswith("de") else "en"]["timeline_ask"]
+        cfg = act.block(app, "files")
+        if not cfg.get("enabled"):
+            raise ActionError(409, "timeline_ask_off", tx["off"])
+        words = list(cfg.get("block") or [])
+        model = act.select_model(app, "files", act.FILES_SERVICE)
+        if model is None:
+            raise ActionError(503, "timeline_ask_unavailable", tx["unavailable"])
+        if app.activity.budget_left("files") <= 0:
+            raise ActionError(429, "timeline_ask_budget", tx["budget"])
+        if not _TIMELINE_ASKING.acquire(blocking=False):
+            raise ActionError(409, "timeline_ask_running", tx["running"])
+        got, sent, held, run = None, [], [], None
+        try:
+            if app.activity.budget_left("files") <= 0:
+                raise ActionError(429, "timeline_ask_budget", tx["budget"])
+            from .describe import language
+            lang, today, question = language(app.root), dt.date.fromtimestamp(app.clock() / 1000).isoformat(), app.scrub(text)
+            call = self.describe_ctx(ctx)
+            system, prompt = wf.history_terms_prompt(question, lang, today)
+            argv = wf.history_argv(app.runner.claude, model, system, prompt, wf.HISTORY_TERMS_SCHEMA)
+            if not wf.history_argv_ok(argv, app.runner.claude, MODELS.values(), wf.HISTORY_TERMS_SCHEMA):
+                raise ActionError(409, "timeline_ask_too_big", tx["too_big"], "text")
+            run = call("claude.history", "files", argv, FILES_ASK_TIMEOUT)
+            terms = wf.history_terms_parse(run.out if run.ok else "")
+            cost = terms["cost_usd"] or 0.0
+            # no terms came back: the question's own longer words still find something
+            asked = terms["terms"] or [w for w in dict.fromkeys(text.lower().split()) if len(w) >= 4][:wf.HISTORY_TERMS_MAX]
+            find = lambda since=None, until=None: wf.history_candidates(  # noqa: E731
+                app.root, asked, transcripts=app.cfg.transcripts, meetings=app.cfg.meetings, since=since, until=until,
+                block=words)
+            found = find(terms["from"], terms["to"]) or (find() if terms["from"] or terms["to"] else [])
+            # a line a word of the block list names, in itself, its path, its source or its file, never goes
+            sent, held = [e for e in found if not e["held"]], [e["held"] for e in found if e["held"]]
+            if sent:
+                data = [{"n": i + 1, "date": e["date"], "time": e["time"], "kind": e["kind"], "source": app.scrub(e["source"]),
+                         "text": app.scrub(e["text"])} for i, e in enumerate(sent)]
+                system, prompt = wf.history_answer_prompt(question, data, lang, today)
+                argv = wf.history_argv(app.runner.claude, model, system, prompt, wf.HISTORY_ANSWER_SCHEMA)
+                # the most entries that fit into one call: the last ones go first
+                while data and not wf.history_argv_ok(argv, app.runner.claude, MODELS.values(), wf.HISTORY_ANSWER_SCHEMA):
+                    data, sent = data[:-1], sent[:-1]
+                    system, prompt = wf.history_answer_prompt(question, data, lang, today)
+                    argv = wf.history_argv(app.runner.claude, model, system, prompt, wf.HISTORY_ANSWER_SCHEMA)
+                if not data:
+                    raise ActionError(409, "timeline_ask_too_big", tx["too_big"], "text")
+                run = call("claude.history", "files", argv, FILES_ASK_TIMEOUT)
+                got = wf.history_answer_parse(run.out if run.ok else "", len(sent))
+                cost += got["cost_usd"] or 0.0
+            app.activity.count_call("files", cost or None)
+        finally:
+            _TIMELINE_ASKING.release()
+        ctx.audit_extra.update(entries=len(sent), held=len(held), terms=len(asked))
+        if sent and got["answer"] is None:
+            why = "the answer holds none" if run.ok else ((run.err or "").strip().splitlines()[-1:] or ["no answer"])[0]
+            raise ActionError(502, "timeline_ask_failed", tx["failed"].format(why=app.scrub(why)[:200]))
+        keep = ("date", "time", "kind", "source", "path", "line", "text", "folder")
+        cited = [{**{k: sent[c["n"] - 1].get(k) for k in keep}, **c} for c in (got["entries"] if got else [])]
+        ctx.extra["timeline"] = app.scrub_tree({
+            "answer": got["answer"] if got else None, "entries": cited, "terms": asked, "sent": len(sent),
+            "held": {"n": len(held), "words": [w for w in words if any(w in h for h in held)]},
+            "model": act.alias((got or {}).get("used") or terms.get("used") or model),
+            "left": app.activity.budget_left("files"), "at_ms": int(app.clock())})
 
     def v_flow_attach(self, ctx: Ctx, key: str, name: str, data: bytes) -> None:
         """A document into the open task's deliverables/, flat, under its safe name (a taken one numbered -2 to -99),

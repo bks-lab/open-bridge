@@ -31,6 +31,7 @@ from . import instruct
 from . import organize
 from . import themes
 from ..model_route import haiku_argv_ok
+from ..work_find import HISTORY_ANSWER_SCHEMA, HISTORY_TERMS_SCHEMA, history_argv_ok
 from ..work_find import ask_argv_ok as files_argv_ok
 from .quick import argv_ok, resolve_claude
 from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
@@ -128,6 +129,10 @@ class Runner:
             return
         # the files tab's question to its records: one call with the records as data and a fixed schema (work_find.py)
         if files_argv_ok(argv, self.claude, CLAUDE_MODELS.values()):
+            return
+        # the history's question: the terms of the question, then the answer from its entries, one schema each
+        if any(history_argv_ok(argv, self.claude, CLAUDE_MODELS.values(), schema)
+               for schema in (HISTORY_TERMS_SCHEMA, HISTORY_ANSWER_SCHEMA)):
             return
         # what git knows of a task's documents and status changes: two exact log shapes (activity.py)
         if activity.git_argv_ok(argv, self.git, str(self.root)):

@@ -8447,6 +8447,160 @@ def test_the_budget_is_read_again_once_the_lock_is_taken(tmp_path):
         w.close()
 
 
+# ---------------------------------------------------------------- the history: when it was done or discussed
+
+def history_handler(world, transcripts=None):
+    """The real history on the test Bridge, as scripts/work-find.py --history would answer it"""
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    return lambda argv: ok(work_find.history(world.root, argv[-1], transcripts=transcripts))
+
+
+def test_the_timeline_runs_the_search_command_through_the_runner_and_answers_by_day(world):
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "\n| 2026-10-07 09:15 | x | demo-task | demo retry moved to the night |\n",
+                   encoding="utf-8")
+    world.runner.handlers["work-find.--history"] = history_handler(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/timeline?q=" + urllib.parse.quote("demo; rm -rf /"), headers=world.cookie)
+    assert status == 200
+    argv = world.runner.of("work-find.--history")[0]
+    assert argv[:2] == [PY, str(world.root / "scripts" / "work-find.py")]
+    # no transcripts named in the config: none passed; the words one argv word after --
+    assert argv[2:] == ["--root", str(world.root), "--history", "--json", "--meetings", "work/tasks/_meetings", "--",
+                        "demo; rm -rf /"]
+    assert json.loads(body)["entries"] == []
+    status, _, body = world.request("GET", "/api/timeline?q=demo%20retry", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    assert data["entries"][0]["date"] == "2026-10-07" and data["entries"][0]["kind"] == "did"
+
+
+def test_the_timeline_refuses_a_bad_query_and_says_so_when_it_fails(world):
+    world.runner.calls.clear()
+    for q in ("", "x", "%0A%0Aab", "y" * 201):
+        status, _, body = world.request("GET", f"/api/timeline?q={q}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == "q", q
+    assert world.runner.of("work-find.--history") == []
+    assert world.request("GET", "/api/timeline?q=demo")[0] == 401
+    world.runner.handlers["work-find.--history"] = lambda argv: fail(f"broke near {world.app.token}")
+    status, _, body = world.request("GET", "/api/timeline?q=demo", headers=world.cookie)
+    assert status == 502 and json.loads(body)["error"]["code"] == "unreadable" and world.app.token.encode() not in body
+
+
+def test_the_transcripts_and_the_meetings_come_from_the_config_of_the_meetings(tmp_path):
+    para = tmp_path / "para"
+    (para / "Audio" / "processed").mkdir(parents=True)
+    w = World(tmp_path / "w", config=(f"cockpit:\n  enabled: true\nidentity:\n  onedrive_root: {para}\n"
+                                      "doc_sensor:\n  onedrive_root: ${onedrive_root}\nwork:\n  meetings:\n"
+                                      "    raw_record_dir: Audio/processed\n    home_dir: work/tasks/_talks\n"
+                                      "workplace:\n  control:\n    name: Control\n"))
+    try:
+        assert w.app.cfg.transcripts == para / "Audio" / "processed" and w.app.cfg.meetings == "work/tasks/_talks"
+        w.runner.handlers["work-find.--history"] = history_handler(w)
+        w.request("GET", "/api/timeline?q=demo", headers=w.cookie)
+        argv = w.runner.of("work-find.--history")[0]
+        assert argv[4:10] == ["--history", "--json", "--meetings", "work/tasks/_talks", "--transcripts",
+                              str((para / "Audio" / "processed").resolve())]
+    finally:
+        w.close()
+    for bad in ("    home_dir: ../outside\n", "    home_dir: /etc\n", "    raw_record_dir: missing/folder\n"):
+        cfg = load_web_config(tmp_path, {"cockpit": {"enabled": True}, "doc_sensor": {"onedrive_root": str(para)},
+                                         "work": {"meetings": __import__("yaml").safe_load(bad)}})
+        assert cfg.meetings == "work/tasks/_meetings", bad
+    assert load_web_config(tmp_path, {"cockpit": {"enabled": True}}).transcripts is None
+    # a relative folder without a root to stand on names nothing
+    assert load_web_config(tmp_path, {"work": {"meetings": {"raw_record_dir": "Audio/processed"}}}).transcripts is None
+
+
+HISTORY_ROWS = ("\n| 2026-10-06 08:00 | x | billing | gateway retry moved to the night run |\n"
+                "| 2026-10-05 08:00 | x | versicherung-bestand | gateway retry for the policy portal |\n"
+                "| 2026-10-04 08:00 | x | misc | gateway retry, Gesundheit portal too |\n")
+
+
+def timeline_ask_world(tmp_path, on="true", budget=3, terms=("gateway", "night run")):
+    w = files_ask_world(tmp_path, on=on, budget=budget)
+    log = w.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + HISTORY_ROWS, encoding="utf-8")
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+
+    def answer(argv):
+        if work_find.HISTORY_TERMS_SCHEMA in argv:
+            return ok({"type": "result", "is_error": False, "total_cost_usd": 0.001, "modelUsage": {"claude-haiku-5-5": {}},
+                       "result": "", "structured_output": {"terms": list(terms), "from": None, "to": None}})
+        return ok({"type": "result", "is_error": False, "total_cost_usd": 0.002, "modelUsage": {"claude-haiku-5-5": {}},
+                   "result": "", "structured_output": {"answer": "On 6 October.", "entries": [{"n": 1, "why": "it moved"}]}})
+    w.runner.handlers["claude.p"] = answer
+    return w
+
+
+def test_asking_the_timeline_takes_two_calls_and_never_sends_what_the_block_list_holds_back(tmp_path):
+    w = timeline_ask_world(tmp_path)
+    try:
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        import work_find
+        before = len(w.runner.calls)
+        res = w.act("timeline_ask", text="When did\nthe retry move?")
+        first, second = w.runner.calls[before:]
+        assert work_find.HISTORY_TERMS_SCHEMA in first and work_find.HISTORY_ANSWER_SCHEMA in second
+        assert first[-1] == f"{work_find.ASK_QUESTION_LABEL}\nWhen did the retry move?"
+        prompt = second[-1]
+        for held in ("versicherung", "policy portal", "Gesundheit"):
+            assert held not in prompt, held
+        head, data, label, question = prompt.split("\n", 3)
+        entries = json.loads(data)["entries"]
+        assert entries[0] == {"n": 1, "date": "2026-10-06", "time": "08:00", "kind": "did", "source": "billing",
+                              "text": "gateway retry moved to the night run"}
+        assert question == "When did the retry move?"
+        ask = res["timeline"]
+        assert ask["answer"] == "On 6 October." and ask["terms"] == ["gateway", "night run"]
+        assert ask["entries"][0]["n"] == 1 and ask["entries"][0]["why"] == "it moved"
+        assert ask["entries"][0]["date"] == "2026-10-06" and ask["entries"][0]["path"] == "work/log.md"
+        assert ask["held"] == {"n": 2, "words": ["Versicherung", "Gesundheit"]} and ask["sent"] == len(entries)
+        # one question counts once, both calls together
+        assert ask["model"] == "haiku" and ask["left"] == 2
+    finally:
+        w.close()
+
+
+def test_asking_the_timeline_is_off_with_the_files_question_within_its_budget_and_one_call_when_nothing_matches(tmp_path):
+    off = timeline_ask_world(tmp_path / "off", on="false")
+    try:
+        with pytest.raises(ActionError) as e:
+            off.act("timeline_ask", text="when?")
+        assert e.value.code == "timeline_ask_off" and off.runner.of("claude.p") == []
+    finally:
+        off.close()
+    none = timeline_ask_world(tmp_path / "none", budget=1, terms=("nothing-like-this",))
+    try:
+        res = none.act("timeline_ask", text="when did the moon land?")
+        assert len(none.runner.of("claude.p")) == 1
+        assert res["timeline"]["answer"] is None and res["timeline"]["sent"] == 0 and res["timeline"]["left"] == 0
+        with pytest.raises(ActionError) as spent:
+            none.act("timeline_ask", text="again?")
+        assert spent.value.code == "timeline_ask_budget" and spent.value.status == 429
+        with pytest.raises(ActionError) as bad:
+            none.act("timeline_ask", text="")
+        assert bad.value.code == "invalid_argument"
+    finally:
+        none.close()
+
+
+def test_the_runner_lets_the_two_history_calls_through_and_nothing_else(tmp_path):
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    r = Runner(tmp_path, cmux=None, claude="/x/claude")
+    for schema in (work_find.HISTORY_TERMS_SCHEMA, work_find.HISTORY_ANSWER_SCHEMA):
+        r.check(work_find.history_argv("/x/claude", "claude-haiku-5-5", "Rules.", "data", schema))
+        bad = work_find.history_argv("/x/claude", "claude-haiku-5-5", "Rules.", "data", schema)
+        bad[10] = "Read,Grep"
+        with pytest.raises(RunnerRefused):
+            r.check(bad)
+    with pytest.raises(RunnerRefused):
+        r.check(work_find.history_argv("/x/claude", "claude-haiku-5-5", "Rules.", "data", "{}"))
+
+
 def test_asking_a_file_names_it_for_an_open_task_and_never_for_a_closed_one(world):
     world.runner.handlers["claude.p"] = lambda argv: claude_answer("It waits on the vendor.", 0.001)
     done = world.root / "work" / "done" / "2026-09" / "gone-task"

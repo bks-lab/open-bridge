@@ -1,7 +1,7 @@
 ---
 summary: "Briefing profiles: each person describes the briefing they want in workflow/briefings/<id>.yaml (sections, trackers, queries, inbox rules, and a view: how it is shown); scripts/briefing.py executes it and the agent advises on the result. Section kinds, provider query keys, selection, views (sources, triage, brevity, plan), change marks, inbox rules, org profiles."
 type: guide
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 related:
   - bridge-cockpit.md
   - ../workflow/briefings/_schema.yaml
@@ -505,6 +505,7 @@ view:
       title: Dates
       group: more            # cockpit: after the daily tabs, folded behind More when the bar is too narrow
       overview: true         # cockpit: opens it with a tile per section, each a jump to it
+      search: true           # cockpit: a search over its rows, every day before and Ask AI (bridge-cockpit.md)
       sections: [calendar, deadlines]
     - id: github
       title: GitHub
@@ -573,7 +574,9 @@ the filter chips (a label with two to sixteen values gets a row of them), and
 On such a row the cockpit offers its status menu (active, paused, disabled,
 written into the file by `scripts/bridge-resources.py set-status`), and a group
 whose head row (`icon: account`) carries the same id opens all its rows as one
-filterable list.
+filterable list. A tile shows the row's `when` as a line of its own under the
+title when it has one (a `commits` row: "16 today"), and its `url` as the open
+link when the row has no web link of its own and the url is http(s).
 
 A `command` row may also offer steps of its own: `actions: [{id, label}]` (up to
 eight; `id` lowercase letters, digits, `_` and `-`, the label as the cockpit

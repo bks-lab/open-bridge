@@ -307,3 +307,40 @@ export function WalkBar({ label, shortcuts = false, pos = null, onPrev = null, n
       <button type="button" class="btn-link" title=${e.look} onClick=${e.onOpen}>${e.title}</button>${e.sub ? html` <span class="muted small next-up-sub">${e.sub}</span>` : null}</li>`)}</ol>` : null}
   </nav>`
 }
+
+// ---------------------------------------------------------------- the line icons of drawn rows (pages.js tiles)
+
+/** Symbols for drawn rows: a source names a family (a device type, a cloud service, a provider), the
+ *  page draws a plain line icon; anything unknown is a box */
+const RES_ICONS = {
+  laptop: 'M4 6h16v10H4zM2 19h20',
+  monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
+  server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+  router: 'M3 14h18v6H3zM7 17h.01M11 17h.01M8 14 5 8M16 14l3-6',
+  phone: 'M7 2h10v20H7zM11 18h2',
+  robot: 'M6 8h12v10H6zM12 4v4M9 12h.01M15 12h.01M9 15h6',
+  printer: 'M6 3h12v6H6zM4 9h16v8H4zM8 14h8v7H8z',
+  usb: 'M9 2h6v8H9zM7 10h10v12H7z',
+  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1-1.9 1.9-.1-.1a1.6 1.6 0 0 0-2.7 1.1V20h-2.6v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1-1.9-1.9.1-.1A1.6 1.6 0 0 0 4.6 15H4v-2.6h.2a1.6 1.6 0 0 0 1.1-2.7l-.1-.1 1.9-1.9.1.1a1.6 1.6 0 0 0 2.7-1.1V4h2.6v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1 1.9 1.9-.1.1a1.6 1.6 0 0 0 1.1 2.7h.2V15z',
+  bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8z',
+  globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
+  page: 'M6 2h9l5 5v15H6zM14 2v6h6',
+  tunnel: 'M3 20v-8a9 9 0 0 1 18 0v8M7 20v-8a5 5 0 0 1 10 0v8',
+  cloud: 'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z',
+  mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
+  box: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10',
+}
+
+const ICON_OF = {
+  macos: 'laptop', windows: 'monitor', linux: 'server', saas: 'cloud', router: 'router', 'kvm-over-ip': 'monitor',
+  'smart-device': 'phone', robot: 'robot', '3d-printer': 'printer', 'usb-toolkit': 'usb', worker: 'gear',
+  'function app': 'bolt', 'web app': 'globe', zone: 'globe', pages: 'page', tunnel: 'tunnel', account: 'cloud',
+  azure: 'cloud', cloudflare: 'cloud', aws: 'cloud', gcp: 'cloud', m365: 'cloud', tailscale: 'cloud', ionos: 'globe',
+  google: 'mail', icloud: 'mail', microsoft365: 'mail', exchange: 'mail', imap: 'mail',
+}
+
+export function ResIcon({ name, size = 18 }) {
+  const d = RES_ICONS[ICON_OF[name] ?? name] ?? RES_ICONS.box
+  return html`<svg class="res-icon" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
+}

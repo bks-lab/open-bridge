@@ -135,6 +135,9 @@ export function createApi(transport = httpTransport()) {
     taskFile: (slug, file, path) => transport.get(`/api/task?slug=${encodeURIComponent(slug)}&file=${encodeURIComponent(file)}${path ? `&path=${encodeURIComponent(path)}` : ''}`),
     // the files view's search over every task, stream and closed task, the log and its archive (work-find.py)
     find: q => transport.get(`/api/find?q=${encodeURIComponent(q)}`),
+    // when it was done or discussed: every line of the log and its archive, the meetings, the closed tasks and the raw
+    // transcripts that holds every word, by day (work-find.py --history)
+    timeline: q => transport.get(`/api/timeline?q=${encodeURIComponent(q)}`),
     // the records of the files tab's start: every task, stream and closed task with its state, area and last change
     records: () => transport.get('/api/records'),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),

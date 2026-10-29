@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's Files tab: three columns as Work through (the list, the open record, its point's buttons), a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file in the one list, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
 type: guide
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 related:
   - bridge-cockpit.md
   - cockpit-areas.md
@@ -71,12 +71,15 @@ priority, area or context, the last change, title, kind), newest first, at most
 the area of its row, else of its file of `model.files`, else the one its front
 matter names (`area`, else `context`).
 
-**Ask the AI** (de: Die AI fragen) stands under the chips where
+**Ask the AI** (de: Die KI fragen) stands under the chips where
 `cockpit.files_search.enabled` is true: a field of its own for the question and
 a button "Ask the AI about these n records". It sends that question, or a
 default one when the field is empty, with at most 12 of the records listed to a
 model, in one call with no tools, no settings and no session (the verb
 `files_ask`), and only on the click; the search words are never the question.
+A page with `search: true` asks the history the same way, with the same switch,
+budget and block list (the verb `timeline_ask`, see "A page's search" in
+[`bridge-cockpit.md`](bridge-cockpit.md)).
 The answer stands under it with a link to each record it names. Before the click
 a line says what a click sends, which words keep others private and how many
 questions are left today ("A click sends 2 records to the AI. 1 record stays
