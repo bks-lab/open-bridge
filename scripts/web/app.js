@@ -667,7 +667,8 @@ async function act(verb, args = {}, opts = {}) {
     const touched = (p.args.key ? [p.args.key] : p.args.keys ?? []).map(k => rowIndex().get(k)).filter(Boolean)
     if (touched.length) store.set(s => ({ ...s, details: touched.reduce(invalidateDetails, s.details) }))
     if (r.settled?.length) {
-      setUi(ui => ({ picked: ui.picked.filter(k => !r.settled.includes(k)), rvPicked: ui.rvPicked.filter(k => !r.settled.includes(k)) }))
+      setUi(ui => ({ picked: ui.picked.filter(k => !r.settled.includes(k)), rvPicked: ui.rvPicked.filter(k => !r.settled.includes(k)),
+        flowPicked: (ui.flowPicked ?? []).filter(k => !r.settled.includes(k)) }))
       // a row that left the list takes its open detail along: back to the list, whatever closed it
       const sel = store.get().ui.selectedKey
       if (sel && r.settled.includes(sel)) {

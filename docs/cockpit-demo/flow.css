@@ -346,7 +346,12 @@
 .flow-ask { margin: 0; font-size: var(--text-h4); color: var(--ink); }
 .flow-answer { margin: 0; color: var(--on-surface); }
 .flow-reports { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.flow-reports details { padding: 6px 0; border-top: 1px solid var(--border); }
+/* each report: its box beside it, All above them (views/flow.js ReportsCard) */
+.flow-reports > li { display: flex; align-items: flex-start; gap: 8px; border-top: 1px solid var(--border); }
+.flow-reports > li > .flow-ov-pick { margin: 9px 0 0; flex: none; }
+.flow-reports details { flex: 1; min-width: 0; padding: 6px 0; }
+.flow-reports-all { align-self: flex-start; }
+.flow-reports-hint { margin: 6px 0 0; }
 .flow-reports summary { cursor: pointer; color: var(--on-surface); }
 .flow-reports details[open] { display: flex; flex-direction: column; gap: 6px; }
 /* a tab that asks: one row of its answers, the guide's steps folded under one button */

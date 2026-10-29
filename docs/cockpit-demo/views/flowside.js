@@ -19,9 +19,10 @@
 // To tab and View and neither Let AI do it nor Give your yes, a point in progress without one Let AI go on, a finished
 // start the verb the AI suggests (else Done and close the tab), the other verbs, Improve, Runs on, Open answer and its
 // tab's ways, a lost one Start again, Done, Drop and Forget, the return card Done, Later, Drop, Runs on and Not yet,
-// the reports All seen; a row with steps of its own on a page (an application, logic.js pageStepsOf) its steps, which
-// open the info drawer where they stand (round 6 B). Under the verbs Details opens the row's drawer (an inbox item, a
-// task) or its detail column (any other row), where every verb of Due stands (round 6 B).
+// the reports Seen for the ticked ones (All seen when every one is); a row with steps of its own on a page (an
+// application, logic.js pageStepsOf) its steps, which open the info drawer where they stand (round 6 B). Under the
+// verbs Details opens the row's drawer (an inbox item, a task) or its detail column (any other row), where every verb
+// of Due stands (round 6 B).
 // Round 6d: a tab's ways end with its close (views/detail.js TabClose) while it neither works nor asks, a finished start
 // whose item left the list too; where that close offers Done and close tab for the point itself, Done leaves the verbs.
 // Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
@@ -34,7 +35,7 @@
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, canTab, DAY, duration, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
-  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, short, tabCloseOffer, triageRunning, verbsFor, workPageOf, workViewsIn,
+  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, reportsTicked, short, tabCloseOffer, triageRunning, verbsFor, workPageOf, workViewsIn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
@@ -287,9 +288,12 @@ function PointActs({ x, s, c, sug }) {
   const steps = page ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openInfo(page.it, page.page, page.section)}>${t.rowSteps} ▾<//>` : null
   const ways = tab && !live ? html`<${TabWays} tab=${tab} row=${row} title=${title} s=${s} c=${c} />` : null
   if (x.kind === 'reports') {
-    const keys = x.rows.map(r => r.key)
-    return html`<div class="fx-do"><${Btn} size="sm" variant="primary" busy=${!!s.ui.busy?.[keys.join(',')]}
-      onClick=${() => c.act('settle', { keys, outcome: 'done' })}>${f.allSeen}<//></div>`
+    // only the ticked reports, All seen only when every one is ticked; nothing ticked says how to tick
+    const keys = reportsTicked(x, s.ui.flowPicked)
+    const all = keys.length === x.rows.length
+    return html`<div class="fx-do"><${Btn} size="sm" variant="primary" disabled=${!keys.length} busy=${!!s.ui.busy?.[keys.join(',')]}
+      onClick=${() => { if (keys.length) c.act('settle', { keys, outcome: 'done' }) }}>${all ? f.allSeen : f.seenTicked(keys.length)}<//></div>
+      ${keys.length ? null : html`<p class="muted small flow-reports-hint">${f.tickReports}</p>`}`
   }
   if (x.kind === 'back') {
     const back = () => c.flowBack()

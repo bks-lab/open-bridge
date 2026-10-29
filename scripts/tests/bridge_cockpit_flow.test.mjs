@@ -1706,10 +1706,54 @@ test('the right column by card: a live tab gives To tab and View, a finished sta
   assert.ok(can.$$('button')[0].hasClass('btn-primary'))
   assert.equal(can.$$('button')[1].text(), en.flow.view)
   assert.equal(asks.button(`${en.flow.verbs.do} ▾`), null)
-  // the reports: All seen on the right, Seen on each report in the card
+  // the reports: Seen for the ticked ones on the right, Seen on each report in the card
   const r = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: [report('20261009-0901-a-r')] }))} c=${recorder()} />`)
-  assert.ok(r.$('.flow-aside').$$('button').some(b => b.text() === en.flow.allSeen))
+  assert.ok(r.$('.flow-aside').$$('button').some(b => b.text() === en.flow.seenTicked(0)))
   assert.ok(!r.$('.flow-card').$$('button').some(b => b.text() === en.flow.allSeen))
+})
+
+test('the reports: Seen on the right settles only the ticked reports, All seen only when every one is ticked', () => {
+  // 29.10.2026: one report open in the card, All seen on the right closed all five, read as the Seen of the open one
+  const reps = [report('20261009-0901-a-r1'), report('20261009-0902-a-r2'), report('20261009-0903-a-r3')]
+  const keys = reps.map(r => r.key)
+  const right = el => el.$('.flow-aside .fx-do button')
+  const settles = c => c.calls.filter(x => x[0] === 'act' && x[1] === 'settle')
+  // nothing ticked: the button sends nothing and says what to do, a report opened in the card is not ticked by that
+  const c0 = recorder()
+  const none = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: reps }))} c=${c0} />`)
+  assert.equal(right(none).text(), en.flow.seenTicked(0))
+  assert.ok(right(none).getAttribute('disabled') != null, 'disabled while nothing is ticked')
+  right(none).click()
+  assert.deepEqual(settles(c0), [])
+  assert.equal(none.$('.flow-aside .flow-reports-hint').text(), en.flow.tickReports)
+  // one ticked: only that one goes
+  const c1 = recorder()
+  const one = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: reps, ui: { flowPicked: [keys[1]] } }))} c=${c1} />`)
+  assert.equal(right(one).text(), en.flow.seenTicked(1))
+  right(one).click()
+  assert.deepEqual(settles(c1), [['act', 'settle', { keys: [keys[1]], outcome: 'done' }]])
+  // every one ticked: All seen, for all of them
+  const c2 = recorder()
+  const every = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: reps, ui: { flowPicked: keys } }))} c=${c2} />`)
+  assert.equal(right(every).text(), en.flow.allSeen)
+  right(every).click()
+  assert.deepEqual(settles(c2), [['act', 'settle', { keys, outcome: 'done' }]])
+  // the boxes in the card: one per report and All, one selection with the overview's (ui.flowPicked)
+  const boxes = one.$$('.flow-reports > li input[type="checkbox"]')
+  assert.deepEqual(boxes.map(b => b.getAttribute('aria-label')), reps.map(r => en.flow.list.pick(r.title)))
+  boxes[0].click()
+  assert.deepEqual(c1.calls.find(x => x[0] === 'flowPick'), ['flowPick', [keys[0]], true])
+  one.$('.flow-reports-all input').click()
+  assert.deepEqual(c1.calls.filter(x => x[0] === 'flowPick').at(-1), ['flowPick', keys, true])
+  every.$('.flow-reports-all input').click()
+  assert.deepEqual(c2.calls.find(x => x[0] === 'flowPick'), ['flowPick', keys, false])
+  // the Seen of a report in the card stays its own
+  one.$$('.flow-reports > li')[2].$$('button').find(b => b.text() === en.flow.seen).click()
+  assert.deepEqual(settles(c1).at(-1), ['act', 'settle', { keys: [keys[2]], outcome: 'done' }])
+  for (const lang of ['en', 'de']) {
+    const f = text.TABLES[lang].flow
+    assert.ok(f.tickReports && f.seenTicked(2) !== f.seenTicked(1), `${lang} words`)
+  }
 })
 
 test('Details at the point (round 6 B): an inbox item or a task opens its drawer, any other row its detail column, a report its own', () => {
@@ -1777,6 +1821,13 @@ test('instructScope: the open point, with its tab where it takes typed words; in
   assert.deepEqual([side.point, side.picked, side.n, side.keys.length, side.cut], [false, false, 60, 50, true])
   const picked = logic.instructScope(null, all, new Set(['task:t3', 'task:t5']), 'Ops', many)
   assert.deepEqual([picked.picked, picked.keys], [true, ['task:t3', 'task:t5']])
+  // the reports card: every report, or the ticked ones where some are ticked
+  const reps = state({ now: [report('20261009-0901-a-r1'), report('20261009-0902-a-r2')] })
+  const card = queueOf(reps).find(x => x.kind === 'reports')
+  const cardAll = logic.instructScope(card, queueOf(reps), new Set(), null, reps)
+  assert.deepEqual([cardAll.reports, cardAll.picked, cardAll.keys], [true, false, card.rows.map(r => r.key)])
+  const cardOne = logic.instructScope(card, queueOf(reps), new Set([card.rows[1].key, 'task:elsewhere']), null, reps)
+  assert.deepEqual([cardOne.reports, cardOne.picked, cardOne.keys], [true, true, [card.rows[1].key]])
   // the words of the label
   assert.equal(en.flow.instruct.point('Task a'), 'For: Task a')
   assert.match(en.flow.instruct.side(60, 'Ops'), /60 points in Ops/)
