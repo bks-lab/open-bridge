@@ -1607,8 +1607,10 @@ export function rangeOf(range, nowMs, firstMs = null) {
   return { from: range.from, to: range.to, preset: null }
 }
 
-/** How many bars of `step` a range holds */
-const barsOf = (from, to, step) => (to - from) / (step.min * 60000)
+/** How many bars of `step` a range holds, by the wall clock: thirty days are thirty days across a clock change, so the
+ *  width a range takes does not hang on the time zone */
+const barsOf = (from, to, step) =>
+  ((to - from) - (new Date(to).getTimezoneOffset() - new Date(from).getTimezoneOffset()) * 60000) / (step.min * 60000)
 
 /** The bar width a range takes on its own: the smallest that keeps it at RANGE_BARS bars (RANGE_DAY_BARS for days) */
 export function rangeStepAuto(from, to) {

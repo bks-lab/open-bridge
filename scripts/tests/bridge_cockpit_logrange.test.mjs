@@ -37,7 +37,7 @@ test('the bar width a range takes on its own and the ones a person may choose', 
   assert.equal(key(at(29), at(30)), '30m')                 // 48 bars
   assert.equal(key(at(29, 9), at(29, 12)), '15m')          // 12 bars
   assert.equal(key(at(23), at(30)), '3h')                  // 56 bars
-  assert.equal(key(at(30, 0, 0, 8), at(30)), '1d')         // 30 bars
+  assert.equal(key(at(30, 0, 0, 8), at(30)), '12h')        // 60 bars, in every time zone (the range may hold a clock change)
   assert.equal(key(at(1, 0, 0, 0), at(30)), '1w')          // 302 days: more than the 240 day bars, so weeks
   assert.deepEqual(logic.rangeSteps(at(29), at(30)).map(s => s.key), ['15m', '30m', '1h', '3h', '6h', '12h', '1d'])
   assert.equal(logic.rangeStep(at(29), at(30), '1h').key, '1h')
