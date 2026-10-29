@@ -232,7 +232,9 @@ work:
 #     summary: {enabled: false, budget_per_day: 10}    # Activity: a small model sums up the last week on a click
 #     instruct: {enabled: false, budget_per_day: 30}   # the instruction line: a sentence becomes steps, run on a click
 #     attach: {enabled: false, max_mb: 10}             # Activity: attach a document to the task's deliverables/
-#     prio: {haiku_budget_per_day: 6, fallback: none}  # Prio: read-ins with Haiku a day; haiku = a failed Jev read-in runs Haiku
+#     prio:                # Prio: a second ranker beside Jev; fallback haiku = a failed Jev read-in on a click runs Haiku
+#       fallback: none
+#       haiku: {enabled: false, budget_per_day: 6}
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)

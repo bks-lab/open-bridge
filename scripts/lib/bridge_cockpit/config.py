@@ -49,7 +49,7 @@ FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 
 # themes: the nested block of the themes the page groups its points by (themes.py, cockpit.flow.themes); summary,
 # instruct and attach the nested blocks of the Activity tab and the instruction line (activity.py, instruct.py), each
 # off by default, the two that call a model within a budget a day; prio the nested block of Prio's second ranker and
-# its fallback (prio.py, cockpit.flow.prio: haiku_budget_per_day, fallback none or haiku, model)
+# its fallback (prio.py, cockpit.flow.prio: fallback none or haiku, haiku {enabled, budget_per_day, model}, off)
 FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "infer_sessions",
              "themes", "summary", "instruct", "attach", "prio")
 FLOW_REASON_MAX = 80

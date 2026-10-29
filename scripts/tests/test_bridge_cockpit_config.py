@@ -292,7 +292,7 @@ def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(t
                         "summary": {"enabled": False, "budget_per_day": 10, "model": None},
                         "instruct": {"enabled": False, "budget_per_day": 30, "model": None},
                         "attach": {"enabled": False, "max_mb": 10},
-                        "prio": {"haiku_budget_per_day": 6, "fallback": "none", "model": None}}
+                        "prio": {"fallback": "none", "haiku": {"enabled": False, "budget_per_day": 6, "model": None}}}
     assert cfg.flow == cf.flow_defaults() and cfg.config_warnings == ()
 
 
@@ -405,7 +405,7 @@ def test_every_flow_key_has_a_doc_row():
     for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day", "ahead_days",
                 "infer_sessions", "summary.enabled", "summary.budget_per_day", "summary.model",
                 "instruct.enabled", "instruct.budget_per_day", "instruct.model", "attach.enabled", "attach.max_mb",
-                "prio.haiku_budget_per_day", "prio.fallback", "prio.model"):
+                "prio.fallback", "prio.haiku.enabled", "prio.haiku.budget_per_day", "prio.haiku.model"):
         assert re.search(rf"^\| `flow\.{re.escape(key)}` \|", doc, re.M), f"flow.{key} has no row in docs/bridge-cockpit.md"
     flow = template_block()["flow"]
     # round 3 of Work through: each block in the template with its default, all off
@@ -413,7 +413,7 @@ def test_every_flow_key_has_a_doc_row():
         "summary": {"enabled": False, "budget_per_day": 10}, "instruct": {"enabled": False, "budget_per_day": 30},
         "attach": {"enabled": False, "max_mb": 10}}
     # Prio's second ranker and its fallback: in the template with their defaults
-    assert flow["prio"] == {"haiku_budget_per_day": 6, "fallback": "none"}
+    assert flow["prio"] == {"fallback": "none", "haiku": {"enabled": False, "budget_per_day": 6}}
 
 
 # ---------------------------------------------------------------- round 4: ahead_days, infer_sessions, work_views

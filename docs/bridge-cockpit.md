@@ -114,9 +114,10 @@ their defaults:
 | `flow.instruct.model` | none | the model of the instruction line, `haiku`, `sonnet` or `opus`; none: the service `cockpit-instruct` of `workflow/ai-services/` (default Haiku) |
 | `flow.attach.enabled` | `false` | Attach a document at the foot of a point's Activity: the file goes into the deliverables folder of the point's open task (never elsewhere), see [Work through](#work-through-flow). Off, the button does not show and the route refuses |
 | `flow.attach.max_mb` | `10` | the largest document Attach takes, in megabytes (1 to 25); the page checks the size before it sends |
-| `flow.prio.haiku_budget_per_day` | `6` | how many read-ins a day **Read in with Haiku** may run at Prio's foot (the fallback below included), see [Work through](#work-through-flow); `0` none. Haiku needs no Jev: `integrations.typesafe` may be off |
-| `flow.prio.fallback` | `none` | `haiku`: a read-in with Jev that fails (Jev answers 5xx, times out, has no key) runs Haiku instead, within its budget, and Prio's foot says so; `none`: the failure stands |
-| `flow.prio.model` | none | the model of Read in with Haiku, `haiku`, `sonnet` or `opus`; none: the service `cockpit-prio` of `workflow/ai-services/` (default Haiku) |
+| `flow.prio.fallback` | `none` | `haiku`: a read-in with Jev on a click that fails (Jev busy, 5xx, a timeout, no key; never a refusal such as 401 or 403) runs Haiku instead, while `flow.prio.haiku.enabled`, within its budget, and Prio's foot says so; the daily order never falls back. `none`: the failure stands |
+| `flow.prio.haiku.enabled` | `false` | **Read in with Haiku** at Prio's foot: a small Claude model ranks the points as Jev does, see [Work through](#work-through-flow). Off, the button does not show and the route refuses (`prio_off`). Haiku needs no Jev: `integrations.typesafe` may be off |
+| `flow.prio.haiku.budget_per_day` | `6` | how many read-ins a day Haiku may run (the fallback included); `0` none. A run is counted before the call, also when it fails |
+| `flow.prio.haiku.model` | none | the model of Read in with Haiku, `haiku`, `sonnet` or `opus`; none: the service `cockpit-prio` of `workflow/ai-services/` (default Haiku) |
 | `a2a_sources` | none | further sources of A2A peers beside `infra/a2a-peers/`: a list of `{name, script}`, `script` a skill's own `skills/<skill>/scripts/<name>.py` that reaches agents another way (an access proxy, a broker) and keeps its own credentials. At most four; a bad entry is ignored and named in `status`. Contract under [Peers from a script](#5-asking-claude-the-relay) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
 | `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
@@ -620,23 +621,33 @@ walk too.
 Two rankers read in, both at all times at the foot of Prio's left column:
 **Read in with Jev** (TypeSafe, while `integrations.typesafe` is on and has its
 key) and **Read in with Haiku** (a small Claude model, `prio.py`, the service
-`cockpit-prio`, within `flow.prio.haiku_budget_per_day`; it works with Jev off).
-Either takes every point the view shows: tasks, inbox items, tabs, issues and
-pull requests, meeting references, what runs under Running now, also the points
-the triage marked; only the work page's `jev.private` words hold a point back,
-and the foot says how many. The same thing twice (one key, or titles equal but
-for case, blanks and punctuation) goes once and gets one rank. Per point only
-title, kind, status, due in words ("tomorrow", "in 3 days", "overdue 2 days",
-computed in code), whether an agent works on it, its age in days and the
-triage's one-line gist leave the machine, never a path, a detail text or an
-item id; all in one request (above 60 points in batches of 60, at most three).
+`cockpit-prio`, while `flow.prio.haiku.enabled`, within
+`flow.prio.haiku.budget_per_day`; it works with Jev off). Either takes every
+point the view shows: tasks, inbox items, tabs, issues and pull requests,
+meeting references, what runs under Running now, also the points the triage
+marked. The page only names the points by key: the server looks each one up
+in what it knows itself (its rows, the work page's sections, its tabs), drops a
+key it cannot place, and holds back a point of a section in `skip_sections` and
+one whose title, detail, task, source or gist on the server holds a `private`
+word; the foot says how many the private words held back. Only the same thing
+goes once: one key twice, or a tab that works on a task of its own (that task);
+a title alike is never a reason. Per point only title, kind, status, due in
+words ("tomorrow", "in 3 days", "overdue 2 days", computed in code), whether an
+agent works on it, its age in days, the triage's one-line gist, the section's
+label and the priority leave the machine, all from the server's item, never a
+path, a detail text or an item id; all in one request (above 60 points in
+batches of 60, at most three). A view too big for one Haiku prompt drops the
+gists, then the points of the lowest priority, and counts them as left out.
 Both answer the same per point (urgency, impact and effort on four levels, only
 you or not, a rank; Haiku adds half a sentence of why), so the grid works the
-same. The order names its ranker: the foot reads "Haiku, 29 Oct 14:10, 18
-points", and the newest order wins whichever ranker made it. With
-`flow.prio.fallback: haiku` a Jev read-in that fails runs Haiku instead and the
-foot says so. Without a click Jev orders once a day by itself (the first view of
-the day, as the Jev view does); Haiku never runs by itself. An order counts
+same; a point left without urgency or impact gets no square and stands under
+Not rated yet. The order names its ranker: the foot reads "Haiku, 29 Oct 14:10,
+18 points", and the newest order wins whichever ranker made it. With
+`flow.prio.fallback: haiku` a Jev read-in on a click that fails runs Haiku
+instead and the foot says so. Without a click Jev orders once a day by itself
+(the first view of the day once the tabs, sessions and triage are read, as the
+Jev view does); it never falls back, and when it fails no reload asks again that
+day, only a click. Haiku never runs by itself. An order counts
 only while it is younger than `flow.rank_max_age_days`. The ranker also feeds
 the suggestions, after the triage and the themes: Let AI do it for a point that
 is urgent and not important, and Drop for one that is neither, but never for a
@@ -3232,7 +3243,7 @@ share or clean up.
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
 | `jev-pages.json` | the order per page, by Jev or by Haiku (Prio's read-in: which ranker made it, when, how many points, held back, merged, the fallback if one ran) | yes: the titles and Haiku's reasons |
-| `flow-prio.json` | the read-ins with Haiku of the last day (`prio.py`, `cockpit.flow.prio.haiku_budget_per_day`): the time and cost of each call | no |
+| `flow-prio.json` | the read-ins with Haiku of the last day (`prio.py`, `cockpit.flow.prio.haiku.budget_per_day`): the time and cost of each call | no |
 | `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, the runs of the last day (the budget), and the last 500 moves of a point from one theme to another (the names as they were, by the AI or a person) for its Activity | yes: theme names and the reasons of the suggestions |
 | `flow-activity.json` | Activity of Work through (`activity.py`): the summary of each point kept with the fingerprint of the rows it read, and the calls of the summary, of the instruction line and of Ask AI on the Files tab (under `files`) per day (their budgets) | yes: the summaries |
 | `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
@@ -3387,7 +3398,8 @@ changes in these ways:
    where a blocker stands; a task whose next step names you
    (`cockpit.person_name`, sent as `work.person` while Work through is on) is a
    point, not Waits on others. Prio has Read in with Jev and Read in with
-   Haiku at the foot of its left column (`cockpit.flow.prio`, both optional).
+   Haiku at the foot of its left column (`cockpit.flow.prio`; Haiku is off
+   until `flow.prio.haiku.enabled`).
    A finished tab no longer counts under Running now, and Running now stands
    only in the left column. A session linked to a task that closed (done, merged) counts as no
    task from then on and is recognised again; the link itself stays for resume.

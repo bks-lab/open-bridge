@@ -311,7 +311,7 @@ def test_rank_orders_on_the_click_and_keeps_the_order(tmp_path):
     order = out["order"]
     assert [x["key"] for x in order["items"]] == ["inbox:i3", "inbox:i1", "inbox:i4", "task:angebot"]
     assert order["items"][0]["rank"] == 1 and order["first"] == "inbox:i3"
-    assert order["skipped"] == {"private": 3, "section": 1, "same": 0, "over": 0} and order["sent"] == 4
+    assert order["skipped"] == {"private": 3, "section": 1, "same": 0, "unknown": 0, "over": 0, "unrated": 0} and order["sent"] == 4
     assert order["ranker"] == "jev" and order["fallback"] is None
     assert order["usage"] == {"input_tokens": 1, "output_tokens": 1}
     # what left the machine: no key, no detail, no id of an inbox item

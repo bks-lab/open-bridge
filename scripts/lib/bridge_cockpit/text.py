@@ -329,8 +329,9 @@ EN: dict = {
                  "running": "An instruction is being read already; try again in a moment",
                  "failed": "The model gave no usable steps: {why}"},
     # the second ranker of Prio on Work through (prio.py): its refusals
-    "prio": {"unavailable": "Reading in with Haiku is not available: the service cockpit-prio needs a Claude model",
-             "budget": "Today's read-ins with Haiku are used up (cockpit.flow.prio.haiku_budget_per_day)",
+    "prio": {"off": "Reading in with Haiku is switched off (cockpit.flow.prio.haiku.enabled)",
+             "unavailable": "Reading in with Haiku is not available: the service cockpit-prio needs a Claude model",
+             "budget": "Today's read-ins with Haiku are used up (cockpit.flow.prio.haiku.budget_per_day)",
              "too_big": "Too many points to read in at once",
              "failed": "Haiku gave no usable order: {why}"},
     # the files tab's question to its records (actions_work.py v_files_ask)
@@ -732,8 +733,9 @@ DE: dict = {
                  "budget": "Die Anweisungen sind für heute aufgebraucht",
                  "running": "Es wird schon eine Anweisung gelesen; gleich noch einmal versuchen",
                  "failed": "Das Modell gab keine brauchbaren Schritte: {why}"},
-    "prio": {"unavailable": "Mit Haiku einlesen geht nicht: der Dienst cockpit-prio braucht ein Claude-Modell",
-             "budget": "Das Einlesen mit Haiku ist für heute aufgebraucht (cockpit.flow.prio.haiku_budget_per_day)",
+    "prio": {"off": "Mit Haiku einlesen ist ausgeschaltet (cockpit.flow.prio.haiku.enabled)",
+             "unavailable": "Mit Haiku einlesen geht nicht: der Dienst cockpit-prio braucht ein Claude-Modell",
+             "budget": "Das Einlesen mit Haiku ist für heute aufgebraucht (cockpit.flow.prio.haiku.budget_per_day)",
              "too_big": "Zu viele Punkte auf einmal zum Einlesen",
              "failed": "Haiku gab keine brauchbare Ordnung: {why}"},
     "files_ask": {"off": "Die KI zu den Akten fragen ist ausgeschaltet.",
