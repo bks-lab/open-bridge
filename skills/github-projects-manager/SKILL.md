@@ -337,9 +337,11 @@ one caller, because every path that writes to a board hits the same `gh`.
   primitives (close-reason change, archived-repo issues), gotchas
 - `scripts/board-audit.sh` — Read-only board-hygiene checker (coverage + reconcile)
 - `scripts/issue_transition.py` — One issue to its board's review or done state:
-  `plan` reads what the boards say, `review` posts the review comment and sets
-  `review_states[0]`, `done` passes through review where `done_requires_review`
-  asks for it, sets `done_states[0]` and closes the issue; every write read back.
+  `plan` reads what the boards say, `review` posts the review comment (a reason
+  is required) and sets `review_states[0]`, `done` passes through review on every
+  board with review states (K1), sets `done_states[0]` and, once every board
+  reads back at its target, closes the issue (not planned where a board declined
+  it).
   The board, its status field and states come from `workflow/projects/*.yaml`.
   The cockpit's issue card runs it on a person's click only (K1)
 - `workflow/projects/{slug}.yaml` — Per-project field configs

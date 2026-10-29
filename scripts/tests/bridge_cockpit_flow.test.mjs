@@ -1893,6 +1893,17 @@ test('the AI suggests closing: the button that fits is the strong one, its reaso
   assert.ok(acts(el2).includes(`[${panel(iw.done)}]`), acts(el2).join(' | '))
 })
 
+test('a board of the issue that workflow/projects/ does not know is named, and Done passes through review on any board with review states', async () => {
+  const plan = PLAN({ unmatched: [{ owner: 'acme', number: 3, title: 'Roadmap' }],
+    boards: [{ ...PLAN().boards[0], rules: [] }] })
+  const el = right(state({ now: [gitIssue()] }), withPlan({ ok: true, data: plan }))
+  await read(el)
+  assert.equal(el.$('.flow-issue-other').text(), iw.other('Roadmap'))
+  el.$$('.flow-aside button').find(b => b.text() === panel(iw.done)).click()
+  await until(() => el.$('.flow-issue-panel'))
+  assert.ok(el.$('.flow-issue-panel').text().includes(iw.steps([iw.comment, 'In Review', 'Done', iw.close].join(', '))))
+})
+
 test('an issue on no board of workflow/projects/ and a pull request keep Hide only', async () => {
   const none = right(state({ now: [gitIssue()] }), withPlan({ ok: true, data: PLAN({ boards: [] }) }))
   await read(none)

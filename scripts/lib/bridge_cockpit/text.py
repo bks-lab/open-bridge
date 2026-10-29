@@ -149,6 +149,7 @@ EN: dict = {
     "issue_in_review": "{title}: now {state} on its board, with the review comment",
     "issue_closed": "{title}: {state} on its board and closed on GitHub",
     "issue_failed": "{title}: the board did not change ({err})",
+    "issue_partial": "{title}: stopped part way, check the issue and its board ({err})",
     "note_failed": "Note failed: {err}",
     "btn_do": "Let AI do it",
     "btn_flow_do": "Let AI do it",     # the verb on a card of Work through (text-flow.js verbs.do)
@@ -555,6 +556,7 @@ DE: dict = {
     "issue_in_review": "{title}: steht jetzt auf {state}, mit Prüfkommentar",
     "issue_closed": "{title}: auf {state} gesetzt und auf GitHub geschlossen",
     "issue_failed": "{title}: Board unverändert ({err})",
+    "issue_partial": "{title}: mittendrin abgebrochen, Issue und Board prüfen ({err})",
     "note_failed": "Notiz ging nicht: {err}",
     "btn_do": "AI machen lassen",
     "btn_flow_do": "Bridge macht",

@@ -26,6 +26,9 @@ FILES_ASK_TIMEOUT = 90
 ISSUE_SCRIPT = "skills/github-projects-manager/scripts/issue_transition.py"
 ISSUE_TIMEOUT = 120
 ISSUE_REF_RE = re.compile(r"^[\w.-]{1,100}/[\w.-]{1,100}#\d{1,9}\Z")
+# the issues a board script works on now: one run per issue, a second click (a reload, another window) waits
+_ISSUES_MOVING: set[str] = set()
+_ISSUES_LOCK = threading.Lock()
 # one question to the records at a time (v_files_ask), on a lock of its own, never the write lock
 _FILES_ASKING = threading.Lock()
 # one question to the history at a time (v_timeline_ask), on a lock of its own as well
@@ -583,10 +586,18 @@ class WorkVerbs:
             raise self.not_applicable("only a GitHub issue moves on its board", "key")
         app = self.app
         argv = [sys.executable, app.runner.script(ISSUE_SCRIPT), "--root", str(app.root), to, ref,
-                *(["--text", text] if text.strip() else [])]
+                *([f"--text={text}"] if text.strip() else [])]
         ctx.subject = ref
-        with ctx.unlocked():
-            run = ctx.call(f"issue.{to}", ref, argv, ISSUE_TIMEOUT)
+        with _ISSUES_LOCK:
+            if ref in _ISSUES_MOVING:
+                raise ActionError(409, "issue_busy", "this issue is moving on its board already")
+            _ISSUES_MOVING.add(ref)
+        try:
+            with ctx.unlocked():
+                run = ctx.call(f"issue.{to}", ref, argv, ISSUE_TIMEOUT)
+        finally:
+            with _ISSUES_LOCK:
+                _ISSUES_MOVING.discard(ref)
         try:
             data = json.loads((run.out or "").strip().splitlines()[-1])
         except (ValueError, IndexError):
@@ -594,7 +605,10 @@ class WorkVerbs:
         title = m.short(row.get("title") or ref, 60)
         if not run.ok or not isinstance(data, dict) or not data.get("ok"):
             why = (data.get("detail") or data.get("error")) if isinstance(data, dict) else None
-            ctx.note(self.tx["issue_failed"].format(title=title, err=m.short(str(why or run.err or "no answer"), 160)), bad=True)
+            # stopped after a first write (a comment, one board): the board may have changed, say so
+            word = "issue_partial" if isinstance(data, dict) and data.get("error") in ("partial", "readback") else "issue_failed"
+            ctx.note(self.tx[word].format(title=title, err=m.short(str(why or run.err or "no answer"), 160)), bad=True)
+            ctx.delta()
             return
         state = next((b.get("now") for b in data.get("boards") or [] if b.get("now")), None) or ""
         if to == "done":

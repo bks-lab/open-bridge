@@ -104,7 +104,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "task_keep": {"keys": ("keys", True)},
     "note": {"key": ("key", True), "text": ("text", True)},
     # a GitHub issue to its board's review or done state (skills/github-projects-manager/scripts/issue_transition.py)
-    "issue_review": {"key": ("key", True), "text": ("text", False)},
+    "issue_review": {"key": ("key", True), "text": ("text", True)},     # the reason is the review comment (K3)
     "issue_done": {"key": ("key", True), "text": ("text", False)},
     "approve_all": {"keys": ("keys", True), "confirm": ("bool", False)},
     "team_role": {"key": ("key", True), "team": ("team", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},

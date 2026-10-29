@@ -65,7 +65,7 @@ def test_issue_review_runs_the_script_with_the_text_and_says_where_the_issue_sta
     res = world.act("issue_review", key=KEY, text="Deployed and verified")
     call = issue_calls(world)[-1]
     assert call[call.index("--root") + 1] == str(world.root)
-    assert call[-4:] == ["review", "example/repo#12", "--text", "Deployed and verified"]
+    assert call[-3:] == ["review", "example/repo#12", "--text=Deployed and verified"]
     assert res["ok"] and "In Review" in res["note"]
     assert KEY not in world.app.store.dismissed(), "in review it stays in the list"
 
@@ -90,4 +90,34 @@ def test_a_refusal_of_the_script_is_a_bad_note_and_changes_nothing_here(world):
 def test_only_a_github_issue_row_moves_on_a_board(world):
     with pytest.raises(ActionError):
         world.act("issue_done", key="task:other-task")
+    assert issue_calls(world) == []
+
+
+def test_review_needs_its_reason_on_the_server_too(world):
+    with pytest.raises(ActionError):
+        world.act("issue_review", key=KEY)
+    assert issue_calls(world) == []
+
+
+def test_a_reason_starting_with_a_dash_goes_as_one_argument(world):
+    world.runner.handlers["issue_transition.review"] = lambda argv: ok({"ok": True, "boards": [], "closed": False})
+    world.act("issue_review", key=KEY, text="-fixed")
+    assert issue_calls(world)[-1][-1] == "--text=-fixed"
+
+
+def test_a_run_that_stopped_part_way_says_so(world):
+    world.runner.handlers["issue_transition.done"] = lambda argv: failed({"ok": False, "error": "partial", "detail": "timeout"})
+    res = world.act("issue_done", key=KEY)
+    assert res["ok"] is False and res["note"] == world.app.actions.tx["issue_partial"].format(title="Fix the example issue", err="timeout")
+
+
+def test_one_issue_moves_once_at_a_time(world):
+    from lib.bridge_cockpit import actions_work
+    actions_work._ISSUES_MOVING.add("example/repo#12")
+    try:
+        with pytest.raises(ActionError) as caught:
+            world.act("issue_done", key=KEY)
+        assert caught.value.code == "issue_busy"
+    finally:
+        actions_work._ISSUES_MOVING.discard("example/repo#12")
     assert issue_calls(world) == []

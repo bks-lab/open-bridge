@@ -240,3 +240,82 @@ def test_the_cli_prints_one_json_object_and_exits_by_outcome(tmp_path, capsys, m
     monkeypatch.setattr(it, "default_run", none)
     assert it.main(["--root", str(root), "done", REF]) == 1
     assert json.loads(capsys.readouterr().out)["error"] == "no_board"
+
+
+# ---------------------------------------------------------------- the review of 29.10.2026
+
+BOARD_REVIEW_NO_RULE = """schema_version: 1
+identity: {slug: k2a, display_name: K2A}
+project: {tracker: github, org: acme, number: 9}
+governance:
+  rules: [done_only_by_user]
+  review_states: ["In Review"]
+  done_states: ["Done", "Cancelled"]
+"""
+BOARD_NO_REVIEW = """schema_version: 1
+identity: {slug: docs, display_name: Docs}
+project: {tracker: github, org: acme, number: 10}
+governance:
+  done_states: ["✅ Done"]
+"""
+
+
+def test_done_passes_through_review_on_every_board_that_has_a_review_state_whatever_its_rules_say(tmp_path):
+    # K1 holds at every level: a board with review states never goes straight to done (k2a, ai-sccrm name no rule)
+    root = bridge(tmp_path, ("k2a", BOARD_REVIEW_NO_RULE))
+    gh = GitHub({("acme", 9): "In Progress"})
+    assert it.transition(root, REF, "done", "", run=gh, today=TODAY)["ok"]
+    assert gh.writes() == ["comment", "status acme/9 In Review", "status acme/9 Done", "close"]
+
+
+def test_the_issue_closes_only_after_every_board_was_read_back_at_its_target(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    lost = GitHub({("acme", 7): "👀 In Review"})
+    lost.ignore_edit = True
+    out = it.transition(root, REF, "done", "", run=lost, today=TODAY)
+    assert not out["ok"] and out["error"] == "readback"
+    assert "close" not in lost.writes() and lost.state == "OPEN", "a board that did not follow keeps the issue open"
+
+
+def test_mixed_boards_comment_from_the_board_that_goes_through_review_and_never_crash(tmp_path):
+    root = bridge(tmp_path, ("docs", BOARD_NO_REVIEW), ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 10): "Todo", ("acme", 7): "🏗 In Progress"})       # the board without review first
+    out = it.transition(root, REF, "done", "Shipped", run=gh, today=TODAY)
+    assert out["ok"], out
+    assert gh.writes() == ["comment", "status acme/10 ✅ Done", "status acme/7 👀 In Review", "status acme/7 ✅ Done", "close"]
+    assert "👀 In Review" in gh.bodies[0], "the comment names the state it passes through"
+
+
+def test_review_needs_a_reason_and_a_retry_after_a_partial_review_posts_no_second_comment(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "🏗 In Progress"})
+    out = it.transition(root, REF, "review", "  ", run=gh, today=TODAY)
+    assert out["error"] == "missing_reason" and gh.writes() == []
+    # two boards, one in review already (a run that stopped part way): no second review comment
+    root2 = bridge(tmp_path / "two", ("ops", BOARD_STRICT), ("k2a", BOARD_REVIEW_NO_RULE))
+    gh2 = GitHub({("acme", 7): "👀 In Review", ("acme", 9): "In Progress"})
+    assert it.transition(root2, REF, "review", "again", run=gh2, today=TODAY)["ok"]
+    assert gh2.writes() == ["status acme/9 In Review"]
+
+
+def test_an_issue_declined_on_its_board_closes_as_not_planned(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "❌ Declined"})
+    assert it.transition(root, REF, "done", "", run=gh, today=TODAY)["ok"]
+    close = next(c for c in gh.calls if c[:3] == ["gh", "issue", "close"])
+    assert close[-2:] == ["--reason", "not planned"]
+
+
+def test_a_rule_that_wants_review_on_a_board_without_review_states_refuses(tmp_path):
+    root = bridge(tmp_path, ("bad", BOARD_NO_REVIEW.replace("governance:\n", "governance:\n  rules: [done_requires_review]\n")))
+    gh = GitHub({("acme", 10): "Todo"})
+    out = it.transition(root, REF, "done", "", run=gh, today=TODAY)
+    assert out["error"] == "no_review_state" and gh.writes() == []
+
+
+def test_a_reason_that_starts_with_a_dash_reaches_the_script(tmp_path, capsys, monkeypatch):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "🏗 In Progress"})
+    monkeypatch.setattr(it, "default_run", gh)
+    assert it.main(["--root", str(root), "review", REF, "--text=-fixed"]) == 0
+    assert "-fixed" in gh.bodies[0]

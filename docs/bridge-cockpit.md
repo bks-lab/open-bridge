@@ -718,9 +718,13 @@ primary button. Each kind of point gets the verbs that fit it:
   needs one (it becomes the review comment, governance K3) and sends
   `issue_review`; Done names what the click will do and the board's
   `governance.rules`, then sends `issue_done`: the review comment and review
-  state first where the board wants review before done, then the done state,
-  then the issue closes on GitHub and the row leaves the list. The board script
-  is the only writer and reads every write back. Only a person's click moves an
+  state first on every board that has review states (K1 at every level), then
+  the done state; only when every board reads back at its target does the issue
+  close on GitHub (as not planned where a board declined it), and the row
+  leaves the list. A board of the issue that `workflow/projects/` does not know
+  is named and keeps its status. The board script is the only writer, reads
+  every write back, and one issue moves once at a time; a run that stops after a
+  first write says so. Only a person's click moves an
   issue (K1): where the AI suggests closing, the button that fits is the strong
   one and its reason stands in the field already, Hide stays plain.
 - **A finished start**: Done and close the tab, then View, Open answer, Improve

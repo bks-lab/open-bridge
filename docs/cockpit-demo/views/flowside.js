@@ -287,12 +287,13 @@ function FinishedActs({ x, s, c, sug, forget }) {
 const GITHUB_ISSUE = row => /^[\w.-]+\/[\w.-]+#\d+$/.test(String(row?.ref ?? '')) && /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+/.test(String(row?.url ?? ''))
 
 /** What Done on an issue does, board by board (issue_transition.py): the review comment and the review state first
- *  where the board wants review before done and the issue is not in review yet, then the done state, then the close */
+ *  on every board that has review states while the issue is not in review there (K1), then the done state, then the
+ *  close */
 function doneSteps(boards, f) {
   const out = []
   for (const b of boards) {
     if (b.in_done) continue
-    if (!b.in_review && b.review_state && (b.rules ?? []).includes('done_requires_review')) out.push(f.comment, b.review_state)
+    if (!b.in_review && b.review_state) out.push(f.comment, b.review_state)
     out.push(b.done_state)
   }
   return [...new Set(out), f.close]
@@ -318,7 +319,9 @@ export function IssueWays({ row, s, c, sug }) {
   const boards = data?.boards ?? []
   const on = plan.status === 'loading' ? f.loading : plan.status === 'error' ? f.failed : !boards.length ? f.none
     : boards.map(b => `${b.title}: ${b.status ?? f.noStatus}`).join(' · ')
-  const head = html`<p class="muted small flow-issue-on">${on}</p>`
+  // a board of the issue that workflow/projects/ does not know keeps its status: the card names it
+  const other = (data?.unmatched ?? []).map(u => u.title || `${u.owner} #${u.number}`)
+  const head = html`<p class="muted small flow-issue-on">${on}</p>${boards.length && other.length ? html`<p class="muted small flow-issue-other">${f.other(other.join(', '))}</p>` : null}`
   if (!data || !boards.length) return head
   const canReview = boards.every(b => b.review_state) && !boards.some(b => b.in_review || b.in_done)
   const canDone = data.state === 'OPEN' && boards.every(b => b.done_state)
@@ -332,11 +335,12 @@ export function IssueWays({ row, s, c, sug }) {
   const go = async () => {
     const words = text.trim()
     const r = await c.act(open === 'review' ? 'issue_review' : 'issue_done', { key: row.key, ...(words ? { text: words } : {}) })
+    // read the board again on every answer: a run that stopped part way changed it too
+    setRound(round + 1)
     if (!r?.ok) return
     if (open === 'done') c.flowDecided()
     setOpen(null)
     setText('')
-    setRound(round + 1)
   }
   const id = `flow-issue-${row.key}`
   return html`${head}
