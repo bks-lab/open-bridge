@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=./_schema.yaml
+# Cost center: one project whose costs are gathered across accounts, so the cost card can show it alone
+# (the "Project" chips) and a month of it can be read as the base of an invoice.
+#
+# Copy to <id>.yaml. An entry of the cost file (docs/cloud-costs.md) is an account id, or <account>/<part> when
+# the account is split (`costs.split`). `sources` name them, exactly or as patterns; an account id names all its
+# parts. The first file (by file name) that names an entry wins, so each entry counts for one project only.
+# Entries no file names stay "no project" on the card, never spread out silently.
+schema_version: 1
+scope: user                     # user | org | personal | private: a project name is instance data, never core
+id: customer-a
+title: "Customer A"             # what the chip and the row tag say
+persona_ref: my-company         # optional: whose costs these are (identity/personas/<id>.yaml)
+mandant_ref: customer-a         # optional: who would receive an invoice (identity/mandants/<id>.yaml)
+sources:
+  - openai-example/proj_abc     # one project of a split account
+  - azure-example/customer-a    # resource groups named alike in `costs.parts`
+  - twilio-example              # a whole account, with all its parts
+  # - aws-example/*             # a pattern

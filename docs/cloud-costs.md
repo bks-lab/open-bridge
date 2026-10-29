@@ -148,6 +148,30 @@ closes it after the next run that reads the account again.
 
 One failing account never stops the others.
 
+## One project across accounts
+
+A project rarely lives in one account: a customer's voice line costs at the
+telephony provider, its model at the AI provider, its logs at the search
+cluster. A cost center gathers them, one file per project in
+`workflow/cost-centers/<id>.yaml` (template and schema beside it):
+
+```yaml
+schema_version: 1
+scope: user
+id: customer-a
+title: "Customer A"
+sources: [openai-example/proj_abc, twilio-example, azure-example/customer-a]
+```
+
+`sources` name entries of the cost file, exactly or as patterns, and an
+account id names all its parts. The first file by name that names an entry
+wins, so an entry counts for one project. `bridge-resources.py costs` writes
+`cost_center` on every entry of the view and the declared `cost_centers`
+beside them; the cost card then shows a **Project** row of chips (All, each
+project, and "no project" while an entry belongs to none) that narrows the
+bars, the day, the rows and the totals alike. `persona_ref` and `mandant_ref`
+say whose costs these are and who would receive an invoice.
+
 ## Credits
 
 A provider that pays for usage with credits (AWS promotional credits) would

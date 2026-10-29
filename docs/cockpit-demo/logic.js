@@ -2040,6 +2040,23 @@ export function costDay(costs, day) {
   }).filter(x => x.amount > 0).sort((x, y) => y.amount - x.amount)
 }
 
+/** The cost card's project chips: all, each cost center, and "none" while an entry belongs to no project; none
+ *  at all when no cost center is declared (workflow/cost-centers/) */
+export function costCenterChoices(costs) {
+  const centers = (costs?.cost_centers ?? []).map(c => c.id)
+  if (!centers.length) return []
+  const loose = (costs?.accounts ?? []).some(a => !a.cost_center)
+  return ['all', ...centers, ...(loose ? ['none'] : [])]
+}
+
+/** The cost file seen through one project: its entries only ('none': those of no project, 'all': unchanged), so the
+ *  bars, the day and the totals all count the same entries */
+export function costScope(costs, center) {
+  if (!costs || !center || center === 'all') return costs
+  const want = center === 'none' ? null : center
+  return { ...costs, accounts: (costs.accounts ?? []).filter(a => (a.cost_center ?? null) === want) }
+}
+
 /** The sum over a range and the month so far, over every account that answered */
 export function costTotals(costs, range) {
   const ok = (costs?.accounts ?? []).filter(a => a.ok)
