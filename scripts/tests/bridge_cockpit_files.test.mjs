@@ -1555,6 +1555,19 @@ test('the log layout as the page router mounts it: the log in the main column, t
   assert.ok(el.$('.logp-main mark'), 'the typed word is marked in the log')
 })
 
+test('the log layout head counts in words, so a plain count beside it goes; a finding stays', async () => {
+  const { PageView } = (await loadCockpit()).components
+  const head = badge => {
+    const s = cockpitState(NOW)
+    s.model = { ...s.model, pages: [{ ...DAY_PAGE, badge }] }
+    s.ui = { ...s.ui, page: DAY_PAGE.id }
+    s.jev = { ...s.jev, enabled: false }
+    return mount(html`<${PageView} s=${s} c=${recorder()} />`).$('.page-head')
+  }
+  assert.equal(head({ kind: 'count', n: 59 }).$('.pbadge'), null, 'no stray count beside the title')
+  assert.ok(head({ kind: 'bad', n: 1 }).$('.pbadge'), 'a finding keeps its mark')
+})
+
 test('the log layout: which page takes it, the hours of a log, its topics and a sparkline, as pure helpers', () => {
   assert.equal(logic.logLayout(DAY_PAGE), true)
   assert.equal(logic.logLayout({ sections: [{ id: 'a', view: 'groups' }] }), false)

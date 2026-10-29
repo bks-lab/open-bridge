@@ -123,6 +123,7 @@ export function PageView({ s, c }) {
   const sections = (q, list = page.sections, topic = null) => list.flatMap(sec => [html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} topic=${topic} />`,
     ...(cards.after[sec.id] ?? []).map(card)])
   const log = !work && logLayout(page)
+  // the log head says its count in words; a plain count beside it would be a second number for the same thing
   // a folder's bar stands on top of the folder page and of each of its sub pages; the folder page names its
   // machines first, a sub page with `overview` gets a head card of its own parts instead of the tiles
   const sub = !!parentOf(s, whole.id)
@@ -130,7 +131,7 @@ export function PageView({ s, c }) {
     ${work ? null : html`<${FolderBar} s=${s} c=${c} />`}
     <header class="page-head">
       ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : log ? html`<${LogHead} page=${page} s=${s} />` : html`<h2 class="detail-title">${page.title}</h2>`}
-      <${PageBadge} badge=${headBadgeOf(s, whole)} />
+      ${log && headBadgeOf(s, whole)?.kind === 'count' ? null : html`<${PageBadge} badge=${headBadgeOf(s, whole)} />`}
     </header>
     ${work ? null : html`<${MachineLines} page=${whole} s=${s} c=${c} />`}
     ${page.overview && sub ? html`<${PageSummary} page=${page} s=${s} c=${c} />`

@@ -1459,7 +1459,7 @@ rows as tiles two to a row: the name, the `when` with its leading number large
 the rest (the branch) and the row's web page as the tile's link; a dim row
 (nothing today) is named in one quiet line below. A page with either key takes
 the layout: its head names the day, the title and how many log lines in how
-many topics; the search bar (with `search: true`) spans both columns; the rail
+many topics (the page's plain count stays on its tab, a finding keeps its mark); the search bar (with `search: true`) spans both columns; the rail
 also carries the log's contexts as topic chips with their counts, and a chip
 filters the log to its topic together with the typed words (the head of the
 log counts the hits and names the topic). In **Every day** the timeline stands
