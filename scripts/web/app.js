@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, ghFilterKept,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -941,8 +941,9 @@ const ctl = {
       setUi({ workView: go.view, ...(flowTo.flowView ? { flowView: flowTo.flowView, flowRunId: null, flowPlan: null } : {}) })
       id = flowTo.page
     }
-    // a page of group day has no tab: a tile or link to it opens Today, where its sections stand
-    if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = 'briefing'
+    // a page of group day has no tab: a tile or link to it opens Today, where its sections stand, or without Due the
+    // start page, whose last shelves they are
+    if ((s.model?.pages ?? []).some(p => p.id === id && p.group === 'day')) id = dayPagesOnWork(workViewsIn(s)) ? 'briefing' : START_PAGE
     // a page of group settings (the Setup page) has none either: it opens Settings at its area
     const area = settingsAreaOf(s.model, id)
     if (area) {

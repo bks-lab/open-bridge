@@ -1497,10 +1497,13 @@ test('with a work tab the day stands in the middle of Due, and on Start in the b
   assert.match(day, /m\.agenda/)
   assert.match(day, /<\$\{StatusList\} rows=\$\{m\.status\}/)
   assert.match(day, /p\.group === 'day'/)
-  // Start shows it where a work page exists, as a shelf of its own, in both start page styles
+  // Start shows it where a work page exists and the shelf is chosen, as a shelf of its own, in both start page styles;
+  // the pages of group day follow the work page alone, they have no other place without Due
   const home = comp.slice(comp.indexOf('function HomePage('), comp.indexOf('function HomePage(') + 9000)
   assert.equal((home.match(/\$\{daily\}/g) ?? []).length, 2)
-  assert.match(home, /const daily = workPageOf\(s\.model\?\.pages\) \? html`<\$\{HomeShelf\} id="home-day" title=\$\{h\.dayTitle\}/)
+  assert.match(home, /const withDay = !!workPageOf\(s\.model\?\.pages\)/)
+  assert.match(home, /const daily = withDay && on\.has\('s:day'\) \? html`<\$\{HomeShelf\} id="home-day" title=\$\{h\.dayTitle\}/)
+  assert.match(home, /const diary = withDay \? html`<\$\{DayPages\}/)
   // there it looks like the other shelves: one card per block; on the stage above the project chips, which do not filter it
   const cards = day.slice(day.indexOf('if (cards)'), day.indexOf('const [agenda, status'))
   assert.match(cards, /class=\$\{`hcard day-card day-\$\{b\.id\}`\}/)
@@ -1625,14 +1628,14 @@ test('the start page offers every tile to choose, and without a choice only a le
   assert.equal(logic.tileSlug('Week, all Modelle: Ä'), 'week-all-modelle-a')
   const ids = logic.homeCatalog(model).map(x => x.id)
   assert.deepEqual(ids, ['q:quota:session-5-h', 'q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done',
-    'p:dates', 'p:work', 'p:ops', 's:areas', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
+    'p:dates', 'p:work', 'p:ops', 's:day', 's:areas', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
     'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief',
     'd:waiting', 'd:guide', 'd:tabs', 'd:day'])
   // a Bridge without a worker view offers no Workers station: it would lead to a tab that is not there
   assert.equal(logic.homeCatalog(model, { workers: false }).some(x => x.id === 'c:workers'), false)
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
   assert.deepEqual(logic.homeChosen(model, null),
-    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:areas', 's:focus', 's:returns', 's:continue',
+    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:day', 's:areas', 's:focus', 's:returns', 's:continue',
       's:waiting', 's:tasks', 's:starts', 'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'k:scan'])
   // a choice keeps its order, an empty one too; what the chooser had offered is never added back
   const all = ids
@@ -3062,6 +3065,12 @@ test('ticker names a token source as the usage page does, not by its raw id', ()
   assert.match(logic.tickerText(it, text.TABLES.de), /Programme \(claude -p\)/)
   assert.match(logic.tickerText(it, text.TABLES.en), /Programs \(claude -p\)/)
   assert.doesNotMatch(logic.tickerText({ key: 'outlier', vars: ['subagent', 2] }, text.TABLES.de), /von subagent/)
+})
+
+test('a page of group day opens where its sections stand: Due when the work tab offers it, else the start page', () => {
+  assert.equal(logic.dayPagesOnWork(['due', 'flow']), true)
+  assert.equal(logic.dayPagesOnWork(['flow']), false)
+  assert.equal(logic.dayPagesOnWork([]), false)
 })
 
 test('settings: every choice of the start page is explained in both languages', () => {
