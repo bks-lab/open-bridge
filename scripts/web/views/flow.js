@@ -43,7 +43,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   asksSomething, duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn, runningOf,
-  prepTargets, previewText, prioLoaded, prioOn, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
+  prepTargets, previewText, prioLoaded, prioOn, reportsTicked, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
@@ -137,14 +137,21 @@ function StartCard({ x, s, c }) {
   </article>`
 }
 
-/** The reports as one card: each folds open with its reasons, Seen and Details (its drawer, views/flowside.js
- *  openDetails); all of them seen at once stands on the right */
+/** The reports as one card: each with its box and folding open with its reasons, Seen and Details (its drawer,
+ *  views/flowside.js openDetails); All above them ticks every one. The boxes are the overview's (ui.flowPicked); Seen
+ *  for the ticked ones stands on the right */
 function ReportsCard({ x, s, c }) {
   const f = T().flow
+  const keys = x.rows.map(r => r.key)
+  const on = new Set(reportsTicked(x, s.ui.flowPicked))
+  const all = on.size === keys.length
   return html`<article class="fx-hero tk-muted" aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token="muted" />${f.kind.reports}</span></header>
     <h2 id="flow-title" class="fx-title">${f.reports(x.rows.length)}</h2>
-    <ul class="flow-reports">${x.rows.map(r => html`<li key=${r.key}><details>
+    <label class="flow-check flow-reports-all"><input type="checkbox" checked=${all} onClick=${() => c.flowPick(keys, !all)} /><span>${f.list.pickAll}</span></label>
+    <ul class="flow-reports">${x.rows.map(r => html`<li key=${r.key} class=${on.has(r.key) ? 'is-picked' : undefined}>
+      <input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(r.title ?? '', 60))} checked=${on.has(r.key)}
+        onClick=${() => c.flowPick([r.key], !on.has(r.key))} /><details>
       <summary>${r.title}</summary>
       ${(r.why ?? []).length ? html`<ul class="fx-why">${r.why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
       <div class="fx-do"><${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy?.[r.key]}

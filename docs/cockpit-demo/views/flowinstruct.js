@@ -87,7 +87,7 @@ export function InstructLine({ scope, s, c }) {
   const left = s.flow_ai?.instruct_left
   const v = text.replace(/\s+/g, ' ').trim()
   const label = scope.point ? [f.point(short(scope.title, 80)), scope.tab ? f.reply : null].filter(Boolean).join(' · ')
-    : [scope.reports ? f.reports(scope.n) : scope.picked ? f.picked(scope.n) : scope.name ? f.side(scope.n, scope.name, scope.total)
+    : [scope.picked ? f.picked(scope.n) : scope.reports ? f.reports(scope.n) : scope.name ? f.side(scope.n, scope.name, scope.total)
       : f.every(scope.n, scope.total), scope.cut ? f.cut(INSTRUCT_MAX) : null]
       .filter(Boolean).join(' · ')
   // the field grows with what is typed and is one row again once empty
