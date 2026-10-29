@@ -785,6 +785,19 @@ test('areaBar: the areas with something open, what needs you first, one figure e
   assert.deepEqual(logic.areaBar([], []), { pills: [], quiet: [] })
 })
 
+test('areaBar: a pill says what is to review or overdue, and a line with nothing to say makes no pill', () => {
+  const line = (name, x = {}) => ({ name, waiting: 0, running: 0, tasks: 0, resting: 0, review: 0, overdue: 0, ...x })
+  const bar = logic.areaBar([line('Ops', { review: 1 }), line('Lab', { overdue: 2, tasks: 1 }), line('Home'),
+    { ...line('', { review: 1 }), none: true }], [])
+  assert.deepEqual(bar.pills.map(p => [p.name, p.fig.kind, p.fig.n]), [['Lab', 'overdue', 2], ['Ops', 'review', 1], ['', 'review', 1]])
+  for (const lang of ['en', 'de']) {
+    const h = text.TABLES[lang].home
+    for (const k of ['review', 'overdue']) assert.ok(h.areaFig[k](1).length > 0, `${lang} ${k}`)
+    assert.match(logic.areaBarTitle(bar.pills[0], h), /2/)
+    assert.notEqual(logic.areaBarTitle(bar.pills[1], h), h.areaBarParts({}))
+  }
+})
+
 test('the area lines: an alias is no line of its own, an empty shell makes no area, a tab at rest counts', () => {
   const tabs = [
     { ref: 'a', name: 'shell', workspace: 'Shop', state: 'shell' },
