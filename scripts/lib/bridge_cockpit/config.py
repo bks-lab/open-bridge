@@ -186,6 +186,33 @@ def jev_criteria_of(value: Any) -> dict | None:
     return out or None
 
 
+def ai_uses(cfg: Any) -> dict:
+    """How the cockpit runs each AI service it calls through a block of its own, {service: {enabled, pinned}}:
+    pinned when the block names a Claude model, so the service file is never read. The one rule of
+    ai_services.gap for status, Setup and Prio's state; a service without a block (describe, organize) is not here"""
+    from .quick import MODELS
+    flow = getattr(cfg, "flow", None) or {}
+    blocks = {pr.SERVICE: (flow.get("prio") or {}).get("haiku"), thm.SERVICE: flow.get("themes"),
+              act.SERVICE: flow.get("summary"), act.INSTRUCT_SERVICE: flow.get("instruct"),
+              act.FILES_SERVICE: getattr(cfg, "files_search", None)}
+    out = {}
+    for sid, b in blocks.items():
+        b = b if isinstance(b, dict) else {}
+        out[sid] = {"enabled": bool(b.get("enabled")), "pinned": b.get("model") in MODELS}
+    return out
+
+
+def ai_gaps(root: Path) -> list[dict]:
+    """ai_services.gaps of this Bridge with the cockpit's blocks (ai_uses); an invalid cockpit: block, which keeps
+    the cockpit from starting, leaves every service counted as on"""
+    from .. import ai_services
+    try:
+        uses = ai_uses(load_web_config(root))
+    except WebConfigError:
+        uses = None
+    return ai_services.gaps(root, uses)
+
+
 def flow_defaults() -> dict:
     return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20,
             **{key: default for key, default, _low in FLOW_INTS}, "infer_sessions": True, "themes": thm.defaults(),

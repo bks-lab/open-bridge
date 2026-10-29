@@ -65,11 +65,19 @@ CLI does not provide a reliable amount.
 A service file may name a provider the service's code cannot run yet, such as
 `provider: codex` for `cockpit-prio`. The service then stays off, and says so:
 `ai_services.gaps()` returns `{service, ready: false, reason:
-"provider_unsupported", provider, supported}` for it, `python3
-scripts/bridge-cockpit.py status --json` lists it under `provider_gaps`, Prio's
-state carries the reason, and Settings, Setup in the cockpit shows one row per
-gap. A model pinned in a cockpit block (`cockpit.flow.<name>.model`) runs on
-Claude whatever the service file says.
+"provider_unsupported", provider, supported}` for it. A file that is there but
+cannot be used (broken YAML, an unknown provider, a bad field) keeps the service
+off as well and shows as `{service, ready: false, reason: "config_invalid",
+error}`. `python3 scripts/bridge-cockpit.py status --json` lists both under
+`provider_gaps`, Prio's state carries the reason, and Settings, Setup in the
+cockpit shows one row per gap.
+
+One rule decides what counts, for status, Setup and Prio alike
+(`ai_uses` in `scripts/lib/bridge_cockpit/config.py`): a service whose cockpit
+block is switched off (`cockpit.flow.prio.haiku`, `cockpit.flow.themes`,
+`cockpit.flow.summary`, `cockpit.flow.instruct`, `cockpit.files_search`) is no
+gap, nor one whose block pins a Claude model (`model: haiku`), since it then
+runs on Claude without reading the service file.
 
 The gap is closed in code, by the agent of the instance that has it:
 

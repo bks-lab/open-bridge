@@ -65,9 +65,8 @@ except ImportError:
         sys.exit("bridge-cockpit: needs PyYAML (python3 -m pip install pyyaml)")
     os.execv(_exe, [_exe, str(Path(__file__).resolve()), *sys.argv[1:]])
 
-from lib import ai_services  # noqa: E402  (path set above)
-from lib.bridge_cockpit import VERSION  # noqa: E402
-from lib.bridge_cockpit.config import WebConfigError, load_web_config  # noqa: E402
+from lib.bridge_cockpit import VERSION  # noqa: E402  (path set above)
+from lib.bridge_cockpit.config import WebConfigError, ai_gaps, load_web_config  # noqa: E402
 from lib.bridge_cockpit.launch import can_launch  # noqa: E402  (also read by scripts/bridge-setup.py)
 from lib.bridge_cockpit.server import default_state_dir  # noqa: E402
 from lib.bridge_cockpit.store import read_json  # noqa: E402
@@ -333,8 +332,9 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
         warnings = [str(error)]
     out["config_warnings"] = warnings
     out["can_launch"] = can_launch(root)
-    # a service whose workflow/ai-services file names a provider its code cannot run (docs/ai-services.md)
-    out["provider_gaps"] = ai_services.gaps(root)
+    # a service that is on but stays off for its workflow/ai-services file: a provider its code cannot run, or a
+    # file that cannot be used (docs/ai-services.md)
+    out["provider_gaps"] = ai_gaps(root)
     if args.json:
         print(json.dumps(out))
     elif info:
@@ -349,8 +349,12 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
             print("warning: agent tabs cannot start: no terminal driver serves launch "
                   "(workplace.driver in bridge-config.yaml, docs/workplace.md)")
         for g in out["provider_gaps"]:
-            print(f"warning: {g['service']} cannot run on {g['provider']}, only on {', '.join(g['supported'])}: "
-                  "it stays off (docs/ai-services.md, A service your provider cannot run)")
+            if g["reason"] == "config_invalid":
+                print(f"warning: {g['service']}: workflow/ai-services/{g['service']}.yaml is invalid ({g['error']}): "
+                      "it stays off (docs/ai-services.md)")
+            else:
+                print(f"warning: {g['service']} cannot run on {g['provider']}, only on {', '.join(g['supported'])}: "
+                      "it stays off (docs/ai-services.md, A service your provider cannot run)")
     return 0 if info else 1
 
 

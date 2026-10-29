@@ -42,6 +42,7 @@ SERVICES = {
     "cockpit-themes": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/themes.py"},
 }
 GAP = "provider_unsupported"
+INVALID = "config_invalid"
 
 
 @dataclass(frozen=True)
@@ -96,13 +97,17 @@ def supports(service: str, provider: str) -> bool:
     return provider in (entry["providers"] if entry else PROVIDERS)
 
 
-def gap(root: Path, service: str) -> dict | None:
-    """The service's file names a provider its code cannot run: {service, ready: False, reason, provider,
-    supported}. None when it can, when there is no file, and for a file load refuses (that error is load's)"""
+def gap(root: Path, service: str, use: dict | None = None) -> dict | None:
+    """Why the service stays off for its file: a provider its code cannot run ({service, ready: False, reason:
+    provider_unsupported, provider, supported}) or a file load refuses ({..., reason: config_invalid, error}).
+    `use` is how the caller runs it, {enabled, pinned}: switched off, or pinned to a model of the caller's own (the
+    file is never read then), it is no gap. None also when the service runs, and when there is no file."""
+    if use is not None and (not use.get("enabled", True) or use.get("pinned")):
+        return None
     try:
         data = load(root, service)
-    except ValueError:
-        return None
+    except ValueError as exc:
+        return {"service": service, "ready": False, "reason": INVALID, "error": str(exc)[:200]}
     provider = data.get("provider")
     if not data or supports(service, provider):
         return None
@@ -110,9 +115,9 @@ def gap(root: Path, service: str) -> dict | None:
             "supported": list(SERVICES[service]["providers"])}
 
 
-def gaps(root: Path) -> list[dict]:
-    """Every gap of this Bridge, in the order of SERVICES"""
-    return [g for g in (gap(root, s) for s in SERVICES) if g]
+def gaps(root: Path, uses: dict | None = None) -> list[dict]:
+    """Every gap of this Bridge, in the order of SERVICES; `uses` maps a service to its `use` (gap)"""
+    return [g for g in (gap(root, s, (uses or {}).get(s)) for s in SERVICES) if g]
 
 
 def services_table() -> str:

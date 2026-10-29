@@ -583,7 +583,8 @@ def service_file(root: Path, service: str, provider: str) -> None:
 
 
 def test_a_service_on_a_provider_it_cannot_run_is_one_finding(tmp_path):
-    root = bridge(tmp_path)
+    themes_on = {**GOOD, "cockpit": {"enabled": True, "flow": {"themes": {"enabled": True}}}}
+    root = bridge(tmp_path, themes_on)
     service_file(root, "briefing-chat", "codex")          # runs on codex: no finding
     service_file(root, "cockpit-describe", "claude")
     assert checks(root) == []
@@ -594,6 +595,43 @@ def test_a_service_on_a_provider_it_cannot_run_is_one_finding(tmp_path):
     assert row["tone"] == "warn" and row["url"] == "docs/ai-services.md"
     assert row["title"] == bv.LABELS["setup_provider_gap"].format(service="cockpit-themes", provider="codex")
     assert "workflow/ai-services/cockpit-themes.yaml" in row["detail"] and "claude" in row["detail"]
-    de = bridge(tmp_path / "de", {**GOOD, "language": {"conversation": "de"}})
+    de = bridge(tmp_path / "de", {**themes_on, "language": {"conversation": "de"}})
     service_file(de, "cockpit-themes", "codex")
     assert checks(de)[0]["title"] == bv.LABELS_DE["setup_provider_gap"].format(service="cockpit-themes", provider="codex")
+
+
+def test_a_gap_counts_only_for_a_service_that_is_on_and_not_pinned(tmp_path):
+    flow = lambda **blocks: {**GOOD, "cockpit": {"enabled": True, "flow": blocks}}  # noqa: E731
+    # prio and themes off (their default): a codex file for them is no finding
+    root = bridge(tmp_path / "off", flow())
+    for sid in ("cockpit-prio", "cockpit-themes", "cockpit-activity", "cockpit-instruct", "cockpit-files"):
+        service_file(root, sid, "codex")
+    service_file(root, "cockpit-describe", "codex")          # no block of its own: always a finding
+    assert ids(checks(root)) == ["provider-gap-cockpit-describe"]
+    # on but pinned to a Claude model: the file is never read, so no finding either
+    root = bridge(tmp_path / "pinned", flow(prio={"haiku": {"enabled": True, "model": "haiku"}},
+                                             themes={"enabled": True, "model": "haiku"},
+                                             summary={"enabled": True, "model": "haiku"}))
+    for sid in ("cockpit-prio", "cockpit-themes", "cockpit-activity"):
+        service_file(root, sid, "codex")
+    assert checks(root) == []
+    # on and unpinned: one finding each
+    root = bridge(tmp_path / "on", flow(prio={"haiku": {"enabled": True}}, instruct={"enabled": True}))
+    for sid in ("cockpit-prio", "cockpit-instruct", "cockpit-themes"):
+        service_file(root, sid, "codex")
+    assert ids(checks(root)) == ["provider-gap-cockpit-instruct", "provider-gap-cockpit-prio"]
+
+
+def test_a_broken_service_file_is_one_finding(tmp_path):
+    root = bridge(tmp_path)
+    folder = root / "workflow" / "ai-services"
+    folder.mkdir(parents=True)
+    (folder / "triage.yaml").write_text("provider: [", encoding="utf-8")
+    rows = checks(root)
+    assert ids(rows) == ["ai-config-triage"] and rows[0]["tone"] == "warn" and rows[0]["url"] == "docs/ai-services.md"
+    assert rows[0]["title"] == bv.LABELS["setup_ai_config_invalid"].format(service="triage")
+    assert "workflow/ai-services/triage.yaml" in rows[0]["detail"]
+    de = bridge(tmp_path / "de", {**GOOD, "language": {"conversation": "de"}})
+    (de / "workflow" / "ai-services").mkdir(parents=True)
+    (de / "workflow" / "ai-services" / "triage.yaml").write_text("provider: [", encoding="utf-8")
+    assert checks(de)[0]["title"] == bv.LABELS_DE["setup_ai_config_invalid"].format(service="triage")

@@ -462,3 +462,14 @@ def test_a_codex_service_says_why_haiku_cannot_read_in(tmp_path):
     # a model pinned in the cockpit block runs on Claude whatever the service file says: no gap then
     pinned = rank_app(tmp_path, prio_cfg={"haiku": {"model": "haiku"}})
     assert prio.state(pinned)["haiku"]["ready"] is True and "reason" not in prio.state(pinned)["haiku"]
+
+
+def test_a_broken_service_file_says_so_in_the_state(tmp_path):
+    app = rank_app(tmp_path)
+    (tmp_path / "workflow" / "ai-services").mkdir(parents=True)
+    (tmp_path / "workflow" / "ai-services" / "cockpit-prio.yaml").write_text(
+        "schema_version: 1\nscope: user\nid: cockpit-prio\nprovider: gemini\n", encoding="utf-8")
+    haiku = prio.state(app)["haiku"]
+    assert haiku["ready"] is False and haiku["reason"] == "config_invalid" and "cockpit-prio" in haiku["error"]
+    # switched off: nothing to say
+    assert "reason" not in prio.state(rank_app(tmp_path, haiku_on=False))["haiku"]

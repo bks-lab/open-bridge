@@ -173,8 +173,28 @@ def test_a_provider_the_service_cannot_run_is_a_gap_not_a_silence(tmp_path):
          "supported": ["claude"]}]
     assert ai.gap(tmp_path, "cockpit-prio")["reason"] == "provider_unsupported"
     assert ai.gap(tmp_path, "briefing-chat") is None
-    (tmp_path / "workflow/ai-services/cockpit-themes.yaml").write_text("provider: [")   # unreadable: load says so
-    assert [g["service"] for g in ai.gaps(tmp_path)] == ["cockpit-prio"]
+    # a file that is there but cannot be used switches the service off as well: said, not swallowed
+    (tmp_path / "workflow/ai-services/cockpit-themes.yaml").write_text("provider: [")
+    config(tmp_path, "briefing-chat", "gemini")
+    got = {g["service"]: g for g in ai.gaps(tmp_path)}
+    assert set(got) == {"briefing-chat", "cockpit-prio", "cockpit-themes"}
+    for sid in ("briefing-chat", "cockpit-themes"):
+        assert got[sid]["ready"] is False and got[sid]["reason"] == "config_invalid", got[sid]
+        assert sid in got[sid]["error"] and len(got[sid]["error"]) <= 200
+    assert "provider" not in got["cockpit-themes"]
+
+
+def test_how_the_caller_runs_a_service_decides_whether_it_is_a_gap(tmp_path):
+    # one rule for every caller: a service switched off is no gap, nor one whose model the caller pins (its file
+    # is never read then); without a word from the caller the service counts as on and unpinned
+    config(tmp_path, "cockpit-prio", "codex")
+    (tmp_path / "workflow/ai-services/cockpit-themes.yaml").write_text("provider: [")
+    assert ai.gap(tmp_path, "cockpit-prio", {"enabled": False, "pinned": False}) is None
+    assert ai.gap(tmp_path, "cockpit-prio", {"enabled": True, "pinned": True}) is None
+    assert ai.gap(tmp_path, "cockpit-themes", {"enabled": True, "pinned": True}) is None
+    assert ai.gap(tmp_path, "cockpit-prio", {"enabled": True, "pinned": False})["reason"] == "provider_unsupported"
+    uses = {"cockpit-prio": {"enabled": False, "pinned": False}, "cockpit-themes": {"enabled": True, "pinned": False}}
+    assert [g["service"] for g in ai.gaps(tmp_path, uses)] == ["cockpit-themes"]
 
 
 def test_the_docs_show_the_declared_list():

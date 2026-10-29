@@ -237,6 +237,10 @@ LABELS = {
                                   "{supported}, so it stays off. Let AI do it adapts the service to {provider}, tests it "
                                   "and proposes the change to open-bridge (docs/ai-services.md, A service your provider "
                                   "cannot run)."),
+    "setup_ai_config_invalid": "The AI service file of {service} cannot be used",
+    "setup_ai_config_invalid_detail": ("workflow/ai-services/{service}.yaml: {error}, so {service} stays off. Fix the "
+                                       "file against workflow/ai-services/_schema.yaml, or remove it to run on Claude "
+                                       "(docs/ai-services.md)."),
     "setup_config_error": "The cockpit: block of bridge-config.yaml is invalid",
     "setup_config_error_detail": "{error}",
     "setup_activate": "{when} Switch it on: {command}",
@@ -435,6 +439,10 @@ LABELS_DE = {
                                   "{supported} und bleibt darum aus. AI machen lassen passt den Dienst an {provider} an, "
                                   "testet ihn und schlägt die Änderung open-bridge vor (docs/ai-services.md, A service "
                                   "your provider cannot run)."),
+    "setup_ai_config_invalid": "Die KI-Dienstdatei von {service} ist nicht nutzbar",
+    "setup_ai_config_invalid_detail": ("workflow/ai-services/{service}.yaml: {error}, darum bleibt {service} aus. "
+                                       "Korrigiere die Datei nach workflow/ai-services/_schema.yaml, oder entferne sie, "
+                                       "dann läuft der Dienst mit Claude (docs/ai-services.md)."),
     "setup_config_error": "Der cockpit:-Block in bridge-config.yaml ist ungültig",
     "setup_config_error_detail": "{error}",
     "setup_activate": "{when} Einschalten: {command}",
