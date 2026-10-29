@@ -763,6 +763,17 @@ def test_a_page_can_open_with_an_overview_of_its_sections():
         "view.pages 1: overview must be true or false"]
 
 
+def test_a_page_can_carry_a_search_over_its_rows_and_the_history():
+    # `search: true` asks a dashboard for a search field above the sections: the page's own rows, then every day before
+    view = {"pages": [{"id": "today", "sections": ["probes"], "search": True}, {"id": "week", "sections": ["cal"]}]}
+    pages = bv.pages(_result(), _profile(view))
+    assert _page(pages, "today")["search"] is True
+    assert "search" not in _page(pages, "week")
+    assert bv._page_problems(view) == []
+    assert bv._page_problems({"pages": [{"id": "today", "sections": ["probes"], "search": "yes"}]}) == [
+        "view.pages 1: search must be true or false"]
+
+
 def test_a_page_can_place_live_cards_after_its_sections():
     # `cards:` places the dashboard's live cards (costs, usage, noise) after a section of the page, or at its end
     cards = [{"id": "costs", "after": "probes"}, {"id": "usage"}]

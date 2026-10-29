@@ -136,6 +136,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # the files tab's question to its records (cockpit.files_search): one model call over the folders the page shows,
     # none the block list names (actions_work.py v_files_ask)
     "files_ask": {"text": ("instruct_text", True), "paths": ("record_paths", True)},
+    # the history's question (cockpit.files_search too): when it was done or discussed, two model calls over the lines
+    # the question's terms find, none the block list names (actions_work.py v_timeline_ask)
+    "timeline_ask": {"text": ("instruct_text", True)},
     "flow_theme_move": {"key": ("key", True), "theme": ("theme_id", True)},
     "flow_theme_new": {"key": ("key", True), "name": ("theme_name", True)},
     "flow_theme_rename": {"theme": ("theme_id", True), "name": ("theme_name", True)},
@@ -238,7 +241,7 @@ READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
-                         "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask"})
+                         "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb

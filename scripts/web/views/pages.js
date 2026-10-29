@@ -19,7 +19,7 @@ import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { Lines } from './detail.js'
 import { ReturnChip, RowAsk } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
-import { Btn, SeenBtn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
+import { Btn, SeenBtn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, ResIcon, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
 import { WORKERS_PAGE, folderOf, subPagesOf } from './nav.js'
 import { DatesAgenda } from './dates.js'
@@ -195,41 +195,6 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
 
 // ---------------------------------------------------------------- drawn sections: tiles and mosaic
 
-/** Symbols for drawn rows: a source names a family (a device type, a cloud service, a provider), the
- *  page draws a plain line icon; anything unknown is a box */
-const RES_ICONS = {
-  laptop: 'M4 6h16v10H4zM2 19h20',
-  monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
-  server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
-  router: 'M3 14h18v6H3zM7 17h.01M11 17h.01M8 14 5 8M16 14l3-6',
-  phone: 'M7 2h10v20H7zM11 18h2',
-  robot: 'M6 8h12v10H6zM12 4v4M9 12h.01M15 12h.01M9 15h6',
-  printer: 'M6 3h12v6H6zM4 9h16v8H4zM8 14h8v7H8z',
-  usb: 'M9 2h6v8H9zM7 10h10v12H7z',
-  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1-1.9 1.9-.1-.1a1.6 1.6 0 0 0-2.7 1.1V20h-2.6v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1-1.9-1.9.1-.1A1.6 1.6 0 0 0 4.6 15H4v-2.6h.2a1.6 1.6 0 0 0 1.1-2.7l-.1-.1 1.9-1.9.1.1a1.6 1.6 0 0 0 2.7-1.1V4h2.6v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1 1.9 1.9-.1.1a1.6 1.6 0 0 0 1.1 2.7h.2V15z',
-  bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8z',
-  globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
-  page: 'M6 2h9l5 5v15H6zM14 2v6h6',
-  tunnel: 'M3 20v-8a9 9 0 0 1 18 0v8M7 20v-8a5 5 0 0 1 10 0v8',
-  cloud: 'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z',
-  mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
-  box: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10',
-}
-
-const ICON_OF = {
-  macos: 'laptop', windows: 'monitor', linux: 'server', saas: 'cloud', router: 'router', 'kvm-over-ip': 'monitor',
-  'smart-device': 'phone', robot: 'robot', '3d-printer': 'printer', 'usb-toolkit': 'usb', worker: 'gear',
-  'function app': 'bolt', 'web app': 'globe', zone: 'globe', pages: 'page', tunnel: 'tunnel', account: 'cloud',
-  azure: 'cloud', cloudflare: 'cloud', aws: 'cloud', gcp: 'cloud', m365: 'cloud', tailscale: 'cloud', ionos: 'globe',
-  google: 'mail', icloud: 'mail', microsoft365: 'mail', exchange: 'mail', imap: 'mail',
-}
-
-function ResIcon({ name, size = 18 }) {
-  const d = RES_ICONS[ICON_OF[name] ?? name] ?? RES_ICONS.box
-  return html`<svg class="res-icon" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
-}
-
 export { usePopover }   // the menus of day.js and header.js take it from here
 
 /** Search, state, group and tags: what a drawn section shows; the counts say what each choice holds */
@@ -295,6 +260,8 @@ export function StatusMenu({ it, page, section, c }) {
 function ResTile({ it, page, section, c, i, services, s = null, steps = 'menu' }) {
   const t = T()
   const tone = it.tone ?? 'ok'
+  // the web link: the row's own, else its url where that is http(s) (a commits row names its repository's page so)
+  const href = it.link?.kind === 'web' ? it.link.href : /^https?:\/\//.test(it.url ?? '') ? it.url : null
   return html`<article class=${`rtile rt-${tone} row-in card-opens`} style=${{ '--i': Math.min(i, 14) }} tabindex="0"
     onClick=${e => { if (rowClickOpens(e)) c.openInfo(it, page, section) }}
     onKeyDown=${e => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); c.openInfo(it, page, section) } }}>
@@ -303,12 +270,13 @@ function ResTile({ it, page, section, c, i, services, s = null, steps = 'menu' }
       <h4 class="rtile-title" title=${it.title}>${it.title}</h4>
       <span class=${`rdot rdot-${tone}`} aria-hidden="true"></span>
     </header>
+    ${it.when ? html`<p class="rtile-when">${it.when}</p>` : null}
     ${it.detail ? html`<p class="rtile-detail">${it.detail}</p>` : null}
     ${it.meter ? html`<${MeterBar} meter=${it.meter} scale=${0} tone=${it.tone} />` : null}
     <footer class="rtile-foot">
       ${services ? html`<${Btn} size="xs" variant="secondary" onClick=${services.open}>${t.resServices(services.n)}<//>` : null}
       ${it.account?.status ? html`<${StatusMenu} it=${it} page=${page} section=${section} c=${c} />` : null}
-      ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
+      ${href ? html`<a class="btn btn-ghost btn-xs" href=${href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${13} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
       ${steps === 'buttons' && s && it.actions?.length && it.row_id
@@ -467,12 +435,12 @@ function MosaicView({ items, page, section, c }) {
 
 /** Rows under their group (a log under its task), the busiest first; each group shows its newest
  *  rows, the rest one click away */
-function GroupsView({ items, page, section, c }) {
+function GroupsView({ items, page, section, c, whole = false }) {
   const t = T()
   const [open, setOpen] = useState({})
   const groups = groupRows(items).sort((a, b) => b.rows.length - a.rows.length)
   return html`<div class="gview">${groups.map((g, gi) => {
-    const all = !!open[g.key]
+    const all = whole || !!open[g.key]
     const rows = all ? g.rows : g.rows.slice(0, 3)
     return html`<section class="gview-group row-in" key=${g.key} style=${{ '--i': Math.min(gi, 14) }}>
       <header class="gview-head">
@@ -486,13 +454,13 @@ function GroupsView({ items, page, section, c }) {
         <span class="gview-when mono">${it.when}</span><span class="gview-text">${it.title}</span>
         ${it.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
       </li>`)}</ul>
-      ${g.rows.length > 3 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown"
+      ${g.rows.length > 3 && !whole ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown"
         onClick=${() => setOpen({ ...open, [g.key]: !all })}>${all ? t.mosaicFewer : t.mosaicAll(g.rows.length)}<//>` : null}
     </section>`
   })}</div>`
 }
 
-export function PageSection({ page, section, s, c }) {
+export function PageSection({ page, section, s, c, q = '' }) {
   const byKey = indexRows(s.model)
   const t = T()
   // a GitHub section's figures and filter bar filter its rows: kept per section in this browser (round 6c)
@@ -503,8 +471,11 @@ export function PageSection({ page, section, s, c }) {
   const more = section.whole ? null : s.more[`${page.id}/${section.id}`]   // whole: the caller already took every row
   // a task or inbox section follows the triage filter on top of its page
   const all = more ? more.items : (section.items ?? [])
-  const items = section.kind === 'tasks' || section.kind === 'inbox'
+  const kept = section.kind === 'tasks' || section.kind === 'inbox'
     ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all))) : all
+  // the words of the page's search (views/timeline.js PageSearch): the rows that hold every one
+  const words = q.trim()
+  const items = words ? words.split(/\s+/).reduce((rows, w) => filterRows(rows, { q: w }), kept) : kept
   const left = more ? 0 : section.more ?? 0
   const scale = meterScale(items)
   // nothing found: a section that says so in one quiet line, or none at all when the profile asks
@@ -515,7 +486,7 @@ export function PageSection({ page, section, s, c }) {
   if (quiet) {
     return html`<section class="panel psec psec-quiet" aria-labelledby=${`ps-${page.id}-${section.id}`}>
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}</h2>
-      <${StateLine} token=${section.alarm ? 'success' : 'info'} word=${section.empty || t.empty} />
+      <${StateLine} token=${section.alarm ? 'success' : 'info'} word=${words && kept.length ? t.filterNone : section.empty || t.empty} />
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </section>`
   }
@@ -525,7 +496,7 @@ export function PageSection({ page, section, s, c }) {
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
   else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} s=${s} steps=${section.steps ?? 'menu'} />`
   else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
-  else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} />`
+  else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} whole=${!!words} />`
   // a github-work section on its board view: the GitHub list (views/github.js), not the general table
   else if (section.view === 'board' && gh) body = html`<${GitHubList} items=${items} page=${page.id} section=${section} s=${s} c=${c} byKey=${byKey} filter=${ghFilter} setFilter=${setGhFilter} me=${ghMyLogin(all)} />`
   else if (section.view === 'mosaic') body = html`<${MosaicView} items=${items} page=${page.id} section=${section.id} c=${c} />`

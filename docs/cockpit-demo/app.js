@@ -237,6 +237,10 @@ const store = createStore({
   records: null,
   // the files tab's question to the AI (verb files_ask): { status: loading|ok|error, data, error }; null: none asked
   filesAsk: null,
+  // a page's search over every day before (/api/timeline): { q, status: loading|ok|error, data, error }; null: none
+  timeline: null,
+  // its question to the AI (verb timeline_ask): { status: loading|ok|error, data, error }; null: none asked
+  timelineAsk: null,
   // the questions archived in the last days (/api/chats/archive), read once "all" is asked for: { status, convs }
   chatArchive: null,
 })
@@ -1191,6 +1195,26 @@ const ctl = {
       : { status: 'error', data: null, error: errorText(res.error, T()) } }))
   },
   clearFilesAsk: () => store.set(s => ({ ...s, filesAsk: null })),
+  // a page's search (views/pages.js PageSearch): every day before by the words typed, an answer for words no longer
+  // asked is dropped; the question to the AI with the same words, its answer stands until closed
+  async searchTimeline(q) {
+    const words = String(q ?? '').replace(/\s+/g, ' ').trim()
+    if (words.length < 2) return
+    store.set(s => ({ ...s, timeline: { q: words, status: 'loading', data: null, error: null } }))
+    const res = await api.timeline(words)
+    if (store.get().timeline?.q !== words) return
+    store.set(s => ({ ...s, timeline: res.ok ? { q: words, status: 'ok', data: res.data, error: null }
+      : { q: words, status: 'error', data: null, error: res.error?.message ?? String(res.status) } }))
+  },
+  clearTimeline: () => store.set(s => ({ ...s, timeline: null })),
+  async askTimeline(text) {
+    store.set(s => ({ ...s, timelineAsk: { status: 'loading', data: null, error: null } }))
+    const res = await api.action('timeline_ask', { text })
+    if (res.status === 401) failNote(res)
+    store.set(s => ({ ...s, timelineAsk: res.ok ? { status: 'ok', data: res.data?.timeline ?? null, error: null }
+      : { status: 'error', data: null, error: errorText(res.error, T()) } }))
+  },
+  clearTimelineAsk: () => store.set(s => ({ ...s, timelineAsk: null })),
   // the Work through page: a card brought to the front by its id, a chip (its queue starts over), one more decision
   flowGo: (id, i) => setUi(ui => ({ flowAt: { id, i }, flowView: 'point', flowPlan: ui.flowAt?.id === id ? ui.flowPlan : null })),
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),

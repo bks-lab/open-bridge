@@ -269,7 +269,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
 # the verbs after which the Activity tab's kept feeds stand: they change nothing a feed reads
-KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct", "files_ask"}
+KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct", "files_ask", "timeline_ask"}
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):

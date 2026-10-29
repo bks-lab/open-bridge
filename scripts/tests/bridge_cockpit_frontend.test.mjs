@@ -2998,7 +2998,7 @@ test('mock parity: every server route has a well-formed mock answer, unless it i
     const inbox = st.model.sections.flatMap(s => s.rows).find(r => r.inbox_id)
     const query = {
       '/api/page': `page=${page.id}&section=${page.sections[0].id}`, '/api/tab/screen': `ref=${encodeURIComponent(st.tabs.tabs[0].ref)}`,
-      '/api/task': 'slug=demo-task', '/api/find': 'q=demo', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
+      '/api/task': 'slug=demo-task', '/api/find': 'q=demo', '/api/timeline': 'q=demo', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
       '/api/graph/node': `id=${encodeURIComponent(node)}`, '/api/flow/activity': 'key=task:demo-task',
     }
     const body = {
