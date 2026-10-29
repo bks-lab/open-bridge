@@ -72,7 +72,7 @@ ANTHROPIC_API = "https://api.anthropic.com/v1/organizations/cost_report"
 ELASTIC_API = "https://api.elastic-cloud.com"
 MAX_GROUPS = 8          # per day, the smallest beyond seven summed into "other"
 PROVISIONAL_DAYS = 2    # today and yesterday: providers settle late
-SLOW_TIMEOUT = 600      # the twilio CLI pages through every usage category of every day
+SLOW_TIMEOUT = 300      # the twilio CLI pages through every usage category of every day
 CREDIT_TYPES = {"credit", "refund"}     # aws record types that lower the bill without being usage
 
 
@@ -553,14 +553,15 @@ def _deepest(priced: dict) -> dict:
 
 
 def twilio(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run, opener: Callable | None = None) -> list[dict]:
-    """Daily usage records through the logged-in twilio CLI: the day's total is `totalprice`, the groups are the
-    deepest priced categories, and whatever of the total they do not explain is `other`."""
+    """Daily usage records through the logged-in twilio CLI. The day's total is `totalprice`, one short query that
+    must answer. The groups are the deepest priced categories from the full listing, which pages through every
+    category of every day (minutes, and the CLI fails now and then): when it fails the total stays, as `other`."""
     start, end = window(days, today)
-    argv = ["twilio", "api:core:usage:records:daily:list", "--start-date", str(start), "--end-date", str(end),
+    base = ["twilio", "api:core:usage:records:daily:list", "--start-date", str(start), "--end-date", str(end),
             "--limit", "100000", "-o", "json"]
     profile = _costs(acc).get("profile")
     if profile:
-        argv += ["-p", str(profile)]
+        base += ["-p", str(profile)]
 
     def classify(text: str) -> CostError | None:
         if TWILIO_AUTH.search(text):
@@ -568,21 +569,28 @@ def twilio(acc: dict, days: int, today: dt.date, run: Callable = subprocess.run,
         if TWILIO_DENIED.search(text):
             return CostError("this twilio login may not read usage records", "access")
         return None
-    answer = _cli(argv, run, classify, timeout=SLOW_TIMEOUT)
-    if not isinstance(answer, list):
-        raise CostError("unexpected answer from twilio (no usage records)")
-    per_day: dict = {}
-    for r in answer:
-        price = float(r.get("price") or 0)
-        if price:
-            per_day.setdefault(str(r.get("startDate"))[:10], {})[str(r.get("category"))] = (price, r.get("priceUnit") or "usd")
+
+    def priced(answer) -> dict:
+        if not isinstance(answer, list):
+            raise CostError("unexpected answer from twilio (no usage records)")
+        per_day: dict = {}
+        for r in answer:
+            price = float(r.get("price") or 0)
+            if price:
+                per_day.setdefault(str(r.get("startDate"))[:10], {})[str(r.get("category"))] = (price, r.get("priceUnit") or "usd")
+        return per_day
+    totals = priced(_cli(base[:2] + ["--category", "totalprice"] + base[2:], run, classify))
+    try:
+        detail = priced(_cli(base, run, classify, timeout=SLOW_TIMEOUT))
+    except (CostError, ValueError, OSError, subprocess.SubprocessError):
+        detail = {}
     rows = []
-    for day, cats in sorted(per_day.items()):
-        total = cats.pop("totalprice", None)
+    for day, cats in sorted(totals.items()):
+        total = cats.get("totalprice")
         if not total:
             continue
         amount, unit = total
-        groups = _deepest({c: v for c, (v, _u) in cats.items()})
+        groups = _deepest({c: v for c, (v, _u) in (detail.get(day) or {}).items() if c != "totalprice"})
         rest = amount - sum(groups.values())
         if round(rest, 4) > 0:
             groups["other"] = groups.get("other", 0.0) + rest

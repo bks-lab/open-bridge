@@ -669,21 +669,36 @@ def twilio_records():
 
 
 def test_twilio_reads_the_daily_usage_records_through_the_logged_in_cli():
-    seen = {}
+    calls = []
 
     def run(argv, **kw):
-        seen["argv"], seen["timeout"] = argv, kw.get("timeout")
-        return ok(twilio_records())
+        calls.append((argv, kw.get("timeout")))
+        records = twilio_records()
+        if "--category" in argv:
+            assert argv[argv.index("--category") + 1] == "totalprice"
+            records = [r for r in records if r["category"] == "totalprice"]
+        return ok(records)
     rows = cc.twilio({"id": "tw", "costs": {"profile": "work"}}, 3, TODAY, run, None)
-    argv = seen["argv"]
-    assert argv[:2] == ["twilio", "api:core:usage:records:daily:list"]
-    assert argv[argv.index("--start-date") + 1] == "2026-10-17" and argv[argv.index("--end-date") + 1] == "2026-10-19"
-    assert argv[argv.index("-p") + 1] == "work" and seen["timeout"] >= 300
+    (total, _), (full, timeout) = calls
+    assert total[:2] == ["twilio", "api:core:usage:records:daily:list"] and "--category" in total and "--category" not in full
+    for argv in (total, full):
+        assert argv[argv.index("--start-date") + 1] == "2026-10-17" and argv[argv.index("--end-date") + 1] == "2026-10-19"
+        assert argv[argv.index("-p") + 1] == "work"
+    assert timeout >= 300
     day = cc.merge_rows(rows)["2026-10-17"]
     # the total is totalprice; the groups are the deepest priced categories, the rest of the total is "other"
     assert day == {"amount": 1.5, "currency": "USD",
                    "groups": {"trunking-origination-local": 1.0, "phonenumbers": 0.25, "other": 0.25}}
     assert "2026-10-18" not in cc.merge_rows(rows)
+
+
+def test_twilio_keeps_the_total_when_the_long_category_listing_fails():
+    def run(argv, **kw):
+        if "--category" in argv:
+            return ok([r for r in twilio_records() if r["category"] == "totalprice"])
+        return ok(err="twilio-cli encountered an unexpected error", code=1)
+    day = cc.merge_rows(cc.twilio({"id": "tw", "costs": {}}, 3, TODAY, run, None))["2026-10-17"]
+    assert day == {"amount": 1.5, "currency": "USD", "groups": {"other": 1.5}}
 
 
 def test_twilio_without_a_login_asks_for_one():
