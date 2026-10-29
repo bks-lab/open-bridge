@@ -532,6 +532,9 @@ const en = {
     reposMore: 'more:',
     reposQuiet: word => `no commit ${{ today: 'today', yesterday: 'yesterday' }[word] ?? 'in the range'}, but in the last 7 days:`,
     noCommits: 'No own commit in the range.',
+    // a row of the range: where it comes from in its detail, and its text on its way
+    origin: 'work log',
+    waiting: 'loading…',
   },
   // the time range of a log page (views/logrange.js): presets, the range in words, the bar chart and its pointer
   logRange: {
@@ -553,6 +556,7 @@ const en = {
     now: 'now',
     hint: 'Drag to pick a range · click a bar to zoom in · Back returns to the one before',
     none: 'No log line in this range.',
+    searching: 'Searching the range…',
     searchAll: 'searches every day.',
     error: why => `The range could not be read${why ? `: ${why}` : ''}. Today's lines stand.`,
   },
@@ -2251,6 +2255,8 @@ const de = {
     reposMore: 'weitere:',
     reposQuiet: word => `ohne Commit ${{ today: 'heute', yesterday: 'gestern' }[word] ?? 'im Zeitraum'}, aber in den letzten 7 Tagen:`,
     noCommits: 'Kein eigener Commit im Zeitraum.',
+    origin: 'Arbeitslog',
+    waiting: 'wird geladen…',
   },
   logRange: {
     label: 'Zeitraum',
@@ -2271,6 +2277,7 @@ const de = {
     now: 'jetzt',
     hint: 'Ziehen wählt einen Zeitraum · Klick auf einen Balken zoomt hinein · Zurück holt den vorigen',
     none: 'Im Zeitraum keine Logzeile.',
+    searching: 'Suche im Zeitraum…',
     searchAll: 'sucht in allen Tagen.',
     error: why => `Der Zeitraum ließ sich nicht lesen${why ? `: ${why}` : ''}. Die Zeilen von heute stehen.`,
   },

@@ -8727,7 +8727,22 @@ def logrange_rows(world):
         (world.root / "work" / "archive" / "weeks" / name).write_text(week, encoding="utf-8")
 
 
-def test_the_log_range_answers_the_rows_of_the_days_asked_with_what_a_log_row_needs_and_the_own_commits(world):
+def unpack(data):
+    """The compact rows of /api/logrange as dicts: each its id, day, time, glyph and its group's fields"""
+    out = []
+    for i, (d, time, g, y) in enumerate(data["rows"]):
+        group = data["groups"][g]
+        out.append({"id": data["offset"] + i, "date": data["days"][d], "time": time, "glyph": data["glyphs"][y], **group})
+    return out
+
+
+def texts(world, data, ids):
+    query = urllib.parse.urlencode({"ids": ",".join(map(str, ids)), "rev": data["rev"]})
+    status, _, body = world.request("GET", f"/api/logrange?{query}", headers=world.cookie)
+    return status, json.loads(body)
+
+
+def test_the_log_range_answers_compact_rows_of_the_days_asked_with_what_a_log_row_needs_and_the_own_commits(world):
     logrange_rows(world)
     logrange_handlers(world)
     world.runner.calls.clear()
@@ -8742,18 +8757,74 @@ def test_the_log_range_answers_the_rows_of_the_days_asked_with_what_a_log_row_ne
                                                    "commits", "morning", "--section", "commits", "--since", "2026-10-03",
                                                    "--until", "2026-10-09"]]
     assert (data["ok"], data["from"], data["to"], data["first"], data["today"]) == (True, "2026-10-07", "2026-10-09", "2026-09-30", TODAY)
-    assert [(r["date"], r["time"]) for r in data["rows"]] == [("2026-10-09", "10:00"), ("2026-10-09", "09:30"),
-                                                              ("2026-10-09", "09:00"), ("2026-10-07", "16:00")]
-    task, closed = data["rows"][2], data["rows"][3]
-    assert task == {"date": "2026-10-09", "time": "09:00", "glyph": "x", "group": "demo-task", "title": "started the demo",
-                    "task": "demo-task", "about_task": None, "about_path": None}
-    assert (closed["task"], closed["about_task"], closed["about_path"]) == (None, "old-export", "work/done/2026-09/old-export")
+    # the rows without their text: day, time, glyph and the group, whose task fields stand once per group
+    rows = unpack(data)
+    assert [(r["date"], r["time"]) for r in rows] == [("2026-10-09", "10:00"), ("2026-10-09", "09:30"),
+                                                      ("2026-10-09", "09:00"), ("2026-10-07", "16:00")]
+    assert "title" not in json.dumps(data["rows"]) and data["total"] == 4
+    task, closed = rows[2], rows[3]
+    assert {k: task[k] for k in ("glyph", "name", "task", "about_task", "about_path", "kind")} == {
+        "glyph": "x", "name": "demo-task", "task": "demo-task", "about_task": None, "about_path": None, "kind": "task"}
+    assert (closed["task"], closed["about_task"], closed["about_path"], closed["kind"]) == (
+        None, "old-export", "work/done/2026-09/old-export", "done_task")
     assert data["repos"][0]["repo"] == "example/app" and data["repos_from"] == "2026-10-03"
+    # the text of the rows a list draws, by their ids
+    status, got = texts(world, data, [task["id"], closed["id"]])
+    assert status == 200 and got["texts"] == {str(task["id"]): "started the demo", str(closed["id"]): "export renamed"}
     # All from the first day: the row that stands in a raw week and in its summary comes once
     status, _, body = world.request("GET", "/api/logrange", headers=world.cookie)
     every = json.loads(body)
     assert every["from"] == "2026-09-30" and every["to"] == TODAY and every["repos"] is None
-    assert [r["title"] for r in every["rows"]].count("one row in two files") == 1
+    ids = [r["id"] for r in unpack(every)]
+    assert list(texts(world, every, ids)[1]["texts"].values()).count("one row in two files") == 1
+
+
+def test_the_log_range_finds_the_rows_that_hold_every_word_and_refuses_a_stale_answer(world):
+    logrange_rows(world)
+    logrange_handlers(world)
+    _, _, body = world.request("GET", "/api/logrange?from=2026-10-01&to=2026-10-09", headers=world.cookie)
+    data = json.loads(body)
+    rows = {r["id"]: r for r in unpack(data)}
+    query = urllib.parse.urlencode({"from": "2026-10-01", "to": "2026-10-09", "q": "DEMO  started", "rev": data["rev"]})
+    status, _, body = world.request("GET", f"/api/logrange?{query}", headers=world.cookie)
+    hits = json.loads(body)
+    # every word, case folded, in the text or the context, as the page's own filter reads a row
+    assert status == 200 and [rows[i]["time"] for i in hits["hits"]] == ["09:00"]
+    query = urllib.parse.urlencode({"from": "2026-10-01", "to": "2026-10-09", "q": "old-export", "rev": data["rev"]})
+    assert [rows[i]["name"] for i in json.loads(world.request("GET", f"/api/logrange?{query}", headers=world.cookie)[2])["hits"]] == ["old-export"]
+    # the log changed since: ids of the old answer no longer name the same rows
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-09 11:00 | x | other | a new row |\n", encoding="utf-8")
+    status, got = texts(world, data, [0])
+    assert status == 409 and got["error"]["code"] == "stale_row"
+    for bad, field in (("ids=a,b&rev=0123456789ab", "ids"), ("ids=" + ",".join(["1"] * 201) + "&rev=0123456789ab", "ids"), ("ids=1", "rev"),
+                       ("q=demo&sources=other&rev=x", "rev")):
+        status, _, body = world.request("GET", f"/api/logrange?{bad}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == field, bad
+
+
+def test_the_log_range_of_a_large_log_stays_small(world):
+    # a log the size of a busy year (8 300 rows of 900 characters) answers All in compact rows: well under 1.5 MB,
+    # where the rows with their text would weigh some 8 MB
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    import datetime as _dt
+    day0 = _dt.date(2025, 10, 1)
+    lines = []
+    for i in range(8300):
+        d = day0 + _dt.timedelta(days=i // 23)
+        lines.append(f"| {d.isoformat()} {8 + i % 11:02d}:{i % 60:02d} | 🔧 | topic-{i % 140} | {'word ' * 180}row {i} |")
+    # as an archive holds them: one file a week, each well under the 2 MB a file may have
+    weeks = world.root / "work" / "archive" / "weeks"
+    weeks.mkdir(parents=True)
+    for n in range(0, len(lines), 161):
+        (weeks / f"week-{n // 161:03d}-raw.md").write_text("\n".join(lines[n:n + 161]) + "\n", encoding="utf-8")
+    full = len(json.dumps(work_find.log_rows(world.root), ensure_ascii=False).encode("utf-8"))
+    logrange_handlers(world)
+    status, _, body = world.request("GET", "/api/logrange", headers=world.cookie)
+    assert status == 200 and json.loads(body)["total"] >= 8300
+    print(f"logrange All: compact {len(body)} B, with text {full} B")
+    assert len(body) < 1_500_000 and full > 7_000_000, (len(body), full)
 
 
 def test_the_log_range_keeps_the_log_it_read_until_a_file_of_it_changes(world):
@@ -8765,14 +8836,15 @@ def test_the_log_range_keeps_the_log_it_read_until_a_file_of_it_changes(world):
     log = world.root / "work" / "log.md"
     log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-09 11:00 | x | other | a new row |\n", encoding="utf-8")
     status, _, body = world.request("GET", "/api/logrange?from=2026-10-09&to=2026-10-09", headers=world.cookie)
-    assert len(world.runner.of("work-find.--rows")) == 2 and json.loads(body)["rows"][0]["title"] == "a new row"
+    data = json.loads(body)
+    assert len(world.runner.of("work-find.--rows")) == 2 and texts(world, data, [data["offset"]])[1]["texts"] == {str(data["offset"]): "a new row"}
 
 
 def test_the_log_range_refuses_what_it_does_not_take_and_says_so_when_it_fails(world):
     logrange_handlers(world)
     world.runner.calls.clear()
     for query, field in (("from=2026-13-01", "from"), ("to=yesterday", "to"), ("from=2026-10-09&to=2026-10-01", "to"),
-                         ("sources=everything", "sources"), ("q=demo", "q"), ("commits=../x", "commits"),
+                         ("sources=everything", "sources"), ("q=demo", "rev"), ("commits=../x", "commits"),
                          ("sources=other&q=x", "q"), ("sources=other&commits=commits", "commits")):
         status, _, body = world.request("GET", f"/api/logrange?{query}", headers=world.cookie)
         assert status == 400 and json.loads(body)["error"]["field"] == field, query

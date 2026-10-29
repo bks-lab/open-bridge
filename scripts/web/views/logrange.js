@@ -46,7 +46,12 @@ export function useLogRange(id, open = false) {
     else setValue(RANGE_STATES.get(id))
     return () => set.delete(setValue)
   }, [id])
-  return [value, next => publishRange(id, typeof next === 'function' ? next(RANGE_STATES.get(id) ?? todayRange()) : next)]
+  // the one that sets it shows it at once, also before its effect has subscribed it (a click right after the page stood)
+  return [value, next => {
+    const v = typeof next === 'function' ? next(RANGE_STATES.get(id) ?? todayRange()) : next
+    publishRange(id, v)
+    setValue(v)
+  }]
 }
 
 // ---------------------------------------------------------------- what a page's range holds
@@ -75,7 +80,7 @@ export function rangeSections(page) {
 const rowsKept = new WeakMap()     // the answer of /api/logrange -> its rows, sorted once
 
 /** The range resolved and its rows: {cur, asc (every row known, oldest first), rows (those of the range, newest first),
- *  first, repos, held} from the loaded answer where it holds the range, else today's rows of the section */
+ *  first, repos, held, compact} from the loaded answer where it holds the range, else today's rows of the section */
 export function rangeView(page, s, state) {
   const now = s.now || Date.now()
   const data = s.logRange?.status === 'ok' || s.logRange?.status === 'loading' ? s.logRange?.data ?? null : null
@@ -86,12 +91,14 @@ export function rangeView(page, s, state) {
   const { log } = rangeSections(page)
   let asc
   if (held || (data && !rangeOneDay(cur.from, cur.to))) {
-    if (!rowsKept.has(data)) rowsKept.set(data, logRangeRows(data.rows))
+    if (!rowsKept.has(data)) rowsKept.set(data, logRangeRows(data))
     asc = rowsKept.get(data)
   } else {
     asc = logTodayRows(s.more?.[`${page.id}/${log?.id}`]?.items ?? log?.items ?? [], now)
   }
-  return { cur, asc, rows: rangeSlice(asc, cur.from, cur.to), first, repos: data?.repos ?? null, held, want, now }
+  // compact: the rows came from the range's answer without their text (they carry an id), not from the section
+  return { cur, asc, rows: rangeSlice(asc, cur.from, cur.to), first, repos: data?.repos ?? null, held, want, now,
+    compact: asc.length > 0 && asc[0].id != null }
 }
 
 // ---------------------------------------------------------------- words

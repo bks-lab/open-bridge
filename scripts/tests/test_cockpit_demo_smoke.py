@@ -194,6 +194,9 @@ def test_the_demo_opens_the_files_tab_once_where_the_config_names_the_files_view
     page.goto(f"{base_url}?lang={lang}&work=files&focus_to_files=1")
     page.wait_for_selector(".pagebar-tabs [role=tab]")
     page.set_default_timeout(10_000)
+    # the first visit has settled (its first state moved the files and wrote the work tab's view): a write after the
+    # clear below would otherwise leave the reload a remembered view, the way a slower first state did
+    page.wait_for_function("() => window.localStorage.getItem('bridge-cockpit.workTab') !== null")
     # a fresh browser that was on the work tab: nothing else remembered, nothing seen; the reload keeps the page
     page.evaluate("() => { window.localStorage.clear(); window.localStorage.setItem('bridge-cockpit.page', 'briefing') }")
     page.reload()

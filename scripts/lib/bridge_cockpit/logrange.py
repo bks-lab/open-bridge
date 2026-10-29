@@ -4,16 +4,22 @@ commits of the page's commits section over it, and the history beside the log (m
 one entry each. Read only, every read a command through the runner (argv lists, timeouts), as /api/timeline.
 
     GET /api/logrange[?from=YYYY-MM-DD][&to=YYYY-MM-DD][&commits=<section id>]
-        {ok, from, to, first, today, total, rows [{date, time, glyph, group, title, task, about_task, about_path}],
-         repos [{repo, branch, url, ts}] | null, repos_from, skipped}
+        {ok, from, to, first, today, rev, offset, total, days, groups [{name, task, about_task, about_path, kind}],
+         glyphs, rows [[day, time, group, glyph]], repos [{repo, branch, url, ts}] | null, repos_from, skipped}
+    GET /api/logrange?ids=<id,...>&rev=<rev>                 {ok, rev, texts {id: text}}
+    GET /api/logrange?q=<words>&rev=<rev>[&from=…][&to=…]   {ok, rev, q, hits [id, ...]}
     GET /api/logrange?sources=other[&from=…][&to=…][&q=<words>]
         {ok, from, to, transcripts, events [{date, time, kind, source, path, folder}]}
 
-`from` defaults to the first day of the log, `to` to today; both days are in the range. The rows come newest first
-and carry what a log row of the page needs: its glyph, its context as `group`, the task it is (`task`, an open task
-or stream of that name) or is about (`about_task`, `about_path` for a closed one), the same lookup the collector
-makes for the rows of the day (collector.about_of). The page buckets them itself (scripts/web/logic.js), so a zoom,
-another bar width or the typed words never ask again.
+`from` defaults to the first day of the log, `to` to today; both days are in the range. The rows come newest first and
+compact, without their text: a row is its day, time, group and glyph as indexes into `days`, `groups` and `glyphs`,
+its id `offset` plus its place, and a group carries once what every row of it needs: the task it is (`task`, an open
+task or stream of that name) or is about (`about_task`, `about_path` for a closed one) and its work kind, the lookup
+the collector makes for the rows of the day (collector.about_of). A year of 8 000 rows of long text answers in under
+200 KB instead of some 8 MB. The text comes by id, a page of the list at a time; the words are found here, in the
+text and the context case folded as the page's own filter reads a row, and come back as ids. Ids and words name rows
+of one answer: a `rev` the log has changed since is refused (Stale, 409). The page buckets the rows itself
+(scripts/web/logic.js), so a zoom or another bar width never asks again.
 
 Kept: the whole log is read once (scripts/work-find.py --rows) and kept until a file of it changes (the size and
 the time of every file of work/log.md and work/archive/, a stat walk of a few hundred files); a range is cut from
@@ -25,6 +31,7 @@ in the range.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -38,6 +45,8 @@ DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
 SECTION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]*\Z")
 SOURCES = ("log", "other")
+REV_RE = re.compile(r"^[0-9a-f]{12}\Z")
+IDS_MAX = 200           # the texts one request asks for: two pages of the list
 TIMEOUT = 30            # one read of the whole log, of the commits or of the other history
 KEEP_S = 60             # how long the commits and the other history of one range stay kept
 KEEP_MAX = 16           # ranges kept of each
@@ -73,23 +82,30 @@ def check_days(one) -> dict:
 
 
 def check(one) -> dict:
-    """The parameters of a request as {since, until, sources, q, commits}; Refused for one it does not take"""
+    """The parameters of a request as {since, until, sources, q, commits, ids, rev}; Refused for one it does not take"""
     days = check_days(one)
     since, until = days["since"], days["until"]
     sources = one("sources") or "log"
     if sources not in SOURCES:
         raise Refused("sources", f"one of {', '.join(SOURCES)}")
-    q, commits = one("q") or None, one("commits") or None
+    q, commits, rev, ids = one("q") or None, one("commits") or None, one("rev") or None, one("ids") or None
+    if rev is not None and (sources != "log" or not REV_RE.match(rev)):
+        raise Refused("rev", "the rev of an answer of the log")
+    if ids is not None:
+        parts = ids.split(",")
+        if len(parts) > IDS_MAX or not all(x.isdigit() and len(x) <= 7 for x in parts):
+            raise Refused("ids", f"up to {IDS_MAX} row ids, comma separated")
+        ids = [int(x) for x in parts]
     if q is not None:
-        if sources != "other":
-            raise Refused("q", "words only with sources=other; the page filters the rows itself")
         try:
             q, _ = work_find.check_query(q)
         except ValueError as exc:
             raise Refused("q", str(exc)) from None
+    if sources == "log" and (q is not None or ids is not None) and rev is None:
+        raise Refused("rev", "words and ids name rows of one answer: its rev")
     if commits is not None and (sources != "log" or not SECTION_RE.match(commits)):
         raise Refused("commits", "a section id, only with the log")
-    return {"since": since, "until": until, "sources": sources, "q": q, "commits": commits}
+    return {"since": since, "until": until, "sources": sources, "q": q, "commits": commits, "ids": ids, "rev": rev}
 
 
 def _last_line(run) -> dict | None:
@@ -98,6 +114,10 @@ def _last_line(run) -> dict | None:
     except (ValueError, IndexError):
         return None
     return data if isinstance(data, dict) else None
+
+
+class Stale(ValueError):
+    """Ids or words that name rows of an answer the log has changed since"""
 
 
 class LogRange:
@@ -154,10 +174,15 @@ class LogRange:
                 # stream or closed one it is about (collector.about_of), so its file opens from the row
                 task = group if TASK_RE.match(group) and kind in ("task", "stream") else None
                 found = about_of({"group": group, "task": task}, app.root, known)
-                about[group] = {"task": task, "about_task": found["about_task"], "about_path": found["about_path"]}
+                about[group] = {"task": task, "about_task": found["about_task"], "about_path": found["about_path"],
+                                "kind": og.work_kind(task or found["about_task"], known)}
             rows.append({"date": r.get("date"), "time": r.get("time"), "glyph": r.get("glyph") or None, "group": group or None,
-                         "title": str(r.get("text") or "").replace("**", ""), **about[group]})
-        kept = {"first": data.get("first"), "rows": app.scrub_tree(rows)}
+                         "title": str(r.get("text") or "").replace("**", "")})
+        rows = app.scrub_tree(rows)
+        # what the word filter reads of a row, as the page's own filter does: its text and its context, case folded
+        low = [f"{r['title']} {r['group'] or ''}".lower() for r in rows]
+        rev = hashlib.sha256(repr(mark).encode("utf-8")).hexdigest()[:12]
+        kept = {"first": data.get("first"), "rows": rows, "low": low, "about": app.scrub_tree(about), "rev": rev}
         with self.lock:
             self.rows_kept = (mark, kept)
         return kept
@@ -217,9 +242,33 @@ class LogRange:
             got = self.events(since, until, params["q"])
             return {"ok": True, "from": params["since"], "to": until, **got}
         log = self.all_rows()
+        rows = log["rows"]
+        if params["rev"] is not None and params["rev"] != log["rev"]:
+            raise Stale("the log changed since this answer; ask for the range again")
+        if params["ids"] is not None:
+            return {"ok": True, "rev": log["rev"], "texts": {str(i): rows[i]["title"] for i in params["ids"] if i < len(rows)}}
         since, until = params["since"] or log["first"] or today, params["until"] or today
-        rows = [r for r in log["rows"] if since <= (r["date"] or "") <= until]
-        out = {"ok": True, "from": since, "to": until, "first": log["first"], "today": today, "total": len(rows), "rows": rows,
+        # the rows stand newest first, so the days of a range are one run of them
+        at = [i for i, r in enumerate(rows) if since <= (r["date"] or "") <= until]
+        lo, hi = (at[0], at[-1] + 1) if at else (0, 0)
+        if params["q"] is not None:
+            words = work_find.check_query(params["q"])[1]
+            return {"ok": True, "rev": log["rev"], "q": params["q"],
+                    "hits": [i for i in range(lo, hi) if all(w in log["low"][i] for w in words)]}
+        days, groups, glyphs, packed = [], [], [], []
+        index: dict = {"d": {}, "g": {}, "y": {}}
+
+        def ref(kind, value, out, entry):
+            if value not in index[kind]:
+                index[kind][value] = len(out)
+                out.append(entry)
+            return index[kind][value]
+        for r in rows[lo:hi]:
+            packed.append([ref("d", r["date"], days, r["date"]), r["time"],
+                           ref("g", r["group"], groups, {"name": r["group"], **log["about"].get(r["group"] or "", {})}),
+                           ref("y", r["glyph"], glyphs, r["glyph"])])
+        out = {"ok": True, "from": since, "to": until, "first": log["first"], "today": today, "rev": log["rev"], "offset": lo,
+               "total": hi - lo, "days": days, "groups": groups, "glyphs": glyphs, "rows": packed,
                "repos": None, "repos_from": None, "skipped": []}
         if params["commits"]:
             week = (dt.date.fromisoformat(today) - dt.timedelta(days=WEEK - 1)).isoformat()

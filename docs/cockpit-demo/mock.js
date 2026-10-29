@@ -563,6 +563,18 @@ function openCount(sections, hidden, files, taskRows = [], deferred = []) {
   return keys.size
 }
 
+// the log page's time range (/api/logrange): six invented weeks of log rows, the own commits of four invented
+// repositories and the history beside the log, the same every time for the same day (a seeded sequence)
+const LOG_TOPICS = [
+  ['demo-task', '🔧', ['Guide chapter on the vendor export written', 'Examples collected for the guide', 'Screenshots of the setup taken']],
+  ['docs-refresh', '📝', ['Docs index checked and the links repaired', 'Two pages of the docs merged', 'Folder layout of the docs drafted']],
+  ['alpha-release', '🚀', ['Release notes drafted', 'Tag pushed after the review', 'Changelog linked to the pull requests']],
+  ['billing', '✅', ['Invoice export renamed', 'Gateway retry moved to the night run', 'Gateway retry planned with the vendor']],
+  ['ops', '🔍', ['Disk cleaned on the build machine', 'Backup checked, the copy is fresh', 'Night run watched, all green']],
+  ['weekly-digest', '💬', ['Weekly digest sent', 'Topics of the digest collected']]]
+const LOG_REPOS = [['example/app', 'main', 5], ['example/tools', 'dev', 2], ['example/docs', 'main', 3], ['example/site', 'main', 1]]
+const LOG_DAYS = 42
+
 /** The daily log page (views/logpage.js with its time range): today's rows of the invented log under their hours, the
  *  own commits of the last seven days as tiles beside them; the range reads the rest from /api/logrange */
 function logPage(now, item) {
@@ -1261,18 +1273,6 @@ const DEMO_HISTORY = [
     line: 6, text: DONE_FILE.lines[1], folder: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}` },
 ]
 
-// the log page's time range (/api/logrange): six invented weeks of log rows, the own commits of four invented
-// repositories and the history beside the log, the same every time for the same day (a seeded sequence)
-const LOG_TOPICS = [
-  ['demo-task', '🔧', ['Guide chapter on the vendor export written', 'Examples collected for the guide', 'Screenshots of the setup taken']],
-  ['docs-refresh', '📝', ['Docs index checked and the links repaired', 'Two pages of the docs merged', 'Folder layout of the docs drafted']],
-  ['alpha-release', '🚀', ['Release notes drafted', 'Tag pushed after the review', 'Changelog linked to the pull requests']],
-  ['billing', '✅', ['Invoice export renamed', 'Gateway retry moved to the night run', 'Gateway retry planned with the vendor']],
-  ['ops', '🔍', ['Disk cleaned on the build machine', 'Backup checked, the copy is fresh', 'Night run watched, all green']],
-  ['weekly-digest', '💬', ['Weekly digest sent', 'Topics of the digest collected']]]
-const LOG_REPOS = [['example/app', 'main', 5], ['example/tools', 'dev', 2], ['example/docs', 'main', 3], ['example/site', 'main', 1]]
-const LOG_DAYS = 42
-
 function seeded(seed) {
   let x = seed >>> 0 || 1
   return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296 }
@@ -1319,9 +1319,23 @@ function logRangeOf(params, nowMs) {
     const events = demo.events.filter(e => words.every(w => `${e.source} ${e.kind}`.toLowerCase().includes(w)))
     return { ok: true, from: params.get('from'), to: params.get('to') ?? demo.today, transcripts: true, events }
   }
+  // as logrange.py answers: the rows compact (day, time, group, glyph by index), the text by id, the words found here
+  const rev = `${demo.today.replace(/-/g, '')}0000`
+  if (params.get('rev') && params.get('rev') !== rev) return { stale: true }
+  if (params.get('ids')) {
+    return { ok: true, rev, texts: Object.fromEntries(params.get('ids').split(',').map(Number).filter(i => demo.rows[i]).map(i => [String(i), demo.rows[i].title])) }
+  }
   const from = params.get('from') || demo.first, to = params.get('to') || demo.today
-  const rows = demo.rows.filter(r => r.date >= from && r.date <= to)
-  return { ok: true, from, to, first: demo.first, today: demo.today, total: rows.length, rows,
+  const ids = demo.rows.flatMap((r, i) => (r.date >= from && r.date <= to ? [i] : []))
+  if (params.get('q')) {
+    const words = String(params.get('q')).toLowerCase().split(/\s+/).filter(Boolean)
+    return { ok: true, rev, q: params.get('q'), hits: ids.filter(i => words.every(w => `${demo.rows[i].title} ${demo.rows[i].group}`.toLowerCase().includes(w))) }
+  }
+  const days = [], groups = [], glyphs = []
+  const at = (list, key, entry = key) => { let i = list.findIndex(x => (x?.name ?? x) === key); if (i < 0) { i = list.length; list.push(entry) } return i }
+  const rows = ids.map(i => { const r = demo.rows[i]; return [at(days, r.date), r.time, at(groups, r.group, { name: r.group, task: null, about_task: r.about_task,
+    about_path: null, kind: r.about_task ? 'task' : null }), at(glyphs, r.glyph)] })
+  return { ok: true, from, to, first: demo.first, today: demo.today, rev, offset: ids[0] ?? 0, total: rows.length, days, groups, glyphs, rows,
     repos: params.get('commits') ? demo.repos : null, repos_from: params.get('commits') ? demo.first : null, skipped: [] }
 }
 
@@ -2156,7 +2170,8 @@ export function createMockTransport(opts = {}) {
       if (url.pathname === '/api/logrange') {
         const day = /^\d{4}-\d{2}-\d{2}$/
         for (const k of ['from', 'to']) if (url.searchParams.get(k) && !day.test(url.searchParams.get(k))) return fail(400, 'invalid_argument', 'not a day (YYYY-MM-DD)')
-        return ok(logRangeOf(url.searchParams, now()))
+        const got = logRangeOf(url.searchParams, now())
+        return got.stale ? fail(409, 'stale_row', 'the log changed since this answer') : ok(got)
       }
       if (url.pathname === '/api/timeline') {
         const q = String(url.searchParams.get('q') ?? '')

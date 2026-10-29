@@ -68,15 +68,19 @@ test('rows count per bar, and per kind for the stacked chart', () => {
   assert.deepEqual(logic.rangeCounts(items, edges, it => it.kind), { did: [1, 0, 1], closed: [1, 0, 0] })
 })
 
-test('the rows of a range newest first, from the answer of /api/logrange or from the section of today', () => {
-  const rows = logic.logRangeRows([
-    { date: '2026-10-29', time: '09:15', glyph: '🔧', group: 'billing', title: 'Gateway retry moved', task: null, about_task: 'billing', about_path: null },
-    { date: '2026-10-27', time: '17:00', glyph: '📝', group: 'docs', title: 'Docs checked', task: 'docs', about_task: null, about_path: null }])
-  assert.deepEqual(rows.map(r => [r.day, r.when, r.index]), [['2026-10-27', '17:00', 100000], ['2026-10-29', '09:15', 100001]])
-  assert.deepEqual({ ...rows[1], ts: 0 }, { index: 100001, title: 'Gateway retry moved', when: '09:15', glyph: '🔧', group: 'billing', detail: 'billing',
-    tone: null, task: null, about_task: 'billing', about_path: null, day: '2026-10-29', ts: 0 })
-  assert.deepEqual(logic.rangeSlice(rows, at(29), at(30)).map(r => r.title), ['Gateway retry moved'])
-  assert.deepEqual(logic.rangeSlice(rows, at(27), at(30)).map(r => r.title), ['Gateway retry moved', 'Docs checked'])
+test('the rows of a range newest first, from the compact answer of /api/logrange or from the section of today', () => {
+  // the answer comes newest first, each row [day, time, group, glyph] by index, its id its offset plus its place
+  const data = { offset: 40, rev: 'abcdef012345', days: ['2026-10-29', '2026-10-27'], glyphs: ['🔧', '📝'],
+    groups: [{ name: 'billing', task: null, about_task: 'billing', about_path: null, kind: 'stream' },
+      { name: 'docs', task: 'docs', about_task: null, about_path: null, kind: 'task' }],
+    rows: [[0, '09:15', 0, 0], [1, '17:00', 1, 1]] }
+  const rows = logic.logRangeRows(data)
+  assert.deepEqual(rows.map(r => [r.day, r.when, r.id, r.index]), [['2026-10-27', '17:00', 41, 100041], ['2026-10-29', '09:15', 40, 100040]])
+  assert.deepEqual({ ...rows[1], ts: 0, origin: null }, { index: 100040, id: 40, title: null, when: '09:15', glyph: '🔧', group: 'billing', detail: 'billing',
+    tone: null, task: null, about_task: 'billing', about_path: null, work_kind: 'stream', day: '2026-10-29', ts: 0, origin: null })
+  assert.equal(rows[1].origin.category, 'bridge')
+  assert.deepEqual(logic.rangeSlice(rows, at(29), at(30)).map(r => r.id), [40])
+  assert.deepEqual(logic.rangeSlice(rows, at(27), at(30)).map(r => r.id), [40, 41])
   // the section's rows of today: `at` where they carry it, else their time today; a row of another day stays out
   const today = logic.logTodayRows([{ index: 0, title: 'b', when: '13:42' }, { index: 1, title: 'a', when: '09:00', at: '2026-10-29T09:00' },
     { index: 2, title: 'old', when: 'Tue' }, { index: 3, title: 'yesterday', when: '23:00', at: '2026-10-28T23:00' }], NOW)
@@ -140,16 +144,27 @@ const PAGE = { id: 'day', title: 'Daily log', search: true, sections: [
   { id: 'activity', kind: 'activity', view: 'log', title: 'Log today', status: 'ok', alarm: false, empty: 'no line yet', count: 3, total: 3, items: TODAY_ROWS },
   { id: 'commits', kind: 'commits', place: 'rail', title: 'Repos, 7 days', status: 'ok', alarm: false, empty: 'none', count: 1, total: 1, items: REPOS }] }
 
-// what /api/logrange answered for the last 30 days: today's three rows, and some on the days before
-const row = (date, time, group, title, glyph = 'x') => ({ date, time, glyph, group, title, task: null, about_task: null, about_path: null })
-const RANGE = { ok: true, from: '2026-09-30', to: '2026-10-29', first: '2026-03-17', today: '2026-10-29', total: 7, repos_from: '2026-09-30', skipped: [],
-  rows: [row('2026-10-29', '13:42', 'billing', 'Gateway retry moved to the night run', '🔧'), row('2026-10-29', '13:05', 'docs', 'Docs index checked and the links repaired', '📝'),
-    row('2026-10-29', '09:15', 'billing', 'Invoice export renamed', '✅'), row('2026-10-28', '16:00', 'release', 'Release notes drafted'),
-    row('2026-10-27', '10:30', 'billing', 'Gateway retry planned'), row('2026-10-27', '08:00', 'ops', 'Disk cleaned'), row('2026-10-20', '11:00', 'docs', 'Guide outlined')],
+// what /api/logrange answered for the last 30 days: today's three rows, and some on the days before, as the server packs
+// them (rows without their text, the text by id from logText)
+const row = (date, time, group, title, glyph = 'x') => ({ date, time, glyph, group, title })
+const ROWS = [row('2026-10-29', '13:42', 'billing', 'Gateway retry moved to the night run', '🔧'), row('2026-10-29', '13:05', 'docs', 'Docs index checked and the links repaired', '📝'),
+  row('2026-10-29', '09:15', 'billing', 'Invoice export renamed', '✅'), row('2026-10-28', '16:00', 'release', 'Release notes drafted'),
+  row('2026-10-27', '10:30', 'billing', 'Gateway retry planned'), row('2026-10-27', '08:00', 'ops', 'Disk cleaned'), row('2026-10-20', '11:00', 'docs', 'Guide outlined')]
+const REV = '0123456789ab'
+function pack(rows, tasks = {}) {
+  const days = [], groups = [], glyphs = [], at = (list, v, entry = v) => { let i = list.findIndex(x => (x.name ?? x) === v); if (i < 0) { i = list.length; list.push(entry) } return i }
+  const packed = rows.map(r => [at(days, r.date), r.time, at(groups, r.group, { name: r.group, task: tasks[r.group] ?? null, about_task: null, about_path: null,
+    kind: tasks[r.group] ? 'task' : null }), at(glyphs, r.glyph)])
+  return { rev: REV, offset: 0, total: rows.length, days, groups, glyphs, rows: packed }
+}
+const TEXTS = { rev: REV, texts: Object.fromEntries(ROWS.map((r, i) => [String(i), r.title])) }
+const RANGE = { ok: true, from: '2026-09-30', to: '2026-10-29', first: '2026-03-17', today: '2026-10-29', repos_from: '2026-09-30', skipped: [], ...pack(ROWS),
   repos: [
     { repo: 'example/app', branch: 'main', url: 'https://github.com/example/app/commits/main', ts: [sec(at(29, 9)), sec(at(29, 10)), sec(at(27, 9))] },
     { repo: 'example/tools', branch: 'dev', url: null, ts: [sec(at(28, 15))] },
     ...['a', 'b', 'c', 'd', 'e', 'f'].map((x, i) => ({ repo: `example/${x}`, branch: 'main', url: null, ts: [sec(at(29, 8 + i))] }))] }
+/** The ids the server would find for some words: every word in the text or the context */
+const hitsOf = q => ({ q, rev: REV, status: 'ok', ids: ROWS.flatMap((r, i) => (q.toLowerCase().split(/\s+/).every(w => `${r.title} ${r.group}`.toLowerCase().includes(w)) ? [i] : [])) })
 
 function state(over = {}) {
   const s = cockpitState(NOW)
@@ -158,7 +173,7 @@ function state(over = {}) {
   s.jev = { ...s.jev, enabled: false }
   return { ...s, ...over }
 }
-const loaded = (over = {}) => state({ logRange: { from: '2026-09-30', to: '2026-10-29', status: 'ok', data: RANGE, error: null }, ...over })
+const loaded = (over = {}) => state({ logRange: { from: '2026-09-30', to: '2026-10-29', status: 'ok', data: RANGE, error: null }, logText: TEXTS, ...over })
 const page = (s, c = recorder()) => mount(html`<${components.PageView} s=${s} c=${c} />`)
 const preset = (el, label) => el.$$('.logr-presets button').find(b => b.text() === label)
 const radio = (el, label) => el.$$('.psearch-seg button').find(b => b.text() === label)
@@ -264,9 +279,9 @@ function barOf(el, ms) {
   return logic.barOf(edges, ms)
 }
 
-test('a row of an earlier day opens as a row of today does: its details and the file of its task', async () => {
+test('a row of an earlier day opens as a row of today does: its day in the detail, the log as its origin, the file of its task', async () => {
   const c = recorder()
-  const rows = { ...RANGE, rows: RANGE.rows.map(r => (r.title === 'Release notes drafted' ? { ...r, task: 'release-notes' } : r)) }
+  const rows = { ...RANGE, ...pack(ROWS, { release: 'release-notes' }) }
   const el = page(loaded({ logRange: { from: '2026-09-30', to: '2026-10-29', status: 'ok', data: rows, error: null } }), c)
   preset(el, 'Yesterday').click()
   await tick()
@@ -278,7 +293,23 @@ test('a row of an earlier day opens as a row of today does: its details and the 
   el.$('.logp-main .logv-row').button(en.logPage.open).click()
   assert.deepEqual(c.calls.find(x => x[0] === 'openFile'), ['openFile', 'release-notes', null])
   const [, it, pageId, sectionId] = c.calls.find(x => x[0] === 'openInfo')
-  assert.deepEqual([it.title, it.day, pageId, sectionId], ['Release notes drafted', '2026-10-28', 'day', 'activity'])
+  // the detail names the day and the time, and where the row comes from: the work log of this Bridge
+  assert.deepEqual([it.title, it.when, pageId, sectionId], ['Release notes drafted', 'Wed 28 Oct 2026, 16:00', 'day', 'activity'])
+  const { OriginTag } = (await loadCockpit()).views.day
+  const tag = mount(html`<${OriginTag} row=${logic.itemRow(it)} />`)
+  assert.match(tag.text(), new RegExp(`${en.origin.bridge}.*${en.logPage.origin}`))
+  assert.doesNotMatch(tag.text(), new RegExp(en.originUnknown))
+})
+
+test('the list asks for the text of the rows it draws only, and draws them once they come', async () => {
+  const c = recorder()
+  const el = page(loaded({ logText: null }), c)
+  preset(el, '7 days').click()
+  await tick()
+  assert.equal(el.$$('.logp-main .logv-row').length, 6)
+  assert.ok(el.$('.logp-main .logv-row .logv-wait'), 'a row without its text yet says so')
+  await tick()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'loadLogText').at(-1), ['loadLogText', { rev: REV, ids: [0, 1, 2, 3, 4, 5] }])
 })
 
 test('the bar width: automatic by default, any width that fits to choose', async () => {
@@ -293,7 +324,8 @@ test('the bar width: automatic by default, any width that fits to choose', async
 })
 
 test('In range filters the rows of the range as one types, the chart then shows only the hits; the topics and the tiles follow the range', async () => {
-  const el = page(loaded())
+  const c = recorder()
+  let el = page(loaded(), c)
   assert.equal(radio(el, en.pageSearch.mode.range).getAttribute('aria-checked'), 'true')
   preset(el, '7 days').click()
   await tick()
@@ -305,6 +337,14 @@ test('In range filters the rows of the range as one types, the chart then shows 
   assert.equal(tiles[0].$('.logp-name').text(), 'example/app')
   assert.equal(tiles[0].$('.logp-big').text(), '3 commits')
   assert.match(el.$('.logp-rail .logp-quiet').text(), /example\/f 1/)
+  // the words are found on the server (the rows came without their text); its hits filter the rows, the chart and the topics
+  await type(el, 'gateway')
+  assert.equal(el.$('.logr-count').text(), en.logRange.searching)
+  await new Promise(r => setTimeout(r, 400))
+  assert.deepEqual(c.calls.filter(x => x[0] === 'loadLogHits').at(-1), ['loadLogHits', { q: 'gateway', rev: REV, from: '2026-09-30', to: '2026-10-29' }])
+  el = page(loaded({ logHits: hitsOf('gateway') }), c)
+  preset(el, '7 days').click()
+  await tick()
   await type(el, 'gateway')
   assert.equal(el.$('.logr-count').text(), en.logRange.hits(2, 6))
   assert.equal(el.$$('.logp-main .logv-row').length, 2)
@@ -337,6 +377,7 @@ test('Every day switches to All, its chart stacks the log rows with the meetings
   assert.deepEqual(c.calls.filter(x => x[0] === 'searchTimeline').at(-1), ['searchTimeline', 'gateway retry', { from: null, to: '2026-10-29' }])
   // the chart counts the entries that hold the words: asked for once the typing pauses; all of them stood loaded before
   assert.deepEqual(c.calls.filter(x => x[0] === 'loadLogEvents'), [['loadLogEvents', 'gateway retry']])
+  assert.deepEqual(c.calls.filter(x => x[0] === 'loadLogHits').at(-1), ['loadLogHits', { q: 'gateway retry', rev: REV, from: null, to: '2026-10-29' }])
 })
 
 test('Ask AI asks within the range', async () => {

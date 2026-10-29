@@ -31,7 +31,7 @@ function logRows(page, s) {
  *  A row of a task (`task`) or about one, a stream or a closed one (`about_task`, its context) carries a file mark and,
  *  open, the way to its file. With `days` (a range over several days) the heads are the days, each with its count and,
  *  with `onDay`, a button that picks that day alone; `reset` starts from the first rows again when it changes */
-export function LogRows({ items, page, section, c, words = '', days = false, onDay = null, reset = '' }) {
+export function LogRows({ items, page, section, c, words = '', days = false, onDay = null, reset = '', texts = null, need = null }) {
   const w = T().logPage
   const lang = language()
   // how many rows stand, counted for the words typed and the range: new words or a new range start from the first rows
@@ -44,7 +44,15 @@ export function LogRows({ items, page, section, c, words = '', days = false, onD
   const rest = items.length - shown
   const perDay = new Map()
   if (days) for (const it of items) perDay.set(it.day, (perDay.get(it.day) ?? 0) + 1)
-  const groups = days ? logDays(items.slice(0, shown)) : logHours(items.slice(0, shown))
+  const visible = items.slice(0, shown)
+  const groups = days ? logDays(visible) : logHours(visible)
+  // a row of the range comes without its text: the rows drawn ask for theirs (`need`), the text map holds what came
+  const titleOf = it => it.title ?? texts?.[it.id] ?? null
+  const missing = need ? visible.filter(it => it.id != null && titleOf(it) == null).map(it => it.id) : []
+  useEffect(() => { if (missing.length) need(missing) }, [missing.join(',')])
+  // the detail of a row of the range names its day with the time, and the work log as where it comes from
+  const info = it => (it.id != null ? { ...it, title: titleOf(it) ?? '', when: `${rangeDay(dayTime(it.day, '12:00'), lang)}, ${it.when}`,
+    origin: { ...(it.origin ?? {}), detail: w.origin } } : it)
   return html`<div class="logv">
     ${groups.map((h, hi) => html`<section class="logv-hour" key=${`${h.key}-${hi}`}>
       ${days ? html`<h3 class="logv-head logv-dayhead"><span class="logv-day">${rangeDay(dayTime(h.key, '12:00'), lang)}</span>
@@ -59,11 +67,11 @@ export function LogRows({ items, page, section, c, words = '', days = false, onD
           <button type="button" class="logv-btn" aria-expanded=${String(on)} onClick=${() => toggle(it.index)}>
             <span class="logv-time mono">${it.when}</span>
             <span class="logv-glyph" aria-hidden="true">${it.glyph ?? '·'}</span>
-            <span class="logv-text">${file ? html`<span class="logv-file" title=${w.hasFile}><${Icon} name="file" size=${12} /><span class="sr-only">${w.hasFile}</span></span> ` : null}${it.group ? html`<span class="logv-ctx"><${Marked} text=${it.group} words=${marks} /></span> ` : null}<${Marked} text=${it.title} words=${marks} /></span>
+            <span class="logv-text">${file ? html`<span class="logv-file" title=${w.hasFile}><${Icon} name="file" size=${12} /><span class="sr-only">${w.hasFile}</span></span> ` : null}${it.group ? html`<span class="logv-ctx"><${Marked} text=${it.group} words=${marks} /></span> ` : null}${titleOf(it) == null ? html`<span class="logv-wait muted">${w.waiting}</span>` : html`<${Marked} text=${titleOf(it)} words=${marks} />`}</span>
           </button>
           ${on ? html`<span class="logv-acts">${file ? html`<${Btn} size="xs" variant="secondary" icon="file"
               onClick=${() => c.openFile(file, it.task ? null : it.about_path ?? null)}>${w.openFile}<//>` : null}
-            <button type="button" class="btn-link small logv-open" onClick=${() => c.openInfo(it, page, section)}>${w.open}</button></span>` : null}
+            <button type="button" class="btn-link small logv-open" onClick=${() => c.openInfo(info(it), page, section)}>${w.open}</button></span>` : null}
         </li>`
       })}</ul>
     </section>`)}
@@ -227,7 +235,13 @@ function RangedLogPage({ page, s, c, draw }) {
   const body = (q, parts = {}) => html`<${RangeBody} page=${page} s=${s} c=${c} draw=${draw} v=${v} state=${state} set=${set}
     log=${log} commits=${commits} q=${q} parts=${parts} />`
   if (!page.search) return body('')
-  const none = words => !holding(v.rows, words).length
+  const none = words => {
+    if (!v.compact) return !holding(v.rows, words).length
+    const h = s.logHits
+    if (!h || h.q !== words || h.status !== 'ok' || h.rev !== s.logRange?.data?.rev) return false
+    const ids = new Set(h.ids)
+    return !v.rows.some(it => ids.has(it.id))
+  }
   return html`<${PageSearch} page=${page} s=${s} c=${c} split render=${body} days=${want} none=${none} />`
 }
 
@@ -251,7 +265,21 @@ function RangeBody({ page, s, c, draw, v, state, set, log, commits, q, parts }) 
   }, [asked])
   const main = (page.sections ?? []).filter(sec => sec.place !== 'rail' && sec !== log)
   const rail = (page.sections ?? []).filter(sec => sec.place === 'rail' && sec !== commits)
-  const byWords = holding(v.rows, q)
+  // rows of the range come without their text: the server finds the words (c.loadLogHits) and hands their ids back,
+  // and sends the text of the rows the list draws (c.loadLogText); today's rows of the section filter here
+  const rev = v.compact ? s.logRange?.data?.rev ?? null : null
+  const hq = mode === 'all' ? (typed.length >= 2 ? typed : '') : q
+  const hits = rev && hq && s.logHits?.q === hq && s.logHits.rev === rev && s.logHits.status === 'ok' ? new Set(s.logHits.ids) : null
+  useEffect(() => {
+    if (!rev || !hq || hits || (s.logHits?.q === hq && s.logHits.rev === rev && s.logHits.status === 'loading')) return undefined
+    const wait = setTimeout(() => c.loadLogHits({ q: hq, rev, from: s.logRange.from, to: s.logRange.to }), 300)
+    return () => clearTimeout(wait)
+  }, [rev, hq, !!hits])
+  const found = (rows, words) => (!words ? rows : !rev ? holding(rows, words) : hits ? rows.filter(it => hits.has(it.id)) : null)
+  const texts = rev && s.logText?.rev === rev ? s.logText.texts : null
+  const need = rev ? ids => c.loadLogText({ rev, ids }) : null
+  const searching = found(v.rows, q) === null
+  const byWords = found(v.rows, q) ?? v.rows
   const topics = logTopics(byWords)
   const on = topics.some(([name]) => name === topic) ? topic : null
   const shown = on ? byWords.filter(it => it.group === on) : byWords
@@ -261,9 +289,9 @@ function RangeBody({ page, s, c, draw, v, state, set, log, commits, q, parts }) 
   let series = [{ kind: 'did', items: filtering ? shown : v.rows }]
   if (mode === 'all') {
     const events = eventTimes(s.logEvents?.data?.events).filter(e => e.ts >= v.cur.from && e.ts < v.cur.to)
-    series = RANGE_KINDS.map(([kind]) => ({ kind, items: kind === 'did' ? holding(v.rows, typed) : events.filter(e => e.kind === kind) }))
+    series = RANGE_KINDS.map(([kind]) => ({ kind, items: kind === 'did' ? found(v.rows, hq) ?? v.rows : events.filter(e => e.kind === kind) }))
   }
-  const count = filtering ? wr.hits(shown.length, v.rows.length) : wr.lines(v.rows.length)
+  const count = searching ? wr.searching : filtering ? wr.hits(shown.length, v.rows.length) : wr.lines(v.rows.length)
   const keyText = filtering ? wr.keyHits(q, on) : wr.kinds.did
   const onDay = day => set(st => ({ ...st, back: [...st.back, st.range], range: { from: dayTime(day, '00:00'), to: shiftDays(dayTime(day, '00:00'), 1) } }))
   const title = v.cur.preset === 'today' ? log.title : w.inRange
@@ -272,7 +300,9 @@ function RangeBody({ page, s, c, draw, v, state, set, log, commits, q, parts }) 
     <header class="psec-head"><h2 class="sec-title" id=${`ps-${page.id}-${log.id}`}>${title}
       <span class="sec-count mono">${shown.length}</span>${on ? html`<span class="muted"> · ${on}</span>` : null}</h2></header>
     ${s.logRange?.status === 'error' && !v.held ? html`<p class="muted small"><${StateLine} token="warning" word=${wr.error(s.logRange.error ?? '')} /></p>` : null}
-    ${shown.length ? html`<${LogRows} items=${shown} page=${page.id} section=${log.id} c=${c} words=${q} days=${!oneDay} onDay=${onDay} reset=${reset} />`
+    ${searching ? html`<p class="muted logr-empty">${wr.searching}</p>`
+      : shown.length ? html`<${LogRows} items=${shown} page=${page.id} section=${log.id} c=${c} words=${q} days=${!oneDay} onDay=${onDay} reset=${reset}
+        texts=${texts} need=${need} />`
       : html`<p class="muted logr-empty">${(q || on) && v.rows.length ? t.filterNone : v.cur.preset === 'today' && log.empty ? log.empty : wr.none}
         ${v.cur.preset !== 'all' ? html` <button type="button" class="btn-link" onClick=${() => set(st => ({ ...st, back: [...st.back, st.range], range: { preset: 'all' } }))}>${wr.preset.all}</button> ${wr.searchAll}` : null}</p>`}
   </section>`

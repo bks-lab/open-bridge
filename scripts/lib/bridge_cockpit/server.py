@@ -46,7 +46,7 @@ from . import model as m
 from .actions import ActionError, Actions
 from .actions_base import SPEC, note_go
 from .collector import Collector
-from .logrange import LogRange, Refused, check as check_logrange, check_days as check_range
+from .logrange import LogRange, Refused, Stale as LogStale, check as check_logrange, check_days as check_range
 from .daybook import DayBook
 from .returns import Launches
 from .launch import LaunchError, LaunchModel
@@ -1183,6 +1183,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 self.send_json(200, app.logrange.view(params))
+            except LogStale as exc:
+                self.send_error_json("stale_row", str(exc))
             except ValueError as exc:
                 self.send_error_json("unreadable", app.scrub(str(exc))[-200:])
         elif path == "/api/records":

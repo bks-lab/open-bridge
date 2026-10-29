@@ -1693,16 +1693,23 @@ export function dayTime(day, time) {
   return new Date(y, mo - 1, d, h, mi).getTime()
 }
 
-/** The rows /api/logrange answered as rows of the log (views/logpage.js LogRows), oldest first, each with its moment
- *  (`ts`), its day and an index of its own beside the drawn section's */
-export function logRangeRows(rows) {
-  // the answer comes newest first: oldest first here, rows of one minute in the opposite order, so that a range read
+/** Where a row of the range comes from, for its detail: the work log of this Bridge (the view names it) */
+export const LOG_ORIGIN = Object.freeze({ category: 'bridge', word_key: null, detail: null, raw: 'work/log.md', ref: null, via_cockpit: false })
+
+/** The compact rows /api/logrange answered (newest first, each [day, time, group, glyph] by index into `days`,
+ *  `groups`, `glyphs`, its id `offset` plus its place) as rows of the log (views/logpage.js LogRows), oldest first,
+ *  each with its moment (`ts`), its day, its id and an index of its own beside the drawn section's. The text comes
+ *  apart, by id (logText): `title` stays null here */
+export function logRangeRows(data) {
+  const groups = data?.groups ?? [], days = data?.days ?? [], glyphs = data?.glyphs ?? []
+  // newest first in the answer: oldest first here, rows of one minute in the opposite order, so that a range read
   // back newest first (rangeSlice) keeps them as they came
-  return (rows ?? []).map((r, at) => ({ ...r, at, ts: dayTime(r.date, r.time) }))
-    .sort((a, b) => a.ts - b.ts || b.at - a.at)
-    .map((r, i) => ({ index: 100000 + i, title: r.title ?? '', when: r.time ?? '', glyph: r.glyph ?? null, group: r.group ?? null,
-      detail: r.group ?? '', tone: null, task: r.task ?? null, about_task: r.about_task ?? null, about_path: r.about_path ?? null,
-      day: r.date, ts: r.ts }))
+  return (data?.rows ?? []).map(([d, time, g, y], at) => {
+    const day = days[d], grp = groups[g] ?? {}, id = (data.offset ?? 0) + at
+    return { index: 100000 + id, id, title: null, when: time ?? '', glyph: glyphs[y] ?? null, group: grp.name ?? null, detail: grp.name ?? '',
+      tone: null, task: grp.task ?? null, about_task: grp.about_task ?? null, about_path: grp.about_path ?? null, work_kind: grp.kind ?? null,
+      day, ts: dayTime(day, time), origin: LOG_ORIGIN, at }
+  }).sort((a, b) => a.ts - b.ts || b.at - a.at).map(({ at, ...r }) => r)
 }
 
 /** The rows of today the log section drew, oldest first with their moment: `at` where the row carries it, else its

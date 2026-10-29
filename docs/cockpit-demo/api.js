@@ -145,9 +145,12 @@ export function createApi(transport = httpTransport()) {
     // a log page's time range (bridge_cockpit/logrange.py): the rows of the log for {from, to} (days, null for the log's
     // first day and today) with the own commits of the rail's commits section; with sources 'other' and q the meetings,
     // closed tasks and transcripts one entry each
-    logRange: ({ from = null, to = null, commits = null, sources = null, q = null } = {}) => transport.get(`/api/logrange?${[
+    // the rows come compact, without their text: `ids` with the answer's `rev` fetch the text of some, `q` with `rev`
+    // the ids of the rows that hold every word
+    logRange: ({ from = null, to = null, commits = null, sources = null, q = null, ids = null, rev = null } = {}) => transport.get(`/api/logrange?${[
       from ? `from=${from}` : '', to ? `to=${to}` : '', commits ? `commits=${encodeURIComponent(commits)}` : '',
-      sources ? `sources=${encodeURIComponent(sources)}` : '', q ? `q=${encodeURIComponent(q)}` : ''].filter(Boolean).join('&')}`),
+      sources ? `sources=${encodeURIComponent(sources)}` : '', q ? `q=${encodeURIComponent(q)}` : '',
+      ids ? `ids=${ids.join(',')}` : '', rev ? `rev=${encodeURIComponent(rev)}` : ''].filter(Boolean).join('&')}`),
     // the records of the files tab's start: every task, stream and closed task with its state, area and last change
     records: () => transport.get('/api/records'),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),

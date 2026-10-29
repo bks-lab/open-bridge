@@ -245,6 +245,10 @@ const store = createStore({
   logRange: null,
   // the history beside the log for Every day's chart (/api/logrange?sources=other): { q, status, data, error }
   logEvents: null,
+  // the text of the range's rows the list drew, by id, for one answer: { rev, texts: {id: text} }
+  logText: null,
+  // the ids of the range's rows that hold the typed words: { q, rev, status, ids }
+  logHits: null,
   // the questions archived in the last days (/api/chats/archive), read once "all" is asked for: { status, convs }
   chatArchive: null,
 })
@@ -388,6 +392,7 @@ function applyState(payload) {
 
 let workOffer = true   // a visit takes the work tab's view from the config once, on its first state with one
 let filesTyping = null   // the files tab's search asks the server once typing rests (ctl.setFilesFilter)
+const logTextAsked = new Set()   // rev:id of the log rows whose text is asked for already (ctl.loadLogText)
 
 /** The view the work tab opens on, from cockpit.work_view: a config changed since this browser saw it wins once
  *  over the remembered click, after that the click holds (logic.js workViewStart) */
@@ -1221,12 +1226,31 @@ const ctl = {
   // a log page's time range (views/logrange.js): the rows of the days asked, the last answer standing while the next
   // loads; an answer for days no longer asked is dropped
   async loadLogRange({ from = null, to = null, commits = null } = {}) {
-    store.set(s => ({ ...s, logRange: { from, to, status: 'loading', data: s.logRange?.data ?? null, error: null } }))
+    store.set(s => ({ ...s, logRange: { from, to, commits, status: 'loading', data: s.logRange?.data ?? null, error: null } }))
     const res = await api.logRange({ from, to, commits })
     const now = store.get().logRange
     if (now?.from !== from || now?.to !== to) return
-    store.set(s => ({ ...s, logRange: res.ok ? { from, to, status: 'ok', data: res.data, error: null }
-      : { from, to, status: 'error', data: s.logRange?.data ?? null, error: res.error?.message ?? String(res.status) } }))
+    store.set(s => ({ ...s, logRange: res.ok ? { from, to, commits, status: 'ok', data: res.data, error: null }
+      : { from, to, commits, status: 'error', data: s.logRange?.data ?? null, error: res.error?.message ?? String(res.status) } }))
+  },
+  // the text of rows of the range by id, each asked once per answer; an answer the log changed since loads the range anew
+  async loadLogText({ rev, ids }) {
+    const have = store.get().logText
+    const want = ids.filter(id => !(have?.rev === rev && (id in have.texts || logTextAsked.has(`${rev}:${id}`))))
+    if (!want.length) return
+    for (const id of want) logTextAsked.add(`${rev}:${id}`)
+    const res = await api.logRange({ ids: want.slice(0, 200), rev })
+    if (res.status === 409) { const r = store.get().logRange; if (r) ctl.loadLogRange({ from: r.from, to: r.to, commits: r.commits ?? null }); return }
+    if (!res.ok) { for (const id of want) logTextAsked.delete(`${rev}:${id}`); return }
+    store.set(s => ({ ...s, logText: { rev, texts: { ...(s.logText?.rev === rev ? s.logText.texts : {}), ...res.data.texts } } }))
+  },
+  // the ids of the rows of the days loaded that hold every word, found on the server where the text is
+  async loadLogHits({ q, rev, from = null, to = null }) {
+    store.set(s => ({ ...s, logHits: { q, rev, status: 'loading', ids: [] } }))
+    const res = await api.logRange({ q, rev, from, to })
+    if (store.get().logHits?.q !== q || store.get().logHits?.rev !== rev) return
+    if (res.status === 409) { const r = store.get().logRange; if (r) ctl.loadLogRange({ from: r.from, to: r.to, commits: r.commits ?? null }); return }
+    store.set(s => ({ ...s, logHits: res.ok ? { q, rev, status: 'ok', ids: res.data.hits ?? [] } : { q, rev, status: 'error', ids: [] } }))
   },
   // the meetings, closed tasks and transcripts one entry each, those that hold the words (none: all of them)
   async loadLogEvents(q = '') {

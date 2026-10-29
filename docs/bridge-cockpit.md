@@ -1575,19 +1575,28 @@ question names narrows it, never past it.
 
 The page draws today from the section the collector read, so it never waits for
 the history; the range's rows come from `GET /api/logrange`
-(`bridge_cockpit/logrange.py`): `?from=YYYY-MM-DD&to=YYYY-MM-DD` (both days in
+(`bridge_cockpit/logrange.py`). `?from=YYYY-MM-DD&to=YYYY-MM-DD` (both days in
 the range; without `from` the log's first day, without `to` today) and
 `&commits=<section id>` answer the rows of the log and its archive
-(`work-find.py --rows`: each with its day, time, glyph, context and the task it
-is or is about; a row that stands in a raw week and its summary comes once) and
-the own commits of that section over the range as times (`briefing.py
-commits`, from a week back at least); `?sources=other[&q=words]` answers the
-history beside the log. The page counts the bars itself (`logic.js`), so a zoom,
-another width or the typed words never ask again; it asks only for days it does
-not hold yet, and again for the days it holds when the collector read the day
-anew. The server keeps the whole log until a file of `work/log.md` or
-`work/archive/` changes and cuts each range from it; the commits and the other
-history it keeps a minute per range.
+(`work-find.py --rows`, a row that stands in a raw week and its summary once)
+compactly, without their text: each row its day, time, context and glyph as an
+index into the answer's lists, the task a context is or is about once per
+context, plus the answer's `rev`; and the own commits of that section over the
+range as times (`briefing.py commits`, from a week back at least). A year of
+some 8 000 rows answers in under 200 KB where the rows with their text would
+weigh some 8 MB. `&ids=…&rev=…` answers the text of the rows the list draws,
+a page at a time, and `&q=words&rev=…` the ids of the rows that hold every word
+(their text and context, case folded): the page sends the words once the typing
+pauses, and its chart, topics and list follow the ids. A `rev` the log has
+changed since is refused (409), and the page reads the range anew.
+`?sources=other[&q=words]` answers the history beside the log. The page counts
+the bars itself (`logic.js`), so a zoom or another width never asks again; it
+asks only for days it does not hold yet, and again for the days it holds when
+the collector read the day anew. The server keeps the whole log until a file of
+`work/log.md` or `work/archive/` changes and cuts each range from it; the
+commits and the other history it keeps a minute per range. A row of an earlier
+day opens in the same detail as one of today, with its day and time and the
+work log as where it comes from.
 
 ```yaml
 view:
@@ -3007,8 +3016,9 @@ nothing a stranger could trigger:
   and `to` checked as days.
   `GET /api/logrange` is one too: `scripts/work-find.py --rows` or `--events`
   and `scripts/briefing.py commits` through the runner, every parameter checked
-  before anything runs (days, `sources` log or other, words only with other,
-  a section id only with the log), no line.
+  before anything runs (days, `sources` log or other, a section id only with
+  the log, words and ids with the log only with the `rev` of an answer, at most
+  200 ids), no line.
   `GET /api/records` is a read too: the records of the Files tab's list
   (every task, stream and closed task, its front matter read in place, newest
   first, at most 2000), no runner call and no line. So is
