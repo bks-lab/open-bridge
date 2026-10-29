@@ -1499,6 +1499,41 @@ export function timelineDays(entries) {
   return out
 }
 
+/** Whether a profile page takes the log layout (views/logpage.js): a section in the rail beside the main column
+ *  (`place: rail`) or a log (`view: log`) */
+export function logLayout(page) {
+  return (page?.sections ?? []).some(sec => sec.place === 'rail' || sec.view === 'log')
+}
+
+/** The rows of a log under their hours, in the order they came: [{key, rows}]. Today's rows carry their time
+ *  (`09:15`, head `09:00`); an earlier day's carry its date, which is the head then */
+export function logHours(items) {
+  const out = []
+  for (const it of items ?? []) {
+    const m = /^(\d{1,2}):\d{2}$/.exec(it.when ?? '')
+    const key = m ? `${m[1].padStart(2, '0')}:00` : (it.when ?? '')
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.rows.push(it)
+    else out.push({ key, rows: [it] })
+  }
+  return out
+}
+
+/** The contexts of a log's rows (their `group`) with how many rows each holds, the busiest first: [[name, n]] */
+export function logTopics(items) {
+  const n = new Map()
+  for (const it of items ?? []) if (it.group) n.set(it.group, (n.get(it.group) ?? 0) + 1)
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
+
+const SPARK = '▁▂▃▄▅▆▇█'
+
+/** A sparkline at the start of a text (a commits row's detail, `▁▂█ main`) as bar heights 0 to 7, and the rest */
+export function sparkOf(text) {
+  const m = /^([▁▂▃▄▅▆▇█]+)\s*(.*)$/.exec(String(text ?? ''))
+  return m ? { bars: [...m[1]].map(ch => SPARK.indexOf(ch)), rest: m[2] } : { bars: [], rest: String(text ?? '') }
+}
+
 /** Rows that pass the search, the state, the group and every chosen tag ({label: value}) */
 export function filterRows(items, { q = '', tone = 'all', group = null, tags = {} } = {}) {
   const needle = q.trim().toLowerCase()
@@ -2040,21 +2075,53 @@ export function costDay(costs, day) {
   }).filter(x => x.amount > 0).sort((x, y) => y.amount - x.amount)
 }
 
-/** The cost card's project chips: all, each cost center, and "none" while an entry belongs to no project; none
- *  at all when no cost center is declared (workflow/cost-centers/) */
-export function costCenterChoices(costs) {
-  const centers = (costs?.cost_centers ?? []).map(c => c.id)
-  if (!centers.length) return []
-  const loose = (costs?.accounts ?? []).some(a => !a.cost_center)
+/** The cost card's persona chips (whose costs: a company, a freelance practice): all and each persona_ref of the
+ *  cost centers, none while fewer than two personas own a project */
+export function costPersonaChoices(costs) {
+  const personas = [...new Set((costs?.cost_centers ?? []).map(c => c.persona_ref).filter(Boolean))]
+  return personas.length > 1 ? ['all', ...personas] : []
+}
+
+/** The cost card's project chips: all, each cost center (of one persona when one is picked), and "none" while an
+ *  entry belongs to no project; none at all when no cost center is declared (workflow/cost-centers/) */
+export function costCenterChoices(costs, persona = 'all') {
+  const centers = (costs?.cost_centers ?? []).filter(c => !persona || persona === 'all' || c.persona_ref === persona).map(c => c.id)
+  if (!(costs?.cost_centers ?? []).length) return []
+  const loose = (!persona || persona === 'all') && (costs?.accounts ?? []).some(a => !a.cost_center)
   return ['all', ...centers, ...(loose ? ['none'] : [])]
 }
 
-/** The cost file seen through one project: its entries only ('none': those of no project, 'all': unchanged), so the
- *  bars, the day and the totals all count the same entries */
-export function costScope(costs, center) {
-  if (!costs || !center || center === 'all') return costs
-  const want = center === 'none' ? null : center
-  return { ...costs, accounts: (costs.accounts ?? []).filter(a => (a.cost_center ?? null) === want) }
+/** The cost file seen through one project and one persona: their entries only ('none': those of no project,
+ *  'all': unchanged), so the bars, the day and the totals all count the same entries */
+export function costScope(costs, center, persona = 'all') {
+  if (!costs) return costs
+  let accounts = costs.accounts ?? []
+  if (persona && persona !== 'all') {
+    const mine = new Set((costs.cost_centers ?? []).filter(c => c.persona_ref === persona).map(c => c.id))
+    accounts = accounts.filter(a => mine.has(a.cost_center))
+  }
+  if (center && center !== 'all') {
+    const want = center === 'none' ? null : center
+    accounts = accounts.filter(a => (a.cost_center ?? null) === want)
+  }
+  return accounts === costs.accounts ? costs : { ...costs, accounts }
+}
+
+/** The months a cost statement can be made for: those the view holds days of, newest first */
+export function costMonths(costs) {
+  const months = new Set()
+  for (const a of costs?.accounts ?? []) for (const d of a.days ?? []) if (typeof d.day === 'string') months.add(d.day.slice(0, 7))
+  return [...months].sort().reverse()
+}
+
+/** One project's budget as an account would carry it (for budgetBar): its entries' month so far and forecast
+ *  summed against the project's budget_month; null without a project or a budget */
+export function costCenterBudget(costs, center) {
+  const c = (costs?.cost_centers ?? []).find(x => x.id === center)
+  if (!c || !(Number(c.budget_month) > 0)) return null
+  const mine = (costs.accounts ?? []).filter(a => a.ok !== false && a.cost_center === center)
+  const sum = f => Math.round(mine.reduce((s, a) => s + (Number(a[f]) || 0), 0) * 100) / 100
+  return { month_to_date: sum('month_to_date'), forecast_month: sum('forecast_month'), budget_month: Number(c.budget_month) }
 }
 
 /** The sum over a range and the month so far, over every account that answered */

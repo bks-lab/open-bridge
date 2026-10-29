@@ -17,7 +17,7 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -354,6 +354,8 @@ function applyState(payload) {
     agents: payload.agents ?? s.agents,
     triage: payload.triage ?? s.triage,
     jev: payload.jev ?? s.jev,
+    // Prio's second ranker: whether Haiku can read in, its runs left today, the fallback (prio.py)
+    prio: payload.prio ?? s.prio,
     loading: payload.loading ?? s.loading,
     relay: payload.relay ?? s.relay,
     cmux: payload.cmux ?? s.cmux,
@@ -1275,22 +1277,29 @@ const ctl = {
   },
   // Merge in a batch: the kept task takes the others in, one undo per merged task (task_unmerge), under the bar it came from
   flowMerge: (keep, keys, from = 'overview') => ctl.flowBatch([{ verb: 'flow_merge', args: { keep, keys } }], from),
-  // Prio: Jev's daily order of the work page, asked once per page load (the round 2 Jev view's daily rule: nothing
-  // leaves the machine twice a day)
+  // Prio: the order of the work page, asked once per page load. With Jev the day's first ask orders by itself with the
+  // points of the view (the round 2 Jev view's daily rule: nothing leaves the machine twice a day); with Haiku alone it
+  // reads the kept order only: Haiku never reads in by itself
   async flowPrioOrder(page) {
     if (!page || prioAsked.has(page)) return
     prioAsked.add(page)
-    store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { ...(s.jevOrder[page] ?? {}), order: s.jevOrder[page]?.order ?? null, running: true, error: null } } }))
-    const res = await ctl.jevWork(page, false)
-    if (!res?.ok) store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { order: s.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false } } }))
+    const s = store.get()
+    store.set(st => ({ ...st, jevOrder: { ...st.jevOrder, [page]: { ...(st.jevOrder[page] ?? {}), order: st.jevOrder[page]?.order ?? null, running: true, ranker: 'jev', error: null } } }))
+    // the day's order only from a page that read what it shows (prioLoaded); before that only the kept order
+    const daily = jevReady(s) && prioLoaded(s)
+    const res = await api.post('/api/jev/rank', daily ? { page, daily, rows: prioRows(s) } : { page })
+    store.set(st => ({ ...st, jevOrder: { ...st.jevOrder, [page]: res.ok ? { order: res.data.order, error: null, running: false }
+      : { order: st.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false, ranker: 'jev' } } }))
   },
-  // Prio: Ask Jev again, a new order of the work page (as the Jev view's button), busy until it answers
-  async flowPrioAgain(page) {
-    if (!page || store.get().jevOrder?.[page]?.running) return
+  // Prio: Read in with Jev or Read in with Haiku at its foot, a new order of every point the view shows (prioRows),
+  // busy until it answers; the newest order wins, whichever ranker made it
+  async flowPrioRead(page, ranker) {
+    if (!page || !['jev', 'haiku'].includes(ranker) || store.get().jevOrder?.[page]?.running) return
     prioAsked.add(page)
-    store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { ...(s.jevOrder[page] ?? {}), order: s.jevOrder[page]?.order ?? null, running: true, error: null } } }))
-    const res = await ctl.jevWork(page, true)
-    if (!res?.ok) store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { order: s.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false } } }))
+    store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: { ...(s.jevOrder[page] ?? {}), order: s.jevOrder[page]?.order ?? null, running: true, ranker, error: null } } }))
+    const res = await api.post('/api/jev/rank', { page, force: true, ranker, rows: prioRows(store.get()) })
+    store.set(s => ({ ...s, jevOrder: { ...s.jevOrder, [page]: res.ok ? { order: res.data.order, error: null, running: false }
+      : { order: s.jevOrder[page]?.order ?? null, error: res?.error?.message ?? 'error', running: false, ranker } } }))
   },
   flowPick: (keys, on) => setUi(ui => {
     const picked = new Set(ui.flowPicked ?? [])
@@ -1525,6 +1534,13 @@ const ctl = {
     const res = await api.get('/api/costs')
     store.set(s => ({ ...s, costs: res.ok ? { status: res.data.view ? 'ok' : 'none', data: res.data.view ?? null, error: null }
       : { status: res.status === 404 ? 'none' : 'error', data: s.costs.data, error: res.error?.message ?? null } }))
+  },
+  // a month's cost statement for the picked project or persona (scripts/cost-ledger.py statement): from the closed
+  // month or the kept view, read only; the card shows it and offers it as a copy or a file
+  costStatement: async ({ month, center, persona }) => {
+    const q = new URLSearchParams({ month, center: center || 'all', persona: persona || 'all', lang: language() })
+    const res = await api.get(`/api/costs/statement?${q}`)
+    return res.ok ? { ok: true, statement: res.data.statement } : { ok: false, error: res.error?.message ?? '' }
   },
   // the noise of the inbox (inbox.py stats + mute list); the overview page reads it when it opens and with each new briefing
   loadNoise: async () => {

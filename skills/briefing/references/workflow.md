@@ -267,20 +267,37 @@ If `zombie` or `orphan` count > 0 → emit Phase 4 warning
    `{work.meetings.home_dir}/*/{summary_file}` read its frontmatter and surface:
    - **`tasks.status: pending`** AND no `triage.md` yet → *"Tasks noch nicht gezogen"*
      (the meeting was captured but its action items were never extracted/triaged).
-   - **`wiki.status: pending`** (set whenever the meeting's `context.scope` appears
-     in `tracked_obligations.wiki_protocol.required_for_scopes`) → *"Wiki-Protokoll
-     fehlt"*. Those meetings owe a wiki protocol, with a source-pointer back to the
-     filed original. Group and count them; writing is gated (`/debrief` Phase 6, on
-     demand), the briefing only **surfaces the backlog**:
+   - **Wiki protocol missing** → run the checker, do **not** read `wiki.status`:
+     ```bash
+     python3 skills/briefing/scripts/meeting-obligations.py
+     ```
+     It matches each meeting folder against the declared series
+     (`workflow/meetings/<id>.yaml`, `folder_match`) and then **looks in the
+     wiki** for the protocol file the series names in `outputs.wiki`. Exit 1
+     means at least one series meeting has no protocol; exit 0 means nothing is
+     owed. Surface its first block verbatim; the second block (meetings outside
+     any series, open only by their own declaration) is a count, not a list.
+
+   > **Why the file check and not the field.** `wiki.status:` is written by hand
+   > and fails in both directions: meetings without frontmatter are invisible,
+   > a value the rule does not know (`draft`) falls through, and meetings whose
+   > protocol has existed for weeks keep claiming `pending`. In one instance a
+   > run of weekly protocols went missing behind a reminder that was running the
+   > whole time. The field is consulted only for a deliberate opt-out
+   > (`n/a` / `skipped`); `done` is a claim like any other and gets verified.
+   > Same principle as [`rules/deploy-reconciliation.md`](../../../rules/deploy-reconciliation.md):
+   > the declared state is never the truth, the artifact is.
+
    ```
    Offene Meeting-Pflichten:
      • Wiki-Protokoll fehlt (N): <slug>, <slug>, … → /debrief <slug> Phase 6 (gated push)
      • Tasks offen (M):         <slug>, …          → /debrief <slug> Phase 5
    ```
-   Drop a meeting once `wiki.status: done`/`n/a` resp. `tasks.status: done`. Don't
-   re-render every meeting — cluster by obligation type (Phase 3.5 cluster rules apply
-   when N≥threshold). This is how a scope that owes documentation reliably reaches the
-   wiki even when the debrief was capture-only.
+   Writing stays gated (`/debrief` Phase 6, on demand), the briefing only
+   **surfaces the backlog**. Drop a meeting from the tasks line once
+   `tasks.status: done`. Don't re-render every meeting: cluster by obligation type
+   (Phase 3.5 cluster rules apply when N≥threshold). This is how a scope that owes
+   documentation reliably reaches the wiki even when the debrief was capture-only.
 
 5. **Git Activity**: a `kind: commits` section in the profile (commits per
    repository per day as a sparkline, `author: me` for your own). The script
@@ -396,6 +413,36 @@ open PRs remain after the archived filter.
    find "${imports_dir}" -type f -not -name '.DS_Store' -not -name '.gitkeep' 2>/dev/null
    ```
    Group by file type and show counts.
+
+2a. **Meeting-series deadlines** (config-driven, silent when absent)
+
+   A recurring series produces most of its short-notice deadlines in the moment
+   its own follow-up ends, and then nobody opens that folder again until the
+   next meeting. The skeleton for the following meeting does **not** cover this
+   window: a deadline falling tomorrow is, by the next meeting, either done or
+   missed. `/briefing` is the one surface opened on the days in between, so it
+   is the one that reads the list.
+
+   1. For every `workflow/meetings/*.yaml` (skip `_`-prefixed), read
+      `files.deadlines`. Not set → skip that series, silently.
+   2. Find the most recent meeting folder under `work.meetings.home_dir`
+      matching the series' `folder_match`, and read that file inside it.
+   3. Render only what is **due today or tomorrow**, plus everything **already
+      past** whose row does not read as done.
+
+   ```
+   Due today              you        Draft the kick-off mail, to the team lead first
+   Due tomorrow           teammate   Comments on the partner agreement (slot booked)
+   Overdue since 11.09.   you        Confirm the one-to-one (agreed verbally only)
+   ```
+
+   Owner first, then the item, then the state in parentheses. The state column
+   is load-bearing: "agreed verbally only" is a different kind of deadline than
+   "slot booked", and without it both read as equally binding.
+
+   **A missed one is not a reproach, it is an input.** It goes into the next
+   collection run as a documented change note, and a documented one beats
+   `last_updated`: it is dated, it has an owner, and it does not drift.
 
 3. **Meeting transcripts**: If `.md`, `.txt`, `.vtt`, `.srt` found in the imports dir:
    - Ask: "{N} transcripts ready. Process? [y/n]"

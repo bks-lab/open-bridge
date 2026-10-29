@@ -634,6 +634,29 @@ def cost_centers(root: Path | None) -> list[dict]:
     return out
 
 
+def center_view(center: dict, root: Path, rates: dict) -> dict:
+    """What the cost card needs of a cost center: id, title, persona (and its name from identity/personas/), and a
+    budget_month converted to EUR with the report's rates (kept as declared, with budget_fx_missing, without one)."""
+    out = {"id": str(center["id"]), "title": str(center.get("title") or center["id"]), "persona_ref": center.get("persona_ref")}
+    ref = center.get("persona_ref")
+    if ref:
+        try:
+            persona = yaml.safe_load((root / "identity" / "personas" / f"{ref}.yaml").read_text(encoding="utf-8"))
+            if isinstance(persona, dict) and persona.get("display_name"):
+                out["persona_title"] = str(persona["display_name"])
+        except (OSError, yaml.YAMLError):
+            pass
+    budget = center.get("budget_month")
+    if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget > 0:
+        cur = str(center.get("currency") or "EUR").upper()
+        rate = 1.0 if cur == "EUR" else rates.get(cur)
+        out["budget_month"] = round(float(budget) / rate, 2) if rate else float(budget)
+        out["budget_currency"] = cur
+        if not rate:
+            out["budget_fx_missing"] = True
+    return out
+
+
 def cost_center_of(entry_id: str, centers: list[dict]) -> dict | None:
     """The first cost center whose sources name this entry, or its account (the id before the first `/`)."""
     account = entry_id.split("/", 1)[0]
@@ -716,8 +739,7 @@ def cost_rows(root: Path | None, tx: dict, srcs: str | list[str], now: dt.dateti
         kept.append(acc)
     if root is not None:
         view = {**data, "accounts": kept, "today": today.isoformat(),
-                "cost_centers": [{"id": str(c["id"]), "title": str(c.get("title") or c["id"]),
-                                  "persona_ref": c.get("persona_ref")} for c in centers],
+                "cost_centers": [center_view(c, root, (data.get("fx") or {}).get("rates") or {}) for c in centers],
                 "source": ", ".join(source_name(s) for s, _d in reports),
                 "sources": [{"source": source_name(s), "host": d.get("host"), "at": d.get("at"),
                              "stale": _age(d, now, stale_h)[0]} for s, d in reports],

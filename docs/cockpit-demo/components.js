@@ -7,7 +7,7 @@
 // views/, which imports what it uses from the others. app.js imports from here only.
 
 import { html, useEffect, useLayoutEffect, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { areaScope, cardPlan, indexRows, railOn, triageKey, workKinds, workPageOf } from './logic.js'
+import { areaScope, cardPlan, indexRows, logLayout, railOn, triageKey, workKinds, workPageOf } from './logic.js'
 import { T } from './text.js'
 import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
@@ -32,6 +32,7 @@ import {
 } from './views/overlays.js'
 import { JevList, KindBar, MachineLines, OverviewBoard, PageCard, PageSection, PageSummary, WorkOrder } from './views/pages.js'
 import { PageSearch } from './views/timeline.js'
+import { LogHead, LogPage } from './views/logpage.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
 import { SettingsPage } from './views/settings.js'
@@ -62,7 +63,7 @@ function useJevPage(enabled) {
   return jevPage
 }
 
-function PageView({ s, c }) {
+export function PageView({ s, c }) {
   const t = T()
   const jev = useJevPage(!!(s.jev?.enabled && s.jev?.ready))
   if (s.ui.page === START_PAGE) return html`<${HomePage} s=${s} c=${c} />`
@@ -117,17 +118,20 @@ function PageView({ s, c }) {
   // the order by Jev stands in place of the sections, so a card placed after one moves to the end
   const jevList = !!(page.jev && !work && s.jev?.enabled && s.jev?.ready && s.ui.workView === 'jev' && s.jevOrder[page.id]?.order)
   const card = id => html`<${PageCard} key=${`@${id}`} id=${id} page=${page} s=${s} c=${c} />`
-  // the sections with the words a page's search holds (profile `search: true`), '' for none
-  const sections = q => page.sections.flatMap(sec => [html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} />`,
+  // the sections with the words a page's search holds (profile `search: true`), '' for none; the log layout draws
+  // its main column through it too, with the topic chosen beside the log
+  const sections = (q, list = page.sections, topic = null) => list.flatMap(sec => [html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} topic=${topic} />`,
     ...(cards.after[sec.id] ?? []).map(card)])
+  const log = !work && logLayout(page)
+  // the log head says its count in words; a plain count beside it would be a second number for the same thing
   // a folder's bar stands on top of the folder page and of each of its sub pages; the folder page names its
   // machines first, a sub page with `overview` gets a head card of its own parts instead of the tiles
   const sub = !!parentOf(s, whole.id)
   return html`<div class="col col-page">
     ${work ? null : html`<${FolderBar} s=${s} c=${c} />`}
     <header class="page-head">
-      ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : html`<h2 class="detail-title">${page.title}</h2>`}
-      <${PageBadge} badge=${headBadgeOf(s, whole)} />
+      ${work ? html`<${WorkSwitch} s=${s} c=${c} />` : log ? html`<${LogHead} page=${page} s=${s} />` : html`<h2 class="detail-title">${page.title}</h2>`}
+      ${log && headBadgeOf(s, whole)?.kind === 'count' ? null : html`<${PageBadge} badge=${headBadgeOf(s, whole)} />`}
     </header>
     ${work ? null : html`<${MachineLines} page=${whole} s=${s} c=${c} />`}
     ${page.overview && sub ? html`<${PageSummary} page=${page} s=${s} c=${c} />`
@@ -140,6 +144,7 @@ function PageView({ s, c }) {
       : page.sections?.some(sec => sec.kind === 'tasks' && (sec.items ?? []).some(it => it.task)) ? html`<${ReviewStrip} s=${s} c=${c} />` : null}
     ${page.jev && !work && s.jev?.enabled && s.jev?.ready ? html`<${WorkOrder} page=${page} s=${s} c=${c} />` : null}
     ${jevList ? html`<${JevList} page=${page} s=${s} c=${c} />`
+      : (page.sections ?? []).length && log ? html`<${LogPage} page=${page} s=${s} c=${c} draw=${(list, q, topic) => sections(q, list, topic)} />`
       : (page.sections ?? []).length ? (page.search ? html`<${PageSearch} page=${page} s=${s} c=${c} render=${sections} />` : sections(''))
       : html`<div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div>`}
     ${(jevList ? [...Object.values(cards.after).flat(), ...cards.end] : cards.end).map(card)}

@@ -194,6 +194,7 @@ const ICONS = {
   sort: 'M4 6h16M7 12h10M10 18h4',
   pencil: 'M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5zM15 5l4 4',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
+  file: 'M6 2h9l5 5v15H6zM14 2v6h6',
 }
 
 export function Icon({ name, size = 16 }) {

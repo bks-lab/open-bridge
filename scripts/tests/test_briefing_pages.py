@@ -331,6 +331,30 @@ def test_steps_buttons_is_carried_only_when_set_and_names_one_of_two_ways():
                bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "steps": "big"}]}]}))
 
 
+def test_the_log_layout_view_log_and_place_rail_are_carried_only_when_set():
+    # view: log draws a log under its hours; place: rail sets a section in the page's right column
+    view = {"pages": [{"id": "day", "search": True, "sections": [{"id": "log", "view": "log"},
+                                                                 {"id": "commits", "place": "rail"}]}], "page_rest": "hide"}
+    pages = bv.pages(_result(), _profile(view))
+    assert _section(pages, "log")["view"] == "log" and "place" not in _section(pages, "log")
+    assert _section(pages, "commits")["place"] == "rail"
+    assert not bv._page_problems(view)
+    assert not bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "place": "main"}]}]})
+    assert any("place must be one of main, rail" in x for x in
+               bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "place": "left"}]}]}))
+    assert any("view must be one of" in x and "log" in x for x in
+               bv._page_problems({"pages": [{"id": "d", "sections": [{"id": "log", "view": "diary"}]}]}))
+
+
+def test_a_log_row_carries_its_glyph():
+    result = _result()
+    result["sections"][-2]["items"][0]["state"] = "✅"
+    log = _section(bv.pages(result, _profile()), "log")
+    assert log["items"][0]["glyph"] == "✅"
+    assert "glyph" not in log["items"][1]
+    assert "glyph" not in _section(bv.pages(result, _profile()), "probes")["items"][0]
+
+
 def test_a_skipped_section_keeps_its_place_and_says_why():
     result = _result()
     result["sections"][2] = _sec("mine", "tracker", [], status="skipped", reason="quick mode")

@@ -1027,10 +1027,12 @@ test('jev is optional: the page loads without scripts/web/jev/, no tab, no call,
   assert.match(comp, /useJevPage\(!!\(s\.jev\?\.enabled && s\.jev\?\.ready\)\)/)    // loaded only when on and ready
   assert.match(comp, /\$\{s\.jev\?\.enabled && !workPageOf\(s\.model\?\.pages\)\?\.jev \? tab\(JEV_PAGE/)   // the tab only when on, and not folded into the work tab
   assert.doesNotMatch(read('index.html'), /jev/)
-  // the page asks /api/jev only through jevRun (the Jev page), jevRank (the order of a work page) and jevWork
-  // (the Jev view of the work tab, the order of its work page)
+  // the page asks /api/jev only through jevRun (the Jev page), jevRank (the order of a work page), jevWork
+  // (the Jev view of the work tab, the order of its work page), and Prio's flowPrioOrder (the kept or daily order)
+  // and flowPrioRead (a read-in with Jev or Haiku)
   const app = read('app.js')
-  assert.equal((app.match(/\/api\/jev/g) ?? []).length, 3)
+  assert.equal((app.match(/\/api\/jev/g) ?? []).length, 5)
+  assert.match(app, /async flowPrioRead\(page, ranker\) \{[\s\S]{0,600}api\.post\('\/api\/jev\/rank', \{ page, force: true, ranker, rows/)
   assert.match(app, /jevWork: async[^\n]*\n\s*const res = await api\.post\('\/api\/jev\/rank', \{ page, force: !!force, daily: !force \}\)/)
   assert.match(app, /jevRun: \([^)]*\) => api\.post\('\/api\/jev\/run'/)
   assert.match(app, /const res = await api\.post\('\/api\/jev\/rank'/)
@@ -5780,4 +5782,15 @@ test('usage: the page sends clicks only where the server says so, and the explai
     }
   }
   assert.equal(text.TABLES.de.hints.noteOpen, 'Was stört hier?')
+})
+
+test('every top-level key of the server state reaches the page store (prio was left out once, so Haiku never showed)', () => {
+  const server = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'server.py'), 'utf8')
+  const body = server.match(/def state_payload\(self\) -> dict:[\s\S]*?\n\n/)[0]
+  // the keys of the nested objects (server, driver, rooms) and ok are not store slices of their own
+  const nested = new Set(['ok', 'version', 'started_ms', 'person', 'caps', 'layout', 'root', 'control', 'bridges'])
+  const keys = [...body.matchAll(/"(\w+)":/g)].map(m => m[1]).filter(k => !nested.has(k))
+  assert.ok(keys.includes('prio') && keys.includes('jev') && keys.length > 15, keys.join(','))
+  const apply = read('app.js').match(/function applyState\(payload\) \{[\s\S]*?\n\}/)[0]
+  for (const k of keys) assert.match(apply, new RegExp(`payload\\.${k}\\b`), `applyState drops ${k}`)
 })

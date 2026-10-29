@@ -367,10 +367,10 @@ export async function loadCockpit() {
   const vendor = await load('vendor/htm-preact-3.1.1.module.js')
   if (typeof vendor.options?.__e !== 'function') throw new Error('cockpit_render: `n` is no longer Preact\'s options object')
   const views = {}
-  for (const name of ['home', 'detail', 'sessions', 'header', 'tabs', 'day', 'github', 'rooms', 'reply', 'organize', 'chat', 'agents', 'pages', 'costs', 'guide', 'tour', 'hints', 'overlays', 'list', 'focus', 'stage', 'dossier', 'check', 'parts', 'nav', 'card', 'flow', 'verbbar', 'flowside', 'flowtabs', 'flowinstruct', 'flowlist', 'flowleft', 'flowrun', 'flowprio', 'settings', 'timeline']) views[name] = await load(`views/${name}.js`)
+  for (const name of ['home', 'detail', 'sessions', 'header', 'tabs', 'day', 'github', 'rooms', 'reply', 'organize', 'chat', 'agents', 'pages', 'costs', 'guide', 'tour', 'hints', 'overlays', 'list', 'focus', 'stage', 'dossier', 'check', 'parts', 'nav', 'card', 'flow', 'verbbar', 'flowside', 'flowtabs', 'flowinstruct', 'flowlist', 'flowleft', 'flowrun', 'flowprio', 'settings', 'timeline', 'logpage']) views[name] = await load(`views/${name}.js`)
   await installGuard(vendor.options)
   loaded = { ...vendor, views, text: await load('text.js'), logic: await load('logic.js'), mock: await load('mock.js'),
-    jev: await load('jev/page.js') }
+    jev: await load('jev/page.js'), components: await load('components.js') }
   return loaded
 }
 

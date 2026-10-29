@@ -595,6 +595,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_describe.py",
     "scripts/lib/bridge_cockpit/themes.py",               # the themes of Work through, ordered by a small model
     "scripts/tests/test_bridge_cockpit_themes.py",
+    "scripts/lib/bridge_cockpit/prio.py",                 # Prio's read-in rows and its second ranker, Haiku
+    "scripts/tests/test_bridge_cockpit_prio.py",
     "scripts/lib/bridge_cockpit/activity.py",             # Work through: the Activity of a point, its documents, attach
     "scripts/tests/test_bridge_cockpit_activity.py",
     "scripts/lib/bridge_cockpit/instruct.py",             # Work through: the instruction line's sentence as checked steps
@@ -630,6 +632,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_cloud_inventory.py",
     "scripts/cloud-costs.py",                 # what the cloud accounts cost per day, for the overview page
     "scripts/tests/test_cloud_costs.py",
+    "scripts/cost-ledger.py",                 # a closed month per cost center, and a cost statement from it
+    "scripts/tests/test_cost_ledger.py",
     "scripts/usage-export.py",                # tokens per Bridge, exported for a cockpit on another machine
     "scripts/tests/test_usage_export.py",
     "scripts/cockpit-usage.py",               # the cockpit's clicks counted, candidates left as proposals for /bridge-learn
@@ -691,6 +695,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/reply.js",
     "scripts/web/views/tabs.js",
     "scripts/web/views/timeline.js",          # a page's search: its rows, every day before, the AI
+    "scripts/web/views/logpage.js",           # a page's log layout: the log by hour, the rail beside it
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",
     "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
@@ -732,6 +737,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
     "scripts/tests/bridge_cockpit_flow.test.mjs",
+    "scripts/tests/bridge_cockpit_prio.test.mjs",
     "scripts/tests/bridge_cockpit_settle.test.mjs",
     "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",

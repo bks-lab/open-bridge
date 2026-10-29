@@ -9,8 +9,8 @@
 // a point (its colour, its name, how many need you in the warning tone, how many are open), No theme yet or No area
 // last; a click enters it. Entered, the list stays the same with the one entered marked and All leads back. Under the
 // list Order themes again (a regroup within the day's budget), Sort again where By source is off (the daily triage
-// asked anew, in every order, round 6 B), what the themes run is doing, and Rename while a theme is entered. In Prio the list holds Jev's four squares (an empty one too) and Not rated yet, with when Jev ordered and
-// Ask Jev again at its foot (views/flowprio.js PrioFoot). On a narrow screen the list is one select over the middle,
+// asked anew, in every order, round 6 B), what the themes run is doing, and Rename while a theme is entered. In Prio the list holds the four squares (an empty one too) and Not rated yet, with which ranker ordered when and
+// Read in with Jev and Read in with Haiku at its foot (views/flowprio.js PrioFoot). On a narrow screen the list is one select over the middle,
 // Running now and Not now fold under it.
 // FlowAside, the right column of an open point (round 3; round 6 B: only while one is open), as an issue tracker's
 // sidebar: on top What you can do, the AI suggestion in one line (on an open point the only place it stands; the task
@@ -33,7 +33,7 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  activityWhen, canTab, DAY, duration, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
+  activityWhen, canTab, DAY, duration, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
   isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, short, tabCloseOffer, triageRunning, verbsFor, workPageOf, workViewsIn,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -368,7 +368,9 @@ function Fields({ x, s, c }) {
     if (fld.id === 'area') return fld.value || none
     if (fld.id === 'who') return whoWords(fld.drive, s)
     if (fld.id === 'prio') {
-      if (fld.jev) return [fld.jev.quadrant ? f.quadrant[fld.jev.quadrant] ?? fld.jev.quadrant : null, fld.jev.rank ? f.jevPlace(fld.jev.rank) : null].filter(Boolean).join(' · ') || none
+      // "only you" only where the ranker said so (who: me), never read off the square
+      if (fld.jev) return [fld.jev.quadrant ? f.quadrant[fld.jev.quadrant] ?? fld.jev.quadrant : null, fld.jev.who === 'me' ? f.onlyYou : null,
+        fld.jev.rank ? f.jevPlace(fld.jev.rank, rankerName(fld.jev.ranker)) : null].filter(Boolean).join(' · ') || none
       if (fld.rank != null) return f.rank(fld.rank)
       return fld.priority ? html`<${PrioChip} priority=${fld.priority} />` : none
     }

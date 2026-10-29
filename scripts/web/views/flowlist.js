@@ -19,7 +19,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { activityWhen, atWork, batchPlan, batchPreselect, batchSummary, DAY, dropReasonWord, flowDrive, flowSettings, flowSuggestion, FLOW_BANDS, FLOW_YOU,
-  formatDay, isoDate, jevWhy, mergeable, mergeKeep, nextMonday, pointBand, rowProject, short, stageTone } from '../logic.js'
+  formatDay, isoDate, jevWhy, mergeable, mergeKeep, nextMonday, pointBand, rankerName, rowProject, rowRunning, short, stageTone } from '../logic.js'
 import { T, TABLES, language } from '../text.js'
 import { KindTag } from './day.js'
 import { Btn, Dot } from './parts.js'
@@ -76,7 +76,7 @@ export function Suggestion({ sug, s }) {
   if (!sug) return html`<span class="muted small">${f.none}</span>`
   const day = at => formatDay(typeof at === 'number' ? isoDate(at) : String(at ?? '').slice(0, 10), lang)
   const from = sug.from === 'triage' ? f.from.triage(day(sug.at)) : sug.from === 'check' ? f.from.check(day(sug.at))
-    : sug.from === 'jev' ? f.from.jev(day(sug.at)) : f.from.themes
+    : sug.from === 'jev' ? f.from.jev(day(sug.at), rankerName(sug.ranker)) : f.from.themes
   const word = sug.verb === 'later' && sug.until ? f.laterUntil(formatDay(sug.until, lang)) : f.verb[sug.verb]
   const why = sug.verb === 'drop' && sug.drop && sug.from !== 'jev' ? dropReasonWord(sug.drop, lang) : sug.reason || jevWhy(sug, lang)
   return html`<span class=${`flow-sug flow-sug-${sug.verb}`} title=${from}>
@@ -217,7 +217,9 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
   const pickable = rows.filter(r => r.row)
   // the ticked points, and what runs ticked on the strip above (logic.js laneRows): for a merge or Done
   const chosen = [...pickable, ...running].filter(r => picked.has(r.id)).map(r => r.row)
-  const from = new Set(rows.map(r => flowSuggestion(r.row, s)?.from).filter(Boolean))
+  const sugs = rows.map(r => flowSuggestion(r.row, s)).filter(Boolean)
+  const from = new Set(sugs.map(x => x.from))
+  const ranker = sugs.find(x => x.from === 'jev')?.ranker
   const day = s.triage?.last?.at ? formatDay(String(s.triage.last.at).slice(0, 10), lang) : null
   const checked = s.model?.review?.last?.reviewed_at ? formatDay(String(s.model.review.last.reviewed_at).slice(0, 10), lang) : null
   if (!rows.length) return html`<section class="flow-overview" aria-label=${w.label}><p class="muted">${w.empty}</p></section>`
@@ -226,7 +228,7 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
       planOf=${(how, value) => batchPlan(chosen, how, s, value, lang)} onRun=${plan => c.flowBatch(plan?.calls ?? [])} suggest s=${s} c=${c} />
     <p class="flow-list-from muted small">${[from.has('triage') && day ? w.from.triage(day) : null, from.has('check') && checked ? w.from.check(checked) : null,
       from.has('themes') ? w.from.themes : null,
-      from.has('jev') ? w.from.jev(formatDay(isoDate(nowMs), lang)) : null, w.honest].filter(Boolean).join(' · ')}</p>
+      from.has('jev') ? w.from.jev(formatDay(isoDate(nowMs), lang), rankerName(ranker)) : null, w.honest].filter(Boolean).join(' · ')}</p>
     <table class="flow-ov-table">
       <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${w.pickAll}</span></th><th>${w.cols.point}</th><th>${w.cols.stage}</th>
         <th>${w.cols.area}</th><th>${w.cols.suggestion}</th></tr></thead>
@@ -240,10 +242,13 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
           // a task in progress nobody works on says when it last moved, not how old it is
           const drive = row && r.x.group === 'doing' ? flowDrive(r.x, s) : null
           const idle = drive?.by === 'none' ? f.doing.none(drive.days) : null
+          // an agent at work on it: a small marker only (what runs stands under Running now, never as a strip here)
+          const runs = row ? rowRunning(row, s) : false
           return html`<tr key=${r.id} class=${`flow-ov-row${row && picked.has(r.id) ? ' is-picked' : ''}`}>
             <td>${row ? html`<input type="checkbox" class="flow-ov-pick" aria-label=${w.pick(short(title, 60))} checked=${picked.has(r.id)}
               onClick=${() => c.flowPick([r.id], !picked.has(r.id))} />` : null}</td>
             <td class="flow-ov-point"><button type="button" class="flow-ov-open" onClick=${() => c.flowGo(r.x.id, points.indexOf(r.x))}>${short(title, 120)}</button>
+              ${runs ? html`<span class="flow-ov-running small"><${Dot} token="info" pulse /> ${f.list.running}</span>` : null}
               ${row ? html`<span class="flow-ov-sub muted small"><${KindTag} row=${row} s=${s} />${idle ? html` <span>${idle}</span>`
                 : age == null ? '' : html` <span class="mono">${w.age(age)}</span>`}</span>` : null}</td>
             <td class="flow-ov-stage small"><${Dot} token=${tone.token} pulse=${tone.pulse} /> ${kindFor(r.x)}</td>

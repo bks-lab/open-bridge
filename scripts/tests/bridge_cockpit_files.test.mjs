@@ -1345,11 +1345,11 @@ const TIMELINE = { ok: true, query: 'gateway retry', words: ['gateway', 'retry']
   { date: '2026-09-30', time: null, kind: 'closed', source: 'retry-hardening', path: 'work/done/2026-09/retry-hardening/STATUS.md', line: 5,
     text: 'headline: Gateway retry hardened', folder: 'work/done/2026-09/retry-hardening', count: 1, more: 0 }] }
 
-function searchPage(s, c) {
+function searchPage(s, c, page = LOG_PAGE) {
   const { PageSection } = views.pages
   const { PageSearch } = views.timeline
-  return mount(html`<${PageSearch} page=${LOG_PAGE} s=${s} c=${c}
-    render=${q => LOG_PAGE.sections.map(sec => html`<${PageSection} key=${sec.id} page=${LOG_PAGE} section=${sec} s=${s} c=${c} q=${q} />`)} />`)
+  return mount(html`<${PageSearch} page=${page} s=${s} c=${c}
+    render=${q => page.sections.map(sec => html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} />`)} />`)
 }
 
 const radio = (el, label) => el.$$('.psearch-seg button').find(b => b.text() === label) ?? null
@@ -1403,6 +1403,40 @@ test('Today without a hit says so and offers Every day; a section without a hit 
   await tick()
   assert.deepEqual(c.calls.find(x => x[0] === 'searchTimeline'), ['searchTimeline', 'nothing like this'])
   assert.equal(radio(el, en.pageSearch.mode.all).getAttribute('aria-checked'), 'true')
+})
+
+test('Today searches every row of the page: a section that drew only its first rows loads the rest, and its head counts the hits', async () => {
+  const c = recorder()
+  const long = { ...LOG_PAGE, sections: [{ ...LOG_PAGE.sections[0], count: 5, total: 5, more: 3 }] }
+  const el = searchPage(cockpitState(NOW), c, long)
+  assert.equal(c.calls.filter(x => x[0] === 'loadMore').length, 0, 'nothing loads before a word is typed')
+  await type(el, 'gateway')
+  assert.deepEqual(c.calls.filter(x => x[0] === 'loadMore'), [['loadMore', 'log', 'activity']])
+  assert.equal(el.$('.psec .sec-count').text(), '1')
+  // the rest loaded: a word only in it is found there, and nothing is asked again
+  const rest = [...LOG_PAGE.sections[0].items, { index: 2, title: 'Invoice export renamed', when: '08:00', group: 'billing', tone: 'ok', detail: '' }]
+  const s = { ...cockpitState(NOW), more: { 'log/activity': { items: rest } } }
+  const c2 = recorder()
+  const el2 = searchPage(s, c2, long)
+  await type(el2, 'invoice')
+  assert.match(el2.text(), /Invoice export renamed/)
+  assert.equal(el2.$('.psearch-none'), null)
+  assert.equal(c2.calls.filter(x => x[0] === 'loadMore').length, 0)
+})
+
+test('Every day searches once the typing pauses, not on every key, and not again for the words it already searched', async () => {
+  const c = recorder()
+  const el = searchPage(cockpitState(NOW), c)
+  radio(el, en.pageSearch.mode.all).click()
+  await tick()
+  await type(el, 'gate')
+  await type(el, 'gateway retry')
+  assert.equal(c.calls.filter(x => x[0] === 'searchTimeline').length, 0, 'not while typing')
+  await new Promise(r => setTimeout(r, 500))
+  assert.deepEqual(c.calls.filter(x => x[0] === 'searchTimeline'), [['searchTimeline', 'gateway retry']])
+  el.$('form.psearch-bar').dispatch('submit')
+  await new Promise(r => setTimeout(r, 500))
+  assert.equal(c.calls.filter(x => x[0] === 'searchTimeline').length, 2, 'Enter searches again on purpose, the pause does not')
 })
 
 test('Ask AI is a mode only with the files question on; it names the questions left and waits once none is left', async () => {
@@ -1480,4 +1514,213 @@ test('a commits row as a tile keeps its count of today and its link; a tile with
   const odd = mount(html`<${PageSection} page=${page} section=${{ ...sec, items: [{ ...sec.items[0], url: 'javascript:alert(1)' }] }}
     s=${cockpitState(NOW)} c=${recorder()} />`)
   assert.equal(odd.$('.rtile a'), null)
+})
+
+// ---------------------------------------------------------------- a page's log layout: view: log, place: rail
+
+const LOG_ROWS = [
+  { index: 0, title: 'Gateway retry moved to the night run', when: '13:42', glyph: '🔧', group: 'billing', tone: 'ok', detail: 'billing' },
+  { index: 1, title: 'Docs index checked and the links repaired', when: '13:05', glyph: '📝', group: 'docs', tone: 'ok', detail: 'docs' },
+  { index: 2, title: 'Invoice export renamed', when: '09:15', glyph: '✅', group: 'billing', tone: 'ok', detail: 'billing' }]
+const REPOS = [
+  { index: 0, title: 'example/app', when: '3 today', detail: '▁▂▂▅▂▁█ main', tone: 'ok', link: { kind: 'web', href: 'https://github.com/example/app/commits' } },
+  { index: 1, title: 'example/tools', when: '1 today', detail: '▁▁▁▁▁▁▂ dev', tone: 'ok', link: null, url: 'https://github.com/example/tools/commits' },
+  { index: 2, title: 'example/quiet', when: '0 today', detail: '▂▁▁▁▁▁▁ main', tone: 'dim', link: { kind: 'web', href: 'https://github.com/example/quiet/commits' } }]
+const DAY_PAGE = { id: 'day', title: 'Daily log', search: true, sections: [
+  { id: 'activity', kind: 'activity', view: 'log', title: 'Log today', status: 'ok', alarm: false, empty: 'no line yet', count: 3, total: 3, items: LOG_ROWS },
+  { id: 'commits', kind: 'commits', place: 'rail', title: 'Repos, 7 days', status: 'ok', alarm: false, empty: 'none', count: 3, total: 3, items: REPOS }] }
+
+/** The log layout as the page router mounts it: the sections drawn through PageSection with the words and the topic */
+function logPage(s, c, page = DAY_PAGE) {
+  const { PageSection } = views.pages
+  const { LogPage } = views.logpage
+  return mount(html`<${LogPage} page=${page} s=${s} c=${c}
+    draw=${(list, q, topic) => list.map(sec => html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} topic=${topic} />`)} />`)
+}
+
+test('the log layout as the page router mounts it: the log in the main column, the repos in the rail, the search filters', async () => {
+  const { PageView } = (await loadCockpit()).components
+  const s = cockpitState(NOW)
+  s.model = { ...s.model, pages: [DAY_PAGE] }
+  s.ui = { ...s.ui, page: DAY_PAGE.id }
+  s.jev = { ...s.jev, enabled: false }
+  const el = mount(html`<${PageView} s=${s} c=${recorder()} />`)
+  assert.ok(el.$('.psearch input'), 'the search field stands')
+  assert.match(el.$('.logp-main').text(), new RegExp(LOG_ROWS[0].title.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.match(el.$('.logp-rail').text(), new RegExp(REPOS[0].title))
+  const box = el.$('.psearch input')
+  box.value = LOG_ROWS[0].title.split(' ')[0]
+  box.dispatch('input')
+  await tick()
+  assert.ok(el.$('.logp-main mark'), 'the typed word is marked in the log')
+})
+
+test('the log layout head counts in words, so a plain count beside it goes; a finding stays', async () => {
+  const { PageView } = (await loadCockpit()).components
+  const head = badge => {
+    const s = cockpitState(NOW)
+    s.model = { ...s.model, pages: [{ ...DAY_PAGE, badge }] }
+    s.ui = { ...s.ui, page: DAY_PAGE.id }
+    s.jev = { ...s.jev, enabled: false }
+    return mount(html`<${PageView} s=${s} c=${recorder()} />`).$('.page-head')
+  }
+  assert.equal(head({ kind: 'count', n: 59 }).$('.pbadge'), null, 'no stray count beside the title')
+  assert.ok(head({ kind: 'bad', n: 1 }).$('.pbadge'), 'a finding keeps its mark')
+})
+
+test('the log layout: which page takes it, the hours of a log, its topics and a sparkline, as pure helpers', () => {
+  assert.equal(logic.logLayout(DAY_PAGE), true)
+  assert.equal(logic.logLayout({ sections: [{ id: 'a', view: 'groups' }] }), false)
+  assert.equal(logic.logLayout({ sections: [{ id: 'a', place: 'rail' }] }), true)
+  assert.deepEqual(logic.logHours(LOG_ROWS).map(h => [h.key, h.rows.length]), [['13:00', 2], ['09:00', 1]])
+  // an earlier day's row carries its date as when: its date is the head
+  assert.deepEqual(logic.logHours([{ when: '7:05' }, { when: '27.10' }, { when: '' }]).map(h => h.key), ['07:00', '27.10', ''])
+  assert.deepEqual(logic.logTopics([...LOG_ROWS, { title: 'no context' }]), [['billing', 2], ['docs', 1]])
+  assert.deepEqual(logic.sparkOf('▁▂█ main'), { bars: [0, 1, 7], rest: 'main' })
+  assert.deepEqual(logic.sparkOf('plain text'), { bars: [], rest: 'plain text' })
+  assert.deepEqual(logic.sparkOf(null), { bars: [], rest: '' })
+})
+
+test('the log layout sets the log in the main column and the rail sections and the topics beside it', () => {
+  const el = logPage(cockpitState(NOW), recorder())
+  assert.ok(el.$('.psearch-bar'), 'the search bar stands above both columns')
+  const main = el.$('.logp-main'), rail = el.$('.logp-rail')
+  assert.ok(main && rail)
+  assert.ok(rail.getAttribute('aria-label'))
+  assert.match(main.text(), /Log today/)
+  assert.doesNotMatch(main.text(), /Repos, 7 days/)
+  assert.match(rail.text(), /Repos, 7 days/)
+  // the hours of the log, sticky heads in their order, each row its time, glyph, context and text
+  assert.deepEqual(main.$$('.logv-head').map(h => h.text()), ['13:00', '09:00'])
+  const row = main.$$('.logv-row')[0]
+  assert.equal(row.$('.logv-time').text(), '13:42')
+  assert.equal(row.$('.logv-glyph').text(), '🔧')
+  assert.equal(row.$('.logv-ctx').text(), 'billing')
+  assert.match(row.$('.logv-text').text(), /Gateway retry moved to the night run/)
+})
+
+test('a log row opens on a click and closes on the next, and offers its detail once open', async () => {
+  const c = recorder()
+  const el = logPage(cockpitState(NOW), c)
+  const btn = () => el.$$('.logv-row')[1].$('.logv-btn')
+  assert.equal(btn().getAttribute('aria-expanded'), 'false')
+  btn().click()
+  await tick()
+  assert.equal(btn().getAttribute('aria-expanded'), 'true')
+  assert.ok(el.$$('.logv-row')[1].hasClass('is-open'))
+  el.$$('.logv-row')[1].button(en.logPage.open).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'openInfo').slice(2), ['day', 'activity'])
+  btn().click()
+  await tick()
+  assert.equal(btn().getAttribute('aria-expanded'), 'false')
+})
+
+test('a log row of a task or about one carries a file mark and, open, opens its file; a closed one by its folder', async () => {
+  const c = recorder()
+  const rows = [{ ...LOG_ROWS[0], about_task: 'billing-retry', about_path: null },
+    { ...LOG_ROWS[1], about_task: 'old-export', about_path: 'work/done/2026-10/old-export' }, LOG_ROWS[2],
+    { ...LOG_ROWS[2], index: 3, task: 'invoice-run' }]
+  const page = { ...DAY_PAGE, sections: [{ ...DAY_PAGE.sections[0], items: rows }, DAY_PAGE.sections[1]] }
+  const el = logPage(cockpitState(NOW), c, page)
+  assert.deepEqual(el.$$('.logv-row').map(r => !!r.$('.logv-file')), [true, true, false, true])
+  for (const i of [0, 1, 2, 3]) { el.$$('.logv-row')[i].$('.logv-btn').click(); await tick() }
+  assert.equal(el.$$('.logv-row')[2].button(en.logPage.openFile), null, 'a row about no task offers no file')
+  el.$$('.logv-row')[0].button(en.logPage.openFile).click()
+  el.$$('.logv-row')[1].button(en.logPage.openFile).click()
+  el.$$('.logv-row')[3].button(en.logPage.openFile).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [['openFile', 'billing-retry', null], ['openFile', 'old-export', 'work/done/2026-10/old-export'],
+    ['openFile', 'invoice-run', null]])
+})
+
+test('a topic chip filters the log, together with the typed words, and its head counts the hits and names the topic', async () => {
+  const el = logPage(cockpitState(NOW), recorder())
+  const chips = el.$$('.logp-rail .fchip')
+  assert.deepEqual(chips.map(b => b.text()), ['billing 2', 'docs 1'])
+  assert.ok(chips.every(b => b.getAttribute('aria-pressed') === 'false'))
+  chips[0].click()
+  await tick()
+  assert.equal(el.$$('.logp-rail .fchip')[0].getAttribute('aria-pressed'), 'true')
+  assert.equal(el.$$('.logv-row').length, 2)
+  assert.equal(el.$('.logp-main .sec-count').text(), '2')
+  assert.match(el.$('.logp-main .sec-title').text(), /billing/)
+  await type(el, 'invoice')
+  assert.deepEqual(el.$$('.logv-row').map(r => r.$('.logv-time').text()), ['09:15'])
+  assert.equal(el.$('.logp-main .sec-count').text(), '1')
+  assert.deepEqual(el.$$('.logv-row mark').map(m => m.text()), ['Invoice'])
+  // the chip again: every topic, the words still filter
+  el.$$('.logp-rail .fchip')[0].click()
+  await tick()
+  assert.equal(el.$$('.logp-rail .fchip')[0].getAttribute('aria-pressed'), 'false')
+  assert.deepEqual(el.$$('.logv-row').map(r => r.$('.logv-time').text()), ['09:15'])
+})
+
+test('a rail section draws its rows as tiles: name, the count of today large, a sparkline, the branch with its link; quiet rows in one line', () => {
+  const el = logPage(cockpitState(NOW), recorder())
+  const tiles = el.$$('.logp-tile')
+  assert.equal(tiles.length, 2)
+  assert.equal(tiles[0].localName, 'a')
+  assert.equal(tiles[0].getAttribute('href'), 'https://github.com/example/app/commits')
+  assert.equal(tiles[0].getAttribute('target'), '_blank')
+  assert.equal(tiles[0].$('.logp-name').text(), 'example/app')
+  assert.equal(tiles[0].$('.logp-big').text(), '3 today')
+  assert.equal(tiles[0].$$('.logp-spark i').length, 7)
+  assert.equal(tiles[0].$('.logp-branch').text(), 'main')
+  // a row whose url is its web page links there too
+  assert.equal(tiles[1].getAttribute('href'), 'https://github.com/example/tools/commits')
+  const quiet = el.$('.logp-quiet')
+  assert.match(quiet.text(), /example\/quiet/)
+  assert.equal(quiet.$('a').getAttribute('href'), 'https://github.com/example/quiet/commits')
+})
+
+test('a long log shows its first rows and a button for the next ones, never hundreds at once', async () => {
+  const { LOG_STEP } = views.logpage
+  const many = Array.from({ length: LOG_STEP + 30 }, (_, i) => ({ index: i, title: `Line ${i}`, when: `${String(12 - Math.floor(i / 20)).padStart(2, '0')}:00`,
+    group: 'ops', tone: 'ok', detail: 'ops' }))
+  const page = { ...DAY_PAGE, sections: [{ ...DAY_PAGE.sections[0], items: many, count: many.length, total: many.length }, DAY_PAGE.sections[1]] }
+  const el = logPage(cockpitState(NOW), recorder(), page)
+  assert.equal(el.$$('.logv-row').length, LOG_STEP)
+  el.button(en.logPage.more(30)).click()
+  await tick()
+  assert.equal(el.$$('.logv-row').length, LOG_STEP + 30)
+  assert.equal(el.button(en.logPage.more(30)), null)
+})
+
+test('Every day stands in the main column instead of the log, the AI answer above it; the rail stays', async () => {
+  const s = { ...cockpitState(NOW), timeline: { q: 'gateway retry', status: 'ok', data: TIMELINE, error: null } }
+  const el = logPage(s, recorder())
+  radio(el, en.pageSearch.mode.all).click()
+  await tick()
+  assert.ok(el.$('.logp-main .tl'))
+  assert.equal(el.$('.logp-main .logv-row'), null)
+  assert.ok(el.$('.logp-rail .logp-tile'))
+  const ask = { status: 'ok', error: null, data: { answer: 'On 28 October in the weekly round.', terms: ['gateway'], sent: 12, model: 'haiku', left: 19, entries: [] } }
+  const el2 = logPage({ ...cockpitState(NOW), timelineAsk: ask }, recorder())
+  radio(el2, en.pageSearch.mode.ai).click()
+  await tick()
+  const main = el2.$('.logp-main')
+  assert.ok(main.$('.tl-answer') && main.$('.logv-row'))
+  assert.ok(main.text().indexOf('On 28 October') < main.text().indexOf('Log today'))
+})
+
+test('a log page without search still takes the two columns; its head names the day and sums the log up', () => {
+  const plain = { ...DAY_PAGE, search: false }
+  const el = logPage(cockpitState(NOW), recorder(), plain)
+  assert.equal(el.$('.psearch'), null)
+  assert.ok(el.$('.logp-main .logv-row') && el.$('.logp-rail .logp-tile'))
+  const { LogHead } = views.logpage
+  const head = mount(html`<${LogHead} page=${DAY_PAGE} s=${cockpitState(NOW)} />`)
+  assert.match(head.$('.dz-eyebrow').text(), /2026/)
+  assert.equal(head.$('h2').text(), 'Daily log')
+  assert.equal(head.$('.logp-sum').text(), en.logPage.summary(3, 2))
+})
+
+test('the log layout speaks every language the cockpit has; German says it with umlauts and without dashes', () => {
+  for (const [lang, table] of Object.entries(text.TABLES)) {
+    const w = table.logPage
+    assert.ok(w && w.open && w.rail && w.topics && w.topicsLabel && w.quiet, lang)
+    assert.ok(typeof w.more === 'function' && typeof w.summary === 'function', lang)
+  }
+  const de = text.TABLES.de.logPage
+  assert.equal(de.summary(3, 2), '3 Logzeilen in 2 Themen')
+  assert.doesNotMatch(JSON.stringify(de) + de.more(5) + de.summary(1, 1), /[—–]/)
 })

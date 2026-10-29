@@ -78,15 +78,33 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
     out = {"index": index, "key": m.item_key(page_id, section_id, it), "actionable": it.get("actionable") is True, "title": it["title"], "detail": it["detail"], "when": it["when"], "tone": it["tone"],
             "link": make_link(it.get("url"), root), "task": it.get("task"), "ask": it["ask"], "mark": it["mark"],
             "priority": it.get("priority"), "state": it.get("state"), "lines": it.get("lines", []),
-            "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"),
+            "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"), "glyph": it.get("glyph"),
             "tags": it.get("tags"), "account": it.get("account"), "inbox": it.get("inbox"),
             "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"), "gh": it.get("gh"),
             "cal": it.get("cal"), "due_at": it.get("due_at"),
             "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view),
-            **page_origin(it, section_id, known)}
+            **page_origin(it, section_id, known), **about_of(it, root, known)}
     # the one card of the item (card.py), from what the row carries and the section it stands in
     out["card"] = cd.card_of(out, card_ctx)
     return out
+
+
+def about_of(it: dict, root: Path, known: og.Known | None) -> dict:
+    """The task or stream a row is about, so its file opens from the row: the row's own `about_task`, else its group
+    where that names a task, stream or closed one of this Bridge (a log row's context). A closed one also names its
+    folder under work/done/, the newest closing, which is the copy the files view opens"""
+    known = known or og.Known()
+    group = it.get("group")
+    slug = it.get("about_task") or (group if not it.get("task") and not it.get("inbox") and isinstance(group, str)
+                                    and og.work_kind(group, known) else None)
+    kind = og.work_kind(slug, known)
+    if not slug or not kind:
+        return {"about_task": it.get("about_task"), "about_path": None}
+    path = None
+    if kind.startswith("done"):
+        hits = sorted(Path(root).glob(f"work/done/*/{slug}/STATUS.md"), reverse=True)
+        path = hits[0].parent.relative_to(root).as_posix() if hits else None
+    return {"about_task": slug, "about_path": path, "work_kind": kind}
 
 
 def page_origin(it: dict, section_id: str, known: og.Known | None) -> dict:
@@ -272,7 +290,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         secs = []
         for s in pg["sections"]:
             # drawn views and the GitHub list (board) filter and search every row
-            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board") else ITEM_CAP
+            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board", "log") else ITEM_CAP
             sec_ctx = replace(card_ctx, section_kind=s.get("kind"))
             shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known, sec_ctx)
                      for i, it in enumerate(s["items"][:cap])]
@@ -294,7 +312,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
                                "weight": weight, "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
                                "hide_ok": s.get("hide_ok") is True,
-                               "steps": s.get("steps"),
+                               "steps": s.get("steps"), "place": s.get("place"),
                                "more": max(0, len(s["items"]) - cap)})
             if bad > 0:
                 alarms.append({"page_id": pg["id"], "page_title": pg["title"], "section_title": s["title"],
@@ -821,7 +839,9 @@ class Collector:
                     if s["id"] == section_id:
                         tabs = self.app.tabs.tab_list()
                         starting = self.starting_items()
-                        items = [info_out(it, i, self.app.root, tabs, view, starting, page_id, section_id) for i, it in enumerate(s["items"])]
+                        known = og.known_from_root(self.app.root)
+                        items = [info_out(it, i, self.app.root, tabs, view, starting, page_id, section_id, known)
+                                 for i, it in enumerate(s["items"])]
                         # a decision on the same thing in Due holds here too (model.decision_twins)
                         out = m.with_twins({**self.app.store.hidden(), **{k: "9999-12-31" for k in self.app.store.dismissed()}},
                                            self.twin_map)

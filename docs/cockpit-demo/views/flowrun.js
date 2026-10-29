@@ -2,16 +2,18 @@
 // The cockpit, Running now of Work through (views/flow.js, round 4): what runs is no point to decide, so it stands
 // apart from the walk, the overview's table, the boxes and the batch (logic.js flowParts `lane`): a start of the
 // cockpit at work, a session linked to a task (by hand, by its own task tab, or recognised from what it did lately)
-// whose tab works or went quiet at its prompt (finished; one waiting that is not quiet yet needs you and is a point,
-// logic.js tabStage), a task's own tab at work or finished. Round 6: every live session stands here too, with a task
-// or without one and with a terminal driver or without one (flowParts `sessions`, logic.js runningOf), as a compact
+// whose tab works, a task's own tab at work. A finished tab (quiet at its prompt, logic.js tabStage) runs no more: its
+// task is a point again; one waiting that is not quiet yet needs you and is a point. Round 6: every live session at
+// work stands here too, with a task or without one and with a terminal driver or without one (flowParts `sessions`,
+// logic.js runningOf; a finished or waiting one is no card of Running now), as a compact
 // card of the Sessions page (views/sessions.js SessionCard: its state read off the live tab, a quiet one finished,
 // the title as the jump to its tab, where it runs, its agents as a count and a lane, two lines of its tab, one next
 // step, the task to link); a lane entry in a session's tab is that card's, so it stands once. RunningRow is its part
 // on top of the left column (round 5), one row like a group of Not now: its name, its count (the cards and the
 // entries no card holds), a dot that pulses while one works; a click shows them in the middle (view `running`: the
 // entries no card holds as rows, then SessionCards).
-// RunningStrip also stands on top of the overview, the entries of the side entered, each with its tab, its stage,
+// RunningStrip lists the entries in the view `running` (never over an overview: Running now is one entry of the left
+// column, one count), each with its tab, its stage,
 // since when, how it is known, To tab as the strong way and View, and a box where it has a task of its own: the box is
 // only for merging (and Done) with the points ticked in the overview, a batch never starts, puts off or drops what
 // runs (logic.js laneRows, batchPlan); a title opens the entry in the middle as view `run`. A session card keeps the
@@ -119,7 +121,7 @@ export function SessionCards({ sessions, s, c, picked = new Set() }) {
   })}</ul>`
 }
 
-/** Running now on top of the overview: the entries of the side entered (every one at the level of all), each with its
+/** The entries of Running now (the view `running`; without `bare` a strip with a head of its own), each with its
  *  tab, stage, since when and how, To tab the strong way and View; a box on an entry with a task of its own, in the
  *  same selection as the overview's (`picked`, ui.flowPicked), for a merge with a point. `bare`: the view `running`,
  *  whose head names it, so no head of its own, why the boxes are there as a line */

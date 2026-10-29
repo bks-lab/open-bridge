@@ -104,12 +104,12 @@ def collect_fixture(root: Path) -> dict:
                 {"id": "checks", "kind": "command", "title": "Checks", "status": "ok", "alarm": True, "bad": 1,
                  "weight": 1, "total": 1, "items": [
                      {"id": "backup-stale", "title": "Backup older than 2 days", "detail": "drift", "tone": "bad",
-                      "url": "https://example.org/backup", "ask": True, "actionable": True}]},
+                      "url": "https://example.org/backup", "ask": True, "actionable": True, "glyph": "⚠"}]},
                 {"id": "upstream", "kind": "command", "title": "Upstreams (2)", "status": "ok", "weight": 1,
                  "items": [{"id": "upstream-drift", "title": "Upstream drift", "tone": "warn", "url": "file:///etc/passwd", "ask": True,
                            "actionable": True}]},
                 {"id": "accounts", "kind": "command", "title": "Accounts", "status": "ok", "weight": 1, "view": "tiles",
-                 "hide_ok": True, "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
+                 "hide_ok": True, "place": "rail", "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
                            {"title": "Not an account"}]}]},
             {"id": "tasks", "title": "Tasks", "under": "systems", "sections": [
                 {"id": "tasks", "kind": "tasks", "title": "Tasks", "status": "ok", "items": [
@@ -456,12 +456,17 @@ def test_parse_pages():
                              "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "cal": None, "due_at": None, "at": None, "id": None, "actionable": False,
                              # where it comes from, raw (origin.py classifies it in the collector)
                              "origin_raw": None, "origin_provider": None, "origin_section_kind": None, "inbox_key": None,
-                             "about_task": None, "about_kind": None}
+                             "about_task": None, "about_kind": None, "glyph": None}
     assert s["as_of"] is None and s["empty"] == "nothing"
     assert s["boards"] is None and s["metrics"] is None and s["stale"] is None and s["cal_figures"] is None
     assert pages[0]["overview"] is False
     ops = m.parse_pages({"pages": [{"id": "ops", "title": "Betrieb", "overview": True, "sections": [{"id": "a"}]}]})
     assert ops[0]["overview"] is True
+    # `search: true` reaches the page, so the cockpit draws its search field; anything else is no search
+    found = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [{"id": "a"}]},
+                                     {"id": "odd", "title": "Odd", "search": "yes", "sections": [{"id": "a"}]}]})
+    assert [p["search"] for p in found] == [True, False]
+    assert pages[0]["search"] is False
     # an order by Jev: the server keeps the words of `jev:`, the page only learns that there is one
     work = m.parse_pages({"pages": [{"id": "w", "title": "Arbeit", "jev": {"skip_sections": ["b"], "private": ["p"]},
                                      "sections": [{"id": "a"}]}]})
@@ -495,6 +500,18 @@ def test_parse_pages_keeps_where_a_page_stands_and_what_a_section_hides():
     assert pages[1]["under"] == "ops" and pages[1]["subs"] == []
     assert pages[2]["under"] is None and pages[2]["subs"] == []
     assert [p["sections"][0]["hide_ok"] for p in pages] == [True, False, False]
+
+
+def test_parse_pages_keeps_the_log_layout_keys():
+    # every key of the log layout passes parse_pages one by one, else the page never learns it (the bug of `search`):
+    # a section's `view: log`, its `place: rail`, a log row's glyph; anything else is no log and the main column
+    pages = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [
+        {"id": "a", "view": "log", "items": [{"title": "Shipped it", "when": "09:15", "glyph": "✅"}, {"title": "x", "glyph": 7}]},
+        {"id": "b", "place": "rail"}, {"id": "c", "view": "diary", "place": "left"}]}]})
+    secs = pages[0]["sections"]
+    assert [x["view"] for x in secs] == ["log", None, None]
+    assert [x["place"] for x in secs] == [None, "rail", None]
+    assert [i["glyph"] for i in secs[0]["items"]] == ["✅", None]
 
 
 def test_mark_and_as_of():
@@ -941,6 +958,9 @@ def test_model_shape(world):
     assert pages["tasks"]["under"] == "systems" and pages["systems"]["under"] is None
     assert pages["systems"]["subs"] == ["@workers", "tasks"] and pages["tasks"]["subs"] == []
     assert [x["hide_ok"] for x in pages["systems"]["sections"]] == [False, False, True]
+    # the log layout reaches the browser: where a section stands (the rail) and a log row's glyph
+    assert [x["place"] for x in pages["systems"]["sections"]] == [None, None, "rail"]
+    assert pages["systems"]["sections"][0]["items"][0]["glyph"] == "⚠"
     assert model["teams"][0]["roles"][1] == {"id": "review", "name": "Review", "mode": "report"}
     dumped = json.dumps(model)
     assert "file://" not in dumped and world.app.token not in dumped and "command" not in model
@@ -4348,6 +4368,27 @@ def test_the_costs_view_is_served_from_the_kept_copy(world):
     assert world.request("GET", "/api/costs")[0] == 401
 
 
+def test_a_cost_statement_is_made_for_the_picked_month_and_project(world):
+    # the cost card's button: scripts/cost-ledger.py statement over the kept view (or a closed month), read only
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    day = lambda d: {"day": d, "amount": 1.0, "provisional": False, "groups": {"svc": 1.0}}  # noqa: E731
+    doc = {"schema": 1, "kind": "cloud-costs", "today": "2026-11-03", "currency": "EUR",
+           "cost_centers": [{"id": "shop", "title": "Shop", "persona_ref": None}],
+           "accounts": [{"id": "a", "display_name": "Account A", "ok": True, "cost_center": "shop",
+                         "days": [day(f"2026-10-{n:02d}") for n in range(1, 32)]}]}
+    (folder / "costs-view.json").write_text(json.dumps(doc), encoding="utf-8")
+    status, _, body = world.request("GET", "/api/costs/statement?month=2026-10&center=shop&lang=de", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    st = data["statement"]
+    assert st["paid"] == 31.0 and st["source"] == "live" and "Shop" in st["markdown"] and st["csv"].startswith("item;")
+    status, _, body = world.request("GET", "/api/costs/statement?month=1999-01", headers=world.cookie)
+    assert status == 404 and json.loads(body)["error"]["code"] == "no_costs"
+    assert world.request("GET", "/api/costs/statement?month=nope", headers=world.cookie)[0] == 400
+    assert world.request("GET", "/api/costs/statement?month=2026-10")[0] == 401
+
+
 def test_the_token_use_is_served_for_7_30_or_90_days(world):
     # the range chips of the usage card ask for a range; anything else becomes the nearest allowed one
     asked = []
@@ -5060,6 +5101,27 @@ def test_a_page_item_keeps_when_it_begins():
     from lib.bridge_cockpit.collector import info_out
     it = m.parse_info({"title": "Weekly", "at": "2026-10-14T18:00"})
     assert info_out(it, 0, Path("/x"), [], None, set())["at"] == "2026-10-14T18:00"
+
+
+def test_a_log_row_about_a_task_names_it_and_where_a_closed_one_lies(tmp_path):
+    from lib.bridge_cockpit import origin as og
+    from lib.bridge_cockpit.collector import info_out
+    for d in ("work/tasks/billing-retry", "work/done/2026-09/old-export", "work/done/2026-10/old-export"):
+        (tmp_path / d).mkdir(parents=True)
+        (tmp_path / d / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    known = og.known_from_root(tmp_path, fresh=True)
+    row = lambda group: info_out(m.parse_info({"title": "x", "group": group}), 0, tmp_path, [], None, set(), "day", "activity", known)
+    live = row("billing-retry")
+    assert (live["about_task"], live["about_path"], live["work_kind"]) == ("billing-retry", None, "task")
+    closed = row("old-export")
+    assert (closed["about_task"], closed["about_path"]) == ("old-export", "work/done/2026-10/old-export")
+    assert closed["work_kind"].startswith("done")
+    other = row("billing")
+    assert (other["about_task"], other["about_path"]) == (None, None)
+    # a task row stays a task row: its group never makes it about another
+    own = info_out(m.parse_info({"title": "x", "group": "billing-retry", "task": "other-task"}), 0, tmp_path, [], None, set(),
+                   "day", "activity", known)
+    assert own["about_task"] is None
 
 
 def test_a_start_that_ran_enters_the_return_channel_and_can_be_taken_out(world):

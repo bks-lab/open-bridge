@@ -20,6 +20,7 @@ import collections
 import datetime as dt
 import hashlib
 import hmac
+import importlib.util
 import json
 import os
 import queue
@@ -64,6 +65,7 @@ from .quick import Quick
 from .review import Review
 from .sessions import Sessions
 from .guide import Guide
+from . import prio
 from .usage import Usage
 from .runner import Runner, RunnerRefused
 from .design import stylesheet
@@ -107,6 +109,18 @@ SCREEN_HASH_RE = re.compile(r"^[0-9a-f]{1,64}\Z")
 # is one of the cockpit's own ids
 SEEN_PAGE_RE = re.compile(r"^[^\s/\\\x00-\x1f\x7f]{1,64}\Z")
 SEEN_RE = re.compile(r"^@?[a-z0-9][a-z0-9_-]{0,63}\Z")
+COST_REF_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")     # a cost center or persona id, or all / none
+
+
+def cost_ledger():
+    """scripts/cost-ledger.py of this checkout, loaded once (its name has a dash, so not an import)."""
+    name = "bridge_cost_ledger"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[2] / "cost-ledger.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules[name]
 CAPS_TTL_S = 300
 CAPS_RETRY_S = 15      # a failed read is tried again this soon, the last good answer standing meanwhile
 CAPS_TIMEOUT = 20
@@ -424,6 +438,8 @@ class App:
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
+                # Prio's second ranker: whether Haiku can read in, its runs left today, the fallback (prio.py)
+                "prio": prio.state(self),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
                 "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(),
                 # the model calls of the Activity tab and the instruction line: the runs left today (activity.py)
@@ -1034,6 +1050,24 @@ class Handler(BaseHTTPRequestHandler):
                 data = None
             ok = isinstance(data, dict) and isinstance(data.get("accounts"), list)
             self.send_json(200, {"ok": True, "view": data if ok else None})
+        elif path == "/api/costs/statement":
+            # the cost card's button: a month's cost statement for the picked project or persona, from the closed
+            # month or the kept view (scripts/cost-ledger.py statement), read only; nothing is written
+            month, center, persona = one("month"), one("center") or "all", one("persona") or "all"
+            lang = one("lang") if one("lang") in ("en", "de") else "en"
+            if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                self.send_error_json("invalid_argument", "month must be YYYY-MM", "month", status=400)
+                return
+            if not (COST_REF_RE.match(center) and COST_REF_RE.match(persona)):
+                self.send_error_json("invalid_argument", "center and persona must be ids", "center", status=400)
+                return
+            ledger = cost_ledger()
+            try:
+                st = ledger.statement(app.root, month, center, persona, lang)
+            except ledger.LedgerError as error:
+                self.send_error_json("no_costs", str(error), "month", status=404)
+                return
+            self.send_json(200, {"ok": True, "statement": st})
         elif path == "/api/usage":
             # the tokens of the last 7, 30 or 90 days, counted from the Claude Code transcripts of this machine,
             # the kept history and the other machines (usage.py), read only; any other range becomes the nearest

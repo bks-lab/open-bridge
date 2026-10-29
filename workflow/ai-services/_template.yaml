@@ -3,7 +3,8 @@
 # Built-in consumers: briefing-chat, task-review, triage, cockpit-organize (organize with AI),
 # cockpit-describe (each item's brief, scripts/lib/bridge_cockpit/describe.py; default haiku),
 # cockpit-activity (the summary of a point's activity on Work through, activity.py; default haiku),
-# cockpit-instruct (the instruction line of Work through, instruct.py; default haiku).
+# cockpit-instruct (the instruction line of Work through, instruct.py; default haiku),
+# cockpit-prio (Read in with Haiku, the second ranker of Prio on Work through, prio.py; default haiku).
 # Workers opt in with scripts/ai-run.py --service <id>.
 schema_version: 1
 scope: user
