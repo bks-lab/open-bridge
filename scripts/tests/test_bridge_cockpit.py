@@ -5053,6 +5053,27 @@ def test_a_page_item_keeps_when_it_begins():
     assert info_out(it, 0, Path("/x"), [], None, set())["at"] == "2026-10-14T18:00"
 
 
+def test_a_log_row_about_a_task_names_it_and_where_a_closed_one_lies(tmp_path):
+    from lib.bridge_cockpit import origin as og
+    from lib.bridge_cockpit.collector import info_out
+    for d in ("work/tasks/billing-retry", "work/done/2026-09/old-export", "work/done/2026-10/old-export"):
+        (tmp_path / d).mkdir(parents=True)
+        (tmp_path / d / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    known = og.known_from_root(tmp_path, fresh=True)
+    row = lambda group: info_out(m.parse_info({"title": "x", "group": group}), 0, tmp_path, [], None, set(), "day", "activity", known)
+    live = row("billing-retry")
+    assert (live["about_task"], live["about_path"], live["work_kind"]) == ("billing-retry", None, "task")
+    closed = row("old-export")
+    assert (closed["about_task"], closed["about_path"]) == ("old-export", "work/done/2026-10/old-export")
+    assert closed["work_kind"].startswith("done")
+    other = row("billing")
+    assert (other["about_task"], other["about_path"]) == (None, None)
+    # a task row stays a task row: its group never makes it about another
+    own = info_out(m.parse_info({"title": "x", "group": "billing-retry", "task": "other-task"}), 0, tmp_path, [], None, set(),
+                   "day", "activity", known)
+    assert own["about_task"] is None
+
+
 def test_a_start_that_ran_enters_the_return_channel_and_can_be_taken_out(world):
     world.runner.handlers["workplace.launch"] = lambda argv: ok(
         {"ok": True, "items": [{"item": "other-task", "label": "Other task", "ref": "surface:21"}], "report": ["started 1"]})

@@ -63,7 +63,7 @@ function useJevPage(enabled) {
   return jevPage
 }
 
-function PageView({ s, c }) {
+export function PageView({ s, c }) {
   const t = T()
   const jev = useJevPage(!!(s.jev?.enabled && s.jev?.ready))
   if (s.ui.page === START_PAGE) return html`<${HomePage} s=${s} c=${c} />`
@@ -143,7 +143,7 @@ function PageView({ s, c }) {
       : page.sections?.some(sec => sec.kind === 'tasks' && (sec.items ?? []).some(it => it.task)) ? html`<${ReviewStrip} s=${s} c=${c} />` : null}
     ${page.jev && !work && s.jev?.enabled && s.jev?.ready ? html`<${WorkOrder} page=${page} s=${s} c=${c} />` : null}
     ${jevList ? html`<${JevList} page=${page} s=${s} c=${c} />`
-      : (page.sections ?? []).length && log ? html`<${LogPage} page=${page} s=${s} c=${c} draw=${sections} />`
+      : (page.sections ?? []).length && log ? html`<${LogPage} page=${page} s=${s} c=${c} draw=${(list, q, topic) => sections(q, list, topic)} />`
       : (page.sections ?? []).length ? (page.search ? html`<${PageSearch} page=${page} s=${s} c=${c} render=${sections} />` : sections(''))
       : html`<div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div>`}
     ${(jevList ? [...Object.values(cards.after).flat(), ...cards.end] : cards.end).map(card)}
