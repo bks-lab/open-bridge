@@ -60,7 +60,7 @@ function BudgetBar({ acc, label }) {
   </span>`
 }
 
-const KEY_PROVIDERS = ['openai', 'anthropic']
+const KEY_PROVIDERS = ['openai', 'anthropic', 'elastic']
 
 /** One account of the cost card: name, provider, yesterday, the month against its budget; a failed one says why,
  *  and one that needs a login carries the command to run, ready to copy */
@@ -92,6 +92,7 @@ function CostRow({ acc, data, c }) {
       ${acc.budget_month ? html`<${BudgetBar} acc=${acc} label=${`${word}, ${t.costsForecast(money(acc.forecast_month ?? 0))}`} />` : html`<span class="muted small">${t.costsNoBudget}</span>`}
       ${acc.forecast_month != null ? html`<span class="muted small">${t.costsForecast(money(acc.forecast_month))}</span>` : null}
       ${acc.fx_missing && acc.original_currency ? html`<span class="muted small">${t.costsNoFx(acc.original_currency)}</span>` : null}
+      ${acc.credits_month ? html`<span class="muted small">${t.costsCredits(money(acc.used_month ?? 0), money(acc.credits_month))}</span>` : null}
     </span></li>`
 }
 

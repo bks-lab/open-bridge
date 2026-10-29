@@ -84,6 +84,7 @@ TX = {
         "costs_missing": "no cost report from {src}: {err}", "costs_yesterday": "yesterday {amount}",
         "costs_month": "{month} {amount}", "costs_of": "{amount} of {budget}", "costs_login": "{name}: sign-in needed, {hint}",
         "costs_old": "the report is {h} h old",
+        "costs_credits": "used {used}, credits {credits}",
         "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September",
                    "October", "November", "December"],
         "g_always": "Always on", "g_online": "Online", "g_offline": "Offline", "g_outside": "Not in the tailnet",
@@ -126,6 +127,7 @@ TX = {
         "costs_missing": "kein Kostenbericht von {src}: {err}", "costs_yesterday": "gestern {amount}",
         "costs_month": "{month} {amount}", "costs_of": "{amount} von {budget}", "costs_login": "{name}: Anmeldung nötig, {hint}",
         "costs_old": "der Bericht ist {h} h alt",
+        "costs_credits": "verbraucht {used}, Gutschrift {credits}",
         "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
                    "Oktober", "November", "Dezember"],
         "g_always": "Immer an", "g_online": "Online", "g_offline": "Offline", "g_outside": "Nicht im Tailnet",
@@ -666,6 +668,9 @@ def cost_rows(root: Path | None, tx: dict, srcs: str | list[str], now: dt.dateti
                 so_far = tx["costs_of"].format(amount=so_far, budget=money(tx, budget, cur, whole=True))
             parts = [tx["costs_yesterday"].format(amount=money(tx, _amount_on(acc, yesterday), cur)),
                      tx["costs_month"].format(month=month, amount=so_far)]
+            if acc.get("credits_month"):
+                parts.append(tx["costs_credits"].format(used=money(tx, acc.get("used_month"), cur),
+                                                        credits=money(tx, acc["credits_month"], cur)))
             if stale and age_h is not None:
                 parts.append(tx["costs_old"].format(h=int(age_h)))
             over = budget is not None and isinstance(mtd, (int, float)) and mtd > budget

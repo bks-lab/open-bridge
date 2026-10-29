@@ -318,6 +318,15 @@ def test_costs_rows_speak_german_numbers_in_german(tmp_path):
     assert by["costs:azure-other"]["title"].startswith("Other Azure: Anmeldung nötig")
 
 
+def test_costs_rows_say_what_was_used_when_credits_paid_for_it(tmp_path):
+    doc = costs_doc()
+    doc["accounts"][1].update(month_to_date=0.0, used_month=1.3, credits_month=-1.3, budget_month=None)
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(doc))
+    row = {r["id"]: r for r in br.cost_rows(tmp_path, br.TX["de"], str(src), NOW, 36)}["costs:aws-example"]
+    assert row["raw_state"].endswith("Oktober 0,00 € · verbraucht 1,30 €, Gutschrift -1,30 €")
+
+
 def test_a_missing_login_asks_with_the_command_to_run(tmp_path):
     src = tmp_path / "costs.json"
     src.write_text(json.dumps(costs_doc()))
