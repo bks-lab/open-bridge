@@ -2070,7 +2070,7 @@ export function createMockTransport(opts = {}) {
       if (url.pathname === '/api/issue') {
         return ok({ ok: true, ref: url.searchParams.get('ref'), type: 'issue', state: 'OPEN', unmatched: [],
           boards: [{ slug: 'demo', title: 'Demo board', owner: 'demo', number: 3, status: 'In Progress', review_state: 'In Review',
-            done_state: 'Done', in_review: false, in_done: false, rules: ['done_requires_review'] }] })
+            done_state: 'Done', in_review: false, in_done: false, rules: ['done_requires_review'] }], check: null })
       }
       if (url.pathname === '/api/relay') return ok(state.relay)
       if (url.pathname === '/api/workers') {
@@ -2250,6 +2250,13 @@ export function createMockTransport(opts = {}) {
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
         // "What bothers you here?": the window says itself that it was noted, the demo keeps no proposal
         if (verb === 'explain_note') return ok({ ...result, note: '' })
+        // Check with AI on an issue card: the demo finds it done from a merged pull request
+        if (verb === 'issue_check') {
+          await new Promise(r => wait(r, 700))
+          return ok({ ...result, note: 'Mock: the AI finds it done.', issue_check: { verdict: 'done', reason: 'The fix is merged and the test runs on CI.',
+            evidence: ['example/repo#14 merged'], missing: [], comment: 'The parser fix is merged in #14 and its test runs on CI.',
+            model: 'claude-haiku-5-5', cost_usd: 0.004, at: new Date(now()).toISOString().slice(0, 19) } })
+        }
         // the files tab's question to its records: the demo names the first record it was sent
         if (verb === 'files_ask') {
           const fs = state.work.files_search

@@ -29,6 +29,7 @@ ISSUE_REF_RE = re.compile(r"^[\w.-]{1,100}/[\w.-]{1,100}#\d{1,9}\Z")
 # the issues a board script works on now: one run per issue, a second click (a reload, another window) waits
 _ISSUES_MOVING: set[str] = set()
 _ISSUES_LOCK = threading.Lock()
+_ISSUES_CHECKING: set[str] = set()
 # one question to the records at a time (v_files_ask), on a lock of its own, never the write lock
 _FILES_ASKING = threading.Lock()
 # one question to the history at a time (v_timeline_ask), on a lock of its own as well
@@ -575,6 +576,63 @@ class WorkVerbs:
 
     def v_issue_done(self, ctx: Ctx, key: str, text: str | None = None) -> None:
         self.issue_move(ctx, "done", key, text or "")
+
+    def v_issue_check(self, ctx: Ctx, key: str) -> None:
+        """Check with AI: the issue's detail read fresh, a small model judges it from that evidence, unclear asks the
+        stronger one once; the answer is kept for the card (issue_check.py). Nothing on GitHub changes"""
+        from .. import ai_services as ai
+        from . import describe
+        from . import issue_check as ic
+        row = self.entry(key)["row"]
+        ref = str(row.get("ref") or "")
+        if not key.startswith("ref:") or not ISSUE_REF_RE.match(ref):
+            raise self.not_applicable("only a GitHub issue is checked", "key")
+        app, tx = self.app, self.tx
+        try:
+            chosen = ai.select(app.root, ic.SERVICE, ic.DEFAULT_MODEL)
+        except ValueError:
+            chosen = None
+        if not chosen or not ai.supports(ic.SERVICE, chosen.provider) or chosen.model not in MODELS.values() or not app.runner.claude:
+            raise ActionError(503, "issue_check_unavailable", tx["issue_check_unavailable"])
+        tiers = [chosen.model, *([ic.STRONGER] if chosen.model == MODELS["haiku"] else [])]
+        ctx.subject = ref
+        with _ISSUES_LOCK:
+            if ref in _ISSUES_CHECKING:
+                raise ActionError(409, "issue_busy", "this issue is being checked already")
+            _ISSUES_CHECKING.add(ref)
+        try:
+            with ctx.unlocked():
+                run = ctx.call("briefing.detail", ref, [sys.executable, app.runner.script("scripts/briefing.py"), "--root",
+                                                        str(app.root), "detail", ref, "--fresh"], ic.DETAIL_TIMEOUT)
+                try:
+                    detail = json.loads(((run.out if run.ok else run.err) or "").strip().splitlines()[-1])
+                except (ValueError, IndexError):
+                    detail = None
+                if not run.ok or not isinstance(detail, dict) or not detail.get("ok"):
+                    raise ActionError(502, "issue_check_failed", tx["issue_check_failed"].format(why="GitHub"))
+                system, text = ic.prompt(detail, describe.language(app.root))
+                got, cost, calls = None, 0.0, 0
+                for model in tiers:
+                    argv = ic.argv(app.runner.claude, model, system, text)
+                    if not ic.argv_ok(argv, app.runner.claude):
+                        raise ActionError(409, "issue_check_failed", tx["issue_check_failed"].format(why="too big"))
+                    calls += 1
+                    answer = ic.parse(ctx.call("claude.issue_check", ref, argv, ic.TIMEOUT).out or "", model)
+                    cost += answer["cost_usd"] or 0.0
+                    if answer["answer"] is not None:
+                        got = {**answer["answer"], "model": answer["used"] or model}
+                        if got["verdict"] != "unclear":
+                            break
+        finally:
+            with _ISSUES_LOCK:
+                _ISSUES_CHECKING.discard(ref)
+        self.audit_line("issue_check", ref, verdict=(got or {}).get("verdict", "-"), calls=calls, cost_ct=round(cost * 100, 3))
+        if got is None:
+            raise ActionError(502, "issue_check_failed", tx["issue_check_failed"].format(why="no verdict"))
+        result = {**got, "cost_usd": round(cost, 5), "at": ic.stamp()}
+        ic.keep(app.root, ref, result)
+        ctx.extra["issue_check"] = result
+        ctx.note(tx[f"issue_check_{got['verdict']}"].format(title=m.short(row.get("title") or ref, 60), reason=m.short(got["reason"], 140)))
 
     def issue_move(self, ctx: Ctx, to: str, key: str, text: str) -> None:
         """A GitHub issue to its board's review or done state, on a person's click: the board script writes and reads
