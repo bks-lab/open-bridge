@@ -593,6 +593,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_brief_refs.py",
     "scripts/lib/bridge_cockpit/describe.py",             # each item's brief written and kept by a small model
     "scripts/tests/test_bridge_cockpit_describe.py",
+    "scripts/tests/test_bridge_cockpit_issue.py",         # the issue card on a board: review and done, a click only
+    "scripts/tests/test_issue_transition.py",             # github-projects-manager's issue_transition.py
     "scripts/lib/bridge_cockpit/themes.py",               # the themes of Work through, ordered by a small model
     "scripts/tests/test_bridge_cockpit_themes.py",
     "scripts/lib/bridge_cockpit/prio.py",                 # Prio's read-in rows and its second ranker, Haiku

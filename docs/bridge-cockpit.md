@@ -711,6 +711,22 @@ primary button. Each kind of point gets the verbs that fit it:
 - **An issue or a pull request**: **Open on GitHub** (or Open in the tracker)
   first; its Done says **Hide**, since it only leaves this list and the issue
   stays open where it lives.
+- **A GitHub issue on a board of `workflow/projects/`**: under Open on GitHub
+  the board and its status (`GET /api/issue`, which runs
+  `skills/github-projects-manager/scripts/issue_transition.py plan`), then
+  **Set to review** and **Done**, each opening its sentence first. Set to review
+  needs one (it becomes the review comment, governance K3) and sends
+  `issue_review`; Done names what the click will do and the board's
+  `governance.rules`, then sends `issue_done`: the review comment and review
+  state first on every board that has review states (K1 at every level), then
+  the done state; only when every board reads back at its target does the issue
+  close on GitHub (as not planned where a board declined it), and the row
+  leaves the list. A board of the issue that `workflow/projects/` does not know
+  is named and keeps its status. The board script is the only writer, reads
+  every write back, and one issue moves once at a time; a run that stops after a
+  first write says so. Only a person's click moves an
+  issue (K1): where the AI suggests closing, the button that fits is the strong
+  one and its reason stands in the field already, Hide stays plain.
 - **A finished start**: Done and close the tab, then View, Open answer, Improve
   and Runs on, then Later until and Drop because.
 - **A tab that asks**: To tab, View, Advise and Later until only. Nothing closes

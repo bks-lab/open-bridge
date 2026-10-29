@@ -141,6 +141,8 @@ export function createApi(transport = httpTransport()) {
     // the records of the files tab's start: every task, stream and closed task with its state, area and last change
     records: () => transport.get('/api/records'),
     github: (ref, fresh) => transport.get(`/api/github?ref=${encodeURIComponent(ref)}${fresh ? '&fresh=1' : ''}`),
+    // the boards of one issue and what Set to review and Done would set there (issue_transition.py plan)
+    issue: ref => transport.get(`/api/issue?ref=${encodeURIComponent(ref)}`),
     page: (page, section) => transport.get(`/api/page?page=${encodeURIComponent(page)}&section=${encodeURIComponent(section)}`),
     relay: () => transport.get('/api/relay'),
     // since: the hash of the screen the page holds; the server then answers unchanged without the text

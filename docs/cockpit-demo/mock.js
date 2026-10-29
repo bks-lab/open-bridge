@@ -2067,6 +2067,11 @@ export function createMockTransport(opts = {}) {
           mutes: mockMutes } })
       }
       if (url.pathname === '/api/github') return ok(githubDetail(url.searchParams.get('ref')))
+      if (url.pathname === '/api/issue') {
+        return ok({ ok: true, ref: url.searchParams.get('ref'), type: 'issue', state: 'OPEN', unmatched: [],
+          boards: [{ slug: 'demo', title: 'Demo board', owner: 'demo', number: 3, status: 'In Progress', review_state: 'In Review',
+            done_state: 'Done', in_review: false, in_done: false, rules: ['done_requires_review'] }] })
+      }
       if (url.pathname === '/api/relay') return ok(state.relay)
       if (url.pathname === '/api/workers') {
         // invented runs in the shape of `workload view --json`; nothing here is a real machine

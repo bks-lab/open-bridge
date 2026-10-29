@@ -36,7 +36,7 @@
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, canTab, DAY, duration, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
   isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, reportsTicked, short, tabCloseOffer, triageRunning, verbsFor, workPageOf, workViewsIn,
@@ -283,6 +283,83 @@ function FinishedActs({ x, s, c, sug, forget }) {
     ${fix ? html`<${Improve} row=${row} tab=${live ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
 }
 
+// an issue on GitHub, not a pull request: the rows whose board an issue card reads (GET /api/issue)
+const GITHUB_ISSUE = row => /^[\w.-]+\/[\w.-]+#\d+$/.test(String(row?.ref ?? '')) && /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+/.test(String(row?.url ?? ''))
+
+/** What Done on an issue does, board by board (issue_transition.py): the review comment and the review state first
+ *  on every board that has review states while the issue is not in review there (K1), then the done state, then the
+ *  close */
+function doneSteps(boards, f) {
+  const out = []
+  for (const b of boards) {
+    if (b.in_done) continue
+    if (!b.in_review && b.review_state) out.push(f.comment, b.review_state)
+    out.push(b.done_state)
+  }
+  return [...new Set(out), f.close]
+}
+
+/** An issue on a board of workflow/projects/ (GET /api/issue, issue_transition.py plan): its board and status, Set
+ *  to review and Done, each opening its sentence first; Done says what the click will do and the board's rules above
+ *  Confirm. Only a person's click writes (governance K1): the AI suggests, where it says close the button that fits
+ *  is the strong one and its reason stands in the field already. Without a board only Hide, which the bar keeps */
+export function IssueWays({ row, s, c, sug }) {
+  const f = T().flow.issue
+  const [plan, setPlan] = useState({ status: 'loading' })
+  const [open, setOpen] = useState(null)
+  const [text, setText] = useState('')
+  const [round, setRound] = useState(0)
+  useEffect(() => {
+    let live = true
+    setPlan({ status: 'loading' })
+    Promise.resolve(c.issuePlan(row.ref)).then(res => { if (live) setPlan(res?.ok ? { status: 'ok', data: res.data } : { status: 'error' }) })
+    return () => { live = false }
+  }, [row.ref, round])
+  const data = plan.status === 'ok' ? plan.data : null
+  const boards = data?.boards ?? []
+  const on = plan.status === 'loading' ? f.loading : plan.status === 'error' ? f.failed : !boards.length ? f.none
+    : boards.map(b => `${b.title}: ${b.status ?? f.noStatus}`).join(' · ')
+  // a board of the issue that workflow/projects/ does not know keeps its status: the card names it
+  const other = (data?.unmatched ?? []).map(u => u.title || `${u.owner} #${u.number}`)
+  const head = html`<p class="muted small flow-issue-on">${on}</p>${boards.length && other.length ? html`<p class="muted small flow-issue-other">${f.other(other.join(', '))}</p>` : null}`
+  if (!data || !boards.length) return head
+  const canReview = boards.every(b => b.review_state) && !boards.some(b => b.in_review || b.in_done)
+  const canDone = data.state === 'OPEN' && boards.every(b => b.done_state)
+  const strong = sug?.verb === 'done' ? (canReview ? 'review' : canDone ? 'done' : null) : null
+  const rules = [...new Set(boards.flatMap(b => b.rules ?? []))]
+  const busy = !!s.ui?.busy?.[row.key]
+  const pick = v => {
+    setOpen(open === v ? null : v)
+    setText(open !== v && strong === v && sug?.reason ? sug.reason : '')
+  }
+  const go = async () => {
+    const words = text.trim()
+    const r = await c.act(open === 'review' ? 'issue_review' : 'issue_done', { key: row.key, ...(words ? { text: words } : {}) })
+    // read the board again on every answer: a run that stopped part way changed it too
+    setRound(round + 1)
+    if (!r?.ok) return
+    if (open === 'done') c.flowDecided()
+    setOpen(null)
+    setText('')
+  }
+  const id = `flow-issue-${row.key}`
+  return html`${head}
+    ${canReview ? html`<${Btn} size="sm" variant=${strong === 'review' ? 'primary' : 'secondary'} pressed=${open === 'review'} busy=${busy}
+      onClick=${() => pick('review')}>${f.review} ▾<//>` : null}
+    ${canDone ? html`<${Btn} size="sm" variant=${strong === 'done' ? 'primary' : 'secondary'} pressed=${open === 'done'} busy=${busy}
+      onClick=${() => pick('done')}>${f.done} ▾<//>` : null}
+    ${open ? html`<div class="verbbar-panel flow-issue-panel">
+      <label class="label-caps" for=${id}>${open === 'review' ? f.reviewLabel : f.doneLabel}</label>
+      <textarea id=${id} class="input textarea" rows="3" maxlength="2000" value=${text} onInput=${e => setText(e.currentTarget.value)}></textarea>
+      <p class="muted small">${f.steps((open === 'review' ? [f.comment, boards[0].review_state] : doneSteps(boards, f)).join(', '))}</p>
+      ${rules.length ? html`<p class="muted small">${f.rules(rules.join(', '))}</p>` : null}
+      <div class="verbbar-acts">
+        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${open === 'review' && !text.trim()} onClick=${go}>${open === 'review' ? f.sendReview : f.confirmDone}<//>
+        <${Btn} size="sm" variant="ghost" onClick=${() => { setOpen(null); setText('') }}>${f.cancel}<//>
+      </div>
+    </div>` : null}`
+}
+
 /** A task in review: Done strong (where the AI suggests no other of Done, Later and Drop), Improve right after it
  *  (what is still to do, to its tab while its agent waits there, else as a new start), Later, Drop, Advise; no Let AI
  *  do it, the work is done and waits for a look */
@@ -369,12 +446,16 @@ function PointActs({ x, s, c, sug }) {
   // a question, a finding, an issue or a task: its verbs, strong only the one the AI suggests (no Advise by default),
   // else a finding's yes where it brings an action. An issue's Done only leaves this list (Hide), the way to its page first
   const verb = sug?.verb
-  const primary = live ? false : ['do', 'done', 'later', 'drop'].includes(verb) ? verb : false
+  const primary0 = live ? false : ['do', 'done', 'later', 'drop'].includes(verb) ? verb : false
   const issue = !!row?.ref && !row.task && !row.inbox_id
   const web = issue && row.url ? html`<a class="btn btn-secondary btn-sm" href=${row.url} target="_blank" rel="noopener noreferrer">${f.onWeb(row.url)}</a>` : null
+  // a GitHub issue moves on its board (IssueWays); the AI's close lands on the button there, not on Hide
+  const board = issue && !live && GITHUB_ISSUE(row)
+  const moves = board ? html`<${IssueWays} key=${row.key} row=${row} s=${s} c=${c} sug=${sug} />` : null
+  const primary = board && primary0 === 'done' ? false : primary0
   const verbs = live ? (asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, near, s)) : besideClose(null, row, near, s)
   return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${primary} suggested=${!!primary} yes=${!live} yesFirst=${!primary}
-    words=${issue ? { done: f.hide } : {}} first=${html`${front}${web}`} extra=${html`${steps}${ways}`} tail=${shut} stack />`
+    words=${issue ? { done: f.hide } : {}} first=${html`${front}${web}${moves}`} extra=${html`${steps}${ways}`} tail=${shut} stack />`
 }
 
 /** Who works on a point, in words: its tab and how long, a start of the cockpit, a session by hand, else when it last

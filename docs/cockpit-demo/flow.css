@@ -370,6 +370,8 @@
 .verbbar-row, .verbbar-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 /* a tab's close and its jump, apart under the verbs, so they are no click by mistake (views/verbbar.js tail) */
 .verbbar-tail { padding-top: 8px; border-top: 1px solid var(--border); }
+/* an issue on a board: where it stands, above its review and done (views/flowside.js IssueWays) */
+.flow-issue-on { margin: 0; }
 .verbbar-panel {
   display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border);
   border-radius: var(--radius-lg); background: var(--surface);

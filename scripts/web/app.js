@@ -1679,6 +1679,7 @@ const ctl = {
   closeTabView: () => setUi({ tabView: null }),
   tabScreen: (ref, since) => api.tabScreen(ref, since),
   github: (ref, fresh) => api.github(ref, fresh),
+  issuePlan: ref => api.issue(ref),
   loadInbox: id => loadDetail('inbox', id),
   loadTask: slug => loadDetail('task', slug),
   async loadMore(pageId, sectionId) {
