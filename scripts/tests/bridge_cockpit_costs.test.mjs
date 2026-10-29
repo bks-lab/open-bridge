@@ -313,3 +313,25 @@ test('the cost card names every machine whose report it merges', () => {
   assert.equal(logic.costSources({ sources: [{ source: '/tmp/costs.json' }] }), '/tmp/costs.json')
   assert.equal(logic.costSources(null), '')
 })
+
+
+// ---------------------------------------------------------------- cost centers: one project across accounts
+
+test('the cost card filters by cost center: all, one project, or what no project names', () => {
+  const day = (d, a) => ({ day: d, amount: a, provisional: false, groups: {} })
+  const costs = { today: '2026-10-10', currency: 'EUR',
+    cost_centers: [{ id: 'shop', title: 'Shop' }, { id: 'team', title: 'Team' }],
+    accounts: [
+      { id: 'a', ok: true, cost_center: 'shop', month_to_date: 3, days: [day('2026-10-10', 3)] },
+      { id: 'b/p1', ok: true, cost_center: 'shop', month_to_date: 2, days: [day('2026-10-10', 2)] },
+      { id: 'c', ok: true, cost_center: null, month_to_date: 5, days: [day('2026-10-10', 5)] }] }
+  assert.deepEqual(logic.costCenterChoices(costs), ['all', 'shop', 'team', 'none'])
+  assert.equal(logic.costScope(costs, 'all'), costs)
+  assert.deepEqual(logic.costScope(costs, 'shop').accounts.map(a => a.id), ['a', 'b/p1'])
+  assert.deepEqual(logic.costScope(costs, 'none').accounts.map(a => a.id), ['c'])
+  assert.equal(logic.costTotals(logic.costScope(costs, 'shop'), 'month').month, 5)
+  // no cost centers declared: no choice to make
+  assert.deepEqual(logic.costCenterChoices({ ...costs, cost_centers: [] }), [])
+  // every entry has one: no "none" chip
+  assert.deepEqual(logic.costCenterChoices({ ...costs, accounts: costs.accounts.slice(0, 2) }), ['all', 'shop', 'team'])
+})

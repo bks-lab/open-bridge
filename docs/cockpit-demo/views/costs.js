@@ -6,7 +6,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   formatDay, weekdayNames, tokenText, USAGE_SOURCES, stackBars, shownLabels, sparkPoints, moneyText, budgetBar, costBars,
-  costDay, costTotals, costYesterday, costTone, costSources, clockTime, SERIES_REST, USAGE_RANGES, USAGE_DIMS, NO_BRIDGE, usageParts,
+  costDay, costTotals, costYesterday, costTone, costSources, costCenterChoices, costScope, clockTime, SERIES_REST, USAGE_RANGES, USAGE_DIMS, NO_BRIDGE, usageParts,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Btn, Chip, Empty, StateLine } from './parts.js'
@@ -106,14 +106,20 @@ export function CostCard({ page, s, c }) {
   const data = k.data
   const [range, setRange] = useState('7')
   const [pick, setPick] = useState(null)
+  const [center, setCenter] = useState('all')
   const cur = data?.currency ?? 'EUR'
   const money = n => moneyText(n, lang, cur)
-  const accounts = data?.accounts ?? []
-  const bars = data ? costBars(data, range) : null
+  // a project (workflow/cost-centers/) narrows the bars, the day, the rows and the totals alike
+  const choices = data ? costCenterChoices(data) : []
+  const shown = choices.includes(center) ? costScope(data, center) : data
+  const centerText = v => (v === 'all' ? t.costsCenterAll : v === 'none' ? t.costsCenterNone
+    : data?.cost_centers?.find(x => x.id === v)?.title ?? v)
+  const accounts = shown?.accounts ?? []
+  const bars = shown ? costBars(shown, range) : null
   const nameOf = key => (key === SERIES_REST ? t.costsRest : accounts.find(a => a.id === key)?.display_name || key)
   const sel = bars?.days.some(d => d.day === pick) ? pick : null
-  const day = sel ? costDay(data, sel) : []
-  const tot = data ? costTotals(data, range) : null
+  const day = sel ? costDay(shown, sel) : []
+  const tot = shown ? costTotals(shown, range) : null
   const at = data?.at ? Date.parse(data.at) : NaN
   return html`<section class="panel panel-pad psec costs" id=${`costs-${page.id}`} aria-labelledby=${`costs-${page.id}-t`}>
     <header class="psec-head">
@@ -124,6 +130,8 @@ export function CostCard({ page, s, c }) {
       <${Btn} size="xs" variant="ghost" icon="reload" label=${t.costsReload} busy=${k.status === 'loading'} onClick=${() => c.loadCosts()} />
     </header>
     ${data?.stale ? html`<p><${StateLine} token="warning" strong word=${t.costsStale} /></p>` : null}
+    ${choices.length ? html`<${ChipPick} label=${t.costsCenterLabel} values=${choices} value=${choices.includes(center) ? center : 'all'}
+      textOf=${centerText} onPick=${v => { setCenter(v); setPick(null) }} />` : null}
     ${!data ? html`<p class="muted">${k.status === 'error' ? t.unreadable(k.error || '') : k.status === 'none' ? t.costsEmpty : t.costsLoading}</p>` : html`
       ${bars.max ? html`<${StackChart} bars=${bars} label=${t.costsTitle} nameOf=${nameOf} valueText=${money} pick=${sel}
           onPick=${d => setPick(p => (p === d ? null : d))} />
@@ -135,7 +143,7 @@ export function CostCard({ page, s, c }) {
           <span class="num">${money(a.amount)}</span></li>`)}</ul>
       </div>` : null}
       <h3 class="label-caps costs-sub">${t.costsAccounts}</h3>
-      <ul class="clist">${accounts.map(a => html`<${CostRow} key=${a.id} acc=${a} data=${data} c=${c} />`)}</ul>
+      <ul class="clist">${accounts.map(a => html`<${CostRow} key=${a.id} acc=${a} data=${shown} c=${c} />`)}</ul>
       <p class="costs-total"><span class="num">${t.costsTotal(money(tot.range), money(tot.month))}</span></p>`}
   </section>`
 }

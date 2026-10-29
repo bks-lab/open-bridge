@@ -200,6 +200,7 @@ one hop both ways, `--fix` rewrites a reference whose task merely moved KIND).
 | `workflow/projects/` | a board's field values and state map, before ANY tracker call |
 | `workflow/workloads/` | one declared run on one machine |
 | `workflow/ai-services/` | which AI model a service or worker uses (default Claude) |
+| `workflow/cost-centers/` | a project's costs across accounts: the cost card's Project filter |
 | `workflow/workspaces/` | a named binding of repos + config overlays |
 
 Top-level, own lifecycle: `rules/` `protocols/standing-orders/` `skills/`

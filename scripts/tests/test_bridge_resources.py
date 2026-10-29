@@ -327,6 +327,37 @@ def test_costs_rows_say_what_was_used_when_credits_paid_for_it(tmp_path):
     assert row["raw_state"].endswith("Oktober 0,00 € · verbraucht 1,30 €, Gutschrift -1,30 €")
 
 
+def test_cost_centers_name_the_project_of_each_entry_across_accounts(tmp_path):
+    cc = tmp_path / "workflow" / "cost-centers"
+    cc.mkdir(parents=True)
+    (cc / "_template.yaml").write_text("id: tpl\ntitle: x\nsources: ['*']\n")
+    (cc / "shop.yaml").write_text("schema_version: 1\nscope: user\nid: shop\ntitle: Shop\npersona_ref: me-company\n"
+                                  "sources: [azure-example, openai-*]\n")
+    (cc / "team.yaml").write_text("schema_version: 1\nscope: user\nid: team\ntitle: Team\n"
+                                  "sources: [openai-example, aws-example/proj_*]\n")
+    doc = costs_doc()
+    doc["accounts"][1]["id"] = "aws-example/proj_a"
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(doc))
+    rows = {r["id"]: r for r in br.cost_rows(tmp_path, TX, str(src), NOW, 36)}
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    by = {a["id"]: a.get("cost_center") for a in view["accounts"]}
+    # an account id names its parts too; the first file (by name) that names an entry wins
+    assert by["azure-example"] == "shop" and by["openai-example"] == "shop" and by["aws-example/proj_a"] == "team"
+    assert by["acme-plan"] is None
+    assert view["cost_centers"] == [{"id": "shop", "title": "Shop", "persona_ref": "me-company"},
+                                    {"id": "team", "title": "Team", "persona_ref": None}]
+    assert rows["costs:azure-example"]["tags"] and "Shop" in json.dumps(rows["costs:azure-example"]["tags"])
+
+
+def test_without_cost_centers_the_view_has_none(tmp_path):
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    br.cost_rows(tmp_path, TX, str(src), NOW, 36)
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    assert view["cost_centers"] == [] and all(a.get("cost_center") is None for a in view["accounts"])
+
+
 def test_a_missing_login_asks_with_the_command_to_run(tmp_path):
     src = tmp_path / "costs.json"
     src.write_text(json.dumps(costs_doc()))

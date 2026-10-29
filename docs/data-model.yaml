@@ -249,6 +249,15 @@ families:
     writer: "a person"
     read: named
 
+  - path: workflow/cost-centers/
+    object: "one project whose costs are gathered across accounts (the cost card's Project filter)"
+    island: "core: template, schema; user: entries; org: a shared project via scope"
+    lives: [core, private]
+    references: ["sources → entries of the cost file (identity/accounts/, identity/contracts/)",
+                 "persona_ref → identity/personas/", "mandant_ref → identity/mandants/"]
+    writer: "a person"
+    read: named
+
   - path: workflow/workloads/
     object: "one declared run on one machine"
     island: "core: template, schema, contract tests; user: entries"

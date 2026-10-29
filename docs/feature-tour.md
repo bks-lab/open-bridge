@@ -56,6 +56,7 @@ self-contained. Skim the index, jump to what you need, ignore the rest.
 | workflow | [projects](#workflowprojects) | GitHub/ADO project-board configs (fields, governance) |
 | workflow | [workloads](#workflowworkloads) | one declared run on one machine: report, poller, daemon, watcher, agent |
 | workflow | [ai-services](#workflowai-services) | which AI CLI a service or worker uses (default Claude) |
+| workflow | [cost-centers](#workflowcost-centers) | one project's costs across accounts, the cost card's Project filter |
 | workflow | [workspaces](#workflowworkspaces) | a named binding of repos and config overlays |
 
 Validation note: `scripts/validate-bridge.py` validates instances against
@@ -507,6 +508,22 @@ you add one. There is no automatic fallback between providers.
 **Used by:** the built-in consumers `briefing-chat`, `task-review` and
 `triage`; a worker opts in with `python3 scripts/ai-run.py --service <id>`.
 Full doc: [`docs/ai-services.md`](ai-services.md).
+
+## workflow/cost-centers/
+
+One project whose costs are gathered across accounts: its voice line at the
+telephony provider, its model at the AI provider, its share of the search
+cluster. `sources` name entries of the daily cost file, exactly or as
+patterns; the first file by name that names an entry wins. The cost card on
+the overview page then shows a **Project** row of chips, and `persona_ref` and
+`mandant_ref` say whose costs these are and who would receive an invoice.
+
+**Create:** `cp workflow/cost-centers/_template.yaml workflow/cost-centers/<id>.yaml`
+
+**Schema:** `workflow/cost-centers/_schema.yaml`.
+
+**Used by:** `scripts/bridge-resources.py costs` and the cockpit's cost card.
+Full doc: [`docs/cloud-costs.md`](cloud-costs.md#one-project-across-accounts).
 
 ## workflow/workspaces/
 

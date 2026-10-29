@@ -145,6 +145,9 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `workflow/ai-services/_schema.yaml` | CORE | AI service schema |
 | `workflow/ai-services/_template.yaml` | CORE | AI service template |
 | `workflow/ai-services/<id>.yaml` | USER | Which AI model one service or worker uses (default Claude) |
+| `workflow/cost-centers/_schema.yaml` | CORE | Cost center schema |
+| `workflow/cost-centers/_template.yaml` | CORE | Cost center template |
+| `workflow/cost-centers/<id>.yaml` | USER | One project's costs across accounts (`docs/cloud-costs.md`) |
 | `workflow/workspaces/_schema.yaml` | CORE | Workspace schema |
 | `workflow/workspaces/_template.yaml` | CORE | Workspace template |
 | `workflow/workspaces/<name>.yaml` | USER | A named binding of repos and config overlays (`scripts/workspace.py`) |

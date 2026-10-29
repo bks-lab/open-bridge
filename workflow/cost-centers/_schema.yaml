@@ -1,0 +1,20 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+title: Cost center
+description: >
+  One project whose costs are gathered across accounts: the entries of the cost file (scripts/cloud-costs.py)
+  that belong to it, named by id or pattern. Read by scripts/bridge-resources.py costs; guide docs/cloud-costs.md.
+type: object
+additionalProperties: false
+required: [schema_version, scope, id, title, sources]
+properties:
+  schema_version: {const: 1}
+  scope: {enum: [user, org, personal, private]}
+  id: {type: string, pattern: '^[a-z][a-z0-9-]*$'}
+  title: {type: string, minLength: 1, maxLength: 80}
+  persona_ref: {type: string, pattern: '^[a-z][a-z0-9-]*$'}
+  mandant_ref: {type: string, pattern: '^[a-z][a-z0-9-]*$'}
+  sources:
+    type: array
+    minItems: 1
+    items: {type: string, pattern: '^[A-Za-z0-9*?\[\]_.:/-]+$'}
+  notes: {type: string}

@@ -1386,6 +1386,8 @@ function costsView(now) {
   return { schema: 1, kind: 'cloud-costs', host: 'my-server', at: new Date(now - 3 * 3600000).toISOString(), currency: 'EUR', days: N, today,
     fx: { date: isoIn(-1, now), source: 'ecb', rates: { USD: 1.08 } },
     source: 'ssh:my-server:~/.bridge/resources/costs.json', read_at: new Date(now - 2 * MIN).toISOString(), stale: false,
+    // two invented projects across accounts (workflow/cost-centers/); the web hosting belongs to none
+    cost_centers: [{ id: 'customer-a', title: 'Customer A', persona_ref: null }, { id: 'internal', title: 'Internal', persona_ref: null }],
     accounts: [
       usage('azure-example', 'Example Azure', 'azure', 1.2, [['Functions', 0.55], ['Storage', 0.3], ['Key Vault', 0.15]], 50),
       usage('anthropic-example', 'Example Anthropic', 'anthropic', 2.6, [['Claude API, input', 0.4], ['Claude API, output', 0.6]], 60),
@@ -1396,7 +1398,8 @@ function costsView(now) {
           hint: 'Create an admin key at platform.openai.com > Settings > Organization > Admin keys, then store it with this command.' },
         login_command: "ssh -t my-server 'bash /srv/bridge/skills/secrets/secrets.sh store keychain://openai-admin/example --root /srv/bridge --from prompt'" },
       contract,
-    ] }
+    ].map(a => ({ ...a, cost_center: { 'azure-example': 'customer-a', 'anthropic-example': 'customer-a', 'aws-example': 'internal',
+      'openai-example': 'internal' }[a.id] ?? null })) }
 }
 
 // the knowledge graph (graph.py view()): a small invented Bridge, its config entries, tasks and the files they name
