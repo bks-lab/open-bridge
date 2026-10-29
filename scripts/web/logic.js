@@ -2107,6 +2107,13 @@ export function costScope(costs, center, persona = 'all') {
   return accounts === costs.accounts ? costs : { ...costs, accounts }
 }
 
+/** The months a cost statement can be made for: those the view holds days of, newest first */
+export function costMonths(costs) {
+  const months = new Set()
+  for (const a of costs?.accounts ?? []) for (const d of a.days ?? []) if (typeof d.day === 'string') months.add(d.day.slice(0, 7))
+  return [...months].sort().reverse()
+}
+
 /** One project's budget as an account would carry it (for budgetBar): its entries' month so far and forecast
  *  summed against the project's budget_month; null without a project or a budget */
 export function costCenterBudget(costs, center) {

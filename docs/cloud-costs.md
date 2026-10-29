@@ -199,13 +199,21 @@ command above.
 An older month lies outside the reports' window: run the collectors once with
 `--days` reaching back to its 1st, then close it.
 
-`cost-ledger.py statement` turns one center's frozen month into the lines of
-an invoice attachment, as Markdown or CSV on stdout, by the center's optional
-`billing:` block:
+`cost-ledger.py statement` turns a month into the lines of an invoice
+attachment, as Markdown or CSV on stdout. It covers one center (`--center`),
+the centers of one persona (`--persona`), the entries of no center
+(`--center none`) or everything (the default). A closed month comes from the
+ledger; a month that is not closed comes from the cockpit's kept view and says
+it is provisional. The cost card makes the same statement on its **Make cost
+statement** button, for the month, persona and project picked there, to read,
+copy, or save as `.md` or `.csv` (`GET /api/costs/statement`, read only).
+
+Without a `billing:` block a statement lists the costs and their sum. For one
+center, the block decides how they are billed:
 
 | `billing:` key | Meaning |
 |---|---|
-| `mode` | `pass-through` (default, costs one to one), `markup` (`markup_pct` on top), `flat` (`flat_amount`; the costs follow as information), `none` (costs only) |
+| `mode` | `pass-through` (default once the block exists, costs one to one), `markup` (`markup_pct` on top), `flat` (`flat_amount`; the costs follow as information), `none` (costs only) |
 | `basis` | `paid` (default, after credits) or `used` (before credits) |
 | `vat_pct` | the VAT on the net amount, default 0 |
 

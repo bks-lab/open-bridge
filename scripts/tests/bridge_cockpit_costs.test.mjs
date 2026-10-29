@@ -356,3 +356,11 @@ test('a project with a budget gets one budget bar over its entries; personas nar
   // one persona only: no persona chips
   assert.deepEqual(logic.costPersonaChoices({ ...costs, cost_centers: costs.cost_centers.slice(0, 1) }), [])
 })
+
+test('the months a cost statement can be made for: those the view holds days of, newest first', () => {
+  const day = d => ({ day: d, amount: 1, provisional: false, groups: {} })
+  const costs = { today: '2026-11-03', accounts: [{ id: 'a', ok: true, days: [day('2026-09-29'), day('2026-10-15'), day('2026-11-02')] },
+    { id: 'b', ok: false, days: [] }] }
+  assert.deepEqual(logic.costMonths(costs), ['2026-11', '2026-10', '2026-09'])
+  assert.deepEqual(logic.costMonths(null), [])
+})

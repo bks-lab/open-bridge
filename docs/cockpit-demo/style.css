@@ -1613,6 +1613,11 @@ kbd {
 .costs-total { margin-top: 10px; font-size: var(--text-sm); font-weight: 600; }
 .costs-budget { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 4px; }
 .costs-budget .cbudget { flex: 1 1 160px; max-width: 320px; }
+.costs-filters { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; }
+.chip-pick-label { min-width: 64px; align-self: center; }
+.costs-make { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.costs-stmt { flex-basis: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.costs-stmt-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .clist, .blist { display: grid; }
 .crow {
   display: grid; grid-template-columns: minmax(0, 1.4fr) auto auto minmax(120px, 1fr); gap: 4px 18px; align-items: center;

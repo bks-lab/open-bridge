@@ -1533,6 +1533,13 @@ const ctl = {
     store.set(s => ({ ...s, costs: res.ok ? { status: res.data.view ? 'ok' : 'none', data: res.data.view ?? null, error: null }
       : { status: res.status === 404 ? 'none' : 'error', data: s.costs.data, error: res.error?.message ?? null } }))
   },
+  // a month's cost statement for the picked project or persona (scripts/cost-ledger.py statement): from the closed
+  // month or the kept view, read only; the card shows it and offers it as a copy or a file
+  costStatement: async ({ month, center, persona }) => {
+    const q = new URLSearchParams({ month, center: center || 'all', persona: persona || 'all', lang: language() })
+    const res = await api.get(`/api/costs/statement?${q}`)
+    return res.ok ? { ok: true, statement: res.data.statement } : { ok: false, error: res.error?.message ?? '' }
+  },
   // the noise of the inbox (inbox.py stats + mute list); the overview page reads it when it opens and with each new briefing
   loadNoise: async () => {
     store.set(s => ({ ...s, noise: { ...s.noise, status: s.noise.data ? 'ok' : 'loading' } }))
