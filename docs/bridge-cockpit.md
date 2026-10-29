@@ -1,7 +1,7 @@
 ---
-summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
+summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, a page's search over every day before with Ask AI, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -1408,6 +1408,33 @@ marked, the end stays in view unless you scrolled up, and below it stand Yes, No
 on as the tab's state allows and a box that sends a message to it (Enter
 sends, Shift+Enter a new line). Escape or a click outside closes it.
 
+**A page's search.** A profile page with `search: true` carries a search field
+above its sections. Typing two characters or more filters the page's own rows
+to those that hold every word, in every section at once (a section of groups
+shows every match unfolded, one without a match says "Nothing matches the
+filter"). **Search all days** (or Enter) asks the history with the same words
+(`GET /api/timeline`, `scripts/work-find.py --history`): every line that holds
+every word in the log rows of `work/log.md` and `work/archive/` (an old row with
+only its time takes the day from the `## <weekday> DD.MM` head above it and the
+year from the file's name), the meeting notes of a day
+(`work/archive/days/YYYY-MM/DD_*.md`, the time from the nearest `## HH:MM`
+head), the meeting folders `<work.meetings.home_dir>/YYYY-MM-DD-<slug>/`
+(default `work/tasks/_meetings`), the closed tasks (`work/done/`, the day they
+closed) and the raw meeting transcripts in `work.meetings.raw_record_dir` under
+`doc_sensor.onedrive_root` (`*.md` whose name carries the day and the time, no
+link followed, nothing over 2 MB). The lines stand as a timeline by day, newest
+first, each with its time, what it is (log, meeting, closed, transcript), where
+it stands and the line; a meeting folder, a closed task, a transcript or one
+meeting of a day brings at most three lines and says how many more it holds,
+and a closed task opens in the Files tab. With `cockpit.files_search` on,
+**Ask AI** asks when it was done or discussed (the verb `timeline_ask`): a first
+call turns the question into search terms and maybe a range of days, the
+server picks the 60 lines that hold the most of them, every line a word of
+`files_search.block` names in its path, source or text stays back before
+anything is built, and a second call answers from the rest with the days and
+the lines it names. Both calls run without tools, settings or session, count
+as one question of `files_search.budget_per_day`, and take its model.
+
 **Overview pages and tokens.** A profile page with `overview: true` opens
 with a board of tiles: one per section, with its count, its loudest row and a
 colour for the worst tone (a quota gauge shows its fullest value, a plain gauge
@@ -2802,6 +2829,9 @@ nothing a stranger could trigger:
   runner's allowlist with the words as one argument after `--`, leaves no
   line, and refuses a query shorter than 2 or longer than 200 characters or
   one with a control character before anything runs.
+  `GET /api/timeline` is the same kind of read: `scripts/work-find.py
+  --history` through the runner, the words one argument after `--`, the
+  transcripts' folder only where the config names one that exists.
   `GET /api/records` is a read too: the records of the Files tab's list
   (every task, stream and closed task, its front matter read in place, newest
   first, at most 2000), no runner call and no line. So is

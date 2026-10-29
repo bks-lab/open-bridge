@@ -1488,6 +1488,17 @@ export const TONE_FILTERS = [['all', () => true], ['problems', it => it.tone ===
 export const FILTER_TONE = { ok: 'ok', problems: 'warn', off: 'dim' }
 export const toneFilter = key => (TONE_FILTERS.find(([k]) => k === key) ?? TONE_FILTERS[0])[1]
 
+/** The lines of the history (/api/timeline, the AI's cited ones too) by day, in the order they came: [{date, rows}] */
+export function timelineDays(entries) {
+  const out = []
+  for (const e of entries ?? []) {
+    const last = out[out.length - 1]
+    if (last && last.date === e.date) last.rows.push(e)
+    else out.push({ date: e.date, rows: [e] })
+  }
+  return out
+}
+
 /** Rows that pass the search, the state, the group and every chosen tag ({label: value}) */
 export function filterRows(items, { q = '', tone = 'all', group = null, tags = {} } = {}) {
   const needle = q.trim().toLowerCase()

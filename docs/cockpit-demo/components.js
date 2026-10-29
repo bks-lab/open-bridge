@@ -31,6 +31,7 @@ import {
   TabsDrawer, Toasts,
 } from './views/overlays.js'
 import { JevList, KindBar, MachineLines, OverviewBoard, PageCard, PageSection, PageSummary, WorkOrder } from './views/pages.js'
+import { PageSearch } from './views/timeline.js'
 import { Empty, StateLine } from './views/parts.js'
 import { SessionsPage, WorkersPage } from './views/sessions.js'
 import { SettingsPage } from './views/settings.js'
@@ -116,6 +117,9 @@ function PageView({ s, c }) {
   // the order by Jev stands in place of the sections, so a card placed after one moves to the end
   const jevList = !!(page.jev && !work && s.jev?.enabled && s.jev?.ready && s.ui.workView === 'jev' && s.jevOrder[page.id]?.order)
   const card = id => html`<${PageCard} key=${`@${id}`} id=${id} page=${page} s=${s} c=${c} />`
+  // the sections with the words a page's search holds (profile `search: true`), '' for none
+  const sections = q => page.sections.flatMap(sec => [html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} q=${q} />`,
+    ...(cards.after[sec.id] ?? []).map(card)])
   // a folder's bar stands on top of the folder page and of each of its sub pages; the folder page names its
   // machines first, a sub page with `overview` gets a head card of its own parts instead of the tiles
   const sub = !!parentOf(s, whole.id)
@@ -136,8 +140,7 @@ function PageView({ s, c }) {
       : page.sections?.some(sec => sec.kind === 'tasks' && (sec.items ?? []).some(it => it.task)) ? html`<${ReviewStrip} s=${s} c=${c} />` : null}
     ${page.jev && !work && s.jev?.enabled && s.jev?.ready ? html`<${WorkOrder} page=${page} s=${s} c=${c} />` : null}
     ${jevList ? html`<${JevList} page=${page} s=${s} c=${c} />`
-      : (page.sections ?? []).length ? page.sections.flatMap(sec => [html`<${PageSection} key=${sec.id} page=${page} section=${sec} s=${s} c=${c} />`,
-        ...(cards.after[sec.id] ?? []).map(card)])
+      : (page.sections ?? []).length ? (page.search ? html`<${PageSearch} page=${page} s=${s} c=${c} render=${sections} />` : sections(''))
       : html`<div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div>`}
     ${(jevList ? [...Object.values(cards.after).flat(), ...cards.end] : cards.end).map(card)}
   </div>`

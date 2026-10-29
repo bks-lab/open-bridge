@@ -300,7 +300,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 alarms.append({"page_id": pg["id"], "page_title": pg["title"], "section_title": s["title"],
                                "count": int(bad)})
         pages.append({"id": pg["id"], "title": pg["title"], "badge": m.page_badge({"sections": secs}), "sections": secs,
-                      "group": pg.get("group", "main"), "overview": pg.get("overview") is True, "cards": m.parse_cards(pg.get("cards")),
+                      "group": pg.get("group", "main"), "overview": pg.get("overview") is True, "search": pg.get("search") is True,
+                      "cards": m.parse_cards(pg.get("cards")),
                       "under": pg.get("under"), "subs": list(pg.get("subs") or []),
                       "jev": isinstance(pg.get("jev"), dict)})
 

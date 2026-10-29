@@ -1327,3 +1327,115 @@ test('6d: a record\'s right column is the point Work through shows for its row; 
   assert.equal(logic.recordPoint(s, 'work/done/2026-09/old-report'), null)
   assert.equal(logic.recordPoint(s, 'no-such-task'), null)
 })
+
+// ---------------------------------------------------------------- a page's search: its own rows, every day before, the AI
+
+const LOG_PAGE = { id: 'log', title: 'Log', search: true, sections: [{ id: 'activity', kind: 'activity', view: 'groups', title: 'Log today',
+  status: 'ok', alarm: false, empty: 'no line yet', count: 2, total: 2, items: [
+    { index: 0, title: 'Gateway retry moved to the night run', when: '09:15', group: 'billing', tone: 'ok', detail: '' },
+    { index: 1, title: 'Docs index checked', when: '10:00', group: 'docs', tone: 'ok', detail: '' }] }] }
+
+const TIMELINE = { ok: true, query: 'gateway retry', words: ['gateway', 'retry'], total: 3, truncated: false, transcripts: true, entries: [
+  { date: '2026-10-28', time: '18:00', kind: 'discussed', source: 'Weekly round', path: 'work/archive/days/2026-10/28_insights.md', line: 5,
+    text: 'Gateway retry discussed, the night run agreed', folder: null, count: 1, more: 0 },
+  { date: '2026-10-26', time: '16:49', kind: 'transcript', source: 'vendor-call', path: '2026-10-26_1649_vendor-call.md', line: 4,
+    text: 'A: the gateway retry', folder: null, count: 4, more: 3 },
+  { date: '2026-09-30', time: null, kind: 'closed', source: 'retry-hardening', path: 'work/done/2026-09/retry-hardening/STATUS.md', line: 5,
+    text: 'headline: Gateway retry hardened', folder: 'work/done/2026-09/retry-hardening', count: 1, more: 0 }] }
+
+function searchPage(s, c) {
+  const { PageSection } = views.pages
+  const { PageSearch } = views.timeline
+  return mount(html`<${PageSearch} page=${LOG_PAGE} s=${s} c=${c}
+    render=${q => LOG_PAGE.sections.map(sec => html`<${PageSection} key=${sec.id} page=${LOG_PAGE} section=${sec} s=${s} c=${c} q=${q} />`)} />`)
+}
+
+test('a page with search: true filters its own rows as one types, then asks every day before and the AI with the same words', async () => {
+  const c = recorder()
+  const s = cockpitState(NOW)
+  const el = searchPage(s, c)
+  assert.match(el.text(), /Docs index checked/)
+  const box = el.$('.psearch input')
+  assert.ok(box.getAttribute('id') && el.$(`label[for="${box.getAttribute('id')}"]`), 'the field has its label')
+  box.value = 'night  gateway'
+  box.dispatch('input')
+  await tick()
+  assert.match(el.text(), /Gateway retry moved to the night run/)
+  assert.doesNotMatch(el.text(), /Docs index checked/)
+  el.button(en.pageSearch.allDays).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'searchTimeline'), ['searchTimeline', 'night gateway'])
+  el.button(en.pageSearch.ask).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'askTimeline'), ['askTimeline', 'night gateway'])
+  // Enter is the search of every day, the AI only on its own button
+  el.$('form.psearch-bar').dispatch('submit')
+  assert.equal(c.calls.filter(x => x[0] === 'searchTimeline').length, 2)
+  // nothing of the page holds the words: the section says so instead of its own empty sentence
+  box.value = 'nothing like this'
+  box.dispatch('input')
+  await tick()
+  assert.match(el.text(), new RegExp(en.filterNone))
+  assert.doesNotMatch(el.text(), /no line yet/)
+})
+
+test('the AI button of a page search shows only with the files question on, and waits once none is left today', () => {
+  const off = cockpitState(NOW)
+  off.work = { ...off.work, files_search: { enabled: false, block: [], left: 20 } }
+  assert.equal(searchPage(off, recorder()).button(en.pageSearch.ask), null)
+  const spent = cockpitState(NOW)
+  spent.work = { ...spent.work, files_search: { enabled: true, block: ['Health'], left: 0 } }
+  const el = searchPage(spent, recorder())
+  assert.match(el.text(), new RegExp(en.pageSearch.noneLeft))
+  assert.match(el.text(), /Health/)
+})
+
+test('every day before stands as a timeline by day: time, what kind, where, the line, how many more, a closed task opens', () => {
+  const c = recorder()
+  const s = { ...cockpitState(NOW), timeline: { q: 'gateway retry', status: 'ok', data: TIMELINE, error: null } }
+  const el = searchPage(s, c)
+  assert.equal(el.$$('.tl-day').length, 3)
+  const text = el.$('.tl').text()
+  for (const word of ['18:00', en.pageSearch.kind.discussed, 'Weekly round', en.pageSearch.kind.transcript, en.pageSearch.more(3),
+    en.pageSearch.kind.closed, 'Gateway retry hardened']) assert.ok(text.includes(word), word)
+  el.button(en.pageSearch.open).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'openFile'), ['openFile', 'retry-hardening', 'work/done/2026-09/retry-hardening'])
+  el.$('.tl').button(en.pageSearch.close).click()
+  assert.ok(c.calls.some(x => x[0] === 'clearTimeline'))
+  const none = searchPage({ ...cockpitState(NOW), timeline: { q: 'x y', status: 'ok', data: { ...TIMELINE, entries: [], total: 0 }, error: null } }, c)
+  assert.match(none.$('.tl').text(), new RegExp(en.pageSearch.nothing))
+})
+
+test('the AI answer of a page search names its days and the lines it read', () => {
+  const c = recorder()
+  const ask = { status: 'ok', error: null, data: { answer: 'On 28 October in the weekly round.', terms: ['gateway', 'retry'], sent: 12,
+    held: { n: 2, words: ['Health'] }, model: 'haiku', left: 19, entries: [{ ...TIMELINE.entries[0], n: 1, why: 'agreed there' }] } }
+  const el = searchPage({ ...cockpitState(NOW), timelineAsk: ask }, c)
+  const text = el.$('.tl-answer').text()
+  assert.ok(text.includes('On 28 October in the weekly round.') && text.includes('agreed there') && text.includes('Weekly round'))
+  assert.ok(text.includes(en.pageSearch.answerFrom(12, 'haiku')))
+  el.$('.tl-answer').button(en.pageSearch.close).click()
+  assert.ok(c.calls.some(x => x[0] === 'clearTimelineAsk'))
+})
+
+test('the timeline groups its lines by day in the order they came', () => {
+  const days = logic.timelineDays(TIMELINE.entries.concat([{ ...TIMELINE.entries[2], line: 9 }]))
+  assert.deepEqual(days.map(d => [d.date, d.rows.length]), [['2026-10-28', 1], ['2026-10-26', 1], ['2026-09-30', 2]])
+  assert.deepEqual(logic.timelineDays([]), [])
+})
+
+test('a commits row as a tile keeps its count of today and its link; a tile without them looks as before', () => {
+  const { PageSection } = views.pages
+  const page = { id: 'today', title: 'Today', sections: [] }
+  const sec = { id: 'commits', kind: 'commits', view: 'tiles', title: 'Commits', status: 'ok', alarm: false, empty: 'none', count: 2, total: 2, items: [
+    { index: 0, title: 'example/repo', when: '16 today', detail: '▁▂▅█ main', tone: 'ok', link: null, url: 'https://github.com/example/repo/commits' },
+    { index: 1, title: 'example/tools', when: '', detail: '▁ main', tone: 'ok', link: { kind: 'web', href: 'https://github.com/example/tools/commits' } }] }
+  const el = mount(html`<${PageSection} page=${page} section=${sec} s=${cockpitState(NOW)} c=${recorder()} />`)
+  const [first, second] = el.$$('.rtile')
+  assert.equal(first.$('.rtile-when').text(), '16 today')
+  assert.equal(first.$('a').getAttribute('href'), 'https://github.com/example/repo/commits')
+  assert.equal(second.$('.rtile-when'), null)
+  assert.equal(second.$('a').getAttribute('href'), 'https://github.com/example/tools/commits')
+  // a path or anything else than http(s) is never a link
+  const odd = mount(html`<${PageSection} page=${page} section=${{ ...sec, items: [{ ...sec.items[0], url: 'javascript:alert(1)' }] }}
+    s=${cockpitState(NOW)} c=${recorder()} />`)
+  assert.equal(odd.$('.rtile a'), null)
+})

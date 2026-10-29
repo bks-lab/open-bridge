@@ -1104,6 +1104,28 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, app.scrub_tree(data))
             else:
                 self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
+        elif path == "/api/timeline":
+            # when it was done or discussed: the log and its archive, the meetings, the closed tasks and the raw
+            # transcripts (scripts/work-find.py --history, logic in lib/work_find.py), read only, the words one argv
+            # word after --; the transcripts only where the config names a folder that is there
+            try:
+                q, _ = work_find.check_query(one("q"))
+            except ValueError as exc:
+                self.send_error_json("invalid_argument", str(exc), "q")
+                return
+            argv = [app.runner.python, app.runner.script("scripts/work-find.py"), "--root", str(app.root), "--history",
+                    "--json", "--meetings", app.cfg.meetings]
+            transcripts = work_find.transcript_root(app.cfg.transcripts)
+            argv += (["--transcripts", str(transcripts)] if transcripts else []) + ["--", q]
+            run = app.run(argv, FIND_TIMEOUT)
+            try:
+                data = json.loads(run.out.strip().splitlines()[-1]) if run.ok else None
+            except (ValueError, IndexError):
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("entries"), list):
+                self.send_json(200, app.scrub_tree(data))
+            else:
+                self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
         elif path == "/api/records":
             # the start of the files tab: every task, stream and closed task as a record (lib/work_find.py records),
             # read in place, read only; with the question on and a block list, each with the words that hold it

@@ -867,7 +867,8 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     {
-      id: 'dates', title: 'Dates', badge: { kind: 'none' }, sections: [
+      // search: true (profile): a field above the dates that filters them, every day before and the AI (/api/timeline)
+      id: 'dates', title: 'Dates', badge: { kind: 'none' }, search: true, sections: [
         // the dates lie ahead of the moment the demo opens, so the start page always has a next one
         // the agenda view (views/dates.js): every event carries its facts (`cal`), the section its figures
         { id: 'calendar', kind: 'calendar', view: 'agenda', title: 'Calendar', status: 'ok', reason: '', alarm: false, empty: 'no dates', count: 8, total: 8,
@@ -1202,6 +1203,26 @@ function mockRecords(state) {
     done('health-check-booking', 'Book the yearly check-up', 'Health', '2026-09', '12')]
   records.sort((a, b) => String(b.updated ?? '').localeCompare(String(a.updated ?? '')))
   return { ok: true, total: records.length, truncated: false, records }
+}
+
+// every day before (work-find.py --history through /api/timeline): invented lines of the log, a meeting, a closed task
+// and a transcript, those that hold every word, newest first; the same shape the server answers with
+const DEMO_HISTORY = [
+  { date: '2026-10-08', time: '16:20', kind: 'did', source: 'demo-task', path: 'work/log.md', line: 12,
+    text: 'Guide chapter on the vendor export written, the retry explained', folder: null },
+  { date: '2026-10-06', time: '10:00', kind: 'discussed', source: 'Weekly round', path: 'work/archive/days/2026-10/06_insights.md', line: 7,
+    text: 'The vendor export retry stays at three tries, the guide names it', folder: null },
+  { date: '2026-10-02', time: '14:05', kind: 'transcript', source: 'vendor-sync', path: '2026-10-02_1405_vendor-sync.md', line: 40,
+    text: 'A: the export ran into the timeout again, we retry at night now', folder: null },
+  { date: DONE_FILE.month + '-30', time: null, kind: 'closed', source: DONE_FILE.slug, path: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}/STATUS.md`,
+    line: 6, text: DONE_FILE.lines[1], folder: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}` },
+]
+
+function timelineOf(q) {
+  const words = [...new Set(String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8)
+  const entries = DEMO_HISTORY.filter(e => words.length && words.every(w => `${e.source} ${e.text}`.toLowerCase().includes(w)))
+    .map(e => ({ ...e, count: 1, more: 0 }))
+  return { ok: true, query: String(q ?? '').trim(), words, total: entries.length, truncated: false, transcripts: true, entries }
 }
 
 // the search (work-find.py through /api/find): every word in the slug, title or a line of an invented file, the
@@ -2016,6 +2037,11 @@ export function createMockTransport(opts = {}) {
         return ok(feed)
       }
       if (url.pathname === '/api/records') return ok(mockRecords(state))
+      if (url.pathname === '/api/timeline') {
+        const q = String(url.searchParams.get('q') ?? '')
+        if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
+        return ok(timelineOf(q))
+      }
       if (url.pathname === '/api/find') {
         const q = String(url.searchParams.get('q') ?? '')
         if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
@@ -2207,6 +2233,20 @@ export function createMockTransport(opts = {}) {
           return ok({ ...result, note: '', ask: { answer: `Start with ${recs[0].title}: it changed last and names the next step.`,
             files: [{ n: 1, why: 'it changed last', slug: recs[0].slug, path: recs[0].path, title: recs[0].title }], sent: recs.length,
             held: { n: 0, words: [] }, model: 'haiku', left: fs.left - 1, at_ms: now() } })
+        }
+        // a page's question to the history: the demo names the lines that hold a word of the question
+        if (verb === 'timeline_ask') {
+          const fs = state.work.files_search
+          if (!fs?.enabled) return fail(409, 'timeline_ask_off', 'asking the history is off')
+          if (!fs.left) return fail(429, 'timeline_ask_budget', 'no questions left today')
+          await new Promise(r => wait(r, 800))
+          state.work = { ...state.work, files_search: { ...fs, left: fs.left - 1 } }
+          const terms = String(args.text ?? '').toLowerCase().split(/\s+/).filter(w => w.length >= 4)
+          const found = DEMO_HISTORY.filter(e => terms.some(w => e.text.toLowerCase().includes(w)))
+          return ok({ ...result, note: '', timeline: { answer: found.length
+            ? `It came up on ${found.length} days, first on ${found[found.length - 1].date} and last on ${found[0].date}.` : null,
+          entries: found.slice(0, 3).map((e, i) => ({ ...e, n: i + 1, why: 'it names it' })), terms, sent: found.length,
+          held: { n: 0, words: [] }, model: 'haiku', left: fs.left - 1, at_ms: now() } })
         }
         // Work through, round 3: an attachment, the summary of a point's Activity, the plan of an instruction
         if (['flow_attach', 'flow_activity_summary', 'flow_instruct'].includes(verb)) {

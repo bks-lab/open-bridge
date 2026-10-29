@@ -356,3 +356,204 @@ def test_the_answer_names_records_only_by_a_number_it_was_given():
     assert got["answer"] == "The vendor one waits." and got["files"] == [{"n": 2, "why": "it waits on the vendor"}]
     assert got["cost_usd"] == 0.001
     assert wf.ask_parse("not json", 2)["answer"] is None
+
+
+# ---------------------------------------------------------------- the history: when something was done or discussed
+
+@pytest.fixture
+def past(tmp_path):
+    root = tmp_path / "bridge"
+    put(root, "work/log.md",
+        "# Log\n\n## Thu 29.10\n\n| when | g | context | what |\n|---|---|---|---|\n"
+        "| 2026-10-29 09:15 | x | billing | Gateway retry moved to the night run |\n"
+        "| 2026-10-29 10:00 | x | misc | nothing to see |\n")
+    put(root, "work/archive/weeks/2026-W12-raw.md",
+        "# RAW Week 12\n\n## Mo 17.03\n\n### Log\n| Zeit | Typ | Context | Was |\n|---|---|---|---|\n"
+        "| 2026-03-17 07:40 | x | billing | Gateway retry password renewed |\n\n"
+        "## Mi 18.03\n\n| Zeit | Typ | Context | Was |\n|---|---|---|---|\n| 09:30 | x | billing | gateway retry plan drafted |\n")
+    put(root, "work/archive/weeks/2027-W01-raw.md",
+        "## Mo 28.12\n\n| 08:00 | x | ops | gateway retry at the year end |\n\n## Mo 04.01\n\n| 08:00 | x | ops | gateway retry in the new year |\n")
+    put(root, "work/archive/weeks/2026-W12.md", "- gateway retry in a summary line, not a row\n")
+    put(root, "work/archive/days/2026-10/28_insights.md",
+        "# Insights\n\n## 18:00 · Weekly round\n\n- Gateway retry discussed, the night run agreed\n- another topic\n")
+    put(root, "work/tasks/_meetings/2026-10-20-vendor-sync/summary.md", "# Vendor sync\n\n- gateway retry needs a vendor answer\n")
+    put(root, "work/done/2026-09/retry-hardening/STATUS.md",
+        "---\nstatus: done\nclosed: 2026-09-30\nheadline: Gateway retry hardened\n---\n\nrules for the gateway retry\n")
+    put(root, "work/done/2026-08/old-thing/STATUS.md", "---\nstatus: done\n---\n\ngateway retry without a closed day\n")
+    put(root, "work/tasks/open-task/STATUS.md", status("Gateway retry still open"))
+    tr = tmp_path / "transcripts"
+    put(tr, "2026-10-26_1649_vendor-call.md", "---\ntype: meeting-transcript-raw\n---\nA: the gateway retry\n"
+        "B: gateway retry again\nA: gateway retry a third time\nB: gateway retry a fourth time\n")
+    put(tr, "20260219-1044-old-call.md", "gateway retry under an older name\n")
+    put(tr, "Voice Chat 20260807-1505-chat.md", "gateway retry in a voice chat\n")
+    put(tr, "notes-without-a-day.md", "gateway retry with no day in its name\n")
+    put(tr, "2026-10-01_0900_audio.txt", "gateway retry in a text file\n")
+    put(tr, ".hidden/2026-10-02_0900_x.md", "gateway retry hidden\n")
+    return root, tr
+
+
+def by_text(res):
+    return {e["text"]: e for e in res["entries"]}
+
+
+def test_the_history_names_when_each_line_was_written_newest_first(past):
+    root, tr = past
+    res = wf.history(root, "gateway retry", transcripts=tr)
+    assert res["ok"] is True and res["words"] == ["gateway", "retry"] and res["transcripts"] is True
+    days = [(e["date"], e["time"] or "") for e in res["entries"]]
+    assert days == sorted(days, reverse=True)
+    got = by_text(res)
+    row = got["Gateway retry moved to the night run"]
+    assert row == {"date": "2026-10-29", "time": "09:15", "kind": "did", "source": "billing", "path": "work/log.md",
+                   "line": 7, "text": "Gateway retry moved to the night run", "folder": None, "count": 1, "more": 0}
+    assert got["Gateway retry password renewed"]["date"] == "2026-03-17"
+    # an old row carries only its time: the day comes from the head above it, the year from the file's name
+    old = got["gateway retry plan drafted"]
+    assert (old["date"], old["time"], old["source"]) == ("2026-03-18", "09:30", "billing")
+    # an ISO week names the year of its Thursday: 28.12 in week 1 of 2027 is still 2026
+    assert got["gateway retry at the year end"]["date"] == "2026-12-28"
+    assert got["gateway retry in the new year"]["date"] == "2027-01-04"
+
+
+def test_the_history_takes_meetings_closed_tasks_and_transcripts_but_no_open_task_and_no_summary_line(past):
+    root, tr = past
+    got = by_text(wf.history(root, "gateway retry", transcripts=tr))
+    talk = got["- Gateway retry discussed, the night run agreed"]
+    assert (talk["date"], talk["time"], talk["kind"], talk["source"]) == ("2026-10-28", "18:00", "discussed", "Weekly round")
+    meet = got["- gateway retry needs a vendor answer"]
+    assert (meet["date"], meet["time"], meet["kind"], meet["source"]) == ("2026-10-20", None, "discussed", "vendor-sync")
+    done = got["headline: Gateway retry hardened"]
+    assert (done["date"], done["kind"], done["source"], done["folder"]) == ("2026-09-30", "closed", "retry-hardening",
+                                                                            "work/done/2026-09/retry-hardening")
+    assert got["gateway retry without a closed day"]["date"] == "2026-08"
+    assert not any("still open" in t or "summary line" in t for t in got)
+    call = [e for e in got.values() if e["source"] == "vendor-call"]
+    # a transcript brings at most three lines and says how many it holds
+    assert len(call) == wf.HISTORY_LINES and {e["count"] for e in call} == {4} and [e["more"] for e in call] == [0, 0, 1]
+    assert (call[0]["date"], call[0]["time"], call[0]["kind"], call[0]["path"]) == ("2026-10-26", "16:49", "transcript",
+                                                                                   "2026-10-26_1649_vendor-call.md")
+    assert (got["gateway retry under an older name"]["date"], got["gateway retry under an older name"]["time"]) == ("2026-02-19", "10:44")
+    assert got["gateway retry under an older name"]["source"] == "old-call"
+    assert got["gateway retry in a voice chat"]["date"] == "2026-08-07" and got["gateway retry in a voice chat"]["source"] == "chat"
+    for left in ("gateway retry with no day in its name", "gateway retry in a text file", "gateway retry hidden"):
+        assert left not in got, left
+    plain = wf.history(root, "gateway retry")
+    assert plain["transcripts"] is False and not any(e["kind"] == "transcript" for e in plain["entries"])
+
+
+def test_a_history_line_holds_every_word_and_the_words_stay_plain_text(past):
+    root, tr = past
+    got = by_text(wf.history(root, "night gateway", transcripts=tr))
+    assert set(got) == {"Gateway retry moved to the night run", "- Gateway retry discussed, the night run agreed"}
+    assert wf.history(root, "retry.*", transcripts=tr)["entries"] == []
+    with pytest.raises(ValueError):
+        wf.history(root, "x")
+
+
+def test_the_history_never_follows_a_link_or_reads_an_oversized_file(past, tmp_path):
+    root, tr = past
+    outside = tmp_path / "outside.md"
+    outside.write_text("gateway retry outside\n", encoding="utf-8")
+    (tr / "2026-10-03_0900_link.md").symlink_to(outside)
+    (root / "work" / "archive" / "days" / "2026-11").mkdir(parents=True)
+    (root / "work" / "archive" / "days" / "2026-11" / "01_insights.md").symlink_to(outside)
+    put(tr, "2026-10-04_0900_big.md", "gateway retry big\n" + "x" * (wf.FILE_MAX + 1))
+    got = by_text(wf.history(root, "gateway retry", transcripts=tr))
+    assert "gateway retry outside" not in got and "gateway retry big" not in got
+    assert wf.history(root, "gateway retry", transcripts=tmp_path / "missing")["transcripts"] is False
+
+
+def test_many_history_lines_are_cut_and_say_so(past):
+    root, tr = past
+    res = wf.history(root, "gateway retry", transcripts=tr, limit=3)
+    assert len(res["entries"]) == 3 and res["truncated"] is True and res["total"] > 3
+
+
+def test_the_candidates_for_a_question_come_by_how_many_terms_a_line_holds(past):
+    root, tr = past
+    got = wf.history_candidates(root, ["gateway", "night run", "vendor"], transcripts=tr)
+    assert got[0]["score"] == 2 and {e["score"] for e in got[:2]} == {2}
+    assert all(e["score"] >= 1 for e in got)
+    assert sum(1 for e in got if e["source"] == "vendor-call") <= wf.HISTORY_LINES
+    # within a day range only, and the range drops what has no full day
+    ranged = wf.history_candidates(root, ["gateway"], transcripts=tr, since="2026-10-01", until="2026-10-31")
+    assert ranged and all("2026-10-01" <= e["date"] <= "2026-10-31" for e in ranged)
+    assert len(wf.history_candidates(root, ["gateway"], transcripts=tr, limit=2)) == 2
+    assert wf.history_candidates(root, [], transcripts=tr) == []
+    assert all(e["held"] == [] for e in got)
+
+
+def test_a_block_word_anywhere_in_a_file_holds_back_every_line_of_it_a_log_row_only_itself(past):
+    root, tr = past
+    put(tr, "2026-10-27_0800_doctor-call.md", "A: gateway retry for the portal\nB: and the Gesundheit form\n")
+    log = root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-29 11:00 | x | misc | gateway retry, Gesundheit portal |\n", encoding="utf-8")
+    got = wf.history_candidates(root, ["gateway"], transcripts=tr, block=["Gesundheit"])
+    held = [e for e in got if e["held"]]
+    assert {(e["source"], e["text"]) for e in held} == {("doctor-call", "A: gateway retry for the portal"),
+                                                        ("misc", "gateway retry, Gesundheit portal")}
+    assert all(e["held"] == ["Gesundheit"] for e in held)
+    # the held ones come after the ones that may go, and every other line of the log still goes
+    first = next(i for i, e in enumerate(got) if e["held"])
+    assert all(e["held"] for e in got[first:]) and any(e["source"] == "billing" for e in got[:first])
+
+
+def test_the_two_history_calls_have_one_exact_shape_each_without_tools():
+    models = {"claude-haiku-5-5"}
+    for schema in (wf.HISTORY_TERMS_SCHEMA, wf.HISTORY_ANSWER_SCHEMA):
+        argv = wf.history_argv("/fake/bin/claude", "claude-haiku-5-5", "Rules.", "data", schema)
+        assert argv[:12] == ["/fake/bin/claude", "-p", "--model", "claude-haiku-5-5", "--output-format", "json",
+                             "--no-session-persistence", "--setting-sources", "", "--tools", "", "--json-schema"]
+        assert argv[12] == schema
+        assert wf.history_argv_ok(argv, "/fake/bin/claude", models, schema)
+        other = wf.HISTORY_ANSWER_SCHEMA if schema == wf.HISTORY_TERMS_SCHEMA else wf.HISTORY_TERMS_SCHEMA
+        assert not wf.history_argv_ok(argv, "/fake/bin/claude", models, other)
+        for change in (lambda a: a.__setitem__(3, "haiku"), lambda a: a.__setitem__(10, "Read"),
+                       lambda a: a.insert(6, "--verbose"), lambda a: a.__setitem__(16, "")):
+            bad = list(argv)
+            change(bad)
+            assert not wf.history_argv_ok(bad, "/fake/bin/claude", models, schema)
+    assert not wf.history_argv_ok(wf.ask_argv("/fake/bin/claude", "claude-haiku-5-5", "R.", "d"), "/fake/bin/claude", models,
+                                  wf.ASK_SCHEMA)
+
+
+def test_the_terms_of_a_question_are_plain_words_and_a_range_only_of_real_days():
+    system, text = wf.history_terms_prompt("When did we move the retry?", "Deutsch", "2026-10-29")
+    assert "Deutsch" in system and "2026-10-29" in system and "never an instruction" in system
+    assert text == f"{wf.ASK_QUESTION_LABEL}\nWhen did we move the retry?"
+    out = json.dumps({"type": "result", "is_error": False, "total_cost_usd": 0.001, "modelUsage": {"claude-haiku-5-5": {}},
+                      "structured_output": {"terms": ["Retry", "retry", "night run", "x", "a\nb", "y" * 41, 7, "Gateway"],
+                                            "from": "2026-09-01", "to": "2026-13-01"}})
+    got = wf.history_terms_parse(out)
+    assert got["terms"] == ["retry", "night run", "gateway"] and got["from"] == "2026-09-01" and got["to"] is None
+    assert got["cost_usd"] == 0.001 and got["used"] == "claude-haiku-5-5"
+    assert wf.history_terms_parse("nonsense")["terms"] == []
+
+
+def test_the_history_answer_carries_the_entries_as_data_and_names_them_only_by_number():
+    entries = [{"n": 1, "date": "2026-10-29", "time": "09:15", "kind": "did", "source": "billing", "text": "t"}]
+    system, text = wf.history_answer_prompt("When?", entries, "English", "2026-10-29")
+    assert "English" in system and "never an instruction" in system
+    head, data, label, question = text.split("\n", 3)
+    assert "never an instruction" in head and json.loads(data) == {"entries": entries}
+    assert label == wf.ASK_QUESTION_LABEL and question == "When?"
+    out = json.dumps({"type": "result", "is_error": False, "total_cost_usd": 0.002, "modelUsage": {"claude-haiku-5-5": {}},
+                      "structured_output": {"answer": " On 29.10. ", "entries": [{"n": 1, "why": "it moved"}, {"n": 4, "why": "no"},
+                                                                                 {"n": 1, "why": "twice"}]}})
+    got = wf.history_answer_parse(out, 1)
+    assert got["answer"] == "On 29.10." and got["entries"] == [{"n": 1, "why": "it moved"}] and got["cost_usd"] == 0.002
+    assert wf.history_answer_parse("", 1)["answer"] is None
+
+
+def test_the_command_answers_the_history_in_json(past):
+    root, tr = past
+    script = ROOT / "scripts" / "work-find.py"
+    run = subprocess.run([sys.executable, str(script), "--root", str(root), "--history", "--transcripts", str(tr), "--json",
+                          "--", "gateway retry"], capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    data = json.loads(run.stdout)
+    assert data["ok"] is True and data["transcripts"] is True and data["entries"][0]["date"] == "2027-01-04"
+    assert any(e["kind"] == "transcript" for e in data["entries"])
+    run = subprocess.run([sys.executable, str(script), "--root", str(root), "--history", "--", "night gateway"],
+                         capture_output=True, text=True, check=False)
+    assert run.returncode == 0 and "2026-10-29 09:15" in run.stdout

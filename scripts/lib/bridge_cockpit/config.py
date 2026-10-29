@@ -142,6 +142,11 @@ class WebConfig:
     # the files tab's question to its records (cockpit.files_search, files_search_of): {enabled, budget_per_day,
     # model, block}; off by default, block empty
     files_search: dict = field(default_factory=lambda: files_search_defaults())
+    # what the history search reads besides the work system (history_paths_of): the raw meeting transcripts
+    # (work.meetings.raw_record_dir under doc_sensor.onedrive_root), None for none, and the meeting folders below
+    # the root (work.meetings.home_dir)
+    transcripts: Path | None = None
+    meetings: str = wf.MEETINGS_DIR
     # further sources of A2A peers beside infra/a2a-peers/ (cockpit.a2a_sources, agents.py): ({name, script}, ...),
     # each script a skill's own that lists its peers, reads their cards and asks them in a fixed JSON contract
     a2a_sources: tuple = ()
@@ -197,6 +202,37 @@ def files_search_of(value: Any) -> dict:
     if isinstance(value, dict):
         out["block"] = wf.block_words(value.get("block"))
     return out
+
+
+VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def history_paths_of(raw: dict) -> tuple[Path | None, str]:
+    """(transcripts, meetings) of the history search from bridge-config: the raw transcripts' folder is
+    work.meetings.raw_record_dir, relative to doc_sensor.onedrive_root (else identity.onedrive_root), `${var}` from
+    `identity:` plus home and a leading ~ expanded; None without one, with an unknown variable or a relative folder
+    without a root to stand on. The meeting folders are work.meetings.home_dir when it lies below work/tasks or
+    work/streams, else the default"""
+    meet = _dict(_dict(raw.get("work")).get("meetings"))
+    identity = _dict(raw.get("identity"))
+    variables = {"home": str(Path.home()), **{k: str(v) for k, v in identity.items() if isinstance(v, (str, int))}}
+
+    def expand(value: Any) -> Path | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        text = VAR_RE.sub(lambda m: variables.get(m.group(1), m.group(0)), value.strip())
+        return None if "${" in text else Path(text).expanduser()
+
+    transcripts = expand(meet.get("raw_record_dir"))
+    if transcripts is not None and not transcripts.is_absolute():
+        base = expand(_dict(raw.get("doc_sensor")).get("onedrive_root")) or expand(identity.get("onedrive_root"))
+        transcripts = base / transcripts if base is not None and base.is_absolute() else None
+    home = meet.get("home_dir")
+    parts = home.strip().strip("/").split("/") if isinstance(home, str) else []
+    meetings = ("/".join(parts) if isinstance(home, str) and not home.strip().startswith(("/", "~")) and len(parts) >= 3
+                and parts[0] == "work" and parts[1] in ("tasks", "streams") and not any(p in ("", ".", "..") for p in parts)
+                else wf.MEETINGS_DIR)
+    return transcripts, meetings
 
 
 def _check_files_search(value: Any, used: dict, where: str) -> list[str]:
@@ -651,6 +687,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     # a view the list leaves out opens Work through where it is kept and on (a Bridge that switched the other views
     # off never lands in the files), else the first one kept
     fallback = "flow" if "flow" in work_views and flow["enabled"] else work_views[0]
+    transcripts, meetings = history_paths_of(raw)
 
     cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
@@ -667,6 +704,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     origin_map=origin_map_of(w.get("origin_map"))[0], describe=dsc.describe_of(w.get("describe")),
                     a2a_sources=a2a_sources_of(w.get("a2a_sources"), root)[0],
                     flow=flow, files_search=files_search_of(w.get("files_search")),
+                    transcripts=transcripts, meetings=meetings,
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24,

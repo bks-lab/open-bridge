@@ -337,6 +337,12 @@ EN: dict = {
                   "running": "A question is being answered already. Try again in a moment.",
                   "too_big": "The records do not fit into one question. Search more narrowly.",
                   "failed": "The AI gave no usable answer: {why}"},
+    "timeline_ask": {"off": "Asking the AI about the history is switched off (cockpit.files_search).",
+                    "unavailable": "Asking the AI about the history is not available here. It needs a Claude model.",
+                    "budget": "Today's questions to the AI are used up.",
+                    "running": "A question to the history is being answered already. Try again in a moment.",
+                    "too_big": "The question does not fit into one call. Ask it shorter.",
+                    "failed": "The AI gave no usable answer: {why}"},
     # scripts/cockpit-usage.py: the proposals it leaves for /bridge-learn, one per candidate of the click origin log, and
     # the sentence of "What bothers you here?" in the explain window. Places and controls are the code's own names
     "usage": {
@@ -729,6 +735,12 @@ DE: dict = {
                   "running": "Es wird schon eine Frage beantwortet. Gleich noch einmal versuchen.",
                   "too_big": "Die Akten passen nicht in eine Frage. Enger suchen.",
                   "failed": "Die AI gab keine brauchbare Antwort: {why}"},
+    "timeline_ask": {"off": "Die KI zum Verlauf fragen ist ausgeschaltet (cockpit.files_search).",
+                    "unavailable": "Die KI zum Verlauf fragen geht hier nicht. Dafür fehlt ein Claude-Modell.",
+                    "budget": "Die Fragen an die KI sind für heute aufgebraucht.",
+                    "running": "Es wird schon eine Frage an den Verlauf beantwortet. Gleich noch einmal versuchen.",
+                    "too_big": "Die Frage passt nicht in einen Aufruf. Kürzer fragen.",
+                    "failed": "Die KI gab keine brauchbare Antwort: {why}"},
     "usage": {
         "title": {"unused_page": "Cockpit: {place} wurde nicht geöffnet",
                   "unused_area": "Cockpit: {area} auf {place} wurde nicht benutzt",

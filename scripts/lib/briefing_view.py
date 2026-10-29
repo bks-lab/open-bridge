@@ -442,7 +442,7 @@ SETUP_ENTRIES = ({"id": "setup-checks"},
                  {"id": "setup-available", "actionable": True, "badge": False},
                  {"id": "setup-on", "actionable": False, "badge": False})
 SETUP_SECTIONS = tuple(e["id"] for e in SETUP_ENTRIES)
-PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev", "cards", "under"}
+PAGE_KEYS = {"id", "title", "sections", "group", "overview", "jev", "cards", "under", "search"}
 # the cockpit's own pages a profile may place under one of its pages (`{id: "@workers", under: ops}`): an id
 # and `under`, never sections; the page then has no tab, the bar of the folder it stands in opens it
 PLACED_PAGES = ("@workers",)
@@ -716,6 +716,8 @@ def _page_problems(view: dict) -> list:
             out.append(f"{where}: group must be main, more, work or day")
         if "overview" in page and not isinstance(page["overview"], bool):
             out.append(f"{where}: overview must be true or false")
+        if "search" in page and not isinstance(page["search"], bool):
+            out.append(f"{where}: search must be true or false")
         if "jev" in page:
             if not isinstance(page["jev"], dict):
                 out.append(f"{where}: jev must be a mapping")
@@ -2289,6 +2291,7 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     sections = {s.get("id"): s for s in result.get("sections") or [] if isinstance(s, dict) and s.get("id")}
     plan = []   # (id, title, [entry], group, overview, jev)
     cards = {}  # page id -> its `cards:`, passed through as written (the dashboard places them)
+    searches = set()  # the pages with `search: true`: a dashboard draws a search field above their sections
     unders = []  # (id, under) in the listed order: a page, or one of the cockpit's (PLACED_PAGES), under another
     configured = view.get("pages") if isinstance(view.get("pages"), list) else None
     if configured is not None:
@@ -2307,6 +2310,8 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
                          page.get("overview") is True, _jev_of(page)))
             if isinstance(page.get("cards"), list):
                 cards[page["id"]] = page["cards"]
+            if page.get("search") is True:
+                searches.add(page["id"])
     else:
         for pid in DEFAULT_PAGES:
             plan.append((pid, labels[f"page_{pid}"],
@@ -2337,7 +2342,8 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
         built = [_page_section(sections[e["id"]], e, now, labels, root, marks) for e in entries if e["id"] in sections]
         if built:
             out.append({"id": pid, "title": title, "sections": built, "group": group, **({"overview": True} if overview else {}),
-                        **({"jev": jev} if jev is not None else {}), **({"cards": cards[pid]} if pid in cards else {})})
+                        **({"jev": jev} if jev is not None else {}), **({"cards": cards[pid]} if pid in cards else {}),
+                        **({"search": True} if pid in searches else {})})
     # a page under another has no tab: the parent names its sub pages in the listed order (`subs`), a sub page
     # without a section of its own is none, and neither side may be a page without a tab (group work or day)
     shown = {p["id"]: p for p in out if p["group"] not in ("work", "day")}
