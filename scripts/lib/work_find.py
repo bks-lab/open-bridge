@@ -49,6 +49,11 @@ task, a transcript or one meeting of a day brings at most HISTORY_LINES lines wi
 to a model (`history_*`) is two calls in the shape of `ask_argv`: the first turns the question into search terms and
 maybe a range of days, `history_candidates` picks the lines that hold the most of them, the second answers from those
 and names them by number only. The block list is the caller's to apply between the two, as for the records.
+
+For a page that charts the log over any range (the cockpit's log page, /api/logrange), `log_rows` lists every row of
+the log and its archive with its day and glyph, a row that stands in two files (a raw week and its summary) once, and
+`history_events` the meetings, closed tasks and transcripts as one entry each, by the same reading rules as the
+history; both, and `history`, take a range of days.
 """
 from __future__ import annotations
 
@@ -662,6 +667,40 @@ def transcript_root(path: Path | str | None) -> Path | None:
     return here if here.is_dir() else None
 
 
+def _log_lines(rel: str, lines: list[str]):
+    """Every row of a log or archive file as (line number, day, time, cells, text, line): a full row carries its day,
+    an old row only its time and takes the day from the `## <weekday> DD.MM` head above it, the year from the file's
+    name (else from its first full row)"""
+    name = rel.rsplit("/", 1)[-1]
+    first = next((m.group(1) for m in map(FULL_ROW_RE.match, lines) if m), None)
+    day = None
+    for n, line in enumerate(lines, 1):
+        head = DAY_HEAD_RE.match(line)
+        if head:
+            d, mo = int(head.group(1)), int(head.group(2))
+            year = _name_year(name, mo) or (int(first[:4]) if first else None)
+            day = _day(year, mo, d) if year else None
+            continue
+        full, short = FULL_ROW_RE.match(line), TIME_ROW_RE.match(line)
+        if not full and not (short and day):
+            continue
+        cells = _cells(line)
+        if len(cells) < 4:
+            continue
+        when = (full.group(1), full.group(2)) if full else (day, short.group(1).zfill(5))
+        yield n, when[0], when[1], cells, " | ".join(cells[3:]), line
+
+
+def _closed_day(root: Path, folder: str) -> str | None:
+    """The day a closed task closed: `closed`, else `last_updated` of its front matter, else the month of its folder"""
+    front = front_of(root, folder)
+    day = next((str(front[k])[:10] for k in ("closed", "last_updated") if front.get(k)), None)
+    if not (day and DAY_RE.match(day)):
+        month = folder.split("/")[2]
+        day = month if re.match(r"^\d{4}-\d{2}\Z", month) else None
+    return day
+
+
 def _history_scan(root: Path, transcripts: Path | None, meetings: str, file_ok, line_ok):
     """Every line of the history `line_ok` takes (its text lower cased), in a file `file_ok` takes, as (entry, text,
     group, unit): the entry without its snippet, the text to cut it from, the group whose lines HISTORY_LINES caps (None
@@ -685,27 +724,9 @@ def _history_scan(root: Path, transcripts: Path | None, meetings: str, file_ok, 
             continue
         lines = text.splitlines()
         if kind == "log":
-            name = rel.rsplit("/", 1)[-1]
-            first = next((m.group(1) for m in map(FULL_ROW_RE.match, lines) if m), None)
-            day = None
-            for n, line in enumerate(lines, 1):
-                head = DAY_HEAD_RE.match(line)
-                if head:
-                    d, mo = int(head.group(1)), int(head.group(2))
-                    year = _name_year(name, mo) or (int(first[:4]) if first else None)
-                    day = _day(year, mo, d) if year else None
-                    continue
-                full, short = FULL_ROW_RE.match(line), TIME_ROW_RE.match(line)
-                if not full and not (short and day):
-                    continue
-                cells = _cells(line)
-                if len(cells) < 4:
-                    continue
-                body = " | ".join(cells[3:])
-                if not line_ok(f"{cells[2]} {body}".lower()):
-                    continue
-                when = (full.group(1), full.group(2)) if full else (day, short.group(1).zfill(5))
-                yield entry(when[0], when[1], "did", cells[2], rel, n), body, None, line.lower()
+            for n, day, time, cells, body, line in _log_lines(rel, lines):
+                if line_ok(f"{cells[2]} {body}".lower()):
+                    yield entry(day, time, "did", cells[2], rel, n), body, None, line.lower()
         elif kind == "notes":
             m = INSIGHTS_RE.match(rel)
             day = f"{m.group(1)}-{m.group(2)}"
@@ -730,12 +751,7 @@ def _history_scan(root: Path, transcripts: Path | None, meetings: str, file_ok, 
         elif kind == "closed":
             folder = _folder_of_path(rel)
             if folder not in closed_on:
-                front = front_of(root, folder)
-                day = next((str(front[k])[:10] for k in ("closed", "last_updated") if front.get(k)), None)
-                if not (day and DAY_RE.match(day)):
-                    month = folder.split("/")[2]
-                    day = month if re.match(r"^\d{4}-\d{2}\Z", month) else None
-                closed_on[folder] = day
+                closed_on[folder] = _closed_day(root, folder)
             day = closed_on[folder]
             if day is None:
                 continue
@@ -764,18 +780,28 @@ def _newest_first(entries: list[dict]) -> list[dict]:
     return entries
 
 
+def _in_days(day: str | None, since: str | None, until: str | None) -> bool:
+    """Whether a day (YYYY-MM-DD) lies in a range of days, both ends in it; without a range every entry does, with one
+    only a full day (a closed task known only by its month stands on none)"""
+    if not since and not until:
+        return True
+    return bool(day and DAY_RE.match(day)) and not (since and day < since) and not (until and day > until)
+
+
 def history(root: Path | str, query: object, *, transcripts: Path | str | None = None, meetings: str = MEETINGS_DIR,
-            limit: int = HISTORY_MAX) -> dict:
+            limit: int = HISTORY_MAX, since: str | None = None, until: str | None = None) -> dict:
     """Every line of the history that holds every word of `query`, newest first: {date, time, kind (did, discussed,
     closed, transcript), source, path, line, text, folder (a closed task's, to open it), count (the lines its group
-    holds), more (on the last line shown of a group, how many it leaves out)}. ValueError for a query check_query
-    refuses."""
+    holds), more (on the last line shown of a group, how many it leaves out)}; with `since`/`until` only the lines of
+    those days, before the list is cut. ValueError for a query check_query refuses."""
     root = Path(root).resolve()
     text, words = check_query(query)
     base = transcript_root(transcripts)
     holds = lambda low: all(w in low for w in words)  # noqa: E731
     groups: dict = {}
     for e, body, group, _ in _history_scan(root, base, meetings, holds, holds):
+        if not _in_days(e["date"], since, until):
+            continue
         e["text"] = snippet(body, words)
         groups.setdefault(group if group is not None else ("row", e["path"], e["line"]), []).append(e)
     out = []
@@ -786,6 +812,63 @@ def history(root: Path | str, query: object, *, transcripts: Path | str | None =
     _newest_first(out)
     return {"ok": True, "query": text, "words": words, "total": len(out), "truncated": len(out) > limit,
             "transcripts": base is not None, "entries": out[:limit]}
+
+
+def log_rows(root: Path | str, *, since: str | None = None, until: str | None = None) -> dict:
+    """Every row of the log and its archive with its day, newest first, for a page that charts and lists the log over
+    any range: {ok, first (the first day of the whole log), total, rows [{date, time, glyph, context, text}]}; with
+    `since`/`until` only the rows of those days. A row that stands in more than one file (a raw week and its summary,
+    the log and an archive it was moved to) comes once; the same row twice in one file stays twice"""
+    root = Path(root).resolve()
+    rows, seen, first = [], {}, None
+    for rel in _walk(root):
+        if _history_kind(rel, MEETINGS_DIR) != "log":
+            continue
+        try:
+            text = (root / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for _, day, time, cells, body, _ in _log_lines(rel, text.splitlines()):
+            if not (day and DAY_RE.match(day)):
+                continue
+            row = {"date": day, "time": time, "glyph": cells[1][:8], "context": cells[2][:80], "text": body}
+            key = (day, time, cells[1], cells[2], body)
+            if seen.setdefault(key, rel) != rel:
+                continue
+            first = day if first is None or day < first else first
+            if _in_days(day, since, until):
+                rows.append(row)
+    rows.sort(key=lambda r: (r["date"], r["time"]), reverse=True)
+    return {"ok": True, "first": first, "total": len(rows), "rows": rows}
+
+
+def history_events(root: Path | str, *, transcripts: Path | str | None = None, meetings: str = MEETINGS_DIR,
+                   query: object = None, since: str | None = None, until: str | None = None) -> dict:
+    """The history beside the log as one entry each, newest first, for a chart that counts them: a meeting of a day's
+    notes (its `## HH:MM` head, else the whole file), a meeting folder, a closed task and a transcript, each
+    {date, time, kind (discussed, closed, transcript), source, path, folder}; with `query` only the ones whose name
+    and text hold every word between them, with `since`/`until` only full days of that range. ValueError for a query check_query refuses"""
+    root = Path(root).resolve()
+    words = check_query(query)[1] if query is not None else []
+    base = transcript_root(transcripts)
+    holds = lambda low: all(w in low for w in words)  # noqa: E731
+    found: dict = {}   # one entry per unit, with the text that decides whether it holds the words
+
+    def add(key, e, line):
+        found.setdefault(key, (e, []))[1].append(line.lower())
+
+    for e, body, group, _ in _history_scan(root, base, meetings, lambda low: True, lambda low: True):
+        if e["kind"] == "did":
+            continue
+        # a day's notes count one meeting per time head (group: path and time), the rest one per folder or file
+        add((e["kind"], group), {k: e[k] for k in ("date", "time", "kind", "source", "path", "folder")}, body)
+    # the lines of a day's notes above its first time head (its title) are no meeting of their own
+    headed = {key[1][0] for key in found if isinstance(key[1], tuple) and key[1][1] is not None}
+    out = [e for key, (e, lines) in found.items() if not (isinstance(key[1], tuple) and key[1][1] is None and key[1][0] in headed)
+           and DAY_RE.match(e["date"]) and _in_days(e["date"], since, until) and holds("\n".join([e["source"].lower(), *lines]))]
+    out.sort(key=lambda e: e["path"])
+    out.sort(key=lambda e: (e["date"], e["time"] or ""), reverse=True)
+    return {"ok": True, "transcripts": base is not None, "total": len(out), "entries": out}
 
 
 def history_candidates(root: Path | str, terms: list, *, transcripts: Path | str | None = None,

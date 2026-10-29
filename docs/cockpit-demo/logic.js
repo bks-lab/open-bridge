@@ -1573,6 +1573,249 @@ export function groupRows(items) {
   return [...out.filter(g => g.key), ...out.filter(g => !g.key)]
 }
 
+// ---------------------------------------------------------------- the log page's time range (views/logrange.js)
+
+/** The widths a bar of the range chart may have, smallest first: minutes, each a step of the local calendar */
+export const RANGE_STEPS = [{ key: '15m', min: 15 }, { key: '30m', min: 30 }, { key: '1h', min: 60 }, { key: '3h', min: 180 },
+  { key: '6h', min: 360 }, { key: '12h', min: 720 }, { key: '1d', min: 1440 }, { key: '1w', min: 10080 }]
+/** The ranges a click picks, in the order they stand */
+export const RANGE_PRESETS = ['today', 'yesterday', '7d', '30d', 'all']
+/** At most this many bars a range draws on its own (day bars and wider: RANGE_DAY_BARS); a chosen width up to RANGE_BARS_MAX */
+export const RANGE_BARS = 60
+export const RANGE_DAY_BARS = 240
+export const RANGE_BARS_MAX = 400
+
+/** Local midnight of the day a moment falls on */
+export function dayStart(ms) {
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+/** Local midnight `n` days after the day of `ms`, a calendar day (23 or 25 hours across a clock change) */
+export function shiftDays(ms, n) {
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime()
+}
+
+/** A range ({preset} or {from, to}) as {from, to, preset}: a preset from the moment now, All from the log's first day
+ *  (`firstMs`, today without one); `to` always the end, never in it */
+export function rangeOf(range, nowMs, firstMs = null) {
+  const today = dayStart(nowMs)
+  const span = { today: [today, shiftDays(today, 1)], yesterday: [shiftDays(today, -1), today], '7d': [shiftDays(today, -6), shiftDays(today, 1)],
+    '30d': [shiftDays(today, -29), shiftDays(today, 1)], all: [dayStart(Math.min(firstMs ?? today, today)), shiftDays(today, 1)] }
+  if (range?.preset && span[range.preset]) return { from: span[range.preset][0], to: span[range.preset][1], preset: range.preset }
+  return { from: range.from, to: range.to, preset: null }
+}
+
+/** How many bars of `step` a range holds */
+const barsOf = (from, to, step) => (to - from) / (step.min * 60000)
+
+/** The bar width a range takes on its own: the smallest that keeps it at RANGE_BARS bars (RANGE_DAY_BARS for days) */
+export function rangeStepAuto(from, to) {
+  return RANGE_STEPS.find(st => barsOf(from, to, st) <= (st.min >= 1440 ? RANGE_DAY_BARS : RANGE_BARS)) ?? RANGE_STEPS[RANGE_STEPS.length - 1]
+}
+
+/** The bar widths a person may choose for a range: one bar at least, RANGE_BARS_MAX at most */
+export function rangeSteps(from, to) {
+  return RANGE_STEPS.filter(st => barsOf(from, to, st) >= 1 && barsOf(from, to, st) <= RANGE_BARS_MAX)
+}
+
+/** The width chosen (its key), else, or when it does not fit the range, the automatic one */
+export function rangeStep(from, to, key = 'auto') {
+  return rangeSteps(from, to).find(st => st.key === key) ?? rangeStepAuto(from, to)
+}
+
+/** The start of the bar a moment falls in: a week from its Monday, a day from midnight, else minutes of the local day */
+export function stepFloor(ms, step) {
+  const z = dayStart(ms)
+  if (step.min === 10080) return shiftDays(z, -((new Date(z).getDay() + 6) % 7))
+  if (step.min === 1440) return z
+  const d = new Date(ms)
+  const at = Math.floor((d.getHours() * 60 + d.getMinutes()) / step.min) * step.min
+  const day = new Date(z)
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, at).getTime()
+}
+
+/** The start of the next bar */
+export function stepNext(ms, step) {
+  if (step.min >= 1440) return shiftDays(ms, step.min / 1440)
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes() + step.min).getTime()
+}
+
+/** The edges of a range's bars, the first at or before `from`, the last at or after `to` */
+export function rangeEdges(from, to, step) {
+  const out = [stepFloor(from, step)]
+  while (out[out.length - 1] < to && out.length <= RANGE_BARS_MAX + 2) out.push(stepNext(out[out.length - 1], step))
+  return out
+}
+
+/** The bar a moment falls in, -1 outside */
+export function barOf(edges, ms) {
+  if (!(ms >= edges[0]) || !(ms < edges[edges.length - 1])) return -1
+  let lo = 0, hi = edges.length - 2
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (edges[mid] <= ms) lo = mid
+    else hi = mid - 1
+  }
+  return lo
+}
+
+/** How many of the moments (`ts` of each) fall in each bar; with `kindOf` one count per kind: {kind: counts} */
+export function rangeCounts(items, edges, kindOf = null) {
+  const blank = () => new Array(Math.max(0, edges.length - 1)).fill(0)
+  const out = kindOf ? {} : blank()
+  for (const it of items ?? []) {
+    const i = barOf(edges, it.ts)
+    if (i < 0) continue
+    if (!kindOf) { out[i]++; continue }
+    const k = kindOf(it)
+    ;(out[k] ??= blank())[i]++
+  }
+  return out
+}
+
+/** The rows of a range: those of `asc` (oldest first, each with `ts`) from `from` up to `to`, newest first */
+export function rangeSlice(asc, from, to) {
+  const at = ms => {
+    let lo = 0, hi = asc.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (asc[mid].ts < ms) lo = mid + 1; else hi = mid }
+    return lo
+  }
+  return asc.slice(at(from), at(to)).reverse()
+}
+
+/** The local moment of a day and a time (YYYY-MM-DD, HH:MM; noon without a time) */
+export function dayTime(day, time) {
+  const [y, mo, d] = String(day).split('-').map(Number)
+  const [h, mi] = /^\d{1,2}:\d{2}$/.test(time ?? '') ? time.split(':').map(Number) : [12, 0]
+  return new Date(y, mo - 1, d, h, mi).getTime()
+}
+
+/** The rows /api/logrange answered as rows of the log (views/logpage.js LogRows), oldest first, each with its moment
+ *  (`ts`), its day and an index of its own beside the drawn section's */
+export function logRangeRows(rows) {
+  // the answer comes newest first: oldest first here, rows of one minute in the opposite order, so that a range read
+  // back newest first (rangeSlice) keeps them as they came
+  return (rows ?? []).map((r, at) => ({ ...r, at, ts: dayTime(r.date, r.time) }))
+    .sort((a, b) => a.ts - b.ts || b.at - a.at)
+    .map((r, i) => ({ index: 100000 + i, title: r.title ?? '', when: r.time ?? '', glyph: r.glyph ?? null, group: r.group ?? null,
+      detail: r.group ?? '', tone: null, task: r.task ?? null, about_task: r.about_task ?? null, about_path: r.about_path ?? null,
+      day: r.date, ts: r.ts }))
+}
+
+/** The rows of today the log section drew, oldest first with their moment: `at` where the row carries it, else its
+ *  time on today's date; a row of an earlier day (its `when` a day) is left to the range */
+export function logTodayRows(items, nowMs) {
+  const today = isoDate(nowMs)
+  const out = []
+  for (const it of items ?? []) {
+    const at = typeof it.at === 'string' ? Date.parse(it.at) : NaN
+    const ts = Number.isFinite(at) ? at : /^\d{1,2}:\d{2}$/.test(it.when ?? '') ? dayTime(today, it.when) : NaN
+    if (Number.isFinite(ts) && isoDate(ts) === today) out.push({ it: { ...it, ts, day: today }, at: out.length })
+  }
+  // newest first as drawn: oldest first here, rows of one minute in the opposite order (as logRangeRows)
+  return out.sort((a, b) => a.it.ts - b.it.ts || b.at - a.at).map(x => x.it)
+}
+
+/** The rows of a log under their days, in the order they came: [{key (YYYY-MM-DD), rows}] */
+export function logDays(items) {
+  const out = []
+  for (const it of items ?? []) {
+    const key = it.day ?? isoDate(it.ts)
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.rows.push(it)
+    else out.push({ key, rows: [it] })
+  }
+  return out
+}
+
+/** Whether a range lies within one calendar day */
+export function rangeOneDay(from, to) {
+  return dayStart(from) === dayStart(to - 1)
+}
+
+/** A round top for a chart's scale: 1 to 5 as they are, else 1, 2, 2.5, 5 or 10 times a power of ten */
+export function niceMax(n) {
+  if (n <= 5) return Math.max(1, Math.ceil(n))
+  const p = 10 ** Math.floor(Math.log10(n))
+  return [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= n) ?? n
+}
+
+/** Where the bars stand in a chart `width` wide (margins of the axis inside): x of a moment, the bar under an x */
+export function chartGeometry(edges, width, margin = { l: 38, r: 10 }) {
+  const span = edges[edges.length - 1] - edges[0] || 1
+  const plot = Math.max(1, width - margin.l - margin.r)
+  const x = ms => margin.l + (ms - edges[0]) / span * plot
+  const barAt = px => {
+    if (px <= x(edges[0])) return 0
+    for (let i = 0; i < edges.length - 1; i++) if (px < x(edges[i + 1])) return i
+    return edges.length - 2
+  }
+  return { x, barAt, plot, left: margin.l, right: width - margin.r }
+}
+
+/** A day as the range names it: weekday and date (`Do 29.10.2026`, `Thu 29 Oct 2026`), without the year when asked */
+export function rangeDay(ms, lang, withYear = true) {
+  const d = new Date(ms)
+  const wd = weekdayNames(lang)[(d.getDay() + 6) % 7]
+  if (String(lang).startsWith('de')) return `${wd} ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${withYear ? d.getFullYear() : ''}`
+  const month = new Intl.DateTimeFormat(lang, { month: 'short' }).format(d)
+  return `${wd} ${d.getDate()} ${month}${withYear ? ` ${d.getFullYear()}` : ''}`
+}
+
+/** A day short, without weekday and year: `29.10.`, `29 Oct` */
+export function shortDay(ms, lang) {
+  const d = new Date(ms)
+  return String(lang).startsWith('de') ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.`
+    : `${d.getDate()} ${new Intl.DateTimeFormat(lang, { month: 'short' }).format(d)}`
+}
+
+/** The labels under a chart's axis: the widest calendar unit that leaves 64 px between two (an hour up to a month),
+ *  midnight and Mondays (a month's first in a long range) marked */
+export function rangeTicks(edges, width, lang) {
+  const first = edges[0], last = edges[edges.length - 1], span = last - first
+  const plot = Math.max(1, width - 48), de = String(lang).startsWith('de')
+  const unit = [60, 180, 360, 720, 1440, 10080].find(m => m * 60000 / span * plot >= 64) ?? 'month'
+  const out = []
+  if (unit === 'month') {
+    const fmt = new Intl.DateTimeFormat(lang, { month: 'short' })
+    for (let d = new Date(new Date(first).getFullYear(), new Date(first).getMonth() + 1, 1); d.getTime() < last; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      out.push({ ms: d.getTime(), label: d.getMonth() === 0 ? String(d.getFullYear()) : fmt.format(d).replace(/\.$/, ''), mid: d.getMonth() === 0 })
+    }
+    return out
+  }
+  const step = { min: unit }
+  let ms = stepFloor(first, step)
+  if (ms < first) ms = stepNext(ms, step)
+  for (; ms <= last && out.length < 200; ms = stepNext(ms, step)) {
+    const d = new Date(ms)
+    if (unit < 1440) out.push(d.getHours() === 0 && d.getMinutes() === 0 ? { ms, label: rangeDay(ms, lang, false), mid: true } : { ms, label: clockTime(ms) })
+    else if (unit === 1440) out.push({ ms, label: span <= 15 * DAY ? `${weekdayNames(lang)[(d.getDay() + 6) % 7]} ${de ? `${pad(d.getDate())}.` : d.getDate()}`
+      : shortDay(ms, lang), mid: d.getDay() === 1 && span > 15 * DAY })
+    else out.push({ ms, label: shortDay(ms, lang) })
+  }
+  return out
+}
+
+/** The own commits of each repository in a range, the busiest first: [{repo, branch, url, n, spark}], `spark` the
+ *  commits in `slices` equal parts of the range */
+export function repoRange(repos, from, to, slices = 14) {
+  const k = Math.max(1, slices), w = (to - from) / k
+  return (repos ?? []).map(r => {
+    const ms = (r.ts ?? []).map(t => t * 1000).filter(t => t >= from && t < to)
+    const spark = new Array(k).fill(0)
+    for (const t of ms) spark[Math.min(k - 1, Math.floor((t - from) / w))]++
+    return { repo: r.repo, branch: r.branch ?? '', url: /^https?:\/\//.test(r.url ?? '') ? r.url : null, n: ms.length, spark }
+  }).filter(r => r.n).sort((a, b) => b.n - a.n || a.repo.localeCompare(b.repo))
+}
+
+/** Whether a repository has an own commit from `from` up to `to` */
+export function repoBusy(repo, from, to) {
+  return (repo.ts ?? []).some(t => t * 1000 >= from && t * 1000 < to)
+}
+
 /** Short weekday names Monday first, from the platform for the page's language ("Mo", "Di" / "Mon", "Tue") */
 export function weekdayNames(lang) {
   const f = new Intl.DateTimeFormat(lang, { weekday: 'short' })

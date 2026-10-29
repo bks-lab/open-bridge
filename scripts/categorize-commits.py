@@ -553,6 +553,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/guide.py",
     "scripts/lib/bridge_cockpit/net.py",                  # the one outbound fetcher: feeds and agent cards
     "scripts/lib/bridge_cockpit/collector.py",
+    "scripts/lib/bridge_cockpit/logrange.py",             # the log page's time range: /api/logrange
     "scripts/lib/bridge_cockpit/tabs.py",
     "scripts/lib/bridge_cockpit/asks.py",                 # what a waiting tab asks, read off its screen
     "scripts/tests/test_bridge_cockpit_asks.py",
@@ -699,6 +700,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/tabs.js",
     "scripts/web/views/timeline.js",          # a page's search: its rows, every day before, the AI
     "scripts/web/views/logpage.js",           # a page's log layout: the log by hour, the rail beside it
+    "scripts/web/views/logrange.js",          # the log page's time range: presets, the bar chart, the zoom
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",
     "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
@@ -739,6 +741,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_costs.test.mjs",
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
+    "scripts/tests/bridge_cockpit_logrange.test.mjs",
     "scripts/tests/bridge_cockpit_flow.test.mjs",
     "scripts/tests/bridge_cockpit_prio.test.mjs",
     "scripts/tests/bridge_cockpit_settle.test.mjs",

@@ -933,13 +933,14 @@ class WorkVerbs:
                                            "held": {"n": len(held), "words": held_words}, "model": act.alias(got["used"] or model),
                                            "left": app.activity.budget_left("files"), "at_ms": int(app.clock())})
 
-    def v_timeline_ask(self, ctx: Ctx, text: str) -> None:
+    def v_timeline_ask(self, ctx: Ctx, text: str, since: str | None = None, until: str | None = None) -> None:
         """When was it done or discussed (cockpit.files_search, lib/work_find.py history_*): the first call turns the
         question into search terms and maybe a range of days, the lines of the history that hold the most of them are
         picked (history_candidates), every one a word of the block list names in its path, source or text is held back
         before anything is built, and the second call answers from the rest, naming them by number only. Off with the
         files tab's question, within its budget_per_day (one question counts once, both calls' cost together), one at
-        a time. Nothing found: no second call, an answer of None"""
+        a time. Nothing found: no second call, an answer of None. With `since`/`until` (the log page's range) only the
+        lines of those days count; a range the question names narrows it further, never past it"""
         app = self.app
         tx = TABLES["de" if str(getattr(app.cfg, "language", "en")).startswith("de") else "en"]["timeline_ask"]
         cfg = act.block(app, "files")
@@ -972,7 +973,12 @@ class WorkVerbs:
             find = lambda since=None, until=None: wf.history_candidates(  # noqa: E731
                 app.root, asked, transcripts=app.cfg.transcripts, meetings=app.cfg.meetings, since=since, until=until,
                 block=words)
-            found = find(terms["from"], terms["to"]) or (find() if terms["from"] or terms["to"] else [])
+            # the page's range bounds whatever range the question names; nothing in the narrower one: the page's range
+            lo = max(filter(None, (since, terms["from"])), default=None)
+            hi = min(filter(None, (until, terms["to"])), default=None)
+            narrower = (lo, hi) != (since, until)
+            found = find(lo, hi) if not (lo and hi and hi < lo) else []
+            found = found or (find(since, until) if narrower else [])
             # a line a word of the block list names, in itself, its path, its source or its file, never goes
             sent, held = [e for e in found if not e["held"]], [e["held"] for e in found if e["held"]]
             if sent:

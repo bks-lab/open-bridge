@@ -506,12 +506,16 @@ def test_parse_pages_keeps_the_log_layout_keys():
     # every key of the log layout passes parse_pages one by one, else the page never learns it (the bug of `search`):
     # a section's `view: log`, its `place: rail`, a log row's glyph; anything else is no log and the main column
     pages = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [
-        {"id": "a", "view": "log", "items": [{"title": "Shipped it", "when": "09:15", "glyph": "✅"}, {"title": "x", "glyph": 7}]},
-        {"id": "b", "place": "rail"}, {"id": "c", "view": "diary", "place": "left"}]}]})
+        {"id": "a", "kind": "activity", "view": "log", "items": [{"title": "Shipped it", "when": "09:15", "glyph": "✅",
+                                                                  "at": "2026-10-08T09:15"}, {"title": "x", "glyph": 7}]},
+        {"id": "b", "kind": "commits", "place": "rail"}, {"id": "c", "view": "diary", "place": "left"}]}]})
     secs = pages[0]["sections"]
     assert [x["view"] for x in secs] == ["log", None, None]
     assert [x["place"] for x in secs] == [None, "rail", None]
     assert [i["glyph"] for i in secs[0]["items"]] == ["✅", None]
+    # the time range of the log page (views/logrange.js) needs the kinds (the work log, the commits) and each row's minute
+    assert [x["kind"] for x in secs[:2]] == ["activity", "commits"]
+    assert [i["at"] for i in secs[0]["items"]] == ["2026-10-08T09:15", None]
 
 
 def test_mark_and_as_of():
@@ -8697,6 +8701,124 @@ def test_the_transcripts_and_the_meetings_come_from_the_config_of_the_meetings(t
     assert load_web_config(tmp_path, {"work": {"meetings": {"raw_record_dir": "Audio/processed"}}}).transcripts is None
 
 
+# ---------------------------------------------------------------- the log page's time range: GET /api/logrange
+
+def logrange_handlers(world, repos=None):
+    """The real rows and the other history of the test Bridge, as scripts/work-find.py --rows and --events would
+    answer them; own commits as scripts/briefing.py commits would"""
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    world.runner.handlers["work-find.--rows"] = lambda argv: ok(work_find.log_rows(world.root))
+    world.runner.handlers["work-find.--events"] = lambda argv: ok(work_find.history_events(
+        world.root, query=argv[argv.index("--") + 1] if "--" in argv else None,
+        since=argv[argv.index("--since") + 1], until=argv[argv.index("--until") + 1]))
+    world.runner.handlers["briefing.commits"] = lambda argv: ok({"ok": True, "section": "commits", "skipped": [], "repos": repos if repos is not None else [
+        {"repo": "example/app", "branch": "main", "url": "https://github.com/example/app/commits/main", "ts": [int(NOW // 1000) - 3600]}]})
+
+
+def logrange_rows(world):
+    (world.root / "work" / "done" / "2026-09" / "old-export").mkdir(parents=True)
+    (world.root / "work" / "done" / "2026-09" / "old-export" / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-07 16:00 | 🔧 | old-export | export renamed |\n", encoding="utf-8")
+    week = "## Mi 30.09\n\n| 2026-09-30 08:00 | x | billing | one row in two files |\n"
+    for name in ("2026-W40.md", "2026-W40-raw.md"):
+        (world.root / "work" / "archive" / "weeks").mkdir(parents=True, exist_ok=True)
+        (world.root / "work" / "archive" / "weeks" / name).write_text(week, encoding="utf-8")
+
+
+def test_the_log_range_answers_the_rows_of_the_days_asked_with_what_a_log_row_needs_and_the_own_commits(world):
+    logrange_rows(world)
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/logrange?from=2026-10-07&to=2026-10-09&commits=commits", headers=world.cookie)
+    assert status == 200, body
+    data = json.loads(body)
+    # the whole log is read once, as argv, and the range is cut from it; the commits of the profile's section, from a
+    # week back at least, so the rail can name the repositories of the last seven days that are quiet in the range
+    assert world.runner.of("work-find.--rows") == [[PY, str(world.root / "scripts" / "work-find.py"), "--root", str(world.root),
+                                                   "--rows", "--json"]]
+    assert world.runner.of("briefing.commits") == [[PY, str(world.root / "scripts" / "briefing.py"), "--root", str(world.root),
+                                                   "commits", "morning", "--section", "commits", "--since", "2026-10-03",
+                                                   "--until", "2026-10-09"]]
+    assert (data["ok"], data["from"], data["to"], data["first"], data["today"]) == (True, "2026-10-07", "2026-10-09", "2026-09-30", TODAY)
+    assert [(r["date"], r["time"]) for r in data["rows"]] == [("2026-10-09", "10:00"), ("2026-10-09", "09:30"),
+                                                              ("2026-10-09", "09:00"), ("2026-10-07", "16:00")]
+    task, closed = data["rows"][2], data["rows"][3]
+    assert task == {"date": "2026-10-09", "time": "09:00", "glyph": "x", "group": "demo-task", "title": "started the demo",
+                    "task": "demo-task", "about_task": None, "about_path": None}
+    assert (closed["task"], closed["about_task"], closed["about_path"]) == (None, "old-export", "work/done/2026-09/old-export")
+    assert data["repos"][0]["repo"] == "example/app" and data["repos_from"] == "2026-10-03"
+    # All from the first day: the row that stands in a raw week and in its summary comes once
+    status, _, body = world.request("GET", "/api/logrange", headers=world.cookie)
+    every = json.loads(body)
+    assert every["from"] == "2026-09-30" and every["to"] == TODAY and every["repos"] is None
+    assert [r["title"] for r in every["rows"]].count("one row in two files") == 1
+
+
+def test_the_log_range_keeps_the_log_it_read_until_a_file_of_it_changes(world):
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    for _ in range(3):
+        assert world.request("GET", "/api/logrange?from=2026-10-09&to=2026-10-09", headers=world.cookie)[0] == 200
+    assert len(world.runner.of("work-find.--rows")) == 1
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-09 11:00 | x | other | a new row |\n", encoding="utf-8")
+    status, _, body = world.request("GET", "/api/logrange?from=2026-10-09&to=2026-10-09", headers=world.cookie)
+    assert len(world.runner.of("work-find.--rows")) == 2 and json.loads(body)["rows"][0]["title"] == "a new row"
+
+
+def test_the_log_range_refuses_what_it_does_not_take_and_says_so_when_it_fails(world):
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    for query, field in (("from=2026-13-01", "from"), ("to=yesterday", "to"), ("from=2026-10-09&to=2026-10-01", "to"),
+                         ("sources=everything", "sources"), ("q=demo", "q"), ("commits=../x", "commits"),
+                         ("sources=other&q=x", "q"), ("sources=other&commits=commits", "commits")):
+        status, _, body = world.request("GET", f"/api/logrange?{query}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == field, query
+    assert world.runner.calls == []
+    assert world.request("GET", "/api/logrange")[0] == 401
+    world.runner.handlers["work-find.--rows"] = lambda argv: fail(f"broke near {world.app.token}")
+    status, _, body = world.request("GET", "/api/logrange", headers=world.cookie)
+    assert status == 502 and json.loads(body)["error"]["code"] == "unreadable" and world.app.token.encode() not in body
+    # commits that cannot be read leave the rows standing: the rail keeps what the briefing drew
+    logrange_handlers(world)
+    world.runner.handlers["briefing.commits"] = lambda argv: fail("no such commits section", 2)
+    status, _, body = world.request("GET", "/api/logrange?commits=commits", headers=world.cookie)
+    assert status == 200 and json.loads(body)["repos"] is None and json.loads(body)["rows"]
+
+
+def test_the_log_range_of_the_other_history_one_entry_each_with_the_words_one_argv_word(world):
+    meeting = world.root / "work" / "tasks" / "_meetings" / "2026-10-08-vendor-sync"
+    meeting.mkdir(parents=True)
+    (meeting / "summary.md").write_text("# Vendor sync\n\n- the demo retry\n", encoding="utf-8")
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/logrange?sources=other&from=2026-10-01&to=2026-10-09&q=" + urllib.parse.quote("demo; rm"),
+                                    headers=world.cookie)
+    assert status == 200
+    assert world.runner.of("work-find.--events")[0][2:] == ["--root", str(world.root), "--events", "--json", "--meetings",
+                                                            "work/tasks/_meetings", "--since", "2026-10-01", "--until",
+                                                            "2026-10-09", "--", "demo; rm"]
+    assert json.loads(body)["events"] == [] and world.runner.of("work-find.--rows") == []
+    status, _, body = world.request("GET", "/api/logrange?sources=other&from=2026-10-01&to=2026-10-09", headers=world.cookie)
+    data = json.loads(body)
+    assert "--" not in world.runner.of("work-find.--events")[-1]
+    assert [(e["date"], e["kind"], e["source"]) for e in data["events"]] == [("2026-10-08", "discussed", "vendor-sync")]
+    assert (data["from"], data["to"], "rows" in data) == ("2026-10-01", "2026-10-09", False)
+
+
+def test_the_timeline_takes_a_range_of_days(world):
+    world.runner.handlers["work-find.--history"] = history_handler(world)
+    world.runner.calls.clear()
+    status, _, _ = world.request("GET", "/api/timeline?q=demo&from=2026-10-01&to=2026-10-09", headers=world.cookie)
+    assert status == 200
+    assert world.runner.of("work-find.--history")[0][4:] == ["--history", "--json", "--meetings", "work/tasks/_meetings",
+                                                            "--since", "2026-10-01", "--until", "2026-10-09", "--", "demo"]
+    status, _, body = world.request("GET", "/api/timeline?q=demo&from=2026-10-09&to=2026-10-01", headers=world.cookie)
+    assert status == 400 and json.loads(body)["error"]["field"] == "to"
+
+
 HISTORY_ROWS = ("\n| 2026-10-06 08:00 | x | billing | gateway retry moved to the night run |\n"
                 "| 2026-10-05 08:00 | x | versicherung-bestand | gateway retry for the policy portal |\n"
                 "| 2026-10-04 08:00 | x | misc | gateway retry, Gesundheit portal too |\n")
@@ -8744,6 +8866,28 @@ def test_asking_the_timeline_takes_two_calls_and_never_sends_what_the_block_list
         assert ask["held"] == {"n": 2, "words": ["Versicherung", "Gesundheit"]} and ask["sent"] == len(entries)
         # one question counts once, both calls together
         assert ask["model"] == "haiku" and ask["left"] == 2
+    finally:
+        w.close()
+
+
+def test_asking_the_timeline_within_a_range_of_days_sends_only_the_lines_of_those_days(tmp_path):
+    w = timeline_ask_world(tmp_path)
+    try:
+        log = w.root / "work" / "log.md"
+        log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-03 08:00 | x | ops | gateway retry checked at night |\n",
+                       encoding="utf-8")
+        before = len(w.runner.calls)
+        w.act("timeline_ask", text="When did the retry move?", since="2026-10-03", until="2026-10-03")
+        _, second = w.runner.calls[before:]
+        entries = json.loads(second[-1].split("\n", 3)[1])["entries"]
+        assert entries and {e["date"] for e in entries} == {"2026-10-03"}
+    finally:
+        w.close()
+    w = timeline_ask_world(tmp_path / "none")
+    try:
+        # nothing in the range: no lines from outside it, no second call
+        res = w.act("timeline_ask", text="When did the retry move?", since="2026-01-01", until="2026-01-31")
+        assert len(w.runner.of("claude.p")) == 1 and res["timeline"]["sent"] == 0
     finally:
         w.close()
 

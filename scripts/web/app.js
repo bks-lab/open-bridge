@@ -241,6 +241,10 @@ const store = createStore({
   timeline: null,
   // its question to the AI (verb timeline_ask): { status: loading|ok|error, data, error }; null: none asked
   timelineAsk: null,
+  // a log page's time range (/api/logrange): { from, to (the days asked, from null for the whole log), status, data, error }
+  logRange: null,
+  // the history beside the log for Every day's chart (/api/logrange?sources=other): { q, status, data, error }
+  logEvents: null,
   // the questions archived in the last days (/api/chats/archive), read once "all" is asked for: { status, convs }
   chatArchive: null,
 })
@@ -1202,19 +1206,39 @@ const ctl = {
   clearFilesAsk: () => store.set(s => ({ ...s, filesAsk: null })),
   // a page's search (views/pages.js PageSearch): every day before by the words typed, an answer for words no longer
   // asked is dropped; the question to the AI with the same words, its answer stands until closed
-  async searchTimeline(q) {
+  // days: the {from, to} of a log page's time range, the history read only for those days
+  async searchTimeline(q, days = null) {
     const words = String(q ?? '').replace(/\s+/g, ' ').trim()
     if (words.length < 2) return
-    store.set(s => ({ ...s, timeline: { q: words, status: 'loading', data: null, error: null } }))
-    const res = await api.timeline(words)
-    if (store.get().timeline?.q !== words) return
-    store.set(s => ({ ...s, timeline: res.ok ? { q: words, status: 'ok', data: res.data, error: null }
-      : { q: words, status: 'error', data: null, error: res.error?.message ?? String(res.status) } }))
+    const key = `${words}|${days?.from ?? ''}|${days?.to ?? ''}`
+    store.set(s => ({ ...s, timeline: { q: words, key, status: 'loading', data: null, error: null } }))
+    const res = await api.timeline(words, days)
+    if (store.get().timeline?.key !== key) return
+    store.set(s => ({ ...s, timeline: res.ok ? { q: words, key, status: 'ok', data: res.data, error: null }
+      : { q: words, key, status: 'error', data: null, error: res.error?.message ?? String(res.status) } }))
   },
   clearTimeline: () => store.set(s => ({ ...s, timeline: null })),
-  async askTimeline(text) {
+  // a log page's time range (views/logrange.js): the rows of the days asked, the last answer standing while the next
+  // loads; an answer for days no longer asked is dropped
+  async loadLogRange({ from = null, to = null, commits = null } = {}) {
+    store.set(s => ({ ...s, logRange: { from, to, status: 'loading', data: s.logRange?.data ?? null, error: null } }))
+    const res = await api.logRange({ from, to, commits })
+    const now = store.get().logRange
+    if (now?.from !== from || now?.to !== to) return
+    store.set(s => ({ ...s, logRange: res.ok ? { from, to, status: 'ok', data: res.data, error: null }
+      : { from, to, status: 'error', data: s.logRange?.data ?? null, error: res.error?.message ?? String(res.status) } }))
+  },
+  // the meetings, closed tasks and transcripts one entry each, those that hold the words (none: all of them)
+  async loadLogEvents(q = '') {
+    store.set(s => ({ ...s, logEvents: { q, status: 'loading', data: s.logEvents?.data ?? null, error: null } }))
+    const res = await api.logRange({ sources: 'other', q: q || null })
+    if (store.get().logEvents?.q !== q) return
+    store.set(s => ({ ...s, logEvents: res.ok ? { q, status: 'ok', data: res.data, error: null }
+      : { q, status: 'error', data: null, error: res.error?.message ?? String(res.status) } }))
+  },
+  async askTimeline(text, days = null) {
     store.set(s => ({ ...s, timelineAsk: { status: 'loading', data: null, error: null } }))
-    const res = await api.action('timeline_ask', { text })
+    const res = await api.action('timeline_ask', days ? { text, ...(days.from ? { since: days.from } : {}), ...(days.to ? { until: days.to } : {}) } : { text })
     if (res.status === 401) failNote(res)
     store.set(s => ({ ...s, timelineAsk: res.ok ? { status: 'ok', data: res.data?.timeline ?? null, error: null }
       : { status: 'error', data: null, error: errorText(res.error, T()) } }))

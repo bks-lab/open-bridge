@@ -1490,7 +1490,8 @@ on as the tab's state allows and a box that sends a message to it (Enter
 sends, Shift+Enter a new line). Escape or a click outside closes it.
 
 **A page's search.** A profile page with `search: true` carries a search field
-above its sections with three modes beside it; switching keeps the text. In
+above its sections with three modes beside it; switching keeps the text (on a
+log page with a time range the first mode is **In range**, see below). In
 **Today** typing two characters or more filters the page's own rows to those
 that hold every word, in every section at once, its head counting the hits (a
 section that drew only its first rows loads the rest first, so the filter covers
@@ -1542,6 +1543,52 @@ log counts the hits and names the topic). In **Every day** the timeline stands
 in the main column in place of the log, in **Ask AI** the answer stands above
 it; the rail stays. Under 900 pixels the columns stack, the rail first.
 
+**The log page's time range.** Where the `view: log` section is the work log
+(`kind: activity`), a range panel stands between the search bar and the two
+columns; no profile key asks for it. It offers **Today** (the default each time
+the page opens), **Yesterday**, **7 days**, **30 days** and **All** (from the
+first day of the log), names the range in words with its count of lines, keeps
+a **Back** to the range before, and a **Bars per** choice (automatic: the
+smallest of 15 and 30 minutes, 1, 3, 6 and 12 hours, a day or a week that stays
+at 60 bars, 240 for days; any other width that fits). Below it a bar chart counts
+the log rows per bar; the bars stand on the local calendar (a day stays a day
+across a clock change, a week starts on Monday), weekends are shaded where a bar
+is a day or less, what has not happened yet is hatched and a line marks now.
+Dragging picks a range snapped to the bars and zooms in on release, a click on a
+bar zooms into it, hovering names the bar, its count and its three busiest
+contexts. The pointer does all of it; no key is needed and none is named.
+
+The log, its topic chips and the `commits` tiles of the rail follow the range:
+over several days the log stands under day heads, each with its count and
+**only this day**, within one day under its hours, newest first; a tile counts
+the own commits of the range with a sparkline over it, six tiles at most and the
+rest in one line, and the repositories busy in the last seven days but quiet in
+the range are named below. The first mode of the search reads **In range**:
+typing filters the rows of the range, and the chart shows only the hits on a
+scale of their own. **Every day** turns the range to **All** (Back returns) and
+its chart stacks the log rows with the meetings, the closed tasks and the
+transcripts, one each (`work-find.py --events`, with the words only those that
+hold every one), each kind in a colour of its own with a key; its timeline reads
+the days of the range (`/api/timeline?from=&to=`). **Ask AI** asks within the
+range too (the verb `timeline_ask` with `since` and `until`): a range the
+question names narrows it, never past it.
+
+The page draws today from the section the collector read, so it never waits for
+the history; the range's rows come from `GET /api/logrange`
+(`bridge_cockpit/logrange.py`): `?from=YYYY-MM-DD&to=YYYY-MM-DD` (both days in
+the range; without `from` the log's first day, without `to` today) and
+`&commits=<section id>` answer the rows of the log and its archive
+(`work-find.py --rows`: each with its day, time, glyph, context and the task it
+is or is about; a row that stands in a raw week and its summary comes once) and
+the own commits of that section over the range as times (`briefing.py
+commits`, from a week back at least); `?sources=other[&q=words]` answers the
+history beside the log. The page counts the bars itself (`logic.js`), so a zoom,
+another width or the typed words never ask again; it asks only for days it does
+not hold yet, and again for the days it holds when the collector read the day
+anew. The server keeps the whole log until a file of `work/log.md` or
+`work/archive/` changes and cuts each range from it; the commits and the other
+history it keeps a minute per range.
+
 ```yaml
 view:
   pages:
@@ -1549,7 +1596,7 @@ view:
       title: Daily log
       search: true
       sections:
-        - {id: activity, view: log}      # the log by hour, topic chips beside it
+        - {id: activity, view: log}      # the log by hour with its time range, topic chips beside it
         - {id: commits, place: rail}     # repository tiles in the rail
 ```
 
@@ -2956,7 +3003,12 @@ nothing a stranger could trigger:
   one with a control character before anything runs.
   `GET /api/timeline` is the same kind of read: `scripts/work-find.py
   --history` through the runner, the words one argument after `--`, the
-  transcripts' folder only where the config names one that exists.
+  transcripts' folder only where the config names one that exists, `from`
+  and `to` checked as days.
+  `GET /api/logrange` is one too: `scripts/work-find.py --rows` or `--events`
+  and `scripts/briefing.py commits` through the runner, every parameter checked
+  before anything runs (days, `sources` log or other, words only with other,
+  a section id only with the log), no line.
   `GET /api/records` is a read too: the records of the Files tab's list
   (every task, stream and closed task, its front matter read in place, newest
   first, at most 2000), no runner call and no line. So is
