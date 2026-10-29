@@ -71,6 +71,7 @@ discovery:
 #   professional      — Lead, Specialists, Tasks, Incident Response (default, en)
 #   professional-de   — Leitung, Spezialisten, Aufgaben, Stoerfall (de)
 #   professional-fr     Responsable, Spécialistes, Tâches, Incident (fr)
+#   professional-zh-cn  负责人, 专家模块, 任务, 事件 (zh-CN)
 # Custom: copy themes/_template.yaml to themes/{name}.yaml, set extends.
 # Themes only change vocabulary — never tools, delegation, or goals.
 theme: professional

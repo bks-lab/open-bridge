@@ -25,7 +25,7 @@ Usage:
 """
 import argparse, json, os, re, subprocess, sys
 
-BUILTIN_THEMES = {"professional", "professional-de", "professional-fr", "_template", "_schema"}
+BUILTIN_THEMES = {"professional", "professional-de", "professional-fr", "professional-zh-cn", "_template", "_schema"}
 
 # A path is USER (safe to diverge from CORE) if it matches one of these.
 USER_PATTERNS = [

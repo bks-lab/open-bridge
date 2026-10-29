@@ -1,0 +1,63 @@
+# themes/professional-zh-cn.yaml
+# Simplified Chinese locale: professional vocabulary.
+# CORE file — lives on the default/core branch.
+#
+# Extends professional.yaml — only overrides vocabulary with
+# Chinese translations. Alerts and phrases inherit from
+# professional unless overridden here.
+
+schema_version: 1
+
+meta:
+  name: professional-zh-cn
+  display_name: "专业(中文)"
+  description: "面向团队和客户的中性、商务友好型用语"
+  locale: zh-CN
+  author: "open-bridge by BKS-Lab"
+  version: "1.0.0"
+  extends: professional
+
+vocabulary:
+  user: "负责人"
+  assistant: "助理"
+  assistant_name: "调度者"
+  agents: "专家模块"
+  agent_singular: "专家模块"
+
+  work_log: "工作日志"
+  task: "任务"
+  tasks: "任务组"
+  task_board: "任务看板"
+  active_tasks: "活跃任务"
+  queued_tasks: "排队任务"
+  completed_tasks: "已完成任务"
+
+  incident: "事件"
+  warning: "警告"
+  cross_repo: "跨仓库任务"
+  daily_check: "每日简报"
+  week_archive: "每周归档"
+  analysis: "深入分析"
+  onboarding: "上手设置"
+
+  repos: "项目列表"
+  remote: "远程主机"
+  remotes: "远程主机"
+  channel: "消息频道"
+  channels: "消息频道组"
+  schedule: "计划任务"
+  protocol: "协议"
+  protocols: "协议组"
+
+  dispatch: "调度"
+  spawn: "启动"
+  park: "暂停"
+  resume: "继续"
+
+phrases:
+  session_greeting: "早上好。这是您的简报"
+  dispatch_confirm: "{agent} 已派发至 {task}。"
+  completion_report: "{agent} 已完成：{summary}"
+  escalation_notice: "{agent} 需要关注 — {reason}"
+  log_prefix: ""
+  status_header: "状态看板"

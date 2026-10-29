@@ -519,6 +519,7 @@ def test_whole_folder_user_surfaces(path: str):
     "themes/professional.yaml",
     "themes/professional-de.yaml",
     "themes/professional-fr.yaml",
+    "themes/professional-zh-cn.yaml",
     "themes/_schema.yaml",
     "skills/bridge-greeting/assets/logos/bridge.txt",
 ])

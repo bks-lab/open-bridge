@@ -95,7 +95,7 @@ USER_PATTERNS = [
     r"^skills/[^/]+/LEARNINGS\.md$",
     r"^skills/[^/]+/references/provenance\.md$",
     # themes/ is whole-folder CORE, so an instance theme is a structural exception.
-    r"^themes/(?!_)(?!professional(?:-de|-fr)?\.yaml$)[^/]+\.yaml$",
+    r"^themes/(?!_)(?!professional(?:-de|-fr|-zh-cn)?\.yaml$)[^/]+\.yaml$",
     # workflow/checks/ — the whole surface is instance-local (decision 2026-08-01).
     # Unlike its sibling wrappers there is no CORE half to preserve: upstream has
     # never shipped a checks/ folder, and the only consumer is the `user`-scoped
