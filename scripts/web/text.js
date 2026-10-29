@@ -497,7 +497,9 @@ const en = {
   },
   // a page's log layout (views/logpage.js, profile view: log and place: rail): the log by hour, the rail beside it
   logPage: {
-    open: 'Open',
+    open: 'Details',
+    openFile: 'Open its file',
+    hasFile: 'has a file',
     more: n => `${n} more`,
     rail: 'Beside the log',
     topics: 'Topics',
@@ -2158,7 +2160,9 @@ const de = {
     kind: { did: 'Log', discussed: 'Besprechung', closed: 'Erledigt', transcript: 'Transkript' },
   },
   logPage: {
-    open: 'Öffnen',
+    open: 'Details',
+    openFile: 'Akte öffnen',
+    hasFile: 'hat eine Akte',
     more: n => `${n} weitere`,
     rail: 'Neben dem Log',
     topics: 'Themen',

@@ -1270,7 +1270,8 @@ kbd {
 .logv-text mark { background: var(--accent-subtle); color: inherit; border-radius: 2px; padding: 0 1px; }
 .logv-ctx { display: inline-block; margin-right: 4px; padding: 0 6px; border-radius: var(--radius-sm); background: var(--surface-muted);
   font-size: var(--text-mono-label); color: var(--on-surface-muted); }
-.logv-open { margin: 0 0 6px calc(5em + 16px); }
+.logv-acts { display: flex; align-items: center; gap: 12px; margin: 0 0 6px calc(5em + 16px); }
+.logv-file { color: var(--on-surface-muted); vertical-align: -1px; }
 @media (max-width: 900px) {
   .logp-grid { grid-template-columns: minmax(0, 1fr); }
   .logp-rail { order: -1; }

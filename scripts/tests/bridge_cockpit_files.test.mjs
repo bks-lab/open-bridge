@@ -1602,6 +1602,23 @@ test('a log row opens on a click and closes on the next, and offers its detail o
   assert.equal(btn().getAttribute('aria-expanded'), 'false')
 })
 
+test('a log row of a task or about one carries a file mark and, open, opens its file; a closed one by its folder', async () => {
+  const c = recorder()
+  const rows = [{ ...LOG_ROWS[0], about_task: 'billing-retry', about_path: null },
+    { ...LOG_ROWS[1], about_task: 'old-export', about_path: 'work/done/2026-10/old-export' }, LOG_ROWS[2],
+    { ...LOG_ROWS[2], index: 3, task: 'invoice-run' }]
+  const page = { ...DAY_PAGE, sections: [{ ...DAY_PAGE.sections[0], items: rows }, DAY_PAGE.sections[1]] }
+  const el = logPage(cockpitState(NOW), c, page)
+  assert.deepEqual(el.$$('.logv-row').map(r => !!r.$('.logv-file')), [true, true, false, true])
+  for (const i of [0, 1, 2, 3]) { el.$$('.logv-row')[i].$('.logv-btn').click(); await tick() }
+  assert.equal(el.$$('.logv-row')[2].button(en.logPage.openFile), null, 'a row about no task offers no file')
+  el.$$('.logv-row')[0].button(en.logPage.openFile).click()
+  el.$$('.logv-row')[1].button(en.logPage.openFile).click()
+  el.$$('.logv-row')[3].button(en.logPage.openFile).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'openFile'), [['openFile', 'billing-retry', null], ['openFile', 'old-export', 'work/done/2026-10/old-export'],
+    ['openFile', 'invoice-run', null]])
+})
+
 test('a topic chip filters the log, together with the typed words, and its head counts the hits and names the topic', async () => {
   const el = logPage(cockpitState(NOW), recorder())
   const chips = el.$$('.logp-rail .fchip')

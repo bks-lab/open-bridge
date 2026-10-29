@@ -23,7 +23,9 @@ function logRows(page, s) {
 }
 
 /** The rows of a log (PageSection with `view: log`) under sticky hour heads: time, glyph, context and the text
- *  clamped to two lines, a click opens it in full; the typed words marked; the first LOG_STEP rows, then a button */
+ *  clamped to two lines, a click opens it in full; the typed words marked; the first LOG_STEP rows, then a button.
+ *  A row of a task (`task`) or about one, a stream or a closed one (`about_task`, its context) carries a file mark and,
+ *  open, the way to its file */
 export function LogRows({ items, page, section, c, words = '' }) {
   const w = T().logPage
   // how many rows stand, counted for the words typed: new words start from the first rows again
@@ -38,13 +40,17 @@ export function LogRows({ items, page, section, c, words = '' }) {
       <h3 class="logv-head mono">${h.key}</h3>
       <ul class="logv-rows">${h.rows.map(it => {
         const on = open.has(it.index)
+        // the file of the task the row is, else of the one it is about (its context); a closed one by its folder
+        const file = it.task ?? it.about_task ?? null
         return html`<li key=${it.index} class=${`logv-row${on ? ' is-open' : ''}${it.tone === 'dim' ? ' is-dim' : ''}`}>
           <button type="button" class="logv-btn" aria-expanded=${String(on)} onClick=${() => toggle(it.index)}>
             <span class="logv-time mono">${it.when}</span>
             <span class="logv-glyph" aria-hidden="true">${it.glyph ?? '·'}</span>
-            <span class="logv-text">${it.group ? html`<span class="logv-ctx"><${Marked} text=${it.group} words=${marks} /></span> ` : null}<${Marked} text=${it.title} words=${marks} /></span>
+            <span class="logv-text">${file ? html`<span class="logv-file" title=${w.hasFile}><${Icon} name="file" size=${12} /><span class="sr-only">${w.hasFile}</span></span> ` : null}${it.group ? html`<span class="logv-ctx"><${Marked} text=${it.group} words=${marks} /></span> ` : null}<${Marked} text=${it.title} words=${marks} /></span>
           </button>
-          ${on ? html`<button type="button" class="btn-link small logv-open" onClick=${() => c.openInfo(it, page, section)}>${w.open}</button>` : null}
+          ${on ? html`<span class="logv-acts">${file ? html`<${Btn} size="xs" variant="secondary" icon="file"
+              onClick=${() => c.openFile(file, it.task ? null : it.about_path ?? null)}>${w.openFile}<//>` : null}
+            <button type="button" class="btn-link small logv-open" onClick=${() => c.openInfo(it, page, section)}>${w.open}</button></span>` : null}
         </li>`
       })}</ul>
     </section>`)}

@@ -1449,7 +1449,9 @@ as one question of `files_search.budget_per_day`, and take its model.
 **A page's log layout.** A section with `view: log` draws its rows as a log:
 under sticky hour heads (`13:00`; an earlier day's row under its date), each
 row its time, the glyph of its activity type, its context as a chip and its
-text clamped to two lines (a click opens it in full and offers its detail),
+text clamped to two lines (a click opens it in full and offers its detail; a row of a task, or whose context
+names a task, a stream or a closed one of this Bridge, carries a file mark and offers **Open its file**, a closed
+one by its newest folder under `work/done/`),
 the typed words marked, the first 100 rows and a button for the next ones. A
 section with `place: rail` stands in a narrow column beside the main one, its
 rows as tiles two to a row: the name, the `when` with its leading number large
