@@ -71,7 +71,7 @@ priority, area or context, the last change, title, kind), newest first, at most
 the area of its row, else of its file of `model.files`, else the one its front
 matter names (`area`, else `context`).
 
-**Ask the AI** (de: Die AI fragen) stands under the chips where
+**Ask the AI** (de: Die KI fragen) stands under the chips where
 `cockpit.files_search.enabled` is true: a field of its own for the question and
 a button "Ask the AI about these n records". It sends that question, or a
 default one when the field is empty, with at most 12 of the records listed to a

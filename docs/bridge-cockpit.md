@@ -1409,10 +1409,12 @@ on as the tab's state allows and a box that sends a message to it (Enter
 sends, Shift+Enter a new line). Escape or a click outside closes it.
 
 **A page's search.** A profile page with `search: true` carries a search field
-above its sections. Typing two characters or more filters the page's own rows
-to those that hold every word, in every section at once (a section of groups
-shows every match unfolded, one without a match says "Nothing matches the
-filter"). **Search all days** (or Enter) asks the history with the same words
+above its sections with three modes beside it; switching keeps the text. In
+**Today** typing two characters or more filters the page's own rows to those
+that hold every word, in every section at once (a section of groups shows every
+match unfolded, one without a match says "Nothing matches the filter", and with
+no hit at all a line offers **Every day**). **Every day** (on the switch and on
+Enter) leaves the rows as they are and asks the history with the same words
 (`GET /api/timeline`, `scripts/work-find.py --history`): every line that holds
 every word in the log rows of `work/log.md` and `work/archive/` (an old row with
 only its time takes the day from the `## <weekday> DD.MM` head above it and the
@@ -1426,8 +1428,10 @@ link followed, nothing over 2 MB). The lines stand as a timeline by day, newest
 first, each with its time, what it is (log, meeting, closed, transcript), where
 it stands and the line; a meeting folder, a closed task, a transcript or one
 meeting of a day brings at most three lines and says how many more it holds,
-and a closed task opens in the Files tab. With `cockpit.files_search` on,
-**Ask AI** asks when it was done or discussed (the verb `timeline_ask`): a first
+the words stand marked, and a closed task opens in the Files tab. With
+`cockpit.files_search` on, the mode **Ask AI** (Enter or its button, the
+questions left today beside it) asks when it was done or discussed (the verb
+`timeline_ask`): a first
 call turns the question into search terms and maybe a range of days, the
 server picks the 60 lines that hold the most of them, every line a word of
 `files_search.block` names in its path, source or text stays back before

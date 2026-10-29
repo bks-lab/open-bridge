@@ -1149,15 +1149,17 @@ test('6c fix: the question to the AI has its own field, says before the click wh
   // no record listed: no line about privacy, there is nothing to keep back
   const empty = mount(html`<${DossierView} s=${tabState({ filesQ: 'qqxyzzy' })} c=${recorder()} />`)
   assert.equal(empty.$('.fs-ask-note').text(), f.noneToSend)
-  // the German words: AI as everywhere in the cockpit, plain sentences without config keys or semicolons
+  // the German words of a question to the AI: KI, as the page's search asks it (29.10.), plain sentences without
+  // config keys or semicolons
   const de = text.TABLES.de
   for (const k of ['ask', 'asking', 'answer', 'noneToSend', 'nothingToSend', 'noneLeft']) {
     const v = typeof de.dossier.start[k] === 'function' ? de.dossier.start[k](2) : de.dossier.start[k]
-    assert.doesNotMatch(v, /\bKI\b/, k)
+    assert.doesNotMatch(v, /\bAI\b/, k)
   }
+  assert.match(de.dossier.start.ask(2), /\bKI\b/)
   for (const [k, v] of Object.entries(de.errors).filter(([k]) => k.startsWith('files_ask_'))) {
     assert.doesNotMatch(v, /[;(]|cockpit\.|workflow\//, k)
-    assert.doesNotMatch(v, /\bKI\b/, k)
+    assert.doesNotMatch(v, /\bAI\b/, k)
   }
 })
 
@@ -1350,68 +1352,108 @@ function searchPage(s, c) {
     render=${q => LOG_PAGE.sections.map(sec => html`<${PageSection} key=${sec.id} page=${LOG_PAGE} section=${sec} s=${s} c=${c} q=${q} />`)} />`)
 }
 
-test('a page with search: true filters its own rows as one types, then asks every day before and the AI with the same words', async () => {
+const radio = (el, label) => el.$$('.psearch-seg button').find(b => b.text() === label) ?? null
+
+async function type(el, value) {
+  const box = el.$('.psearch input')
+  box.value = value
+  box.dispatch('input')
+  await tick()
+}
+
+test('a page search has three modes: Today filters the rows as one types, Every day and Ask AI leave them and keep the text', async () => {
   const c = recorder()
-  const s = cockpitState(NOW)
-  const el = searchPage(s, c)
-  assert.match(el.text(), /Docs index checked/)
+  const el = searchPage(cockpitState(NOW), c)
   const box = el.$('.psearch input')
   assert.ok(box.getAttribute('id') && el.$(`label[for="${box.getAttribute('id')}"]`), 'the field has its label')
-  box.value = 'night  gateway'
-  box.dispatch('input')
-  await tick()
+  assert.deepEqual(el.$$('.psearch-seg button').map(b => b.text()), [en.pageSearch.mode.today, en.pageSearch.mode.all, en.pageSearch.mode.ai])
+  assert.equal(radio(el, en.pageSearch.mode.today).getAttribute('aria-checked'), 'true')
+  await type(el, 'night  gateway')
   assert.match(el.text(), /Gateway retry moved to the night run/)
   assert.doesNotMatch(el.text(), /Docs index checked/)
-  el.button(en.pageSearch.allDays).click()
+  // Enter in Today asks nobody
+  el.$('form.psearch-bar').dispatch('submit')
+  assert.equal(c.calls.filter(x => x[0] === 'searchTimeline' || x[0] === 'askTimeline').length, 0)
+  // Every day: the switch searches at once, Enter again, the rows stand unfiltered and the text stays
+  radio(el, en.pageSearch.mode.all).click()
+  await tick()
   assert.deepEqual(c.calls.find(x => x[0] === 'searchTimeline'), ['searchTimeline', 'night gateway'])
-  el.button(en.pageSearch.ask).click()
-  assert.deepEqual(c.calls.find(x => x[0] === 'askTimeline'), ['askTimeline', 'night gateway'])
-  // Enter is the search of every day, the AI only on its own button
+  assert.match(el.text(), /Docs index checked/)
+  assert.equal(el.$('.psearch input').value ?? el.$('.psearch input').getAttribute('value'), 'night  gateway')
   el.$('form.psearch-bar').dispatch('submit')
   assert.equal(c.calls.filter(x => x[0] === 'searchTimeline').length, 2)
-  // nothing of the page holds the words: the section says so instead of its own empty sentence
-  box.value = 'nothing like this'
-  box.dispatch('input')
+  // Ask AI: Enter or its button asks, the rows stand unfiltered
+  radio(el, en.pageSearch.mode.ai).click()
   await tick()
-  assert.match(el.text(), new RegExp(en.filterNone))
-  assert.doesNotMatch(el.text(), /no line yet/)
+  assert.equal(c.calls.filter(x => x[0] === 'askTimeline').length, 0)
+  el.$('form.psearch-bar').dispatch('submit')
+  el.button(en.pageSearch.send).click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'askTimeline'), [['askTimeline', 'night gateway'], ['askTimeline', 'night gateway']])
+  assert.match(el.text(), /Docs index checked/)
 })
 
-test('the AI button of a page search shows only with the files question on, and waits once none is left today', () => {
+test('Today without a hit says so and offers Every day; a section without a hit says so too', async () => {
+  const c = recorder()
+  const el = searchPage(cockpitState(NOW), c)
+  await type(el, 'nothing like this')
+  assert.match(el.$('.psearch-none').text(), new RegExp(en.pageSearch.todayNone))
+  assert.match(el.text(), new RegExp(en.filterNone))
+  assert.doesNotMatch(el.text(), /no line yet/)
+  el.$('.psearch-none button').click()
+  await tick()
+  assert.deepEqual(c.calls.find(x => x[0] === 'searchTimeline'), ['searchTimeline', 'nothing like this'])
+  assert.equal(radio(el, en.pageSearch.mode.all).getAttribute('aria-checked'), 'true')
+})
+
+test('Ask AI is a mode only with the files question on; it names the questions left and waits once none is left', async () => {
   const off = cockpitState(NOW)
   off.work = { ...off.work, files_search: { enabled: false, block: [], left: 20 } }
-  assert.equal(searchPage(off, recorder()).button(en.pageSearch.ask), null)
+  assert.equal(radio(searchPage(off, recorder()), en.pageSearch.mode.ai), null)
   const spent = cockpitState(NOW)
   spent.work = { ...spent.work, files_search: { enabled: true, block: ['Health'], left: 0 } }
   const el = searchPage(spent, recorder())
   assert.match(el.text(), new RegExp(en.pageSearch.noneLeft))
+  radio(el, en.pageSearch.mode.ai).click()
+  await tick()
   assert.match(el.text(), /Health/)
+  assert.equal(el.button(en.pageSearch.send).getAttribute('disabled') !== null, true)
+  const some = cockpitState(NOW)
+  some.work = { ...some.work, files_search: { enabled: true, block: [], left: 7 } }
+  assert.match(searchPage(some, recorder()).text(), new RegExp(en.pageSearch.left(7)))
 })
 
-test('every day before stands as a timeline by day: time, what kind, where, the line, how many more, a closed task opens', () => {
+test('Every day stands as a timeline by day: time, kind, where, the line with its words marked, how many more, a closed task opens', async () => {
   const c = recorder()
   const s = { ...cockpitState(NOW), timeline: { q: 'gateway retry', status: 'ok', data: TIMELINE, error: null } }
   const el = searchPage(s, c)
+  radio(el, en.pageSearch.mode.all).click()
+  await tick()
   assert.equal(el.$$('.tl-day').length, 3)
   const text = el.$('.tl').text()
   for (const word of ['18:00', en.pageSearch.kind.discussed, 'Weekly round', en.pageSearch.kind.transcript, en.pageSearch.more(3),
     en.pageSearch.kind.closed, 'Gateway retry hardened']) assert.ok(text.includes(word), word)
+  assert.deepEqual(el.$$('.tl-row')[0].$$('mark').map(m => m.text()), ['Gateway', 'retry'])
   el.button(en.pageSearch.open).click()
   assert.deepEqual(c.calls.find(x => x[0] === 'openFile'), ['openFile', 'retry-hardening', 'work/done/2026-09/retry-hardening'])
   el.$('.tl').button(en.pageSearch.close).click()
   assert.ok(c.calls.some(x => x[0] === 'clearTimeline'))
   const none = searchPage({ ...cockpitState(NOW), timeline: { q: 'x y', status: 'ok', data: { ...TIMELINE, entries: [], total: 0 }, error: null } }, c)
+  radio(none, en.pageSearch.mode.all).click()
+  await tick()
   assert.match(none.$('.tl').text(), new RegExp(en.pageSearch.nothing))
 })
 
-test('the AI answer of a page search names its days and the lines it read', () => {
+test('the AI answer names its days and the lines it read, its terms marked', async () => {
   const c = recorder()
   const ask = { status: 'ok', error: null, data: { answer: 'On 28 October in the weekly round.', terms: ['gateway', 'retry'], sent: 12,
     held: { n: 2, words: ['Health'] }, model: 'haiku', left: 19, entries: [{ ...TIMELINE.entries[0], n: 1, why: 'agreed there' }] } }
   const el = searchPage({ ...cockpitState(NOW), timelineAsk: ask }, c)
+  radio(el, en.pageSearch.mode.ai).click()
+  await tick()
   const text = el.$('.tl-answer').text()
   assert.ok(text.includes('On 28 October in the weekly round.') && text.includes('agreed there') && text.includes('Weekly round'))
   assert.ok(text.includes(en.pageSearch.answerFrom(12, 'haiku')))
+  assert.equal(el.$('.tl-answer mark').text(), 'Gateway')
   el.$('.tl-answer').button(en.pageSearch.close).click()
   assert.ok(c.calls.some(x => x[0] === 'clearTimelineAsk'))
 })

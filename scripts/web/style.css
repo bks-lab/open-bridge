@@ -1213,7 +1213,12 @@ kbd {
 .psearch { display: flex; flex-direction: column; gap: 10px; }
 .psearch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .psearch-q { flex: 1 1 260px; min-width: 0; height: 34px; }
-.psearch-note { margin: 0; }
+.psearch-note, .psearch-none { margin: 0; }
+.psearch-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.psearch-seg button { border: 0; background: transparent; padding: 6px 12px; font: inherit; font-size: var(--text-sm); color: var(--on-surface); cursor: pointer; }
+.psearch-seg button + button { border-left: 1px solid var(--border); }
+.psearch-seg button.is-on { background: var(--ink); color: var(--surface-raised); }
+.tl-text mark { background: var(--accent-subtle); color: inherit; border-radius: 2px; padding: 0 1px; }
 .tl { display: flex; flex-direction: column; gap: 10px; padding: 14px 20px 16px; background: var(--surface-raised);
   border: 1px solid var(--accent-line); border-radius: var(--radius-xl); }
 .tl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
