@@ -179,6 +179,12 @@ SURFACES = [
         "exclude_prefixes": ["_"],
     },
     {
+        "name": "cost-center",
+        "schema": "workflow/cost-centers/_schema.yaml",
+        "instances": "workflow/cost-centers/*.yaml",
+        "exclude_prefixes": ["_"],
+    },
+    {
         "name": "ai-service",
         "schema": "workflow/ai-services/_schema.yaml",
         "instances": "workflow/ai-services/*.yaml",
