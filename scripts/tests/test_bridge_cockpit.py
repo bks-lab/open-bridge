@@ -4339,6 +4339,27 @@ def test_the_costs_view_is_served_from_the_kept_copy(world):
     assert world.request("GET", "/api/costs")[0] == 401
 
 
+def test_a_cost_statement_is_made_for_the_picked_month_and_project(world):
+    # the cost card's button: scripts/cost-ledger.py statement over the kept view (or a closed month), read only
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    day = lambda d: {"day": d, "amount": 1.0, "provisional": False, "groups": {"svc": 1.0}}  # noqa: E731
+    doc = {"schema": 1, "kind": "cloud-costs", "today": "2026-11-03", "currency": "EUR",
+           "cost_centers": [{"id": "shop", "title": "Shop", "persona_ref": None}],
+           "accounts": [{"id": "a", "display_name": "Account A", "ok": True, "cost_center": "shop",
+                         "days": [day(f"2026-10-{n:02d}") for n in range(1, 32)]}]}
+    (folder / "costs-view.json").write_text(json.dumps(doc), encoding="utf-8")
+    status, _, body = world.request("GET", "/api/costs/statement?month=2026-10&center=shop&lang=de", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    st = data["statement"]
+    assert st["paid"] == 31.0 and st["source"] == "live" and "Shop" in st["markdown"] and st["csv"].startswith("item;")
+    status, _, body = world.request("GET", "/api/costs/statement?month=1999-01", headers=world.cookie)
+    assert status == 404 and json.loads(body)["error"]["code"] == "no_costs"
+    assert world.request("GET", "/api/costs/statement?month=nope", headers=world.cookie)[0] == 400
+    assert world.request("GET", "/api/costs/statement?month=2026-10")[0] == 401
+
+
 def test_the_token_use_is_served_for_7_30_or_90_days(world):
     # the range chips of the usage card ask for a range; anything else becomes the nearest allowed one
     asked = []

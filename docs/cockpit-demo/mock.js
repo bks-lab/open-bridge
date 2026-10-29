@@ -2106,6 +2106,12 @@ export function createMockTransport(opts = {}) {
         return ok({ ok: true, usage: usageView(now(), [7, 30, 90].includes(n) ? n : 7) })
       }
       if (url.pathname === '/api/costs') return ok({ ok: true, view: costsView(now()) })
+      if (url.pathname === '/api/costs/statement') {
+        const month = url.searchParams.get('month') || ''
+        const md = `# Cost statement: Customer A\n\n**Period:** ${month}\n\n| Item | Amount |\n|---|---:|\n| Example Azure | €36.00 |\n| Example Anthropic | €78.00 |\n| Subtotal | €114.00 |\n\nProvisional: the month is not closed.\n`
+        return ok({ ok: true, statement: { month, source: 'live', closed: false, title: 'Customer A', paid: 114, used: 114, credits: 0,
+          currency: 'EUR', markdown: md, csv: 'item;amount_eur\nExample Azure;36.00\nExample Anthropic;78.00\nsubtotal;114.00\n' } })
+      }
       if (url.pathname === '/api/graph') return ok({ ok: true, ...graphView() })
       if (url.pathname === '/api/graph/node') {
         const found = graphNode(url.searchParams.get('id'))
