@@ -180,7 +180,7 @@ reader sees it, and every person picks their own:
 ```yaml
 view:
   style: triage            # sources | triage | brevity | plan | report
-  headline: true           # one bottom line on top: yours today, free until, next hard date
+  headline: true           # one bottom line on top: asks for you today (and the other Do rows apart), free until, next hard date
   dayline: true            # the workday as one line: · free, █ busy, ▲ now (not in brevity)
   report: {top: 3, per_bucket: 5}   # style report: rows in bold first, rows per bucket
   overview: inline         # inline | file: Boards and Activity below the buckets, or in a file
@@ -236,6 +236,8 @@ which agent renders it:
 | inbox item otherwise | plan |
 | inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
+| inbox item waiting for a condition (`waits_for`, [inbox.md](inbox.md)) | waiting, worded "Waiting for: …" (label `waiting_for`) |
+| inbox item filed by "ask about this row" (key `ask:<inbox id>` or `ask:<owner/repo#n>`) | part of the row it asks about |
 | task with `next: {who: bridge}` | delegate |
 | task with `next: {who: me}` (or the profile's `for`) | do if `next.due` is within the lookahead, else plan |
 | task with `next.who` naming anyone else | waiting, with days since `last_updated` |
@@ -257,16 +259,32 @@ ADO number) stays apart per section. A section's `max:` still caps how many rows
 it contributes. A section can force its rows into one bucket (`bucket: delegate`),
 which wins over the derived bucket, or keep them out of the view (`bucket: none`).
 Advice that repeats a row (`blocked`, `waiting`, `due`) is folded into that row
-and stands alone only when no such row is shown. Housekeeping (failed sources,
+and stands alone only when no such row is shown.
+
+**One matter, one line.** When a task has an inbox line in a shown bucket, that
+line wins: a tracker or command row about the same task (its `task`, or
+`about_task`, which a GitHub row gets from the task whose `sync.github` names
+it) becomes part of it, adding its source, its link, its date and its reasons
+instead of a line of its own. The task's own row (its next step, or what blocks
+it) joins as a reason too, but only while the inbox line stands in a bucket at
+least as urgent as that row, so a next step due today never hides behind an item
+put off for later. Two inbox items of one task stay two lines, since each is a
+lever of its own; of several, the most urgent takes the folded rows. A command
+row is folded only when it names its task (`task` or `about_task` on the item).
+
+**The headline count.** "N asks for you today" counts the asks among the Do rows
+(every row that is no inbox item, and of the inbox only an ask). When Do holds
+more, reports and ideas filed for today, they are counted apart ("· 3 reports",
+label `do_reports`), so the number never stands unexplained above a longer list. Housekeeping (failed sources,
 muted rows) shows in every style, `brevity` included; `plan` shows every row
 somewhere (laid out, meanwhile, waiting, drop, later), so it has no "+N more". The next step of a task is a frontmatter field
 in its STATUS.md: `next: {what: "Draft the request", who: bridge, due: 2026-10-07,
 estimate_min: 20}` (`who`: `bridge`, `me`, or a person).
 
 **Labels.** Every word the reader sees has a label name, so a profile can speak
-the person's language: `yours_today`, `free_until`, `free_rest`, `busy_until`,
+the person's language: `yours_today`, `do_reports`, `free_until`, `free_rest`, `busy_until`,
 `next_date`, `since`, `today`, `tomorrow`, `due`, `back_on`, `only_you`,
-`collides`, `waiting_days`, `with`, `task`, `nudge`, `new`, `housekeeping`,
+`collides`, `waiting_days`, `waiting_for`, `with`, `task`, `next_step`, `nudge`, `new`, `housekeeping`,
 `no_next`, `muted`, `hidden`, `error`, `workplace`, `more`, `end`, `why`,
 `meanwhile`, `later`, `shutdown`, `activity_title`, `commits`, `boards_title`,
 `st_new`, `st_ready`, `st_in_progress`, `st_review`, `st_blocked`, `agenda_title`,
@@ -347,7 +365,8 @@ it (`prs`, one GraphQL call for all rows). A pull request that closes an issue
 in the list stands in that issue's row instead of one of its own, unless you
 were asked to review it.
 
-`link` (default true for `github-work`) adds what this Bridge knows about a row:
+`link` (default true for the GitHub providers `github`, `github-board` and
+`github-work`; `link: false` turns it off) adds what this Bridge knows about a row:
 the task whose `sync.github` names it (a task in `work/tasks/` becomes the row's
 `task`, so a dashboard opens or jumps to its tab; a stream is only named, as
 `linked_task`) and the newest active inbox item whose key ends in the row id

@@ -53,8 +53,8 @@ class ChatVerbs:
                     ctx.note(self.tx["handoff_offline"], bad=True)
                 done = {"status": "queued" if online else "offline", "relay_id": record.get("id")}
                 return
-            first = app.quick.first_question(conv)
-            new_id = self.inbox_add(ctx, conv, first, text)
+            first, task, key = self.handoff_names(conv)
+            new_id = self.inbox_add(ctx, conv, first, text, key=key, task=task)
             if new_id is None:
                 return
             done = {"status": "failed", "inbox_id": new_id}
@@ -74,6 +74,27 @@ class ChatVerbs:
             if handed is not None:
                 ctx.extra["handed"] = handed
             ctx.audit_extra["handed"] = done["status"]
+
+    def handoff_names(self, conv: str) -> tuple[str, str | None, str | None]:
+        """(title, task, key) of the item a chat becomes when it is handed on. A chat about nothing is titled by its
+        first question, as always. A chat asked on a briefing row (`about` kind row or follow_up) began with the whole
+        prompt ("Briefing item: «…» («…»). Take a look …"), which made a poor title and named no task, so the
+        briefing showed it beside the row it was about (29.10.). It is titled "Check: <row title>" instead (the prompt
+        stays in the detail), carries the row's task and is keyed `ask:<the row's inbox item or ref>`, which the
+        briefing folds into that row (briefing_view.py `_fold`). The row is read from the model while it is there."""
+        app = self.app
+        first = app.quick.first_question(conv)
+        about = app.quick.about_of(conv)
+        if not about or about.get("kind") not in ("row", "follow_up") or not isinstance(about.get("key"), str):
+            return first, None, None
+        found = app.collector.resolve(about["key"]) or self.page_entry(about["key"])
+        row = found.get("row") if isinstance(found, dict) else None
+        if not isinstance(row, dict) or not row.get("title"):
+            return first, None, None
+        task = next((t for t in (row.get("task"), row.get("about_task")) if isinstance(t, str) and SLUG_RE.match(t)), None)
+        target = about.get("inbox") or row.get("inbox_id") or row.get("ref")
+        key = f"ask:{target}" if isinstance(target, str) and target else None
+        return self.tx["ask_item"].format(title=m.short(str(row["title"]), 160)), task, key
 
     def v_chat_tab(self, ctx: Ctx, text: str, routed: str | None = None) -> None:
         """A problem from the chat that needs a session able to act: filed as a decision and started at
@@ -270,8 +291,9 @@ class ChatVerbs:
             row = self.entry(check_key(args["key"], "key"))["row"]
             prompt = m.ask_about(row, tx) if kind == "row" else m.follow_up(row, tx)
             item = m.launch_item(row)
-            if item:
-                about = {"kind": kind, "key": row["key"], **({"inbox": item} if INBOX_ID_RE.match(item) else {"task": item})}
+            # the row it was asked on, also without an item behind it: a handoff names that row (handoff_names)
+            about = {"kind": kind, "key": row["key"],
+                     **(({"inbox": item} if INBOX_ID_RE.match(item) else {"task": item}) if item else {})}
         elif kind == "info":
             page, section, index = args["page"], args["section"], args["index"]
             if not isinstance(page, str) or not isinstance(section, str) or not isinstance(index, int) or isinstance(index, bool):

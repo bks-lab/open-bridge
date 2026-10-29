@@ -270,11 +270,12 @@ class LaunchSteps:
         return None
 
     def inbox_add(self, ctx: Ctx, row_key: str, summary: str, detail: str, key: str | None = None,
-                  closer: str = "person") -> str | None:
-        """File a free decision item for a person, under `web:<row key>` unless a key is given; its id, or None
-        with a note."""
+                  closer: str = "person", task: str | None = None) -> str | None:
+        """File a free decision item for a person, under `web:<row key>` unless a key is given, of `task` when one is
+        given; its id, or None with a note."""
         argv = self.inbox("add", "--from", "bridge-cockpit", "--kind", "decision", "--gate", "free", "--closer", closer,
-                          f"--key={key or 'web:' + row_key}", f"--summary={m.short(summary, 200)}", f"--detail={detail}")
+                          f"--key={key or 'web:' + row_key}", f"--summary={m.short(summary, 200)}", f"--detail={detail}",
+                          *([f"--task={task}"] if task else []))
         run = ctx.call("inbox.add", row_key, argv, SHORT_TIMEOUT)
         new_id = (run.out or "").strip().splitlines()[-1:] if run.ok else []
         if not run.ok or not new_id or not INBOX_ID_RE.match(new_id[0]):

@@ -1779,3 +1779,31 @@ def test_to_inbox_items_name_the_briefing_as_their_closer(tmp_path):
     box = inbox.Inbox(root / "work" / "inbox", actor="t", clock=lambda: NOW)
     bf.file_to_inbox(box, profile, bf.collect(root, profile, ctx(root, FakeRun(gh_answers()))))
     assert box.open_items()[0].closer == "reporter"
+
+
+# ---------------------------------------------------------------- one matter, one line (29.10.)
+
+def test_a_github_search_row_names_the_task_that_syncs_it_so_the_view_can_fold_it(tmp_path):
+    # the `github` provider linked nothing by default, so its row of a task's issue stood beside the task's inbox line
+    root = bridge(tmp_path)
+    task(root, "fix-emoji", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    section = {"kind": "tracker", "provider": "github",
+               "query": {"assignee": "@me", "owners": ["example-org"], "kinds": ["issues", "prs"]}}
+    result = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, FakeRun(gh_answers())))
+    items = {i["id"]: i for i in result["sections"][0]["items"]}
+    assert items["example-org/tool#12"]["about_task"] == "fix-emoji"
+    assert items["example-org/tool#12"]["task"] == "fix-emoji"
+    assert bf.links_local({"provider": "github"}) and bf.links_local({"provider": "github-board"})
+    assert not bf.links_local({"provider": "jira"}) and not bf.links_local({"provider": "github", "link": False})
+
+
+def test_an_inbox_section_marks_an_item_that_waits_for_a_condition(tmp_path):
+    root = bridge(tmp_path)
+    box = inbox.Inbox(root / "work" / "inbox", actor="t", clock=lambda: NOW)
+    waits = box.add(source="t", kind="result", summary="Quota raised", waits_for={"path_exists": str(tmp_path / "no")})
+    plain = box.add(source="t", kind="decision", summary="Merge it?")
+    box.approve(plain, when={"path_exists": str(tmp_path / "no")})          # a conditional yes is no wait for
+    sec = bf.collect(root, {"id": "p", "sections": [{"kind": "inbox"}]}, ctx(root))["sections"][0]
+    by = {i["id"]: i for i in sec["items"]}
+    assert by[waits]["state"] == "waiting" and by[waits]["waits_for"] is True
+    assert by[plain]["state"] == "waiting" and not by[plain].get("waits_for")

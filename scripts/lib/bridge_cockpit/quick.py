@@ -427,6 +427,13 @@ class Quick:
             self.save()
         return True
 
+    def about_of(self, conv: str) -> dict | None:
+        """What a chat is about (`start`, `set_about`): a copy, or None for a chat about nothing or one that is gone."""
+        with self.lock:
+            c = self.convs.get(conv)
+            about = c.get("about") if c is not None else None
+            return dict(about) if isinstance(about, dict) else None
+
     def settle_soon(self) -> None:
         """An item ended or came back: the next tab poll sweeps without waiting for the minute."""
         self.settle_due = True

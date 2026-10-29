@@ -33,6 +33,12 @@ issue closed, a file present, a command exiting 0, a time passed). ``check``
 runs the probes and closes what holds. A probe that cannot be evaluated is
 UNKNOWN, never true: an item stays open rather than vanishing on a network error.
 
+WAITING FOR. ``waits_for`` names a probe in the same language for an item that only
+asks once something has happened ("the quota was raised: switch over"). Until it holds
+the item is ``waiting`` and asks nobody; ``check`` records a ``ready`` event when it
+does, and the item is open. Unknown is still waiting, never ready. ``wait`` sets the
+condition on an item already filed.
+
 ARTS. Three ways a person sees an item, derived from its kind and never stored: ``ask``
 (decision, question, draft: needs a yes, a word or a click), ``report`` (finding, result: how
 something stands) and ``idea`` (mentioned, nothing came of it yet). An unknown kind is an ask.
@@ -91,7 +97,7 @@ URGENCIES = ("now", "today", "later")
 #: `add` files one without a probe, a closer or an action as `person`.
 CLOSERS = ("probe", "reporter", "person", "bot")
 VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen",
-         "area", "describe")
+         "area", "describe", "wait", "ready")
 ACTIVE_STATES = ("open", "approved", "waiting")
 #: Why a person dropped an item. `family` and `source` leave a mute rule behind.
 #: `stale`: it went old without anybody acting on it (a cleanup proposes these), no rule.
@@ -332,6 +338,18 @@ class Item:
         return current
 
     @property
+    def waits_for(self) -> dict | None:
+        """The condition the item waits for before it asks anyone: the one it was filed with, else the last `wait`
+        event; a `ready` event (check found it held) ends it."""
+        current = self.data.get("waits_for") or None
+        for e in self.events:
+            if e.verb == "wait":
+                current = e.data.get("waits_for") or None
+            elif e.verb == "ready":
+                current = None
+        return current if isinstance(current, dict) else None
+
+    @property
     def last_failed(self) -> bool:
         acting = [e for e in self.events if e.verb in ("approve", "executed", "failed")]
         return bool(acting) and acting[-1].verb == "failed"
@@ -359,6 +377,8 @@ class Item:
                     return "deferred"
             except ValueError:
                 pass
+        if self.waits_for:
+            return "waiting"                      # asks nobody until its condition holds (check records `ready`)
         approval = self.approval
         if approval is True:
             return "approved"
@@ -373,6 +393,8 @@ class Item:
                 "art": art_of_kind(self.kind),
                 "brief": self.brief,
                 **({"deferred_until": deferral["until"]} if deferral.get("until") else {}),
+                # the condition in force: a `wait` event sets it, `ready` ends it (item.yaml keeps the first)
+                **({"waits_for": self.waits_for} if self.waits_for or "waits_for" in self.data else {}),
                 **({"waiting_on": deferral["on"]} if deferral.get("on") else {})}
 
 
@@ -445,6 +467,7 @@ class Inbox:
         # through git, and a non-idempotent action (open an issue) would run twice.
         self.runner = _slug(runner, 30) if runner else None
         self.last_new: str | None = None      # the id the last add() created, None when it was a repeat
+        self.last_ready: list = []            # the ids the last check() opened because their waits_for held
         # work/inbox → repository root: probes and actions resolve relative paths there
         self.base = self.root.parent.parent
 
@@ -539,7 +562,8 @@ class Inbox:
     def add(self, *, source: str, kind: str, summary: str, task: str | None = None,
             gate: str = "your-yes", urgency: str = "today", detail: str | None = None,
             action: dict | None = None, closes_when: dict | None = None, key: str | None = None,
-            due: str | None = None, closer: str | None = None, area: str | None = None) -> str:
+            due: str | None = None, closer: str | None = None, area: str | None = None,
+            waits_for: dict | None = None) -> str:
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {KINDS}")
         if gate not in GATES:
@@ -550,6 +574,8 @@ class Inbox:
             raise ValueError("summary is required")
         if closes_when is not None and not isinstance(closes_when, dict):
             raise ValueError("closes_when must be a probe mapping")
+        if waits_for is not None and not isinstance(waits_for, dict):
+            raise ValueError("waits_for must be a probe mapping")
         if closer is not None and closer not in CLOSERS:
             raise ValueError(f"closer must be one of {CLOSERS}")
         _check_action(action)
@@ -587,7 +613,7 @@ class Inbox:
             # lose the item; until 2026-10 this only warned, and a quarter of the items never closed.
             closer = "person"
         for name, value in (("task", task), ("due", due), ("detail", detail), ("key", key),
-                            ("action", action), ("closes_when", closes_when), ("closer", closer),
+                            ("action", action), ("closes_when", closes_when), ("waits_for", waits_for), ("closer", closer),
                             ("area", str(area).strip() if area else None)):
             if value:
                 data[name] = value
@@ -617,6 +643,12 @@ class Inbox:
 
     def note(self, item_id: str, text: str) -> None:
         self.event(item_id, "note", text=text)
+
+    def wait(self, item_id: str, condition: dict) -> None:
+        """The item waits for `condition` (a probe) before it asks anyone; `check` makes it open once it holds."""
+        if not isinstance(condition, dict) or not condition:
+            raise ValueError("a wait needs a probe mapping")
+        self.event(item_id, "wait", waits_for=condition)
 
     def approve(self, item_id: str, when: dict | None = None, text: str | None = None) -> None:
         if when is not None:
@@ -807,22 +839,30 @@ class Inbox:
 
     # -------------------------------------------------- acting on the live source
     def check(self) -> list:
-        closed = []
+        """Close what `closes_when` says is done (the ids are returned) and wake what waited for a condition that
+        now holds (a `ready` event; the ids in `last_ready`). Unknown closes nothing and wakes nothing."""
+        closed, self.last_ready = [], []
         for item in self.items():
-            if item.state in ("done", "dropped") or not item.closes_when:
+            if item.state in ("done", "dropped"):
                 continue
-            if item.gate == "only-you" and _has_command(item.closes_when):
-                continue                # only-you means nothing of it executes, a probe command included
-            if probe(item.closes_when, now=self.clock(), gh=self.gh, base=self.base, item=item) is True:
-                self.event(item.id, "close", by="check", text="closes_when holds")
-                closed.append(item.id)
+            if item.closes_when and not (item.gate == "only-you" and _has_command(item.closes_when)):
+                # only-you means nothing of it executes, a probe command included
+                if probe(item.closes_when, now=self.clock(), gh=self.gh, base=self.base, item=item) is True:
+                    self.event(item.id, "close", by="check", text="closes_when holds")
+                    closed.append(item.id)
+                    continue
+            wanted = item.waits_for if item.state == "waiting" else None
+            if wanted and not (item.gate == "only-you" and _has_command(wanted)):
+                if probe(wanted, now=self.clock(), gh=self.gh, base=self.base, item=item) is True:
+                    self.event(item.id, "ready", by="check", text="waits_for holds")
+                    self.last_ready.append(item.id)
         return closed
 
     def runnable(self) -> list:
         ready = []
         for item in self.items():
-            if not item.action or item.state not in ACTIVE_STATES or item.gate == "only-you":
-                continue
+            if not item.action or item.state not in ACTIVE_STATES or item.gate == "only-you" or item.waits_for:
+                continue                # an item that waits for its condition runs nothing, a free one included
             approval = item.approval
             if item.gate == "free" and approval is None:
                 if item.last_failed:
@@ -962,6 +1002,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--key", help="dedup key: a watcher that fires again adds no second item")
     a.add_argument("--action-json")
     a.add_argument("--closes-when-json")
+    a.add_argument("--waits-for-json", help="a probe: the item waits (asks nobody) until it holds; check opens it")
     a.add_argument("--closer", choices=CLOSERS,
                    help="who ends it when there is no probe: reporter, person or bot "
                         "(default person when there is neither a probe nor an action)")
@@ -1009,6 +1050,9 @@ def build_parser() -> argparse.ArgumentParser:
     de.add_argument("id")
     de.add_argument("--brief-json", help='{"goal": "...", "acceptance": ["..."], "by": "<model id>", ...}')
     de.add_argument("--clear", action="store_true")
+    wt = sub.add_parser("wait", help="the item waits for a condition (a probe) before it asks anyone")
+    wt.add_argument("id")
+    wt.add_argument("--for-json", required=True, help='a probe, e.g. {"gh_pr": "contoso/portal#70", "state": "merged"}')
     nt = sub.add_parser("note")
     nt.add_argument("id")
     nt.add_argument("text")
@@ -1019,7 +1063,7 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("stats", help="per source: filed, dropped by a person, muted, loudest first")
     st.add_argument("--days", type=int, default=30)
     st.add_argument("--json", action="store_true")
-    sub.add_parser("check", help="close every item whose closes_when holds")
+    sub.add_parser("check", help="close every item whose closes_when holds, open every one whose waits_for holds")
     rn = sub.add_parser("run", help="execute released actions (free, yes, or yes-once-condition)")
     rn.add_argument("--dry-run", action="store_true")
     sub.add_parser("render", help="regenerate work/inbox.md")
@@ -1164,7 +1208,7 @@ def main(argv=None) -> int:
             print(box.add(source=args.source, kind=args.kind, summary=args.summary, task=args.task,
                           gate=args.gate, urgency=args.urgency, detail=args.detail, key=args.key, due=args.due,
                           action=_json_arg(args.action_json), closes_when=_json_arg(args.closes_when_json),
-                          closer=args.closer, area=args.area), flush=True)
+                          closer=args.closer, area=args.area, waits_for=_json_arg(args.waits_for_json)), flush=True)
             if box.last_new and not args.task and not args.area and _settings(args.root).get("place_on_add") is True:
                 _place_later(args.root, box.last_new)
         elif args.cmd == "list":
@@ -1236,9 +1280,13 @@ def main(argv=None) -> int:
             box.describe(box.resolve(args.id), None if args.clear else _json_arg(args.brief_json))
         elif args.cmd == "note":
             box.note(box.resolve(args.id), args.text)
+        elif args.cmd == "wait":
+            box.wait(box.resolve(args.id), _json_arg(args.for_json))
         elif args.cmd == "check":
             for item_id in box.check():
                 print(f"closed {item_id}")
+            for item_id in box.last_ready:
+                print(f"ready {item_id}")
         elif args.cmd == "run":
             report = box.run_report(dry_run=args.dry_run)
             if report["skipped"]:

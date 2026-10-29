@@ -897,3 +897,65 @@ def test_an_item_stored_without_closer_stays_without_one(box):
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
     assert box.get(item_id).closer is None             # nothing rewrites what was filed before
     assert box.validate() == []
+
+
+# ---------------------------------------------------------------- waiting for a condition (waits_for)
+
+def test_an_item_that_waits_for_a_condition_asks_nobody_until_it_holds(box, tmp_path):
+    # 29.10.: a watcher filed "quota raised: switch over" as a fact while the probe said it had not happened yet
+    marker = tmp_path / "quota-raised"
+    item_id = add(box, kind="result", summary="Quota raised: switch over", waits_for={"path_exists": str(marker)})
+    assert box.get(item_id).state == "waiting"
+    assert box.get(item_id).waits_for == {"path_exists": str(marker)}
+    assert box.check() == [] and box.last_ready == []
+    assert box.get(item_id).state == "waiting"
+    marker.write_text("ok")
+    assert box.check() == [] and box.last_ready == [item_id]
+    item = box.get(item_id)
+    assert item.state == "open" and item.waits_for is None
+    assert item.events[-1].verb == "ready" and item.events[-1].by == "check"
+    assert box.check() == [] and box.last_ready == []          # recorded once
+
+
+def test_an_unknown_wait_probe_keeps_the_item_waiting(box):
+    item_id = add(box, waits_for={"no_such_probe": 1})
+    box.check()
+    assert box.get(item_id).state == "waiting"
+
+
+def test_wait_sets_a_condition_on_an_open_item_and_a_waiting_item_runs_nothing(box, tmp_path):
+    item_id = add(box, gate="free", action={"argv": ["true"]})
+    box.wait(item_id, {"path_exists": str(tmp_path / "never")})
+    assert box.get(item_id).state == "waiting"
+    assert box.runnable() == []                                 # a free action waits for the condition too
+    with pytest.raises(ValueError):
+        box.wait(item_id, "not a probe")
+    with pytest.raises(ValueError):
+        add(box, waits_for=["not", "a", "probe"])
+
+
+def test_a_waiting_item_still_closes_when_its_closes_when_holds(box, tmp_path):
+    done = tmp_path / "done"
+    done.write_text("x")
+    item_id = add(box, waits_for={"path_exists": str(tmp_path / "never")}, closes_when={"path_exists": str(done)})
+    assert box.check() == [item_id]
+    assert box.get(item_id).state == "done"
+
+
+def test_cli_add_waits_for_and_wait(tmp_path):
+    marker = tmp_path / "flag"
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "result", "--summary", "Quota raised",
+                "--waits-for-json", json.dumps({"path_exists": str(marker)}))
+    assert r.returncode == 0, r.stderr
+    first = r.stdout.strip()
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "decision", "--summary", "Switch over")
+    second = r.stdout.strip()
+    r = run_cli(tmp_path, "wait", second, "--for-json", json.dumps({"path_exists": str(marker)}))
+    assert r.returncode == 0, r.stderr
+    states = {i["id"]: (i["state"], i.get("waits_for")) for i in json.loads(run_cli(tmp_path, "list", "--json").stdout)}
+    assert states == {first: ("waiting", {"path_exists": str(marker)}), second: ("waiting", {"path_exists": str(marker)})}
+    marker.write_text("ok")
+    r = run_cli(tmp_path, "check")
+    assert r.returncode == 0 and sorted(r.stdout.split()) == sorted(["ready", first, "ready", second])
+    assert {i["state"] for i in json.loads(run_cli(tmp_path, "list", "--json").stdout)} == {"open"}
+    assert run_cli(tmp_path, "validate").returncode == 0

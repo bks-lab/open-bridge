@@ -40,12 +40,13 @@ work/inbox.md                      GENERATED view (python3 scripts/inbox.py rend
 
 `item.yaml` carries `schema_version`, `created`, `from`, `kind`, `summary`,
 `urgency`, `gate` and optionally `task`, `area`, `due`, `detail`, `key`, `action`
-(`argv` and `label`, no shell) and `closes_when`. Schema:
+(`argv` and `label`, no shell), `closes_when` and `waits_for`. Schema:
 [`work/templates/_schema.inbox-item.yaml`](../work/templates/_schema.inbox-item.yaml),
 annotated example: [`work/templates/inbox-item.yaml`](../work/templates/inbox-item.yaml).
 
 Every change is a **new event file**, never an edit. Verbs: `seen`, `note`,
-`approve`, `reject`, `drop`, `defer`, `urgency`, `area`, `close`, `executed`, `failed`, `reopen`. Two machines
+`approve`, `reject`, `drop`, `defer`, `urgency`, `area`, `close`, `executed`, `failed`, `reopen`,
+`describe`, `wait`, `ready`. Two machines
 writing the same inbox through git therefore never touch the same file, and an
 item id ends in a random tail, so two machines filing the same thing in the same
 minute still create two folders. This is the property the task folders already have, and
@@ -92,7 +93,7 @@ passes it. `closes_when` stays the machine's probe and never becomes a criterion
 |---|---|
 | `open` | nobody has answered |
 | `approved` | a person said yes, `run` may execute the action |
-| `waiting` | a conditional yes is recorded, `run` executes when the condition holds |
+| `waiting` | a conditional yes is recorded, `run` executes when the condition holds; or the item waits for its `waits_for` condition and asks nobody yet |
 | `deferred` | pushed to a later day with `defer --until` |
 | `done` | closed (by a person or by `check`) or executed |
 | `dropped` | rejected or dropped |
@@ -116,10 +117,11 @@ stored (`scripts/lib/inbox_verbs.py` `ART_OF_KIND`):
 
 A kind the table does not know is an `ask`, so a person sees it rather than
 missing it. `list --json` carries the `art` of every row and `list --art <art>`
-shows one art only. The briefing's "N for you today" and the cockpit's "waits
+shows one art only. The briefing's "N asks for you today" and the cockpit's "waits
 for you" count the asks: a row that is no inbox item (a task, a board item)
 counts as before, and of the inbox only an `ask` does. An idea or a report filed
-for today still shows in Do (Now in the cockpit), it is just not counted.
+for today still shows in Do (Now in the cockpit); the briefing's headline counts
+those apart ("· 2 reports"), so its number explains itself.
 
 ## Gates
 
@@ -149,6 +151,31 @@ without one. A one-shot alarm does not carry it: that item waits for a person.
 
 A probe that cannot be evaluated (no network, a typo, a missing task) is
 **unknown, never true**. The item stays open rather than vanishing on an error.
+
+### Waiting for a condition (`waits_for`)
+
+Some items only ask once something has happened: "the quota was raised: switch
+over". Filed as an open item, it states the hoped-for outcome as a fact while the
+live source says otherwise, and a `closes_when` on that same condition would close
+it exactly when it becomes something to do. `waits_for` is a probe in the same
+language for that case:
+
+```bash
+python3 scripts/inbox.py add --from homebox/quota-watch --kind result \
+    --summary "Quota raised: switch the service over" --task model-switch \
+    --waits-for-json '{"command": ["scripts/quota-check.sh"]}'
+python3 scripts/inbox.py wait <id> --for-json '{"gh_pr": "contoso/portal#70", "state": "merged"}'
+```
+
+While the probe does not hold, the item is `waiting`: it asks nobody, `run`
+executes nothing of it (a `free` action included), and the briefing lists it under
+waiting as "Waiting for: <summary>". `check` evaluates it with the other probes;
+once it holds, `check` records a `ready` event (printed as `ready <id>`) and the
+item is `open`, asking the person like any other. A probe that cannot be evaluated
+is unknown, so the item keeps waiting. `wait` sets the condition on an item
+already filed (a `wait` event; the last one wins, `ready` ends it). Its
+`closes_when` still closes it while it waits, and `only-you` never runs a
+`command` probe here either.
 
 ## Every item needs a way out (`closer`)
 
@@ -234,7 +261,8 @@ python3 scripts/inbox.py urgency <id> now|today|later       # re-rank; the lates
 python3 scripts/inbox.py area <id> <workspace> | --clear    # the area of an item without a task
 python3 scripts/inbox.py describe <id> --brief-json '{"goal": "..."}' | --clear   # what it is about
 python3 scripts/inbox.py note <id> "Sam will answer on Monday"
-python3 scripts/inbox.py check                             # close what the live source says is done
+python3 scripts/inbox.py wait <id> --for-json '{...}'           # asks nobody until the probe holds
+python3 scripts/inbox.py check                             # close what is done, open what waited and now holds
 python3 scripts/inbox.py run [--dry-run]                   # execute what a person released
 python3 scripts/inbox.py render                            # regenerate work/inbox.md
 python3 scripts/inbox.py validate                          # structure of items and events
@@ -242,7 +270,7 @@ python3 scripts/inbox.py sync [--no-push]
 ```
 
 `--by` (or `$BRIDGE_ACTOR`, default the host name) sets who an event is
-attributed to. `add` takes `--area`, `--due`, `--detail`, `--key`, `--urgency` (default
+attributed to. `add` takes `--area`, `--due`, `--detail`, `--key`, `--waits-for-json`, `--urgency` (default
 `today`) and `--gate` (default `your-yes`). Items are `from` a machine and job
 (`homebox/issue-radar`), not a person.
 

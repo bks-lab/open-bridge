@@ -21,3 +21,6 @@ action:                              # optional: what `run` executes once releas
 closes_when:                         # optional: probe against the live source, evaluated by `check`
   gh_pr: contoso/portal#70
   state: merged
+# waits_for:                         # optional: asks nobody (state waiting) until this probe holds;
+#   gh_pr: contoso/portal#70         # `check` then opens it (a `ready` event)
+#   state: green

@@ -20,6 +20,8 @@ EN: dict = {
 
     # prompt templates
     "ask_about": "Briefing item: {title}{where}. Take a look and suggest the next step. Nothing goes out without my yes.",
+    # the title of the inbox item a chat about a row becomes when it is handed on (the prompt stays in its detail)
+    "ask_item": "Check: {title}",
     "ask_info": "{section}: {title}{extra}. Take a look and suggest the next step. Nothing goes out without my yes.",
     # a background job of the workers view (actions_pages.py worker_brief): the question on its row, the item and
     # the brief Analyse in a tab files, the job's state in words (as text.js workerState)
@@ -423,6 +425,7 @@ DE: dict = {
                      "ambiguous": "mehrere Claude-Sitzungen antworten und kein Workspace ist dafür festgelegt (workplace.control)"},
 
     "ask_about": "Briefing-Punkt: {title}{where}. Schau es dir an und schlag den nächsten Schritt vor. Nichts nach außen ohne mein Ja.",
+    "ask_item": "Prüfen: {title}",
     "ask_info": "{section}: {title}{extra}. Schau es dir an und schlag den nächsten Schritt vor. Nichts nach außen ohne mein Ja.",
     "ask_worker": "Hintergrundjob {id} auf {host}: {state}. Was ist zu tun und warum?",
     "ask_worker_detail": " Der Befund, wie der Job ihn meldet: «{detail}»",
