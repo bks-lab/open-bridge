@@ -645,10 +645,11 @@ test('the lane: a tab of a session linked to a task, typed by hand, runs there a
   const parts = logic.flowParts(s)
   assert.deepEqual(parts.lane.map(x => [x.kind, x.tab.ref, x.row?.key]), [['session', 'surface:12', 'task:mine']])
   assert.deepEqual(queueOf(s).map(x => x.id), ['task:other'])
-  // round 4: a session tab waiting at its prompt still runs there once it went quiet (round 6 B: finished; not quiet
-  // yet it asks as a point with its task); back at its shell it no longer does, its task is a point
+  // a session tab that went quiet at its prompt is finished and runs no more: its task is a point again (not quiet
+  // yet it asks as a point with its task); back at its shell it no longer runs either, its task is a point
   const waiting = state({ work: [task('mine')], tabs: [{ ...tabs[0], state: 'waiting', idle: true }], sessions })
-  assert.deepEqual(logic.flowParts(waiting).lane.map(x => x.stage), ['idle'])
+  assert.deepEqual(logic.flowParts(waiting).lane, [])
+  assert.deepEqual(queueOf(waiting).map(x => x.id), ['task:mine'])
   const asking = state({ work: [task('mine')], tabs: [{ ...tabs[0], state: 'waiting' }], sessions })
   assert.deepEqual([logic.flowParts(asking).lane, queueOf(asking).map(x => [x.group, x.row?.key])], [[], [['asks', 'task:mine']]])
   const quiet = state({ work: [task('mine')], tabs: [{ ...tabs[0], state: 'shell' }], sessions })
@@ -678,9 +679,9 @@ test('round 6: Running now holds every live session as a card, with or without a
   // the lane keeps its entries and its keys: the counts and the universe do not move
   assert.deepEqual(parts.lane.map(x => x.id).sort(), ['session:surface:12', 'tab:surface:16'])
   checkInvariant(s, 'sessions')
-  // one card per live session: the one asking stands as its point, the ended tab and the control session stay out;
-  // busy before idle, the newest first within
-  assert.deepEqual(parts.sessions.map(v => v.session.id), ['ee55', 'bb22', 'gg77', 'aa11', 'ff66'])
+  // one card per live session at work: the one asking stands as its point, the ended tab, the quiet one (finished)
+  // and the control session stay out; the newest first
+  assert.deepEqual(parts.sessions.map(v => v.session.id), ['ee55', 'bb22', 'gg77', 'aa11'])
   const by = Object.fromEntries(parts.sessions.map(v => [v.session.id, v]))
   // a lane entry of a session's tab is that session's card, with its row for the box: never a row of its own besides
   assert.equal(by.aa11.entry.id, 'session:surface:12')
@@ -688,8 +689,8 @@ test('round 6: Running now holds every live session as a card, with or without a
   assert.equal(by.bb22.entry, null)
   assert.equal(by.gg77.tab, null)
   assert.deepEqual(logic.runningOf(parts).loose, [])
-  assert.equal(logic.runningOf(parts).n, 5)
-  assert.equal(parts.counts.sessions, 5)
+  assert.equal(logic.runningOf(parts).n, 4)
+  assert.equal(parts.counts.sessions, 4)
   assert.ok(parts.asks.some(x => x.tab.ref === 'surface:14'))
   // a start at work in a tab without a session stays a row of its own
   const start = { key: 'task:other', item: 'other', title: 'Task other', mode: 'go', at_ms: NOW - 2 * MIN, stage: 'started', tab: { ref: 'surface:20' } }
@@ -724,10 +725,12 @@ test('round 6: one card per tab, the newest session of it, with the task of an o
 
 test('round 6: without a terminal driver Running now still lists the live sessions, without their tabs', () => {
   const sessions = { sessions: [{ id: 'aa11', sid: 'aa11-full', task: 'mine', status: 'busy', started_ms: NOW - 12 * MIN, tab: { ref: 'surface:12', name: 'mine' } },
-    { id: 'bb22', sid: 'bb22-full', status: 'idle', started_ms: NOW - 50 * MIN, tab: null }] }
+    { id: 'bb22', sid: 'bb22-full', status: 'busy', started_ms: NOW - 50 * MIN, tab: null },
+    { id: 'cc33', sid: 'cc33-full', status: 'idle', started_ms: NOW - 60 * MIN, tab: null }] }
   const s = state({ work: [task('mine')], tabs: [{ ref: 'surface:12', name: 'mine', state: 'working' }], sessions, driver: { caps: [] } })
   const parts = logic.flowParts(s)
   assert.deepEqual(parts.lane, [])
+  // the idle one is finished: no card of Running now
   assert.deepEqual(parts.sessions.map(v => [v.session.id, v.tab, v.entry]), [['aa11', null, null], ['bb22', null, null]])
   checkInvariant(s, 'no driver')
   const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'running', flowPicked: [] } }} c=${recorder()} />`)
@@ -1440,7 +1443,7 @@ test('flowFields: the fields of a point in their order, never a status; Prio fro
   assert.deepEqual(fields.map(f => f.id), ['area', 'who', 'prio', 'urgency', 'impact', 'effort', 'due', 'source', 'created', 'moved'])
   assert.ok(!fields.some(f => ['status', 'state'].includes(f.id)), 'no Status field: the card head says it')
   const by = Object.fromEntries(fields.map(f => [f.id, f]))
-  assert.deepEqual(by.prio.jev, { quadrant: 'plan', rank: 4 })
+  assert.deepEqual(by.prio.jev, { quadrant: 'plan', rank: 4, who: null, ranker: null })
   assert.deepEqual([by.urgency.value, by.impact.value, by.effort.value], [0.67, 1.0, 0.33])
   assert.equal(by.area.value, 'Ops')
   assert.equal(by.who.drive.by, 'none')
@@ -2355,7 +2358,7 @@ test('I1: the demo state, with files_scope all, with and without a driver, and a
       ask('20261009-0908-a-d', { inbox_state: 'deferred', until: '2026-10-12' }), ref('acme/app', 2, { bucket: 'waiting' }), { key: 'title:A date', title: 'A date', bucket: 'plan' }],
     hidden: [task('put-off', { hidden_until: '2026-10-20' }), task('gone', { settled_as: 'not_doing' })],
     tabs: [{ ref: 'surface:5', name: 'alone', state: 'needs-you', since_ms: NOW - MIN }, { ref: 'surface:6', name: 'doing-one', slug: 'doing-one', state: 'working', since_ms: NOW - 5 * MIN },
-      { ref: 'surface:7', name: 'typed', state: 'waiting', idle: true, since_ms: NOW - 9 * MIN }],
+      { ref: 'surface:7', name: 'typed', state: 'working', since_ms: NOW - 9 * MIN }],
     sessions: { sessions: [{ id: 'x1', sid: 'x1-full', task: 'closed-one', task_how: 'hand', tab: { ref: 'surface:7' } }] },
     returns: [startOf('started-one', 'working', { tab: { ref: 'surface:8' }, at_ms: NOW - MIN })],
   })
@@ -2366,7 +2369,7 @@ test('I1: the demo state, with files_scope all, with and without a driver, and a
   assert.deepEqual(parts.question.filter(x => x.covers).map(x => x.task.key), ['task:covered'])
   // a session linked to a task not open takes its title from task_rows, but stands for no open row
   const typed = parts.lane.find(x => x.kind === 'session')
-  assert.deepEqual([typed.row, typed.title, typed.stage, typed.how], [null, 'A closed task', 'idle', 'hand'])
+  assert.deepEqual([typed.row, typed.title, typed.stage, typed.how], [null, 'A closed task', 'working', 'hand'])
   // flowKeys refuses a key placed twice
   const twice = { ...parts, lane: [...parts.lane, { ...parts.lane.find(x => x.row), id: 'again' }] }
   assert.throws(() => logic.flowKeys(twice), /twice/)
@@ -2447,8 +2450,9 @@ test('C, not too early: a point due later than ahead_days waits under Later unti
   assert.equal(logic.flowSettings({ work: { flow: { ahead_days: 0 } } }).ahead_days, 0)
 })
 
-test('A, Running now: a start at work, a linked or recognised session, a task tab at work or finished; a tab that asks stays a point', () => {
-  // round 6 B: a tab waiting at its prompt runs here once it went quiet (idle, finished); not quiet yet it needs you
+test('A, Running now: a start at work, a linked or recognised session, a task tab at work; a finished one is a point again, a tab that asks stays a point', () => {
+  // a tab waiting at its prompt that went quiet (idle) is finished and runs no more: its task stands as a point; not
+  // quiet yet it needs you
   const tabs = [{ ref: 'surface:1', name: 'seen tab', state: 'working', since_ms: NOW - 40 * MIN },
     { ref: 'surface:2', name: 'quiet tab', state: 'waiting', idle: true, since_ms: NOW - 20 * MIN },
     { ref: 'surface:3', name: 'own', slug: 'own', state: 'waiting', idle: true, since_ms: NOW - 10 * MIN },
@@ -2462,17 +2466,17 @@ test('A, Running now: a start at work, a linked or recognised session, a task ta
     returns: [startOf('run', 'working', { tab: { ref: 'surface:9' }, at_ms: NOW - 3 * MIN })] })
   const parts = logic.flowParts(s)
   assert.deepEqual(parts.lane.map(x => [x.id, x.kind, x.how, x.stage]), [['start:task:run', 'start', 'start', 'working'],
-    ['tab:surface:3', 'tab', 'tab', 'idle'], ['session:surface:2', 'session', 'hand', 'idle'], ['session:surface:1', 'session', 'seen', 'working']])
+    ['session:surface:1', 'session', 'seen', 'working']])
   assert.ok(parts.lane.every(x => x.lane === true && x.group === 'doing'))
   assert.deepEqual(parts.asks.map(x => x.row?.key), ['task:asks'])
   // not quiet yet, both need you: points that ask, with their task
   const fresh = { ...s, tabs: { tabs: tabs.map(t => ({ ...t, idle: false })) } }
   assert.deepEqual(logic.flowParts(fresh).asks.map(x => x.row?.key), ['task:quiet', 'task:own', 'task:asks'])
-  assert.deepEqual(parts.doing.map(x => x.id), ['task:free'])
+  assert.deepEqual(parts.doing.map(x => x.id).sort(), ['task:free', 'task:own', 'task:quiet'])
   // max_running counts what runs: the start and the session at work, never a waiting or finished one
   assert.equal(logic.flowRunning(s), 2)
-  // who drives a session: its tab's stage now, a quiet one finished
-  assert.equal(logic.flowDrive(parts.lane.find(x => x.id === 'session:surface:2'), s).stage, 'idle')
+  // who drives the finished one's point: its tab, finished
+  assert.equal(logic.flowDrive(parts.doing.find(x => x.id === 'task:quiet'), s).stage, 'idle')
   // no lane entry is a point: the walk, the overview and the batch never hold one
   assert.ok(!logic.flowQueue(parts).some(x => x.lane))
   // a doing task nobody works on says so, with the day it last moved
@@ -2534,11 +2538,14 @@ test('E, Prio: offered while Jev orders the work page; four squares in Jev order
   const sides = logic.flowSides(s, all, 'prio')
   assert.deepEqual(sides.map(x => [x.id, x.open]), [['all', 5], ['q:now', 2], ['q:plan', 0], ['q:hand', 1], ['q:drop', 1], ['none', 1]])
   assert.deepEqual(logic.pointsIn(all, 'q:now', s, 'prio').map(x => x.row.key), ['task:b', 'task:a'])
-  // Jev suggests Drop for its drop square, Let AI do it for hand; nothing for now and plan
-  assert.deepEqual(logic.flowSuggestion(task('d'), s), { verb: 'drop', drop: 'not_worth_it', reason: '', until: null, from: 'jev', at: NOW - 60 * MIN, quadrant: 'drop' })
+  // Jev suggests Drop for its drop square (a task that did not move lately), Let AI do it for hand; nothing for now and
+  // plan; Tick the suggestions never ticks a ranker's Drop
+  const quiet = task('d', { updated: '2026-09-01' })
+  assert.deepEqual(logic.flowSuggestion(quiet, s), { verb: 'drop', drop: 'not_worth_it', reason: '', until: null, from: 'jev', ranker: 'jev', at: NOW - 60 * MIN, quadrant: 'drop' })
+  assert.equal(logic.flowSuggestion(task('d'), s), null, 'in progress, when it moved unknown')
   assert.equal(logic.flowSuggestion(task('c'), s).verb, 'do')
   assert.equal(logic.flowSuggestion(task('b'), s), null)
-  assert.deepEqual(logic.batchPreselect([task('d'), task('c')], s), ['task:d'])
+  assert.deepEqual(logic.batchPreselect([quiet, task('c')], s), [])
   // no work page with Jev: no Prio
   assert.equal(logic.prioOn({ ...s, model: { ...s.model, pages: [] } }), false)
 })
@@ -2563,7 +2570,7 @@ test('F, the work views: cockpit.work_views keeps the views it names, an older s
 
 const demoFlow = (ui = {}, over = {}) => cockpitState(NOW, { ...over, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowPicked: [], ...ui } })
 
-test('Running now: one row on top of the left column, the entries on top of the overview, a title opens one, To tab the strong way', () => {
+test('Running now: one row on top of the left column, never a strip over the overview', () => {
   const s = demoFlow()
   const parts = logic.flowParts(s)
   assert.ok(parts.lane.length >= 3, 'the demo runs a start, a recognised session and a task tab')
@@ -2584,14 +2591,9 @@ test('Running now: one row on top of the left column, the entries on top of the 
   assert.ok(!el.$('aside .flow-side-body .flow-run-open'), 'no entry listed in the wide column (the narrow fold keeps its lines)')
   cats[0].click()
   assert.deepEqual(c.calls.at(-1), ['flowRunning'])
-  const strip = el.$('.flow-main .flow-runstrip')
-  assert.equal(strip.$$('.flow-runstrip-row').length, parts.lane.length)
+  // Running now is only that row: no strip of its entries over the overview (the view `running` lists them, below)
+  assert.equal(el.$('.flow-main .flow-runstrip'), null)
   const seen = parts.lane.find(x => x.how === 'seen')
-  const row = strip.$$('.flow-runstrip-row').find(r => r.text().includes(seen.title))
-  assert.match(row.text(), new RegExp(en.flow.run.how.seen))
-  assert.ok(row.$$('button').find(b => b.text() === en.flow.toTab).hasClass('btn-primary'))
-  strip.$$('.flow-run-open')[0].click()
-  assert.deepEqual(c.calls.at(-1), ['flowRun', parts.lane[0].id])
   // no entry of Running now in the overview's table or the batch
   assert.ok(!el.$$('.flow-ov-row').some(tr => tr.text().includes(seen.title)))
   // nothing runs: no row
@@ -2955,11 +2957,12 @@ test('UX-1: a task in Running now has a box only for merging; with a point ticke
   assert.deepEqual(logic.laneRows(parts.lane).map(r => r.id), ['task:board-ui'])
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
-  const strip = el.$('.flow-runstrip')
-  const box = strip.$('input[type=checkbox]')
-  assert.ok(box, 'the strip entry has a box')
-  assert.ok(strip.$('.flow-runstrip-row').hasClass('is-picked'), 'ticked')
-  assert.match(strip.text(), new RegExp(en.flow.run.boxWhy.slice(0, 20)))
+  // the box stands in Running now (the view `running`), never on a strip over the overview
+  assert.equal(el.$('.flow-runstrip'), null)
+  const run = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'running' } }} c=${c} />`)
+  const box = run.$('.flow-main input[type=checkbox]')
+  assert.ok(box, 'the entry of Running now has a box')
+  assert.ok(box.checked || box.hasAttribute('checked'), 'ticked')
   box.click()
   assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:board-ui'], false])
   const merge = el.button(`${en.flow.merge.button} ▾`)
@@ -2988,7 +2991,8 @@ test('UX-1: a task in Running now has a box only for merging; with a point ticke
 
 test('UX-2: a recognised session whose tab asks stands once, as the card that asks, with its task', () => {
   const sessions = { sessions: [{ id: 'a', sid: 'a-full', task: 'board-ui', task_how: 'seen', task_since_ms: NOW - 30 * MIN, tab: { ref: 'surface:1' } }] }
-  // round 6 B: a tab waiting at its prompt and not quiet yet asks as a dialog does; a quiet one is finished and runs
+  // round 6 B: a tab waiting at its prompt and not quiet yet asks as a dialog does; a quiet one is finished and its task
+  // a point again; only one at work runs
   for (const [st, idle] of [['working', false], ['waiting', true], ['waiting', false], ['needs-you', false]]) {
     const s = state({ work: [task('board-ui')], tabs: [{ ref: 'surface:1', name: 'board tab', state: st, idle, since_ms: NOW - 5 * MIN }], sessions })
     const parts = logic.flowParts(s)
@@ -2998,6 +3002,9 @@ test('UX-2: a recognised session whose tab asks stands once, as the card that as
       assert.deepEqual(parts.asks.map(x => [x.id, x.row?.key]), [['tab:surface:1', 'task:board-ui']])
       assert.deepEqual(parts.doing, [])
       assert.deepEqual([parts.counts.points, parts.counts.extra], [1, 0])
+    } else if (idle) {
+      assert.deepEqual(parts.lane, [], 'finished')
+      assert.deepEqual(parts.doing.map(x => x.id), ['task:board-ui'])
     } else {
       assert.deepEqual(parts.lane.map(x => x.id), ['session:surface:1'], st)
       assert.equal(parts.counts.points, 0)
@@ -3066,7 +3073,7 @@ test('UX-4: Back on clears only a real wait; a task whose next step is the perso
   assert.deepEqual(logic.flowParts(s2).leftOut.groups.map(g => [g.reason, g.rows.map(e => e.kind)]), [['later', ['waiting']]])
 })
 
-test('UX-6 and UX-7: Prio asks Jev again at the foot of its left column; a square names every point it counts', async () => {
+test('UX-6 and UX-7: Prio reads in again at the foot of its left column; a square names every point it counts', async () => {
   const base = mock.buildState(NOW, { workPage: true })
   const st = cockpitState(NOW, { model: base.model, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowMode: 'prio', flowPicked: [] } })
   const order = { at_ms: NOW - 30 * MIN, items: [] }
@@ -3075,11 +3082,11 @@ test('UX-6 and UX-7: Prio asks Jev again at the foot of its left column; a squar
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
   const foot = el.$('aside .flow-prio-foot')
   assert.ok(foot, 'the foot of Prio level one')
-  assert.match(foot.text(), new RegExp(en.flow.prio.foot('').trim()))
+  assert.match(foot.text(), new RegExp(en.flow.prio.foot('Jev', views.flowprio.orderTime(order.at_ms), 0)))
   foot.$('button').click()
-  assert.deepEqual(c.calls.at(-1), ['flowPrioAgain', 'work'])
-  const busy = mount(html`<${FlowPage} s=${{ ...s, jevOrder: { work: { order, running: true, error: null } } }} c=${recorder()} />`)
-  assert.ok(busy.$('aside .flow-prio-foot button').hasAttribute('disabled') || busy.$('aside .flow-prio-foot button').getAttribute('aria-busy') === 'true')
+  assert.deepEqual(c.calls.at(-1), ['flowPrioRead', 'work', 'jev'])
+  const busy = mount(html`<${FlowPage} s=${{ ...s, jevOrder: { work: { order, running: true, ranker: 'jev', error: null } } }} c=${recorder()} />`)
+  assert.ok(busy.$$('aside .flow-prio-foot button').every(b => b.hasAttribute('disabled')), 'both wait while one reads in')
   // every point stands unrated: the square lists four, the line says how many more, the reports by their rows
   const none = el.$('.flow-prio-none .flow-prio-sq')
   const n = Number(none.$('.flow-prio-n').text())
@@ -3252,7 +3259,7 @@ test('R6B 1f, 2c and 2d: Jev\'s daily order and the themes are asked in every or
     await tick()
     assert.deepEqual(c.calls.filter(x => x[0] === 'flowPrioOrder'), [['flowPrioOrder', 'work']], flowMode)
     assert.ok(c.calls.some(x => x[0] === 'flowThemesAuto'), `${flowMode}: the points without a theme ask for theirs`)
-    assert.ok(!c.calls.some(x => ['flowPrioAgain', 'jevRun', 'jevRank', 'jevWork'].includes(x[0])), `${flowMode}: no Jev run of its own`)
+    assert.ok(!c.calls.some(x => ['flowPrioRead', 'jevRun', 'jevRank', 'jevWork'].includes(x[0])), `${flowMode}: no read-in of its own`)
     // with the order there, nothing is asked
     const held = recorder()
     mount(html`<${FlowPage} s=${{ ...st, themes, jevOrder: { work: { order: { at_ms: NOW - MIN, items: [] } } } }} c=${held} />`)
@@ -3260,7 +3267,8 @@ test('R6B 1f, 2c and 2d: Jev\'s daily order and the themes are asked in every or
     assert.ok(!held.calls.some(x => x[0] === 'flowPrioOrder'), flowMode)
   }
   // the controller's daily order asks without force (the server: the day's first ask orders, every later one reads)
-  assert.match(method('async flowPrioOrder(page) {'), /jevWork\(page, false\)/)
+  assert.match(method('async flowPrioOrder(page) {'), /\{ page, daily: jevReady\(s\), rows: prioRows\(s\) \}/)
+  assert.ok(!/force: true/.test(method('async flowPrioOrder(page) {')))
 })
 
 test('R6B 1g: the star Only pinned stands over Due, not over Work through, where it acts on nothing', () => {
@@ -3288,16 +3296,15 @@ test('R6B 2a: a tab that waits and has not gone quiet needs you, a quiet one is 
   const parts = logic.flowParts(s)
   // the ones not quiet need you: points that ask, with their task where they have one, the oldest first
   assert.deepEqual(parts.asks.map(x => [x.tab.ref, x.row?.key ?? null]), [['surface:24', null], ['surface:21', 'task:own'], ['surface:23', 'task:link']])
-  // the quiet one is finished: it stays in Running now, and says so
-  assert.deepEqual(parts.lane.map(x => [x.tab.ref, x.stage]), [['surface:22', 'idle']])
-  assert.equal(logic.flowDrive(parts.lane[0], s).stage, 'idle')
-  // a session card for the quiet tab alone; the tabs that need you keep their session on their point
-  assert.deepEqual(parts.sessions.map(v => [v.tab?.ref, v.stage]), [['surface:25', 'idle']])
+  // the quiet one is finished: it runs no more, its task is a point again, and its point says it finished
+  assert.deepEqual(parts.lane, [])
+  const quiet = parts.doing.find(x => x.id === 'task:quiet')
+  assert.equal(logic.flowDrive(quiet, s).stage, 'idle')
+  // no session card for a quiet tab either; the tabs that need you keep their session on their point
+  assert.deepEqual(parts.sessions, [])
   checkInvariant(s, '2a')
   // in the words of the rest of the cockpit: finished
   assert.equal(text.TABLES.de.flow.doing.stage.idle, text.TABLES.de.state.idle)
-  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'running' } }} c=${recorder()} />`)
-  assert.match(el.$('.flow-main').text(), new RegExp(en.flow.doing.stage.idle))
   // answered from here, a waiting tab works again as far as the page knows: no point any more
   const mark = t => ({ hash: 'h1', state: t.state, since: t.since_ms })
   const asked = tabs.map(t => (t.ref === 'surface:24' ? { ...t, ask: { hash: 'h1' } } : t))
@@ -3396,7 +3403,7 @@ test('R6B 2g: the right column stands only while a point or an entry is open; a 
 
 // ---------------------------------------------------------------- round 6 b: the Sessions tab goes, Running now holds the sessions
 
-test('round 6 b S5: a waiting tab that wants you is a point that asks; a quiet one keeps its session card', () => {
+test('round 6 b S5: a waiting tab that wants you is a point that asks; a quiet one is finished and has no card of Running now', () => {
   const tabs = [{ ref: 'surface:21', name: 'asks at its prompt', state: 'waiting', since_ms: NOW - 4 * MIN },
     { ref: 'surface:22', name: 'went quiet', state: 'waiting', idle: true, since_ms: NOW - 30 * MIN },
     { ref: 'surface:23', name: 'needs you', state: 'needs-you', since_ms: NOW - 2 * MIN }]
@@ -3408,8 +3415,8 @@ test('round 6 b S5: a waiting tab that wants you is a point that asks; a quiet o
   // the oldest question first, a waiting tab beside one that needs you (logic.js wantsYou)
   assert.deepEqual(parts.asks.map(x => x.id), ['tab:surface:21', 'tab:surface:23'])
   assert.deepEqual(queueOf(s).map(x => x.group), ['asks', 'asks', 'doing'])
-  // its session stands with the point, not a second time as a card; the quiet one is no point and keeps its card
-  assert.deepEqual(parts.sessions.map(v => v.session.id), ['w2'])
+  // its session stands with the point, not a second time as a card; the quiet one is no point and runs no more
+  assert.deepEqual(parts.sessions, [])
   checkInvariant(s, 'waiting tabs')
   // without a terminal driver nothing asks from a tab
   assert.deepEqual(logic.flowParts({ ...s, driver: { caps: [] } }).asks, [])

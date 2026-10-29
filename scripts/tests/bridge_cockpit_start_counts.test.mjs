@@ -93,9 +93,11 @@ test('flowAreas: a tab answered here and a start that was lost count as Work thr
   assert.equal(after.waitingTabs, 0)
 })
 
-test('flowAreas: running is the count of Running now, a quiet session too', () => {
-  const tabs = [{ ref: 'surface:3', name: 'quiet', workspace: 'ACME', state: 'waiting', idle: true, since_ms: NOW - 30 * MIN }]
-  const sessions = { sessions: [{ id: 's1', sid: 's1', tab: { ref: 'surface:3' }, status: 'idle', started_ms: NOW - 40 * MIN }] }
+test('flowAreas: running is the count of Running now, a finished (quiet) session not', () => {
+  const tabs = [{ ref: 'surface:3', name: 'quiet', workspace: 'ACME', state: 'waiting', idle: true, since_ms: NOW - 30 * MIN },
+    { ref: 'surface:4', name: 'busy', workspace: 'ACME', state: 'working', since_ms: NOW - 5 * MIN }]
+  const sessions = { sessions: [{ id: 's1', sid: 's1', tab: { ref: 'surface:3' }, status: 'idle', started_ms: NOW - 40 * MIN },
+    { id: 's2', sid: 's2', tab: { ref: 'surface:4' }, status: 'busy', started_ms: NOW - 6 * MIN }] }
   const s = state({ work: [task('a1', { area_names: ['ACME'] })], tabs, sessions })
   const acme = logic.flowAreas(s).areas.find(a => a.name === 'ACME')
   assert.equal(acme.running, logic.runningOf(logic.flowParts({ ...s, ui: { ...s.ui, page: '@flow' } })).n)

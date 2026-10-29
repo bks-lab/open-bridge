@@ -19,8 +19,8 @@
 // To tab remembers the jump (ui.flowJump, in memory only): once the page is in view again return_after_s later, the
 // return card asks how it went (app.js). Round 4: every open row stands exactly once (logic.js flowParts). What runs
 // stands in Running now (views/flowrun.js: one row on top of the left column that shows every entry in the middle as
-// view `running`, since round 6 every live session there as a compact card, the entries of the side on top of the
-// overview, never in the walk; a title opens one in the middle
+// view `running`, since round 6 every live session at work there as a compact card; never over an overview and never
+// in the walk, one count for the head and the column, a row of a list an agent works on only marked; a title opens one in the middle
 // as view `run`, its card, its tabs and its instruction line, without the walk bar, its way back to the list it came
 // from); what is no point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a
 // list in the middle (view `left`) with its own batch; under it Check tasks, the task check in the middle (view `check`,
@@ -36,7 +36,7 @@
 // briefs of the next points that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
 // once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key), in every order of the
 // left column, as does Jev's daily order of the work page where Jev orders it (c.flowPrioOrder, once per page load;
-// the server orders anew only on the day's first ask). No title opens a drawer or another view; Details does, under
+// the server orders anew only on the day's first ask; with Haiku alone it reads the kept order and orders nothing). No title opens a drawer or another view; Details does, under
 // the verbs of a point and on each report (round 6 B). For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
 
@@ -244,6 +244,7 @@ function FlowBody({ s, c }) {
   const band = mode === 'prio' && entered ? (entered.id === 'none' ? 'due' : 'rank') : null
   const queue = walkOrder(pointsIn(all, side, s, mode), band)
   const lane = pointsIn(parts.lane, side, s, mode)
+  // one count of Running now for the head and the left column (runningOf), and no strip of it over any overview
   const runs = runningOf(parts)
   const i = focusIndex(queue, s.ui.flowAt)
   // the middle: the point open, an entry of Running now, a group of Not now, the task check, else the overview; what went (a point
@@ -275,7 +276,7 @@ function FlowBody({ s, c }) {
   useEffect(() => { if (ask.length) c.flowThemesAuto(ask) }, [ask.join(',')])
   // Jev's daily order of the work page (Prio's squares, Jev's suggestions in every order): asked once per page load in
   // every order where Jev orders that page and none is there; the server orders anew only on the day's first ask, a
-  // new order is Ask Jev again's click (round 6 B)
+  // new order is a click on Read in with Jev or Read in with Haiku at Prio's foot (round 6 B; Haiku never by itself)
   const work = prioOn(s) ? workPageOf(s.model?.pages) : null
   const order = work ? s.jevOrder?.[work.id] : null
   useEffect(() => { if (work && order === undefined) c.flowPrioOrder(work.id) }, [work?.id, order === undefined])
@@ -318,7 +319,6 @@ function FlowBody({ s, c }) {
             </div>
             <div class="flow-dock"><${InstructLine} key=${x.id} scope=${scope} s=${s} c=${c} /></div>`
           : view === 'overview' ? html`<header class="flow-main-head"><h2 class="flow-main-title">${entered ? html`<${SideDot} side=${entered} />` : null}${name}</h2></header>
-            <${RunningStrip} lane=${lane} picked=${picked} s=${s} c=${c} />
             ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />
               <p class="muted small flow-main-hint">${f.prio.hint}</p>`
               : !all.length ? html`<${Rest} s=${s} c=${c} />`

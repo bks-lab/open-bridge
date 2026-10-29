@@ -294,8 +294,9 @@ export function flowParts(s) {
   const answered = s?.ui?.answered ?? {}
   const asking = t => !isAnswered(answered[t.ref], t)
   // round 6 B: the waiting rule of the rest of the cockpit (wantsYou): a tab waiting at its prompt needs you until it
-  // went quiet, then it is finished; so only one at work or finished runs, one that needs you is a point (L5)
-  const runs = t => !!t && (t.state === 'working' || tabStage(t) === 'idle')
+  // went quiet, then it is finished; only one at work runs (a finished one runs no more and its task stands as a point
+  // again), one that needs you is a point (L5)
+  const runs = t => t?.state === 'working'
   const rowOfTask = slug => (slug ? uni.get(`task:${slug}`) ?? null : null)
   const used = new Set()      // row keys a card, an entry of the lane or a group already stands for
   const usedTabs = new Set()
@@ -382,6 +383,8 @@ export function flowParts(s) {
     if (tab?.state === 'shell' || (tab && !laneOfTab.has(tab.ref) && usedTabs.has(tab.ref))) continue
     const card = { id: `live:${x.id ?? x.sid}`, kind: 'live', session: x, tab, entry: tab ? laneOfTab.get(tab.ref) ?? null : null,
       stage: tab ? tabStage(tab) : x.status === 'busy' ? 'working' : 'idle' }
+    // a session that is not at work (finished, quiet at its prompt, waiting) does not run: no card of Running now
+    if (card.stage !== 'working') continue
     if (!tab) { out.sessions.push(card); continue }
     const all = [...(byTab.get(tab.ref) ?? []), card]
     byTab.set(tab.ref, all)
@@ -549,8 +552,60 @@ export const pointArea = x => (x?.row ? rowProject(x.row) : x?.kind === 'reports
  *  has none */
 export const pointKeys = x => (x?.kind === 'reports' ? x.rows.map(r => r.key) : x?.row?.key ? [x.row.key] : [])
 
-/** Whether Prio can order the left column: Jev orders the work page (its `jev:`), Jev is on and has its key */
-export const prioOn = s => !!(workPageOf(s?.model?.pages)?.jev && s?.jev?.enabled && s?.jev?.ready)
+/** Whether Jev can read in: switched on and with its key */
+export const jevReady = s => !!(s?.jev?.enabled && s?.jev?.ready)
+
+/** Whether Haiku can read in (the server's prio.haiku: a Claude model for the service cockpit-prio); an older server
+ *  sends nothing: no */
+export const haikuReady = s => s?.prio?.haiku?.ready === true
+
+/** Whether Prio can order the left column: a work page asks for an order (its `jev:`, with its private words) and one
+ *  of the two rankers can read in, Jev or Haiku (Jev may be off) */
+export const prioOn = s => !!(workPageOf(s?.model?.pages)?.jev && (jevReady(s) || haikuReady(s)))
+
+/** The key a point has in an order: its row's, else its tab's (`tab:<ref>`, a tab alone); null for neither */
+export const prioKey = (row, tab = null) => row?.key ?? (tab?.ref ? `tab:${tab.ref}` : null)
+
+// an inbox id starts with its day: 20261007-0900-...
+const INBOX_DAY_RE = /^(\d{4})(\d{2})(\d{2})-/
+
+/** The kind of a point as a read-in names it: inbox (report for a report), issue, task, stream, tab (a tab alone),
+ *  else item (a meeting, a date, a row of another source) */
+function prioKind(row, tab) {
+  if (!row) return tab ? 'tab' : 'item'
+  if (row.inbox_id) return row.art === 'report' ? 'report' : 'inbox'
+  if (REF_RE.test(String(row.ref ?? ''))) return 'issue'
+  if (row.task) return isStreamRow(row) ? 'stream' : 'task'
+  return 'item'
+}
+
+/** The rows a read-in of Prio sends (POST /api/jev/rank `rows`): every point the work view shows, each of a reports
+ *  card by itself, a tab alone by its tab, and what runs under Running now; each once, with its key (which the server
+ *  keeps), title, kind, status, due day, since when it exists (an inbox item by its day, else its created day) and
+ *  whether an agent works on it. The server holds back what the page's private words name and says how many */
+export function prioRows(s, parts = flowParts(s)) {
+  const out = new Map()
+  const put = (row, tab, title, stage, running) => {
+    const key = prioKey(row, tab)
+    if (!key || out.has(key)) return
+    const m = INBOX_DAY_RE.exec(String(row?.inbox_id ?? ''))
+    const since = m ? `${m[1]}-${m[2]}-${m[3]}` : DAY_RE.test(String(row?.created ?? '')) ? String(row.created).slice(0, 10) : null
+    const status = row?.status ?? row?.inbox_state ?? stage ?? null
+    const due = row?.due && DAY_RE.test(String(row.due)) ? String(row.due).slice(0, 10) : null
+    const r = { key, title: String(row?.title ?? title ?? key), kind: prioKind(row, tab) }
+    if (status) r.status = String(status)
+    if (due) r.due = due
+    if (since) r.since = since
+    r.running = !!running
+    out.set(key, r)
+  }
+  for (const x of flowQueue(parts, 'all')) {
+    if (x.kind === 'reports') for (const r of x.rows) put(r, null, r.title, null, false)
+    else put(x.row ?? null, x.row ? null : x.tab ?? null, x.title ?? x.start?.title ?? x.tab?.name, x.stage ?? tabStage(x.tab), x.row ? rowRunning(x.row, s) : false)
+  }
+  for (const e of parts.lane ?? []) put(e.row ?? null, e.row ? null : e.tab ?? null, e.title, e.stage, true)
+  return [...out.values()]
+}
 
 /** The orders of the left column on offer, in the order of the switch: Themes while the themes are on, Areas,
  *  Prio while Jev orders the work page (prioOn) */
@@ -569,8 +624,9 @@ export function flowMode(s) {
 // the squares of a Jev order by the order object they were read from (one read per order, not per row)
 const QUADS_SEEN = new WeakMap()
 
-/** Jev's squares of the open points: Map key -> {quadrant, rank, who, at_ms} from the daily order of the work page
- *  (s.jevOrder, the round 2 Jev view), only while that order is at most cockpit.flow.rank_max_age_days old */
+/** The ranker's squares of the open points: Map key -> {quadrant, rank, who, reason, ranker, at_ms} from the newest order
+ *  of the work page (s.jevOrder: Jev's or Haiku's, Prio's read-in or the Jev view's daily order), only while that order
+ *  is at most cockpit.flow.rank_max_age_days old. `who` is the ranker's own (me: only you), never read off the square */
 export function jevQuadrants(s) {
   const page = workPageOf(s?.model?.pages)
   const order = page ? s?.jevOrder?.[page.id]?.order : null
@@ -580,7 +636,10 @@ export function jevQuadrants(s) {
   if (QUADS_SEEN.has(order)) return QUADS_SEEN.get(order)
   const out = new Map()
   for (const it of order.items) {
-    if (it?.key && FLOW_QUADRANTS.includes(it.quadrant) && !out.has(it.key)) out.set(it.key, { quadrant: it.quadrant, rank: it.rank ?? null, who: it.who ?? null, at_ms: order.at_ms ?? null })
+    if (it?.key && FLOW_QUADRANTS.includes(it.quadrant) && !out.has(it.key)) {
+      out.set(it.key, { quadrant: it.quadrant, rank: it.rank ?? null, who: it.who ?? null, reason: it.reason ?? null,
+        ranker: order.ranker ?? 'jev', at_ms: order.at_ms ?? null })
+    }
   }
   QUADS_SEEN.set(order, out)
   return out
@@ -591,7 +650,8 @@ const areaId = name => `a:${String(name).trim().toLowerCase()}`
 /** The side a row stands on: its theme (t:<id>), its area (a:<name>) or its square of Jev (q:<quadrant>), else none */
 function rowSide(row, s, mode, tab = null) {
   if (mode === 'prio') {
-    const q = row ? jevQuadrants(s).get(row.key) : null
+    const key = prioKey(row, tab)
+    const q = key ? jevQuadrants(s).get(key) : null
     return q ? `q:${q.quadrant}` : NO_SIDE
   }
   if (mode === 'themes') {
@@ -616,7 +676,7 @@ export function pointsIn(points, side, s, mode) {
   }
   if (mode !== 'prio') return out
   const quads = jevQuadrants(s)
-  const rankIn = x => quads.get(x.kind === 'reports' ? x.rows[0]?.key : x.row?.key)?.rank ?? Infinity
+  const rankIn = x => quads.get(x.kind === 'reports' ? x.rows[0]?.key : prioKey(x.row, x.tab))?.rank ?? Infinity
   if (side.startsWith('q:')) return out.sort((a, b) => rankIn(a) - rankIn(b))
   const next = x => s?.triage?.items?.[x.row?.key]?.next_rank ?? Infinity
   const rowOf = x => x.row ?? x.rows?.[0] ?? {}
@@ -709,6 +769,27 @@ export function atWork(row, s) {
   return flowDrive({ kind: 'row', row }, s).by !== 'none'
 }
 
+/** Whether an agent is at work on a row right now: a start for it that starts or works, or a tab of its task at work
+ *  (flowDrive); a finished or quiet one is not. The small "running" marker of a row in a list */
+export function rowRunning(row, s) {
+  if (!row?.key) return false
+  const tabs = (s?.tabs?.tabs ?? []).filter(t => !t.is_control)
+  const nowMs = s?.now || Date.now()
+  if ((s?.model?.returns ?? []).some(r => r.key === row.key && ['started', 'working'].includes(flowStage(r, tabs, nowMs)))) return true
+  const d = flowDrive({ kind: 'row', row }, s)
+  return d.by !== 'none' && d.stage === 'working'
+}
+
+// a task in progress or in review that moved within this many days is no ranker's Drop: someone works on it
+const ACTIVE_DAYS = 7
+
+/** Whether a task in progress or in review moved lately (its updated day within ACTIVE_DAYS, or no day known) */
+function activeTask(row, nowMs) {
+  if (!isTaskRow(row) || !TASK_STATES.includes(row.status)) return false
+  if (!DAY_RE.test(String(row.updated ?? ''))) return true
+  return dayNumber(isoDate(nowMs)) - dayNumber(String(row.updated).slice(0, 10)) <= ACTIVE_DAYS
+}
+
 /** The suggestion for a row in the list, with half a sentence of why and where it comes from: the triage of the day
  *  (verdict close, stale or waiting, else doer ai or either), while it is fresh, and the task check's verdict on a
  *  task (round 6 B: close, stale or waiting; one the person kept the task against says nothing), the newer of the two
@@ -739,21 +820,25 @@ export function flowSuggestion(row, s) {
   if (said) return said
   const th = s?.themes?.suggest?.[row.key]
   if (th && ok(th.verb)) return { verb: th.verb, reason: th.reason ?? '', until: th.until ?? null, drop: th.drop ?? null, from: 'themes', at: th.at_ms ?? null }
-  // Jev last: its square drop says Drop (too big for what it brings, where the instance offers that reason), hand says
-  // Let AI do it; now and plan say nothing a verb could take
+  // the ranker last (Jev or Haiku, from 'jev'): its square drop says Drop (too big for what it brings, where the instance
+  // offers that reason), hand says Let AI do it; now and plan say nothing a verb could take. Never Drop for a row an
+  // agent works on (atWork) or a task in progress or review that moved lately (activeTask)
   const q = jevQuadrants(s).get(row.key)
-  if (q?.quadrant === 'drop' && ok('drop')) {
-    return { verb: 'drop', drop: flowSettings(s).drop_reasons.includes('not_worth_it') ? 'not_worth_it' : null, reason: '', until: null, from: 'jev',
-      at: q.at_ms, quadrant: 'drop' }
+  if (q?.quadrant === 'drop' && ok('drop') && !atWork(row, s) && !activeTask(row, s?.now || Date.now())) {
+    return { verb: 'drop', drop: flowSettings(s).drop_reasons.includes('not_worth_it') ? 'not_worth_it' : null, reason: q.reason ?? '', until: null,
+      from: 'jev', ranker: q.ranker, at: q.at_ms, quadrant: 'drop' }
   }
-  if (q?.quadrant === 'hand' && ok('do')) return { verb: 'do', reason: '', until: null, drop: null, from: 'jev', at: q.at_ms, quadrant: 'hand' }
+  if (q?.quadrant === 'hand' && ok('do')) return { verb: 'do', reason: q.reason ?? '', until: null, drop: null, from: 'jev', ranker: q.ranker, at: q.at_ms, quadrant: 'hand' }
   return null
 }
 
 /** The rows Take the suggestions ticks: those whose suggestion is done, drop or later; never Let AI do it, never one
- *  that needs you */
+ *  that needs you, never a ranker's Drop (Jev's or Haiku's square: a judgment of the whole list, not of the row) */
 export function batchPreselect(rows, s) {
-  return (rows ?? []).filter(r => ['done', 'drop', 'later'].includes(flowSuggestion(r, s)?.verb)).map(r => r.key)
+  return (rows ?? []).filter(r => {
+    const sug = flowSuggestion(r, s)
+    return ['done', 'drop', 'later'].includes(sug?.verb) && !(sug.verb === 'drop' && sug.from === 'jev')
+  }).map(r => r.key)
 }
 
 /** What a batch sends, before it is confirmed: `how` 'suggested' (each row its own suggestion), or one verb for all
@@ -814,8 +899,12 @@ export function batchPlan(rows, how, s, value = '', lang = 'en') {
     how, value, days: [...new Set(later.map(a => a.args.until))], reasons: [...new Set(drop.map(a => a.args.reason ?? a.args.text))] }
 }
 
-/** The half sentence of why Jev suggests a verb, by its square, in the page's language; '' for any other source */
-export const jevWhy = (sug, lang = 'en') => (sug?.from === 'jev' ? (TABLES[lang] ?? TABLES.en).flow.list.jevWhy[sug.quadrant] ?? '' : '')
+/** The half sentence of why the ranker suggests a verb, by its square and named (Jev or Haiku), in the page's
+ *  language; '' for any other source */
+export const jevWhy = (sug, lang = 'en') => (sug?.from === 'jev' ? (TABLES[lang] ?? TABLES.en).flow.list.jevWhy[sug.quadrant]?.(rankerName(sug.ranker)) ?? '' : '')
+
+/** A ranker as the page names it: Jev or Haiku */
+export const rankerName = r => (r === 'haiku' ? 'Haiku' : 'Jev')
 
 /** What a verb of a Not now list sends for its entries, before it is confirmed: Back on (`back`) per entry by why it
  *  waits (unhide what is hidden, reopen an item put off, take a point due later back on in this browser only, a task
@@ -1092,7 +1181,7 @@ export function flowFields(x, s, feed = null, detail = null) {
   if (!reports) out.push({ id: 'who', drive: flowDrive(x, s) })
   if (!reports) {
     const rank = row ? s?.triage?.items?.[row.key]?.next_rank : null
-    out.push({ id: 'prio', jev: jev ? { quadrant: jev.quadrant ?? null, rank: jev.rank ?? null } : null,
+    out.push({ id: 'prio', jev: jev ? { quadrant: jev.quadrant ?? null, rank: jev.rank ?? null, who: jev.who ?? null, ranker: jev.ranker ?? null } : null,
       rank: !jev && Number.isFinite(rank) ? rank : null, priority: row?.priority ?? null })
     if (jev) for (const id of ['urgency', 'impact', 'effort']) if (Number.isFinite(jev[id])) out.push({ id, value: jev[id] })
     out.push({ id: 'due', value: row?.due ?? null })
