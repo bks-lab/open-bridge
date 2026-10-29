@@ -1781,6 +1781,43 @@ test('the live feed reads what happened between two states of the page', async (
   assert.equal(logic.addFeed([], Array.from({ length: 80 }, (_, i) => ({ kind: 'new', key: `k${i}`, title: 't', at: i })), 50).length, 50)
 })
 
+test('the live feed keeps a row that leaves and comes back, and a thing that happens again later', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const now = rows => ({ sections: [{ id: 'now', rows }] })
+  const disk = { key: 'inbox:disk', title: 'Disk' }
+  const min = 60000
+  let feed = []
+  const step = (prev, next, at) => { feed = logic.addFeed(feed, logic.feedEvents(prev, next, [], [], at), 50) }
+  step(now([]), now([disk]), 8 * 60 * min)
+  step(now([disk]), now([]), 16 * 60 * min)
+  step(now([]), now([disk]), 16 * 60 * min + 4 * min)
+  // the newest word about the row is that it is back, not that it left
+  assert.deepEqual(feed.map(e => e.kind), ['new', 'gone', 'new'])
+  // the same event twice within a few minutes still counts once
+  assert.equal(logic.addFeed(feed, [{ kind: 'new', key: 'inbox:disk', title: 'Disk', at: 16 * 60 * min + 5 * min }], 50).length, 3)
+  // a tab that asks again an hour later, and a finding that comes back, are news again
+  const ask = at => ({ kind: 'tabAsks', ref: 's1', title: 'ORBIT', at })
+  assert.equal(logic.addFeed([ask(0)], [ask(60 * min)], 50).length, 2)
+  const alarm = at => ({ kind: 'alarm', page: 'ops', title: 'Probes', at })
+  assert.equal(logic.addFeed([alarm(0)], [alarm(2 * 60 * min)], 50).length, 2)
+  // an answer is one event: its later step from result to done says nothing new
+  const ret = stage => ({ sections: [], returns: [{ key: 'task:x', title: 'X', stage }] })
+  assert.deepEqual(logic.feedEvents(ret('result'), ret('done'), [], [], 1).map(e => e.kind), [])
+  assert.deepEqual(logic.feedEvents(ret('working'), ret('done'), [], [], 1).map(e => e.kind), ['answer'])
+})
+
+test('the start page reads the background jobs again after each briefing pass', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  assert.equal(logic.workersDue({ collected_ms: 1 }, { collected_ms: 2 }, { status: 'ok' }), true)
+  assert.equal(logic.workersDue({ collected_ms: 2 }, { collected_ms: 2 }, { status: 'ok' }), false)
+  assert.equal(logic.workersDue(null, { collected_ms: 2 }, { status: 'ok' }), false)
+  // a Bridge without workers asks nothing, and a read under way is not started twice
+  assert.equal(logic.workersDue({ collected_ms: 1 }, { collected_ms: 2 }, { status: 'none' }), false)
+  assert.equal(logic.workersDue({ collected_ms: 1 }, { collected_ms: 2 }, { status: 'loading' }), false)
+  const app = fs.readFileSync(path.join(WEB, 'app.js'), 'utf8')
+  assert.match(app.match(/\n  view\(model\) \{[\s\S]*?\n  \},/)[0], /workersDue\([\s\S]*loadWorkers\(\)/)
+})
+
 test('the inner room lays the net out, projects it and wanders through it', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const nodes = [
@@ -2637,6 +2674,12 @@ test('ticker: each status rule names its kind, tone and where a click leads', ()
     { text: 'nomark', tone: 'warn' }, { text: 'new', tone: 'warn', ms: NOW - 14 * 60000 }] }), 'note')
   assert.deepEqual(aged.map(n => n.vars[0]), ['new'])
   assert.equal(notes[0].cat, 'notes'); assert.equal(notes[2].tone, 'bad'); assert.equal(notes[0].target, null)
+  // a note about a tab the status already names (it waits, it is long in one state) says it once, through the tab
+  const tabNote = { text: 'Tab „ORBIT“ waits', tone: 'warn', ms: fresh, go: { kind: 'tab', ref: 's1' } }
+  const twice = mk({ tabs: { tabs: [{ ref: 's1', name: 'ORBIT', state: 'needs-you', waiting: true }], error: null }, notes: [tabNote] })
+  assert.deepEqual(logic.tickerStatus(twice, NOW, logic.TICKER_KINDS).filter(x => x.key === 'tabWaits' || x.key === 'note').map(x => x.key), ['tabWaits'])
+  const other = mk({ tabs: { tabs: [{ ref: 's2', name: 'Other', state: 'needs-you', waiting: true }], error: null }, notes: [tabNote] })
+  assert.equal(statusOf(other, 'note').length, 1)
   // the kinds filter leaves out whole categories
   const loud = mk({ conn: 'down', model: model({ counts: { now: 2 } }) })
   assert.deepEqual(logic.tickerStatus(loud, NOW, ['offline']).map(x => x.key), ['connDown'])
