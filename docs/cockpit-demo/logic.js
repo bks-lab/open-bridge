@@ -3054,7 +3054,9 @@ export function feedEvents(prev, next, prevTabs, nextTabs, at) {
   const stage = new Map((prev.returns ?? []).map(r => [r.key, r.stage]))
   for (const r of next.returns ?? []) {
     const was = stage.get(r.key)
-    if (was && was !== r.stage && (r.stage === 'result' || r.stage === 'done')) out.push({ kind: 'answer', key: r.key, title: r.title, at })
+    // result then done is one answer
+    const answered = st => st === 'result' || st === 'done'
+    if (was && !answered(was) && answered(r.stage)) out.push({ kind: 'answer', key: r.key, title: r.title, at })
     if (was && was !== r.stage && r.stage === 'lost') out.push({ kind: 'lost', key: r.key, title: r.title, at })
   }
   const alarms = new Set((prev.alarms ?? []).map(x => `${x.page_id}/${x.section_title}`))
@@ -3064,15 +3066,29 @@ export function feedEvents(prev, next, prevTabs, nextTabs, at) {
   return out
 }
 
-/** The feed with new events in front, at most `cap`; an event that repeats the newest of its kind and row
- *  is dropped */
+// how close the same event about the same thing has to follow to count once
+const FEED_REPEAT_MS = 10 * 60000
+
+/** The feed with new events in front, at most `cap`. An event is dropped only when the newest entry about
+ *  the same thing is of its kind and a few minutes old: a row that leaves and comes back says so, and a tab
+ *  that asks again later or a finding that returns is news again */
 export function addFeed(feed, events, cap = 50) {
   const out = [...feed]
+  // a finding is named by its section, which can stand on more than one page
+  const about = x => x.key ?? x.ref ?? (x.page ? `${x.page}/${x.title}` : x.title)
   for (const e of events) {
-    if (out.some(x => x.kind === e.kind && (x.key ?? x.ref ?? x.title) === (e.key ?? e.ref ?? e.title))) continue
+    const last = out.filter(x => about(x) === about(e)).sort((x, y) => y.at - x.at)[0]
+    if (last && last.kind === e.kind && Math.abs(e.at - last.at) < FEED_REPEAT_MS) continue
     out.unshift(e)
   }
   return out.sort((x, y) => y.at - x.at).slice(0, cap)
+}
+
+/** Whether the start page reads the background jobs again: a new briefing pass landed (the Resources
+ *  section writes their view), the Bridge has workers, and no read is under way */
+export function workersDue(prev, next, workers) {
+  if (!prev || !next || prev.collected_ms === next.collected_ms) return false
+  return !['none', 'loading'].includes(workers?.status)
 }
 
 // ---------------------------------------------------------------- the inner room: the knowledge graph in 3D
@@ -3824,10 +3840,13 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   if (s?.relay?.enabled && !s.relay.online) add('relay', 'offline', 'warn', 'controlOffline', [], { kind: 'claude' })
   // 25 the last loud notes of the last quarter hour; a server note replayed on load carries ms 0 and stays out
   const loud = (s?.notes ?? []).filter(x => (x.tone === 'bad' || x.tone === 'warn') && x.ms && now - x.ms < TICKER_NOTE_MS)
-  for (const n of loud.slice(-3)) {
+  // a note about a tab the status shows as waiting or long in one state would say it twice; a tab that only
+  // works, or whose kind is switched off, does not stand in for its note
+  const want = new Set(kinds ?? TICKER_KINDS)
+  const named = new Set(out.filter(x => want.has(x.cat) && /^st:tab-(waits|long):/.test(x.id)).map(x => x.target.ref))
+  for (const n of loud.filter(x => !(x.go?.kind === 'tab' && named.has(x.go.ref))).slice(-3)) {
     add(`note:${n.at ?? ''}:${n.text}`, 'notes', n.tone, 'note', [n.text], noteGo(n.go))
   }
-  const want = new Set(kinds ?? TICKER_KINDS)
   return out.filter(x => want.has(x.cat))
 }
 

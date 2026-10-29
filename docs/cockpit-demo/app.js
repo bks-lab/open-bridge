@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  upsertRecord, addFeed, feedEvents, workersDue, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
@@ -446,6 +446,8 @@ const handlers = {
     const prev = store.get()
     noteFeed(feedEvents(prev.model, model, prev.tabs?.tabs, prev.tabs?.tabs, Date.now()))
     store.set(s => ({ ...s, model, describe: liveDescribeAfter(s.describe, model), more: freshMore(s.more, model) }))
+    // the jobs on Start (station, status) were read once at load: a new pass may bring their new view
+    if (workersDue(prev.model, model, prev.workers)) ctl.loadWorkers()
     fixPage()
   },
   // only the pages that changed (review C34): put in by id and handled as a whole view; one that cannot be
