@@ -78,7 +78,7 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
     out = {"index": index, "key": m.item_key(page_id, section_id, it), "actionable": it.get("actionable") is True, "title": it["title"], "detail": it["detail"], "when": it["when"], "tone": it["tone"],
             "link": make_link(it.get("url"), root), "task": it.get("task"), "ask": it["ask"], "mark": it["mark"],
             "priority": it.get("priority"), "state": it.get("state"), "lines": it.get("lines", []),
-            "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"),
+            "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"), "glyph": it.get("glyph"),
             "tags": it.get("tags"), "account": it.get("account"), "inbox": it.get("inbox"),
             "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"), "gh": it.get("gh"),
             "cal": it.get("cal"), "due_at": it.get("due_at"),
@@ -272,7 +272,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         secs = []
         for s in pg["sections"]:
             # drawn views and the GitHub list (board) filter and search every row
-            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board") else ITEM_CAP
+            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board", "log") else ITEM_CAP
             sec_ctx = replace(card_ctx, section_kind=s.get("kind"))
             shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known, sec_ctx)
                      for i, it in enumerate(s["items"][:cap])]
@@ -294,7 +294,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
                                "weight": weight, "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
                                "hide_ok": s.get("hide_ok") is True,
-                               "steps": s.get("steps"),
+                               "steps": s.get("steps"), "place": s.get("place"),
                                "more": max(0, len(s["items"]) - cap)})
             if bad > 0:
                 alarms.append({"page_id": pg["id"], "page_title": pg["title"], "section_title": s["title"],

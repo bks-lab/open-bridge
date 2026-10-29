@@ -1416,10 +1416,12 @@ sends, Shift+Enter a new line). Escape or a click outside closes it.
 **A page's search.** A profile page with `search: true` carries a search field
 above its sections with three modes beside it; switching keeps the text. In
 **Today** typing two characters or more filters the page's own rows to those
-that hold every word, in every section at once (a section of groups shows every
-match unfolded, one without a match says "Nothing matches the filter", and with
-no hit at all a line offers **Every day**). **Every day** (on the switch and on
-Enter) leaves the rows as they are and asks the history with the same words
+that hold every word, in every section at once, its head counting the hits (a
+section that drew only its first rows loads the rest first, so the filter covers
+all of today; a section of groups shows every match unfolded, one without a
+match says "Nothing matches the filter", and with no hit at all a line offers
+**Every day**). **Every day** (on the switch, on Enter, and as one types, once
+the typing pauses) leaves the rows as they are and asks the history with the same words
 (`GET /api/timeline`, `scripts/work-find.py --history`): every line that holds
 every word in the log rows of `work/log.md` and `work/archive/` (an old row with
 only its time takes the day from the `## <weekday> DD.MM` head above it and the
@@ -1443,6 +1445,35 @@ server picks the 60 lines that hold the most of them, every line a word of
 anything is built, and a second call answers from the rest with the days and
 the lines it names. Both calls run without tools, settings or session, count
 as one question of `files_search.budget_per_day`, and take its model.
+
+**A page's log layout.** A section with `view: log` draws its rows as a log:
+under sticky hour heads (`13:00`; an earlier day's row under its date), each
+row its time, the glyph of its activity type, its context as a chip and its
+text clamped to two lines (a click opens it in full and offers its detail),
+the typed words marked, the first 100 rows and a button for the next ones. A
+section with `place: rail` stands in a narrow column beside the main one, its
+rows as tiles two to a row: the name, the `when` with its leading number large
+(a `commits` row: "3 today"), the sparkline at the start of its detail as bars,
+the rest (the branch) and the row's web page as the tile's link; a dim row
+(nothing today) is named in one quiet line below. A page with either key takes
+the layout: its head names the day, the title and how many log lines in how
+many topics; the search bar (with `search: true`) spans both columns; the rail
+also carries the log's contexts as topic chips with their counts, and a chip
+filters the log to its topic together with the typed words (the head of the
+log counts the hits and names the topic). In **Every day** the timeline stands
+in the main column in place of the log, in **Ask AI** the answer stands above
+it; the rail stays. Under 900 pixels the columns stack, the rail first.
+
+```yaml
+view:
+  pages:
+    - id: day
+      title: Daily log
+      search: true
+      sections:
+        - {id: activity, view: log}      # the log by hour, topic chips beside it
+        - {id: commits, place: rail}     # repository tiles in the rail
+```
 
 **Overview pages and tokens.** A profile page with `overview: true` opens
 with a board of tiles: one per section, with its count, its loudest row and a

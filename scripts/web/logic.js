@@ -1499,6 +1499,41 @@ export function timelineDays(entries) {
   return out
 }
 
+/** Whether a profile page takes the log layout (views/logpage.js): a section in the rail beside the main column
+ *  (`place: rail`) or a log (`view: log`) */
+export function logLayout(page) {
+  return (page?.sections ?? []).some(sec => sec.place === 'rail' || sec.view === 'log')
+}
+
+/** The rows of a log under their hours, in the order they came: [{key, rows}]. Today's rows carry their time
+ *  (`09:15`, head `09:00`); an earlier day's carry its date, which is the head then */
+export function logHours(items) {
+  const out = []
+  for (const it of items ?? []) {
+    const m = /^(\d{1,2}):\d{2}$/.exec(it.when ?? '')
+    const key = m ? `${m[1].padStart(2, '0')}:00` : (it.when ?? '')
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.rows.push(it)
+    else out.push({ key, rows: [it] })
+  }
+  return out
+}
+
+/** The contexts of a log's rows (their `group`) with how many rows each holds, the busiest first: [[name, n]] */
+export function logTopics(items) {
+  const n = new Map()
+  for (const it of items ?? []) if (it.group) n.set(it.group, (n.get(it.group) ?? 0) + 1)
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
+
+const SPARK = '▁▂▃▄▅▆▇█'
+
+/** A sparkline at the start of a text (a commits row's detail, `▁▂█ main`) as bar heights 0 to 7, and the rest */
+export function sparkOf(text) {
+  const m = /^([▁▂▃▄▅▆▇█]+)\s*(.*)$/.exec(String(text ?? ''))
+  return m ? { bars: [...m[1]].map(ch => SPARK.indexOf(ch)), rest: m[2] } : { bars: [], rest: String(text ?? '') }
+}
+
 /** Rows that pass the search, the state, the group and every chosen tag ({label: value}) */
 export function filterRows(items, { q = '', tone = 'all', group = null, tags = {} } = {}) {
   const needle = q.trim().toLowerCase()

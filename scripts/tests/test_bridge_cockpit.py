@@ -104,12 +104,12 @@ def collect_fixture(root: Path) -> dict:
                 {"id": "checks", "kind": "command", "title": "Checks", "status": "ok", "alarm": True, "bad": 1,
                  "weight": 1, "total": 1, "items": [
                      {"id": "backup-stale", "title": "Backup older than 2 days", "detail": "drift", "tone": "bad",
-                      "url": "https://example.org/backup", "ask": True, "actionable": True}]},
+                      "url": "https://example.org/backup", "ask": True, "actionable": True, "glyph": "⚠"}]},
                 {"id": "upstream", "kind": "command", "title": "Upstreams (2)", "status": "ok", "weight": 1,
                  "items": [{"id": "upstream-drift", "title": "Upstream drift", "tone": "warn", "url": "file:///etc/passwd", "ask": True,
                            "actionable": True}]},
                 {"id": "accounts", "kind": "command", "title": "Accounts", "status": "ok", "weight": 1, "view": "tiles",
-                 "hide_ok": True, "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
+                 "hide_ok": True, "place": "rail", "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
                            {"title": "Not an account"}]}]},
             {"id": "tasks", "title": "Tasks", "under": "systems", "sections": [
                 {"id": "tasks", "kind": "tasks", "title": "Tasks", "status": "ok", "items": [
@@ -456,12 +456,17 @@ def test_parse_pages():
                              "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "cal": None, "due_at": None, "at": None, "id": None, "actionable": False,
                              # where it comes from, raw (origin.py classifies it in the collector)
                              "origin_raw": None, "origin_provider": None, "origin_section_kind": None, "inbox_key": None,
-                             "about_task": None, "about_kind": None}
+                             "about_task": None, "about_kind": None, "glyph": None}
     assert s["as_of"] is None and s["empty"] == "nothing"
     assert s["boards"] is None and s["metrics"] is None and s["stale"] is None and s["cal_figures"] is None
     assert pages[0]["overview"] is False
     ops = m.parse_pages({"pages": [{"id": "ops", "title": "Betrieb", "overview": True, "sections": [{"id": "a"}]}]})
     assert ops[0]["overview"] is True
+    # `search: true` reaches the page, so the cockpit draws its search field; anything else is no search
+    found = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [{"id": "a"}]},
+                                     {"id": "odd", "title": "Odd", "search": "yes", "sections": [{"id": "a"}]}]})
+    assert [p["search"] for p in found] == [True, False]
+    assert pages[0]["search"] is False
     # an order by Jev: the server keeps the words of `jev:`, the page only learns that there is one
     work = m.parse_pages({"pages": [{"id": "w", "title": "Arbeit", "jev": {"skip_sections": ["b"], "private": ["p"]},
                                      "sections": [{"id": "a"}]}]})
@@ -495,6 +500,18 @@ def test_parse_pages_keeps_where_a_page_stands_and_what_a_section_hides():
     assert pages[1]["under"] == "ops" and pages[1]["subs"] == []
     assert pages[2]["under"] is None and pages[2]["subs"] == []
     assert [p["sections"][0]["hide_ok"] for p in pages] == [True, False, False]
+
+
+def test_parse_pages_keeps_the_log_layout_keys():
+    # every key of the log layout passes parse_pages one by one, else the page never learns it (the bug of `search`):
+    # a section's `view: log`, its `place: rail`, a log row's glyph; anything else is no log and the main column
+    pages = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [
+        {"id": "a", "view": "log", "items": [{"title": "Shipped it", "when": "09:15", "glyph": "✅"}, {"title": "x", "glyph": 7}]},
+        {"id": "b", "place": "rail"}, {"id": "c", "view": "diary", "place": "left"}]}]})
+    secs = pages[0]["sections"]
+    assert [x["view"] for x in secs] == ["log", None, None]
+    assert [x["place"] for x in secs] == [None, "rail", None]
+    assert [i["glyph"] for i in secs[0]["items"]] == ["✅", None]
 
 
 def test_mark_and_as_of():
@@ -941,6 +958,9 @@ def test_model_shape(world):
     assert pages["tasks"]["under"] == "systems" and pages["systems"]["under"] is None
     assert pages["systems"]["subs"] == ["@workers", "tasks"] and pages["tasks"]["subs"] == []
     assert [x["hide_ok"] for x in pages["systems"]["sections"]] == [False, False, True]
+    # the log layout reaches the browser: where a section stands (the rail) and a log row's glyph
+    assert [x["place"] for x in pages["systems"]["sections"]] == [None, None, "rail"]
+    assert pages["systems"]["sections"][0]["items"][0]["glyph"] == "⚠"
     assert model["teams"][0]["roles"][1] == {"id": "review", "name": "Review", "mode": "report"}
     dumped = json.dumps(model)
     assert "file://" not in dumped and world.app.token not in dumped and "command" not in model

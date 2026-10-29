@@ -24,6 +24,7 @@ import { GitHubBoard, GitHubList, ghShows } from './github.js'
 import { WORKERS_PAGE, folderOf, subPagesOf } from './nav.js'
 import { DatesAgenda } from './dates.js'
 import { CostCard, UsageCard } from './costs.js'
+import { LogRows } from './logpage.js'
 
 // ---------------------------------------------------------------- pages
 
@@ -460,7 +461,7 @@ function GroupsView({ items, page, section, c, whole = false }) {
   })}</div>`
 }
 
-export function PageSection({ page, section, s, c, q = '' }) {
+export function PageSection({ page, section, s, c, q = '', topic = null }) {
   const byKey = indexRows(s.model)
   const t = T()
   // a GitHub section's figures and filter bar filter its rows: kept per section in this browser (round 6c)
@@ -475,7 +476,9 @@ export function PageSection({ page, section, s, c, q = '' }) {
     ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all))) : all
   // the words of the page's search (views/timeline.js PageSearch): the rows that hold every one
   const words = q.trim()
-  const items = words ? words.split(/\s+/).reduce((rows, w) => filterRows(rows, { q: w }), kept) : kept
+  // the topic chip of a log (views/logpage.js): the rows of that context alone
+  const picked = topic && section.view === 'log' ? filterRows(kept, { group: topic }) : kept
+  const items = words ? words.split(/\s+/).reduce((rows, w) => filterRows(rows, { q: w }), picked) : picked
   const left = more ? 0 : section.more ?? 0
   const scale = meterScale(items)
   // nothing found: a section that says so in one quiet line, or none at all when the profile asks
@@ -486,7 +489,7 @@ export function PageSection({ page, section, s, c, q = '' }) {
   if (quiet) {
     return html`<section class="panel psec psec-quiet" aria-labelledby=${`ps-${page.id}-${section.id}`}>
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}</h2>
-      <${StateLine} token=${section.alarm ? 'success' : 'info'} word=${words && kept.length ? t.filterNone : section.empty || t.empty} />
+      <${StateLine} token=${section.alarm ? 'success' : 'info'} word=${(words || picked !== kept) && kept.length ? t.filterNone : section.empty || t.empty} />
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </section>`
   }
@@ -496,6 +499,7 @@ export function PageSection({ page, section, s, c, q = '' }) {
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
   else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} s=${s} steps=${section.steps ?? 'menu'} />`
   else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
+  else if (section.view === 'log') body = html`<${LogRows} items=${items} page=${page.id} section=${section.id} c=${c} words=${words} />`
   else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} whole=${!!words} />`
   // a github-work section on its board view: the GitHub list (views/github.js), not the general table
   else if (section.view === 'board' && gh) body = html`<${GitHubList} items=${items} page=${page.id} section=${section} s=${s} c=${c} byKey=${byKey} filter=${ghFilter} setFilter=${setGhFilter} me=${ghMyLogin(all)} />`
@@ -524,7 +528,8 @@ export function PageSection({ page, section, s, c, q = '' }) {
   return html`<section class="panel panel-pad psec" aria-labelledby=${`ps-${page.id}-${section.id}`}>
     <header class="psec-head">
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}
-        ${section.status !== 'skipped' && section.status !== 'error' ? html`<span class="sec-count mono">${section.total ?? section.count}</span>` : null}</h2>
+        ${section.status !== 'skipped' && section.status !== 'error' ? html`<span class="sec-count mono">${words || picked !== kept ? items.length : section.total ?? section.count}</span>` : null}
+        ${picked !== kept ? html`<span class="muted"> · ${topic}</span>` : null}</h2>
       ${section.bad ? html`<${StateLine} token="danger" strong word=${t.badgeFindings(section.bad)} />` : null}
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </header>

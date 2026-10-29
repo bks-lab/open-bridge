@@ -173,7 +173,9 @@ def parse_info(i: dict) -> dict:
             "origin_section_kind": as_text_or_null(i.get("origin_section_kind")),
             "inbox_key": as_text_or_null(i.get("inbox_key")),
             "about_task": as_text_or_null(i.get("about_task")),
-            "about_kind": i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None}
+            "about_kind": i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None,
+            # a log row's glyph, its activity type (view: log)
+            "glyph": i["glyph"][:8] if isinstance(i.get("glyph"), str) and i["glyph"] else None}
 
 
 def parse_cal(value: Any) -> dict | None:
@@ -333,7 +335,9 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "total": int(_number(x.get("total"), len(items))),
                 "weight": _number(x.get("weight")), "bad": _number(x.get("bad")),
                 "as_of": as_text_or_null(x.get("as_of")),
-                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board", "agenda") else None,
+                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board", "agenda", "log") else None,
+                # the page's right column beside the main one (views/logpage.js), else the main column
+                "place": "rail" if x.get("place") == "rail" else None,
                 "cal_figures": parse_cal_figures(x.get("cal_figures")),
                 "hide_empty": x.get("hide_empty") is True,
                 # kept for what reads it on the page (an account's services, the badge), drawn only with a finding
@@ -350,6 +354,8 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
         page = {"id": as_text(p.get("id")), "title": as_text(p.get("title")), "sections": sections,
                 "group": p.get("group") if p.get("group") in ("more", "work", "day") or (p.get("group") == "settings" and setup_only)
                 else "main", "overview": p.get("overview") is True,
+                # a search field above the sections (views/timeline.js PageSearch, profile `search: true`)
+                "search": p.get("search") is True,
                 "cards": parse_cards(p.get("cards")),
                 # where the page stands: under another (no tab, the bar of that page's folder opens it), and the sub
                 # pages a page names in their order, the cockpit's own @workers among them (briefing_view.pages)

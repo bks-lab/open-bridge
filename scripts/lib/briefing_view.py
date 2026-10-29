@@ -453,12 +453,15 @@ JEV_KEYS = {"skip_sections", "private"}
 PAGE_GROUPS = ("main", "more", "work", "day")   # day: no tab, its sections stand under the day list;
 # work: no tab, it is the "by source" view of the work tab (the briefing), beside "what is due" and "by Jev"
 PAGE_SECTION_KEYS = {"id", "when", "detail", "link", "empty", "alarm", "badge", "view", "hide_empty", "actionable", "steps",
-                     "hide_ok"}
+                     "hide_ok", "place"}
+# where a dashboard sets a section: the page's main column (default), or its right column beside it (rail)
+PAGE_PLACES = ("main", "rail")
 # how a dashboard offers a row's own steps: one menu (default), or each as a button of its own
 PAGE_STEPS = ("menu", "buttons")
 # how a dashboard draws a section: rows in a table (default), cards, or a mosaic of every row
-# board: the table, its rows under their group; agenda: a calendar by day, with figures and a timeline
-PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board", "agenda")
+# board: the table, its rows under their group; agenda: a calendar by day, with figures and a timeline;
+# log: a log under its hours, each row its time, glyph, context and text, the contexts as topic chips beside it
+PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board", "agenda", "log")
 BOARD_STATES = ("new", "ready", "in_progress", "review", "blocked")
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 # An id that names its repository is the same thing wherever it comes from; any
@@ -761,6 +764,8 @@ def _page_problems(view: dict) -> list:
                 out.append(f"{at}: view must be one of {', '.join(PAGE_VIEWS)}")
             if "steps" in entry and entry["steps"] not in PAGE_STEPS:
                 out.append(f"{at}: steps must be one of {', '.join(PAGE_STEPS)}")
+            if "place" in entry and entry["place"] not in PAGE_PLACES:
+                out.append(f"{at}: place must be one of {', '.join(PAGE_PLACES)}")
     return out
 
 
@@ -1918,6 +1923,9 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
     # a log row belongs to its context (task or repository): `view: groups` lists the rows under it
     if kind == "activity" and "group" not in row and _text(item.get("project")):
         row["group"] = _text(item.get("project"))[:80]
+    # and wears the glyph of its activity type (`view: log` draws it beside the time)
+    if kind == "activity" and _text(item.get("state")).strip():
+        row["glyph"] = _text(item["state"]).strip()[:8]
     if kind == "inbox" and iid:      # the item's id: a dashboard joins its triage and its close by it
         row["inbox"] = iid[:160]
     elif kind == "tracker" and not task and _text(item.get("inbox")):
@@ -2248,6 +2256,8 @@ def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, ro
             **({"view": entry["view"]} if entry.get("view") in PAGE_VIEWS[1:] else {}),
             # a row's steps as buttons of their own (a machine's power switches), not behind one menu
             **({"steps": "buttons"} if entry.get("steps") == "buttons" else {}),
+            # set in the page's right column beside the main one (a page's log layout)
+            **({"place": "rail"} if entry.get("place") == "rail" else {}),
             # nothing to say when it is empty: a dashboard leaves the section out instead of "nothing"
             **({"hide_empty": True} if entry.get("hide_empty") is True else {}),
             # kept on its page for what reads it there (an account's services, the badge, the alarm), drawn

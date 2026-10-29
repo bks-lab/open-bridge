@@ -511,6 +511,12 @@ view:
       title: GitHub
       sections:
         - {id: github-work, view: board}   # one row per issue or PR, under its board, with steps
+    - id: day
+      title: Daily log
+      search: true
+      sections:
+        - {id: activity, view: log}        # cockpit: the log by hour, its contexts as topic chips beside it
+        - {id: commits, place: rail}       # cockpit: in the column beside the log, as repository tiles
     - id: work
       title: Work
       jev:                   # cockpit with Jev on: orders the rows on a click, never by itself
@@ -554,6 +560,13 @@ card ignores it. A gauge with a value it cannot read is dropped, a bad `max`,
 per group in the order the rows first name them (a `github-work` row's group is
 its board, else its repository). `view: groups` lists short rows under each
 group instead.
+
+`view: log` draws a section (an `activity` section, whose rows carry the glyph
+of their activity type as `glyph`) as a log under its hours, its contexts as
+topic chips that filter it. `place: rail` (`main` is the default) sets a section
+in a narrow column beside the page's main one, its rows as compact tiles. A page
+with either takes the cockpit's log layout ([bridge-cockpit.md](bridge-cockpit.md),
+"A page's log layout").
 
 `view: agenda` on a calendar section draws it as a calendar: by day, as a week
 grid (Monday to Sunday) or as a month, with figures on top. Every calendar row
