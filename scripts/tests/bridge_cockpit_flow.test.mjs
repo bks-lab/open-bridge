@@ -1848,6 +1848,18 @@ test('the right column: a finished start, View and Improve right after Done, the
   assert.deepEqual(acts(el, true), all.slice(6))
 })
 
+test('the right column: where the close of the tab behind it ends the point, Done and close tab stands with the verbs', () => {
+  // a tab waiting at its prompt with the task behind it: its close offers Done for it (besideClose takes Done out of
+  // the verbs), so that Done stands right after the tab's ways, not apart at the end (review 29.10.2026)
+  const wait = { ref: 'surface:12', name: 'a', slug: 'a', state: 'waiting', behind: { task: 'a', item: null }, since_ms: NOW - 14 * MIN }
+  const v = en.flow.verbs
+  const all = acts(right(state({ work: [task('a')], tabs: [wait] })))
+  assert.deepEqual(all, [`[${en.flow.toTab}]`, en.flow.view, en.btnDoneCloseTab, en.btnCloseTabOnly, v.advise, panel(v.later), panel(v.drop)])
+  // a driver that closes tabs but starts none still shows that Done
+  const noLaunch = acts(right({ ...state({ work: [task('a')], tabs: [wait] }), driver: { caps: ['close'] } }))
+  assert.ok(noLaunch.includes(en.btnDoneCloseTab), noLaunch.join(' | '))
+})
+
 test('the reports say Done like every other card (I)', () => {
   assert.equal(en.flow.seen, 'Done')
   assert.equal(en.flow.allSeen, 'All done')

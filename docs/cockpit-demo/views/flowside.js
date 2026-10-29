@@ -286,14 +286,14 @@ function FinishedActs({ x, s, c, sug, forget }) {
 /** A task in review: Done strong (where the AI suggests no other of Done, Later and Drop), Improve right after it
  *  (what is still to do, to its tab while its agent waits there, else as a new start), Later, Drop, Advise; no Let AI
  *  do it, the work is done and waits for a look */
-function ReviewActs({ row, tab, s, c, sug, extra, tail }) {
+function ReviewActs({ row, tab, s, c, sug, extra, first, tail }) {
   const f = T().flow
   const [fix, setFix] = useState(false)
   const live = !!tab && tab.state === 'waiting' && canTab(s, 'send')
   const said = ['done', 'later', 'drop'].includes(sug?.verb) ? sug.verb : null
   const improve = html`<${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>`
   return html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${besideClose(['done', 'later', 'drop', 'advise'], row, tab, s)} primary=${said ?? 'done'}
-      suggested=${!!said} yes=${false} lead=${improve} extra=${extra} tail=${tail} stack />
+      suggested=${!!said} yes=${false} first=${first} lead=${improve} extra=${extra} tail=${tail} stack />
     ${fix ? html`<${Improve} row=${row} tab=${live ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
 }
 
@@ -312,7 +312,13 @@ function PointActs({ x, s, c, sug }) {
   // a tab that asks waits for an answer: nothing closes or drops what it works on until it no longer asks
   const asks = live?.state === 'needs-you'
   const near = live || tab
-  const shut = row && near && !asks && flowDriver(s) && tabCloseOffer(near, s) ? html`<${TabClose} tab=${near} s=${s} c=${c} size="sm" />` : null
+  // where the close ends the point itself (Done and close tab, besideClose takes Done out of the verbs) it stands with
+  // the verbs, right after the tab's ways; a close that only closes stands apart at the end
+  const offer = row && near && !asks ? tabCloseOffer(near, s) : null
+  const ends = !!offer?.done && offer.keys.includes(row.key)
+  const closer = offer ? html`<${TabClose} tab=${near} s=${s} c=${c} size="sm" />` : null
+  const shut = ends ? null : closer
+  const front = ends ? closer : null
   // a row with steps of its own on a page (an application): they stand in the info drawer, one click away
   const page = row ? pageStepsOf(row, s) : null
   const steps = page ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openInfo(page.it, page.page, page.section)}>${t.rowSteps} ▾<//>` : null
@@ -342,7 +348,7 @@ function PointActs({ x, s, c, sug }) {
     const verbs = asks ? ['advise', 'later'] : running ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']
     const said = verbs.includes(sug?.verb) ? sug.verb : null
     return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? verbs : besideClose(verbs, row, live || tab, s)} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
-      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${html`${steps}${ways}${unlink}`} tail=${shut} stack />`
+      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${html`${steps}${ways}${unlink}`} first=${front} tail=${shut} stack />`
   }
   if (x.kind === 'start') {
     const r = x.start
@@ -353,13 +359,13 @@ function PointActs({ x, s, c, sug }) {
     }
     if (x.group === 'result') return html`<${FinishedActs} x=${x} s=${s} c=${c} sug=${sug} forget=${forget} />`
     // a start whose tab asks: its ways, then the verbs that leave the tab its question
-    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} extra=${ways} tail=${shut} stack />`
+    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} extra=${ways} first=${front} tail=${shut} stack />`
       : ways ? html`<div class="fx-do">${ways}</div>` : null}`
   }
   if (x.kind === 'tab') return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${row
-    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} tail=${shut} stack />` : null}`
+    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} first=${front} tail=${shut} stack />` : null}`
   // a task in review: Done strong, then Improve (ReviewActs)
-  if (!live && row?.task && row.status === 'review') return html`<${ReviewActs} row=${row} tab=${tab} s=${s} c=${c} sug=${sug} extra=${html`${steps}${ways}`} tail=${shut} />`
+  if (!live && row?.task && row.status === 'review') return html`<${ReviewActs} row=${row} tab=${tab} s=${s} c=${c} sug=${sug} extra=${html`${steps}${ways}`} first=${front} tail=${shut} />`
   // a question, a finding, an issue or a task: its verbs, strong only the one the AI suggests (no Advise by default),
   // else a finding's yes where it brings an action. An issue's Done only leaves this list (Hide), the way to its page first
   const verb = sug?.verb
@@ -368,7 +374,7 @@ function PointActs({ x, s, c, sug }) {
   const web = issue && row.url ? html`<a class="btn btn-secondary btn-sm" href=${row.url} target="_blank" rel="noopener noreferrer">${f.onWeb(row.url)}</a>` : null
   const verbs = live ? (asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, near, s)) : besideClose(null, row, near, s)
   return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${primary} suggested=${!!primary} yes=${!live} yesFirst=${!primary}
-    words=${issue ? { done: f.hide } : {}} first=${web} extra=${html`${steps}${ways}`} tail=${shut} stack />`
+    words=${issue ? { done: f.hide } : {}} first=${html`${front}${web}`} extra=${html`${steps}${ways}`} tail=${shut} stack />`
 }
 
 /** Who works on a point, in words: its tab and how long, a start of the cockpit, a session by hand, else when it last
