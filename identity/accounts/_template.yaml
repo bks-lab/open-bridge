@@ -76,7 +76,8 @@ calendar:
 #   group_by: service              # azure: service | resource_group | tag:<name>; aws: service
 #   profile: my-profile            # aws or twilio CLI profile (default: the CLI's active login)
 #   key_ref: "keychain://<service>/<account>"   # openai, anthropic, elastic: the admin key, a reference only
-#   split: project                 # one entry per part (<id>/<part>): openai project; azure resource_group | tag:<name>
+#   split: project                 # one entry per part (<id>/<part>): openai project; azure resource_group | tag:<name>;
+#                                  #   elastic index_size (with shares, cluster_url, size_key_ref: docs/cloud-costs.md)
 #   parts: {rg-a-pre: "A", rg-a-prod: "A"}   # optional with split: names parts; the same name is one entry
 #   budgets: {A: 30}               # optional with split: a budget per part or name
 #   organization_id: <id>          # elastic: the Elastic Cloud organization (default: the key's first)
