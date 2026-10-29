@@ -403,7 +403,7 @@ def test_the_facts_created_moved_and_jev(world):
     data = feed(world)
     assert data["facts"]["created"] == "2026-10-01" and data["facts"]["moved"] == "2026-10-09T12:00"
     assert data["facts"]["jev"] == {"quadrant": "plan", "rank": 4, "urgency": 0.67, "impact": 1.0, "effort": 0.33,
-                                    "only_me": 0.8, "at_ms": int(NOW) - 3600_000}
+                                    "only_me": 0.8, "who": None, "ranker": "jev", "at_ms": int(NOW) - 3600_000}
     # an order older than rank_max_age_days stands for nothing
     world.clock.advance(8 * 24 * 3600)
     assert feed(world, fresh="1")["facts"]["jev"] is None

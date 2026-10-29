@@ -37,7 +37,7 @@ def test_collect_dedupes_and_trims():
     assert [t["title"] for t in tasks] == ["Customer waits for invoices", "Tidy the labels", "Sign the offer"]
     assert [t["id"] for t in tasks] == ["t1", "t2", "t3"]
     assert "tab" not in tasks[0] and "why" not in tasks[1]
-    assert len(jev.collect_tasks({"task_rows": [{"key": str(i), "title": f"x{i}"} for i in range(50)]})) == jev.MAX_TASKS
+    assert len(jev.collect_tasks({"task_rows": [{"key": str(i), "title": f"x{i}"} for i in range(jev.MAX_TASKS + 10)]})) == jev.MAX_TASKS
 
 
 def test_request_has_four_questions_per_task_and_one_choice():
@@ -234,9 +234,9 @@ def test_a_broken_store_file_is_ignored(tmp_path):
 
 
 # ------------------------------------------------------------------ order of a work page (jev: on a page)
-# A page with `jev:` gets an order on a click: its task and inbox rows go to Jev, except the sections it
-# names in skip_sections, rows matching a `private` word, and rows the triage says can go or an agent does.
-# Only title, a one-line gist, a short label and the priority leave the machine. Never by itself.
+# A page with `jev:` gets an order on a click: its rows go to Jev, except the sections it names in
+# skip_sections and rows matching a `private` word; what the triage marked goes too (prio.py has the rows
+# Prio's read-in sends). Only the fields of prio.wire leave the machine. Never by itself.
 
 WORK = [
     {"id": "inbox", "kind": "inbox", "title": "Waiting for you", "items": [
@@ -261,22 +261,25 @@ TRIAGE = {"inbox:i3": {"verdict": "keep", "doer": "ai", "gist": "log rotation"},
 CFG = {"skip_sections": ["bewerbungen"], "private": ["privat", "Sam", "applications"]}
 
 
-def test_work_rows_leave_out_private_skipped_sections_and_agent_work():
+def test_work_rows_leave_out_private_and_skipped_sections_but_keep_what_the_triage_marked():
     rows, skipped = jev.pick_rows(WORK, TRIAGE, CFG)
-    assert [r["key"] for r in rows] == ["inbox:i1", "inbox:i4", "task:angebot"]
-    assert skipped == {"private": 3, "section": 1, "triage": 1}      # the source of an inbox item counts too
+    # the row an agent does (doer ai) goes too: the order rates every point the page shows
+    assert [r["key"] for r in rows] == ["inbox:i1", "inbox:i3", "inbox:i4", "task:angebot"]
+    assert skipped == {"private": 3, "section": 1}      # the source of an inbox item counts too
     first = rows[0]
     # only what Jev needs, never the detail text, the path or the item id
-    assert set(first) == {"key", "title", "gist", "label"}
+    assert set(first) == {"key", "title", "gist", "label", "kind"} and first["kind"] == "inbox"
     assert first["gist"] == "approval for the customer" and first["label"] == "Waiting for you"
-    assert rows[2]["priority"] == "P1"
-    assert rows[1]["label"] == "Ideas"           # a long section title is cut at its bracket
+    assert rows[3]["priority"] == "P1" and rows[3]["status"] == "doing" and rows[3]["kind"] == "task"
+    assert rows[2]["label"] == "Ideas"           # a long section title is cut at its bracket
 
 
-def test_work_rows_without_config_take_every_keyed_row():
+def test_work_rows_without_config_take_every_row_also_one_without_an_item_or_a_task():
     rows, skipped = jev.pick_rows(WORK, {}, {})
-    assert [r["key"] for r in rows] == ["inbox:i1", "inbox:i2", "inbox:i3", "inbox:i5", "inbox:i4", "task:angebot", "task:taxes"]
-    assert skipped == {"private": 0, "section": 0, "triage": 0}
+    assert [r["key"] for r in rows] == ["inbox:i1", "inbox:i2", "inbox:i3", "inbox:i5", "inbox:i4", "task:angebot", "task:taxes",
+                                        "item:bewerbungen:Follow-up company X"]
+    assert rows[-1]["kind"] == "item"
+    assert skipped == {"private": 0, "section": 0}
 
 
 def work_app(tmp_path=None, now=1_760_000_000_000):
@@ -306,9 +309,10 @@ def test_rank_orders_on_the_click_and_keeps_the_order(tmp_path):
     assert sent == []
     out = jev.rank(app, {"page": "arbeit", "force": True}, call=call, key=lambda: "k")
     order = out["order"]
-    assert [x["key"] for x in order["items"]] == ["inbox:i4", "inbox:i1", "task:angebot"]
-    assert order["items"][0]["rank"] == 1 and order["first"] == "inbox:i4"
-    assert order["skipped"] == {"private": 3, "section": 1, "triage": 1, "over": 0} and order["sent"] == 3
+    assert [x["key"] for x in order["items"]] == ["inbox:i3", "inbox:i1", "inbox:i4", "task:angebot"]
+    assert order["items"][0]["rank"] == 1 and order["first"] == "inbox:i3"
+    assert order["skipped"] == {"private": 3, "section": 1, "same": 0, "over": 0} and order["sent"] == 4
+    assert order["ranker"] == "jev" and order["fallback"] is None
     assert order["usage"] == {"input_tokens": 1, "output_tokens": 1}
     # what left the machine: no key, no detail, no id of an inbox item
     text = json.dumps(sent[0], ensure_ascii=False)
@@ -331,7 +335,7 @@ def test_rank_daily_orders_once_a_day_by_itself(tmp_path):
 
     day = 1_760_000_000_000
     first = jev.rank(work_app(tmp_path, now=day), {"page": "arbeit", "daily": True}, call=call, key=lambda: "k")
-    assert len(sent) == 1 and first["order"]["sent"] == 3 and first["order"]["skipped"]["private"] == 3
+    assert len(sent) == 1 and first["order"]["sent"] == 4 and first["order"]["skipped"]["private"] == 3
     assert first["today"]["ratings"] == 1
     later = jev.rank(work_app(tmp_path, now=day + 3_600_000), {"page": "arbeit", "daily": True}, call=call, key=lambda: "k")
     assert len(sent) == 1 and later["order"]["at_ms"] == first["order"]["at_ms"]
@@ -362,9 +366,9 @@ def test_rank_sends_more_than_one_batch_and_merges_by_priority(monkeypatch):
         return answers([{"id": t["id"]} for t in payload["state"]["tasks"]])
 
     out = jev.rank(work_app(), {"page": "arbeit", "force": True}, call=call, key=lambda: "k")
-    assert len(calls) == 2 and sorted(len(c) for c in calls) == [1, 2]
+    assert len(calls) == 2 and sorted(len(c) for c in calls) == [2, 2]
     items = out["order"]["items"]
-    assert [x["rank"] for x in items] == [1, 2, 3]
+    assert [x["rank"] for x in items] == [1, 2, 3, 4]
     assert out["order"]["usage"] == {"input_tokens": 2, "output_tokens": 2}
 
 

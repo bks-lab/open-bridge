@@ -28,14 +28,18 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from . import prio
 from .config import parse_keychain_ref
 from .store import atomic_write_json, read_json
 from .text import TABLES
 
 API_URL = "https://api.typesafe.ai/v1/systemone"
 MODEL = "jev-1.14.0"   # a versioned id, never an alias: an alias moves and the answers with it
-MAX_TASKS = 20
-TIMEOUT_S = 45
+# the rows of one request: TypeSafe documents no cap on the questions of a request, only on its body (32 MiB,
+# docs.typesafe.ai/api/errors), so a read-in of the work view's points goes in one request; above this many rows
+# (four questions each) a read-in still goes in batches of this size, at most MAX_BATCHES, as a guard
+MAX_TASKS = 60
+TIMEOUT_S = 90
 ROW_FIELDS = ("title", "why", "priority", "urgency", "due", "area", "gate", "bucket", "section", "task_type",
               "inbox_state")
 
@@ -354,11 +358,19 @@ def run(app, body: dict, call: Callable[[dict, str], dict] | None = None,
         return {**result, "cached": False, "changed": False, "today": today}
 
 
-def handle_post(handler, app, path: str, body: dict) -> None:
+def _asks_jev(path: str, body: dict) -> bool:
+    """Whether a request may call Jev: the Jev tab's run, and a page order that orders now (force or daily) with
+    Jev as its ranker. Reading the kept order, or reading in with Haiku, works with Jev switched off"""
+    if path != "/api/jev/rank":
+        return True
+    return body.get("ranker", "jev") == "jev" and (body.get("force") is True or body.get("daily") is True)
+
+
+def handle_post(handler, app, path: str, body: dict, prio_call: Callable | None = None) -> None:
     if path not in ("/api/jev/run", "/api/jev/rank"):
         handler.send_error_json("not_found", "unknown endpoint")
         return
-    if not getattr(app.cfg, "jev_enabled", False):
+    if not getattr(app.cfg, "jev_enabled", False) and _asks_jev(path, body):
         handler.send_json(404, {"ok": False, "error": {"code": "jev_off", "message":
                                 "Jev is not switched on: integrations.typesafe.enabled in bridge-config.yaml"}})
         return
@@ -373,8 +385,11 @@ def handle_post(handler, app, path: str, body: dict) -> None:
 
     verb = "jev_rank" if path == "/api/jev/rank" else "jev_run"
     try:
-        do = rank if path == "/api/jev/rank" else run
-        handler.send_json(200, do(app, body, call=counted, key=lambda: resolve_key(ref=app.cfg.jev_key_ref)))
+        secret = lambda: resolve_key(ref=app.cfg.jev_key_ref)       # noqa: E731
+        if path == "/api/jev/rank":
+            handler.send_json(200, rank(app, body, call=counted, key=secret, prio_call=prio_call))
+        else:
+            handler.send_json(200, run(app, body, call=counted, key=secret))
     except JevError as e:
         handler.send_json(e.status, {"ok": False, "error": {"code": e.code, "message": e.message}})
         if e.status in (400, 404):
@@ -387,15 +402,18 @@ def handle_post(handler, app, path: str, body: dict) -> None:
 
 # ------------------------------------------------------------------ order of a work page
 
-# A page with `jev:` in the briefing profile (view.pages[].jev: {skip_sections, private}) gets an order on a
-# click: its task and inbox rows go to Jev, except the sections named in skip_sections, rows whose title,
-# detail, task, source (who filed an inbox item) or gist hold a `private` word, and rows the triage says can go or an agent does. Only a
-# title, the triage's one-line gist, a short label (the section) and the priority leave the machine; never
-# a detail text, a path or an item id. The order is kept per page in jev-pages.json and only a click
-# (force) asks Jev again: nothing here runs by itself.
+# A page with `jev:` in the briefing profile (view.pages[].jev: {skip_sections, private}) gets an order on a click.
+# Prio's read-in (Work through) sends the points its work view shows (`rows`, every kind: tasks, inbox items, tabs,
+# issues, meeting references, also what the triage marked); prio.rows_of holds back only a row a `private` word names
+# and merges what is the same. Without `rows` (the Jev view of the work tab) the page's own task, inbox and other rows
+# go, except the sections named in skip_sections and rows whose title, detail, task, source (who filed an inbox item)
+# or gist hold a `private` word. Either way only the fields of prio.wire leave the machine; never a detail text, a
+# path or an item id. Two rankers answer the same fields: Jev, or Haiku (`ranker: haiku`, prio.py), which needs no
+# Jev; with cockpit.flow.prio.fallback haiku a Jev read-in that fails (5xx, a timeout) runs Haiku instead and the
+# order says so. The order is kept per page in jev-pages.json, names its ranker, and the newest one wins; only a click
+# (force) or the Jev view's first ask of a day (daily, Jev only) orders anew: Haiku never runs by itself.
 PAGES_STORE = "jev-pages.json"
 MAX_BATCHES = 3
-SKIP_VERDICTS = ("close", "stale")
 
 
 def _row_key(it: dict) -> str | None:
@@ -413,27 +431,26 @@ def _label(title: str) -> str:
 
 
 def pick_rows(sections: list[dict], triage: dict | None, cfg: dict | None) -> tuple[list[dict], dict]:
-    """The rows of a work page that go to Jev, each once, and how many were left out and why"""
+    """The rows of a work page that go to Jev, each once (one without an inbox item or a task by its page key), and
+    how many were left out and why: a skipped section, a private word. What the triage marked goes too"""
     cfg = cfg or {}
     triage = triage or {}
     skip = set(cfg.get("skip_sections") or [])
     words = [w.lower() for w in cfg.get("private") or [] if isinstance(w, str) and w.strip()]
     rows: list[dict] = []
     seen: set[str] = set()
-    skipped = {"private": 0, "section": 0, "triage": 0}
+    skipped = {"private": 0, "section": 0}
     for sec in sections or []:
         for it in sec.get("items") or []:
             if not isinstance(it, dict) or not it.get("title"):
                 continue
-            key = _row_key(it)
-            mark = key or f"{sec.get('id')}:{it.get('title')}"
-            if mark in seen:
+            key = _row_key(it) or (it["key"] if isinstance(it.get("key"), str) and it["key"] else None) \
+                or f"item:{sec.get('id')}:{str(it.get('title'))[:60]}"
+            if key in seen:
                 continue
-            seen.add(mark)
+            seen.add(key)
             if sec.get("id") in skip:
                 skipped["section"] += 1
-                continue
-            if key is None:
                 continue
             tri = triage.get(key) or {}
             hay = " ".join(str(x or "") for x in (it.get("title"), it.get("detail"), it.get("task"), it.get("source"),
@@ -441,13 +458,13 @@ def pick_rows(sections: list[dict], triage: dict | None, cfg: dict | None) -> tu
             if any(w in hay for w in words):
                 skipped["private"] += 1
                 continue
-            if tri.get("verdict") in SKIP_VERDICTS or tri.get("doer") == "ai":
-                skipped["triage"] += 1
-                continue
-            row = {"key": key, "title": str(it["title"])[:160], "label": _label(sec.get("title") or sec.get("id") or "")}
+            row = {"key": key, "title": str(it["title"])[:160], "label": _label(sec.get("title") or sec.get("id") or ""),
+                   "kind": "inbox" if it.get("inbox") else "task" if it.get("task") else "item"}
             row["gist"] = str(tri.get("gist") or "")[:160] or None
             if it.get("priority"):
                 row["priority"] = it["priority"]
+            if isinstance(it.get("state"), str) and it["state"]:
+                row["status"] = it["state"]
             rows.append({k: v for k, v in row.items() if v is not None})
     return rows, skipped
 
@@ -508,33 +525,38 @@ def _pages_state(app) -> PagesState:
     return st
 
 
-# title and confidence stay for the matrix of the Jev view (a dot is named and ringed by them); the order
-# lives only in jev-pages.json beside the state, and a title is what left the machine anyway
+# title and confidence stay for the matrix of the Jev view (a dot is named and ringed by them), reason for Haiku's
+# half sentence of why; the order lives only in jev-pages.json beside the state, and a title is what left the machine
 ORDER_FIELDS = ("key", "rank", "title", "urgency", "impact", "effort", "only_me", "first", "priority", "confidence",
-                "quadrant", "who")
+                "quadrant", "who", "reason")
 
 
 def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
-         key: Callable[[], str] | None = None) -> dict:
-    """POST /api/jev/rank {page, force?, daily?}: the last order of a work page; with force Jev orders it anew.
-    daily is the Jev view of the work tab: the first request of a day orders by itself, every later one
-    that day answers the kept order, as the Jev tab's run does. More rows than one request holds go in
-    batches (at most MAX_BATCHES), merged by priority; of the batches' picks for where to start, the one
-    with the highest priority leads."""
+         key: Callable[[], str] | None = None, prio_call: Callable | None = None) -> dict:
+    """POST /api/jev/rank {page, force?, daily?, ranker?, rows?}: the last order of a work page; with force it is
+    ordered anew by the ranker (jev, the default, or haiku) over the page's `rows` (Prio's read-in), else over the
+    page's own rows. daily is the Jev view of the work tab: the first request of a day orders by itself with Jev,
+    every later one that day answers the kept order, as the Jev tab's run does; Haiku never orders by itself"""
     for name in body:
-        if name not in ("page", "force", "daily"):
+        if name not in ("page", "force", "daily", "ranker", "rows"):
             raise JevError(400, "invalid_argument", f"unknown field {str(name)[:40]}")
     page_id, force, daily = body.get("page"), body.get("force", False), body.get("daily", False)
+    ranker, rows = body.get("ranker", "jev"), body.get("rows")
     if not isinstance(page_id, str) or not isinstance(force, bool) or not isinstance(daily, bool):
         raise JevError(400, "invalid_argument", "page must be text, force and daily true or false")
+    if ranker not in prio.RANKERS:
+        raise JevError(400, "invalid_argument", f"ranker must be one of {', '.join(prio.RANKERS)}")
+    if rows is not None and not isinstance(rows, list):
+        raise JevError(400, "invalid_argument", "rows must be a list")
     found = _work_page(app, page_id)
     if found is None:
         raise JevError(404, "not_found", "no page with jev: under that id")
     st = _pages_state(app)
     day = time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000))
+    auto = daily and ranker == "jev"
     with st.lock:
         kept = st.orders.get(page_id)
-        if not force and (not daily or (kept and kept.get("day") == day)):
+        if not force and (not auto or (kept and kept.get("day") == day)):
             return {"ok": True, "page": page_id, "order": kept, "today": _today_of(_state(app), day)}
         gate = st.gate(page_id)
     with gate:      # another tab or a reconnect asking meanwhile waits here and takes the fresh order
@@ -542,26 +564,39 @@ def rank(app, body: dict, call: Callable[[dict, str], dict] | None = None,
             fresh = st.orders.get(page_id)
         if fresh is not kept and fresh is not None and (force or fresh.get("day") == day):
             return {"ok": True, "page": page_id, "order": fresh, "today": _today_of(_state(app), day)}
-        return _rank_now(app, page_id, found, day, call, key)
+        return _rank_now(app, page_id, found, day, call, key, ranker, rows, prio_call)
 
 
-def _rank_now(app, page_id: str, found: tuple[dict, list[dict]], day: str,
-              call: Callable[[dict, str], dict] | None, key: Callable[[], str] | None) -> dict:
-    """Ask Jev for the order of one page, batch by batch; runs under the page's gate. Each batch's
-    tokens are booked as soon as it answers, so a failing later batch keeps what was already spent."""
-    st, js = _pages_state(app), _state(app)
+def _rows_for(app, found: tuple[dict, list[dict]], day: str, rows: list | None) -> tuple[list[dict], dict]:
+    """The rows of this read-in, each once, and what was left out: {private, section, same, over}"""
     cfg, sections = found
     tri = getattr(app, "triage", None)
-    rows, skipped = pick_rows(sections, (tri.state().get("items") if tri else None), cfg)
+    triage = (tri.state().get("items") if tri else None) or {}
+    root = getattr(app, "root", None)
+    if rows is not None:
+        def source_of(key: str) -> str | None:
+            return _source_of(root, key[len("inbox:"):]) if root is not None and key.startswith("inbox:") else None
+        out, sk = prio.rows_of(rows, day, triage, (cfg or {}).get("private"), source_of)
+        skipped = {"private": sk["private"], "section": 0, "same": sk["same"]}
+    else:
+        picked, sk1 = pick_rows(sections, triage, cfg)
+        out, sk = prio.rows_of(picked, day, triage, [])
+        skipped = {**sk1, "same": sk["same"]}
     limit = MAX_TASKS * MAX_BATCHES
-    skipped["over"] = max(0, len(rows) - limit)
-    rows = rows[:limit]
+    skipped["over"] = max(0, len(out) - limit)
+    return out[:limit], skipped
+
+
+def _ask_jev(app, rows: list[dict], day: str, call, key) -> tuple[list[dict], list[str], dict, int]:
+    """Jev's plan over the rows, batch by batch: (items, the keys Jev picked to start with, tokens, calls). Each
+    batch's tokens are booked as soon as it answers, so a failing later batch keeps what was already spent"""
+    js = _state(app)
     conf = getattr(app, "cfg", None)
-    started = time.monotonic()
     items, picks, tokens, calls = [], [], {"input_tokens": 0, "output_tokens": 0}, 0
     secret = (key or (lambda: resolve_key(ref=getattr(conf, "jev_key_ref", None))))() if rows else None
     for i in range(0, len(rows), MAX_TASKS):
-        batch = [{"id": f"t{n + 1}", **r} for n, r in enumerate(rows[i:i + MAX_TASKS])]
+        chunk = rows[i:i + MAX_TASKS]
+        batch = [{**w, "key": r["key"]} for w, r in zip(prio.wire(chunk), chunk)]
         payload = build_request(batch, day, who=getattr(conf, "person_name", None), about=getattr(conf, "jev_person", None),
                                 lang=getattr(conf, "language", "en") or "en", criteria=getattr(conf, "jev_criteria", None),
                                 model=getattr(conf, "jev_model", None))
@@ -577,15 +612,52 @@ def _rank_now(app, page_id: str, found: tuple[dict, list[dict]], day: str,
         with js.lock:
             js.count(day, used, rating=calls == 1, unknown=was_known and any(tokens[f] is None for f in tokens))
             js.save()
+    return items, picks, tokens, calls
+
+
+def _ask_haiku(app, rows: list[dict], day: str, prio_call) -> tuple[list[dict], list[str], str | None]:
+    """Haiku's plan over the rows in one call, in Jev's shape (prio.ask): (items with their reason, the pick, model)"""
+    if not rows:
+        return [], [], None
+    batch = [{**w, "key": r["key"]} for w, r in zip(prio.wire(rows), rows)]
+    response = prio.ask(app, [{k: v for k, v in t.items() if k != "key"} for t in batch], day, call=prio_call)
+    plan = plan_from(batch, response)
+    for it in plan["items"]:
+        it["reason"] = response["reasons"].get(it["id"])
+    return plan["items"], [x["key"] for x in plan["items"] if x["id"] == plan["first"]], response.get("model")
+
+
+def _rank_now(app, page_id: str, found: tuple[dict, list[dict]], day: str, call, key, ranker: str,
+              rows_in: list | None, prio_call) -> dict:
+    """Ask the ranker for the order of one page; runs under the page's gate (module notes above)"""
+    st, js = _pages_state(app), _state(app)
+    rows, skipped = _rows_for(app, found, day, rows_in)
+    twins = {r["key"]: r.get("keys") or [r["key"]] for r in rows}
+    conf = getattr(app, "cfg", None)
+    started = time.monotonic()
+    tokens, calls, fallback = {"input_tokens": None, "output_tokens": None}, 0, None
+    model = getattr(conf, "jev_model", None) or MODEL
+    if ranker == "jev":
+        try:
+            items, picks, tokens, calls = _ask_jev(app, rows, day, call, key)
+        except JevError as e:
+            # a failed read-in (5xx, a timeout, no key) runs Haiku where the fallback says so; a refusal stays one
+            if e.status < 500 or prio.block(app).get("fallback") != "haiku" or not prio.ready(app):
+                raise
+            ranker, fallback = "haiku", {"from": "jev", "code": e.code}
+    if ranker == "haiku":
+        items, picks, model = _ask_haiku(app, rows, day, prio_call)
     items.sort(key=lambda x: (-x["priority"], -x["first"]))
     lead = max((x for x in items if x["key"] in picks), key=lambda x: x["priority"], default=None)
     if lead is not None:
         items.remove(lead)
         items.insert(0, lead)
+    # a row that stands for two keys (the same title twice) gives both its rank
+    out = [{f: x.get(f) for f in ORDER_FIELDS} | {"key": k, "rank": n + 1}
+           for n, x in enumerate(items) for k in twins.get(x["key"], [x["key"]])]
     order = {"at_ms": int(app.clock()), "day": day, "took_ms": int((time.monotonic() - started) * 1000), "calls": calls,
-             "sent": len(rows), "skipped": skipped, "first": items[0]["key"] if items else None,
-             "items": [{f: x.get(f) for f in ORDER_FIELDS} | {"rank": n + 1} for n, x in enumerate(items)],
-             "usage": tokens, "price": None}
+             "sent": len(rows), "skipped": skipped, "first": items[0]["key"] if items else None, "items": out,
+             "ranker": ranker, "model": model, "fallback": fallback, "usage": tokens, "price": None}
     with st.lock:
         st.orders[page_id] = order
         st.save()

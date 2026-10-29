@@ -992,7 +992,8 @@ def fingerprint(rows: list[dict]) -> str:
 
 
 def jev_fact(app: Any, key: str) -> dict | None:
-    """Jev's newest order that holds the key, within cockpit.flow.rank_max_age_days, else None"""
+    """The newest order that holds the key (Jev's or Haiku's, named as `ranker`), within cockpit.flow.rank_max_age_days,
+    else None"""
     if jev is None:
         return None
     try:
@@ -1010,15 +1011,16 @@ def jev_fact(app: Any, key: str) -> dict | None:
             continue
         it = next((x for x in order.get("items") or [] if isinstance(x, dict) and x.get("key") == key), None)
         if it and (best is None or at > best[0]):
-            best = (at, it)
+            best = (at, it, order)
     if best is None:
         return None
-    at, it = best
+    at, it, order = best
     num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) else None  # noqa: E731
     return {"quadrant": it.get("quadrant") if isinstance(it.get("quadrant"), str) else None,
             "rank": it.get("rank") if _is_int(it.get("rank")) else None, "urgency": num(it.get("urgency")),
             "impact": num(it.get("impact")), "effort": num(it.get("effort")), "only_me": num(it.get("only_me")),
-            "at_ms": int(at)}
+            "who": it.get("who") if it.get("who") in ("me", "delegate") else None,
+            "ranker": order.get("ranker") if order.get("ranker") in ("jev", "haiku") else "jev", "at_ms": int(at)}
 
 
 # ---------------------------------------------------------------- the summary
