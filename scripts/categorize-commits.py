@@ -178,8 +178,12 @@ PERSONAL_PATTERNS = [
 # Adding the wrapper moves exactly that one file; the 16 personal machines
 # declare `scope: user` and stay local, and an undeclared remote falls through
 # to the path rule (user), so the read fails closed.
+#
+# `identity/designs` holds one brand per Markdown file, its `scope:` inside the
+# `---` fence like a rule's. An org brand must reach the org overlay, or every
+# member Bridge keeps the upstream palette; an undeclared one stays `user`.
 _CLUSTER_WRAPPER_RE = re.compile(
-    r"^(?:identity/(?:personas|mandants|accounts|contracts)"
+    r"^(?:identity/(?:personas|mandants|accounts|contracts|designs)"
     r"|infra/(?:channels|remotes|secret-stores|a2a-peers)"
     r"|workflow/(?:briefings|contexts|projects))/"
     r"(?!_(?:schema|template))"
@@ -762,6 +766,11 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/build-cockpit-demo.py",
     "scripts/tests/test_bridge_cockpit_demo.py",
     "scripts/tests/test_bridge_cockpit_contract.py",
+    # Registered with identity/designs/: the resolver every generator asks which
+    # design applies (mail-draft, html-canvas, html-slides, the cockpit), and its
+    # contract.
+    "scripts/designs.py",
+    "scripts/tests/test_designs.py",
 })
 
 
@@ -802,8 +811,10 @@ VERIFIED_CORE = frozenset({
 # does not satisfy it, so it falls through to `user` — a second, independent net
 # under the USER_PATTERNS entry that already claims it. Structurally this fallback
 # can only ever return "user", so it cannot lift any README into core.
+# A family whose instances are Markdown (identity/designs/) ships `_template.md`,
+# so the two literals come in both extensions.
 CLUSTER_WRAPPER_FALLBACK = re.compile(
-    r"^(?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*/(?!_(?:schema|template)\.yaml$)"
+    r"^(?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*/(?!_(?:schema|template)\.(?:yaml|md)$)"
 )
 
 # `_tests/` beside a wrapper schema is that schema's own regression suite, so it

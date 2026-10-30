@@ -139,6 +139,13 @@ def synth_repo(tmp_path, monkeypatch):
     write("workflow/briefings/team.yaml", "schema_version: 1\nscope: org\nid: team\n")
     write("workflow/briefings/morning.yaml", "schema_version: 1\nscope: user\nid: morning\n")
 
+    # identity/designs/ — a brand is a Markdown file with front matter, so its
+    # `scope:` sits inside the `---` fence. An org brand reaches the overlay, a
+    # personal one the personal overlay, an undeclared one stays local.
+    write("identity/designs/team.md", "---\nversion: alpha\nscope: org\nname: team\n---\n# Team\n")
+    write("identity/designs/side.md", "---\nversion: alpha\nscope: personal\nname: side\n---\n# Side\n")
+    write("identity/designs/undeclared.md", "---\nversion: alpha\nname: undeclared\n---\n# Undeclared\n")
+
     cc._LOGO_BY_THEME_CACHE = None
     monkeypatch.chdir(tmp_path)
     yield tmp_path
@@ -784,6 +791,22 @@ def test_briefing_profiles_route_by_their_declaration(synth_repo):
     assert tier("workflow/briefings/undeclared.yaml") == "user"
     assert tier("workflow/briefings/_template.yaml") == "core"
     assert tier("workflow/briefings/_schema.yaml") == "core"
+
+
+def test_designs_route_by_their_declaration(synth_repo):
+    """A brand travels by its own `scope:`; the template ships, an undeclared brand stays local."""
+    assert tier("identity/designs/team.md") == "org", (
+        "a design declaring `scope: org` must export to the org overlay, or no member "
+        "Bridge ever wears the organisation's brand"
+    )
+    assert tier("identity/designs/side.md") == "personal"
+    assert tier("identity/designs/undeclared.md") == "user"
+    assert tier("identity/designs/missing.md") == "user"
+    assert tier("identity/designs/_template.md") == "core", (
+        "the template is a Markdown file; a fallback that only exempts `_template.yaml` "
+        "classes it `user` and it never reaches a fork"
+    )
+    assert tier("identity/designs/_schema.yaml") == "core"
 
 
 # ---------------------------------------------------------------------------

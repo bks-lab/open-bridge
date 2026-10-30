@@ -1,0 +1,70 @@
+# Design Schema: JSON Schema Draft 2020-12 in YAML
+#
+# Validates the FRONT MATTER of `identity/designs/<id>.md`. A design is one
+# brand: colours, type and shapes a generated visual uses, in the format of the
+# root DESIGN.md (Google Labs DESIGN.md, alpha). The root DESIGN.md stays the
+# Bridge's default design; every further brand is one file here, with its own
+# `scope:`, so an organisation's brand travels through the org overlay.
+#
+# Who uses a design is declared on the using side (`design_ref:` in a context
+# or a persona, `branding.design:` in a theme) and resolved by
+# scripts/designs.py. The DESIGN.md format knows more keys than are listed
+# here, so the schema is open.
+#
+# Validation:
+#   python3 scripts/validate-bridge.py --surface design
+#
+# Model: DESIGN.md § Designs in this Bridge.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "urn:open-bridge:schema:design"
+title: Design
+description: One brand a generated visual can wear, in the DESIGN.md format.
+
+type: object
+required: [name, description, scope, colors]
+additionalProperties: true
+
+properties:
+  version:
+    type: string
+    description: "DESIGN.md format version (alpha)"
+  scope:
+    type: string
+    enum: [core, org, personal, user]
+    description: >-
+      Promote tier, read by scripts/categorize-commits.py. `org` puts the brand
+      in the org overlay so every member Bridge wears it; undeclared stays
+      `user` and never leaves this instance.
+  name:
+    type: string
+    minLength: 1
+  description:
+    type: string
+    minLength: 1
+    description: "One line on the brand's voice"
+  use_for:
+    type: array
+    uniqueItems: true
+    items:
+      enum: [mail, pdf, html, slides, dashboard, certificate, video, site, cockpit]
+    description: "What the design is for; `scripts/designs.py list` shows it"
+  source:
+    type: object
+    additionalProperties: true
+    description: "Where the truth lives when this file mirrors another repository"
+    properties:
+      repo: {type: string}
+      manifest: {type: string}
+      implementation: {type: string}
+      taken_at: {type: [string, integer]}
+  colors:
+    type: object
+    minProperties: 1
+    additionalProperties:
+      type: string
+    description: "Colour tokens by role; hex values, the only place a render may take a colour from"
+  colorsDark:
+    type: object
+    additionalProperties:
+      type: string
