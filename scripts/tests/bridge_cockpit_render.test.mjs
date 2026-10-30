@@ -641,6 +641,46 @@ test('the terminal: its lines are their own, not the search timeline of a page, 
   assert.ok(mount(html`<${views.tabs.TabView} s=${cockpitState(NOW, { ui: { tabView: 'surface:10' } })} c=${c} />`).$('.dialog.tabview.term'), 'the tab window')
 })
 
+test('the terminal takes the keyboard: a click on it, then every key goes to the tab in order', async () => {
+  const { TermScreen } = views.tabs
+  const sent = []
+  const c = { termKeys: async (ref, steps) => { sent.push([ref, steps]); return true } }
+  const pokes = []
+  const el = mount(html`<${TermScreen} tabRef="surface:10" screen=${{ text: '⏺ done\n❯', hash: 'a' }} live empty="x" canType c=${c} poke=${() => pokes.push(1)} />`)
+  const box = el.$('.term-input')
+  const enter = box.dispatch('keydown', { key: 'Enter' })
+  assert.ok(enter.defaultPrevented, 'Enter is the tab\'s, the box takes no line')
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(sent, [['surface:10', [{ key: 'enter' }]]])
+  assert.ok(pokes.length, 'the screen is read at once after a key')
+  // a word typed while the first is on its way goes out as one, after it
+  box.value = 'ls'
+  box.dispatch('input', { isComposing: false })
+  assert.equal(box.value, '')
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(sent.at(-1), ['surface:10', [{ text: 'ls' }]])
+  assert.equal(el.$('.term-echo')?.text(), 'ls', 'it shows before the screen has it')
+  // Escape stays in the terminal, it never closes a window around it
+  const esc = box.dispatch('keydown', { key: 'Escape' })
+  assert.ok(esc.defaultPrevented)
+  // Cmd stays the Mac's
+  assert.equal(box.dispatch('keydown', { key: 'c', metaKey: true }).defaultPrevented, false)
+})
+
+test('the terminal: a paste goes out whole, a driver without keys leaves it to read', async () => {
+  const { TermScreen } = views.tabs
+  const sent = []
+  const c = { termKeys: async (ref, steps) => { sent.push(steps); return true } }
+  const el = mount(html`<${TermScreen} tabRef="surface:10" screen=${{ text: '❯', hash: 'a' }} live empty="x" canType c=${c} poke=${() => {}} />`)
+  const paste = el.$('.term-input').dispatch('paste', { clipboardData: { getData: () => 'one\ntwo' } })
+  assert.ok(paste.defaultPrevented)
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(sent, [[{ paste: 'one\ntwo' }]])
+  const read = mount(html`<${TermScreen} tabRef="surface:10" screen=${{ text: '❯', hash: 'a' }} live empty="x" c=${c} poke=${() => {}} />`)
+  assert.equal(read.$('.term-input'), null)
+  assert.ok(read.$('.term-cursor'), 'still a screen')
+})
+
 test('the open tab ends in the same bar the lists have: back, where you stand, what comes next and Next', () => {
   const c = recorder()
   const bar = tabPane('surface:10', c).$('.rooms-main .next-up')
@@ -825,7 +865,7 @@ test('TabView renders the shared TabReply', async () => {
     const research = mount(html`<${views.tabs.TabView} s=${cockpitState(NOW, { ui: { tabView: 'surface:12' } })} c=${recorder()} />`)
     try {
       assert.ok(research.button(en.reply.yes) && research.button(en.reply.goOn))
-      assert.equal(research.$$('textarea').length, 1)
+      assert.equal(research.$$('.tabview-foot textarea').length, 1)
     } finally {
       loadedRooms.render(null, research)
     }

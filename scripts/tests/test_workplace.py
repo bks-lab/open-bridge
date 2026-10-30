@@ -543,6 +543,34 @@ def test_launch_uses_the_configured_agent_template(lrepo):
     assert "codex -n payments-incident" in e["command"]
 
 
+def test_the_terminal_keys_and_their_text_rules_are_one_list_with_the_cockpit():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from lib.bridge_cockpit import actions_base as ab
+    assert set(wp.TERM_KEYS) == set(ab.TERM_KEYS)
+    assert {"enter", "escape", "tab", "shift+tab", "backspace", "up", "ctrl+c", "ctrl+z"} <= set(wp.TERM_KEYS)
+
+
+@pytest.mark.parametrize("steps", [[{"key": "f13"}], [{"text": "a\x03"}], [{"paste": "a\x1b"}], [{"shell": "ls"}], [], "ls"])
+def test_keys_never_reach_a_driver_outside_the_list(steps):
+    with pytest.raises(ValueError):
+        wp.check_steps(steps)
+
+
+def test_keys_by_a_live_ref_ask_no_list_of_the_tabs(lrepo, monkeypatch, capsys):
+    (lrepo / "bridge-config.yaml").write_text("workplace:\n  driver: {command: ['fake-driver']}\n")
+    seen = []
+
+    def fake_run(argv, input=None, **kw):
+        req = json.loads(input)
+        seen.append(req)
+        return type("R", (), {"returncode": 0, "stdout": json.dumps({"report": ["1 steps"]}), "stderr": ""})()
+
+    monkeypatch.setattr(wp.subprocess, "run", fake_run)
+    assert wp.main(["--root", str(lrepo), "keys", "surface:1", '[{"key": "enter"}]']) == 0
+    assert seen == [{"verb": "keys", "tab": "surface:1", "keys": [{"key": "enter"}]}]
+    assert wp.main(["--root", str(lrepo), "keys", "surface:1", "not json"]) == 2
+
+
 def test_launch_dry_run_prints_and_hands_nothing_to_the_driver(lrepo, capsys, monkeypatch):
     calls = []
     monkeypatch.setattr(wp.NoneDriver, "launch", lambda *a, **k: calls.append(a) or [])

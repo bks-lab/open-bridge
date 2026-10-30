@@ -57,6 +57,8 @@ uses for owner approval:
     {"verb": "caps"}                                  -> {"caps": ["tabs", "sessions", ...]}
     {"verb": "focus", "tab": ref}                     -> {"report": [...]}
     {"verb": "key", "tab": ref, "key": "enter" | "escape" | "y" | "n" | "1".."9"} -> {"report": [...]}
+    {"verb": "keys", "tab": ref, "keys": [{"text": "..."} | {"key": <TERM_KEYS>} | {"paste": "..."}]} -> {"report": [...]}
+                                              a keyboard, in order: the live terminal of the cockpit
     {"verb": "screen", "tab": ref, "lines": n}        -> {"text": "..."}
     {"verb": "close", "tab": ref}                     -> {"report": [...]}
     {"verb": "workspaces"}                            -> {"workspaces": [{"ref", "title", "cwd", ...}]}  (read only)
@@ -1161,6 +1163,31 @@ def _ws_fold(name) -> str:
 # the verbs every driver serves; the others it names in its answer to `caps`
 BASE_CAPS = ("tabs", "sessions", "open", "launch", "send", "rename")
 KEYS = ("enter", "escape", "y", "n", *(str(i) for i in range(1, 10)))
+# what a live terminal sends beside text: the keys of a keyboard that are no text, the same list as the cockpit's
+# (actions_base.py TERM_KEYS)
+TERM_KEYS = ("enter", "escape", "tab", "shift+tab", "backspace", "delete", "up", "down", "left", "right", "home", "end",
+             "pageup", "pagedown", *(f"ctrl+{c}" for c in "abcdefghijklmnopqrstuvwxyz"))
+TERM_STEPS_MAX, TERM_TEXT_MAX, TERM_PASTE_MAX = 64, 4000, 32000
+LIVE_REF_RE = re.compile(r"[a-z]+:\d+|%\d+")       # surface:91, %3: a driver's own name for a tab, never a person's
+TERM_NO_TEXT = re.compile(r"[\x00-\x1f\x7f]")       # typed text: no control code, a key has its own step
+TERM_NO_PASTE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")      # a paste keeps its tabs and lines
+
+
+def check_steps(steps) -> list:
+    """The steps of a live terminal, or ValueError: a key of TERM_KEYS, text without a control code, a paste. The
+    same rule as the cockpit's (actions_base.py check_term_steps): nothing else reaches a driver through this door."""
+    if not isinstance(steps, list) or not 1 <= len(steps) <= TERM_STEPS_MAX:
+        raise ValueError(f"keys takes a list of 1 to {TERM_STEPS_MAX} steps")
+    for step in steps:
+        kind, value = next(iter(step.items())) if isinstance(step, dict) and len(step) == 1 else (None, None)
+        if kind == "key" and value in TERM_KEYS:
+            continue
+        if kind == "text" and isinstance(value, str) and 0 < len(value) <= TERM_TEXT_MAX and not TERM_NO_TEXT.search(value):
+            continue
+        if kind == "paste" and isinstance(value, str) and 0 < len(value) <= TERM_PASTE_MAX and not TERM_NO_PASTE.search(value):
+            continue
+        raise ValueError("a step is one key of the list, text without control codes, or a paste")
+    return steps
 
 
 class NoneDriver:
@@ -1226,6 +1253,9 @@ class NoneDriver:
 
     def key(self, tab: str, key: str) -> list:
         return [f"No driver configured: press {key} in {tab} yourself."]
+
+    def keys(self, tab: str, steps: list) -> list:
+        return [f"No driver configured: type in {tab} yourself."]
 
     def screen(self, tab: str, lines: int) -> str | None:
         return None
@@ -1349,6 +1379,13 @@ class CommandDriver:
             self.failed = True
             return [f"ERROR key {key!r} is not one of {', '.join(KEYS)}"]
         return self._report({"verb": "key", "tab": tab, "key": key})
+
+    def keys(self, tab: str, steps: list) -> list:
+        try:
+            return self._report({"verb": "keys", "tab": tab, "keys": check_steps(steps)})
+        except ValueError as exc:
+            self.failed = True
+            return [f"ERROR {exc}"]
 
     def screen(self, tab: str, lines: int) -> str | None:
         data = self._call({"verb": "screen", "tab": tab, "lines": int(lines)})
@@ -1518,6 +1555,9 @@ def main(argv=None) -> int:
     ky = sub.add_parser("key", help="one key into a tab: " + ", ".join(KEYS))
     ky.add_argument("tab")
     ky.add_argument("key")
+    ks = sub.add_parser("keys", help="what a live terminal typed, a JSON list of {text}, {key} and {paste} steps")
+    ks.add_argument("tab")
+    ks.add_argument("steps")
     sc = sub.add_parser("screen", help="the last lines a tab shows (read only)")
     sc.add_argument("tab")
     sc.add_argument("--lines", type=int, default=40)
@@ -1690,9 +1730,12 @@ def main(argv=None) -> int:
         return rename_cli(args, cfg, driver)
     if args.cmd in ("move-tab", "workspace-color", "workspace-description"):
         return layout_cli(args, cfg, driver)
-    tasks = collect_tasks(args.root)
+    # a live ref needs no list of the tabs: the terminal of the cockpit types and reads many times a second, and the
+    # driver answers for a ref that is gone
+    direct = args.cmd in ("keys", "screen") and LIVE_REF_RE.fullmatch(args.tab)
+    tasks = [] if direct else collect_tasks(args.root)
     index = slug_index(tasks, cfg)
-    tabs = driver.tabs()
+    tabs = [] if direct else driver.tabs()
     try:
         tab = find_tab(tabs, args.tab, index) if tabs else {"name": args.tab, "ref": args.tab}
     except LookupError as exc:
@@ -1717,6 +1760,13 @@ def main(argv=None) -> int:
         lines = getattr(driver, args.cmd)(ref)
     elif args.cmd == "key":
         lines = driver.key(ref, args.key)
+    elif args.cmd == "keys":
+        try:
+            steps = json.loads(args.steps)
+        except ValueError:
+            print("keys takes a JSON list", file=sys.stderr)
+            return 2
+        lines = driver.keys(ref, steps)
     else:
         lines = driver.send(ref, " ".join(args.text))
     print("\n".join(lines))

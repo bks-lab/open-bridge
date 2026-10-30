@@ -84,10 +84,23 @@
 .term-add { color: var(--success); background: color-mix(in srgb, var(--success) 11%, transparent); }
 .term-del { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, transparent); }
 .term-work { color: var(--warning); text-shadow: var(--term-glow); }
+/* the cursor: an outline, as in a terminal without focus; solid and blinking while the keyboard is here */
 .term-cursor {
   display: inline-block; width: 0.6em; height: 1.1em; margin-left: 2px; vertical-align: text-bottom; color: var(--accent);
-  background: currentColor; box-shadow: var(--term-glow); animation: blink 1.1s steps(2, start) infinite;
+  box-shadow: inset 0 0 0 1px currentColor;
 }
+.term-cursor.is-on { background: currentColor; box-shadow: var(--term-glow); animation: blink 1.1s steps(2, start) infinite; }
+.term-echo { color: var(--ink); opacity: 0.75; white-space: pre-wrap; }
+
+/* the keyboard: the box that takes it stays out of sight, the frame and the line in the corner say where it goes */
+.term .tabview-body { position: relative; cursor: text; outline: none; }
+.term .tabview-body.is-typing { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+.term-input { position: sticky; bottom: 0; display: block; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; resize: none; overflow: hidden; }
+.term-status {
+  position: sticky; bottom: 0; width: fit-content; margin: 4px 0 0 auto; padding: 1px 8px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-raised) 85%, transparent); color: var(--on-surface-faint); pointer-events: none;
+}
+.is-typing > .term-status { color: var(--accent); }
 
 /* a question and its answer read as a turn in a terminal, no bubbles */
 .term .quick-body { font-family: var(--font-mono); font-size: var(--text-code); gap: 14px; }
@@ -118,5 +131,5 @@
 .term .tabview-send textarea::placeholder, .term .reply-field .input::placeholder { color: var(--on-surface-faint); }
 
 @media (prefers-reduced-motion: reduce) {
-  .tabview-live.is-live::before, .term-cursor, .term .tabview-body { animation: none; }
+  .tabview-live.is-live::before, .term-cursor.is-on, .term .tabview-body { animation: none; }
 }

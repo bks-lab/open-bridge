@@ -1101,7 +1101,8 @@ class Handler(BaseHTTPRequestHandler):
             # read only: the last lines of the tab's terminal, for the tab view (a CLI chat in the page),
             # through the terminal driver like everything else done to a tab. A page that names the hash
             # it holds (since) gets unchanged and no text while the screen stays the same
-            text, digest, err = app.tab_screen(ref)
+            # fast: right after a key, past the second a read is kept for
+            text, digest, err = app.tab_screen(ref, fresh=one("fast") == "1")
             if text is None:
                 self.send_error_json("unreadable", app.scrub(err)[:200])
                 return

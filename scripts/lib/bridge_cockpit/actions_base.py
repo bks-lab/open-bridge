@@ -117,6 +117,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "tab_no": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
     "tab_option": {"tab_ref": ("tab_ref", True), "n": ("digit", True), "seen": ("ask_hash", True), "name": ("tab_name", False)},
     "tab_jump": {"tab_ref": ("tab_ref", True)},
+    "tab_keys": {"tab_ref": ("tab_ref", True), "steps": ("term_steps", True)},
     "tab_send": {"tab_ref": ("tab_ref", True), "text": ("text", True), "seen": ("ask_hash", False),
                  "expect": ("tab_state", False), "name": ("tab_name", False)},
     "tab_go_on": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
@@ -247,12 +248,12 @@ READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
-                         "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask"})
+                         "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
-NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
+NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_keys": "keys", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
              "tab_rename": "rename", "workspace_rename": "rename_workspace"}
 
 
@@ -297,6 +298,31 @@ def check_text(value: Any, field: str, max_len: int) -> str:
     if not 1 <= len(text) <= max_len:
         raise bad_arg(field, f"length must be 1 to {max_len}")
     return text
+
+
+# the live terminal of the page: what it may send beside text, the same list as workplace.py TERM_KEYS
+TERM_KEYS = ("enter", "escape", "tab", "shift+tab", "backspace", "delete", "up", "down", "left", "right", "home", "end",
+             "pageup", "pagedown", *(f"ctrl+{c}" for c in "abcdefghijklmnopqrstuvwxyz"))
+TERM_STEPS_MAX, TERM_TEXT_MAX, TERM_PASTE_MAX = 64, 4000, 32000
+TERM_NO_TEXT = re.compile(r"[\x00-\x1f\x7f]")
+TERM_NO_PASTE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def check_term_steps(value: Any, field: str) -> list:
+    """A keyboard in order: a key of the list, text without a control code (a key has its own step), a paste. A
+    step of anything else is refused whole, so no escape sequence reaches a terminal through this door."""
+    if not isinstance(value, list) or not 1 <= len(value) <= TERM_STEPS_MAX:
+        raise bad_arg(field, f"a list of 1 to {TERM_STEPS_MAX} steps")
+    for step in value:
+        kind, item = next(iter(step.items())) if isinstance(step, dict) and len(step) == 1 else (None, None)
+        if kind == "key" and item in TERM_KEYS:
+            continue
+        if kind == "text" and isinstance(item, str) and 0 < len(item) <= TERM_TEXT_MAX and not TERM_NO_TEXT.search(item):
+            continue
+        if kind == "paste" and isinstance(item, str) and 0 < len(item) <= TERM_PASTE_MAX and not TERM_NO_PASTE.search(item):
+            continue
+        raise bad_arg(field, "a step is one key of the list, text without control codes, or a paste")
+    return value
 
 
 def check_date(value: Any, field: str, today: dt.date) -> str:

@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railOn, SCREEN_POLL_MS, tabStateKey, termParts } from '../logic.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railOn, SCREEN_FAST_MS, SCREEN_FAST_FOR_MS, SCREEN_POLL_MS, tabStateKey, termEcho, termKey, termParts, termPaste, termQueue } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -14,28 +14,38 @@ import { Btn, Chip, Empty, StateLine } from './parts.js'
 import { GuideLine, GuideTree } from './guide.js'
 import { TabReply } from './reply.js'
 
+const TERM_BATCH = 64            // the steps of one call (actions_base.py TERM_STEPS_MAX)
+const TERM_PASTE_MAX = 32000
+
 // ---------------------------------------------------------------- agent tabs
 
 /** One agent tab large in the middle, like the Claude Code CLI: its terminal read while the page is
  *  visible (useTabScreen), the end in view unless you scrolled up, and below it the message box and the
- *  buttons the tab's state allows. Read only through the terminal driver (screen); sending goes through tab_send */
+ *  buttons the tab's state allows. Read through the terminal driver (screen); sending goes through tab_send, and the
+ *  keyboard of the screen through tab_keys (TermScreen) */
 /** The terminal of one tab, read while the page is visible: every 1.5 s right after a change, slower up
  *  to every 5 s while it stays the same. The server answers unchanged to the hash held, and only a
  *  changed screen is stored, so an idle tab neither moves its text nor renders the view again: { screen, err } */
 export function useTabScreen(c, ref) {
   const [screen, setScreen] = useState(null)
   const [err, setErr] = useState(null)
+  const poke = useRef(() => {})
   useEffect(() => {
     let alive = true
     let timer = null
     let held = null
     let delay = SCREEN_POLL_MS
+    let fastUntil = 0
+    let reading = false
     setScreen(null)
     setErr(null)
     if (!ref) return undefined
     const pull = async () => {
+      const fast = Date.now() < fastUntil
       if (document.visibilityState === 'visible') {
-        const res = await c.tabScreen(ref, held?.hash)
+        reading = true
+        const res = await c.tabScreen(ref, held?.hash, fast)
+        reading = false
         if (!alive) return
         if (res.ok) {
           const next = screenPoll(held, res.data, delay)
@@ -44,22 +54,112 @@ export function useTabScreen(c, ref) {
           setErr(null)
         } else setErr(res.error?.message || res.error?.code || '?')
       }
-      if (alive) timer = setTimeout(pull, delay)
+      if (alive) timer = setTimeout(pull, Date.now() < fastUntil ? SCREEN_FAST_MS : delay)
+    }
+    // a key went in: read now and quickly for a moment, one read at a time
+    poke.current = () => {
+      fastUntil = Date.now() + SCREEN_FAST_FOR_MS
+      if (!reading) { clearTimeout(timer); pull() }
     }
     pull()
     return () => { alive = false; clearTimeout(timer) }
   }, [ref])
-  return { screen, err }
+  return { screen, err, poke: () => poke.current() }
 }
 
 /** A tab's terminal as lines, coloured by kind and tone (logic.js screenLines, termParts). While it is live the cursor
- *  blinks in the prompt when one stands near the end, else behind the last line */
-export function TermLines({ text, live = false, empty }) {
+ *  stands in the prompt when one is near the end, else behind the last line; solid and blinking while you type, an
+ *  outline otherwise, as in a terminal without focus. `echo` is what you typed and the screen does not show yet */
+export function TermLines({ text, live = false, typing = false, echo = '', empty }) {
   const lines = useMemo(() => screenLines(text), [text])
   if (!lines.length) return html`<p class="muted">${empty}</p>`
   const prompt = lines.findLastIndex(l => l.kind === 'user')
   const cursor = !live ? -1 : prompt >= 0 && prompt >= lines.length - 5 ? prompt : lines.length - 1
-  return lines.map((l, i) => html`<div key=${i} class=${`term-line term-${l.kind}${l.tone ? ` term-${l.tone}` : ''}`}>${l.text ? termParts(l.text).map((p, k) => p.c ? html`<span key=${k} class=${`term-${p.c}`}>${p.t}</span>` : p.t) : ' '}${i === cursor ? html`<span class="term-cursor" aria-hidden="true"></span>` : null}</div>`)
+  const atCursor = html`${echo ? html`<span class="term-echo">${echo}</span>` : null}<span class=${`term-cursor${typing ? ' is-on' : ''}`} aria-hidden="true"></span>`
+  return lines.map((l, i) => html`<div key=${i} class=${`term-line term-${l.kind}${l.tone ? ` term-${l.tone}` : ''}`}>${l.text ? termParts(l.text).map((p, k) => p.c ? html`<span key=${k} class=${`term-${p.c}`}>${p.t}</span>` : p.t) : ' '}${i === cursor ? atCursor : null}</div>`)
+}
+
+/** The screen of a tab as a terminal: read as useTabScreen reads it, the end in view unless you scrolled up. With
+ *  `canType` it takes the keyboard: a click on it (no selection made) puts the focus in a hidden box, and from there
+ *  a key goes straight to the tab, in order, one batch at a time, what piles up meanwhile in the next (tab_keys).
+ *  The box, and not the screen itself, so a dead key, an Option character and a paste arrive as what they make. Cmd
+ *  stays the Mac's, a click beside it or Ctrl+] gives the keyboard back to the page */
+export function TermScreen({ tabRef, screen, live = false, empty, canType = false, c, poke }) {
+  const t = T()
+  const body = useRef(null)
+  const stick = useRef(true)
+  const field = useRef(null)
+  const queue = useRef({ steps: [], busy: false, composing: false })
+  const [echo, setEcho] = useState('')
+  const [typing, setTyping] = useState(false)
+  useLayoutEffect(() => {
+    const el = body.current
+    if (el && stick.current) el.scrollTop = el.scrollHeight
+  }, [screen?.text, echo])
+  // the screen has what was typed: the echo goes, unless more is on its way
+  useEffect(() => {
+    const q = queue.current
+    if (!q.busy && !q.steps.length) setEcho('')
+  }, [screen?.hash])
+  const flush = async () => {
+    const q = queue.current
+    if (q.busy || !q.steps.length) return
+    q.busy = true
+    const steps = q.steps.slice(0, TERM_BATCH)
+    q.steps = q.steps.slice(TERM_BATCH)
+    const sent = await c.termKeys(tabRef, steps)
+    q.busy = false
+    poke?.()
+    if (sent === false) {
+      q.steps = []
+      setEcho('')
+    } else flush()
+  }
+  const press = step => {
+    const q = queue.current
+    q.steps = termQueue(q.steps, step)
+    stick.current = true
+    setEcho(e => termEcho(e, step))
+    flush()
+  }
+  const take = el => {
+    const text = el.value.replace(/[\x00-\x1f\x7f]/g, '')
+    el.value = ''
+    if (text) press({ text })
+  }
+  const onKey = e => {
+    if (e.ctrlKey && e.key === ']') {
+      e.preventDefault()
+      body.current?.focus()
+      return
+    }
+    const step = termKey(e)
+    if (!step) return
+    e.preventDefault()
+    e.stopPropagation()
+    press(step)
+  }
+  const onPaste = e => {
+    e.preventDefault()
+    const text = termPaste(e.clipboardData?.getData('text'))
+    if (text) press({ paste: text.slice(0, TERM_PASTE_MAX) })
+  }
+  const toField = () => field.current?.focus({ preventScroll: true })
+  // a drag selects, to copy: only a plain click starts typing
+  const onMouseUp = () => { if (window.getSelection?.()?.isCollapsed !== false) toField() }
+  // the focus on the screen itself (after a selection, after Ctrl+]): a letter starts typing, the arrows still scroll
+  const onBodyKey = e => { if (e.target === e.currentTarget && e.key.length === 1 && !e.metaKey && !e.ctrlKey) toField() }
+  return html`<div class=${`tabview-body${typing ? ' is-typing' : ''}`} ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
+    onMouseUp=${canType ? onMouseUp : undefined} onKeyDown=${canType ? onBodyKey : undefined}
+    onScroll=${e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
+    <${TermLines} text=${screen?.text} live=${live} typing=${typing} echo=${echo} empty=${empty} />
+    ${canType ? html`<textarea class="term-input" ref=${field} rows="1" aria-label=${t.termInput} autocomplete="off" autocapitalize="off" spellcheck="false"
+      onKeyDown=${onKey} onInput=${e => { if (!e.isComposing && !queue.current.composing) take(e.currentTarget) }} onPaste=${onPaste}
+      onCompositionStart=${() => { queue.current.composing = true }}
+      onCompositionEnd=${e => { queue.current.composing = false; take(e.currentTarget) }}
+      onFocus=${() => setTyping(true)} onBlur=${() => setTyping(false)}></textarea>
+    <p class="term-status small muted">${typing ? t.termTyping : t.termClick}</p>` : null}
+  </div>`
 }
 
 export function TabView({ s, c }) {
@@ -70,16 +170,9 @@ export function TabView({ s, c }) {
   const isControl = claude || !!tab?.is_control
   const relay = s.relay ?? {}
   const fb = s.ui.askFallback
-  const { screen, err } = useTabScreen(c, ref)
+  const { screen, err, poke } = useTabScreen(c, ref)
   const [text, setText] = useState('')
-  const body = useRef(null)
-  const stick = useRef(true)
   const dialog = useFocusOnOpen(true)
-  useLayoutEffect(() => {
-    const el = body.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [screen?.text])
-  const onScroll = e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }
   const busy = !!s.ui.busy[ref]
   const state = tab?.state ?? screen?.state
   const send = async () => {
@@ -88,7 +181,7 @@ export function TabView({ s, c }) {
     // to the control session through the relay when it is on (it waits for the end of a turn), else typed in
     const r = isControl && relay.online ? await c.askControl('free', { text: v }, v)
       : ref ? await c.act('tab_send', { tab_ref: ref, text: v }) : false
-    if (r) { setText(''); stick.current = true }
+    if (r) setText('')
   }
   return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.closeTabView() }}>
     <div class="dialog tabview term" role="dialog" aria-modal="true" aria-labelledby="tabview-title" ref=${dialog}>
@@ -115,9 +208,8 @@ export function TabView({ s, c }) {
           <${Btn} size="xs" variant="ghost" icon="close" label=${t.close} onClick=${() => c.setAskFallback(null)} />
         </div>
       </div>` : null}
-      ${!claude || ref ? html`<div class="tabview-body" ref=${body} onScroll=${onScroll} tabindex="0" role="log" aria-label=${t.tabViewLog}>
-        <${TermLines} text=${screen?.text} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading} />
-      </div>` : html`<div></div>`}
+      ${!claude || ref ? html`<${TermScreen} tabRef=${ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
+        canType=${canTab(s, 'keys')} c=${c} poke=${poke} />` : html`<div></div>`}
       <footer class="tabview-foot">
         ${tab ? html`<${TabReply} tab=${tab} s=${s} c=${c} bare />` : null}
         <${SendBox} id="tabview-input" label=${t.msgPlaceholder} value=${text} setValue=${setText} onSend=${send} busy=${busy}

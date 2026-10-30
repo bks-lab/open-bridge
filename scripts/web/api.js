@@ -159,7 +159,7 @@ export function createApi(transport = httpTransport()) {
     page: (page, section) => transport.get(`/api/page?page=${encodeURIComponent(page)}&section=${encodeURIComponent(section)}`),
     relay: () => transport.get('/api/relay'),
     // since: the hash of the screen the page holds; the server then answers unchanged without the text
-    tabScreen: (ref, since) => transport.get(`/api/tab/screen?ref=${encodeURIComponent(ref)}${since ? `&since=${encodeURIComponent(since)}` : ''}`),
+    tabScreen: (ref, since, fast) => transport.get(`/api/tab/screen?ref=${encodeURIComponent(ref)}${since ? `&since=${encodeURIComponent(since)}` : ''}${fast ? '&fast=1' : ''}`),
     // Work through, the Activity of a point (cached 20 s on the server; fresh skips it, after a note or an attachment)
     activity: (key, fresh) => transport.get(`/api/flow/activity?key=${encodeURIComponent(key)}${fresh ? '&fresh=1' : ''}`),
     // a document attached to the task of a point, its bytes as standard base64 (the one POST with a larger body cap)

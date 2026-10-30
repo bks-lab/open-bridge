@@ -18,6 +18,7 @@ the CORE JSON protocol: one request on stdin, one answer on stdout.
     {"verb": "move_tab", "tab": ref, "workspace": ws_ref}   (no index: tmux numbers windows itself)
     {"verb": "control", "control": {...}, "command": "...", "root": "..."}
     {"verb": "caps"} | {"verb": "focus", "tab": ref} | {"verb": "key", "tab": ref, "key": k}
+    {"verb": "keys", "tab": ref, "keys": [{"text": t} | {"key": k} | {"paste": t}]}
     {"verb": "screen", "tab": ref, "lines": n} | {"verb": "close", "tab": ref}
 
 Mapping: a tmux SESSION is a workspace, a WINDOW is a tab (its name is the tab
@@ -54,11 +55,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 VERBS = ["tabs", "sessions", "open", "launch", "send", "rename", "control",
-         "caps", "focus", "key", "screen", "close", "rename_workspace", "move_tab"]
+         "caps", "focus", "key", "keys", "screen", "close", "rename_workspace", "move_tab"]
 SHELLS = {"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "-zsh", "-bash", "-fish", "-sh", "login"}
 KEEP_SHELL = '; exec "${SHELL:-/bin/sh}" -l'
 KEYS = {"enter": ("Enter", False), "escape": ("Escape", False),
         **{k: (k, True) for k in ("y", "n", *map(str, range(1, 10)))}}
+# the keys of a live terminal, under tmux's names (workplace.py TERM_KEYS)
+TERM_KEYS = {"enter": "Enter", "escape": "Escape", "tab": "Tab", "shift+tab": "BTab", "backspace": "BSpace", "delete": "DC",
+             "up": "Up", "down": "Down", "left": "Left", "right": "Right", "home": "Home", "end": "End",
+             "pageup": "PPage", "pagedown": "NPage", **{f"ctrl+{c}": f"C-{c}" for c in "abcdefghijklmnopqrstuvwxyz"}}
 REF_RE = re.compile(r"%\d+")
 WS_REF_RE = re.compile(r"\$\d+")
 SEP = "\x1f"
@@ -682,6 +687,22 @@ def key(req: dict) -> list[str]:
     return [f"key {k} to {ref}"]
 
 
+def keys(req: dict) -> list[str]:
+    """A keyboard, in order: named keys by tmux's name, text and pastes as literal text."""
+    ref = check_ref(req["tab"])
+    steps = req.get("keys") or []
+    if any("key" in step and step["key"] not in TERM_KEYS for step in steps):
+        return ["ERROR a key that is not one of the terminal's"]
+    for step in steps:
+        if "key" in step:
+            tmux("send-keys", "-t", ref, TERM_KEYS[step["key"]])
+            continue
+        text = step.get("text", step.get("paste", ""))
+        for i in range(0, len(text), SEND_CHUNK):
+            tmux("send-keys", "-t", ref, "-l", text[i:i + SEND_CHUNK])
+    return [f"{len(steps)} steps to {ref}"]
+
+
 def screen(req: dict) -> dict:
     ref = check_ref(req["tab"])
     try:
@@ -731,7 +752,7 @@ def handle(req: dict) -> dict:
     if verb == "screen":
         return screen(req)
     actions = {"open": open_plan, "launch": launch, "send": send, "rename": rename, "control": control,
-               "focus": focus, "key": key, "close": close, "rename_workspace": rename_workspace,
+               "focus": focus, "key": key, "keys": keys, "close": close, "rename_workspace": rename_workspace,
                "move_tab": move_tab}
     if verb in actions:
         return {"report": actions[verb](req)}

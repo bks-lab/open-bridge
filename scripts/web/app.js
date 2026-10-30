@@ -1725,7 +1725,14 @@ const ctl = {
   askControl,
   setAskFallback: fb => setUi({ askFallback: fb }),
   closeTabView: () => setUi({ tabView: null }),
-  tabScreen: (ref, since) => api.tabScreen(ref, since),
+  tabScreen: (ref, since, fast) => api.tabScreen(ref, since, fast),
+  // the live terminal: no busy mark and no note for a key, only when the tab took nothing (views/tabs.js TermScreen)
+  termKeys: async (ref, steps) => {
+    const res = await api.action('tab_keys', { tab_ref: ref, steps })
+    if (!res.ok) pushNote(actionFailNote(res, T()))
+    else if (!res.data.ok) pushNote({ text: res.data.note, tone: 'bad' })
+    return !!res.ok && !!res.data.ok
+  },
   github: (ref, fresh) => api.github(ref, fresh),
   issuePlan: ref => api.issue(ref),
   loadInbox: id => loadDetail('inbox', id),

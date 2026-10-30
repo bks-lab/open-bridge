@@ -9,13 +9,14 @@ reads the screen fresh before anything reaches the tab. Uses the world of test_b
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_bridge_cockpit import STATUS, World, W, ok, private_key_dir, writes  # noqa: E402,F401  (the autouse fixture comes along)
+from test_bridge_cockpit import STATUS, World, W, fail, ok, private_key_dir, writes  # noqa: E402,F401  (the autouse fixture comes along)
 
 from lib.bridge_cockpit import asks  # noqa: E402
 from lib.bridge_cockpit.actions import ActionError  # noqa: E402
@@ -350,6 +351,40 @@ def asked(world, by_ref):
     world.app.asks_enabled = True
     world.app.tabs.poll()
     return read
+
+
+def test_tab_keys_go_straight_to_the_tab_light_and_without_the_words(world):
+    # the terminal of the page is a keyboard: no guard on what the tab shows, a shell tab too, no note, no rebuild
+    rebuilt = []
+    world.app.collector.rebuild = lambda: rebuilt.append(1)
+    steps = [{"text": "secret pass"}, {"key": "enter"}]
+    answer = world.act("tab_keys", tab_ref="surface:13", steps=steps)
+    assert answer["ok"] and not answer["note"] and rebuilt == []
+    assert world.runner.of("workplace.keys") == [W(world, "keys", "surface:13", json.dumps(steps, ensure_ascii=False))]
+    audit = (world.app.state_dir / "audit.log").read_text(encoding="utf-8")
+    assert "tab_keys surface:13" in audit and "secret" not in audit
+
+
+@pytest.mark.parametrize("steps", [
+    [], "ls", [{"key": "f13"}], [{"key": "enter", "text": "x"}], [{"text": ""}], [{"text": "a\x1b[2J"}], [{"text": "a\nb"}],
+    [{"paste": "a\x1bb"}], [{"text": "x" * 4001}], [{"paste": "x" * 32001}], [{"text": "a"}] * 65, [{"shell": "ls"}], ["ls"]])
+def test_tab_keys_take_only_keys_of_the_list_and_text_without_control_codes(world, steps):
+    with pytest.raises(ActionError) as err:
+        world.act("tab_keys", tab_ref="surface:13", steps=steps)
+    assert err.value.code == "invalid_argument" and world.runner.of("workplace.keys") == []
+
+
+def test_tab_keys_need_the_drivers_keys(world):
+    world.app.driver_caps = lambda: {"tabs", "key", "screen"}
+    with pytest.raises(ActionError) as err:
+        world.act("tab_keys", tab_ref="surface:13", steps=[{"key": "enter"}])
+    assert (err.value.status, err.value.code) == (503, "driver_cannot")
+
+
+def test_tab_keys_say_it_when_the_tab_took_nothing(world):
+    world.runner.handlers["workplace.keys"] = lambda argv: fail("the surface is gone")
+    answer = world.act("tab_keys", tab_ref="surface:13", steps=[{"key": "enter"}])
+    assert not answer["ok"] and "the surface is gone" in answer["note"]
 
 
 def test_tab_send_with_seen_reads_the_screen_fresh_and_refuses_a_new_question(world):
