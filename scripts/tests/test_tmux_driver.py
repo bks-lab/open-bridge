@@ -311,6 +311,15 @@ def test_keys_type_as_a_keyboard_does(tm):
     assert bad[0].startswith("ERROR")
 
 
+@pytest.mark.parametrize("asked, read", [(40, 40), (3000, 3000), (5000, 5000), (99999, 5000), (None, td.SCREEN_LINES)])
+def test_screen_reads_the_scrollback_up_to_five_thousand_lines(monkeypatch, asked, read):
+    seen = []
+    monkeypatch.setattr(td, "check_ref", lambda ref: ref)
+    monkeypatch.setattr(td, "capture", lambda ref, n=None: seen.append(n) or "row\n\n")
+    req = {"verb": "screen", "tab": "%3", **({"lines": asked} if asked else {})}
+    assert td.screen(req) == {"text": "row"} and seen == [read]
+
+
 @needs_tmux
 def test_screen_strips_trailing_blanks_and_limits_lines(tm):
     ref = tm.by_name("two")["ref"]

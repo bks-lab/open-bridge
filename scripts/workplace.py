@@ -106,6 +106,7 @@ PRIORITY_BONUS = {"P0": 3, "P1": 2, "P2": 1}
 ROW_CAP = 10            # a slug named in every log row must not drown the rest
 LABEL_MAX = 30
 DRIVER_TIMEOUT_SEC = 120
+SCREEN_MAX_LINES = 5000     # the most a screen read asks a driver for: a shell tab's whole scrollback (the cockpit's tab history)
 # A router answers within seconds; a hanging one must not hold a dashboard click past its own
 # timeout (the click would report a failure while tabs still open, and a second click doubles them).
 ROUTER_TIMEOUT_SEC = 45
@@ -1750,7 +1751,7 @@ def main(argv=None) -> int:
         return 1 if getattr(driver, "failed", False) else 0
     ref = tab.get("ref") or tab["name"]
     if args.cmd == "screen":
-        text = driver.screen(ref, max(1, min(args.lines, 500)))
+        text = driver.screen(ref, max(1, min(args.lines, SCREEN_MAX_LINES)))
         if text is None:
             print(getattr(driver, "error", "") or "the driver cannot read this tab", file=sys.stderr)
             return 1
