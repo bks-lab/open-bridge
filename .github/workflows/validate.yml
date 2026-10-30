@@ -194,6 +194,9 @@ jobs:
       - name: Data model contract (every family once, renderings generated)
         run: bash scripts/tests/test-data-model.sh
 
+      - name: AGENTS.md keeps its invariants, imports and pointers
+        run: python3 -m pytest -q scripts/tests/test_kernel_invariants.py scripts/tests/test_entry_file.py scripts/tests/test_onboarding_one_path.py
+
       - name: Run edge-guard test suite
         run: bash scripts/tests/test-edges.sh
 
@@ -253,6 +256,14 @@ jobs:
       - name: Every config family is reachable, and the scenarios walk
         run: python3 scripts/check-reachability.py
 
+      # A sub-agent loads the entry file, its @-imports and the listings, and
+      # no Phase 1: no standing order, no registry card. A family named only in
+      # an eager order is resident in the session and invisible to every
+      # dispatch. CORE names its families in docs/families.md, which AGENTS.md
+      # imports, so this passes by construction once the index is imported.
+      - name: Every config family is reachable from a sub-agent too
+        run: python3 scripts/check-reachability.py --surface subagent
+
       # And the check has to be able to fail. Hide each pointer in turn and
       # demand a finding: a needle that matches nothing softens nothing.
       - name: Prove every reachability needle bites
@@ -260,8 +271,10 @@ jobs:
 
       # One picture of the data model, held to the tree: every config family
       # is described exactly once in docs/data-model.yaml, and the tables in
-      # docs/data-model.md and the ring on the landing page are generated from
-      # it. The landing page said "the agent reads every ring" for weeks after
+      # docs/data-model.md, the ring on the landing page and docs/families.md
+      # (imported by AGENTS.md) are generated from it; it also checks every
+      # route/skill/guide field and guards the AGENTS.md kernel sections.
+      # The landing page said "the agent reads every ring" for weeks after
       # that stopped being true, because nothing compared it with anything.
       - name: The data model covers every family, and its renderings match it
         run: python3 scripts/data-model.py

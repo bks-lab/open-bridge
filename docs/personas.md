@@ -117,8 +117,9 @@ persona_ref: example-freelancer
 # ... rest of context ...
 ```
 
-Skills and sub-agents that run in this context read `persona_ref` to
-resolve tax data and destination paths. If no `persona_ref` is set,
+Load a persona when a skill or routing order names it via `persona_ref`;
+never by default. Skills and sub-agents that run in this context read
+`persona_ref` to resolve tax data and destination paths. If no `persona_ref` is set,
 anything that requires a persona raises a clear error with a link to
 this documentation.
 

@@ -45,6 +45,8 @@ always_on:
     what: "The operating manual and the entry file: Claude Code loads it directly, other tools read it as text."
   - label: "SOUL/IDENTITY"
     what: "identity/agent/SOUL.md and IDENTITY.md, imported by AGENTS.md once onboarding has created them."
+  - label: "family index"
+    what: "docs/families.md: which config folder to read when, generated from this file and imported by AGENTS.md."
   - label: "config slice"
     what: "`python3 scripts/bridge-config.py --session`: the six bridge-config.yaml blocks a session needs; the others are read by the skill that owns them."
   - label: "registry card"
@@ -60,6 +62,16 @@ always_on:
 
 # One row per config family. `island` says which tier each part belongs to;
 # `lives` lists the stores its parts use (keys of `stores` above).
+# Three more fields feed docs/families.md, the family index AGENTS.md imports,
+# which every session and every sub-agent therefore carries:
+#   route  "read it when ...": the subject that sends a session to this folder,
+#          plus any guardrail that must hold before it is opened. Required on
+#          every row under identity/, infra/ and workflow/; the top-level rows
+#          are listed by path only.
+#   skill  the skill that owns the folder; must have skills/<name>/SKILL.md.
+#   guide  the docs that carry the mechanics; each must exist.
+# Not in _template.yaml: templates are copied into entries verbatim, and
+# `route:` already means something inside some entries.
 families:
   - path: identity/accounts/
     object: "a cloud tenant, subscription or secret-store reference"
@@ -68,6 +80,9 @@ families:
     references: ["persona_ref → identity/personas/", "*_ref → a secret store, by URI"]
     writer: "a person; onboarding may suggest the first"
     read: named
+    route: "a cloud tenant, subscription or vault reference; read it before ANY cloud operation (az, wrangler, gcloud, gh api, provider REST) instead of reconstructing tenant, subscription or vault from memory; no raw secret in YAML, reference URIs only"
+    skill: secrets
+    guide: ["docs/cloud-accounts.md", "rules/secret-placement.md"]
 
   - path: identity/agent/
     object: "this orchestrator's own name, role and voice"
@@ -76,6 +91,8 @@ families:
     references: []
     writer: "onboarding seeds it; accepted /bridge-learn lessons fold into SOUL.md"
     read: start
+    route: "this orchestrator's own name, role and voice; IDENTITY.md, SOUL.md and INSTANCE.md load with AGENTS.md"
+    guide: ["identity/agent/README.md"]
 
   - path: identity/contracts/
     object: "a recurring obligation the user holds: utility, telco, insurance, subscription"
@@ -84,6 +101,7 @@ families:
     references: ["delivery_address_ref → identity/personas/"]
     writer: "a person"
     read: named
+    route: "a recurring obligation: utility, telco, insurance, SaaS"
 
   - path: identity/designs/
     object: "a brand a generated visual can wear: colours, type and shapes, in the DESIGN.md format"
@@ -92,6 +110,8 @@ families:
     references: []
     writer: "a person; contexts, personas and themes point at it (design_ref, branding.design), scripts/designs.py resolves it"
     read: named
+    route: "a brand: colours, type and shapes a generated visual uses; DESIGN.md is the default and the index to the others; never hand-pick a brand colour, ask `scripts/designs.py resolve` and add a missing token to the design that owns it"
+    guide: ["DESIGN.md"]
 
   - path: identity/mail-footers/
     object: "how a drafted mail is signed: contact block, badges, cards, a dated notice, small print"
@@ -100,6 +120,9 @@ families:
     references: ["persona_ref → identity/personas/", "extends → identity/mail-footers/"]
     writer: "a person (skills/mail-draft reads and renders it)"
     read: named
+    route: "drafting a mail: how it is signed"
+    skill: mail-draft
+    guide: ["docs/mail-draft.md"]
 
   - path: identity/mandants/
     object: "a group that receives outgoing messages"
@@ -108,6 +131,9 @@ families:
     references: ["context_ref → workflow/contexts/", "mail_profile → workflow/mail-profiles/"]
     writer: "/mandants"
     read: named
+    route: "who RECEIVES an outgoing message (a recipient group, not an identity the user holds); on when mandants.enabled"
+    skill: mandants
+    guide: ["docs/mandants.md"]
 
   - path: identity/personas/
     object: "an identity the user holds: signature, tax data, filing paths"
@@ -116,6 +142,8 @@ families:
     references: ["mandant_refs → identity/mandants/", "design_ref → identity/designs/"]
     writer: "a person; onboarding may seed the first"
     read: named
+    route: "an identity the user HOLDS: signature, tax data, filing paths; loaded when a skill or routing order names it via persona_ref"
+    guide: ["docs/personas.md"]
 
   - path: identity/vehicles/
     object: "a vehicle the user owns or leases, and the persona that bears it"
@@ -124,6 +152,7 @@ families:
     references: ["persona → identity/personas/", "refs → identity/contracts/"]
     writer: "a person"
     read: named
+    route: "a vehicle the user owns or leases: plate, VIN, the persona that bears it"
 
   - path: infra/backups/
     object: "what is backed up where, and whether it is fresh"
@@ -132,6 +161,8 @@ families:
     references: ["remote_ref → infra/remotes/"]
     writer: "topology by a person; _state.yaml only by the backup executor an instance brings"
     read: named
+    route: "what is backed up where, and whether it is fresh; activated by topology.yaml existing; CORE ships the data model, no executor, and only the backup executor writes _state.yaml"
+    guide: ["infra/backups/README.md"]
 
   - path: infra/channels/
     object: "an outbound transport: mail, chat, bot, digest"
@@ -140,6 +171,9 @@ families:
     references: ["runtime.remote → infra/remotes/"]
     writer: "/channel"
     read: named
+    route: "an outbound transport: mail, chat, bot, digest; scheduled sends go to /schedule"
+    skill: channel
+    guide: ["docs/channels.md"]
 
   - path: infra/instances/
     object: "another Bridge this one should know about"
@@ -148,6 +182,8 @@ families:
     references: ["location.host → infra/remotes/", "promote_config_ref → bridge-config.yaml upstreams"]
     writer: "a person; the overlay engine keeps subscribes_overlays current"
     read: named
+    route: "another Bridge this one should know about"
+    guide: ["docs/multi-instance.md"]
 
   - path: infra/remotes/
     object: "a machine: ssh, wake, services"
@@ -156,6 +192,9 @@ families:
     references: ["layout_ref → infra/backups/"]
     writer: "/remote"
     read: named
+    route: "a machine: ssh, wake, services, \"which PC\"; remote means a machine here, never `git remote`, so check this folder before asking \"which PC?\"; capability `arm` marks the always-on machine"
+    skill: remote
+    guide: ["docs/remotes.md", "docs/always-on-machine.md"]
 
   - path: infra/secret-stores/
     object: "where a secret lives, who reaches it, which kind belongs in it"
@@ -166,6 +205,9 @@ families:
                  "account_ref → identity/accounts/"]
     writer: "/secrets"
     read: named
+    route: "where a secret lives, who reaches it, and which kind belongs in it"
+    skill: secrets
+    guide: ["docs/secrets.md"]
 
   - path: infra/a2a-peers/
     object: "another Bridge or A2A agent this one may ask: card URL, auth, token reference"
@@ -174,6 +216,8 @@ families:
     references: ["credential_ref → a secret store, by URI"]
     writer: "/a2a"
     read: named
+    route: "an A2A agent this Bridge may ask: card, auth, token reference"
+    skill: a2a
 
   - path: infra/object-stores/
     object: "where content that is not configuration lives, who reaches it, which class belongs in it"
@@ -183,6 +227,9 @@ families:
                  "reachable_from.machines → infra/remotes/"]
     writer: "a person; /object-store reads it"
     read: named
+    route: "where content that is not configuration lives: recordings, documents, exports"
+    skill: object-store
+    guide: ["docs/object-store.md"]
 
   - path: infra/transcriptions/
     object: "where recordings become transcripts, and where those land"
@@ -191,6 +238,8 @@ families:
     references: ["worker host → infra/remotes/"]
     writer: "the meeting-transcription skill"
     read: named
+    route: "recording to transcript topology"
+    guide: ["docs/transcription-worker.md"]
 
   - path: infra/utilities/
     object: "a supply connection at a location: power, gas, water, heat"
@@ -199,6 +248,7 @@ families:
     references: ["portal_password_ref → a secret store, by URI"]
     writer: "a person"
     read: named
+    route: "a supply contract at a location: power, gas, water, heat"
 
   - path: workflow/briefings/
     object: "one briefing a person can ask for: its sections, sources, queries and inbox rules"
@@ -207,6 +257,9 @@ families:
     references: ["account_ref → identity/accounts/", "github-board boards → workflow/projects/"]
     writer: "a person (scripts/briefing.py reads and runs it)"
     read: named
+    route: "what a briefing shows, from which trackers"
+    skill: briefing
+    guide: ["docs/briefings.md"]
 
   - path: workflow/calendars/
     object: "a scheduled outbound action: what, to whom, when"
@@ -215,6 +268,9 @@ families:
     references: ["recipients → identity/mandants/"]
     writer: "/calendar"
     read: named
+    route: "a scheduled outbound action: what, to whom, when; on when calendar.enabled"
+    skill: calendar
+    guide: ["docs/calendar.md"]
 
   - path: workflow/contexts/
     object: "where a piece of work gets documented"
@@ -223,6 +279,7 @@ families:
     references: ["persona_ref → identity/personas/", "design_ref → identity/designs/"]
     writer: "a person, or an org overlay"
     read: named
+    route: "where a piece of work gets documented"
 
   - path: workflow/mail-profiles/
     object: "an occasion for mail: footer, theme, greeting, snippets, attachments, client, who it applies to"
@@ -232,6 +289,9 @@ families:
                  "extends → workflow/mail-profiles/", "applies_to.mandants → identity/mandants/"]
     writer: "a person (skills/mail-draft selects and applies it)"
     read: named
+    route: "drafting a mail: the occasion"
+    skill: mail-draft
+    guide: ["docs/mail-draft.md"]
 
   - path: workflow/meetings/
     object: "a recurring meeting series: cadence, meeting folders, wiki protocol target"
@@ -240,6 +300,7 @@ families:
     references: ["followup_skill → skills/", "outputs.distribution.mandant → identity/mandants/"]
     writer: "a person; /debrief and /briefing read it"
     read: named
+    route: "a recurring meeting series"
 
   - path: workflow/projects/
     object: "a board's field values and state map, read before any tracker call"
@@ -248,6 +309,8 @@ families:
     references: ["context_ref → workflow/contexts/", "mandant_ref → identity/mandants/"]
     writer: "a person, or an org overlay; board items only through github-projects-manager"
     read: named
+    route: "a board's field values and state map, before ANY tracker call; never hardcode a field value"
+    skill: github-projects-manager
 
   - path: workflow/ai-services/
     object: "which AI provider and model one consumer uses (briefing chat, task review, triage, a worker)"
@@ -256,6 +319,8 @@ families:
     references: []
     writer: "a person"
     read: named
+    route: "which AI model a service or worker uses (default Claude)"
+    guide: ["docs/ai-services.md"]
 
   - path: workflow/cost-centers/
     object: "one project whose costs are gathered across accounts (the cost card's Project filter)"
@@ -265,6 +330,8 @@ families:
                  "persona_ref → identity/personas/", "mandant_ref → identity/mandants/"]
     writer: "a person"
     read: named
+    route: "a project's costs across accounts: the cost card's Project filter"
+    guide: ["docs/cloud-costs.md"]
 
   - path: workflow/workloads/
     object: "one declared run on one machine"
@@ -274,6 +341,9 @@ families:
                  "response.recipients → identity/mandants/", "response.notify_via → infra/channels/"]
     writer: "/workload"
     read: named
+    route: "one declared run on one machine; deliberately no status: field, state comes from the live service manager"
+    skill: workload
+    guide: ["docs/workloads.md"]
 
   - path: workflow/workspaces/
     object: "a named binding of code repos and config overlays"
@@ -282,6 +352,9 @@ families:
     references: ["overlays → overlays.lock.yaml", "repos → a code repository, cloned under .bridge/"]
     writer: "/workspace (scripts/workspace.py)"
     read: named
+    route: "a named binding of repos + config overlays"
+    skill: workspace
+    guide: ["docs/workspaces.md"]
 
   - path: rules/
     object: "a guardrail, tiered by folder"
@@ -331,6 +404,14 @@ families:
     writer: "a person"
     read: start
 
+  - path: mods/
+    object: "a Claude Code mod: a plugin with function hooks, Claude Code only"
+    island: "core: README.md, the marketplace file and each shipped mod; user: .claude/mods/"
+    lives: [core, private]
+    references: []
+    writer: "CORE maintainers; scripts/categorize-commits.py enumerates the shipped mods"
+    read: named
+
   - path: work/
     object: "the work system: tasks, streams, log, board, memory"
     island: "user, the whole folder"
@@ -338,6 +419,44 @@ families:
     references: []
     writer: "scripts/worklog.py, scripts/gen-board.py, scripts/inbox.py (work/inbox/), and the skills that write a STATUS.md"
     read: start
+
+  - path: docs/
+    object: "a stand-alone guide: mechanics, models and how-tos the routes point at"
+    island: "core, the whole folder"
+    lives: [core]
+    references: []
+    writer: "CORE maintainers; docs/families.md is generated by scripts/data-model.py"
+    read: named
+
+# What AGENTS.md may hold. It changes only when an invariant changes; lists
+# live in generated files. `python3 scripts/data-model.py` fails in the CORE
+# repo when AGENTS.md has a `## ` section not named here, a family table row,
+# more table lines than max_table_rows, more bytes than max_bytes, or no
+# column-0 `@docs/families.md` line; in a fork it warns. Widening the kernel is
+# a diff to this block, which a reviewer sees.
+kernel:
+  sections:
+    - "Loaded with this file"
+    - "Required Reading"
+    - "Session Start Detection (automatic)"
+    - "Theme"
+    - "Agents"
+    - "Agent Identity"
+    - "Standing Orders"
+    - "Layout — Cluster-Wrappers"
+    - "Scope — structural, not declarative"
+    - "Skills (Universal)"
+    - "Tool Mapping"
+    - "Rules"
+    - "Task Management"
+    - "Guardrails beside the families"
+    - "Variable Interpolation"
+    - "What NOT to Do"
+  # the session-state table (8 lines) and the skills scope table (6 lines)
+  max_table_rows: 16
+  # Codex reads at most 32 KiB of AGENTS.md by default (project_doc_max_bytes);
+  # past it the tail is dropped silently.
+  max_bytes: 32768
 
 # Files an instance carries beside the families.
 beside:

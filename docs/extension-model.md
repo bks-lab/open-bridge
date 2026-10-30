@@ -363,6 +363,25 @@ claude plugins add <your-org>/bridge-org-extension
 
 ---
 
+## Skill tiers
+
+A skill's tier lives in `metadata.scope` (`core`, `org`, `personal`, `user`; the
+table of where each ships is in [`AGENTS.md` § Skills (Universal)](../AGENTS.md)).
+Which skill sits in which tier is per instance, so no CORE file lists it: an
+enumeration in a CORE file diverges on the day it is written and carries local
+skill names upward on promote. The validator writes the live map:
+
+```bash
+python3 scripts/validate-skill-scope.py     # validates, then writes .bridge/skill-scope.md
+```
+
+That map is derived and gitignored; the frontmatter is authoritative, and it is
+what `/bridge-promote` and `/bridge-sync` route by (CI and pre-commit run the
+validator). A `scope: core` skill earns its tier by staying generic inside: it
+reads config and never embeds instance logic, hardcoded queries, org IDs,
+personas or thresholds. If it needs a new knob, add the config key and read it
+(next section).
+
 ## Generic CORE Skills — the one "never hardcode" principle
 
 Principles 4, 6, and 8 are the same rule from three angles: **a CORE file or
@@ -372,7 +391,7 @@ single principle, not separate rules:
 
 | Domain | Per-domain statement | Stated in |
 |---|---|---|
-| Tracker fields | `workflow/projects/<slug>.yaml` is the contract — never hardcode field values | `AGENTS.md` § Project Registry, `rules/knowledge-growth.md` |
+| Tracker fields | `workflow/projects/<slug>.yaml` is the contract — never hardcode field values | `AGENTS.md` § Trackers and the Project Registry, `rules/knowledge-growth.md` |
 | Routing | routing lives in `workflow/contexts/<id>.yaml` — never hardcoded in skills | principle 4 above |
 | Backups | `topology.yaml` is the truth — never hardcode paths | `infra/backups/README.md` |
 | Tracker queries | briefing reads `integrations.{name}.*` from `bridge-config.yaml` — not hardcoded | `skills/briefing/` |
@@ -401,4 +420,4 @@ Operating-manual summary (auto-loaded at session start): [`AGENTS.md` § Skills 
 - [`docs/personas.md`](personas.md) — persona schema + multi-persona patterns
 - [`docs/mandants.md`](mandants.md) — mandant schema + recipient groups
 - [`docs/calendar.md`](calendar.md) — calendar entries + scheduling
-- [`AGENTS.md` § Layout](../AGENTS.md) — canonical CORE/USER table
+- [`docs/structure.md`](structure.md): canonical CORE/USER table; family map in [`docs/families.md`](families.md)

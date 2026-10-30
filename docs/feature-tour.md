@@ -25,7 +25,8 @@ It only ORDERS what surfaces first. It never gates or hides a family, so every
 section below is available whenever you reach for it.
 
 This doc is the per-family "create your first X" guide, one section for
-every family in [`AGENTS.md` § Layout](../AGENTS.md). Each section is
+every family in [`docs/families.md`](families.md), generated from
+`docs/data-model.yaml`. Each section is
 self-contained. Skim the index, jump to what you need, ignore the rest.
 
 ## Index

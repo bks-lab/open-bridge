@@ -14,7 +14,8 @@ only that one, and this manual disappears from the session.
 
 It is a lean router: it holds the behavioural invariants and guardrails, says what each
 system *is* and *when it matters*, and points at the `rules/` and `docs/` files that
-carry the mechanics. Humans start with the [README](README.md).
+carry the mechanics. This file changes only when an invariant changes; lists live in
+generated files. Humans start with the [README](README.md).
 
 ## Loaded with this file
 
@@ -25,12 +26,14 @@ files yourself before your first answer, if it exists.** They are part of this m
 @identity/agent/IDENTITY.md
 @identity/agent/SOUL.md
 @identity/agent/INSTANCE.md
+@docs/families.md
 
 `identity/agent/IDENTITY.md` (who this agent is) and `identity/agent/SOUL.md` (how it
 behaves) are seeded at onboarding. `identity/agent/INSTANCE.md` is the instance's own
 always-on file: USER, never shipped by CORE or an overlay, free to `@`-import more. It
-is the only place a fork adds always-on text, so nobody edits this file. All three
-reach sub-agents.
+is the only place a fork adds always-on text, so nobody edits this file.
+`docs/families.md` is the config-family index (which folder to read when), generated
+from `docs/data-model.yaml`. All four reach sub-agents.
 
 ## Required Reading
 
@@ -38,19 +41,15 @@ reach sub-agents.
    convention; the content applies to all agents.
 2. **Read the session slice of `bridge-config.yaml`** with
    `python3 scripts/bridge-config.py --session` (identity, purpose, user_profile,
-   theme, language, work). The other fifteen blocks belong to the skill that owns
-   them; read a block with `--keys <block>` when that skill runs.
+   theme, language, work). Other blocks belong to their skill (`--keys <block>`).
 3. **Index the registries if present**: `ecosystem.yaml` (repos, packages,
-   infrastructure, workspaces) and every `ecosystem.<name>.yaml` beside it (an org
-   overlay's fragment, a personal one). User-specific (ignored unless the origin is
-   private, docs/structure.md), so absent on a fresh clone. None is an `@`-import:
-   Phase 1 runs `python3 scripts/context-index.py --registries` for the settings plus
-   one line per entry, and `python3 scripts/context-index.py <file> --get <name>`
-   fetches an entry when the work names one
-   ([`docs/context-index.md`](docs/context-index.md)). A sub-agent never runs Phase 1;
-   it runs that command itself when it needs a registry. `ecosystem.example.yaml` **is**
-   present on a fresh clone as the registry template — onboarding uses it as the starting
-   point (copy + auto-populate → `ecosystem.yaml`); do not hand-copy it.
+   infrastructure, workspaces) and every `ecosystem.<name>.yaml` beside it. They are
+   user-specific, so absent on a fresh clone, and none is an `@`-import: Phase 1 runs
+   `python3 scripts/context-index.py --registries` for one line per entry, and
+   `python3 scripts/context-index.py <file> --get <name>` fetches an entry when the work
+   names one ([`docs/context-index.md`](docs/context-index.md)). A sub-agent never runs
+   Phase 1; it runs that command itself. `ecosystem.example.yaml` is the template
+   onboarding copies; do not hand-copy it.
 
 **A question and no idea which file answers it?** Look it up in
 [`docs/where-things-live.md`](docs/where-things-live.md) first; not there,
@@ -104,10 +103,8 @@ agents. Built-in: `professional` (default, en) plus locale variants; set via
 Two different things share the word, and confusing them is the usual mistake.
 
 **Sub-agents** (`.claude/agents/*.md`) are *inward*: ephemeral, spawned inside
-your session so heavy or parallel work (log dumps, file trees, API results)
-never fills the main context; they return a structured summary. Add one by
-dropping in a `{name}.md`; no registration. Without a delegation API they run
-inline (§ Tool Mapping).
+your session so heavy or parallel work never fills the main context; they return a
+structured summary. Without a delegation API they run inline (§ Tool Mapping).
 
 **Bridge-Agents** (`agents/`) are *outward*: persistent, addressable A2A
 endpoints that front a persona to the world and to peer bridges, under a human
@@ -121,43 +118,27 @@ them, suggest the optional Bridge Deck in one line, never auto-install
 
 ## Agent Identity
 
-The orchestrator carries its own identity, distinct from `personas/` (identities
-the user holds) and `mandants/` (recipient groups): `identity/agent/IDENTITY.md`
-(who am I) and `SOUL.md` (how I behave). CORE ships only the seeds; onboarding
-writes the live files, which stay on the `user/*` branch and never promote. They
-load through § Loaded with this file. SOUL.md is capped at 80 lines / 4 KB, enforced
-by `bridge-audit`. Guide: [`identity/agent/README.md`](identity/agent/README.md).
+The orchestrator's own identity (`identity/agent/IDENTITY.md`, `SOUL.md`) is distinct
+from `personas/` (identities the user holds) and `mandants/` (recipient groups). CORE
+ships only the seeds; onboarding writes the live files, which never promote. SOUL.md
+is capped at 80 lines / 4 KB, enforced by `bridge-audit`. Guide:
+[`identity/agent/README.md`](identity/agent/README.md).
 ---
 
 ## Standing Orders
 
 `protocols/standing-orders/*.md` are **always-on rules** loaded every session when task
-management is enabled (task-sync, board-task-criteria, drift-advisory, …). Each carries
-`name`, `scope`, `enforcement` and `applies_to` frontmatter; `scope: always` orders are
-matched against every sub-agent dispatch, then filtered by `applies_to` (sub-agent names,
-empty = all). `protocols/` stays **top-level**: `standing-orders/` ships CORE defaults,
-user-authored orders live in `standing-orders/user/`.
-
-`scope: always` says an order **applies** always; `load:` says when its **body**
-is read. `load: eager` (the default) reads it at session start; `load: on-trigger`
-keeps only a `summary` and a `triggers` vocabulary in context and fetches the body
-when that vocabulary comes up — the disclosure model skills already use. Stay
-eager only when the order bites while nobody says its own vocabulary. The index a
-session carries is `python3 scripts/standing-orders.py --index`; `--check` refuses
-an order that defers without a trigger, since it would read as enforced and load
-never.
+management is enabled; user-authored orders live in `standing-orders/user/`. `load: eager` (the default) reads an order's body at session
+start; `load: on-trigger` keeps only its `summary` and `triggers` in context and fetches
+the body when that vocabulary comes up. The index a session carries is
+`python3 scripts/standing-orders.py --index`. Frontmatter (`name`, `scope`,
+`enforcement`, `applies_to`, `load`): [`protocols/standing-orders/README.md`](protocols/standing-orders/README.md).
 
 The always-on surface as a whole carries a declared ceiling, the same idea as the
 `SOUL.md` cap: `context-budget.yaml` holds it, `python3 scripts/measure-context.py`
-reports and enforces it (bytes gate, token counts inform), and CI fails on an
-always-on file nobody declared.
-
-**Three channels reach a session, and only two are files.** The `@`-imports and
-the Phase 1 reads come off disk. The third is DERIVED: the harness injects
-`name` + `description` of every skill and sub-agent into every session and
-dispatch, one line each. Measured as `listing:skills` and `listing:agents`, capped
-on the sum, heaviest entries named. It is load-bearing, so `check-reachability.py`
-reads it too: a description naming a config path is a route.
+reports and enforces it, and CI fails on an always-on file nobody declared. What else
+reaches a session (the skill and sub-agent listings):
+[`docs/context-index.md`](docs/context-index.md#three-channels-reach-a-session).
 
 **A sub-agent's surface is strictly smaller than its parent's:** imports and
 listings, never Phase 1, so no standing order, board or work log. A pointer that
@@ -173,46 +154,13 @@ Config lives in **three semantic cluster-wrappers**, every config type in its ow
 **folder**:
 
 `identity/` WHO am I, to WHOM do I send · `infra/` WHERE does what run, HOW
-reach · `workflow/` WHAT happens when. Every family below is a route: read the
-folder when its subject comes up, and its `_template.yaml` says what belongs in
-one. `scripts/check-reachability.py` fails CI when a family in the tree is named
-in nothing a session loads, so this list cannot quietly fall behind the tree.
-Entries also reference each other (`bridge_refs:`, `*_ref:`, `related_*:`);
-those references are the graph a session walks after the first hop, and
-`scripts/check-edges.py` holds them to resolving (`--neighbours <path>` shows
-one hop both ways, `--fix` rewrites a reference whose task merely moved KIND).
-
-| Family | Read it when |
-|---|---|
-| `identity/personas/` | an identity the user HOLDS: signature, tax data, filing paths |
-| `identity/mandants/` | who RECEIVES an outgoing message |
-| `identity/accounts/` | a cloud tenant, subscription or vault reference |
-| `identity/contracts/` | a recurring obligation: utility, telco, insurance, SaaS |
-| `identity/vehicles/` | a vehicle the user owns or leases: plate, VIN, the persona that bears it |
-| `identity/agent/` | this orchestrator's own name, role and voice |
-| `identity/designs/` | a brand: colours, type and shapes a generated visual uses |
-| `infra/remotes/` | a machine: ssh, wake, services, "which PC" |
-| `infra/channels/` | an outbound transport: mail, chat, bot, digest |
-| `infra/backups/` | what is backed up where, and whether it is fresh |
-| `infra/instances/` | another Bridge this one should know about |
-| `infra/transcriptions/` | recording → transcript topology |
-| `infra/secret-stores/` | where a secret lives, who reaches it, and which kind belongs in it |
-| `infra/object-stores/` | where content that is not configuration lives: recordings, documents, exports |
-| `infra/a2a-peers/` | an A2A agent this Bridge may ask: card, auth, token reference |
-| `infra/utilities/` | a supply contract at a location: power, gas, water, heat |
-| `workflow/briefings/` | what a briefing shows, from which trackers |
-| `workflow/mail-profiles/`, `identity/mail-footers/` | drafting a mail: the occasion, and how it is signed |
-| `workflow/calendars/` | a scheduled outbound action |
-| `workflow/meetings/` | a recurring meeting series |
-| `workflow/contexts/` | where a piece of work gets documented |
-| `workflow/projects/` | a board's field values and state map, before ANY tracker call |
-| `workflow/workloads/` | one declared run on one machine |
-| `workflow/ai-services/` | which AI model a service or worker uses (default Claude) |
-| `workflow/cost-centers/` | a project's costs across accounts: the cost card's Project filter |
-| `workflow/workspaces/` | a named binding of repos + config overlays |
-
-Top-level, own lifecycle: `rules/` `protocols/standing-orders/` `skills/`
-`trackers/` `themes/` `.claude/agents/` `mods/` `work/` `docs/`.
+reach · `workflow/` WHAT happens when. The family index is
+[`docs/families.md`](docs/families.md), generated from `docs/data-model.yaml` by
+`scripts/data-model.py`; a family without a row fails CI. Read a folder when its
+subject comes up; its `_template.yaml` says what belongs in one. Entries
+reference each other (`bridge_refs:`, `*_ref:`, `related_*:`), the graph a session
+walks after the first hop; `scripts/check-edges.py` holds them to resolving
+(`--neighbours <path>` shows one hop both ways).
 
 **Default-to-Folder:** every config type lives in a plural folder
 `<wrapper>/<types>/` holding `_template.yaml`, an optional `_schema.yaml` and the
@@ -220,18 +168,9 @@ Top-level, own lifecycle: `rules/` `protocols/standing-orders/` `skills/`
 reserved; **discovery** is the glob `<wrapper>/<types>/*.yaml` skipping them, with
 no flat fallback and no promote logic.
 
-Full layout and routing map: [`docs/structure.md`](docs/structure.md) ·
-reference implementation and irregular-plural caveats:
-[`rules/discovery.md`](rules/discovery.md) · examples per type under
+Full layout: [`docs/structure.md`](docs/structure.md) · discovery and
+irregular plurals: [`rules/discovery.md`](rules/discovery.md) · examples under
 `docs/examples/`.
----
-
-## Personas
-
-A persona is an identity THE USER HOLDS (`identity/personas/<id>.yaml`), carrying
-tax data, signature blocks, filing destinations (a mandant is a recipient group).
-Load one when a skill or routing order references it via
-`persona_ref`. Guide: [`docs/personas.md`](docs/personas.md).
 ---
 
 ## Scope — structural, not declarative
@@ -250,17 +189,14 @@ The leak-check is the backstop; structure keeps PII out of the public upstream.
 
 ## Skills (Universal)
 
-Skills live in `skills/` at the project root, following the open
-[SKILL.md standard](https://agentskills.io/specification). Each has a `SKILL.md`
-with `name` + a single-line `description` trigger, and a decision tree routing to
-`references/` files loaded only when triggered. **Call the skill** (via the Skill
-tool, or by loading it from `skills/` on tools without one) rather than
-reimplementing its logic.
-
-Three committed symlinks (`.claude/skills`, `.agents/skills`, `.github/skills` →
-`skills/`) are the entire discovery mechanism, so every clone gets it.
-Distribution, Windows setup and the plugin path:
-[`docs/skill-distribution-architecture.md`](docs/skill-distribution-architecture.md).
+Skills live in `skills/`, following the open
+[SKILL.md standard](https://agentskills.io/specification): a `SKILL.md` with `name` and
+a one-line `description` trigger, routing to `references/` loaded only when triggered.
+**Call the skill** (via the Skill tool, or by loading it from `skills/` on tools
+without one) rather than reimplementing its logic. Three committed symlinks
+(`.claude/skills`, `.agents/skills`, `.github/skills` → `skills/`) are the entire
+discovery mechanism
+([`docs/skill-distribution-architecture.md`](docs/skill-distribution-architecture.md)).
 
 > **Never point `~/.claude/skills` at a Bridge repo.** The user level overrides
 > the project level, every Bridge ships the same CORE skill names, so a
@@ -270,9 +206,8 @@ Distribution, Windows setup and the plugin path:
 > skills. One `readlink ~/.claude/skills` at session start buys that (empty is
 > correct). To make a standalone tool available everywhere, ship it as a plugin.
 
-**Tier lives in `metadata.scope`**, because skills are flat and cannot be
-foldered. It is what `/bridge-promote` and `/bridge-sync` route by, kept honest by
-`scripts/validate-skill-scope.py` (CI + pre-commit).
+**Tier lives in `metadata.scope`** (skills are flat); `/bridge-promote` and
+`/bridge-sync` route by it:
 
 | Scope | Ships to |
 |-------|----------|
@@ -281,25 +216,16 @@ foldered. It is what `/bridge-promote` and `/bridge-sync` route by, kept honest 
 | `personal` | your personal overlay + local |
 | `user` | local only |
 
-**Which skill sits in which tier is per-instance, so it is deliberately not
-listed here**: an enumeration in a CORE file diverges on the day it is written and
-carries local skill names upward on promote. `python3 scripts/validate-skill-scope.py`
-writes the live map to `.bridge/skill-scope.md` (derived, gitignored); the
-frontmatter is authoritative.
-
-**Generic CORE skills:** a `scope: core` skill earns its tier by staying generic
-*inside* — it **reads** config and never embeds instance logic, hardcoded
-queries, org IDs, personas or thresholds. If it needs a new knob, add the config
-key and read it.
-[`docs/extension-model.md`](docs/extension-model.md).
+Which skill sits in which tier is per-instance, so it is deliberately not listed
+here. The live map, and why a `scope: core` skill reads config instead of embedding
+instance logic: [`docs/extension-model.md`](docs/extension-model.md#skill-tiers).
 ---
 
 ## Tool Mapping
 
 Tool names differ per platform (Read/Write/Edit/Bash/Grep/Glob/Agent here;
 `apply_patch` and shell reads on Codex; `read_file`/`write_file` on Copilot and
-Gemini). The full table, and what a missing delegation API means for skills that
-would dispatch a sub-agent, is in
+Gemini). The full table, and what a missing delegation API means for sub-agents:
 [`docs/tool-mapping.md`](docs/tool-mapping.md).
 ---
 
@@ -312,11 +238,8 @@ top-level `scope:` matching its folder — a required backstop, not the router,
 since an unscoped rule inherits `core` from its path and would leak.
 `scripts/validate-bridge.py` fails CI on a missing or invalid one.
 
-**Which rules an instance has is derived, never a table here**: a local table
-cannot converge across instances. `python3 scripts/validate-bridge.py` writes the
-live map to `.bridge/rule-scope.md`, including whether git will track a **new**
-rule at that path (in an overlay-subscribed instance, the difference between
-authoring a rule and losing it silently).
+Which rules an instance has is derived, never a table here:
+`python3 scripts/validate-bridge.py` writes the live map to `.bridge/rule-scope.md`.
 
 **The rules that fire before you would think to look them up**:
 
@@ -337,9 +260,8 @@ authoring a rule and losing it silently).
 
 CORE files (the default branch) are generic and ship with the repo. USER files
 (`user/{name}`) are your instances: `bridge-config.yaml`, `ecosystem.yaml`, every
-`<id>.yaml` under the cluster wrappers, `standing-orders/user/`, and all of
-`work/`. The two touch disjoint paths, so merges are conflict-free by
-construction. Per-path table: [`docs/structure.md`](docs/structure.md).
+`<id>.yaml` under the cluster wrappers, `standing-orders/user/`, all of `work/`.
+Disjoint paths, so merges are conflict-free ([`docs/structure.md`](docs/structure.md)).
 
 - NEVER commit secrets or credentials on any branch.
 - **NEVER push a `user/*` branch (or USER content) to a PUBLIC upstream.** Your
@@ -361,10 +283,8 @@ keeps its own layout. [`docs/multi-instance.md`](docs/multi-instance.md).
 ### Tier Model
 
 Two-pole by default — `bks-lab/open-bridge` (OSS, MIT, generic CORE only) plus
-your own private Bridge. The middle tier is an optional convention: an org that
-wants a shared overlay creates a private fork it names itself, and `scope: org`
-routes there. `bridge-config.yaml.upstreams` is a list; `/bridge-promote` routes per
-`scope:`. Full model, including the subscribe direction:
+your own private Bridge. An org that wants a shared overlay creates a private fork,
+and `scope: org` routes there; `/bridge-promote` routes per `scope:`.
 [`docs/org-overlays.md`](docs/org-overlays.md).
 
 **open-bridge is English-only**: every file is authored in English from the first
@@ -374,10 +294,9 @@ set per fork. Only locale theme files may carry *vocabulary values* in another l
 
 ### Cross-Repo Work
 
-Before changing code in another repo: read that repo's AGENTS.md or CLAUDE.md, check its
-branch model, commit the change there rather than here, then return and update
-the work log. Issues belong in the repo where the code lives. Test before merge;
-the user decides merge timing.
+Before changing another repo: read its AGENTS.md or CLAUDE.md and branch model,
+commit there, then update the work log here. Issues live where the code lives.
+Test before merge; the user decides merge timing.
 
 ### Creating new files — schemas first
 
@@ -390,12 +309,12 @@ Checklist and per-type table: [`rules/file-creation.md`](rules/file-creation.md)
 ### Documentation Navigation
 
 Navigation lives in a few strong documents, not per-directory maps: this file,
-[`README.md`](README.md), [`docs/structure.md`](docs/structure.md) (layout +
-routing), [`docs/extension-model.md`](docs/extension-model.md) (CORE/USER +
-schemas), [`rules/knowledge-growth.md`](rules/knowledge-growth.md) (where new
-knowledge belongs) and [`docs/memory.md`](docs/memory.md). Where a directory
-needs help, use a plain `README.md`. Stand-alone docs carry `summary` / `type` /
-`last_updated` / `related` frontmatter.
+[`docs/families.md`](docs/families.md) (which config folder answers what),
+[`docs/where-things-live.md`](docs/where-things-live.md) (which file answers a
+question), [`docs/structure.md`](docs/structure.md) and
+[`rules/knowledge-growth.md`](rules/knowledge-growth.md) (where new knowledge
+belongs). A directory that needs help gets a plain `README.md`. Stand-alone docs
+carry `summary` / `type` / `last_updated` / `related` frontmatter.
 ---
 
 ## Task Management
@@ -410,18 +329,16 @@ field**, a closed enum `{backlog, doing, review, done}`, CI-validated. No
 synonyms. `blocked_by:` is a free-text **flag**, not a status: a blocked task
 stays `doing` and carries a reason. `declined` is an **outcome**:
 `status: done` + `outcome: declined`. **board.md is GENERATED** from the task
-dirs and never hand-curated; humans edit STATUS.md. The **WIP cap is a warning,
-never a block** — session start warns when `doing + review` exceeds
-`work.max_active`, and the remedy is to close, reprioritise, or reclassify to
+dirs and never hand-curated; humans edit STATUS.md. The **WIP cap
+(`work.max_active`) is a warning, never a block**: close, reprioritise, or move to
 `work/streams/`.
 
 ### Session Start (automatic when enabled)
 
 Read the recent log slice (`python3 scripts/worklog.py --recent 3`) and
-`work/board.md`, creating either from templates if missing (**never fail on a
-missing work file, create and continue**). Ensure today has a day-block. Warn, do
-not block, on the WIP cap. Load the standing-order index (§ Standing Orders). Full
-sequence: [`rules/operations.md`](rules/operations.md).
+`work/board.md` (**never fail on a missing work file, create it from the template and
+continue**). Ensure today has a day-block, warn on the WIP cap, load the standing-order
+index. Full sequence: [`rules/operations.md`](rules/operations.md).
 
 ### Logging
 
@@ -434,10 +351,9 @@ sequence: [`rules/operations.md`](rules/operations.md).
 
 **One frozen row format:** `| YYYY-MM-DD HH:MM | glyph | context | what |`
 
-- **Timestamp:** full ISO date+time from `date '+%Y-%m-%d %H:%M'`, so every row
-  self-dates and a stale log is never ambiguous. NEVER a placeholder, never
-  estimated. The day-block header stays `## {Weekday} DD.MM` — a display anchor
-  the `/archive` and `/briefing` parsers key off, so no year there.
+- **Timestamp:** from `date '+%Y-%m-%d %H:%M'`, NEVER a placeholder, never
+  estimated. The day-block header stays `## {Weekday} DD.MM` (no year), the
+  anchor the `/archive` and `/briefing` parsers key off.
 - **glyph** from `activity_types` in config; **context** is the repo tag;
   appended chronologically inside the current day-block.
 
@@ -473,8 +389,7 @@ gate. Never ride an opening "just have a look" into real changes.
 
 **Don't reflex** on slash commands, on read/info queries *that stay read-only*, on
 a quick fix under 10 minutes and 3 files, or on a topic the user already declined
-this session. Intent lists, similarity algorithm, cluster detection, class
-examples and repair recipes:
+this session. Details:
 [`rules/task-management-workflow.md`](rules/task-management-workflow.md).
 
 **Lifecycle, three steps:** `mv` the directory, **regenerate** board.md from the
@@ -486,18 +401,13 @@ What stays open after a unit of work (needs a person, waits on someone, must be
 checked later) is filed with `scripts/inbox.py add`, with a `closes_when` probe
 wherever the live source can tell, never left as a log sentence. Before
 reporting anything as open, run `inbox.py check` and read the inbox, not the
-log. Model: [`docs/inbox.md`](docs/inbox.md). The workplace
-(`scripts/workplace.py`, driver-based) opens one agent tab per task:
+log. Model: [`docs/inbox.md`](docs/inbox.md); one agent tab per task:
 [`docs/workplace.md`](docs/workplace.md).
 
 ### Task Sync Routing
 
-Every task sits at the intersection of three orthogonal axes: **project**
-(`workflow/projects/<slug>.yaml`, board fields), **context**
-(`workflow/contexts/<slug>.yaml`, where we document) and **mandant**
-(`identity/mandants/<slug>.yaml`, who gets notified). STATUS.md's `sync:` block
-declares per-task overrides, the resolver merges with context defaults, and
-`bridge_only: true` is the explicit local-only fallback. Canonical resolver:
+A task's **project**, **context** and **mandant** decide where it syncs; STATUS.md's
+`sync:` block overrides, `bridge_only: true` keeps it local. Resolver:
 [`protocols/standing-orders/task-sync.md`](protocols/standing-orders/task-sync.md).
 
 ### Trackers and the Project Registry
@@ -517,74 +427,20 @@ Work items come from external trackers via pluggable provider playbooks in
 
 ### Commands
 
-Each skill registers its own slash-command through its `description:`
-frontmatter (no files in `.claude/commands/`); invoking it via the Skill tool is
-the same as typing the command. The CORE set: [`docs/commands.md`](docs/commands.md);
-an instance's live list is the skill listing itself.
+Each skill registers its own slash-command through its `description:` frontmatter;
+the CORE set is in [`docs/commands.md`](docs/commands.md).
 ---
 
-## Remotes — Remote Machines
+## Guardrails beside the families
 
-Your physical and virtual machines live in `infra/remotes/*.yaml`. In Bridge
-context **"remote" means remote MACHINE, never `git remote`** — check
-`infra/remotes/` before asking "which PC?". The **`remote`** skill owns the
-directory and auto-loads on a machine name, "my PC / fleet status", "wake / WoL",
-"ssh to / RDP to". Schema: `infra/remotes/_template.yaml`. Capability `arm`
-marks the always-on machine ([`docs/always-on-machine.md`](docs/always-on-machine.md)).
----
+Each family's own guardrail travels with its row in `docs/families.md`. These cut
+across families:
 
-## Workloads — Declared Runs
-
-A **workload** is one thing that runs on one machine: a scheduled report, a
-poller, a daemon, a watcher, a one-shot. One declaration per run in
-`workflow/workloads/<id>.yaml`; the `workload` skill renders, provisions and
-reconciles from it. There is deliberately no `status:` field. Data model,
-contract rules and the case behind each: [`docs/workloads.md`](docs/workloads.md).
-## Channels — Messaging & Outbound Transports
-
-Transport declarations live in `infra/channels/*.yaml` (iMessage, email,
-Telegram, digests, bots). The `/channel` skill triggers on "channel status /
-health / deploy", "new channel for X", or a known channel name; scheduled sends
-go to `/schedule`. Detail: [`docs/channels.md`](docs/channels.md).
----
-
-## Calendar + Mandants
-
-Optional system for scheduled outbound with recipient attribution: **mandants**
-(`identity/mandants/<id>.yaml`) are recipient groups, **calendar entries**
-(`workflow/calendars/entries.yaml`) are what/whom/when. Enable via
-`calendar.enabled` + `mandants.enabled`. Commands `/calendar` and `/mandants`.
-Full model: [`docs/calendar.md`](docs/calendar.md),
-[`docs/mandants.md`](docs/mandants.md).
----
-
-## Backups
-
-Data model in `infra/backups/topology.yaml` (`sources` × `targets` ×
-`pipelines`), state in `_state.yaml`, written only by the skill. Activated by the
-file existing. CORE ships the data model, not an executor. Validation rules and
-target-versus-actual comparison:
-[`infra/backups/README.md`](infra/backups/README.md).
----
-
-## Cloud Accounts & Secrets
-
-Cloud accounts and their secret stores live as inventory in
-`identity/accounts/<provider>-<scope>.yaml`. **Before any cloud operation**
-(`az`, `wrangler`, `gcloud`, `gh api`, provider REST) read the matching file for
-tenant, subscription, vault and bootstrap snippet rather than reconstructing it
-from memory. **No raw secret in YAML** — reference URIs only
-([`rules/secret-placement.md`](rules/secret-placement.md)). Per-provider recipes,
-tenant switching, rotation:
-[`docs/cloud-accounts.md`](docs/cloud-accounts.md).
----
-
-## Design System
-
-`DESIGN.md` is the default design and the index to every other one; each further
-brand is `identity/designs/<id>.md`, same format, own `scope:`, so it travels with its
-overlay. Generators ask `python3 scripts/designs.py resolve` which one applies.
-**Never hand-pick a brand colour**; add a missing token to the design that owns it.
+- Before a user-facing visual, read `DESIGN.md` (the default design and the index to
+  `identity/designs/`); `python3 scripts/designs.py resolve` says which one applies.
+  **Never hand-pick a brand colour**; add a missing token to the design that owns it.
+- No raw secret in YAML or any tracked file: reference URIs only
+  ([`rules/secret-placement.md`](rules/secret-placement.md)).
 ---
 
 ## Variable Interpolation

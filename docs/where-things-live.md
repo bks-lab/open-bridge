@@ -31,6 +31,7 @@ searches again.
 
 | Question | Where |
 |---|---|
+| Which config family answers this, and when do I read its folder? | [`docs/families.md`](families.md), generated from [`docs/data-model.yaml`](data-model.yaml) |
 | Which fields does a new config file of a given type take? | [`rules/file-creation.md`](../rules/file-creation.md#where-templates-live-lookup-table), then that type's `_template.yaml` and `_schema.yaml` |
 | Which folder does a new kind of config go in? | [`docs/structure.md`](structure.md#cluster-wrappers--default-to-folder) |
 | Which AI CLI handles each service, and how can a worker choose one? | [`docs/ai-services.md`](ai-services.md), `workflow/ai-services/` |

@@ -43,7 +43,7 @@ Read the referenced file ONLY when triggered.
 | # | Check | What it compares | Severity hint |
 |---|---|---|---|
 | 1 | License consistency | README badge ↔ LICENSE file ↔ README footer ↔ AGENTS.md license claim ↔ MEMORY mentions | P0 if any disagree |
-| 2 | Skill-tree truth | README skill table/tree ↔ AGENTS.md skill table ↔ `skills/*/SKILL.md` actual | P1 |
+| 2 | Skill-tree truth | README skill table/tree ↔ `skills/*/SKILL.md` actual | P1 |
 | 3 | Standing-order count | "N standing orders" claims ↔ `protocols/standing-orders/*.md` count (excluding `_template.md`, `README.md`) | P1 |
 | 4 | Renamed-everywhere | `data/renames.yaml` old-name greps in tracked content (excluding listed exceptions) | P1 |
 | 5 | Cross-reference validity | Markdown `[text](path)` and `` `path` `` references resolve to existing files | P2 |

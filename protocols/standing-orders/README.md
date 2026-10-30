@@ -9,6 +9,14 @@ Standing Orders are **always-on rules** that apply to every session — permanen
 3. When dispatching a sub-agent, its matching standing orders are included in its prompt
 4. Orders with `enforcement: blocking` cause active warnings on violations
 
+## Scope and load are two questions
+
+`scope: always` says an order **applies** always: it is matched against every
+sub-agent dispatch, then filtered by `applies_to` (sub-agent names, empty = all).
+`load:` says when its **body** is read (below). `protocols/` stays top-level:
+`standing-orders/` ships the CORE defaults, and user-authored orders live in
+`standing-orders/user/`. AGENTS.md § Standing Orders keeps only the summary.
+
 ## Schema
 
 Each standing order is a markdown file with YAML frontmatter:

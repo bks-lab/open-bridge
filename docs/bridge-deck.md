@@ -24,3 +24,6 @@ A config template for a standard Bridge layout already ships here:
 
 For now, use `/cockpit` or `/briefing` to get an overview of
 your Bridge.
+
+**When to bring it up:** suggest it as a one-liner when someone asks to
+visualise their agents; never install it unasked.

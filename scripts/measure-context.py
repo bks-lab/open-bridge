@@ -990,7 +990,12 @@ def _file_surface(root: Path, path: str, policy, imported: bool, registry: bool)
     return text, None, False
 
 
-def always_on_parts(repo_root: Path, budget: dict) -> dict[str, str]:
+SURFACES = ("session", "subagent")
+
+
+def always_on_parts(
+    repo_root: Path, budget: dict, surface: str = "session"
+) -> dict[str, str]:
     """Everything a session loads before it answers, KEYED BY WHERE IT CAME FROM.
 
     Same discovery as `collect_rows`, on purpose. A second definition of
@@ -1001,7 +1006,15 @@ def always_on_parts(repo_root: Path, budget: dict) -> dict[str, str]:
     thing, and so a mutation battery can remove one contributor at a time. A
     battery over the concatenation only proves that a substring test is a
     substring test.
+
+    `surface="subagent"` is what a dispatched sub-agent gets: the entry chain,
+    its `@`-imports and the harness listings. It runs no Phase 1, so standing
+    orders, registry cards, commands and the main session's harness items never
+    reach it. On both surfaces an import counts when it is actually imported,
+    not when the budget declares `source: import`: a declaration loads nothing.
     """
+    if surface not in SURFACES:
+        raise ValueError(f"surface must be one of {SURFACES}, not {surface!r}")
     root = Path(repo_root)
     parts: dict[str, str] = {}
     harness = discover_harness(root)
@@ -1011,6 +1024,12 @@ def always_on_parts(repo_root: Path, budget: dict) -> dict[str, str]:
         path = row["path"]
         if row["state"] == "shadowed" or row.get("alias_of"):
             continue  # no session loads it, or it is loaded as AGENTS.md
+        if row["source"] == "import" and path not in imported:
+            continue  # declared an import, but nothing imports it: not loaded
+        if surface == "subagent" and not (
+            path.startswith(LISTING_PREFIX) or path in imported
+        ):
+            continue  # Phase 1, standing orders, commands, harness items
         if path.startswith(HARNESS_PREFIX):
             text = read_harness_item(path, harness)
         elif path.startswith(LISTING_PREFIX):

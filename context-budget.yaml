@@ -65,67 +65,30 @@ items:
       moves its lines.
 
   AGENTS.md:
-    max_bytes: 32768
+    max_bytes: 25000
     note: >-
-      The entry file and the operating manual, and still the largest single always-on item. It
-      routes; it does not restate. Every load-bearing pointer in it is a
-      markdown link, which `scripts/check-doc-routes.py` holds to resolving.
-      RAISED from 32000 on 2026-08-30, and the argument belongs in the diff a
-      reviewer sees, which is what this cap is for. The 1,378 bytes bought the
-      config-family index: one row per family, each naming the path and what
-      brings a session to it. `scripts/check-reachability.py` found five
-      families that existed in the tree and were named in nothing a session
-      loads, so the list is now load-bearing rather than decorative, and CI
-      fails when it falls behind the tree.
-      RAISED from 33000 on 2026-09-11 by 100 bytes, which is what the
-      `identity/vehicles/` row costs. The family shipped its `_template.yaml`
-      and `_schema.yaml` while `AGENTS.md` named no route to it, so
-      `check-reachability.py` failed: the index is the only always-on place a
-      family can be named. 32 bytes of headroom before, 32 after, on purpose.
-      The next family row needs its own argument in its own diff, which is
-      what the tightness is for.
-      RAISED from 33100 on 2026-09-20 by 100 bytes, the cost of the
-      `infra/secret-stores/` row. The family carries the placement policy the
-      `secrets` skill reads: which kind of secret belongs in which store. It
-      has to be named here because `check-reachability.py` accepts no other
-      always-on place, and because the question it answers, "where does this
-      token go", is one a session asks before it has read anything else.
-      16 bytes of headroom before, 16 after, again on purpose.
-      RAISED from 33200 on 2026-09-22 by 100 bytes for the
-      `infra/object-stores/` row (#226), which costs 107: 20 bytes of headroom
-      before, 13 after. The family carries the placement
-      policy the `object-store` skill reads: which class of content belongs in
-      which store. Its question, "where does this recording go, if not into
-      git", is asked at the moment a file is written, and a session that does
-      not know the family exists writes the file into the work tree, where the
-      only thing between it and a commit is an ignore entry somebody remembered.
-      RAISED from 33300 on 2026-09-24 by 200 bytes for the one line that
-      points at `docs/where-things-live.md` (#164), at the end of Required
-      Reading, which costs 173: 13 bytes of headroom before, 40 after. The map answers the question asked most
-      often, "which file answers this", before anything else has been read,
-      and the answer usually sits in a skill reference nobody thought to open.
-      A pointer that lives anywhere but here is found only by somebody who
-      already knows where to look, which is the case the map exists for.
-      RAISED from 33500 on 2026-09-27 by 100 bytes for the `infra/a2a-peers/`
-      row, which costs 87 (shortened from 111 to fit): 16 bytes of headroom
-      after. The family names the agents this Bridge may call and where their
-      tokens are, and the `a2a` skill reads it. Its question, "whom can I ask,
-      and how do I authenticate", comes up when a user says "ask X's Bridge",
-      before any file about A2A has been read.
+      The entry file and the kernel: the behavioural invariants, the guardrails
+      and the routes to rules/ and docs/. It routes; it does not restate. Every
+      load-bearing pointer in it is a markdown link, which
+      `scripts/check-doc-routes.py` holds to resolving. The family rows and the
+      feature sections moved out on 2026-10-30 (Step 2), the rows into the
+      generated docs/families.md it imports, the mechanics into docs/, so a new
+      config family no longer costs AGENTS.md bytes. Measured 24482 at that
+      point; the cap is that plus about 500 for ordinary edits. The `kernel:`
+      block in docs/data-model.yaml keeps its own 32768 ceiling (the cut past
+      which Codex stops reading), and `scripts/data-model.py` fails a list
+      creeping back into this file.
 
-      RAISED from 33600 on 2026-10-04 by 400 bytes: the `### Inbox` section (what stays
-      open is filed with scripts/inbox.py, not left as a log sentence). 49 bytes of headroom.
-      RAISED from 34000 on 2026-10-04 by 200 bytes: one sentence naming the workplace
-      (scripts/workplace.py, docs/workplace.md) next to `### Inbox` and one clause in
-      Remotes that capability `arm` marks the always-on machine. 19 bytes of headroom.
-      RAISED from 34200 on 2026-10-06 by 100 bytes for ONE row naming both mail
-      families (`workflow/mail-profiles/`, `identity/mail-footers/`, skills/mail-draft).
-      Two rows would have cost 228; the shared row keeps both reachable at 110.
-      LOWERED from 34300 to 32768 on 2026-10-30 when CLAUDE.md was deleted:
-      AGENTS.md became the entry file (Phase 0 line at the top, the import
-      block for the instance layer) and was tightened to 32646 bytes. 32768 is
-      the cut past which Codex stops reading the file, so this cap is a hard
-      ceiling now, not a review prompt. Step 2 lowers it further.
+  docs/families.md:
+    source: import
+    max_bytes: 5100
+    note: >-
+      Generated by scripts/data-model.py from docs/data-model.yaml and imported
+      by AGENTS.md, so every session and every sub-agent carries it. One row
+      per CORE family; the headroom pays for about five more families, so a new
+      family costs a data-model row, not a budget argument. Never hand-edit.
+      Added on 2026-10-30 at 4309 bytes, when the family table left AGENTS.md
+      and that file's cap went from 32768 to 25000.
 
   # Instance import slots. AGENTS.md imports all three; CORE ships none of them.
   identity/agent/IDENTITY.md:

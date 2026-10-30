@@ -17,6 +17,11 @@ between updates; the two links above never do.
 
 ## Recent themes
 
+**AGENTS.md as a stable kernel.** The config-family index is generated from
+docs/data-model.yaml into docs/families.md, which AGENTS.md imports; a new
+family is a data row, not an edit to the manual, and a guard keeps lists out
+of AGENTS.md.
+
 **AGENTS.md is the only entry file.** CLAUDE.md is gone; Claude Code 2.1.281+
 reads AGENTS.md directly, the instance layer loads through fixed imports
 (`identity/agent/IDENTITY.md`, `SOUL.md` and the new `INSTANCE.md`), org

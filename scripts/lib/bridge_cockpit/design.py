@@ -3,8 +3,9 @@
 
 The cockpit is the instance's own page, so it wears the instance default that scripts/designs.py
 resolves: the active theme's `branding.design` (a file under identity/designs/), else the root
-DESIGN.md (AGENTS.md, Design System). The page takes its palette from there at run time instead of
-a fixed copy: every Bridge shows its own colours, and no colour file of the cockpit diverges.
+DESIGN.md (AGENTS.md § Guardrails beside the families). The page takes its palette from there
+at run time instead of a fixed copy: every Bridge shows its own colours, and no colour file of the
+cockpit diverges.
 
 The front matter may name the cockpit's tokens directly (`colors:` and `colorsDark:`, same keys),
 or only the smaller open-bridge set (`colors:` with `dark-*` keys for the dark pair). A token the

@@ -120,4 +120,6 @@ layout change needed.
 ## Source
 
 Defined first in the AGENTS.md "Layout — Cluster-Wrappers" section
-"Discovery". This file is the external reference linked from there.
+"Discovery". This file is the external reference linked from there. The
+list of families and when to read each is [`docs/families.md`](../docs/families.md),
+generated from `docs/data-model.yaml` by `scripts/data-model.py`.

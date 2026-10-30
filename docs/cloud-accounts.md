@@ -17,6 +17,10 @@ how-to).
 
 ## Read the inventory first (vocabulary triggers)
 
+Before any cloud operation (`az`, `wrangler`, `gcloud`, `gh api`, provider REST),
+read the matching `identity/accounts/` file. No raw secret in YAML: reference URIs
+only, per [`rules/secret-placement.md`](../rules/secret-placement.md).
+
 Whenever a cloud operation is in play, read the matching inventory file *before*
 running anything — never reconstruct IDs from memory.
 

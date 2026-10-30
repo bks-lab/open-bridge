@@ -11,7 +11,7 @@ related:
 
 Where everything lives, what format, what it does.
 
-> **Operating truth:** [`AGENTS.md`](../AGENTS.md) section "Layout — Cluster-Wrappers" is the canonical source. This file mirrors that for human reading. Visualisation: [`docs/repo-layout/regions.yaml`](repo-layout/regions.yaml).
+> **Operating truth:** the canonical family list is [`docs/data-model.yaml`](data-model.yaml), rendered to [`docs/families.md`](families.md) (always-on, imported by `AGENTS.md`) and [`docs/data-model.md`](data-model.md) (reference). [`AGENTS.md`](../AGENTS.md) section "Layout — Cluster-Wrappers" keeps the Default-to-Folder and Discovery rules. This file mirrors them for human reading. Visualisation: [`docs/repo-layout/regions.yaml`](repo-layout/regions.yaml).
 
 ## Reading map — what to look at first
 
@@ -41,7 +41,8 @@ The detailed per-path tables below are the reference; this map is the orientatio
 bridge-config.yaml      USER     Main config (identity, theme, integrations)
 ecosystem.yaml          USER     Repo registry, instance base (created at onboarding; tracked on a private origin, kept out of git otherwise, see § gitignore policy). Never promoted: an org overlay shares its own ecosystem.<org>.yaml
 bridge-deck.config.yaml USER     Daemon collectors for the pixel dashboard
-AGENTS.md               CORE     Canonical operating manual (all agents)
+AGENTS.md               CORE     Canonical operating manual (all agents), a kernel: invariants only
+docs/families.md        CORE     Generated config-family index (scripts/data-model.py --write), imported by AGENTS.md
 GEMINI.md               CORE     Thin pointer to AGENTS.md
 CLAUDE.md               USER     Legacy entry, never shipped: when present Claude Code loads only it (scripts/migrate-entry-file.py)
 README.md               CORE     Pitch + architecture (for humans)

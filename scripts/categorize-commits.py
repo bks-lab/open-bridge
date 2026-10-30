@@ -781,10 +781,12 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_validate_bridge_designs.py",
     # Registered 2026-10-30 with AGENTS.md as the only entry file: the
     # migration for a fork's CLAUDE.md, and the tests that hold the entry
-    # file, the setup version warning and the dead CLAUDE.md links.
+    # file, the setup version warning and the dead CLAUDE.md links; then with
+    # the kernel rewrite, the invariants AGENTS.md plus docs/families.md keep.
     "scripts/migrate-entry-file.py",
     "scripts/tests/test_claude_md_links.py",
     "scripts/tests/test_entry_file.py",
+    "scripts/tests/test_kernel_invariants.py",
     "scripts/tests/test_migrate_entry_file.py",
     "scripts/tests/test_setup_claude_version.py",
 })
