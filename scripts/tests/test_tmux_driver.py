@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -212,9 +213,9 @@ def tm(tmp_path):
 
 
 @needs_tmux
-def test_caps_lists_all_fifteen_verbs(tm):
+def test_caps_lists_all_eighteen_verbs(tm):
     assert set(tm.call({"verb": "caps"})["caps"]) == set(td.VERBS)
-    assert len(td.VERBS) == 15 and {"rename_workspace", "move_tab"} <= set(td.VERBS)
+    assert len(td.VERBS) == 18 and {"rename_workspace", "move_tab", "new_tab", "new_workspace", "close_workspace"} <= set(td.VERBS)
     assert not {"set_color", "set_description"} & set(td.VERBS)      # tmux has no colour or description
 
 
@@ -458,3 +459,93 @@ def test_a_title_that_starts_with_a_dash_names_a_tab_and_a_workspace(tm):
     report = tm.call({"verb": "rename_workspace", "workspace": sid, "title": "-notes"})["report"]
     assert report and not report[0].startswith("ERROR")
     assert {t["workspace"] for t in tm.tabs()} == {"-notes"}
+
+
+# ---------------------------------------------------------------- a new tab, a new workspace, a workspace closed
+
+def _tab_of(tm: Tmux, ref: str) -> dict:
+    return next(t for t in tm.tabs() if t["ref"] == ref)
+
+
+@needs_tmux
+def test_new_tab_opens_a_window_in_the_session_and_answers_its_ref_without_the_focus(tm):
+    sid = tm.by_name("one")["ws_ref"]
+    answer = tm.call({"verb": "new_tab", "workspace": sid, "title": "Scratch", "command": "cat"})
+    ref = answer["ref"]
+    assert re.fullmatch(r"%\d+", ref) and answer["report"] == [f"tab Scratch ({ref}) in Work"]
+    tab = _tab_of(tm, ref)
+    assert (tab["name"], tab["workspace"], tab["ws_ref"]) == ("Scratch", "Work", sid)
+    # opened beside the others, none brought to the front: the active window is still the one it was
+    assert tm.raw("display-message", "-p", "-t", "=Work:", "#{window_name}").strip() == "one"
+
+
+@needs_tmux
+def test_new_tab_without_a_command_is_a_plain_shell_and_a_dash_title_is_a_title(tm):
+    sid = tm.by_name("one")["ws_ref"]
+    plain = tm.call({"verb": "new_tab", "workspace": sid})
+    assert _tab_of(tm, plain["ref"])["state"] == "shell" and plain["report"][0].endswith("in Work")
+    dashed = tm.call({"verb": "new_tab", "workspace": sid, "title": "-scratch", "command": None})
+    assert _tab_of(tm, dashed["ref"])["name"] == "-scratch"
+
+
+@needs_tmux
+def test_new_tab_writes_a_long_command_to_a_private_file(tm):
+    sid = tm.by_name("one")["ws_ref"]
+    answer = tm.call({"verb": "new_tab", "workspace": sid, "title": "Long", "command": "echo " + "y" * 5000 + " && cat"})
+    (f,) = list((tm.tmp / "launch").iterdir())
+    assert oct(f.stat().st_mode & 0o777) == "0o600"
+    assert "yyyy" in tm.wait_screen(answer["ref"], "yyyy")
+
+
+@needs_tmux
+def test_new_tab_needs_an_open_session_ref(tm):
+    assert "no open workspace" in tm.call({"verb": "new_tab", "workspace": "$999"}, ok=False)["error"]
+    assert "not a tmux session ref" in tm.call({"verb": "new_tab", "workspace": "Work"}, ok=False)["error"]
+    assert "title" in tm.call({"verb": "new_tab", "workspace": "$0", "title": 7}, ok=False)["error"]
+    assert len(tm.tabs()) == 2
+
+
+@needs_tmux
+def test_new_workspace_makes_a_session_with_its_first_window_and_answers_both_refs(tm):
+    answer = tm.call({"verb": "new_workspace", "title": "Fresh.start", "cwd": str(tm.tmp), "command": "cat"})
+    assert re.fullmatch(r"\$\d+", answer["ws_ref"]) and re.fullmatch(r"%\d+", answer["ref"])
+    tab = _tab_of(tm, answer["ref"])
+    assert (tab["workspace"], tab["ws_ref"]) == ("Fresh_start", answer["ws_ref"])
+    assert answer["report"] == [f"workspace Fresh_start ({answer['ws_ref']})"]
+    assert os.path.realpath(tm.raw("display-message", "-p", "-t", answer["ref"], "#{pane_current_path}").strip()) \
+        == os.path.realpath(tm.tmp)
+    # the sessions that were there stay as they were
+    assert {t["workspace"] for t in tm.tabs()} == {"Work", "Fresh_start"}
+
+
+@needs_tmux
+def test_new_workspace_without_a_command_is_a_plain_shell_in_the_bridge_folder(tm):
+    answer = tm.call({"verb": "new_workspace", "title": "Plain"})
+    assert _tab_of(tm, answer["ref"])["state"] == "shell"
+    assert os.path.realpath(tm.raw("display-message", "-p", "-t", answer["ref"], "#{pane_current_path}").strip()) \
+        == os.path.realpath(td.ROOT)
+
+
+@needs_tmux
+def test_new_workspace_refuses_a_name_in_use_a_colour_and_a_missing_title(tm):
+    # tmux names are unique; compared after the same sanitizer and in any case, as rename_workspace does
+    for title in ("Work", "work"):
+        assert "in use" in tm.call({"verb": "new_workspace", "title": title}, ok=False)["error"]
+    assert "colour" in tm.call({"verb": "new_workspace", "title": "Tinted", "color": "Teal"}, ok=False)["error"]
+    for req in ({}, {"title": " "}, {"title": 7}, {"title": "X", "cwd": 7}):
+        assert "error" in tm.call({"verb": "new_workspace", **req}, ok=False), req
+    assert {t["workspace"] for t in tm.tabs()} == {"Work"}
+
+
+@needs_tmux
+def test_close_workspace_kills_that_session_and_never_the_last_one(tm):
+    tm.raw("new-session", "-d", "-s", "Other", "-n", "three", "sh")
+    other, work = tm.by_name("three")["ws_ref"], tm.by_name("one")["ws_ref"]
+    assert tm.call({"verb": "close_workspace", "workspace": other})["report"] == [f"{other} closed"]
+    assert {t["workspace"] for t in tm.tabs()} == {"Work"}
+    # the last session would end the server and with it every tab
+    report = tm.call({"verb": "close_workspace", "workspace": work})["report"]
+    assert report[0].startswith("ERROR") and "last workspace" in report[0]
+    assert len(tm.tabs()) == 2
+    assert "no open workspace" in tm.call({"verb": "close_workspace", "workspace": "$999"}, ok=False)["error"]
+    assert "not a tmux session ref" in tm.call({"verb": "close_workspace", "workspace": "Work"}, ok=False)["error"]

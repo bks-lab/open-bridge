@@ -1,7 +1,7 @@
 ---
 summary: "Plan the day's work as workspaces with one agent tab per task, and steer the tabs from one place, through a driver so the same Bridge works with any terminal tool or none."
 type: guide
-last_updated: 2026-10-17
+last_updated: 2026-10-30
 related:
   - ../scripts/workplace.py
   - ../scripts/task.py
@@ -32,6 +32,9 @@ python3 scripts/workplace.py adopt <tab> <slug> # name an open tab after its tas
 python3 scripts/workplace.py rename <ref> -- <title>            # name one tab of your own (its live ref only)
 python3 scripts/workplace.py rename-workspace <ws_ref> -- <title> # name one workspace (its live ref only)
 python3 scripts/workplace.py control --yes      # a new agent tab in the control workspace (workplace.control.command, default claude)
+python3 scripts/workplace.py new-tab <ws_ref> [--kind agent|shell] [--text=<first sentence>]   # one new chat or shell in a workspace
+python3 scripts/workplace.py new-workspace --title=<title> [--kind agent|shell|none] [--cwd=<folder>]   # one new workspace
+python3 scripts/workplace.py close-workspace <ws_ref>   # close a workspace and what runs in it (only when you ask)
 ```
 
 ## Plan and driver are separate on purpose
@@ -142,6 +145,9 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "move_tab", "tab": ref, "workspace": ws_ref, "index": n}` | `{"report": [...]}`: one tab into another workspace, nothing focused; `index` (from 0) is optional (cmux: `move-surface --focus false`; tmux: `move-window -d` into the session, without an index). The last tab of a workspace is never moved (an `ERROR` line instead): the terminal would drop the emptied workspace |
 | `{"verb": "set_color", "workspace": ws_ref, "color": name or null}` | `{"report": [...]}`: a palette colour by its name (see below), `null` takes the colour off (cmux: `workspace-action set-color` with the hex, `clear-color`; tmux has none) |
 | `{"verb": "set_description", "workspace": ws_ref, "text": "..." or null}` | `{"report": [...]}`: one line of description, `null` takes it off (cmux: `workspace-action set-description`, `clear-description`; tmux has none) |
+| `{"verb": "new_tab", "workspace": ws_ref, "title": "..." or null, "command": "..." or null}` | `{"report": [...], "ref": "<the new tab>"}`: one new tab in that workspace, nothing focused. No `command` is a plain shell; a `command` is sent the way `launch` sends it (cmux: `new-surface --focus false`, the start marker awaited; tmux: `new-window -d` into the session by its id). The answer carries the ref of a tab that exists, also when its command did not start (an `ERROR` line says so) |
+| `{"verb": "new_workspace", "title": "...", "color": name or null, "cwd": "..." or null, "command": "..." or null}` | `{"report": [...], "ws_ref": "<the workspace>", "ref": "<its first tab>"}`: one new workspace with its first tab, nothing focused; `cwd` defaults to the Bridge folder, a colour is a palette name (cmux: `workspace create`, then `set-color`; tmux: `new-session -d`, which has no colour and refuses one, and refuses a name another session has) |
+| `{"verb": "close_workspace", "workspace": ws_ref}` | `{"report": [...]}`: closes that one workspace and what runs in it, only on an explicit request, and never the last workspace of a window (cmux) or of the server (tmux): an `ERROR` line instead (cmux: `close-workspace`; tmux: `kill-session`) |
 
 | `{"verb": "keys", "tab": ref, "keys": [{"text": "..."}, {"key": name}, {"paste": "..."}]}` | `{"report": [...]}`: a keyboard, in order, for the live terminal of the cockpit. `text` is typed as it is, `paste` goes in whole with its lines, `key` is one of `TERM_KEYS` in `workplace.py`: enter, escape, tab, shift+tab, backspace, delete, the four arrows, home, end, pageup, pagedown, ctrl+a to ctrl+z. It must also type into a prompt that holds text and into an open dialog (cmux: `send --force`, `send-key --force`; tmux: `send-keys`). `workplace.py` checks the list before a driver sees it: text holds no control code, so no escape sequence comes through this door |
 
@@ -149,12 +155,12 @@ Every verb after `caps` is optional. A terminal that cannot do one leaves it out
 `caps`, and whoever steers the tabs (`workplace.py`, the cockpit) offers only
 what the driver serves. With them the cockpit steers any terminal the same way:
 jump to a tab, answer a question with a key, read what a tab shows, type into it
-as a keyboard does, close a finished one. A `ref` is the driver's own name for a tab (`surface:3` in cmux,
+as a keyboard does, close a finished one, open a chat or a shell, open or close a workspace. A `ref` is the driver's own name for a tab (`surface:3` in cmux,
 `%3` in tmux): letters, digits and `:%_.@/-`, at most 64 characters.
 
 Rules every driver keeps: it never closes a tab or a workspace on its own (only
-`close`, which a person asked for); a tab that is already
-open is reused, never opened twice; `here` is the calling tab, which becomes the
+`close` and `close_workspace`, which a person asked for); a tab the plan has open already
+is reused, never opened twice (`new_tab` and `launch` open one on purpose); `here` is the calling tab, which becomes the
 control tab and moves last so no workspace is ever left empty. A driver that fails or
 answers something unreadable is reported as a line, never raised, so the plan always
 stands. A step the terminal refused is a report line starting with `ERROR`, never a
@@ -200,6 +206,38 @@ stores for each:
 A workspace in the `workspaces` answer reports its colour as the hex (`color`) and,
 for a palette hex, its name (`color_name`, `null` for any other colour). Colours are
 compared by that name, never by the hex as typed.
+
+Three commands open and close, again by live refs only (exit 2 for a name, a part of one, a ref that is
+not open, a verb the driver does not announce in its `caps`, a title that does not pass the rules of
+`rename`, a sentence it cannot carry). They check everything before the driver is asked to make or close
+anything; a driver that fails or refuses (an `ERROR` line) is exit 1:
+
+```bash
+python3 scripts/workplace.py new-tab workspace:2 --kind shell --title=Scratch --json
+python3 scripts/workplace.py new-tab workspace:2 --text="Why is the build red?" --model sonnet
+python3 scripts/workplace.py new-workspace --title=Research --color Teal --cwd=/path/to/folder --json
+python3 scripts/workplace.py close-workspace workspace:3
+```
+
+`new-tab WS_REF` opens one tab in that workspace, `new-workspace --title=T` one workspace with its first tab,
+`close-workspace WS_REF` closes a workspace and what runs in it. The free texts (`--title`, `--text`) are glued
+to their flag, so a dash at the start is no flag. A title follows the rules of `rename`: not a name the workplace
+manages (a task, inbox or team tab, a configured workspace) and not one in use. `--cwd` is an absolute folder that
+exists; `--color` a palette name, and the driver must serve `set_color`.
+
+`--kind agent` (the default) starts the configured agent, `workplace.agent.new`, the way `launch` does: `--model`,
+`--effort` and the `agent.model` and `agent.effort` defaults work the same. What differs is the prompt. A free chat
+has no task, so `--text` is the person's first sentence and the agent's whole prompt, quoted for the shell, or there
+is no prompt at all and the `{prompt}` slot goes with its blank. A sentence needs that slot in the template (otherwise
+it is refused, the words would be lost); one that starts with a dash is put after `--`. The tab carries
+`BRIDGE_TAB_SLUG=chat-<8 hex>` like any agent tab, so it is no control session and takes no question of the
+cockpit, and it starts in the Bridge folder (in the `--cwd` folder for a workspace). `--kind shell` starts no
+command, the terminal's own shell; a workspace also takes `--kind none`, which is the same thing, since a terminal
+cannot make a workspace without a tab. `--text` is for an agent only.
+
+With `--json` the answer is `{"ok": bool, "report": [...], "ref": ..., "ws_ref": ...}` and carries the new refs
+(`ref` for a tab, `ws_ref` and `ref` for a workspace), also when a step went wrong after the tab was made
+(exit 1, `ok` false): the tab exists, and the caller may open it.
 
 A driver ships as an optional skill or with the tool itself; the plan never
 imports it. `skills/cmux` is the reference driver, active only where cmux is

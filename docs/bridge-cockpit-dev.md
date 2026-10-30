@@ -45,7 +45,8 @@ Everything the page does to an agent tab goes through `scripts/workplace.py`
 and the terminal driver configured in `workplace.driver`
 ([`workplace.md`](workplace.md), "Writing a driver"): `workplace.py focus`
 (Go to tab), `key` (Yes, No, a dialog's option), `screen` (the large tab view, what a waiting tab asks), `close` (Close
-tab), `send` (a message, Go on) and `launch` (Do it, Advise me). The server asks
+tab), `send` (a message, Go on), `launch` (Do it, Advise me), and `new-tab`, `new-workspace` and
+`close-workspace` (a new chat or shell, a new workspace, a workspace closed). The server asks
 `workplace.py caps --json` once and then every few minutes
 (`server.py driver_caps`), and a verb in `actions_base.py NEEDS_CAP` is refused with
 `driver_cannot` when the driver does not serve it. So the server calls no
@@ -266,7 +267,10 @@ three ways out, each covered by a test (`Ctx.unlocked` and `LAYOUT_VERBS` in
   by a flag of its own) only touch stores with their own locks and never
   take the write lock. A new verb joins this set only when that holds for
   everything its handler calls. `flow_attach` writes a file into a task and
-  so runs under the write lock.
+  so runs under the write lock. The terminal verbs `tab_keys`, `tab_new`,
+  `workspace_new` and `workspace_close` are in it too: they write nothing of the
+  Bridge, and a new tab waits seconds for its command to start, which no other
+  write should wait for.
 
 A new verb that calls a subprocess for longer than a few seconds wraps that
 call in `ctx.unlocked()` and takes whatever it must keep for itself (a hold,

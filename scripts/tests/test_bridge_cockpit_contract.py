@@ -306,6 +306,26 @@ def s_tabs(w: World) -> None:
     w.act("workspace_rename", ws_ref="workspace:2", title="-research")
 
 
+def s_make(w: World) -> None:
+    """A new tab, a new workspace and a workspace closed: a dash, a quote and a model at the start of every shape"""
+    caps = [*DRIVER_CAPS, "new_tab", "new_workspace", "close_workspace"]
+    w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": caps})
+    w.app.driver_caps(fresh=True)
+    w.runner.handlers["workplace.new-tab"] = lambda argv: ok({"ok": True, "report": [], "ref": "surface:40"})
+    w.runner.handlers["workplace.new-workspace"] = lambda argv: ok(
+        {"ok": True, "report": [], "ws_ref": "workspace:50", "ref": "surface:51"})
+    folder = w.root / "project"
+    folder.mkdir()
+    w.act("tab_new", ws_ref="workspace:2", kind="agent", text="--why is it red? it's 'quoted'", title="--scratch",
+          model="haiku", effort="xhigh")
+    w.act("tab_new", ws_ref="workspace:2", kind="agent")
+    w.act("tab_new", ws_ref="workspace:2", kind="shell", title="Shell")
+    w.act("workspace_new", title="-research", kind="agent", color="Teal", cwd=str(folder), text="-x", model="opus")
+    w.act("workspace_new", title="Plain", kind="none")
+    w.act("workspace_new", title="Shell", kind="shell", color="Blue")
+    w.act("workspace_close", ws_ref="workspace:3", tabs=["surface:12", "surface:13"])
+
+
 def s_rows(w: World) -> None:
     w.runner.handlers["briefing.act"] = lambda argv: ok(json.dumps(
         {"ok": True, "did": "turned down", "undo": "restore:sent.2026-09-25._"}))
@@ -413,6 +433,8 @@ SCENARIOS = {
     "tabs": Scenario(s_tabs, {"workplace.key", "workplace.keys", "workplace.focus", "workplace.send", "workplace.adopt",
                               "workplace.close", "workplace.control", "workplace.screen", "workplace.rename",
                               "workplace.rename-workspace"}),
+    "make": Scenario(s_make, {"workplace.new-tab", "workplace.new-workspace", "workplace.close-workspace"},
+                     config=EFFORT_CFG),
     "rows": Scenario(s_rows, {"briefing.act"}),
     "reads": Scenario(s_reads, {"inbox.list", "inbox.stats", "inbox.mute", "workplace.screen", "briefing.detail"}),
     "log_range": Scenario(s_log_range, {"briefing.commits"}),

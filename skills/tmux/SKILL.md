@@ -40,18 +40,24 @@ Then `python3 scripts/workplace.py open --yes [--here "$TMUX_PANE"]`, `launch`,
 | `state` | read from the pane: no agent process below the pane is `shell`; `esc to interrupt` is `working`; a permission or numbered choice prompt is `needs-you`; else `waiting` |
 | `sessions` | `--resume <uuid>`, `-r <uuid>` or `--session-id <uuid>` in the agent's process args |
 
-All fourteen verbs are served: `tabs`, `sessions`, `open`, `launch`, `send`,
-`rename`, `control`, `caps`, `focus`, `key`, `screen`, `close`, `rename_workspace`,
-`move_tab`. `rename_workspace` renames the session by its id, with `:` and `.`
+All these verbs are served: `tabs`, `sessions`, `open`, `launch`, `send`,
+`rename`, `control`, `caps`, `focus`, `key`, `keys`, `screen`, `close`,
+`rename_workspace`, `move_tab`, `new_tab`, `new_workspace`, `close_workspace`.
+`rename_workspace` renames the session by its id, with `:` and `.`
 turned into `_` as tmux does, and refuses a name another session has after that
 same change. `move_tab` moves a window into another session (`move-window -d`,
-without an index) and never the last window of a session. tmux has no workspace
-colour or description, so `set_color` and `set_description` are not offered.
+without an index) and never the last window of a session. `new_tab` adds a
+window to a session by its id and `new_workspace` makes a session (neither is
+selected), both answering the new refs; `new_workspace` refuses a name in use and
+a colour. `close_workspace` kills one session and never the last one of the
+server. tmux has no workspace colour or description, so `set_color` and
+`set_description` are not offered.
 
 ## What it guarantees
 
 - It never closes a window or a session on its own. `close` kills one pane on
-  request, and refuses the last pane of the server, which would end the server.
+  request, and refuses the last pane of the server, which would end the server;
+  `close_workspace` kills one session on request and refuses the last session.
 - It never moves the last window out of a session (tmux destroys an emptied
   session); such a tab is renamed where it is and the report says so.
 - `open` and `control` reuse a window of the same name in the target session.
