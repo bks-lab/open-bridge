@@ -145,6 +145,7 @@ def synth_repo(tmp_path, monkeypatch):
     write("identity/designs/team.md", "---\nversion: alpha\nscope: org\nname: team\n---\n# Team\n")
     write("identity/designs/side.md", "---\nversion: alpha\nscope: personal\nname: side\n---\n# Side\n")
     write("identity/designs/undeclared.md", "---\nversion: alpha\nname: undeclared\n---\n# Undeclared\n")
+    write("identity/designs/claims-core.md", "---\nversion: alpha\nscope: core\nname: claims-core\n---\n# X\n")
 
     cc._LOGO_BY_THEME_CACHE = None
     monkeypatch.chdir(tmp_path)
@@ -807,6 +808,10 @@ def test_designs_route_by_their_declaration(synth_repo):
         "classes it `user` and it never reaches a fork"
     )
     assert tier("identity/designs/_schema.yaml") == "core"
+    assert tier("identity/designs/claims-core.md") == "user", (
+        "an instance design declaring `scope: core` would be cherry-picked to the public "
+        "upstream; the only design that ships is the root DESIGN.md and the template"
+    )
 
 
 # ---------------------------------------------------------------------------

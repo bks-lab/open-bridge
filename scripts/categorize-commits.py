@@ -883,6 +883,10 @@ def classify_file(path: str) -> str:
     if _CLUSTER_WRAPPER_RE.search(path):
         token = read_frontmatter_scope(path)
         mapped = _SCOPE_MAP.get(token) if token else None
+        # A design never ships by declaration: the default that ships is the
+        # root DESIGN.md. An instance brand claiming `core` stays local.
+        if mapped == "core" and path.startswith("identity/designs/"):
+            return "user"
         if mapped:
             return mapped
     # A theme's own `meta.scope:` (and the logo it declares) WINS over the path
