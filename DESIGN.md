@@ -300,6 +300,10 @@ Which design a piece of work uses is resolved, never picked by hand. The first s
 | 5 | `branding.design:` in the active `themes/<name>.yaml` | the instance default |
 | 6 | this file | a Bridge with no further design |
 
+A context or persona that must not wear the theme's design says `design_ref: default`: resolution
+stops there, at this file (freelance work under a second identity in an organisation's Bridge).
+`default` is reserved and never a design id; `design_ref: null` means not set.
+
     python3 scripts/designs.py list                      # every design, its scope, what it is for, who points at it
     python3 scripts/designs.py resolve --context <ctx>   # the file that applies
 

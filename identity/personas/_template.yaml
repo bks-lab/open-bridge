@@ -134,6 +134,8 @@ signature: |
 # Optional: the design of everything sent under this identity, an id
 # under identity/designs/ (mail-draft dresses a mail with it). Unset,
 # the theme's design and then the root DESIGN.md apply.
+# `design_ref: default` opts out: the root DESIGN.md, whatever the theme says
+# (work under this identity that has nothing to do with the theme's brand).
 # ---------------------------------------------------------------------
 # design_ref: example-org
 

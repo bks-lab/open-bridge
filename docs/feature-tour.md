@@ -208,7 +208,8 @@ copy the root `DESIGN.md` for the full set of sections and change its values.
 Then point at it: `design_ref: <id>` in a context
 ([`workflow/contexts/`](#workflowcontexts)) or a persona
 ([`identity/personas/`](#identitypersonas)), or `branding.design: <id>` in
-your theme for the instance default.
+your theme for the instance default. `design_ref: default` opts a context or
+persona out of the theme's design: it gets the root `DESIGN.md`.
 
 **Schema:** `identity/designs/_schema.yaml` (front matter; required: `name`,
 `description`, `scope`, `colors`).
