@@ -3,7 +3,7 @@
 // fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FILES_PAGE, FLOW_PAGE, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
+import { FILES_PAGE, FLOW_PAGE, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, fieldsWall, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -113,6 +113,8 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
     fieldSplit: at => putFields({ ...fields(), split: Math.min(75, Math.max(25, at)) }),
     fieldsFull: () => apply({ fieldsFull: !get().ui?.fieldsFull }),
     setChatFind: q => apply({ chatFind: q }),
+    fieldWall: refs => putFields(fieldsWall(fields(), refs)),
+    newChat: dialog => apply({ newChat: dialog }),
     togglePin: ref => {
       const pins = get().ui?.pins ?? []
       const next = pins.includes(ref) ? pins.filter(x => x !== ref) : [...pins, ref]

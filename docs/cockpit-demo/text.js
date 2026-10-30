@@ -888,6 +888,7 @@ const en = {
   chatSolve: 'Let AI do it',
   chatSolveTitle: 'A real Claude session in its own terminal tab takes it on and may act',
   tools: {
+    newChat: 'New chat', newChatIn: w => `New chat in ${w}`, newWorkspace: 'New workspace', newShort: 'New', kindAgent: 'Claude', kindShell: 'Shell', kindResume: 'Go on', firstLine: 'What is it about? Empty for a free chat', nameOptional: 'Name, else from the text', noOld: 'No earlier session without a tab.', openBeside: 'Open beside the open tab', start: 'Start', create: 'Create', name: 'Name', color: 'Colour', noColor: 'None', folder: 'Folder, else this Bridge', firstChat: 'Open a chat in it right away', wall: 'All tabs side by side', closeWs: 'Close workspace', closeAgain: n => `Click again: closes ${n} tab${n === 1 ? '' : 's'}`, moreWs: 'More about this workspace',
     beside: 'Open beside', rename: 'Rename', move: 'Move to', pin: 'Pin', unpin: 'Unpin', pinned: 'Pinned', bell: on => (on ? 'Stop telling me' : 'Tell me when done'), more: 'More about this tab',
     findChats: 'Search all chats', found: n => `${n} found`, selCopy: 'Copy', selAsk: 'Ask about it', selFile: 'Into the file', selChat: 'To another chat',
     bar: 'Tools of this chat', stop: 'Stop', stopTitle: 'Interrupts the agent, as Esc does in the terminal', interrupt: 'Stops the running program', clear: 'Clear',
@@ -1590,6 +1591,7 @@ const en = {
     name_in_use: 'That name is already in use.',
     name_managed: 'That name belongs to a task tab or a configured workspace (workplace.workspaces).',
     stale_workspace: 'This workspace is gone or changed meanwhile.',
+    new_refused: 'The terminal refused that.',
     title_invalid: 'That name does not work: 1 to 80 characters, no control characters.',
     rename_refused: 'The new name was not taken.',
     organize_too_big: 'Too much to show the AI in one question. Close a few tabs and try again.',
@@ -2624,6 +2626,7 @@ const de = {
   chatSolve: 'AI machen lassen',
   chatSolveTitle: 'Eine echte Claude-Sitzung in einem eigenen Terminal-Tab übernimmt und darf handeln',
   tools: {
+    newChat: 'Neuer Chat', newChatIn: w => `Neuer Chat in ${w}`, newWorkspace: 'Neuer Workspace', newShort: 'Neu', kindAgent: 'Claude', kindShell: 'Shell', kindResume: 'Fortsetzen', firstLine: 'Worum geht es? Leer lassen für einen freien Chat', nameOptional: 'Name, sonst aus dem Text', noOld: 'Keine frühere Sitzung ohne Tab.', openBeside: 'Neben dem offenen Tab öffnen', start: 'Starten', create: 'Anlegen', name: 'Name', color: 'Farbe', noColor: 'Keine', folder: 'Ordner, sonst diese Bridge', firstChat: 'Gleich einen Chat darin öffnen', wall: 'Alle Tabs nebeneinander', closeWs: 'Workspace schließen', closeAgain: n => `Nochmal klicken: schließt ${n} Tab${n === 1 ? '' : 's'}`, moreWs: 'Mehr zu diesem Workspace',
     beside: 'Daneben öffnen', rename: 'Umbenennen', move: 'Verschieben nach', pin: 'Anheften', unpin: 'Nicht mehr anheften', pinned: 'Angeheftet', bell: on => (on ? 'Nicht mehr melden' : 'Melden, wenn er fertig ist'), more: 'Mehr zu diesem Tab',
     findChats: 'In allen Chats suchen', found: n => `${n} gefunden`, selCopy: 'Kopieren', selAsk: 'Dazu fragen', selFile: 'In die Akte', selChat: 'An anderen Chat',
     bar: 'Werkzeuge dieses Chats', stop: 'Stopp', stopTitle: 'Unterbricht den Agenten, wie Esc im Terminal', interrupt: 'Bricht das laufende Programm ab', clear: 'Leeren',
@@ -3314,6 +3317,7 @@ const de = {
     name_in_use: 'Der Name ist schon vergeben.',
     name_managed: 'Der Name gehört zu einem Aufgaben-Tab oder einem eingerichteten Workspace (workplace.workspaces).',
     stale_workspace: 'Dieser Workspace ist weg oder hat sich geändert.',
+    new_refused: 'Das Terminal hat das abgelehnt.',
     title_invalid: 'Dieser Name geht nicht: 1 bis 80 Zeichen, keine Steuerzeichen.',
     rename_refused: 'Der neue Name wurde nicht übernommen.',
     organize_too_big: 'Zu viel für eine Frage an die KI. Schließ ein paar Tabs und versuch es noch einmal.',

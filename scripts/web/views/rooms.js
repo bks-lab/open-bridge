@@ -24,7 +24,7 @@ import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented, TabClose } from './detail.js'
-import { HistoryPanel, KeyStrip, Pop, SelectionBar, StatusChips, TabMenu, ToolBar, WriteStrip, usePop } from './termtools.js'
+import { HistoryPanel, KeyStrip, NewChat, NewWorkspace, Pop, SelectionBar, StatusChips, TabMenu, ToolBar, WorkspaceMenu, WriteStrip, usePop } from './termtools.js'
 import { AnswerBar, EmptyField, FieldBar, FieldClose, FieldGrid, FieldGrip, TopicPane, dragTab } from './fields.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { ControlNotice } from './header.js'
@@ -153,6 +153,7 @@ function Chats({ convs, s, c, here }) {
 
 function WorkspaceGroup({ w, s, c, here, waits }) {
   const t = T()
+  const { pop, close, open } = usePop()
   const on = here.kind === 'ws' && here.id === w.key
   const head = renaming(s, 'ws', w.ref) && w.ref
     ? html`<${RenameField} value=${w.title} label=${t.rooms.renameWs}
@@ -167,6 +168,10 @@ function WorkspaceGroup({ w, s, c, here, waits }) {
       ${w.unread ? html`<span class="room-badge mono"><span class="sr-only">${t.rooms.unread(w.unread)}</span><span aria-hidden="true">${w.unread}</span></span>` : null}
       ${w.bridge ? html`<span class="chip room-bridge">${w.bridge.name}</span>` : null}
     <//>`}
+    ${w.ref && !w.bridge && !head ? html`<span class="room-ws-acts">
+      ${canTab(s, 'new_tab') ? html`<button type="button" class="room-mini is-plus" title=${t.tools.newChatIn(w.title)} aria-label=${t.tools.newChatIn(w.title)} onClick=${() => c.newChat({ ws: { ref: w.ref, title: w.title } })}>+</button>` : null}
+      <button type="button" class="room-mini" title=${t.tools.moreWs} aria-label=${t.tools.moreWs} onClick=${open('ws')}>⋯</button></span>` : null}
+    ${pop ? html`<${Pop} at=${pop.at} onClose=${close}><${WorkspaceMenu} w=${w} s=${s} c=${c} canName=${canRenameWorkspace(s, w)} close=${close} /><//>` : null}
     ${w.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} dim=${waits.has(tab.ref)} />`)}
   </section>`
 }
@@ -337,6 +342,7 @@ export function Sidebar({ s, c, rooms, here }) {
       <${Chats} convs=${listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)} s=${s} c=${c} here=${here} /></section>
     <div class="room-group-head">
       <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
+      ${canTab(s, 'new_workspace') ? html`<${Btn} size="xs" variant="secondary" title=${t.tools.newWorkspace} onClick=${() => c.newChat({ workspace: true })}>+ ${t.tools.newShort}<//>` : null}
       ${canTab(s, 'rename') ? html`<${Btn} size="xs" variant="ghost" title=${t.organize.buttonTitle} busy=${!!s.ui?.organize?.busy}
         onClick=${() => c.organizePropose()}>${t.organize.button}<//>` : null}
     </div>
@@ -547,5 +553,7 @@ export function RoomsPage({ s, c }) {
       <div class="rooms-left"><${AreaSwitch} s=${s} c=${c} area=${area} /><${Sidebar} s=${s} c=${c} rooms=${rooms} here=${here} /></div>
       ${pane}
     </div>
+    ${s.ui.newChat?.ws ? html`<${NewChat} s=${s} c=${c} ws=${s.ui.newChat.ws} />` : null}
+    ${s.ui.newChat?.workspace ? html`<${NewWorkspace} s=${s} c=${c} />` : null}
   </div>`
 }

@@ -8,8 +8,9 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { canTab, termCommands } from '../logic.js'
+import { WORKSPACE_COLORS, canTab, termCommands } from '../logic.js'
 import { T } from '../text.js'
+import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
 
 const CLICK_KEYS = [['escape', 'Esc'], ['tab', 'Tab'], ['shift+tab', '⇧Tab'], ['up', '↑'], ['down', '↓'], ['left', '←'], ['right', '→'],
@@ -98,6 +99,81 @@ export function TabMenu({ tab, s, c, canName, close }) {
     ${item((s.ui.pins ?? []).includes(tab.ref) ? t.unpin : t.pin, act(() => c.togglePin(tab.ref)))}
     ${tab.state !== 'shell' ? item(t.bell(!!s.ui.bells?.[tab.ref]), act(() => c.toggleBell(tab.ref))) : null}
     ${tab.state !== 'shell' ? item(t.cmd.branch, act(() => c.termKeys(tab.ref, [{ text: '/branch' }, { key: 'enter' }])), free) : null}`
+}
+
+/** A new chat in a workspace: an agent with a first sentence or none, a shell, or an earlier session going on */
+export function NewChat({ s, c, ws }) {
+  const t = T().tools
+  const [kind, setKind] = useState('agent')
+  const [text, setText] = useState('')
+  const [title, setTitle] = useState('')
+  const [beside, setBeside] = useState(false)
+  const [note, setNote] = useState(null)
+  const old = (s.sessions?.sessions ?? []).filter(x => !x.tab && x.sid).slice(0, 8)
+  const opened = r => {
+    if (!r?.ref) { if (r?.note) setNote(r.note); return }
+    c.newChat(null)
+    if (beside) c.fieldBeside(r.ref)
+    c.pickRoom({ kind: 'tab', id: r.ref })
+  }
+  const start = async () => {
+    if (kind === 'resume') return
+    opened(await c.act('tab_new', { ws_ref: ws.ref, kind, ...(text.trim() ? { text: text.trim() } : {}), ...(title.trim() ? { title: title.trim() } : {}) }))
+  }
+  const resume = async sid => { const r = await c.act('session_resume', { session: sid }); if (r?.ok) c.newChat(null) }
+  return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.newChat(null) }}>
+    <div class="dialog term new-chat" role="dialog" aria-modal="true" aria-label=${t.newChatIn(ws.title)}>
+      <h2 class="sec-title">${t.newChatIn(ws.title)}</h2>
+      <div class="new-kinds" role="group">${[['agent', t.kindAgent], ['shell', t.kindShell], ['resume', t.kindResume]].map(([k, w]) => html`<button type="button" key=${k} class=${`new-kind${kind === k ? ' is-on' : ''}`} aria-pressed=${String(kind === k)} onClick=${() => setKind(k)}>${w}</button>`)}</div>
+      ${kind === 'agent' ? html`<label class="new-field">${t.firstLine}<textarea class="input" rows="3" value=${text} onInput=${e => setText(e.currentTarget.value)}></textarea></label>` : null}
+      ${kind !== 'resume' ? html`<label class="new-field">${t.nameOptional}<input class="input" type="text" maxlength="80" value=${title} onInput=${e => setTitle(e.currentTarget.value)} /></label>` : null}
+      ${kind === 'agent' ? html`<${LaunchPick} s=${s} c=${c} />` : null}
+      ${kind === 'resume' ? html`<div class="new-resume">${old.map(x => html`<button type="button" key=${x.sid} class="pop-item" onClick=${() => resume(x.sid)}>${x.name || x.sid.slice(0, 8)}</button>`)}${old.length ? null : html`<p class="muted small">${t.noOld}</p>`}</div>` : null}
+      ${kind !== 'resume' ? html`<label class="new-check"><input type="checkbox" checked=${beside} onChange=${e => setBeside(e.currentTarget.checked)} /> ${t.openBeside}</label>` : null}
+      ${note ? html`<p class="reply-note small" role="status">${note}</p>` : null}
+      <div class="btn-row dialog-acts"><${Btn} size="sm" variant="ghost" onClick=${() => c.newChat(null)}>${T().guide.cancel}<//>
+        ${kind !== 'resume' ? html`<${Btn} size="sm" variant="primary" busy=${!!s.ui?.busy?.tab_new} onClick=${start}>${t.start}<//>` : null}</div>
+    </div>
+  </div>`
+}
+
+/** A new workspace: name, colour, folder, and a first chat in it */
+export function NewWorkspace({ s, c }) {
+  const t = T().tools
+  const [title, setTitle] = useState('')
+  const [color, setColor] = useState('')
+  const [cwd, setCwd] = useState('')
+  const [first, setFirst] = useState(true)
+  const go = async () => {
+    const v = title.trim()
+    if (!v) return
+    const r = await c.act('workspace_new', { title: v, kind: first ? 'agent' : 'shell', ...(color ? { color } : {}), ...(cwd.trim() ? { cwd: cwd.trim() } : {}) })
+    if (r?.ref) { c.newChat(null); c.pickRoom({ kind: 'tab', id: r.ref }) }
+  }
+  return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.newChat(null) }}>
+    <div class="dialog term new-chat" role="dialog" aria-modal="true" aria-label=${t.newWorkspace}>
+      <h2 class="sec-title">${t.newWorkspace}</h2>
+      <label class="new-field">${t.name}<input class="input" type="text" maxlength="80" value=${title} onInput=${e => setTitle(e.currentTarget.value)} /></label>
+      <label class="new-field">${t.color}<select class="input" value=${color} onChange=${e => setColor(e.currentTarget.value)}><option value="">${t.noColor}</option>${WORKSPACE_COLORS.map(x => html`<option key=${x} value=${x}>${x}</option>`)}</select></label>
+      <label class="new-field">${t.folder}<input class="input" type="text" value=${cwd} onInput=${e => setCwd(e.currentTarget.value)} /></label>
+      <label class="new-check"><input type="checkbox" checked=${first} onChange=${e => setFirst(e.currentTarget.checked)} /> ${t.firstChat}</label>
+      <div class="btn-row dialog-acts"><${Btn} size="sm" variant="ghost" onClick=${() => c.newChat(null)}>${T().guide.cancel}<//>
+        <${Btn} size="sm" variant="primary" disabled=${!title.trim()} busy=${!!s.ui?.busy?.workspace_new} onClick=${go}>${t.create}<//></div>
+    </div>
+  </div>`
+}
+
+/** ⋯ of a workspace; closing asks once more on the row, and the server refuses while a tab works or asks */
+export function WorkspaceMenu({ w, s, c, canName, close }) {
+  const t = T().tools
+  const [armed, setArmed] = useState(false)
+  const act = fn => () => { close(); fn() }
+  const refs = w.tabs.map(x => x.ref)
+  const shut = () => { if (!armed) { setArmed(true); return } close(); c.act('workspace_close', { ws_ref: w.ref, tabs: refs }) }
+  return html`${canTab(s, 'new_tab') ? html`<button type="button" class="pop-item" onClick=${act(() => c.newChat({ ws: { ref: w.ref, title: w.title } }))}>${t.newChat}</button>` : null}
+    ${refs.length > 1 ? html`<button type="button" class="pop-item" onClick=${act(() => c.fieldWall(refs))}>${t.wall}</button>` : null}
+    ${canName ? html`<button type="button" class="pop-item" onClick=${act(() => c.startRename('ws', w.ref))}>${t.rename}</button>` : null}
+    ${canTab(s, 'close_workspace') ? html`<button type="button" class=${`pop-item is-danger${armed ? ' is-armed' : ''}`} onClick=${shut}>${armed ? t.closeAgain(refs.length) : t.closeWs}</button>` : null}`
 }
 
 /** The bar over a selection in the terminal: what the cockpit can do with words you marked */

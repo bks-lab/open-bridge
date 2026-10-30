@@ -257,3 +257,17 @@ button.st-chip:hover:not(:disabled) { border-color: var(--accent-line); color: v
 .selbar button:hover { background: var(--accent-subtle); }
 .selbar-list { flex-basis: 100%; display: grid; max-height: 200px; overflow-y: auto; border-top: 1px solid var(--border); }
 .selbar-list button { text-align: left; overflow: hidden; text-overflow: ellipsis; }
+
+.room-ws { position: relative; }
+.room-ws-acts { position: absolute; top: 3px; right: 2px; display: flex; gap: 2px; opacity: 0.75; }
+.room-ws:hover .room-ws-acts { opacity: 1; }
+.room-mini, .field-plus { width: 22px; height: 22px; display: inline-grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--on-surface-muted); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
+.room-mini:hover, .field-plus:hover { background: var(--surface-muted); color: var(--ink); }
+.room-mini.is-plus, .field-plus { color: var(--accent); font-weight: 700; }
+.new-chat { display: grid; gap: 12px; width: min(560px, 92vw); padding: 18px; }
+.new-kinds { display: flex; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.new-kind { flex: 1; padding: 7px 10px; border: 0; background: none; color: var(--on-surface-muted); font: inherit; cursor: pointer; }
+.new-kind.is-on { background: var(--accent-subtle); color: var(--ink); font-weight: 600; }
+.new-field { display: grid; gap: 4px; color: var(--on-surface-muted); }
+.new-check { display: flex; align-items: center; gap: 8px; }
+.new-resume { display: grid; gap: 2px; }

@@ -9,7 +9,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { FIELD_COUNT, answerMark, errorText, guideChoices, guideOf, indexRows, isTopic, previewText, replySend, short, stateToken, tabStateKey, taskOfTab } from '../logic.js'
+import { FIELD_COUNT, answerMark, canTab, errorText, guideChoices, guideOf, indexRows, isTopic, previewText, replySend, short, stateToken, tabStateKey, taskOfTab } from '../logic.js'
 import { T } from '../text.js'
 import { OpenFile } from './dossier.js'
 import { GuideTree } from './guide.js'
@@ -52,7 +52,9 @@ export function FieldBar({ s, c, f, tab }) {
     ${tab ? html`<span class="field-ws">${tab.workspace}</span>` : null}
     <div class="field-tabs">${w.map(x => html`<button type="button" key=${x.ref} class=${`field-tab${x.ref === tab?.ref ? ' is-on' : ''}`} title=${x.name}
       aria-current=${x.ref === tab?.ref ? 'true' : undefined} onClick=${() => c.pickRoom({ kind: 'tab', id: x.ref })}>
-      <${Dot} token=${stateToken(tabStateKey(x))} pulse=${x.state === 'working'} /><span>${x.name}</span></button>`)}</div>
+      <${Dot} token=${stateToken(tabStateKey(x))} pulse=${x.state === 'working'} /><span>${x.name}</span></button>`)}
+      ${tab?.ws_ref && canTab(s, 'new_tab') ? html`<button type="button" class="field-plus" title=${T().tools.newChatIn(tab.workspace)} aria-label=${T().tools.newChatIn(tab.workspace)}
+        onClick=${() => c.newChat({ ws: { ref: tab.ws_ref, title: tab.workspace } })}>+</button>` : null}</div>
     <span class="field-layouts">
       <${Btn} size="xs" variant="secondary" pressed=${hasTopic} title=${t.chatTopicTitle} onClick=${() => c.fieldTopic()}>${t.chatTopic}<//>
       ${LAYOUTS.map(([id, cols, rows]) => html`<button type="button" key=${id} class=${`field-lay${f.layout === id ? ' is-on' : ''}`} title=${t.layout[id]} aria-label=${t.layout[id]}

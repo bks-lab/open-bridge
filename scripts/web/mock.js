@@ -2531,6 +2531,13 @@ export function createMockTransport(opts = {}) {
           emit('quick', JSON.parse(JSON.stringify(state.quick)))
         }
         // a name of its own for a tab or a workspace, refused like the server (actions.py v_tab_rename)
+        if (verb === 'tab_new') {
+          const ws = (state.tabs.workspaces ?? []).find(w => w.ref === args.ws_ref)
+          if (!ws) return fail(409, 'stale_workspace', 'no such workspace')
+          const ref = `surface:${100 + state.tabs.tabs.length}`
+          state.tabs.tabs.push({ ...state.tabs.tabs.find(x => x.ws_ref === ws.ref), ref, name: args.title || args.text?.slice(0, 40) || 'New chat', state: args.kind === 'shell' ? 'shell' : 'waiting', slug: null, ask: null })
+          return ok({ ok: true, ref })
+        }
         if (verb === 'tab_move') {
           const tab = state.tabs.tabs.find(x => x.ref === args.tab_ref)
           const to = (state.tabs.workspaces ?? []).find(w => w.ref === args.ws_ref)

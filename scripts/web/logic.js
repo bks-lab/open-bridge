@@ -3847,6 +3847,9 @@ export function termCommands(tab, s, t) {
   ]
 }
 
+/** The colours a workspace can take (workplace.py COLORS), by name */
+export const WORKSPACE_COLORS = ['Red', 'Crimson', 'Orange', 'Amber', 'Olive', 'Green', 'Teal', 'Aqua', 'Blue', 'Navy', 'Indigo', 'Purple', 'Magenta', 'Rose', 'Brown', 'Charcoal']
+
 // ---------------------------------------------------------------- the fields of the Chat (views/fields.js)
 
 /** The layouts and how many fields each holds. A field holds a tab's ref, Zum Thema or nothing; the fields live on
@@ -3936,6 +3939,12 @@ export function fieldsHold(f, i, ref) {
   const panes = f.panes.slice()
   panes[i] = panes[i].follow ? { topic: true, follow: false, tab: ref } : newTopic()
   return { ...f, panes }
+}
+
+/** All tabs of a workspace side by side, up to four */
+export function fieldsWall(f, refs) {
+  const panes = refs.slice(0, 4)
+  return panes.length ? { ...shrunk({ ...f, active: 0 }, panes) } : f
 }
 
 /** A tab dropped on a field: one that stands in a field changes places, any other opens there */
@@ -4063,7 +4072,7 @@ export function themeOverride(search) {
 // ---------------------------------------------------------------- the model an agent tab starts with (launch)
 
 /** The verbs that start an agent: only these carry a model and an effort, and only while launch is on */
-export const START_VERBS = ['do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff']
+export const START_VERBS = ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff']
 export const LAUNCH_MODELS = ['haiku', 'sonnet', 'opus']
 export const LAUNCH_EFFORTS = ['low', 'medium', 'high', 'xhigh']
 

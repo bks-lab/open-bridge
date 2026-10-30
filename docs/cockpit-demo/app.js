@@ -235,7 +235,7 @@ const store = createStore({
     shortcuts: load('bridge-cockpit.shortcuts', 'off') === 'on',
     // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
     roomsSort: ['urgency', 'status'].find(v => v === load('bridge-cockpit.roomsSort', 'terminal')) ?? 'terminal',
-    fields: lastFields(), fieldsFull: false, pins: lastPins(), bells: {}, chatFind: '',
+    fields: lastFields(), fieldsFull: false, pins: lastPins(), bells: {}, chatFind: '', newChat: null,
     answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
     renaming: null,  // the tab or workspace whose name is being typed: { kind: 'tab' | 'ws', id: ref } (views/rooms.js)
     // organize with AI (views/organize.js): { busy, applying, proposal, ticks: { id: true }, result } while open
