@@ -564,3 +564,51 @@ def test_module_deck_runs_in_the_browser(module_tree, plain_dir, open_html, page
     open_html(out.read_text("utf-8"))
     page.wait_for_function("() => window.__probe && window.__probe.inits === 1 && window.__beta === 1")
     assert page.errors == []
+
+
+# --- the Bridge's own designs (scripts/designs.py) -------------------------------------------
+# Walking up from the deck stays the first answer after --design: a deck written into a
+# website repository wears that repository's DESIGN.md. Only a deck inside the Bridge itself
+# asks the Bridge which design applies, here the theme's `branding.design`.
+
+def mini_bridge(tmp_path: Path) -> Path:
+    root = tmp_path / "bridge"
+    (root / ".git").mkdir(parents=True)
+    for skill in ("html-slides", "html-canvas"):
+        shutil.copytree(SKILL.parent / skill, root / "skills" / skill,
+                        ignore=shutil.ignore_patterns("tests", "examples", "__pycache__"))
+    (root / "scripts").mkdir()
+    shutil.copy(SKILL.parents[1] / "scripts" / "designs.py", root / "scripts" / "designs.py")
+    fixture = (TOOLING / "DESIGN.md").read_text("utf-8")
+    (root / "DESIGN.md").write_text(fixture, encoding="utf-8")
+    brand = fixture.replace("name: fixture-deck-brand", "scope: user\nname: brand\ndescription: d", 1)
+    (root / "identity" / "designs").mkdir(parents=True)
+    (root / "identity" / "designs" / "brand.md").write_text(brand.replace("#2F5D8A", "#5A1E3C"), encoding="utf-8")
+    (root / "themes").mkdir()
+    (root / "themes" / "house.yaml").write_text("meta: {name: house}\nbranding: {design: brand}\n", encoding="utf-8")
+    (root / "bridge-config.yaml").write_text("theme: house\n", encoding="utf-8")
+    return root
+
+
+def test_a_deck_inside_the_bridge_wears_the_theme_design(tmp_path):
+    bridge = mini_bridge(tmp_path)
+    out = bridge / "work" / "deck.html"
+    out.parent.mkdir()
+    subprocess.run([sys.executable, str(bridge / "skills" / "html-slides" / "scripts" / "new-deck.py"),
+                    "--title", "x", "--slides", str(SLIDES), "--out", str(out)], check=True, capture_output=True)
+    tokens = region(out.read_text("utf-8"), "deck-tokens")
+    assert "/* deck-preset: design */" in tokens
+    assert "#5A1E3C" in tokens and "#2F5D8A" not in tokens
+
+
+def test_the_target_repos_design_still_wins_over_the_bridge(tmp_path):
+    bridge = mini_bridge(tmp_path)
+    site = tmp_path / "website"
+    (site / ".git").mkdir(parents=True)
+    shutil.copyfile(TOOLING / "DESIGN.md", site / "DESIGN.md")
+    out = site / "decks" / "deck.html"
+    out.parent.mkdir()
+    subprocess.run([sys.executable, str(bridge / "skills" / "html-slides" / "scripts" / "new-deck.py"),
+                    "--title", "x", "--slides", str(SLIDES), "--out", str(out)], check=True, capture_output=True)
+    tokens = region(out.read_text("utf-8"), "deck-tokens")
+    assert "#2F5D8A" in tokens and "#5A1E3C" not in tokens
