@@ -40,7 +40,7 @@ const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
 const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'flow.js', 'motion.js', 'text.js', 'text-areas.js', 'text-card.js', 'text-files.js', 'text-flow.js', 'text-chat.js', 'theme.js', 'mock.js', ...VIEW_FILES]
 // the page's styles: style.css and the parts index.html loads right after it, in this order
-const STYLE_FILES = ['style.css', 'areas.css', 'files.css', 'flow.css']
+const STYLE_FILES = ['style.css', 'areas.css', 'files.css', 'flow.css', 'term.css']
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
@@ -836,6 +836,38 @@ test('tab view: a terminal reads as chat lines, blank runs collapse', () => {
   assert.deepEqual(lines.map(l => l.kind), ['user', 'gap', 'claude', 'tool', 'plain', 'gap', 'user'])
   assert.equal(lines[2].text, '⏺ Reading README.md')
   assert.deepEqual(logic.screenLines(''), [])
+})
+
+test('tab view: a bare prompt is what you type next, and a blank line ends what you typed', () => {
+  const lines = logic.screenLines('> fix it\nsecond line\n\nanswer without a mark\n────\n❯\n────')
+  assert.deepEqual(lines.map(l => l.kind), ['user', 'user', 'gap', 'plain', 'frame', 'user', 'frame'])
+})
+
+test('tab view: a line carries its tone: diff, a tool at work, the hints, a rule', () => {
+  const tone = text => logic.screenLines(text)[0].tone ?? null
+  assert.equal(tone('     12 +  const a = 1'), 'add')
+  assert.equal(tone('     12 -  const a = 0'), 'del')
+  assert.equal(tone('✻ Thinking… (12s · esc to interrupt)'), 'work')
+  assert.equal(tone('  ⏵⏵ auto mode on (shift+tab to cycle)'), 'hint')
+  assert.equal(tone('────────────────'), 'rule')
+  assert.equal(tone('- a list, no diff'), null)
+  assert.equal(tone('1 + 1 = 2 has no indent, so no diff'), null)
+})
+
+test('tab view: a line in pieces, its mark, paths, links and the two result marks, nothing lost', () => {
+  const kinds = text => logic.termParts(text).map(p => [p.c ?? '', p.t])
+  assert.deepEqual(kinds('⏺ Read scripts/web/style.css:1058 ok'),
+    [['mark', '⏺'], ['', ' Read '], ['path', 'scripts/web/style.css:1058'], ['', ' ok']])
+  assert.deepEqual(kinds('  ⎿  see https://example.com/a?b=1, then'),
+    [['', '  '], ['mark', '⎿'], ['', '  see '], ['url', 'https://example.com/a?b=1'], ['', ', then']])
+  assert.deepEqual(kinds('✓ done ✗ failed'), [['ok', '✓'], ['', ' done '], ['bad', '✗'], ['', ' failed']])
+  assert.deepEqual(kinds('in ~/Developer/bks und ./run.sh'), [['', 'in '], ['path', '~/Developer/bks'], ['', ' und '], ['path', './run.sh']])
+  // the words a sentence holds stay words: no slash, no extension, a slash command
+  for (const plain of ['Ja/Nein und und/oder', 'z.B. so', 'siehe /briefing workflow', '']) assert.equal(logic.termParts(plain).map(p => p.t).join(''), plain)
+  assert.deepEqual(logic.termParts('Ja/Nein z.B. /briefing').filter(p => p.c), [])
+  // whatever the pieces, they read as the line
+  const line = '  ❯ 1. ✔ a/b.txt https://x.y/z ✘'
+  assert.equal(logic.termParts(line).map(p => p.t).join(''), line)
 })
 
 test('workers: tones, strip marks, facets that count without themselves, groups in view order', () => {
@@ -3666,10 +3698,12 @@ test('the style files: every class selector is used by the page, or built from a
   const DYNAMIC = {
     'btn-': null, 'day-': null, 'fdot-': null, 'g-': null, 'hist-': null, 'is-': null, 'lane-': null,
     'layout-': null, 'mc-': null, 'md-h': null, 'rdot-': null, 'rt-': null, 'sm-': null, 'st-': null, 'tk-': null,
-    'tl-': null, 'sr-': ['0', '1', '2', '3'], 'view-thumb-': null, 'vs-': null,
+    'sr-': ['0', '1', '2', '3'], 'view-thumb-': null, 'vs-': null,
     'ticker-': ['slow', 'normal', 'fast'],
     'tri-': ['ai', 'either'],
     'kind-': ['task', 'stream', 'done_task', 'done_stream', 'inbox', 'issue', 'other'],
+    // a line of a tab's screen: its kind, its tone, a piece of it (logic.js screenLines, termParts; views/tabs.js)
+    'term-': ['user', 'claude', 'tool', 'frame', 'plain', 'gap', 'rule', 'work', 'hint', 'add', 'del', 'mark', 'path', 'url', 'ok', 'bad'],
     // a suggestion of the list of Work through, by its verb (views/flowlist.js)
     'flow-sug-': ['done', 'drop', 'later', 'do', 'you'],
   }

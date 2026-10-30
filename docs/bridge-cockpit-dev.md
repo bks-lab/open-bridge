@@ -1,7 +1,7 @@
 ---
 summary: "Working on the cockpit: which files make up the server, the page and the mod relay, which of them are shared with the rest of the Bridge, the edit and test loop (mock mode, a second instance beside the live one), recipes for a new verb, a new model field and new text, the rules the tests hold, and what has to travel together when it moves to open-bridge."
 type: guide
-last_updated: 2026-10-28
+last_updated: 2026-10-30
 related:
   - bridge-cockpit.md
   - cockpit-areas.md
@@ -129,6 +129,7 @@ layout now").
 | `scripts/web/text.js` | page texts, de and en with identical keys; it takes in `text-areas.js` (`home`, the start page), `text-card.js` (`card`, the item card) `text-files.js` (`dossier`) and `text-flow.js` (`flow`, the Work through page), each with both languages side by side |
 | `scripts/web/tokens.css`, `style.css` | design tokens from `DESIGN.md`, layout |
 | `scripts/web/areas.css`, `files.css`, `flow.css` | the rules of the areas, of the files view and of the Work through page, loaded right after `style.css` so the cascade stands as it did inside it |
+| `scripts/web/term.css` | the Chat as a terminal, loaded last: `.term` takes the dark set of `colors.css` (`design.py` writes it a second time under that class), so a part inside it is dark in both modes with no rule of its own; this file adds the ground, the mono type, the colours of a screen line (`logic.js screenLines`, `termParts`, drawn by `TermLines` in `views/tabs.js`) and the prompt. A new surface of the Chat stands inside `.term` and needs nothing else |
 | `scripts/web/mock.js` | invented example data for `?mock=1` |
 | `scripts/web/vendor/` | pinned Preact + htm bundle, checked by hash |
 | `mods/cockpit-relay/hooks/relay.ts` | pure relay functions of the mod, HMAC included, and its word tables (`TABLES`) |
@@ -180,6 +181,7 @@ python3 scripts/bridge-cockpit.py status --json
   renders invented data and sends no request. Add `&lang=de`,
   `&offline=1`, `&empty=1`, `&auth=0`, `&theme=light` or `&theme=dark` (forces
   the mode for this load and saves nothing), `&tour=1` (a first visit), or
+  `&chat=workspaces` (the Chat as `cockpit.chat_layout: workspaces` lays it out),
   `&work=files`, `&focus_to_files=1` and `&files_scope=all` (the page as
   `cockpit.work_view: files`, `cockpit.focus_to_files: true` and
   `cockpit.files_scope: all` set it; the work view is taken once per

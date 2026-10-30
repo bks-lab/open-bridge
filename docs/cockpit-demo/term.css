@@ -1,0 +1,122 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * The Chat as a terminal, in both modes. `.term` takes the dark set of colors.css (design.py), so whatever stands
+ * inside it, a button, a card, a field, is dark with no rule of its own here; this file only adds what makes it read
+ * as a terminal: the ground, the mono type, the colours of a screen line, the prompt. No colour of its own: every
+ * tint is a token mixed. The glow stays on marks and prompts, the text itself stays sharp to read for hours.
+ */
+
+.term {
+  --font-ui: var(--font-mono);
+  --font-display: var(--font-mono);
+  --term-ground: color-mix(in srgb, var(--surface) 76%, black);
+  --term-tint: color-mix(in srgb, var(--accent) 13%, transparent);
+  --term-scan: color-mix(in srgb, var(--on-surface) 2.5%, transparent);
+  --term-glow: 0 0 9px color-mix(in srgb, currentColor 55%, transparent);
+  font-family: var(--font-mono);
+  color: var(--on-surface);
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+.term ::selection { background: color-mix(in srgb, var(--accent) 38%, transparent); color: var(--ink); }
+
+/* the page's own ground, so a light page shows no light text on light */
+.col-page.term { padding: 10px; border-radius: var(--radius-xl); background: var(--surface); }
+.term .panel, .dialog.term { border-color: var(--border); }
+.term .rooms-main, .term .chat-main, .dialog.term { background: var(--term-ground); overflow: hidden; }
+.term .rooms-main:not(.rooms-agent), .dialog.term { box-shadow: 0 0 34px -14px color-mix(in srgb, var(--accent) 60%, transparent); }
+.dialog.term { color: var(--on-surface); }
+
+/* mono runs wider than the page's type: the sidebar gets more room and a smaller step, so names stay readable */
+.term .rooms-grid, .term .chat-grid { grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); }
+.term .room-item, .term .chat-item { font-size: var(--text-label); }
+.term .room-order .seg-btn { padding-inline: 8px; font-size: 11px; }
+
+/* the title bar, on one line where it fits: the task's name gives way first */
+.term .tabview-head { background: var(--surface-raised); font-size: var(--text-label); }
+.term .tabview-head .small { font-size: var(--text-label); }
+@media (min-width: 1200px) {
+  .term .rooms-main .tabview-head { flex-wrap: nowrap; }
+  .term .rooms-main .tabview-head > * { flex-shrink: 0; }
+  .term .rooms-main .tabview-head .room-task, .term .rooms-main .tabview-head .room-from-link { flex-shrink: 1; }
+  .term .rooms-main .tabview-title { flex: 0 1 auto; }
+}
+.term .tabview-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; font-size: var(--text-sm); color: var(--ink); }
+.term .tabview-title::before { content: '❯_'; margin-right: 2px; color: var(--accent); text-shadow: var(--term-glow); }
+.tabview-live.is-live { display: inline-flex; align-items: center; gap: 6px; }
+.tabview-live.is-live::before {
+  content: ''; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--success); color: var(--success);
+  box-shadow: var(--term-glow); animation: term-pulse 2.4s ease-in-out infinite;
+}
+@keyframes term-pulse { 50% { opacity: 0.35; } }
+
+/* the screen: a faint light from above, scanlines that stay put while the text scrolls under them */
+.term .tabview-body {
+  background-color: var(--term-ground);
+  background-image: repeating-linear-gradient(to bottom, var(--term-scan) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 60% at 50% -12%, var(--term-tint), transparent 70%);
+  animation: term-on 0.24s ease-out 1;
+}
+/* a tab opens as a screen comes on: once, when it mounts, never on a poll */
+@keyframes term-on { from { opacity: 0; filter: brightness(1.7); } }
+.term .reply-pane { background: var(--surface); }
+.term .tabview-foot { background: var(--surface); }
+
+/* a line of the screen (logic.js screenLines, termParts) */
+.term-line { min-height: 1.5em; }
+.term-gap { min-height: 0.75em; }
+.term-user {
+  margin-inline: -6px; padding-inline: 6px; color: var(--ink); font-weight: 600;
+  background: linear-gradient(90deg, var(--term-tint), transparent 80%); box-shadow: inset 2px 0 0 var(--accent);
+}
+.term-claude { color: var(--on-surface); }
+.term-tool { color: var(--on-surface-muted); }
+.term-frame, .term-hint { color: var(--on-surface-faint); }
+.term-rule { overflow: hidden; white-space: nowrap; color: var(--border-strong); }
+.term-mark { color: var(--accent); text-shadow: var(--term-glow); }
+.term-claude > .term-mark { color: var(--success); }
+.term-tool > .term-mark { color: var(--on-surface-faint); text-shadow: none; }
+.term-path, .term-url { color: var(--info); }
+.term-url { text-decoration: underline; text-underline-offset: 2px; }
+.term-ok { color: var(--success); text-shadow: var(--term-glow); }
+.term-bad { color: var(--danger); text-shadow: var(--term-glow); }
+.term-add, .term-del { margin-inline: -6px; padding-inline: 6px; }
+.term-add { color: var(--success); background: color-mix(in srgb, var(--success) 11%, transparent); }
+.term-del { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, transparent); }
+.term-work { color: var(--warning); text-shadow: var(--term-glow); }
+.term-cursor {
+  display: inline-block; width: 0.6em; height: 1.1em; margin-left: 2px; vertical-align: text-bottom; color: var(--accent);
+  background: currentColor; box-shadow: var(--term-glow); animation: blink 1.1s steps(2, start) infinite;
+}
+
+/* a question and its answer read as a turn in a terminal, no bubbles */
+.term .quick-body { font-family: var(--font-mono); font-size: var(--text-code); gap: 14px; }
+.term .qq {
+  justify-self: stretch; max-width: none; margin-inline: -6px; padding: 1px 6px; border-radius: 0; font-weight: 600;
+  background: linear-gradient(90deg, var(--term-tint), transparent 80%); box-shadow: inset 2px 0 0 var(--accent);
+}
+.term .qq::before { content: '❯ '; color: var(--accent); text-shadow: var(--term-glow); }
+.term .qa { position: relative; max-width: none; padding-left: 2ch; }
+.term .qa::before { content: '⏺'; position: absolute; left: 0; color: var(--success); text-shadow: var(--term-glow); }
+.term .qmeta { padding-left: 2ch; color: var(--on-surface-faint); }
+
+/* a narrow page: one column, the frame gives its width back */
+@media (max-width: 899px) {
+  .col-page.term { padding: 0; }
+  .term .rooms-grid, .term .chat-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* the prompt: every box of the Chat is the line you type on */
+.term .tabview-send, .term .reply-field { flex-wrap: nowrap; align-items: stretch; line-height: 1.5; }
+.term .tabview-send::before, .term .reply-field::before { content: '❯'; padding-top: 6px; font-size: var(--text-sm); color: var(--accent); text-shadow: var(--term-glow); }
+.term .tabview-send .send-btns { align-self: flex-end; }
+.term .tabview-send textarea, .term .reply-field .input {
+  background: transparent; border-color: transparent; border-bottom-color: var(--border); border-radius: 0; color: var(--ink);
+  caret-color: var(--accent); font-family: var(--font-mono);
+}
+.term .tabview-send textarea:focus, .term .reply-field .input:focus { outline: none; border-bottom-color: var(--accent); }
+.term .tabview-send textarea::placeholder, .term .reply-field .input::placeholder { color: var(--on-surface-faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tabview-live.is-live::before, .term-cursor, .term .tabview-body { animation: none; }
+}

@@ -734,6 +734,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/areas.css",                  # the areas' rules, loaded right after style.css
     "scripts/web/files.css",                  # the files view's rules, loaded right after style.css
     "scripts/web/flow.css",                   # the Work through page's rules, loaded right after files.css
+    "scripts/web/term.css",                   # the Chat as a terminal, loaded last
     "scripts/web/favicon.ico",                # the cockpit's icon, for tabs, bookmarks and favourites
     "scripts/web/apple-touch-icon.png",
     "scripts/web/icon-192.png",

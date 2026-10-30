@@ -624,6 +624,23 @@ test('Work through on top of the sidebar opens the first tab that wants you, in 
 const WALK = ['surface:7', 'surface:10', 'surface:12', 'surface:13']
 const tabPane = (ref, c, over = {}) => mount(html`<${RoomsPage} s=${cockpitState(NOW, { ...over, ui: { room: { kind: 'tab', id: ref }, tabWalk: WALK, tabView: 'surface:99', ...(over.ui ?? {}) } })} c=${c} />`)
 
+test('the terminal: its lines are their own, not the search timeline of a page, and every pane of the Chat stands in .term', () => {
+  const { TermLines } = views.tabs
+  const el = mount(html`<div><${TermLines} text=${'❯ go\n\n⏺ Read a/b.md\n────\n❯'} live empty="nothing" /></div>`)
+  const lines = el.$$('.term-line')
+  assert.deepEqual(lines.map(l => l.text()), ['❯ go', '', '⏺ Read a/b.md', '────', '❯'])
+  assert.equal(el.$('.tl'), null, 'the class .tl is the framed card of the page search (#552)')
+  assert.equal(el.$('.term-claude .term-path').text(), 'a/b.md')
+  assert.ok(lines[4].$('.term-cursor'), 'the cursor stands in the empty prompt')
+  assert.equal(mount(html`<div><${TermLines} text=${'⏺ done'} empty="x" /></div>`).$('.term-cursor'), null, 'no cursor when nothing is live')
+  assert.ok(mount(html`<div><${TermLines} text=${'⏺ working'} live empty="x" /></div>`).$('.term-line .term-cursor'), 'no prompt: at the end')
+  assert.equal(mount(html`<div><${TermLines} text="" empty="nothing yet" /></div>`).text(), 'nothing yet')
+  const c = recorder()
+  assert.ok(tabPane('surface:10', c).$('.roomspage.term .rooms-main'), 'a tab in the Chat')
+  assert.ok(mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'chat' }, tabView: 'surface:99' } })} c=${c} />`).$('.roomspage.term .quick-body'), 'a question')
+  assert.ok(mount(html`<${views.tabs.TabView} s=${cockpitState(NOW, { ui: { tabView: 'surface:10' } })} c=${c} />`).$('.dialog.tabview.term'), 'the tab window')
+})
+
 test('the open tab ends in the same bar the lists have: back, where you stand, what comes next and Next', () => {
   const c = recorder()
   const bar = tabPane('surface:10', c).$('.rooms-main .next-up')

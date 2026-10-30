@@ -2,8 +2,8 @@
 // The cockpit, the agent tabs: the column, its cards, one tab large.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railOn, SCREEN_POLL_MS, tabStateKey } from '../logic.js'
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railOn, SCREEN_POLL_MS, tabStateKey, termParts } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -52,6 +52,16 @@ export function useTabScreen(c, ref) {
   return { screen, err }
 }
 
+/** A tab's terminal as lines, coloured by kind and tone (logic.js screenLines, termParts). While it is live the cursor
+ *  blinks in the prompt when one stands near the end, else behind the last line */
+export function TermLines({ text, live = false, empty }) {
+  const lines = useMemo(() => screenLines(text), [text])
+  if (!lines.length) return html`<p class="muted">${empty}</p>`
+  const prompt = lines.findLastIndex(l => l.kind === 'user')
+  const cursor = !live ? -1 : prompt >= 0 && prompt >= lines.length - 5 ? prompt : lines.length - 1
+  return lines.map((l, i) => html`<div key=${i} class=${`term-line term-${l.kind}${l.tone ? ` term-${l.tone}` : ''}`}>${l.text ? termParts(l.text).map((p, k) => p.c ? html`<span key=${k} class=${`term-${p.c}`}>${p.t}</span>` : p.t) : ' '}${i === cursor ? html`<span class="term-cursor" aria-hidden="true"></span>` : null}</div>`)
+}
+
 export function TabView({ s, c }) {
   const t = T()
   const claude = s.ui.tabView === '@control'
@@ -80,14 +90,13 @@ export function TabView({ s, c }) {
       : ref ? await c.act('tab_send', { tab_ref: ref, text: v }) : false
     if (r) { setText(''); stick.current = true }
   }
-  const lines = screenLines(screen?.text)
   return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.closeTabView() }}>
-    <div class="dialog tabview" role="dialog" aria-modal="true" aria-labelledby="tabview-title" ref=${dialog}>
+    <div class="dialog tabview term" role="dialog" aria-modal="true" aria-labelledby="tabview-title" ref=${dialog}>
       <header class="tabview-head">
         ${state ? html`<${StateLine} token=${stateToken(state)} strong=${state === 'needs-you'} word=${t.state[state] ?? state} />` : null}
         <h2 class="sec-title tabview-title" id="tabview-title">${isControl ? t.controlSession : tab?.name ?? screen?.name ?? ref}</h2>
         <span class="muted small">${tab?.workspace ?? screen?.workspace ?? ''}</span>
-        <span class="tabview-live muted small" aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
+        <span class=${`tabview-live muted small${screen && !err ? ' is-live' : ''}`} aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
           : screen ? t.tabViewLive : t.loading}</span>
         ${ref && canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: ref })}>${t.btnToTab}<//>` : null}
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${c.closeTabView} />
@@ -107,8 +116,7 @@ export function TabView({ s, c }) {
         </div>
       </div>` : null}
       ${!claude || ref ? html`<div class="tabview-body" ref=${body} onScroll=${onScroll} tabindex="0" role="log" aria-label=${t.tabViewLog}>
-        ${lines.length ? lines.map((l, i) => html`<div key=${i} class=${`tl tl-${l.kind}`}>${l.text || ' '}</div>`)
-          : html`<p class="muted">${screen ? t.tabViewEmpty : t.loading}</p>`}
+        <${TermLines} text=${screen?.text} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading} />
       </div>` : html`<div></div>`}
       <footer class="tabview-foot">
         ${tab ? html`<${TabReply} tab=${tab} s=${s} c=${c} bare />` : null}

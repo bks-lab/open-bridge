@@ -19,7 +19,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, screenLines, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
@@ -29,7 +29,7 @@ import { GuideTree } from './guide.js'
 import { ControlNotice } from './header.js'
 import { chatAreaOf, openOrigin } from './nav.js'
 import { AskLine, TabReply } from './reply.js'
-import { TabWarnings, useTabScreen } from './tabs.js'
+import { TabWarnings, TermLines, useTabScreen } from './tabs.js'
 
 const CHATS_SHOWN = 6
 const GUIDE_VIEWS = ['guide', 'both', 'screen']
@@ -367,7 +367,6 @@ function TabPane({ s, c, tab }) {
   const stick = useRef(true)
   useLayoutEffect(() => { const el = body.current; if (el && stick.current) el.scrollTop = el.scrollHeight }, [screen?.text])
   useEffect(() => { stick.current = true }, [tab.ref])
-  const lines = screenLines(screen?.text)
   // by state on purpose: a tab gone idle (finished) can still be answered
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
   const guided = replying && guideOf(s, tab).status !== 'off'
@@ -397,7 +396,7 @@ function TabPane({ s, c, tab }) {
         onClick=${() => c.openItem(`task:${slug}`, { task: slug, title: taskTitle })}>${t.sessionTask(short(taskTitle, 60))}</button>` : null}
       ${from ? html`<button type="button" class="btn-link small room-from-link" data-from=${from.kind} title=${t.rooms.fromTitle}
         onClick=${() => openOrigin(s, c, from)}>${t.rooms.from(short(from.title, 60))}</button>` : null}
-      <span class="tabview-live muted small" aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
+      <span class=${`tabview-live muted small${screen && !err ? ' is-live' : ''}`} aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
         : screen ? t.tabViewLive : t.loading}</span>
       ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
         values=${GUIDE_VIEWS.map(v => [v, t.guide.view[v]])} onPick=${v => c.setGuideView(v)} /></span>` : null}
@@ -413,8 +412,7 @@ function TabPane({ s, c, tab }) {
     </div>` : null}
     ${view === 'guide' ? null : html`<div class="tabview-body" ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
       onScroll=${e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
-      ${lines.length ? lines.map((l, i) => html`<div key=${i} class=${`tl tl-${l.kind}`}>${l.text || ' '}</div>`)
-        : html`<p class="muted">${screen ? t.tabViewEmpty : t.loading}</p>`}
+      <${TermLines} text=${screen?.text} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading} />
     </div>`}
     <${TabWalk} s=${s} c=${c} tab=${tab} />
   </section>`
@@ -507,7 +505,7 @@ export function RoomsPage({ s, c }) {
     c.pickRoom(go.room)
   }, [ready])
   if (area === 'a2a') {
-    return html`<div class="col col-page roomspage">
+    return html`<div class="col col-page roomspage term">
       <div class="rooms-grid">
         <div class="rooms-left"><${AreaSwitch} s=${s} c=${c} area=${area} /><${AgentList} s=${s} c=${c} /></div>
         <section class="panel chat-main rooms-main rooms-agent"><${AgentsPage} s=${s} c=${c} embedded /></section>
@@ -526,7 +524,7 @@ export function RoomsPage({ s, c }) {
     pane = b ? html`<${BridgePane} c=${c} b=${b} />` : null
   }
   pane = pane ?? html`<${ChatPane} s=${s} c=${c} />`
-  return html`<div class="col col-page roomspage">
+  return html`<div class="col col-page roomspage term">
     <${ControlNotice} s=${s} c=${c} />
     <${TabWarnings} s=${s} />
     <div class="rooms-grid">
