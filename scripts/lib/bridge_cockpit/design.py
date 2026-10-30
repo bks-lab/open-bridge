@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
-"""The cockpit's colours, read from the Bridge's own DESIGN.md (served as /colors.css).
+"""The cockpit's colours, read from the Bridge's own design (served as /colors.css).
 
-DESIGN.md is the one place a fork sets its brand (AGENTS.md, Design System), so the page takes
-its palette from there at run time instead of a fixed copy: every Bridge shows its own colours,
-and no colour file of the cockpit diverges between forks.
+The cockpit is the instance's own page, so it wears the instance default that scripts/designs.py
+resolves: the active theme's `branding.design` (a file under identity/designs/), else the root
+DESIGN.md (AGENTS.md, Design System). The page takes its palette from there at run time instead of
+a fixed copy: every Bridge shows its own colours, and no colour file of the cockpit diverges.
 
 The front matter may name the cockpit's tokens directly (`colors:` and `colorsDark:`, same keys),
 or only the smaller open-bridge set (`colors:` with `dark-*` keys for the dark pair). A token the
@@ -13,10 +14,15 @@ answers at all (no DESIGN.md) to the plain neutrals in BASE_DEFAULTS.
 """
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
 from pathlib import Path
 
 import yaml
+
+# the resolver ships beside this package: scripts/designs.py
+RESOLVER = Path(__file__).resolve().parents[2] / "designs.py"
 
 # every colour token the page uses, light and dark, with the keys that stand in when one is missing
 CHAIN = {
@@ -157,6 +163,36 @@ def fonts_css(design: dict) -> str:
     return f":root {{\n  --font-display: {_stack(display)};\n  --font-ui: {_stack(ui)};\n}}\n"
 
 
+def _resolver():
+    spec = importlib.util.spec_from_file_location("bridge_designs", RESOLVER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def resolved(root: Path) -> tuple[Path, str | None]:
+    """The design file the cockpit wears, and the reason when it had to fall back to DESIGN.md.
+
+    Only the instance default applies (steps 5 and 6 of scripts/designs.py): the cockpit belongs to no
+    context and no persona. A theme naming an unknown design still gets a page, with the error said
+    in the stylesheet and on stderr, never swallowed."""
+    default = Path(root) / "DESIGN.md"
+    if not RESOLVER.is_file():
+        return default, None
+    designs = _resolver()
+    try:
+        return designs.resolve(Path(root)).path or default, None
+    except designs.DesignError as err:
+        print(f"cockpit: {err}; showing DESIGN.md", file=sys.stderr)
+        return default, str(err)
+
+
+def design_file(root: Path) -> Path:
+    return resolved(root)[0]
+
+
 def stylesheet(root: Path) -> str:
-    design = front_matter(Path(root) / "DESIGN.md")
-    return colors_css(design) + fonts_css(design)
+    path, error = resolved(root)
+    design = front_matter(path)
+    note = f"/* design error: {error.replace('*/', '* /')}; showing DESIGN.md */\n" if error else ""
+    return note + colors_css(design) + fonts_css(design)
