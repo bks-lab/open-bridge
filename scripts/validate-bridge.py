@@ -168,6 +168,8 @@ SURFACES = [
         "instances": "identity/designs/*.md",
         "exclude_prefixes": ["_"],
         "frontmatter": True,
+        # `design_ref: default` opts out to the root DESIGN.md, so no design may be called that
+        "reserved_stems": ["default"],
     },
     {
         "name": "calendar",
@@ -264,6 +266,13 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
         print(f"  ({surface['name']}: no instances found)")
         return (0, 0)
 
+    reserved = [p for p in instances if p.stem in surface.get("reserved_stems", [])]
+    for p in reserved:
+        print(f"  FAIL  {p.relative_to(REPO_ROOT)}: the name '{p.stem}' is reserved, rename the file")
+    instances = [p for p in instances if p not in reserved]
+    if not instances:
+        return (0, len(reserved))
+
     files = [str(p) for p in instances]
     tmp = None
     if surface.get("frontmatter"):
@@ -291,7 +300,7 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
     if result.returncode == 0:
         for inst in instances:
             print(f"  PASS  {inst.relative_to(REPO_ROOT)}")
-        return (len(instances), 0)
+        return (len(instances), len(reserved))
 
     # check-jsonschema prints failures to stdout; surface them
     sys.stdout.write(result.stdout)
@@ -302,7 +311,7 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
     failed_files = sum(1 for line in result.stdout.splitlines() if "errors were encountered" in line.lower() or "validation failed" in line.lower())
     failed = max(failed_files, 1)
     passed = max(len(instances) - failed, 0)
-    return (passed, failed)
+    return (passed, failed + len(reserved))
 
 
 # Markdown surfaces whose `scope:` frontmatter is required + tier-validated.

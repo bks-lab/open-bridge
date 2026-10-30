@@ -379,3 +379,60 @@ def test_css_id_selectors_are_not_colours(bridge):
            "<p style=\"color:#00ff00\">x</p>\n")
     found = designs.undeclared(css, bridge / "identity" / "designs" / "brand.md")
     assert found == {"#00ff00": 1}, found
+
+
+# --- opting out: `design_ref: default` -----------------------------------------------------------
+# A theme may dress the whole instance in an org brand while one persona does unrelated work.
+# The reserved value `default` stops resolution at the root DESIGN.md. `null` stays "not set",
+# so a YAML default can never opt out by accident.
+
+def _org_theme(bridge):
+    put(bridge, "bridge-config.yaml", "theme: brand\n")
+    put(bridge, "themes/brand.yaml", "meta: {name: brand}\nbranding: {design: theme-brand}\n")
+
+
+def test_a_persona_opts_out_of_the_theme_design(bridge):
+    _org_theme(bridge)
+    put(bridge, "identity/personas/side.yaml", "id: side\ndesign_ref: default\n")
+    res = designs.resolve(bridge, persona="side")
+    assert (res.id, rel(res, bridge), res.step) == (None, "DESIGN.md", 6)
+    assert res.via == "persona design_ref: default"
+
+
+def test_a_context_opts_out_before_the_persona(bridge):
+    _org_theme(bridge)
+    put(bridge, "identity/personas/second.yaml", "id: second\ndesign_ref: persona-brand\n")
+    put(bridge, "workflow/contexts/side.yaml", "id: side\ndesign_ref: default\n")
+    res = designs.resolve(bridge, context="side", persona="second")
+    assert (res.step, res.via) == (6, "context design_ref: default")
+
+
+def test_null_is_not_an_opt_out(bridge):
+    _org_theme(bridge)
+    put(bridge, "identity/personas/side.yaml", "id: side\ndesign_ref: null\n")
+    assert designs.resolve(bridge, persona="side").id == "theme-brand"
+
+
+def test_default_is_no_design_id(bridge):
+    put(bridge, "identity/designs/default.md", design_md("default", {"primary": "#123123"}))
+    with pytest.raises(designs.DesignError, match="reserved"):
+        designs.resolve(bridge, design="default")
+    put(bridge, "bridge-config.yaml", "theme: brand\n")
+    put(bridge, "themes/brand.yaml", "meta: {name: brand}\nbranding: {design: default}\n")
+    with pytest.raises(designs.DesignError, match="reserved"):
+        designs.resolve(bridge)
+    assert any("reserved" in line for line in designs.dangling(bridge))
+
+
+def test_list_shows_who_opts_out(bridge):
+    put(bridge, "identity/personas/side.yaml", "id: side\ndesign_ref: default\n")
+    rows = {row["id"]: row for row in designs.catalogue(bridge)}
+    assert rows[None]["referenced_by"] == ["persona side (design_ref: default)"]
+    assert not designs.dangling(bridge)
+
+
+def test_resolve_cli_names_the_opt_out(bridge):
+    put(bridge, "identity/personas/side.yaml", "id: side\ndesign_ref: default\n")
+    proc = subprocess.run([sys.executable, str(SCRIPT), "--root", str(bridge), "resolve", "--persona", "side"],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0 and "persona design_ref: default" in proc.stdout, proc.stdout + proc.stderr
