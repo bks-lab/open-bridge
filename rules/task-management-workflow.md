@@ -1,11 +1,11 @@
 ---
 scope: core
-description: Detailed workflow for task management — reflex pause, plan/build intent classification, similarity algorithm, cluster detection, class A/B/C, repair recipes. CLAUDE.md § Task Management points here.
+description: Detailed workflow for task management — reflex pause, plan/build intent classification, similarity algorithm, cluster detection, class A/B/C, repair recipes. AGENTS.md § Task Management points here.
 ---
 
 # Task Management — Detailed Workflow
 
-CLAUDE.md § Task Management carries the reflex rule and the top intent
+AGENTS.md § Task Management carries the reflex rule and the top intent
 categories. This file holds the full intent lists, thresholds, the
 similarity algorithm, cluster detection, class definitions with
 examples, and repair recipes.

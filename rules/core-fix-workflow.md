@@ -13,7 +13,7 @@ from rotting into conflicts.
 ## The reflex: a CORE fix does not *live* on your user branch
 
 When you find a bug or improvement in a CORE file (`skills/**`, `rules/*.md`,
-`scripts/**`, `docs/**`, templates/schemas, `CLAUDE.md`/`AGENTS.md`,
+`scripts/**`, `docs/**`, templates/schemas, `AGENTS.md`,
 `.claude/agents/**`, `protocols/standing-orders/*.md`), pick one of two paths —
 never "edit on `user/*` and forget":
 

@@ -48,7 +48,7 @@ machine lacks.** A skill orchestrates tools; it is not a substitute for one.
   `identity/accounts/<provider>.yaml` flow and its hard credential gates.
 - capability-broker **routes here, it does not create credentials.** Account
   creation, token minting, KeyVault writes stay behind the Bridge's existing
-  hard gates (per CLAUDE.md). Read the matching account doc first.
+  hard gates (per AGENTS.md and docs/cloud-accounts.md). Read the matching account doc first.
 
 ## Skill handoff (to skill-creator)
 

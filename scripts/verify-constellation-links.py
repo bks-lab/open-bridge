@@ -53,7 +53,7 @@ def branch_for_path(path: str, live_files: dict | None = None) -> str:
     if p in BRANCH_OVERRIDES:
         return USER_BRANCH if BRANCH_OVERRIDES[p] == "user" else CORE_BRANCH
     CORE_PREFIXES = (
-        "CLAUDE.md", "README.md", "AGENTS.md", "DESIGN.md",
+        "README.md", "AGENTS.md", "DESIGN.md",
         "ecosystem.yaml", "docs/", "rules/", "themes/", "trackers/", "skills/",
         ".claude/commands/", "examples/",
     )

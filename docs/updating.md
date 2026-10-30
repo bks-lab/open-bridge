@@ -1,13 +1,14 @@
 ---
 summary: "Keeping a Bridge current: the manual CORE merge, the unattended daily auto-update and its fail-closed guards, org overlay sync, and how a CORE fix you made flows back without leaving a permanent divergence."
 type: guide
-last_updated: 2026-10-24
+last_updated: 2026-10-30
 related:
   - install.md
   - org-overlays.md
   - ../rules/core-fix-workflow.md
   - ../scripts/upstream-autoupdate.sh
   - ../scripts/install-upstream-autoupdate.sh
+  - ../scripts/migrate-entry-file.py
 ---
 
 # Updating your Bridge
@@ -53,6 +54,108 @@ commented out from an earlier version of this policy, a merge of an update to th
 conflict in that region: resolve it by taking upstream's version, then run `bin/setup` (it
 writes the four negation files) and commit them. `python3 scripts/user-data.py check`
 confirms nothing of yours is still ignored afterward.
+
+## Once: upstream removed CLAUDE.md
+
+Upstream no longer ships a root `CLAUDE.md`. Claude Code (2.1.281 or newer) reads
+`AGENTS.md` directly, the same file Codex, Cursor, Copilot and Gemini read. A
+root `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` beside it makes Claude
+Code load only that file and never `AGENTS.md`, so none of them may stay.
+
+The instance's own always-on text now lives in `identity/agent/INSTANCE.md`,
+which `AGENTS.md` imports next to `IDENTITY.md` and `SOUL.md`. It is yours: CORE
+and overlays never ship it, so nobody has to edit `AGENTS.md`.
+
+### You edited CLAUDE.md
+
+Onboarding imports, overlay imports and your own prose all count as edits. The
+next `git merge upstream/main` then stops with a modify/delete conflict on
+`CLAUDE.md`, and the daily job holds the merge with the same pointer. Resolve it
+in one command, dry run first:
+
+```bash
+python3 scripts/migrate-entry-file.py            # the plan, nothing changes
+python3 scripts/migrate-entry-file.py --write    # carry, edit the budget, git rm
+```
+
+Then run the `git add` line the script prints and `git commit`, which concludes
+the merge. On a public origin `INSTANCE.md` is ignored: the script says so, leaves
+it out of that line, and the file stays local until the private-home step.
+
+The script drops what `AGENTS.md` now covers (`@AGENTS.md`, the identity
+imports, `@ecosystem*.yaml`, which Phase 1 indexes with
+`context-index.py --registries`) and every paragraph equal to a CORE version of
+the file. Everything else moves to `INSTANCE.md` under a dated heading, with
+imports rewritten relative to that file. It removes the `CLAUDE.md` item from
+`context-budget.user.yaml` and prints the projected size of `INSTANCE.md`
+against its cap. A re-run never duplicates a carried paragraph.
+
+Migrate mid-merge, not before it. The script checks that the `AGENTS.md` in
+force (upstream's side while merging, else your working tree's) imports
+`INSTANCE.md`. An older `AGENTS.md` does not, so removing `CLAUDE.md` before the
+merge would lose `IDENTITY.md`, `SOUL.md` and the carried lines until the merge
+lands; `--write` refuses that with "merge upstream first, then migrate
+mid-merge". If the merge stops before the script exists in your tree, run
+upstream's copy while still merging:
+
+```bash
+git show MERGE_HEAD:scripts/migrate-entry-file.py | python3 - --repo-root .
+```
+
+A `CLAUDE.md` that is a symlink to `AGENTS.md` (one manual for both tools) is
+not a legacy entry: the script and the meter leave it alone.
+
+`python3 scripts/migrate-entry-file.py --check` exits 1 while any of the three
+files exists, which is what `bridge-audit` runs.
+
+### You edited AGENTS.md
+
+A fork that wrote its own lines into `AGENTS.md` conflicts on every upstream
+change to it. Move them out once:
+
+```bash
+python3 scripts/migrate-entry-file.py --file AGENTS.md            # dry run
+python3 scripts/migrate-entry-file.py --file AGENTS.md --write
+```
+
+Only the lines you added or changed go to `INSTANCE.md`, each under the CORE
+heading it sat beneath, so one added table row carries that row and not the
+table. `AGENTS.md` is restored to the CORE version the rest of your tree is on,
+the merge base, never a newer ref tip. Mid-merge, your lines are your side
+compared with the common ancestor, and the restore takes upstream's side, so a
+CORE line upstream rewrote is never carried as yours. The version restored must
+import `INSTANCE.md`; an older one makes `--write` refuse until you merge. CORE history
+comes from the ref and from every remote with the same URL, so a stale
+`upstream/main` next to a fresh `open-bridge/main` is no false verdict. The dry
+run lists your commits that touched `AGENTS.md`; one that is a CORE change
+headed upstream belongs in `/bridge-promote`, not here.
+
+Plain `--check` only warns about `AGENTS.md`, because a pending CORE change or an
+unfetched ref looks the same; `--check --file AGENTS.md` exits 1.
+
+### Merge upstream before your next /bridge-sync
+
+A branch that still carries a root `CLAUDE.md` must not sync it onto an
+upstream: it would hide `AGENTS.md` for every fork. Merge and migrate first, then
+sync; the sync prefilter skips a path the destination no longer has and says so.
+
+### An org tier migrates its core branch before its instances
+
+An org overlay or org fork with its own core branch runs the migration there
+first. Its instances merge from it, so they meet the `CLAUDE.md` deletion once,
+from one source. The org's own lines must not land in `INSTANCE.md`: that file is
+each instance's own and no core branch or overlay ships it. Pass `--to` a file
+the org does ship, such as a rule under `rules/org/`, and have each instance's
+`INSTANCE.md` import it. Where an org's shared always-on text lives by default
+is still open.
+
+### Folders that bring their own CLAUDE.md
+
+Claude Code started inside a folder that has its own `CLAUDE.md` (a workspace
+member under `.bridge/workspaces/`, an example under `examples/`) loads only
+that file. The same holds for a `CLAUDE.md` or `CLAUDE.local.md` in any parent
+folder of the repo; `bin/setup` warns about those. Start Claude Code at the repo
+root to get `AGENTS.md`.
 
 ## Unattended, once a day
 

@@ -1,10 +1,10 @@
 # ecosystem.example.yaml — copy to ecosystem.yaml and adapt at onboarding.
 #
 # The repo registry: the single source of truth for repos, infrastructure, and
-# workspaces. It is NOT @-imported: Phase 1 indexes it with
-# `python3 scripts/context-index.py ecosystem.yaml` (settings plus one line per
-# entry), and `--get <name>` fetches an entry when the work names it
-# (docs/context-index.md). Keep entries lean anyway: one-line descriptions, push
+# workspaces. Phase 1 indexes this file and every ecosystem.<name>.yaml beside
+# it with context-index.py --registries; nothing is imported. The card is the
+# settings plus one line per entry, and `--get <name>` fetches an entry when the
+# work names it (docs/context-index.md). Keep entries lean anyway: one-line descriptions, push
 # long narrative into docs/ and point to it. No PII, no secrets.
 #
 # Tier: this file is the INSTANCE BASE (your org name, local_root, paths of this
@@ -16,14 +16,14 @@
 # registry slice is materialized as a SEPARATE root file ecosystem.<org>.yaml
 # (e.g. ecosystem.example-org.yaml), NEVER merged into this file, so the overlay's
 # entries stay hash-pinned and re-syncable on their own and removable cleanly on
-# /overlay remove. The sync adds an @ecosystem.<org>.yaml import to CLAUDE.md only
-# when the context budget does not declare that fragment as a Phase 1 card. Your
-# own registry stays here; the org's plugs in beside it. See docs/org-overlays.md.
+# /overlay remove. Phase 1 indexes it like this file; the sync writes no import.
+# Your own registry stays here; the org's plugs in beside it. See
+# docs/org-overlays.md.
 
 org: your-org
 local_root: ~/Developer/your-org          # local clones live under <local_root>/<repo>
 
-# Work-system tracking. When enabled, CLAUDE.md session-start + logging rules apply.
+# Work-system tracking. When enabled, AGENTS.md session-start + logging rules apply.
 work_system:
   enabled: true
   path: work/

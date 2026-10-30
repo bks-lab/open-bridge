@@ -17,7 +17,7 @@
 #
 # Related:
 #   - work/templates/STATUS.md  (the template / golden example)
-#   - CLAUDE.md § Task Sync Routing
+#   - AGENTS.md § Task Sync Routing
 #   - workflow/projects/_schema.yaml  (project-board configs)
 #   - protocols/standing-orders/task-sync.md  (Phase 3 — consumes this)
 

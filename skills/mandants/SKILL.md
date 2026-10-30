@@ -36,5 +36,5 @@ User wants to...
 ├── Add new mandant                    → Read references/workflow.md (§ Add)
 ├── Show mandant details               → Read references/workflow.md (§ Show)
 ├── Add person to mandant              → Read references/workflow.md (§ Add-Person)
-└── Questions about mandants           → Answer from CLAUDE.md § Mandants
+└── Questions about mandants           → Answer from docs/mandants.md
 ```

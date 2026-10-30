@@ -26,12 +26,13 @@ import sys
 from pathlib import Path
 
 # The always-on documents whose pointers are load-bearing. A document that an
-# instance does not carry is skipped, not fatal.
+# instance does not carry is skipped, not fatal. No CLAUDE.md: CORE ships none,
+# and a fork's legacy one is USER content (scripts/migrate-entry-file.py).
 ROUTED_DOCS = (
     "AGENTS.md",
-    "CLAUDE.md",
     "GEMINI.md",
     "README.md",
+    ".github/copilot-instructions.md",
 )
 
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
@@ -70,7 +71,12 @@ def extract_routes(text: str) -> list[str]:
 
 
 def check_routes(repo_root: Path, docs) -> list[str]:
-    """One violation per unresolvable route, naming the document it sits in."""
+    """One violation per unresolvable route, naming the document it sits in.
+
+    A route resolves against the folder of the document that carries it, the
+    way a markdown renderer follows it: `.github/copilot-instructions.md`
+    links `../AGENTS.md`.
+    """
     root = Path(repo_root)
     violations = []
     for name in docs:
@@ -79,7 +85,7 @@ def check_routes(repo_root: Path, docs) -> list[str]:
             continue
         text = doc.read_text(encoding="utf-8", errors="replace")
         for route in extract_routes(text):
-            target = root / route
+            target = doc.parent / route
             if not target.exists():
                 violations.append(f"{name}: route does not resolve: {route}")
     return violations

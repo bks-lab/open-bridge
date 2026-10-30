@@ -133,8 +133,8 @@ holds only `Read`/`Glob`/`Grep` written exactly as `Tool(/${grounding_dir}/**)` 
 extra slash makes Claude Code's absolute `//path` form), no `extra_read_dirs`, a
 folder for every peer, plain peer ids, and `grant` only together with `approval`. A
 per-peer turn loads no settings and no memory files (`--setting-sources ""`): its
-cwd lies inside the instance repo, and `project` would load the repo's CLAUDE.md
-chain into every peer's context. Conversation memory is kept per peer and context.
+cwd lies inside the instance repo, and `project` would load the repo's AGENTS.md chain (with its
+IDENTITY/SOUL imports) into every peer's context. Conversation memory is kept per peer and context.
 
 The folders are built from an access file by `scripts/share_build.py build` (rules
 per peer: `none`, `on_request`, `status`, `details`, `files`; format in the script's

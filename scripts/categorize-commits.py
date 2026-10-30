@@ -40,6 +40,13 @@ USER_PATTERNS = [
     r"^rules/user/",                                  # user-tier rules (applications, …) — folder = tier
     r"^docs/applications\.md$",                       # personal applications feature — user-tier
     r"^bridge-config\.yaml$",
+    # A root CLAUDE.md is instance-local: upstream it would hide AGENTS.md for
+    # every fork, since Claude Code then loads only it. Same for CLAUDE.local.md
+    # and .claude/CLAUDE.md. Uppercase on purpose: test_user_data.py collects
+    # only lowercase root patterns as must-be-gitignored, and these files must
+    # never be ignored (an ignored CLAUDE.md still loads and still shadows).
+    r"^CLAUDE(\.local)?\.md$",
+    r"^\.claude/CLAUDE\.md$",
     r"^ecosystem\.yaml$",                              # instance-base registry: org, local_root and paths of ONE machine.
                                                        # Was `org` until 2026-10-24; an overlay shares its own
                                                        # ecosystem.<org>.yaml, never a member's base file.
@@ -772,6 +779,14 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/designs.py",
     "scripts/tests/test_designs.py",
     "scripts/tests/test_validate_bridge_designs.py",
+    # Registered 2026-10-30 with AGENTS.md as the only entry file: the
+    # migration for a fork's CLAUDE.md, and the tests that hold the entry
+    # file, the setup version warning and the dead CLAUDE.md links.
+    "scripts/migrate-entry-file.py",
+    "scripts/tests/test_claude_md_links.py",
+    "scripts/tests/test_entry_file.py",
+    "scripts/tests/test_migrate_entry_file.py",
+    "scripts/tests/test_setup_claude_version.py",
 })
 
 

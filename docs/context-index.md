@@ -66,7 +66,7 @@ CORE ships the bare form, because naming sections there would fail the
 
 **A card replaces the import; it never sits beside it.** An `@`-import loads
 the whole file into every session, whatever the budget declares, so a file that
-carries a `card:` and is still `@`-imported (from `CLAUDE.md` or any file it
+carries a `card:` and is still `@`-imported (from `AGENTS.md` or any file it
 imports) is reported `contradiction` by `scripts/measure-context.py`: measured by
 its full text, and failing at any size. Measuring the card there would report
 green for bytes nobody pays while the session pays for the rest. If sub-agents
@@ -84,9 +84,27 @@ python3 scripts/context-index.py ecosystem.yaml                  # the card
 python3 scripts/context-index.py ecosystem.yaml --get customers.northwind
 python3 scripts/context-index.py ecosystem.yaml --list           # every path --get takes
 python3 scripts/context-index.py --check                         # the guards, CI runs this
+python3 scripts/context-index.py --registries   # every registry: ecosystem.yaml, then each ecosystem.<name>.yaml
 ```
 
-Phase 1 (`rules/operations.md`) runs the first form. The rest is on demand.
+Phase 1 (`rules/operations.md`) runs the `--registries` form. The rest is on
+demand, and `--get` stays per file: each card names the file its bodies live in.
+
+### Registries
+
+`--registries` prints one card per registry at the repo root. The base
+`ecosystem.yaml` comes first, then every fragment `ecosystem.<name>.yaml` in
+alphabetical order. `ecosystem.example.yaml` is the onboarding template and is
+never indexed. A fragment name matches `^ecosystem\.[a-z][a-z0-9-]*\.yaml$`,
+the same pattern `scripts/overlay.py` uses for the fragments it writes, and a
+test holds the two byte-identical: a fragment the overlay can write is one
+Phase 1 shows, and nothing else is. Discovery is one function,
+`registry_files()` in `scripts/lib/context_index.py`, rather than a shell glob,
+because zsh aborts on a glob that matches nothing and the per-file form takes
+one path. A fragment with no declared `card:` is indexed from its own shape,
+so a fork that never declares one loses nothing. The budget measures each
+registry as `--registries` prints it, so the gate and the session see the same
+bytes. No registry needs an `@`-import any more.
 
 The memory base gets the same split without a `card:`, because its index is
 already a table of contents: Phase 1 runs

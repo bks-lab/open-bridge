@@ -16,7 +16,7 @@ fill the main context with file listings.
 
 - Active persona / routing rules — the spawning task provides these
   inline (`identity/personas/<id>.yaml` content + destination mappings)
-- OneDrive routing rules — `CLAUDE.md` or `DOKUMENTEN-SYSTEM.md` in
+- OneDrive routing rules — `AGENTS.md`/`CLAUDE.md` or `DOKUMENTEN-SYSTEM.md` in
   the OneDrive root (path provided by spawner)
 - PARA convention if used: Projects / Areas / Resources / Archive
 

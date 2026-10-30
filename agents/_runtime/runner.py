@@ -240,8 +240,9 @@ class SubprocessClaudeRunner:
                 cmd += ["--add-dir", extra]
         private = self._trust == "private"
         # A scoped (per-peer) turn runs with its cwd inside the instance repo; loading
-        # project settings there would pull in the repo's CLAUDE.md chain and its tool
-        # allowlist. It loads nothing.
+        # project settings there would pull in the repo's AGENTS.md chain and its tool
+        # allowlist. It loads nothing (`--setting-sources ""` loads no AGENTS.md
+        # either, verified 2026-10-30, so peer turns stay manual-free).
         sources = "" if scope is not None else ("user,project" if private else "project")
         denied = _PRIVATE_DISALLOWED_TOOLS if private else _DISALLOWED_TOOLS
         mode = "acceptEdits"

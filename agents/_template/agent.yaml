@@ -41,8 +41,8 @@ timeout: 90
 #
 #   private — the inner face. For a genuinely trusted deployment only (e.g. your
 #     own tooling, or a peer bridge you trust, talking to your OWN bridge-agent —
-#     never a public visitor). cwd becomes the instance repo root (full CLAUDE.md /
-#     @-imports / .claude/skills — the same context an interactive `claude` session
+#     never a public visitor). cwd becomes the instance repo root (the repo's AGENTS.md chain with its
+#     IDENTITY/SOUL imports / .claude/skills — the same context an interactive `claude` session
 #     has), --setting-sources user,project, a narrower denylist that still blocks
 #     real recon/secret-store/egress binaries (curl, ssh, security, sqlite3, …),
 #     and --resume session continuity. grounding_dir below is ignored for cwd

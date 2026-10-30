@@ -13,12 +13,13 @@ related:
 This folder holds the Bridge orchestrator's own identity — distinct from
 the user's identities (`personas/`) and outgoing recipients (`mandants/`).
 
-Two files express the agent:
+Two files express the agent, and a third carries the instance:
 
 | File | Purpose |
 |---|---|
 | `IDENTITY.md` | Name, role, backstory — *who am I* |
 | `SOUL.md`     | Voice, posture, defaults — *how I behave* |
+| `INSTANCE.md` | This instance's own always-on text: routes, families and vocabulary CORE cannot name |
 
 The `SOUL.md` convention was pioneered by Peter Steinberger (creator of
 OpenClaw) and standardized by the [SoulSpec convention](https://soulspec.org/);
@@ -28,11 +29,23 @@ the Bridge also drew on Nous Research's Hermes agent (which uses a
 
 ## Loading order
 
-Once seeded, both files are `@`-imported into `CLAUDE.md` under a
-`## Agent Identity` section, loaded **before** Ecosystem and Rules at
-session start — identity (who) precedes mechanics (what). A fresh clone
-ships no `SOUL.md`/`IDENTITY.md` and no such import, so there is nothing
-to fail to resolve; onboarding seeds the files and adds the import.
+`AGENTS.md` § Loaded with this file imports `IDENTITY.md`, `SOUL.md` and
+`INSTANCE.md` near its top, so they load before Required Reading and Rules
+at session start; identity (who) precedes mechanics (what). The import lines
+ship with CORE and never change. A fresh clone has none of the three files,
+and Claude Code skips an import whose file is missing. Onboarding (Phase D4)
+only creates `IDENTITY.md` and `SOUL.md`. Agents that do not resolve
+`@`-imports (Codex, Copilot, Gemini) read the files because AGENTS.md tells
+them to.
+
+Instance-specific routing that CORE cannot name (families only this
+instance has, extra registries, search vocabulary in the instance's
+language) belongs in `INSTANCE.md`, never in an entry file: it is imported,
+so it reaches sub-agents, which Phase 1 never does. `INSTANCE.md` is USER
+and never shipped by CORE or an org overlay (an overlay may ship
+`IDENTITY.md` and `SOUL.md`), it may `@`-import further instance files, and
+it is the only place a fork adds always-on text, so nobody edits
+`AGENTS.md` downstream.
 
 ## CORE/USER split — like personas
 
@@ -51,6 +64,7 @@ onboarding (Phase D4) and kept on your `user/*` branch — they carry
 | `_schema.yaml`          | CORE — frontmatter schema |
 | `SOUL.md`               | USER — seeded from `_template.SOUL.md` at onboarding |
 | `IDENTITY.md`           | USER — seeded from `_template.IDENTITY.md` at onboarding |
+| `INSTANCE.md`           | USER, written by the instance itself when it needs one; never shipped |
 
 When CORE evolves the default voice, the change lands in
 `_template.SOUL.md`. Users diff-merge into their instance manually.
@@ -110,7 +124,7 @@ anywhere in the file is decoration; prune it.
 ## What does NOT belong in SOUL.md
 
 - Repo-specific or domain-specific rules → `rules/` or `skills/`
-- File paths, ports, commands → `CLAUDE.md` or skill references
+- File paths, ports, commands → `rules/`, skill references, or the config family that owns them (instance-only routing: `INSTANCE.md`)
 - Project context → `workflow/contexts/`
 - Persona/recipient routing → `identity/personas/` or `identity/mandants/`
 

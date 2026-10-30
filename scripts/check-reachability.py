@@ -192,14 +192,39 @@ def named_in(repo_root, family: str, parts: dict | None = None) -> list[str]:
     ]
 
 
+def is_core_checkout(repo_root) -> bool:
+    """No bridge-config.yaml, no instance: the test `data-model.py` uses too."""
+    return not (Path(repo_root) / "bridge-config.yaml").exists()
+
+
+def remedy(repo_root) -> str:
+    """Where the missing name belongs, which differs between CORE and a fork.
+
+    Never an eager standing order: it is resident in the main session and
+    invisible to every sub-agent, so the family would stay unreachable from
+    exactly the dispatches that need it. AGENTS.md imports
+    identity/agent/INSTANCE.md, so a name there reaches sub-agents too.
+    """
+    if is_core_checkout(repo_root):
+        return (
+            "A CORE family gets its row in docs/data-model.yaml and is named in "
+            "AGENTS.md. Only CORE edits AGENTS.md: editing it downstream "
+            "conflicts on every merge."
+        )
+    return (
+        "Describe it in work/data-model.yaml and name it in "
+        "identity/agent/INSTANCE.md, which AGENTS.md imports, so sub-agents see "
+        "it too. AGENTS.md is CORE and editing it downstream conflicts on every "
+        "merge; an eager standing order does not reach sub-agents."
+    )
+
+
 def check(repo_root, surface: str | None = None) -> list[str]:
     """Families the ROUTING surface does not name."""
     surface = routing_surface(repo_root) if surface is None else surface
+    advice = remedy(repo_root)
     return [
-        f"{family}: exists in the tree and is named nowhere a session loads. "
-        f"An instance names its OWN families in an eager standing order under "
-        f"protocols/standing-orders/user/ — AGENTS.md is CORE and editing it "
-        f"downstream conflicts on every merge."
+        f"{family}: exists in the tree and is named nowhere a session loads. {advice}"
         for family in discover_families(repo_root)
         if family not in surface
     ]

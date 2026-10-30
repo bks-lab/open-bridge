@@ -102,10 +102,10 @@ draws exactly this, from the same file as the tables below:
 
 | Item | What it is |
 |---|---|
-| AGENTS.md | The operating manual, @-imported through CLAUDE.md (or the tool's own wrapper). |
-| SOUL/IDENTITY | identity/agent/SOUL.md and IDENTITY.md, @-imported once onboarding has seeded them. |
+| AGENTS.md | The operating manual and the entry file: Claude Code loads it directly, other tools read it as text. |
+| SOUL/IDENTITY | identity/agent/SOUL.md and IDENTITY.md, imported by AGENTS.md once onboarding has created them. |
 | config slice | `python3 scripts/bridge-config.py --session`: the six bridge-config.yaml blocks a session needs; the others are read by the skill that owns them. |
-| registry card | `python3 scripts/context-index.py ecosystem.yaml`: the settings plus one line per entry; an entry itself comes with `--get <name>` (docs/context-index.md). |
+| registry card | `python3 scripts/context-index.py --registries`: the settings plus one line per entry of ecosystem.yaml and every ecosystem.<name>.yaml; an entry itself comes with `<file> --get <name>` (docs/context-index.md). |
 | order index | `python3 scripts/standing-orders.py --index`, plus the bodies of the orders marked `load: eager`. |
 | log + board | `python3 scripts/worklog.py --recent 3` and work/board.md, never the whole log. |
 | skill list | Name and description of every skill, injected by the harness (measured as listing:skills). |
@@ -116,7 +116,7 @@ draws exactly this, from the same file as the tables below:
 | Family | One entry is | Island | Lives in | References | Written by | Read |
 |---|---|---|---|---|---|---|
 | `identity/accounts/` | a cloud tenant, subscription or secret-store reference | core: template, schema; user: entries | open-bridge (CORE)<br>instance data | `persona_ref` → identity/personas/<br>`*_ref` → a secret store, by URI | a person; onboarding may suggest the first | when named |
-| `identity/agent/` | this orchestrator's own name, role and voice | core: templates, soul deck; user: SOUL.md, IDENTITY.md | open-bridge (CORE)<br>your user branch | none | onboarding seeds it; accepted /bridge-learn lessons fold into SOUL.md | at session start |
+| `identity/agent/` | this orchestrator's own name, role and voice | core: templates, soul deck; user: SOUL.md, IDENTITY.md, INSTANCE.md | open-bridge (CORE)<br>your user branch | none | onboarding seeds it; accepted /bridge-learn lessons fold into SOUL.md | at session start |
 | `identity/contracts/` | a recurring obligation the user holds: utility, telco, insurance, subscription | core: template, schema; user: entries | open-bridge (CORE)<br>your user branch | `delivery_address_ref` → identity/personas/ | a person | when named |
 | `identity/designs/` | a brand a generated visual can wear: colours, type and shapes, in the DESIGN.md format | core: template, schema; user: entries; org: an organisation's brand via an overlay | open-bridge (CORE)<br>instance data<br>org overlay | none | a person; contexts, personas and themes point at it (design_ref, branding.design), scripts/designs.py resolves it | when named |
 | `identity/mail-footers/` | how a drafted mail is signed: contact block, badges, cards, a dated notice, small print | core: template, schema; user: entries; org: a shared team footer via an overlay | open-bridge (CORE)<br>instance data<br>org overlay | `persona_ref` → identity/personas/<br>`extends` → identity/mail-footers/ | a person (skills/mail-draft reads and renders it) | when named |
@@ -156,7 +156,7 @@ draws exactly this, from the same file as the tables below:
 |---|---|---|---|
 | `bridge-config.yaml` | the instance's settings; a session reads six of its blocks | user | instance data |
 | `ecosystem.yaml` | the repo registry, read as a card with one entry on demand | user | instance data |
-| `ecosystem.<name>.yaml` | a registry fragment, for example an organisation's | org or user | instance data<br>org overlay |
+| `ecosystem.<name>.yaml` | a registry fragment, for example an organisation's, indexed at session start like ecosystem.yaml | org or user | instance data<br>org overlay |
 | `overlays.lock.yaml` | which overlay files were materialized, at which revision | user | instance data |
 | `context-budget.yaml` | the declared ceiling for what every session reads | core | open-bridge (CORE) |
 | `context-budget.user.yaml` | an instance's own caps for its own always-on files | user | instance data |

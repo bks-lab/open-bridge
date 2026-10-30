@@ -52,7 +52,7 @@ An overlay ships an org's `scope: org` building blocks as a flat `tree/` mirror 
 | Org rules | `rules/org/**` | rule | batch-confirm |
 | **Org skills (complete)** | `skills/<name>/**` | skill | **one `[y]` per skill folder** |
 | **Org sub-agents** | `.claude/agents/<name>.md` | agent | **`[y]` per file** |
-| Ecosystem fragment | `ecosystem.<org>.yaml` | ecosystem-fragment | batch-confirm + `@import` |
+| Ecosystem fragment | `ecosystem.<org>.yaml` | ecosystem-fragment | batch-confirm; indexed by Phase 1 |
 
 **Skills ship COMPLETE.** A skill is a directory: `SKILL.md` declares the tier in
 its `metadata.scope`; the sibling `scripts/`, `references/`, `assets/` carry no
@@ -84,7 +84,7 @@ exclude it at authoring time (the publish guard + a `user-owned` count in
 | `apply [name]` | **OFFLINE** re-materialize from cache + lock (no network). Idempotent — a clean tree reports all-clean and writes nothing. |
 | `status [name]` | `resolved_sha` vs cache HEAD; days-since-sync vs `pull_interval_days`; last unattended run + outcome; `git -C <cache>` log/blame provenance; counts `{clean·locally-modified·upstream-ahead·conflict·orphan·pending-confirm·CORE-refused}` plus the `withheld` units. |
 | `diff [name]` | Preview the next `sync`/`apply` (plan + per-file before/after). **No writes.** |
-| `remove <name> [--keep-files]` | Unsubscribe: hash-verify each lock-recorded file, delete **only clean** managed files (prompt on locally-modified), drop the cache + `materialize:` block + lock entry + the ecosystem `@import`. `--keep-files` ends the subscription but leaves the files in place. |
+| `remove <name> [--keep-files]` | Unsubscribe: hash-verify each lock-recorded file, delete **only clean** managed files (prompt on locally-modified), drop the cache + `materialize:` block + lock entry. No import is dropped, since none is written. `--keep-files` ends the subscription but leaves the files in place. |
 | `list` | Subscribed overlays from `upstreams[]` (`role: org-overlay`): name, url, ref, `resolved_sha`, precedence, file-count, `last_synced`. |
 
 Engine: `scripts/overlay.py` — a shared repo-root utility shipped with the
@@ -101,8 +101,10 @@ conflict/precedence model, and 3-way base recovery live in `references/workflow.
    `_template`/`_schema`, or path-escapes the tree. **Path classification wins:**
    an inline `scope: org` line can only re-tier a dest on a frontmatter-bearing
    path (`skills/`, `.claude/agents/`, `identity/agent/{IDENTITY,SOUL}`) — it can
-   never smuggle a CORE file (`rules/`, `docs/`, `scripts/`, `CLAUDE.md`, …) past
+   never smuggle a CORE file (`rules/`, `docs/`, `scripts/`, …) past
    the gate. An overlay ships `scope: org` content only — it can never overwrite CORE.
+   Entry files (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`, `AGENTS.md`)
+   and `identity/agent/INSTANCE.md` are refused by name, before classification.
 3. **Behavioural `[y]`, one per unit.** A `skill` / `agent` / `standing-order`
    requires an **explicit `[y]`** when a file of it arrives for the first time
    (shown in the preview). A skill folder is one unit, all or none, so a
@@ -121,10 +123,11 @@ conflict/precedence model, and 3-way base recovery live in `references/workflow.
    to a prompt — the engine never silently overwrites your edit.
 6. **Never push.** `/overlay` reads from the overlay and writes into your
    working tree. It never pushes your branch anywhere and never opens a PR.
-7. **Never auto-merge config.** The ecosystem fragment is wired as an
-   idempotent `@ecosystem.<org>.yaml` `@import` line — never block-merged into
-   `ecosystem.yaml`. A fragment the context budget declares as a Phase 1
-   `card:` is indexed instead and gets no `@import` (`indexed, not imported`).
+7. **Never auto-merge config, never write an entry file.** The fragment lands
+   at the root and Phase 1 indexes it (`context-index.py --registries`), never
+   block-merged into `ecosystem.yaml`. The engine writes no import and never
+   touches `AGENTS.md` or `CLAUDE.md`; a leftover line in a legacy `CLAUDE.md`
+   is reported, not edited. A root `CLAUDE.md` is always refused.
    No config file is structurally merged. The fragment itself
    is a managed file like any other: in the lock, 3-way merged on a local edit,
    listed by `diff`, deleted by `remove` only while clean.
@@ -186,8 +189,9 @@ The suite's 25 sections assert, among others:
 - **§19 a `scope:org` skill ships COMPLETE** — its scripts materialize (inherit the
   SKILL.md tier), never CORE-refused
 - **§21 CORE-refusal is path-authoritative** — an inline `scope: org` on a core
-  path (`rules/`, `CLAUDE.md`, `scripts/`) is still refused; a real org
-  SKILL.md/agent still ships (the carve-out doesn't over-refuse)
+  path (`rules/`, `scripts/`) is still refused; a real org
+  SKILL.md/agent still ships (the carve-out doesn't over-refuse); every entry
+  file and `identity/agent/INSTANCE.md` is refused by name
 - **§22 ecosystem_fragment name** is enforced in-engine (flat `ecosystem.<org>.yaml`)
   even on a consumer without check-jsonschema
 - **§25 the ecosystem fragment is a managed file**: in the lock, listed by `diff`
@@ -196,8 +200,13 @@ The suite's 25 sections assert, among others:
   included), a conflict keeps the local side, `remove` keeps an edited fragment,
   a pre-fix lock is adopted without clobbering (also when its pinned blob is
   gone), a consumer's own registry from before the subscription is never merged
-  into or removed, a fragment also shipped under `tree/` still gets its
-  `@import`, a dropped fragment is pruned with its `@import`
+  into or removed, a fragment also shipped under `tree/` is still materialized
+  and indexed, a dropped fragment is pruned and leaves `--registries`
+- **§28 the overlay never writes an entry file**: add, sync, `--dry-run` and
+  `remove` create no `CLAUDE.md` and leave `AGENTS.md` byte-identical, with or
+  without a declared card; a legacy `CLAUDE.md` that still imports the fragment
+  stays byte-identical and each run prints a WARN naming
+  `scripts/migrate-entry-file.py`
 - **§20 the default git-exclude guard** — managed dests land in
   `.git/info/exclude`, `git check-ignore` confirms them ignored, `.gitignore`
   untouched; **§23 the `track_managed_dests` opt-in** — off by default is

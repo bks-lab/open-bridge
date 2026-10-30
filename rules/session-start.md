@@ -47,6 +47,11 @@ never let them block or delay the first response.
    greeting. Follow up (not a prerequisite) with `./bin/setup` (POSIX) /
    `bin\setup.ps1` (Windows), which also repairs the skills-discovery symlinks
    and `chmod +x`es the hooks; a non-zero exit there is survivable too.
+   On POSIX, `./bin/setup` also warns when Claude Code is older than 2.1.281
+   or a parent folder holds a `CLAUDE.md` / `CLAUDE.local.md`; relay that
+   warning, since such a client starts later sessions without the manual.
+   `bin\setup.ps1` does not check either yet: on native Windows, run
+   `claude --version` yourself and say so when it is below 2.1.281.
 
 2. **Classify the origin** (the onboarding protection lane reuses this, and it is the same
    question `scripts/user-data.py` asks to decide whether instance data is tracked at all,

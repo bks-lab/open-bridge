@@ -1,10 +1,11 @@
 # Ecosystem fragment — example-org overlay (scope: org)
 #
 # This is a FRAGMENT, not a full ecosystem.yaml. The overlay engine copies it
-# verbatim to the consumer root as `ecosystem.example-org.yaml` and registers it
-# as an @import in CLAUDE.md (next to @AGENTS.md). It is NEVER block-merged
-# into the consumer's own ecosystem.yaml — the @import keeps the two registries
-# separate, so a consumer's `org:` / `local_root:` / `work_system:` are untouched.
+# verbatim to the consumer root as `ecosystem.example-org.yaml`, and Phase 1
+# indexes it beside the consumer's own registry (context-index.py --registries).
+# It is NEVER block-merged into the consumer's own ecosystem.yaml, and no entry
+# file is written: the two registries stay separate files, so a consumer's
+# `org:` / `local_root:` / `work_system:` are untouched.
 #
 # Use org-namespaced top-level keys (example_org:) so the fragment never collides
 # with the consumer's own top-level ecosystem keys.

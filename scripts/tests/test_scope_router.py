@@ -596,6 +596,11 @@ UPSTREAM_NON_CORE_BY_DESIGN = frozenset({
     # Per-tier INVERTED; see test_inverted_root_files_never_ship.
     ".gitignore",
     ".bridge-origin",
+    # CORE shipped a root CLAUDE.md until 2026-10-30. It now classifies `user`
+    # on purpose (a root CLAUDE.md shadows AGENTS.md), and an upstream ref
+    # from before the deletion still lists it. scripts/migrate-entry-file.py
+    # retires a fork's copy.
+    "CLAUDE.md",
 })
 
 #: Same, by prefix. `work/` is whole-folder USER (AGENTS.md § Scope): upstream

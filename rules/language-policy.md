@@ -152,8 +152,8 @@ languages live in the same CORE file under the same keys.
 open-bridge *is* the English upstream — there is nothing to translate when
 you author here. A downstream fork that contributes CORE upward must
 arrive in English (translate before it lands; open-bridge itself never
-translates incoming CORE). `CLAUDE.md` and `README.md` are the only
-diverged CORE files between tiers — merge them via
+translates incoming CORE). `README.md` and the destination-override `.gitignore`
+are the only diverged CORE files between tiers (no entry file) — merge them via
 `git format-patch | git am --3way`, not a blind checkout.
 
 ## 8. See also

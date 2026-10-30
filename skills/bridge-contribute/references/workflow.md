@@ -11,7 +11,7 @@ Destinations, each selected by matching the file's scope to an
 - your personal overlay — the `scope: personal` upstream, if configured
 - stays local — `scope: user` / `private`
 
-Architecture: see CLAUDE.md § Tier Model.
+Architecture: see docs/org-overlays.md (tier model).
 
 ## Usage
 
@@ -71,7 +71,7 @@ git diff --name-only "${CORE_BRANCH}..HEAD" -- \
   infra/{remotes,channels,backups}/_template.yaml \
   workflow/{calendars,contexts}/_template.yaml \
   workflow/context.{customer-a,doc-system}.yaml ecosystem.yaml \
-  CLAUDE.md README.md AGENTS.md CONTRIBUTING.md
+  README.md AGENTS.md CONTRIBUTING.md
 ```
 
 If `{path}` argument is provided, restrict the scan to that path only.

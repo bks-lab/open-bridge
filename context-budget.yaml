@@ -4,7 +4,7 @@
 # answers anything.
 #
 # WHAT THIS FILE IS FOR. A session opens by loading the `@`-imports named in
-# CLAUDE.md, every standing order carrying `scope: always`, and the Phase 1
+# the entry file (AGENTS.md), every standing order carrying `scope: always`, and the Phase 1
 # reads. That body of text is paid on every turn, and roughly half of it never
 # shows up in a client's context listing because it arrives through tool reads
 # rather than imports. Nothing measured it, so it only grew. One file here has
@@ -41,13 +41,33 @@ calibration:
 items:
   # ---------------------------------------------------------------- imports --
   CLAUDE.md:
+    optional: true
+    source: import
     max_bytes: 4000
-    note: The entry file. Thin by design; it routes, it does not explain.
+    note: >-
+      Legacy entry. CORE ships none. While a fork still has one, Claude Code
+      loads ONLY this file, so it must import AGENTS.md (else measure-context
+      reports shadowed). scripts/migrate-entry-file.py moves its lines and
+      removes it. Remove this item once forks have migrated.
+  CLAUDE.local.md:
+    optional: true
+    source: import
+    max_bytes: 4000
+    note: >-
+      Legacy entry, same rule as CLAUDE.md: when present, Claude Code loads it
+      instead of AGENTS.md. scripts/migrate-entry-file.py moves its lines.
+  .claude/CLAUDE.md:
+    optional: true
+    source: import
+    max_bytes: 4000
+    note: >-
+      Legacy entry, same rule as CLAUDE.md. scripts/migrate-entry-file.py
+      moves its lines.
 
   AGENTS.md:
-    max_bytes: 34300
+    max_bytes: 32768
     note: >-
-      The operating manual, and still the largest single always-on item. It
+      The entry file and the operating manual, and still the largest single always-on item. It
       routes; it does not restate. Every load-bearing pointer in it is a
       markdown link, which `scripts/check-doc-routes.py` holds to resolving.
       RAISED from 32000 on 2026-08-30, and the argument belongs in the diff a
@@ -101,6 +121,36 @@ items:
       RAISED from 34200 on 2026-10-06 by 100 bytes for ONE row naming both mail
       families (`workflow/mail-profiles/`, `identity/mail-footers/`, skills/mail-draft).
       Two rows would have cost 228; the shared row keeps both reachable at 110.
+      LOWERED from 34300 to 32768 on 2026-10-30 when CLAUDE.md was deleted:
+      AGENTS.md became the entry file (Phase 0 line at the top, the import
+      block for the instance layer) and was tightened to 32646 bytes. 32768 is
+      the cut past which Codex stops reading the file, so this cap is a hard
+      ceiling now, not a review prompt. Step 2 lowers it further.
+
+  # Instance import slots. AGENTS.md imports all three; CORE ships none of them.
+  identity/agent/IDENTITY.md:
+    optional: true
+    source: import
+    max_bytes: 4096
+    note: >-
+      USER import slot in AGENTS.md; absent in CORE and on a fresh clone,
+      created by onboarding D4. An instance overrides the cap in
+      context-budget.user.yaml.
+  identity/agent/SOUL.md:
+    optional: true
+    source: import
+    max_bytes: 4096
+    note: >-
+      USER import slot; mirrors the 80 lines / 4 KB cap bridge-audit enforces.
+  identity/agent/INSTANCE.md:
+    optional: true
+    source: import
+    max_bytes: 4000
+    note: >-
+      The instance's own always-on file (USER, never shipped by CORE or an
+      overlay) and the only place a fork adds always-on text, so nobody edits
+      AGENTS.md. scripts/migrate-entry-file.py carries a fork's CLAUDE.md lines
+      here. An instance raises the cap in context-budget.user.yaml, with a reason.
   ecosystem.yaml:
     optional: true
     source: phase1
