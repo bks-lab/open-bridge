@@ -1838,7 +1838,7 @@ test('an issue on a board: Set to review and Done after Open on GitHub, the boar
   await read(el)
   assert.deepEqual(c.calls.find(x => x[0] === 'issuePlan'), ['issuePlan', 'acme/app#7'])
   assert.match(el.$('.flow-issue-on').text(), /Ops: In Progress/)
-  assert.deepEqual(acts(el), [en.flow.onWeb('https://github.com/acme/app/issues/7'), panel(iw.review), panel(iw.done), panel(v.do), v.advise,
+  assert.deepEqual(acts(el), [en.flow.onWeb('https://github.com/acme/app/issues/7'), panel(iw.review), panel(iw.done), iw.check, panel(v.do), v.advise,
     en.flow.hide, panel(v.later), panel(v.drop)])
 })
 
@@ -1902,6 +1902,38 @@ test('a board of the issue that workflow/projects/ does not know is named, and D
   el.$$('.flow-aside button').find(b => b.text() === panel(iw.done)).click()
   await until(() => el.$('.flow-issue-panel'))
   assert.ok(el.$('.flow-issue-panel').text().includes(iw.steps([iw.comment, 'In Review', 'Done', iw.close].join(', '))))
+})
+
+test('Check with AI: the click sends issue_check, its done makes the fitting button strong with its comment in the field', async () => {
+  const done = { verdict: 'done', reason: 'Both boxes ticked, #13 merged', evidence: ['#13 merged'], missing: [],
+    comment: 'Parser fixed in #13, test added.', model: 'claude-haiku-5-5', at: '2026-10-29T18:30:00' }
+  const base = withPlan({ ok: true, data: PLAN() })
+  const c = new Proxy(base, { get: (t, p) => (p === 'act' ? ((verb, args) => { t.calls.push(['act', verb, args]); return Promise.resolve({ ok: true, issue_check: done }) }) : t[p]) })
+  const el = right(state({ now: [gitIssue()] }), c)
+  await read(el)
+  assert.ok(!el.$('.flow-issue-check'), 'no verdict before a check')
+  assert.ok(!acts(el).some(w => w.startsWith('[')), 'nothing strong without a suggestion')
+  el.$$('.flow-aside button').find(b => b.text() === iw.check).click()
+  await until(() => el.$('.flow-issue-check'))
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'issue_check', { key: 'ref:acme/app#7' }])
+  assert.match(el.$('.flow-issue-check').text(), new RegExp(`${iw.verdict.done}.*Both boxes ticked`))
+  assert.ok(el.$('.flow-issue-check').text().includes('#13 merged'))
+  assert.equal(acts(el)[1], `[${panel(iw.review)}]`)
+  el.$$('.flow-aside button').find(b => b.text() === panel(iw.review)).click()
+  await until(() => el.$('.flow-issue-panel textarea'))
+  const box = el.$('.flow-issue-panel textarea')
+  assert.equal(box.value ?? box.getAttribute('value'), 'Parser fixed in #13, test added.')
+})
+
+test('a kept check comes back with the plan, and its not done outweighs the triage', async () => {
+  const kept = { verdict: 'not_done', reason: 'The test box is open', evidence: [], missing: ['a test'], comment: '', model: 'claude-sonnet-5-5', at: '2026-10-29T18:00:00' }
+  const s = state({ now: [gitIssue()], themes: { enabled: true, assign: {}, themes: [], suggest: { 'ref:acme/app#7': { verb: 'done', reason: 'x', at_ms: NOW } } } })
+  const el = right(s, withPlan({ ok: true, data: PLAN({ check: kept }) }))
+  await read(el)
+  assert.match(el.$('.flow-issue-check').text(), new RegExp(iw.verdict.not_done))
+  assert.ok(el.$('.flow-issue-check').text().includes('a test'))
+  assert.ok(!acts(el).some(w => w.startsWith('[')), acts(el).join(' | '))
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.issue.verdict.unclear && text.TABLES[lang].flow.issue.check, lang)
 })
 
 test('an issue on no board of workflow/projects/ and a pull request keep Hide only', async () => {

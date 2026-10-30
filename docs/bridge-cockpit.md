@@ -727,6 +727,19 @@ primary button. Each kind of point gets the verbs that fit it:
   first write says so. Only a person's click moves an
   issue (K1): where the AI suggests closing, the button that fits is the strong
   one and its reason stands in the field already, Hide stays plain.
+  **Check with AI** beside them (verb `issue_check`, service
+  `cockpit-issue-check`, `scripts/lib/bridge_cockpit/issue_check.py`) reads the
+  issue's detail fresh (body, last comments, the pull requests that close
+  it, its boards) and asks a small model, as data under a fixed schema, whether
+  it is done: a verdict (done, not done, unclear), the reason, the evidence,
+  what is still open and a review comment. Unclear asks the stronger model once.
+  The answer stands on the card and is kept per issue
+  (`issue-check.json` in the state folder, it comes back with `GET /api/issue`
+  while the issue is unchanged; a done on an open issue without a merged pull
+  request, or with a body cut for length, becomes unclear); a
+  done makes the button that fits strong with the comment in its field, a not
+  done or unclear makes none strong and outweighs the triage. It writes nothing
+  to GitHub.
 - **A finished start**: Done and close the tab, then View, Open answer, Improve
   and Runs on, then Later until and Drop because.
 - **A tab that asks**: To tab, View, Advise and Later until only. Nothing closes
@@ -3355,6 +3368,7 @@ the cockpit (git ignores them too):
 |---|---|---|
 | `.bridge/triage.json` | the last triage run (`scripts/triage.py`): per task and inbox item a gist, a verdict and who does it | yes: titles and gists |
 | `.bridge/describe.json` | describe (`describe.py`): per item the hash of the brief as it was written, the waiting proposal, the last error and cost, and the calls of the last hour (the budget) | yes: proposed goals and criteria |
+| `.bridge/cockpit/issue-check.json` | Check with AI (`issue_check.py`): per issue the last verdict, its reason, evidence, what is still open, the review comment, the model, the cost and when | yes: a review comment drafted from the issue |
 | `.bridge/task-review.json` | the last task check (`task.py review`): per task a verdict and its reason | yes: task titles and reasons |
 | `.bridge/task-merges.json` | each merge not taken back (`task.py merge`): both STATUS.md files as they were before and after it, so `task.py unmerge` puts them back byte for byte; an undo removes its entry | yes: the whole text of both tasks |
 | `.bridge/resources/workers-view.json` | the full worker view of the Resources section (`scripts/bridge-resources.py workers`) | no |

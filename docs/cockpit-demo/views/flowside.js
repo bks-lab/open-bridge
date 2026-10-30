@@ -309,6 +309,8 @@ export function IssueWays({ row, s, c, sug }) {
   const [open, setOpen] = useState(null)
   const [text, setText] = useState('')
   const [round, setRound] = useState(0)
+  const [fresh, setFresh] = useState(null)       // the check this click just made (issue_check)
+  const [checking, setChecking] = useState(false)
   useEffect(() => {
     let live = true
     setPlan({ status: 'loading' })
@@ -325,12 +327,17 @@ export function IssueWays({ row, s, c, sug }) {
   if (!data || !boards.length) return head
   const canReview = boards.every(b => b.review_state) && !boards.some(b => b.in_review || b.in_done)
   const canDone = data.state === 'OPEN' && boards.every(b => b.done_state)
-  const strong = sug?.verb === 'done' ? (canReview ? 'review' : canDone ? 'done' : null) : null
+  // Check with AI (issue_check.py) outweighs the daily triage: its done makes the button that fits strong and puts its
+  // comment in the field, its not done or unclear makes none strong
+  const check = fresh ?? data.check ?? null
+  const fits = canReview ? 'review' : canDone ? 'done' : null
+  const strong = check ? (check.verdict === 'done' ? fits : null) : sug?.verb === 'done' ? fits : null
+  const prefill = check?.verdict === 'done' ? check.comment || check.reason : sug?.reason
   const rules = [...new Set(boards.flatMap(b => b.rules ?? []))]
   const busy = !!s.ui?.busy?.[row.key]
   const pick = v => {
     setOpen(open === v ? null : v)
-    setText(open !== v && strong === v && sug?.reason ? sug.reason : '')
+    setText(open !== v && strong === v && prefill ? prefill : '')
   }
   const go = async () => {
     const words = text.trim()
@@ -341,6 +348,13 @@ export function IssueWays({ row, s, c, sug }) {
     if (open === 'done') c.flowDecided()
     setOpen(null)
     setText('')
+    setFresh(null)                               // the move changed the issue, the check spoke of the one before
+  }
+  const runCheck = async () => {
+    setChecking(true)
+    const r = await c.act('issue_check', { key: row.key })
+    setChecking(false)
+    if (r?.issue_check) setFresh(r.issue_check)
   }
   const id = `flow-issue-${row.key}`
   return html`${head}
@@ -348,6 +362,13 @@ export function IssueWays({ row, s, c, sug }) {
       onClick=${() => pick('review')}>${f.review} ▾<//>` : null}
     ${canDone ? html`<${Btn} size="sm" variant=${strong === 'done' ? 'primary' : 'secondary'} pressed=${open === 'done'} busy=${busy}
       onClick=${() => pick('done')}>${f.done} ▾<//>` : null}
+    <${Btn} size="sm" variant="secondary" icon="spark" busy=${checking} onClick=${runCheck}>${checking ? f.checking : f.check}<//>
+    ${check ? html`<div class=${`flow-issue-check is-${check.verdict}`} role="status">
+      <p class="small"><strong>${f.verdict[check.verdict] ?? check.verdict}</strong>: ${check.reason}</p>
+      ${(check.evidence ?? []).length ? html`<p class="muted small">${f.evidence}</p><ul class="small">${check.evidence.map(e => html`<li key=${e}>${e}</li>`)}</ul>` : null}
+      ${(check.missing ?? []).length ? html`<p class="muted small">${f.missing}</p><ul class="small">${check.missing.map(e => html`<li key=${e}>${e}</li>`)}</ul>` : null}
+      <p class="muted small">${f.by(String(check.model ?? '').replace(/^claude-/, ''), String(check.at ?? '').slice(0, 16).replace('T', ' '))}</p>
+    </div>` : null}
     ${open ? html`<div class="verbbar-panel flow-issue-panel">
       <label class="label-caps" for=${id}>${open === 'review' ? f.reviewLabel : f.doneLabel}</label>
       <textarea id=${id} class="input textarea" rows="3" maxlength="2000" value=${text} onInput=${e => setText(e.currentTarget.value)}></textarea>

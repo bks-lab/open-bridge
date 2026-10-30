@@ -37,6 +37,7 @@ SERVICES = {
     "cockpit-describe": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/describe.py"},
     "cockpit-files": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/actions_work.py"},
     "cockpit-instruct": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/instruct.py"},
+    "cockpit-issue-check": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/issue_check.py"},
     "cockpit-organize": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/organize.py"},
     "cockpit-prio": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/prio.py"},
     "cockpit-themes": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/themes.py"},

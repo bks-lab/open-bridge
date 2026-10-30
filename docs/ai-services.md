@@ -36,6 +36,7 @@ provider and is not listed.
 | `cockpit-describe` | claude | `scripts/lib/bridge_cockpit/describe.py` |
 | `cockpit-files` | claude | `scripts/lib/bridge_cockpit/actions_work.py` |
 | `cockpit-instruct` | claude | `scripts/lib/bridge_cockpit/instruct.py` |
+| `cockpit-issue-check` | claude | `scripts/lib/bridge_cockpit/issue_check.py` |
 | `cockpit-organize` | claude | `scripts/lib/bridge_cockpit/organize.py` |
 | `cockpit-prio` | claude | `scripts/lib/bridge_cockpit/prio.py` |
 | `cockpit-themes` | claude | `scripts/lib/bridge_cockpit/themes.py` |

@@ -372,6 +372,10 @@
 .verbbar-tail { padding-top: 8px; border-top: 1px solid var(--border); }
 /* an issue on a board: where it stands, above its review and done (views/flowside.js IssueWays) */
 .flow-issue-on { margin: 0; }
+/* what Check with AI found: its verdict, evidence and what is still open */
+.flow-issue-check { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.flow-issue-check p, .flow-issue-check ul { margin: 0; }
+.flow-issue-check ul { padding-left: 18px; }
 .verbbar-panel {
   display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border);
   border-radius: var(--radius-lg); background: var(--surface);
