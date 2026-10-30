@@ -28,7 +28,8 @@ with no file at all. stdout stays pure CSS either way.
 Usage:
   embed-fonts.py [DESIGN.md | preset.yaml] [--font-dir DIR ...] [--style]
                  [--out file] [--strict]
-  # default input: the repo-root DESIGN.md. --style wraps the CSS in <style>.
+  # default input: the design the Bridge resolves (bridge_design.py), else the
+  # repo-root DESIGN.md. A design id works too. --style wraps the CSS in <style>.
   # --strict exits non-zero when anything was skipped.
 
 From Python:
@@ -214,8 +215,9 @@ def build_font_face_css(families: Mapping[str, Iterable[int]], font_dirs: Sequen
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Font families -> base64 @font-face block")
-    ap.add_argument("source", nargs="?", default=str(SKILL.parents[1] / "DESIGN.md"),
-                    help="DESIGN.md or preset YAML (default: repo-root DESIGN.md)")
+    ap.add_argument("source", nargs="?",
+                    help="DESIGN.md, a design id, or a preset YAML "
+                         "(default: the design the Bridge resolves, else the repo-root DESIGN.md)")
     ap.add_argument("--font-dir", action="append", default=[], metavar="DIR",
                     help="extra directory of <family>-latin-<weight>.woff2 files, searched first")
     ap.add_argument("--style", action="store_true", help="wrap the CSS in a <style> element")
@@ -223,7 +225,12 @@ def main() -> int:
     ap.add_argument("--strict", action="store_true", help="exit non-zero when anything was skipped")
     args = ap.parse_args()
 
-    families = collect_families(Path(args.source))
+    bd = _design_to_css().bridge_design()
+    try:
+        source = bd.resolve(args.source) or SKILL.parents[1] / "DESIGN.md"
+    except ValueError as e:
+        sys.exit("embed-fonts: %s" % e)
+    families = collect_families(Path(source))
     css, warnings = _build(families, [Path(d) for d in args.font_dir])
     for w in warnings:
         print(f"embed-fonts: WARN {w}", file=sys.stderr)

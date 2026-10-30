@@ -76,3 +76,28 @@ def md_snippet(md_path: Path, heading: str) -> str:
         elif inside:
             block.append(ln)
     raise AssertionError("no fenced block under %r in %s" % (heading, md_path))
+
+
+def mini_bridge(tmp_path: Path, brand_primary: str = "#5A1E3C") -> Path:
+    """A throwaway Bridge holding this skill, scripts/designs.py and two designs.
+
+    The scripts find their Bridge three levels above themselves, so a test that
+    needs a context or a theme pointing at a design runs a copy that lives in a
+    tree it may write. The root DESIGN.md and the design `brand` are the token
+    fixture, `brand` with its primary changed so a page shows which one it wore.
+    """
+    import shutil
+    root = tmp_path / "bridge"
+    (root / ".git").mkdir(parents=True)
+    shutil.copytree(SKILL, root / "skills" / "html-canvas", ignore=shutil.ignore_patterns("tests", "__pycache__"))
+    (root / "scripts").mkdir()
+    shutil.copy(REPO / "scripts" / "designs.py", root / "scripts" / "designs.py")
+    fixture = (Path(__file__).resolve().parent / "fixtures" / "tokens" / "design-current.md").read_text("utf-8")
+    (root / "DESIGN.md").write_text(fixture, encoding="utf-8")
+    brand = fixture.replace("name: fixture-current", "scope: user\nname: brand\ndescription: A second brand.", 1)
+    brand = brand.replace("#102030", brand_primary)
+    (root / "identity" / "designs").mkdir(parents=True)
+    (root / "identity" / "designs" / "brand.md").write_text(brand, encoding="utf-8")
+    (root / "workflow" / "contexts").mkdir(parents=True)
+    (root / "workflow" / "contexts" / "client.yaml").write_text("id: client\ndesign_ref: brand\n", encoding="utf-8")
+    return root

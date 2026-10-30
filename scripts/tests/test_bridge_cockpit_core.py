@@ -370,3 +370,77 @@ def test_every_error_code_the_server_sends_is_worded_in_both_languages():
     for lang, keys in tables.items():
         assert codes - INTERNAL_CODES - keys == set(), f"text.js errors ({lang}) lacks these codes"
     assert tables["en"] == tables["de"]
+
+
+# ---------------------------------------------------------------- which design the cockpit wears
+# The cockpit is the instance's own page, so it wears the instance default: the active theme's
+# `branding.design` (step 5 of scripts/designs.py), else the root DESIGN.md. It never guesses a
+# context or a persona, and its cache follows the file the resolver names, not the root.
+
+def _branded(tmp_path: Path) -> Path:
+    (tmp_path / "DESIGN.md").write_text('---\nname: root\ncolors:\n  primary: "#101010"\n---\n', encoding="utf-8")
+    (tmp_path / "identity" / "designs").mkdir(parents=True)
+    (tmp_path / "identity" / "designs" / "brand.md").write_text(
+        '---\nscope: user\nname: brand\ndescription: d\ncolors:\n  primary: "#5A1E3C"\n---\n', encoding="utf-8")
+    (tmp_path / "themes").mkdir()
+    (tmp_path / "themes" / "house.yaml").write_text("meta: {name: house}\nbranding: {design: brand}\n", encoding="utf-8")
+    (tmp_path / "bridge-config.yaml").write_text("theme: house\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_the_stylesheet_follows_the_theme_design(tmp_path):
+    from lib.bridge_cockpit import design
+    root = _branded(tmp_path)
+    assert design.design_file(root) == root / "identity" / "designs" / "brand.md"
+    css = design.stylesheet(root)
+    assert "#5A1E3C" in css and "#101010" not in css
+    (root / "bridge-config.yaml").write_text("theme: professional\n", encoding="utf-8")
+    assert design.design_file(root) == root / "DESIGN.md"
+    assert "#101010" in design.stylesheet(root)
+
+
+def test_the_colour_cache_watches_the_resolved_file(tmp_path):
+    import threading
+    import types
+    from lib.bridge_cockpit import server
+    root = _branded(tmp_path)
+    app = types.SimpleNamespace(root=root, _colors=None, _colors_lock=threading.Lock())
+    first, _ = server.App.colors_css(app)
+    assert b"#5A1E3C" in first
+    brand = root / "identity" / "designs" / "brand.md"
+    brand.write_text(brand.read_text(encoding="utf-8").replace("#5A1E3C", "#3C1E5A"), encoding="utf-8")
+    second, _ = server.App.colors_css(app)
+    assert b"#3C1E5A" in second, "an edit to the resolved design file did not reach /colors.css"
+
+
+def test_a_broken_theme_design_is_said_and_clears_when_fixed(tmp_path):
+    import threading
+    import types
+    from lib.bridge_cockpit import server
+    root = _branded(tmp_path)
+    (root / "themes" / "house.yaml").write_text("meta: {name: house}\nbranding: {design: ghost}\n", encoding="utf-8")
+    app = types.SimpleNamespace(root=root, _colors=None, _colors_lock=threading.Lock())
+    broken, tag_broken = server.App.colors_css(app)
+    assert b"design error" in broken and b"ghost" in broken
+    # fixed by dropping the reference: the file served stays the root DESIGN.md, only the error goes
+    (root / "themes" / "house.yaml").write_text("meta: {name: house}\n", encoding="utf-8")
+    fixed, tag_fixed = server.App.colors_css(app)
+    assert b"design error" not in fixed and b"#101010" in fixed, "the error comment outlived the fix"
+    assert tag_fixed != tag_broken
+
+
+def test_the_resolution_is_cached_against_config_and_theme(tmp_path, monkeypatch):
+    from lib.bridge_cockpit import design
+    root = _branded(tmp_path)
+    calls = []
+    real = design._resolver().resolve
+    monkeypatch.setattr(design._resolver(), "resolve", lambda *a, **k: calls.append(1) or real(*a, **k))
+    for _ in range(3):
+        assert design.design_file(root).name == "brand.md"
+    assert len(calls) == 1, "bridge-config and the theme were parsed again on every /colors.css request"
+    theme = root / "themes" / "house.yaml"
+    theme.write_text(theme.read_text(encoding="utf-8") + "# touched\n", encoding="utf-8")
+    import os
+    os.utime(theme, ns=(theme.stat().st_atime_ns, theme.stat().st_mtime_ns + 10_000_000))
+    design.design_file(root)
+    assert len(calls) == 2, "a changed theme must be resolved again"

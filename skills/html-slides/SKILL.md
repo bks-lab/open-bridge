@@ -73,7 +73,10 @@ into a fresh `new-deck.py --slides` build. Details: `reference/deck-build.md`.
 ## Look: DESIGN.md first, style presets as fallback
 
 - **DESIGN.md wins.** When one is found walking up from the output path, or given
-  with `--design`, the `design` preset is the default: colours through
+  with `--design` (a path or an id under `identity/designs/`), the `design` preset is
+  the default. A deck inside the Bridge wears the design the Bridge resolves (the
+  theme's `branding.design`, else the root DESIGN.md); a deck written into another
+  repository keeps that repository's DESIGN.md: colours through
   `presets/design.map.yaml` and `html-canvas/scripts/design-to-css.py`, families and
   weights from DESIGN.md typography. Nothing is hand-picked. The preset also holds
   the brand rules a slide's markup cannot break: headings in the heading colour,

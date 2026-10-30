@@ -104,6 +104,13 @@ properties:
     type: string
     description: "Slug → identity/personas/<slug>.yaml"
 
+  design_ref:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9._-]*$"
+    description: >-
+      Id → identity/designs/<id>.md, the design every deliverable of this
+      context wears (step 3 of scripts/designs.py resolve). Optional.
+
   # ---- Integrations — per-capability sub-blocks ------------------------
   # Each integration is OPTIONAL. A skill that owns an integration scans
   # workflow/contexts/*.yaml, filters on the presence of ITS sub-block,

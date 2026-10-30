@@ -33,6 +33,7 @@ import threading
 import time
 import traceback
 import urllib.parse
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -69,7 +70,7 @@ from .guide import Guide
 from . import prio
 from .usage import Usage
 from .runner import Runner, RunnerRefused
-from .design import stylesheet
+from .design import resolved, stylesheet
 from .store import WebStore, append_clicks, append_log, atomic_write_json
 try:                       # Jev is an optional integration: without its file it is simply off
     from . import jev
@@ -201,7 +202,7 @@ class App:
         self._caps_lock = threading.Lock()
         self._caps: tuple[float, list[str], bool] | None = None    # (when, verbs, read ok)
         self._caps_flight: threading.Event | None = None
-        self._colors: tuple[tuple[int, int], bytes, str] | None = None     # (DESIGN.md stamp, css, tag)
+        self._colors: tuple[tuple, bytes, str] | None = None     # (design file stamp, css, tag)
         self._colors_lock = threading.Lock()
         self._screen_lock = threading.Lock()
         self._screens: dict[str, tuple[float, str, str]] = {}   # ref -> (read at ms, text, hash), each under its ref's lock
@@ -354,16 +355,20 @@ class App:
         return self.tabs.state(self.collector.view)
 
     def colors_css(self) -> tuple[bytes, str]:
-        """The stylesheet from DESIGN.md and its tag, kept until DESIGN.md changes (mtime, size)"""
+        """The stylesheet from the design the Bridge resolves (design.py) and its tag, kept until that file
+        changes (path, mtime, size): a theme pointing at another design, or an edit to the file itself"""
+        path, error = resolved(self.root)
         try:
-            st = (self.root / "DESIGN.md").stat()
-            stamp = (st.st_mtime_ns, st.st_size)
+            st = path.stat()
+            stamp = (str(path), error, st.st_mtime_ns, st.st_size)
         except OSError:
-            stamp = (0, 0)
+            stamp = (str(path), error, 0, 0)
         with self._colors_lock:
             if self._colors is None or self._colors[0] != stamp:
                 body = stylesheet(self.root).encode("utf-8")
-                self._colors = (stamp, body, static_etag(stamp[0], len(body) + stamp[1]))
+                # the path and the error are in the tag too: either changes the body without touching the file
+                which = zlib.crc32(f"{stamp[0]}|{stamp[1]}".encode("utf-8"))
+                self._colors = (stamp, body, static_etag(stamp[2] ^ which, len(body) + stamp[3]))
             return self._colors[1], self._colors[2]
 
     def driver_caps(self, fresh: bool = False) -> list[str]:
@@ -987,7 +992,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             self.get_api(path, query)
         elif path == "/colors.css":
-            # the Bridge's own colours and fonts, from its DESIGN.md (design.py): every fork shows its brand
+            # the Bridge's own colours and fonts, from the design it resolves (design.py): every fork shows its brand
             self.get_colors()
         else:
             self.get_static(path)
@@ -1342,7 +1347,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_bytes(200, target.read_bytes(), CONTENT_TYPES[ext], static=True, extra={"ETag": etag})
 
     def get_colors(self) -> None:
-        """colors.css, built once per state of DESIGN.md and revalidated like a static file (review C32)"""
+        """colors.css, built once per state of the resolved design file and revalidated like a static file (review C32)"""
         body, etag = self.app.colors_css()
         if etag_matches(self.headers.get("If-None-Match"), etag):
             self.send_response(304)

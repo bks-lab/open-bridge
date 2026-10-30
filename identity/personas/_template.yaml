@@ -131,6 +131,13 @@ signature: |
   +49 ...
 
 # ---------------------------------------------------------------------
+# Optional: the design of everything sent under this identity, an id
+# under identity/designs/ (mail-draft dresses a mail with it). Unset,
+# the theme's design and then the root DESIGN.md apply.
+# ---------------------------------------------------------------------
+# design_ref: example-org
+
+# ---------------------------------------------------------------------
 # Free-text notes. Useful for documenting legal context, who this
 # persona represents in which situations, or edge cases the routing
 # rules cannot capture.

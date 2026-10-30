@@ -59,7 +59,8 @@ Usage:
   verify-page.py page.html --browser [--out shots/] [--width 1280 --width 500]
   verify-page.py page.html --browser --dark-selector .night
   verify-page.py deck.html --deck [--slide-selector .slide]
-  # DESIGN.md: --design, else the nearest one in the page's folder or above;
+  # DESIGN.md: --design (a path or a design id), else the nearest one in the
+  # page's folder or above, and inside the Bridge the design it resolves;
   # without one the hex check is skipped and the output says so.
 """
 from __future__ import annotations
@@ -67,6 +68,7 @@ from __future__ import annotations
 import argparse
 import base64
 import html
+import importlib.util
 import json
 import re
 import shutil
@@ -144,24 +146,25 @@ def norm_hex(digits: str) -> str | None:
 
 # --- DESIGN.md ---------------------------------------------------------------------------
 
-def find_design(start: Path) -> Path | None:
-    """The nearest DESIGN.md at or above `start`, never above the project root.
+def bridge_design():
+    """bridge_design.py, loaded by path (standard library only)."""
+    spec = importlib.util.spec_from_file_location("bridge_design", Path(__file__).resolve().parent / "bridge_design.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
-    Same rule as design-to-css.find_design (kept here so the static gate needs
-    no PyYAML): the walk stops at the first folder holding .git or
-    bridge-config.yaml, and without one only the page's own folder counts.
+
+def find_design(start: Path) -> Path | None:
+    """The DESIGN.md a page at `start` is checked against, or None (bridge_design.py).
+
+    The nearest DESIGN.md at or above `start`, never above the project root
+    (the first folder holding .git or bridge-config.yaml); without one only the
+    page's own folder counts. When the walk ends at the Bridge's own DESIGN.md,
+    the Bridge resolves its instance default. A page that records the design it
+    was built with is checked against that one before this runs (main).
+    bridge_design.py needs no PyYAML, and without it the walk alone decides.
     """
-    start = Path(start).resolve()
-    if not start.is_dir():
-        start = start.parent
-    chain = [start, *start.parents]
-    root = next((d for d in chain if any((d / m).exists() for m in (".git", "bridge-config.yaml"))), None)
-    for d in chain if root else [start]:
-        if (d / "DESIGN.md").is_file():
-            return d / "DESIGN.md"
-        if d == root:
-            break
-    return None
+    return bridge_design().resolve(target=start, fallback=False)
 
 
 def declared_hex(design: Path) -> set[str]:
@@ -1065,7 +1068,10 @@ def main() -> int:
         for ln in fpath.read_text(encoding="utf-8").splitlines():
             if not ln.lstrip().startswith("#"):
                 forbid += "".join(ln.split())
-    design = Path(args.design) if args.design else None
+    try:
+        design = bridge_design().resolve(args.design) if args.design else None
+    except ValueError as e:
+        ap.error(str(e))
     if design and not design.is_file():
         ap.error("--design: %s not found" % design)
     paths = [Path(p) for p in args.pages]
@@ -1078,7 +1084,12 @@ def main() -> int:
     reports = []
     for path in paths:
         rep = Report(path)
-        rep.design = design or find_design(path.resolve())
+        try:
+            # the design the page records it was built with, else the one found from where it sits
+            rep.design = (design or bridge_design().recorded(path.read_text(encoding="utf-8", errors="replace"))
+                          or find_design(path.resolve()))
+        except ValueError as e:
+            ap.error(str(e))
         static_checks(path, rep, allow, forbid, args.allow_sample)
         if args.browser or args.deck:
             browser_checks(path, rep, args)

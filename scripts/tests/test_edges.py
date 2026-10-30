@@ -847,3 +847,96 @@ def test_an_unmatched_backtick_is_literal_and_hides_nothing(tmp_path):
     })
     assert [t for _, _, t in edges.iter_md_links(tmp_path)] == [
         "work/tasks/ghost/STATUS.md"]
+
+
+# ------------------------------------------------------- design references --
+# `design_ref:` and a theme's `branding.design:` name a design by id, not by
+# path, so the path pattern above never sees them. They are edges all the same:
+# an id that names no file under identity/designs/ makes scripts/designs.py
+# refuse to resolve, and that should be red here before a generator meets it.
+
+
+def test_a_design_ref_is_an_edge_to_the_design_file(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "id: client\ndesign_ref: brand\n",
+        "identity/personas/p.yaml": "id: p\ndesign_ref: brand\n",
+        "themes/house.yaml": "meta: {name: house}\nbranding:\n  design: brand\n",
+        "identity/designs/brand.md": "---\nname: brand\n---\n",
+    })
+    found = edges.all_edges(tmp_path)
+    assert ("workflow/contexts/client.yaml", "design_ref", "identity/designs/brand.md") in found
+    assert ("identity/personas/p.yaml", "design_ref", "identity/designs/brand.md") in found
+    assert ("themes/house.yaml", "branding.design", "identity/designs/brand.md") in found
+    assert edges.check(tmp_path) == []
+
+
+def test_a_design_ref_to_a_missing_id_is_dead(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "id: client\ndesign_ref: nobody\n",
+        "themes/house.yaml": "meta: {name: house}\nbranding: {design: ghost}\n",
+    })
+    findings = edges.check(tmp_path)
+    assert any("workflow/contexts/client.yaml :: design_ref" in f and "dead" in f for f in findings), findings
+    assert any("themes/house.yaml :: branding.design" in f and "dead" in f for f in findings), findings
+
+
+def test_a_template_design_ref_is_not_an_edge(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/_template.yaml": "design_ref: example-org\n",
+        "themes/_template.yaml": "branding: {design: example-org}\n",
+    })
+    assert edges.check(tmp_path) == []
+
+
+def test_a_design_ref_that_is_no_id_is_dead(tmp_path):
+    """designs.py refuses `_template` and a path; the edge check must agree."""
+    _tree(tmp_path, {
+        "workflow/contexts/a.yaml": "design_ref: _template\n",
+        "workflow/contexts/b.yaml": "design_ref: ../../DESIGN\n",
+        "identity/designs/_template.md": "---\nname: t\n---\n",
+        "DESIGN.md": "---\nname: root\n---\n",
+    })
+    findings = edges.check(tmp_path)
+    assert any("contexts/a.yaml :: design_ref" in f for f in findings), findings
+    assert any("contexts/b.yaml :: design_ref" in f for f in findings), findings
+
+
+def test_only_the_top_level_design_ref_of_a_context_or_persona_counts(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/a.yaml": "integrations:\n  site:\n    design_ref: whatever\n",
+        "infra/remotes/r.yaml": "design_ref: whatever\n",
+    })
+    assert edges.iter_design_refs(tmp_path) == []
+
+
+def _scoped_design(scope: str) -> str:
+    return f"---\nscope: {scope}\nname: brand\ndescription: d\ncolors: {{primary: '#000000'}}\n---\n"
+
+
+def test_an_org_context_may_not_name_a_user_design(tmp_path):
+    """The org overlay would carry the context and not the design, and every member's generators fail."""
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "scope: org\nid: client\ndesign_ref: brand\n",
+        "identity/designs/brand.md": _scoped_design("user"),
+    })
+    findings = edges.check(tmp_path)
+    assert any("workflow/contexts/client.yaml :: design_ref" in f and "org" in f and "user" in f
+               for f in findings), findings
+
+
+def test_a_design_as_wide_as_its_referrer_is_fine(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "scope: org\nid: client\ndesign_ref: brand\n",
+        "identity/personas/me.yaml": "scope: user\nid: me\ndesign_ref: brand\n",
+        "identity/designs/brand.md": _scoped_design("org"),
+    })
+    assert edges.check(tmp_path) == []
+
+
+def test_a_shipped_theme_may_not_name_a_design(tmp_path):
+    _tree(tmp_path, {
+        "themes/professional.yaml": "meta: {name: professional}\nbranding: {design: brand}\n",
+        "identity/designs/brand.md": _scoped_design("org"),
+    })
+    findings = edges.check(tmp_path)
+    assert any("themes/professional.yaml :: branding.design" in f and "core" in f for f in findings), findings

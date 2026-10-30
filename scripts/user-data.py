@@ -64,7 +64,7 @@ END = "# <<< user-data <<<"
 
 #: What a private origin writes, relative to the repo root, and the negations in it.
 NEGATIONS = {
-    "identity/.gitignore": ["!/*/*.yaml", "!/agent/*.md"],
+    "identity/.gitignore": ["!/*/*.yaml", "!/agent/*.md", "!/designs/*.md"],
     "infra/.gitignore": ["!/*/*.yaml"],
     "workflow/.gitignore": ["!/*/*.yaml"],
     "work/.gitignore": ["!/memory/"],
@@ -79,7 +79,9 @@ def shipped_patterns() -> list:
     lines += [f"/{w}/*/*.yaml" for w in WRAPPERS]
     lines += [f"!/{w}/*/_*.yaml" for w in WRAPPERS]
     lines += ["/identity/agent/*.md", "!/identity/agent/README.md",
-              "!/identity/agent/_*.md", "/work/memory/"]
+              "!/identity/agent/_*.md",
+              # a design is a Markdown file (identity/designs/<id>.md), not a .yaml
+              "/identity/designs/*.md", "!/identity/designs/_*.md", "/work/memory/"]
     return lines
 
 
@@ -121,8 +123,9 @@ def covered(path: str) -> bool:
     parts = path.split("/")
     if len(parts) == 1 or parts[:2] == ["work", "memory"]:
         return is_instance_path(path)
-    if parts[:2] == ["identity", "agent"] and len(parts) == 3:
-        return is_instance_path(path) and parts[2].endswith(".md")
+    if parts[:2] in (["identity", "agent"], ["identity", "designs"]) and len(parts) == 3 \
+            and parts[2].endswith(".md"):
+        return is_instance_path(path)
     return (len(parts) == 3 and parts[0] in WRAPPERS and parts[2].endswith(".yaml")
             and is_instance_path(path))
 
