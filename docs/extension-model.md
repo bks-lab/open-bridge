@@ -3,7 +3,7 @@ summary: "Extension model: how CORE platform and USER extensions relate, plus th
 type: guide
 last_updated: 2026-10-24
 related:
-  - CLAUDE.md
+  - AGENTS.md
   - docs/structure.md
   - docs/repo-layout.md
 ---
@@ -71,7 +71,7 @@ checked with no frontmatter present.
 |---|---|---|
 | a schema's own `_tests/` suite, for the families in `WRAPPER_TESTS_CORE` | `infra/remotes/_tests/case.yaml`, `workflow/workloads/_tests/case.yaml` | `core` |
 | personal folders and the personal registry | `rules/personal/example.md`, `ecosystem.personal.yaml`, `ecosystem.local.yaml` | `personal` |
-| whole USER folders and files | `work/log.md`, `imports/example.pdf`, `rules/user/example.md`, `protocols/standing-orders/user/example.md`, `.claude/mods/example/hook.js`, `bridge-config.yaml`, `ecosystem.yaml`, `overlays.lock.yaml`, `edges.yaml`, `.bridge-origin`, `.gitignore` | `user` |
+| whole USER folders and files | `work/log.md`, `imports/example.pdf`, `rules/user/example.md`, `protocols/standing-orders/user/example.md`, `.claude/mods/example/hook.js`, `bridge-config.yaml`, `CLAUDE.md`, `ecosystem.yaml`, `overlays.lock.yaml`, `edges.yaml`, `.bridge-origin`, `.gitignore` | `user` |
 | cluster-wrapper instances of the listed families | `identity/personas/example.yaml`, `identity/agent/SOUL.md`, `infra/backups/_state.yaml`, `workflow/projects/example.yaml` | `user` |
 | enumerated folders, anything not on the shipped list | `agents/example/agent.yaml`, `mods/example/hook.js`, `themes/example.yaml`, `skills/bridge-greeting/assets/logos/example.txt` | `user` |
 | skill journals | `skills/example/LEARNINGS.md` | `user` |
@@ -132,7 +132,7 @@ your extension. This is the working model.
 2. Create `user/{name}` branch → start your extension
 3. Run `/bridge-onboard` → creates `bridge-config.yaml`, work system, optionally first persona/mandant/context from templates
 4. Add project configs, sub-agents, contexts as needed
-5. `git merge main` → pull CORE updates without conflicts (paths don't overlap by design — see CLAUDE.md "Git & Branches")
+5. `git merge main` → pull CORE updates without conflicts (paths don't overlap by design — see AGENTS.md § Git & Branches)
 
 ### Sharing within a team
 
@@ -374,7 +374,7 @@ single principle, not separate rules:
 |---|---|---|
 | Tracker fields | `workflow/projects/<slug>.yaml` is the contract — never hardcode field values | `AGENTS.md` § Project Registry, `rules/knowledge-growth.md` |
 | Routing | routing lives in `workflow/contexts/<id>.yaml` — never hardcoded in skills | principle 4 above |
-| Backups | `topology.yaml` is the truth — never hardcode paths | `CLAUDE.md` § Backups, `infra/backups/README.md` |
+| Backups | `topology.yaml` is the truth — never hardcode paths | `infra/backups/README.md` |
 | Tracker queries | briefing reads `integrations.{name}.*` from `bridge-config.yaml` — not hardcoded | `skills/briefing/` |
 | Skill edits | edit the seed skill, never a downstream overlay copy | `docs/skill-distribution-architecture.md` |
 
@@ -391,8 +391,7 @@ a template default first, then read it.
 in someone else's Bridge?* If yes, it is instance config, not skill content —
 it belongs in `bridge-config.yaml` / a USER file, and the skill reads it.
 
-Operating-manual summary (auto-loaded at session start): [`CLAUDE.md` §
-Generic CORE Skills](../CLAUDE.md).
+Operating-manual summary (auto-loaded at session start): [`AGENTS.md` § Skills (Universal)](../AGENTS.md).
 
 ---
 
@@ -402,4 +401,4 @@ Generic CORE Skills](../CLAUDE.md).
 - [`docs/personas.md`](personas.md) — persona schema + multi-persona patterns
 - [`docs/mandants.md`](mandants.md) — mandant schema + recipient groups
 - [`docs/calendar.md`](calendar.md) — calendar entries + scheduling
-- [`CLAUDE.md` → Layout](../CLAUDE.md) — canonical CORE/USER table
+- [`AGENTS.md` § Layout](../AGENTS.md) — canonical CORE/USER table

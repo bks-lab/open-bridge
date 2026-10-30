@@ -42,7 +42,8 @@ bridge-config.yaml      USER     Main config (identity, theme, integrations)
 ecosystem.yaml          USER     Repo registry, instance base (created at onboarding; tracked on a private origin, kept out of git otherwise, see § gitignore policy). Never promoted: an org overlay shares its own ecosystem.<org>.yaml
 bridge-deck.config.yaml USER     Daemon collectors for the pixel dashboard
 AGENTS.md               CORE     Canonical operating manual (all agents)
-CLAUDE.md               CORE     Thin Claude-Code wrapper — imports AGENTS.md
+GEMINI.md               CORE     Thin pointer to AGENTS.md
+CLAUDE.md               USER     Legacy entry, never shipped: when present Claude Code loads only it (scripts/migrate-entry-file.py)
 README.md               CORE     Pitch + architecture (for humans)
 DESIGN.md               CORE     Default design, and the index to identity/designs/
 
@@ -239,7 +240,8 @@ Mandant files are PII — they are not pushed to the OSS upstream (blocked by th
 ## CORE / USER split
 
 CORE paths (developed on `main`):
-- `CLAUDE.md`, `README.md`, `AGENTS.md`, `DESIGN.md`
+- `README.md`, `AGENTS.md`, `DESIGN.md`
+- A root `CLAUDE.md` is not part of the layout; when present, Claude Code loads only it and AGENTS.md disappears (scripts/migrate-entry-file.py moves its lines).
 - `docs/`, `rules/*.md` (core), `themes/` (shipped), `trackers/`, `skills/` (scope: core), `scripts/` (allowlisted tooling), `bin/` (bootstrap), `examples/` (reference instance)
 - `.claude/agents/` (scope: core)
 - `mods/README.md`, `mods/.claude-plugin/marketplace.json` and the shipped mod folders (`mods/cockpit-relay/`)

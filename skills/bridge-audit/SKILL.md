@@ -12,7 +12,7 @@ metadata:
 # Bridge Audit — Drift Detection
 
 `bridge-audit` is the systematic version of "let me re-read the README
-and see what doesn't match anymore". It runs 16 categorical checks
+and see what doesn't match anymore". It runs 17 categorical checks
 against the current repo state and returns a stratified report.
 Check 16 runs the repository's own checkers (`scripts/check-*.py`,
 `validate-*.py`, `measure-context.py`) through
@@ -22,7 +22,7 @@ Check 9 only runs with `--cross-repo` (it fetches sister-repo trunks);
 Check 10 (agent-identity health), Check 11 (gate-shaped memory),
 Check 12 (config-driven CORE skills), Check 13 (user-level skill
 shadowing), Check 14 (skill learnings pairing), Check 15 (question
-map) and Check 16 (checkers) always run.
+map), Check 16 (checkers) and Check 17 (entry-file shadow) always run.
 
 Read the referenced file ONLY when triggered.
 
@@ -42,7 +42,7 @@ Read the referenced file ONLY when triggered.
 
 | # | Check | What it compares | Severity hint |
 |---|---|---|---|
-| 1 | License consistency | README badge ↔ LICENSE file ↔ README footer ↔ CLAUDE.md license claim ↔ MEMORY mentions | P0 if any disagree |
+| 1 | License consistency | README badge ↔ LICENSE file ↔ README footer ↔ AGENTS.md license claim ↔ MEMORY mentions | P0 if any disagree |
 | 2 | Skill-tree truth | README skill table/tree ↔ AGENTS.md skill table ↔ `skills/*/SKILL.md` actual | P1 |
 | 3 | Standing-order count | "N standing orders" claims ↔ `protocols/standing-orders/*.md` count (excluding `_template.md`, `README.md`) | P1 |
 | 4 | Renamed-everywhere | `data/renames.yaml` old-name greps in tracked content (excluding listed exceptions) | P1 |
@@ -53,11 +53,12 @@ Read the referenced file ONLY when triggered.
 | 9 | Skill-tree sync coverage (`--cross-repo` only) | Local `skills/*/` scope ↔ each upstream's `skills/` directory listing — forward-drops + reverse-leaks | P1 (P0 if outstanding >2 sync windows) |
 | 10 | Agent-identity health | `identity/agent/SOUL.md` present + ≤80 lines / ≤4 KB · `IDENTITY.md` present · both carry valid frontmatter (`schema_version`/`type`/`scope`/`last_updated`) | P1 if SOUL.md missing, else P2 |
 | 11 | Gate-shaped memory without a `rules/` home | Memory files whose body uses gate language (imperative + always/never/immer/nie, or "when X → do Y" routing) but have NO corresponding rule in `rules/` (core/bks/user) — a behavioral rule trapped in the private store. Also runs the index lint, the fact-coverage count and the session-link count (`memory-location.py check`, `links`) | P2 (index lint P1, unreachable facts P2, dead session links P3) |
-| 12 | Config-driven CORE skills | `scope: core` skill files (`SKILL.md` + `references/`) that hardcode instance specifics — org/project IDs, tracker queries, persona names, pipeline IDs, absolute instance paths — instead of reading them from `bridge-config.yaml` / `workflow/` / `infra/` / `identity/` (CLAUDE.md § Generic CORE Skills) | P2 |
+| 12 | Config-driven CORE skills | `scope: core` skill files (`SKILL.md` + `references/`) that hardcode instance specifics — org/project IDs, tracker queries, persona names, pipeline IDs, absolute instance paths — instead of reading them from `bridge-config.yaml` / `workflow/` / `infra/` / `identity/` (AGENTS.md § Skills (Universal)) | P2 |
 | 13 | User-level skill shadowing | `~/.claude/skills/` (resolved) ↔ this repo's `skills/` — the user level overrides the project level, so a pointer at a Bridge repo silently serves one instance's skills to every other instance (AGENTS.md § Skills). Both directions: this instance shadowing others, and others shadowing this one (with `diff -rq` drift per colliding name). Also reports scripts that resolve the path as a filesystem location | P0 if own skills are shadowed or instance-bound skills (scope org or user) leak machine-wide, else P1 |
 | 14 | Skill learnings pairing | `python3 scripts/check-skill-learnings.py`: a skill with `LEARNINGS.md` but no routing block in SKILL.md, a routing block without a journal, or an undated journal heading (`docs/skill-learnings.md`) | P2 |
 | 15 | Question map | `python3 scripts/check-where-things-live.py`: a row of `docs/where-things-live.md` or the instance's `work/where-things-live.md` that is a topic instead of a question, a link or `#section` that does not resolve, or a question asked twice | P2 |
 | 16 | Checkers | `python3 skills/bridge-audit/scripts/run-checkers.py --json`: every `scripts/check-*.py`, `scripts/validate-*.py` and `scripts/measure-context.py` the tree carries, run bare as CI runs them; each non-zero exit or timeout is one finding, the checker's last line as its detail | P1 for validators, the budget and secret checks, else P2 |
+| 17 | Entry-file shadow | A root `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` beside `AGENTS.md`: Claude Code then loads only that file. `python3 scripts/migrate-entry-file.py --check`, fix with `--write` (`docs/updating.md`) | P1 |
 
 ## Decision Tree
 

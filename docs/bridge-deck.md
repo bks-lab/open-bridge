@@ -4,7 +4,7 @@ type: guide
 status: coming-soon
 last_updated: 2026-06-11
 related:
-  - ../CLAUDE.md
+  - ../AGENTS.md
   - ../examples/bridge-deck.config.yaml.template
 ---
 

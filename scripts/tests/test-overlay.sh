@@ -51,15 +51,19 @@
 #     remove keeps an edited fragment, a lock from the pre-fix engine is adopted
 #     without clobbering (also with its pinned blob gone), a consumer's own
 #     registry from before the subscription is never merged into or removed, a
-#     fragment also shipped under tree/ still gets its @import, and a fragment
-#     the overlay stops shipping is pruned
-#     together with its @import
+#     fragment also shipped under tree/ is still materialized and indexed, and a
+#     fragment the overlay stops shipping is pruned and leaves the Phase 1
+#     registry list (context-index.py --registries)
 #   - unattended sync (§26, #218): new files and updates apply; a conflict or a
 #     planned deletion HOLDS the whole overlay (nothing written, pin unchanged,
 #     still held on the next run); a clean merge applies; a new behavioural file
 #     stays pending; pull_interval_days is honoured; a failure exits 1; status
 #     shows the last run; the wrapper reports and notifies on change only; the
 #     installer renders the --overlays job under --print, sandboxed
+#   - the overlay never writes an entry file (§28): add, sync, dry-run and
+#     remove create no CLAUDE.md, leave AGENTS.md byte-identical and name the
+#     fragment as indexed at session start; a legacy CLAUDE.md that still
+#     imports the fragment is reported with a WARN and never edited
 #   - the behavioural gate asks once per skill folder, all or none (§27): a
 #     non-interactive or declined run withholds the whole folder (no SKILL.md
 #     without its new reference), one [y] writes all of it, and `status` counts
@@ -156,6 +160,10 @@ mkcon() {  # echoes a fresh consumer dir on a user/test branch
   # command-substitution subshell would not persist, silently reusing one dir.
   local c; c="$(mktemp -d "$TMP/con.XXXXXX")"
   cp -R "$PRISTINE/." "$c/"
+  # The fixture is built from committed HEAD. Whether HEAD still carries a root
+  # CLAUDE.md must not matter: a consumer starts without one, and a case that
+  # needs a legacy CLAUDE.md writes it itself.
+  rm -f "$c/CLAUDE.md" "$c/CLAUDE.local.md"
   git -C "$c" init -q
   git -C "$c" checkout -q -b user/test
   git -C "$c" add -A
@@ -214,14 +222,12 @@ allok=1
 for d in $EX_DESTS; do [ -f "$CON/$d" ] || { allok=0; echo "      missing dest: $d"; }; done
 assert_eq "every example dest materialized" "$allok" 1
 assert_file "ecosystem fragment copied" "$CON/ecosystem.example-org.yaml"
-assert_grep "@import wired into CLAUDE.md" "$CON/CLAUDE.md" "@ecosystem.example-org.yaml"
-# ADJACENT to the core import, not appended at the end of the file. The wiring
-# anchors on a literal line, and an anchor nobody asserts on rots in silence:
-# the insert falls through to its end-of-file fallback, the import still works,
-# and nothing says the placement changed. That is exactly how this assertion
-# came to be — the anchor was `@ecosystem.yaml` and outlived that line.
-IMPLINE="$(grep -n '@ecosystem.example-org.yaml' "$CON/CLAUDE.md" | head -1 | cut -d: -f1)"
-assert_eq "@import sits next to the core import, not at EOF" "$([ "${IMPLINE:-99}" -le 4 ] && echo yes || echo no)" "yes"
+# The engine writes no entry file: Phase 1 finds the fragment at the root.
+assert_absent "add creates no CLAUDE.md" "$CON/CLAUDE.md"
+if cmp -s "$PRISTINE/AGENTS.md" "$CON/AGENTS.md"; then pass "add leaves AGENTS.md byte-identical"; else fail "add changed AGENTS.md"; fi
+assert_out "add names the fragment indexed" "registry ecosystem.example-org.yaml: indexed at session start"
+REG="$(python3 "$ROOT/scripts/context-index.py" --repo-root "$CON" --registries 2>&1)"
+case "$REG" in *ecosystem.example-org.yaml*) pass "Phase 1 registry index lists the fragment" ;; *) fail "Phase 1 registry index does not list the fragment" "$REG" ;; esac
 # inline scope:org survives on each materialized dest
 scopeok=1
 for d in $EX_DESTS; do grep -qF "scope: org" "$CON/$d" || { scopeok=0; echo "      no scope:org in $d"; }; done
@@ -350,16 +356,15 @@ assert_rc "remove succeeds" 0
 gone=1; for d in $EX_DESTS; do [ -e "$CON/$d" ] && { gone=0; echo "      still present: $d"; }; done
 assert_eq "all clean managed files deleted" "$gone" 1
 assert_absent "ecosystem fragment deleted" "$CON/ecosystem.example-org.yaml"
-assert_nogrep "@import removed from CLAUDE.md" "$CON/CLAUDE.md" "@ecosystem.example-org.yaml"
+assert_absent "remove creates no CLAUDE.md" "$CON/CLAUDE.md"
 assert_absent "cache dir removed" "$CON/.bridge/overlays/example-org"
 emptylock="$(python3 -c 'import yaml,sys;d=yaml.safe_load(open(sys.argv[1]));print(len((d or {}).get("overlays") or {}))' "$CON/overlays.lock.yaml" 2>/dev/null || echo 0)"
 assert_eq "lock entry dropped" "$emptylock" 0
-# nothing else touched: remove strips only the overlay @import, the core
-# @AGENTS.md import survives (CLAUDE.md is otherwise intact). The canary used
-# to be @ecosystem.yaml, which stopped being an import when the registry
-# became an index (docs/context-index.md); @AGENTS.md is the import that is
-# always there.
-assert_grep "core @AGENTS.md import survives remove" "$CON/CLAUDE.md" "@AGENTS.md"
+# nothing else touched: the entry file is never written, and the fragment
+# leaves the Phase 1 registry list with the file.
+if cmp -s "$PRISTINE/AGENTS.md" "$CON/AGENTS.md"; then pass "remove leaves AGENTS.md byte-identical"; else fail "remove changed AGENTS.md"; fi
+REG="$(python3 "$ROOT/scripts/context-index.py" --repo-root "$CON" --registries 2>&1)"
+case "$REG" in *ecosystem.example-org.yaml*) fail "the removed fragment is still indexed" "$REG" ;; *) pass "the removed fragment is no longer indexed" ;; esac
 
 # ───────────────────────────────────────────────────────────────────
 echo
@@ -770,7 +775,8 @@ echo
 echo "── 21. CORE-refusal is path-authoritative (inline scope can't smuggle CORE) ──"
 # Unit-drive dest_refusal: a CORE-path dest carrying an inline `scope: org` line
 # must STILL be refused — otherwise an overlay overwrites rules/, docs/, scripts/,
-# CLAUDE.md, …  Frontmatter-bearing paths (skills/agents/identity) stay rescuable
+# …  An entry file is refused by name, before any classification: a root
+# CLAUDE.md classifies USER (it never promotes), and Claude Code loads only it.  Frontmatter-bearing paths (skills/agents/identity) stay rescuable
 # so a real org skill/agent still ships (skill-completeness, §19).
 refusal() {  # <dest> <content> → prints the refusal reason, or ALLOWED
   python3 - "$ROOT" "$1" "$2" <<'PY'
@@ -788,7 +794,20 @@ scope: org
 ---
 x"
 assert_eq "inline scope:org cannot smuggle a rules/ CORE file" "$(refusal "rules/git-hygiene.md" "$ORGFM")" "$CORE_REASON"
-assert_eq "inline scope:org cannot smuggle CLAUDE.md"          "$(refusal "CLAUDE.md" "$ORGFM")"           "$CORE_REASON"
+ENTRY_REASON="entry file (a CLAUDE.md shadows AGENTS.md entirely)"
+assert_eq "inline scope:org cannot smuggle CLAUDE.md"          "$(refusal "CLAUDE.md" "$ORGFM")"           "$ENTRY_REASON"
+assert_eq "a plain CLAUDE.md is refused as an entry file"      "$(refusal "CLAUDE.md" "plain text")"       "$ENTRY_REASON"
+assert_eq "CLAUDE.local.md is refused as an entry file"        "$(refusal "CLAUDE.local.md" "$ORGFM")"     "$ENTRY_REASON"
+assert_eq ".claude/CLAUDE.md is refused as an entry file"      "$(refusal ".claude/CLAUDE.md" "$ORGFM")"   "$ENTRY_REASON"
+assert_eq "AGENTS.md is refused as an entry file"              "$(refusal "AGENTS.md" "$ORGFM")"           "$ENTRY_REASON"
+assert_eq "a dotted path to CLAUDE.md is still refused"        "$(refusal "./CLAUDE.md" "$ORGFM")"         "$ENTRY_REASON"
+assert_eq "identity/agent/INSTANCE.md is the instance's own"   "$(refusal "identity/agent/INSTANCE.md" "$ORGFM")" "instance file (identity/agent/INSTANCE.md is never shipped)"
+# A case-insensitive filesystem (macOS, Windows) writes a case variant onto
+# the real file, so the names are compared casefolded.
+assert_eq "identity/agent/instance.md is refused as the instance file" "$(refusal "identity/agent/instance.md" "$ORGFM")" "instance file (identity/agent/INSTANCE.md is never shipped)"
+assert_eq "Claude.local.md is refused as an entry file"        "$(refusal "Claude.local.md" "$ORGFM")"     "$ENTRY_REASON"
+assert_eq ".claude/claude.md is refused as an entry file"      "$(refusal ".claude/claude.md" "$ORGFM")"   "$ENTRY_REASON"
+assert_eq "an org IDENTITY.md still ships"                     "$(refusal "identity/agent/IDENTITY.md" "$ORGFM")" "ALLOWED"
 assert_eq "inline scope:org cannot smuggle the engine itself"  "$(refusal "scripts/overlay.py" "$ORGFM")"   "$CORE_REASON"
 assert_eq "a scope:org SKILL.md still ships (carve-out, not over-refused)" "$(refusal "skills/bks-coordinator/SKILL.md" "---
 metadata:
@@ -802,7 +821,7 @@ echo
 echo "── 22. ecosystem_fragment name guarded in-engine (no check-jsonschema dep) ──"
 # The ^ecosystem.<org>.yaml$ name must be enforced even on a consumer WITHOUT the
 # optional check-jsonschema — else a bad-named fragment is written at repo root and
-# @import-wired into CLAUDE.md (instruction injection).
+# picked up by the Phase 1 registry glob (instruction injection).
 fragcheck() {  # <fragment-name> → REFUSED | OK
   python3 - "$ROOT" "$1" <<'PY'
 import importlib.util, os, sys, tempfile
@@ -823,6 +842,20 @@ PY
 assert_eq "a bad ecosystem_fragment name aborts even without check-jsonschema" "$(fragcheck "NOT-an-ecosystem.yaml")" "REFUSED"
 assert_eq "a traversal ecosystem_fragment aborts even without check-jsonschema" "$(fragcheck "../escape.yaml")" "REFUSED"
 assert_eq "a valid ecosystem.<org>.yaml fragment name still passes" "$(fragcheck "ecosystem.acme.yaml")" "OK"
+# The write guard and the Phase 1 glob must agree on what a fragment is, or a
+# fragment could be written that is never indexed (or indexed but never guarded).
+same_re="$(python3 - "$ROOT" <<'PYRE'
+import importlib.util, os, sys
+repo = sys.argv[1]
+def load(name, rel):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(repo, rel))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
+ov = load("ov", "scripts/overlay.py")
+ci = load("ci", "scripts/lib/context_index.py")
+print("same" if ov.FRAGMENT_NAME_RE.pattern == ci.REGISTRY_FRAGMENT.pattern else "differ")
+PYRE
+)"
+assert_eq "fragment guard pattern equals the Phase 1 registry pattern" "$same_re" "same"
 
 # ───────────────────────────────────────────────────────────────────
 echo
@@ -1157,8 +1190,8 @@ assert_rc "25k: the next sync after adoption succeeds" 0
 assert_grep "25k: the next upstream change arrives" "$CON/$FRAG" "UPSTREAM-THIRD-EDIT"
 assert_grep "25k: and the edit is still kept" "$CON/$FRAG" "LOCAL-FRAGMENT-EDIT"
 
-# 25j. an overlay that stops shipping its fragment prunes a clean copy and drops
-# the @import, so CLAUDE.md never points at a file that is gone.
+# 25j. an overlay that stops shipping its fragment prunes a clean copy, so the
+# Phase 1 registry list no longer names it.
 CON="$(mkcon)"; OV="$(mk_clean_overlay)"
 run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
 python3 - "$OV/overlay.manifest.yaml" <<'PY'
@@ -1172,7 +1205,8 @@ git -C "$OV" rm -q "$FRAG"; commit_ov "$OV" drop-fragment
 run_overlay "$CON" sync example-org --yes
 assert_rc "25j: sync after the overlay drops its fragment succeeds" 0
 assert_absent "25j: the clean fragment is pruned" "$CON/$FRAG"
-assert_nogrep "25j: and its @import is dropped from CLAUDE.md" "$CON/CLAUDE.md" "@$FRAG"
+REG="$(python3 "$ROOT/scripts/context-index.py" --repo-root "$CON" --registries 2>&1)"
+case "$REG" in *"$FRAG"*) fail "25j: the pruned fragment is still indexed" "$REG" ;; *) pass "25j: the pruned fragment leaves the registry index" ;; esac
 
 # 25l. a registry the consumer had before subscribing stays the consumer's. The
 # lock then has no fragment entry, exactly like a pre-fix lock, and adopting it
@@ -1202,12 +1236,14 @@ run_overlay "$CON" remove example-org
 assert_file "25l: remove leaves an own copy identical to the overlay's alone" "$CON/$FRAG"
 
 # 25m. an overlay that also ships the fragment under tree/ plans it as a tree
-# file, and the @import must still be wired.
+# file, and it is still materialized and named as indexed.
 CON="$(mkcon)"; OV="$(mk_clean_overlay)"
 cp "$OV/$FRAG" "$OV/tree/$FRAG"; commit_ov "$OV" frag-in-tree
 run_overlay "$CON" add "file://$OV" --name example-org
 assert_rc "25m: add with the fragment also under tree/ succeeds" 0
-assert_grep "25m: the @import is wired" "$CON/CLAUDE.md" "@$FRAG"
+assert_file "25m: the fragment is materialized" "$CON/$FRAG"
+assert_out "25m: the run names it indexed" "registry $FRAG: indexed at session start"
+assert_absent "25m: no CLAUDE.md is created" "$CON/CLAUDE.md"
 
 # ───────────────────────────────────────────────────────────────────
 echo
@@ -1532,12 +1568,12 @@ assert_grep "27i: confirmed: SKILL.md is updated" "$CON/$SK/SKILL.md" "UPSTREAM-
 
 # ───────────────────────────────────────────────────────────────────
 echo
-echo "── 28. an indexed fragment is not @-imported ───────────────────"
-# A registry declared as a Phase 1 card in context-budget(.user).yaml is read
-# as an index, not resident. The sync used to add the @import back on every
-# run, which measure-context.py then reported as a contradiction. Now the
-# declaration decides, read through the same function the meter and the
-# index use (scripts/lib/context_index.py), and the run says so.
+echo "── 28. the overlay never writes an entry file ──────────────────"
+# The fragment lands at the root and Phase 1 indexes it (context-index.py
+# --registries). The engine used to add an @import to CLAUDE.md, which made a
+# file Claude Code loads INSTEAD of AGENTS.md. Now it writes no entry file in
+# any mode, with or without a declared card, and a legacy import line in a
+# fork's own CLAUDE.md is reported, never edited.
 card_budget() {  # <consumer> : declare the fragment as a card, per instance
   cat > "$1/context-budget.user.yaml" <<YAML
 items:
@@ -1548,49 +1584,82 @@ items:
       kind: index
 YAML
 }
+no_entry_write() {  # <label> : CLAUDE.md absent, AGENTS.md pristine, indexed line printed
+  assert_absent "$1: no CLAUDE.md created" "$CON/CLAUDE.md"
+  if cmp -s "$PRISTINE/AGENTS.md" "$CON/AGENTS.md"; then pass "$1: AGENTS.md byte-identical"; else fail "$1: AGENTS.md changed"; fi
+  assert_out "$1: the run names the fragment indexed" "registry $FRAG: indexed at session start"
+}
 
-# 28a. add: a declared card means no @import, and the output says why.
+# 28a. card declared: materialized, no entry file.
 CON="$(mkcon)"; OV="$(mk_clean_overlay)"; card_budget "$CON"
 run_overlay "$CON" add "file://$OV" --name example-org
-assert_rc "28a: add with an indexed fragment succeeds" 0
-assert_file "28a: the fragment is still materialized" "$CON/$FRAG"
-assert_nogrep "28a: no @import wired into CLAUDE.md" "$CON/CLAUDE.md" "@$FRAG"
-assert_out "28a: the run names it indexed" "indexed, not imported: $FRAG"
+assert_rc "28a: add with a declared card succeeds" 0
+assert_file "28a: the fragment is materialized" "$CON/$FRAG"
+no_entry_write "28a"
 
-# 28b. a later sync does not put it back (the reported case).
+# 28b. no card: the same, and a later sync writes no entry file either.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org
+assert_rc "28b: add without a card succeeds" 0
+assert_file "28b: the fragment is materialized" "$CON/$FRAG"
+no_entry_write "28b"
 edit_line "$OV/$FRAG" "$UP_OLD" "$UP_NEW"; commit_ov "$OV" frag-v2
 run_overlay "$CON" sync example-org --yes
 assert_rc "28b: sync succeeds" 0
-assert_nogrep "28b: sync does not re-add the @import" "$CON/CLAUDE.md" "@$FRAG"
-assert_out "28b: sync names it indexed" "indexed, not imported: $FRAG"
+no_entry_write "28b sync"
 
-# 28c. the dry-run plan says the same and writes nothing.
+# 28c. the dry-run plan says the same, plans no @import and writes nothing.
 edit_line "$OV/$FRAG" "$UP_NEW" "$UP_OLD"; commit_ov "$OV" frag-v3
 OUT="$(python3 "$OVERLAY" --repo-root "$CON" sync example-org --dry-run 2>&1)"
-case "$OUT" in *"indexed, not imported: $FRAG"*) pass "28c: dry-run names it indexed" ;; *) fail "28c: dry-run does not name it indexed" "$OUT" ;; esac
-case "$OUT" in *"@import $FRAG"*) fail "28c: dry-run still plans the @import" "$OUT" ;; *) pass "28c: dry-run plans no @import" ;; esac
-
-# 28d. a declaration in the CORE budget counts the same as a per-instance one.
+no_entry_write "28c dry-run"
+case "$OUT" in *"@import"*) fail "28c: dry-run still mentions an @import" "$OUT" ;; *) pass "28c: dry-run plans no @import" ;; esac
 CON="$(mkcon)"; OV="$(mk_clean_overlay)"
-python3 - "$CON/context-budget.yaml" "$FRAG" <<'PY2'
-import sys, yaml
-p, frag = sys.argv[1:3]
-d = yaml.safe_load(open(p))
-d["items"][frag] = {"optional": True, "source": "phase1", "card": {"kind": "index"}}
-open(p, "w").write(yaml.safe_dump(d, sort_keys=False))
-PY2
-run_overlay "$CON" add "file://$OV" --name example-org
-assert_nogrep "28d: a CORE-budget card also suppresses the @import" "$CON/CLAUDE.md" "@$FRAG"
+OUT="$(python3 "$OVERLAY" --repo-root "$CON" add "file://$OV" --name example-org --dry-run 2>&1)"
+no_entry_write "28c add --dry-run"
+assert_absent "28c: add --dry-run writes no fragment" "$CON/$FRAG"
 
-# 28e. an instance entry WITHOUT a card replaces the CORE one wholesale, as in
-# the meter, so the fragment is imported again.
-cat > "$CON/context-budget.user.yaml" <<YAML
-items:
-  $FRAG:
-    optional: true
-YAML
+# 28f. a legacy CLAUDE.md that still imports the fragment: add, sync and remove
+# leave it byte-identical and each run says so with a WARN.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+printf '@AGENTS.md\n@ecosystem.example-org.yaml\n' > "$CON/CLAUDE.md"
+git -C "$CON" add CLAUDE.md
+git -C "$CON" -c user.email=t@t -c user.name=t commit -qm legacy >/dev/null 2>&1
+legacy_sha="$(shasum "$CON/CLAUDE.md" | cut -d' ' -f1)"
+LEGACY_WARN="WARN   CLAUDE.md still imports @ecosystem.example-org.yaml"
+run_overlay "$CON" add "file://$OV" --name example-org
+assert_rc "28f: add over a legacy CLAUDE.md succeeds" 0
+assert_eq "28f: add leaves CLAUDE.md byte-identical" "$(shasum "$CON/CLAUDE.md" | cut -d' ' -f1)" "$legacy_sha"
+assert_out "28f: add warns about the legacy import" "$LEGACY_WARN"
+assert_out "28f: the WARN names the migration script" "scripts/migrate-entry-file.py"
+edit_line "$OV/$FRAG" "$UP_OLD" "$UP_NEW"; commit_ov "$OV" frag-v2
 run_overlay "$CON" sync example-org --yes
-assert_grep "28e: an entry without a card keeps the @import" "$CON/CLAUDE.md" "@$FRAG"
+assert_rc "28f: sync succeeds" 0
+assert_eq "28f: sync leaves CLAUDE.md byte-identical" "$(shasum "$CON/CLAUDE.md" | cut -d' ' -f1)" "$legacy_sha"
+assert_out "28f: sync warns about the legacy import" "$LEGACY_WARN"
+run_overlay "$CON" remove example-org
+assert_rc "28f: remove succeeds" 0
+assert_eq "28f: remove leaves CLAUDE.md byte-identical" "$(shasum "$CON/CLAUDE.md" | cut -d' ' -f1)" "$legacy_sha"
+assert_out "28f: remove warns about the legacy import" "$LEGACY_WARN"
+
+# 28g. a CLAUDE.md without that line stays byte-identical: no line is added.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+printf '@AGENTS.md\n' > "$CON/CLAUDE.md"
+plain_sha="$(shasum "$CON/CLAUDE.md" | cut -d' ' -f1)"
+run_overlay "$CON" add "file://$OV" --name example-org
+assert_rc "28g: add succeeds" 0
+assert_eq "28g: add adds no line to an existing CLAUDE.md" "$(shasum "$CON/CLAUDE.md" | cut -d' ' -f1)" "$plain_sha"
+case "$OUT" in *"CLAUDE.md still imports"*) fail "28g: WARN without a legacy line" "$OUT" ;; *) pass "28g: no WARN without a legacy line" ;; esac
+
+# 28h. the same leftover in .claude/CLAUDE.md, written relative to that file
+# (`@../…`), and in CLAUDE.local.md: each one is named in the WARN.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+mkdir -p "$CON/.claude"
+printf '@../AGENTS.md\n@../ecosystem.example-org.yaml\n' > "$CON/.claude/CLAUDE.md"
+printf '@ecosystem.example-org.yaml\n' > "$CON/CLAUDE.local.md"
+run_overlay "$CON" add "file://$OV" --name example-org
+assert_rc "28h: add succeeds" 0
+assert_out "28h: .claude/CLAUDE.md import resolved from its own folder" "WARN   .claude/CLAUDE.md still imports @ecosystem.example-org.yaml"
+assert_out "28h: CLAUDE.local.md is checked too" "WARN   CLAUDE.local.md still imports @ecosystem.example-org.yaml"
 
 # ───────────────────────────────────────────────────────────────────
 echo

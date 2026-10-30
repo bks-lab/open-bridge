@@ -228,3 +228,22 @@ def test_marker_write_keeps_the_shipped_comment_header():
         assert "grep '^#' .bridge-origin" in " ".join(lines[: write + 1]), (
             f"{rel}: the marker write drops the shipped comment header"
         )
+
+
+# --- D4 only creates the identity files, it never writes an import ---------
+
+
+FORBID = ("Never write an `@`-import anywhere, and never create a `CLAUDE.md`: "
+          "a `CLAUDE.md` at the root would make Claude Code skip `AGENTS.md`.")
+
+
+def test_d4_writes_no_import():
+    wf = read("skills/bridge-onboard/references/workflow.md")
+    d4 = "### D4" + wf.split("### D4", 1)[1].split("\n### ", 1)[0]
+    assert FORBID in d4, "D4 must forbid writing an import or a CLAUDE.md"
+    assert "CLAUDE.md" not in d4.replace(FORBID, ""), "D4 still names CLAUDE.md"
+    assert "edits no other file" in d4
+    readme = read("identity/agent/README.md")
+    loading = readme.split("## Loading order", 1)[1].split("\n## ", 1)[0]
+    assert "imported into `CLAUDE.md`" not in loading
+    assert "CLAUDE.md" not in loading

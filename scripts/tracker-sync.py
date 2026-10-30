@@ -541,7 +541,7 @@ def ecosystem_files(root: Path) -> list[Path]:
 
     The registry may be split across `ecosystem.yaml` (instance base) plus
     overlay-materialized / tier-scoped fragments (`ecosystem.<tier>.yaml`) —
-    the same set CLAUDE.md `@`-imports. `ecosystem.example.yaml` is the CORE
+    the same set Phase 1 indexes (context-index.py --registries). `ecosystem.example.yaml` is the CORE
     template shipped for fresh clones and is deliberately excluded: its demo
     entries are not real boards.
     """

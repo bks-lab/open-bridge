@@ -42,13 +42,13 @@ reads:
 # all of it is context-budget.yaml, enforced by scripts/measure-context.py.
 always_on:
   - label: "AGENTS.md"
-    what: "The operating manual, @-imported through CLAUDE.md (or the tool's own wrapper)."
+    what: "The operating manual and the entry file: Claude Code loads it directly, other tools read it as text."
   - label: "SOUL/IDENTITY"
-    what: "identity/agent/SOUL.md and IDENTITY.md, @-imported once onboarding has seeded them."
+    what: "identity/agent/SOUL.md and IDENTITY.md, imported by AGENTS.md once onboarding has created them."
   - label: "config slice"
     what: "`python3 scripts/bridge-config.py --session`: the six bridge-config.yaml blocks a session needs; the others are read by the skill that owns them."
   - label: "registry card"
-    what: "`python3 scripts/context-index.py ecosystem.yaml`: the settings plus one line per entry; an entry itself comes with `--get <name>` (docs/context-index.md)."
+    what: "`python3 scripts/context-index.py --registries`: the settings plus one line per entry of ecosystem.yaml and every ecosystem.<name>.yaml; an entry itself comes with `<file> --get <name>` (docs/context-index.md)."
   - label: "order index"
     what: "`python3 scripts/standing-orders.py --index`, plus the bodies of the orders marked `load: eager`."
   - label: "log + board"
@@ -71,7 +71,7 @@ families:
 
   - path: identity/agent/
     object: "this orchestrator's own name, role and voice"
-    island: "core: templates, soul deck; user: SOUL.md, IDENTITY.md"
+    island: "core: templates, soul deck; user: SOUL.md, IDENTITY.md, INSTANCE.md"
     lives: [core, private]
     references: []
     writer: "onboarding seeds it; accepted /bridge-learn lessons fold into SOUL.md"
@@ -350,7 +350,7 @@ beside:
     island: user
     lives: [pii]
   - path: "ecosystem.<name>.yaml"
-    what: "a registry fragment, for example an organisation's"
+    what: "a registry fragment, for example an organisation's, indexed at session start like ecosystem.yaml"
     island: "org or user"
     lives: [pii, overlay]
   - path: overlays.lock.yaml

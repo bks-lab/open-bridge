@@ -409,6 +409,6 @@ The bridge will remind you during active work sessions.
 
 When a task folder needs navigation (plan + spec + research + meetings side by side),
 write a `README.md` (industry standard). No bespoke `_MOC.md` / `index.md` convention —
-see [`CLAUDE.md` → Documentation Navigation](../CLAUDE.md).
+see [`AGENTS.md` → Documentation Navigation](../AGENTS.md).
 
 A stale doc is worse than none — update it on task switch, or delete it.

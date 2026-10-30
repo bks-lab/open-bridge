@@ -12,7 +12,7 @@ metadata:
 # Bridge Promote — Scope Routing
 
 Routes commits from `user/*` to the right upstream based on `scope:`
-frontmatter (or path inference). See CLAUDE.md § Tier Model.
+frontmatter (or path inference). See docs/org-overlays.md (tier model). A root `CLAUDE.md` classifies `user` and never promotes.
 
 | Commit scope | Goes to | How |
 |---|---|---|
@@ -103,7 +103,7 @@ User wants to...
 ├── Overlay with a manifest (flat mirror)    → refuse; docs/org-overlays.md § Authoring an overlay
 ├── Scan branch for contributions            → bridge-contribute skill (/contribute)
 ├── Adapt/generalize content                 → bridge-contribute skill § Adapt mode
-└── Questions about CORE/USER/ORG split      → Answer from CLAUDE.md § Tier Model
+└── Questions about CORE/USER/ORG split      → Answer from docs/org-overlays.md (tier model)
 ```
 
 ## Safety

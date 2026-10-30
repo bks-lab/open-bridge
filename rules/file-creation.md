@@ -20,7 +20,7 @@ The fix is always more expensive than the prevention.
 
 Run this every time, in order:
 
-1. **Locate the destination folder.** Use the cluster-wrapper map (CLAUDE.md
+1. **Locate the destination folder.** Use the cluster-wrapper map (AGENTS.md
    § Layout — Cluster-Wrappers). Personas/Mandants/Accounts → `identity/`;
    Remotes/Channels/Backups → `infra/`; Calendars/Contexts/Projects → `workflow/`;
    Protocols, Skills, Trackers, Themes → top-level.
@@ -84,7 +84,7 @@ Run this every time, in order:
 | `protocols/standing-orders/<name>.md` | `protocols/standing-orders/_template.md` | — | `protocols/standing-orders/task-sync.md` |
 | `skills/<name>/SKILL.md` | — | — | any existing skill, e.g. `skills/mandants/SKILL.md`; then § Writing skill steps below |
 | `skills/<name>/LEARNINGS.md` + its routing block | `docs/skill-learnings.md` § Templates | `scripts/check-skill-learnings.py` | the template itself |
-| Doc with frontmatter (`docs/*.md`, `<folder>/README.md`) | — | — | shape in CLAUDE.md § Documentation Navigation |
+| Doc with frontmatter (`docs/*.md`, `<folder>/README.md`) | — | — | shape in AGENTS.md § Documentation Navigation |
 
 ## Common gotchas (real history)
 
@@ -94,7 +94,7 @@ Run this every time, in order:
   dot for `.README.md` (overview). The inconsistency makes the purpose visible
   at-a-glance.
 - **Frontmatter for standalone docs:** `summary`, `type`, `last_updated`,
-  `related:` — shape in CLAUDE.md § Documentation Navigation. Skipping this
+  `related:` — shape in AGENTS.md § Documentation Navigation. Skipping this
   means the doc won't be triaged correctly by AI-first reading.
 - **UTF-8 native, not entities.** Umlauts as `ä`/`ö`/`ü`/`ß`, em-dash as `—`,
   Euro as `€`. Never `&auml;`, never `ä`, never `ae`. Applies to

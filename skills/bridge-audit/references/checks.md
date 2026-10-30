@@ -11,7 +11,7 @@ Scan tracked files only (`git ls-files`); findings are advisory unless `--fix` r
 **Sources to read:**
 - `README.md`: shields.io License badge (regex `License%3A-([A-Za-z0-9.+-]+)`) + footer line near end (`Apache 2.0 — see LICENSE`, `MIT — see LICENSE`)
 - `LICENSE`: first 3 lines (Apache header / MIT header)
-- `CLAUDE.md`: any "License: " claim
+- `AGENTS.md`: any "License: " claim
 - The resolved memory base's `MEMORY.md` (if available): any `MIT`/`Apache`/`license`
   mention. Resolve the directory with `python3 scripts/memory-location.py status
   --json` (field `memory_dir`); if that script is absent, fall back to the legacy
@@ -20,7 +20,7 @@ Scan tracked files only (`git ls-files`); findings are advisory unless `--fix` r
 **Algorithm:**
 1. Extract license-name from each source
 2. Group by source. Disagreement → P0 finding.
-3. Fix proposal: pick the source-of-truth (memory / CLAUDE.md if present and recent), align the others.
+3. Fix proposal: pick the source-of-truth (memory / AGENTS.md if present and recent), align the others.
 
 **Edge cases:**
 - LICENSE missing → P0 finding (not a drift, but bad).
@@ -362,7 +362,7 @@ A `scope: core` skill ships and merges to the OSS upstream, so it must stay
 generic *inside*: it reads instance specifics from config, it does not embed
 them. This check flags the inverse — a CORE skill that hardcodes what should
 live in `bridge-config.yaml` / `workflow/` / `infra/` / `identity/`. It is the
-audit backstop for `CLAUDE.md` § Generic CORE Skills (and `docs/extension-model.md`
+audit backstop for `AGENTS.md` § Skills (Universal) (and `docs/extension-model.md`
 § Generic CORE Skills). Distinct from `bridge-leak-check`: leak-check is
 content-safety (PII / customer names → leak); Check 12 is genericity drift —
 even a *non-PII* hardcode (your own org's project number baked into a core
@@ -394,7 +394,7 @@ value that should be config:**
 - `docs/examples/**` and any fenced block explicitly labelled as an example.
 - A skill *naming the config key it reads* (e.g. "read `integrations.ado.queries`
   from `bridge-config.yaml`") — that is the correct, config-driven pattern.
-- The `${variable}` interpolation forms (CLAUDE.md § Variable Interpolation).
+- The `${variable}` interpolation forms (AGENTS.md § Variable Interpolation).
 
 **Algorithm:**
 1. Enumerate core skills (resolve `metadata.scope`; absent → core).
@@ -406,7 +406,7 @@ value that should be config:**
 
 **Finding shape:** `P2 — skills/<name>/<file>:<line> — hardcoded <id|query|path|
 name> in a scope:core skill → move to bridge-config.yaml (skill reads it). See
-CLAUDE.md § Generic CORE Skills.`
+AGENTS.md § Skills (Universal).`
 
 **Why a P2 (not higher):** the skill still runs in this instance — but it has
 stopped being generic, so it no longer merges cleanly upstream. Drift, not
@@ -667,15 +667,38 @@ checker's finding and drop the hand-derived one. `--skip <file>` leaves out a
 checker that needs the network or is known slow on this machine; say so in the
 report rather than skipping silently. `--check checkers` runs only this check.
 
+## Check 17: Entry-file shadow
+
+Claude Code reads `AGENTS.md` natively, but a root `CLAUDE.md`,
+`CLAUDE.local.md` or `.claude/CLAUDE.md` makes it load only that file. The
+manual, the Phase 0 gate and the identity imports then never arrive, and
+nothing in the session says so.
+
+**Algorithm:** run `python3 scripts/migrate-entry-file.py --check`. Exit 1 is
+one finding per file it names. A `WARN  AGENTS.md` line (it differs from every
+CORE version on the refs it names) is P3 advisory, never P1: a CORE change
+waiting on `/bridge-promote` or an unfetched ref looks the same. Report it with
+`--file AGENTS.md` as the dry run to read. When the script is absent, test the
+three paths directly.
+
+**Finding shape:** `P1: root CLAUDE.md beside AGENTS.md: Claude Code loads only
+CLAUDE.md; run python3 scripts/migrate-entry-file.py --check / --write`.
+
+**Not a hit:** a `CLAUDE.md` under `examples/` or in a workspace member (they
+are their own projects), and a core checkout's `AGENTS.md` (no
+`bridge-config.yaml`, so the script skips the `AGENTS.md` comparison).
+
 ## --cross-repo mode
 
 **Prerequisites:** `bridge-config.yaml.upstreams[]` defines targets and `gh` is authenticated.
 
 **Algorithm:**
 1. For each upstream: `git clone --depth=1 --branch=$branch` into `/tmp/bridge-audit-<repo>/` (or `git fetch <upstream> <branch>` if already added as a remote)
-2. Diff `README.md`, `AGENTS.md`, `CLAUDE.md`, `LICENSE` between local and each upstream
+2. Diff `README.md`, `AGENTS.md`, `LICENSE` between local and each upstream
 3. Findings:
-   - File present in seed repo but not upstream → P2 (missing on that destination)
+   - File present in seed repo but not upstream → P2 (missing on that destination).
+     A fork-only root `CLAUDE.md` is never "missing upstream": upstream removed
+     it on purpose, and Check 17 reports it locally.
    - Different License/badge/footer between repos → P0 (cross-repo license drift)
    - Significant content divergence (>30 lines diff in README/AGENTS) → P2 (worth a sync)
 4. Run **Check 9** (skill-tree sync coverage) against the same fetched trunks
@@ -703,3 +726,4 @@ not marked fixable below: print the suggested fix, leave application to the user
 | 12 Config-driven | No | Move-to-config is a content move — advisory only |
 | 14 Skill learnings | No | The missing half is content: a routing block or a first entry |
 | 15 Question map | No | Rephrasing a row or finding a moved answer is content |
+| 17 Entry-file shadow | No | Carrying lines is a content move: `scripts/migrate-entry-file.py --write` after its dry run |

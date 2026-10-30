@@ -46,7 +46,7 @@ User wants to...
 ├── Sync config to a remote            → Read references/workflow.md (§ Sync)
 ├── Deploy services to a remote        → Read references/workflow.md (§ Deploy)
 ├── Identify "my PC" / intent-only     → Read references/fleet.md (§ Stage 1 + Learned routing)
-└── Questions about remotes            → Answer from CLAUDE.md § Remotes
+└── Questions about remotes            → Answer from infra/remotes/_template.yaml + docs/remotes.md
 ```
 
 A machine that stays on can carry the capability `arm`: the always-on machine

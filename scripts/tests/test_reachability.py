@@ -68,8 +68,6 @@ def _tree(root: Path, files: dict[str, str]) -> Path:
 MINIMAL_BUDGET = (
     "schema_version: 1\n"
     "items:\n"
-    "  CLAUDE.md:\n"
-    "    max_bytes: 100000\n"
     "  AGENTS.md:\n"
     "    max_bytes: 100000\n"
 )
@@ -129,7 +127,6 @@ def test_discovery_is_derived_from_the_tree_not_a_list(tmp_path):
 
 def test_a_family_named_in_the_surface_passes(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Machines live in `infra/remotes/`.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -140,7 +137,6 @@ def test_a_family_named_in_the_surface_passes(tmp_path):
 def test_a_family_missing_from_the_surface_is_a_finding(tmp_path):
     """The whole point. Every other guard is green in this state."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing about the inventory here.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -157,7 +153,6 @@ def test_prose_without_the_path_does_not_count(tmp_path):
     the directory moves.
     """
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Your machine inventory is described elsewhere.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -177,7 +172,6 @@ def test_a_pointer_in_a_deferred_standing_order_does_not_count(tmp_path):
         "Channels live in `infra/channels/`.\n"
     )
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing here.\n",
         "protocols/standing-orders/x.md": order,
         "infra/channels/_template.yaml": "a: 1\n",
@@ -193,7 +187,6 @@ def test_a_pointer_in_an_eager_standing_order_does_count(tmp_path):
         "---\n\nChannels live in `infra/channels/`.\n"
     )
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing here.\n",
         "protocols/standing-orders/x.md": order,
         "infra/channels/_template.yaml": "a: 1\n",
@@ -204,13 +197,65 @@ def test_a_pointer_in_an_eager_standing_order_does_count(tmp_path):
     assert not any("infra/channels/" in f for f in reach.check(tmp_path))
 
 
+def test_the_finding_points_at_the_data_model_not_an_eager_order(tmp_path):
+    """CORE variant: no bridge-config.yaml, so every family is a CORE family.
+
+    The old text sent a person to an eager standing order, which no sub-agent
+    loads, so the family stayed invisible to every dispatch.
+    """
+    _tree(tmp_path, {
+        "AGENTS.md": "Nothing here.\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET,
+    })
+    finding = next(f for f in reach.check(tmp_path) if f.startswith("infra/remotes/"))
+
+    assert "docs/data-model.yaml" in finding
+    assert "AGENTS.md" in finding
+    assert "conflicts on every merge" in finding
+    assert "standing-orders/user" not in finding
+
+
+def test_the_fork_finding_points_at_instance_md_not_an_eager_order(tmp_path):
+    """Fork variant: an instance names its own family in INSTANCE.md.
+
+    IDENTITY.md and SOUL.md may be shipped by an org overlay, so they are not
+    the place for fork prose. INSTANCE.md is USER and imported by AGENTS.md,
+    so sub-agents see what it names.
+    """
+    _tree(tmp_path, {
+        "AGENTS.md": "Nothing here.\n",
+        "bridge-config.yaml": "identity:\n  name: x\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET,
+    })
+    finding = next(f for f in reach.check(tmp_path) if f.startswith("infra/remotes/"))
+
+    assert "identity/agent/INSTANCE.md" in finding
+    assert "work/data-model.yaml" in finding
+    assert "conflicts on every merge" in finding
+    assert "standing-orders/user" not in finding
+    assert "identity/agent/IDENTITY.md" not in finding
+
+
+def test_a_legacy_claude_md_entry_still_reaches_agents_md(tmp_path):
+    """An unmigrated fork still enters through CLAUDE.md, which imports AGENTS.md."""
+    _tree(tmp_path, {
+        "CLAUDE.md": "@AGENTS.md\n",
+        "AGENTS.md": "Machines live in `infra/remotes/`.\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET + "  CLAUDE.md:\n    max_bytes: 100000\n",
+    })
+    assert reach.check(tmp_path) == []
+    assert "AGENTS.md" in reach.named_in(tmp_path, "infra/remotes/")
+
+
 # ------------------------------------------------------- the surface itself --
 
 
 def test_the_surface_is_the_one_the_meter_measures(tmp_path):
     """One definition of always-on, not two."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "MARKER-AGENTS\n",
         "context-budget.yaml": MINIMAL_BUDGET,
     })
@@ -222,7 +267,6 @@ def test_the_surface_is_the_one_the_meter_measures(tmp_path):
 def test_the_surface_includes_what_a_phase_one_command_prints(tmp_path):
     """Half the surface is computed, not read, and a pointer can live there."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "x\n",
         "context-budget.yaml": MINIMAL_BUDGET
         + '  "cmd:python3 scripts/standing-orders.py --index":\n    source: phase1\n',
@@ -272,7 +316,6 @@ def test_cli_runs_on_this_repo_and_agrees_with_itself():
 
 def test_cli_exits_non_zero_on_a_finding(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing here.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -299,7 +342,6 @@ def test_a_mention_in_the_work_log_does_not_count(tmp_path):
     is not a pointer.
     """
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing about vehicles here.\n",
         "identity/vehicles/_template.yaml": "a: 1\n",
         "work/board.md": "## Doing\n\n- something about identity/vehicles/\n",
@@ -313,7 +355,6 @@ def test_a_mention_in_the_work_log_does_not_count(tmp_path):
 
 def test_the_routing_surface_excludes_work_state(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "MARKER-ROUTING\n",
         "work/board.md": "MARKER-WORKSTATE\n",
         "context-budget.yaml": MINIMAL_BUDGET
@@ -328,7 +369,6 @@ def test_the_routing_surface_excludes_work_state(tmp_path):
 def test_work_state_still_counts_as_always_on_for_the_budget(tmp_path):
     """Only THIS check ignores it. The budget still measures every byte."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "x\n",
         "work/board.md": "MARKER-WORKSTATE\n",
         "context-budget.yaml": MINIMAL_BUDGET
@@ -347,7 +387,6 @@ def test_work_state_still_counts_as_always_on_for_the_budget(tmp_path):
 
 def _scenario_tree(tmp_path, agents_md: str) -> Path:
     return _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": agents_md,
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -393,7 +432,6 @@ def test_a_scenario_fails_when_the_route_is_missing(tmp_path):
 
 def test_a_scenario_fails_when_the_route_resolves_to_an_empty_directory(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "A remote machine lives in `infra/remotes/`.\n",
         "context-budget.yaml": MINIMAL_BUDGET,
     })
@@ -407,7 +445,6 @@ def test_a_scenario_for_a_family_this_instance_lacks_is_skipped(tmp_path):
     """Demanding a family an instance never enabled is a check about a Bridge
     that does not exist."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "nothing\n",
         "context-budget.yaml": MINIMAL_BUDGET,
     })
@@ -457,7 +494,6 @@ def test_the_battery_removes_a_contributor_not_a_substring(tmp_path):
 
 def test_a_family_named_only_in_work_state_has_no_carrier(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "nothing\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "work/board.md": "about infra/remotes/ today\n",

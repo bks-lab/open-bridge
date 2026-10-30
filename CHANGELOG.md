@@ -17,6 +17,13 @@ between updates; the two links above never do.
 
 ## Recent themes
 
+**AGENTS.md is the only entry file.** CLAUDE.md is gone; Claude Code 2.1.281+
+reads AGENTS.md directly, the instance layer loads through fixed imports
+(`identity/agent/IDENTITY.md`, `SOUL.md` and the new `INSTANCE.md`), org
+registries are indexed instead of imported (`scripts/context-index.py
+--registries`), and `scripts/migrate-entry-file.py` moves a fork's CLAUDE.md
+lines (docs/updating.md).
+
 **Secrets, as references instead of values.** A broker that resolves a
 `vault://`/`keychain://`-style reference at read time and never prints the
 value ([#222](https://github.com/bks-lab/open-bridge/pull/222)), placement

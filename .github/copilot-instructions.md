@@ -3,9 +3,13 @@
 GitHub Copilot reads this `.github/copilot-instructions.md` at session start.
 This project keeps its full, tool-agnostic operating manual in
 **[`AGENTS.md`](../AGENTS.md)** — the canonical and complete reference (no further
-hops). `CLAUDE.md` and `GEMINI.md` are the same kind of thin pointer.
+hops). `GEMINI.md` is the same kind of thin pointer; Claude Code reads
+`AGENTS.md` directly.
 
 **If you are GitHub Copilot:** read [`AGENTS.md`](../AGENTS.md) and follow it.
+Then read `identity/agent/IDENTITY.md`, `identity/agent/SOUL.md` and
+`identity/agent/INSTANCE.md` if they exist (AGENTS.md § Loaded with this
+file); Copilot does not resolve its `@` lines.
 Skills are auto-discovered under `.github/skills/` — a symlink to the top-level
 `skills/` folder, so every supported agent loads the same skill set.
 

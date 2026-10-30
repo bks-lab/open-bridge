@@ -4,9 +4,10 @@
 
 An *org overlay* is a separate git repo (one per org) that mirrors a FLAT tree
 of behavioural + config files into a Bridge consumer. The overlay never
-block-merges the consumer's config: it copies files in, wires its ecosystem
-fragment as an `@import`, and records every materialized file in
-`overlays.lock.yaml` pinned to immutable hashes. Org content is `scope: org`
+block-merges the consumer's config: it copies files in, copies its ecosystem
+fragment to the root, where Phase 1 indexes it (context-index.py --registries),
+and records every materialized file in `overlays.lock.yaml` pinned to immutable
+hashes. Org content is `scope: org`
 by path + inline tripwire — it routes to the org overlay, NEVER to open-bridge,
 which keeps the weekly `git merge main` conflict-free.
 
@@ -19,7 +20,7 @@ Commands (subcommands of `/overlay`):
   apply   OFFLINE re-materialize from cache+lock (no network); idempotent
   status  resolved_sha vs cache HEAD, staleness, per-file state counts
   diff    preview the next sync/apply (plan + per-file before/after); no writes
-  remove  hash-verify + delete clean managed files, drop cache/lock/@import
+  remove  hash-verify + delete clean managed files, drop cache/lock
   list    subscribed overlays from upstreams[] (role: org-overlay)
 
 Contracts:
@@ -31,6 +32,7 @@ Reused primitives (loaded from this script's own dir, not the consumer):
   no-scrub-leak.py        per-file leak gate (subprocess)
 
 Safety model:
+  - the engine never writes an entry file (AGENTS.md, CLAUDE.md)
   - never materialize off a user/* branch (CORE branches stay clean)
   - HARD-REFUSE a dest that classifies CORE, is `_`-prefixed, is a wrapper
     README/_template/_schema, or path-escapes the repo root
@@ -96,24 +98,6 @@ except Exception as exc:  # pragma: no cover - defensive
 
 NO_SCRUB_LEAK = os.path.join(SCRIPT_DIR, "no-scrub-leak.py")
 
-
-def card_declared(repo_root: str, rel_path: str) -> bool:
-    """True when the context budget declares `rel_path` as a Phase 1 card.
-
-    Read through scripts/lib/context_index.py, the same function the meter and
-    the index use, so the three cannot disagree about what is indexed. Loaded
-    lazily: a consumer without the library (or without PyYAML) falls back to
-    the old behaviour, the @import, rather than failing the sync, and says so:
-    a silent fallback would re-add an import the instance removed on purpose.
-    """
-    try:
-        lib = _load_module("context_index", os.path.join("lib", "context_index.py"))
-        return bool(lib.card_for(repo_root, rel_path))
-    except Exception as exc:  # pragma: no cover - defensive
-        sys.stderr.write(
-            f"  WARN   cannot read the context budget ({type(exc).__name__}: {exc}); "
-            f"treating {rel_path} as not indexed, the @import may be added\n")
-        return False
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -473,7 +457,11 @@ class Consumer:
         self.root = os.path.abspath(root)
         self.config_path = os.path.join(self.root, "bridge-config.yaml")
         self.lock_path = os.path.join(self.root, LOCK_FILE)
-        self.claude_md = os.path.join(self.root, "CLAUDE.md")
+        # Read only: the engine never writes an entry file. A fork that has not
+        # migrated may still carry an `@ecosystem.<org>.yaml` line in any of
+        # the three shadow files, which is reported (legacy_import_line),
+        # never edited.
+        self.legacy_entry_files = ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md")
 
     # --- branch guard -----------------------------------------------------
     def current_branch(self) -> str | None:
@@ -558,48 +546,47 @@ class Consumer:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         atomic_write_bytes(path, dump_yaml(state).encode("utf-8"))
 
-    # --- ecosystem @import in CLAUDE.md -----------------------------------
-    def ensure_ecosystem_import(self, fragment: str, dry: bool) -> bool:
-        token = f"@{fragment}"
-        if not os.path.exists(self.claude_md):
-            return False
-        with open(self.claude_md, encoding="utf-8") as fh:
-            text = fh.read()
-        if token in text:
-            return False
-        if dry:
-            return True
-        lines = text.splitlines(keepends=True)
-        out: list[str] = []
-        inserted = False
-        for ln in lines:
-            out.append(ln)
-            # Anchor on @AGENTS.md, the one import CLAUDE.md always has. It
-            # used to be @ecosystem.yaml, which stopped being an import when
-            # the registry became an index (docs/context-index.md); the insert
-            # then fell through to its end-of-file fallback, which still works
-            # and silently moves the import away from its neighbours. The
-            # overlay suite now asserts the placement, so the next anchor to
-            # outlive its line says so instead of degrading quietly.
-            if not inserted and ln.strip() == "@AGENTS.md":
-                out.append(token + "\n")
-                inserted = True
-        if not inserted:
-            if out and not out[-1].endswith("\n"):
-                out.append("\n")
-            out.append(token + "\n")
-        atomic_write_bytes(self.claude_md, "".join(out).encode("utf-8"))
-        return True
+    # --- legacy ecosystem @import (read only) -----------------------------
+    def legacy_import_files(self, fragment: str) -> list[str]:
+        """The shadow files (CLAUDE.md, CLAUDE.local.md, .claude/CLAUDE.md)
+        that still import `<fragment>`, each import resolved relative to its
+        own file as Claude Code resolves it.
 
-    def drop_ecosystem_import(self, fragment: str) -> None:
-        token = f"@{fragment}"
-        if not os.path.exists(self.claude_md):
-            return
-        with open(self.claude_md, encoding="utf-8") as fh:
-            lines = fh.readlines()
-        kept = [ln for ln in lines if ln.strip() != token]
-        if len(kept) != len(lines):
-            atomic_write_bytes(self.claude_md, "".join(kept).encode("utf-8"))
+        Phase 1 indexes the fragment now (context-index.py --registries), so
+        the line loads it a second time, whole. The engine reports it and
+        leaves the file alone: scripts/migrate-entry-file.py drops it.
+        """
+        want = os.path.normpath(fragment)
+        found = []
+        for rel in self.legacy_entry_files:
+            path = os.path.join(self.root, rel)
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    lines = fh.read().splitlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            for ln in lines:
+                ln = ln.strip()
+                if not ln.startswith("@") or " " in ln:
+                    continue
+                target = os.path.normpath(os.path.join(os.path.dirname(rel), ln[1:]))
+                if target == want:
+                    found.append(rel)
+                    break
+        return found
+
+    def legacy_import_line(self, fragment: str) -> bool:
+        """True when any legacy shadow file still carries the fragment import."""
+        return bool(self.legacy_import_files(fragment))
+
+    def warn_legacy_import(self, fragment: str) -> None:
+        for rel in self.legacy_import_files(fragment):
+            sys.stderr.write(
+                f"  WARN   {rel} still imports @{fragment}; it is indexed now. "
+                f"Run python3 scripts/migrate-entry-file.py to drop the line "
+                f"(docs/updating.md)\n")
 
     # --- git-exclude guard for managed dests ------------------------------
     def _exclude_markers(self, overlay_name: str) -> tuple[str, str]:
@@ -838,15 +825,19 @@ def read_manifest(cache: str) -> tuple[dict, str]:
     return manifest, digest
 
 
+# Byte-identical to REGISTRY_FRAGMENT in scripts/lib/context_index.py, the
+# pattern the Phase 1 registry glob matches (test-overlay.sh §22 holds the two
+# together). The guard bounds the root write AND what Phase 1 indexes.
 FRAGMENT_NAME_RE = re.compile(r"^ecosystem\.[a-z][a-z0-9-]*\.yaml$")
 
 
 def valid_fragment_name(frag: object) -> bool:
     """An ecosystem fragment must be a flat `ecosystem.<org>.yaml` at the repo
     root. This forecloses traversal / `_`-prefix / subdir / arbitrary-name writes
-    that would otherwise reach `os.path.join(consumer.root, fragment)` plus a
-    CLAUDE.md @import. Enforced in-engine so it holds even on a consumer WITHOUT
-    the optional check-jsonschema. See test-overlay.sh §22."""
+    that would otherwise reach `os.path.join(consumer.root, fragment)` and the
+    Phase 1 registry glob (context-index.py --registries). Enforced in-engine so
+    it holds even on a consumer WITHOUT the optional check-jsonschema. See
+    test-overlay.sh §22."""
     return isinstance(frag, str) and bool(FRAGMENT_NAME_RE.match(frag))
 
 
@@ -902,16 +893,28 @@ def manifest_defaults(manifest: dict) -> dict:
 
 CLUSTER_WRAPPERS = ("identity/", "infra/", "workflow/")
 
+# Entry files are refused by name, before classify_file: Claude Code loads a
+# root CLAUDE.md, CLAUDE.local.md or .claude/CLAUDE.md INSTEAD of AGENTS.md, and
+# a root CLAUDE.md classifies USER (it never promotes), so the path gate alone
+# would let one through.
+ENTRY_FILES = ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", "AGENTS.md")
+# The instance's own always-on file. IDENTITY.md and SOUL.md may come from an
+# org overlay; INSTANCE.md never does, so a fork's prose there is never
+# overwritten by a sync.
+INSTANCE_FILE = "identity/agent/INSTANCE.md"
+
 # Paths where the framework treats frontmatter `scope:` as authoritative
 # (classify_file reads frontmatter ONLY for these). Inline/resolved scope may
 # RESCUE a core-classified dest here — and ONLY here. Everywhere else path
 # classification is final, so a `scope: org` line in overlay-controlled content
-# cannot smuggle a CORE file (rules/, docs/, scripts/, CLAUDE.md, themes/,
+# cannot smuggle a CORE file (rules/, docs/, scripts/, themes/,
 # protocols/standing-orders/*, …) past the gate. See test-overlay.sh §21.
 FRONTMATTER_SCOPED = (
     re.compile(r"^skills/[^/]+/"),
     re.compile(r"^\.claude/agents/[^/]+\.md$"),
     re.compile(r"^identity/agent/(IDENTITY|SOUL)\.md$"),
+    # identity/agent/INSTANCE.md is deliberately NOT listed: it is the fork's
+    # own slot, refused by name in dest_refusal (INSTANCE_FILE above).
 )
 
 
@@ -963,6 +966,14 @@ def dest_refusal(dest: str, content: bytes, consumer: Consumer,
     resolved = os.path.normpath(os.path.join(consumer.root, dest))
     if resolved != consumer.root and not resolved.startswith(consumer.root + os.sep):
         return "escapes repo root"
+    norm = os.path.normpath(dest)
+    # Casefolded: on a case-insensitive filesystem (macOS, Windows) a dest
+    # `identity/agent/instance.md` would overwrite the real INSTANCE.md.
+    low = norm.replace(os.sep, "/").casefold()
+    if low in {e.casefold() for e in ENTRY_FILES}:
+        return "entry file (a CLAUDE.md shadows AGENTS.md entirely)"
+    if low == INSTANCE_FILE.casefold():
+        return "instance file (identity/agent/INSTANCE.md is never shipped)"
     base = os.path.basename(dest)
     # Reserved `_`-prefix (templates, schemas, state).
     if base.startswith("_"):
@@ -1567,29 +1578,29 @@ def three_way(consumer: Consumer, cache: str, it: PlanItem,
 # Materialize (write phase, steps 11–16)
 # ---------------------------------------------------------------------------
 
-def wire_ecosystem_import(consumer: Consumer, manifest: dict, items: list,
-                          dry: bool):
-    """Step 13: the @import for a declared ecosystem fragment, or why not.
+def check_ecosystem_fragment(consumer: Consumer, manifest: dict, items: list,
+                             dry: bool):
+    """Step 13: report a declared ecosystem fragment, or why it was not carried.
 
-    Shared by materialize and the --dry-run plan, so the plan reports the same
-    decision the real run makes. Returns the validated fragment name (or None),
-    which the git-exclude guard after it needs.
+    The fragment's bytes went through the plan like any managed file. Phase 1
+    finds it at the root (context-index.py --registries), so nothing is wired:
+    the engine writes no import and never touches AGENTS.md or CLAUDE.md.
+    Shared by materialize and the --dry-run plan, so the plan reports what the
+    real run does. Returns the validated fragment name (or None), which the
+    git-exclude guard after it needs.
     """
-    # The fragment's bytes went through the plan like any managed file; what
-    # is left here is the @import wiring, and a warning
-    # for a declared fragment the plan could not carry.
     fragment = manifest.get("ecosystem_fragment")
     if fragment and not valid_fragment_name(fragment):
         # Defense-in-depth: validate_manifest already rejects this at add, and
-        # build_plan never plans it, but guard the @import too so sync/apply can
-        # never wire an out-of-name fragment (traversal / arbitrary name).
+        # build_plan never plans it, but guard here too so sync/apply can never
+        # report or exclude an out-of-name fragment (traversal / arbitrary name).
         sys.stderr.write(
             f"  REFUSE ecosystem_fragment '{fragment}': not a valid "
             f"ecosystem.<org>.yaml name\n")
         fragment = None
     if fragment:
         # By dest, not by kind: an overlay that also ships the file under
-        # source_root plans it as a tree file, and the @import is still due.
+        # source_root plans it as a tree file.
         frag_item = next((it for it in items if it.dest == fragment), None)
         if frag_item is None:
             sys.stderr.write(
@@ -1597,16 +1608,9 @@ def wire_ecosystem_import(consumer: Consumer, manifest: dict, items: list,
                 f"but it is absent from the overlay\n")
         elif frag_item.state not in ("core-refused", "leak-refused", "error") and (
                 dry or os.path.exists(os.path.join(consumer.root, fragment))):
-            # A fragment the context budget declares as a Phase 1 card is read
-            # as an index (docs/context-index.md). Importing it as well loads it
-            # whole and makes measure-context.py report a contradiction, so the
-            # declaration wins and the import is left out.
-            if card_declared(consumer.root, fragment):
-                print(f"  indexed, not imported: {fragment}")
-            else:
-                wired = consumer.ensure_ecosystem_import(fragment, dry)
-                if wired:
-                    print(f"  @import {fragment} → CLAUDE.md")
+            print(f"  registry {fragment}: indexed at session start "
+                  f"(context-index.py --registries)")
+        consumer.warn_legacy_import(fragment)
     return fragment
 
 
@@ -1869,7 +1873,7 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
             if not dry:
                 os.remove(os.path.join(consumer.root, pr["dest"]))
                 if valid_fragment_name(pr["dest"]):
-                    consumer.drop_ecosystem_import(pr["dest"])
+                    consumer.warn_legacy_import(pr["dest"])
         else:
             if interactive and prompt_yes(
                     f"  upstream removed {pr['dest']} but it is modified. Delete?"):
@@ -1877,11 +1881,11 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                 if not dry:
                     os.remove(os.path.join(consumer.root, pr["dest"]))
                     if valid_fragment_name(pr["dest"]):
-                        consumer.drop_ecosystem_import(pr["dest"])
+                        consumer.warn_legacy_import(pr["dest"])
             else:
                 sys.stderr.write(f"  KEEP   {pr['dest']}: orphan but modified\n")
 
-    fragment = wire_ecosystem_import(consumer, manifest, items, dry)
+    fragment = check_ecosystem_fragment(consumer, manifest, items, dry)
 
     # Git-exclude guard (step 14): keep overlay-materialized org content OUT of
     # git (via the LOCAL .git/info/exclude, never tracked .gitignore) so a fork
@@ -2054,7 +2058,7 @@ def cmd_add(consumer: Consumer, args) -> int:
                               name, precedence, lock, None, interactive)
     render_plan(items, prune)
     if args.dry_run:
-        wire_ecosystem_import(consumer, manifest, items, True)
+        check_ecosystem_fragment(consumer, manifest, items, True)
         print("\n[dry-run] no files written.")
         return 0
 
@@ -2110,7 +2114,7 @@ def _sync_one(consumer: Consumer, name: str, args) -> int:
                               lock, old_sha, interactive)
     render_plan(items, prune)
     if args.dry_run:
-        wire_ecosystem_import(consumer, manifest, items, True)
+        check_ecosystem_fragment(consumer, manifest, items, True)
         print("\n[dry-run] no files written.")
         return 0
     counts = materialize(consumer, cache, manifest, defaults, items, prune,
@@ -2472,7 +2476,7 @@ def cmd_remove(consumer: Consumer, args) -> int:
                 else:
                     kept += 1
                     sys.stderr.write(f"  KEEP   {f['dest']}: locally-modified\n")
-    # Ecosystem @import + fragment.
+    # Ecosystem fragment.
     if entry:
         # try to find the fragment name from cache manifest
         cache = cache_dir(consumer, name)
@@ -2480,8 +2484,9 @@ def cmd_remove(consumer: Consumer, args) -> int:
             try:
                 manifest, _ = read_manifest(cache)
                 frag = manifest.get("ecosystem_fragment")
+                if frag and valid_fragment_name(frag):
+                    consumer.warn_legacy_import(frag)
                 if frag and valid_fragment_name(frag) and not args.keep_files:
-                    consumer.drop_ecosystem_import(frag)
                     fp = os.path.join(consumer.root, frag)
                     managed = any(f.get("dest") == frag
                                   for f in entry.get("files", []))

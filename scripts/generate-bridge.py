@@ -8,7 +8,7 @@ Reads every structured source in the repo and emits a single-file dashboard:
   skills/*/SKILL.md, remotes/*.yaml (+*-setup.md presence),
   channels/*.yaml, channels/_scheduled.yaml, channels/bots/*/bot.yaml,
   projects/*.yaml, mandants/*.yaml, personas/*.yaml, calendar/entries.yaml,
-  themes/*.yaml, trackers/*.md, CLAUDE.md command table.
+  themes/*.yaml, trackers/*.md, docs/commands.md command tables.
 
 Run from repo root:  python3 scripts/generate-bridge.py
 """
@@ -343,30 +343,12 @@ def collect_config() -> dict:
 
 
 def collect_external_agents() -> list[dict]:
-    """Parse CLAUDE.md's 'Sub-agent selection' section for named external agents.
+    """Named external agents outside .claude/agents/.
 
-    These are agents not defined in .claude/agents/ (e.g. plugin agents, Claude
-    Code built-ins) that the repo treats as part of the dispatch pool.
+    The 'Sub-agent selection' section this once parsed never existed in the
+    operating manual, so there is nothing to read; the list stays empty.
     """
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    m = re.search(r"### Sub-agent selection.*?\n(.*?)(?:\n###|\n---\s*\n)", text, re.DOTALL)
-    if not m:
-        return []
-    block = m.group(1)
-    out = []
-    # Look for `**backticked**` names at start of numbered list items
-    for line in block.splitlines():
-        mm = re.match(r"^\s*\d+\.\s+\*\*`([^`]+)`\*\*\s*(?:\(([^)]*)\))?\s*[—\-–]?\s*(.*)$", line)
-        if mm:
-            name = mm.group(1).strip()
-            meta = mm.group(2) or ""
-            desc = mm.group(3).strip()
-            out.append({
-                "name": name,
-                "meta": short(meta, 80),
-                "description": short(desc, 280),
-            })
-    return out
+    return []
 
 
 def detect_orchestrator_skills(skills: list[dict]) -> list[str]:
@@ -455,17 +437,25 @@ def compute_command_skill_map(commands: list[dict], skills: list[dict]) -> list[
 
 
 def collect_commands() -> list[dict]:
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    m = re.search(r"### Commands\s*\n+\|[^\n]+\|\s*\n\|[-| ]+\|\s*\n(.*?)(?:\n\n|\n---)", text, re.DOTALL)
-    if not m:
+    """Rows of every `| Command | Short form | Backing skill | Action |` table."""
+    path = ROOT / "docs" / "commands.md"
+    if not path.is_file():
         return []
     rows = []
-    for line in m.group(1).splitlines():
-        if not line.strip().startswith("|"):
+    in_table = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s.startswith("|"):
+            in_table = False
             continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 2:
-            rows.append({"command": cells[0].strip("`").strip(), "action": cells[1]})
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if cells[:4] == ["Command", "Short form", "Backing skill", "Action"]:
+            in_table = True
+            continue
+        if not in_table or set(s) <= set("|-: "):
+            continue
+        if len(cells) >= 4:
+            rows.append({"command": cells[0].strip("`").strip(), "action": cells[3]})
     return rows
 
 
@@ -1014,7 +1004,7 @@ footer { max-width: 1400px; margin: 30px auto; padding: 20px 24px; border-top: 1
     ]);
   }
   function renderCommands(cmds) {
-    if (!cmds.length) return h("div", { class: "empty" }, "No commands parsed from CLAUDE.md.");
+    if (!cmds.length) return h("div", { class: "empty" }, "No commands parsed from docs/commands.md.");
     const tbody = h("tbody", {}, cmds.map(c => h("tr", {}, [
       h("td", { class: "cmd" }, c.command), h("td", {}, c.action),
     ])));
@@ -1088,7 +1078,7 @@ footer { max-width: 1400px; margin: 30px auto; padding: 20px 24px; border-top: 1
   const flow = $("#view-flow");
   flow.append(h("div", { class: "hero" }, [
     h("h2", {}, "Orchestration flow"),
-    h("p", {}, "How intent turns into action: a slash command routes through a skill, which spawns sub-agents by name (general-purpose fallback when no named sub-agent exists). Everything here is derived from CLAUDE.md and skill frontmatter — regenerate to refresh."),
+    h("p", {}, "How intent turns into action: a slash command routes through a skill, which spawns sub-agents by name (general-purpose fallback when no named sub-agent exists). Everything here is derived from AGENTS.md, docs/commands.md and skill frontmatter — regenerate to refresh."),
   ]));
 
   flow.append(h("h3", { class: "group-h" }, "Commands → Skills"));
@@ -1129,7 +1119,7 @@ footer { max-width: 1400px; margin: 30px auto; padding: 20px 24px; border-top: 1
   );
   const ext = DATA.external_agents || [];
   if (ext.length) agentsView.append(
-    h("h3", { class: "group-h" }, "Referenced external sub-agents · " + ext.length + " · from CLAUDE.md"),
+    h("h3", { class: "group-h" }, "Referenced external sub-agents · " + ext.length + " · from AGENTS.md"),
     h("div", { class: "grid col-wide" }, ext.map(a => h("div", { class: "card" }, [
       h("h3", {}, [a.name, a.meta ? h("span", { class: "chip" }, a.meta) : null]),
       h("p", {}, a.description),
@@ -1574,7 +1564,7 @@ footer { max-width: 1400px; margin: 30px auto; padding: 20px 24px; border-top: 1
     svg.append(svgEl("circle", { cx, cy, r: 66, class: "center-circ" }));
     svg.append(svgEl("text", { x: cx, y: cy - 4, "font-size": 15, class: "center-label" }, ["The Bridge"]));
     svg.append(svgEl("text", { x: cx, y: cy + 14, "font-size": 10.5, class: "center-label", fill: "#0a0e14", opacity: 0.7 },
-      ["CLAUDE.md · ecosystem.yaml"]));
+      ["AGENTS.md · ecosystem.yaml"]));
 
     // Hubs
     layout.forEach(({ id, angle }) => {

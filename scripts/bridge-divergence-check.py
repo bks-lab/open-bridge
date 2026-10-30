@@ -12,11 +12,12 @@ changed — i.e. the files that will conflict on the next `git merge upstream/ma
 It classifies a path as USER (safe to diverge) vs CORE (divergence = future
 conflict) purely structurally, matching docs/structure.md:
   USER: work/, bridge-config.yaml, ecosystem*.yaml, overlays.lock.yaml,
-        identity/{personas,accounts,mandants,contracts}/<id>, identity/agent/{SOUL,IDENTITY}.md,
+        identity/{personas,accounts,mandants,contracts}/<id>, identity/agent/{SOUL,IDENTITY,INSTANCE}.md,
         infra/{remotes,channels,backups}/<id>, workflow/{calendars,contexts,projects}/<id>,
         rules/user/**, protocols/standing-orders/user/**, themes/<non-builtin>
   CORE: everything else (skills/, rules/*.md, docs/, scripts/, templates/schemas,
-        CLAUDE.md/AGENTS.md/README.md, .claude/agents/, protocols/standing-orders/*.md)
+        AGENTS.md/README.md, .claude/agents/, protocols/standing-orders/*.md)
+  A root CLAUDE.md stays on the CORE side here on purpose, see ENTRY_HINT.
 
 Exit code: 0 = no CORE conflict risk, 2 = conflict-risk file(s) present.
 
@@ -36,13 +37,22 @@ USER_PATTERNS = [
     r"^overlays\.lock\.ya?ml$",
     r"^\.bridge/",
     r"^identity/(personas|accounts|mandants|contracts)/(?!_)[^/]+\.(ya?ml|md)$",
-    r"^identity/agent/(SOUL|IDENTITY)\.md$",
+    r"^identity/agent/(SOUL|IDENTITY|INSTANCE)\.md$",
     r"^infra/(remotes|channels|backups)/(?!_)[^/]+(\.ya?ml|\.md|/.*)$",
     r"^infra/(scheduled|instances)/(?!_)",
     r"^workflow/(calendars|contexts|projects)/(?!_)[^/]+\.(ya?ml|md)$",
     r"^rules/(user|org)/",
     r"^protocols/standing-orders/(user|org)/",
 ]
+
+
+# A root CLAUDE.md classifies `user` in the promote router (it must never reach
+# upstream), but this sentinel keeps it a CORE path ON PURPOSE: upstream deleted
+# its CLAUDE.md, so a fork that edited one meets a modify/delete conflict, and
+# flagging it is what makes the migration hint below fire.
+ENTRY_FILE = "CLAUDE.md"
+ENTRY_HINT = ("upstream removed CLAUDE.md: run python3 scripts/migrate-entry-file.py "
+              "(docs/updating.md)")
 
 
 def is_user(path):
@@ -87,11 +97,21 @@ def main():
     local_core = sorted(f for f in local_all if not is_user(f))
     conflict_risk = sorted(f for f in local_core if f in upstream_all)
 
+    # The fork still has a root CLAUDE.md that upstream no longer ships.
+    has_local_entry = os.path.isfile(ENTRY_FILE) or subprocess.run(
+        ["git", "cat-file", "-e", f"HEAD:{ENTRY_FILE}"], capture_output=True).returncode == 0
+    upstream_has_entry = subprocess.run(
+        ["git", "cat-file", "-e", f"{a.upstream}:{ENTRY_FILE}"], capture_output=True).returncode == 0
+    hints = []
+    if ENTRY_FILE in conflict_risk or (has_local_entry and not upstream_has_entry):
+        hints.append(ENTRY_HINT)
+
     result = {
         "behind": behind, "ahead": ahead,
         "local_core_edits": local_core,
         "conflict_risk": conflict_risk,
         "verdict": "at-risk" if conflict_risk else ("diverged" if local_core else "clean"),
+        "hints": hints,
     }
 
     if a.json:
@@ -109,6 +129,8 @@ def main():
                 print("\n⚠ diverged CORE files (no upstream change yet — promote or revert):")
                 for f in noconf:
                     print(f"  · {f}")
+        for h in hints:
+            print(f"\n→ {h}")
         if result["verdict"] == "clean":
             print("\n✓ clean — no CORE divergence; merge is safe.")
 

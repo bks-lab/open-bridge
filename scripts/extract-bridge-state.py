@@ -344,7 +344,7 @@ def branch_files(core_ref: str, user_ref: str) -> dict:
     authoritative branch for any visualized path (eliminates static overrides)
     and by structure.html as the containment tree it renders."""
     PREFIXES = (
-        "CLAUDE.md", "README.md", "AGENTS.md", "DESIGN.md",
+        "README.md", "AGENTS.md", "DESIGN.md",
         "ecosystem.yaml",
         "docs/", "rules/", "themes/", "trackers/", "skills/",
         ".claude/", "examples/", "protocols/",

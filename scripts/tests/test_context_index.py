@@ -1129,3 +1129,135 @@ def test_the_cli_works_normally_with_pyyaml(tmp_path):
     )
     assert result.returncode == 0
     assert "a real label" in result.stdout
+
+
+# ------------------------------------------------------------- registries --
+#
+# Phase 1 indexes every registry with one command, so no registry needs an
+# `@`-import any more. Discovery is one predicate, `registry_files()`, shared
+# by the CLI and the meter: a second glob somewhere else is how a fragment
+# ends up measured by one and never shown by the other.
+
+
+def _load_cli():
+    """Import scripts/context-index.py by path (hyphenated, not importable)."""
+    spec = importlib.util.spec_from_file_location("context_index_cli", CLI)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+REGISTRY_TEXT = "org: {org}\ncustomers:\n  example-client:\n    description: a label for {org}\n"
+
+
+def _registry_tree(root: Path, names) -> Path:
+    for name in names:
+        org = name.split(".")[1] if name.count(".") == 2 else "base"
+        (root / name).write_text(REGISTRY_TEXT.format(org=org), encoding="utf-8")
+    return root
+
+
+def test_registry_files_order_and_exclusions(tmp_path):
+    _registry_tree(
+        tmp_path,
+        [
+            "ecosystem.yaml",
+            "ecosystem.personal.yaml",
+            "ecosystem.acme.yaml",
+            "ecosystem.example.yaml",
+            "ecosystem.Foo.yaml",
+            "ecosystem.a.b.yaml",
+        ],
+    )
+    (tmp_path / "ecosystem.x.yaml").mkdir()
+
+    assert ci.registry_files(tmp_path) == [
+        "ecosystem.yaml",
+        "ecosystem.acme.yaml",
+        "ecosystem.personal.yaml",
+    ]
+
+
+def test_registry_files_without_base(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert ci.registry_files(empty) == []
+
+    only = tmp_path / "only"
+    only.mkdir()
+    _registry_tree(only, ["ecosystem.acme.yaml"])
+    assert ci.registry_files(only) == ["ecosystem.acme.yaml"]
+
+
+def test_registries_cli_prints_one_card_per_registry(tmp_path, capsys):
+    _registry_tree(tmp_path, ["ecosystem.yaml", "ecosystem.acme.yaml"])
+
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--registries"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "# ecosystem.yaml — index" in out
+    assert "# ecosystem.acme.yaml — index" in out
+    assert "context-index.py ecosystem.yaml --get" in out
+    assert "context-index.py ecosystem.acme.yaml --get" in out
+    # Base first, then the fragment.
+    assert out.index("# ecosystem.yaml — index") < out.index("# ecosystem.acme.yaml — index")
+
+
+def test_registries_cli_empty_tree_is_silent(tmp_path, capsys):
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--registries"])
+
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_registries_honours_a_declared_card(tmp_path, capsys):
+    _registry_tree(tmp_path, ["ecosystem.yaml", "ecosystem.acme.yaml"])
+    (tmp_path / "context-budget.user.yaml").write_text(
+        "schema_version: 1\n"
+        "items:\n"
+        "  ecosystem.acme.yaml:\n"
+        "    card:\n"
+        "      kind: index\n"
+        "      keep: [org]\n",
+        encoding="utf-8",
+    )
+
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--registries"])
+    out = capsys.readouterr().out
+    acme = out[out.index("# ecosystem.acme.yaml — index") :]
+
+    assert rc == 0
+    assert "Kept whole:" in acme
+    assert "org: acme" in acme
+    # The card each registry gets is the one `card_for` declares, byte for byte.
+    text = (tmp_path / "ecosystem.acme.yaml").read_text(encoding="utf-8")
+    expected = ci.render_card(text, ci.card_for(tmp_path, "ecosystem.acme.yaml"), "ecosystem.acme.yaml")
+    assert acme == expected
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [["ecosystem.yaml"], ["--get", "x"], ["--list"]],
+    ids=["path", "get", "list"],
+)
+def test_registries_is_exclusive(tmp_path, extra):
+    with pytest.raises(SystemExit) as exc:
+        _load_cli().main(["--repo-root", str(tmp_path), "--registries", *extra])
+    assert exc.value.code == 2
+
+
+def test_overlay_fragment_pattern_matches_registry_pattern():
+    """The overlay writes registry fragments, Phase 1 indexes them.
+
+    If the two name patterns diverge, the overlay can write a fragment that
+    Phase 1 never indexes (or Phase 1 indexes a file no overlay owns), and
+    neither side looks wrong on its own.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "overlay_for_pattern", REPO_ROOT / "scripts" / "overlay.py"
+    )
+    overlay = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(overlay)
+
+    assert overlay.FRAGMENT_NAME_RE.pattern == ci.REGISTRY_FRAGMENT.pattern

@@ -7,7 +7,7 @@ related:
   - skills/bridge-explorer/references/repo-layout.md
   - docs/repo-layout/regions.yaml
   - docs/structure.md
-  - CLAUDE.md
+  - AGENTS.md
 ---
 
 # Repo Layout — Visualisations
@@ -17,7 +17,7 @@ related:
 The cluster-wrapper layout (`identity/`/`infra/`/`workflow/` with
 default-to-folder per config type) is the load-bearing rule of this
 repo. This page indexes every visual rendering of it. They are the
-visual companions to [`CLAUDE.md` → Layout](../CLAUDE.md) and
+visual companions to [`AGENTS.md` § Layout](../AGENTS.md) and
 [`docs/structure.md`](structure.md) — same truth, different modalities.
 
 ## Primary view
@@ -90,6 +90,6 @@ the network layer only if you need it.
 
 ## CORE/USER split — Source of truth
 
-The authoritative table lives in [`CLAUDE.md` → Layout](../CLAUDE.md)
+The authoritative table lives in [`AGENTS.md` § Layout](../AGENTS.md)
 and [`docs/structure.md`](structure.md). Visualisations render that.
-On conflicts, CLAUDE.md wins; `regions.yaml` must follow.
+On conflicts, AGENTS.md and docs/structure.md win; `regions.yaml` must follow.

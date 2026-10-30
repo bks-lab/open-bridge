@@ -25,7 +25,7 @@ Full mechanics: [`docs/org-overlays.md`](../../docs/org-overlays.md).
 overlay-example/
 ├── overlay.manifest.yaml          ← REQUIRED — root declaration (validated)
 ├── README.md                      ← REQUIRED — this file (outside tree/)
-├── ecosystem.example-org.yaml     ← OPTIONAL fragment (@import-wired, never block-merged)
+├── ecosystem.example-org.yaml     ← OPTIONAL fragment (indexed by Phase 1, never block-merged)
 └── tree/                          ← mirrors the Bridge layout; every file = scope:org
     ├── .claude/agents/
     ├── identity/{accounts,mandants}/
@@ -53,8 +53,9 @@ A file at `tree/<path>` materializes to `<path>` in the consumer (strip the
 | [`tree/skills/example-org-coordinator/SKILL.md`](tree/skills/example-org-coordinator/SKILL.md) | `skills/example-org-coordinator/SKILL.md` | **behavioural** — `kind: skill`, `metadata.scope: org` |
 
 The [`ecosystem.example-org.yaml`](ecosystem.example-org.yaml) fragment is copied
-to the consumer root and registered as an `@import` — it adds `example-org` repos
-beside the consumer's own registry, never overwriting it.
+to the consumer root, where Phase 1 indexes it (`context-index.py --registries`).
+It adds `example-org` repos beside the consumer's own registry, never
+overwriting it, and no entry file is written.
 
 ## Hard rules the engine enforces
 

@@ -7,7 +7,7 @@
 #
 # IT IS AWARENESS + NAVIGATION ONLY. Knowing an instance exists is NOT a
 # licence to reach into it. The instance-isolation hard rule still governs
-# (CLAUDE.md § Multiple Instances): from THIS session you may read/check an
+# (docs/multi-instance.md): from THIS session you may read/check an
 # instance read-only, but NEVER modify / push / pull / cross-log it — operate
 # an instance by opening its OWN session at its path.
 #
@@ -144,7 +144,7 @@ properties:
 
 # Notes (advisory):
 # - AWARENESS ≠ ACCESS. This registry indexes instances; it never authorises
-#   reaching into one. See CLAUDE.md § Multiple Instances + rules/multi-instance-isolation.md.
+#   reaching into one. See docs/multi-instance.md + rules/multi-instance-isolation.md.
 # - Upstreams (open-bridge / your org overlay) are promote targets — their
 #   authoritative config is bridge-config.yaml.upstreams. Register them here only
 #   as a location map with promote_config_ref pointing back; do NOT duplicate

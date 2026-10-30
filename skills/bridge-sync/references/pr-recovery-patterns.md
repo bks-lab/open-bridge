@@ -186,4 +186,4 @@ and surfaced here for ship-via-bridge-sync to all variants.
 - `feedback_default_branch_via_gh_api` (memory) — always `gh api repos/X --jq
   .default_branch` before PR to avoid base-mismatch
 - `feedback_bridge_sync_diverged_files` (memory) — `format-patch -1 | git am
-  --3way` for CLAUDE.md/README.md that diverged at the file level
+  --3way` for README.md (and, historically, CLAUDE.md) that diverged at the file level

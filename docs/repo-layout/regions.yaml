@@ -30,21 +30,22 @@ regions:
       - "customers.<name>.repos — code repos per customer"
       - "workspaces.<name> — bundled repo view"
     related:
-      - "CLAUDE.md"
+      - "AGENTS.md"
       - "workflow/projects/*.yaml"
     put_here: "New repo, new workspace, new customer with code repos."
 
-  - id: claude_md_core
-    path: "CLAUDE.md"
+  - id: agents_md_core
+    path: "AGENTS.md"
     owner: core
     display_name: "Operating Manual"
-    oneliner: "The operating manual Claude reads at every session"
+    oneliner: "The operating manual every agent reads at session start"
     what: |
-      The master instruction for every Bridge session. Defines session-start
-      phases, CORE/USER branch model, theme resolution, cluster-wrappers +
-      default-to-folder rule, agent/persona/mandant concepts, work system,
-      trackers, applications, calendar, variable interpolation, and the open-bridge
-      roadmap. Accompanied by README.md (narrative view for humans).
+      The operating manual for every Bridge session, read by Claude Code,
+      Codex, Copilot, Gemini and any other agent. A lean router: session-start
+      detection, the CORE/USER branch model, cluster-wrappers and the
+      default-to-folder rule, task management, and pointers to the rules/ and
+      docs/ files that carry the mechanics. Accompanied by README.md (narrative
+      view for humans) and GEMINI.md (thin pointer).
     examples:
       - "Session start flow mermaid + Phase-0 detection"
       - "Layout — cluster-wrappers & default-to-folder rule"
@@ -71,7 +72,7 @@ regions:
       - "docs/repo-layout/c-prime.html (visualization)"
       - "docs/extension-model.md"
     related:
-      - "CLAUDE.md"
+      - "AGENTS.md"
       - "rules/"
     put_here: "New conceptual doc, new guide, new visualization variant."
 
@@ -91,7 +92,7 @@ regions:
       - "rules/operations.md — allowed/blocked paths"
       - "rules/deploy-reconciliation.md"
     related:
-      - "CLAUDE.md"
+      - "AGENTS.md"
       - "protocols/"
     put_here: "New always-on rule that ALL Bridge instances need."
 
@@ -270,7 +271,7 @@ regions:
     examples: []
     related:
       - "identity/personas/_template.yaml"
-      - "CLAUDE.md (default-to-folder rule)"
+      - "AGENTS.md (default-to-folder rule)"
     put_here: "Schema changes — new required fields, new validation hints."
 
   - id: identity_accounts_template_core
@@ -299,7 +300,7 @@ regions:
     examples: []
     related:
       - "identity/mandants/<id>.yaml"
-      - "CLAUDE.md (default-to-folder rule + promote)"
+      - "AGENTS.md (default-to-folder rule + promote)"
     put_here: "Mandant schema extension."
 
   - id: identity_contracts_template_core
@@ -714,7 +715,7 @@ regions:
       - "accounts/ (folder)"
       - "mandants/<id>.yaml (flat)"
     related:
-      - "CLAUDE.md (layout — cluster-wrappers)"
+      - "AGENTS.md (layout — cluster-wrappers)"
     put_here: "New identity type (would land flat or as a folder per the default-to-folder rule)."
 
   - id: cluster_infra
@@ -730,7 +731,7 @@ regions:
       - "channels/ (folder, test 2)"
       - "backups/ (folder, tests 1+2)"
     related:
-      - "CLAUDE.md (layout — cluster-wrappers)"
+      - "AGENTS.md (layout — cluster-wrappers)"
     put_here: "New infra type (e.g. monitors, secrets vaults)."
 
   - id: cluster_workflow
@@ -746,5 +747,5 @@ regions:
       - "contexts/<id>.yaml (flat)"
       - "projects/<slug>.yaml (flat)"
     related:
-      - "CLAUDE.md (layout — cluster-wrappers)"
+      - "AGENTS.md (layout — cluster-wrappers)"
     put_here: "New workflow type (would start flat, promote if applicable)."
