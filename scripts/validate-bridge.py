@@ -283,7 +283,9 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
     if tmp is not None:
         # name the Markdown file in every message, not its temporary front-matter copy
         for copy, inst in zip(files, instances):
-            result.stdout = result.stdout.replace(copy, str(inst.relative_to(REPO_ROOT)))
+            name = str(inst.relative_to(REPO_ROOT))
+            result.stdout = result.stdout.replace(copy, name)
+            result.stderr = result.stderr.replace(copy, name)
         tmp.cleanup()
 
     if result.returncode == 0:

@@ -599,8 +599,8 @@ tenant switching, rotation:
 `DESIGN.md` is the default design and the index to every other one. Further
 designs live one per brand in `identity/designs/<id>.md`, same format, own
 `scope:`, so an org brand travels with its overlay. Generators ask
-`python3 scripts/designs.py resolve` which one applies (context, persona, theme,
-then `DESIGN.md`). **Never hand-pick a brand colour**; if a token is missing,
+`python3 scripts/designs.py resolve` which one applies (`--design`, a target
+repo's own DESIGN.md, context, persona, theme, then `DESIGN.md`). **Never hand-pick a brand colour**; if a token is missing,
 add it to the design that owns it.
 ---
 

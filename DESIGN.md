@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: open-bridge
-description: Editorial minimalism meets enterprise gravitas — high-contrast neutrals with a single violet-indigo gradient accent. A fork adds its own brand under `identity/designs/` and leaves this file as it ships.
+description: Editorial minimalism meets enterprise gravitas, high-contrast neutrals with a single violet-indigo gradient accent. A fork adds its own brand under `identity/designs/` and leaves this file as it ships.
 
 colors:
   # Neutrals — High-contrast editorial palette
@@ -319,7 +319,7 @@ What else shapes a visual, and where it lives:
 communicates strategic clarity through restraint: generous whitespace, hairline
 borders, and a single gradient accent that signals transformation without
 shouting. The feel is that of a premium consultancy whitepaper crossed with a
-modern software product — composed, confident, deliberately unflashy. A fork
+modern software product: composed, confident, deliberately unflashy. A fork
 with a brand of its own describes it in `identity/designs/<id>.md` (see
 Designs in this Bridge above) and leaves this file as it ships.
 

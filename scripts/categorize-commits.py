@@ -771,6 +771,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # contract.
     "scripts/designs.py",
     "scripts/tests/test_designs.py",
+    "scripts/tests/test_validate_bridge_designs.py",
 })
 
 
