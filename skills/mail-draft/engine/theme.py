@@ -198,11 +198,19 @@ def _resolver():
 
 
 def design_file(root: Path, persona: str | None = None) -> Path | None:
-    """The design a mail wears: resolved for `persona`, else the root DESIGN.md."""
+    """The design a mail wears: resolved for `persona`, else the root DESIGN.md.
+
+    The persona counts only when its file exists. A profile may name a persona
+    the Bridge has no file for (its footer carries the name); that drafted fine
+    before designs existed, and a design lookup is no reason to fail it now.
+    """
     designs = _resolver()
     if designs is None:
         path = root / "DESIGN.md"
         return path if path.is_file() else None
+    if persona and not (designs.ID_RE.match(persona)
+                        and (root / "identity" / "personas" / f"{persona}.yaml").is_file()):
+        persona = None
     try:
         return designs.resolve(root, persona=persona or None).path
     except designs.DesignError as err:

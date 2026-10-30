@@ -180,6 +180,17 @@ class Designs(BridgeCase):
         d = self.build(to=["acme/ben"], profile="everyday")
         self.assertEqual(d.theme.tokens.get("primary"), "#0f2a4a")
 
+    def test_a_persona_without_a_file_never_fails_the_draft(self):
+        """persona_ref beside a footer drafted fine before designs existed; it still must."""
+        for persona in ("ghost", "Not_An_Id"):
+            prof = self.root / "workflow" / "mail-profiles" / "everyday.yaml"
+            text = prof.read_text(encoding="utf-8")
+            prof.write_text(text.replace("footer: contact\n", f"footer: contact\npersona_ref: {persona}\n"),
+                            encoding="utf-8")
+            d = self.build(to=["acme/ben"], profile="everyday")
+            self.assertEqual(d.theme.tokens.get("primary"), "#0f2a4a")
+            prof.write_text(text, encoding="utf-8")
+
     def test_an_unknown_design_ref_is_an_error_not_the_root(self):
         from engine.config import ConfigError
         persona = self.root / "identity" / "personas" / "alex.yaml"
