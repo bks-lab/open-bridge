@@ -940,3 +940,13 @@ def test_a_shipped_theme_may_not_name_a_design(tmp_path):
     })
     findings = edges.check(tmp_path)
     assert any("themes/professional.yaml :: branding.design" in f and "core" in f for f in findings), findings
+
+
+def test_design_ref_default_is_an_opt_out_not_an_edge(tmp_path):
+    """`default` names the root DESIGN.md: never dead, and no scope to be wide enough."""
+    _tree(tmp_path, {
+        "workflow/contexts/side.yaml": "scope: org\nid: side\ndesign_ref: default\n",
+        "identity/personas/me.yaml": "id: me\ndesign_ref: default\n",
+        "DESIGN.md": "---\nname: root\n---\n",
+    })
+    assert edges.check(tmp_path) == []

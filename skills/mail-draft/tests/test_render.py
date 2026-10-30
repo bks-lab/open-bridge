@@ -191,6 +191,16 @@ class Designs(BridgeCase):
             self.assertEqual(d.theme.tokens.get("primary"), "#0f2a4a")
             prof.write_text(text, encoding="utf-8")
 
+    def test_a_persona_opts_out_of_the_theme_design(self):
+        """The theme dresses the instance in a brand; `design_ref: default` keeps one persona on the root."""
+        self.write("identity/designs/second.md", self.BRAND)
+        self.write("bridge-config.yaml", "theme: house\n")
+        self.write("themes/house.yaml", "meta: {name: house}\nbranding: {design: second}\n")
+        self.assertEqual(self.build(to=["acme/ben"], profile="everyday").theme.tokens.get("primary"), "#5a1e3c")
+        persona = self.root / "identity" / "personas" / "alex.yaml"
+        persona.write_text(persona.read_text(encoding="utf-8") + "design_ref: default\n", encoding="utf-8")
+        self.assertEqual(self.build(to=["acme/ben"], profile="everyday").theme.tokens.get("primary"), "#0f2a4a")
+
     def test_an_unknown_design_ref_is_an_error_not_the_root(self):
         from engine.config import ConfigError
         persona = self.root / "identity" / "personas" / "alex.yaml"

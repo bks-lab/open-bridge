@@ -76,3 +76,12 @@ def test_stderr_names_the_markdown_file_too(tmp_path, monkeypatch, capsys):
     vb.validate_surface(SURFACE, validator=validator)
     out = capsys.readouterr()
     assert "broken.yaml" not in out.out + out.err, out.out + out.err
+
+
+def test_a_design_named_default_is_refused(tmp_path, monkeypatch, capsys):
+    """`design_ref: default` opts out to the root DESIGN.md, so no design may take that name."""
+    root = _tree(tmp_path, {"default.md": GOOD})
+    monkeypatch.setattr(vb, "REPO_ROOT", root)
+    passed, failed = vb.validate_surface(SURFACE, validator=shutil.which("check-jsonschema") or "true")
+    out = capsys.readouterr()
+    assert failed == 1 and "identity/designs/default.md" in out.out + out.err and "reserved" in out.out + out.err

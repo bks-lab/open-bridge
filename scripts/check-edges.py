@@ -52,6 +52,8 @@ key counts, as scripts/designs.py reads it, and a value that is no id
 travel at least as far as whatever names it: an org context naming a user
 design reaches every member Bridge without the design, and every generator
 there refuses to resolve.
+`design_ref: default` is no edge: it opts a context or persona out to the root
+DESIGN.md, and `default` itself is never a design id.
 
 TEMPLATES ARE NOT EDGES. `_template.yaml` describes a file nobody has written
 and `*.example.yaml` describes the tree a future instance will have. Their
@@ -116,6 +118,8 @@ DESIGN_KEY = "design_ref"
 DESIGN_DIR = "identity/designs/"
 DESIGN_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 DESIGN_REFERRERS = ("workflow/contexts/*.yaml", "identity/personas/*.yaml")
+# `design_ref: default` opts a context or persona out to the root DESIGN.md: no edge, no tier to check
+DESIGN_OPT_OUT = "default"
 THEME_GLOB = "themes/*.yaml"
 # Where a file of each tier travels. A design must reach everywhere its referrer does.
 REACH = {"core": {"core", "org", "personal", "user"}, "org": {"org", "user"},
@@ -336,6 +340,8 @@ def iter_design_refs(repo_root) -> list[tuple[str, str, str]]:
                 key, value = "branding.design", branding.get("design") if isinstance(branding, dict) else None
             else:
                 key, value = DESIGN_KEY, doc.get(DESIGN_KEY)
+                if value is not None and str(value).strip() == DESIGN_OPT_OUT:
+                    continue
             if value is not None and not isinstance(value, (dict, list)):
                 found.append((rel, key, _design_target(value)))
     return found
@@ -461,7 +467,8 @@ def classify(repo_root, target: str) -> tuple[str, str | None]:
     # and no neighbour checkout could. A value that is no id never resolves.
     if target.startswith(DESIGN_DIR) and target.endswith(".md"):
         design_id = target[len(DESIGN_DIR):-3]
-        ok = DESIGN_ID.match(design_id) and (root / target).is_file()
+        ok = (DESIGN_ID.match(design_id) and design_id != DESIGN_OPT_OUT
+              and (root / target).is_file())
         return ("ok", None) if ok else ("dead", None)
     if (root / target).exists():
         return "ok", None

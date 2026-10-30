@@ -32,6 +32,12 @@ counts a Bridge's root, this one or another checkout of it (a worktree, a
 second instance): a page written inside a Bridge would find that root
 DESIGN.md, and no context or theme could ever brand it.
 
+OPTING OUT. `design_ref: default` on a context or a persona stops the walk at
+the root DESIGN.md: an instance whose theme wears an organisation's brand can
+still send a persona's unrelated work out in the default design. `default` is
+reserved for this and can never be a design id. `design_ref: null` is the same
+as no key, so a YAML default never opts anything out by accident.
+
 AN UNKNOWN ID IS AN ERROR naming the id and the file that points at it. A
 quiet fall back to the root would render a page in the wrong brand that looks
 entirely plausible, which is the failure nobody reports.
@@ -57,6 +63,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 FAMILY = Path("identity") / "designs"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+# `design_ref: default` on a context or persona opts out of everything after it: the root DESIGN.md
+OPT_OUT = "default"
 PROJECT_MARKERS = (".git", "bridge-config.yaml")
 USE_FOR = ("mail", "pdf", "html", "slides", "dashboard", "certificate", "video", "site", "cockpit")
 
@@ -78,6 +86,7 @@ class Resolved(NamedTuple):
     id: str | None        # the design's id when it lives in identity/designs/, else None
     path: Path | None     # the file to read; None only when even the root DESIGN.md is missing
     step: int             # which step answered, 1..6 (STEPS)
+    via: str = ""         # the reason when it differs from STEPS[step]: an opt-out names its source
 
 
 # --- reading ---------------------------------------------------------------------------------
@@ -122,6 +131,9 @@ def _by_id(root: Path, value, origin: str) -> Resolved | None:
     if value is None:
         return None
     text = str(value).strip()
+    if text == OPT_OUT:
+        raise DesignError(f"{origin}: '{OPT_OUT}' is reserved (design_ref: {OPT_OUT} opts out to the "
+                          f"root DESIGN.md) and is no design id")
     if not ID_RE.match(text):
         raise DesignError(f"{origin}: design '{text}' is not a design id "
                           f"(a file name under {FAMILY.as_posix()}/ without .md)")
@@ -191,7 +203,11 @@ def _ref_in(root: Path, folder: str, name: str, kind: str) -> Resolved | None:
     path = Path(root) / folder / f"{name}.yaml"
     if not path.is_file():
         raise DesignError(f"{kind} '{name}': {_rel(root, path)} does not exist")
-    return _by_id(root, _yaml(path).get("design_ref"), _rel(root, path))
+    value = _yaml(path).get("design_ref")
+    if value is not None and str(value).strip() == OPT_OUT:
+        default = Path(root) / "DESIGN.md"
+        return Resolved(None, default if default.is_file() else None, 6, f"{kind} design_ref: {OPT_OUT}")
+    return _by_id(root, value, _rel(root, path))
 
 
 def active_theme(root: Path) -> Path | None:
@@ -240,11 +256,11 @@ def resolve(root: Path = ROOT, *, design: str | None = None, context: str | None
     if context:
         found = _ref_in(root, "workflow/contexts", context, "context")
         if found:
-            return found._replace(step=3)
+            return found if found.via else found._replace(step=3)
     if persona:
         found = _ref_in(root, "identity/personas", persona, "persona")
         if found:
-            return found._replace(step=4)
+            return found if found.via else found._replace(step=4)
     value, theme = theme_design(root, active_theme(root))
     if value is not None and theme is not None:
         found = _by_id(root, value, f"{_rel(root, theme)} branding.design")
@@ -294,9 +310,11 @@ def catalogue(root: Path = ROOT) -> list[dict]:
     default = root / "DESIGN.md"
     if default.is_file():
         fm = front_matter(default)
+        # who opts out lands here: `design_ref: default` names the root DESIGN.md
         rows.append({"id": None, "path": "DESIGN.md", "name": str(fm.get("name") or ""),
                      "scope": "default", "use_for": [], "source": _source(fm.get("source")),
-                     "referenced_by": []})
+                     "referenced_by": [f"{who} (design_ref: {OPT_OUT})" for ref, who, _ in refs
+                                       if ref == OPT_OUT and not who.startswith("theme ")]})
     for path in sorted((root / FAMILY).glob("*.md")):
         if path.name.startswith("_"):
             continue
@@ -316,10 +334,15 @@ def catalogue(root: Path = ROOT) -> list[dict]:
 
 
 def dangling(root: Path = ROOT) -> list[str]:
-    """References to an id with no file, as `file: id` lines."""
-    return [f"{where} names '{ref}', which is no design"
-            for ref, _, where in references(root)
-            if not ID_RE.match(ref) or not design_path(root, ref).is_file()]
+    """References to an id with no file, and a design file using the reserved name."""
+    out = [f"{where} names '{ref}', which is no design"
+           for ref, who, where in references(root)
+           if not (ref == OPT_OUT and not who.startswith("theme "))
+           and (ref == OPT_OUT or not ID_RE.match(ref) or not design_path(root, ref).is_file())]
+    reserved = design_path(root, OPT_OUT)
+    if reserved.is_file():
+        out.append(f"{_rel(root, reserved)}: '{OPT_OUT}' is reserved for opting out; rename the design")
+    return out
 
 
 # --- check: a render against the design it was made from ---------------------------------------
@@ -425,12 +448,12 @@ def main(argv=None) -> int:
     if args.cmd == "resolve":
         if args.json:
             print(json.dumps({"id": res.id, "path": str(res.path) if res.path else None,
-                              "step": res.step, "via": STEPS[res.step]}))
+                              "step": res.step, "via": res.via or STEPS[res.step]}))
         elif res.path is None:
             print(f"designs: no design applies and there is no DESIGN.md in {root}", file=sys.stderr)
             return 2
         else:
-            print(f"{_rel(root, res.path)}  (step {res.step}, {STEPS[res.step]})")
+            print(f"{_rel(root, res.path)}  (step {res.step}, {res.via or STEPS[res.step]})")
         return 0
 
     render = Path(args.render)
