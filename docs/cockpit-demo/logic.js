@@ -3813,6 +3813,116 @@ export function roomShown(s) {
   return gone ? { kind: 'chat' } : room
 }
 
+/** The task a tab works on: its own (a task tab), else the newest live session in it linked to one (by hand, by its
+ *  task tab, or recognised from what it did); null for none and for the control session */
+export function taskOfTab(s, tab) {
+  if (tab.is_control) return null
+  if (tab.slug) return tab.slug
+  const linked = (s.sessions?.sessions ?? []).filter(x => x.task && x.tab?.ref === tab.ref)
+    .sort((a, b) => (b.started_ms ?? 0) - (a.started_ms ?? 0))[0]
+  return linked?.task ?? null
+}
+
+// ---------------------------------------------------------------- the fields of the Chat (views/fields.js)
+
+/** The layouts and how many fields each holds. A field holds a tab's ref, Zum Thema or nothing; the fields live on
+ *  this page only, the terminal stays as it is, so tabs of any workspace stand side by side */
+export const FIELD_COUNT = { 1: 1, '2h': 2, '2v': 2, 3: 3, m2: 3, 4: 4 }
+const LAYOUT_OF = { 1: '1', 2: '2h', 3: '3', 4: '4' }
+const SPLIT_DEFAULT = 58
+const isRef = p => typeof p === 'string' && p !== ''
+export const isTopic = p => p?.topic === true
+const newTopic = () => ({ topic: true, follow: true, tab: null })
+
+/** The value ui.fields as it may be used, whatever was kept in this browser. `ref`, the room open now, takes the
+ *  active field unless a field holds it: every way into a tab goes through the room */
+export function fieldsOf(raw, ref = null) {
+  const layout = Object.hasOwn(FIELD_COUNT, raw?.layout) ? raw.layout : '1'
+  const n = FIELD_COUNT[layout]
+  const panes = (Array.isArray(raw?.panes) ? raw.panes : []).slice(0, n)
+    .map(p => (isRef(p) ? p : isTopic(p) ? { topic: true, follow: p.follow !== false, tab: isRef(p.tab) ? p.tab : null } : null))
+  while (panes.length < n) panes.push(null)
+  const at = Number.isInteger(raw?.active) ? raw.active : 0
+  const split = Number.isFinite(raw?.split) ? Math.min(75, Math.max(25, raw.split)) : SPLIT_DEFAULT
+  const f = { layout, panes, active: at >= 0 && at < n ? at : 0, split }
+  return ref && !panes.includes(ref) ? fieldsPick(f, ref) : f
+}
+
+const shrunk = (f, panes) => {
+  const n = Math.max(1, panes.length)
+  return { ...f, layout: LAYOUT_OF[n], panes: panes.length ? panes : [null], active: Math.min(f.active, n - 1) }
+}
+
+/** A tab goes to the active field, or the first that is no Zum Thema; one that stands in a field is only found */
+export function fieldsPick(f, ref) {
+  const panes = f.panes.slice()
+  const at = panes.indexOf(ref)
+  if (at >= 0) return { ...f, active: at }
+  const to = isTopic(panes[f.active]) ? panes.findIndex(p => !isTopic(p)) : f.active
+  if (to < 0) return shrunk({ ...f, active: 0 }, [ref, ...panes])
+  panes[to] = ref
+  return { ...f, panes, active: to }
+}
+
+/** Daneben: a free field, else one more field, else the one after the active */
+export function fieldsBeside(f, ref) {
+  if (f.panes.includes(ref)) return f
+  const panes = f.panes.slice()
+  const free = panes.indexOf(null)
+  if (free >= 0) { panes[free] = ref; return { ...f, panes, active: free } }
+  if (panes.length < 4) { panes.push(ref); return { ...shrunk(f, panes), active: panes.length - 1 } }
+  const to = (f.active + 1) % 4
+  panes[to] = ref
+  return { ...f, panes, active: to }
+}
+
+/** Another layout keeps what is open as far as it fits; `fill` (refs) fills the fields it adds */
+export function fieldsLayout(f, layout, fill = []) {
+  const n = FIELD_COUNT[layout] ?? 1
+  const panes = f.panes.filter(Boolean)
+  for (const ref of fill) if (panes.length < n && !panes.includes(ref)) panes.push(ref)
+  while (panes.length < n) panes.push(null)
+  return { ...f, layout, panes: panes.slice(0, n), active: Math.min(f.active, n - 1) }
+}
+
+export function fieldsSwap(f, a, b) {
+  const panes = f.panes.slice()
+  ;[panes[a], panes[b]] = [panes[b], panes[a]]
+  return { ...f, panes, active: f.active === a ? b : f.active === b ? a : f.active }
+}
+
+/** A field closes, the tab in it runs on; the empty ones go with it and the layout follows */
+export function fieldsClose(f, i) {
+  return shrunk(f, f.panes.filter((p, k) => k !== i && p))
+}
+
+/** Zum Thema beside the chat, once */
+export function fieldsTopic(f) {
+  if (f.panes.some(isTopic)) return f
+  const panes = f.panes.slice()
+  const free = panes.indexOf(null)
+  if (free >= 0) panes[free] = newTopic()
+  else if (panes.length < 4) panes.push(newTopic())
+  else panes[3] = newTopic()
+  return { ...shrunk(f, panes), active: f.active }
+}
+
+/** Holds Zum Thema at `ref`, or lets it follow the open chat again */
+export function fieldsHold(f, i, ref) {
+  const panes = f.panes.slice()
+  panes[i] = panes[i].follow ? { topic: true, follow: false, tab: ref } : newTopic()
+  return { ...f, panes }
+}
+
+/** A tab dropped on a field: one that stands in a field changes places, any other opens there */
+export function fieldsDrop(f, i, ref) {
+  const had = f.panes.indexOf(ref)
+  if (had >= 0) return had === i ? f : fieldsSwap(f, had, i)
+  const panes = f.panes.slice()
+  panes[i] = ref
+  return { ...f, panes, active: i }
+}
+
 /** Where the Chat opens once when nothing is kept or picked (round 6d C3): a question that is open or was
  *  answered within the hour, else the first tab that wants you; null for nothing, or when a room or a question
  *  is picked already. { room, conv } */

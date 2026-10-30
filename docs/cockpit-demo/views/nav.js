@@ -3,7 +3,7 @@
 // fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FILES_PAGE, FLOW_PAGE, checkInFlow, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, workPageOf, workViewIn, workViewsIn } from '../logic.js'
+import { FILES_PAGE, FLOW_PAGE, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -85,9 +85,33 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
   const room = (r, more = {}) => {
     const kept = roomToKeep(r)
     if (kept) save('bridge-cockpit.chatRoom', kept)
-    apply({ room: r, ...more, chatArea: 'work' })
+    const f = r?.kind === 'tab' ? { fields: keepFields(fieldsPick(fields(), r.id)) } : {}
+    apply({ room: r, ...more, ...f, chatArea: 'work' })
+  }
+  // the fields of the Chat, with the room open now in one of them; this browser keeps them
+  const fields = () => { const r = get().ui?.room; return fieldsOf(get().ui?.fields, r?.kind === 'tab' ? r.id : null) }
+  const keepFields = f => { save('bridge-cockpit.chatFields', JSON.stringify(f)); return f }
+  // the active field's tab is the room, so the list, the bar and Zum Thema follow the click
+  const putFields = f => {
+    const ref = f.panes[f.active]
+    apply({ fields: keepFields(f), ...(typeof ref === 'string' ? { room: { kind: 'tab', id: ref } } : {}) })
   }
   return {
+    fieldFocus: i => { const f = fields(); if (f.active !== i) putFields({ ...f, active: i }) },
+    fieldLayout: id => {
+      const f = fields()
+      const tabs = get().tabs?.tabs ?? []
+      const open = tabs.find(x => x.ref === get().ui?.room?.id)
+      putFields(fieldsLayout(f, id, [...tabs.filter(x => x.workspace === open?.workspace), ...tabs.filter(wantsYou)].map(x => x.ref)))
+    },
+    fieldSwap: (a, b) => { if (a !== b) putFields(fieldsSwap(fields(), a, b)) },
+    fieldClose: i => putFields(fieldsClose(fields(), i)),
+    fieldTopic: () => putFields(fieldsTopic(fields())),
+    fieldHold: (i, ref) => putFields(fieldsHold(fields(), i, ref)),
+    fieldDrop: (i, ref) => putFields(fieldsDrop(fields(), i, ref)),
+    fieldBeside: ref => putFields(fieldsBeside(fields(), ref)),
+    fieldSplit: at => putFields({ ...fields(), split: Math.min(75, Math.max(25, at)) }),
+    fieldsFull: () => apply({ fieldsFull: !get().ui?.fieldsFull }),
     // the area the Chat as cmux shows: its work or the A2A agents
     setChatArea: area => apply({ chatArea: area === 'a2a' && a2aArea(get()).chatArea ? 'a2a' : 'work' }),
     // the pick of an agent (a card, a row on the start page) opens its latest conversation; as cmux on the

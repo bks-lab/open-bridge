@@ -59,7 +59,6 @@
 }
 /* a tab opens as a screen comes on: once, when it mounts, never on a poll */
 @keyframes term-on { from { opacity: 0; filter: brightness(1.7); } }
-.term .reply-pane { background: var(--surface); }
 .term .tabview-foot { background: var(--surface); }
 
 /* a line of the screen (logic.js screenLines, termParts) */
@@ -133,3 +132,78 @@
 @media (prefers-reduced-motion: reduce) {
   .tabview-live.is-live::before, .term-cursor.is-on, .term .tabview-body { animation: none; }
 }
+
+/* the fields of the Chat (views/fields.js): the page is the frame, each field a terminal of its own */
+.fields-wrap { min-width: 0; height: calc(100dvh - 180px); display: flex; flex-direction: column; gap: 8px; }
+.fields { position: relative; flex: 1; min-height: 0; display: grid; gap: 8px; }
+.fields[data-layout="1"] { grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+.fields[data-layout="2h"] { grid-template: minmax(0, 1fr) / minmax(0, calc(var(--split) - 4px)) minmax(0, 1fr); }
+.fields[data-layout="2v"] { grid-template: repeat(2, minmax(0, 1fr)) / minmax(0, 1fr); }
+.fields[data-layout="3"] { grid-template: minmax(0, 1fr) / repeat(3, minmax(0, 1fr)); }
+.fields[data-layout="m2"] { grid-template: repeat(2, minmax(0, 1fr)) / minmax(0, calc(var(--split) - 4px)) minmax(0, 1fr); }
+.fields[data-layout="m2"] > .field:first-child { grid-row: 1 / span 2; }
+.fields[data-layout="4"] { grid-template: repeat(2, minmax(0, 1fr)) / repeat(2, minmax(0, 1fr)); }
+.field { container-type: inline-size; min-width: 0; min-height: 0; display: flex; border-radius: var(--radius-lg); }
+.field.is-active > .rooms-main { border-color: var(--accent); }
+.field.is-over { outline: 2px dashed var(--accent); outline-offset: -3px; }
+.field > .rooms-main { flex: 1; min-width: 0; height: auto; display: flex; flex-direction: column; }
+.field > .rooms-main > .tabview-body { flex: 1; min-height: 0; }
+.field .tabview-head { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+.field .tabview-title { flex: 0 1 auto; min-width: 40px; }
+.field .room-task, .field .room-from-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.field .room-head-acts { flex: none; margin-left: auto; }
+@container (max-width: 760px) { .field .room-task, .field .room-from-link, .field .tabview-live, .field-wsname { display: none; } }
+.field-grip { flex: none; color: var(--on-surface-faint); cursor: grab; letter-spacing: -2px; }
+.field-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; text-align: center; }
+
+.field-bar { flex: none; display: flex; align-items: center; gap: 2px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); }
+.field-ws { flex: none; padding: 3px 10px 3px 6px; margin-right: 4px; border-right: 1px solid var(--border); font-weight: 600; color: var(--ink); }
+.field-tabs { flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; }
+.field-tab { flex: 0 1 auto; min-width: 60px; max-width: 230px; display: flex; align-items: center; gap: 7px; padding: 5px 9px; border: 0; border-radius: var(--radius-md); background: none; color: var(--on-surface-muted); font: inherit; cursor: pointer; }
+.field-tab > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field-tab:hover { background: var(--surface-muted); }
+.field-tab.is-on { background: var(--term-ground); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.field-layouts { flex: none; display: flex; align-items: center; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--border); }
+.field-lay { width: 30px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--radius-md); background: none; color: var(--on-surface-muted); font: inherit; cursor: pointer; }
+.field-lay:hover:not(:disabled) { background: var(--surface-muted); }
+.field-lay:disabled { opacity: 0.4; cursor: default; }
+.field-lay.is-on { background: var(--accent-subtle); color: var(--accent); }
+.lay-mark { display: grid; gap: 1px; width: 18px; height: 14px; }
+.lay-mark b { border: 1px solid currentColor; border-radius: 1px; }
+.lay-mark .is-big { grid-row: 1 / span 2; }
+.field-gutter { position: absolute; top: 0; bottom: 0; width: 18px; margin-left: -9px; z-index: 5; display: grid; place-items: center; pointer-events: none; }
+.field-gutter.can-drag { pointer-events: auto; cursor: col-resize; }
+.field-gutter.is-row { left: 0; right: 0; bottom: auto; width: auto; height: 18px; margin: -9px 0 0; }
+.field-swap { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface-raised); color: var(--on-surface-muted); cursor: pointer; pointer-events: auto; }
+.field-swap:hover { border-color: var(--accent); color: var(--accent); }
+.fields-walk:empty { display: none; }
+.fields-walk .next-up { border-radius: var(--radius-md); }
+.roomspage.is-full { position: fixed; inset: 0; z-index: 60; border-radius: 0; }
+.roomspage.is-full .rooms-grid { grid-template-columns: minmax(0, 1fr); height: 100%; }
+.roomspage.is-full .rooms-left, .roomspage.is-full .banner { display: none; }
+.roomspage.is-full .fields-wrap { height: 100%; }
+
+/* Zum Thema: the reading and the file read in the page's own type */
+.field-topic-title { color: var(--ink); }
+.field-of { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.field-follow { flex: none; margin-left: auto; padding: 2px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: none; color: var(--on-surface-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.field-follow.is-on { border-color: var(--accent-line); color: var(--accent); }
+.topic-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; background: var(--surface); }
+.topic-cap { display: flex; align-items: center; gap: 6px; margin: 0; }
+.topic-none { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); }
+.topic-none p { margin: 0; }
+
+/* what a waiting tab asks, at the edge of its terminal, which stays in view */
+.answer { flex: none; display: grid; gap: 6px; padding: 7px 10px; background: var(--surface); border-top: 1px solid var(--accent-line); }
+.answer.is-asking { border-top-color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
+.answer-q { display: flex; align-items: baseline; gap: 6px; margin: 0; min-width: 0; color: var(--on-surface); }
+.answer-q .icon { flex: none; color: var(--accent); align-self: center; }
+.answer-q strong { flex: none; color: var(--ink); }
+.answer-q span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.answer-opts, .answer-opts .reply, .answer-opts .reply-btns { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.answer-opt { padding: 4px 10px; border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.answer-opt:hover:not(:disabled) { background: var(--accent-subtle); }
+.answer-opt.is-picked { background: var(--accent-subtle); font-weight: 600; }
+.answer-opt.is-on { border-color: var(--accent); }
+.answer-opt.is-quiet { border-color: var(--border); color: var(--on-surface-muted); }
+.answer-compose { display: grid; gap: 6px; }

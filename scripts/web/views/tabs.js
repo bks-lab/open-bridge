@@ -84,7 +84,7 @@ export function TermLines({ text, live = false, typing = false, echo = '', empty
  *  a key goes straight to the tab, in order, one batch at a time, what piles up meanwhile in the next (tab_keys).
  *  The box, and not the screen itself, so a dead key, an Option character and a paste arrive as what they make. Cmd
  *  stays the Mac's, a click beside it or Ctrl+] gives the keyboard back to the page */
-export function TermScreen({ tabRef, screen, live = false, empty, canType = false, c, poke }) {
+export function TermScreen({ tabRef, screen, live = false, empty, canType = false, c, poke, focusRef = null }) {
   const t = T()
   const body = useRef(null)
   const stick = useRef(true)
@@ -145,6 +145,7 @@ export function TermScreen({ tabRef, screen, live = false, empty, canType = fals
     if (text) press({ paste: text.slice(0, TERM_PASTE_MAX) })
   }
   const toField = () => field.current?.focus({ preventScroll: true })
+  if (focusRef) focusRef.current = toField
   // a drag selects, to copy: only a plain click starts typing
   const onMouseUp = () => { if (window.getSelection?.()?.isCollapsed !== false) toField() }
   // the focus on the screen itself (after a selection, after Ctrl+]): a letter starts typing, the arrows still scroll
