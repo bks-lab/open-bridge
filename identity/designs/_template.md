@@ -5,7 +5,7 @@
 # `scope`, `use_for` and `source`. For the full set of sections and tokens,
 # copy the root DESIGN.md and change its values. Schema: ./_schema.yaml.
 version: alpha
-scope: user                  # user | personal | org; `org` reaches every member Bridge through the org overlay
+scope: user                  # user | personal | org (never core); `org` reaches every member Bridge through the org overlay
 name: example-org
 description: One line on the brand's voice.
 use_for: [mail, html, slides]   # mail, pdf, html, slides, dashboard, certificate, video, site, cockpit
@@ -13,7 +13,7 @@ source:                      # where the truth lives; this file mirrors it (opti
   repo: example-org/website
   manifest: DESIGN.md
   implementation: src/styles/brand.css
-  taken_at: 0000000          # the commit this copy was taken from
+  taken_at: "0000000"        # the commit this copy was taken from, quoted
 
 colors:
   primary: "#1F2937"           # headlines, primary buttons

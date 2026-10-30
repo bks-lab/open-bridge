@@ -31,11 +31,13 @@ properties:
     description: "DESIGN.md format version (alpha)"
   scope:
     type: string
-    enum: [core, org, personal, user]
+    enum: [org, personal, user]
     description: >-
       Promote tier, read by scripts/categorize-commits.py. `org` puts the brand
       in the org overlay so every member Bridge wears it; undeclared stays
-      `user` and never leaves this instance.
+      `user` and never leaves this instance. Never `core`: the default design
+      that ships is the root DESIGN.md, and the router keeps a design declaring
+      core local.
   name:
     type: string
     minLength: 1
@@ -57,7 +59,7 @@ properties:
       repo: {type: string}
       manifest: {type: string}
       implementation: {type: string}
-      taken_at: {type: [string, integer]}
+      taken_at: {type: string, description: "the commit sha, quoted so YAML keeps it a string"}
   colors:
     type: object
     minProperties: 1

@@ -311,3 +311,71 @@ def test_schema_holds_use_for_to_its_vocabulary():
 def test_the_template_passes_its_own_schema():
     assert TEMPLATE.is_file()
     assert not list(_validator().iter_errors(designs.front_matter(TEMPLATE)))
+
+
+# --- review round: another Bridge is not a target repo -------------------------------------
+
+@pytest.mark.parametrize("marker", ["bridge-config.yaml", "scripts/designs.py"])
+def test_another_bridge_or_a_worktree_is_not_a_target_repo(bridge, tmp_path, marker):
+    put(bridge, "workflow/contexts/client.yaml", "id: client\ndesign_ref: ctx-brand\n")
+    other = tmp_path / "other-checkout"
+    (other / ".git").mkdir(parents=True)
+    put(other, marker, "")
+    (other / "DESIGN.md").write_text(design_md("other-root", {"primary": "#666666"}, scope=None), encoding="utf-8")
+    res = designs.resolve(bridge, context="client", target=other / "work" / "page.html")
+    assert (res.id, res.step) == ("ctx-brand", 3), (
+        "a page written into a worktree of this Bridge (or another Bridge) took that tree's "
+        "root DESIGN.md as a target repo and bypassed context, persona and theme"
+    )
+
+
+# --- a path is a path ------------------------------------------------------------------------
+
+@pytest.mark.parametrize("value", ["brand.md", "sub/brand", "./brand"])
+def test_a_missing_path_is_not_looked_up_as_an_id(bridge, value):
+    with pytest.raises(designs.DesignError) as err:
+        designs.resolve(bridge, design=value)
+    assert "no such file" in str(err.value) and ".md.md" not in str(err.value), str(err.value)
+
+
+# --- a child theme can opt out of its parent's design ------------------------------------------
+
+def test_an_explicit_null_in_a_child_theme_opts_out(bridge):
+    put(bridge, "bridge-config.yaml", "theme: child\n")
+    put(bridge, "themes/parent.yaml", "meta: {name: parent}\nbranding: {design: theme-brand}\n")
+    put(bridge, "themes/child.yaml", "meta: {name: child, extends: parent}\nbranding: {design: null}\n")
+    assert designs.resolve(bridge).step == 6
+
+
+# --- taken_at is a string ----------------------------------------------------------------------
+
+def test_taken_at_reads_as_written(bridge):
+    put(bridge, "identity/designs/team.md", design_md(
+        "team", {"primary": "#999999"}, extra="source:\n  repo: example-org/website\n  taken_at: '0012345'"))
+    row = next(r for r in designs.catalogue(bridge) if r["id"] == "team")
+    assert row["source"] == "example-org/website@0012345"
+    assert designs.front_matter(TEMPLATE)["source"]["taken_at"] == "0000000", "the template quotes taken_at"
+    fm = {"version": "alpha", "scope": "user", "name": "x", "description": "d", "colors": {"primary": "#000000"}}
+    assert list(_validator().iter_errors({**fm, "source": {"taken_at": 1234}})), "an unquoted sha must fail"
+
+
+def test_schema_refuses_scope_core_for_a_design():
+    fm = {"version": "alpha", "scope": "core", "name": "x", "description": "d", "colors": {"primary": "#000000"}}
+    assert list(_validator().iter_errors(fm)), "a design declaring core would ship to the public upstream"
+
+
+# --- check: comments never declare, selectors are not colours -----------------------------------
+
+def test_a_hex_in_a_front_matter_comment_is_not_declared(bridge, tmp_path):
+    put(bridge, "identity/designs/brand.md",
+        '---\nscope: user\nname: brand\ndescription: d\ncolors:\n  primary: "#123456"   # was #abcdef\n---\n')
+    found = designs.undeclared("a { color: #abcdef; }", bridge / "identity" / "designs" / "brand.md")
+    assert found == {"#abcdef": 1}
+
+
+def test_css_id_selectors_are_not_colours(bridge):
+    put(bridge, "identity/designs/brand.md", design_md("brand", {"primary": "#123456"}))
+    css = ("#add { color: #123456; }\n.x:not(#cafe), #bad > p { background: #123456; }\n"
+           "<p style=\"color:#00ff00\">x</p>\n")
+    found = designs.undeclared(css, bridge / "identity" / "designs" / "brand.md")
+    assert found == {"#00ff00": 1}, found

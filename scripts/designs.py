@@ -28,8 +28,9 @@ RESOLUTION, the first step that answers wins:
 
 Step 2 walks up from the target and stops at the first folder holding `.git`
 or `bridge-config.yaml` (the rule html-canvas has always used). It never
-counts the Bridge's own root: a page written inside the Bridge would find the
-root DESIGN.md that way, and no context or theme could ever brand it.
+counts a Bridge's root, this one or another checkout of it (a worktree, a
+second instance): a page written inside a Bridge would find that root
+DESIGN.md, and no context or theme could ever brand it.
 
 AN UNKNOWN ID IS AN ERROR naming the id and the file that points at it. A
 quiet fall back to the root would render a page in the wrong brand that looks
@@ -133,6 +134,11 @@ def _by_id(root: Path, value, origin: str) -> Resolved | None:
 
 # --- the steps -------------------------------------------------------------------------------
 
+def is_path(value: str) -> bool:
+    """`brand.md` or `sub/brand` names a file; only a bare word is a design id."""
+    return value.endswith(".md") or "/" in value or "\\" in value
+
+
 def _explicit(root: Path, design: str) -> Resolved:
     path = Path(design).expanduser()
     if path.is_file():
@@ -140,9 +146,10 @@ def _explicit(root: Path, design: str) -> Resolved:
         family = (Path(root) / FAMILY).resolve()
         design_id = path.stem if path.parent == family and not path.name.startswith("_") else None
         return Resolved(design_id, path, 1)
-    if not ID_RE.match(design):
+    if is_path(design) or not ID_RE.match(design):
         raise DesignError(f"--design {design}: no such file")
     found = _by_id(root, design, "--design")
+    assert found is not None
     return Resolved(found.id, found.path, 1)
 
 
@@ -166,9 +173,14 @@ def _walk_up(start: Path) -> Path | None:
     return None
 
 
+def is_bridge(folder: Path) -> bool:
+    """A Bridge checkout: an instance (bridge-config.yaml) or a tree that ships this resolver."""
+    return (folder / "bridge-config.yaml").is_file() or (folder / "scripts" / "designs.py").is_file()
+
+
 def _target(root: Path, target) -> Resolved | None:
     found = _walk_up(Path(target))
-    if found is None or found.resolve() == (Path(root) / "DESIGN.md").resolve():
+    if found is None or found.resolve() == (Path(root) / "DESIGN.md").resolve() or is_bridge(found.parent):
         return None
     return Resolved(None, found, 2)
 
@@ -193,14 +205,19 @@ def active_theme(root: Path) -> Path | None:
 
 
 def theme_design(root: Path, theme: Path | None) -> tuple[str | None, Path | None]:
-    """`branding.design` of a theme, inherited through `meta.extends`: (value, the file declaring it)."""
+    """`branding.design` of a theme, inherited through `meta.extends`: (value, the file declaring it).
+
+    The nearest theme that names the key decides, and an explicit `design: null`
+    is a child opting out of its parent's design.
+    """
     seen = set()
     while theme is not None and theme not in seen:
         seen.add(theme)
         data = _yaml(theme)
         branding = data.get("branding")
-        if isinstance(branding, dict) and branding.get("design") is not None:
-            return branding["design"], theme
+        if isinstance(branding, dict) and "design" in branding:
+            value = branding["design"]
+            return (value, theme) if value is not None else (None, None)
         parent = (data.get("meta") or {}).get("extends") if isinstance(data.get("meta"), dict) else None
         if not parent or not ID_RE.match(str(parent)):
             break
@@ -229,8 +246,10 @@ def resolve(root: Path = ROOT, *, design: str | None = None, context: str | None
         if found:
             return found._replace(step=4)
     value, theme = theme_design(root, active_theme(root))
-    if value is not None:
-        return _by_id(root, value, f"{_rel(root, theme)} branding.design")._replace(step=5)
+    if value is not None and theme is not None:
+        found = _by_id(root, value, f"{_rel(root, theme)} branding.design")
+        assert found is not None
+        return found._replace(step=5)
     default = root / "DESIGN.md"
     return Resolved(None, default if default.is_file() else None, 6)
 
@@ -264,7 +283,7 @@ def _source(value) -> str:
         return ""
     where = str(value.get("repo") or value.get("manifest") or "")
     at = value.get("taken_at")
-    return f"{where}@{at}" if where and at else where
+    return f"{where}@{at}" if where and at is not None and str(at) else where
 
 
 def catalogue(root: Path = ROOT) -> list[dict]:
@@ -317,16 +336,35 @@ def norm_hex(digits: str) -> str:
     return "#" + d[:6]
 
 
+def _strings(node):
+    if isinstance(node, dict):
+        for value in node.values():
+            yield from _strings(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _strings(value)
+    elif isinstance(node, str):
+        yield node
+
+
 def declared(design: Path) -> set[str]:
-    """Hex values in the front matter only; prose never declares a colour."""
-    text = Path(design).read_text(encoding="utf-8")
-    m = re.match(r"\A---\s*\n(.*?)\n---", text, re.S)
-    return {norm_hex(h.group(1)) for h in HEX_RE.finditer(m.group(1))} if m else set()
+    """Hex values in the front matter's VALUES only.
+
+    The prose names retired values on purpose, and so does a YAML comment
+    (`primary: "#123456"   # was #abcdef`); neither declares a colour.
+    """
+    return {norm_hex(h.group(1)) for text in _strings(front_matter(design)) for h in HEX_RE.finditer(text)}
+
+
+# A CSS rule's prelude: the selector before `{`. "#cafe" there names an element, not a colour.
+# It stops at `<`, quotes and `=`, so an HTML attribute or a script assignment is never one.
+SELECTOR_RE = re.compile(r"[^{};<\"'=]*\{")
 
 
 def undeclared(render: str, design: Path) -> dict[str, int]:
     """{#rrggbb: uses} for every colour in `render` the design does not declare."""
     known = declared(design)
+    render = SELECTOR_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), render)
     hits: dict[str, int] = {}
     for m in HEX_RE.finditer(render):
         if ANCHOR_RE.search(render[max(0, m.start() - 12):m.start()]):
@@ -346,7 +384,7 @@ def _add_choice(p: argparse.ArgumentParser) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=str(ROOT), help=argparse.SUPPRESS)
     sub = ap.add_subparsers(dest="cmd", required=True)
