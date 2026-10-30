@@ -304,6 +304,7 @@ def s_tabs(w: World) -> None:
     w.app.driver_caps(fresh=True)
     w.act("tab_rename", tab_ref="surface:11", title="--scratch")
     w.act("workspace_rename", ws_ref="workspace:2", title="-research")
+    w.act("tab_move", tab_ref="surface:11", ws_ref="workspace:2")
 
 
 def s_rows(w: World) -> None:

@@ -888,6 +888,8 @@ const en = {
   chatSolve: 'Let AI do it',
   chatSolveTitle: 'A real Claude session in its own terminal tab takes it on and may act',
   tools: {
+    beside: 'Open beside', rename: 'Rename', move: 'Move to', pin: 'Pin', unpin: 'Unpin', pinned: 'Pinned', bell: on => (on ? 'Stop telling me' : 'Tell me when done'), more: 'More about this tab',
+    findChats: 'Search all chats', found: n => `${n} found`, selCopy: 'Copy', selAsk: 'Ask about it', selFile: 'Into the file', selChat: 'To another chat',
     bar: 'Tools of this chat', stop: 'Stop', stopTitle: 'Interrupts the agent, as Esc does in the terminal', interrupt: 'Stops the running program', clear: 'Clear',
     commands: 'Commands', write: 'Write', writeHint: 'A longer text, several lines, in peace', keys: 'Keys', history: 'History', smaller: 'Smaller type', larger: 'Larger type', toTerminal: 'In the terminal',
     search: 'Find a command', again: 'Click again: really empty it', blockedAsk: 'The tab asks something: answer that first', blockedDraft: 'Something is typed in that tab',
@@ -2622,6 +2624,8 @@ const de = {
   chatSolve: 'AI machen lassen',
   chatSolveTitle: 'Eine echte Claude-Sitzung in einem eigenen Terminal-Tab übernimmt und darf handeln',
   tools: {
+    beside: 'Daneben öffnen', rename: 'Umbenennen', move: 'Verschieben nach', pin: 'Anheften', unpin: 'Nicht mehr anheften', pinned: 'Angeheftet', bell: on => (on ? 'Nicht mehr melden' : 'Melden, wenn er fertig ist'), more: 'Mehr zu diesem Tab',
+    findChats: 'In allen Chats suchen', found: n => `${n} gefunden`, selCopy: 'Kopieren', selAsk: 'Dazu fragen', selFile: 'In die Akte', selChat: 'An anderen Chat',
     bar: 'Werkzeuge dieses Chats', stop: 'Stopp', stopTitle: 'Unterbricht den Agenten, wie Esc im Terminal', interrupt: 'Bricht das laufende Programm ab', clear: 'Leeren',
     commands: 'Befehle', write: 'Schreiben', writeHint: 'Längerer Text, mehrere Zeilen, in Ruhe schreiben', keys: 'Tasten', history: 'Verlauf', smaller: 'Schrift kleiner', larger: 'Schrift größer', toTerminal: 'Im Terminal',
     search: 'Befehl suchen', again: 'Nochmal klicken: wirklich leeren', blockedAsk: 'Der Tab fragt etwas: erst das beantworten', blockedDraft: 'Im Tab steht ein Entwurf',

@@ -112,6 +112,14 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
     fieldBeside: ref => putFields(fieldsBeside(fields(), ref)),
     fieldSplit: at => putFields({ ...fields(), split: Math.min(75, Math.max(25, at)) }),
     fieldsFull: () => apply({ fieldsFull: !get().ui?.fieldsFull }),
+    setChatFind: q => apply({ chatFind: q }),
+    togglePin: ref => {
+      const pins = get().ui?.pins ?? []
+      const next = pins.includes(ref) ? pins.filter(x => x !== ref) : [...pins, ref]
+      save('bridge-cockpit.chatPins', JSON.stringify(next))
+      apply({ pins: next })
+    },
+    toggleBell: ref => { const b = { ...get().ui?.bells }; if (b[ref]) delete b[ref]; else b[ref] = true; apply({ bells: b }) },
     // the area the Chat as cmux shows: its work or the A2A agents
     setChatArea: area => apply({ chatArea: area === 'a2a' && a2aArea(get()).chatArea ? 'a2a' : 'work' }),
     // the pick of an agent (a card, a row on the start page) opens its latest conversation; as cmux on the

@@ -24,7 +24,7 @@ import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented, TabClose } from './detail.js'
-import { HistoryPanel, KeyStrip, StatusChips, ToolBar, WriteStrip } from './termtools.js'
+import { HistoryPanel, KeyStrip, Pop, SelectionBar, StatusChips, TabMenu, ToolBar, WriteStrip, usePop } from './termtools.js'
 import { AnswerBar, EmptyField, FieldBar, FieldClose, FieldGrid, FieldGrip, TopicPane, dragTab } from './fields.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { ControlNotice } from './header.js'
@@ -314,6 +314,9 @@ export function Sidebar({ s, c, rooms, here }) {
   const order = useHeldOrder(rooms.workspaces, sort === 'urgency' ? 'urgency' : 'terminal')
   // the tabs Waiting for you lists: in their workspace a grey line only
   const waits = new Set(sort === 'status' ? [] : attentionTabs(s.tabs?.tabs).filter(wantsYou).map(x => x.ref))
+  const word = String(s.ui?.chatFind ?? '').trim().toLowerCase()
+  const found = word ? (s.tabs?.tabs ?? []).filter(x => `${x.name} ${x.workspace} ${x.last ?? ''} ${x.ask?.text ?? ''}`.toLowerCase().includes(word)) : null
+  const pinned = (s.ui?.pins ?? []).map(r => (s.tabs?.tabs ?? []).find(x => x.ref === r)).filter(Boolean)
   return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}
     onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
     onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>
@@ -322,6 +325,11 @@ export function Sidebar({ s, c, rooms, here }) {
         values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
       <${WalkStart} s=${s} c=${c} />
     </div>
+    <input class="input room-find" type="search" aria-label=${t.tools.findChats} placeholder=${t.tools.findChats} value=${s.ui.chatFind ?? ''} onInput=${e => c.setChatFind(e.currentTarget.value)} />
+    ${found ? html`<section class="room-ws"><h3 class="label-caps room-group">${t.tools.found(found.length)}</h3>
+      ${found.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} where />`)}</section>` : null}
+    ${pinned.length && !found ? html`<section class="room-ws"><h3 class="label-caps room-group">${t.tools.pinned}</h3>
+      ${pinned.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} where />`)}</section>` : null}
     ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} here=${here} />`}
     <section class="room-ws room-asks"><div class="room-group-head"><h3 class="label-caps room-group">${t.rooms.chats}</h3>
         <button type="button" class="btn-link small room-new" aria-current=${here.kind === 'chat' && !s.ui.quickConv ? 'true' : undefined}
@@ -355,6 +363,8 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
   const [writeOn, setWriteOn] = useState(false)
   const [histOn, setHistOn] = useState(false)
   const [size, setSize] = useState(0)
+  const [sel, setSel] = useState(null)
+  const { pop, close, open } = usePop()
   const status = useMemo(() => (tab.state === 'shell' ? null : termStatus(screen?.text)), [screen?.text, tab.state])
   // by state on purpose: a tab gone idle (finished) can still be answered
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
@@ -379,6 +389,7 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
         ${tab.is_control ? t.controlSession : tab.name}</h2>
       ${canRename(s, tab) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
         onClick=${() => c.startRename('tab', tab.ref)} />` : null}
+      ${(s.ui.pins ?? []).includes(tab.ref) ? html`<span class="muted small" title=${t.tools.unpin}>⚲</span>` : null}
       <span class="muted small field-wsname">${tab.workspace}</span>
       ${slug ? html`<button type="button" class="btn-link small room-task" title=${t.infoOpenTask}
         onClick=${() => c.openItem(`task:${slug}`, { task: slug, title: taskTitle })}>${t.sessionTask(short(taskTitle, 60))}</button>` : null}
@@ -390,14 +401,17 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
       <span class="room-head-acts">
         <${Btn} size="xs" variant="secondary" pressed=${(s.ui.fields?.panes ?? []).some(isTopic)} title=${t.fields.chatTopicTitle} onClick=${() => c.fieldTopic()}>${t.fields.topic}<//>
         <${TabClose} tab=${tab} s=${s} c=${c} looking onClosed=${onward} />
+        <${Btn} size="xs" variant="ghost" label=${t.tools.more} title=${t.tools.more} onClick=${open('tab')}>⋯<//>
         <${FieldClose} i=${i} c=${c} on=${split} />
       </span>
+      ${pop ? html`<${Pop} at=${pop.at} onClose=${close}><${TabMenu} tab=${tab} s=${s} c=${c} canName=${canRename(s, tab)} close=${close} /><//>` : null}
     </header>
     <${ToolBar} tab=${tab} s=${s} c=${c} poke=${poke} keysOn=${keysOn} setKeysOn=${setKeysOn} writeOn=${writeOn} setWriteOn=${setWriteOn}
       histOn=${histOn} setHistOn=${setHistOn} setSize=${d => setSize(v => Math.min(6, Math.max(-3, v + d)))} />
     <div class="term-stage" style=${size ? { '--term-step': `${size}px` } : undefined}>
       <${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
-        canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} />
+        canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} onSelect=${setSel} />
+      ${sel ? html`<${SelectionBar} sel=${sel} tab=${tab} s=${s} c=${c} slug=${slug} onClose=${() => setSel(null)} />` : null}
       ${histOn ? html`<${HistoryPanel} tab=${tab} c=${c} onClose=${() => setHistOn(false)} />` : null}
     </div>
     ${replying ? html`<${AnswerBar} key=${tab.ask?.hash ?? tab.ref} tab=${tab} s=${s} c=${cc} onOwn=${() => typeHere.current?.()} onTopic=${() => c.fieldTopic()} />` : null}

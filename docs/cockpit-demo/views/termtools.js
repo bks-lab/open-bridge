@@ -82,6 +82,39 @@ export function ToolBar({ tab, s, c, poke, keysOn, setKeysOn, writeOn, setWriteO
   </div>`
 }
 
+/** ⋯ of a tab: beside, in the terminal, name, move, pin, branch. Closing stands in its head (TabClose) */
+export function TabMenu({ tab, s, c, canName, close }) {
+  const t = T().tools
+  const [moving, setMoving] = useState(false)
+  const act = fn => () => { close(); fn() }
+  const spaces = (s.tabs?.workspaces ?? []).filter(w => w.ref !== tab.ws_ref)
+  if (moving) return spaces.map(w => html`<button type="button" key=${w.ref} class="pop-item" onClick=${act(() => c.act('tab_move', { tab_ref: tab.ref, ws_ref: w.ref }))}>${w.title}</button>`)
+  const free = tab.state === 'waiting' && !tab.ask?.draft && canTab(s, 'keys')
+  const item = (word, fn, on = true) => html`<button type="button" class="pop-item" disabled=${!on} onClick=${fn}>${word}</button>`
+  return html`${item(t.beside, act(() => c.fieldBeside(tab.ref)))}
+    ${canTab(s, 'focus') ? item(t.toTerminal, act(() => c.act('tab_jump', { tab_ref: tab.ref }))) : null}
+    ${canName ? item(t.rename, act(() => c.startRename('tab', tab.ref))) : null}
+    ${canTab(s, 'move_tab') && spaces.length && !tab.slug && !tab.item && !tab.team ? item(t.move, () => setMoving(true)) : null}
+    ${item((s.ui.pins ?? []).includes(tab.ref) ? t.unpin : t.pin, act(() => c.togglePin(tab.ref)))}
+    ${tab.state !== 'shell' ? item(t.bell(!!s.ui.bells?.[tab.ref]), act(() => c.toggleBell(tab.ref))) : null}
+    ${tab.state !== 'shell' ? item(t.cmd.branch, act(() => c.termKeys(tab.ref, [{ text: '/branch' }, { key: 'enter' }])), free) : null}`
+}
+
+/** The bar over a selection in the terminal: what the cockpit can do with words you marked */
+export function SelectionBar({ sel, tab, s, c, slug, onClose }) {
+  const t = T().tools
+  const [others, setOthers] = useState(false)
+  const done = fn => () => { fn(); onClose() }
+  const tabs = (s.tabs?.tabs ?? []).filter(x => x.ref !== tab.ref && x.state !== 'needs-you')
+  return html`<div class="selbar" style=${{ left: Math.max(8, sel.x), top: Math.max(8, sel.y - 40) }}>
+    <button type="button" onClick=${done(() => c.copy(sel.text))}>${t.selCopy}</button>
+    <button type="button" onClick=${done(() => c.askAbout(sel.text))}>${t.selAsk}</button>
+    ${slug ? html`<button type="button" onClick=${done(() => c.act('note', { key: `task:${slug}`, text: sel.text.slice(0, 900) }))}>${t.selFile}</button>` : null}
+    <button type="button" onClick=${() => setOthers(!others)}>${t.selChat}</button>
+    ${others ? html`<div class="selbar-list">${tabs.map(x => html`<button type="button" key=${x.ref} onClick=${done(() => c.termKeys(x.ref, [{ paste: sel.text }]))}>${x.name}</button>`)}</div>` : null}
+  </div>`
+}
+
 /** The keys a mouse reaches: each goes to the tab as if pressed */
 export function KeyStrip({ tab, c, poke }) {
   const t = T().tools

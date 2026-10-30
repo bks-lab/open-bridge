@@ -250,3 +250,10 @@ button.st-chip:hover:not(:disabled) { border-color: var(--accent-line); color: v
 .hist-turn.is-user { color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); padding-left: 6px; }
 .hist-turn.is-tool { color: var(--on-surface-muted); }
 .hist-turn mark { background: color-mix(in srgb, var(--warning) 38%, transparent); color: var(--ink); border-radius: 2px; }
+
+.room-find { width: 100%; margin-bottom: 6px; }
+.selbar { position: fixed; z-index: 65; display: flex; flex-wrap: wrap; gap: 2px; max-width: 420px; padding: 3px; border: 1px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--shadow-float); }
+.selbar button { padding: 4px 9px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.selbar button:hover { background: var(--accent-subtle); }
+.selbar-list { flex-basis: 100%; display: grid; max-height: 200px; overflow-y: auto; border-top: 1px solid var(--border); }
+.selbar-list button { text-align: left; overflow: hidden; text-overflow: ellipsis; }

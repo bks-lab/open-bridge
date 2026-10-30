@@ -239,6 +239,19 @@ class TabVerbs:
         run = ctx.call("workplace.rename", tab_ref, self.app.workplace("rename", tab_ref, "--", title), SHORT_TIMEOUT)
         self.renamed(ctx, run)
 
+    def v_tab_move(self, ctx: Ctx, tab_ref: str, ws_ref: str) -> None:
+        """One tab into another workspace. A task, inbox or team tab stays: the plan would move it back, and the
+        driver refuses the last tab of a workspace, which that workspace would not survive."""
+        tab = self.tab(tab_ref)
+        if tab.get("slug") or tab.get("item") or tab.get("team") or tab_ref == self.app.tabs.control_ref():
+            raise ActionError(409, "task_tab_name", self.tx["task_tab_name"], None)
+        run = ctx.call("workplace.move-tab", tab_ref, self.app.workplace("move-tab", tab_ref, ws_ref), SHORT_TIMEOUT)
+        if run.ok:
+            ctx.note(self.tx["tab_moved_to"].format(name=m.short(tab["name"], 30)))
+        else:
+            ctx.note(self.tx["key_failed"].format(err=m.short((run.err or run.out).strip(), 100)), bad=True)
+        ctx.tabs_after(1)
+
     def v_workspace_rename(self, ctx: Ctx, ws_ref: str, title: str) -> None:
         """A workspace the terminal shows gets a name; the control workspace keeps its own."""
         app = self.app

@@ -103,6 +103,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "task_review": {"keys": ("keys", False), "escalate": ("bool", False), "fresh": ("bool", False)},
     "task_keep": {"keys": ("keys", True)},
     "note": {"key": ("key", True), "text": ("text", True)},
+    "tab_move": {"tab_ref": ("tab_ref", True), "ws_ref": ("ws_ref", True)},
     # a GitHub issue to its board's review or done state (skills/github-projects-manager/scripts/issue_transition.py)
     "issue_review": {"key": ("key", True), "text": ("text", True)},     # the reason is the review comment (K3)
     "issue_done": {"key": ("key", True), "text": ("text", False)},
@@ -254,7 +255,7 @@ LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
 NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_keys": "keys", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
-             "tab_rename": "rename", "workspace_rename": "rename_workspace"}
+             "tab_rename": "rename", "workspace_rename": "rename_workspace", "tab_move": "move_tab"}
 
 
 class ActionError(Exception):
