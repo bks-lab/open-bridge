@@ -190,7 +190,7 @@ class FakeRunner(Runner):
             "workplace.tasks": lambda argv: ok(TASKS),
             "workplace.teams": lambda argv: ok(TEAMS),
             "workplace.status": lambda argv: ok(STATUS),
-            "workplace.caps": lambda argv: ok({"caps": ["tabs", "sessions", "open", "launch", "send", "rename",
+            "workplace.caps": lambda argv: ok({"caps": ["tabs", "sessions", "open", "launch", "send", "rename", "keys",
                                                          "control", "focus", "key", "screen", "close"]}),
             "workplace.launch": lambda argv: ok(self.launch_answer(argv)),
             "inbox.list": lambda argv: ok([{"id": YES_ID, "state": "open"}]),

@@ -1251,6 +1251,8 @@ export function gaugeSection(items) {
  *  while it stays the same */
 export const SCREEN_POLL_MS = 1500
 export const SCREEN_POLL_MAX_MS = 5000
+export const SCREEN_FAST_MS = 200       // the read while you type, for SCREEN_FAST_FOR_MS after the last key
+export const SCREEN_FAST_FOR_MS = 2500
 
 /** One answer of the tab view's screen read against the screen it holds: { screen, delay }. An unchanged
  *  screen (unchanged, or the same hash in full) keeps the held object, so the view does not render again,
@@ -1270,8 +1272,8 @@ function termTone(lead, line) {
   return diff ? (diff[1] === '+' ? 'add' : 'del') : null
 }
 
-/** A Claude Code terminal as chat lines: what you typed (❯ or >, a bare prompt too, up to the next blank line), what
- *  Claude says (⏺), tool output (⎿), the rest as it stands; `tone` where a line reads apart (termTone). Blank runs
+/** A Claude Code terminal as chat lines: what you typed (❯ or >, a bare prompt too, with the indented lines it wraps
+ *  into), what Claude says (⏺), tool output (⎿), the rest as it stands; `tone` where a line reads apart (termTone). Blank runs
  *  collapse to one, so the stream reads like a chat */
 export function screenLines(text) {
   const out = []
@@ -1287,13 +1289,44 @@ export function screenLines(text) {
     else if (lead.startsWith('⏺')) kind = 'claude'
     else if (lead.startsWith('⎿')) kind = 'tool'
     else if (/^[─━═╭╰│]/.test(lead)) kind = 'frame'
-    else if (kind === 'frame' || kind === 'tool' || (kind === 'user' && out[out.length - 1]?.kind === 'gap')) kind = 'plain'
+    else if (kind === 'frame' || kind === 'tool' || (kind === 'user' && (lead === line || out[out.length - 1]?.kind === 'gap'))) kind = 'plain'
     const tone = termTone(lead, line)
     out.push(tone ? { kind, text: line, tone } : { kind, text: line })
   }
   while (out.length && out[out.length - 1].kind === 'gap') out.pop()
   return out
 }
+
+// the live terminal: a key press as what it sends, none for what the browser or the Mac keeps. Text is no key here: it
+// comes through the input event, so a dead key and an Option character arrive as what they make
+const TERM_NAMED = { Enter: 'enter', Escape: 'escape', Tab: 'tab', Backspace: 'backspace', Delete: 'delete', ArrowUp: 'up', ArrowDown: 'down',
+  ArrowLeft: 'left', ArrowRight: 'right', Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown' }
+const TERM_TEXT_MAX = 4000
+
+/** A keydown as a step of the terminal ({ key }), or null: Cmd stays the Mac's, a composition its own */
+export function termKey(e) {
+  if (e.metaKey || e.isComposing) return null
+  if (e.ctrlKey) return /^[a-z]$/i.test(e.key) ? { key: `ctrl+${e.key.toLowerCase()}` } : null
+  if (e.key === 'Tab' && e.shiftKey) return { key: 'shift+tab' }
+  return TERM_NAMED[e.key] ? { key: TERM_NAMED[e.key] } : null
+}
+
+/** The steps waiting to go out, with one more: text runs together up to what one step carries, the order stays */
+export function termQueue(steps, step) {
+  const last = steps[steps.length - 1]
+  if (step.text && last?.text && last.text.length + step.text.length <= TERM_TEXT_MAX) return [...steps.slice(0, -1), { text: last.text + step.text }]
+  return [...steps, step]
+}
+
+/** What the prompt shows of what was typed until the screen has it: more text, one less on Backspace; any other key
+ *  leaves the line to the terminal */
+export function termEcho(echo, step) {
+  if (step.text || step.paste) return echo + (step.text ?? step.paste)
+  return step.key === 'backspace' ? echo.slice(0, -1) : ''
+}
+
+/** A paste as the terminal takes it: its lines and tabs stay, control codes go */
+export const termPaste = text => String(text ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
 
 const TERM_MARK = /^(\s*)([❯>⏺⎿])(?=\s|$)/
 // a link, a path (with ~/ or ./, or a folder and a file with its extension, so und/oder and z.B. stay words), the two result marks

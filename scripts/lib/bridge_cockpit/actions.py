@@ -40,7 +40,7 @@ from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, REASON_MAX, FINDING_KEY_RE, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
                            STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WORKER_REF_RE, WS_REF_RE,
-                           ActionError, Ctx, bad_arg, check_date, check_day, check_key, check_text)
+                           ActionError, Ctx, bad_arg, check_date, check_day, check_key, check_term_steps, check_text)
 from .actions_chats import ChatVerbs
 from .actions_launch import LaunchSteps
 from .actions_pages import PageVerbs
@@ -249,6 +249,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "date": lambda actions, value, name, today: check_date(value, name, today),
     "day": lambda actions, value, name, today: check_day(value, name),
     "text": lambda actions, value, name, today: check_text(value, name, 2000),
+    "term_steps": lambda actions, value, name, today: check_term_steps(value, name),
     # what the chat box takes (ASK_MAX on the page): a chat handed to a tab is not cut
     "long_text": lambda actions, value, name, today: check_text(value, name, 4000),
     "bool": _bool,
@@ -270,7 +271,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
 # the verbs after which the Activity tab's kept feeds stand: they change nothing a feed reads
-KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct", "files_ask", "timeline_ask"}
+KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct", "files_ask", "timeline_ask", "tab_keys"}
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
@@ -535,7 +536,9 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         go = ctx.go if note else None
         if note:
             go = app.note(note, "ok" if ok else "bad", go)
-        app.collector.rebuild()
+        # a key typed into a tab changes nothing of the model, and a keyboard is quick
+        if ctx.verb != "tab_keys":
+            app.collector.rebuild()
         if ctx.reload == "delta":
             app.collector.request("delta", tasks=True)     # a verb may have moved or edited a task
         if ctx.tabs_delay is not None:

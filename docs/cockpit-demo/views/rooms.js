@@ -18,7 +18,7 @@
 // stays one line (C2), so its close is that head's.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
@@ -29,7 +29,7 @@ import { GuideTree } from './guide.js'
 import { ControlNotice } from './header.js'
 import { chatAreaOf, openOrigin } from './nav.js'
 import { AskLine, TabReply } from './reply.js'
-import { TabWarnings, TermLines, useTabScreen } from './tabs.js'
+import { TabWarnings, TermScreen, useTabScreen } from './tabs.js'
 
 const CHATS_SHOWN = 6
 const GUIDE_VIEWS = ['guide', 'both', 'screen']
@@ -358,15 +358,11 @@ export function Sidebar({ s, c, rooms, here }) {
   </nav>`
 }
 
-/** One tab on the right: its terminal, read only; "Write" opens the tab window with its box and keys */
+/** One tab on the right: its terminal, live, the keyboard goes to it (TermScreen); "Write" opens the tab window with its box */
 function TabPane({ s, c, tab }) {
   const t = T()
   // while the tab's window is open it reads the terminal itself: one reader at a time
-  const { screen, err } = useTabScreen(c, s.ui.tabView ? null : tab.ref)
-  const body = useRef(null)
-  const stick = useRef(true)
-  useLayoutEffect(() => { const el = body.current; if (el && stick.current) el.scrollTop = el.scrollHeight }, [screen?.text])
-  useEffect(() => { stick.current = true }, [tab.ref])
+  const { screen, err, poke } = useTabScreen(c, s.ui.tabView ? null : tab.ref)
   // by state on purpose: a tab gone idle (finished) can still be answered
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
   const guided = replying && guideOf(s, tab).status !== 'off'
@@ -410,10 +406,8 @@ function TabPane({ s, c, tab }) {
       ${view === 'screen' ? null : html`<${GuideTree} tab=${tab} s=${s} c=${c} />`}
       <${TabReply} tab=${tab} s=${s} c=${cc} />
     </div>` : null}
-    ${view === 'guide' ? null : html`<div class="tabview-body" ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
-      onScroll=${e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
-      <${TermLines} text=${screen?.text} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading} />
-    </div>`}
+    ${view === 'guide' ? null : html`<${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
+      canType=${canTab(s, 'keys')} c=${c} poke=${poke} />`}
     <${TabWalk} s=${s} c=${c} tab=${tab} />
   </section>`
 }

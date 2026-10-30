@@ -822,7 +822,7 @@ def workspaces() -> list[dict]:
 
 
 # the cockpit steers a tab with these (docs/workplace.md, the optional verbs); cmux serves them all
-CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "control", "focus", "key", "screen", "close",
+CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "control", "focus", "key", "keys", "screen", "close",
         "workspaces", "rename_workspace", "move_tab", "set_color", "set_description"]
 # the one key set a driver takes; cmux's own names for the two that are not typed as they are
 KEYS = {"enter": "Enter", "escape": "escape", "y": "y", "n": "n", **{str(i): str(i) for i in range(1, 10)}}
@@ -848,6 +848,30 @@ def key(req: dict) -> list[str]:
         raise ValueError(f"key {name!r} is not one of {', '.join(KEYS)}")
     cl.cmux_checked("send-key", *_where(surface), "--surface", surface, KEYS[name])
     return [f"{name} into {surface}"]
+
+
+# the keys of a live terminal, under the names cmux takes (workplace.py TERM_KEYS)
+TERM_KEYS = ("enter", "escape", "tab", "shift+tab", "backspace", "delete", "up", "down", "left", "right", "home", "end",
+             "pageup", "pagedown", *(f"ctrl+{c}" for c in "abcdefghijklmnopqrstuvwxyz"))
+
+
+def keys(req: dict) -> list[str]:
+    """A keyboard, in order. --force on every step: without it cmux refuses a prompt that holds text or an open
+    dialog, and typing is what fills a prompt and answers a dialog. Text with a backslash takes the paste path,
+    since `cmux send` reads a typed backslash and n as Enter."""
+    surface = req["tab"]
+    where = [*_where(surface), "--surface", surface]
+    steps = req.get("keys") or []
+    for step in steps:
+        if "key" in step:
+            if step["key"] not in TERM_KEYS:
+                raise ValueError(f"key {step['key']!r} is not one of {', '.join(TERM_KEYS)}")
+            cl.cmux_checked("send-key", "--force", *where, step["key"])
+        elif "paste" in step or "\\" in step["text"]:
+            cl.cmux_checked("send", "--paste", "--force", *where, "--", step.get("paste", step.get("text")))
+        else:
+            cl.cmux_checked("send", "--force", *where, "--", step["text"])
+    return [f"{len(steps)} steps into {surface}"]
 
 
 def screen(req: dict) -> str:
@@ -899,6 +923,8 @@ def handle(req: dict) -> dict:
         return {"report": focus(req)}
     if verb == "key":
         return {"report": key(req)}
+    if verb == "keys":
+        return {"report": keys(req)}
     if verb == "screen":
         return {"text": screen(req)}
     if verb == "close":

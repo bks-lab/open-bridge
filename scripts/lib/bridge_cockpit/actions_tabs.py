@@ -6,6 +6,7 @@ control tab.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 
@@ -104,6 +105,15 @@ class TabVerbs:
     def v_tab_option(self, ctx: Ctx, tab_ref: str, n: int, seen: str, name: str | None = None) -> None:
         """One numbered option of the dialog the tab shows: its digit, never a yes for a choice"""
         self.press(ctx, tab_ref, str(n), "", seen, name, option=n)
+
+    def v_tab_keys(self, ctx: Ctx, tab_ref: str, steps: list) -> None:
+        """The live terminal of the page: a keyboard, so what is typed goes straight in, as at the terminal itself.
+        The guards of an answer stay with the answers: here you type at the screen you are looking at, into a shell
+        as well. The audit line names the tab and never what was typed, and no note follows a key"""
+        self.tab(tab_ref)
+        run = ctx.call("workplace.keys", tab_ref, self.app.workplace("keys", tab_ref, json.dumps(steps, ensure_ascii=False)), SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["key_failed"].format(err=m.short((run.err or run.out).strip(), 100)), bad=True)
 
     def v_tab_jump(self, ctx: Ctx, tab_ref: str) -> None:
         tab = self.tab(tab_ref)

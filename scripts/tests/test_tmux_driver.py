@@ -212,9 +212,9 @@ def tm(tmp_path):
 
 
 @needs_tmux
-def test_caps_lists_all_fourteen_verbs(tm):
+def test_caps_lists_all_fifteen_verbs(tm):
     assert set(tm.call({"verb": "caps"})["caps"]) == set(td.VERBS)
-    assert len(td.VERBS) == 14 and {"rename_workspace", "move_tab"} <= set(td.VERBS)
+    assert len(td.VERBS) == 15 and {"rename_workspace", "move_tab"} <= set(td.VERBS)
     assert not {"set_color", "set_description"} & set(td.VERBS)      # tmux has no colour or description
 
 
@@ -298,6 +298,16 @@ def test_send_screen_and_key(tm):
     tm.call({"verb": "key", "tab": ref, "key": "enter"})
     assert "y" in tm.wait_screen(ref, "\ny")
     bad = tm.call({"verb": "key", "tab": ref, "key": "C-c"})["report"]
+    assert bad[0].startswith("ERROR")
+
+
+@needs_tmux
+def test_keys_type_as_a_keyboard_does(tm):
+    ref = tm.by_name("one")["ref"]
+    report = tm.call({"verb": "keys", "tab": ref, "keys": [{"text": "echo typed"}, {"key": "backspace"}, {"text": "d-live"}, {"key": "enter"}]})["report"]
+    assert report == [f"4 steps to {ref}"]
+    assert "typed-live" in tm.wait_screen(ref, "\ntyped-live")
+    bad = tm.call({"verb": "keys", "tab": ref, "keys": [{"key": "C-c"}]})["report"]
     assert bad[0].startswith("ERROR")
 
 

@@ -284,6 +284,7 @@ def s_tabs(w: World) -> None:
     w.act("tab_no", tab_ref="surface:7")
     w.act("tab_jump", tab_ref="surface:7")
     w.act("tab_send", tab_ref="surface:7", text="--please continue")
+    w.act("tab_keys", tab_ref="surface:7", steps=[{"text": "ls"}, {"key": "enter"}])
     w.act("tab_go_on", tab_ref="surface:13")
     # a reply that names the question it answers, the tab and the state: the screen is read fresh first
     screens = {"surface:7": " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n", "surface:13": "⏺ Shall I go on?\n"}
@@ -409,7 +410,7 @@ SCENARIOS = {
     "settle": Scenario(s_settle, {"inbox.close", "inbox.drop", "task.close", "task.log"}),
     "reopen": Scenario(s_reopen, {"task.reopen", "inbox.reopen"}),
     "review": Scenario(s_review, {"task.review"}),
-    "tabs": Scenario(s_tabs, {"workplace.key", "workplace.focus", "workplace.send", "workplace.adopt",
+    "tabs": Scenario(s_tabs, {"workplace.key", "workplace.keys", "workplace.focus", "workplace.send", "workplace.adopt",
                               "workplace.close", "workplace.control", "workplace.screen", "workplace.rename",
                               "workplace.rename-workspace"}),
     "rows": Scenario(s_rows, {"briefing.act"}),
@@ -496,7 +497,7 @@ def test_a_missing_required_flag_or_a_value_outside_the_choices_fails(tmp_path):
 
 # ---------------------------------------------------------------- real output of collect and caps
 
-DRIVER_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "focus", "key", "screen", "close",
+DRIVER_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "focus", "key", "keys", "screen", "close",
                "rename_workspace", "move_tab", "set_color", "set_description"]
 DRIVER = f"""import json, sys
 verb = json.loads(sys.stdin.read() or "{{}}").get("verb")

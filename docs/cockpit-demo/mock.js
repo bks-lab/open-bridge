@@ -2248,7 +2248,8 @@ export function createMockTransport(opts = {}) {
           '⏺ Bash(node --test scripts/tests)', '  ⎿  ✓ 214 passed', '     ✗ 1 failed: guide links', '',
           '⏺ ' + (tab.state === 'needs-you' ? 'Allow edit of README.md?' : 'Working on the next step.'), '',
           ...(tab.state === 'running' ? ['✻ Thinking… (12s · esc to interrupt)', ''] : []),
-          '─'.repeat(200), '❯', '─'.repeat(200), '  ⏵⏵ auto mode on (shift+tab to cycle)'].join('\n')
+          ...(state.termLog?.[tab.ref] ?? []), '─'.repeat(200), `❯${state.termTyped?.[tab.ref] ? ` ${state.termTyped[tab.ref]}` : ''}`, '─'.repeat(200),
+          '  ⏵⏵ auto mode on (shift+tab to cycle)'].join('\n')
         // like the server: a hash of the text, and unchanged without the text when the page names it (since)
         let h = 0x811c9dc5
         for (const ch of text) h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0
@@ -2468,6 +2469,21 @@ export function createMockTransport(opts = {}) {
         if (verb === 'note' && args.key && String(args.text ?? '').trim()) {
           added[args.key] = [feedRow(now(), { id: `note:a${Object.values(added).flat().length + 1}`, kind: 'note', filters: ['notes'],
             text: String(args.text).trim(), by: { kind: 'you', name: null } }), ...(added[args.key] ?? [])]
+        }
+        // the live terminal of the demo: what is typed stands in the prompt, Enter says nothing runs here
+        if (verb === 'tab_keys') {
+          const ref = args.tab_ref
+          state.termTyped = state.termTyped ?? {}
+          state.termLog = state.termLog ?? {}
+          for (const step of args.steps) {
+            const typed = state.termTyped[ref] ?? ''
+            if (step.text || step.paste) state.termTyped[ref] = typed + (step.text ?? step.paste)
+            else if (step.key === 'backspace') state.termTyped[ref] = typed.slice(0, -1)
+            else if (step.key === 'enter') {
+              state.termLog[ref] = [...(state.termLog[ref] ?? []), `❯ ${typed}`, '', '⏺ This is the demo: nothing runs here, in a Bridge this goes to the tab.', '']
+              state.termTyped[ref] = ''
+            } else if (step.key === 'ctrl+c' || step.key === 'escape') state.termTyped[ref] = ''
+          }
         }
         // an answer to a tab: refused like the server when the question it names is no longer on screen
         // (the third option of the dialog stands for that here) or a draft is typed in the tab

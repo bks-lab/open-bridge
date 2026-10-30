@@ -2401,6 +2401,19 @@ output, a diff, paths and links, the ✓ and ✗ of a result), a cursor in its p
 read live, and `❯` before every box you type in. The tab window, the questions and the A2A chats
 wear the same. Its colours are the dark set of your `DESIGN.md`, so a fork's brand carries over.
 
+It also takes the keyboard, in the Chat and in the tab window, for every tab, a plain shell too. Click the
+screen and every key goes straight to the tab: letters, Enter, Esc, Tab, Shift+Tab, Backspace, Delete, the
+arrows, Home, End, Page Up and Down, Ctrl+C and every other Ctrl and letter, and a paste whole with its lines.
+What you type shows at once and the screen follows within about a second, read fast while you type. The cursor is
+solid while the keyboard is here and an outline otherwise, as in a terminal without focus. Cmd stays your Mac's,
+so Cmd+C copies; dragging selects and does not start typing. A click beside it, or Ctrl+] from the keyboard, gives
+the keys back to the page. The boxes and answer buttons stay as they were, with their guards.
+
+It reads the terminal as text, and that sets the limits: the colours are the page's own by what a line is, not
+the program's; the cursor stands at the end of the prompt, even when the arrow keys moved the real one; F keys
+do not reach cmux; an Option key makes its character, so no Option+B for a word back. A full-screen program such as
+vim shows, but as text every read. A driver without the `keys` verb leaves the screen to read.
+
 With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
 
 - **On top of the left side** stands a switch between two areas, "Work" and
@@ -2971,6 +2984,12 @@ nothing a stranger could trigger:
   and `/bin/ps eww -o command= -p <pid>` with a pid of digits only, for the
   Sessions page. The cmux CLI is never called directly: whatever the page does
   to an agent tab goes through `workplace.py` and its terminal driver;
+- the live terminal (`tab_keys`) is a keyboard, so it carries none of the guards of an answer: you type at the
+  screen you see, into a shell as well. It takes what a keyboard makes and no more: a key of the list `TERM_KEYS`,
+  text without a control code, a paste without one, checked in the server and again in `workplace.py`, so no
+  escape sequence reaches a terminal through it. Only a click on the screen gives it the keyboard. Its audit
+  line names the tab, never what was typed, and the driver gets the keys as an argument, so for a moment
+  they stand in your own process list;
 - an answer to a tab reaches only the question you saw. It carries the hash
   of that question, the tab's name (unless that name is empty or longer than
   120 characters, which the check does not take) and the state it was in. Before anything is

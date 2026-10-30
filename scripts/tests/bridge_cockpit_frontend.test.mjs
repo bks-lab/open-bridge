@@ -838,9 +838,11 @@ test('tab view: a terminal reads as chat lines, blank runs collapse', () => {
   assert.deepEqual(logic.screenLines(''), [])
 })
 
-test('tab view: a bare prompt is what you type next, and a blank line ends what you typed', () => {
-  const lines = logic.screenLines('> fix it\nsecond line\n\nanswer without a mark\n────\n❯\n────')
+test('tab view: a bare prompt is what you type next, and only an indented line goes on with what you typed', () => {
+  const lines = logic.screenLines('> fix it\n  second line\n\nanswer without a mark\n────\n❯\n────')
   assert.deepEqual(lines.map(l => l.kind), ['user', 'user', 'gap', 'plain', 'frame', 'user', 'frame'])
+  // a shell: what a command prints is no part of what you typed, only a wrapped line is, and that one is indented
+  assert.deepEqual(logic.screenLines('❯ echo hi\nhi\n❯ sleep 3\n^C').map(l => l.kind), ['user', 'plain', 'user', 'plain'])
 })
 
 test('tab view: a line carries its tone: diff, a tool at work, the hints, a rule', () => {
@@ -868,6 +870,43 @@ test('tab view: a line in pieces, its mark, paths, links and the two result mark
   // whatever the pieces, they read as the line
   const line = '  ❯ 1. ✔ a/b.txt https://x.y/z ✘'
   assert.equal(logic.termParts(line).map(p => p.t).join(''), line)
+})
+
+test('the terminal: a key press as what it sends, the Mac and the browser keep theirs', () => {
+  const key = (k, mods = {}) => logic.termKey({ key: k, ...mods })
+  for (const [press, sends] of [['Enter', 'enter'], ['Escape', 'escape'], ['Tab', 'tab'], ['Backspace', 'backspace'], ['Delete', 'delete'],
+    ['ArrowUp', 'up'], ['ArrowDown', 'down'], ['ArrowLeft', 'left'], ['ArrowRight', 'right'], ['Home', 'home'], ['End', 'end'], ['PageUp', 'pageup'], ['PageDown', 'pagedown']]) {
+    assert.deepEqual(key(press), { key: sends }, press)
+  }
+  assert.deepEqual(key('Tab', { shiftKey: true }), { key: 'shift+tab' })
+  assert.deepEqual(key('c', { ctrlKey: true }), { key: 'ctrl+c' })
+  assert.deepEqual(key('Z', { ctrlKey: true, shiftKey: true }), { key: 'ctrl+z' })
+  // text comes through the input event, so a dead key and an Option character arrive as what they make
+  for (const plain of ['a', 'ä', ' ', '@', 'Dead', 'Shift', 'F5']) assert.equal(key(plain), null, plain)
+  assert.equal(key('@', { altKey: true }), null)
+  // Cmd stays the Mac's: copy, paste, a new browser tab
+  for (const k of ['c', 'v', 't', 'Enter', 'ArrowLeft']) assert.equal(key(k, { metaKey: true }), null, k)
+  assert.equal(key('Enter', { isComposing: true }), null, 'Enter ends a composition first')
+})
+
+test('the terminal: keys wait in order, text runs together, a held key does not grow a batch without end', () => {
+  let q = []
+  for (const step of [{ text: 'gi' }, { text: 't' }, { key: 'tab' }, { text: 'x' }]) q = logic.termQueue(q, step)
+  assert.deepEqual(q, [{ text: 'git' }, { key: 'tab' }, { text: 'x' }])
+  assert.deepEqual(logic.termQueue([{ paste: 'a' }], { text: 'b' }), [{ paste: 'a' }, { text: 'b' }])
+  assert.deepEqual(logic.termQueue([{ text: 'x'.repeat(4000) }], { text: 'y' }), [{ text: 'x'.repeat(4000) }, { text: 'y' }])
+})
+
+test('the terminal: what you typed shows at once, until the screen has it', () => {
+  assert.equal(logic.termEcho('', { text: 'gi' }), 'gi')
+  assert.equal(logic.termEcho('gi', { text: 't' }), 'git')
+  assert.equal(logic.termEcho('git', { key: 'backspace' }), 'gi')
+  assert.equal(logic.termEcho('git', { paste: ' x' }), 'git x')
+  for (const k of ['enter', 'ctrl+c', 'up', 'tab', 'escape']) assert.equal(logic.termEcho('git', { key: k }), '', k)
+})
+
+test('the terminal: a paste loses its control codes and keeps its lines', () => {
+  assert.equal(logic.termPaste('a\u001b[2J\tb\nc\u0000'), 'a[2J\tb\nc')
 })
 
 test('workers: tones, strip marks, facets that count without themselves, groups in view order', () => {

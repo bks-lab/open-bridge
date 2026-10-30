@@ -143,11 +143,13 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "set_color", "workspace": ws_ref, "color": name or null}` | `{"report": [...]}`: a palette colour by its name (see below), `null` takes the colour off (cmux: `workspace-action set-color` with the hex, `clear-color`; tmux has none) |
 | `{"verb": "set_description", "workspace": ws_ref, "text": "..." or null}` | `{"report": [...]}`: one line of description, `null` takes it off (cmux: `workspace-action set-description`, `clear-description`; tmux has none) |
 
+| `{"verb": "keys", "tab": ref, "keys": [{"text": "..."}, {"key": name}, {"paste": "..."}]}` | `{"report": [...]}`: a keyboard, in order, for the live terminal of the cockpit. `text` is typed as it is, `paste` goes in whole with its lines, `key` is one of `TERM_KEYS` in `workplace.py`: enter, escape, tab, shift+tab, backspace, delete, the four arrows, home, end, pageup, pagedown, ctrl+a to ctrl+z. It must also type into a prompt that holds text and into an open dialog (cmux: `send --force`, `send-key --force`; tmux: `send-keys`). `workplace.py` checks the list before a driver sees it: text holds no control code, so no escape sequence comes through this door |
+
 Every verb after `caps` is optional. A terminal that cannot do one leaves it out of
 `caps`, and whoever steers the tabs (`workplace.py`, the cockpit) offers only
 what the driver serves. With them the cockpit steers any terminal the same way:
-jump to a tab, answer a question with a key, read what a tab shows, close a
-finished one. A `ref` is the driver's own name for a tab (`surface:3` in cmux,
+jump to a tab, answer a question with a key, read what a tab shows, type into it
+as a keyboard does, close a finished one. A `ref` is the driver's own name for a tab (`surface:3` in cmux,
 `%3` in tmux): letters, digits and `:%_.@/-`, at most 64 characters.
 
 Rules every driver keeps: it never closes a tab or a workspace on its own (only

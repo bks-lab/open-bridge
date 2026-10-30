@@ -795,6 +795,26 @@ def test_focus_key_screen_and_close_address_the_tab_in_its_workspace(fake):
     assert ["close-surface", "--surface", "surface:91", "--force", "--workspace", "workspace:3"] in argv
 
 
+def test_keys_type_as_a_keyboard_does(fake):
+    fake.answer({"verb": "keys", "tab": "surface:91", "keys": [
+        {"text": "git st"}, {"key": "tab"}, {"key": "enter"}, {"key": "ctrl+c"}, {"text": "a\\nb"}, {"paste": "one\ntwo"}]})
+    argv = fake.argv()
+    where = ["--workspace", "workspace:3", "--surface", "surface:91"]
+    # --force: without it cmux refuses a prompt that already holds text, and that is what typing makes
+    assert ["send", "--force", *where, "--", "git st"] in argv
+    assert ["send-key", "--force", *where, "tab"] in argv
+    assert ["send-key", "--force", *where, "enter"] in argv
+    assert ["send-key", "--force", *where, "ctrl+c"] in argv
+    # cmux send reads a typed backslash and n as Enter: such text takes the paste path, unchanged
+    assert ["send", "--paste", "--force", *where, "--", "a\\nb"] in argv
+    assert ["send", "--paste", "--force", *where, "--", "one\ntwo"] in argv
+
+
+def test_keys_refuse_a_step_they_do_not_know(fake):
+    done = fake.call({"verb": "keys", "tab": "surface:91", "keys": [{"key": "f13"}]})
+    assert done.returncode == 1 and "key" in json.loads(done.stdout)["error"]
+
+
 def test_a_key_outside_the_fixed_set_is_refused(fake):
     done = fake.call({"verb": "key", "tab": "surface:91", "key": "ctrl-c"})
     assert done.returncode == 1 and "key" in json.loads(done.stdout)["error"]
