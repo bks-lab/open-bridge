@@ -186,12 +186,10 @@ kbd {
 /* ---------------------------------------------------------------- frame */
 
 .shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
-/* measured on Safari 27, 2560 wide: the toolbar covered the top 28px of the header (app.js safariFullscreen) */
-:root.safari-fullscreen { --chrome-gap: 28px; }
 
 .hdr {
   position: sticky; top: 0; z-index: 50; height: var(--header-h);
-  display: flex; align-items: center; gap: 16px; padding: var(--chrome-gap) 16px 0;
+  display: flex; align-items: center; gap: 16px; padding: 0 16px;
   background: var(--surface-raised); border-bottom: 1px solid var(--border);
 }
 .hdr-id { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 0 0 auto; }
@@ -682,15 +680,15 @@ kbd {
   position: fixed; inset: 0; z-index: 80; background: var(--scrim);
   animation: fade 200ms ease-out;
 }
-.overlay-center { display: flex; align-items: center; justify-content: center; padding: 16px; padding-top: calc(16px + var(--chrome-gap)); }
+.overlay-center { display: flex; align-items: center; justify-content: center; padding: 16px; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide { from { transform: translateX(24px); } to { transform: translateX(0); } }
 .drawer {
   position: absolute; top: 0; bottom: 0; right: 0; width: min(440px, 100vw); overflow-y: auto;
   background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow-float);
-  padding: 16px; padding-top: calc(16px + var(--chrome-gap)); animation: slide 200ms ease-out;
+  padding: 16px; animation: slide 200ms ease-out;
 }
-.drawer-tabs { padding: 16px; padding-top: calc(16px + var(--chrome-gap)); }
+.drawer-tabs { padding: 16px; }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .dialog {
   width: min(460px, 100%); max-height: calc(100vh - 32px); overflow-y: auto;
@@ -2550,7 +2548,7 @@ button.feed-text:hover { text-decoration: underline; text-decoration-color: var(
 
 .inner-top {
   position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; gap: var(--space-md);
-  padding: calc(var(--space-md) + var(--chrome-gap)) 20px var(--space-md); pointer-events: none;
+  padding: var(--space-md) 20px; pointer-events: none;
 }
 .inner-top > * { pointer-events: auto; }
 .inner-head { flex: 0 1 auto; min-width: 0; }

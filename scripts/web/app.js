@@ -332,18 +332,6 @@ function updateLayout() {
 wideQuery.addEventListener('change', updateLayout)
 mediumQuery.addEventListener('change', updateLayout)
 
-// Safari on macOS in full screen reports a viewport that starts below its toolbar but draws the toolbar
-// lower than that, over the top of the header. Full screen here is the window filling the screen with
-// browser chrome still above the page; the page's own fullscreen API is not involved.
-const IS_SAFARI = /Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)
-
-function updateChromeGap() {
-  const full = IS_SAFARI && window.screenY === 0 && window.outerHeight === screen.height && window.innerHeight < window.outerHeight
-  document.documentElement.classList.toggle('safari-fullscreen', full)
-}
-window.addEventListener('resize', updateChromeGap)
-updateChromeGap()
-
 // ---------------------------------------------------------------- live events
 
 // whether a page view was left with the model at hand: the first one waits for it, since the remembered view
