@@ -968,6 +968,15 @@ def test_the_cli_runs_the_optional_verbs(repo, tmp_path, capsys):
     assert wp.main(["--root", str(repo), "focus", "%3"]) == 0 and wp.main(["--root", str(repo), "close", "%3"]) == 0
 
 
+@pytest.mark.parametrize("asked, read", [(5, 5), (3000, 3000), (5000, 5000), (99999, 5000), (0, 1)])
+def test_screen_asks_the_driver_for_at_most_five_thousand_lines(repo, tmp_path, capsys, asked, read):
+    script = tmp_path / "driver.py"
+    script.write_text(FULL_DRIVER)
+    (repo / "bridge-config.yaml").write_text(f"workplace:\n  driver: {{command: ['{sys.executable}', '{script}']}}\n")
+    assert wp.main(["--root", str(repo), "screen", "%3", "--lines", str(asked), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"text": f"line %3 {read}"}
+
+
 def test_a_resume_reopens_one_task_session_in_its_own_folder(lrepo):
     sid = "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
     cfg = {"agent": {"resume": "claude --resume {session} --model sonnet"}}

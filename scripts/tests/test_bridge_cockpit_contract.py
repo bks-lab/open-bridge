@@ -323,6 +323,7 @@ def s_reads(w: World) -> None:
     assert w.app.inbox_noise() is not None
     w.runner.handlers["workplace.screen"] = lambda argv: ok({"text": "> done"})
     assert w.request("GET", "/api/tab/screen?ref=surface:7", headers=w.cookie)[0] == 200
+    assert w.request("GET", "/api/tab-history?ref=surface:7", headers=w.cookie)[0] == 200
     w.runner.handlers["briefing.detail"] = lambda argv: ok({"ok": True, "ref": "example/repo#12"})
     for query in ("ref=example/repo%2312", "ref=example/repo%2312&fresh=1"):
         assert w.request("GET", f"/api/github?{query}", headers=w.cookie)[0] == 200

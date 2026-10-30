@@ -79,6 +79,7 @@ KEEP_SHELL = cl.KEEP_SHELL
 
 
 LAUNCH_WAIT_SEC = 20.0
+SCREEN_MAX_LINES = 5000       # a shell tab's whole scrollback, for the cockpit's tab history (workplace.py SCREEN_MAX_LINES)
 # cmux's named workspace colours with the hex it stores for each (the same map as workplace.py COLORS)
 PALETTE = {
     "Red": "#C0392B", "Crimson": "#922B21", "Orange": "#A04000", "Amber": "#7D6608",
@@ -876,7 +877,7 @@ def keys(req: dict) -> list[str]:
 
 def screen(req: dict) -> str:
     surface = req["tab"]
-    lines = max(1, min(int(req.get("lines") or 40), 500))
+    lines = max(1, min(int(req.get("lines") or 40), SCREEN_MAX_LINES))
     out = cl.cmux_checked("read-screen", *_where(surface), "--surface", surface, "--lines", str(lines))
     return "\n".join(line.rstrip() for line in out.splitlines()).strip("\n")
 

@@ -134,7 +134,7 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "caps"}` | `{"caps": ["tabs", "sessions", "open", "launch", "send", "rename", ...]}`: the verbs this driver serves. A driver that answers no `caps` counts as serving the six above |
 | `{"verb": "focus", "tab": ref}` | `{"report": [...]}`: the tab comes to the front |
 | `{"verb": "key", "tab": ref, "key": k}` | `{"report": [...]}`: one key into the tab, `k` one of `enter`, `escape`, `y`, `n`, `1` to `9` |
-| `{"verb": "screen", "tab": ref, "lines": n}` | `{"text": "..."}`: the last `n` lines the tab shows, plain text, read only |
+| `{"verb": "screen", "tab": ref, "lines": n}` | `{"text": "..."}`: the last `n` lines the tab shows, plain text, read only. `workplace.py screen` and both shipped drivers let up to 5000 lines through (a shell tab's whole scrollback, which the cockpit's tab history reads; the tab view asks for 400). A tab with an agent shows only its repainted screen, whatever `n` is |
 | `{"verb": "close", "tab": ref}` | `{"report": [...]}`: closes that one tab, only ever on an explicit request |
 | `{"verb": "workspaces"}` | `{"workspaces": [{"ref", "title", "color", "color_name", "description", "pinned", "cwd", "branch", "dirty", "pr", "unread", "latest", "statuses"}]}`: the workspaces as the terminal shows them, read only (`workplace.py workspaces --json`; the cockpit's chat as cmux) |
 | `{"verb": "control", "control": {...}, "command": "...", "root": "..."}` | `{"report": [...]}`: a new agent tab in the control workspace, which is created when it is missing (`workplace.py control --yes`) |

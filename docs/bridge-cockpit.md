@@ -1513,6 +1513,30 @@ marked, the end stays in view unless you scrolled up, and below it stand Yes, No
 on as the tab's state allows and a box that sends a message to it (Enter
 sends, Shift+Enter a new line). Escape or a click outside closes it.
 
+**A tab's history.** The screen of a tab is only what the terminal shows now;
+`GET /api/tab-history?ref=...` (read only) answers with the whole conversation,
+searchable: `{ok, ref, name, source, turns, total, matched, truncated, at_ms}`,
+each turn `{i, role, text, at_ms}`. A tab that runs a Claude session answers from
+the session's transcript (`source: "session"`): the tab is tied to the session by
+the live session list (the session's process carries the tab's `CMUX_SURFACE_ID`
+or `TMUX_PANE`, which the scan matches to the tab list: `tab.ref` of a session in
+`sessions.sessions` of the state), the newest session of a tab decides, and its turns are `user`, `agent` and `tool` (one short
+line a call, `Bash: git status`; never a tool's result, thinking, the harness's
+reminders or a subagent). A tab with no session, or whose transcript is gone,
+answers from the terminal (`source: "terminal"`): the scrollback through the
+driver (`workplace.py screen --lines 5000`), cut into blocks at the blank lines,
+role `terminal`, no time. A shell tab has all of it; an agent that repaints its
+screen has only what it shows. `q` is a plain case-insensitive substring over the
+text (at most 200 characters) and answers only the matching turns, `matched`
+counting them. The newest `limit` turns come (default 200, at most 500, and no
+more than 256 KiB of text), oldest first; `truncated` says older ones were left
+out, and `before=<i of the oldest turn held>` pages back to them. A turn's text is
+cut at 20,000 characters, and a conversation keeps its newest 50,000 turns. A
+transcript is streamed, never read whole, and kept parsed by path, mtime and size
+(a file that grew is read from where the last read ended); every text goes through
+the same scrub as the screen, so the key never leaves and a search cannot find it.
+Nothing is written and no agent runs.
+
 **A page's search.** A profile page with `search: true` carries a search field
 above its sections with three modes beside it; switching keeps the text (on a
 log page with a time range the first mode is **In range**, see below). In
@@ -3071,6 +3095,11 @@ nothing a stranger could trigger:
   first, at most 2000), no runner call and no line. So is
   `GET /api/chats/archive?days=n`: the questions of the archive of the last
   1 to 14 days, at most 60, never the removed ones.
+  `GET /api/tab-history` is a read too: a transcript of this machine streamed in
+  place (found through the live session of a known tab, never from a path the
+  request gives) or the scrollback through `workplace.py screen`, the ref checked
+  as a tab and known, the search at most 200 characters and the numbers checked
+  before anything is read, every text scrubbed, no line.
   `/api/seen` is the page's own measure: opening a page or a view of it
   leaves `page_view`, the page id and `view=` (the work tab's view, the start
   page's view, else `-`), nothing more. The first line waits for the model, so

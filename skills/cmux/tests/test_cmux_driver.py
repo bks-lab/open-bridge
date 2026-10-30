@@ -795,6 +795,13 @@ def test_focus_key_screen_and_close_address_the_tab_in_its_workspace(fake):
     assert ["close-surface", "--surface", "surface:91", "--force", "--workspace", "workspace:3"] in argv
 
 
+@pytest.mark.parametrize("asked, read", [(40, "40"), (3000, "3000"), (5000, "5000"), (99999, "5000"), (0, "40")])
+def test_screen_reads_the_scrollback_up_to_five_thousand_lines(fake, asked, read):
+    fake.answer({"verb": "screen", "tab": "surface:91", "lines": asked})
+    reads = [a for a in fake.argv() if a[0] == "read-screen"]
+    assert reads[-1][reads[-1].index("--lines") + 1] == read
+
+
 def test_keys_type_as_a_keyboard_does(fake):
     fake.answer({"verb": "keys", "tab": "surface:91", "keys": [
         {"text": "git st"}, {"key": "tab"}, {"key": "enter"}, {"key": "ctrl+c"}, {"text": "a\\nb"}, {"paste": "one\ntwo"}]})

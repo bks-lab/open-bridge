@@ -72,6 +72,7 @@ SEND_CHUNK = 2000          # tmux carries a command in one IPC message (16 KB); 
 INLINE_MAX = 1000          # a longer launch command goes into a private launcher file
 LAUNCHER_DAYS = 7
 SCREEN_LINES = 40
+SCREEN_MAX_LINES = 5000    # a shell tab's whole scrollback, for the cockpit's tab history (workplace.py SCREEN_MAX_LINES)
 STATE_WINDOW = 15          # only the bottom of the screen decides the state, never old scrollback
 
 
@@ -709,7 +710,7 @@ def screen(req: dict) -> dict:
         n = int(req.get("lines") or SCREEN_LINES)
     except (TypeError, ValueError):
         n = SCREEN_LINES
-    n = max(1, min(n, 2000))
+    n = max(1, min(n, SCREEN_MAX_LINES))
     lines = [ln.rstrip() for ln in capture(ref, n).splitlines()]
     while lines and not lines[-1]:
         lines.pop()
