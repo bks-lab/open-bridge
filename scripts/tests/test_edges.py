@@ -847,3 +847,42 @@ def test_an_unmatched_backtick_is_literal_and_hides_nothing(tmp_path):
     })
     assert [t for _, _, t in edges.iter_md_links(tmp_path)] == [
         "work/tasks/ghost/STATUS.md"]
+
+
+# ------------------------------------------------------- design references --
+# `design_ref:` and a theme's `branding.design:` name a design by id, not by
+# path, so the path pattern above never sees them. They are edges all the same:
+# an id that names no file under identity/designs/ makes scripts/designs.py
+# refuse to resolve, and that should be red here before a generator meets it.
+
+
+def test_a_design_ref_is_an_edge_to_the_design_file(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "id: client\ndesign_ref: brand\n",
+        "identity/personas/p.yaml": "id: p\ndesign_ref: brand\n",
+        "themes/house.yaml": "meta: {name: house}\nbranding:\n  design: brand\n",
+        "identity/designs/brand.md": "---\nname: brand\n---\n",
+    })
+    found = edges.all_edges(tmp_path)
+    assert ("workflow/contexts/client.yaml", "design_ref", "identity/designs/brand.md") in found
+    assert ("identity/personas/p.yaml", "design_ref", "identity/designs/brand.md") in found
+    assert ("themes/house.yaml", "branding.design", "identity/designs/brand.md") in found
+    assert edges.check(tmp_path) == []
+
+
+def test_a_design_ref_to_a_missing_id_is_dead(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "id: client\ndesign_ref: nobody\n",
+        "themes/house.yaml": "meta: {name: house}\nbranding: {design: ghost}\n",
+    })
+    findings = edges.check(tmp_path)
+    assert any("workflow/contexts/client.yaml :: design_ref" in f and "dead" in f for f in findings), findings
+    assert any("themes/house.yaml :: branding.design" in f and "dead" in f for f in findings), findings
+
+
+def test_a_template_design_ref_is_not_an_edge(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/_template.yaml": "design_ref: example-org\n",
+        "themes/_template.yaml": "branding: {design: example-org}\n",
+    })
+    assert edges.check(tmp_path) == []

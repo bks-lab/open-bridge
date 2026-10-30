@@ -42,6 +42,12 @@ not the repo, so a move breaks them from both sides: links into the moved
 folder, and the moved files' own links out of it, whose depth changed. Both
 resolve to a repo path first and then go through the same classification.
 
+DESIGNS ARE NAMED BY ID. `design_ref:` in a context or a persona and
+`branding.design:` in a theme name a design under identity/designs/ by its id,
+not by path, so the path pattern never sees them. They are read separately and
+checked as an edge to `identity/designs/<id>.md`: resolving or dead, never
+moved, since `--fix` would write a path where an id belongs.
+
 TEMPLATES ARE NOT EDGES. `_template.yaml` describes a file nobody has written
 and `*.example.yaml` describes the tree a future instance will have. Their
 paths are correct as written and reporting them would be three false alarms in
@@ -97,6 +103,12 @@ MD_LINK = re.compile(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 MD_HISTORY_PREFIXES = ("work/done/", "work/archive/")
 BACKTICKS = re.compile(r"`+")
 FENCE = re.compile(r"^\s*(```|~~~)")
+
+# Id references to a design (scripts/designs.py). The key anywhere in a config
+# file, and a theme's `branding.design`.
+DESIGN_KEY = "design_ref"
+DESIGN_DIR = "identity/designs/"
+THEME_GLOB = "themes/*.yaml"
 
 # Where a work item can live. The KIND model in AGENTS.md: a finite task, a
 # long-runner, or closed under a month.
@@ -285,9 +297,56 @@ def iter_md_links(repo_root) -> list[tuple[str, str, str]]:
     return found
 
 
+def _design_target(value) -> str:
+    return f"{DESIGN_DIR}{str(value).strip()}.md"
+
+
+def _design_refs(node, path: list[str], out: list):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if str(key) == DESIGN_KEY and not isinstance(value, (dict, list)) and value is not None:
+                out.append((".".join(path + [DESIGN_KEY]), _design_target(value)))
+            else:
+                _design_refs(value, path + [str(key)], out)
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            _design_refs(value, path + [str(index)], out)
+
+
+def iter_design_refs(repo_root) -> list[tuple[str, str, str]]:
+    """Every reference to a design by id, as (file, key path, identity/designs/<id>.md)."""
+    if yaml is None:  # pragma: no cover
+        return []
+    root = Path(repo_root)
+    found: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for pattern in (*SCAN_GLOBS, THEME_GLOB):
+        for path in sorted(root.glob(pattern)):
+            rel = str(path.relative_to(root))
+            if rel in seen or _skip(rel):
+                continue
+            seen.add(rel)
+            try:
+                doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except (yaml.YAMLError, UnicodeDecodeError):
+                continue
+            if not isinstance(doc, dict):
+                continue
+            if pattern == THEME_GLOB:
+                branding = doc.get("branding")
+                value = branding.get("design") if isinstance(branding, dict) else None
+                if value is not None and not isinstance(value, (dict, list)):
+                    found.append((rel, "branding.design", _design_target(value)))
+                continue
+            hits: list = []
+            _design_refs(doc, [], hits)
+            found.extend((rel, key, target) for key, target in hits)
+    return found
+
+
 def all_edges(repo_root) -> list[tuple[str, str, str]]:
     _files_by_name.cache_clear()           # one walk per run, never a stale one
-    return iter_edges(repo_root) + iter_md_links(repo_root)
+    return iter_edges(repo_root) + iter_design_refs(repo_root) + iter_md_links(repo_root)
 
 
 def links_into(repo_root, old: str) -> list[str]:
@@ -372,6 +431,10 @@ def classify(repo_root, target: str) -> tuple[str, str | None]:
         return "external", None
     if (root / target).exists():
         return "ok", None
+    # A design named by id resolves or it does not: no other folder holds one,
+    # and no neighbour checkout could.
+    if target.startswith(DESIGN_DIR):
+        return "dead", None
 
     # Before excusing anything: does this file live somewhere else in THIS tree?
     # The cluster-wrapper reorg moved channels/ backups/ remotes/ under infra/

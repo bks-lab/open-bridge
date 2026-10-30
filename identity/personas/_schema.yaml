@@ -227,6 +227,14 @@ properties:
     type: string
     description: "Multi-line signature block for emails / documents (text only, no images)"
 
+  design_ref:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9._-]*$"
+    description: >-
+      Id → identity/designs/<id>.md, the design of everything that goes out
+      under this identity, mail included (step 4 of scripts/designs.py
+      resolve). Optional; a context's design_ref wins over it.
+
 # JSON Schema does not natively express conditional rules, but these are
 # advisory hints for reviewers and future allOf/if-then rules:
 #
