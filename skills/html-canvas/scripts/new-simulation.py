@@ -40,9 +40,21 @@ def load_design_to_css():
     return mod
 
 
-def default_design():
-    """The instance's DESIGN.md: three levels above skills/html-canvas/scripts/."""
-    return HERE.parents[2] / "DESIGN.md"
+def default_design(design=None):
+    """The design the Bridge resolves (bridge_design.py), else the instance's DESIGN.md.
+
+    A simulation is written for the instance, so no target repository is asked;
+    --design (a path or an id) wins, then the theme's design, then the root file.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bridge_design", HERE / "bridge_design.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        found = mod.resolve(design)
+    except ValueError as e:
+        fail(str(e))
+    return found or HERE.parents[2] / "DESIGN.md"
 
 ARCHETYPES = {
     "flow": (
@@ -112,7 +124,7 @@ def build(args):
 
     # 0. brand tokens from the instance's DESIGN.md, into the shell's marked region.
     #    Without a DESIGN.md the shell keeps its neutral system colours, loudly.
-    design = pathlib.Path(args.design) if args.design else default_design()
+    design = pathlib.Path(default_design(args.design))
     if design.exists():
         d2c = load_design_to_css()
         css, skipped = d2c.build_css(d2c.frontmatter(design))
@@ -225,7 +237,8 @@ def main():
     p.add_argument("--lead-en", dest="lead_en")
     p.add_argument("--lang", choices=("de", "en"), default="en", help="default language of the page")
     p.add_argument("--date", help="footer date (default: today)")
-    p.add_argument("--design", help="DESIGN.md to take the tokens from (default: the instance root)")
+    p.add_argument("--design", help="DESIGN.md or design id to take the tokens from "
+                                    "(default: the design the Bridge resolves, else the instance root)")
     p.add_argument("--source", help="footer source note")
     p.add_argument("--embed-fonts", action="store_true",
                    help="embed the DESIGN.md font families as base64 @font-face (off by default; "

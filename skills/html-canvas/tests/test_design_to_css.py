@@ -419,3 +419,27 @@ def test_map_print_takes_only_a_boolean(tmp_path):
 def test_default_sheet_print_block_is_unchanged():
     css = _run(TOKENS / "design-current.md").stdout
     assert css == (TOKENS / "golden-current.css").read_text("utf-8")
+
+
+# --- --context / --persona: the Bridge resolves the design (scripts/designs.py) ----------
+
+def test_context_picks_the_referenced_design(tmp_path):
+    from canvas_testlib import mini_bridge
+    bridge = mini_bridge(tmp_path)
+    script = bridge / "skills" / "html-canvas" / "scripts" / "design-to-css.py"
+    own = subprocess.run([sys.executable, str(script), "--context", "client"], capture_output=True, text=True)
+    assert own.returncode == 0, own.stderr
+    assert "#5a1e3c" in own.stdout.lower() and "#102030" not in own.stdout.lower(), own.stdout[:400]
+    default = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+    assert "#102030" in default.stdout.lower(), "without a context the root DESIGN.md applies"
+    unknown = subprocess.run([sys.executable, str(script), "--context", "ghost"], capture_output=True, text=True)
+    assert unknown.returncode != 0 and "ghost" in unknown.stderr
+
+
+def test_an_explicit_path_still_wins_over_the_context(tmp_path):
+    from canvas_testlib import mini_bridge
+    bridge = mini_bridge(tmp_path)
+    script = bridge / "skills" / "html-canvas" / "scripts" / "design-to-css.py"
+    r = subprocess.run([sys.executable, str(script), str(bridge / "DESIGN.md"), "--context", "client"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and "#102030" in r.stdout.lower(), r.stderr

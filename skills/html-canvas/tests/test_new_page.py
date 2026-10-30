@@ -498,3 +498,19 @@ def test_footer_says_what_the_page_is_in_both_languages(tmp_path):
     foot = text[text.index('<footer class="canvas-foot">'):text.index("</footer>")]
     assert "Single-File" not in foot and "Dependencies" not in foot
     assert "Stand" in foot and "As of" in foot
+
+
+# --- --context: the page wears the design the context points at --------------------------
+
+def test_context_picks_the_referenced_design(tmp_path):
+    from canvas_testlib import mini_bridge
+    bridge = mini_bridge(tmp_path)
+    script = bridge / "skills" / "html-canvas" / "scripts" / "new-page.py"
+    out = tmp_path / "out" / "page.html"
+    r = run("--out", str(out), "--context", "client", scripts=script)
+    assert r.returncode == 0, r.stdout + r.stderr
+    css = out.read_text("utf-8").lower()
+    assert "#5a1e3c" in css and "#102030" not in css
+    plain = tmp_path / "out" / "plain.html"
+    assert run("--out", str(plain), scripts=script).returncode == 0
+    assert "#102030" in plain.read_text("utf-8").lower(), "no context: the root DESIGN.md"

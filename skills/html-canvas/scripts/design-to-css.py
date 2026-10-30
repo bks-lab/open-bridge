@@ -36,9 +36,12 @@ stderr. That report is the point: seven tokens once vanished from the output in
 silence and nobody noticed for months. stdout stays pure CSS either way.
 
 Usage:
-  design-to-css.py [path/to/DESIGN.md] [--out file.css]
+  design-to-css.py [path/to/DESIGN.md | design-id] [--out file.css]
   design-to-css.py [path/to/DESIGN.md] --shell [shell.html] --out page.html
-  # defaults: DESIGN.md resolved from the repo root; CSS printed to stdout.
+  design-to-css.py --context <ctx> | --persona <id> [...]
+  # defaults: the design the Bridge resolves (scripts/designs.py: the context's
+  # or persona's design_ref, the theme's branding.design, else the root
+  # DESIGN.md); CSS printed to stdout. An explicit path always wins.
   # --shell fills the marked token region of the html-canvas shell and writes
   # the page, so nobody pastes values by hand.
 
@@ -527,25 +530,24 @@ def font_faces(design_path: Path, font_dirs: list[Path]) -> str:
 PROJECT_MARKERS = (".git", "bridge-config.yaml")
 
 
+def bridge_design():
+    """bridge_design.py: which DESIGN.md a page wears, asked of the Bridge."""
+    spec = importlib.util.spec_from_file_location("bridge_design", Path(__file__).resolve().parent / "bridge_design.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def find_design(start: Path) -> Path | None:
     """The nearest DESIGN.md at or above `start` (a folder, or a file's folder).
 
     The walk stops at the project root: the first folder holding .git or
     bridge-config.yaml. Without such a folder above, only `start` itself counts,
     so a stray DESIGN.md somewhere in a temp or home folder never brands a page
-    or skews the gate. Every script that looks for DESIGN.md uses this one.
+    or skews the gate. The walk lives in bridge_design.py, which every script
+    that looks for a DESIGN.md asks.
     """
-    start = Path(start).resolve()
-    if not start.is_dir():
-        start = start.parent
-    chain = [start, *start.parents]
-    root = next((d for d in chain if any((d / m).exists() for m in PROJECT_MARKERS)), None)
-    for d in chain if root else [start]:
-        if (d / "DESIGN.md").is_file():
-            return d / "DESIGN.md"
-        if d == root:
-            break
-    return None
+    return bridge_design().find_design(start)
 
 
 def default_shell() -> Path:
@@ -553,10 +555,12 @@ def default_shell() -> Path:
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parents[3]
     ap = argparse.ArgumentParser(description="DESIGN.md -> CSS custom properties")
-    ap.add_argument("design", nargs="?", default=str(repo_root / "DESIGN.md"),
-                    help="path to DESIGN.md (default: repo-root DESIGN.md)")
+    ap.add_argument("design", nargs="?",
+                    help="path to a DESIGN.md, or a design id under identity/designs/ "
+                         "(default: the design the Bridge resolves, else the repo-root DESIGN.md)")
+    ap.add_argument("--context", help="workflow/contexts/<name>.yaml whose design_ref applies")
+    ap.add_argument("--persona", help="identity/personas/<id>.yaml whose design_ref applies")
     ap.add_argument("--out", help="write CSS to this file instead of stdout")
     ap.add_argument("--shell", nargs="?", const=str(Path(__file__).resolve().parents[1] / "assets" / "shell.html"),
                     help="write a filled copy of the html-canvas shell (default: the bundled "
@@ -598,6 +602,13 @@ def main() -> int:
     if args.font_dir and not args.embed_fonts:
         sys.exit("design-to-css: --font-dir needs --embed-fonts")
 
+    try:
+        chosen = bridge_design().resolve(args.design, context=args.context, persona=args.persona)
+    except ValueError as e:
+        sys.exit("design-to-css: %s" % e)
+    if chosen is None:
+        sys.exit("design-to-css: no DESIGN.md found; pass a path")
+    args.design = str(chosen)
     design = frontmatter(Path(args.design))
     if entries is not None:
         css, missing = build_mapped_css(design, entries, selectors, print_block)
