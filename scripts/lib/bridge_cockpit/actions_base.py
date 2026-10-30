@@ -143,7 +143,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "files_ask": {"text": ("instruct_text", True), "paths": ("record_paths", True)},
     # the history's question (cockpit.files_search too): when it was done or discussed, two model calls over the lines
     # the question's terms find, none the block list names (actions_work.py v_timeline_ask)
-    "timeline_ask": {"text": ("instruct_text", True)},
+    # since, until: the log page's range of days; the question then reads only the lines of those days
+    "timeline_ask": {"text": ("instruct_text", True), "since": ("day", False), "until": ("day", False)},
     "flow_theme_move": {"key": ("key", True), "theme": ("theme_id", True)},
     "flow_theme_new": {"key": ("key", True), "name": ("theme_name", True)},
     "flow_theme_rename": {"theme": ("theme_id", True), "name": ("theme_name", True)},
@@ -307,6 +308,17 @@ def check_date(value: Any, field: str, today: dt.date) -> str:
         raise bad_arg(field, "not a calendar date") from None
     if not today < day <= today + dt.timedelta(days=366):
         raise bad_arg(field, "must be after today and within 366 days")
+    return value
+
+
+def check_day(value: Any, field: str) -> str:
+    """Any real day as YYYY-MM-DD, past or coming (a range to read in, not a day to wait for)"""
+    if not isinstance(value, str) or not DATE_RE.match(value):
+        raise bad_arg(field, "must be YYYY-MM-DD")
+    try:
+        dt.date.fromisoformat(value)
+    except ValueError:
+        raise bad_arg(field, "not a calendar date") from None
     return value
 
 

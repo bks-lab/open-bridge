@@ -233,6 +233,10 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "work_kind": og.work_kind(row.get("task") or row.get("about_task"), known),
             "about_kind": row.get("about_kind"),
             "inbox_kind": row.get("inbox_kind"),
+            # the asks filed about this line ("ask about this row") that the briefing folded into it: their own
+            # titles, so the detail lists them and each opens its item; they close with the line (actions_work)
+            "also_inbox": [{"id": x, "title": (card_ctx.inbox(x) or {}).get("summary") or x}
+                           for x in row.get("also_inbox") or [] if INBOX_ID_RE.match(x)],
             # the GitHub list the row also stands in ({page, section}, model.board_places): Work through folds such
             # rows of Not now into one line that leads there
             "on_board": places.get(row["key"]),
@@ -650,6 +654,7 @@ class Collector:
             # What this run left out stays at the state of the previous one. Add the tasks only afterwards:
             # otherwise a task whose inbox row comes from the previous run would appear twice.
             merged = m.with_tasks(m.merge_view(before, fresh_view) if before else fresh_view, self.tasks, app.tx)
+            merged = m.with_repo_areas(merged, getattr(app.cfg, "area_repos", ()))
             self.view = merged
             self.stale = False
             self.last_error = None

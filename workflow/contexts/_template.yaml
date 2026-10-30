@@ -79,6 +79,14 @@ repos:
 # persona_ref: example-freelancer
 
 # ---------------------------------------------------------------------
+# Optional: the design every deliverable of this context wears, an id
+# under identity/designs/. Unset, the persona's design, the theme's and
+# then the root DESIGN.md apply (python3 scripts/designs.py resolve).
+# `design_ref: default` opts out: the root DESIGN.md, whatever the theme says.
+# ---------------------------------------------------------------------
+# design_ref: example-org
+
+# ---------------------------------------------------------------------
 # Optional: sub-agents typically dispatched in this context
 # (names of .claude/agents/<name>.md files)
 # ---------------------------------------------------------------------

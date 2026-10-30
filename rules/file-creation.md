@@ -20,8 +20,8 @@ The fix is always more expensive than the prevention.
 
 Run this every time, in order:
 
-1. **Locate the destination folder.** Use the cluster-wrapper map (CLAUDE.md
-   § Layout — Cluster-Wrappers). Personas/Mandants/Accounts → `identity/`;
+1. **Locate the destination folder.** Use the family index [`docs/families.md`](../docs/families.md)
+   (AGENTS.md § Layout — Cluster-Wrappers keeps the Default-to-Folder rule). Personas/Mandants/Accounts → `identity/`;
    Remotes/Channels/Backups → `infra/`; Calendars/Contexts/Projects → `workflow/`;
    Protocols, Skills, Trackers, Themes → top-level.
 2. **Read the `_template.yaml`** in the destination folder. This is the field
@@ -69,6 +69,7 @@ Run this every time, in order:
 | File pattern you're creating | Template path | Schema path | Peer example |
 |---|---|---|---|
 | `identity/personas/<id>.yaml` | `identity/personas/_template.yaml` | `identity/personas/_schema.yaml` | `docs/examples/personas/` |
+| `identity/designs/<id>.md` | `identity/designs/_template.md` (or copy the root `DESIGN.md`) | `identity/designs/_schema.yaml` (front matter) | the root `DESIGN.md` |
 | `identity/accounts/<id>.yaml` | `identity/accounts/_template.yaml` | `identity/accounts/_schema.yaml` (permissive) | `examples/agency/identity/accounts/cloud-provider.yaml` |
 | `identity/mandants/<id>.yaml` | `identity/mandants/_template.yaml` | `identity/mandants/_schema.yaml` | `examples/agency/identity/mandants/team.yaml` |
 | `infra/remotes/<name>.yaml` | `infra/remotes/_template.yaml` | `infra/remotes/_schema.yaml` | `examples/agency/infra/remotes/prod-server.yaml` |
@@ -83,7 +84,7 @@ Run this every time, in order:
 | `protocols/standing-orders/<name>.md` | `protocols/standing-orders/_template.md` | — | `protocols/standing-orders/task-sync.md` |
 | `skills/<name>/SKILL.md` | — | — | any existing skill, e.g. `skills/mandants/SKILL.md`; then § Writing skill steps below |
 | `skills/<name>/LEARNINGS.md` + its routing block | `docs/skill-learnings.md` § Templates | `scripts/check-skill-learnings.py` | the template itself |
-| Doc with frontmatter (`docs/*.md`, `<folder>/README.md`) | — | — | shape in CLAUDE.md § Documentation Navigation |
+| Doc with frontmatter (`docs/*.md`, `<folder>/README.md`) | — | — | shape in AGENTS.md § Documentation Navigation |
 
 ## Common gotchas (real history)
 
@@ -93,7 +94,7 @@ Run this every time, in order:
   dot for `.README.md` (overview). The inconsistency makes the purpose visible
   at-a-glance.
 - **Frontmatter for standalone docs:** `summary`, `type`, `last_updated`,
-  `related:` — shape in CLAUDE.md § Documentation Navigation. Skipping this
+  `related:` — shape in AGENTS.md § Documentation Navigation. Skipping this
   means the doc won't be triaged correctly by AI-first reading.
 - **UTF-8 native, not entities.** Umlauts as `ä`/`ö`/`ü`/`ß`, em-dash as `—`,
   Euro as `€`. Never `&auml;`, never `ä`, never `ae`. Applies to

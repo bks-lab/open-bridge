@@ -7,7 +7,9 @@
         --out work/tasks/<slug>/deliverables/review.html
 
 Takes assets/shell.html (theme toggle, DE/EN toggle, print), the brand tokens of
-the instance's DESIGN.md (design-to-css.py) and assets/sections.css, and writes ONE
+the design that applies (design-to-css.py; --design, a DESIGN.md of the repository
+the page is written into, --context, --persona, the theme's design, else the
+instance's DESIGN.md, see bridge_design.py) and assets/sections.css, and writes ONE
 offline file: the example markup of every requested block from references/sections.md
 inside <main>, and the CSS of those blocks (plus whatever they require) once, in a
 marked region. Then it runs verify-page.py (static) on the result and exits non-zero
@@ -267,13 +269,19 @@ def ensure_region(text: str, name: str, before: str | None = None) -> str:
 
 # --- the steps shared by build and refresh --------------------------------------------
 
-def find_design(start: Path) -> Path | None:
-    """The nearest DESIGN.md, never above the project root; else the instance's own."""
-    found = load("design-to-css.py").find_design(start)
-    if found:
-        return found
-    instance = HERE.parents[2] / "DESIGN.md"
-    return instance if instance.is_file() else None
+def find_design(start: Path, args=None) -> Path | None:
+    """The design the Bridge resolves for a page at `start` (bridge_design.py).
+
+    --design (a path or an id) wins, then a DESIGN.md of the repository the page
+    is written into (never the Bridge's own root), --context, --persona, the
+    theme's design, and last the instance's own DESIGN.md.
+    """
+    try:
+        return load("bridge_design.py").resolve(
+            getattr(args, "design", None), context=getattr(args, "context", None),
+            persona=getattr(args, "persona", None), target=start)
+    except ValueError as e:
+        fail(str(e))
 
 
 def apply_tokens(text: str, design: Path | None, d2c) -> str:
@@ -281,6 +289,7 @@ def apply_tokens(text: str, design: Path | None, d2c) -> str:
         note("no DESIGN.md found, the page keeps its neutral system colours (pass --design)")
         return text
     css, skipped = d2c.build_css(d2c.frontmatter(design))
+    css = load("bridge_design.py").source_mark(design) + css
     if skipped:
         note("DESIGN.md keys not mapped: %s" % ", ".join(skipped))
     try:
@@ -478,7 +487,10 @@ def main() -> int:
     p.add_argument("--lang", choices=("de", "en"), default="en", help="default language of the page")
     p.add_argument("--date", help="footer date (default: today)")
     p.add_argument("--footer", help="footer source note")
-    p.add_argument("--design", help="DESIGN.md for the tokens (default: nearest one above the page)")
+    p.add_argument("--design", help="DESIGN.md or design id for the tokens (default: the design the Bridge "
+                                    "resolves, see bridge_design.py)")
+    p.add_argument("--context", help="workflow/contexts/<name>.yaml whose design_ref the page wears")
+    p.add_argument("--persona", help="identity/personas/<id>.yaml whose design_ref the page wears")
     p.add_argument("--embed-fonts", action="store_true",
                    help="embed the DESIGN.md font families as base64 @font-face (off by default)")
     p.add_argument("--font-dir", action="append", default=[], metavar="DIR",
@@ -506,7 +518,12 @@ def main() -> int:
         page = Path(args.refresh)
         if not page.is_file():
             fail("no such page: %s" % page)
-        design = Path(args.design) if args.design else find_design(page.parent)
+        named = args.design or args.context or args.persona
+        try:
+            built_with = None if named else load("bridge_design.py").recorded(read(page))
+        except ValueError as e:
+            fail("%s records a design that no longer resolves: %s" % (page, e))
+        design = built_with or find_design(page.parent, args)
         if design and not design.is_file():
             fail("--design: %s not found" % design)
         text, changed = refresh(args, page, design, d2c)
@@ -520,7 +537,7 @@ def main() -> int:
     dest = Path(args.out)
     if dest.exists() and not args.force:
         fail("%s exists; pass --force to overwrite" % dest)
-    design = Path(args.design) if args.design else find_design(dest.parent)
+    design = find_design(dest.parent, args)
     if design and not design.is_file():
         fail("--design: %s not found" % design)
     text = build(args, design, d2c)

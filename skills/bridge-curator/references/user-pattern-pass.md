@@ -123,7 +123,7 @@ body_excerpt: |
     "<observation text>"
 
   Suggested memory entry name: <kebab-case-name>
-  Suggested type: feedback | project | reference  (per CLAUDE.md auto-memory rules)
+  Suggested type: feedback | project | reference  (per docs/memory.md)
 ```
 
 `/bridge-learn` accept on a target.type=memory proposal does NOT

@@ -50,7 +50,7 @@ EFFORTS = ("small", "medium", "large")
 TOPICS = ("decision", "reply", "research", "bug", "build", "docs", "ops", "review", "admin", "money", "meeting",
           "application", "idea")
 GIST_MAX = 90
-# outbound or irreversible: never the AI's to do, whatever it answers (rules/, CLAUDE.md). The words cover
+# outbound or irreversible: never the AI's to do, whatever it answers (rules/, AGENTS.md). The words cover
 # English and German task texts; a fork that writes in another language adds its verbs here. A safety net
 # over free text, so it errs towards "yours".
 OUTBOUND = re.compile(r"\b(send|senden|versend\w*|abschick\w*|e-?mail an|mail an|publish\w*|veröffentlich\w*|post(en)?\b|"

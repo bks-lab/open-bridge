@@ -24,7 +24,7 @@ each of which had drifted when this was written:
    `site:` block of DESIGN.md declares, value for value, light and dark,
    and no later top-level `:root` or `html.dark` block sets a site token
    again (an `@media` block may, print maps dark to light on purpose).
-   AGENTS.md § Design System says no brand colour is hand-picked outside
+   AGENTS.md § Guardrails beside the families says no brand colour is hand-picked outside
    DESIGN.md; the site layer was the one place that did.
 5. A schema `$id` that points at the Pages site resolves to a file under
    docs/, and no two schemas share an `$id`. Thirty-two `$id`s pointed at

@@ -125,7 +125,7 @@ What an org ships in its overlay repo (full authoring guide:
 example-org-bridge/
 ├── overlay.manifest.yaml          # REQUIRED — the single declaration (root)
 ├── README.md                      # REQUIRED — what this overlay adds
-├── ecosystem.example-org.yaml     # OPTIONAL — ecosystem fragment (@import-wired)
+├── ecosystem.example-org.yaml     # OPTIONAL — ecosystem fragment (indexed by Phase 1)
 ├── .github/workflows/publish-guard.yml   # leak gate BEFORE publish
 └── tree/                          # mirrors the Bridge layout; every file scope:org
     ├── skills/example-org-coordinator/SKILL.md
@@ -454,7 +454,8 @@ before/after — **without writing anything**.
 
 End a subscription. Hash-verifies each lock-recorded file and deletes **only**
 the clean managed ones (prompts on any locally-modified file), then drops the
-cache, the `materialize` block, the lock entry, and the ecosystem `@import`.
+cache, the `materialize` block and the lock entry. No import is dropped, since
+none is written.
 `--keep-files` ends the subscription but leaves the materialized files in place.
 
 ### `list`
@@ -500,13 +501,18 @@ load-bearing order, condensed:
     as written`.
 13. **Ecosystem fragment**: `ecosystem.<org>.yaml` goes through Steps 4 to 12
     like any managed file (lock entry, 3-way merge on a local edit, listed by
-    `diff`), copied verbatim from the overlay root; then idempotently ensure its
-    `@import` line in `CLAUDE.md`, unless `context-budget.yaml` or
-    `context-budget.user.yaml` declares the fragment as a Phase 1 `card:`
-    ([`docs/context-index.md`](context-index.md)). Then the run prints
-    `indexed, not imported: <fragment>` and adds no import, since an import
-    next to a card is what `measure-context.py` reports as a contradiction.
-    Never block-merge.
+    `diff`), copied verbatim from the overlay root. It lands at the root, and
+    Phase 1 indexes it with `context-index.py --registries`
+    ([`rules/operations.md`](../rules/operations.md) Phase 1,
+    [`docs/context-index.md`](context-index.md)); the run prints
+    `registry <fragment>: indexed at session start`. The engine writes no
+    import and never touches `AGENTS.md` or `CLAUDE.md`. Never block-merge.
+
+    A consumer whose `CLAUDE.md` still carries `@ecosystem.<org>.yaml` gets a
+    WARN from `add`, `sync` and `remove` until it runs
+    `scripts/migrate-entry-file.py` ([`docs/updating.md`](updating.md)). The
+    engine reports the line and never edits it: that file is the fork's, and
+    while it exists Claude Code loads it instead of `AGENTS.md`.
 14. **Prune** files in the lock but absent from the new plan (delete if clean,
     prompt if modified).
 15. **Write the lockfile** (resolved SHA, manifest digest, timestamp, per-file

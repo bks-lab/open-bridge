@@ -14,7 +14,7 @@ import threading
 from .. import work_find as wf
 from . import activity as act
 from . import model as m
-from .details import split_front
+from .details import INBOX_ID_RE, inbox_facts, split_front
 from .history import REOPEN_AS, item as history_item
 from .actions_base import (DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
                            row_go)
@@ -304,6 +304,7 @@ class WorkVerbs:
             ctx.note(self.tx["drop_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         ctx.history.append(history_item(row["key"], row["title"], "inbox", "dropped", item))
+        self.end_also(ctx, row, "drop")
         # inbox.py prints `muted <rule>` when the reason left a rule behind; the page offers to lift it
         muted = next((line.split()[1] for line in run.out.splitlines() if line.startswith("muted ") and len(line.split()) == 2), None)
         if muted:
@@ -340,6 +341,22 @@ class WorkVerbs:
         else:
             ctx.note(self.tx["unmute_failed"].format(err=m.short(run.err, 100)), bad=True)
 
+    def end_also(self, ctx: Ctx, row: dict, verb: str) -> None:
+        """The asks a line took in (briefing_view._fold, `also_inbox`) end with it, the same way (close or drop),
+        with a note that names the line. Only the ids the row itself carries and only items still active: one that
+        ended meanwhile is left as it ended. A failure is said and the next one goes on; the line stays ended."""
+        note = self.tx["also_closed_note"].format(title=m.short(row.get("title") or row["key"], 80))
+        for item in row.get("also_inbox") or []:
+            if not isinstance(item, str) or not INBOX_ID_RE.match(item) or item == row.get("inbox_id"):
+                continue
+            facts = inbox_facts(self.app.root, item)
+            if facts is None or facts.get("ended"):
+                continue
+            run = ctx.call(f"inbox.{verb}", item, self.inbox(verb, item, "--note", note), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["done_failed" if verb == "close" else "drop_failed"].format(err=m.short(run.err, 100)),
+                         bad=True)
+
     def v_done(self, ctx: Ctx, key: str) -> None:
         row = self.entry(key)["row"]
         if not row.get("inbox_id") or row.get("gate") != "only-you":
@@ -350,6 +367,7 @@ class WorkVerbs:
             ctx.note(self.tx["done_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         ctx.history.append(history_item(row["key"], row["title"], "inbox", "done", item))
+        self.end_also(ctx, row, "close")
         self.settle(ctx, row, self.tx["res_done"])
         self.settle_soon(ctx)
 
@@ -505,6 +523,7 @@ class WorkVerbs:
                     continue
                 ctx.history.append({**history_item(key, row["title"], "inbox", "done" if outcome == "done" else "dropped", item),
                                     **({"reason": text} if text else {})})
+                self.end_also(ctx, row, verb)
                 self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped"])
                 self.settle_soon(ctx)
             elif kind == "other":
@@ -972,13 +991,14 @@ class WorkVerbs:
                                            "held": {"n": len(held), "words": held_words}, "model": act.alias(got["used"] or model),
                                            "left": app.activity.budget_left("files"), "at_ms": int(app.clock())})
 
-    def v_timeline_ask(self, ctx: Ctx, text: str) -> None:
+    def v_timeline_ask(self, ctx: Ctx, text: str, since: str | None = None, until: str | None = None) -> None:
         """When was it done or discussed (cockpit.files_search, lib/work_find.py history_*): the first call turns the
         question into search terms and maybe a range of days, the lines of the history that hold the most of them are
         picked (history_candidates), every one a word of the block list names in its path, source or text is held back
         before anything is built, and the second call answers from the rest, naming them by number only. Off with the
         files tab's question, within its budget_per_day (one question counts once, both calls' cost together), one at
-        a time. Nothing found: no second call, an answer of None"""
+        a time. Nothing found: no second call, an answer of None. With `since`/`until` (the log page's range) only the
+        lines of those days count; a range the question names narrows it further, never past it"""
         app = self.app
         tx = TABLES["de" if str(getattr(app.cfg, "language", "en")).startswith("de") else "en"]["timeline_ask"]
         cfg = act.block(app, "files")
@@ -1011,7 +1031,12 @@ class WorkVerbs:
             find = lambda since=None, until=None: wf.history_candidates(  # noqa: E731
                 app.root, asked, transcripts=app.cfg.transcripts, meetings=app.cfg.meetings, since=since, until=until,
                 block=words)
-            found = find(terms["from"], terms["to"]) or (find() if terms["from"] or terms["to"] else [])
+            # the page's range bounds whatever range the question names; nothing in the narrower one: the page's range
+            lo = max(filter(None, (since, terms["from"])), default=None)
+            hi = min(filter(None, (until, terms["to"])), default=None)
+            narrower = (lo, hi) != (since, until)
+            found = find(lo, hi) if not (lo and hi and hi < lo) else []
+            found = found or (find(since, until) if narrower else [])
             # a line a word of the block list names, in itself, its path, its source or its file, never goes
             sent, held = [e for e in found if not e["held"]], [e["held"] for e in found if e["held"]]
             if sent:

@@ -7,7 +7,10 @@ description: Cross-skill gates for generated visual deliverables — theme toggl
 
 Any skill that emits a user-facing visual deliverable (HTML pages, slide
 decks, dashboards, reports) obeys these gates — on top of the palette,
-typography, and spacing tokens in [`../DESIGN.md`](../DESIGN.md). `DESIGN.md`
+typography, and spacing tokens of its design: the one
+`python3 scripts/designs.py resolve` names for the work (a context's or
+persona's `design_ref`, the theme's design, else [`../DESIGN.md`](../DESIGN.md);
+see [§ Designs in this Bridge](../DESIGN.md#designs-in-this-bridge)). The design
 governs *how it looks*; this rule governs *two behaviours it must have*. The
 gates apply to **every** such deliverable, including hand-built ones — not
 only the output of `html-slides` or `creative-design-stack`.
@@ -126,6 +129,6 @@ argument, which is the operation that actually failed. See
 
 ## Related
 
-- [`../DESIGN.md`](../DESIGN.md) — palette, typography, spacing tokens (read before generating any visual)
+- [`../DESIGN.md`](../DESIGN.md): the default design and the index to `identity/designs/`; read the design `scripts/designs.py resolve` names before generating any visual
 - `skills/workload/engine/view.py` — the calendar Gate 3 came out of
 - `feedback_no_google_fonts_only_open` (memory) — never embed Google Fonts in generated HTML/email/slides/PDF

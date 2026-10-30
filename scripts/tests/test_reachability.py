@@ -68,8 +68,6 @@ def _tree(root: Path, files: dict[str, str]) -> Path:
 MINIMAL_BUDGET = (
     "schema_version: 1\n"
     "items:\n"
-    "  CLAUDE.md:\n"
-    "    max_bytes: 100000\n"
     "  AGENTS.md:\n"
     "    max_bytes: 100000\n"
 )
@@ -129,7 +127,6 @@ def test_discovery_is_derived_from_the_tree_not_a_list(tmp_path):
 
 def test_a_family_named_in_the_surface_passes(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Machines live in `infra/remotes/`.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -140,7 +137,6 @@ def test_a_family_named_in_the_surface_passes(tmp_path):
 def test_a_family_missing_from_the_surface_is_a_finding(tmp_path):
     """The whole point. Every other guard is green in this state."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing about the inventory here.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -157,7 +153,6 @@ def test_prose_without_the_path_does_not_count(tmp_path):
     the directory moves.
     """
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Your machine inventory is described elsewhere.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -177,7 +172,6 @@ def test_a_pointer_in_a_deferred_standing_order_does_not_count(tmp_path):
         "Channels live in `infra/channels/`.\n"
     )
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing here.\n",
         "protocols/standing-orders/x.md": order,
         "infra/channels/_template.yaml": "a: 1\n",
@@ -193,7 +187,6 @@ def test_a_pointer_in_an_eager_standing_order_does_count(tmp_path):
         "---\n\nChannels live in `infra/channels/`.\n"
     )
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing here.\n",
         "protocols/standing-orders/x.md": order,
         "infra/channels/_template.yaml": "a: 1\n",
@@ -204,13 +197,65 @@ def test_a_pointer_in_an_eager_standing_order_does_count(tmp_path):
     assert not any("infra/channels/" in f for f in reach.check(tmp_path))
 
 
+def test_the_finding_points_at_the_data_model_not_an_eager_order(tmp_path):
+    """CORE variant: no bridge-config.yaml, so every family is a CORE family.
+
+    The old text sent a person to an eager standing order, which no sub-agent
+    loads, so the family stayed invisible to every dispatch.
+    """
+    _tree(tmp_path, {
+        "AGENTS.md": "Nothing here.\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET,
+    })
+    finding = next(f for f in reach.check(tmp_path) if f.startswith("infra/remotes/"))
+
+    assert "docs/data-model.yaml" in finding
+    assert "AGENTS.md" in finding
+    assert "conflicts on every merge" in finding
+    assert "standing-orders/user" not in finding
+
+
+def test_the_fork_finding_points_at_instance_md_not_an_eager_order(tmp_path):
+    """Fork variant: an instance names its own family in INSTANCE.md.
+
+    IDENTITY.md and SOUL.md may be shipped by an org overlay, so they are not
+    the place for fork prose. INSTANCE.md is USER and imported by AGENTS.md,
+    so sub-agents see what it names.
+    """
+    _tree(tmp_path, {
+        "AGENTS.md": "Nothing here.\n",
+        "bridge-config.yaml": "identity:\n  name: x\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET,
+    })
+    finding = next(f for f in reach.check(tmp_path) if f.startswith("infra/remotes/"))
+
+    assert "identity/agent/INSTANCE.md" in finding
+    assert "work/data-model.yaml" in finding
+    assert "conflicts on every merge" in finding
+    assert "standing-orders/user" not in finding
+    assert "identity/agent/IDENTITY.md" not in finding
+
+
+def test_a_legacy_claude_md_entry_still_reaches_agents_md(tmp_path):
+    """An unmigrated fork still enters through CLAUDE.md, which imports AGENTS.md."""
+    _tree(tmp_path, {
+        "CLAUDE.md": "@AGENTS.md\n",
+        "AGENTS.md": "Machines live in `infra/remotes/`.\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET + "  CLAUDE.md:\n    max_bytes: 100000\n",
+    })
+    assert reach.check(tmp_path) == []
+    assert "AGENTS.md" in reach.named_in(tmp_path, "infra/remotes/")
+
+
 # ------------------------------------------------------- the surface itself --
 
 
 def test_the_surface_is_the_one_the_meter_measures(tmp_path):
     """One definition of always-on, not two."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "MARKER-AGENTS\n",
         "context-budget.yaml": MINIMAL_BUDGET,
     })
@@ -222,7 +267,6 @@ def test_the_surface_is_the_one_the_meter_measures(tmp_path):
 def test_the_surface_includes_what_a_phase_one_command_prints(tmp_path):
     """Half the surface is computed, not read, and a pointer can live there."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "x\n",
         "context-budget.yaml": MINIMAL_BUDGET
         + '  "cmd:python3 scripts/standing-orders.py --index":\n    source: phase1\n',
@@ -272,7 +316,6 @@ def test_cli_runs_on_this_repo_and_agrees_with_itself():
 
 def test_cli_exits_non_zero_on_a_finding(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing here.\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -299,7 +342,6 @@ def test_a_mention_in_the_work_log_does_not_count(tmp_path):
     is not a pointer.
     """
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "Nothing about vehicles here.\n",
         "identity/vehicles/_template.yaml": "a: 1\n",
         "work/board.md": "## Doing\n\n- something about identity/vehicles/\n",
@@ -313,7 +355,6 @@ def test_a_mention_in_the_work_log_does_not_count(tmp_path):
 
 def test_the_routing_surface_excludes_work_state(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "MARKER-ROUTING\n",
         "work/board.md": "MARKER-WORKSTATE\n",
         "context-budget.yaml": MINIMAL_BUDGET
@@ -328,7 +369,6 @@ def test_the_routing_surface_excludes_work_state(tmp_path):
 def test_work_state_still_counts_as_always_on_for_the_budget(tmp_path):
     """Only THIS check ignores it. The budget still measures every byte."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "x\n",
         "work/board.md": "MARKER-WORKSTATE\n",
         "context-budget.yaml": MINIMAL_BUDGET
@@ -347,7 +387,6 @@ def test_work_state_still_counts_as_always_on_for_the_budget(tmp_path):
 
 def _scenario_tree(tmp_path, agents_md: str) -> Path:
     return _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": agents_md,
         "infra/remotes/_template.yaml": "a: 1\n",
         "context-budget.yaml": MINIMAL_BUDGET,
@@ -393,7 +432,6 @@ def test_a_scenario_fails_when_the_route_is_missing(tmp_path):
 
 def test_a_scenario_fails_when_the_route_resolves_to_an_empty_directory(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "A remote machine lives in `infra/remotes/`.\n",
         "context-budget.yaml": MINIMAL_BUDGET,
     })
@@ -407,7 +445,6 @@ def test_a_scenario_for_a_family_this_instance_lacks_is_skipped(tmp_path):
     """Demanding a family an instance never enabled is a check about a Bridge
     that does not exist."""
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "nothing\n",
         "context-budget.yaml": MINIMAL_BUDGET,
     })
@@ -457,7 +494,6 @@ def test_the_battery_removes_a_contributor_not_a_substring(tmp_path):
 
 def test_a_family_named_only_in_work_state_has_no_carrier(tmp_path):
     _tree(tmp_path, {
-        "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": "nothing\n",
         "infra/remotes/_template.yaml": "a: 1\n",
         "work/board.md": "about infra/remotes/ today\n",
@@ -488,3 +524,306 @@ def test_main_families_lists_and_succeeds(tmp_path, capsys):
 def test_main_mutate_succeeds_on_a_healthy_tree(tmp_path):
     _scenario_tree(tmp_path, "A remote machine lives in `infra/remotes/`.\n")
     assert reach.main(["--repo-root", str(tmp_path), "--mutate"]) == 0
+
+
+# ------------------------------------------------- the sub-agent surface --
+#
+# "Reachable" also means reachable for a sub-agent, which loads the entry file,
+# its `@`-imports and the harness listings and nothing else, and for an agent
+# that resolves no `@`-import at all (Codex reads AGENTS.md as plain text).
+
+INDEXED_BUDGET = MINIMAL_BUDGET + (
+    "  docs/families.md:\n"
+    "    source: import\n"
+    "    max_bytes: 100000\n"
+)
+
+EAGER_ORDER = (
+    "---\nname: x\nscope: always\nenforcement: advisory\napplies_to: []\n"
+    "load: eager\n---\n\nChannels live in `infra/channels/`.\n"
+)
+
+
+def _indexed(tmp_path, agents_md: str, extra: dict | None = None) -> Path:
+    files = {
+        "AGENTS.md": agents_md,
+        "docs/families.md": "Machines live in `infra/remotes/`.\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": INDEXED_BUDGET,
+    }
+    files.update(extra or {})
+    return _tree(tmp_path, files)
+
+
+def test_a_family_named_only_in_the_imported_index_passes(tmp_path):
+    _indexed(tmp_path, "@docs/families.md\nread `docs/families.md`\n")
+
+    assert reach.check(tmp_path) == []
+    assert reach.check(tmp_path, surface="subagent") == []
+    assert reach.named_in(tmp_path, "infra/remotes/") == ["docs/families.md"]
+    assert reach.named_in(tmp_path, "infra/remotes/", surface="subagent") == [
+        "docs/families.md"
+    ]
+
+
+def test_dropping_the_index_is_caught_by_mutate(tmp_path):
+    _indexed(tmp_path, "@docs/families.md\nread `docs/families.md`\n")
+
+    assert reach.mutate(tmp_path) == []
+    assert reach.mutate(tmp_path, surface="subagent") == []
+    parts = reach.surface_parts(tmp_path, surface="subagent")
+    without = "\n".join(t for p, t in parts.items() if p != "docs/families.md")
+    assert any(
+        "infra/remotes/" in f for f in reach.check(tmp_path, text=without, surface="subagent")
+    )
+
+
+def test_a_family_named_in_an_index_nobody_imports_is_a_finding(tmp_path):
+    """Declared `source: import` in the budget, never imported: not loaded."""
+    _indexed(tmp_path, "read `docs/families.md` some day\n")
+    findings = reach.check(tmp_path, surface="subagent")
+
+    assert any(f.startswith("infra/remotes/") for f in findings), findings
+    session = reach.check(tmp_path)
+    assert any(f.startswith("infra/remotes/") for f in session), session
+    assert reach.named_in(tmp_path, "infra/remotes/") == []
+
+
+def test_a_shadowing_claude_md_without_the_agents_import_is_red(tmp_path):
+    """A legacy CLAUDE.md that never imports AGENTS.md breaks the chain to the index."""
+    _indexed(
+        tmp_path,
+        "@docs/families.md\nread `docs/families.md`\n",
+        {
+            "CLAUDE.md": "Legacy entry, imports nothing.\n",
+            "context-budget.yaml": INDEXED_BUDGET + "  CLAUDE.md:\n    max_bytes: 100000\n",
+        },
+    )
+    session = reach.check(tmp_path)
+    assert any(f.startswith("infra/remotes/") for f in session), session
+    assert "docs/families.md" not in reach.surface_parts(tmp_path)
+
+
+def test_a_family_named_only_in_an_eager_order_fails_the_subagent_surface(tmp_path):
+    _indexed(
+        tmp_path,
+        "@docs/families.md\nread `docs/families.md`, and `protocols/standing-orders/`\n",
+        {
+            "protocols/standing-orders/x.md": EAGER_ORDER,
+            "infra/channels/_template.yaml": "a: 1\n",
+            "context-budget.yaml": INDEXED_BUDGET
+            + "  protocols/standing-orders/x.md:\n    max_bytes: 100000\n",
+        },
+    )
+
+    assert reach.check(tmp_path) == []
+    sub = reach.check(tmp_path, surface="subagent")
+    assert any(f.startswith("infra/channels/") for f in sub), sub
+    assert not any(f.startswith("infra/remotes/") for f in sub), sub
+    assert reach.named_in(tmp_path, "infra/channels/", surface="subagent") == []
+
+
+def test_a_subagent_finding_says_sub_agent(tmp_path):
+    _indexed(
+        tmp_path,
+        "@docs/families.md\nread `docs/families.md`, and `protocols/standing-orders/`\n",
+        {
+            "protocols/standing-orders/x.md": EAGER_ORDER,
+            "infra/channels/_template.yaml": "a: 1\n",
+            "context-budget.yaml": INDEXED_BUDGET
+            + "  protocols/standing-orders/x.md:\n    max_bytes: 100000\n",
+        },
+    )
+    finding = next(
+        f for f in reach.check(tmp_path, surface="subagent") if f.startswith("infra/channels/")
+    )
+    assert "sub-agent" in finding
+
+
+def test_an_unknown_surface_is_refused(tmp_path):
+    _indexed(tmp_path, "@docs/families.md\nread `docs/families.md`\n")
+    try:
+        reach.check(tmp_path, surface="phase1")
+    except ValueError:
+        return
+    raise AssertionError("an unknown surface must raise ValueError")
+
+
+def test_scenarios_walk_the_subagent_surface(tmp_path):
+    _indexed(
+        tmp_path,
+        "@docs/families.md\nread `docs/families.md`, and `protocols/standing-orders/`\n",
+        {
+            "protocols/standing-orders/x.md": EAGER_ORDER,
+            "infra/channels/_template.yaml": "a: 1\n",
+            "context-budget.yaml": INDEXED_BUDGET
+            + "  protocols/standing-orders/x.md:\n    max_bytes: 100000\n",
+        },
+    )
+    assert not any("infra/channels/" in f for f in reach.check_scenarios(tmp_path))
+    assert any(
+        "infra/channels/" in f for f in reach.check_scenarios(tmp_path, surface="subagent")
+    )
+
+
+# ------------------------------------------------- imports named in prose --
+
+
+PLAIN_FINDING = (
+    "docs/families.md is imported by AGENTS.md but named nowhere else in it; "
+    "agents that do not resolve @-imports never learn it exists"
+)
+
+
+def test_every_import_of_the_entry_is_also_named_in_plain_text(tmp_path):
+    _indexed(tmp_path, "@docs/families.md\n")
+    assert reach.check_plain_names(tmp_path) == [PLAIN_FINDING]
+
+    (tmp_path / "AGENTS.md").write_text(
+        "@docs/families.md\n\nRead `docs/families.md`, the family index.\n",
+        encoding="utf-8",
+    )
+    assert reach.check_plain_names(tmp_path) == []
+
+
+def test_an_absent_import_is_still_required_to_be_named(tmp_path):
+    """The identity slots are absent on a fresh clone and still part of the manual."""
+    _indexed(
+        tmp_path,
+        "@docs/families.md\n@identity/agent/INSTANCE.md\n\nread `docs/families.md`\n",
+    )
+    findings = reach.check_plain_names(tmp_path)
+
+    assert len(findings) == 1, findings
+    assert findings[0].startswith("identity/agent/INSTANCE.md is imported by AGENTS.md")
+
+
+def test_a_fenced_import_line_is_neither_an_import_nor_a_plain_name(tmp_path):
+    _indexed(tmp_path, "```\n@docs/other.md\n```\n@docs/families.md\n")
+    assert reach.check_plain_names(tmp_path) == [PLAIN_FINDING]
+
+
+def test_only_the_entrys_own_imports_are_demanded(tmp_path):
+    """Depth 0: what an imported file imports is that file's business."""
+    _indexed(
+        tmp_path,
+        "@docs/families.md\nread `docs/families.md`\n",
+        {"docs/families.md": "@docs/deeper.md\nMachines live in `infra/remotes/`.\n"},
+    )
+    assert reach.check_plain_names(tmp_path) == []
+
+
+def test_a_legacy_shadow_entry_skips_the_agents_md_checks(tmp_path, capsys):
+    """With a CLAUDE.md shadow the entry is not AGENTS.md: one advisory, no gate."""
+    _indexed(
+        tmp_path,
+        "@docs/families.md\n",
+        {
+            "CLAUDE.md": "@AGENTS.md\n",
+            "context-budget.yaml": INDEXED_BUDGET + "  CLAUDE.md:\n    max_bytes: 100000\n",
+        },
+    )
+    assert reach.check_plain_names(tmp_path) == []
+    assert reach.main(["--repo-root", str(tmp_path), "--surface", "subagent"]) == 0
+    out = capsys.readouterr()
+    advisory = [
+        line for line in (out.out + out.err).splitlines() if "CLAUDE.md" in line
+    ]
+    assert len(advisory) == 1, out
+
+
+# --------------------------------------------------------- finding text --
+
+
+def test_the_finding_points_at_the_index_and_instance_md(tmp_path):
+    """CORE text: the route goes into the model, the index is regenerated."""
+    _tree(tmp_path, {
+        "AGENTS.md": "Nothing here.\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET,
+    })
+    finding = next(f for f in reach.check(tmp_path) if f.startswith("infra/remotes/"))
+
+    assert "docs/data-model.yaml" in finding
+    assert "`route:`" in finding
+    assert "`python3 scripts/data-model.py --write`" in finding
+    assert "docs/families.md" in finding
+    assert "identity/agent/INSTANCE.md" in finding
+    assert "conflicts on every merge" in finding
+
+
+def test_the_fork_finding_never_asks_for_a_core_write(tmp_path):
+    """A fork must never be asked to `--write` a CORE file."""
+    _tree(tmp_path, {
+        "AGENTS.md": "Nothing here.\n",
+        "bridge-config.yaml": "identity:\n  name: x\n",
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET,
+    })
+    finding = next(f for f in reach.check(tmp_path) if f.startswith("infra/remotes/"))
+
+    assert "--write" not in finding
+    assert "docs/families.md" not in finding
+
+
+# -------------------------------------------------------------------- CLI --
+
+
+def test_main_default_run_includes_the_plain_name_check(tmp_path, capsys):
+    _indexed(tmp_path, "@docs/families.md\n")
+    assert reach.main(["--repo-root", str(tmp_path)]) == 1
+    assert PLAIN_FINDING in capsys.readouterr().err
+
+
+def test_main_surface_subagent_passes_on_a_healthy_tree(tmp_path, capsys):
+    _indexed(tmp_path, "@docs/families.md\nread `docs/families.md`\n")
+    assert reach.main(["--repo-root", str(tmp_path), "--surface", "subagent"]) == 0
+    assert "sub-agent" in capsys.readouterr().out
+
+
+def test_main_surface_subagent_fails_on_an_eager_only_family(tmp_path):
+    _indexed(
+        tmp_path,
+        "@docs/families.md\nread `docs/families.md`, and `protocols/standing-orders/`\n",
+        {
+            "protocols/standing-orders/x.md": EAGER_ORDER,
+            "infra/channels/_template.yaml": "a: 1\n",
+            "context-budget.yaml": INDEXED_BUDGET
+            + "  protocols/standing-orders/x.md:\n    max_bytes: 100000\n",
+        },
+    )
+    assert reach.main(["--repo-root", str(tmp_path)]) == 0
+    assert reach.main(["--repo-root", str(tmp_path), "--surface", "subagent"]) == 1
+
+
+def test_cli_surface_subagent_runs_as_a_subprocess(tmp_path):
+    """Smoke test of the flag CI calls (B5: smoke tests live here, not in the .sh)."""
+    _indexed(tmp_path, "@docs/families.md\nread `docs/families.md`\n")
+    result = subprocess.run(
+        [sys.executable, str(CLI), "--repo-root", str(tmp_path), "--surface", "subagent"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_cli_surface_subagent_on_this_repo_agrees_with_itself():
+    result = subprocess.run(
+        [sys.executable, str(CLI), "--surface", "subagent"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    assert result.returncode in (0, 1), result.stdout + result.stderr
+    assert bool(result.returncode) == ("finding(s)" in result.stderr)
+
+
+def test_a_tree_without_any_entry_file_is_red_not_a_migration(tmp_path, capsys):
+    """No AGENTS.md and no CLAUDE.md: nothing is loaded, which is no legacy entry."""
+    _tree(tmp_path, {
+        "infra/remotes/_template.yaml": "a: 1\n",
+        "context-budget.yaml": MINIMAL_BUDGET,
+    })
+    for surface in ("session", "subagent"):
+        assert reach.main(["--repo-root", str(tmp_path), "--surface", surface]) == 1
+        out = capsys.readouterr()
+        text = out.out + out.err
+        assert "no entry file" in text, text
+        assert "migrate-entry-file" not in text, text

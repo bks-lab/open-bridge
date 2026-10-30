@@ -33,6 +33,8 @@ const WORDS = {
     'Idea: dark mode for the weekly report': 'Idee: dunkles Design für den Wochenbericht',
     'Renew the test certificate': 'Das Testzertifikat erneuern',
     'due tomorrow': 'fällig morgen',
+    '+1 question': '+1 Frage',
+    'Check: is the report ready to send?': 'Prüfen: Kann der Bericht raus?',
     'only you': 'nur du',
     'tab asks for permission': 'Tab fragt nach Erlaubnis',
     'needs your yes': 'braucht dein Ja',
@@ -74,6 +76,17 @@ const WORDS = {
     'opus · busy · 25 turns · $42.10': 'opus · arbeitet · 25 Züge · $42.10', 'sonnet · idle · 9 turns · $6.80': 'sonnet · ruht · 9 Züge · $6.80',
     'sonnet · waiting · 4 turns · $1.95': 'sonnet · wartet · 4 Züge · $1.95',
     'Demo dashboard': 'Demo-Dashboard', 'Docs refresh': 'Doku auffrischen', 'Release notes': 'Release-Notizen',
+    // the daily log page and its time range (logPage, logDemo)
+    'Daily log': 'Tageslog', 'Log today': 'Log heute', 'no line yet': 'noch keine Zeile', 'Repos, 7 days': 'Repos, 7 Tage', 'no commit': 'kein Commit',
+    'Guide chapter on the vendor export written': 'Kapitel zum Lieferanten-Export geschrieben', 'Examples collected for the guide': 'Beispiele für die Anleitung gesammelt',
+    'Screenshots of the setup taken': 'Bildschirmfotos der Einrichtung gemacht', 'Docs index checked and the links repaired': 'Doku-Index geprüft, Links repariert',
+    'Two pages of the docs merged': 'Zwei Doku-Seiten zusammengelegt', 'Folder layout of the docs drafted': 'Ordneraufbau der Doku entworfen',
+    'Release notes drafted': 'Release Notes entworfen', 'Tag pushed after the review': 'Tag nach dem Review gesetzt',
+    'Changelog linked to the pull requests': 'Changelog mit den Pull Requests verknüpft', 'Invoice export renamed': 'Rechnungsexport umbenannt',
+    'Gateway retry moved to the night run': 'Gateway-Retry in den Nachtlauf verschoben', 'Gateway retry planned with the vendor': 'Gateway-Retry mit dem Lieferanten geplant',
+    'Disk cleaned on the build machine': 'Platte der Build-Maschine aufgeräumt', 'Backup checked, the copy is fresh': 'Sicherung geprüft, die Kopie ist frisch',
+    'Night run watched, all green': 'Nachtlauf beobachtet, alles grün', 'Weekly digest sent': 'Wochenbrief verschickt', 'Topics of the digest collected': 'Themen des Wochenbriefs gesammelt',
+    'Weekly round': 'Wochenrunde',
     'Dates': 'Termine', 'Calendar': 'Kalender', 'no dates': 'keine Termine', 'Mail': 'Mail', 'mail account token expired': 'Token des Mailkontos abgelaufen',
     // agent tabs and sessions
     'Allow edit of RELEASE_NOTES.md?': 'Bearbeiten von RELEASE_NOTES.md erlauben?',
@@ -265,6 +278,8 @@ function row(over) {
     updated: null, until: null,
     // round 6: the GitHub list the row also stands in (collector.py on_board)
     on_board: null,
+    // the asks filed about the row that the briefing folded into it (collector.py also_inbox)
+    also_inbox: [],
     ...over,
   }
 }
@@ -548,13 +563,47 @@ function openCount(sections, hidden, files, taskRows = [], deferred = []) {
   return keys.size
 }
 
+// the log page's time range (/api/logrange): six invented weeks of log rows, the own commits of four invented
+// repositories and the history beside the log, the same every time for the same day (a seeded sequence)
+const LOG_TOPICS = [
+  ['demo-task', '🔧', ['Guide chapter on the vendor export written', 'Examples collected for the guide', 'Screenshots of the setup taken']],
+  ['docs-refresh', '📝', ['Docs index checked and the links repaired', 'Two pages of the docs merged', 'Folder layout of the docs drafted']],
+  ['alpha-release', '🚀', ['Release notes drafted', 'Tag pushed after the review', 'Changelog linked to the pull requests']],
+  ['billing', '✅', ['Invoice export renamed', 'Gateway retry moved to the night run', 'Gateway retry planned with the vendor']],
+  ['ops', '🔍', ['Disk cleaned on the build machine', 'Backup checked, the copy is fresh', 'Night run watched, all green']],
+  ['weekly-digest', '💬', ['Weekly digest sent', 'Topics of the digest collected']]]
+const LOG_REPOS = [['example/app', 'main', 5], ['example/tools', 'dev', 2], ['example/docs', 'main', 3], ['example/site', 'main', 1]]
+const LOG_DAYS = 42
+
+/** The daily log page (views/logpage.js with its time range): today's rows of the invented log under their hours, the
+ *  own commits of the last seven days as tiles beside them; the range reads the rest from /api/logrange */
+function logPage(now, item) {
+  const demo = logDemo(now)
+  const today = demo.rows.filter(r => r.date === demo.today)
+  const week = Math.floor(now / 1000) - 6 * 86400
+  const tiles = demo.repos.map(r => ({ r, n: r.ts.filter(t => new Date(t * 1000).toDateString() === new Date(now).toDateString()).length,
+    week: r.ts.filter(t => t >= week).length })).filter(x => x.week)
+  return {
+    id: 'log', title: 'Daily log', badge: { kind: 'none' }, search: true, sections: [
+      { id: 'activity', kind: 'activity', view: 'log', title: 'Log today', status: 'ok', reason: '', alarm: false, empty: 'no line yet',
+        count: today.length, total: today.length, weight: 0, bad: 0, as_of: hhmm(now), more: 0,
+        items: today.map((r, i) => item(i, { title: r.title, when: r.time, at: `${r.date}T${r.time}`, glyph: r.glyph, group: r.group, detail: r.group, about_task: r.about_task })) },
+      { id: 'commits', kind: 'commits', place: 'rail', title: 'Repos, 7 days', status: 'ok', reason: '', alarm: false, empty: 'no commit',
+        count: tiles.length, total: tiles.length, weight: 0, bad: 0, as_of: hhmm(now), more: 0,
+        items: tiles.map((x, i) => item(i, { title: x.r.repo, when: `${x.n} today`, detail: `▁▂▅█ ${x.r.branch}`, tone: x.n ? null : 'dim',
+          link: { kind: 'web', href: x.r.url } })) },
+    ],
+  }
+}
+
 export function buildState(now = Date.now(), opts = {}) {
   const empty = !!opts.empty
   const rows = {
     review: row({
       key: 'inbox:20261009-0900-review-demo-a1b2', bucket: 'do', section: 'now', title: 'Review the demo report',
       origin: O('skill', 'briefing/morning', 'briefing/morning'), work_kind: 'task', inbox_kind: 'decision',
-      why: ['due tomorrow', 'only you'], sources: ['inbox'], inbox_id: '20261009-0900-review-demo-a1b2', gate: 'only-you',
+      why: ['due tomorrow', 'only you', '+1 question'], sources: ['inbox'], inbox_id: '20261009-0900-review-demo-a1b2', gate: 'only-you',
+      also_inbox: [{ id: '20261009-1100-check-review-b2c3', title: 'Check: is the report ready to send?' }],
       task: 'demo-task', urgency: 'today', area: 'Demo', area_names: ['Demo'], task_type: 'feature', due: isoIn(1, now),
       inbox_state: 'open', inbox_key: 'demo-review', mark: { label: 'Demo', color: 'blue' }, is_new: true,
       actions: [A('done', true), A('advise')], selectable: true,
@@ -900,6 +949,7 @@ export function buildState(now = Date.now(), opts = {}) {
           weight: 0, bad: 0, as_of: null, more: 0, items: [] },
       ],
     },
+    logPage(now, item),
   ]
 
   // the work page (group work, the By source view of the work tab) with jev:, so Jev orders its rows once a day: the
@@ -1140,12 +1190,15 @@ export function buildState(now = Date.now(), opts = {}) {
 }
 
 function inboxDetail(id, state) {
-  const r = [...(state.model?.sections ?? []).flatMap(s => s.rows)].find(x => x.inbox_id === id)
+  const rows = (state.model?.sections ?? []).flatMap(s => s.rows)
+  const r = rows.find(x => x.inbox_id === id)
+  // an ask folded into a row has no row of its own: its title comes from the row that carries it
+  const asked = rows.flatMap(x => x.also_inbox ?? []).find(a => a.id === id)
   const hasAction = !!r?.has_action
   return {
     ok: true, id,
     item: {
-      summary: r?.title ?? 'Example item', detail: 'Invented example detail.\nThe item came from a demo check and carries no real data.',
+      summary: r?.title ?? asked?.title ?? 'Example item', detail: 'Invented example detail.\nThe item came from a demo check and carries no real data.',
       kind: hasAction ? 'approval' : 'todo', gate: r?.gate ?? 'only-you', urgency: r?.urgency ?? null, state: r?.inbox_state ?? 'open',
       task: r?.task ?? null, due: r?.due ?? null, key: r?.inbox_key ?? 'example', from: r?.origin?.raw ?? 'demo-check', created: '2026-10-09T09:00:00',
       action_display: hasAction ? 'python3 scripts/example-tool.py --apply demo' : null, has_closes_when: hasAction,
@@ -1220,11 +1273,92 @@ const DEMO_HISTORY = [
     line: 6, text: DONE_FILE.lines[1], folder: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}` },
 ]
 
-function timelineOf(q) {
+function seeded(seed) {
+  let x = seed >>> 0 || 1
+  return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296 }
+}
+
+function logDemo(nowMs) {
+  const today = new Date(nowMs)
+  const day0 = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const rand = seeded(day0.getFullYear() * 400 + day0.getMonth() * 31 + day0.getDate())
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const rows = [], repos = LOG_REPOS.map(([repo, branch]) => ({ repo, branch, url: `https://example.org/${repo}/commits/${branch}`, ts: [] })), events = []
+  for (let back = LOG_DAYS - 1; back >= 0; back--) {
+    const d = new Date(day0.getFullYear(), day0.getMonth(), day0.getDate() - back)
+    const weekend = d.getDay() === 0 || d.getDay() === 6
+    const n = weekend ? Math.floor(rand() * 3) : 4 + Math.floor(rand() * 11)
+    for (let i = 0; i < n; i++) {
+      const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8 + Math.floor(rand() * 11), Math.floor(rand() * 60))
+      if (at.getTime() > nowMs) continue
+      const [group, glyph, titles] = LOG_TOPICS[Math.floor(rand() * LOG_TOPICS.length)]
+      rows.push({ date: iso(d), time: hhmm(at.getTime()), glyph, group, title: titles[Math.floor(rand() * titles.length)],
+        task: null, about_task: group === 'demo-task' || group === 'docs-refresh' ? group : null, about_path: null })
+    }
+    for (const [k, [, , busy]] of LOG_REPOS.entries()) {
+      const c = weekend ? 0 : Math.floor(rand() * (busy + 1))
+      for (let i = 0; i < c; i++) {
+        const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9 + Math.floor(rand() * 9), Math.floor(rand() * 60)).getTime()
+        if (at <= nowMs) repos[k].ts.push(Math.floor(at / 1000))
+      }
+    }
+    if (d.getDay() === 1) events.push({ date: iso(d), time: '10:00', kind: 'discussed', source: 'Weekly round', text: 'Gateway retry and the release notes discussed', path: `work/archive/days/${iso(d).slice(0, 7)}/${iso(d).slice(8)}_insights.md`, folder: null })
+    if (d.getDay() === 2 || d.getDay() === 4) events.push({ date: iso(d), time: '14:00', kind: 'transcript', source: 'vendor-sync', text: 'A: the vendor export ran into the timeout again', path: `${iso(d)}_1400_vendor-sync.md`, folder: null })
+    if (back % 5 === 2) events.push({ date: iso(d), time: null, kind: 'closed', source: 'docs-cleanup', text: 'Docs cleanup closed, the index is fresh', path: `work/done/${iso(d).slice(0, 7)}/docs-cleanup/STATUS.md`, folder: `work/done/${iso(d).slice(0, 7)}/docs-cleanup` })
+  }
+  rows.sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
+  for (const r of repos) r.ts.sort((a, b) => a - b)
+  events.sort((a, b) => `${b.date} ${b.time ?? ''}`.localeCompare(`${a.date} ${a.time ?? ''}`))
+  return { rows, repos: repos.filter(r => r.ts.length), events, first: rows.length ? rows[rows.length - 1].date : iso(day0), today: iso(day0) }
+}
+
+function logRangeOf(params, nowMs) {
+  const demo = logDemo(nowMs)
+  if (params.get('sources') === 'other') {
+    // as work_find.history_events: one entry each, with words those with a line that holds every one
+    const words = String(params.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+    const from = params.get('from') || '0000', to = params.get('to') || demo.today
+    const events = demo.events.filter(e => e.date >= from && e.date <= to && words.every(w => e.text.toLowerCase().includes(w)))
+      .map(({ text, ...e }) => e)
+    return { ok: true, from: params.get('from'), to, transcripts: true, events }
+  }
+  // as logrange.py answers: the rows compact (day, time, group, glyph by index), the text by id, the words found here
+  const rev = `${demo.today.replace(/-/g, '')}0000`
+  if (params.get('rev') && params.get('rev') !== rev) return { stale: true }
+  if (params.get('ids')) {
+    return { ok: true, rev, texts: Object.fromEntries(params.get('ids').split(',').map(Number).filter(i => demo.rows[i]).map(i => [String(i), demo.rows[i].title])) }
+  }
+  const from = params.get('from') || demo.first, to = params.get('to') || demo.today
+  const ids = demo.rows.flatMap((r, i) => (r.date >= from && r.date <= to ? [i] : []))
+  if (params.get('q')) {
+    const words = String(params.get('q')).toLowerCase().split(/\s+/).filter(Boolean)
+    return { ok: true, rev, q: params.get('q'), hits: ids.filter(i => words.every(w => `${demo.rows[i].group} ${demo.rows[i].title}`.toLowerCase().includes(w))) }
+  }
+  const days = [], groups = [], glyphs = []
+  const at = (list, key, entry = key) => { let i = list.findIndex(x => (x?.name ?? x) === key); if (i < 0) { i = list.length; list.push(entry) } return i }
+  const rows = ids.map(i => { const r = demo.rows[i]; return [at(days, r.date), r.time, at(groups, r.group, { name: r.group, task: null, about_task: r.about_task,
+    about_path: null, kind: r.about_task ? 'task' : null }), at(glyphs, r.glyph)] })
+  return { ok: true, from, to, first: demo.first, today: demo.today, rev, offset: ids[0] ?? 0, total: rows.length, days, groups, glyphs, rows,
+    repos: params.get('commits') ? demo.repos : null, repos_from: params.get('commits') ? demo.first : null, skipped: [] }
+}
+
+function timelineOf(q, params, nowMs) {
+  // as work_find.history over the demo's log: every row and every line of the history beside it that holds every word,
+  // in the range asked, newest first; its units the way the log page's chart counts them
   const words = [...new Set(String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8)
-  const entries = DEMO_HISTORY.filter(e => words.length && words.every(w => `${e.source} ${e.text}`.toLowerCase().includes(w)))
+  const demo = logDemo(nowMs)
+  const from = params?.get('from') || '0000', to = params?.get('to') || demo.today
+  const holds = text => words.length && words.every(w => text.toLowerCase().includes(w))
+  const rows = demo.rows.filter(r => r.date >= from && r.date <= to && holds(`${r.group} ${r.title}`))
+    .map((r, i) => ({ date: r.date, time: r.time, kind: 'did', source: r.group, path: 'work/log.md', line: i + 1, text: r.title, folder: null }))
+  const other = demo.events.filter(e => e.date >= from && e.date <= to && holds(e.text))
+    .map(e => ({ date: e.date, time: e.time, kind: e.kind, source: e.source, path: e.path, line: 1, text: e.text, folder: e.folder }))
+  const entries = [...rows, ...other].sort((a, b) => `${b.date} ${b.time ?? ''}`.localeCompare(`${a.date} ${a.time ?? ''}`))
     .map(e => ({ ...e, count: 1, more: 0 }))
-  return { ok: true, query: String(q ?? '').trim(), words, total: entries.length, truncated: false, transcripts: true, entries }
+  const kinds = {}
+  for (const e of entries) kinds[e.kind] = (kinds[e.kind] ?? 0) + 1
+  return { ok: true, query: String(q ?? '').trim(), words, total: entries.length, truncated: entries.length > 200, units: entries.length,
+    units_by_kind: kinds, transcripts: true, entries: entries.slice(0, 200) }
 }
 
 // the search (work-find.py through /api/find): every word in the slug, title or a line of an invented file, the
@@ -2048,10 +2182,16 @@ export function createMockTransport(opts = {}) {
         return ok(feed)
       }
       if (url.pathname === '/api/records') return ok(mockRecords(state))
+      if (url.pathname === '/api/logrange') {
+        const day = /^\d{4}-\d{2}-\d{2}$/
+        for (const k of ['from', 'to']) if (url.searchParams.get(k) && !day.test(url.searchParams.get(k))) return fail(400, 'invalid_argument', 'not a day (YYYY-MM-DD)')
+        const got = logRangeOf(url.searchParams, now())
+        return got.stale ? fail(409, 'stale_row', 'the log changed since this answer') : ok(got)
+      }
       if (url.pathname === '/api/timeline') {
         const q = String(url.searchParams.get('q') ?? '')
         if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
-        return ok(timelineOf(q))
+        return ok(timelineOf(q, url.searchParams, now()))
       }
       if (url.pathname === '/api/find') {
         const q = String(url.searchParams.get('q') ?? '')

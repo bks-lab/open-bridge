@@ -104,6 +104,16 @@ properties:
     type: string
     description: "Slug → identity/personas/<slug>.yaml"
 
+  design_ref:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9._-]*$"
+    description: >-
+      Id → identity/designs/<id>.md, the design every deliverable of this
+      context wears (step 3 of scripts/designs.py resolve). Optional.
+      `default` is reserved: it opts out and stops at the root DESIGN.md, even when
+      the theme names a design. `null` is the same as no key, never an opt-out,
+      so a YAML default cannot switch a design off by accident.
+
   # ---- Integrations — per-capability sub-blocks ------------------------
   # Each integration is OPTIONAL. A skill that owns an integration scans
   # workflow/contexts/*.yaml, filters on the presence of ITS sub-block,

@@ -170,6 +170,27 @@ def test_one_held_file_holds_the_whole_run(w):
     assert not (w.inst / ".git" / "MERGE_HEAD").exists()
 
 
+def test_a_held_claude_md_points_at_the_migration(w):
+    # Upstream removed its root CLAUDE.md; a fork that edited it meets a
+    # modify/delete conflict, and the skip reason names the one-command way out.
+    w.write(w.up, "CLAUDE.md", "@AGENTS.md\n"); w.commit(w.up, "entry file")
+    run(w.inst, "git", "pull", "-q", "--no-rebase", "--no-edit", "upstream", "main")
+    w.write(w.inst, "CLAUDE.md", "@AGENTS.md\n@identity/agent/SOUL.md\n"); w.commit(w.inst, "onboarding import")
+    run(w.up, "git", "rm", "-q", "CLAUDE.md"); w.commit(w.up, "AGENTS.md is the entry")
+    before = w.head()
+    p, status = w.autoupdate()
+    assert "SKIPPED" in status and "CLAUDE.md" in status, status
+    assert "(CLAUDE.md: run scripts/migrate-entry-file.py, docs/updating.md)" in status, status
+    assert w.head() == before
+
+
+def test_a_held_file_other_than_claude_md_gets_no_migration_hint(w):
+    w.write(w.inst, "core.txt", "a\nLOCAL\nc\n"); w.commit(w.inst, "local only")
+    w.write(w.up, "core.txt", "a\nUP\nc\n"); w.commit(w.up, "upstream edit")
+    p, status = w.autoupdate()
+    assert "SKIPPED" in status and "migrate-entry-file" not in status, status
+
+
 def test_dirty_log_does_not_block(w):
     w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
     w.write(w.inst, "work/log.md", "# log\n| row in progress |\n")

@@ -327,6 +327,13 @@ def s_reads(w: World) -> None:
         assert w.request("GET", f"/api/github?{query}", headers=w.cookie)[0] == 200
 
 
+def s_log_range(w: World) -> None:
+    """The log page's time range: the own commits of the rail's commits section over the range (logrange.py)."""
+    w.runner.handlers["work-find.--rows"] = lambda argv: ok({"ok": True, "first": "2026-10-01", "total": 0, "rows": []})
+    w.runner.handlers["briefing.commits"] = lambda argv: ok({"ok": True, "section": "commits", "repos": [], "skipped": []})
+    assert w.request("GET", "/api/logrange?from=2026-10-01&to=2026-10-09&commits=commits", headers=w.cookie)[0] == 200
+
+
 def s_workspaces(w: World) -> None:
     """The workspace chat asks the terminal for its workspaces on a tab poll."""
     w.runner.handlers["workplace.workspaces"] = lambda argv: ok([{"ref": "workspace:1", "title": "Bridge"}])
@@ -407,6 +414,7 @@ SCENARIOS = {
                               "workplace.rename-workspace"}),
     "rows": Scenario(s_rows, {"briefing.act"}),
     "reads": Scenario(s_reads, {"inbox.list", "inbox.stats", "inbox.mute", "workplace.screen", "briefing.detail"}),
+    "log_range": Scenario(s_log_range, {"briefing.commits"}),
     "returns": Scenario(s_returns, {"task.note", "inbox.note"}),
     "workspaces": Scenario(s_workspaces, {"workplace.workspaces"}, config=WORKSPACES_CFG),
     "describe": Scenario(s_describe, {"task.brief", "inbox.describe"}),

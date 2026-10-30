@@ -7,8 +7,8 @@ dashboard. Two truth sources are merged:
 2. **`docs/repo-layout/regions.yaml`** — curated descriptions per region:
    `display_name`, `oneliner`, `what`, `examples`, `related`, `put_here`.
 
-This is the canonical content for the rich side panels (v1–v4). The two-
-column table in `CLAUDE.md → Git & Branches` is the human reference; the
+This is the canonical content for the rich side panels (v1–v4). The per-path
+table in `docs/structure.md` is the human reference; the
 machine-readable, single-source-of-truth for descriptions is the YAML.
 
 **Trigger phrases:** "repo layout", "core/user split", "where do files
@@ -18,7 +18,8 @@ live", "repo structure", "core vs user", "/repo-layout".
 
 ### 1. Read truth sources
 
-- `CLAUDE.md → Git & Branches` table — authoritative path list (never invent).
+- `docs/structure.md` per-path table — authoritative path list (never invent);
+  `docs/families.md` lists the config families.
 - `docs/repo-layout/regions.yaml` — schema:
   ```yaml
   regions:
@@ -70,12 +71,12 @@ For each entry on the CORE side and USER side, in the bridge repo root:
   - `exists = true`.
 - If missing: `count = 0`, `samples = []`, `exists = false`.
 
-**The CORE list (matching CLAUDE.md table):**
+**The CORE list (matching the `docs/structure.md` table):**
 
 | path | desc |
 |---|---|
 | `ecosystem.yaml` | Repos, infra, skills, workspaces (single source of truth) |
-| `CLAUDE.md` | Operating manual for Claude (this file routes everything) |
+| `AGENTS.md` | Operating manual, the entry for every agent |
 | `docs/` | Public docs, onboarding, protocol catalog, multi-instance |
 | `skills/` | Skills (CORE; slash-command triggers live in each SKILL.md) |
 | `.claude/agents/` | CORE sub-agents (user agents mostly live globally) |
@@ -144,7 +145,7 @@ must carry curated fields alongside live truth:
   oneliner: "Single source of truth for all repos, workspaces and skills",
   what: "Central YAML that describes the entire org ecosystem: ...",
   examples_curated: ["base.open-bridge — the hub repo itself", ...],
-  related: ["CLAUDE.md", "workflow/projects/*.yaml"],
+  related: ["AGENTS.md", "workflow/projects/*.yaml"],
   put_here: "New repo, new workspace, new customer with code repos.",
   // legacy field — kept for backward compat, set to oneliner
   desc: "Single source of truth for all repos, workspaces and skills",
@@ -227,7 +228,7 @@ region by **longest-prefix match** against `REGIONS[].id`:
 
 - Region ids ending with `/` (e.g. `docs/`, `work/`) match any path
   starting with that prefix.
-- Bare-file region ids (e.g. `CLAUDE.md`, `ecosystem.yaml`) match the
+- Bare-file region ids (e.g. `AGENTS.md`, `ecosystem.yaml`) match the
   exact path or anything under `<id>/`.
 - Sort regions by `id.length DESC` so deeper paths win.
 
@@ -290,7 +291,7 @@ substring of the region's path. Examples:
 | region id | search token |
 |---|---|
 | `infra/remotes/` | `infra/remotes/` |
-| `CLAUDE.md` | `CLAUDE.md` |
+| `AGENTS.md` | `AGENTS.md` |
 | `identity/personas/_template.yaml` | `identity/personas/_template` |
 | `workflow/projects/*.yaml` | `projects/` (broad — exclude self-refs) |
 | `identity/personas/user-freelancer.yaml` | `identity/personas/user-freelancer` |

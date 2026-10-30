@@ -517,6 +517,9 @@ kbd {
   color: var(--on-surface-muted);
 }
 
+/* the asks a line took in (detail.js AlsoAsked), under its reasons, each a link to its own item */
+.also-asked { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12.5px; }
+
 .inbox-summary { font-weight: 600; margin-bottom: 6px; }
 .runs {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-top: 10px; padding: 8px 10px;
@@ -1272,9 +1275,56 @@ kbd {
   font-size: var(--text-mono-label); color: var(--on-surface-muted); }
 .logv-acts { display: flex; align-items: center; gap: 12px; margin: 0 0 6px calc(5em + 16px); }
 .logv-file { color: var(--on-surface-muted); vertical-align: -1px; }
+.logv-dayhead { display: flex; align-items: baseline; gap: 10px; padding: 10px 0 6px; font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
+.logv-daycount { font-weight: 400; }
+.logv-onlyday { margin-left: auto; padding: 2px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised);
+  color: var(--on-surface); font: inherit; font-size: var(--text-label); font-weight: 400; cursor: pointer; }
+.logv-onlyday:hover { border-color: var(--accent); }
+.logp-spark i.is-none { opacity: 0.15; }
+/* the time range of a log page (views/logrange.js): presets, the range, Back, the bar width, the chart */
+.logr { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 10px; }
+.logr-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.logr-presets { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.logr-presets button { border: 0; background: transparent; padding: 6px 12px; font: inherit; font-size: var(--text-sm); color: var(--on-surface); cursor: pointer; }
+.logr-presets button + button { border-left: 1px solid var(--border); }
+.logr-presets button.is-on { background: var(--ink); color: var(--surface-raised); }
+.logr-presets button:hover:not(.is-on) { background: var(--surface-muted); }
+.logr-label { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.logr-back { padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); color: var(--on-surface);
+  font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.logr-back:hover { border-color: var(--accent); }
+.logr-spacer { flex: 1; }
+.logr-step { display: inline-flex; align-items: center; gap: 6px; }
+.logr-step select { padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-raised);
+  color: var(--on-surface); font: inherit; font-size: var(--text-label); }
+.logr-chart { position: relative; height: 150px; cursor: crosshair; user-select: none; -webkit-user-select: none; touch-action: none; }
+.logr-chart svg { display: block; width: 100%; height: 100%; }
+.logr-chart text { font-family: var(--font-mono); font-size: 11px; fill: var(--on-surface-muted); }
+.logr-chart text.is-mid { fill: var(--ink); font-weight: 600; }
+.logr-chart .logr-nowtext { fill: var(--danger); }
+.logr-weekend { fill: var(--surface-muted); opacity: 0.6; }
+.logr-grid { stroke: var(--border); stroke-dasharray: 3 3; }
+.logr-axis { stroke: var(--border); }
+.logr-tick { stroke: var(--on-surface-muted); }
+.logr-bar.is-hover { opacity: 0.75; }
+.logr-now { stroke: var(--danger); stroke-width: 1.5; stroke-dasharray: 2 2; }
+.logr-sel { fill: var(--accent); fill-opacity: 0.16; stroke: var(--accent); }
+.logr-tip { position: absolute; z-index: 3; transform: translate(-50%, calc(-100% - 8px)); padding: 6px 9px; border-radius: var(--radius-md);
+  background: var(--ink); color: var(--surface-raised); font-size: var(--text-label); line-height: 1.4; white-space: nowrap; pointer-events: none;
+  box-shadow: var(--shadow-hover); }
+.logr-tip b { font-variant-numeric: tabular-nums; }
+.logr-tipctx { opacity: 0.75; }
+.logr-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.logr-key { display: inline-flex; align-items: center; gap: 6px; }
+.logr-key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.logr-empty { margin: 0; padding: 12px 0; }
 @media (max-width: 900px) {
   .logp-grid { grid-template-columns: minmax(0, 1fr); }
   .logp-rail { order: -1; }
+}
+@media (max-width: 560px) {
+  .logr-label { flex-basis: 100%; order: 3; }
+  .logr-spacer { display: none; }
 }
 @media (max-width: 560px) {
   .tl { padding: 12px 14px; }
@@ -2234,6 +2284,18 @@ kbd {
    (the @container home rule below the stage's other breakpoints) */
 .stage-term { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px 32px; align-items: start; }
 .stage-greet { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* the areas of the stage: one bar of pills under the greeting (views/stage.js AreaPills) */
+.stage-areas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.area-pill { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 5px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-full); background: var(--surface-muted); color: var(--on-surface); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.area-pill:hover { border-color: var(--border-strong); }
+.area-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.area-pill.is-on { border-color: var(--info); background: color-mix(in srgb, var(--info) 20%, var(--surface-muted)); }
+.area-pill.is-quiet, .area-pill.is-toggle { color: var(--on-surface-muted); }
+.area-pill-fig { font-size: 12px; color: var(--on-surface-muted); }
+.area-pill-fig.is-running { color: var(--info); }
+.area-pill-fig.is-waiting { min-width: 20px; padding: 1px 7px; border-radius: var(--radius-full); text-align: center; font-weight: 700;
+  color: var(--on-primary); background: var(--warning); }
 .stage-term > .ticker { min-width: 0; margin: 0; }
 .stage-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--on-surface-muted); }
 .stage-prompt { display: flex; align-items: center; gap: 12px; max-width: 760px; border-bottom: 1px solid var(--border); transition: border-color var(--motion); }

@@ -190,7 +190,12 @@ empty group name is refused rather than read as the whole mandant.
 
 ## Theme
 
-`design` reads `DESIGN.md`'s frontmatter and maps tokens to roles. Each role
+`design` reads the frontmatter of the design that applies and maps tokens to
+roles. Which design: `scripts/designs.py` resolves it with the persona the mail
+goes out under (the profile's `persona_ref`, else its footer's), so a persona
+with `design_ref: <id>` dresses its mail in `identity/designs/<id>.md`, and one
+with `design_ref: default` gets the root `DESIGN.md` whatever the theme names;
+without one the theme's design and then the root `DESIGN.md` apply. Each role
 takes the first candidate token that exists AND is readable (4.5:1 on the
 card); a link colour that is too light for 15px text is skipped for the next
 candidate, and when no candidate is readable the first one is darkened until

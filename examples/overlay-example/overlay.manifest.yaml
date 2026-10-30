@@ -2,8 +2,9 @@
 #
 # Worked example overlay manifest — the single root declaration of the
 # "example-org" overlay. A consuming Bridge reads THIS file at overlay add-time:
-# it mirrors tree/ into the consumer, wires the ecosystem fragment as an @import,
-# and prompts the human for the fields listed under files[].
+# it mirrors tree/ into the consumer, copies the ecosystem fragment to the root
+# (Phase 1 indexes it there), and prompts the human for the fields listed under
+# files[].
 #
 # Everything here is generic and PII-free — the only org named anywhere is the
 # fictional "example-org". This manifest doubles as a schema-validation fixture:
@@ -42,8 +43,9 @@ selection:
     - "work/**"             # task board / log are USER-tier, never shipped
 
 # ---------------------------------------------------------------------------
-# Ecosystem fragment — copied verbatim to the consumer root and registered as
-# an @import. NEVER block-merged into the consumer's ecosystem.yaml.
+# Ecosystem fragment — copied verbatim to the consumer root, where Phase 1
+# indexes it. No import is written. NEVER block-merged into the consumer's
+# ecosystem.yaml.
 # ---------------------------------------------------------------------------
 ecosystem_fragment: ecosystem.example-org.yaml
 

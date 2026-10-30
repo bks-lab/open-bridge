@@ -100,7 +100,7 @@ The skill is also directly user-invokable (`/postmortem the last hour`,
    section; counts from `ls`)
 3. Append entry to `work/log.md` with timestamp, type, context, summary
 
-Per CLAUDE.md § Task Management "Task lifecycle (3-step enforcement)".
+Per AGENTS.md § Task Management (lifecycle, three steps).
 
 #### 3d. Recap
 

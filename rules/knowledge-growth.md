@@ -1,20 +1,22 @@
 ---
 scope: core
-description: Meta-rule — where new knowledge belongs (CLAUDE.md vs rules/ vs docs/ vs standing-order vs memory) and the scope discipline every rule must carry
+description: Meta-rule — where new knowledge belongs (AGENTS.md vs rules/ vs docs/ vs standing-order vs memory) and the scope discipline every rule must carry
 ---
 
 # Knowledge Growth — where does new content go
 
 The Bridge's knowledge base grows by adding to the **right tier**, not
-piling into `CLAUDE.md`. This table decides where, plus the scope
+piling into `AGENTS.md`. This table decides where, plus the scope
 discipline that keeps generic CORE separate from instance-specific content.
 
-## The four tiers
+## The tiers
 
 | Tier | Loaded | Holds | Size discipline |
 |---|---|---|---|
-| `CLAUDE.md` | always (session start) | Operating manual: routing tables, gates, command index, section pointers. **Meta-content, not detail.** | Lean — link out, don't inline workflows or examples |
-| `rules/*.md` | on demand (linked from CLAUDE.md or triggered) | Always-on gates + detailed workflows: session-start, operations, promote-safety, task-management. The *how*. | One concern per file |
+| `AGENTS.md` | always (session start) | The kernel: invariants, gates and section pointers. **Meta-content, not detail, and no lists.** CORE only: an instance never edits it. | Sections and byte ceiling declared in the `kernel:` block of `docs/data-model.yaml`; link out |
+| `docs/families.md` | always (imported by `AGENTS.md`) | The config-family index: which folder to read when. Generated from `docs/data-model.yaml`, never edited by hand. | One `route:` per family in the model |
+| `identity/agent/INSTANCE.md` | always (imported by `AGENTS.md`, so sub-agents see it too) | An instance's own always-on text: its families, registries, routes and vocabulary. USER, never shipped by CORE or an overlay. | Capped in `context-budget.yaml`; link out like `AGENTS.md` |
+| `rules/*.md` | on demand (linked from AGENTS.md or triggered) | Always-on gates + detailed workflows: session-start, operations, promote-safety, task-management. The *how*. | One concern per file |
 | `docs/*.md` | human reference | Narrative, decision matrices, examples, onboarding. The *why* + the long form, for people. | Frontmatter (`summary`/`type`/`last_updated`) |
 | memory | recall | Hard-won facts, gotchas, decisions-and-why. One fact = one file. | Index line short |
 
@@ -25,17 +27,27 @@ discipline that keeps generic CORE separate from instance-specific content.
   needed by that skill's next run → its `LEARNINGS.md` (§ A lesson about one
   skill). Checked first: it is the narrower case of the next line.
 - Non-obvious fact / workaround / decision → memory.
-- Pointer/routing rule needed every session → a short `CLAUDE.md` line
-  linking to the `rules/` or `docs/` detail.
+- Routing for a config family → a `route:` in `docs/data-model.yaml`
+  (rendered to `docs/families.md`). Any other pointer needed every session → in
+  CORE, one `AGENTS.md` sentence only if it is a new invariant, linking to the
+  `rules/` or `docs/` detail; in an instance, a line in
+  `identity/agent/INSTANCE.md`, never `AGENTS.md`, because a downstream edit to
+  `AGENTS.md` conflicts on every upstream merge.
 
 > **Knowledge-routing reflex:** a "drift" / "audit" / "consistency" /
 > "is X still accurate" request routes to the `bridge-audit` skill (it has the
 > checks codified) — don't ad-hoc grep. When you rename a file/skill/command,
 > add it to `skills/bridge-audit/data/renames.yaml` so the next audit keeps up.
 
-If you're about to add more than ~10 lines to `CLAUDE.md`, it almost
-certainly belongs in a `rules/` file with a one-line pointer from
-`CLAUDE.md` instead.
+**The kernel rule.** `AGENTS.md` gets no new section and no list. A new config
+family is a row with a `route:` in `docs/data-model.yaml` (it then appears in
+`docs/families.md`); feature mechanics go to `docs/<feature>.md`; only a new
+invariant earns an `AGENTS.md` sentence. `scripts/data-model.py` fails CI on an
+undeclared section, a family table row or a file past the byte ceiling.
+
+If you're about to add more than ~10 lines to `AGENTS.md` (or to `INSTANCE.md`
+in an instance), it almost certainly belongs in a `rules/` file with a one-line
+pointer from that file instead.
 
 ## Write-time gate test (before saving a memory)
 

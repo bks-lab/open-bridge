@@ -88,7 +88,10 @@ properties:
     description: Overrides the footer's own style for this occasion (a reply wants compact).
   persona_ref:
     type: string
-    description: Persona whose plain `signature` closes the mail when `footer` is not set.
+    description: >-
+      Persona whose plain `signature` closes the mail when `footer` is not set,
+      and then also the persona whose `design_ref` dresses it (with a footer, the
+      footer's persona decides). A persona without a file is ignored for the design.
   sender:
     type: string
     format: email

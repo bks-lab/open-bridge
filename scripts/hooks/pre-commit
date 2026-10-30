@@ -212,7 +212,7 @@ fi
 # behind, and that is the path where it happened. But work/ is staged by almost
 # every commit, so it buys the edge check alone (well under a second), not the
 # whole gate.
-SURFACE='^(context-budget.*\.yaml|ecosystem.*\.yaml|CLAUDE\.md|AGENTS\.md|identity/|infra/|workflow/|protocols/standing-orders/|skills/|\.claude/agents/)'
+SURFACE='^(context-budget.*\.yaml|docs/families\.md|docs/data-model\.yaml|ecosystem.*\.yaml|CLAUDE\.md|AGENTS\.md|identity/|infra/|workflow/|protocols/standing-orders/|skills/|\.claude/agents/)'
 EDGE_SURFACE='^work/(tasks|streams|done)/'
 if ! echo "$STAGED" | grep -Eq "$SURFACE" && echo "$STAGED" | grep -Eq "$EDGE_SURFACE"; then
   [ -f scripts/check-edges.py ] && { python3 scripts/check-edges.py >/dev/null 2>&1 ||
@@ -227,6 +227,8 @@ if echo "$STAGED" | grep -Eq "$SURFACE"; then
     { [ -f scripts/context-index.py ] && warn "⚠ INDEX: a declared card no longer matches its source — python3 scripts/context-index.py --check"; }
   [ -f scripts/check-reachability.py ] && python3 scripts/check-reachability.py >/dev/null 2>&1 ||
     { [ -f scripts/check-reachability.py ] && warn "⚠ REACH: a config family is named in nothing a session loads — python3 scripts/check-reachability.py"; }
+  [ -f scripts/check-reachability.py ] && python3 scripts/check-reachability.py --surface subagent >/dev/null 2>&1 ||
+    { [ -f scripts/check-reachability.py ] && warn "⚠ REACH: a config family is named in nothing a sub-agent loads: python3 scripts/check-reachability.py --surface subagent"; }
   [ -f scripts/check-edges.py ] && python3 scripts/check-edges.py >/dev/null 2>&1 ||
     { [ -f scripts/check-edges.py ] && warn "⚠ EDGES: a reference between entries no longer resolves — python3 scripts/check-edges.py"; }
   [ -f scripts/standing-orders.py ] && python3 scripts/standing-orders.py --check >/dev/null 2>&1 ||

@@ -15,6 +15,10 @@
 # per path to a directory junction, which needs no elevation and behaves the
 # same for an agent's filesystem walk.
 #
+# It also warns (never fails) when Claude Code is too old to load AGENTS.md
+# or a CLAUDE.md in a parent folder would make Claude Code load that file
+# instead of AGENTS.md.
+#
 # macOS / Linux / WSL: use `bin/setup` instead.
 
 $ErrorActionPreference = "Stop"
@@ -127,6 +131,42 @@ if ((Test-Path "scripts\user-data.py") -and $py) {
 } else {
     Write-Host "WARN python missing, instance data is not backed up (scripts/user-data.py)"
     $ok = $false
+}
+
+# Claude Code loads AGENTS.md as this repo's entry file from 2.1.277 on
+# (2.1.281 on Bedrock, Vertex, Foundry and gateways). This repo ships no
+# CLAUDE.md, so an older Claude Code starts with no instructions at all.
+# Warn only: Claude Code is one of several supported tools. Mirrors bin/setup.
+$claudeMin = [version]"2.1.281"
+$claude = Get-Command claude -ErrorAction SilentlyContinue
+if ($claude) {
+    $cvText = ""
+    try { $cvText = (& $claude.Source --version 2>$null | Select-Object -First 1) } catch { $cvText = "" }
+    if ("$cvText" -match '(\d+)\.(\d+)\.(\d+)') {
+        $cv = [version]"$($Matches[1]).$($Matches[2]).$($Matches[3])"
+        if ($cv -lt $claudeMin) {
+            Write-Host "WARN Claude Code $cv is older than $claudeMin and will not load AGENTS.md here. Update: claude update"
+        } else {
+            Write-Host "OK  Claude Code $cv supports AGENTS.md (default option)"
+        }
+    } else {
+        Write-Host "WARN Could not read the Claude Code version; it needs $claudeMin or newer to load AGENTS.md"
+    }
+}
+
+# A CLAUDE.md or CLAUDE.local.md in any parent folder makes Claude Code load
+# that file and skip AGENTS.md, on every version. Warn only.
+$dir = Split-Path -Parent $repo
+while ($dir) {
+    foreach ($f in @("CLAUDE.md", "CLAUDE.local.md")) {
+        $p = Join-Path $dir $f
+        if (Test-Path -LiteralPath $p -PathType Leaf) {
+            Write-Host "WARN $p sits in a parent folder: Claude Code will not load AGENTS.md here"
+        }
+    }
+    $parent = Split-Path -Parent $dir
+    if (-not $parent -or $parent -eq $dir) { break }
+    $dir = $parent
 }
 
 # Honest, specific summary — never a blanket "OK" that could hide an unarmed guard.

@@ -503,10 +503,12 @@ test('start page views: the news band only when switched on for the start page; 
     assert.ok(on.$('.ticker'), view)
     // in page order: the day shelf before the areas, the areas before any chip row
     const els = walk(off)
-    const areas = els.findIndex(x => x.hasClass('home-areas'))
+    const areas = els.findIndex(x => x.hasClass(view === 'stage' ? 'stage-areas' : 'home-areas'))
     const chips = els.findIndex(x => x.hasClass('home-chips'))
     const day = els.findIndex(x => x.getAttribute('aria-labelledby') === 'home-day')
     assert.ok(areas >= 0, view)
+    // on the stage the areas are its bar in the head: no table and no chip row below it
+    if (view === 'stage') { assert.equal(off.$('.home-areas'), null); assert.equal(chips, -1); continue }
     if (day >= 0) assert.ok(day < areas, view)
     if (chips >= 0) assert.ok(areas < chips, view)
   }
@@ -764,4 +766,127 @@ test('every list named waiting on you shows the asks, so its count is the count 
   assert.match(stage, /x\.id === 'c:waiting'\) \{\n\s*const rows = \(s\.model\?\.sections \?\? \[\]\)\.find\(r => r\.id === 'now'\)\?\.rows\?\.filter\(asksYou\) \?\? \[\]/)
   const home = fs.readFileSync(path.join(WEB, 'views', 'home.js'), 'utf8')
   assert.match(home, /const waiting = waitingAll\.filter\(r => asksYou\(r\) && inProject\(r, project\)\)/)
+})
+
+// ---------------------------------------------------------------- the area bar of the stage (round: start areas)
+
+test('areaBar: the areas with something open, what needs you first, one figure each; the configured rest is quiet', () => {
+  const line = (name, x = {}) => ({ name, waiting: 0, running: 0, tasks: 0, resting: 0, review: 0, overdue: 0, ...x })
+  const lines = [line('Ops', { running: 2, tasks: 3, resting: 1 }), line('Home', { tasks: 1 }), line('Lab', { waiting: 1, tasks: 2 }),
+    line('Desk', { resting: 2 }), { ...line('', { tasks: 1 }), none: true }]
+  const bar = logic.areaBar(lines, ['ops', 'Lab', 'Home', 'Desk', 'Shop', 'Garden'])
+  assert.deepEqual(bar.pills.map(p => [p.name, p.fig.kind, p.fig.n]),
+    [['Lab', 'waiting', 1], ['Ops', 'running', 2], ['Desk', 'resting', 2], ['Home', 'tasks', 1], ['', 'tasks', 1]])
+  assert.ok(bar.pills.at(-1).none)
+  // the configured areas without a line, any case, in their order
+  assert.deepEqual(bar.quiet, ['Shop', 'Garden'])
+  // every pill says all its numbers in its title, in the page language
+  assert.equal(logic.areaBarTitle(bar.pills[1], en.home), en.home.areaBarParts({ waiting: 0, running: 2, tasks: 3, resting: 1 }))
+  assert.deepEqual(logic.areaBar([], []), { pills: [], quiet: [] })
+})
+
+test('areaBar: a pill says what is to review or overdue, and a line with nothing to say makes no pill', () => {
+  const line = (name, x = {}) => ({ name, waiting: 0, running: 0, tasks: 0, resting: 0, review: 0, overdue: 0, ...x })
+  const bar = logic.areaBar([line('Ops', { review: 1 }), line('Lab', { overdue: 2, tasks: 1 }), line('Home'),
+    { ...line('', { review: 1 }), none: true }], [])
+  assert.deepEqual(bar.pills.map(p => [p.name, p.fig.kind, p.fig.n]), [['Lab', 'overdue', 2], ['Ops', 'review', 1], ['', 'review', 1]])
+  for (const lang of ['en', 'de']) {
+    const h = text.TABLES[lang].home
+    for (const k of ['review', 'overdue']) assert.ok(h.areaFig[k](1).length > 0, `${lang} ${k}`)
+    assert.match(logic.areaBarTitle(bar.pills[0], h), /2/)
+    assert.notEqual(logic.areaBarTitle(bar.pills[1], h), h.areaBarParts({}))
+  }
+})
+
+test('the area lines: an alias is no line of its own, an empty shell makes no area, a tab at rest counts', () => {
+  const tabs = [
+    { ref: 'a', name: 'shell', workspace: 'Shop', state: 'shell' },
+    { ref: 'b', name: 'done for now', workspace: 'Desk', state: 'waiting', idle: true },
+    { ref: 'c', name: 'Control', workspace: 'Control', state: 'waiting', is_control: true },
+  ]
+  const work = [{ key: 'task:plan', task: 'plan', title: 'Plan', status: 'doing', bucket: 'tasks', area: 'Home', area_names: ['Home', 'Hm'] }]
+  const sections = [{ id: 'now', rows: [] }, { id: 'work', rows: work }]
+  assert.deepEqual(logic.homeProjects(tabs, work), ['Desk', 'Home'])
+  const home = logic.homeAreas(tabs, sections, [], NOW)
+  assert.deepEqual(home.map(a => a.name), ['Desk', 'Home'])
+  assert.equal(home.find(a => a.name === 'Desk').resting, 1)
+  const s = cockpitState(NOW, { ui: { page: '@start' } })
+  const flow = { ...s, model: { ...s.model, sections: [{ id: 'now', rows: [] }, { id: 'give', rows: [] }, { id: 'work', rows: work },
+    { id: 'track', rows: [] }, { id: 'later', rows: [] }], files: undefined, task_rows: [], deferred: [] }, tabs: { tabs },
+    work: { flow: { enabled: true, drop_reasons: ['not_needed'], return_after_s: 20 } }, sessions: { sessions: [] } }
+  const { areas } = logic.flowAreas(flow)
+  assert.deepEqual(areas.filter(a => !a.none).map(a => a.name).sort(), ['Desk', 'Home'])
+  assert.equal(areas.find(a => a.name === 'Desk').resting, 1)
+})
+
+test('the stage carries the areas as one bar under the greeting; a pill filters, the quiet ones open on a click', async () => {
+  const { logic } = loadedRooms
+  const base = cockpitState(NOW, { ui: { page: '@start' } })
+  const tiles = logic.homeViewSet(logic.homeChosen(base.model, null), 'stage')
+  const s = { ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] },
+    boot: { ...base.boot, config: { areas: ['Ops', 'Demo', 'Docs', 'Garden'] } } }
+  const c = recorder()
+  const el = mount(html`<${HomePage} s=${s} c=${c} />`)
+  const bar = el.$('.stage-greet .stage-areas')
+  assert.ok(bar, 'the bar stands in the stage head')
+  const pills = bar.$$('button.area-pill')
+  assert.equal(pills[0].text().trim(), en.home.all)
+  assert.equal(pills[0].getAttribute('aria-pressed'), 'true')
+  assert.ok(pills.length > 2)
+  // one figure per pill and its numbers in the title; no key hint anywhere
+  for (const p of pills.slice(1, -1)) { assert.ok(p.getAttribute('title')); assert.equal(p.$$('.area-pill-fig').length, 1) }
+  assert.doesNotMatch(bar.text(), /\b(g a|j|k)\b.*key/i)
+  const quiet = bar.button(en.home.areaQuiet(1))
+  quiet.click()
+  pills[1].click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'setArea'), [['setArea', pills[1].$('.area-pill-name').text()]])
+  const open = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
+  open.$('.stage-areas').button(en.home.areaQuiet(1)).click()
+  for (let i = 0; i < 50 && !open.$('.stage-areas').text().includes('Garden'); i++) await new Promise(r => setTimeout(r, 20))
+  assert.ok(open.$('.stage-areas').text().includes('Garden'))
+  // a picked area: its pill is pressed, a second click shows every area again
+  const picked = mount(html`<${HomePage} s=${{ ...s, ui: { ...s.ui, area: 'Ops' } }} c=${c} />`)
+  const on = picked.$$('.stage-areas button.area-pill').find(p => p.getAttribute('aria-pressed') === 'true')
+  assert.equal(on.$('.area-pill-name').text(), 'Ops')
+  on.click()
+  assert.deepEqual(c.calls.filter(x => x[0] === 'setArea').at(-1), ['setArea', null])
+})
+
+test('area aliases fold into their area for tabs and rows: one pill, its count, its filter (review of #572)', () => {
+  logic.setAreaAliases({ Hm: 'Home' })
+  try {
+    const tabs = [{ ref: 'a', name: 'resting', workspace: 'Hm', state: 'waiting', idle: true },
+      { ref: 'b', name: 'works', workspace: 'home', state: 'working' }]
+    assert.deepEqual(logic.homeProjects(tabs, [{ key: 'task:x', area: 'Hm' }]), ['Home'])
+    assert.equal(logic.restingIn(tabs, 'Home'), 1)
+    assert.ok(logic.inProject(tabs[0], 'Home'))
+    assert.ok(logic.inProject({ area_names: ['Hm'] }, 'home'))
+    const lines = logic.homeAreas(tabs, [{ id: 'now', rows: [] }, { id: 'work', rows: [] }], [], NOW)
+    assert.deepEqual(lines.map(a => [a.name, a.running, a.resting]), [['Home', 1, 1]])
+    assert.deepEqual(logic.areaBar(lines, ['Home', 'Shop']).quiet, ['Shop'])
+  } finally { logic.setAreaAliases({}) }
+})
+
+test('a tab at rest without a workspace counts under No area with Work through on and off (review of #572)', () => {
+  const tabs = [{ ref: 'a', name: 'loose', workspace: '', state: 'waiting', idle: true }]
+  const sections = [{ id: 'now', rows: [] }, { id: 'give', rows: [] }, { id: 'work', rows: [] }, { id: 'track', rows: [] }, { id: 'later', rows: [] }]
+  const home = logic.homeAreas(tabs, sections, [], NOW)
+  assert.equal(home.find(a => a.none)?.resting, 1)
+  assert.equal(logic.restingIn(tabs, ''), 1)
+  const s = cockpitState(NOW, { ui: { page: '@start' } })
+  const flow = { ...s, model: { ...s.model, sections, files: undefined, task_rows: [], deferred: [] }, tabs: { tabs },
+    work: { flow: { enabled: true, drop_reasons: ['not_needed'], return_after_s: 20 } }, sessions: { sessions: [] } }
+  assert.equal(logic.flowAreas(flow).areas.find(a => a.none)?.resting, 1)
+})
+
+test('homeAreas counts a row under every area its filter matches, never an alias as a line (review of #572)', () => {
+  logic.setAreaAliases({ Hm: 'Home' })
+  try {
+    const tabs = [{ ref: 'b', name: 'side', workspace: 'Side', state: 'working' }]
+    const work = [{ key: 'task:x', task: 'x', title: 'X', status: 'doing', area: 'Home', area_names: ['Home', 'Hm', 'Side'] }]
+    const lines = logic.homeAreas(tabs, [{ id: 'now', rows: [] }, { id: 'work', rows: work }], [], NOW)
+    assert.deepEqual(lines.map(a => [a.name, a.tasks]).sort(), [['Home', 1], ['Side', 1]])
+    // the pill's figure is what its filter shows
+    for (const a of lines) assert.equal(work.filter(r => logic.inProject(r, a.name)).length, a.tasks)
+  } finally { logic.setAreaAliases({}) }
 })

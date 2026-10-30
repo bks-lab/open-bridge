@@ -38,10 +38,13 @@ what the slice exists to stop:
    header `## {Weekday} DD.MM`). A row written with
    `python3 scripts/worklog.py --append --context <tag> --what "<what, why>"`
    lands in its own day's block and opens that block when it is missing
-3. Read the registry index: `python3 scripts/context-index.py ecosystem.yaml`
-   (settings verbatim, one line per repo/customer/workspace). Fetch an entry
-   with `--get <name>` when the work names one. Skip silently when the file is
-   absent, which is the normal state before onboarding
+3. Read the registry index: `python3 scripts/context-index.py --registries`
+   (the card of `ecosystem.yaml` plus every `ecosystem.<name>.yaml` beside it,
+   never `ecosystem.example.yaml`; settings verbatim, one line per
+   repo/customer/workspace). Fetch an entry with
+   `python3 scripts/context-index.py <file> --get <name>`, using the file the
+   card names. Skip silently when no registry exists, which is the normal
+   state before onboarding
 4. Read the memory index: `python3 scripts/memory-location.py index`, and
    `get <name>` for one fact when the work names it. This is how the memory
    base reaches a harness that reads only `AGENTS.md`; inside Claude Code with
@@ -103,10 +106,10 @@ promote). `personal` is an optional fourth tier — a private overlay under your
 
 | Scope | Allowed upstream | Path examples |
 |---|---|---|
-| `core` (or unset) | **open-bridge** + your org overlay | CLAUDE.md, README.md, CONTRIBUTING.md, docs/**, skills/** (`metadata.scope: core`), .claude/skills/**, .claude/agents/** (`scope: core` or unset), .codex/hooks.json, .vibe/hooks.toml, rules/*.md (top-level only = CORE tier; org/user rules live in `rules/org/` + `rules/user/` — see those rows), identity/{personas,accounts,mandants,contracts}/{_schema,_template}.yaml, infra/{remotes,channels,backups,instances}/{_schema,_template}.yaml, workflow/{calendars,contexts,projects}/{_schema,_template}.yaml, <wrapper>/<type>/_tests/** for the families listed in `WRAPPER_TESTS_CORE` (a schema's own contract suite ships with the schema; the list is enumerated because a fixture may hold instance data until its suite is generic), themes/**, trackers/**, scripts/** (ALLOWLIST, not a glob: the authoritative set is `SCRIPTS_CORE_ALLOWLIST` in scripts/categorize-commits.py; a new core script is registered there deliberately), scripts/tests/**, .pre-commit-config.yaml, .github/workflows/validate.yml, protocols/standing-orders/*.md (CORE default orders), mods/** (ENUMERATED, not a glob: mods/README.md, mods/.claude-plugin/marketplace.json and each shipped mod folder named in the `mods/` lookahead of `USER_PATTERNS` in scripts/categorize-commits.py; anything else under mods/ routes `user`) |
+| `core` (or unset) | **open-bridge** + your org overlay | AGENTS.md, GEMINI.md, README.md, CONTRIBUTING.md, docs/**, skills/** (`metadata.scope: core`), .claude/skills/**, .claude/agents/** (`scope: core` or unset), .codex/hooks.json, .vibe/hooks.toml, rules/*.md (top-level only = CORE tier; org/user rules live in `rules/org/` + `rules/user/` — see those rows), identity/{personas,accounts,mandants,contracts}/{_schema,_template}.yaml, infra/{remotes,channels,backups,instances}/{_schema,_template}.yaml, workflow/{calendars,contexts,projects}/{_schema,_template}.yaml, <wrapper>/<type>/_tests/** for the families listed in `WRAPPER_TESTS_CORE` (a schema's own contract suite ships with the schema; the list is enumerated because a fixture may hold instance data until its suite is generic), themes/**, trackers/**, scripts/** (ALLOWLIST, not a glob: the authoritative set is `SCRIPTS_CORE_ALLOWLIST` in scripts/categorize-commits.py; a new core script is registered there deliberately), scripts/tests/**, .pre-commit-config.yaml, .github/workflows/validate.yml, protocols/standing-orders/*.md (CORE default orders), mods/** (ENUMERATED, not a glob: mods/README.md, mods/.claude-plugin/marketplace.json and each shipped mod folder named in the `mods/` lookahead of `USER_PATTERNS` in scripts/categorize-commits.py; anything else under mods/ routes `user`) |
 | `org` | **your org overlay ONLY** (never open-bridge) | skills/customer-a-coordinator/ (= `metadata.scope: org`), .claude/agents/{customer-a-*,network-*}.md, ecosystem.yaml, ecosystem.<org>.yaml, rules/org/** (wiki-navigation, wiki-principles), workflow/contexts/customer-a.yaml (+ any context carrying `scope: org`), identity/mandants/org.yaml |
 | `personal` | **your personal overlay ONLY** (never open-bridge, never your org overlay) | cluster-wrapper config carrying `scope: personal` — identity/{personas,mandants,accounts,contracts}/<id>.yaml, infra/channels/<id>.yaml, workflow/{contexts,projects}/<id>.yaml; rules/personal/**; ecosystem.personal.yaml |
-| `user` / `private` | **stays local** (never any upstream) | bridge-config.yaml, cluster-wrapper config with `scope: user` or **no** frontmatter (identity/{personas,mandants,accounts,contracts}, infra/{remotes,channels}, workflow/{contexts,projects}), infra/instances/<id>.yaml, infra/backups/topology.yaml + _state.yaml, workflow/calendars/entries.yaml, work/ (incl. work/streams/applications/), rules/user/**, protocols/standing-orders/user/** (user-authored orders), .claude/mods/** (an instance's own folder marketplace of Claude Code mods), any mods/<name>/ not registered as shipped |
+| `user` / `private` | **stays local** (never any upstream) | root CLAUDE.md / CLAUDE.local.md (instance-local, never promoted: it would hide AGENTS.md), bridge-config.yaml, cluster-wrapper config with `scope: user` or **no** frontmatter (identity/{personas,mandants,accounts,contracts}, infra/{remotes,channels}, workflow/{contexts,projects}), infra/instances/<id>.yaml, infra/backups/topology.yaml + _state.yaml, workflow/calendars/entries.yaml, work/ (incl. work/streams/applications/), rules/user/**, protocols/standing-orders/user/** (user-authored orders), .claude/mods/** (an instance's own folder marketplace of Claude Code mods), any mods/<name>/ not registered as shipped |
 
 **Routing-logic for `/promote` (per commit, per file):**
 1. Read `scope:` frontmatter — skills: `metadata.scope`; sub-agents/rules:
@@ -187,7 +190,7 @@ validate CORE-only paths first.
 ## Context Switching
 
 When switching to another repo:
-1. Read that repo's CLAUDE.md FIRST — every repo has its own conventions
+1. Read that repo's AGENTS.md or CLAUDE.md FIRST — every repo has its own conventions
 2. Check branch model (development vs main vs dev)
 3. Commit changes THERE, not in the bridge
 4. Return and log the cross-repo work in work/log.md

@@ -40,6 +40,13 @@ USER_PATTERNS = [
     r"^rules/user/",                                  # user-tier rules (applications, …) — folder = tier
     r"^docs/applications\.md$",                       # personal applications feature — user-tier
     r"^bridge-config\.yaml$",
+    # A root CLAUDE.md is instance-local: upstream it would hide AGENTS.md for
+    # every fork, since Claude Code then loads only it. Same for CLAUDE.local.md
+    # and .claude/CLAUDE.md. Uppercase on purpose: test_user_data.py collects
+    # only lowercase root patterns as must-be-gitignored, and these files must
+    # never be ignored (an ignored CLAUDE.md still loads and still shadows).
+    r"^CLAUDE(\.local)?\.md$",
+    r"^\.claude/CLAUDE\.md$",
     r"^ecosystem\.yaml$",                              # instance-base registry: org, local_root and paths of ONE machine.
                                                        # Was `org` until 2026-10-24; an overlay shares its own
                                                        # ecosystem.<org>.yaml, never a member's base file.
@@ -178,8 +185,12 @@ PERSONAL_PATTERNS = [
 # Adding the wrapper moves exactly that one file; the 16 personal machines
 # declare `scope: user` and stay local, and an undeclared remote falls through
 # to the path rule (user), so the read fails closed.
+#
+# `identity/designs` holds one brand per Markdown file, its `scope:` inside the
+# `---` fence like a rule's. An org brand must reach the org overlay, or every
+# member Bridge keeps the upstream palette; an undeclared one stays `user`.
 _CLUSTER_WRAPPER_RE = re.compile(
-    r"^(?:identity/(?:personas|mandants|accounts|contracts)"
+    r"^(?:identity/(?:personas|mandants|accounts|contracts|designs)"
     r"|infra/(?:channels|remotes|secret-stores|a2a-peers)"
     r"|workflow/(?:briefings|contexts|projects))/"
     r"(?!_(?:schema|template))"
@@ -553,6 +564,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/guide.py",
     "scripts/lib/bridge_cockpit/net.py",                  # the one outbound fetcher: feeds and agent cards
     "scripts/lib/bridge_cockpit/collector.py",
+    "scripts/lib/bridge_cockpit/logrange.py",             # the log page's time range: /api/logrange
     "scripts/lib/bridge_cockpit/tabs.py",
     "scripts/lib/bridge_cockpit/asks.py",                 # what a waiting tab asks, read off its screen
     "scripts/tests/test_bridge_cockpit_asks.py",
@@ -580,6 +592,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_daybook.py",
     "scripts/lib/bridge_cockpit/returns.py",              # the return channel of starts handed to tabs
     "scripts/tests/test_bridge_cockpit_returns.py",
+    "scripts/tests/test_bridge_cockpit_repo_areas.py",
     "scripts/lib/bridge_cockpit/graph.py",                # the knowledge graph of the inner room
     "scripts/tests/test_bridge_cockpit_graph.py",
     "scripts/lib/bridge_cockpit/quick.py",
@@ -700,6 +713,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/tabs.js",
     "scripts/web/views/timeline.js",          # a page's search: its rows, every day before, the AI
     "scripts/web/views/logpage.js",           # a page's log layout: the log by hour, the rail beside it
+    "scripts/web/views/logrange.js",          # the log page's time range: presets, the bar chart, the zoom
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",
     "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
@@ -740,6 +754,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_costs.test.mjs",
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
+    "scripts/tests/bridge_cockpit_logrange.test.mjs",
     "scripts/tests/bridge_cockpit_flow.test.mjs",
     "scripts/tests/bridge_cockpit_prio.test.mjs",
     "scripts/tests/bridge_cockpit_settle.test.mjs",
@@ -760,6 +775,22 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/build-cockpit-demo.py",
     "scripts/tests/test_bridge_cockpit_demo.py",
     "scripts/tests/test_bridge_cockpit_contract.py",
+    # Registered with identity/designs/: the resolver every generator asks which
+    # design applies (mail-draft, html-canvas, html-slides, the cockpit), and its
+    # contract.
+    "scripts/designs.py",
+    "scripts/tests/test_designs.py",
+    "scripts/tests/test_validate_bridge_designs.py",
+    # Registered 2026-10-30 with AGENTS.md as the only entry file: the
+    # migration for a fork's CLAUDE.md, and the tests that hold the entry
+    # file, the setup version warning and the dead CLAUDE.md links; then with
+    # the kernel rewrite, the invariants AGENTS.md plus docs/families.md keep.
+    "scripts/migrate-entry-file.py",
+    "scripts/tests/test_claude_md_links.py",
+    "scripts/tests/test_entry_file.py",
+    "scripts/tests/test_kernel_invariants.py",
+    "scripts/tests/test_migrate_entry_file.py",
+    "scripts/tests/test_setup_claude_version.py",
 })
 
 
@@ -800,8 +831,10 @@ VERIFIED_CORE = frozenset({
 # does not satisfy it, so it falls through to `user` — a second, independent net
 # under the USER_PATTERNS entry that already claims it. Structurally this fallback
 # can only ever return "user", so it cannot lift any README into core.
+# A family whose instances are Markdown (identity/designs/) ships `_template.md`,
+# so the two literals come in both extensions.
 CLUSTER_WRAPPER_FALLBACK = re.compile(
-    r"^(?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*/(?!_(?:schema|template)\.yaml$)"
+    r"^(?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*/(?!_(?:schema|template)\.(?:yaml|md)$)"
 )
 
 # `_tests/` beside a wrapper schema is that schema's own regression suite, so it
@@ -870,6 +903,10 @@ def classify_file(path: str) -> str:
     if _CLUSTER_WRAPPER_RE.search(path):
         token = read_frontmatter_scope(path)
         mapped = _SCOPE_MAP.get(token) if token else None
+        # A design never ships by declaration: the default that ships is the
+        # root DESIGN.md. An instance brand claiming `core` stays local.
+        if mapped == "core" and path.startswith("identity/designs/"):
+            return "user"
         if mapped:
             return mapped
     # A theme's own `meta.scope:` (and the logo it declares) WINS over the path

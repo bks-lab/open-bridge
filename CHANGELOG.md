@@ -17,6 +17,18 @@ between updates; the two links above never do.
 
 ## Recent themes
 
+**AGENTS.md as a stable kernel.** The config-family index is generated from
+docs/data-model.yaml into docs/families.md, which AGENTS.md imports; a new
+family is a data row, not an edit to the manual, and a guard keeps lists out
+of AGENTS.md.
+
+**AGENTS.md is the only entry file.** CLAUDE.md is gone; Claude Code 2.1.281+
+reads AGENTS.md directly, the instance layer loads through fixed imports
+(`identity/agent/IDENTITY.md`, `SOUL.md` and the new `INSTANCE.md`), org
+registries are indexed instead of imported (`scripts/context-index.py
+--registries`), and `scripts/migrate-entry-file.py` moves a fork's CLAUDE.md
+lines (docs/updating.md).
+
 **Secrets, as references instead of values.** A broker that resolves a
 `vault://`/`keychain://`-style reference at read time and never prints the
 value ([#222](https://github.com/bks-lab/open-bridge/pull/222)), placement

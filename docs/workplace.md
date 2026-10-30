@@ -91,7 +91,7 @@ workplace:
                                      # agent there when a driver creates the workspace
   workspaces:
     - {name: Bigcorp, contexts: [bigcorp], color: "#1565C0", description: "client work for Bigcorp"}
-    - {name: Platform, slugs: ["platform-*"], aliases: [Infra]}
+    - {name: Platform, slugs: ["platform-*"], aliases: [Infra], repos: ["example-org/*"]}
     - {name: Misc, default: true}
   limits: {max_workspaces: 4, max_tabs: 3, stale_days: 10, activity_days: 7}
   tab_names: {payments-incident: Payments}
@@ -104,7 +104,10 @@ workplace:
 A workspace entry takes `name` (required), `contexts` and `slugs` (which tasks go
 there), `default`, `color`, `description` (one line a router reads to place work)
 and `aliases` (other titles under which the terminal may already show that
-workspace, so an existing one is reused rather than opened twice).
+workspace, so an existing one is reused rather than opened twice) and `repos`
+(owner/repo globs, any case: an issue or pull request of a matching repository that
+has no area of its own stands in this workspace's area on the cockpit's start page
+and under its area filter; the first workspace that matches wins).
 
 A task can name its workspace itself with `area:` in its STATUS.md head (a
 workspace's `name` or one of its `aliases`, any case). That wins over `slugs` and

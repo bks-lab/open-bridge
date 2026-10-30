@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's areas: the project chips, the Areas lines of the start page and their numbers, where each number leads, the one area filter over Work, Chat and Sessions, and why a tab gone idle is finished rather than waiting on you."
 type: guide
-last_updated: 2026-10-25
+last_updated: 2026-10-29
 related:
   - bridge-cockpit.md
   - cockpit-files.md
@@ -43,6 +43,20 @@ filed); only one with neither is *No area*. There is one area filter in the whol
 the name, a chip or a jump set it, the start page views, Work, Chat and
 Sessions all show it, and a project chosen on the start page before carries
 over.
+
+**On the bridge** (the start page's stage view) the areas are one bar of pills under
+the greeting instead of the shelf and the chips below the stage, so the filter stands
+in the first screen beside what it filters. *All* comes first, then each area with
+something open, what waits on you first, then what is at work, then the most open,
+*No area* last. A pill shows one figure: what waits on you (in the warning colour),
+else how many tabs work there, else its tasks, else its tabs at rest; its title names
+all of them. An area whose only open tab is an empty shell has no pill. The areas of
+`workplace.workspaces` with nothing open wait behind *+n quiet*, which opens them in
+place. A pill picks the area like a line of the shelf (a second click shows every
+area again), and the Today card beside the bridge follows it. An alias of a workspace
+is never an area of its own: a task under an alias counts under the workspace's
+name. An issue or pull request without an area takes the area of the workspace
+whose `repos:` match its repository ([`workplace.md`](workplace.md)).
 
 **Every number is a jump** to the page that holds those things, with the area
 as its filter: *waiting on you* opens Chat and walks the area's tabs that want

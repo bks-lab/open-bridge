@@ -53,7 +53,7 @@ Layout follows the cluster-wrapper convention — see
 
 ```
 examples/agency/
-├── CLAUDE.md                   ← demo brief (overrides the repo root in here)
+├── CLAUDE.md                   ← demo brief (Claude Code loads only this file here; agents that also read the repo-root AGENTS.md: this file wins)
 ├── AGENTS.md                   ← thin pointer to CLAUDE.md for other runtimes
 ├── bridge-config.yaml          ← user config
 ├── ecosystem.yaml              ← repo registry

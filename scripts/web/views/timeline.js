@@ -52,13 +52,14 @@ function TimelineDays({ entries, c, cited = false, words = [] }) {
   </li>`)}</ol>`
 }
 
-/** Every day before (s.timeline from c.searchTimeline): the lines that hold every word, by day */
+/** Every day before (s.timeline from c.searchTimeline): the lines that hold every word, by day; its count the units
+ *  (a log row each, a meeting, a closed task, a transcript one each), what the log page's chart counts for the words */
 function Timeline({ find, c }) {
   const w = T().pageSearch
   if (!find) return null
   const data = find.data
   return html`<section class="tl" aria-live="polite">
-    <header class="tl-head"><p class="dz-eyebrow">${w.timelineTitle(find.q)}${data ? html` <span class="sec-count mono">${data.total}</span>` : null}</p>
+    <header class="tl-head"><p class="dz-eyebrow">${w.timelineTitle(find.q)}${data ? html` <span class="sec-count mono">${data.units ?? data.total}</span>` : null}</p>
       <${Btn} variant="ghost" size="xs" icon="close" onClick=${() => c.clearTimeline()}>${w.close}<//></header>
     ${find.status === 'loading' ? html`<p class="muted small" role="status">${w.searching}</p>`
       : find.status === 'error' ? html`<p class="muted small" role="status">${find.error}</p>`
@@ -100,8 +101,10 @@ function sectionsShort(page, s) {
  *  log and its archive, the meetings, the closed tasks, the raw transcripts); Ask AI (only with cockpit.files_search
  *  on, Enter or its button) asks when it was done or discussed. Switching keeps the text; only Today filters the rows.
  *  `render(q)` draws the sections with the words typed, '' when nothing filters; with `split` (the log layout,
- *  views/logpage.js) it also gets {mode, answer, timeline} and sets the answer and the timeline itself */
-export function PageSearch({ page, s, c, render, split = false }) {
+ *  views/logpage.js) it also gets {mode, answer, timeline, words} and sets the answer and the timeline itself.
+ *  With `days` ({from, to}, a log page's time range) the first mode is In range, Every day and Ask AI read only those
+ *  days, and `none(words)` says whether the words leave no row of the range */
+export function PageSearch({ page, s, c, render, split = false, days = null, none = null }) {
   const w = T().pageSearch
   const [q, setQ] = useState('')
   const [mode, setMode] = useState('today')
@@ -113,10 +116,12 @@ export function PageSearch({ page, s, c, render, split = false }) {
   const modes = ['today', 'all', ...(fs?.enabled ? ['ai'] : [])]
   const now = modes.includes(mode) ? mode : 'today'
   const sent = useRef('')
+  // what Every day searched: the words, and the days of the range where there is one
+  const asked = days ? `${words}|${days.from ?? ''}|${days.to ?? ''}` : words
   const go = (m = now) => {
     if (words.length < 2) return
-    if (m === 'all') { sent.current = words; c.searchTimeline(words) }
-    if (m === 'ai' && !spent) c.askTimeline(words)
+    if (m === 'all') { sent.current = asked; if (days) c.searchTimeline(words, days); else c.searchTimeline(words) }
+    if (m === 'ai' && !spent) { if (days) c.askTimeline(words, days); else c.askTimeline(words) }
   }
   const pick = m => { setMode(m); if (m === 'all') go('all') }
   const id = `psearch-${page.id}`
@@ -126,30 +131,30 @@ export function PageSearch({ page, s, c, render, split = false }) {
   useEffect(() => { for (const sec of short) c.loadMore(page.id, sec.id) }, [short.map(sec => sec.id).join(' ')])
   // Every day searches as one types, once the typing pauses; Enter still searches at once
   useEffect(() => {
-    if (now !== 'all' || words.length < 2 || words === sent.current) return
+    if (now !== 'all' || words.length < 2 || asked === sent.current) return
     const wait = setTimeout(() => go('all'), 450)
     return () => clearTimeout(wait)
-  }, [now, words])
+  }, [now, asked])
   const answer = now === 'ai' ? html`<${TimelineAnswer} ask=${s.timelineAsk} c=${c} />` : null
   const timeline = now === 'all' ? html`<${Timeline} find=${s.timeline} c=${c} />` : null
   return html`<div class="psearch">
     <form class="psearch-bar" role="search" aria-label=${w.label} onSubmit=${e => { e.preventDefault(); go() }}>
       <label class="sr-only" for=${id}>${w.label}</label>
-      <input id=${id} class="input psearch-q" type="search" autocomplete="off" maxlength="200" placeholder=${w.placeholder[now]}
+      <input id=${id} class="input psearch-q" type="search" autocomplete="off" maxlength="200" placeholder=${days && now === 'today' ? w.placeholder.range : w.placeholder[now]}
         value=${q} onInput=${e => setQ(e.currentTarget.value)} />
       <div class="psearch-seg" role="radiogroup" aria-label=${w.modeLabel} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
         ${modes.map(m => html`<button type="button" key=${m} role="radio" aria-checked=${String(now === m)}
-          class=${now === m ? 'is-on' : ''} onClick=${() => pick(m)}>${w.mode[m]}</button>`)}
+          class=${now === m ? 'is-on' : ''} onClick=${() => pick(m)}>${days && m === 'today' ? w.mode.range : w.mode[m]}</button>`)}
       </div>
       ${now === 'ai' ? html`<${Btn} size="sm" variant="secondary" icon="spark" disabled=${words.length < 2 || spent}
         busy=${s.timelineAsk?.status === 'loading'} onClick=${() => go('ai')}>${w.send}<//>` : null}
       ${fs?.enabled ? html`<span class="psearch-left muted small">${spent ? w.noneLeft : left != null ? w.left(left) : ''}</span>` : null}
     </form>
     ${now === 'ai' && fs?.block?.length ? html`<p class="psearch-note muted small">${w.private(fs.block)}</p>` : null}
-    ${filtering && !short.length && !pageHolds(page, s, words) ? html`<p class="psearch-none muted small">${w.todayNone}
+    ${filtering && !short.length && (none ? none(words) : !pageHolds(page, s, words)) ? html`<p class="psearch-none muted small">${none ? w.rangeNone : w.todayNone}
       <button type="button" class="btn-link small" onClick=${() => pick('all')}>${w.mode.all}</button></p>` : null}
     ${split ? null : answer}
     ${split ? null : timeline}
   </div>
-  ${split ? render(filtering ? words : '', { mode: now, answer, timeline }) : render(filtering ? words : '')}`
+  ${split ? render(filtering ? words : '', { mode: now, answer, timeline, words }) : render(filtering ? words : '')}`
 }

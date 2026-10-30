@@ -5,6 +5,29 @@
 import { asksYou, dueWhen, homeChosen, homeView, indexRows, wantsYou, workViewIn } from './logic.js'
 import { scopedFileQueue } from './files.js'
 
+// the aliases of workplace.workspaces (bootstrap config.area_aliases), lower case alias -> area name; set once at boot
+let ALIASES = new Map()
+
+/** Takes the server's {alias: area} map; every name compare of this file folds an alias into its area */
+export function setAreaAliases(map) {
+  ALIASES = new Map(Object.entries(map && typeof map === 'object' ? map : {})
+    .filter(([a, n]) => typeof a === 'string' && typeof n === 'string' && a.trim() && n.trim())
+    .map(([a, n]) => [a.trim().toLowerCase(), n.trim()]))
+}
+
+/** A name as its area spells it: an alias becomes its area, any other name stays as it is (trimmed) */
+export const areaName = name => { const n = String(name ?? '').trim(); return ALIASES.get(n.toLowerCase()) ?? n }
+/** The key two names of one area share: lower case, the alias folded */
+export const areaKey = name => areaName(name).toLowerCase()
+
+/** The areas a row stands in as the filter matches it (inProject): every name it carries, aliases folded, each once;
+ *  none at all is [''] */
+export function rowAreas(row) {
+  const names = [row?.area, ...(row?.area_names ?? []), row?.mark?.label].filter(n => n && String(n).trim())
+  const out = [...new Map(names.map(n => [areaKey(n), areaName(n)])).values()]
+  return out.length ? out : ['']
+}
+
 /** The project a row belongs to: its area, else its first area name, else the label of its mark */
 export function rowProject(row) {
   return row?.area || row?.area_names?.[0] || row?.mark?.label || ''
@@ -16,13 +39,14 @@ export function rowProject(row) {
 export function homeProjects(tabs, rows) {
   const seen = new Map()
   const add = name => {
-    const key = String(name ?? '').trim().toLowerCase()
+    const key = areaKey(name)
     if (!key) return
-    const x = seen.get(key) ?? { name: String(name).trim(), n: 0 }
+    const x = seen.get(key) ?? { name: areaName(name), n: 0 }
     x.n += 1
     seen.set(key, x)
   }
-  for (const t of tabs ?? []) if (!t.is_control) add(t.workspace)
+  // an empty shell makes no area: nothing is open there
+  for (const t of tabs ?? []) if (!t.is_control && t.state !== 'shell') add(t.workspace)
   for (const r of rows ?? []) add(rowProject(r))
   return [...seen.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).map(x => x.name)
 }
@@ -30,9 +54,9 @@ export function homeProjects(tabs, rows) {
 /** Does a tab or a row belong to the chosen project? No project chosen: everything does */
 export function inProject(x, project) {
   if (!project) return true
-  const want = String(project).trim().toLowerCase()
+  const want = areaKey(project)
   const names = [x?.workspace, x?.area, ...(x?.area_names ?? []), x?.mark?.label]
-  return names.some(n => n && String(n).trim().toLowerCase() === want)
+  return names.some(n => n && areaKey(n) === want)
 }
 
 const PROJECT_TONES = ['secondary', 'accent', 'success', 'warning', 'info']
@@ -65,19 +89,21 @@ export function homeAreas(tabs, sections, returns, nowMs) {
   const rows = [...byKey.values()]
   const section = id => (sections ?? []).find(x => x.id === id)?.rows ?? []
   const counts = new Map()
-  const zero = () => ({ waiting: 0, waitingTabs: 0, waitingRows: 0, running: 0, review: 0, overdue: 0, tasks: 0 })
+  const zero = () => ({ waiting: 0, waitingTabs: 0, waitingRows: 0, running: 0, review: 0, overdue: 0, tasks: 0, resting: 0 })
   // what has no area counts under NONE, the line "No area" at the end
   const bump = (name, what) => {
-    const key = String(name ?? '').trim().toLowerCase() || NONE
+    const key = areaKey(name) || NONE
     const x = counts.get(key) ?? zero()
     x[what] += 1
     counts.set(key, x)
   }
   // a row of "now" that asks you stands for the tab that waits on its work; an idea or a report there asks nothing
   const paired = new Set()
+  // a row counts under every area its filter matches (rowAreas), as Work through counts it under each
+  const bumpRow = (r, what) => { for (const a of rowAreas(r)) bump(a, what) }
   for (const r of section('now').filter(asksYou)) {
-    bump(rowProject(r), 'waiting')
-    bump(rowProject(r), 'waitingRows')
+    bumpRow(r, 'waiting')
+    bumpRow(r, 'waitingRows')
     for (const t of live) if ((r.task && t.slug === r.task) || (r.inbox_id && t.item === r.inbox_id)) paired.add(t.ref)
   }
   // an answered start stands for its tab gone idle
@@ -85,7 +111,7 @@ export function homeAreas(tabs, sections, returns, nowMs) {
   for (const r of returns ?? []) {
     const row = byKey.get(r.key)
     if (!row || (r.live ?? r.stage) !== 'result') continue
-    bump(rowProject(row), 'review')
+    bumpRow(row, 'review')
     for (const t of live) if (t.ref === r.tab?.ref || (r.item && (t.slug === r.item || t.item === r.item))) answered.add(t.ref)
   }
   for (const t of live) {
@@ -96,21 +122,53 @@ export function homeAreas(tabs, sections, returns, nowMs) {
     }
     if (t.state === 'working') bump(t.workspace, 'running')
     if (t.idle === true && !answered.has(t.ref)) bump(t.workspace, 'review')
+    if (restingTab(t)) bump(t.workspace, 'resting')
   }
-  for (const r of rows) if (rowOverdue(r, nowMs)) bump(rowProject(r), 'overdue')
+  for (const r of rows) if (rowOverdue(r, nowMs)) bumpRow(r, 'overdue')
   const slugs = new Set()
   for (const r of section('work')) {
     if (!r.task || slugs.has(r.task)) continue
     slugs.add(r.task)
-    bump(rowProject(r), 'tasks')
+    bumpRow(r, 'tasks')
   }
   const line = (name, x, extra = {}) => ({ name, tone: projectTone(name), ...x, total: x.waiting + x.running + x.review + x.overdue, ...extra })
-  const out = homeProjects(tabs, rows).map(name => line(name, counts.get(name.toLowerCase()) ?? zero()))
+  const out = homeProjects(tabs, rows).map(name => line(name, counts.get(areaKey(name)) ?? zero()))
   if (counts.has(NONE)) out.push(line('', counts.get(NONE), { none: true, tone: 'muted' }))
-  return out.filter(a => a.total > 0 || a.tasks > 0)
+  return out.filter(a => a.total > 0 || a.tasks > 0 || a.resting > 0)
 }
 
 const NONE = '\u0000none'   // no area name can be this
+
+/** An agent tab at rest: open, not at work and not asking (an empty shell is no agent tab) */
+export const restingTab = t => !!t && !t.is_control && t.state !== 'shell' && t.state !== 'working' && !wantsYou(t)
+
+/** The agent tabs at rest in one area, by their workspace (an alias folded); '' counts those without a workspace */
+export function restingIn(tabs, name) {
+  const want = areaKey(name)
+  return (tabs ?? []).filter(t => restingTab(t) && areaKey(t.workspace) === want).length
+}
+
+// the order of the figures a pill of the area bar shows: the first one that is not 0
+const BAR_FIGS = ['waiting', 'overdue', 'running', 'review', 'tasks', 'resting']
+
+/** The bar of areas on the stage: a pill per area line (homeAreas, flowAreas) with one figure, what waits on you,
+ *  else what is at work, else the tasks, else the tabs at rest; what waits first, then what works, then the most
+ *  open, the line "No area" last; a line with no figure above 0 makes no pill. `configured` (workplace.workspaces)
+ *  gives the quiet areas: those without a pill */
+export function areaBar(lines, configured = []) {
+  const pills = (lines ?? []).flatMap(a => {
+    const kind = BAR_FIGS.find(k => (a[k] ?? 0) > 0)
+    return kind ? [{ ...a, fig: { kind, n: a[kind] } }] : []
+  }).sort((x, y) => (x.none ? 1 : 0) - (y.none ? 1 : 0) || (y.waiting ?? 0) - (x.waiting ?? 0) || (y.running ?? 0) - (x.running ?? 0)
+    || ((y.tasks ?? 0) + (y.resting ?? 0)) - ((x.tasks ?? 0) + (x.resting ?? 0)) || String(x.name).localeCompare(String(y.name)))
+  const have = new Set(pills.filter(p => !p.none).map(p => areaKey(p.name)))
+  const quiet = [...new Set((configured ?? []).filter(n => typeof n === 'string' && n.trim() && !have.has(areaKey(n))))]
+  return { pills, quiet }
+}
+
+/** Every number of a pill in words, for its title */
+export const areaBarTitle = (pill, h) => h.areaBarParts({ waiting: pill.waiting ?? 0, overdue: pill.overdue ?? 0,
+  running: pill.running ?? 0, review: pill.review ?? 0, tasks: pill.tasks ?? 0, resting: pill.resting ?? 0 })
 
 /** Where a number of the areas leads, the area as the filter there (ui.area): tabs alone that want you
  *  are answered in the chat, one after the other (its walk); rows, or rows and tabs, wait in Work, what is due first, as do

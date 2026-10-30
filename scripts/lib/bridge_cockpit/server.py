@@ -33,6 +33,7 @@ import threading
 import time
 import traceback
 import urllib.parse
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -46,6 +47,7 @@ from . import model as m
 from .actions import ActionError, Actions
 from .actions_base import SPEC, note_go
 from .collector import Collector
+from .logrange import LogRange, Refused, Stale as LogStale, check as check_logrange, check_days as check_range
 from .daybook import DayBook
 from .returns import Launches
 from .launch import LaunchError, LaunchModel
@@ -68,7 +70,7 @@ from .guide import Guide
 from . import prio
 from .usage import Usage
 from .runner import Runner, RunnerRefused
-from .design import stylesheet
+from .design import resolved, stylesheet
 from .store import WebStore, append_clicks, append_log, atomic_write_json
 try:                       # Jev is an optional integration: without its file it is simply off
     from . import jev
@@ -200,7 +202,7 @@ class App:
         self._caps_lock = threading.Lock()
         self._caps: tuple[float, list[str], bool] | None = None    # (when, verbs, read ok)
         self._caps_flight: threading.Event | None = None
-        self._colors: tuple[tuple[int, int], bytes, str] | None = None     # (DESIGN.md stamp, css, tag)
+        self._colors: tuple[tuple, bytes, str] | None = None     # (design file stamp, css, tag)
         self._colors_lock = threading.Lock()
         self._screen_lock = threading.Lock()
         self._screens: dict[str, tuple[float, str, str]] = {}   # ref -> (read at ms, text, hash), each under its ref's lock
@@ -241,6 +243,7 @@ class App:
         self.instruct = Instruct(self)                 # the instruction line of Work through (instruct.py)
         self.history = History(self.state_dir, self.clock)
         self.collector = Collector(self)
+        self.logrange = LogRange(self)
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
         self.actions = Actions(self)
         self.launch_model = LaunchModel(self)         # the model an agent starts with (launch.py)
@@ -352,16 +355,20 @@ class App:
         return self.tabs.state(self.collector.view)
 
     def colors_css(self) -> tuple[bytes, str]:
-        """The stylesheet from DESIGN.md and its tag, kept until DESIGN.md changes (mtime, size)"""
+        """The stylesheet from the design the Bridge resolves (design.py) and its tag, kept until that file
+        changes (path, mtime, size): a theme pointing at another design, or an edit to the file itself"""
+        path, error = resolved(self.root)
         try:
-            st = (self.root / "DESIGN.md").stat()
-            stamp = (st.st_mtime_ns, st.st_size)
+            st = path.stat()
+            stamp = (str(path), error, st.st_mtime_ns, st.st_size)
         except OSError:
-            stamp = (0, 0)
+            stamp = (str(path), error, 0, 0)
         with self._colors_lock:
             if self._colors is None or self._colors[0] != stamp:
                 body = stylesheet(self.root).encode("utf-8")
-                self._colors = (stamp, body, static_etag(stamp[0], len(body) + stamp[1]))
+                # the path and the error are in the tag too: either changes the body without touching the file
+                which = zlib.crc32(f"{stamp[0]}|{stamp[1]}".encode("utf-8"))
+                self._colors = (stamp, body, static_etag(stamp[2] ^ which, len(body) + stamp[3]))
             return self._colors[1], self._colors[2]
 
     def driver_caps(self, fresh: bool = False) -> list[str]:
@@ -985,7 +992,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             self.get_api(path, query)
         elif path == "/colors.css":
-            # the Bridge's own colours and fonts, from its DESIGN.md (design.py): every fork shows its brand
+            # the Bridge's own colours and fonts, from the design it resolves (design.py): every fork shows its brand
             self.get_colors()
         else:
             self.get_static(path)
@@ -1002,7 +1009,8 @@ class Handler(BaseHTTPRequestHandler):
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
                                             "control": cfg.control, "profile": cfg.profile,
-                                            "areas": list(cfg.areas), "clicks": bool(getattr(cfg, "usage_clicks", True))}})
+                                            "areas": list(cfg.areas),
+                                            "area_aliases": dict(getattr(cfg, "area_aliases", ())), "clicks": bool(getattr(cfg, "usage_clicks", True))}})
         elif path == "/api/state":
             self.send_json(200, app.state_payload())
         elif path == "/api/events":
@@ -1143,16 +1151,23 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/timeline":
             # when it was done or discussed: the log and its archive, the meetings, the closed tasks and the raw
             # transcripts (scripts/work-find.py --history, logic in lib/work_find.py), read only, the words one argv
-            # word after --; the transcripts only where the config names a folder that is there
+            # word after --; the transcripts only where the config names a folder that is there; from and to (days,
+            # the log page's range) narrow it before the list is cut
             try:
                 q, _ = work_find.check_query(one("q"))
+                days = check_range(one)
+            except Refused as exc:
+                self.send_error_json("invalid_argument", str(exc), exc.field)
+                return
             except ValueError as exc:
                 self.send_error_json("invalid_argument", str(exc), "q")
                 return
             argv = [app.runner.python, app.runner.script("scripts/work-find.py"), "--root", str(app.root), "--history",
                     "--json", "--meetings", app.cfg.meetings]
             transcripts = work_find.transcript_root(app.cfg.transcripts)
-            argv += (["--transcripts", str(transcripts)] if transcripts else []) + ["--", q]
+            argv += (["--transcripts", str(transcripts)] if transcripts else [])
+            argv += (["--since", days["since"]] if days["since"] else []) + (["--until", days["until"]] if days["until"] else [])
+            argv += ["--", q]
             run = app.run(argv, FIND_TIMEOUT)
             try:
                 data = json.loads(run.out.strip().splitlines()[-1]) if run.ok else None
@@ -1162,6 +1177,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, app.scrub_tree(data))
             else:
                 self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
+        elif path == "/api/logrange":
+            # the log page's time range (logrange.py): the rows of the log and its archive for any range of days with
+            # the own commits of the page's commits section, or the meetings, closed tasks and transcripts one entry
+            # each; read only, through work-find.py and briefing.py, the whole log kept until a file of it changes
+            try:
+                params = check_logrange(one)
+            except Refused as exc:
+                self.send_error_json("invalid_argument", str(exc), exc.field)
+                return
+            try:
+                self.send_json(200, app.logrange.view(params))
+            except LogStale as exc:
+                self.send_error_json("stale_row", str(exc))
+            except ValueError as exc:
+                self.send_error_json("unreadable", app.scrub(str(exc))[-200:])
         elif path == "/api/records":
             # the start of the files tab: every task, stream and closed task as a record (lib/work_find.py records),
             # read in place, read only; with the question on and a block list, each with the words that hold it
@@ -1319,7 +1349,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_bytes(200, target.read_bytes(), CONTENT_TYPES[ext], static=True, extra={"ETag": etag})
 
     def get_colors(self) -> None:
-        """colors.css, built once per state of DESIGN.md and revalidated like a static file (review C32)"""
+        """colors.css, built once per state of the resolved design file and revalidated like a static file (review C32)"""
         body, etag = self.app.colors_css()
         if etag_matches(self.headers.get("If-None-Match"), etag):
             self.send_response(304)

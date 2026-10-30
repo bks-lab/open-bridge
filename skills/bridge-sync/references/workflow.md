@@ -139,6 +139,50 @@ done
 FILES=$(printf '%s\n' "$FILES" | drop_never_promote)
 ```
 
+Two more paths never move. A root `CLAUDE.md`, `CLAUDE.local.md` or
+`.claude/CLAUDE.md` classifies `user`, and checked out onto an upstream it would
+make Claude Code load only that file and hide `AGENTS.md` for every fork. And a
+path the destination no longer has (upstream deleted it) is skipped and
+reported, never recreated: a sync is not the place to undo a deletion. A branch
+that still carries a root `CLAUDE.md` merges upstream and runs
+`python3 scripts/migrate-entry-file.py` first (`docs/updating.md`).
+
+```bash
+# Entry shadows never move: they would hide AGENTS.md in every fork.
+SHADOWS="CLAUDE.md
+CLAUDE.local.md
+.claude/CLAUDE.md"
+printf '%s\n' "$FILES" | grep -xF "$SHADOWS" | while read -r p; do
+  [ -n "$p" ] && echo "  ⊘ entry shadow: $p (never synced; run scripts/migrate-entry-file.py)"
+done
+FILES=$(printf '%s\n' "$FILES" | grep -vxF "$SHADOWS" || true)
+
+# A path the destination deleted is reported and skipped, not recreated.
+# Once per destination: its fetched branch tip and the merge base with it.
+DEST_REF="<upstream>/<base-branch>"          # e.g. upstream/main, org/development
+DEST_BASE=$(git merge-base HEAD "$DEST_REF" 2>/dev/null)
+if [ -z "$DEST_BASE" ] || ! git rev-parse -q --verify "$DEST_REF^{commit}" >/dev/null; then
+  echo "  ✗ $DEST_REF not fetched or unrelated: fetch it, the deletion check needs it" >&2
+  exit 1                                     # refuse: an empty ref would keep every path
+fi
+KEEP=""
+for p in $FILES; do
+  if git cat-file -e "$DEST_REF:$p" 2>/dev/null || ! git cat-file -e "$DEST_BASE:$p" 2>/dev/null; then
+    KEEP="$KEEP$p
+"
+  else
+    echo "  ⊘ gone upstream: $p (deleted in the destination, skipped)"
+  fi
+done
+FILES=$(printf '%s' "$KEEP")
+```
+
+`$DEST_REF` is the destination branch tip and `$DEST_BASE` the merge base with
+it, set per destination before the loop (run the block once per target, in its
+per-target section): a path that existed at the base and is gone at the tip was
+deleted there, while a path new on this side passes. With either one empty the
+test would read the local index and keep every path, so the block refuses.
+
 
 For each commit in the window, classify:
 
@@ -205,10 +249,10 @@ git clean -fdq work/ identity/personas/ identity/accounts/ \
 
 # Re-checkout only the CORE/org paths from the source commit.
 # Two cases — most files are identical between seed and destination
-# (safe full checkout); files that INTENTIONALLY diverge (CLAUDE.md,
-# README.md — per-tier framing differs) must get the COMMIT'S DIFF
-# applied, not the whole seed file.
-DIVERGED_FILES="CLAUDE.md README.md"   # files that differ seed ↔ upstream
+# (safe full checkout); a file that INTENTIONALLY diverges (README.md,
+# per-tier framing differs) must get the COMMIT'S DIFF applied, not the
+# whole seed file. A root CLAUDE.md never gets here: the prefilter drops it.
+DIVERGED_FILES="README.md"   # files that differ seed ↔ upstream
 for path in $CORE_ORG_PATHS_IN_THIS_COMMIT; do
   if echo " $DIVERGED_FILES " | grep -q " $path "; then
     # Apply only this commit's diff for the file (preserves the
@@ -230,7 +274,7 @@ git diff --cached --quiet || git commit -C "$hash"
 
 **Why the split — never `git checkout <hash> -- file` for a diverged file.**
 `git checkout <hash> -- file` is "get the file *out of* that commit", not
-"apply that commit's *diff*". For `CLAUDE.md` / `README.md` the seed and the
+"apply that commit's *diff*". For `README.md` the seed and the
 upstream hold the file differently on purpose (per-tier framing), so a blind
 checkout replaces the upstream's whole file with the seed's — the symptom is a
 single commit reporting e.g. `1 file changed, 179 insertions(+), 305

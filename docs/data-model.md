@@ -102,10 +102,11 @@ draws exactly this, from the same file as the tables below:
 
 | Item | What it is |
 |---|---|
-| AGENTS.md | The operating manual, @-imported through CLAUDE.md (or the tool's own wrapper). |
-| SOUL/IDENTITY | identity/agent/SOUL.md and IDENTITY.md, @-imported once onboarding has seeded them. |
+| AGENTS.md | The operating manual and the entry file: Claude Code loads it directly, other tools read it as text. |
+| SOUL/IDENTITY | identity/agent/SOUL.md and IDENTITY.md, imported by AGENTS.md once onboarding has created them. |
+| family index | docs/families.md: which config folder to read when, generated from this file and imported by AGENTS.md. |
 | config slice | `python3 scripts/bridge-config.py --session`: the six bridge-config.yaml blocks a session needs; the others are read by the skill that owns them. |
-| registry card | `python3 scripts/context-index.py ecosystem.yaml`: the settings plus one line per entry; an entry itself comes with `--get <name>` (docs/context-index.md). |
+| registry card | `python3 scripts/context-index.py --registries`: the settings plus one line per entry of ecosystem.yaml and every ecosystem.<name>.yaml; an entry itself comes with `<file> --get <name>` (docs/context-index.md). |
 | order index | `python3 scripts/standing-orders.py --index`, plus the bodies of the orders marked `load: eager`. |
 | log + board | `python3 scripts/worklog.py --recent 3` and work/board.md, never the whole log. |
 | skill list | Name and description of every skill, injected by the harness (measured as listing:skills). |
@@ -116,11 +117,12 @@ draws exactly this, from the same file as the tables below:
 | Family | One entry is | Island | Lives in | References | Written by | Read |
 |---|---|---|---|---|---|---|
 | `identity/accounts/` | a cloud tenant, subscription or secret-store reference | core: template, schema; user: entries | open-bridge (CORE)<br>instance data | `persona_ref` → identity/personas/<br>`*_ref` → a secret store, by URI | a person; onboarding may suggest the first | when named |
-| `identity/agent/` | this orchestrator's own name, role and voice | core: templates, soul deck; user: SOUL.md, IDENTITY.md | open-bridge (CORE)<br>your user branch | none | onboarding seeds it; accepted /bridge-learn lessons fold into SOUL.md | at session start |
+| `identity/agent/` | this orchestrator's own name, role and voice | core: templates, soul deck; user: SOUL.md, IDENTITY.md, INSTANCE.md | open-bridge (CORE)<br>your user branch | none | onboarding seeds it; accepted /bridge-learn lessons fold into SOUL.md | at session start |
 | `identity/contracts/` | a recurring obligation the user holds: utility, telco, insurance, subscription | core: template, schema; user: entries | open-bridge (CORE)<br>your user branch | `delivery_address_ref` → identity/personas/ | a person | when named |
+| `identity/designs/` | a brand a generated visual can wear: colours, type and shapes, in the DESIGN.md format | core: template, schema; user: entries; org: an organisation's brand via an overlay | open-bridge (CORE)<br>instance data<br>org overlay | none | a person; contexts, personas and themes point at it (design_ref, branding.design), scripts/designs.py resolves it | when named |
 | `identity/mail-footers/` | how a drafted mail is signed: contact block, badges, cards, a dated notice, small print | core: template, schema; user: entries; org: a shared team footer via an overlay | open-bridge (CORE)<br>instance data<br>org overlay | `persona_ref` → identity/personas/<br>`extends` → identity/mail-footers/ | a person (skills/mail-draft reads and renders it) | when named |
 | `identity/mandants/` | a group that receives outgoing messages | core: template, schema; user: entries; org: a shared group via scope | open-bridge (CORE)<br>instance data | `context_ref` → workflow/contexts/<br>`mail_profile` → workflow/mail-profiles/ | /mandants | when named |
-| `identity/personas/` | an identity the user holds: signature, tax data, filing paths | core: template, schema; user: entries | open-bridge (CORE)<br>instance data | `mandant_refs` → identity/mandants/ | a person; onboarding may seed the first | when named |
+| `identity/personas/` | an identity the user holds: signature, tax data, filing paths | core: template, schema; user: entries | open-bridge (CORE)<br>instance data | `mandant_refs` → identity/mandants/<br>`design_ref` → identity/designs/ | a person; onboarding may seed the first | when named |
 | `identity/vehicles/` | a vehicle the user owns or leases, and the persona that bears it | core: template, schema; user: entries | open-bridge (CORE)<br>your user branch | `persona` → identity/personas/<br>`refs` → identity/contracts/ | a person | when named |
 | `infra/backups/` | what is backed up where, and whether it is fresh | core: template, schema; user: topology.yaml, _state.yaml | open-bridge (CORE)<br>your user branch | `remote_ref` → infra/remotes/ | topology by a person; _state.yaml only by the backup executor an instance brings | when named |
 | `infra/channels/` | an outbound transport: mail, chat, bot, digest | core: template, schema; user: entries | open-bridge (CORE)<br>your user branch | `runtime.remote` → infra/remotes/ | /channel | when named |
@@ -133,7 +135,7 @@ draws exactly this, from the same file as the tables below:
 | `infra/utilities/` | a supply connection at a location: power, gas, water, heat | core: template; user: entries | open-bridge (CORE)<br>your user branch | `portal_password_ref` → a secret store, by URI | a person | when named |
 | `workflow/briefings/` | one briefing a person can ask for: its sections, sources, queries and inbox rules | core: template, schema; user: entries; org: a shared profile via an overlay | open-bridge (CORE)<br>your user branch<br>org overlay | `account_ref` → identity/accounts/<br>`github-board boards` → workflow/projects/ | a person (scripts/briefing.py reads and runs it) | when named |
 | `workflow/calendars/` | a scheduled outbound action: what, to whom, when | core: template, schema; user: entries.yaml | open-bridge (CORE)<br>instance data | `recipients` → identity/mandants/ | /calendar | when named |
-| `workflow/contexts/` | where a piece of work gets documented | core: template, schema; user: entries; org: shared contexts via scope | open-bridge (CORE)<br>instance data<br>org overlay | `persona_ref` → identity/personas/ | a person, or an org overlay | when named |
+| `workflow/contexts/` | where a piece of work gets documented | core: template, schema; user: entries; org: shared contexts via scope | open-bridge (CORE)<br>instance data<br>org overlay | `persona_ref` → identity/personas/<br>`design_ref` → identity/designs/ | a person, or an org overlay | when named |
 | `workflow/mail-profiles/` | an occasion for mail: footer, theme, greeting, snippets, attachments, client, who it applies to | core: template, schema; user: entries; org: a shared format via an overlay | open-bridge (CORE)<br>your user branch<br>org overlay | `footer` → identity/mail-footers/<br>`persona_ref` → identity/personas/<br>`extends` → workflow/mail-profiles/<br>`applies_to.mandants` → identity/mandants/ | a person (skills/mail-draft selects and applies it) | when named |
 | `workflow/meetings/` | a recurring meeting series: cadence, meeting folders, wiki protocol target | core: template, schema; user: entries | open-bridge (CORE)<br>your user branch | `followup_skill` → skills/<br>`outputs.distribution.mandant` → identity/mandants/ | a person; /debrief and /briefing read it | when named |
 | `workflow/projects/` | a board's field values and state map, read before any tracker call | core: template, schema; user or org: entries | open-bridge (CORE)<br>instance data<br>org overlay | `context_ref` → workflow/contexts/<br>`mandant_ref` → identity/mandants/ | a person, or an org overlay; board items only through github-projects-manager | when named |
@@ -147,7 +149,9 @@ draws exactly this, from the same file as the tables below:
 | `trackers/` | a provider playbook that normalizes a tracker's output | core only; per-instance settings live in bridge-config.yaml | open-bridge (CORE) | none | CORE maintainers | when named |
 | `themes/` | a vocabulary set for user-facing words | core: the built-ins; user: a custom theme | open-bridge (CORE)<br>your user branch | none | a person | when named |
 | `.claude/agents/` | a sub-agent, spawned inside a session for heavy or parallel work | any tier, set by scope | open-bridge (CORE)<br>your user branch | none | a person | at session start |
+| `mods/` | a Claude Code mod: a plugin with function hooks, Claude Code only | core: README.md, the marketplace file and each shipped mod; user: .claude/mods/ | open-bridge (CORE)<br>your user branch | none | CORE maintainers; scripts/categorize-commits.py enumerates the shipped mods | when named |
 | `work/` | the work system: tasks, streams, log, board, memory | user, the whole folder | your user branch | none | scripts/worklog.py, scripts/gen-board.py, scripts/inbox.py (work/inbox/), and the skills that write a STATUS.md | at session start |
+| `docs/` | a stand-alone guide: mechanics, models and how-tos the routes point at | core, the whole folder | open-bridge (CORE) | none | CORE maintainers; docs/families.md is generated by scripts/data-model.py | when named |
 
 #### Beside the families
 
@@ -155,7 +159,7 @@ draws exactly this, from the same file as the tables below:
 |---|---|---|---|
 | `bridge-config.yaml` | the instance's settings; a session reads six of its blocks | user | instance data |
 | `ecosystem.yaml` | the repo registry, read as a card with one entry on demand | user | instance data |
-| `ecosystem.<name>.yaml` | a registry fragment, for example an organisation's | org or user | instance data<br>org overlay |
+| `ecosystem.<name>.yaml` | a registry fragment, for example an organisation's, indexed at session start like ecosystem.yaml | org or user | instance data<br>org overlay |
 | `overlays.lock.yaml` | which overlay files were materialized, at which revision | user | instance data |
 | `context-budget.yaml` | the declared ceiling for what every session reads | core | open-bridge (CORE) |
 | `context-budget.user.yaml` | an instance's own caps for its own always-on files | user | instance data |
@@ -180,14 +184,26 @@ draws exactly this, from the same file as the tables below:
 
 1. Create the family folder with its `_template.yaml` (and `_schema.yaml` where
    entries are validated), following `rules/file-creation.md`.
-2. Describe it in `docs/data-model.yaml`. A family only your instance has goes into
-   `work/data-model.yaml` instead, in the same shape: `work/` is USER by folder, so
-   the row never promotes and a fork can describe its own families without touching
-   a CORE file.
-3. Run `python3 scripts/data-model.py --write` to regenerate the tables and the ring,
-   then name the family where a session will find it (`scripts/check-reachability.py`
-   says where that is).
+2. Describe it in `docs/data-model.yaml`. A row under `identity/`, `infra/` or
+   `workflow/` also carries `route:`, the "read it when ..." line a session sees,
+   plus any guardrail that must hold before the folder is opened; `skill:` and
+   `guide:` are optional and must resolve. A family only your instance has goes into
+   `work/data-model.yaml` instead, in the same shape and without the need for a
+   `route:`: `work/` is USER by folder, so the row never promotes and a fork can
+   describe its own families without touching a CORE file. Name such a family in
+   `identity/agent/INSTANCE.md`, which every session loads.
+3. Run `python3 scripts/data-model.py --write` to regenerate the tables, the ring
+   and [`families.md`](families.md), the family index `AGENTS.md` imports, so every
+   session and every sub-agent carries the new row.
 
 `python3 scripts/data-model.py` fails when a family has no row, when one has two,
-when a row names a folder the tree does not have, and when either generated block
-was edited by hand. `--mutate` proves each of those checks can fail.
+when a row names a folder the tree does not have, when a CORE wrapper row has no
+`route:`, and when a generated block or `docs/families.md` was edited by hand. In
+the CORE repo it also fails when a `skill:` or `guide:` does not resolve, and it
+holds `AGENTS.md` to the `kernel:` block of the yaml: the `@docs/families.md`
+import, only the declared `## ` sections, no family table, at most
+`max_table_rows` table lines and `max_bytes` bytes (Codex reads 32 KiB of the file
+and drops the rest silently). In a fork those last checks only warn, and an edited
+`AGENTS.md` moves to `identity/agent/INSTANCE.md` with
+`python3 scripts/migrate-entry-file.py --file AGENTS.md`. `--mutate` proves each
+check can fail.

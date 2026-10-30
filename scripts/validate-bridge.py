@@ -38,6 +38,7 @@ import importlib.util
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -159,6 +160,18 @@ SURFACES = [
         "exclude_prefixes": ["_"],
     },
     {
+        # One brand per Markdown file (DESIGN.md format). The schema holds the
+        # front matter, so `frontmatter` hands the validator that block alone:
+        # the prose below it is not YAML.
+        "name": "design",
+        "schema": "identity/designs/_schema.yaml",
+        "instances": "identity/designs/*.md",
+        "exclude_prefixes": ["_"],
+        "frontmatter": True,
+        # `design_ref: default` opts out to the root DESIGN.md, so no design may be called that
+        "reserved_stems": ["default"],
+    },
+    {
         "name": "calendar",
         "schema": "workflow/calendars/_schema.yaml",
         "instances": "workflow/calendars/*.yaml",
@@ -224,6 +237,23 @@ def discover_instances(surface: dict) -> list[Path]:
     ]
 
 
+def _front_matter_file(path: Path, folder: Path) -> Path:
+    """The block between the first two `---` lines of a Markdown file, as `<stem>.yaml` in `folder`.
+
+    A file without front matter becomes an empty document, which the schema
+    then refuses for its required keys rather than this function guessing.
+    """
+    text = path.read_text(encoding="utf-8")
+    block = ""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            block = text[3:end].lstrip("\n")
+    out = folder / f"{path.stem}.yaml"
+    out.write_text(block or "{}\n", encoding="utf-8")
+    return out
+
+
 def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
     """Validate one surface. Returns (pass_count, fail_count)."""
     schema_path = REPO_ROOT / surface["schema"]
@@ -236,21 +266,41 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
         print(f"  ({surface['name']}: no instances found)")
         return (0, 0)
 
+    reserved = [p for p in instances if p.stem in surface.get("reserved_stems", [])]
+    for p in reserved:
+        print(f"  FAIL  {p.relative_to(REPO_ROOT)}: the name '{p.stem}' is reserved, rename the file")
+    instances = [p for p in instances if p not in reserved]
+    if not instances:
+        return (0, len(reserved))
+
+    files = [str(p) for p in instances]
+    tmp = None
+    if surface.get("frontmatter"):
+        tmp = tempfile.TemporaryDirectory(prefix="validate-bridge-")
+        files = [str(_front_matter_file(p, Path(tmp.name))) for p in instances]
+
     cmd = [
         validator,
         "--schemafile",
         str(schema_path),
         "--default-filetype",
         "yaml",
-        *(str(p) for p in instances),
+        *files,
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
+    if tmp is not None:
+        # name the Markdown file in every message, not its temporary front-matter copy
+        for copy, inst in zip(files, instances):
+            name = str(inst.relative_to(REPO_ROOT))
+            result.stdout = result.stdout.replace(copy, name)
+            result.stderr = result.stderr.replace(copy, name)
+        tmp.cleanup()
 
     if result.returncode == 0:
         for inst in instances:
             print(f"  PASS  {inst.relative_to(REPO_ROOT)}")
-        return (len(instances), 0)
+        return (len(instances), len(reserved))
 
     # check-jsonschema prints failures to stdout; surface them
     sys.stdout.write(result.stdout)
@@ -261,7 +311,7 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
     failed_files = sum(1 for line in result.stdout.splitlines() if "errors were encountered" in line.lower() or "validation failed" in line.lower())
     failed = max(failed_files, 1)
     passed = max(len(instances) - failed, 0)
-    return (passed, failed)
+    return (passed, failed + len(reserved))
 
 
 # Markdown surfaces whose `scope:` frontmatter is required + tier-validated.

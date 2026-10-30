@@ -169,7 +169,7 @@ def test_a_missing_copy_is_a_finding(tmp_path):
 
 def test_a_concrete_reference_in_an_always_on_file_is_found():
     found = grammar.references_in({"AGENTS.md": "see object://recordings/2026-09/a.m4a for it",
-                                   "CLAUDE.md": "nothing here"})
+                                   "GEMINI.md": "nothing here"})
     assert len(found) == 1 and "AGENTS.md" in found[0] and "object://recordings/" in found[0]
 
 
@@ -184,3 +184,10 @@ def test_a_command_output_is_not_a_placement():
 def test_a_placeholder_is_not_a_reference():
     assert grammar.references_in({"listing:skills": "resolves object://<store>/<key> to a path",
                                   "AGENTS.md": 'trigger "object://" and object:// alone'}) == []
+
+
+def test_the_always_on_needle_targets_agents_md():
+    """A needle that writes a CLAUDE.md would flip the entry file of the copy."""
+    needle = next(n for n in grammar.NEEDLES if n.name == "an always-on file points at an object")
+    assert needle.path == "AGENTS.md"
+    assert not any(n.path == "CLAUDE.md" for n in grammar.NEEDLES)

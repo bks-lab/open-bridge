@@ -5,14 +5,17 @@ The re-home (clone, `origin` renamed to `upstream`, a new private repo as
 survives only as a footnote that names its cost. The origin marker is written
 and committed before the guard is armed and before the first push, so the
 first push already runs through an armed guard that knows the origin is
-private. The feature tour covers every family AGENTS.md routes to, without a
-hard count that goes stale.
+private. The feature tour covers every cluster-wrapper family in
+docs/data-model.yaml (the source of the family index AGENTS.md imports),
+without a hard count that goes stale.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -139,18 +142,19 @@ def test_push_guard_remediation_commits_the_marker_before_the_push():
             assert "--push" not in line
 
 
-# --- feature tour covers the AGENTS.md families, no hard count --------------
+# --- feature tour covers the model's families, no hard count ---------------
 
 
-def agents_families() -> list[str]:
-    text = read("AGENTS.md")
-    table = text.split("| Family | Read it when |", 1)[1].split("\n\n", 1)[0]
-    fams: list[str] = []
-    for line in table.splitlines():
-        if not line.startswith("| `"):
-            continue
-        first_cell = line.split("|")[1]
-        fams += re.findall(r"`([a-z0-9-]+/[a-z0-9-]+/)`", first_cell)
+def model_families() -> list[str]:
+    """Every cluster-wrapper family in docs/data-model.yaml.
+
+    Not a regex over docs/families.md: its own-lifecycle line names
+    top-level rows (protocols/standing-orders/ and others) that the feature
+    tour has no heading for.
+    """
+    model = yaml.safe_load(read("docs/data-model.yaml"))
+    fams = [row["path"] for row in model["families"]
+            if row["path"].split("/", 1)[0] in ("identity", "infra", "workflow")]
     assert len(fams) > 10, fams
     return fams
 
@@ -158,14 +162,14 @@ def agents_families() -> list[str]:
 def test_feature_tour_has_a_section_for_every_agents_family():
     tour = read("docs/feature-tour.md")
     headings = set(re.findall(r"^## (\S+/\S+/)\s*$", tour, flags=re.M))
-    missing = [f for f in agents_families() if f not in headings]
+    missing = [f for f in model_families() if f not in headings]
     assert not missing, f"docs/feature-tour.md lacks sections for: {missing}"
 
 
 def test_feature_tour_index_links_every_section():
     tour = read("docs/feature-tour.md")
     index = tour.split("## Index", 1)[1].split("\n## ", 1)[0]
-    for fam in agents_families():
+    for fam in model_families():
         anchor = "#" + fam.replace("/", "")
         assert anchor in index, f"index row missing for {fam} ({anchor})"
 
@@ -173,6 +177,39 @@ def test_feature_tour_index_links_every_section():
 def test_feature_tour_states_no_family_count():
     tour = read("docs/feature-tour.md")
     assert not re.search(r"\b\d+\s+families\b", tour), "drop the hard family count"
+
+
+# --- what left AGENTS.md still lives somewhere --------------------------------
+
+
+def test_moved_guardrails_still_exist():
+    """The kernel rewrite moved feature sections out of AGENTS.md; each
+    guardrail they carried must survive in the doc that now holds it."""
+    needles = {
+        "docs/remotes.md": ["git remote", "arm"],
+        "docs/bridge-deck.md": ["never install it unasked"],
+        "infra/backups/README.md": ["executor"],
+        "docs/workloads.md": ["status:"],
+        "docs/channels.md": ["/schedule"],
+        "docs/cloud-accounts.md": ["before any cloud operation"],
+    }
+    for rel, words in needles.items():
+        text = " ".join(read(rel).split()).lower()
+        for word in words:
+            assert word.lower() in text, f"{rel} lost '{word}'"
+
+
+def test_agents_md_names_the_index_for_other_agents():
+    """Claude Code imports docs/families.md; every other agent has to be told
+    in plain text, since none of them resolves an @ line."""
+    text = read("AGENTS.md")
+    lines = [line.rstrip() for line in text.splitlines()]
+    assert "@docs/families.md" in lines, "AGENTS.md lacks the column-0 import @docs/families.md"
+    prose = [line for line in lines if not line.startswith("@")]
+    assert any("`docs/families.md`" in line for line in prose), \
+        "AGENTS.md never names `docs/families.md` outside the import line"
+    for rel in ["GEMINI.md", ".github/copilot-instructions.md"]:
+        assert "`docs/families.md`" in read(rel), f"{rel} does not name `docs/families.md`"
 
 
 # --- AGENTS.md: NEW-USER is a pointer, Phase 0 stays mandatory --------------
@@ -228,3 +265,22 @@ def test_marker_write_keeps_the_shipped_comment_header():
         assert "grep '^#' .bridge-origin" in " ".join(lines[: write + 1]), (
             f"{rel}: the marker write drops the shipped comment header"
         )
+
+
+# --- D4 only creates the identity files, it never writes an import ---------
+
+
+FORBID = ("Never write an `@`-import anywhere, and never create a `CLAUDE.md`: "
+          "a `CLAUDE.md` at the root would make Claude Code skip `AGENTS.md`.")
+
+
+def test_d4_writes_no_import():
+    wf = read("skills/bridge-onboard/references/workflow.md")
+    d4 = "### D4" + wf.split("### D4", 1)[1].split("\n### ", 1)[0]
+    assert FORBID in d4, "D4 must forbid writing an import or a CLAUDE.md"
+    assert "CLAUDE.md" not in d4.replace(FORBID, ""), "D4 still names CLAUDE.md"
+    assert "edits no other file" in d4
+    readme = read("identity/agent/README.md")
+    loading = readme.split("## Loading order", 1)[1].split("\n## ", 1)[0]
+    assert "imported into `CLAUDE.md`" not in loading
+    assert "CLAUDE.md" not in loading

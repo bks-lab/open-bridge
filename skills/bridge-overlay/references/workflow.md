@@ -21,7 +21,7 @@ engine implements). Schemas are authoritative:
 | Overlay cache (sparse clone) | `.bridge/overlays/<name>/` | engine | **no** (gitignored) |
 | Lockfile (audit + drift) | `overlays.lock.yaml` (repo root) | engine (generated) | scope:user — gitignored in public forks |
 | Materialized files | their real dest paths (e.g. `workflow/contexts/example-org-billing.yaml`) | engine, written as COPIES | yes (they're your USER files now) |
-| Ecosystem fragment | `ecosystem.<org>.yaml` at root (a managed file, in the lock) + an `@import` line in `CLAUDE.md` | engine materializes / wires | yes |
+| Ecosystem fragment | `ecosystem.<org>.yaml` at root (a managed file, in the lock), indexed by Phase 1 | engine materializes | yes |
 | Fleet record | `infra/instances/<this-instance>.yaml` `subscribes_overlays` | engine updates | yes |
 
 The subscription entry (representative shape — schema-light; the engine owns
@@ -222,13 +222,13 @@ local edit goes through the Step-7 3-way merge, `diff` and `--dry-run` list it,
 and `remove` deletes it only while it is clean. Two differences: the source
 lives at the overlay **root** (not under `source_root`), and it is copied
 **verbatim** (no scope tripwire, no prompt-fields) and never narrowed by
-`select:`. Then **idempotently** ensure the `@ecosystem.<org>.yaml` `@import`
-line exists in `CLAUDE.md`, also when the overlay ships the same file under
-`source_root` as well. **Exception:** when `context-budget.yaml` or
-`context-budget.user.yaml` declares the fragment as a Phase 1 `card:` (read via
-`card_for()` in `scripts/lib/context_index.py`, the source the meter uses), no
-import is added and the run, `--dry-run` included, prints
-`indexed, not imported: <fragment>`. **Never block-merge** into `ecosystem.yaml`.
+`select:`. The same holds when the overlay ships the file under `source_root`
+as well. The run, `--dry-run` included, prints
+`registry <fragment>: indexed at session start (context-index.py --registries)`.
+**Never block-merge** into `ecosystem.yaml`. Phase 1 indexes it via
+`context-index.py --registries`; no entry file is written. A legacy `CLAUDE.md`
+that still carries an `@ecosystem.<org>.yaml` line is left as it is, and the run
+prints a WARN pointing at `scripts/migrate-entry-file.py`.
 
 The engine marks every lock entry it writes with `fragment_managed: true`.
 Under that marker a fragment with no `files[]` entry is the consumer's own
@@ -244,7 +244,7 @@ source is adopted as is. Anything else is kept, reported as a conflict and
 recorded with the overlay's current version as its base; an upstream change that
 landed while the base was unknown is therefore not replayed into it, later ones
 merge normally. If the overlay stops shipping its fragment, a clean copy is
-pruned (Step 14) and its `@import` is dropped with it.
+pruned (Step 14), and Phase 1 stops listing it with the file.
 
 ### 14 — Prune upstream-deleted
 
@@ -359,14 +359,14 @@ remove example-org
     - drop .bridge/overlays/example-org/            (cache)
     - drop upstreams[] materialize: block (and the entry if pull-only otherwise)
     - drop the example-org entry from overlays.lock.yaml
-    - remove the @ecosystem.example-org.yaml @import line from CLAUDE.md
-      (ecosystem.example-org.yaml is a lock-recorded file: deleted if clean,
-      kept if locally modified)
+    - ecosystem.example-org.yaml is a lock-recorded file: deleted if clean,
+      kept if locally modified (no entry file is touched; a legacy CLAUDE.md
+      line is reported with a WARN)
     - update infra/instances/<this>.yaml subscribes_overlays
 ```
 
 `--keep-files` ends the subscription (drops cache + materialize block + lock
-entry + `@import`) but **leaves every materialized file in place** — they
+entry) but **leaves every materialized file in place** — they
 become plain USER files you now own outright. Use this to "fork off" an overlay
 you no longer want to track but whose content you want to keep and edit freely.
 

@@ -6,7 +6,7 @@
 #   check-jsonschema --schemafile work/templates/_schema.status.yaml \
 #                    work/tasks/<slug>/STATUS.md
 #
-# Three-axis routing (see CLAUDE.md § Task Sync Routing):
+# Three-axis routing (see AGENTS.md § Task Sync Routing):
 #   context: → workflow/contexts/<slug>.yaml   (WHERE we document)
 #   mandant: → identity/mandants/<slug>.yaml   (WHO we address)
 #   sync.github.project → workflow/projects/<slug>.yaml (WHICH board)

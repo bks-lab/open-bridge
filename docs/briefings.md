@@ -53,6 +53,8 @@ python3 scripts/briefing.py collect --json --max-items 500   # every row, for a 
 python3 scripts/briefing.py collect --fresh       # ask every source now, whatever cache_minutes allows
 python3 scripts/briefing.py collect --json --setup  # also the cockpit's Setup page (scripts/bridge-setup.py)
 python3 scripts/briefing.py owed [<id>]           # streams the profile does not cover, and how to run them
+python3 scripts/briefing.py commits [<id>] --since 2026-10-01 --until 2026-10-31 [--section <id>]
+                                                  # own commits of a commits section over a range, as times (JSON)
 python3 scripts/briefing.py validate              # every profile; exit 1 on a problem
 ```
 
@@ -237,7 +239,7 @@ which agent renders it:
 | inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
 | inbox item waiting for a condition (`waits_for`, [inbox.md](inbox.md)) | waiting, worded "Waiting for: …" (label `waiting_for`) |
-| inbox item filed by "ask about this row" (key `ask:<inbox id>` or `ask:<owner/repo#n>`) | part of the row it asks about |
+| inbox item filed by "ask about this row" (key `ask:<inbox id>` or `ask:<owner/repo#n>`) | part of the row it asks about; a line that took in asks says so among its reasons ("+1 question", label `also_asked`), and the cockpit lists them in the line's detail and closes them with it |
 | task with `next: {who: bridge}` | delegate |
 | task with `next: {who: me}` (or the profile's `for`) | do if `next.due` is within the lookahead, else plan |
 | task with `next.who` naming anyone else | waiting, with days since `last_updated` |
@@ -282,7 +284,7 @@ in its STATUS.md: `next: {what: "Draft the request", who: bridge, due: 2026-10-0
 estimate_min: 20}` (`who`: `bridge`, `me`, or a person).
 
 **Labels.** Every word the reader sees has a label name, so a profile can speak
-the person's language: `yours_today` and `do_reports` (each with a `_one` singular for a count of
+the person's language: `yours_today`, `do_reports` and `also_asked` (each with a `_one` singular for a count of
 one; a profile that sets only the plural gets it for one too), `free_until`, `free_rest`, `busy_until`,
 `next_date`, `since`, `today`, `tomorrow`, `due`, `back_on`, `only_you`,
 `collides`, `waiting_days`, `waiting_for`, `with`, `task`, `next_step`, `nudge`, `new`, `housekeeping`,
@@ -535,7 +537,7 @@ view:
       title: Daily log
       search: true
       sections:
-        - {id: activity, view: log}        # cockpit: the log by hour, its contexts as topic chips beside it
+        - {id: activity, view: log}        # cockpit: the log by hour with a time range, its contexts as topic chips beside it
         - {id: commits, place: rail}       # cockpit: in the column beside the log, as repository tiles
     - id: work
       title: Work
@@ -556,7 +558,7 @@ columns, **when** (a date, today as its time), **title**, **detail** and a
 | `tracker` | `due`, else `changed_at` | PR, state, project (when the id does not name it and the view is not `board`), priority, note, the pull requests that close it, its task | |
 | `command` | `due` | `raw_state` or `state` (every row is a finding: yellow, `blocked` red) | |
 | `commits` | today's commits | sparkline and branch, busiest first | none today |
-| `activity` | `changed_at` | project | an earlier day |
+| `activity` | `changed_at` (and `at`, the minute) | project | an earlier day |
 | `inbox` | `due`, else `changed_at` | kind, gate (`urgency: now` yellow) | |
 | `tasks` | `due`, else `changed_at` | priority, project, `blocked_by` (blocked: yellow) | |
 | any other | `due`, else `changed_at` | state, project | |
@@ -582,8 +584,9 @@ its board, else its repository). `view: groups` lists short rows under each
 group instead.
 
 `view: log` draws a section (an `activity` section, whose rows carry the glyph
-of their activity type as `glyph`) as a log under its hours, its contexts as
-topic chips that filter it. `place: rail` (`main` is the default) sets a section
+of their activity type as `glyph` and the minute they were written as `at`) as a
+log under its hours, its contexts as topic chips that filter it; on an `activity`
+section the cockpit adds a time range over the whole log and its archive. `place: rail` (`main` is the default) sets a section
 in a narrow column beside the page's main one, its rows as compact tiles. A page
 with either takes the cockpit's log layout ([bridge-cockpit.md](bridge-cockpit.md),
 "A page's log layout").

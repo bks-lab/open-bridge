@@ -5,7 +5,8 @@
 CONTRACT, this file is the authoritative spec for that surface.
 
 WHY THIS SCRIPT EXISTS. Every session loads a fixed body of text before the
-first answer: the `@`-imports named in CLAUDE.md, the standing orders carrying
+first answer: the entry file Claude Code loads (AGENTS.md, or CLAUDE.md while
+a fork still has one) with its `@`-imports, the standing orders carrying
 `scope: always`, and the Phase 1 reads. Nothing measures it, so it only ever
 grows, and it grows invisibly: half of it never appears in a client's context
 listing because it arrives through tool reads rather than imports. One file in
@@ -20,12 +21,30 @@ generalises that cap to the whole always-on surface.
         A missing CORE budget is a hard error: a meter with no policy enforces
         nothing and would report green forever.
 
-    discover_imports(repo_root, entry="CLAUDE.md", max_depth=4) -> list[str]
+    resolve_entries(repo_root) -> list[str]
+    resolve_entry(repo_root) -> str | None
+        The entry chain Claude Code loads under its default option
+        (`claude-md-or-agents-md`). When a root `CLAUDE.md`, `CLAUDE.local.md`
+        or `.claude/CLAUDE.md` exists, those are loaded (each one present, in
+        that order) and AGENTS.md only if one of them imports it. Otherwise the
+        entry is AGENTS.md. `resolve_entry` is the first of the chain.
+
+    discover_imports(repo_root, entry=None, max_depth=4) -> list[str]
         The `@`-imports actually loaded, followed recursively, first-seen order,
         deduplicated, cycle-safe. Only a line that STARTS with `@` counts; an
-        address inside prose is not an import. A target that does not resolve is
-        RETURNED rather than dropped, so it surfaces as `missing` instead of
-        quietly leaving the measured set.
+        address inside prose is not an import, and neither is a line inside a
+        ``` fence. A target resolves relative to the file that names it, as in
+        Claude Code; `~/` and absolute targets are skipped (outside the tree), as
+        is anything that climbs out of it. The entry files themselves are never
+        reported as imports. A target that does not resolve is RETURNED rather
+        than dropped, so it surfaces as `missing` instead of quietly leaving the
+        measured set.
+
+    REGISTRIES. `ecosystem.yaml` and every `ecosystem.<name>.yaml` at the root
+    (one predicate, `lib.context_index.registry_files`) are Phase 1 rows,
+    measured exactly as `context-index.py --registries` prints them: the
+    declared card, else the shape-derived card. A registry still `@`-imported
+    loads whole; with a card as well it is a `contradiction`.
 
     discover_standing_orders(repo_root) -> list[str]
         The orders that are actually always-on: `scope: always` AND
@@ -65,8 +84,8 @@ generalises that cap to the whole always-on surface.
     which is no error. A lookup that RAISES is the failing state `error`, never
     "no index". Counted is what the harness loads: the file cut at its load
     limit, and a cut file is `over` whatever the cap. `cmd:` items run with
-    `CLAUDECODE=1`, because the meter measures the session CLAUDE.md opens and
-    a command that answers differently inside one must not count a file the
+    `CLAUDECODE=1`, because the meter measures the session the entry file
+    opens and a command that answers differently inside one must not count a file the
     harness row already counted.
 
     item_state(row) -> str
@@ -81,10 +100,16 @@ generalises that cap to the whole always-on surface.
                     measured and the card is reported as a claim nothing
                     honours, whatever the size)
         error       a harness lookup raised                    -> FAILS
+        shadowed    AGENTS.md exists, but a root CLAUDE.md,     -> FAILS
+                    CLAUDE.local.md or .claude/CLAUDE.md exists and
+                    none of them imports it: Claude Code then loads only
+                    those, and none of the manual. `/init` writes exactly
+                    such a file. A shadowed file is not on the surface.
 
-        `contradiction` and `error` fail even under `enforce: advisory`:
-        advisory excuses a size driven by ongoing work, not a false claim
-        about what loads or a meter that cannot see its subject.
+        `contradiction`, `error` and `shadowed` fail even under
+        `enforce: advisory`: advisory excuses a size driven by ongoing work,
+        not a false claim about what loads or a meter that cannot see its
+        subject.
 
         `undeclared` is the load-bearing one. Without it the budget silently
         stops covering the tree the moment somebody adds an import, and a meter
@@ -116,6 +141,7 @@ remote-inventory battery states in `infra/remotes/_tests/run.sh --mutate`.
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -167,8 +193,7 @@ def _order(name: str, scope: str = "always", load: str | None = None) -> str:
 @pytest.fixture
 def tree(tmp_path: Path) -> Path:
     """A minimal but realistic always-on surface."""
-    _write(tmp_path, "CLAUDE.md", "@AGENTS.md\n\n@ecosystem.yaml\n\nprose\n")
-    _write(tmp_path, "AGENTS.md", "A" * 500)
+    _write(tmp_path, "AGENTS.md", "@ecosystem.yaml\n\n" + "A" * 500)
     _write(tmp_path, "protocols/standing-orders/task-sync.md", _order("task-sync"))
     _write(tmp_path, "protocols/standing-orders/README.md", "# not an order\n")
     _write(tmp_path, "protocols/standing-orders/_template.md", _order("template"))
@@ -180,8 +205,6 @@ def tree(tmp_path: Path) -> Path:
         "calibration:\n"
         "  bytes_per_token: 2.4\n"
         "items:\n"
-        "  CLAUDE.md:\n"
-        "    max_bytes: 1000\n"
         "  AGENTS.md:\n"
         "    max_bytes: 1000\n"
         "  ecosystem.yaml:\n"
@@ -198,30 +221,31 @@ def tree(tmp_path: Path) -> Path:
 # ------------------------------------------------------- discover_imports --
 
 def test_imports_are_found_at_line_start(tree):
-    assert mc.discover_imports(tree) == ["AGENTS.md", "ecosystem.yaml"]
+    assert mc.discover_imports(tree) == ["ecosystem.yaml"]
 
 
 def test_the_entry_file_is_itself_measured(tree):
-    """CLAUDE.md is loaded every session; a meter blind at its own front door
+    """AGENTS.md is loaded every session; a meter blind at its own front door
     would miss the one file every instance is guaranteed to have."""
     rows = mc.collect_rows(tree, mc.load_budget(tree), "bytes")
-    assert any(r["path"] == "CLAUDE.md" for r in rows)
+    row = next(r for r in rows if r["path"] == "AGENTS.md")
+    assert row["source"] == "import"
 
 
 def test_an_at_sign_inside_prose_is_not_an_import(tmp_path):
-    _write(tmp_path, "CLAUDE.md", "write to someone@example.com about @notanimport.md\n")
+    _write(tmp_path, "AGENTS.md", "write to someone@example.com about @notanimport.md\n")
     assert mc.discover_imports(tmp_path) == []
 
 
 def test_imports_are_followed_recursively(tmp_path):
-    _write(tmp_path, "CLAUDE.md", "@AGENTS.md\n")
-    _write(tmp_path, "AGENTS.md", "@docs/deep.md\n")
+    _write(tmp_path, "AGENTS.md", "@docs/mid.md\n")
+    _write(tmp_path, "docs/mid.md", "@deep.md\n")
     _write(tmp_path, "docs/deep.md", "leaf\n")
-    assert mc.discover_imports(tmp_path) == ["AGENTS.md", "docs/deep.md"]
+    assert mc.discover_imports(tmp_path) == ["docs/mid.md", "docs/deep.md"]
 
 
 def test_an_import_cycle_terminates(tmp_path):
-    _write(tmp_path, "CLAUDE.md", "@a.md\n")
+    _write(tmp_path, "AGENTS.md", "@a.md\n")
     _write(tmp_path, "a.md", "@b.md\n")
     _write(tmp_path, "b.md", "@a.md\n")
     assert mc.discover_imports(tmp_path) == ["a.md", "b.md"]
@@ -229,18 +253,303 @@ def test_an_import_cycle_terminates(tmp_path):
 
 def test_an_unresolvable_import_is_returned_not_dropped(tmp_path):
     """A blind spot is the failure this whole script exists to prevent."""
-    _write(tmp_path, "CLAUDE.md", "@gone.md\n")
+    _write(tmp_path, "AGENTS.md", "@gone.md\n")
     assert mc.discover_imports(tmp_path) == ["gone.md"]
 
 
 def test_a_repeated_import_appears_once(tmp_path):
-    _write(tmp_path, "CLAUDE.md", "@a.md\n@a.md\n")
+    _write(tmp_path, "AGENTS.md", "@a.md\n@a.md\n")
     _write(tmp_path, "a.md", "x\n")
     assert mc.discover_imports(tmp_path) == ["a.md"]
 
 
-def test_no_claude_md_yields_no_imports(tmp_path):
+def test_no_entry_file_yields_no_imports(tmp_path):
     assert mc.discover_imports(tmp_path) == []
+
+
+# ------------------------------------------------------- the entry file --
+#
+# Claude Code (default option `claude-md-or-agents-md`) loads AGENTS.md where
+# it would load CLAUDE.md, but only while there is no CLAUDE.md. A root
+# CLAUDE.md, CLAUDE.local.md or .claude/CLAUDE.md is loaded INSTEAD, and
+# AGENTS.md then reaches the session only through an import from one of them.
+# The meter mirrors that default; a non-default option is not modelled.
+
+SHADOW_FILES = ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md"]
+
+
+def _declare(tree: Path, key: str, body: str = "    optional: true\n") -> None:
+    budget = tree / "context-budget.yaml"
+    budget.write_text(
+        budget.read_text(encoding="utf-8") + f'  "{key}":\n{body}', encoding="utf-8"
+    )
+
+
+def test_agents_md_is_the_entry_when_no_claude_md(tmp_path):
+    _write(tmp_path, "AGENTS.md", "@x.md\n")
+    _write(tmp_path, "x.md", "leaf\n")
+    assert mc.resolve_entry(tmp_path) == "AGENTS.md"
+    assert mc.discover_imports(tmp_path) == ["x.md"]
+
+
+def test_no_entry_file_resolves_to_none(tmp_path):
+    assert mc.resolve_entry(tmp_path) is None
+
+
+def test_claude_md_beside_agents_md_is_the_only_entry(tmp_path):
+    _write(tmp_path, "CLAUDE.md", "@AGENTS.md\n")
+    _write(tmp_path, "AGENTS.md", "@x.md\n")
+    _write(tmp_path, "x.md", "leaf\n")
+    assert mc.resolve_entry(tmp_path) == "CLAUDE.md"
+    assert mc.discover_imports(tmp_path) == ["AGENTS.md", "x.md"]
+
+
+@pytest.mark.parametrize("shadow", SHADOW_FILES)
+def test_every_shadow_file_is_an_entry(tmp_path, shadow):
+    _write(tmp_path, shadow, "hello\n")
+    _write(tmp_path, "AGENTS.md", "@x.md\n")
+    assert mc.resolve_entries(tmp_path) == [shadow]
+    assert mc.discover_imports(tmp_path) == []
+
+
+def test_the_shadow_chain_is_every_present_file_in_order(tmp_path):
+    for rel in reversed(SHADOW_FILES):
+        _write(tmp_path, rel, "x\n")
+    _write(tmp_path, "AGENTS.md", "y\n")
+    assert mc.resolve_entries(tmp_path) == SHADOW_FILES
+
+
+@pytest.mark.parametrize("shadow", SHADOW_FILES)
+def test_agents_md_shadowed_by_each_shadow_file_fails(tree, shadow):
+    _write(tree, shadow, "hello\n")
+    _declare(tree, shadow)
+    row = _row(tree, "AGENTS.md")
+    assert row["state"] == "shadowed"
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 1
+
+
+def test_agents_md_shadowed_by_a_claude_md_without_the_import_fails(tree):
+    _write(tree, "CLAUDE.md", "hello\n")
+    _declare(tree, "CLAUDE.md")
+    budget = (tree / "context-budget.yaml").read_text(encoding="utf-8")
+    (tree / "context-budget.yaml").write_text(
+        budget.replace(
+            "  AGENTS.md:\n    max_bytes: 1000\n",
+            "  AGENTS.md:\n    max_bytes: 1000\n    enforce: advisory\n",
+        ),
+        encoding="utf-8",
+    )
+    rows = mc.collect_rows(tree, mc.load_budget(tree), "bytes")
+    row = next(r for r in rows if r["path"] == "AGENTS.md")
+    assert row["state"] == "shadowed"
+    assert not row["advisory"], "advisory must not excuse a shadowed manual"
+    assert [r["path"] for r in rows if r["state"] in mc.FAILING] == ["AGENTS.md"]
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 1
+    assert "AGENTS.md" not in mc.always_on_parts(tree, mc.load_budget(tree))
+
+
+def test_an_undeclared_shadowed_agents_md_still_fails_as_shadowed(tree):
+    """The finding is the shadow, whatever the budget says about the file."""
+    _write(tree, "CLAUDE.md", "hello\n")
+    _declare(tree, "CLAUDE.md")
+    budget = (tree / "context-budget.yaml").read_text(encoding="utf-8")
+    (tree / "context-budget.yaml").write_text(
+        budget.replace("  AGENTS.md:\n    max_bytes: 1000\n", ""), encoding="utf-8"
+    )
+    assert _row(tree, "AGENTS.md")["state"] == "shadowed"
+
+
+def test_a_shadow_file_that_imports_agents_md_does_not_shadow_it(tree):
+    _write(tree, ".claude/CLAUDE.md", "@../AGENTS.md\n")
+    _declare(tree, ".claude/CLAUDE.md")
+    assert _row(tree, "AGENTS.md")["state"] == "ok"
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 0
+
+
+def test_the_report_explains_a_shadowed_manual(tree):
+    _write(tree, "CLAUDE.md", "hello\n")
+    _declare(tree, "CLAUDE.md")
+    report = mc.render_report(mc.collect_rows(tree, mc.load_budget(tree), "bytes"), "bytes", 2.4)
+    assert "does not import AGENTS.md" in report
+    assert "scripts/migrate-entry-file.py" in report
+
+
+def test_the_shadow_message_names_the_files_actually_present(tree):
+    _write(tree, "CLAUDE.local.md", "hello\n")
+    _declare(tree, "CLAUDE.local.md")
+    report = mc.render_report(mc.collect_rows(tree, mc.load_budget(tree), "bytes"), "bytes", 2.4)
+    assert "CLAUDE.local.md exists and does not import AGENTS.md" in report
+    assert "loads only CLAUDE.local.md" in report
+    assert "loads only CLAUDE.md " not in report
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="no symlinks")
+def test_a_claude_md_symlinked_to_agents_md_does_not_shadow_it(tree):
+    """One manual for both tools: CLAUDE.md -> AGENTS.md loads the full manual."""
+    os.symlink("AGENTS.md", tree / "CLAUDE.md")
+    _declare(tree, "CLAUDE.md")
+    assert not mc.agents_md_shadowed(tree)
+    assert _row(tree, "AGENTS.md")["state"] != "shadowed"
+    report = mc.render_report(mc.collect_rows(tree, mc.load_budget(tree), "bytes"), "bytes", 2.4)
+    assert "none of the manual" not in report
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="no symlinks")
+def test_a_symlinked_claude_md_is_measured_once_and_passes(tree):
+    """The alias is AGENTS.md: no second row of manual bytes, no legacy hint,
+    and the run passes."""
+    before = sum(r["bytes"] for r in mc.collect_rows(tree, mc.load_budget(tree), "bytes"))
+    os.symlink("AGENTS.md", tree / "CLAUDE.md")
+    _declare(tree, "CLAUDE.md", "    max_bytes: 10\n    optional: true\n    source: import\n")
+    assert mc.resolve_entries(tree) == ["AGENTS.md"]
+    rows = mc.collect_rows(tree, mc.load_budget(tree), "bytes")
+    assert sum(r["bytes"] for r in rows) == before
+    claude = next(r for r in rows if r["path"] == "CLAUDE.md")
+    assert claude["bytes"] == 0 and claude["state"] == "absent"
+    report = mc.render_report(rows, "bytes", 2.4)
+    assert "legacy entry" not in report
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 0
+    assert "CLAUDE.md" not in mc.always_on_parts(tree, mc.load_budget(tree))
+
+
+def test_a_legacy_claude_md_prints_the_migration_hint(tree):
+    _write(tree, "CLAUDE.md", "@AGENTS.md\n")
+    _declare(tree, "CLAUDE.md")
+    report = mc.render_report(mc.collect_rows(tree, mc.load_budget(tree), "bytes"), "bytes", 2.4)
+    assert "legacy entry CLAUDE.md present" in report
+    assert "scripts/migrate-entry-file.py" in report
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 0
+
+
+def test_no_legacy_entry_means_no_migration_hint(tree):
+    report = mc.render_report(mc.collect_rows(tree, mc.load_budget(tree), "bytes"), "bytes", 2.4)
+    assert "migrate-entry-file" not in report
+
+
+def test_entry_is_not_reported_as_its_own_import(tmp_path):
+    _write(tmp_path, "AGENTS.md", "@a.md\n")
+    _write(tmp_path, "a.md", "@AGENTS.md\n")
+    assert mc.discover_imports(tmp_path) == ["a.md"]
+
+
+def test_imports_resolve_relative_to_the_importing_file(tmp_path):
+    _write(tmp_path, "AGENTS.md", "@docs/families.md\n")
+    _write(tmp_path, "docs/families.md", "@x.md\n")
+    _write(tmp_path, "docs/x.md", "leaf\n")
+    assert mc.discover_imports(tmp_path) == ["docs/families.md", "docs/x.md"]
+
+
+def test_an_import_that_climbs_out_of_the_tree_is_skipped(tmp_path):
+    _write(tmp_path, "AGENTS.md", "@../outside.md\n@in.md\n")
+    assert mc.discover_imports(tmp_path) == ["in.md"]
+
+
+def test_an_at_line_inside_a_code_fence_is_not_an_import(tmp_path):
+    _write(tmp_path, "AGENTS.md", "```\n@nope.md\n```\n@yes.md\n")
+    assert mc.discover_imports(tmp_path) == ["yes.md"]
+
+
+def test_an_at_line_inside_a_tilde_fence_is_not_an_import(tmp_path):
+    """The same fence rule as migrate-entry-file.py: ``` and ~~~ both open one,
+    closed only by the same marker."""
+    _write(tmp_path, "AGENTS.md", "# M\n~~~\n@example.md\n```\n@still-fenced.md\n~~~\n@yes.md\n")
+    assert mc.discover_imports(tmp_path) == ["yes.md"]
+
+
+def test_a_home_relative_import_is_skipped(tree):
+    (tree / "AGENTS.md").write_text("@~/x.md\n@/abs/y.md\n" + "A" * 10, encoding="utf-8")
+    assert mc.discover_imports(tree) == []
+    rows = mc.collect_rows(tree, mc.load_budget(tree), "bytes")
+    assert not any("x.md" in r["path"] or "y.md" in r["path"] for r in rows)
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 0
+
+
+def test_an_optional_import_slot_absent_on_a_fresh_clone_is_absent(tree):
+    (tree / "AGENTS.md").write_text("@identity/agent/SOUL.md\n" + "A" * 10, encoding="utf-8")
+    _declare(tree, "identity/agent/SOUL.md", "    source: import\n    optional: true\n")
+    assert _row(tree, "identity/agent/SOUL.md")["state"] == "absent"
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 0
+
+
+def test_an_undeclared_absent_import_slot_is_undeclared(tree):
+    """Pinned on purpose: `undeclared` is decided before existence, so a slot
+    CORE names but does not ship has to be declared `optional: true`."""
+    (tree / "AGENTS.md").write_text("@identity/agent/SOUL.md\n" + "A" * 10, encoding="utf-8")
+    assert _row(tree, "identity/agent/SOUL.md")["state"] == "undeclared"
+    assert mc.main(["--repo-root", str(tree), "--quiet"]) == 1
+
+
+# ------------------------------------------------------------- registries --
+#
+# Registries are no longer imported. Phase 1 runs `context-index.py
+# --registries`, and the meter discovers the same files through the same
+# predicate and measures what that command prints.
+
+
+def test_an_org_registry_is_discovered_as_phase1(tree):
+    _write(tree, "ecosystem.acme.yaml", "org: acme\n")
+    row = _row(tree, "ecosystem.acme.yaml")
+    assert row["source"] == "phase1"
+    assert row["state"] == "undeclared"
+
+
+def test_ecosystem_example_is_not_discovered(tree):
+    _write(tree, "ecosystem.example.yaml", "org: example\n")
+    assert _row(tree, "ecosystem.example.yaml") is None
+
+
+def test_a_registry_row_measures_what_context_index_prints(tree):
+    from lib.context_index import render_card
+
+    _write(tree, "ecosystem.acme.yaml", REGISTRY)
+    _declare(tree, "ecosystem.acme.yaml", "    source: phase1\n")
+    row = _row(tree, "ecosystem.acme.yaml")
+    expected = render_card(REGISTRY, None, "ecosystem.acme.yaml")
+    assert row["bytes"] == len(expected.encode("utf-8"))
+    assert row["body_bytes"] == len(REGISTRY.encode("utf-8"))
+    parts = mc.always_on_parts(tree, mc.load_budget(tree))
+    assert parts["ecosystem.acme.yaml"] == expected
+
+
+def test_a_carded_registry_row_equals_its_registries_block(tree):
+    """One rendering for a registry row: byte-equal to the CLI's own block."""
+    import subprocess
+
+    _write(tree, "ecosystem.yaml", REGISTRY)
+    _declare_card(tree)
+    done = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "context-index.py"),
+         "--repo-root", str(tree), "--registries"],
+        capture_output=True, text=True, check=True,
+    )
+    row = _row(tree, "ecosystem.yaml")
+    assert row["source"] == "phase1"
+    assert row["bytes"] == len(done.stdout.encode("utf-8"))
+    assert mc.always_on_parts(tree, mc.load_budget(tree))["ecosystem.yaml"] == done.stdout
+
+
+def test_a_registry_still_imported_and_carded_is_a_contradiction(tree):
+    _write(tree, "CLAUDE.md", "@AGENTS.md\n@ecosystem.acme.yaml\n")
+    _declare(tree, "CLAUDE.md")
+    _write(tree, "ecosystem.acme.yaml", REGISTRY)
+    _declare(
+        tree,
+        "ecosystem.acme.yaml",
+        "    card:\n      kind: index\n      keep: [org]\n      sections: [customers]\n",
+    )
+    row = _row(tree, "ecosystem.acme.yaml")
+    assert row["source"] == "import"
+    assert row["state"] == "contradiction"
+    assert row["bytes"] == len(REGISTRY.encode("utf-8"))
+
+
+def test_a_registry_still_imported_without_a_card_loads_whole(tree):
+    _write(tree, "CLAUDE.md", "@AGENTS.md\n@ecosystem.acme.yaml\n")
+    _declare(tree, "CLAUDE.md")
+    _write(tree, "ecosystem.acme.yaml", REGISTRY)
+    _declare(tree, "ecosystem.acme.yaml", "    source: import\n")
+    assert _row(tree, "ecosystem.acme.yaml")["bytes"] == len(REGISTRY.encode("utf-8"))
+    assert mc.always_on_parts(tree, mc.load_budget(tree))["ecosystem.acme.yaml"] == REGISTRY
 
 
 # ----------------------------------------------- discover_standing_orders --
@@ -312,7 +621,7 @@ def test_a_file_under_its_cap_is_ok(tree):
     rows = mc.collect_rows(tree, mc.load_budget(tree), "bytes")
     row = next(r for r in rows if r["path"] == "AGENTS.md")
     assert row["state"] == "ok"
-    assert row["bytes"] == 500
+    assert row["bytes"] == (tree / "AGENTS.md").stat().st_size
 
 
 def test_a_file_over_its_cap_is_over(tree):
@@ -526,7 +835,7 @@ def _declare_card(tree: Path, cap: str = "", keep_import: bool = False) -> Path:
     be testing the contradiction below rather than an indexed source.
     """
     if not keep_import:
-        entry = tree / "CLAUDE.md"
+        entry = tree / "AGENTS.md"
         entry.write_text(
             entry.read_text(encoding="utf-8").replace("@ecosystem.yaml\n", ""),
             encoding="utf-8",
@@ -661,7 +970,8 @@ def test_a_card_on_a_file_imported_only_indirectly_is_a_contradiction(tree):
     """An import inside an imported file loads just the same."""
     _write(tree, "ecosystem.yaml", REGISTRY)
     _declare_card(tree)
-    _write(tree, "AGENTS.md", "A" * 500 + "\n@ecosystem.yaml\n")
+    _write(tree, "AGENTS.md", "A" * 500 + "\n@docs/registry.md\n")
+    _write(tree, "docs/registry.md", "@../ecosystem.yaml\n")
     rows = mc.collect_rows(tree, mc.load_budget(tree), "bytes")
     assert next(r for r in rows if r["path"] == "ecosystem.yaml")["state"] == "contradiction"
 
@@ -1189,7 +1499,7 @@ def test_a_fresh_file_is_still_written_whole(tree):
 
 
 def _declare_import(tree, rel):
-    entry = tree / "CLAUDE.md"
+    entry = tree / "AGENTS.md"
     entry.write_text(entry.read_text(encoding="utf-8") + f"\n@{rel}\n", encoding="utf-8")
 
 
@@ -1198,7 +1508,7 @@ def _declare_import(tree, rel):
 # Claude Code loads the auto-memory index (`MEMORY.md` in the configured memory
 # directory) into every main session, before the first answer, and nothing
 # measured it. Measured on a live instance: 20 227 bytes, uncounted. It is not
-# a file CLAUDE.md names, so no import discovery can find it; the directory is
+# a file the entry file names, so no import discovery can find it; the directory is
 # resolved the way the harness resolves it, by `scripts/memory-location.py`,
 # rather than by a second copy of that precedence here.
 
@@ -1296,7 +1606,8 @@ def test_the_harness_index_enters_the_surface(tree, _isolated_home):
 
 
 def test_command_items_run_as_a_claude_code_session(tree, monkeypatch):
-    """The meter enters through CLAUDE.md, so it measures a Claude Code session.
+    """The meter enters through the entry file Claude Code loads, so it
+    measures a Claude Code session.
 
     `memory-location.py index` prints the whole index outside Claude Code and
     one line inside it, because there the harness already loaded the file.
@@ -1443,3 +1754,81 @@ def test_an_oversized_harness_index_still_fails(tree, _isolated_home):
     assert mc.main(["--repo-root", str(tree), "--quiet"]) == 1
     report = mc.render_report(mc.collect_rows(tree, mc.load_budget(tree), "bytes"), "bytes", 2.4)
     assert "load limit" in report
+
+
+# ------------------------------------------------- the sub-agent surface --
+#
+# A sub-agent gets the entry file, its `@`-imports and the harness listings.
+# It runs no Phase 1, so no standing order, no registry card, no board and no
+# command output reaches it, and the main session's harness memory index does
+# not either. A pointer that lives only there is invisible to every dispatch.
+
+
+def test_always_on_parts_subagent_surface_keeps_only_imports_and_listings(
+    listed, _isolated_home
+):
+    _write(listed, "scripts/echo.py", "print('routes to infra/echo/')\n")
+    _legacy_index(listed, _isolated_home, "see infra/example-family/\n")
+    budget = listed / "context-budget.yaml"
+    budget.write_text(
+        budget.read_text(encoding="utf-8")
+        + '  "cmd:python3 scripts/echo.py":\n    source: phase1\n',
+        encoding="utf-8",
+    )
+    _declare_harness(listed)
+
+    session = mc.always_on_parts(listed, mc.load_budget(listed))
+    sub = mc.always_on_parts(listed, mc.load_budget(listed), surface="subagent")
+
+    # The session surface has every kind, or the test proves nothing.
+    for key in (
+        "protocols/standing-orders/task-sync.md",
+        "work/board.md",
+        "cmd:python3 scripts/echo.py",
+        HARNESS_KEY,
+        "AGENTS.md",
+        "listing:skills",
+    ):
+        assert key in session, key
+    assert set(sub) == {k for k in session if k == "AGENTS.md" or k.startswith("listing:")}
+    for key in sub:
+        assert sub[key] == session[key]
+
+
+def test_the_session_surface_is_the_default_and_unchanged(listed):
+    budget = mc.load_budget(listed)
+    assert mc.always_on_parts(listed, budget, surface="session") == mc.always_on_parts(
+        listed, budget
+    )
+
+
+def test_an_unknown_surface_is_refused(tree):
+    with pytest.raises(ValueError):
+        mc.always_on_parts(tree, mc.load_budget(tree), surface="phase1")
+
+
+def test_the_subagent_surface_counts_a_real_import_not_a_declared_one(tree):
+    """A budget that SAYS `source: import` does not make a file loaded."""
+    _write(tree, "docs/families.md", "Machines: `infra/remotes/`.\n")
+    budget = tree / "context-budget.yaml"
+    budget.write_text(
+        budget.read_text(encoding="utf-8")
+        + "  docs/families.md:\n    source: import\n    max_bytes: 1000\n",
+        encoding="utf-8",
+    )
+    sub = mc.always_on_parts(tree, mc.load_budget(tree), surface="subagent")
+    assert "docs/families.md" not in sub
+
+
+def test_docs_families_imported_from_agents_md_is_an_import_row_and_undeclared_without_an_item(
+    tree,
+):
+    _write(tree, "AGENTS.md", "@ecosystem.yaml\n@docs/families.md\n\nread `docs/families.md`\n")
+    _write(tree, "docs/families.md", "Machines: `infra/remotes/`.\n")
+
+    row = _row(tree, "docs/families.md")
+    assert row is not None
+    assert row["source"] == "import"
+    assert row["state"] == "undeclared"
+    sub = mc.always_on_parts(tree, mc.load_budget(tree), surface="subagent")
+    assert "infra/remotes/" in sub["docs/families.md"]

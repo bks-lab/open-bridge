@@ -4,10 +4,11 @@
 # the ROOT of an org-overlay repository. A Bridge consumes an overlay by reading
 # this manifest at add-time: it describes which files mirror into the consumer,
 # how conflicts are resolved, which fields must be prompted before a behavioural
-# file is materialized, and where the ecosystem fragment is wired in.
+# file is materialized, and which ecosystem fragment lands at the root.
 #
 # An overlay NEVER block-merges the consumer's config — the manifest mirrors a
-# flat tree of files and copies the ecosystem fragment in as an @import. The
+# flat tree of files and copies the ecosystem fragment to the root, where Phase 1
+# indexes it (context-index.py --registries); no entry file is written. The
 # `on_conflict` enum guarantees a user file is never silently clobbered.
 #
 # Validation:
@@ -105,7 +106,8 @@ properties:
     description: |
       Filename of the overlay's ecosystem fragment (ecosystem.<org>.yaml).
       Materialized verbatim to the consumer root as a managed file (lock
-      entry, 3-way merge on a local edit) and registered as an @import,
+      entry, 3-way merge on a local edit) and indexed at session start by
+      Phase 1 (context-index.py --registries). No import is written and it is
       NEVER block-merged into ecosystem.yaml.
 
   files:
@@ -177,4 +179,5 @@ $defs:
 # - The flat mirror is the default path; `files[]` is the exception list.
 # - Never mirror `_*.yaml`, READMEs, personas, or work/ — they are CORE/USER,
 #   not overlay content (see selection.exclude).
-# - The ecosystem fragment is @import-wired, never block-merged.
+# - The ecosystem fragment is indexed by Phase 1, never imported, never
+#   block-merged.

@@ -74,7 +74,7 @@ An instance with no `upstreams:` list (the OSS seed repo itself, or a fresh clon
 | Day block missing for today | Append new day block (see format below) |
 | Weekend (Sat/Sun) | Warning: "Weekend. Check in anyway?" — proceed if user confirms |
 | Log spans 2+ buckets of the configured cadence | Covered by the overdue row above — do **not** raise a second, independent warning. Under `yearly` a 40-week log is not overdue, and a duplicate week-based check would contradict the user's own setting. |
-| `git log HEAD..origin/development --oneline` has results | **Origin-CORE drift.** Show count + first commit subject. Ask if `git merge development` desired (CORE/USER paths shouldn't conflict; CLAUDE.md edits sometimes do). |
+| `git log HEAD..origin/development --oneline` has results | **Origin-CORE drift.** Show count + first commit subject. Ask if `git merge development` desired (CORE/USER paths shouldn't conflict; a leftover root CLAUDE.md does: run scripts/migrate-entry-file.py). |
 | `upstreams:` configured AND any channel past its `pull_interval_days` | Run the inbound status check, see `references/upstream-summary.md`. It covers CORE and overlays and is read-only; staleness is derived from git and `overlays.lock.yaml`, so there is no timestamp to write back. |
 | All current | Proceed to data collection |
 
@@ -509,7 +509,7 @@ sub-steps before rendering Phase 4.
    Always propose, never auto-execute; the Stop hook also gates this.
 4. **Sync-column for Doing rows** — for each task in the Doing lane, read
    `work/tasks/<slug>/STATUS.md` frontmatter `sync:` block (Phase 2 of
-   the Task Sync Routing rollout, see CLAUDE.md § Task Sync Routing).
+   the Task Sync Routing rollout, see AGENTS.md § Task Sync Routing).
    Compose a compact marker for the right-most column:
 
    | STATUS.sync                                                | Marker |

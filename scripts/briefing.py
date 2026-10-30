@@ -1053,15 +1053,9 @@ def _ecosystem_repos(root: Path, cfg: dict | None = None) -> list:
     return out
 
 
-def sec_commits(section: dict, ctx: Context) -> list:
-    """Commits per repository per day over `days`, oldest first, with a sparkline.
-
-    Days are the local committer date, the same date `--since` filters on (an author
-    date in another zone, or a rebase, would land on the wrong day). A repository that
-    cannot be read is named under `skipped`; reaching the section's time limit fails the
-    section rather than hiding the repositories it did not get to."""
-    days = max(1, int(section.get("days", 7)))
-    first = ctx.now.date() - dt.timedelta(days=days - 1)
+def _commit_repos(section: dict, ctx: Context) -> list:
+    """(name, path) of every repository a commits section counts: its `repos` (a registry name or a path), else every
+    clone the ecosystem files register; a name two repositories share carries its parent folder. Only clones"""
     if section.get("repos"):
         known = {name: path for name, path in _ecosystem_repos(ctx.root, ctx.cfg)}
         repos = []
@@ -1076,19 +1070,64 @@ def sec_commits(section: dict, ctx: Context) -> list:
         repos = _ecosystem_repos(ctx.root, ctx.cfg)
     names = [n for n, _ in repos]
     repos = [(f"{p.parent.name}/{n}" if names.count(n) > 1 else n, p) for n, p in repos]
+    return [(n, p) for n, p in repos if (p / ".git").exists()]
+
+
+def _commit_filter(section: dict, ctx: Context, path: Path) -> list:
+    """The git log arguments of a commits section past its range: every branch (`all_branches`) and the authors,
+    `me` read as the repository's user.email. SourceError when git cannot answer"""
     authors = section.get("author") or []
     authors = [authors] if isinstance(authors, str) else list(authors)
-    items, skipped = [], []
-    for name, path in repos:
-        if not (path / ".git").exists():
-            continue
+    wanted = [ctx.run(["git", "-C", str(path), "config", "user.email"]).strip() if a == "me" else a for a in authors]
+    return (["--branches"] if section.get("all_branches") else []) + [f"--author={a}" for a in wanted if a]
+
+
+def _commits_url(ctx: Context, path: Path) -> str | None:
+    """The commit list on the web, of the branch as pushed; no web remote or no upstream, no link"""
+    try:
+        web = _web_url(ctx.run(["git", "-C", str(path), "remote", "get-url", "origin"]).strip())
+        pushed = ctx.run(["git", "-C", str(path), "rev-parse", "--abbrev-ref", "@{u}"]).strip() if web else ""
+    except SourceError:
+        return None
+    return f"{web}/commits/{pushed.split('/', 1)[1]}" if web and "/" in pushed else None
+
+
+def commit_times(section: dict, ctx: Context, since: str, until: str) -> dict:
+    """The commits a commits section counts, over a range of days (both included) instead of its `days`, as times:
+    {repos [{repo, branch, url, ts (epoch seconds, oldest first)}], skipped}, the busiest first. For a page that
+    charts a range (the cockpit's log page); a repository without a commit in it leaves no entry, one git cannot
+    read is named under `skipped`"""
+    out, skipped = [], []
+    for name, path in _commit_repos(section, ctx):
         try:
-            wanted = []
-            for a in authors:
-                wanted.append(ctx.run(["git", "-C", str(path), "config", "user.email"]).strip() if a == "me" else a)
+            argv = ["git", "-C", str(path), "log", "--since", f"{since} 00:00", "--until", f"{until} 23:59:59",
+                    "--format=%ct", "--date=local"] + _commit_filter(section, ctx, path)
+            ts = sorted(int(x) for x in ctx.run(argv).split() if x.isdigit())
+            if not ts:
+                continue
+            branch = ctx.run(["git", "-C", str(path), "rev-parse", "--abbrev-ref", "HEAD"]).strip()
+        except SourceError:
+            skipped.append(name)
+            continue
+        out.append({"repo": name, "branch": branch, "url": _commits_url(ctx, path), "ts": ts})
+    out.sort(key=lambda r: (-len(r["ts"]), r["repo"]))
+    return {"repos": out, "skipped": skipped}
+
+
+def sec_commits(section: dict, ctx: Context) -> list:
+    """Commits per repository per day over `days`, oldest first, with a sparkline.
+
+    Days are the local committer date, the same date `--since` filters on (an author
+    date in another zone, or a rebase, would land on the wrong day). A repository that
+    cannot be read is named under `skipped`; reaching the section's time limit fails the
+    section rather than hiding the repositories it did not get to."""
+    days = max(1, int(section.get("days", 7)))
+    first = ctx.now.date() - dt.timedelta(days=days - 1)
+    items, skipped = [], []
+    for name, path in _commit_repos(section, ctx):
+        try:
             argv = ["git", "-C", str(path), "log", "--since", f"{first.isoformat()} 00:00", "--format=%cd",
-                    "--date=short-local"] + (["--branches"] if section.get("all_branches") else []) + \
-                [f"--author={a}" for a in wanted if a]
+                    "--date=short-local"] + _commit_filter(section, ctx, path)
             dates = [line.strip() for line in ctx.run(argv).splitlines() if line.strip()]
             counts = [0] * days
             for d in dates:
@@ -1109,13 +1148,9 @@ def sec_commits(section: dict, ctx: Context) -> list:
         last = first + dt.timedelta(days=max(i for i, c in enumerate(counts) if c))
         item = {"id": name, "title": name, "branch": branch, "counts": counts, "total": sum(counts),
                 "state": "active", "changed_at": last.isoformat(), "path": str(path)}
-        try:   # the commit list on the web, of the branch as pushed; no web remote or no upstream, no link
-            web = _web_url(ctx.run(["git", "-C", str(path), "remote", "get-url", "origin"]).strip())
-            pushed = ctx.run(["git", "-C", str(path), "rev-parse", "--abbrev-ref", "@{u}"]).strip() if web else ""
-        except SourceError:
-            web, pushed = None, ""
-        if web and "/" in pushed:
-            item["url"] = f"{web}/commits/{pushed.split('/', 1)[1]}"
+        url = _commits_url(ctx, path)
+        if url:
+            item["url"] = url
         items.append(item)
     top = max((max(i["counts"]) for i in items), default=0)
     for i in items:   # one scale for all rows, so the busiest repository reads busiest
@@ -2454,6 +2489,12 @@ def main(argv=None) -> int:
     p_act.add_argument("section")
     p_act.add_argument("row")
     p_act.add_argument("action")
+    p_commits = sub.add_parser("commits", help="own commits of a range per repository, as times in JSON (the cockpit's "
+                                               "log page): the profile's commits section, by --section or its first")
+    p_commits.add_argument("id", nargs="?")
+    p_commits.add_argument("--section", default=None, help="the id of the commits section (default: the first)")
+    p_commits.add_argument("--since", required=True, type=dt.date.fromisoformat, help="the first day, YYYY-MM-DD")
+    p_commits.add_argument("--until", required=True, type=dt.date.fromisoformat, help="the last day, included")
     p_detail = sub.add_parser("detail", help="the detail of one GitHub issue or pull request (owner/repo#n), as JSON")
     p_detail.add_argument("ref")
     p_detail.add_argument("--fresh", action="store_true", help="ask GitHub now, whatever was kept")
@@ -2503,6 +2544,17 @@ def main(argv=None) -> int:
     except UnknownProfile as exc:
         print(f"briefing: {exc}", file=sys.stderr)
         return 2
+
+    if args.cmd == "commits":
+        found = [sec for sec in profile.get("sections") or [] if isinstance(sec, dict) and sec.get("kind") == "commits"
+                 and (args.section is None or section_id(sec) == args.section)]
+        if not found or args.until < args.since:
+            print("briefing: no such commits section" if not found else "briefing: --until lies before --since",
+                  file=sys.stderr)
+            return 2
+        data = commit_times(found[0], Context(root, cfg=cfg), args.since.isoformat(), args.until.isoformat())
+        print(json.dumps({"ok": True, "section": section_id(found[0]), **data}, ensure_ascii=False))
+        return 0
 
     if args.cmd == "act":
         code, text = act(root, cfg, profile, args.section, args.row, args.action)

@@ -318,7 +318,13 @@ if [ -z "$reason" ]; then
     0) : ;;                                                    # provably clean
     1) resolve_plan          # sets take_theirs / held, or reason on any doubt
        [ -z "$reason" ] && [ -n "$held" ] \
-         && reason="conflict(s) a machine must not decide — $held" ;;
+         && reason="conflict(s) a machine must not decide — $held"
+       # Upstream removed its root CLAUDE.md: a fork that edited it is held here
+       # until scripts/migrate-entry-file.py carries its lines and removes it.
+       case "; $held" in
+         *"; CLAUDE.md ("*) [ -n "$reason" ] \
+           && reason="$reason (CLAUDE.md: run scripts/migrate-entry-file.py, docs/updating.md)" ;;
+       esac ;;
     *) reason="merge-tree could not verify safety (exit $mt_rc, failing closed)" ;;
   esac
 fi

@@ -25,7 +25,8 @@ It only ORDERS what surfaces first. It never gates or hides a family, so every
 section below is available whenever you reach for it.
 
 This doc is the per-family "create your first X" guide, one section for
-every family in [`AGENTS.md` § Layout](../AGENTS.md). Each section is
+every family in [`docs/families.md`](families.md), generated from
+`docs/data-model.yaml`. Each section is
 self-contained. Skim the index, jump to what you need, ignore the rest.
 
 ## Index
@@ -39,6 +40,7 @@ self-contained. Skim the index, jump to what you need, ignore the rest.
 | identity | [vehicles](#identityvehicles) | a vehicle you own or lease: plate, VIN, the persona that bears it |
 | identity | [agent](#identityagent) | this orchestrator's own name, role and voice |
 | identity | [mail-footers](#identitymail-footers) | how an outgoing mail is signed |
+| identity | [designs](#identitydesigns) | a brand a generated visual wears: colours, type, shapes |
 | infra | [remotes](#infraremotes) | physical or virtual machines, SSH, Wake-on-LAN, services |
 | infra | [channels](#infrachannels) | iMessage, email, Telegram, voice: outbound transports |
 | infra | [backups](#infrabackups) | sources × targets × pipelines, scheduled or continuous |
@@ -191,6 +193,33 @@ text renders in every client.
 **Used by:** the `mail-draft` skill (`mail-draft.sh signature <id>` previews
 one). A profile in [`workflow/mail-profiles/`](#workflowmail-profiles) picks
 the footer. Full doc: [`docs/mail-draft.md`](mail-draft.md).
+
+---
+
+## identity/designs/
+
+A brand beyond the default: colours, type and shapes, one file per brand in
+the format of the root `DESIGN.md`, with its own `scope:`. The root
+`DESIGN.md` stays the default design. An organisation's brand declares
+`scope: org` and reaches every member Bridge through the org overlay, so
+nobody edits the root file for it.
+
+**Create:** `cp identity/designs/_template.md identity/designs/<id>.md`, or
+copy the root `DESIGN.md` for the full set of sections and change its values.
+Then point at it: `design_ref: <id>` in a context
+([`workflow/contexts/`](#workflowcontexts)) or a persona
+([`identity/personas/`](#identitypersonas)), or `branding.design: <id>` in
+your theme for the instance default. `design_ref: default` opts a context or
+persona out of the theme's design: it gets the root `DESIGN.md`.
+
+**Schema:** `identity/designs/_schema.yaml` (front matter; required: `name`,
+`description`, `scope`, `colors`).
+
+**Used by:** `scripts/designs.py resolve` decides which design a piece of work
+wears, and mail-draft, html-canvas, html-slides and the cockpit ask it.
+`designs.py list` shows every design and who points at it, `designs.py check
+<render>` reports colours a render uses that its design does not declare.
+Full model: [`DESIGN.md` § Designs in this Bridge](../DESIGN.md#designs-in-this-bridge).
 
 ---
 
@@ -561,9 +590,10 @@ Full doc: [`docs/workspaces.md`](workspaces.md).
   then `/cockpit`. A local web page over much of this tour: inbox, tasks,
   briefing, agent tabs, machines, in the colours of your `DESIGN.md`. It is
   an alpha and still being extended. See [`bridge-cockpit.md`](bridge-cockpit.md).
-- **`DESIGN.md`**: design-system manifest (palette, typography, spacing).
+- **`DESIGN.md`**: the default design (palette, typography, spacing) and the
+  index to further brands in [`identity/designs/`](#identitydesigns).
   Skills generating HTML, PDF, slides, or styled email MUST pull tokens
-  from here instead of inventing palettes. Editing rules: `DESIGN.md`
+  from the design `scripts/designs.py resolve` names instead of inventing palettes. Editing rules: `DESIGN.md`
   § Maintaining this file.
 
 ## Validation

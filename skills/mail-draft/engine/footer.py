@@ -138,6 +138,8 @@ def load(root: Path, fid: str, language: str = "", default_language: str = "en",
     cfg.setdefault("style", "card")
     cfg["_id"] = fid
     cfg["_language"] = lang
+    if raw.get("persona_ref"):
+        cfg["_persona"] = str(raw["persona_ref"])
     return cfg
 
 

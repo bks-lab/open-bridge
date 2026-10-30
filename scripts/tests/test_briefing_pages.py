@@ -355,6 +355,13 @@ def test_a_log_row_carries_its_glyph():
     assert "glyph" not in _section(bv.pages(result, _profile()), "probes")["items"][0]
 
 
+def test_a_log_row_carries_the_minute_it_was_written_so_a_page_can_chart_it():
+    log = _section(bv.pages(_result(), _profile()), "log")
+    # today's row says only its time as `when`, an earlier one its day; `at` keeps both exact
+    assert [i["at"] for i in log["items"]] == ["2026-10-08T11:00", "2026-10-06T10:00"]
+    assert "at" not in _section(bv.pages(_result(), _profile()), "probes")["items"][0]
+
+
 def test_a_skipped_section_keeps_its_place_and_says_why():
     result = _result()
     result["sections"][2] = _sec("mine", "tracker", [], status="skipped", reason="quick mode")

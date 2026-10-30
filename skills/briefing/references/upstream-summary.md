@@ -105,7 +105,8 @@ Map each path to a category by **first matching** prefix:
 | `scripts/` | Scripts |
 | `docs/` | Documentation |
 | `examples/` | Examples |
-| `AGENTS.md`, `CLAUDE.md`, `README.md`, `CONTRIBUTING.md` | Core Docs |
+| `AGENTS.md`, `README.md`, `CONTRIBUTING.md` | Core Docs |
+| `CLAUDE.md` deleted upstream | legacy entry removed; forks run scripts/migrate-entry-file.py |
 | `.github/` | CI/CD |
 | *(anything else)* | Other |
 

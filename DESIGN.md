@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: open-bridge
-description: Editorial minimalism meets enterprise gravitas — high-contrast neutrals with a single violet-indigo gradient accent. Forks should override `name` and `description` with their own brand voice.
+description: Editorial minimalism meets enterprise gravitas, high-contrast neutrals with a single violet-indigo gradient accent. A fork adds its own brand under `identity/designs/` and leaves this file as it ships.
 
 colors:
   # Neutrals — High-contrast editorial palette
@@ -282,14 +282,50 @@ site:
     stage-dust: "#333E4C"
 ---
 
+## Designs in this Bridge
+
+This file is the Bridge's default design and the index to every other one. A Bridge can hold more:
+one file per brand under `identity/designs/<id>.md`, in this same format, each with its own `scope:`.
+An organisation's brand declares `scope: org` and reaches every member Bridge through the org
+overlay. Nobody edits this file for it.
+
+Which design a piece of work uses is resolved, never picked by hand. The first step that answers wins:
+
+| Step | Source | Typical case |
+|---|---|---|
+| 1 | `--design <id>` on the generator | a one-off page in another brand |
+| 2 | a target repository with its own `DESIGN.md` | a deck written into a website repository |
+| 3 | `design_ref:` in `workflow/contexts/<ctx>.yaml` | every deliverable of one organisation |
+| 4 | `design_ref:` in `identity/personas/<id>.yaml` | mail sent under a second identity |
+| 5 | `branding.design:` in the active `themes/<name>.yaml` | the instance default |
+| 6 | this file | a Bridge with no further design |
+
+A context or persona that must not wear the theme's design says `design_ref: default`: resolution
+stops there, at this file (freelance work under a second identity in an organisation's Bridge).
+`default` is reserved and never a design id; `design_ref: null` means not set.
+
+    python3 scripts/designs.py list                      # every design, its scope, what it is for, who points at it
+    python3 scripts/designs.py resolve --context <ctx>   # the file that applies
+
+What else shapes a visual, and where it lives:
+
+| What | Where |
+|---|---|
+| colours, type and shapes of a brand | this file, `identity/designs/<id>.md` |
+| how one medium applies a design | the generator's map, for example `skills/html-slides/presets/design.map.yaml` |
+| behaviours every visual has (theme toggle, sources) | `rules/visual-output.md` |
+| terminal logo and vocabulary | `themes/<name>.yaml` |
+| mail signature | `identity/mail-footers/` |
+
 ## Overview
 
 **Editorial Minimalism meets Enterprise Gravitas.** This visual identity
 communicates strategic clarity through restraint: generous whitespace, hairline
 borders, and a single gradient accent that signals transformation without
 shouting. The feel is that of a premium consultancy whitepaper crossed with a
-modern software product — composed, confident, deliberately unflashy. Forks
-are encouraged to retune the accent and prose to match their own brand voice.
+modern software product: composed, confident, deliberately unflashy. A fork
+with a brand of its own describes it in `identity/designs/<id>.md` (see
+Designs in this Bridge above) and leaves this file as it ships.
 
 Every design choice should reinforce one idea: *complex technology, explained
 with calm authority.* Avoid dark patterns, hype gradients on every surface, or
@@ -552,8 +588,9 @@ Components, Do's and Don'ts. Duplicate headings are a hard error.
 - Components: lowercase kebab-case; states as sibling entries
   (`button-primary`, `button-primary-hover`), one recipe per visual state.
 
-**Adding a token.** Never hand-pick brand colors in consuming code — if a
-token is missing, add it here first, then reference it. New colors go into
+**Adding a token.** Never hand-pick brand colors in consuming code. If a
+token is missing, add it to the design that owns it first (this file, or the
+`identity/designs/<id>.md` the work resolves to), then reference it. New colors go into
 `colors:` (with a `dark-` counterpart for surface/text tokens) and get a
 mention with role + contrast note in the Colors prose. Components reference
 tokens via `{colors.*}` / `{typography.*}` — never raw hex in `components:`.
