@@ -3,7 +3,7 @@
 // fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FILES_PAGE, FLOW_PAGE, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
+import { FILES_PAGE, FLOW_PAGE, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, fieldsWall, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -74,7 +74,7 @@ export function agentsLanding(s) {
 /** The controller's actions of the Chat's areas and of the ways to an agent, on a store: get() the state,
  *  setUi(patch), save(key, value) for this browser, now() the clock. app.js spreads them into ctl; they
  *  stand here so a test drives them on a small store of its own */
-export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
+export function chatAreaActions({ get, setUi, save, now = () => Date.now(), jump = null }) {
   // a patch that changes the area keeps it in this browser too
   const apply = patch => {
     if (patch.chatArea && patch.chatArea !== get().ui?.chatArea) save('bridge-cockpit.chatArea', patch.chatArea)
@@ -112,6 +112,17 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
     fieldBeside: ref => putFields(fieldsBeside(fields(), ref)),
     fieldSplit: at => putFields({ ...fields(), split: Math.min(75, Math.max(25, at)) }),
     fieldsFull: () => apply({ fieldsFull: !get().ui?.fieldsFull }),
+    setChatFind: q => apply({ chatFind: q }),
+    setLink: (k, v) => { const link = { ...get().ui?.link, [k]: v }; save('bridge-cockpit.chatLink', JSON.stringify(link)); apply({ link }) },
+    fieldWall: refs => putFields(fieldsWall(fields(), refs)),
+    newChat: dialog => apply({ newChat: dialog }),
+    togglePin: ref => {
+      const pins = get().ui?.pins ?? []
+      const next = pins.includes(ref) ? pins.filter(x => x !== ref) : [...pins, ref]
+      save('bridge-cockpit.chatPins', JSON.stringify(next))
+      apply({ pins: next })
+    },
+    toggleBell: ref => { const b = { ...get().ui?.bells }; if (b[ref]) delete b[ref]; else b[ref] = true; apply({ bells: b }) },
     // the area the Chat as cmux shows: its work or the A2A agents
     setChatArea: area => apply({ chatArea: area === 'a2a' && a2aArea(get()).chatArea ? 'a2a' : 'work' }),
     // the pick of an agent (a card, a row on the start page) opens its latest conversation; as cmux on the
@@ -140,7 +151,10 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
       return page
     },
     // the chat as cmux: what the right side shows ({ kind: 'ws' | 'tab' | 'chat' | 'bridge', id })
-    pickRoom: r => room(r, r?.kind === 'tab' ? { tabWalk: walkRefs(get().tabs?.tabs) } : {}),
+    pickRoom: r => {
+      room(r, r?.kind === 'tab' ? { tabWalk: walkRefs(get().tabs?.tabs) } : {})
+      if (r?.kind === 'tab' && get().ui?.link?.jump && !(get().tabs?.tabs ?? []).find(x => x.ref === r.id)?.front) jump?.(r.id)
+    },
     // the walk through the tabs that want you, from the first of these refs (Work through, the waiting tabs)
     walkFrom: refs => { if (refs?.length) room({ kind: 'tab', id: refs[0] }, { tabWalk: refs }) },
     walkTab: (ref, { focus = false } = {}) => { if (ref) room({ kind: 'tab', id: ref }, { walkFocus: focus }) },

@@ -3189,6 +3189,13 @@ def test_a_tab_screen_the_driver_cannot_read_says_so(world):
     ("shelve", {"key": "task:other-task", "reason": "x" * 201}),
     ("shelve", {"key": "task:other-task", "reason": "ok", "until": "2026-13-01"}),
     ("shelve", {"key": "task:--all", "reason": "ok"}),
+    ("tab_new", {"ws_ref": "workspace:2; ls", "kind": "agent"}),
+    ("tab_new", {"ws_ref": "workspace:2", "kind": "agent; rm"}),
+    ("tab_new", {"ws_ref": "workspace:2", "kind": "agent", "text": "a\x1bb"}),
+    ("workspace_new", {"title": "x", "kind": "agent", "cwd": "--bad"}),
+    ("workspace_new", {"title": "x", "kind": "agent", "color": "Teal; ls"}),
+    ("workspace_close", {"ws_ref": "workspace:3", "tabs": "surface:12"}),
+    ("workspace_close", {"ws_ref": "workspace:3", "tabs": ["surface:12 --all"]}),
 ])
 def test_argument_injection_is_rejected_before_any_call(world, verb, args):
     world.runner.calls.clear()
@@ -7091,6 +7098,375 @@ def test_workspace_rename_takes_a_listed_workspace_without_a_title(tmp_path):
         assert writes(w) == [W(w, "rename-workspace", "workspace:7", "--", "Research")]
     finally:
         w.close()
+
+
+# --- a new tab, a new workspace, a workspace closed (tab_new, workspace_new, workspace_close) ---
+
+NEW_CAPS = [*RENAME_CAPS, "new_tab", "new_workspace", "close_workspace", "set_color"]
+ROOMS_CFG = "cockpit:\n  enabled: true\n  language: en\n  chat_layout: workspaces\nworkplace:\n  control:\n    name: Control\n"
+TAB_MADE = {"ok": True, "report": ["tab (surface:40) in Demo"], "ref": "surface:40"}
+WS_MADE = {"ok": True, "report": ["workspace Fresh (workspace:50)"], "ws_ref": "workspace:50", "ref": "surface:51"}
+
+
+def make_world(tmp_path, config=None):
+    w = World(tmp_path, config=config)
+    w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": NEW_CAPS})
+    w.app.driver_caps(fresh=True)
+    w.runner.handlers["workplace.new-tab"] = lambda argv: ok(TAB_MADE)
+    w.runner.handlers["workplace.new-workspace"] = lambda argv: ok(WS_MADE)
+    w.runner.handlers["workplace.close-workspace"] = lambda argv: ok("")
+    return w
+
+
+@pytest.fixture
+def mworld(tmp_path):
+    w = make_world(tmp_path)
+    yield w
+    w.close()
+
+
+def test_tab_new_is_one_workplace_call_and_answers_the_ref_for_the_page(mworld):
+    mworld.runner.calls.clear()
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="  Why is the build red?\n", title=" Build chat ")
+    assert writes(mworld) == [W(mworld, "new-tab", "workspace:2", "--kind=agent", "--title=Build chat",
+                                "--text=Why is the build red?", "--json")]
+    assert res["ok"] and res["note"] == "New tab opened." and res["ref"] == "surface:40" and res["reload"] == "tabs"
+    assert res["go"]["kind"] == "tab" and res["go"]["ref"] == "surface:40"
+    assert mworld.app.tabs.next_extra < float("inf")          # a poll follows, so the new tab shows
+
+
+def test_tab_new_shell_and_a_free_agent_carry_only_what_was_asked(mworld):
+    mworld.runner.calls.clear()
+    mworld.act("tab_new", ws_ref="workspace:2", kind="shell")
+    mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="", title=None)        # an empty box is no text
+    assert writes(mworld) == [W(mworld, "new-tab", "workspace:2", "--kind=shell", "--json"),
+                              W(mworld, "new-tab", "workspace:2", "--kind=agent", "--json")]
+
+
+def test_tab_new_hands_the_sentence_to_the_cli_glued_to_its_flag(mworld):
+    """a dash at the start is no flag, a quote is no shell: one argv word, the CLI quotes it for the agent's shell"""
+    mworld.runner.calls.clear()
+    mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="--rm -rf; $(x) 'y'", title="--scratch")
+    (argv,) = writes(mworld)
+    assert argv[argv.index("--json") - 2:argv.index("--json")] == ["--title=--scratch", "--text=--rm -rf; $(x) 'y'"]
+
+
+def test_tab_new_takes_a_shell_without_a_sentence_only(mworld):
+    mworld.runner.calls.clear()
+    err = refused(mworld, "invalid_argument", "tab_new", ws_ref="workspace:2", kind="shell", text="hello")
+    assert (err.status, err.field) == (400, "text")
+    assert writes(mworld) == []
+
+
+def test_tab_new_audit_line_names_the_workspace_and_the_kind_never_the_words(mworld):
+    mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="the secret plan", title="hidden name")
+    mworld.act("tab_new", ws_ref="workspace:3", kind="shell")
+    lines = (mworld.state / "audit.log").read_text().strip().splitlines()
+    assert lines[-2].split()[1:] == ["tab_new", "workspace:2", "exits=0", "ok=true", "kind=agent"]
+    assert lines[-1].split()[1:] == ["tab_new", "workspace:3", "exits=0", "ok=true", "kind=shell"]
+    log = "\n".join(lines)
+    assert "secret" not in log and "hidden" not in log
+
+
+def test_tab_new_goes_into_a_workspace_the_terminal_shows_only(tmp_path):
+    w = make_world(tmp_path, ROOMS_CFG)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES + [{"ref": "workspace:7", "title": "Empty"}])
+        w.app.tabs.refresh_workspaces()
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        refused(w, "stale_workspace", "tab_new", ws_ref="workspace:99", kind="shell")
+        assert writes(w) == []
+        # a workspace the driver lists is live even without a tab in it
+        w.act("tab_new", ws_ref="workspace:7", kind="shell")
+        assert writes(w) == [W(w, "new-tab", "workspace:7", "--kind=shell", "--json")]
+    finally:
+        w.close()
+
+
+def test_tab_new_reads_the_tabs_again_for_a_workspace_that_appeared_after_the_last_poll(mworld):
+    """workspace_new, then at once a tab in it: the cached tab list does not know the workspace yet"""
+    fresh = {"name": "x", "workspace": "Fresh", "ref": "surface:51", "ws_ref": "workspace:9", "state": "shell", "id": "T51"}
+    mworld.runner.handlers["workplace.status"] = lambda argv: ok(STATUS + [fresh])
+    mworld.runner.calls.clear()
+    mworld.act("tab_new", ws_ref="workspace:9", kind="shell")
+    assert writes(mworld) == [W(mworld, "new-tab", "workspace:9", "--kind=shell", "--json")]
+    # a workspace that is not there after the fresh poll either stays refused
+    refused(mworld, "stale_workspace", "tab_new", ws_ref="workspace:10", kind="shell")
+
+
+def test_tab_new_names_the_model_and_effort_as_a_launch_does(tmp_path):
+    w = make_world(tmp_path, LAUNCH_CFG.format(more="    effort: true\n"))
+    try:
+        w.runner.calls.clear()
+        w.act("tab_new", ws_ref="workspace:2", kind="agent", model="opus", effort="high")
+        w.act("tab_new", ws_ref="workspace:2", kind="agent")                       # the config's default model
+        w.act("tab_new", ws_ref="workspace:2", kind="shell", model="opus")          # a shell has no model
+        first, second, third = writes(w)
+        assert first[-5:] == ["--json", "--model", "opus", "--effort", "high"]
+        assert second[-2:] == ["--model", "sonnet"]
+        assert third[-1] == "--json" and "--model" not in third
+    finally:
+        w.close()
+
+
+@pytest.mark.parametrize("args", [
+    {"ws_ref": "workspace:2; ls", "kind": "agent"}, {"ws_ref": "-workspace", "kind": "agent"}, {"kind": "agent"},
+    {"ws_ref": "workspace:2", "kind": "terminal"}, {"ws_ref": "workspace:2"}, {"ws_ref": "workspace:2", "kind": ["agent"]},
+    {"ws_ref": "workspace:2", "kind": "agent", "text": "a\x1bb"}, {"ws_ref": "workspace:2", "kind": "agent", "text": "x" * 2001},
+    {"ws_ref": "workspace:2", "kind": "agent", "text": 7}, {"ws_ref": "workspace:2", "kind": "agent", "title": "two\nlines"},
+    {"ws_ref": "workspace:2", "kind": "agent", "title": "x" * 81}, {"ws_ref": "workspace:2", "kind": "agent", "title": "  "},
+    {"ws_ref": "workspace:2", "kind": "agent", "model": "gpt-5"}, {"ws_ref": "workspace:2", "kind": "agent", "effort": "max"},
+    {"ws_ref": "workspace:2", "kind": "agent", "cwd": "/tmp"},
+])
+def test_tab_new_arguments_are_refused_before_any_call(mworld, args):
+    mworld.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        mworld.act("tab_new", **args)
+    assert err.value.status == 400
+    assert writes(mworld) == []
+
+
+def test_tab_new_and_the_others_without_the_cap_are_driver_cannot(world):
+    for verb, args in (("tab_new", {"ws_ref": "workspace:2", "kind": "shell"}),
+                       ("workspace_new", {"title": "Fresh", "kind": "shell"}),
+                       ("workspace_close", {"ws_ref": "workspace:3", "tabs": ["surface:12", "surface:13"]})):
+        world.runner.calls.clear()
+        with pytest.raises(ActionError) as err:
+            world.act(verb, **args)
+        assert (err.value.status, err.value.code) == (503, "driver_cannot"), verb
+        assert writes(world) == []
+
+
+def test_a_workplace_refusal_of_a_new_tab_has_a_code_and_no_field(mworld):
+    for err_text, code in (("refused: name in use", "name_in_use"),
+                           ("refused: a task, inbox or team tab is known by this name", "name_managed"),
+                           ("no open workspace with the ref 'workspace:2'", "stale_workspace"),
+                           ("refused: a title has 1 to 80 characters", "title_invalid"),
+                           ("refused: driver tmux cannot new tab", "driver_cannot"),
+                           ("refused: agent.new has no {prompt} slot, so the sentence would be lost", "new_refused"),
+                           ("something nobody expected", "new_refused")):
+        mworld.runner.handlers["workplace.new-tab"] = lambda argv, e=err_text: fail(e, 2)
+        with pytest.raises(ActionError) as err:
+            mworld.act("tab_new", ws_ref="workspace:2", kind="agent", title="Chat")
+        assert (err.value.code, err.value.field) == (code, None), err_text
+        assert err.value.status == (503 if code == "driver_cannot" else 409)
+
+
+def test_a_failed_new_tab_is_a_note_and_still_hands_over_the_tab_that_exists(mworld):
+    """the command did not start: the tab is open, so the page may open it, and the note says what went wrong"""
+    late = {"ok": False, "report": ["ERROR tab Chat: command did not start within 20 s"], "ref": "surface:40"}
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: RunResult(False, 1, json.dumps(late), "", 1)
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="agent", title="Chat")
+    assert not res["ok"] and "command did not start" in res["note"] and res["ref"] == "surface:40"
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: fail("driver cmux failed (exit 1): no answer")
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="agent")
+    assert not res["ok"] and "no answer" in res["note"] and "ref" not in res
+
+
+def test_a_new_tab_answer_that_is_no_ref_is_not_handed_on(mworld):
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: ok({"ok": True, "report": [], "ref": "x; rm -rf /"})
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="shell")
+    assert "ref" not in res
+
+
+def test_workspace_new_is_one_workplace_call_and_answers_both_refs(mworld, tmp_path):
+    folder = tmp_path / "project"
+    folder.mkdir()
+    mworld.runner.calls.clear()
+    res = mworld.act("workspace_new", title=" Fresh ", kind="agent", color="Teal", cwd=str(folder), text="Hello")
+    assert writes(mworld) == [W(mworld, "new-workspace", "--title=Fresh", "--kind=agent", "--color=Teal",
+                                f"--cwd={folder}", "--text=Hello", "--json")]
+    assert res["ok"] and res["note"] == "New workspace opened." and res["reload"] == "tabs"
+    assert (res["ws_ref"], res["ref"]) == ("workspace:50", "surface:51")
+    mworld.runner.calls.clear()
+    mworld.act("workspace_new", title="Plain", kind="none")
+    mworld.act("workspace_new", title="Shell", kind="shell")
+    assert writes(mworld) == [W(mworld, "new-workspace", "--title=Plain", "--kind=none", "--json"),
+                              W(mworld, "new-workspace", "--title=Shell", "--kind=shell", "--json")]
+
+
+def test_workspace_new_reads_the_workspaces_again_at_once(tmp_path):
+    w = make_world(tmp_path, ROOMS_CFG)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES)
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        w.app.tabs.poll()
+        assert w.runner.of("workplace.workspaces") == []          # kept for half a minute
+        w.act("workspace_new", title="Fresh", kind="shell")
+        w.app.tabs.poll()
+        assert len(w.runner.of("workplace.workspaces")) == 1
+    finally:
+        w.close()
+
+
+def test_workspace_new_takes_an_existing_folder_only(mworld, tmp_path):
+    a_file = tmp_path / "file.txt"
+    a_file.write_text("x")
+    mworld.runner.calls.clear()
+    for cwd in (str(tmp_path / "missing"), str(a_file), "relative/path", "--cwd", "", "~", 7, "/etc\x00/x"):
+        with pytest.raises(ActionError) as err:
+            mworld.act("workspace_new", title="Fresh", kind="shell", cwd=cwd)
+        assert (err.value.status, err.value.field) == (400, "cwd"), cwd
+    assert writes(mworld) == []
+
+
+@pytest.mark.parametrize("args", [
+    {"kind": "agent"}, {"title": "Fresh"}, {"title": "Fresh", "kind": "terminal"}, {"title": "Fresh", "kind": "agent", "color": "Sky"},
+    {"title": "Fresh", "kind": "agent", "color": "#123456"}, {"title": "two\nlines", "kind": "agent"},
+    {"title": "x" * 81, "kind": "agent"}, {"title": "  ", "kind": "agent"}, {"title": "Fresh", "kind": "none", "text": "hi"},
+    {"title": "Fresh", "kind": "shell", "text": "hi"}, {"title": "Fresh", "kind": "agent", "text": "a\x1bb"},
+    {"title": "Fresh", "kind": "agent", "model": "gpt-5"},
+])
+def test_workspace_new_arguments_are_refused_before_any_call(mworld, args):
+    mworld.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        mworld.act("workspace_new", **args)
+    assert err.value.status == 400
+    assert writes(mworld) == []
+
+
+def test_workspace_new_with_a_colour_needs_the_driver_to_colour(tmp_path):
+    w = make_world(tmp_path)
+    try:
+        w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": [c for c in NEW_CAPS if c != "set_color"]})
+        w.app.driver_caps(fresh=True)
+        w.runner.calls.clear()
+        with pytest.raises(ActionError) as err:
+            w.act("workspace_new", title="Fresh", kind="shell", color="Teal")
+        assert (err.value.status, err.value.code) == (503, "driver_cannot")
+        assert writes(w) == []
+        w.act("workspace_new", title="Fresh", kind="shell")             # no colour asked: fine
+        assert len(writes(w)) == 1
+    finally:
+        w.close()
+
+
+def test_a_workplace_refusal_of_a_new_workspace_has_a_code_and_no_field(mworld):
+    for err_text, code in (("refused: name in use", "name_in_use"),
+                           ("refused: a configured workspace has this name (workplace.workspaces)", "name_managed"),
+                           ("refused: a title has 1 to 80 characters", "title_invalid"),
+                           ("refused: driver tmux cannot set color", "driver_cannot"),
+                           ("refused: cwd is not a folder that exists (give an absolute path)", "new_refused"),
+                           ("something nobody expected", "new_refused")):
+        mworld.runner.handlers["workplace.new-workspace"] = lambda argv, e=err_text: fail(e, 2)
+        with pytest.raises(ActionError) as err:
+            mworld.act("workspace_new", title="Fresh", kind="shell")
+        assert (err.value.code, err.value.field) == (code, None), err_text
+
+
+def test_workspace_new_audit_line_names_the_new_workspace_and_the_kind_never_the_title(mworld):
+    mworld.act("workspace_new", title="Hidden name", kind="agent", text="the secret plan")
+    lines = (mworld.state / "audit.log").read_text().strip().splitlines()
+    assert lines[-1].split()[1:] == ["workspace_new", "workspace:50", "exits=0", "ok=true", "kind=agent"]
+    assert "secret" not in lines[-1] and "Hidden" not in lines[-1]
+
+
+def test_a_failed_new_workspace_is_a_note_and_keeps_the_refs_that_exist(mworld):
+    late = {"ok": False, "report": ["workspace Fresh (workspace:50)", "ERROR tab Fresh: command did not start"],
+            "ws_ref": "workspace:50", "ref": "surface:51"}
+    mworld.runner.handlers["workplace.new-workspace"] = lambda argv: RunResult(False, 1, json.dumps(late), "", 1)
+    res = mworld.act("workspace_new", title="Fresh", kind="agent")
+    assert not res["ok"] and "command did not start" in res["note"] and res["ws_ref"] == "workspace:50"
+    mworld.runner.handlers["workplace.new-workspace"] = lambda argv: fail("driver cmux failed (exit 1): no answer")
+    res = mworld.act("workspace_new", title="Other", kind="agent")
+    assert not res["ok"] and "no answer" in res["note"] and "ws_ref" not in res
+
+
+OPS_TABS = ["surface:12", "surface:13"]       # Ops: a tab back at its shell and one waiting with nothing to ask
+
+
+def test_workspace_close_is_one_workplace_call_when_every_tab_may_close(mworld):
+    mworld.runner.calls.clear()
+    res = mworld.act("workspace_close", ws_ref="workspace:3", tabs=list(reversed(OPS_TABS)))      # the order is the page's
+    assert writes(mworld) == [W(mworld, "close-workspace", "workspace:3")]
+    assert res["ok"] and res["note"] == 'Workspace "Ops" closed' and res["reload"] == "tabs"
+
+
+def test_workspace_close_refuses_while_a_tab_works_or_asks(mworld):
+    mworld.runner.calls.clear()
+    # Demo holds a tab that asks (a dialog) and one that works
+    err = refused(mworld, "not_applicable", "workspace_close", ws_ref="workspace:2", tabs=["surface:7", "surface:8", "surface:11"])
+    assert err.status == 409 and "still works or asks" in err.message
+    assert writes(mworld) == []
+
+
+def test_workspace_close_refuses_a_tab_list_the_page_did_not_see(mworld):
+    mworld.runner.calls.clear()
+    for tabs in (["surface:12"], [*OPS_TABS, "surface:99"], [], ["surface:12", "surface:99"]):
+        err = refused(mworld, "tab_moved", "workspace_close", ws_ref="workspace:3", tabs=tabs)
+        assert err.status == 409
+    assert writes(mworld) == []
+    # a tab that moved into the workspace meanwhile is a tab the page did not see
+    mworld.runner.handlers["workplace.status"] = lambda argv: ok([dict(t, ws_ref="workspace:3", workspace="Ops")
+                                                                  if t["ref"] == "surface:11" else t for t in STATUS])
+    refused(mworld, "tab_moved", "workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    assert writes(mworld) == []
+
+
+def test_workspace_close_never_closes_the_control_workspace_or_an_unknown_one(mworld):
+    mworld.runner.calls.clear()
+    refused(mworld, "control_tab", "workspace_close", ws_ref="workspace:1", tabs=["surface:3", "surface:9"])
+    refused(mworld, "stale_workspace", "workspace_close", ws_ref="workspace:99", tabs=[])
+    assert writes(mworld) == []
+
+
+def test_workspace_close_takes_a_listed_workspace_without_a_tab(tmp_path):
+    w = make_world(tmp_path, ROOMS_CFG)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES + [{"ref": "workspace:7", "title": "Empty"}])
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        res = w.act("workspace_close", ws_ref="workspace:7", tabs=[])
+        assert writes(w) == [W(w, "close-workspace", "workspace:7")] and res["note"] == 'Workspace "Empty" closed'
+    finally:
+        w.close()
+
+
+def test_a_driver_failure_halfway_names_what_stayed_open(mworld):
+    """the terminal closed one tab, then refused: the note says which tab is still there"""
+    def halfway(argv):
+        mworld.runner.handlers["workplace.status"] = lambda a: ok([t for t in STATUS if t["ref"] != "surface:12"])
+        return fail("cmux refused the rest")
+    mworld.runner.handlers["workplace.close-workspace"] = halfway
+    res = mworld.act("workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    assert not res["ok"] and "cmux refused the rest" in res["note"] and "waiting plain" in res["note"]
+    assert "dead" not in res["note"]
+    # nothing closed at all: every tab is named
+    mworld.runner.handlers["workplace.status"] = lambda argv: ok(STATUS)
+    mworld.runner.handlers["workplace.close-workspace"] = lambda argv: fail("cmux refused")
+    res = mworld.act("workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    assert not res["ok"] and "dead" in res["note"] and "waiting plain" in res["note"]
+
+
+@pytest.mark.parametrize("tabs", ["surface:12", [7], ["surface:12", "surface:12"], ["surface:12; ls"], ["-tab"],
+                                  [f"surface:{i}" for i in range(101)], None, {"a": 1}])
+def test_workspace_close_arguments_are_refused_before_any_call(mworld, tabs):
+    mworld.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        mworld.act("workspace_close", ws_ref="workspace:3", tabs=tabs)
+    assert err.value.status == 400 and err.value.field == "tabs"
+    assert writes(mworld) == []
+
+
+def test_workspace_close_audit_line_counts_the_tabs_and_names_none(mworld):
+    mworld.act("workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    line = (mworld.state / "audit.log").read_text().strip().splitlines()[-1]
+    assert line.split()[1:] == ["workspace_close", "workspace:3", "exits=0", "ok=true", "tabs=2"]
+    assert "waiting plain" not in line and "dead" not in line
+
+
+def test_the_new_verbs_take_no_write_lock(mworld):
+    """they only steer the terminal, and a start waits seconds for its tab: another write must not wait for it"""
+    from lib.bridge_cockpit.actions_base import LOCAL_VERBS, NEEDS_CAP
+    assert {"tab_new", "workspace_new", "workspace_close"} <= LOCAL_VERBS
+    assert (NEEDS_CAP["tab_new"], NEEDS_CAP["workspace_new"], NEEDS_CAP["workspace_close"]) == \
+        ("new_tab", "new_workspace", "close_workspace")
+    seen = []
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: (seen.append(mworld.app.actions.write_lock.locked()), ok(TAB_MADE))[1]
+    mworld.act("tab_new", ws_ref="workspace:2", kind="shell")
+    assert seen == [False]
 
 
 # --- organize with AI: one model call proposes, ticked items are applied (organize_propose, organize_apply) ---

@@ -14,6 +14,7 @@ the verb table is contract section 4.2.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import re
 import sys
 import threading
@@ -99,6 +100,9 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "board_default": (BOARD_DEFAULTS, "off, mine, all or profile"),
     "route_by": (ROUTE_BY, f"must be one of {', '.join(ROUTE_BY)}"),
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
+    "tab_kind": (("agent", "shell"), "agent or shell"),
+    "workspace_kind": (("agent", "shell", "none"), "agent, shell or none"),
+    "palette_color": (tuple(og.COLORS), "not a palette colour"),
     "tour_how": (TOUR_HOW, "finished or skipped"),
     "themes_mode": (thm.MODES, "assign or regroup"),
     "by": (BY_CHOICES, "suggestion, batch or instruction"),
@@ -197,6 +201,23 @@ def _digit(actions: "Actions", value: Any, name: str, today: dt.date) -> int:
     return value
 
 
+def _cwd(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # the folder a new workspace starts in: an absolute path that is a folder now; refused, never repaired
+    if (not isinstance(value, str) or not 1 <= len(value) <= 1024 or re.search(r"[\x00-\x1f\x7f]", value)
+            or not os.path.isabs(value) or not os.path.isdir(value)):
+        raise bad_arg(name, "must be an absolute path of a folder that exists")
+    return value
+
+
+def _tab_refs(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
+    # the tabs of a workspace as the page saw them: up to 100 refs, each once (none is a workspace without a tab)
+    if not isinstance(value, list) or len(value) > 100 or not all(isinstance(x, str) and TAB_REF_RE.fullmatch(x) for x in value):
+        raise bad_arg(name, "must be a list of up to 100 tab refs")
+    if len(set(value)) != len(value):
+        raise bad_arg(name, "duplicate refs")
+    return list(value)
+
+
 def _organize_items(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
     if (not isinstance(value, list) or not 1 <= len(value) <= og.MAX_ITEMS
             or not all(isinstance(x, str) and og.ITEM_ID_RE.match(x) for x in value)):
@@ -260,6 +281,8 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "reason": _reason,
     "tab_name": _tab_name,
     "digit": _digit,
+    "cwd": _cwd,
+    "tab_refs": _tab_refs,
     "organize_items": _organize_items,
     "brief": _brief,
     "theme_name": _theme_name,

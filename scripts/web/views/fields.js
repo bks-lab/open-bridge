@@ -9,13 +9,14 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { FIELD_COUNT, answerMark, errorText, guideChoices, guideOf, indexRows, isTopic, previewText, replySend, short, stateToken, tabStateKey, taskOfTab } from '../logic.js'
+import { FIELD_COUNT, answerMark, canTab, errorText, guideChoices, guideOf, indexRows, isTopic, previewText, replySend, short, stateToken, tabStateKey, taskOfTab } from '../logic.js'
 import { T } from '../text.js'
 import { OpenFile } from './dossier.js'
 import { GuideTree } from './guide.js'
 import { TAB_MSG_MAX } from './nav.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
 import { TabReply } from './reply.js'
+import { Pop, usePop } from './termtools.js'
 
 const LAYOUTS = [['1', 1, 1], ['2h', 2, 1], ['2v', 1, 2], ['3', 3, 1], ['m2', 2, 2], ['4', 2, 2]]
 const DRAG = 'text/x-cockpit-field'
@@ -43,6 +44,18 @@ function LayoutMark({ cols, rows, cells, big }) {
     ${Array.from({ length: cells }, (_, k) => html`<b key=${k} class=${big && !k ? 'is-big' : undefined}></b>`)}</i>`
 }
 
+/** How the page and the terminal go together: each way is a switch, off until set, kept in this browser */
+function LinkButton({ s, c }) {
+  const t = T().fields
+  const { pop, close, open } = usePop()
+  const link = s.ui.link ?? {}
+  const row = (k, word, why) => html`<button type="button" class="pop-item" aria-pressed=${String(!!link[k])} onClick=${() => c.setLink(k, !link[k])}>
+    <span class="pop-check" aria-hidden="true">${link[k] ? '✓' : ''}</span><span>${word}<span class="muted small pop-why">${why}</span></span></button>`
+  return html`<button type="button" class="field-link" title=${t.link} onClick=${open('link')}><i class=${link.follow || link.jump ? 'is-on' : ''} aria-hidden="true"></i>${t.linkWord}</button>
+    ${pop ? html`<${Pop} at=${pop.at} onClose=${close}><h4 class="label-caps">${t.link}</h4>
+      ${row('follow', t.follow2, t.followWhy)}${row('jump', t.jump, t.jumpWhy)}<//>` : null}`
+}
+
 /** The bar over the fields: the tabs of the open chat's workspace, as a terminal shows them, each with its state */
 export function FieldBar({ s, c, f, tab }) {
   const t = T().fields
@@ -52,7 +65,9 @@ export function FieldBar({ s, c, f, tab }) {
     ${tab ? html`<span class="field-ws">${tab.workspace}</span>` : null}
     <div class="field-tabs">${w.map(x => html`<button type="button" key=${x.ref} class=${`field-tab${x.ref === tab?.ref ? ' is-on' : ''}`} title=${x.name}
       aria-current=${x.ref === tab?.ref ? 'true' : undefined} onClick=${() => c.pickRoom({ kind: 'tab', id: x.ref })}>
-      <${Dot} token=${stateToken(tabStateKey(x))} pulse=${x.state === 'working'} /><span>${x.name}</span></button>`)}</div>
+      <${Dot} token=${stateToken(tabStateKey(x))} pulse=${x.state === 'working'} /><span>${x.name}</span></button>`)}
+      ${tab?.ws_ref && canTab(s, 'new_tab') ? html`<button type="button" class="field-plus" title=${T().tools.newChatIn(tab.workspace)} aria-label=${T().tools.newChatIn(tab.workspace)}
+        onClick=${() => c.newChat({ ws: { ref: tab.ws_ref, title: tab.workspace } })}>+</button>` : null}</div>
     <span class="field-layouts">
       <${Btn} size="xs" variant="secondary" pressed=${hasTopic} title=${t.chatTopicTitle} onClick=${() => c.fieldTopic()}>${t.chatTopic}<//>
       ${LAYOUTS.map(([id, cols, rows]) => html`<button type="button" key=${id} class=${`field-lay${f.layout === id ? ' is-on' : ''}`} title=${t.layout[id]} aria-label=${t.layout[id]}
@@ -61,6 +76,7 @@ export function FieldBar({ s, c, f, tab }) {
         onClick=${() => c.fieldSwap(f.active, (f.active + 1) % f.panes.length)}><span aria-hidden="true">⇄</span></button>
       <button type="button" class=${`field-lay${s.ui.fieldsFull ? ' is-on' : ''}`} title=${t.full} aria-label=${t.full} aria-pressed=${String(!!s.ui.fieldsFull)}
         onClick=${() => c.fieldsFull()}><span aria-hidden="true">⛶</span></button>
+      ${canTab(s, 'focus') ? html`<${LinkButton} s=${s} c=${c} />` : null}
     </span>
   </div>`
 }

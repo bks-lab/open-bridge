@@ -18,12 +18,13 @@
 // stays one line (C2), so its close is that head's.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, fieldsOf, indexRows, isAnswered, isTopic, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, taskOfTab, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
+import { html, useEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, fieldsOf, indexRows, isAnswered, isTopic, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, taskOfTab, termStatus, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented, TabClose } from './detail.js'
+import { HistoryPanel, KeyStrip, NewChat, NewWorkspace, Pop, SelectionBar, StatusChips, TabMenu, ToolBar, WorkspaceMenu, WriteStrip, usePop } from './termtools.js'
 import { AnswerBar, EmptyField, FieldBar, FieldClose, FieldGrid, FieldGrip, TopicPane, dragTab } from './fields.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { ControlNotice } from './header.js'
@@ -152,6 +153,7 @@ function Chats({ convs, s, c, here }) {
 
 function WorkspaceGroup({ w, s, c, here, waits }) {
   const t = T()
+  const { pop, close, open } = usePop()
   const on = here.kind === 'ws' && here.id === w.key
   const head = renaming(s, 'ws', w.ref) && w.ref
     ? html`<${RenameField} value=${w.title} label=${t.rooms.renameWs}
@@ -166,6 +168,10 @@ function WorkspaceGroup({ w, s, c, here, waits }) {
       ${w.unread ? html`<span class="room-badge mono"><span class="sr-only">${t.rooms.unread(w.unread)}</span><span aria-hidden="true">${w.unread}</span></span>` : null}
       ${w.bridge ? html`<span class="chip room-bridge">${w.bridge.name}</span>` : null}
     <//>`}
+    ${w.ref && !w.bridge && !head ? html`<span class="room-ws-acts">
+      ${canTab(s, 'new_tab') ? html`<button type="button" class="room-mini is-plus" title=${t.tools.newChatIn(w.title)} aria-label=${t.tools.newChatIn(w.title)} onClick=${() => c.newChat({ ws: { ref: w.ref, title: w.title } })}>+</button>` : null}
+      <button type="button" class="room-mini" title=${t.tools.moreWs} aria-label=${t.tools.moreWs} onClick=${open('ws')}>⋯</button></span>` : null}
+    ${pop ? html`<${Pop} at=${pop.at} onClose=${close}><${WorkspaceMenu} w=${w} s=${s} c=${c} canName=${canRenameWorkspace(s, w)} close=${close} /><//>` : null}
     ${w.tabs.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} dim=${waits.has(tab.ref)} />`)}
   </section>`
 }
@@ -313,6 +319,9 @@ export function Sidebar({ s, c, rooms, here }) {
   const order = useHeldOrder(rooms.workspaces, sort === 'urgency' ? 'urgency' : 'terminal')
   // the tabs Waiting for you lists: in their workspace a grey line only
   const waits = new Set(sort === 'status' ? [] : attentionTabs(s.tabs?.tabs).filter(wantsYou).map(x => x.ref))
+  const word = String(s.ui?.chatFind ?? '').trim().toLowerCase()
+  const found = word ? (s.tabs?.tabs ?? []).filter(x => `${x.name} ${x.workspace} ${x.last ?? ''} ${x.ask?.text ?? ''}`.toLowerCase().includes(word)) : null
+  const pinned = (s.ui?.pins ?? []).map(r => (s.tabs?.tabs ?? []).find(x => x.ref === r)).filter(Boolean)
   return html`<nav class="panel rooms-side" aria-label=${t.rooms.side}
     onPointerEnter=${order.hold} onPointerLeave=${order.release} onFocusIn=${order.hold}
     onFocusOut=${e => { if (!e.currentTarget.contains(e.relatedTarget)) order.release() }}>
@@ -321,6 +330,11 @@ export function Sidebar({ s, c, rooms, here }) {
         values=${[['terminal', t.rooms.sortTerminal], ['urgency', t.rooms.sortUrgency], ['status', t.rooms.sortStatus]]} />
       <${WalkStart} s=${s} c=${c} />
     </div>
+    <input class="input room-find" type="search" aria-label=${t.tools.findChats} placeholder=${t.tools.findChats} value=${s.ui.chatFind ?? ''} onInput=${e => c.setChatFind(e.currentTarget.value)} />
+    ${found ? html`<section class="room-ws"><h3 class="label-caps room-group">${t.tools.found(found.length)}</h3>
+      ${found.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} where />`)}</section>` : null}
+    ${pinned.length && !found ? html`<section class="room-ws"><h3 class="label-caps room-group">${t.tools.pinned}</h3>
+      ${pinned.map(tab => html`<${TabItem} key=${tab.ref} tab=${tab} on=${here.kind === 'tab' && here.id === tab.ref} s=${s} c=${c} where />`)}</section>` : null}
     ${sort === 'status' ? null : html`<${WaitingGroup} s=${s} c=${c} here=${here} />`}
     <section class="room-ws room-asks"><div class="room-group-head"><h3 class="label-caps room-group">${t.rooms.chats}</h3>
         <button type="button" class="btn-link small room-new" aria-current=${here.kind === 'chat' && !s.ui.quickConv ? 'true' : undefined}
@@ -328,6 +342,7 @@ export function Sidebar({ s, c, rooms, here }) {
       <${Chats} convs=${listedChats(s.quick?.convs, s.quick?.keep_hours, s.now)} s=${s} c=${c} here=${here} /></section>
     <div class="room-group-head">
       <h3 class="label-caps room-group">${t.rooms.workspaces}</h3>
+      ${canTab(s, 'new_workspace') ? html`<${Btn} size="xs" variant="secondary" title=${t.tools.newWorkspace} onClick=${() => c.newChat({ workspace: true })}>+ ${t.tools.newShort}<//>` : null}
       ${canTab(s, 'rename') ? html`<${Btn} size="xs" variant="ghost" title=${t.organize.buttonTitle} busy=${!!s.ui?.organize?.busy}
         onClick=${() => c.organizePropose()}>${t.organize.button}<//>` : null}
     </div>
@@ -350,6 +365,13 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
   // while the tab's window is open it reads the terminal itself: one reader at a time
   const { screen, err, poke } = useTabScreen(c, s.ui.tabView ? null : tab.ref)
   const typeHere = useRef(null)
+  const [keysOn, setKeysOn] = useState(false)
+  const [writeOn, setWriteOn] = useState(false)
+  const [histOn, setHistOn] = useState(false)
+  const [size, setSize] = useState(0)
+  const [sel, setSel] = useState(null)
+  const { pop, close, open } = usePop()
+  const status = useMemo(() => (tab.state === 'shell' ? null : termStatus(screen?.text)), [screen?.text, tab.state])
   // by state on purpose: a tab gone idle (finished) can still be answered
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
   // alone in the page an answer that reached the tab, or its close, ends this tab's turn: the walk goes on to the
@@ -373,6 +395,7 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
         ${tab.is_control ? t.controlSession : tab.name}</h2>
       ${canRename(s, tab) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
         onClick=${() => c.startRename('tab', tab.ref)} />` : null}
+      ${(s.ui.pins ?? []).includes(tab.ref) ? html`<span class="muted small" title=${t.tools.unpin}>⚲</span>` : null}
       <span class="muted small field-wsname">${tab.workspace}</span>
       ${slug ? html`<button type="button" class="btn-link small room-task" title=${t.infoOpenTask}
         onClick=${() => c.openItem(`task:${slug}`, { task: slug, title: taskTitle })}>${t.sessionTask(short(taskTitle, 60))}</button>` : null}
@@ -380,16 +403,26 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
         onClick=${() => openOrigin(s, c, from)}>${t.rooms.from(short(from.title, 60))}</button>` : null}
       <span class=${`tabview-live muted small${screen && !err ? ' is-live' : ''}`} aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
         : screen ? t.tabViewLive : t.loading}</span>
+      <${StatusChips} st=${status} tab=${tab} s=${s} c=${c} poke=${poke} />
       <span class="room-head-acts">
         <${Btn} size="xs" variant="secondary" pressed=${(s.ui.fields?.panes ?? []).some(isTopic)} title=${t.fields.chatTopicTitle} onClick=${() => c.fieldTopic()}>${t.fields.topic}<//>
-        <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
         <${TabClose} tab=${tab} s=${s} c=${c} looking onClosed=${onward} />
+        <${Btn} size="xs" variant="ghost" label=${t.tools.more} title=${t.tools.more} onClick=${open('tab')}>⋯<//>
         <${FieldClose} i=${i} c=${c} on=${split} />
       </span>
+      ${pop ? html`<${Pop} at=${pop.at} onClose=${close}><${TabMenu} tab=${tab} s=${s} c=${c} canName=${canRename(s, tab)} close=${close} /><//>` : null}
     </header>
-    <${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
-      canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} />
+    <${ToolBar} tab=${tab} s=${s} c=${c} poke=${poke} keysOn=${keysOn} setKeysOn=${setKeysOn} writeOn=${writeOn} setWriteOn=${setWriteOn}
+      histOn=${histOn} setHistOn=${setHistOn} setSize=${d => setSize(v => Math.min(6, Math.max(-3, v + d)))} />
+    <div class="term-stage" style=${size ? { '--term-step': `${size}px` } : undefined}>
+      <${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
+        canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} onSelect=${setSel} />
+      ${sel ? html`<${SelectionBar} sel=${sel} tab=${tab} s=${s} c=${c} slug=${slug} onClose=${() => setSel(null)} />` : null}
+      ${histOn ? html`<${HistoryPanel} tab=${tab} c=${c} onClose=${() => setHistOn(false)} />` : null}
+    </div>
     ${replying ? html`<${AnswerBar} key=${tab.ask?.hash ?? tab.ref} tab=${tab} s=${s} c=${cc} onOwn=${() => typeHere.current?.()} onTopic=${() => c.fieldTopic()} />` : null}
+    ${writeOn ? html`<${WriteStrip} tab=${tab} c=${c} poke=${poke} onClose=${() => setWriteOn(false)} />` : null}
+    ${keysOn ? html`<${KeyStrip} tab=${tab} c=${c} poke=${poke} />` : null}
   </section>`
 }
 
@@ -520,5 +553,7 @@ export function RoomsPage({ s, c }) {
       <div class="rooms-left"><${AreaSwitch} s=${s} c=${c} area=${area} /><${Sidebar} s=${s} c=${c} rooms=${rooms} here=${here} /></div>
       ${pane}
     </div>
+    ${s.ui.newChat?.ws ? html`<${NewChat} s=${s} c=${c} ws=${s.ui.newChat.ws} />` : null}
+    ${s.ui.newChat?.workspace ? html`<${NewWorkspace} s=${s} c=${c} />` : null}
   </div>`
 }

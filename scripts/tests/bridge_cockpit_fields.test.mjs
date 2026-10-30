@@ -2,7 +2,7 @@
 // The fields of the Chat (logic.js): what stands where, as pure functions on the plain value the page keeps.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic } from '../web/logic.js'
+import { fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, fieldsWall, termStatus } from '../web/logic.js'
 
 const topic = { topic: true, follow: true, tab: null }
 
@@ -79,4 +79,17 @@ test('fieldsDrop: a tab dropped on a field opens there, one in a field swaps', (
   const f = fieldsOf({ layout: '2h', panes: ['a', 'b'] })
   assert.deepEqual(fieldsDrop(f, 1, 'c').panes, ['a', 'c'])
   assert.deepEqual(fieldsDrop(f, 1, 'a').panes, ['b', 'a'])
+})
+
+test('termStatus: reads what a status line names and nothing else', () => {
+  assert.deepEqual(termStatus('x\n  ➜ repo git:(main) [Opus 5.5 · medium] 16%/1M · $1.58'), { model: 'Opus 5.5 · medium', context: 16, cost: '$1.58' })
+  assert.equal(termStatus('nothing here'), null)
+  assert.equal(termStatus(null), null)
+})
+
+test('fieldsWall: the tabs of a workspace side by side, at most four', () => {
+  const r = fieldsWall(fieldsOf({ panes: ['z'] }), ['a', 'b', 'c', 'd', 'e'])
+  assert.equal(r.layout, '4')
+  assert.deepEqual(r.panes, ['a', 'b', 'c', 'd'])
+  assert.equal(fieldsWall(fieldsOf({ layout: '3', panes: ['a', 'b'] }), ['a', 'b']).layout, '2h')
 })

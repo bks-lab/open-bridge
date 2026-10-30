@@ -462,7 +462,7 @@ function hhmm(ms) {
 const GLYPH_TABS = new Set(['surface:9', 'surface:11'])
 // what the terminal driver serves (workplace.py caps): everything, renaming workspaces included
 const DRIVER_CAPS = ['tabs', 'sessions', 'open', 'launch', 'send', 'rename', 'control', 'focus', 'key', 'screen', 'close',
-  'workspaces', 'rename_workspace', 'move_tab', 'set_color', 'set_description']
+  'workspaces', 'rename_workspace', 'move_tab', 'set_color', 'set_description', 'keys']
 // the portable workspace colours (workplace.py COLORS): a workspace reports its hex and the name of it
 const PALETTE = { Red: '#C0392B', Crimson: '#922B21', Orange: '#A04000', Amber: '#7D6608', Olive: '#4A5C18', Green: '#196F3D',
   Teal: '#006B6B', Aqua: '#0E6B8C', Blue: '#1565C0', Navy: '#1A5276', Indigo: '#283593', Purple: '#6A1B9A', Magenta: '#AD1457',
@@ -2238,6 +2238,12 @@ export function createMockTransport(opts = {}) {
           ],
           elsewhere: { inventory_stale: [], intentionally_absent: ['backup-sync'], undeclared: { named: [], counted: 12 } } } })
       }
+      if (url.pathname === '/api/tab-history') {
+        const q = (url.searchParams.get('q') ?? '').toLowerCase()
+        const all = [{ i: 0, role: 'user', text: 'Go on with the task', at_ms: 0 }, { i: 1, role: 'agent', text: 'Reading the task folder and the last log rows.', at_ms: 0 }, { i: 2, role: 'tool', text: 'Bash: node --test scripts/tests', at_ms: 0 }]
+        const turns = all.filter(x => !q || x.text.toLowerCase().includes(q))
+        return ok({ source: 'session', turns, total: all.length, matched: turns.length, truncated: false })
+      }
       if (url.pathname === '/api/tab/screen') {
         const tab = state.tabs.tabs.find(x => x.ref === url.searchParams.get('ref'))
         if (!tab) return fail(404, 'not_found', 'no such tab')
@@ -2525,6 +2531,21 @@ export function createMockTransport(opts = {}) {
           emit('quick', JSON.parse(JSON.stringify(state.quick)))
         }
         // a name of its own for a tab or a workspace, refused like the server (actions.py v_tab_rename)
+        if (verb === 'tab_new') {
+          const ws = (state.tabs.workspaces ?? []).find(w => w.ref === args.ws_ref)
+          if (!ws) return fail(409, 'stale_workspace', 'no such workspace')
+          const ref = `surface:${100 + state.tabs.tabs.length}`
+          state.tabs.tabs.push({ ...state.tabs.tabs.find(x => x.ws_ref === ws.ref), ref, name: args.title || args.text?.slice(0, 40) || 'New chat', state: args.kind === 'shell' ? 'shell' : 'waiting', slug: null, ask: null })
+          return ok({ ok: true, ref })
+        }
+        if (verb === 'tab_move') {
+          const tab = state.tabs.tabs.find(x => x.ref === args.tab_ref)
+          const to = (state.tabs.workspaces ?? []).find(w => w.ref === args.ws_ref)
+          if (!tab || !to) return fail(409, 'stale_tab', 'no such tab or workspace')
+          tab.ws_ref = to.ref
+          tab.workspace = to.title
+          return ok({ ok: true })
+        }
         if (verb === 'tab_rename' || verb === 'workspace_rename') {
           const title = String(args.title ?? '').trim()
           const all = state.tabs.tabs

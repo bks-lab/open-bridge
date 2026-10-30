@@ -84,7 +84,7 @@ export function TermLines({ text, live = false, typing = false, echo = '', empty
  *  a key goes straight to the tab, in order, one batch at a time, what piles up meanwhile in the next (tab_keys).
  *  The box, and not the screen itself, so a dead key, an Option character and a paste arrive as what they make. Cmd
  *  stays the Mac's, a click beside it or Ctrl+] gives the keyboard back to the page */
-export function TermScreen({ tabRef, screen, live = false, empty, canType = false, c, poke, focusRef = null }) {
+export function TermScreen({ tabRef, screen, live = false, empty, canType = false, c, poke, focusRef = null, onSelect = null }) {
   const t = T()
   const body = useRef(null)
   const stick = useRef(true)
@@ -147,7 +147,12 @@ export function TermScreen({ tabRef, screen, live = false, empty, canType = fals
   const toField = () => field.current?.focus({ preventScroll: true })
   if (focusRef) focusRef.current = toField
   // a drag selects, to copy: only a plain click starts typing
-  const onMouseUp = () => { if (window.getSelection?.()?.isCollapsed !== false) toField() }
+  const onMouseUp = () => {
+    const sel = window.getSelection?.()
+    if (sel?.isCollapsed !== false) { onSelect?.(null); toField(); return }
+    const r = sel.getRangeAt?.(0)?.getBoundingClientRect?.()
+    onSelect?.({ text: sel.toString(), x: r?.left ?? 0, y: r?.top ?? 0 })
+  }
   // the focus on the screen itself (after a selection, after Ctrl+]): a letter starts typing, the arrows still scroll
   const onBodyKey = e => { if (e.target === e.currentTarget && e.key.length === 1 && !e.metaKey && !e.ctrlKey) toField() }
   return html`<div class=${`tabview-body${typing ? ' is-typing' : ''}`} ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}

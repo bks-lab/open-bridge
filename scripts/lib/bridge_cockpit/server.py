@@ -66,6 +66,7 @@ from .history import History
 from .quick import Quick
 from .review import Review
 from .sessions import Sessions
+from .tab_history import QUERY_MAX as HISTORY_QUERY_MAX, TabHistory, paging as history_paging
 from .guide import Guide
 from . import prio
 from .usage import Usage
@@ -231,6 +232,7 @@ class App:
         self.tabs = TabPoller(self)
         self.review = Review(self)
         self.sessions = Sessions(self)
+        self.tab_history = TabHistory(self)             # a tab's whole conversation, searchable (tab_history.py)
         self.usage = Usage(root=self.root)
         self.quick = Quick(self, claude=self.runner.claude)
         self.runner.a2a_sources = frozenset(self.runner.source_script(s["script"]) for s in cfg.a2a_sources)
@@ -1109,6 +1111,31 @@ class Handler(BaseHTTPRequestHandler):
             head = {"ok": True, "ref": ref, "name": tab.get("name"), "state": tab.get("state"),
                     "workspace": tab.get("workspace"), "hash": digest, "at_ms": int(app.clock())}
             self.send_json(200, {**head, "unchanged": True} if since == digest else {**head, "text": text})
+        elif path == "/api/tab-history":
+            # read only: the whole conversation of a tab, searchable (tab_history.py): from the transcript of the
+            # session the tab runs, else from the terminal's scrollback through the driver. q is a plain
+            # case-insensitive substring; the newest limit turns come, before pages back to older ones
+            ref, q = one("ref"), one("q")
+            if not TAB_REF_RE.match(ref):
+                self.send_error_json("invalid_argument", "not a tab ref", "ref")
+                return
+            if len(q) > HISTORY_QUERY_MAX:
+                self.send_error_json("invalid_argument", "the search is too long", "q")
+                return
+            try:
+                limit, before = history_paging(one("limit"), one("before"))
+            except ValueError as exc:
+                self.send_error_json("invalid_argument", "not a number", str(exc))
+                return
+            tab = app.tabs.find(ref)
+            if not tab:
+                self.send_error_json("not_found", "no such tab")
+                return
+            result, err = app.tab_history.read(ref, q, limit, before)
+            if result is None:
+                self.send_error_json("unreadable", app.scrub(err)[:200])
+                return
+            self.send_json(200, {"ok": True, "ref": ref, "name": tab.get("name"), **result, "at_ms": int(app.clock())})
         elif path == "/api/task":
             slug = one("slug")
             if not details.SLUG_RE.match(slug):

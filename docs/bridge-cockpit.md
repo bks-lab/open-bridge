@@ -345,6 +345,23 @@ follows the open chat until you hold it. A chat without a file can pick one ther
 open chat's workspace, and ⛶ leaves only the fields. This browser keeps the layout. A narrow field wraps the lines of a
 wider terminal, since the terminal keeps its own width.
 
+### Tools of a chat
+
+Under a field's head stand the tools: **Stop** (or Ctrl+C in a shell), **Commands** with a search, **Write** for a long
+text, **Keys** as buttons, **History** and the size of the type. A command is typed as you would type it, through
+`tab_keys`, and stays off while the tab asks or holds a draft; `/clear` asks once more on its row. **History** shows an
+agent tab's whole conversation from its session file and a shell's scrollback, with a search (`GET /api/tab-history`).
+The tab's own status line, where it names them, gives the head its model, context and cost.
+
+`+` on a workspace starts a chat: Claude with a first sentence or none, a shell, or an earlier session going on.
+**New** beside Workspaces makes a workspace. ⋯ on a tab opens it beside the others, renames, moves or pins it, tells you
+when it is done, and branches the conversation. ⋯ on a workspace shows all its tabs side by side and closes it, which the
+server refuses while a tab works or asks. Words marked in the terminal can be copied, asked about, put in the file or
+sent to another chat, where they wait unsent. The search over the list looks through names, last words and questions.
+
+The **Terminal** switch on the bar joins page and terminal, both off until set: the page follows the tab in front there
+(driver field `front`), and a click here brings a tab to the front there.
+
 ### The Files tab
 
 **Files** is a tab of its own, right after the work tab. While no record is open, the search and its list take the
@@ -1513,6 +1530,30 @@ marked, the end stays in view unless you scrolled up, and below it stand Yes, No
 on as the tab's state allows and a box that sends a message to it (Enter
 sends, Shift+Enter a new line). Escape or a click outside closes it.
 
+**A tab's history.** The screen of a tab is only what the terminal shows now;
+`GET /api/tab-history?ref=...` (read only) answers with the whole conversation,
+searchable: `{ok, ref, name, source, turns, total, matched, truncated, at_ms}`,
+each turn `{i, role, text, at_ms}`. A tab that runs a Claude session answers from
+the session's transcript (`source: "session"`): the tab is tied to the session by
+the live session list (the session's process carries the tab's `CMUX_SURFACE_ID`
+or `TMUX_PANE`, which the scan matches to the tab list: `tab.ref` of a session in
+`sessions.sessions` of the state), the newest session of a tab decides, and its turns are `user`, `agent` and `tool` (one short
+line a call, `Bash: git status`; never a tool's result, thinking, the harness's
+reminders or a subagent). A tab with no session, or whose transcript is gone,
+answers from the terminal (`source: "terminal"`): the scrollback through the
+driver (`workplace.py screen --lines 5000`), cut into blocks at the blank lines,
+role `terminal`, no time. A shell tab has all of it; an agent that repaints its
+screen has only what it shows. `q` is a plain case-insensitive substring over the
+text (at most 200 characters) and answers only the matching turns, `matched`
+counting them. The newest `limit` turns come (default 200, at most 500, and no
+more than 256 KiB of text), oldest first; `truncated` says older ones were left
+out, and `before=<i of the oldest turn held>` pages back to them. A turn's text is
+cut at 20,000 characters, and a conversation keeps its newest 50,000 turns. A
+transcript is streamed, never read whole, and kept parsed by path, mtime and size
+(a file that grew is read from where the last read ended); every text goes through
+the same scrub as the screen, so the key never leaves and a search cannot find it.
+Nothing is written and no agent runs.
+
 **A page's search.** A profile page with `search: true` carries a search field
 above its sections with three modes beside it; switching keeps the text (on a
 log page with a time range the first mode is **In range**, see below). In
@@ -2615,6 +2656,37 @@ cockpit refuses, and says why:
 The audit line names the tab or workspace ref only, never the name. With the
 workspace list on, a renamed workspace is read again at the next poll.
 
+**A new chat, a new workspace, a workspace closed.** Three verbs make and unmake
+rooms through the terminal driver (`workplace.py new-tab`, `new-workspace` and
+`close-workspace`). Each needs the driver's optional verb (`new_tab`,
+`new_workspace`, `close_workspace`); without it the verb is refused with
+`driver_cannot`, so the page offers none. None takes the focus, none takes the
+write lock, and each audit line names the workspace and the kind, never a word you
+typed.
+
+- `tab_new {ws_ref, kind, text?, title?, model?, effort?}` opens one tab in a
+  workspace the terminal shows. `kind` is `agent` (a chat: `text` is your first
+  sentence and the agent's whole prompt, with no task around it, or nothing for a
+  free chat) or `shell` (the terminal's own shell, which takes no `text`). The
+  agent is `workplace.agent.new` with the model and effort of a launch
+  (`cockpit.launch_model`). The answer carries `ref`, the new tab, also when its
+  command did not start (the note then says so): the page opens it from there.
+- `workspace_new {title, kind, color?, cwd?, text?, model?, effort?}` opens a
+  workspace with its first tab. `kind` is `agent`, `shell` or `none` (a plain
+  shell as well: a workspace cannot be empty). `cwd` must be an absolute folder
+  that exists, `color` a palette name and the driver must serve `set_color`. The
+  answer carries `ws_ref` and `ref`, the workspace and its first tab.
+- `workspace_close {ws_ref, tabs}` closes a workspace and what runs in it. `tabs`
+  is the list of refs the page saw in it. Nothing closes while one of them works
+  or asks (the rule of a single close), never the control workspace, and a list
+  that differs from the tabs now in the workspace is refused as `tab_moved`. A
+  terminal that fails halfway leaves a note naming the tabs still open.
+
+A title follows the rules of a rename (a name in use, a task tab's name and a
+configured workspace are refused). A refusal of `workplace.py` has a code of its
+own: `name_in_use`, `name_managed`, `stale_workspace`, `title_invalid`,
+`driver_cannot`, else `new_refused`.
+
 **Organize with AI.** "Organize with AI" in the head of the sidebar (shown when
 the driver renames tabs) asks the model once for a tidier order: shorter names
 for tabs and workspaces, which tab belongs in which workspace, a colour and a
@@ -2993,6 +3065,12 @@ nothing a stranger could trigger:
   and `/bin/ps eww -o command= -p <pid>` with a pid of digits only, for the
   Sessions page. The cmux CLI is never called directly: whatever the page does
   to an agent tab goes through `workplace.py` and its terminal driver;
+- a new chat (`tab_new`, `workspace_new`) hands your first sentence to the agent as one shell word: the server sends it
+  glued to its flag (`--text=...`), `workplace.py` checks it (no control code but a line break and a tab, at most 2000
+  characters) and quotes it for the shell, and a sentence that starts with a dash goes after `--`. It is the agent's
+  whole prompt, never a command. A shell tab and a workspace of kind `none` take no sentence. Their audit lines name
+  the workspace and the kind. As an argument the sentence stands in your own process list for a moment, and a driver
+  may keep the command in a private launcher file (cmux does: mode 0600, pruned after 7 days), as for any start;
 - the live terminal (`tab_keys`) is a keyboard, so it carries none of the guards of an answer: you type at the
   screen you see, into a shell as well. It takes what a keyboard makes and no more: a key of the list `TERM_KEYS`,
   text without a control code, a paste without one, checked in the server and again in `workplace.py`, so no
@@ -3071,6 +3149,11 @@ nothing a stranger could trigger:
   first, at most 2000), no runner call and no line. So is
   `GET /api/chats/archive?days=n`: the questions of the archive of the last
   1 to 14 days, at most 60, never the removed ones.
+  `GET /api/tab-history` is a read too: a transcript of this machine streamed in
+  place (found through the live session of a known tab, never from a path the
+  request gives) or the scrollback through `workplace.py screen`, the ref checked
+  as a tab and known, the search at most 200 characters and the numbers checked
+  before anything is read, every text scrubbed, no line.
   `/api/seen` is the page's own measure: opening a page or a view of it
   leaves `page_view`, the page id and `view=` (the work tab's view, the start
   page's view, else `-`), nothing more. The first line waits for the model, so

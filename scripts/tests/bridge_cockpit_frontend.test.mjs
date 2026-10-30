@@ -2341,7 +2341,7 @@ test('launch: start args stay exactly as before while off; on, the choice goes a
     for (const verb of logic.START_VERBS) assert.equal(logic.withLaunch(verb, args, launch, { launchModel: 'opus' }, {}), args, verb)
   }
   assert.equal(logic.withLaunch('drop', { key: 'task:a' }, LAUNCH, {}, {}).model, undefined)
-  assert.deepEqual(logic.START_VERBS, ['do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff'])
+  assert.deepEqual(logic.START_VERBS, ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff'])
   // Auto without a recommendation: the server decides
   assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, {}, {}), { ...args, model: 'auto', effort: 'auto' })
   // Auto with one cached: its concrete model and effort, so the server need not route again

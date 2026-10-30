@@ -586,6 +586,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/launch.py",       # the model an agent starts with, off unless cockpit.launch_model.enabled
     "scripts/lib/bridge_cockpit/review.py",
     "scripts/lib/bridge_cockpit/sessions.py",
+    "scripts/lib/bridge_cockpit/tab_history.py",          # a tab's whole conversation, searchable: /api/tab-history
+    "scripts/tests/test_bridge_cockpit_tab_history.py",
     "scripts/lib/bridge_cockpit/usage.py",
     "scripts/tests/test_bridge_cockpit_usage.py",
     "scripts/lib/bridge_cockpit/daybook.py",              # the start page's day by day
@@ -698,6 +700,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/nav.js",
     "scripts/web/views/organize.js",
     "scripts/web/views/fields.js",
+    "scripts/web/views/termtools.js",
     "scripts/web/views/overlays.js",
     "scripts/web/views/pages.js",
     "scripts/web/views/parts.js",

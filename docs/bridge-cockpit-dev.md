@@ -45,7 +45,8 @@ Everything the page does to an agent tab goes through `scripts/workplace.py`
 and the terminal driver configured in `workplace.driver`
 ([`workplace.md`](workplace.md), "Writing a driver"): `workplace.py focus`
 (Go to tab), `key` (Yes, No, a dialog's option), `screen` (the large tab view, what a waiting tab asks), `close` (Close
-tab), `send` (a message, Go on) and `launch` (Do it, Advise me). The server asks
+tab), `send` (a message, Go on), `launch` (Do it, Advise me), and `new-tab`, `new-workspace` and
+`close-workspace` (a new chat or shell, a new workspace, a workspace closed). The server asks
 `workplace.py caps --json` once and then every few minutes
 (`server.py driver_caps`), and a verb in `actions_base.py NEEDS_CAP` is refused with
 `driver_cannot` when the driver does not serve it. So the server calls no
@@ -71,6 +72,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/actions_*.py` | the `v_<verb>` handlers by area, each a part of `Actions`: `launch` (the shared pieces, the start of agents), `work` (inbox items and tasks), `tabs`, `chats` (quick chats, A2A, sessions, `/api/ask`), `pages` (start and settings page, a page row's steps) |
 | `scripts/lib/bridge_cockpit/review.py` | the task check: `task.py review` on its own thread, the last run for the model |
 | `scripts/lib/bridge_cockpit/sessions.py` | the Sessions page: running Claude sessions, their subagents and tab; the workflow runs of the last week bound to an open task (`run_task`, `refresh_runs`) for the Files view |
+| `scripts/lib/bridge_cockpit/tab_history.py` | `GET /api/tab-history`, a tab's whole conversation, searchable: the transcript of the newest live session in the tab (`TabHistory.transcript_of`, from `sessions.py`) streamed by `read_turns` (user, agent and one line per tool call, `event_turns`, `tool_line`; a bad or too long line skipped) and kept by path, mtime and size, a grown file read on from where it ended (`session_turns`); else the terminal's scrollback (`workplace.py screen --lines 5000`, `blocks_of`); `window` does the search, the caps and `before`, `paging` checks the query's numbers; texts are scrubbed before they are kept |
 | `scripts/lib/bridge_cockpit/quick.py` | the chat: one short read-only `claude -p` per chat (Haiku default), streamed (`quick_live`), kept in `quick.json`, resume, cost per turn, handoff; `handoff_outcome` copies what came back from a handed chat's item onto `handed.outcome` on each sweep, and `archived` reads the archive for `/api/chats/archive` |
 | `scripts/lib/bridge_cockpit/ticker.py` | the news ticker: settings (`cockpit.ticker` plus `ticker.json`), feed fetching and parsing (RSS, RDF, Atom), the cache `ticker-cache.json`, the Haiku editor on its own thread, and `state()`, the `ticker` key of the model and the payload of the SSE event `ticker` |
 | `scripts/lib/bridge_cockpit/guide.py` | the decision guide: settings (`cockpit.session_guide` plus `guide.json`), a waiting tab's last turns from its transcript (`turns_of`, the screen as fallback), its first ask (`first_ask`) and its task's headline (`task_headline`) for the `about` line, the Haiku prompt and the parse of its answer (only steps safe to offer, a dialog step only one of the dialog's numbers, `RISKY_RE`), the auto reading after each tab poll (`on_tabs`, `per_hour`), one worker thread, `state()` as the `guide` key and SSE event |
@@ -108,6 +110,7 @@ layout now").
 | `scripts/web/views/card.js` | the item card: `ItemCard` draws a row's or detail's `card` (card.py) in a detail head (the middle column, the item and info drawers, the files view's cover): summary, goal, story as one sentence, criteria as a list to read, next step, chips, progress, gaps; "AI" and "outdated" from the describe view; "Describe with AI" and a proposal's Apply, Edit and Discard (`describe_run`, `describe_apply`, `describe_discard`). `ItemCardLine` is a list row's sub line (its goal). `describeOf(s, key, ...)` reads the live view (`s.describe`) before the one a row or detail carries |
 | `scripts/web/views/ticker.js` | the news ticker: `TickerBand` on the start page and `TickerSettings`, its group on the Settings page, drawn with the page's own `Card`, `Row` and `Switch` from `views/settings.js` |
 | `scripts/web/markdown.js` | the Markdown reader for answers (Chat, A2A connections): text into plain blocks and runs, never HTML; `safeHref` keeps http(s) and mailto links only |
+| `scripts/web/views/termtools.js` | the tools of a chat: `ToolBar`, `Commands`, `KeyStrip`, `WriteStrip`, `HistoryPanel`, `StatusChips`, `TabMenu`, `WorkspaceMenu`, `NewChat`, `NewWorkspace`, `SelectionBar`, and `Pop`, the small fixed menu |
 | `scripts/web/views/fields.js` | the fields of the Chat: `FieldBar` (the tabs of the open workspace, Chat + topic, layouts, swap, full view), `FieldGrid`, `TopicPane` (reading and file beside a chat), `AnswerBar` (what a waiting tab asks, at the terminal's edge). The fields are a plain value kept in this browser (`logic.js fieldsOf`), the terminal stays as it is |
 | `scripts/web/views/organize.js` | `OrganizeView`: the proposal grouped by workspace, nothing ticked, the ticks, Apply, and the applied, skipped and failed items in words |
 | `scripts/web/views/guide.js` | the decision guide: `GuideTree` (the reading as a tree; a branch fills the box, Send or Press goes through `logic.js guideChoices`; To tab, Watch, What was read), `GuideLine`, `GuideBoard` on the Sessions page, `GuideSettings` |
@@ -267,7 +270,10 @@ three ways out, each covered by a test (`Ctx.unlocked` and `LAYOUT_VERBS` in
   by a flag of its own) only touch stores with their own locks and never
   take the write lock. A new verb joins this set only when that holds for
   everything its handler calls. `flow_attach` writes a file into a task and
-  so runs under the write lock.
+  so runs under the write lock. The terminal verbs `tab_keys`, `tab_new`,
+  `workspace_new` and `workspace_close` are in it too: they write nothing of the
+  Bridge, and a new tab waits seconds for its command to start, which no other
+  write should wait for.
 
 A new verb that calls a subprocess for longer than a few seconds wraps that
 call in `ctx.unlocked()` and takes whatever it must keep for itself (a hold,

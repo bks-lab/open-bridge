@@ -4,8 +4,8 @@
 
 The plan (which task, which workspace, new or resumed) belongs to CORE
 (scripts/workplace.py, docs/workplace.md). This script is only what cmux can do:
-list the tabs, open the plan, type into a tab, rename a tab. It speaks the CORE
-JSON protocol: one request on stdin, one answer on stdout.
+list the tabs, open the plan, type into a tab, rename a tab, make a tab or a workspace and close a
+workspace. It speaks the CORE JSON protocol: one request on stdin, one answer on stdout.
 
     {"verb": "tabs"}       -> {"tabs": [{"name", "workspace", "ref", "ws_ref", "state", "state_source", "last"}]}
     {"verb": "sessions"}   -> {"sessions": {"<tab title>": "<agent session id>"}}
@@ -20,6 +20,11 @@ JSON protocol: one request on stdin, one answer on stdout.
     {"verb": "set_description", "workspace": ws_ref, "text": "..." | null}
     {"verb": "workspaces"} -> {"workspaces": [{"ref", "title", "color", "color_name", "description", "cwd",
                                                "branch", ...}]}
+    {"verb": "new_tab", "workspace": ws_ref, "title": "..." | null, "command": "..." | null}
+                           -> {"report": [...], "ref": "surface:N"}
+    {"verb": "new_workspace", "title": "...", "color": "<palette name>" | null, "cwd": "..." | null,
+     "command": "..." | null}  -> {"report": [...], "ws_ref": "workspace:N", "ref": "surface:M"}
+    {"verb": "close_workspace", "workspace": ws_ref}
 
 `move_tab` moves one tab without focusing it and refuses (an ERROR line) the last tab of a workspace,
 which cmux would drop. `set_color` takes a PALETTE name and sends cmux its hex; null clears the colour,
@@ -32,6 +37,12 @@ so a renamed tab without a hook reads as a shell from then on.
 
 `workspaces` only reads (workspace list, sidebar-state, list-notifications): what the cmux sidebar
 shows, for the cockpit's own sidebar. Like `workspace list` it covers the current window.
+
+`new_tab` opens one tab in a workspace and `new_workspace` one workspace, neither takes the focus. No
+`command` is a plain shell; a `command` goes the way `launch` sends it (a short typed line, the start
+marker awaited). Both answer the new refs, also when the command did not start (an ERROR line says so):
+the tab exists, and the caller may open it. `new_workspace` starts in `cwd` (default the Bridge folder)
+and takes a palette colour. `close_workspace` closes one workspace and never the last one of its window.
 
 Wire it in bridge-config.yaml:
 
@@ -46,9 +57,10 @@ not appear within CMUX_LAUNCH_WAIT_SEC (default 20) is reported as an ERROR line
 started. It keeps its label: the typed line may still run after a slow shell start, and the
 label is how a later click finds that agent instead of opening a second one.
 
-Rules: it never closes a tab or a workspace, and never moves the last tab out of
-a workspace (cmux would drop the emptied workspace). A tab already open is reused,
-never opened twice. It reads every window (`tree --all`), not only the current
+Rules: it never closes a tab or a workspace on its own, only `close` and `close_workspace`, which a
+person asked for, and never moves the last tab out of a workspace (cmux would drop the emptied
+workspace). A tab the plan has open already is reused, never opened twice (`new_tab` and `launch` open
+one on purpose). It reads every window (`tree --all`), not only the current
 one. When cmux is missing, refuses a call, or gives no readable answer, the
 driver exits non-zero with {"error": "..."} on stdout and the reason on stderr, so
 CORE reads the tab view as UNKNOWN, never as "no tab is open".
@@ -79,6 +91,7 @@ KEEP_SHELL = cl.KEEP_SHELL
 
 
 LAUNCH_WAIT_SEC = 20.0
+SCREEN_MAX_LINES = 5000       # a shell tab's whole scrollback, for the cockpit's tab history (workplace.py SCREEN_MAX_LINES)
 # cmux's named workspace colours with the hex it stores for each (the same map as workplace.py COLORS)
 PALETTE = {
     "Red": "#C0392B", "Crimson": "#922B21", "Orange": "#A04000", "Amber": "#7D6608",
@@ -198,6 +211,7 @@ def socket_tabs(tree: dict) -> list[dict]:
     """Terminal tabs from `cmux tree --json`: live, unlike the session file,
     which cmux writes with a delay."""
     tabs = []
+    front = (tree.get("active") or {}).get("surface_ref")
     for window in tree.get("windows") or []:
         for ws in window.get("workspaces") or []:
             for pane in ws.get("panes") or []:
@@ -207,7 +221,7 @@ def socket_tabs(tree: dict) -> list[dict]:
                     tabs.append({"workspace": cl.strip_status_glyph(ws.get("title") or "").strip(),
                                  "ws_ref": ws.get("ref"),
                                  "surface": sf.get("ref"),
-                                 "id": sf.get("id"),
+                                 "id": sf.get("id"), "front": sf.get("ref") == front,
                                  "title": cl.strip_status_glyph(sf.get("title") or "")})
     return tabs
 
@@ -251,7 +265,7 @@ def tabs() -> list[dict]:
         out.append({"name": t["title"], "workspace": t["workspace"], "ref": t["surface"],
                     "ws_ref": t.get("ws_ref"), "state": info.get("state", "shell"),
                     "state_source": info.get("state_source", "glyph"),
-                    "last": info.get("last", ""), "id": t.get("id"),
+                    "last": info.get("last", ""), "id": t.get("id"), "front": t.get("front") is True,
                     "is_self": own is not None and t.get("id") == own})
     return out
 
@@ -660,6 +674,94 @@ def launch(req: dict) -> list[str]:
     return report
 
 
+def _text(req: dict, key: str, what: str) -> str | None:
+    """A text the request may leave out: None for none or blank, else the text. Anything but text is an error."""
+    value = req.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise DriverError(f"{what} takes {key} as text")
+    return value.strip() or None
+
+
+def new_tab(req: dict) -> dict:
+    """One new tab in the workspace named by its live ref, unfocused: a plain shell, or `command` sent the way
+    launch sends it. Answers the new tab's ref, also when the command did not start (an ERROR line says so):
+    the tab exists then, and its title keeps it findable."""
+    ws = _ref(req, "workspace", "new_tab")
+    title, command = _text(req, "title", "new_tab"), _text(req, "command", "new_tab")
+    tree = read_tree()
+    if ws not in surface_counts(tree):
+        raise DriverError(f"no open workspace {ws}")
+    where = {ref: name for name, ref in workspace_index(tree).items()}.get(ws, ws)
+    args = ["new-surface", "--workspace", ws]
+    marker = None
+    if command:
+        line, marker = _launch_line({"command": command})
+        args += ["--command", line]
+    out = cl.cmux_checked(*args, "--focus", "false")
+    sref = cl.parse_ref(out, "surface")
+    if not sref:
+        raise DriverError(f"cmux new-surface gave no surface ref: {out.strip()[:120]}")
+    report = [f"tab {title} ({sref}) in {where}" if title else f"tab {sref} in {where}"]
+    if title:
+        try:
+            rename_tab(sref, ws, title)
+        except cl.CmuxError as exc:
+            report.append(f"  ERROR tab {sref}: not named {title!r}: {exc}")
+    if marker:
+        _await_started([{"label": title or sref, "marker": marker, "index": 0}], report)
+    return {"report": report, "ref": sref}
+
+
+def new_workspace(req: dict) -> dict:
+    """One new workspace, unfocused, with its first tab: a plain shell, or `command` sent the way launch sends
+    it. Answers the workspace ref and its first tab's ref, also when the command did not start."""
+    title = _text(req, "title", "new_workspace")
+    if not title:
+        raise DriverError("new_workspace needs a title")
+    color = req.get("color")
+    if color is not None and color not in PALETTE:
+        raise DriverError(f"new_workspace takes one of {', '.join(PALETTE)} or no colour")
+    cwd, command = _text(req, "cwd", "new_workspace") or str(ROOT), _text(req, "command", "new_workspace")
+    args = ["workspace", "create", "--name", title, "--cwd", cwd, "--focus", "false"]
+    marker = None
+    if command:
+        line, marker = _launch_line({"command": command})
+        args += ["--command", line]
+    out = cl.cmux_checked(*args)
+    ws_ref = cl.parse_ref(out, "workspace")
+    if not ws_ref:
+        raise DriverError(f"cmux workspace create gave no workspace ref: {out.strip()[:120]}")
+    report = [f"workspace {title} ({ws_ref})"]
+    if color:
+        try:
+            for cmd in cl.decoration_commands(ws_ref, {"color": PALETTE[color]}):
+                cl.cmux_checked(*cmd)
+        except cl.CmuxError as exc:
+            report.append(f"  ERROR workspace {title} ({ws_ref}) not coloured: {exc}")
+    sref = cl._first_surface(ws_ref)
+    if not sref:
+        report.append(f"  ERROR workspace {title} ({ws_ref}) shows no first tab")
+    if marker:
+        _await_started([{"label": title, "marker": marker, "index": 0}], report)
+    return {"report": report, "ws_ref": ws_ref, "ref": sref}
+
+
+def close_workspace(req: dict) -> list[str]:
+    """Closes one workspace by its live ref, on a person's request. The last workspace of a window stays
+    (an ERROR line): closing it would close the window."""
+    ws = _ref(req, "workspace", "close_workspace")
+    window = next((w for w in read_tree().get("windows") or []
+                   if any(x.get("ref") == ws for x in w.get("workspaces") or [])), None)
+    if window is None:
+        raise DriverError(f"no open workspace {ws}")
+    if len(window.get("workspaces") or []) <= 1:
+        return [f"ERROR {ws} is the last workspace of its window, closing it would close the window"]
+    cl.cmux_checked("close-workspace", "--workspace", ws)
+    return [f"{ws} closed"]
+
+
 def _ws_ref_of(surface: str) -> str | None:
     """The workspace of an open tab. A ref that is not open is an error, not a guess."""
     for t in current_tabs():
@@ -823,7 +925,8 @@ def workspaces() -> list[dict]:
 
 # the cockpit steers a tab with these (docs/workplace.md, the optional verbs); cmux serves them all
 CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "control", "focus", "key", "keys", "screen", "close",
-        "workspaces", "rename_workspace", "move_tab", "set_color", "set_description"]
+        "workspaces", "rename_workspace", "move_tab", "set_color", "set_description",
+        "new_tab", "new_workspace", "close_workspace"]
 # the one key set a driver takes; cmux's own names for the two that are not typed as they are
 KEYS = {"enter": "Enter", "escape": "escape", "y": "y", "n": "n", **{str(i): str(i) for i in range(1, 10)}}
 
@@ -876,7 +979,7 @@ def keys(req: dict) -> list[str]:
 
 def screen(req: dict) -> str:
     surface = req["tab"]
-    lines = max(1, min(int(req.get("lines") or 40), 500))
+    lines = max(1, min(int(req.get("lines") or 40), SCREEN_MAX_LINES))
     out = cl.cmux_checked("read-screen", *_where(surface), "--surface", surface, "--lines", str(lines))
     return "\n".join(line.rstrip() for line in out.splitlines()).strip("\n")
 
@@ -915,6 +1018,12 @@ def handle(req: dict) -> dict:
         return {"report": set_color(req)}
     if verb == "set_description":
         return {"report": set_description(req)}
+    if verb == "new_tab":
+        return new_tab(req)
+    if verb == "new_workspace":
+        return new_workspace(req)
+    if verb == "close_workspace":
+        return {"report": close_workspace(req)}
     if verb == "control":
         return {"report": control(req)}
     if verb == "caps":

@@ -795,6 +795,13 @@ def test_focus_key_screen_and_close_address_the_tab_in_its_workspace(fake):
     assert ["close-surface", "--surface", "surface:91", "--force", "--workspace", "workspace:3"] in argv
 
 
+@pytest.mark.parametrize("asked, read", [(40, "40"), (3000, "3000"), (5000, "5000"), (99999, "5000"), (0, "40")])
+def test_screen_reads_the_scrollback_up_to_five_thousand_lines(fake, asked, read):
+    fake.answer({"verb": "screen", "tab": "surface:91", "lines": asked})
+    reads = [a for a in fake.argv() if a[0] == "read-screen"]
+    assert reads[-1][reads[-1].index("--lines") + 1] == read
+
+
 def test_keys_type_as_a_keyboard_does(fake):
     fake.answer({"verb": "keys", "tab": "surface:91", "keys": [
         {"text": "git st"}, {"key": "tab"}, {"key": "enter"}, {"key": "ctrl+c"}, {"text": "a\\nb"}, {"paste": "one\ntwo"}]})
@@ -971,3 +978,137 @@ def test_the_driver_palette_is_the_workplace_palette():
 
 def test_caps_name_the_layout_verbs(fake):
     assert {"move_tab", "set_color", "set_description"} <= set(fake.answer({"verb": "caps"})["caps"])
+
+
+# ---------------------------------------------------------------- a new tab, a new workspace, a workspace closed
+
+def test_caps_name_the_verbs_that_make_and_close(fake):
+    assert {"new_tab", "new_workspace", "close_workspace"} <= set(fake.answer({"verb": "caps"})["caps"])
+
+
+def test_new_tab_opens_one_titled_tab_in_the_named_workspace_and_answers_its_ref(fake):
+    answer = fake.answer({"verb": "new_tab", "workspace": "workspace:4", "title": "Scratch",
+                          "command": "cd -- /repo && agent -n scratch"})
+    assert answer["ref"] == "surface:60"
+    assert answer["report"] == ["tab Scratch (surface:60) in Customer A"]
+    argv = fake.argv()
+    (new,) = [a for a in argv if a[0] == "new-surface"]
+    assert new[new.index("--workspace") + 1] == "workspace:4"
+    assert new[new.index("--focus") + 1] == "false"                 # a new tab never takes the focus
+    assert _launched(new[new.index("--command") + 1]) == "cd -- /repo && agent -n scratch" + drv.KEEP_SHELL
+    assert ["tab-action", "--action", "rename", "--tab", "surface:60", "--title", "Scratch",
+            "--workspace", "workspace:4"] in argv
+    assert not any(a[0] in ("select-workspace", "focus-panel") or "close" in " ".join(a) for a in argv)
+
+
+def test_new_tab_without_a_command_is_a_plain_shell_and_without_a_title_keeps_its_own(fake):
+    answer = fake.answer({"verb": "new_tab", "workspace": "workspace:3", "title": None, "command": None})
+    assert answer["ref"] == "surface:60" and answer["report"] == ["tab surface:60 in Platform"]
+    (new,) = [a for a in fake.argv() if a[0] == "new-surface"]
+    assert new == ["new-surface", "--workspace", "workspace:3", "--focus", "false"]
+    assert not [a for a in fake.argv() if a[:3] == ["tab-action", "--action", "rename"]]
+
+
+def test_new_tab_types_only_a_short_line_and_the_command_arrives_intact(fake, tmp_path):
+    import shlex
+    out = tmp_path / "arrived.txt"
+    command = f"cd -- {shlex.quote(str(tmp_path))} && printf '%s' {shlex.quote(LONG_TEXT)} > {shlex.quote(str(out))}"
+    answer = fake.answer({"verb": "new_tab", "workspace": "workspace:3", "title": "Long", "command": command})
+    assert not any(line.startswith("ERROR") for line in answer["report"]), answer
+    (typed,) = _typed(fake.argv())
+    assert len(typed.encode()) < 256 and typed.isascii() and "\n" not in typed
+    subprocess.run(typed, shell=True, env={**fake.env, "SHELL": "/usr/bin/true"}, check=True, timeout=30)
+    assert out.read_text(encoding="utf-8") == LONG_TEXT
+
+
+def test_new_tab_whose_command_never_starts_is_an_error_line_but_still_answers_the_tab(fake):
+    fake.lost = True
+    answer = fake.answer({"verb": "new_tab", "workspace": "workspace:3", "title": "Late", "command": "agent"})
+    assert answer["ref"] == "surface:60"
+    assert any(line.startswith("ERROR") and "did not start" in line and "Late" in line for line in answer["report"])
+
+
+def test_new_tab_needs_an_open_workspace_and_a_clean_title(fake):
+    for req in ({"workspace": "workspace:99"}, {"workspace": ""}, {}, {"workspace": "workspace:3", "title": 7},
+                {"workspace": "workspace:3", "command": 7}):
+        done = fake.call({"verb": "new_tab", **req})
+        assert done.returncode == 1 and "error" in json.loads(done.stdout), req
+    assert not [a for a in fake.argv() if a[0] == "new-surface"]
+
+
+def test_new_tab_that_cmux_refuses_is_a_driver_error(fake):
+    fake.fail = "new-surface"
+    done = fake.call({"verb": "new_tab", "workspace": "workspace:3", "title": "X", "command": None})
+    assert done.returncode == 1 and "error" in json.loads(done.stdout)
+
+
+def test_new_workspace_creates_one_with_title_folder_colour_and_command_and_answers_both_refs(fake, tmp_path):
+    answer = fake.answer({"verb": "new_workspace", "title": "Research", "color": "Teal", "cwd": str(tmp_path),
+                          "command": "cd -- /repo && agent -n research"})
+    assert answer["ws_ref"] == "workspace:50" and answer["ref"] == "surface:61"
+    assert answer["report"] == ["workspace Research (workspace:50)"]
+    argv = fake.argv()
+    (create,) = [a for a in argv if a[:2] == ["workspace", "create"]]
+    assert create[create.index("--name") + 1] == "Research"
+    assert create[create.index("--cwd") + 1] == str(tmp_path)
+    assert create[create.index("--focus") + 1] == "false"
+    assert _launched(create[create.index("--command") + 1]) == "cd -- /repo && agent -n research" + drv.KEEP_SHELL
+    assert ["workspace-action", "--workspace", "workspace:50", "--action", "set-color", "--color", "#006B6B"] in argv
+    assert not any(a[0] in ("select-workspace", "focus-panel") or "close" in " ".join(a) for a in argv)
+
+
+def test_new_workspace_without_a_command_is_a_plain_shell_in_the_bridge_folder(fake):
+    answer = fake.answer({"verb": "new_workspace", "title": "Plain"})
+    assert answer["ws_ref"] == "workspace:50" and answer["ref"] == "surface:61"
+    (create,) = [a for a in fake.argv() if a[:2] == ["workspace", "create"]]
+    assert "--command" not in create and create[create.index("--cwd") + 1] == str(drv.ROOT)
+    assert not [a for a in fake.argv() if a[0] == "workspace-action"]
+
+
+def test_new_workspace_whose_command_never_starts_is_an_error_line_but_still_answers_both_refs(fake):
+    fake.lost = True
+    answer = fake.answer({"verb": "new_workspace", "title": "Late", "command": "agent"})
+    assert answer["ws_ref"] == "workspace:50" and answer["ref"] == "surface:61"
+    assert any(line.startswith("ERROR") and "did not start" in line for line in answer["report"])
+
+
+def test_new_workspace_that_cmux_refuses_is_a_driver_error(fake):
+    fake.fail = "workspace create"
+    done = fake.call({"verb": "new_workspace", "title": "X"})
+    assert done.returncode == 1 and "error" in json.loads(done.stdout)
+
+
+def test_new_workspace_needs_a_title_and_takes_a_palette_colour_only(fake):
+    for req in ({}, {"title": ""}, {"title": "  "}, {"title": 7}, {"title": "X", "color": "#123456"},
+                {"title": "X", "color": "teal"}, {"title": "X", "command": 7}, {"title": "X", "cwd": 7}):
+        done = fake.call({"verb": "new_workspace", **req})
+        assert done.returncode == 1 and "error" in json.loads(done.stdout), req
+    assert not [a for a in fake.argv() if a[:2] == ["workspace", "create"]]
+
+
+def test_close_workspace_closes_that_one_by_its_ref(fake):
+    report = fake.answer({"verb": "close_workspace", "workspace": "workspace:4"})["report"]
+    assert report == ["workspace:4 closed"]
+    assert [a for a in fake.argv() if "close" in " ".join(a)] == [["close-workspace", "--workspace", "workspace:4"]]
+
+
+def test_close_workspace_needs_an_open_ref_and_never_closes_the_last_one_of_a_window(fake):
+    for req in ({"workspace": "workspace:99"}, {"workspace": ""}, {}):
+        done = fake.call({"verb": "close_workspace", **req})
+        assert done.returncode == 1 and "error" in json.loads(done.stdout), req
+    # Customer B is the only workspace of its window: closing it would close the window
+    report = fake.answer({"verb": "close_workspace", "workspace": "workspace:5"})["report"]
+    assert report[0].startswith("ERROR") and "last workspace" in report[0]
+    assert not [a for a in fake.argv() if a[:1] == ["close-workspace"]]
+
+
+def test_close_workspace_that_cmux_refuses_is_a_driver_error(fake):
+    fake.fail = "close-workspace"
+    done = fake.call({"verb": "close_workspace", "workspace": "workspace:4"})
+    assert done.returncode == 1 and "error" in json.loads(done.stdout)
+
+
+def test_socket_tabs_mark_the_tab_in_front():
+    tree = {"active": {"surface_ref": "surface:2"}, "windows": [{"workspaces": [{"ref": "workspace:1", "title": "W", "panes": [
+        {"surfaces": [{"ref": "surface:1", "type": "terminal", "title": "a"}, {"ref": "surface:2", "type": "terminal", "title": "b"}]}]}]}]}
+    assert [t["front"] for t in drv.socket_tabs(tree)] == [False, True]

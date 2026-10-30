@@ -52,9 +52,15 @@ the plan in cmux, and `status`, `send`, `adopt` steer the tabs.
 [--target tab|workspace|area|auto]` opens one tab per chosen task or inbox item
 (docs/workplace.md § Launching chosen items). What the driver guarantees:
 
-- It never closes a tab or a workspace, and never moves the last tab out of a
+- It never closes a tab or a workspace on its own, only `close` and
+  `close_workspace` on a person's request, and never moves the last tab out of a
   workspace (cmux drops an emptied workspace); such a tab is renamed where it is
   and the report says so.
+- `new_tab` and `new_workspace` open a tab or a workspace without taking the
+  focus and answer the new refs (`ref`, `ws_ref`) for a page that wants to open
+  them. No command is a plain shell; a command goes the way `launch` sends it,
+  with the start marker awaited. `close_workspace` never closes the last
+  workspace of a window.
 - It sees every window (`tree --all`), so a workspace in a second window is
   reused, not created twice.
 - `launch` opens in the calling tab's workspace (`here`, else the tree's

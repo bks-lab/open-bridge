@@ -119,6 +119,35 @@ function lastFields() {
   }
 }
 
+function lastLink() {
+  try {
+    const v = JSON.parse(load('bridge-cockpit.chatLink', '{}'))
+    return { follow: v?.follow === true, jump: v?.jump === true }
+  } catch {
+    return { follow: false, jump: false }
+  }
+}
+
+function lastPins() {
+  try {
+    const v = JSON.parse(load('bridge-cockpit.chatPins', '[]'))
+    return Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(0, 20) : []
+  } catch {
+    return []
+  }
+}
+
+/** Cockpit follows the terminal: the tab that came to the front there comes up here, once per change, and never
+ *  while you type in the page */
+function followFront(before, after) {
+  const { ui } = store.get()
+  if (!ui.link?.follow || ui.page !== CHAT_PAGE) return
+  const front = (after ?? []).find(x => x.front)
+  if (!front || (before ?? []).find(x => x.front)?.ref === front.ref || ui.room?.id === front.ref) return
+  if (document.activeElement?.closest?.('input, textarea, [contenteditable]')) return
+  ctl.pickRoom({ kind: 'tab', id: front.ref })
+}
+
 /** The last question this viewer opened (round 6d), so a reload and the header's Ask find it again; a
  *  convenience, never state: a question the server no longer has opens a new one */
 function lastAsk() {
@@ -226,7 +255,7 @@ const store = createStore({
     shortcuts: load('bridge-cockpit.shortcuts', 'off') === 'on',
     // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
     roomsSort: ['urgency', 'status'].find(v => v === load('bridge-cockpit.roomsSort', 'terminal')) ?? 'terminal',
-    fields: lastFields(), fieldsFull: false,
+    fields: lastFields(), fieldsFull: false, pins: lastPins(), bells: {}, chatFind: '', newChat: null, link: lastLink(),
     answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
     renaming: null,  // the tab or workspace whose name is being typed: { kind: 'tab' | 'ws', id: ref } (views/rooms.js)
     // organize with AI (views/organize.js): { busy, applying, proposal, ticks: { id: true }, result } while open
@@ -467,6 +496,14 @@ const handlers = {
     const prev = store.get()
     if (prev.model) noteFeed(feedEvents(prev.model, prev.model, prev.tabs?.tabs, tabs?.tabs, Date.now()))
     store.set(s => ({ ...s, tabs, ui: { ...s.ui, answered: pruneAnswered(s.ui.answered, Date.now()) } }))
+    followFront(prev.tabs?.tabs, tabs?.tabs)
+    for (const ref of Object.keys(prev.ui.bells ?? {})) {
+      const was = prev.tabs?.tabs?.find(x => x.ref === ref), now = tabs?.tabs?.find(x => x.ref === ref)
+      if (was?.state === 'working' && now && now.state !== 'working') {
+        ctl.toggleBell(ref)
+        pushNote({ text: T().tools.doneNote(now.name), at: Date.now() }, { toast: true })
+      }
+    }
   },
   quick(q) {
     const before = store.get().quick?.convs ?? []
@@ -846,7 +883,7 @@ function clearRoutes(launch) {
 
 const ctl = {
   // the Chat's areas and the ways to an agent: setChatArea, pickAgent, openAgentConv, pageFor, pickRoom, walkFrom, walkTab
-  ...chatAreaActions({ get: () => store.get(), setUi, save }),
+  ...chatAreaActions({ get: () => store.get(), setUi, save, jump: ref => act('tab_jump', { tab_ref: ref }, { quiet: true }) }),
   act,
   reply,
   ask,
@@ -1722,6 +1759,8 @@ const ctl = {
   setAskFallback: fb => setUi({ askFallback: fb }),
   closeTabView: () => setUi({ tabView: null }),
   tabScreen: (ref, since, fast) => api.tabScreen(ref, since, fast),
+  tabHistory: (ref, q, before) => api.tabHistory(ref, q, before),
+  askAbout: text => ask('free', { text }),
   // the live terminal: no busy mark and no note for a key, only when the tab took nothing (views/tabs.js TermScreen)
   termKeys: async (ref, steps) => {
     const res = await api.action('tab_keys', { tab_ref: ref, steps })

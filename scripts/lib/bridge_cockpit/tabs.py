@@ -182,7 +182,7 @@ class TabPoller:
                     "ref": t["ref"], "ws_ref": t["ws_ref"], "name": t["name"], "workspace": t["workspace"],
                     "state": t["state"], "last": t["last"], "slug": t["slug"], "item": t["item"], "team": t["team"],
                     "role": t["role"], "state_source": t.get("state_source"), "live": m.is_live(t), "waiting": m.is_waiting(t, view) and not is_control,
-                    "idle": t.get("idle") is True and not is_control,
+                    "idle": t.get("idle") is True and not is_control, "front": t.get("front") is True,
                     "is_control": is_control, "filed_by": filed["key"] if filed else None,
                     "settled": None if is_control else ret.tab_settled(self.app.root, t),
                     "behind": None if is_control else ret.tab_behind(self.app.root, t, tasks.get(t["ref"])),
