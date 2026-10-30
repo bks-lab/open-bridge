@@ -22,6 +22,9 @@ works with a terminal multiplexer, with another one, or with none at all.
     python3 scripts/workplace.py move-tab TAB_REF WS_REF [--index N]   # move one tab into another workspace
     python3 scripts/workplace.py workspace-color WS_REF (COLOR | --clear)   # a palette colour (COLORS)
     python3 scripts/workplace.py workspace-description WS_REF (--clear | -- TEXT)   # one line, 120 characters
+    python3 scripts/workplace.py new-tab WS_REF [--kind agent|shell] [--title=T] [--text=S] [--json]   # a chat or a shell
+    python3 scripts/workplace.py new-workspace --title=T [--kind agent|shell|none] [--color C] [--cwd=DIR] [--json]
+    python3 scripts/workplace.py close-workspace WS_REF [--json]   # closes the workspace and what runs in it
 
 CONFIG lives in bridge-config.yaml under `workplace:`:
 
@@ -68,6 +71,13 @@ uses for owner approval:
     {"verb": "set_color", "workspace": ws_ref, "color": "<COLORS name>" | null} -> {"report": [...]}
     {"verb": "set_description", "workspace": ws_ref, "text": "..." | null}   -> {"report": [...]}
                                               null clears it
+    {"verb": "new_tab", "workspace": ws_ref, "title": "..." | null, "command": "..." | null}
+                                           -> {"report": [...], "ref": "<the new tab>"}
+                                              no command: a plain shell; nothing takes the focus
+    {"verb": "new_workspace", "title": "...", "color": "<COLORS name>" | null, "cwd": "..." | null,
+     "command": "..." | null}              -> {"report": [...], "ws_ref": "<the workspace>", "ref": "<its first tab>"}
+    {"verb": "close_workspace", "workspace": ws_ref}  -> {"report": [...]}
+                                              a ref answered with an ERROR line is still answered: the tab exists
 
 A workspace in the `workspaces` answer may carry `color` (the hex the terminal reports) and
 `color_name`, the COLORS name of that hex (null for any other colour). Colours are compared by name.
@@ -76,7 +86,7 @@ A refusal is an `ERROR ...` line in the report (or a non-zero exit with {"error"
 names and configured workspace names are the workplace's own (managed_names): `rename` and
 `rename-workspace` refuse to take them, or to rename a configured workspace.
 
-A driver never closes a tab or a workspace on its own, only on `close`, which a person asked for. A driver that fails or answers
+A driver never closes a tab or a workspace on its own, only on `close` and `close_workspace`, which a person asked for. A driver that fails or answers
 nonsense is reported, never raised, and never read as "no tab is open":
 `open --yes` refuses and `status` says the driver failed. Model: docs/workplace.md.
 The contract lives in scripts/tests/test_workplace.py.
@@ -93,6 +103,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import yaml
@@ -396,6 +407,24 @@ def agent_defaults(agent: dict) -> tuple[str | None, str | None]:
     """agent.model and agent.effort: what a launch that asks for none starts with (a bad value counts as none)."""
     model, effort = agent.get("model"), agent.get("effort")
     return (model if model in CLAUDE_MODELS else None), (effort if effort in EFFORTS else None)
+
+
+def chat_command(root: Path, cfg: dict, text: str | None, model: str | None = None, effort: str | None = None,
+                 cwd: str | None = None) -> str:
+    """The command of a free chat tab: agent.new as a launch builds it (the model and effort of the call, else
+    the config's), with no task prompt. The prompt is the person's sentence quoted for the shell, or nothing: the
+    slot goes with its blank. A template without the slot cannot carry a sentence (ValueError). The tab carries its
+    own BRIDGE_TAB_SLUG like any agent tab, so it is no control session and takes no question of the cockpit."""
+    agent = {**DEFAULT_AGENT, **(cfg.get("agent") or {})}
+    default_model, default_effort = agent_defaults(agent)
+    if text and "{prompt}" not in agent["new"]:
+        raise ValueError("refused: agent.new has no {prompt} slot, so the sentence would be lost")
+    slug = f"chat-{uuid.uuid4().hex[:8]}"
+    template = agent["new"] if text else re.sub(r"\s*\{prompt\}", "", agent["new"])
+    # a sentence that starts with a dash would be read as an option: `--` ends the options
+    prompt = ("-- " if text.startswith("-") else "") + shlex.quote(text) if text else ""
+    run, _ = agent_run(template, model or default_model, effort or default_effort, slug=shlex.quote(slug), prompt=prompt)
+    return f"cd -- {shlex.quote(cwd or str(root))} && export {TAB_ENV}={shlex.quote(slug)} && {run}"
 
 
 def tab_command(tab: dict, root: Path, cwd: str, cfg: dict) -> str:
@@ -1143,6 +1172,21 @@ def check_description(text: str) -> str:
     return out
 
 
+FIRST_MAX = 2000
+FIRST_BAD = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")      # a line break and a tab stay, any other control code goes
+
+
+def check_first_words(text: str) -> str:
+    """The person's first sentence for a new agent tab: trimmed, 1 to FIRST_MAX characters, no control code but a
+    line break or a tab. Refused, never cut. The reason never quotes the text."""
+    if FIRST_BAD.search(text or ""):
+        raise ValueError("refused: a control code in the sentence")
+    out = (text or "").strip()
+    if not 1 <= len(out) <= FIRST_MAX:
+        raise ValueError(f"refused: a sentence has 1 to {FIRST_MAX} characters")
+    return out
+
+
 def check_title(title: str) -> str:
     """A tab or workspace title as typed: trimmed, 1 to TITLE_MAX characters, no control character
     (no newline, no tab). Refused, never cut. Raises ValueError with the reason."""
@@ -1196,6 +1240,7 @@ class NoneDriver:
 
     name = "none"
     error = ""
+    refs: dict = {}
 
     def tabs_or_none(self):
         return self.tabs()
@@ -1243,6 +1288,15 @@ class NoneDriver:
     def set_description(self, workspace: str, text: str | None) -> list:
         return [f"No driver configured: describe {workspace} yourself."]
 
+    def new_tab(self, workspace: str, title: str | None, command: str | None) -> list:
+        return [f"No driver configured: open a tab in {workspace} yourself."]
+
+    def new_workspace(self, title: str, color: str | None, cwd: str | None, command: str | None) -> list:
+        return [f"No driver configured: open a workspace {title!r} yourself."]
+
+    def close_workspace(self, workspace: str) -> list:
+        return [f"No driver configured: close {workspace} yourself."]
+
     def control(self, ctl: dict, command: str, root) -> list:
         return [f"No driver configured: start {command!r} in a terminal named {ctl.get('name')!r} yourself."]
 
@@ -1276,6 +1330,7 @@ class CommandDriver:
         self.name = Path(self.argv[-1]).stem if self.argv else "command"
         self.error = ""
         self.failed = False
+        self.refs: dict = {}          # the new refs the last verb answered: ref (a tab), ws_ref (a workspace)
 
     def _call(self, payload: dict) -> dict | None:
         try:
@@ -1321,6 +1376,7 @@ class CommandDriver:
 
     def _report(self, payload: dict) -> list:
         data = self._call(payload)
+        self.refs = {k: data[k] for k in ("ref", "ws_ref") if isinstance((data or {}).get(k), str)}
         if data is None:
             self.failed = True
             # an ERROR line, like a refused step: a caller must not count anything as started
@@ -1359,6 +1415,15 @@ class CommandDriver:
 
     def set_description(self, workspace: str, text: str | None) -> list:
         return self._report({"verb": "set_description", "workspace": workspace, "text": text})
+
+    def new_tab(self, workspace: str, title: str | None, command: str | None) -> list:
+        return self._report({"verb": "new_tab", "workspace": workspace, "title": title, "command": command})
+
+    def new_workspace(self, title: str, color: str | None, cwd: str | None, command: str | None) -> list:
+        return self._report({"verb": "new_workspace", "title": title, "color": color, "cwd": cwd, "command": command})
+
+    def close_workspace(self, workspace: str) -> list:
+        return self._report({"verb": "close_workspace", "workspace": workspace})
 
     def control(self, ctl: dict, command: str, root) -> list:
         return self._report({"verb": "control", "control": ctl, "command": command, "root": str(root)})
@@ -1548,6 +1613,32 @@ def main(argv=None) -> int:
     wd.add_argument("ws_ref")
     wd.add_argument("--clear", action="store_true", help="take the description off")
     wd.add_argument("text", nargs="*")
+    nt = sub.add_parser("new-tab", help="one new tab in a workspace, by its live ref only: new-tab WS_REF "
+                                        "[--kind agent|shell] [--title=T] [--text=S]; the free texts go glued to "
+                                        "their flag, so a dash at the start is no flag")
+    nt.add_argument("ws_ref")
+    nt.add_argument("--kind", choices=("agent", "shell"), default="agent", help="agent (default): a chat; shell: no command")
+    nt.add_argument("--title", help="its name, as rename takes it")
+    nt.add_argument("--text", help="the person's first sentence, the agent's whole prompt (an agent only)")
+    nt.add_argument("--model", choices=tuple(CLAUDE_MODELS), help="the model the agent starts with")
+    nt.add_argument("--effort", choices=EFFORTS, help="the agent's effort level")
+    nt.add_argument("--json", action="store_true", help="the answer as JSON: ok, report and the new ref")
+    nw = sub.add_parser("new-workspace", help="one new workspace with its first tab: new-workspace --title=T "
+                                               "[--kind agent|shell|none] [--color C] [--cwd=DIR] [--text=S]")
+    nw.add_argument("--title", required=True, help="its name, as rename-workspace takes it")
+    nw.add_argument("--kind", choices=("agent", "shell", "none"), default="agent",
+                    help="agent (default): a chat in its first tab; shell and none: a plain shell (a workspace "
+                         "cannot be empty)")
+    nw.add_argument("--color", help=f"a palette colour, one of {', '.join(COLORS)}")
+    nw.add_argument("--cwd", help="the folder it starts in: an absolute folder that exists (default: the Bridge)")
+    nw.add_argument("--text", help="the person's first sentence, the agent's whole prompt (an agent only)")
+    nw.add_argument("--model", choices=tuple(CLAUDE_MODELS), help="the model the agent starts with")
+    nw.add_argument("--effort", choices=EFFORTS, help="the agent's effort level")
+    nw.add_argument("--json", action="store_true", help="the answer as JSON: ok, report and the new refs")
+    cw = sub.add_parser("close-workspace", help="close one workspace and what runs in it, by its live ref only "
+                                                "(only when you ask): close-workspace WS_REF")
+    cw.add_argument("ws_ref")
+    cw.add_argument("--json", action="store_true", help="the answer as JSON: ok and report")
     sub.add_parser("caps", help="the verbs the configured driver serves").add_argument("--json", action="store_true")
     sub.add_parser("workspaces", help="the workspaces as the terminal shows them (read only)").add_argument(
         "--json", action="store_true")
@@ -1731,6 +1822,8 @@ def main(argv=None) -> int:
         return rename_cli(args, cfg, driver)
     if args.cmd in ("move-tab", "workspace-color", "workspace-description"):
         return layout_cli(args, cfg, driver)
+    if args.cmd in MAKE_CAPS:
+        return make_cli(args, cfg, driver)
     # a live ref needs no list of the tabs: the terminal of the cockpit types and reads many times a second, and the
     # driver answers for a ref that is gone
     direct = args.cmd in ("keys", "screen") and LIVE_REF_RE.fullmatch(args.tab)
@@ -1822,6 +1915,14 @@ def rename_cli(args, cfg: dict, driver) -> int:
     return 1 if getattr(driver, "failed", False) else 0
 
 
+def workspace_titles(tabs: list, driver) -> dict:
+    """ws_ref -> title of every workspace live now: those the tabs name, and those the driver lists (an empty one too)"""
+    listed = driver.workspaces() if "workspaces" in driver.caps() else None
+    titles = {t.get("ws_ref"): t.get("workspace") for t in tabs if t.get("ws_ref")}
+    titles.update({w.get("ref"): w.get("title") for w in listed or [] if w.get("ref")})
+    return titles
+
+
 LAYOUT_CAPS = {"move-tab": "move_tab", "workspace-color": "set_color", "workspace-description": "set_description"}
 
 
@@ -1855,9 +1956,7 @@ def layout_cli(args, cfg: dict, driver) -> int:
     if tabs is None:
         print(getattr(driver, "error", "") or f"driver {driver.name} gave no tab list", file=sys.stderr)
         return 1
-    listed = driver.workspaces() if "workspaces" in driver.caps() else None
-    titles = {t.get("ws_ref"): t.get("workspace") for t in tabs if t.get("ws_ref")}
-    titles.update({w.get("ref"): w.get("title") for w in listed or [] if w.get("ref")})
+    titles = workspace_titles(tabs, driver)
     if args.ws_ref not in titles:
         return refuse(f"no open workspace with the ref {args.ws_ref!r}")
     if args.cmd == "move-tab":
@@ -1875,6 +1974,76 @@ def layout_cli(args, cfg: dict, driver) -> int:
                  else driver.set_description(args.ws_ref, text))
     print("\n".join(lines))
     return 1 if getattr(driver, "failed", False) else 0
+
+
+MAKE_CAPS = {"new-tab": "new_tab", "new-workspace": "new_workspace", "close-workspace": "close_workspace"}
+
+
+def make_cli(args, cfg: dict, driver) -> int:
+    """`new-tab`, `new-workspace` and `close-workspace`: a live ref only (never a name, never a part of one), the
+    driver's verb announced in its caps, the same title rules as the two renames, the person's sentence checked and
+    quoted for the shell. Everything is checked before the driver is asked to make or close anything. A refusal is
+    exit 2 with its reason on stderr (never the sentence); a driver that failed or refused (an ERROR line) is exit 1.
+    The new refs come with `--json`, also when the driver reports an ERROR line for a tab that exists."""
+    def refuse(why: str) -> int:
+        print(why, file=sys.stderr)
+        return 2
+    verb = MAKE_CAPS[args.cmd]
+    if verb not in driver.caps():
+        return refuse(f"refused: driver {driver.name} cannot {verb.replace('_', ' ')}")
+    title = text = color = cwd = None
+    if args.cmd != "close-workspace":
+        try:
+            title = check_title(args.title) if args.title is not None else None
+            text = check_first_words(args.text) if args.text is not None else None
+        except ValueError as exc:
+            return refuse(str(exc))
+        if text and args.kind != "agent":
+            return refuse("refused: this kind takes no sentence, only an agent does")
+    if args.cmd == "new-workspace":
+        if args.color is not None:
+            color = palette_name(args.color)
+            if color is None:
+                return refuse(f"refused: not a palette colour, one of {', '.join(COLORS)}")
+            if "set_color" not in driver.caps():
+                return refuse(f"refused: driver {driver.name} cannot set color")
+        if args.cwd is not None and not (Path(args.cwd).is_absolute() and Path(args.cwd).is_dir()):
+            return refuse("refused: cwd is not a folder that exists (give an absolute path)")
+        cwd = args.cwd or str(args.root)
+    tabs = driver.tabs_or_none()
+    if tabs is None:
+        print(getattr(driver, "error", "") or f"driver {driver.name} gave no tab list", file=sys.stderr)
+        return 1
+    titles = workspace_titles(tabs, driver)
+    if args.cmd != "new-workspace" and args.ws_ref not in titles:
+        return refuse(f"no open workspace with the ref {args.ws_ref!r}")
+    managed = managed_names(args.root, cfg) if title else {}
+    if args.cmd == "new-tab" and title:
+        want = title.casefold()
+        if want in managed["tab_names"]:
+            return refuse("refused: a task, inbox or team tab is known by this name")
+        if any(str(t.get("name") or "").strip().casefold() == want for t in tabs):
+            return refuse("refused: name in use")
+    if args.cmd == "new-workspace":
+        if _ws_fold(title) in {_ws_fold(n) for n in managed["workspace_names"]}:
+            return refuse("refused: a configured workspace has this name (workplace.workspaces)")
+        if _ws_fold(title) in {_ws_fold(t) for t in titles.values() if t}:
+            return refuse("refused: name in use")
+    if args.cmd == "close-workspace":
+        lines = driver.close_workspace(args.ws_ref)
+    else:
+        try:
+            command = chat_command(args.root, cfg, text, args.model, args.effort, cwd) if args.kind == "agent" else None
+        except ValueError as exc:
+            return refuse(str(exc))
+        lines = (driver.new_tab(args.ws_ref, title, command) if args.cmd == "new-tab"
+                 else driver.new_workspace(title, color, cwd, command))
+    failed = getattr(driver, "failed", False)
+    if args.json:
+        print(json.dumps({"ok": not failed, "report": lines, **getattr(driver, "refs", {})}, ensure_ascii=False))
+    else:
+        print("\n".join(lines))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

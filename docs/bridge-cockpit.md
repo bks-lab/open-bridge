@@ -2639,6 +2639,37 @@ cockpit refuses, and says why:
 The audit line names the tab or workspace ref only, never the name. With the
 workspace list on, a renamed workspace is read again at the next poll.
 
+**A new chat, a new workspace, a workspace closed.** Three verbs make and unmake
+rooms through the terminal driver (`workplace.py new-tab`, `new-workspace` and
+`close-workspace`). Each needs the driver's optional verb (`new_tab`,
+`new_workspace`, `close_workspace`); without it the verb is refused with
+`driver_cannot`, so the page offers none. None takes the focus, none takes the
+write lock, and each audit line names the workspace and the kind, never a word you
+typed.
+
+- `tab_new {ws_ref, kind, text?, title?, model?, effort?}` opens one tab in a
+  workspace the terminal shows. `kind` is `agent` (a chat: `text` is your first
+  sentence and the agent's whole prompt, with no task around it, or nothing for a
+  free chat) or `shell` (the terminal's own shell, which takes no `text`). The
+  agent is `workplace.agent.new` with the model and effort of a launch
+  (`cockpit.launch_model`). The answer carries `ref`, the new tab, also when its
+  command did not start (the note then says so): the page opens it from there.
+- `workspace_new {title, kind, color?, cwd?, text?, model?, effort?}` opens a
+  workspace with its first tab. `kind` is `agent`, `shell` or `none` (a plain
+  shell as well: a workspace cannot be empty). `cwd` must be an absolute folder
+  that exists, `color` a palette name and the driver must serve `set_color`. The
+  answer carries `ws_ref` and `ref`, the workspace and its first tab.
+- `workspace_close {ws_ref, tabs}` closes a workspace and what runs in it. `tabs`
+  is the list of refs the page saw in it. Nothing closes while one of them works
+  or asks (the rule of a single close), never the control workspace, and a list
+  that differs from the tabs now in the workspace is refused as `tab_moved`. A
+  terminal that fails halfway leaves a note naming the tabs still open.
+
+A title follows the rules of a rename (a name in use, a task tab's name and a
+configured workspace are refused). A refusal of `workplace.py` has a code of its
+own: `name_in_use`, `name_managed`, `stale_workspace`, `title_invalid`,
+`driver_cannot`, else `new_refused`.
+
 **Organize with AI.** "Organize with AI" in the head of the sidebar (shown when
 the driver renames tabs) asks the model once for a tidier order: shorter names
 for tabs and workspaces, which tab belongs in which workspace, a colour and a
@@ -3017,6 +3048,12 @@ nothing a stranger could trigger:
   and `/bin/ps eww -o command= -p <pid>` with a pid of digits only, for the
   Sessions page. The cmux CLI is never called directly: whatever the page does
   to an agent tab goes through `workplace.py` and its terminal driver;
+- a new chat (`tab_new`, `workspace_new`) hands your first sentence to the agent as one shell word: the server sends it
+  glued to its flag (`--text=...`), `workplace.py` checks it (no control code but a line break and a tab, at most 2000
+  characters) and quotes it for the shell, and a sentence that starts with a dash goes after `--`. It is the agent's
+  whole prompt, never a command. A shell tab and a workspace of kind `none` take no sentence. Their audit lines name
+  the workspace and the kind. As an argument the sentence stands in your own process list for a moment, and a driver
+  may keep the command in a private launcher file (cmux does: mode 0600, pruned after 7 days), as for any start;
 - the live terminal (`tab_keys`) is a keyboard, so it carries none of the guards of an answer: you type at the
   screen you see, into a shell as well. It takes what a keyboard makes and no more: a key of the list `TERM_KEYS`,
   text without a control code, a paste without one, checked in the server and again in `workplace.py`, so no

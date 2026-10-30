@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Verbs on agent tabs through the terminal driver: adopt, press, answer an option, send, jump, close, done and close
 (what stands behind the tab ends as Done does, then the tab closes), rename a
-tab or a workspace, organize with AI, the control tab, the layout snapshot, and a relay question handed to the
-control tab.
+tab or a workspace, a new tab, a new workspace and a workspace closed, organize with AI, the control tab, the layout
+snapshot, and a relay question handed to the control tab.
 """
 from __future__ import annotations
 
@@ -17,7 +17,17 @@ from . import organize as og
 from . import returns as ret
 from .quick import MODELS
 from .actions_base import (CMUX_TIMEOUT, LAUNCH_TIMEOUT, LIST_TIMEOUT, SHORT_TIMEOUT, SNAPSHOT_TIMEOUT, TAB_REF_RE,
-                           ActionError, Ctx, bad_arg)
+                           WS_REF_RE, ActionError, Ctx, bad_arg)
+
+# What workplace.py says when it refuses (exit 2), each reason as the code the page words it by. The first match wins.
+WORKPLACE_REFUSALS = (("name in use", "name_in_use"),
+                      ("keeps its name", "task_tab_name"),
+                      ("configured workspace", "name_managed"),
+                      ("known by this name", "name_managed"),
+                      ("no open tab", "stale_tab"),
+                      ("no open workspace", "stale_workspace"),
+                      ("a title has", "title_invalid"),
+                      ("control characters", "title_invalid"))
 
 
 class TabVerbs:
@@ -202,24 +212,24 @@ class TabVerbs:
             return
         self.close_tab(ctx, tab, "tab_done_closed")
 
+    def refusal_of(self, why: str, fallback: str) -> ActionError:
+        """A refusal of workplace.py (exit 2) as this action's: each reason its own code (the page words it), none
+        names a form field. A driver that lacks the verb is driver_cannot; a reason not known here is the `fallback`
+        text with the reason in it."""
+        if re.match(r"refused: driver .* cannot ", why):
+            return ActionError(503, "driver_cannot", f"the terminal {why.removeprefix('refused: ')}", None)
+        for words, code in WORKPLACE_REFUSALS:
+            if words in why:
+                return ActionError(409, code, self.tx[code], None)
+        return ActionError(409, fallback, self.tx[fallback].format(err=m.short(why, 160) or "?"), None)
+
     def renamed(self, ctx: Ctx, run) -> None:
         """What a rename through workplace.py came to. Its refusal (exit 2: a name in use or managed, a ref
         that is gone) is this action's refusal; a driver that failed (exit 1, an ERROR line) is a note."""
         tx = self.tx
         why = ((run.err or run.out) or "").strip()
         if run.code == 2:
-            # each reason its own code (the page words it); none names a form field
-            for words, code, key in (("name in use", "name_in_use", "name_in_use"),
-                                     ("keeps its name", "task_tab_name", "task_tab_name"),
-                                     ("configured workspace", "name_managed", "name_managed"),
-                                     ("known by this name", "name_managed", "name_managed"),
-                                     ("no open tab", "stale_tab", "stale_tab"),
-                                     ("no open workspace", "stale_workspace", "stale_workspace"),
-                                     ("a title has", "title_invalid", "title_invalid"),
-                                     ("control characters", "title_invalid", "title_invalid")):
-                if words in why:
-                    raise ActionError(409, code, tx[key], None)
-            raise ActionError(409, "rename_refused", tx["rename_refused"].format(err=m.short(why, 160) or "?"), None)
+            raise self.refusal_of(why, "rename_refused")
         if run.ok:
             ctx.note(tx["renamed"])
         else:
@@ -252,26 +262,140 @@ class TabVerbs:
             ctx.note(self.tx["key_failed"].format(err=m.short((run.err or run.out).strip(), 100)), bad=True)
         ctx.tabs_after(1)
 
+    def workspace_title(self, ws_ref: str) -> str:
+        """The title of a workspace the terminal shows now: one it lists, or one a tab names by this ref, with or
+        without a title. Any other ref is stale_workspace."""
+        app = self.app
+        here = [w.get("title") for w in app.tabs.workspace_list() or [] if w.get("ref") == ws_ref] \
+            + [t.get("workspace") for t in app.tabs.tab_list() if t.get("ws_ref") == ws_ref]
+        if not here:
+            raise ActionError(409, "stale_workspace", self.tx["stale_workspace"], None)
+        return next((n for n in here if n), "")
+
+    def is_control_workspace(self, ws_ref: str, title: str) -> bool:
+        """The workspace of the control session, or the one the config names as the control workspace"""
+        app = self.app
+        control = app.tabs.control_tab()
+        name = (app.cfg.control or "").strip().casefold()
+        return bool((control and control.get("ws_ref") == ws_ref) or (name and str(title or "").strip().casefold() == name))
+
     def v_workspace_rename(self, ctx: Ctx, ws_ref: str, title: str) -> None:
         """A workspace the terminal shows gets a name; the control workspace keeps its own."""
         app = self.app
-        listed = app.tabs.workspace_list() or []
-        tabs = app.tabs.tab_list()
-        # live is a workspace the terminal lists or a tab names by this ref, with or without a title
-        here = [w.get("title") for w in listed if w.get("ref") == ws_ref] \
-            + [t.get("workspace") for t in tabs if t.get("ws_ref") == ws_ref]
-        if not here:
-            raise ActionError(409, "stale_workspace", self.tx["stale_workspace"], None)
-        current = next((n for n in here if n), "")
-        control = app.tabs.control_tab()
-        name = (app.cfg.control or "").strip().casefold()
-        if (control and control.get("ws_ref") == ws_ref) or (name and str(current or "").strip().casefold() == name):
+        if self.is_control_workspace(ws_ref, self.workspace_title(ws_ref)):
             raise ActionError(409, "control_tab", self.tx["control_name"], None)
         run = ctx.call("workplace.rename-workspace", ws_ref,
                        app.workplace("rename-workspace", ws_ref, "--", title), SHORT_TIMEOUT)
         if run.ok:
             app.tabs.refresh_workspaces()
         self.renamed(ctx, run)
+
+    # ------------------------------------------------------------ a new tab, a new workspace, a workspace closed
+
+    def agent_pick(self, ctx: Ctx) -> list[str]:
+        """--model and --effort of an agent that starts now, as a launch gives them (launch.py pick): none while the
+        model choice is switched off, and then the command is exactly the agent template's"""
+        picker = getattr(self.app, "launch_model", None)
+        chosen = picker.pick([], ctx.pick.get("model"), ctx.pick.get("effort")) if picker is not None else None
+        if not chosen:
+            return []
+        return ["--model", chosen["model"], *(["--effort", chosen["effort"]] if chosen["effort"] else [])]
+
+    def made(self, ctx: Ctx, run, done: str) -> dict:
+        """What workplace.py new-tab or new-workspace came to. Its refusal (exit 2) is this action's refusal. The refs
+        of what exists are handed to the page (ctx.extra) also when a step went wrong, since the tab is there; a ref
+        that is no ref of a terminal is not. Returns the answer as JSON ({} when there was none)."""
+        why = ((run.err or run.out) or "").strip()
+        if run.code == 2:
+            raise self.refusal_of(why, "new_refused")
+        try:
+            data = json.loads(run.out)
+        except (ValueError, TypeError):
+            data = {}
+        data = data if isinstance(data, dict) else {}
+        for key, pattern in (("ws_ref", WS_REF_RE), ("ref", TAB_REF_RE)):
+            if isinstance(data.get(key), str) and pattern.match(data[key]):
+                ctx.extra[key] = data[key]
+        if run.ok:
+            ctx.note(self.tx[done], go={"kind": "tab", "ref": ctx.extra["ref"]} if "ref" in ctx.extra else None)
+        else:
+            lines = [m.as_text(x) for x in m._list(data.get("report")) if "ERROR" in m.as_text(x)]
+            err = re.sub(r"^\s*ERROR\s*", "", lines[0] if lines else why)
+            ctx.note(self.tx["new_failed"].format(err=m.short(err, 120) or "?"), bad=True)
+        return data
+
+    def v_tab_new(self, ctx: Ctx, ws_ref: str, kind: str, text: str | None = None, title: str | None = None) -> None:
+        """A new tab in a workspace the terminal shows: an agent chat (the person's sentence is its first prompt and
+        nothing else, workplace.py quotes it for the shell) or a plain shell, which takes no sentence. It answers the
+        new ref, so the page can open the tab. The audit line names the workspace and the kind, never a word of the
+        sentence or the title."""
+        if kind == "shell" and text:
+            raise bad_arg("text", "a shell tab takes no first sentence")
+        try:
+            self.workspace_title(ws_ref)
+        except ActionError:
+            # the workspace may have been made a moment ago (workspace_new), after the last poll
+            self.app.tabs.poll(asks=False)
+            self.workspace_title(ws_ref)
+        ctx.audit_extra = {"kind": kind}
+        argv = self.app.workplace("new-tab", ws_ref, f"--kind={kind}", *([f"--title={title}"] if title else []),
+                                  *([f"--text={text}"] if text else []), "--json",
+                                  *(self.agent_pick(ctx) if kind == "agent" else []))
+        self.made(ctx, ctx.call("workplace.new-tab", ws_ref, argv, LAUNCH_TIMEOUT), "tab_new_done")
+        ctx.tabs_after(1)
+
+    def v_workspace_new(self, ctx: Ctx, title: str, kind: str, color: str | None = None, cwd: str | None = None,
+                        text: str | None = None) -> None:
+        """A new workspace with its first tab: an agent chat (kind agent), or a plain shell (shell, none: a
+        workspace cannot be empty). It answers the workspace ref and the ref of its first tab. A colour needs the
+        driver's set_color. The audit line names the new workspace and the kind, never the title or the sentence."""
+        if kind != "agent" and text:
+            raise bad_arg("text", "only an agent takes a first sentence")
+        if color and "set_color" not in self.app.driver_caps():
+            raise ActionError(503, "driver_cannot", "the terminal driver cannot colour a workspace")
+        ctx.audit_extra = {"kind": kind}
+        argv = self.app.workplace("new-workspace", f"--title={title}", f"--kind={kind}",
+                                  *([f"--color={color}"] if color else []), *([f"--cwd={cwd}"] if cwd else []),
+                                  *([f"--text={text}"] if text else []), "--json",
+                                  *(self.agent_pick(ctx) if kind == "agent" else []))
+        run = ctx.call("workplace.new-workspace", "", argv, LAUNCH_TIMEOUT)
+        try:
+            self.made(ctx, run, "workspace_new_done")
+        finally:
+            ctx.subject = ctx.extra.get("ws_ref", "")
+        self.app.tabs.refresh_workspaces()
+        ctx.tabs_after(1)
+
+    def v_workspace_close(self, ctx: Ctx, ws_ref: str, tabs: list[str]) -> None:
+        """A workspace and what runs in it closes, only when every tab in it may close as one alone does (closable:
+        none works or asks) and the tabs are the ones the page saw. The control workspace never closes. Nothing is
+        closed unless every check passes; a terminal that fails halfway leaves a note naming the tabs still open."""
+        app, tx = self.app, self.tx
+        app.tabs.poll(asks=False)
+        title = self.workspace_title(ws_ref)
+        if self.is_control_workspace(ws_ref, title):
+            raise ActionError(409, "control_tab", tx["control_close"], None)
+        if {t["ref"] for t in app.tabs.tab_list() if t.get("ws_ref") == ws_ref} != set(tabs):
+            raise ActionError(409, "tab_moved", tx["workspace_moved"], None)
+        for ref in tabs:
+            try:
+                self.closable(ref)
+            except ActionError:
+                found = app.tabs.find(ref) or {}
+                raise ActionError(409, "not_applicable", tx["workspace_busy"].format(
+                    name=m.short(found.get("name") or ref, 30)), None) from None
+        ctx.audit_extra = {"tabs": len(tabs)}
+        run = ctx.call("workplace.close-workspace", ws_ref, app.workplace("close-workspace", ws_ref), SHORT_TIMEOUT)
+        if run.ok:
+            app.tabs.refresh_workspaces()
+            ctx.note(tx["workspace_closed"].format(name=m.short(title or ws_ref, 40)))
+        else:
+            app.tabs.poll(asks=False)
+            left = [t["name"] for t in (app.tabs.find(ref) for ref in tabs) if t]
+            err = m.short(re.sub(r"^\s*ERROR\s*", "", ((run.err or run.out) or "").strip()), 120) or "?"
+            ctx.note(tx["workspace_stays"].format(err=err, open=", ".join(m.short(n, 30) for n in left))
+                     if left else tx["close_failed"].format(err=err), bad=True)
+        ctx.tabs_after(1)
 
     # ------------------------------------------------------------ organize with AI (organize.py)
 

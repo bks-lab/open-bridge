@@ -128,6 +128,15 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # a name of a tab or a workspace; task tabs and configured workspaces keep theirs (workplace.py managed_names)
     "tab_rename": {"tab_ref": ("tab_ref", True), "title": ("title", True)},
     "workspace_rename": {"ws_ref": ("ws_ref", True), "title": ("title", True)},
+    # a new tab in a workspace by its live ref, a new workspace with its first tab, a workspace closed (actions_tabs.py).
+    # text: the person's first sentence, the whole prompt of an agent (never of a shell); tabs: the refs the page saw in
+    # the workspace it closes
+    "tab_new": {"ws_ref": ("ws_ref", True), "kind": ("tab_kind", True), "text": ("text", False), "title": ("title", False),
+                "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "workspace_new": {"title": ("title", True), "kind": ("workspace_kind", True), "color": ("palette_color", False),
+                      "cwd": ("cwd", False), "text": ("text", False), "model": ("launch_model", False),
+                      "effort": ("launch_effort", False)},
+    "workspace_close": {"ws_ref": ("ws_ref", True), "tabs": ("tab_refs", True)},
     # organize with AI: a proposal of one model call (read only), then the ticked items of it (organize.py)
     "organize_propose": {},
     "organize_apply": {"proposal": ("organize_id", True), "items": ("organize_items", True)},
@@ -249,13 +258,15 @@ READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
-                         "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys"})
+                         "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys",
+                         "tab_new", "workspace_new", "workspace_close"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
 NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_keys": "keys", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
-             "tab_rename": "rename", "workspace_rename": "rename_workspace", "tab_move": "move_tab"}
+             "tab_rename": "rename", "workspace_rename": "rename_workspace", "tab_move": "move_tab", "tab_new": "new_tab",
+             "workspace_new": "new_workspace", "workspace_close": "close_workspace"}
 
 
 class ActionError(Exception):
