@@ -14,6 +14,7 @@ answers at all (no DESIGN.md) to the plain neutrals in BASE_DEFAULTS.
 """
 from __future__ import annotations
 
+import functools
 import importlib.util
 import re
 import sys
@@ -163,7 +164,9 @@ def fonts_css(design: dict) -> str:
     return f":root {{\n  --font-display: {_stack(display)};\n  --font-ui: {_stack(ui)};\n}}\n"
 
 
+@functools.lru_cache(maxsize=1)
 def _resolver():
+    """scripts/designs.py, loaded once: /colors.css asks on every request."""
     spec = importlib.util.spec_from_file_location("bridge_designs", RESOLVER)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
