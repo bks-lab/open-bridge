@@ -211,6 +211,7 @@ def socket_tabs(tree: dict) -> list[dict]:
     """Terminal tabs from `cmux tree --json`: live, unlike the session file,
     which cmux writes with a delay."""
     tabs = []
+    front = (tree.get("active") or {}).get("surface_ref")
     for window in tree.get("windows") or []:
         for ws in window.get("workspaces") or []:
             for pane in ws.get("panes") or []:
@@ -220,7 +221,7 @@ def socket_tabs(tree: dict) -> list[dict]:
                     tabs.append({"workspace": cl.strip_status_glyph(ws.get("title") or "").strip(),
                                  "ws_ref": ws.get("ref"),
                                  "surface": sf.get("ref"),
-                                 "id": sf.get("id"),
+                                 "id": sf.get("id"), "front": sf.get("ref") == front,
                                  "title": cl.strip_status_glyph(sf.get("title") or "")})
     return tabs
 
@@ -264,7 +265,7 @@ def tabs() -> list[dict]:
         out.append({"name": t["title"], "workspace": t["workspace"], "ref": t["surface"],
                     "ws_ref": t.get("ws_ref"), "state": info.get("state", "shell"),
                     "state_source": info.get("state_source", "glyph"),
-                    "last": info.get("last", ""), "id": t.get("id"),
+                    "last": info.get("last", ""), "id": t.get("id"), "front": t.get("front") is True,
                     "is_self": own is not None and t.get("id") == own})
     return out
 

@@ -345,6 +345,23 @@ follows the open chat until you hold it. A chat without a file can pick one ther
 open chat's workspace, and ⛶ leaves only the fields. This browser keeps the layout. A narrow field wraps the lines of a
 wider terminal, since the terminal keeps its own width.
 
+### Tools of a chat
+
+Under a field's head stand the tools: **Stop** (or Ctrl+C in a shell), **Commands** with a search, **Write** for a long
+text, **Keys** as buttons, **History** and the size of the type. A command is typed as you would type it, through
+`tab_keys`, and stays off while the tab asks or holds a draft; `/clear` asks once more on its row. **History** shows an
+agent tab's whole conversation from its session file and a shell's scrollback, with a search (`GET /api/tab-history`).
+The tab's own status line, where it names them, gives the head its model, context and cost.
+
+`+` on a workspace starts a chat: Claude with a first sentence or none, a shell, or an earlier session going on.
+**New** beside Workspaces makes a workspace. ⋯ on a tab opens it beside the others, renames, moves or pins it, tells you
+when it is done, and branches the conversation. ⋯ on a workspace shows all its tabs side by side and closes it, which the
+server refuses while a tab works or asks. Words marked in the terminal can be copied, asked about, put in the file or
+sent to another chat, where they wait unsent. The search over the list looks through names, last words and questions.
+
+The **Terminal** switch on the bar joins page and terminal, both off until set: the page follows the tab in front there
+(driver field `front`), and a click here brings a tab to the front there.
+
 ### The Files tab
 
 **Files** is a tab of its own, right after the work tab. While no record is open, the search and its list take the

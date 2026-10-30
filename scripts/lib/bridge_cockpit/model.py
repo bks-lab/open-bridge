@@ -1033,7 +1033,8 @@ def to_tab(t: dict) -> dict:
             # set by the tab poll (is_idle): the tab is done, not asking
             "idle": t.get("idle") is True,
             # kept internally, never sent to the page
-            "id": as_text_or_null(t.get("id")), "is_self": t.get("is_self") is True}
+            "id": as_text_or_null(t.get("id")), "is_self": t.get("is_self") is True,
+            "front": t.get("front") is True}
 
 
 def ref_number(ref: Any) -> int:

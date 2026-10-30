@@ -74,7 +74,7 @@ export function agentsLanding(s) {
 /** The controller's actions of the Chat's areas and of the ways to an agent, on a store: get() the state,
  *  setUi(patch), save(key, value) for this browser, now() the clock. app.js spreads them into ctl; they
  *  stand here so a test drives them on a small store of its own */
-export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
+export function chatAreaActions({ get, setUi, save, now = () => Date.now(), jump = null }) {
   // a patch that changes the area keeps it in this browser too
   const apply = patch => {
     if (patch.chatArea && patch.chatArea !== get().ui?.chatArea) save('bridge-cockpit.chatArea', patch.chatArea)
@@ -113,6 +113,7 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
     fieldSplit: at => putFields({ ...fields(), split: Math.min(75, Math.max(25, at)) }),
     fieldsFull: () => apply({ fieldsFull: !get().ui?.fieldsFull }),
     setChatFind: q => apply({ chatFind: q }),
+    setLink: (k, v) => { const link = { ...get().ui?.link, [k]: v }; save('bridge-cockpit.chatLink', JSON.stringify(link)); apply({ link }) },
     fieldWall: refs => putFields(fieldsWall(fields(), refs)),
     newChat: dialog => apply({ newChat: dialog }),
     togglePin: ref => {
@@ -150,7 +151,10 @@ export function chatAreaActions({ get, setUi, save, now = () => Date.now() }) {
       return page
     },
     // the chat as cmux: what the right side shows ({ kind: 'ws' | 'tab' | 'chat' | 'bridge', id })
-    pickRoom: r => room(r, r?.kind === 'tab' ? { tabWalk: walkRefs(get().tabs?.tabs) } : {}),
+    pickRoom: r => {
+      room(r, r?.kind === 'tab' ? { tabWalk: walkRefs(get().tabs?.tabs) } : {})
+      if (r?.kind === 'tab' && get().ui?.link?.jump && !(get().tabs?.tabs ?? []).find(x => x.ref === r.id)?.front) jump?.(r.id)
+    },
     // the walk through the tabs that want you, from the first of these refs (Work through, the waiting tabs)
     walkFrom: refs => { if (refs?.length) room({ kind: 'tab', id: refs[0] }, { tabWalk: refs }) },
     walkTab: (ref, { focus = false } = {}) => { if (ref) room({ kind: 'tab', id: ref }, { walkFocus: focus }) },

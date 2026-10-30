@@ -271,3 +271,9 @@ button.st-chip:hover:not(:disabled) { border-color: var(--accent-line); color: v
 .new-field { display: grid; gap: 4px; color: var(--on-surface-muted); }
 .new-check { display: flex; align-items: center; gap: 8px; }
 .new-resume { display: grid; gap: 2px; }
+
+.field-link { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-left: 4px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: none; color: var(--on-surface); font: inherit; font-size: 12px; cursor: pointer; }
+.field-link i { width: 7px; height: 7px; border-radius: 50%; background: var(--on-surface-faint); }
+.field-link i.is-on { background: var(--success); }
+.pop-check { flex: none; width: 15px; height: 15px; display: inline-grid; place-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--accent); font-size: 11px; }
+.pop-why { display: block; }

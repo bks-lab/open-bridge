@@ -1106,3 +1106,9 @@ def test_close_workspace_that_cmux_refuses_is_a_driver_error(fake):
     fake.fail = "close-workspace"
     done = fake.call({"verb": "close_workspace", "workspace": "workspace:4"})
     assert done.returncode == 1 and "error" in json.loads(done.stdout)
+
+
+def test_socket_tabs_mark_the_tab_in_front():
+    tree = {"active": {"surface_ref": "surface:2"}, "windows": [{"workspaces": [{"ref": "workspace:1", "title": "W", "panes": [
+        {"surfaces": [{"ref": "surface:1", "type": "terminal", "title": "a"}, {"ref": "surface:2", "type": "terminal", "title": "b"}]}]}]}]}
+    assert [t["front"] for t in drv.socket_tabs(tree)] == [False, True]

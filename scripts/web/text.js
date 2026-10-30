@@ -891,6 +891,7 @@ const en = {
     newChat: 'New chat', newChatIn: w => `New chat in ${w}`, newWorkspace: 'New workspace', newShort: 'New', kindAgent: 'Claude', kindShell: 'Shell', kindResume: 'Go on', firstLine: 'What is it about? Empty for a free chat', nameOptional: 'Name, else from the text', noOld: 'No earlier session without a tab.', openBeside: 'Open beside the open tab', start: 'Start', create: 'Create', name: 'Name', color: 'Colour', noColor: 'None', folder: 'Folder, else this Bridge', firstChat: 'Open a chat in it right away', wall: 'All tabs side by side', closeWs: 'Close workspace', closeAgain: n => `Click again: closes ${n} tab${n === 1 ? '' : 's'}`, moreWs: 'More about this workspace',
     beside: 'Open beside', rename: 'Rename', move: 'Move to', pin: 'Pin', unpin: 'Unpin', pinned: 'Pinned', bell: on => (on ? 'Stop telling me' : 'Tell me when done'), more: 'More about this tab',
     findChats: 'Search all chats', found: n => `${n} found`, selCopy: 'Copy', selAsk: 'Ask about it', selFile: 'Into the file', selChat: 'To another chat',
+    doneNote: n => `${n} is done`,
     bar: 'Tools of this chat', stop: 'Stop', stopTitle: 'Interrupts the agent, as Esc does in the terminal', interrupt: 'Stops the running program', clear: 'Clear',
     commands: 'Commands', write: 'Write', writeHint: 'A longer text, several lines, in peace', keys: 'Keys', history: 'History', smaller: 'Smaller type', larger: 'Larger type', toTerminal: 'In the terminal',
     search: 'Find a command', again: 'Click again: really empty it', blockedAsk: 'The tab asks something: answer that first', blockedDraft: 'Something is typed in that tab',
@@ -901,6 +902,7 @@ const en = {
     cmd: { clear: 'Start anew', compact: 'Condense', rewind: 'Rewind', branch: 'Branch off here', resume: 'Earlier session', model: 'Change the model', effort: 'Effort', context: 'How full is the context', usage: 'Usage', status: 'State of the session', claude: 'Start an agent here' },
   },
   fields: {
+    link: 'Page and terminal', linkWord: 'Terminal', follow2: 'The page follows the terminal', followWhy: 'The tab you work in there comes up here, with its file beside it', jump: 'The terminal follows the page', jumpWhy: 'A click on a tab here brings it to the front there',
     bar: 'Fields of the Chat', topic: 'Topic', chatTopic: 'Chat + topic', chatTopicTitle: 'The reading and the file beside the chat',
     layout: { 1: 'One field', '2h': 'Two side by side', '2v': 'Two on top of each other', 3: 'Three side by side', m2: 'One large and two small', 4: 'Four in a grid' },
     swap: 'Swap the active field with the next', swapTwo: 'Swap these two fields', full: 'Only the fields, without the page around them',
@@ -2629,6 +2631,7 @@ const de = {
     newChat: 'Neuer Chat', newChatIn: w => `Neuer Chat in ${w}`, newWorkspace: 'Neuer Workspace', newShort: 'Neu', kindAgent: 'Claude', kindShell: 'Shell', kindResume: 'Fortsetzen', firstLine: 'Worum geht es? Leer lassen für einen freien Chat', nameOptional: 'Name, sonst aus dem Text', noOld: 'Keine frühere Sitzung ohne Tab.', openBeside: 'Neben dem offenen Tab öffnen', start: 'Starten', create: 'Anlegen', name: 'Name', color: 'Farbe', noColor: 'Keine', folder: 'Ordner, sonst diese Bridge', firstChat: 'Gleich einen Chat darin öffnen', wall: 'Alle Tabs nebeneinander', closeWs: 'Workspace schließen', closeAgain: n => `Nochmal klicken: schließt ${n} Tab${n === 1 ? '' : 's'}`, moreWs: 'Mehr zu diesem Workspace',
     beside: 'Daneben öffnen', rename: 'Umbenennen', move: 'Verschieben nach', pin: 'Anheften', unpin: 'Nicht mehr anheften', pinned: 'Angeheftet', bell: on => (on ? 'Nicht mehr melden' : 'Melden, wenn er fertig ist'), more: 'Mehr zu diesem Tab',
     findChats: 'In allen Chats suchen', found: n => `${n} gefunden`, selCopy: 'Kopieren', selAsk: 'Dazu fragen', selFile: 'In die Akte', selChat: 'An anderen Chat',
+    doneNote: n => `${n} ist fertig`,
     bar: 'Werkzeuge dieses Chats', stop: 'Stopp', stopTitle: 'Unterbricht den Agenten, wie Esc im Terminal', interrupt: 'Bricht das laufende Programm ab', clear: 'Leeren',
     commands: 'Befehle', write: 'Schreiben', writeHint: 'Längerer Text, mehrere Zeilen, in Ruhe schreiben', keys: 'Tasten', history: 'Verlauf', smaller: 'Schrift kleiner', larger: 'Schrift größer', toTerminal: 'Im Terminal',
     search: 'Befehl suchen', again: 'Nochmal klicken: wirklich leeren', blockedAsk: 'Der Tab fragt etwas: erst das beantworten', blockedDraft: 'Im Tab steht ein Entwurf',
@@ -2639,6 +2642,7 @@ const de = {
     cmd: { clear: 'Neu anfangen', compact: 'Verdichten', rewind: 'Zurückspulen', branch: 'Hier abzweigen', resume: 'Frühere Sitzung', model: 'Modell wechseln', effort: 'Aufwand', context: 'Wie voll ist der Kontext', usage: 'Verbrauch', status: 'Stand der Sitzung', claude: 'Agent hier starten' },
   },
   fields: {
+    link: 'Cockpit und Terminal', linkWord: 'Terminal', follow2: 'Cockpit folgt dem Terminal', followWhy: 'Der Tab, in dem du dort arbeitest, steht hier vorn, seine Akte daneben', jump: 'Terminal folgt dem Cockpit', jumpWhy: 'Ein Klick auf einen Tab hier holt ihn dort nach vorn',
     bar: 'Felder des Chats', topic: 'Zum Thema', chatTopic: 'Chat + Thema', chatTopicTitle: 'Lage und Akte neben dem Chat',
     layout: { 1: 'Ein Feld', '2h': 'Zwei nebeneinander', '2v': 'Zwei übereinander', 3: 'Drei nebeneinander', m2: 'Ein großes und zwei kleine', 4: 'Vier im Raster' },
     swap: 'Das aktive Feld mit dem nächsten tauschen', swapTwo: 'Diese beiden Felder tauschen', full: 'Nur die Felder, ohne die Seite drumherum',
