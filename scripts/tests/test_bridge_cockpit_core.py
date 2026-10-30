@@ -411,3 +411,36 @@ def test_the_colour_cache_watches_the_resolved_file(tmp_path):
     brand.write_text(brand.read_text(encoding="utf-8").replace("#5A1E3C", "#3C1E5A"), encoding="utf-8")
     second, _ = server.App.colors_css(app)
     assert b"#3C1E5A" in second, "an edit to the resolved design file did not reach /colors.css"
+
+
+def test_a_broken_theme_design_is_said_and_clears_when_fixed(tmp_path):
+    import threading
+    import types
+    from lib.bridge_cockpit import server
+    root = _branded(tmp_path)
+    (root / "themes" / "house.yaml").write_text("meta: {name: house}\nbranding: {design: ghost}\n", encoding="utf-8")
+    app = types.SimpleNamespace(root=root, _colors=None, _colors_lock=threading.Lock())
+    broken, tag_broken = server.App.colors_css(app)
+    assert b"design error" in broken and b"ghost" in broken
+    # fixed by dropping the reference: the file served stays the root DESIGN.md, only the error goes
+    (root / "themes" / "house.yaml").write_text("meta: {name: house}\n", encoding="utf-8")
+    fixed, tag_fixed = server.App.colors_css(app)
+    assert b"design error" not in fixed and b"#101010" in fixed, "the error comment outlived the fix"
+    assert tag_fixed != tag_broken
+
+
+def test_the_resolution_is_cached_against_config_and_theme(tmp_path, monkeypatch):
+    from lib.bridge_cockpit import design
+    root = _branded(tmp_path)
+    calls = []
+    real = design._resolver().resolve
+    monkeypatch.setattr(design._resolver(), "resolve", lambda *a, **k: calls.append(1) or real(*a, **k))
+    for _ in range(3):
+        assert design.design_file(root).name == "brand.md"
+    assert len(calls) == 1, "bridge-config and the theme were parsed again on every /colors.css request"
+    theme = root / "themes" / "house.yaml"
+    theme.write_text(theme.read_text(encoding="utf-8") + "# touched\n", encoding="utf-8")
+    import os
+    os.utime(theme, ns=(theme.stat().st_atime_ns, theme.stat().st_mtime_ns + 10_000_000))
+    design.design_file(root)
+    assert len(calls) == 2, "a changed theme must be resolved again"

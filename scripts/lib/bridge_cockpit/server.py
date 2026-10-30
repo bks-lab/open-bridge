@@ -33,6 +33,7 @@ import threading
 import time
 import traceback
 import urllib.parse
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -69,7 +70,7 @@ from .guide import Guide
 from . import prio
 from .usage import Usage
 from .runner import Runner, RunnerRefused
-from .design import design_file, stylesheet
+from .design import resolved, stylesheet
 from .store import WebStore, append_clicks, append_log, atomic_write_json
 try:                       # Jev is an optional integration: without its file it is simply off
     from . import jev
@@ -356,16 +357,18 @@ class App:
     def colors_css(self) -> tuple[bytes, str]:
         """The stylesheet from the design the Bridge resolves (design.py) and its tag, kept until that file
         changes (path, mtime, size): a theme pointing at another design, or an edit to the file itself"""
-        path = design_file(self.root)
+        path, error = resolved(self.root)
         try:
             st = path.stat()
-            stamp = (str(path), st.st_mtime_ns, st.st_size)
+            stamp = (str(path), error, st.st_mtime_ns, st.st_size)
         except OSError:
-            stamp = (str(path), 0, 0)
+            stamp = (str(path), error, 0, 0)
         with self._colors_lock:
             if self._colors is None or self._colors[0] != stamp:
                 body = stylesheet(self.root).encode("utf-8")
-                self._colors = (stamp, body, static_etag(stamp[1], len(body) + stamp[2]))
+                # the path and the error are in the tag too: either changes the body without touching the file
+                which = zlib.crc32(f"{stamp[0]}|{stamp[1]}".encode("utf-8"))
+                self._colors = (stamp, body, static_etag(stamp[2] ^ which, len(body) + stamp[3]))
             return self._colors[1], self._colors[2]
 
     def driver_caps(self, fresh: bool = False) -> list[str]:

@@ -18,6 +18,7 @@ import functools
 import importlib.util
 import re
 import sys
+import threading
 from pathlib import Path
 
 import yaml
@@ -168,9 +169,30 @@ def fonts_css(design: dict) -> str:
 def _resolver():
     """scripts/designs.py, loaded once: /colors.css asks on every request."""
     spec = importlib.util.spec_from_file_location("bridge_designs", RESOLVER)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+_RESOLVED: dict[str, tuple[tuple, tuple[Path, str | None]]] = {}
+_RESOLVED_LOCK = threading.Lock()
+
+
+def _stat(path: Path):
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _inputs(root: Path) -> tuple:
+    """Everything a resolution reads: bridge-config.yaml, every theme, the design family (its folder's
+    mtime moves when a design is added or removed) and whether DESIGN.md exists. Stats only, no parsing."""
+    themes = sorted((root / "themes").glob("*.yaml"))
+    return (_stat(root / "bridge-config.yaml"), tuple((p.name, _stat(p)) for p in themes),
+            _stat(root / "identity" / "designs"), (root / "DESIGN.md").is_file())
 
 
 def resolved(root: Path) -> tuple[Path, str | None]:
@@ -178,7 +200,21 @@ def resolved(root: Path) -> tuple[Path, str | None]:
 
     Only the instance default applies (steps 5 and 6 of scripts/designs.py): the cockpit belongs to no
     context and no persona. A theme naming an unknown design still gets a page, with the error said
-    in the stylesheet and on stderr, never swallowed."""
+    in the stylesheet and on stderr, never swallowed. Kept until a file the resolution reads changes,
+    since /colors.css asks on every request."""
+    root = Path(root)
+    inputs = _inputs(root)
+    with _RESOLVED_LOCK:
+        hit = _RESOLVED.get(str(root))
+        if hit and hit[0] == inputs:
+            return hit[1]
+    answer = _resolve(root)
+    with _RESOLVED_LOCK:
+        _RESOLVED[str(root)] = (inputs, answer)
+    return answer
+
+
+def _resolve(root: Path) -> tuple[Path, str | None]:
     default = Path(root) / "DESIGN.md"
     if not RESOLVER.is_file():
         return default, None
