@@ -1,7 +1,8 @@
 """Where the Bridge is, and what its `mail:` block says.
 
 Every value a draft needs that is not the message itself comes from the tree:
-the persona carries the footer, the mandant carries the recipient, DESIGN.md
+the persona carries the footer, the mandant carries the recipient, the design
+the Bridge resolves for that persona (scripts/designs.py, else DESIGN.md)
 carries the colours, `bridge-config.yaml` carries the defaults. This module
 finds the tree and reads the defaults. Nothing here is a hardcoded preference.
 """

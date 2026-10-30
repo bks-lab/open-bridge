@@ -270,7 +270,9 @@ def build(req: Request, cfg: MailConfig) -> Draft:
     # dress
     theme_name = req.theme or str(profile.get("theme") or cfg.get("theme") or "design")
     tokens = {**(cfg.get("tokens") or {}), **(profile.get("tokens") or {})}
-    t = theme_mod.load(theme_name, root, tokens)
+    # the persona the mail goes out under picks the design (identity/designs/)
+    persona = str(profile.get("persona_ref") or fcfg.get("_persona") or "")
+    t = theme_mod.load(theme_name, root, tokens, persona)
     d.theme_name, d.theme = theme_name, t
     d.decisions += [f"theme {theme_name}: {n}" for n in t.notes]
     labels = {**(cfg.get("labels") or {}), **(profile.get("labels") or {})}
