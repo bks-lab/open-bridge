@@ -69,6 +69,7 @@ Run this every time, in order:
 | File pattern you're creating | Template path | Schema path | Peer example |
 |---|---|---|---|
 | `identity/personas/<id>.yaml` | `identity/personas/_template.yaml` | `identity/personas/_schema.yaml` | `docs/examples/personas/` |
+| `identity/designs/<id>.md` | `identity/designs/_template.md` (or copy the root `DESIGN.md`) | `identity/designs/_schema.yaml` (front matter) | the root `DESIGN.md` |
 | `identity/accounts/<id>.yaml` | `identity/accounts/_template.yaml` | `identity/accounts/_schema.yaml` (permissive) | `examples/agency/identity/accounts/cloud-provider.yaml` |
 | `identity/mandants/<id>.yaml` | `identity/mandants/_template.yaml` | `identity/mandants/_schema.yaml` | `examples/agency/identity/mandants/team.yaml` |
 | `infra/remotes/<name>.yaml` | `infra/remotes/_template.yaml` | `infra/remotes/_schema.yaml` | `examples/agency/infra/remotes/prod-server.yaml` |

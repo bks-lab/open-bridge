@@ -54,7 +54,7 @@ the path decides.
 
 | Files | Read from | Unrecognised or undeclared |
 |---|---|---|
-| instance files directly in `identity/personas/`, `identity/mandants/`, `identity/accounts/`, `identity/contracts/`, `infra/channels/`, `infra/remotes/`, `infra/secret-stores/`, `infra/a2a-peers/`, `workflow/briefings/`, `workflow/contexts/`, `workflow/projects/` | top-level `scope:` | path rule, `user` |
+| instance files directly in `identity/personas/`, `identity/mandants/`, `identity/accounts/`, `identity/contracts/`, `identity/designs/` (Markdown, `scope:` inside the `---` fence), `infra/channels/`, `infra/remotes/`, `infra/secret-stores/`, `infra/a2a-peers/`, `workflow/briefings/`, `workflow/contexts/`, `workflow/projects/` | top-level `scope:` | path rule, `user` |
 | `themes/<name>.yaml`, plus the logo it names in `branding.logo_ascii:` | `meta.scope` | shipped themes `core`, any other `user` |
 | `docs/**/*.md` | top-level `scope:`, which cannot unlock a `user` or `personal` path | `core` |
 | files under `skills/<name>/`, except the user paths above | `metadata.scope` in that skill's `SKILL.md` | `user` (fail closed) |
@@ -79,7 +79,7 @@ checked with no frontmatter present.
 | `scripts/` outside `SCRIPTS_CORE_ALLOWLIST` | `scripts/example-tool.sh` | `user` |
 | a skill folder without a readable `SKILL.md` | `skills/example/references/notes.md` | `user` |
 | any other wrapper family, deny by default | `workflow/meetings/example.yaml`, `identity/mail-footers/example.yaml` | `user` |
-| wrapper templates and schemas | `workflow/meetings/_template.yaml`, `identity/personas/_schema.yaml` | `core` |
+| wrapper templates and schemas | `workflow/meetings/_template.yaml`, `identity/personas/_schema.yaml`, `identity/designs/_template.md` | `core` |
 | everything else | `AGENTS.md`, `docs/example.md`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
 
 **Instance data versus promote tier.** Two questions share the word USER. One

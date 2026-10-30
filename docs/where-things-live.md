@@ -39,6 +39,7 @@ searches again.
 | Which field values and states may I set on a tracker board? | [`workflow/projects/_template.yaml`](../workflow/projects/_template.yaml), then the instance's `workflow/projects/<slug>.yaml` |
 | Where does a secret go, and how does a config file refer to it? | [`rules/secret-placement.md`](../rules/secret-placement.md), [`infra/secret-stores/_template.yaml`](../infra/secret-stores/_template.yaml) |
 | Which cloud tenant and subscription does a command need? | [`docs/cloud-accounts.md`](cloud-accounts.md) |
+| Which design (colours, fonts, brand) does this piece of work use, and where does another brand go? | [`DESIGN.md`](../DESIGN.md#designs-in-this-bridge), then `python3 scripts/designs.py resolve`; brands live in `identity/designs/` |
 | Which machine is "my PC", and how do I reach it? | [`skills/remote/references/fleet.md`](../skills/remote/references/fleet.md#stage-1--identify-target), then the instance's `infra/remotes/` |
 
 ## Gates: how an operation is guarded

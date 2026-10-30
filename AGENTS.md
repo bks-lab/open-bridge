@@ -183,6 +183,7 @@ one hop both ways, `--fix` rewrites a reference whose task merely moved KIND).
 | `identity/contracts/` | a recurring obligation: utility, telco, insurance, SaaS |
 | `identity/vehicles/` | a vehicle the user owns or leases: plate, VIN, the persona that bears it |
 | `identity/agent/` | this orchestrator's own name, role and voice |
+| `identity/designs/` | a brand: colours, type and shapes a generated visual uses |
 | `infra/remotes/` | a machine: ssh, wake, services, "which PC" |
 | `infra/channels/` | an outbound transport: mail, chat, bot, digest |
 | `infra/backups/` | what is backed up where, and whether it is fresh |
@@ -595,11 +596,12 @@ tenant switching, rotation:
 
 ## Design System
 
-`DESIGN.md` is the design-system manifest (palette, typography, spacing,
-component anatomy). **Read it before generating user-facing visuals** — any skill
-emitting HTML, PDF, slides, certificates or styled email pulls its tokens from
-there. **Never hand-pick a brand colour**; if a token is missing, add it to
-[`DESIGN.md`](DESIGN.md) first, then reference it.
+`DESIGN.md` is the default design and the index to every other one. Further
+designs live one per brand in `identity/designs/<id>.md`, same format, own
+`scope:`, so an org brand travels with its overlay. Generators ask
+`python3 scripts/designs.py resolve` which one applies (context, persona, theme,
+then `DESIGN.md`). **Never hand-pick a brand colour**; if a token is missing,
+add it to the design that owns it.
 ---
 
 ## Variable Interpolation

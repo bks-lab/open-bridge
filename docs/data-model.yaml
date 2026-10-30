@@ -85,6 +85,14 @@ families:
     writer: "a person"
     read: named
 
+  - path: identity/designs/
+    object: "a brand a generated visual can wear: colours, type and shapes, in the DESIGN.md format"
+    island: "core: template, schema; user: entries; org: an organisation's brand via an overlay"
+    lives: [core, pii, overlay]
+    references: []
+    writer: "a person; contexts, personas and themes point at it (design_ref, branding.design), scripts/designs.py resolves it"
+    read: named
+
   - path: identity/mail-footers/
     object: "how a drafted mail is signed: contact block, badges, cards, a dated notice, small print"
     island: "core: template, schema; user: entries; org: a shared team footer via an overlay"
@@ -105,7 +113,7 @@ families:
     object: "an identity the user holds: signature, tax data, filing paths"
     island: "core: template, schema; user: entries"
     lives: [core, pii]
-    references: ["mandant_refs → identity/mandants/"]
+    references: ["mandant_refs → identity/mandants/", "design_ref → identity/designs/"]
     writer: "a person; onboarding may seed the first"
     read: named
 
@@ -212,7 +220,7 @@ families:
     object: "where a piece of work gets documented"
     island: "core: template, schema; user: entries; org: shared contexts via scope"
     lives: [core, pii, overlay]
-    references: ["persona_ref → identity/personas/"]
+    references: ["persona_ref → identity/personas/", "design_ref → identity/designs/"]
     writer: "a person, or an org overlay"
     read: named
 

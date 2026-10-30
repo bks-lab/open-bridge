@@ -91,7 +91,7 @@ layout now").
 | `scripts/lib/bridge_cockpit/agents.py` | A2A agents: the peers of `infra/a2a-peers/`, their public cards fetched through `net.py`, a conversation with each kept in `agents.json`, and the `a2a.py ask` and `get` shapes the runner lets through |
 | `scripts/lib/bridge_cockpit/bridges.py` | the other Bridges on this machine for the chat: siblings and downstream instances of `infra/instances/` that have a clone here, neither read-only, dormant nor archived |
 | `scripts/lib/bridge_cockpit/daybook.py` | the day book of the start page, `days.json`: each quota's use per day (rises add up, a fall is a reset) and the counts of each day, two weeks |
-| `scripts/lib/bridge_cockpit/design.py` | the page's colours and fonts from the Bridge's own `DESIGN.md`, served as `/colors.css` |
+| `scripts/lib/bridge_cockpit/design.py` | the page's colours and fonts from the Bridge's own design (the theme's `branding.design`, else `DESIGN.md`, via `scripts/designs.py`), served as `/colors.css` |
 | `scripts/lib/bridge_cockpit/graph.py` | the knowledge graph of the inner room: which config entry names which, with the open tasks and streams as nodes |
 | `scripts/lib/bridge_cockpit/history.py` | `history.json`: every close, drop, settle or hide with its items and the inverse that takes it back |
 | `scripts/lib/bridge_cockpit/jev.py` | Jev (TypeSafe): the rows sent for a rating or a page's order, the cache, the day's token total, the audit line only when a request left the machine |

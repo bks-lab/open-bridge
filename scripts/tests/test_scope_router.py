@@ -139,7 +139,7 @@ def synth_repo(tmp_path, monkeypatch):
     write("workflow/briefings/team.yaml", "schema_version: 1\nscope: org\nid: team\n")
     write("workflow/briefings/morning.yaml", "schema_version: 1\nscope: user\nid: morning\n")
 
-    # identity/designs/ — a brand is a Markdown file with front matter, so its
+    # identity/designs/: a brand is a Markdown file with front matter, so its
     # `scope:` sits inside the `---` fence. An org brand reaches the overlay, a
     # personal one the personal overlay, an undeclared one stays local.
     write("identity/designs/team.md", "---\nversion: alpha\nscope: org\nname: team\n---\n# Team\n")
