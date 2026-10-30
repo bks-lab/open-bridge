@@ -1097,6 +1097,8 @@ export function buildState(now = Date.now(), opts = {}) {
     guide: guideState(tabs, now),
     // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
+    // the Chat as cmux (cockpit.chat_layout: workspaces): ?chat=workspaces
+    ...(opts.chat === 'workspaces' ? { rooms: { layout: 'workspaces', root: '/demo', control: null, bridges: [] } } : {}),
     // the work tab as the config sets it (cockpit.work_view, cockpit.focus_to_files): ?work=files and ?focus_to_files=1
     // and which tasks are files (cockpit.files_scope): the queue alone as the default config, ?files_scope=all for every one
     work: { view: ['due', 'source', 'jev', 'files', 'flow'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true,
@@ -2240,8 +2242,13 @@ export function createMockTransport(opts = {}) {
         const tab = state.tabs.tabs.find(x => x.ref === url.searchParams.get('ref'))
         if (!tab) return fail(404, 'not_found', 'no such tab')
         const text = ['❯ ' + (tab.last || 'Go on with the task'), '', '⏺ Reading the task folder and the last log rows.',
-          '  ⎿  Read work/tasks/demo-task/STATUS.md (48 lines)', '', '⏺ ' + (tab.state === 'needs-you' ? 'Allow edit of README.md?' : 'Working on the next step.'),
-          '', '─'.repeat(40), '> '].join('\n')
+          '  ⎿  Read work/tasks/demo-task/STATUS.md (48 lines)', '', '⏺ Update(docs/guide/README.md)',
+          '  ⎿  Updated docs/guide/README.md with 2 additions and 1 removal', '       41    ## Getting started', '       42 -  Run the setup first.',
+          '       42 +  Run ./bin/setup first, then open the page.', '       43 +  The guide: https://example.org/guide', '',
+          '⏺ Bash(node --test scripts/tests)', '  ⎿  ✓ 214 passed', '     ✗ 1 failed: guide links', '',
+          '⏺ ' + (tab.state === 'needs-you' ? 'Allow edit of README.md?' : 'Working on the next step.'), '',
+          ...(tab.state === 'running' ? ['✻ Thinking… (12s · esc to interrupt)', ''] : []),
+          '─'.repeat(200), '❯', '─'.repeat(200), '  ⏵⏵ auto mode on (shift+tab to cycle)'].join('\n')
         // like the server: a hash of the text, and unchanged without the text when the page names it (since)
         let h = 0x811c9dc5
         for (const ch of text) h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0

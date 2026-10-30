@@ -1261,8 +1261,18 @@ export function screenPoll(prev, data, delay = SCREEN_POLL_MS) {
   return { screen: prev, delay: Math.min(SCREEN_POLL_MAX_MS, Math.round(delay * 1.5)) }
 }
 
-/** A Claude Code terminal as chat lines: what you typed (❯ or >), what Claude says (⏺), tool output (⎿),
- *  the rest as it stands. Blank runs collapse to one, so the stream reads like a chat */
+/** How a screen line reads beside its kind: a rule, a tool at work, the hints under the prompt, a line of a diff */
+function termTone(lead, line) {
+  if (/^[─━═]{3,}$/.test(lead)) return 'rule'
+  if (/^[✻✽✶✳✢]/.test(lead)) return 'work'
+  if (lead.startsWith('⏵')) return 'hint'
+  const diff = /^\s+\d+\s+([+-])/.exec(line)
+  return diff ? (diff[1] === '+' ? 'add' : 'del') : null
+}
+
+/** A Claude Code terminal as chat lines: what you typed (❯ or >, a bare prompt too, up to the next blank line), what
+ *  Claude says (⏺), tool output (⎿), the rest as it stands; `tone` where a line reads apart (termTone). Blank runs
+ *  collapse to one, so the stream reads like a chat */
 export function screenLines(text) {
   const out = []
   let kind = 'plain'
@@ -1273,14 +1283,40 @@ export function screenLines(text) {
       if (out.length && out[out.length - 1].text !== '') out.push({ kind: 'gap', text: '' })
       continue
     }
-    if (/^[❯>]\s/.test(lead)) kind = 'user'
+    if (/^[❯>](\s|$)/.test(lead)) kind = 'user'
     else if (lead.startsWith('⏺')) kind = 'claude'
     else if (lead.startsWith('⎿')) kind = 'tool'
     else if (/^[─━═╭╰│]/.test(lead)) kind = 'frame'
-    else if (kind === 'frame' || kind === 'tool') kind = 'plain'
-    out.push({ kind, text: line })
+    else if (kind === 'frame' || kind === 'tool' || (kind === 'user' && out[out.length - 1]?.kind === 'gap')) kind = 'plain'
+    const tone = termTone(lead, line)
+    out.push(tone ? { kind, text: line, tone } : { kind, text: line })
   }
   while (out.length && out[out.length - 1].kind === 'gap') out.pop()
+  return out
+}
+
+const TERM_MARK = /^(\s*)([❯>⏺⎿])(?=\s|$)/
+// a link, a path (with ~/ or ./, or a folder and a file with its extension, so und/oder and z.B. stay words), the two result marks
+const TERM_PIECES = /(https?:\/\/[^\s<>"')\]]*[^\s<>"')\].,;:!?])|(~\/[\w.@/-]*[\w@/-]|\.{1,2}\/[\w.@/-]*[\w@/-]|\/?[\w.@-]+(?:\/[\w.@-]+)*\/[\w@-]+\.[A-Za-z]\w{0,7}(?::\d+)?)|([✓✔])|([✗✘])/gu
+const TERM_PIECE_KINDS = ['url', 'path', 'ok', 'bad']
+
+/** One screen line in pieces to colour, { t, c } with c a kind or none; joined they are the line */
+export function termParts(text) {
+  const out = []
+  const plain = t => { if (t) out.push({ t }) }
+  const mark = TERM_MARK.exec(text)
+  if (mark) {
+    plain(mark[1])
+    out.push({ t: mark[2], c: 'mark' })
+  }
+  const rest = mark ? text.slice(mark[0].length) : text
+  let at = 0
+  for (const m of rest.matchAll(TERM_PIECES)) {
+    plain(rest.slice(at, m.index))
+    out.push({ t: m[0], c: TERM_PIECE_KINDS[m.slice(1).findIndex(Boolean)] })
+    at = m.index + m[0].length
+  }
+  plain(rest.slice(at))
   return out
 }
 

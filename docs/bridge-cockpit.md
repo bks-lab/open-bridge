@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, a page's search over every day before with Ask AI, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-29
+last_updated: 2026-10-30
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -2394,6 +2394,12 @@ whose command returned an undo token is in the history and in the toast with
 "take back" (`row_undo {section, row, action}`), the same way as a close.
 
 ### The chat as cmux
+
+The whole Chat reads as a terminal, in `workspaces` and in `classic`, in a light page too: dark
+ground, mono type, a tab's screen coloured by what a line is (what you typed, what Claude says, tool
+output, a diff, paths and links, the ✓ and ✗ of a result), a cursor in its prompt while the tab is
+read live, and `❯` before every box you type in. The tab window, the questions and the A2A chats
+wear the same. Its colours are the dark set of your `DESIGN.md`, so a fork's brand carries over.
 
 With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
 

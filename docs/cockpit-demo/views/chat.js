@@ -242,7 +242,7 @@ export function QuickChat({ s, c }) {
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const dialog = useFocusOnOpen(true)
   return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.closeTabView() }}>
-    <div class="dialog tabview quickchat" role="dialog" aria-modal="true" aria-labelledby="quick-title" ref=${dialog}>
+    <div class="dialog tabview quickchat term" role="dialog" aria-modal="true" aria-labelledby="quick-title" ref=${dialog}>
       <header class="tabview-head">
         <h2 class="sec-title tabview-title" id="quick-title">${t.askTitle}</h2>
         <${ModelPick} s=${s} c=${c} />
@@ -277,7 +277,7 @@ export function ChatPage({ s, c }) {
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const [forgetArmed, setForgetArmed] = useState(null)
   useEffect(() => { document.getElementById('quick-input')?.focus() }, [conv?.id])
-  return html`<div class="col col-page chatpage">
+  return html`<div class="col col-page chatpage term">
     <header class="page-head"><h2 class="detail-title">${t.chatTab}</h2><${ModelPick} s=${s} c=${c} />
       ${conv && !conv.running ? html`<button type="button" class=${`chip quick-conv agent-forget${forgetArmed === conv.id ? ' is-armed' : ''}`}
         title=${t.quickForgetHint} onBlur=${() => setForgetArmed(null)}

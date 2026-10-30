@@ -222,7 +222,7 @@ export function AgentsPage({ s, c, embedded = false }) {
     setProfile({ peer: pid, open: true })
   }
   const listHidden = embedded || !!s.ui.agentsListHidden
-  return html`<div class=${embedded ? 'agentspage is-embedded' : 'col col-page agentspage'}>
+  return html`<div class=${embedded ? 'agentspage is-embedded' : 'col col-page agentspage term'}>
     ${embedded ? null : html`<header class="page-head"><h2 class="detail-title">${t.agentsTab}</h2>
       <span class="muted small">${t.agentsIntro}</span></header>`}
     <div class=${`agents-grid${listHidden ? ' is-wide' : ''}`}>
