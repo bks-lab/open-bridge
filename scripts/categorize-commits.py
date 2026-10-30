@@ -749,6 +749,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_jev.test.mjs",
     "scripts/tests/test_cockpit_demo_smoke.py",
     "scripts/tests/bridge_cockpit_render.test.mjs",
+    "scripts/tests/bridge_cockpit_fields.test.mjs",
     "scripts/tests/bridge_cockpit_config.test.mjs",
     "scripts/tests/cockpit_render.mjs",
     "scripts/tests/bridge_cockpit_aria.test.mjs",
