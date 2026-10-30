@@ -65,9 +65,13 @@ def plain_dir(tmp_path) -> Path:
 
 @pytest.fixture
 def brand_dir(tmp_path) -> Path:
-    """A folder whose parent is a project root (bridge-config.yaml) carrying the fixture DESIGN.md."""
+    """A folder whose parent is a project root (.git) carrying the fixture DESIGN.md.
+
+    Not bridge-config.yaml: a folder holding one is a Bridge, and a Bridge's root
+    DESIGN.md is never a target repository's design (scripts/designs.py step 2).
+    """
     shutil.copyfile(TOOLING / "DESIGN.md", tmp_path / "DESIGN.md")
-    (tmp_path / "bridge-config.yaml").write_text("", encoding="utf-8")
+    (tmp_path / ".git").mkdir()
     d = tmp_path / "decks"
     d.mkdir()
     return d

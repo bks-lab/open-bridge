@@ -160,7 +160,8 @@ def find_design(start: Path) -> Path | None:
     The nearest DESIGN.md at or above `start`, never above the project root
     (the first folder holding .git or bridge-config.yaml); without one only the
     page's own folder counts. When the walk ends at the Bridge's own DESIGN.md,
-    the Bridge says which design applies, as it did when the page was built.
+    the Bridge resolves its instance default. A page that records the design it
+    was built with is checked against that one before this runs (main).
     bridge_design.py needs no PyYAML, and without it the walk alone decides.
     """
     return bridge_design().resolve(target=start, fallback=False)
@@ -1084,7 +1085,9 @@ def main() -> int:
     for path in paths:
         rep = Report(path)
         try:
-            rep.design = design or find_design(path.resolve())
+            # the design the page records it was built with, else the one found from where it sits
+            rep.design = (design or bridge_design().recorded(path.read_text(encoding="utf-8", errors="replace"))
+                          or find_design(path.resolve()))
         except ValueError as e:
             ap.error(str(e))
         static_checks(path, rep, allow, forbid, args.allow_sample)

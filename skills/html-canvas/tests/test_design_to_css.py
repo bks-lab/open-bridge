@@ -443,3 +443,20 @@ def test_an_explicit_path_still_wins_over_the_context(tmp_path):
     r = subprocess.run([sys.executable, str(script), str(bridge / "DESIGN.md"), "--context", "client"],
                        capture_output=True, text=True)
     assert r.returncode == 0 and "#102030" in r.stdout.lower(), r.stderr
+
+
+# --- review round: a missing --design is reported, never looked up as "brand.md.md" -----------
+
+@pytest.mark.parametrize("value", ["brand.md", "nobrand"])
+def test_new_simulation_tolerates_a_missing_design_loudly(tmp_path, value):
+    out = tmp_path / "sim.html"
+    r = subprocess.run([sys.executable, str(SKILL / "scripts" / "new-simulation.py"), "--archetype", "flow",
+                        "--out", str(out), "--design", value], capture_output=True, text=True)
+    assert r.returncode == 0 and out.is_file(), r.stderr
+    assert "neutral system colours" in r.stderr and ".md.md" not in r.stderr, r.stderr
+
+
+def test_design_to_css_names_a_missing_path_as_a_path(tmp_path):
+    r = subprocess.run([sys.executable, str(SKILL / "scripts" / "design-to-css.py"), str(tmp_path / "brand.md")],
+                       capture_output=True, text=True)
+    assert r.returncode != 0 and ".md.md" not in r.stderr

@@ -25,8 +25,50 @@ PROJECT_MARKERS = (".git", "bridge-config.yaml")
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
+# The design a page was built with, recorded in its token region so a refresh and the
+# standalone gate read it back instead of resolving afresh (new-deck records its preset
+# the same way): an id under identity/designs/, or a path relative to the Bridge.
+SOURCE_RE = re.compile(r"/\* design-source: ([^*\n]+?) \*/")
+
+
 class DesignError(ValueError):
     """The Bridge could not resolve a design; the message names the id and its source."""
+
+
+def is_path(value: str) -> bool:
+    """`brand.md` or `sub/brand` names a file; only a bare word is a design id."""
+    return value.endswith(".md") or "/" in value or "\\" in value
+
+
+def source_mark(path: Path | None) -> str:
+    """The marker a page carries for `path`: a design id, or a path inside the Bridge.
+
+    A design outside the Bridge (a target repository's own DESIGN.md) is found
+    again by walking up from the page, so it is not recorded.
+    """
+    if path is None:
+        return ""
+    path = Path(path).resolve()
+    family = (BRIDGE / "identity" / "designs").resolve()
+    if path.parent == family and ID_RE.match(path.stem) and path.suffix == ".md":
+        label = path.stem
+    else:
+        try:
+            label = path.relative_to(BRIDGE.resolve()).as_posix()
+        except ValueError:
+            return ""
+    return "/* design-source: %s */\n" % label
+
+
+def recorded(text: str) -> Path | None:
+    """The design a page says it was built with, or None when it records none."""
+    m = SOURCE_RE.search(text)
+    if not m:
+        return None
+    label = m.group(1).strip()
+    if ID_RE.match(label) and not is_path(label):
+        return resolve(label)
+    return BRIDGE / label
 
 
 def find_design(start: Path) -> Path | None:
@@ -56,6 +98,8 @@ def resolver():
     if not path.is_file():
         return None
     spec = importlib.util.spec_from_file_location("bridge_designs", path)
+    if spec is None or spec.loader is None:
+        return None
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)
@@ -73,8 +117,9 @@ def resolve(design: str | None = None, *, context: str | None = None, persona: s
     identity/designs/. `fallback=False` is for the gates that only ever read a
     DESIGN.md found above the page: with nothing named, a page outside every
     project keeps no design, while a page inside the Bridge gets the Bridge's.
+    A page that records its design (`recorded`) is read with that one instead.
     """
-    if design and (Path(design).exists() or not ID_RE.match(str(design))):
+    if design and (Path(design).exists() or is_path(str(design)) or not ID_RE.match(str(design))):
         return Path(design)
     designs = resolver()
     if designs is None:

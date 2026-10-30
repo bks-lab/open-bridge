@@ -53,7 +53,11 @@ def default_design(design=None):
     try:
         found = mod.resolve(design)
     except ValueError as e:
-        fail(str(e))
+        if not design:              # the Bridge's own reference is broken: that is an error
+            fail(str(e))
+        # as it always was for a --design that is not there: said, and the page stays neutral
+        sys.stderr.write("new-simulation: %s\n" % e)
+        return pathlib.Path(design)
     return found or HERE.parents[2] / "DESIGN.md"
 
 ARCHETYPES = {

@@ -289,6 +289,7 @@ def apply_tokens(text: str, design: Path | None, d2c) -> str:
         note("no DESIGN.md found, the page keeps its neutral system colours (pass --design)")
         return text
     css, skipped = d2c.build_css(d2c.frontmatter(design))
+    css = load("bridge_design.py").source_mark(design) + css
     if skipped:
         note("DESIGN.md keys not mapped: %s" % ", ".join(skipped))
     try:
@@ -517,7 +518,12 @@ def main() -> int:
         page = Path(args.refresh)
         if not page.is_file():
             fail("no such page: %s" % page)
-        design = find_design(page.parent, args)
+        named = args.design or args.context or args.persona
+        try:
+            built_with = None if named else load("bridge_design.py").recorded(read(page))
+        except ValueError as e:
+            fail("%s records a design that no longer resolves: %s" % (page, e))
+        design = built_with or find_design(page.parent, args)
         if design and not design.is_file():
             fail("--design: %s not found" % design)
         text, changed = refresh(args, page, design, d2c)

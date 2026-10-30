@@ -514,3 +514,33 @@ def test_context_picks_the_referenced_design(tmp_path):
     plain = tmp_path / "out" / "plain.html"
     assert run("--out", str(plain), scripts=script).returncode == 0
     assert "#102030" in plain.read_text("utf-8").lower(), "no context: the root DESIGN.md"
+
+
+def test_a_page_remembers_the_design_it_was_built_with(tmp_path):
+    """Refresh and the standalone gate read the design back from the page, never re-resolve to the root."""
+    from canvas_testlib import mini_bridge
+    bridge = mini_bridge(tmp_path)
+    scripts = bridge / "skills" / "html-canvas" / "scripts"
+    out = bridge / "work" / "page.html"
+    r = run("--out", str(out), "--context", "client", scripts=scripts / "new-page.py")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "design-source: brand" in out.read_text("utf-8")
+    v = run(str(out), "--allow-sample", "--json", scripts=scripts / "verify-page.py")
+    assert v.returncode == 0 and "#5a1e3c" not in v.stdout.lower(), v.stdout[-1500:]
+    # a stale palette in the region: refresh must restore the brand, not swap to the root
+    page = out.read_text("utf-8")
+    out.write_text(page.replace("#5A1E3C", "#5A1E3D", 1), encoding="utf-8")
+    f = run("--refresh", str(out), scripts=scripts / "new-page.py")
+    assert f.returncode == 0, f.stdout + f.stderr
+    css = out.read_text("utf-8").lower()
+    assert "#5a1e3c" in css and "#102030" not in css
+
+
+def test_a_design_outside_the_bridge_is_not_recorded(tmp_path):
+    """It is found again by walking up from the page, and a path off the Bridge means nothing elsewhere."""
+    own = tmp_path / "elsewhere" / "brand.md"
+    own.parent.mkdir()
+    own.write_text(DESIGN.read_text("utf-8"), encoding="utf-8")
+    out = tmp_path / "page.html"
+    assert run("--out", str(out), "--design", str(own)).returncode == 0
+    assert "design-source:" not in out.read_text("utf-8"), "an explicit path outside the Bridge stays unrecorded"
