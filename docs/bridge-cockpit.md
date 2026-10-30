@@ -729,12 +729,14 @@ primary button. Each kind of point gets the verbs that fit it:
   one and its reason stands in the field already, Hide stays plain.
   **Check with AI** beside them (verb `issue_check`, service
   `cockpit-issue-check`, `scripts/lib/bridge_cockpit/issue_check.py`) reads the
-  issue's detail fresh (body, last comments, the pull requests that reference
+  issue's detail fresh (body, last comments, the pull requests that close
   it, its boards) and asks a small model, as data under a fixed schema, whether
   it is done: a verdict (done, not done, unclear), the reason, the evidence,
   what is still open and a review comment. Unclear asks the stronger model once.
   The answer stands on the card and is kept per issue
-  (`.bridge/cockpit/issue-check.json`, it comes back with `GET /api/issue`); a
+  (`issue-check.json` in the state folder, it comes back with `GET /api/issue`
+  while the issue is unchanged; a done on an open issue without a merged pull
+  request, or with a body cut for length, becomes unclear); a
   done makes the button that fits strong with the comment in its field, a not
   done or unclear makes none strong and outweighs the triage. It writes nothing
   to GitHub.

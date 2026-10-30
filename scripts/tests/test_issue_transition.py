@@ -77,7 +77,7 @@ class GitHub:
                   "fieldValues": {"nodes": [{}, {"name": s, "field": {"name": self.fields[(o, n)]}}]}}
                  for (o, n), s in self.items.items()]
         return {"__typename": "Issue", "state": self.state, "url": "https://github.com/acme/app/issues/5",
-                "title": "Ship it", "projectItems": {"nodes": nodes}}
+                "title": "Ship it", "updatedAt": "2026-10-29T08:00:00Z", "projectItems": {"nodes": nodes}}
 
     def __call__(self, argv: list[str], timeout: float = 60, input: str | None = None):
         self.calls.append(list(argv))
@@ -134,6 +134,7 @@ def test_plan_names_the_matching_boards_their_status_and_rules_and_writes_nothin
         [("ops", "🏗 In Progress", "👀 In Review", "✅ Done", False, False)]
     assert out["boards"][0]["rules"] == ["done_requires_review", "done_only_by_user"]
     assert out["unmatched"] == [{"owner": "other", "number": 3, "title": "Board 3"}]
+    assert out["updated"] == "2026-10-29T08:00:00Z"
     assert gh.writes() == []
 
 

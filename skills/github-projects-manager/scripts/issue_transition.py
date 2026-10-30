@@ -98,7 +98,7 @@ def live(ref: str, run=None) -> dict:
               "field { ... on ProjectV2SingleSelectField { name } } } } }")
     query = (f"query {{ repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) {{ "
              f"issueOrPullRequest(number: {number}) {{ __typename "
-             f"... on Issue {{ state url title projectItems(first: 20) {{ nodes {{ "
+             f"... on Issue {{ state url title updatedAt projectItems(first: 20) {{ nodes {{ "
              f"project {{ number title owner {{ ... on Organization {{ login }} ... on User {{ login }} }} }} {values} }} }} }} "
              f"... on PullRequest {{ state url title }} }} }} }}")
     done = run(["gh", "api", "graphql", "-f", f"query={query}"], timeout=GH_TIMEOUT)
@@ -118,7 +118,7 @@ def live(ref: str, run=None) -> dict:
         items.append({"owner": ((project.get("owner") or {}).get("login") or ""), "number": project.get("number"),
                       "title": project.get("title") or "", "fields": fields})
     return {"type": "pr" if node.get("__typename") == "PullRequest" else "issue", "state": node.get("state"),
-            "url": node.get("url"), "title": node.get("title"), "items": items}
+            "url": node.get("url"), "title": node.get("title"), "updated": node.get("updatedAt"), "items": items}
 
 
 def _match(boards: list[dict], issue: dict) -> tuple[list[tuple[dict, str | None]], list[dict]]:
@@ -142,7 +142,7 @@ def plan(root: Path, ref: str, run=None) -> dict:
                "in_review": status in b["review_states"], "in_done": status in b["done_states"], "rules": b["rules"]}
               for b, status in hit]
     return {"ok": True, "ref": ref, "type": issue["type"], "state": issue["state"], "url": issue["url"],
-            "title": issue["title"], "boards": boards, "unmatched": miss}
+            "title": issue["title"], "updated": issue["updated"], "boards": boards, "unmatched": miss}
 
 
 def comment_body(board: dict, kind: str, state: str, text: str, today: str) -> str:

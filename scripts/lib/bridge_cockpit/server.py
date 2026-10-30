@@ -1239,9 +1239,9 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, IndexError):
                 data = {"ok": False, "detail": (run.err or "no answer").strip()[-200:]}
             if run.ok and isinstance(data, dict) and data.get("ok"):
-                # the last Check with AI of this issue comes along, so the card shows it again (issue_check.py)
+                # the last Check with AI comes along while the issue is unchanged, so the card shows it again (issue_check.py)
                 from . import issue_check
-                self.send_json(200, app.scrub_tree({**data, "check": issue_check.kept(app.root, ref)}))
+                self.send_json(200, app.scrub_tree({**data, "check": issue_check.kept(app.state_dir, ref, data.get("updated"))}))
             else:
                 why = (data or {}).get("detail") or (data or {}).get("error") or "GitHub did not answer"
                 self.send_error_json("unreadable", app.scrub(str(why))[:200])

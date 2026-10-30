@@ -627,7 +627,7 @@ class WorkVerbs:
                     detail = json.loads(((run.out if run.ok else run.err) or "").strip().splitlines()[-1])
                 except (ValueError, IndexError):
                     detail = None
-                if not run.ok or not isinstance(detail, dict) or not detail.get("ok"):
+                if not run.ok or not isinstance(detail, dict) or not detail.get("ok") or detail.get("stale"):
                     raise ActionError(502, "issue_check_failed", tx["issue_check_failed"].format(why="GitHub"))
                 system, text = ic.prompt(detail, describe.language(app.root))
                 got, cost, calls = None, 0.0, 0
@@ -638,18 +638,20 @@ class WorkVerbs:
                     calls += 1
                     answer = ic.parse(ctx.call("claude.issue_check", ref, argv, ic.TIMEOUT).out or "", model)
                     cost += answer["cost_usd"] or 0.0
-                    if answer["answer"] is not None:
-                        got = {**answer["answer"], "model": answer["used"] or model}
-                        if got["verdict"] != "unclear":
-                            break
+                    if answer["answer"] is None:
+                        break
+                    got = {**answer["answer"], "model": answer["used"] or model}
+                    if got["verdict"] != "unclear":
+                        break
         finally:
             with _ISSUES_LOCK:
                 _ISSUES_CHECKING.discard(ref)
         self.audit_line("issue_check", ref, verdict=(got or {}).get("verdict", "-"), calls=calls, cost_ct=round(cost * 100, 3))
         if got is None:
             raise ActionError(502, "issue_check_failed", tx["issue_check_failed"].format(why="no verdict"))
-        result = {**got, "cost_usd": round(cost, 5), "at": ic.stamp()}
-        ic.keep(app.root, ref, result)
+        got = ic.settle(got, detail, tx["issue_check_no_proof"])
+        result = {**got, "cost_usd": round(cost, 5), "at": ic.stamp(), "updated": detail.get("updated")}
+        ic.keep(app.state_dir, ref, result)
         ctx.extra["issue_check"] = result
         ctx.note(tx[f"issue_check_{got['verdict']}"].format(title=m.short(row.get("title") or ref, 60), reason=m.short(got["reason"], 140)))
 

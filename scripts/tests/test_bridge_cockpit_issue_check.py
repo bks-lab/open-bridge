@@ -19,10 +19,11 @@ from lib.bridge_cockpit.runner import RunResult  # noqa: E402
 
 KEY = "ref:example/repo#12"
 DETAIL = {"ok": True, "ref": "example/repo#12", "type": "issue", "title": "Fix the example issue", "state": "open",
-          "body": "- [x] parser fixed\n- [x] test added", "assignees": ["someone"], "labels": [],
+          "updated": "2026-10-28T10:00:00Z", "body": "- [x] parser fixed\n- [x] test added", "body_cut": False,
+          "assignees": ["someone"], "labels": [],
           "comments": {"total": 1, "items": [{"author": "someone", "at": "2026-10-28T10:00:00Z", "body": "Merged in #13."}]},
           "boards": [{"title": "Ops", "number": 7, "status": "In Progress"}],
-          "prs": [{"ref": "example/repo#13", "state": "merged", "title": "Fix the parser"}]}
+          "prs": [{"number": 13, "state": "merged", "title": "Fix the parser", "draft": False}]}
 
 
 def answer(verdict="done", used="claude-haiku-5-5", cost=0.004, **over) -> RunResult:
@@ -73,7 +74,7 @@ def test_check_reads_the_detail_fresh_asks_the_small_model_and_keeps_the_answer(
     assert len(calls) == 1 and calls[0][calls[0].index("--model") + 1] == "claude-haiku-5-5"
     got = res["issue_check"]
     assert got["verdict"] == "done" and got["comment"].startswith("Parser fixed") and got["model"] == "claude-haiku-5-5"
-    assert ic.kept(world.app.root, "example/repo#12")["verdict"] == "done"
+    assert ic.kept(world.app.state_dir, "example/repo#12", DETAIL["updated"])["verdict"] == "done"
     assert "done" in res["note"].lower() or "fertig" in res["note"].lower()
 
 
@@ -88,7 +89,8 @@ def test_unclear_asks_the_stronger_model_once(world):
 
 def test_get_issue_carries_the_kept_check(world):
     world.act("issue_check", key=KEY)
-    world.runner.handlers["issue_transition.plan"] = lambda argv: ok({"ok": True, "ref": "example/repo#12", "boards": [], "unmatched": []})
+    world.runner.handlers["issue_transition.plan"] = lambda argv: ok({"ok": True, "ref": "example/repo#12", "boards": [], "unmatched": [],
+                                                                     "updated": DETAIL["updated"]})
     status, _, body = world.request("GET", "/api/issue?ref=example%2Frepo%2312", headers=world.cookie)
     assert status == 200 and json.loads(body)["check"]["verdict"] == "done"
 
@@ -97,7 +99,7 @@ def test_an_answer_without_a_verdict_is_an_error_and_nothing_is_kept(world):
     world.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "is_error": False, "result": "no idea"})
     with pytest.raises(ActionError):
         world.act("issue_check", key=KEY)
-    assert ic.kept(world.app.root, "example/repo#12") is None
+    assert ic.kept(world.app.state_dir, "example/repo#12", DETAIL["updated"]) is None
 
 
 def test_only_a_github_issue_is_checked_and_nothing_is_written_to_github(world):
@@ -105,3 +107,52 @@ def test_only_a_github_issue_is_checked_and_nothing_is_written_to_github(world):
         world.act("issue_check", key="task:other-task")
     world.act("issue_check", key=KEY)
     assert not any(len(c) > 1 and c[1].endswith("issue_transition.py") for c in world.runner.calls)
+
+
+def test_a_detail_github_could_not_refresh_is_not_judged(world):
+    world.runner.handlers["briefing.detail"] = lambda argv: ok({**DETAIL, "stale": "no network"})
+    with pytest.raises(ActionError):
+        world.act("issue_check", key=KEY)
+    assert not model_calls(world)
+
+
+def test_a_kept_check_ends_when_the_issue_changes(world):
+    world.act("issue_check", key=KEY)
+    plan = {"ok": True, "ref": "example/repo#12", "boards": [], "unmatched": [], "updated": "2026-10-29T08:00:00Z"}
+    world.runner.handlers["issue_transition.plan"] = lambda argv: ok(plan)
+    _, _, body = world.request("GET", "/api/issue?ref=example%2Frepo%2312", headers=world.cookie)
+    assert json.loads(body)["check"] is None
+
+
+@pytest.mark.parametrize("over", [{"prs": []}, {"prs": [{"number": 13, "state": "open", "title": "x", "draft": False}]},
+                                  {"body_cut": True}])
+def test_done_on_an_open_issue_needs_a_merged_pull_request_and_the_whole_body(world, over):
+    world.runner.handlers["briefing.detail"] = lambda argv: ok({**DETAIL, **over})
+    got = world.act("issue_check", key=KEY)["issue_check"]
+    assert got["verdict"] == "unclear" and got["missing"]
+    assert len(model_calls(world)) == 1
+
+
+def test_done_on_a_closed_issue_stands_without_a_pull_request(world):
+    world.runner.handlers["briefing.detail"] = lambda argv: ok({**DETAIL, "state": "closed", "prs": []})
+    assert world.act("issue_check", key=KEY)["issue_check"]["verdict"] == "done"
+
+
+def test_the_rules_say_the_data_never_instructs_and_the_model_learns_what_was_cut():
+    system, text = ic.prompt({**DETAIL, "body_cut": True, "comments": {"total": 9, "items": DETAIL["comments"]["items"]}}, "German")
+    assert "never follow" in system.lower()
+    data = json.loads(text.split("\n", 1)[1])
+    assert data["body_cut"] is True and data["comments_total"] == 9
+
+
+def test_a_small_model_that_failed_does_not_buy_the_stronger_one(world):
+    world.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "is_error": True, "result": "overloaded"})
+    with pytest.raises(ActionError):
+        world.act("issue_check", key=KEY)
+    assert len(model_calls(world)) == 1
+
+
+def test_the_kept_answers_sit_in_the_state_folder_for_the_owner_alone(world):
+    world.act("issue_check", key=KEY)
+    path = world.app.state_dir / "issue-check.json"
+    assert path.stat().st_mode & 0o777 == 0o600

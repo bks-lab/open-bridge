@@ -348,6 +348,7 @@ export function IssueWays({ row, s, c, sug }) {
     if (open === 'done') c.flowDecided()
     setOpen(null)
     setText('')
+    setFresh(null)                               // the move changed the issue, the check spoke of the one before
   }
   const runCheck = async () => {
     setChecking(true)
