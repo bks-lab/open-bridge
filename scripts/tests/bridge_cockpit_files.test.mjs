@@ -1567,6 +1567,7 @@ test('the log layout head counts in words, so a plain count beside it goes; a fi
     return mount(html`<${PageView} s=${s} c=${recorder()} />`).$('.page-head')
   }
   assert.equal(head({ kind: 'count', n: 59 }).$('.pbadge'), null, 'no stray count beside the title')
+  assert.equal(head({ kind: 'ok' }).$('.pbadge'), null, 'no stray ok beside the title, the tab carries it')
   assert.ok(head({ kind: 'bad', n: 1 }).$('.pbadge'), 'a finding keeps its mark')
 })
 
