@@ -1754,3 +1754,81 @@ def test_an_oversized_harness_index_still_fails(tree, _isolated_home):
     assert mc.main(["--repo-root", str(tree), "--quiet"]) == 1
     report = mc.render_report(mc.collect_rows(tree, mc.load_budget(tree), "bytes"), "bytes", 2.4)
     assert "load limit" in report
+
+
+# ------------------------------------------------- the sub-agent surface --
+#
+# A sub-agent gets the entry file, its `@`-imports and the harness listings.
+# It runs no Phase 1, so no standing order, no registry card, no board and no
+# command output reaches it, and the main session's harness memory index does
+# not either. A pointer that lives only there is invisible to every dispatch.
+
+
+def test_always_on_parts_subagent_surface_keeps_only_imports_and_listings(
+    listed, _isolated_home
+):
+    _write(listed, "scripts/echo.py", "print('routes to infra/echo/')\n")
+    _legacy_index(listed, _isolated_home, "see infra/example-family/\n")
+    budget = listed / "context-budget.yaml"
+    budget.write_text(
+        budget.read_text(encoding="utf-8")
+        + '  "cmd:python3 scripts/echo.py":\n    source: phase1\n',
+        encoding="utf-8",
+    )
+    _declare_harness(listed)
+
+    session = mc.always_on_parts(listed, mc.load_budget(listed))
+    sub = mc.always_on_parts(listed, mc.load_budget(listed), surface="subagent")
+
+    # The session surface has every kind, or the test proves nothing.
+    for key in (
+        "protocols/standing-orders/task-sync.md",
+        "work/board.md",
+        "cmd:python3 scripts/echo.py",
+        HARNESS_KEY,
+        "AGENTS.md",
+        "listing:skills",
+    ):
+        assert key in session, key
+    assert set(sub) == {k for k in session if k == "AGENTS.md" or k.startswith("listing:")}
+    for key in sub:
+        assert sub[key] == session[key]
+
+
+def test_the_session_surface_is_the_default_and_unchanged(listed):
+    budget = mc.load_budget(listed)
+    assert mc.always_on_parts(listed, budget, surface="session") == mc.always_on_parts(
+        listed, budget
+    )
+
+
+def test_an_unknown_surface_is_refused(tree):
+    with pytest.raises(ValueError):
+        mc.always_on_parts(tree, mc.load_budget(tree), surface="phase1")
+
+
+def test_the_subagent_surface_counts_a_real_import_not_a_declared_one(tree):
+    """A budget that SAYS `source: import` does not make a file loaded."""
+    _write(tree, "docs/families.md", "Machines: `infra/remotes/`.\n")
+    budget = tree / "context-budget.yaml"
+    budget.write_text(
+        budget.read_text(encoding="utf-8")
+        + "  docs/families.md:\n    source: import\n    max_bytes: 1000\n",
+        encoding="utf-8",
+    )
+    sub = mc.always_on_parts(tree, mc.load_budget(tree), surface="subagent")
+    assert "docs/families.md" not in sub
+
+
+def test_docs_families_imported_from_agents_md_is_an_import_row_and_undeclared_without_an_item(
+    tree,
+):
+    _write(tree, "AGENTS.md", "@ecosystem.yaml\n@docs/families.md\n\nread `docs/families.md`\n")
+    _write(tree, "docs/families.md", "Machines: `infra/remotes/`.\n")
+
+    row = _row(tree, "docs/families.md")
+    assert row is not None
+    assert row["source"] == "import"
+    assert row["state"] == "undeclared"
+    sub = mc.always_on_parts(tree, mc.load_budget(tree), surface="subagent")
+    assert "infra/remotes/" in sub["docs/families.md"]

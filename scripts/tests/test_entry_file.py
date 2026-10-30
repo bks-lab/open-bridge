@@ -26,6 +26,8 @@ SLOTS = [
     "identity/agent/SOUL.md",
     "identity/agent/INSTANCE.md",
 ]
+# The slots, then the generated family index, in this order (Step 2, B1).
+IMPORTS = [*SLOTS, "docs/families.md"]
 CODEX_CUT = 32768
 POINTERS = ["GEMINI.md", ".github/copilot-instructions.md"]
 
@@ -70,11 +72,14 @@ def test_agents_md_carries_the_identity_slots():
     text = agents_text()
     lines = unfenced_lines(text)
     req = next(off for off, line in lines if line == "## Required Reading")
-    for slot in SLOTS:
+    order = []
+    for slot in IMPORTS:
         hits = [off for off, line in lines if line == "@" + slot]
         assert hits, f"AGENTS.md lacks the column-0 import line @{slot} outside a fence"
         assert hits[0] < req, f"@{slot} must come before ## Required Reading"
         assert hits[0] <= 4096, f"@{slot} must sit within the first 4096 bytes"
+        order.append(hits[0])
+    assert order == sorted(order), f"the import lines must come in the order {IMPORTS}"
 
 
 def test_loaded_block_ends_within_the_first_4096_bytes():
@@ -94,7 +99,7 @@ def test_the_slot_paragraph_tells_other_agents_to_read_them():
     first_import = block.index("\n@identity/")
     above = block[:first_import]
     assert "Any other agent" in above
-    for slot in SLOTS:
+    for slot in IMPORTS:
         assert f"`{slot}`" in block, f"{slot} is not named in backticks in the slot block"
     link = re.compile(r"\]\((\.\./)?identity/agent/(IDENTITY|SOUL|INSTANCE)\.md\)")
     for rel in ["AGENTS.md", *POINTERS]:
@@ -113,13 +118,13 @@ def test_meter_discovers_the_slots():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     found = mod.discover_imports(ROOT, entry="AGENTS.md")
-    for slot in SLOTS:
+    for slot in IMPORTS:
         assert slot in found, f"the meter does not see @{slot}: {found}"
 
 
 @pytest.mark.parametrize("rel", POINTERS)
 def test_pointer_files_name_the_slots(rel):
     text = (ROOT / rel).read_text(encoding="utf-8")
-    for slot in SLOTS:
+    for slot in IMPORTS:
         assert slot in text, f"{rel} does not tell its agent to read {slot}"
     assert "`CLAUDE.md` and" not in text, f"{rel} still calls CLAUDE.md a pointer"

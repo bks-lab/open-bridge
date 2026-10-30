@@ -7,9 +7,9 @@ hops). `GEMINI.md` is the same kind of thin pointer; Claude Code reads
 `AGENTS.md` directly.
 
 **If you are GitHub Copilot:** read [`AGENTS.md`](../AGENTS.md) and follow it.
-Then read `identity/agent/IDENTITY.md`, `identity/agent/SOUL.md` and
-`identity/agent/INSTANCE.md` if they exist (AGENTS.md § Loaded with this
-file); Copilot does not resolve its `@` lines.
+Then read `identity/agent/IDENTITY.md`, `identity/agent/SOUL.md`,
+`identity/agent/INSTANCE.md` and `docs/families.md` if they exist (AGENTS.md
+§ Loaded with this file); Copilot does not resolve its `@` lines.
 Skills are auto-discovered under `.github/skills/` — a symlink to the top-level
 `skills/` folder, so every supported agent loads the same skill set.
 

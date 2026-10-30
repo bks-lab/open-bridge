@@ -17,7 +17,8 @@ related:
 The cluster-wrapper layout (`identity/`/`infra/`/`workflow/` with
 default-to-folder per config type) is the load-bearing rule of this
 repo. This page indexes every visual rendering of it. They are the
-visual companions to [`AGENTS.md` § Layout](../AGENTS.md) and
+visual companions to [`docs/families.md`](families.md) (the family
+index, generated from `docs/data-model.yaml`) and
 [`docs/structure.md`](structure.md) — same truth, different modalities.
 
 ## Primary view
@@ -90,6 +91,8 @@ the network layer only if you need it.
 
 ## CORE/USER split — Source of truth
 
-The authoritative table lives in [`AGENTS.md` § Layout](../AGENTS.md)
-and [`docs/structure.md`](structure.md). Visualisations render that.
-On conflicts, AGENTS.md and docs/structure.md win; `regions.yaml` must follow.
+The authoritative CORE/USER per-path table lives in
+[`docs/structure.md`](structure.md); the family map is
+[`docs/families.md`](families.md), generated from `docs/data-model.yaml`.
+Visualisations render that. On conflicts, docs/structure.md and
+docs/data-model.yaml win; `regions.yaml` must follow.

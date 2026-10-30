@@ -8,9 +8,9 @@ and complete reference (no further hops).
 are auto-discovered under `.agents/skills/` — a symlink to the top-level
 `skills/` folder, so every supported agent loads the same skill set.
 
-Then read `identity/agent/IDENTITY.md`, `identity/agent/SOUL.md` and
-`identity/agent/INSTANCE.md` if they exist (AGENTS.md § Loaded with this
-file): Gemini does not resolve the `@` lines in AGENTS.md.
+Then read `identity/agent/IDENTITY.md`, `identity/agent/SOUL.md`,
+`identity/agent/INSTANCE.md` and `docs/families.md` if they exist (AGENTS.md
+§ Loaded with this file): Gemini does not resolve the `@` lines in AGENTS.md.
 
 **Before your first commit:** run `./bin/setup` — it arms the `pre-push` leak guard (a fresh `git clone` does not) and repairs the skills-discovery symlinks.
 

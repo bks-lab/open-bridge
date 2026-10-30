@@ -13,7 +13,8 @@ discipline that keeps generic CORE separate from instance-specific content.
 
 | Tier | Loaded | Holds | Size discipline |
 |---|---|---|---|
-| `AGENTS.md` | always (session start) | Operating manual: routing tables, gates, command index, section pointers. **Meta-content, not detail.** CORE only: an instance never edits it. | Lean — link out, don't inline workflows or examples |
+| `AGENTS.md` | always (session start) | The kernel: invariants, gates and section pointers. **Meta-content, not detail, and no lists.** CORE only: an instance never edits it. | Sections and byte ceiling declared in the `kernel:` block of `docs/data-model.yaml`; link out |
+| `docs/families.md` | always (imported by `AGENTS.md`) | The config-family index: which folder to read when. Generated from `docs/data-model.yaml`, never edited by hand. | One `route:` per family in the model |
 | `identity/agent/INSTANCE.md` | always (imported by `AGENTS.md`, so sub-agents see it too) | An instance's own always-on text: its families, registries, routes and vocabulary. USER, never shipped by CORE or an overlay. | Capped in `context-budget.yaml`; link out like `AGENTS.md` |
 | `rules/*.md` | on demand (linked from AGENTS.md or triggered) | Always-on gates + detailed workflows: session-start, operations, promote-safety, task-management. The *how*. | One concern per file |
 | `docs/*.md` | human reference | Narrative, decision matrices, examples, onboarding. The *why* + the long form, for people. | Frontmatter (`summary`/`type`/`last_updated`) |
@@ -26,8 +27,10 @@ discipline that keeps generic CORE separate from instance-specific content.
   needed by that skill's next run → its `LEARNINGS.md` (§ A lesson about one
   skill). Checked first: it is the narrower case of the next line.
 - Non-obvious fact / workaround / decision → memory.
-- Pointer/routing rule needed every session → in CORE, a short `AGENTS.md`
-  line linking to the `rules/` or `docs/` detail; in an instance, a line in
+- Routing for a config family → a `route:` in `docs/data-model.yaml`
+  (rendered to `docs/families.md`). Any other pointer needed every session → in
+  CORE, one `AGENTS.md` sentence only if it is a new invariant, linking to the
+  `rules/` or `docs/` detail; in an instance, a line in
   `identity/agent/INSTANCE.md`, never `AGENTS.md`, because a downstream edit to
   `AGENTS.md` conflicts on every upstream merge.
 
@@ -35,6 +38,12 @@ discipline that keeps generic CORE separate from instance-specific content.
 > "is X still accurate" request routes to the `bridge-audit` skill (it has the
 > checks codified) — don't ad-hoc grep. When you rename a file/skill/command,
 > add it to `skills/bridge-audit/data/renames.yaml` so the next audit keeps up.
+
+**The kernel rule.** `AGENTS.md` gets no new section and no list. A new config
+family is a row with a `route:` in `docs/data-model.yaml` (it then appears in
+`docs/families.md`); feature mechanics go to `docs/<feature>.md`; only a new
+invariant earns an `AGENTS.md` sentence. `scripts/data-model.py` fails CI on an
+undeclared section, a family table row or a file past the byte ceiling.
 
 If you're about to add more than ~10 lines to `AGENTS.md` (or to `INSTANCE.md`
 in an instance), it almost certainly belongs in a `rules/` file with a one-line

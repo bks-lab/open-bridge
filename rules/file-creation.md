@@ -20,8 +20,8 @@ The fix is always more expensive than the prevention.
 
 Run this every time, in order:
 
-1. **Locate the destination folder.** Use the cluster-wrapper map (AGENTS.md
-   § Layout — Cluster-Wrappers). Personas/Mandants/Accounts → `identity/`;
+1. **Locate the destination folder.** Use the family index [`docs/families.md`](../docs/families.md)
+   (AGENTS.md § Layout — Cluster-Wrappers keeps the Default-to-Folder rule). Personas/Mandants/Accounts → `identity/`;
    Remotes/Channels/Backups → `infra/`; Calendars/Contexts/Projects → `workflow/`;
    Protocols, Skills, Trackers, Themes → top-level.
 2. **Read the `_template.yaml`** in the destination folder. This is the field

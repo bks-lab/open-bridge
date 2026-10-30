@@ -22,7 +22,9 @@ Single source of truth for your backup topology. Three concepts:
 > executor. You create `topology.yaml` (your instance config) from `_template.yaml`.
 
 State (what last ran when, restic snapshot IDs) lives in `_state.yaml`, written by
-the backup skill — `topology.yaml` stays pure configuration in git.
+the backup skill — `topology.yaml` stays pure configuration in git. CORE ships the
+data model, not an executor; only the executor writes `_state.yaml`. The feature is
+active when `topology.yaml` exists.
 
 ## Files
 

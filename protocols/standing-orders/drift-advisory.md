@@ -21,7 +21,7 @@ When the user makes a change that touches one of these high-coupling files:
 | File class | Why coupled | What to remind |
 |---|---|---|
 | `LICENSE` | Mirrored in README badge + footer + AGENTS.md license claim + memory | "License-file changed — also update README badge, footer, AGENTS.md, and memory entries (`bridge-audit --check license` will list them)." |
-| `README.md` skill tree / `AGENTS.md` skill table | Must match `skills/` directory | "Touched skill list — run `bridge-audit --check skill-tree` to verify it still matches `skills/`." |
+| `README.md` skill tree | Must match `skills/` directory | "Touched skill list — run `bridge-audit --check skill-tree` to verify it still matches `skills/`." |
 | `protocols/*.md` (add or remove a protocol) | Numeric "N protocols" mentions in README/AGENTS | "Protocol added/removed — search for any `\d+ protocols` claims and update or remove the count." |
 | Renamed: any file mentioned in `skills/bridge-audit/data/renames.yaml` `old:` | The whole repo grepped against the registry | "Renames registry catches stale references — run `bridge-audit --check renames` after rename." |
 | `README.md`, `AGENTS.md` | Each lives in the upstream `open-bridge` repo + downstream forks | "Touched a tri-repo doc — at the next sprint sync, run `/bridge-sync` to propagate." |

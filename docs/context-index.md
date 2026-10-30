@@ -167,6 +167,20 @@ The suite also runs all three content guards over **every YAML file in the
 repo** on each CI run. The fixture is what the author imagined; the tree is
 what actually exists, and the difference has been this feature's whole yield.
 
+## Three channels reach a session
+
+Only two of them are files. The `@`-imports and the Phase 1 reads come off disk.
+The third is derived: the harness injects `name` and `description` of every
+skill and sub-agent into every session and every dispatch, one line each, with
+no file to point at. `measure-context.py` measures it as `listing:skills` and
+`listing:agents`, capped on the sum, and names the heaviest entries in the
+report, because a listing grows one description at a time. It is load-bearing,
+not overhead, so `check-reachability.py` reads it too: a description naming a
+config path is a route.
+
+A sub-agent gets the imports and the listings, never Phase 1, so no standing
+order, board or work log reaches it (AGENTS.md § Standing Orders).
+
 ## The other two checks in this family
 
 `context-budget.yaml` says how much the always-on layer may weigh and this file
@@ -177,6 +191,11 @@ and CI runs both:
 |---|---|
 | `scripts/check-reachability.py` | does a session still KNOW the body is there — every config family named by its path in the routing surface, plus eleven scenarios walked end to end |
 | `scripts/check-edges.py` | do the references BETWEEN entries still resolve — `ok` / `moved` (mechanical, `--fix`) / `external` / `dead`, with per-instance exceptions declared in `edges.yaml`, each carrying a reason |
+
+`check-reachability.py --surface subagent` repeats the check on what a
+dispatched sub-agent loads (entry, `@`-imports, listings), and the default run
+also requires every file `AGENTS.md` imports to be named in its prose, for
+agents that resolve no `@`-import. CI runs both surfaces.
 
 The reachability check runs against the **routing** surface, which is the
 always-on layer minus `work/` and the log slice. Work state is measured to the

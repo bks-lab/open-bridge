@@ -7,8 +7,8 @@ dashboard. Two truth sources are merged:
 2. **`docs/repo-layout/regions.yaml`** — curated descriptions per region:
    `display_name`, `oneliner`, `what`, `examples`, `related`, `put_here`.
 
-This is the canonical content for the rich side panels (v1–v4). The two-
-column table in `AGENTS.md → Git & Branches` is the human reference; the
+This is the canonical content for the rich side panels (v1–v4). The per-path
+table in `docs/structure.md` is the human reference; the
 machine-readable, single-source-of-truth for descriptions is the YAML.
 
 **Trigger phrases:** "repo layout", "core/user split", "where do files
@@ -18,7 +18,8 @@ live", "repo structure", "core vs user", "/repo-layout".
 
 ### 1. Read truth sources
 
-- `AGENTS.md → Git & Branches` table — authoritative path list (never invent).
+- `docs/structure.md` per-path table — authoritative path list (never invent);
+  `docs/families.md` lists the config families.
 - `docs/repo-layout/regions.yaml` — schema:
   ```yaml
   regions:
@@ -70,7 +71,7 @@ For each entry on the CORE side and USER side, in the bridge repo root:
   - `exists = true`.
 - If missing: `count = 0`, `samples = []`, `exists = false`.
 
-**The CORE list (matching AGENTS.md table):**
+**The CORE list (matching the `docs/structure.md` table):**
 
 | path | desc |
 |---|---|

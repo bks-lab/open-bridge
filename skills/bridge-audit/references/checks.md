@@ -33,11 +33,13 @@ Scan tracked files only (`git ls-files`); findings are advisory unless `--fix` r
 **Sources:**
 - `skills/*/SKILL.md` — directory listing + `name:` frontmatter, `scope:` frontmatter
 - `README.md` — directory tree block (`├── skills/` … `└──` lines) + any skill table in body
-- `AGENTS.md` — skill table
+
+AGENTS.md lists no skills (it has had no skill table since 2026-08-19), so it is
+not a claim source.
 
 **Algorithm:**
 1. Build truth set: `actual = set(directory listing of skills/)`
-2. Build claim sets: `readme_claimed`, `agents_claimed`
+2. Build the claim set: `readme_claimed`
 3. Findings:
    - **Dead refs:** in claim, not in actual → P1 ("README mentions `<name>/` — does not exist")
    - **Missing:** in actual, not in any claim (with scope `core` only — org/user can be omitted) → P2
