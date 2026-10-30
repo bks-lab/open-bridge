@@ -46,7 +46,12 @@ DESIGNS ARE NAMED BY ID. `design_ref:` in a context or a persona and
 `branding.design:` in a theme name a design under identity/designs/ by its id,
 not by path, so the path pattern never sees them. They are read separately and
 checked as an edge to `identity/designs/<id>.md`: resolving or dead, never
-moved, since `--fix` would write a path where an id belongs.
+moved, since `--fix` would write a path where an id belongs. Only the top-level
+key counts, as scripts/designs.py reads it, and a value that is no id
+(`_template`, `../../DESIGN`) is dead there and here. A design must also
+travel at least as far as whatever names it: an org context naming a user
+design reaches every member Bridge without the design, and every generator
+there refuses to resolve.
 
 TEMPLATES ARE NOT EDGES. `_template.yaml` describes a file nobody has written
 and `*.example.yaml` describes the tree a future instance will have. Their
@@ -60,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import importlib.util
 import os
 import posixpath
 import re
@@ -104,11 +110,16 @@ MD_HISTORY_PREFIXES = ("work/done/", "work/archive/")
 BACKTICKS = re.compile(r"`+")
 FENCE = re.compile(r"^\s*(```|~~~)")
 
-# Id references to a design (scripts/designs.py). The key anywhere in a config
-# file, and a theme's `branding.design`.
+# Id references to a design (scripts/designs.py): the top-level `design_ref` of a
+# context or a persona, and a theme's `branding.design`. Same id rule as designs.py.
 DESIGN_KEY = "design_ref"
 DESIGN_DIR = "identity/designs/"
+DESIGN_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+DESIGN_REFERRERS = ("workflow/contexts/*.yaml", "identity/personas/*.yaml")
 THEME_GLOB = "themes/*.yaml"
+# Where a file of each tier travels. A design must reach everywhere its referrer does.
+REACH = {"core": {"core", "org", "personal", "user"}, "org": {"org", "user"},
+         "personal": {"personal", "user"}, "user": {"user"}}
 
 # Where a work item can live. The KIND model in AGENTS.md: a finite task, a
 # long-runner, or closed under a month.
@@ -301,18 +312,6 @@ def _design_target(value) -> str:
     return f"{DESIGN_DIR}{str(value).strip()}.md"
 
 
-def _design_refs(node, path: list[str], out: list):
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if str(key) == DESIGN_KEY and not isinstance(value, (dict, list)) and value is not None:
-                out.append((".".join(path + [DESIGN_KEY]), _design_target(value)))
-            else:
-                _design_refs(value, path + [str(key)], out)
-    elif isinstance(node, list):
-        for index, value in enumerate(node):
-            _design_refs(value, path + [str(index)], out)
-
-
 def iter_design_refs(repo_root) -> list[tuple[str, str, str]]:
     """Every reference to a design by id, as (file, key path, identity/designs/<id>.md)."""
     if yaml is None:  # pragma: no cover
@@ -320,7 +319,7 @@ def iter_design_refs(repo_root) -> list[tuple[str, str, str]]:
     root = Path(repo_root)
     found: list[tuple[str, str, str]] = []
     seen: set[str] = set()
-    for pattern in (*SCAN_GLOBS, THEME_GLOB):
+    for pattern in (*DESIGN_REFERRERS, THEME_GLOB):
         for path in sorted(root.glob(pattern)):
             rel = str(path.relative_to(root))
             if rel in seen or _skip(rel):
@@ -334,14 +333,43 @@ def iter_design_refs(repo_root) -> list[tuple[str, str, str]]:
                 continue
             if pattern == THEME_GLOB:
                 branding = doc.get("branding")
-                value = branding.get("design") if isinstance(branding, dict) else None
-                if value is not None and not isinstance(value, (dict, list)):
-                    found.append((rel, "branding.design", _design_target(value)))
-                continue
-            hits: list = []
-            _design_refs(doc, [], hits)
-            found.extend((rel, key, target) for key, target in hits)
+                key, value = "branding.design", branding.get("design") if isinstance(branding, dict) else None
+            else:
+                key, value = DESIGN_KEY, doc.get(DESIGN_KEY)
+            if value is not None and not isinstance(value, (dict, list)):
+                found.append((rel, key, _design_target(value)))
     return found
+
+
+def _router():
+    spec = importlib.util.spec_from_file_location("categorize_commits_for_edges", HERE / "categorize-commits.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def design_tier_findings(repo_root) -> list[str]:
+    """A design narrower than the file naming it: the referrer travels, the design stays behind."""
+    refs = [r for r in iter_design_refs(repo_root) if classify(repo_root, r[2])[0] == "ok"]
+    if not refs:
+        return []
+    router = _router()
+    findings = []
+    # the router reads front matter relative to the working directory
+    here = os.getcwd()
+    os.chdir(Path(repo_root))
+    try:
+        for rel, key, target in refs:
+            source, design = router.classify_file(rel), router.classify_file(target)
+            if not REACH.get(source, set()) <= REACH.get(design, set()):
+                findings.append(
+                    f"{rel} :: {key} -> {target}: the referrer is {source}, the design only "
+                    f"{design}, so wherever the referrer travels the design is missing; widen "
+                    f"the design's scope or narrow the referrer")
+    finally:
+        os.chdir(here)
+    return findings
 
 
 def all_edges(repo_root) -> list[tuple[str, str, str]]:
@@ -429,12 +457,14 @@ def classify(repo_root, target: str) -> tuple[str, str | None]:
     # past the escape hatch it was meant to take and came out `dead`.
     if target.startswith("/") or target.startswith("~"):
         return "external", None
+    # A design named by id resolves or it does not: no other folder holds one,
+    # and no neighbour checkout could. A value that is no id never resolves.
+    if target.startswith(DESIGN_DIR) and target.endswith(".md"):
+        design_id = target[len(DESIGN_DIR):-3]
+        ok = DESIGN_ID.match(design_id) and (root / target).is_file()
+        return ("ok", None) if ok else ("dead", None)
     if (root / target).exists():
         return "ok", None
-    # A design named by id resolves or it does not: no other folder holds one,
-    # and no neighbour checkout could.
-    if target.startswith(DESIGN_DIR):
-        return "dead", None
 
     # Before excusing anything: does this file live somewhere else in THIS tree?
     # The cluster-wrapper reorg moved channels/ backups/ remotes/ under infra/
@@ -487,6 +517,7 @@ def check(repo_root) -> list[str]:
         elif state == "dead":
             findings.append(f"{rel} :: {key} -> {target} is dead, nothing at that path")
 
+    findings.extend(design_tier_findings(repo_root))
     for entry in exceptions:
         if id(entry) not in used:
             findings.append(
