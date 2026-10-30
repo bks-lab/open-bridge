@@ -354,7 +354,7 @@ function Suggest({ x, s, c, context }) {
  *  place. `open` is its slug, or the folder of a closed copy
  *  (work/done/<month>/<slug>), which borrows nothing from a row of its slug. A closed file is never named as the
  *  task of a question (quick.py would archive the chat at once); none of the verbs, it is not in the queue */
-function OpenFile({ open, s, c, queued = false, foot = null }) {
+export function OpenFile({ open, s, c, queued = false, foot = null, stepActs = null }) {
   const d = T().dossier
   const slug = open.split('/').pop()
   const entry = s.details?.task?.[open]
@@ -388,7 +388,7 @@ function OpenFile({ open, s, c, queued = false, foot = null }) {
     ${entry?.status === 'error' ? html`<p class="muted" role="status">${d.noFile}</p>` : html`
       <${Cover} x=${x} s=${s} c=${c} data=${data} where=${[searched ? d.opened : d.openedList, facts.kind === 'done' ? d.find.kind.done : null]}
         file=${filesAll(s) && !open.includes('/') ? fileOf(s, slug) : null} queued=${queued} />
-      ${facts.next ? html`<section class="dz-step"><p class="dz-step-kind">${d.next}</p><p class="dz-step-title">${facts.next}</p></section>` : null}
+      ${facts.next ? html`<section class="dz-step"><p class="dz-step-kind">${d.next}</p><p class="dz-step-title">${facts.next}</p>${stepActs?.(facts.next)}</section>` : null}
       ${suggest ? html`<${Suggest} x=${x} s=${s} c=${c} context=${context} />` : null}
       <${Drawers} data=${data} folder=${open.includes('/') ? open : null}
         res=${open.includes('/') ? null : fileResults(slug, whole, tabs, s.now || Date.now(), s.sessions?.runs)} s=${s} c=${c} />

@@ -110,6 +110,15 @@ function lastRoom() {
   return roomKept(load('bridge-cockpit.chatRoom', null))
 }
 
+/** The fields of the Chat as this viewer left them (logic.js fieldsOf reads any value); a convenience, never state */
+function lastFields() {
+  try {
+    return JSON.parse(load('bridge-cockpit.chatFields', 'null'))
+  } catch {
+    return null
+  }
+}
+
 /** The last question this viewer opened (round 6d), so a reload and the header's Ask find it again; a
  *  convenience, never state: a question the server no longer has opens a new one */
 function lastAsk() {
@@ -217,7 +226,7 @@ const store = createStore({
     shortcuts: load('bridge-cockpit.shortcuts', 'off') === 'on',
     // the order of the workspaces in the chat as cmux: the terminal's (default) or the most urgent first; kept in this browser
     roomsSort: ['urgency', 'status'].find(v => v === load('bridge-cockpit.roomsSort', 'terminal')) ?? 'terminal',
-    guideView: ['guide', 'both', 'screen'].includes(load('bridge-cockpit.guideView', 'both')) ? load('bridge-cockpit.guideView', 'both') : 'both',
+    fields: lastFields(), fieldsFull: false,
     answered: {},   // per tab ref the answer the page sent last: { hash, q, ms } (views/reply.js)
     renaming: null,  // the tab or workspace whose name is being typed: { kind: 'tab' | 'ws', id: ref } (views/rooms.js)
     // organize with AI (views/organize.js): { busy, applying, proposal, ticks: { id: true }, result } while open
@@ -1661,7 +1670,6 @@ const ctl = {
   tickerProfile: async llm => tickerAnswer(await act('ticker_profile', { llm: !!llm })),
   // the decision guide: a reading returns at once and ends with a guide event; the switches save at once
   // what a waiting tab's pane in the chat shows: the reading, both, or the terminal; kept in this browser
-  setGuideView: v => { save('bridge-cockpit.guideView', v); setUi({ guideView: v }) },
   guideRead: async ref => guideAnswer(await act('guide_read', { tab_ref: ref })),
   saveGuide: async patch => guideAnswer(await act('guide_settings', patch)),
   resetGuide: async () => guideAnswer(await act('guide_settings_reset', {})),

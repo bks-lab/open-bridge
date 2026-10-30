@@ -334,6 +334,17 @@ cockpit:
     alex: person
 ```
 
+### Fields in the Chat
+
+The Chat holds one to four fields: one, two side by side or on top of each other, three side by side, one large with
+two small, or four in a grid. A field shows a tab or **Topic**. The fields live on the page, the terminal stays as it
+is, so tabs of different workspaces stand side by side. A click in the list goes to the active field, a tab dragged from
+the list opens where it lands. The ⇄ between two fields swaps them, so does dragging a field's head onto another, and
+the bar between them sets the width. **Chat + topic** opens the reading of the open chat and its file beside it; Topic
+follows the open chat until you hold it. A chat without a file can pick one there. The bar on top lists the tabs of the
+open chat's workspace, and ⛶ leaves only the fields. This browser keeps the layout. A narrow field wraps the lines of a
+wider terminal, since the terminal keeps its own width.
+
 ### The Files tab
 
 **Files** is a tab of its own, right after the work tab. While no record is open, the search and its list take the
@@ -2697,12 +2708,10 @@ click on the branch leaves it. Cmd or Ctrl Enter in the box sends as well.
   session was started with, the ask before the last, the last ask and the
   agent's words after it (drawn as text from Markdown), or the end of the
   screen.
-- **In the chat as cmux** a switch in the tab pane's head picks what a waiting
-  tab shows: "Reading" (the reading takes the pane), "Both" (the reading above
-  the terminal, scrolling in a row of its own; the default) or "Terminal" (the
-  question off the screen and the terminal, as without the guide). The sidebar's
-  "Waiting for you" follows it: with "Terminal" its rows show the screen's
-  words. The choice is kept in this browser.
+- **In the chat as cmux** the terminal always stays in view. A waiting tab shows
+  a bar at its lower edge: what it waits for, its steps as buttons and "Answer
+  yourself", which hands the keyboard to the terminal. "Whole reading" opens the
+  Topic field beside the chat, with the full reading above the task's file.
 - **Where it shows**: in the chat as cmux, the reading's first sentence under
   each row of "Waiting for you" and the whole tree in a tab's pane on the right;
   in the classic chat, the sentence on a slim tab card and the tree once "more"

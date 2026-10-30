@@ -683,7 +683,7 @@ test('the terminal: a paste goes out whole, a driver without keys leaves it to r
 
 test('the open tab ends in the same bar the lists have: back, where you stand, what comes next and Next', () => {
   const c = recorder()
-  const bar = tabPane('surface:10', c).$('.rooms-main .next-up')
+  const bar = tabPane('surface:10', c).$('.next-up')
   assert.equal(bar.$('.next-up-pos').text(), en.nextPos(2, 4))
   assert.equal(bar.$('.next-up-title').text(), 'demo-task research')
   assert.deepEqual(bar.$$('.next-up-later li').map(li => li.text()), ['changelog · Ops'])
@@ -696,7 +696,7 @@ test('the open tab ends in the same bar the lists have: back, where you stand, w
 
 test('a tab outside the walk still shows the first that wants you as next', () => {
   const c = recorder()
-  const bar = tabPane('surface:8', c).$('.rooms-main .next-up')                 // docs-refresh works: not in the walk
+  const bar = tabPane('surface:8', c).$('.next-up')                 // docs-refresh works: not in the walk
   assert.equal(bar.$('.next-up-pos'), null)
   assert.equal(bar.$('.next-up-title').text(), 'alpha-release')
 })
@@ -705,7 +705,7 @@ test('an answer sent from the open tab goes on to the next one, a jump to the te
   const c = recorder()
   const cc = new Proxy(c, { get: (o, p) => (p === 'reply' ? async (...a) => { o.calls.push(['reply', ...a]); return { ok: true } } : o[p]) })
   const el = tabPane('surface:12', cc, { guide: null })
-  el.$('.reply-pane').button(en.reply.goOn).click()
+  el.$('.answer').button(en.reply.goOn).click()
   await tick()
   assert.deepEqual(c.calls.filter(x => x[0] === 'walkTab'), [['walkTab', 'surface:13']])
 })
@@ -1175,7 +1175,7 @@ test('a tab that runs for an hour stands in Waiting for you without claiming it 
   // a tab that waits and whose question cannot be read says so where it is answered, on the right
   const blind = { ...s, tabs: { ...s.tabs, tabs: s.tabs.tabs.map(t => t.ref === 'surface:12' ? { ...t, ask: null, last: '' } : t) }, guide: null,
     ui: { ...s.ui, room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } }
-  assert.match(mount(html`<${RoomsPage} s=${blind} c=${recorder()} />`).$('.reply-pane .reply-ask').text(), new RegExp(en.reply.unreadable))
+  assert.match(mount(html`<${RoomsPage} s=${blind} c=${recorder()} />`).$('.answer-q').text(), new RegExp(en.reply.unreadable))
 })
 
 const { RoomsPage } = views.rooms
@@ -1864,7 +1864,7 @@ test('guide: a row of Waiting for you stays one short line, the reading of the g
   assert.equal(research.$('.guide-line-about'), null)
   assert.equal(research.$('.reply-ask'), null)
   const pane = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } })} c=${recorder()} />`)
-  assert.ok(pane.$('.rooms-main .guide'), 'the reading of the guide stands with the tab')
+  assert.ok(pane.$('.answer-q'), 'what the guide read stands at the terminal of the tab')
 })
 
 test('guide: a waiting tab shows where it stands and one branch per step, the recommended one marked', () => {
@@ -1958,22 +1958,17 @@ test('guide: What was read shows the asks and the agent words Haiku read', async
   assert.equal(el.$('.guide-read'), null)
 })
 
-test('guide: in the chat the view switches between reading, both and terminal', () => {
-  const pane = guideView => mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99',
-    ...(guideView ? { guideView } : {}) } })} c=${recorder()} />`)
-  const both = pane(null)
-  assert.ok(both.$('.rooms-main .guide') && both.$('.rooms-main .tabview-body'), 'both by default')
-  assert.ok(both.$('.rooms-main.has-reply'), 'the reading gets a row of its own')
-  const only = pane('guide')
-  assert.ok(only.$('.rooms-main .guide') && !only.$('.rooms-main .tabview-body'))
-  const screen = pane('screen')
-  assert.ok(!screen.$('.rooms-main .guide') && screen.$('.rooms-main .tabview-body'))
-  assert.match(screen.$('.reply-pane').text(), /Should I summarise them/)
-  // the switch itself, and the sidebar following it
+test('guide: in the chat the terminal stays and the answers stand at its edge, the whole reading beside it', () => {
+  const s = cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } })
   const c = recorder()
-  const el = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99' } })} c=${c} />`)
-  el.$('.guide-view').button(en.guide.view.screen).click()
-  assert.deepEqual(c.calls.at(-1), ['setGuideView', 'screen'])
+  const el = mount(html`<${RoomsPage} s=${s} c=${c} />`)
+  assert.ok(el.$('.rooms-main .tabview-body') && el.$('.answer'))
+  assert.equal(el.$('.rooms-main .guide'), null, 'the tree stands in Zum Thema')
+  el.$('.answer').button(en.fields.wholeReading).click()
+  assert.deepEqual(c.calls.at(-1), ['fieldTopic'])
+  const beside = mount(html`<${RoomsPage} s=${cockpitState(NOW, { ui: { room: { kind: 'tab', id: 'surface:12' }, tabView: 'surface:99',
+    fields: { layout: '2h', panes: ['surface:12', { topic: true, follow: true }] } } })} c=${recorder()} />`)
+  assert.ok(beside.$('.field-topic .guide') && beside.$('.answer'))
 })
 
 test('guide: a chosen step brings its box into view and puts the cursor in it, Send in reach', async () => {
@@ -1989,7 +1984,7 @@ test('guide: a chosen step brings its box into view and puts the cursor in it, S
     el.$$('.guide-opt')[0].click()
     // the effect runs after paint: a busy runner needs more than one tick
     for (let i = 0; i < 50 && !seen.some(x => x[0] === 'scroll'); i++) await tick()
-    assert.deepEqual(seen.find(x => x[0] === 'scroll'), ['scroll', 'guide-compose', 'nearest'])
+    assert.deepEqual(seen.find(x => x[0] === 'scroll' && x[1] === 'guide-compose'), ['scroll', 'guide-compose', 'nearest'])
     assert.ok(seen.some(x => x[0] === 'focus' && /textarea/i.test(x[1])), JSON.stringify(seen))
     assert.ok(el.$('.guide-compose').button(en.guide.send))
   } finally {

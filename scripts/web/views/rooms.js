@@ -19,33 +19,27 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, guideOf, indexRows, isAnswered, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, fieldsOf, indexRows, isAnswered, isTopic, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, taskOfTab, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented, TabClose } from './detail.js'
+import { AnswerBar, EmptyField, FieldBar, FieldClose, FieldGrid, FieldGrip, TopicPane, dragTab } from './fields.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
-import { GuideTree } from './guide.js'
 import { ControlNotice } from './header.js'
 import { chatAreaOf, openOrigin } from './nav.js'
-import { AskLine, TabReply } from './reply.js'
 import { TabWarnings, TermScreen, useTabScreen } from './tabs.js'
 
 const CHATS_SHOWN = 6
-const GUIDE_VIEWS = ['guide', 'both', 'screen']
-
-/** What a waiting tab's pane and its sidebar row show while the decision guide is on: the reading, both,
- *  or the terminal as before (ui.guideView, kept in this browser) */
-const guideView = s => (GUIDE_VIEWS.includes(s.ui?.guideView) ? s.ui.guideView : 'both')
 
 /** The room picked, else the chat (the open quick chat is ui.quickConv); one kept from before a reload that is
  *  gone shows the chat (logic.js roomShown). Never picked on its own from the tabs once the Chat is open: a tab
  *  that starts waiting would take the pane away while you type */
 const pickedRoom = roomShown
 
-function Item({ on, onClick, onDblClick, children, title, cls = '' }) {
+function Item({ on, onClick, onDblClick, children, title, cls = '', drag = null }) {
   return html`<button type="button" class=${`room-item ${cls}${on ? ' is-on' : ''}`} aria-current=${on ? 'true' : undefined}
-    title=${title} onClick=${onClick} onDblClick=${onDblClick}>${children}</button>`
+    title=${title} onClick=${onClick} onDblClick=${onDblClick} draggable=${drag ? 'true' : undefined} onDragStart=${drag ? dragTab(drag) : undefined}>${children}</button>`
 }
 
 /** A click that picks a room; the second click of a double click picks nothing again (it opens the rename) */
@@ -59,16 +53,6 @@ function shownOrigin(s, tab, slug) {
 
 /** Whether the workplace knows this tab by its name (a task, an inbox item, a team role): it keeps that name */
 const taskTab = tab => !!(tab.slug || tab.item || tab.team)
-
-/** The task a tab works on: its own (a task tab), else the newest live session in it linked to one (by hand, by its
- *  task tab, or recognised from what it did); null for none and for the control session */
-function taskOfTab(s, tab) {
-  if (tab.is_control) return null
-  if (tab.slug) return tab.slug
-  const linked = (s.sessions?.sessions ?? []).filter(x => x.task && x.tab?.ref === tab.ref)
-    .sort((a, b) => (b.started_ms ?? 0) - (a.started_ms ?? 0))[0]
-  return linked?.task ?? null
-}
 
 /** The new name of a tab or a workspace, in place of its row: Enter or Save takes it (trimmed, never
  *  empty), Esc or Cancel leaves the old one. The field stands instead of the row's button, never inside it */
@@ -127,7 +111,7 @@ function TabItem({ tab, on, s, c, where = false, dim = false }) {
       onSave=${title => saveName(c, 'tab_rename', { tab_ref: tab.ref, title })} onCancel=${() => c.stopRename()} />`
   }
   const from = shownOrigin(s, tab, tab.slug)
-  return html`<${Item} on=${on} cls=${`room-tab${dim ? ' is-dim' : ''}${from ? ' has-from' : ''}`} title=${tab.ask?.text || tab.last || tab.name} onClick=${firstClick(() => c.pickRoom({ kind: 'tab', id: tab.ref }))}
+  return html`<${Item} on=${on} cls=${`room-tab${dim ? ' is-dim' : ''}${from ? ' has-from' : ''}`} title=${tab.ask?.text || tab.last || tab.name} drag=${tab.ref} onClick=${firstClick(() => c.pickRoom({ kind: 'tab', id: tab.ref }))}
     onDblClick=${canRename(s, tab) ? () => c.startRename('tab', tab.ref) : undefined}>
     <${Dot} token=${dim ? 'muted' : stateToken(tabStateKey(tab))} pulse=${tab.state === 'working'} />
     <span class="room-name">${tab.is_control ? t.controlSession : tab.name}</span>
@@ -358,18 +342,19 @@ export function Sidebar({ s, c, rooms, here }) {
   </nav>`
 }
 
-/** One tab on the right: its terminal, live, the keyboard goes to it (TermScreen); "Write" opens the tab window with its box */
-function TabPane({ s, c, tab }) {
+/** One tab in a field: its terminal, live, always in view, the keyboard goes to it (TermScreen); what it asks stands
+ *  at the terminal's edge (AnswerBar); "Write" opens the tab window with its box. `i` is its field, `split` says
+ *  there are others */
+function TabPane({ s, c, tab, i = 0, split = false }) {
   const t = T()
   // while the tab's window is open it reads the terminal itself: one reader at a time
   const { screen, err, poke } = useTabScreen(c, s.ui.tabView ? null : tab.ref)
+  const typeHere = useRef(null)
   // by state on purpose: a tab gone idle (finished) can still be answered
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
-  const guided = replying && guideOf(s, tab).status !== 'off'
-  const view = guided ? guideView(s) : 'screen'
-  // an answer that reached the tab, or its close, ends this tab's turn: the walk goes on to the next, as
-  // settling an entry does in the lists. A jump to the terminal is no answer
-  const onward = () => { const n = tabWalkView(s.tabs?.tabs, s.ui.tabWalk, tab.ref, 0)?.next[0]?.key ?? walkRefs(s.tabs?.tabs).find(r => r !== tab.ref); if (n) c.walkTab(n) }
+  // alone in the page an answer that reached the tab, or its close, ends this tab's turn: the walk goes on to the
+  // next, as settling an entry does in the lists. A jump to the terminal is no answer. Beside others it stays
+  const onward = () => { if (split) return; const n = tabWalkView(s.tabs?.tabs, s.ui.tabWalk, tab.ref, 0)?.next[0]?.key ?? walkRefs(s.tabs?.tabs).find(r => r !== tab.ref); if (n) c.walkTab(n) }
   const cc = { ...c, reply: async (verb, args) => {
     const r = await c.reply(verb, args)
     if (r?.ok && verb !== 'tab_jump') onward()
@@ -380,35 +365,31 @@ function TabPane({ s, c, tab }) {
   const slug = taskOfTab(s, tab)
   const from = shownOrigin(s, tab, slug)
   const taskTitle = slug ? indexRows(s.model).get(`task:${slug}`)?.title ?? slug : null
-  return html`<section class=${`panel chat-main rooms-main has-walk${replying ? ' has-reply' : ''}${view === 'guide' ? ' is-guide-only' : ''}`} aria-labelledby="room-title">
+  return html`<section class="panel chat-main rooms-main" aria-labelledby=${i ? `room-title-${i}` : 'room-title'}>
     <header class="tabview-head">
+      <${FieldGrip} i=${i} on=${split} />
       <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
-      <h2 class="sec-title tabview-title" id="room-title" title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : tab.is_control ? undefined : tab.name}>
+      <h2 class="sec-title tabview-title" id=${i ? `room-title-${i}` : 'room-title'} title=${taskTab(tab) && !tab.is_control ? t.rooms.taskName : tab.is_control ? undefined : tab.name}>
         ${tab.is_control ? t.controlSession : tab.name}</h2>
       ${canRename(s, tab) ? html`<${Btn} size="xs" variant="ghost" icon="pencil" label=${t.rooms.rename} title=${t.rooms.rename}
         onClick=${() => c.startRename('tab', tab.ref)} />` : null}
-      <span class="muted small">${tab.workspace}</span>
+      <span class="muted small field-wsname">${tab.workspace}</span>
       ${slug ? html`<button type="button" class="btn-link small room-task" title=${t.infoOpenTask}
         onClick=${() => c.openItem(`task:${slug}`, { task: slug, title: taskTitle })}>${t.sessionTask(short(taskTitle, 60))}</button>` : null}
       ${from ? html`<button type="button" class="btn-link small room-from-link" data-from=${from.kind} title=${t.rooms.fromTitle}
         onClick=${() => openOrigin(s, c, from)}>${t.rooms.from(short(from.title, 60))}</button>` : null}
       <span class=${`tabview-live muted small${screen && !err ? ' is-live' : ''}`} aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
         : screen ? t.tabViewLive : t.loading}</span>
-      ${guided ? html`<span class="guide-view"><${Segmented} label=${t.guide.viewLabel} current=${view}
-        values=${GUIDE_VIEWS.map(v => [v, t.guide.view[v]])} onPick=${v => c.setGuideView(v)} /></span>` : null}
       <span class="room-head-acts">
+        <${Btn} size="xs" variant="secondary" pressed=${(s.ui.fields?.panes ?? []).some(isTopic)} title=${t.fields.chatTopicTitle} onClick=${() => c.fieldTopic()}>${t.fields.topic}<//>
         <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
         <${TabClose} tab=${tab} s=${s} c=${c} looking onClosed=${onward} />
+        <${FieldClose} i=${i} c=${c} on=${split} />
       </span>
     </header>
-    ${replying ? html`<div class="reply-pane">
-      ${view === 'guide' ? null : html`<${AskLine} tab=${tab} />`}
-      ${view === 'screen' ? null : html`<${GuideTree} tab=${tab} s=${s} c=${c} />`}
-      <${TabReply} tab=${tab} s=${s} c=${cc} />
-    </div>` : null}
-    ${view === 'guide' ? null : html`<${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
-      canType=${canTab(s, 'keys')} c=${c} poke=${poke} />`}
-    <${TabWalk} s=${s} c=${c} tab=${tab} />
+    <${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
+      canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} />
+    ${replying ? html`<${AnswerBar} key=${tab.ask?.hash ?? tab.ref} tab=${tab} s=${s} c=${cc} onOwn=${() => typeHere.current?.()} onTopic=${() => c.fieldTopic()} />` : null}
   </section>`
 }
 
@@ -508,8 +489,22 @@ export function RoomsPage({ s, c }) {
   }
   let pane = null
   if (here.kind === 'tab') {
-    const tab = (s.tabs?.tabs ?? []).find(x => x.ref === here.id)
-    pane = tab ? html`<${TabPane} key=${tab.ref} s=${s} c=${c} tab=${tab} />` : html`<section class="panel chat-main rooms-main"><${Empty}>${t.rooms.gone}<//></section>`
+    const tabs = s.tabs?.tabs ?? []
+    const tab = tabs.find(x => x.ref === here.id)
+    const f = fieldsOf(s.ui.fields, here.id)
+    const split = f.panes.length > 1
+    const field = (p, i) => {
+      if (isTopic(p)) return html`<${TopicPane} p=${p} i=${i} s=${s} c=${c} split=${split} tab=${tabs.find(x => x.ref === (p.follow ? here.id : p.tab)) ?? null} />`
+      if (!p) return html`<${EmptyField} i=${i} c=${c} />`
+      const open = tabs.find(x => x.ref === p)
+      return open ? html`<${TabPane} s=${s} c=${c} tab=${open} i=${i} split=${split} />`
+        : html`<section class="panel chat-main rooms-main"><${Empty}>${t.rooms.gone}<//><${FieldClose} i=${i} c=${c} on=${split} /></section>`
+    }
+    pane = html`<section class="fields-wrap">
+      <${FieldBar} s=${s} c=${c} f=${f} tab=${tab} />
+      <${FieldGrid} f=${f} c=${c} render=${field} />
+      ${tab ? html`<div class="fields-walk"><${TabWalk} s=${s} c=${c} tab=${tab} /></div>` : null}
+    </section>`
   } else if (here.kind === 'ws') {
     const w = rooms.workspaces.find(x => x.key === here.id)
     pane = w ? html`<${WorkspacePane} s=${s} c=${c} w=${w} />` : null
@@ -518,7 +513,7 @@ export function RoomsPage({ s, c }) {
     pane = b ? html`<${BridgePane} c=${c} b=${b} />` : null
   }
   pane = pane ?? html`<${ChatPane} s=${s} c=${c} />`
-  return html`<div class="col col-page roomspage term">
+  return html`<div class=${`col col-page roomspage term${s.ui.fieldsFull && here.kind === 'tab' ? ' is-full' : ''}`}>
     <${ControlNotice} s=${s} c=${c} />
     <${TabWarnings} s=${s} />
     <div class="rooms-grid">
