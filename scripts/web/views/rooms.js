@@ -18,12 +18,13 @@
 // stays one line (C2), so its close is that head's.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, fieldsOf, indexRows, isAnswered, isTopic, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, taskOfTab, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
+import { html, useEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { ASK_ARCHIVE_DAYS, askList, attentionTabs, canRename, canRenameWorkspace, canTab, chatLanding, chatStamp, duration, fieldsOf, indexRows, isAnswered, isTopic, listedChats, roomShown, roomsOf, shellQuote, short, stateToken, statusQueue, tabOrigin, tabWalkView, taskOfTab, termStatus, waitLage, walkRefs, tabStateKey, wantsYou } from '../logic.js'
 import { T, language } from '../text.js'
 import { AgentList, AgentMark, AgentsPage, agentBadge } from './agents.js'
 import { AskMark, ChatFoot, ChatIntro, ChatThread, useQuickLive, useStickToEnd } from './chat.js'
 import { Segmented, TabClose } from './detail.js'
+import { HistoryPanel, KeyStrip, StatusChips, ToolBar, WriteStrip } from './termtools.js'
 import { AnswerBar, EmptyField, FieldBar, FieldClose, FieldGrid, FieldGrip, TopicPane, dragTab } from './fields.js'
 import { Btn, Dot, Empty, Icon, StateLine, WalkBar } from './parts.js'
 import { ControlNotice } from './header.js'
@@ -350,6 +351,11 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
   // while the tab's window is open it reads the terminal itself: one reader at a time
   const { screen, err, poke } = useTabScreen(c, s.ui.tabView ? null : tab.ref)
   const typeHere = useRef(null)
+  const [keysOn, setKeysOn] = useState(false)
+  const [writeOn, setWriteOn] = useState(false)
+  const [histOn, setHistOn] = useState(false)
+  const [size, setSize] = useState(0)
+  const status = useMemo(() => (tab.state === 'shell' ? null : termStatus(screen?.text)), [screen?.text, tab.state])
   // by state on purpose: a tab gone idle (finished) can still be answered
   const replying = (tab.state === 'needs-you' || tab.state === 'waiting') && !tab.is_control
   // alone in the page an answer that reached the tab, or its close, ends this tab's turn: the walk goes on to the
@@ -380,16 +386,23 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
         onClick=${() => openOrigin(s, c, from)}>${t.rooms.from(short(from.title, 60))}</button>` : null}
       <span class=${`tabview-live muted small${screen && !err ? ' is-live' : ''}`} aria-live="off">${err ? html`<${StateLine} token="danger" word=${t.tabViewFailed(err)} />`
         : screen ? t.tabViewLive : t.loading}</span>
+      <${StatusChips} st=${status} tab=${tab} s=${s} c=${c} poke=${poke} />
       <span class="room-head-acts">
         <${Btn} size="xs" variant="secondary" pressed=${(s.ui.fields?.panes ?? []).some(isTopic)} title=${t.fields.chatTopicTitle} onClick=${() => c.fieldTopic()}>${t.fields.topic}<//>
-        <${Btn} size="xs" variant="primary" icon="send" title=${t.rooms.writeTitle} onClick=${() => c.openTabView(tab.ref)}>${t.rooms.write}<//>
         <${TabClose} tab=${tab} s=${s} c=${c} looking onClosed=${onward} />
         <${FieldClose} i=${i} c=${c} on=${split} />
       </span>
     </header>
-    <${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
-      canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} />
+    <${ToolBar} tab=${tab} s=${s} c=${c} poke=${poke} keysOn=${keysOn} setKeysOn=${setKeysOn} writeOn=${writeOn} setWriteOn=${setWriteOn}
+      histOn=${histOn} setHistOn=${setHistOn} setSize=${d => setSize(v => Math.min(6, Math.max(-3, v + d)))} />
+    <div class="term-stage" style=${size ? { '--term-step': `${size}px` } : undefined}>
+      <${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
+        canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} />
+      ${histOn ? html`<${HistoryPanel} tab=${tab} c=${c} onClose=${() => setHistOn(false)} />` : null}
+    </div>
     ${replying ? html`<${AnswerBar} key=${tab.ask?.hash ?? tab.ref} tab=${tab} s=${s} c=${cc} onOwn=${() => typeHere.current?.()} onTopic=${() => c.fieldTopic()} />` : null}
+    ${writeOn ? html`<${WriteStrip} tab=${tab} c=${c} poke=${poke} onClose=${() => setWriteOn(false)} />` : null}
+    ${keysOn ? html`<${KeyStrip} tab=${tab} c=${c} poke=${poke} />` : null}
   </section>`
 }
 

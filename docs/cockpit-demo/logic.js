@@ -3823,6 +3823,30 @@ export function taskOfTab(s, tab) {
   return linked?.task ?? null
 }
 
+/** Model, context and cost as an agent tab's own status line names them, read off its screen: only what is there,
+ *  null without any. A status line is the user's own, so this reads the common shapes and asks nothing of them */
+export function termStatus(text) {
+  const tail = String(text ?? '').split('\n').slice(-6).join('\n')
+  const model = tail.match(/\[((?:Opus|Sonnet|Haiku|Fable)[^\]\n]{0,40})\]/)?.[1] ?? null
+  const ctx = tail.match(/\b(\d{1,3})%\/\d+[kKmM]\b/)?.[1]
+  const cost = tail.match(/\$\d+(?:[.,]\d{1,2})?/)?.[0] ?? null
+  const context = ctx == null ? null : Math.min(100, Number(ctx))
+  return model || context != null || cost ? { model, context, cost } : null
+}
+
+/** The commands of a tab's menu: an agent's by what they do and the skills of this Bridge, a shell's few. Each is what
+ *  you would type yourself; `ask` asks once more, on the row */
+export function termCommands(tab, s, t) {
+  const c = t.cmd
+  if (tab.state === 'shell') return [{ title: t.often, items: ['git status', 'git pull', 'ls -la'].map(cmd => ({ cmd, say: '' })).concat({ cmd: 'claude', say: c.claude }) }]
+  const skills = (s.skills ?? []).map(x => ({ cmd: `/${x.name}`, say: x.title ?? '' }))
+  return [
+    { title: t.talk, items: [{ cmd: '/clear', say: c.clear, ask: true }, { cmd: '/compact', say: c.compact }, { cmd: '/rewind', say: c.rewind }, { cmd: '/branch', say: c.branch }, { cmd: '/resume', say: c.resume }] },
+    { title: t.setting, items: [{ cmd: '/model', say: c.model }, { cmd: '/effort', say: c.effort }, { cmd: '/context', say: c.context }, { cmd: '/usage', say: c.usage }, { cmd: '/status', say: c.status }] },
+    ...(skills.length ? [{ title: t.skills, items: skills }] : []),
+  ]
+}
+
 // ---------------------------------------------------------------- the fields of the Chat (views/fields.js)
 
 /** The layouts and how many fields each holds. A field holds a tab's ref, Zum Thema or nothing; the fields live on

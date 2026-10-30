@@ -2238,6 +2238,12 @@ export function createMockTransport(opts = {}) {
           ],
           elsewhere: { inventory_stale: [], intentionally_absent: ['backup-sync'], undeclared: { named: [], counted: 12 } } } })
       }
+      if (url.pathname === '/api/tab-history') {
+        const q = (url.searchParams.get('q') ?? '').toLowerCase()
+        const all = [{ i: 0, role: 'user', text: 'Go on with the task', at_ms: 0 }, { i: 1, role: 'agent', text: 'Reading the task folder and the last log rows.', at_ms: 0 }, { i: 2, role: 'tool', text: 'Bash: node --test scripts/tests', at_ms: 0 }]
+        const turns = all.filter(x => !q || x.text.toLowerCase().includes(q))
+        return ok({ source: 'session', turns, total: all.length, matched: turns.length, truncated: false })
+      }
       if (url.pathname === '/api/tab/screen') {
         const tab = state.tabs.tabs.find(x => x.ref === url.searchParams.get('ref'))
         if (!tab) return fail(404, 'not_found', 'no such tab')

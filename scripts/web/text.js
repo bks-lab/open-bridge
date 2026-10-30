@@ -887,6 +887,16 @@ const en = {
   chatAsk: 'Ask',
   chatSolve: 'Let AI do it',
   chatSolveTitle: 'A real Claude session in its own terminal tab takes it on and may act',
+  tools: {
+    bar: 'Tools of this chat', stop: 'Stop', stopTitle: 'Interrupts the agent, as Esc does in the terminal', interrupt: 'Stops the running program', clear: 'Clear',
+    commands: 'Commands', write: 'Write', writeHint: 'A longer text, several lines, in peace', keys: 'Keys', history: 'History', smaller: 'Smaller type', larger: 'Larger type', toTerminal: 'In the terminal',
+    search: 'Find a command', again: 'Click again: really empty it', blockedAsk: 'The tab asks something: answer that first', blockedDraft: 'Something is typed in that tab',
+    histSearch: 'Search the whole conversation', histClose: 'Close the history', histLoading: 'Reading', histNone: 'Nothing found', older: 'Older',
+    fromSession: 'From the session file: the whole conversation, also what the terminal no longer shows', fromTerminal: 'From the terminal: all it still holds',
+    model: 'Model', effort: 'Effort', modelTitle: 'Change the model', contextTitle: n => `Context: ${n} % used`, costTitle: 'Cost of this session',
+    talk: 'Conversation', setting: 'Settings', skills: 'Skills', often: 'Often',
+    cmd: { clear: 'Start anew', compact: 'Condense', rewind: 'Rewind', branch: 'Branch off here', resume: 'Earlier session', model: 'Change the model', effort: 'Effort', context: 'How full is the context', usage: 'Usage', status: 'State of the session', claude: 'Start an agent here' },
+  },
   fields: {
     bar: 'Fields of the Chat', topic: 'Topic', chatTopic: 'Chat + topic', chatTopicTitle: 'The reading and the file beside the chat',
     layout: { 1: 'One field', '2h': 'Two side by side', '2v': 'Two on top of each other', 3: 'Three side by side', m2: 'One large and two small', 4: 'Four in a grid' },
@@ -2611,6 +2621,16 @@ const de = {
   chatAsk: 'Fragen',
   chatSolve: 'AI machen lassen',
   chatSolveTitle: 'Eine echte Claude-Sitzung in einem eigenen Terminal-Tab übernimmt und darf handeln',
+  tools: {
+    bar: 'Werkzeuge dieses Chats', stop: 'Stopp', stopTitle: 'Unterbricht den Agenten, wie Esc im Terminal', interrupt: 'Bricht das laufende Programm ab', clear: 'Leeren',
+    commands: 'Befehle', write: 'Schreiben', writeHint: 'Längerer Text, mehrere Zeilen, in Ruhe schreiben', keys: 'Tasten', history: 'Verlauf', smaller: 'Schrift kleiner', larger: 'Schrift größer', toTerminal: 'Im Terminal',
+    search: 'Befehl suchen', again: 'Nochmal klicken: wirklich leeren', blockedAsk: 'Der Tab fragt etwas: erst das beantworten', blockedDraft: 'Im Tab steht ein Entwurf',
+    histSearch: 'Im ganzen Gespräch suchen', histClose: 'Verlauf schließen', histLoading: 'Wird gelesen', histNone: 'Nichts gefunden', older: 'Älter',
+    fromSession: 'Aus der Sitzungsdatei: das ganze Gespräch, auch was das Terminal nicht mehr zeigt', fromTerminal: 'Aus dem Terminal: alles, was es noch hält',
+    model: 'Modell', effort: 'Aufwand', modelTitle: 'Modell wechseln', contextTitle: n => `Kontext: ${n} % belegt`, costTitle: 'Kosten dieser Sitzung',
+    talk: 'Gespräch', setting: 'Einstellung', skills: 'Skills', often: 'Häufig',
+    cmd: { clear: 'Neu anfangen', compact: 'Verdichten', rewind: 'Zurückspulen', branch: 'Hier abzweigen', resume: 'Frühere Sitzung', model: 'Modell wechseln', effort: 'Aufwand', context: 'Wie voll ist der Kontext', usage: 'Verbrauch', status: 'Stand der Sitzung', claude: 'Agent hier starten' },
+  },
   fields: {
     bar: 'Felder des Chats', topic: 'Zum Thema', chatTopic: 'Chat + Thema', chatTopicTitle: 'Lage und Akte neben dem Chat',
     layout: { 1: 'Ein Feld', '2h': 'Zwei nebeneinander', '2v': 'Zwei übereinander', 3: 'Drei nebeneinander', m2: 'Ein großes und zwei kleine', 4: 'Vier im Raster' },
