@@ -216,6 +216,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # the Workspaces area of the settings page (workspaces.py): a switch beside the config, the rest through the engine
     "workspace_switch": {"area": ("title", True), "on": ("bool", True)},
     "workspace_active": {"key": ("title", True), "on": ("bool", True)},
+    "workspaces_enabled": {"on": ("bool", True)},
     "workspace_plan": {"key": ("title", True)},
     "workspace_delete": {"key": ("title", True)},
     # the first-run tour: finished or skipped (v: the page's tour version), and taken back to offer it again
@@ -264,7 +265,7 @@ LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker
                          "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
                          "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys",
-                         "tab_new", "workspace_new", "workspace_close", "workspace_switch", "workspace_active"})
+                         "tab_new", "workspace_new", "workspace_close", "workspace_switch", "workspace_active", "workspaces_enabled"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb

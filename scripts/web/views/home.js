@@ -8,7 +8,7 @@ import {
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
-  flowAreas, flowOn, startWaiting, withoutOff, pageFollowsArea,
+  flowAreas, flowOn, startWaiting, withoutOff, pageFollowsArea, workspacesOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -681,7 +681,7 @@ function HomeBoard({ s, c }) {
   const rowsOf = id => (s.model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const waitingAll = rowsOf('now')
   const tasksAll = rowsOf('work').filter(r => r.task)
-  const projects = withoutOff(s, homeProjects(tabs, [...waitingAll, ...tasksAll]))
+  const projects = workspacesOn(s) ? withoutOff(s, homeProjects(tabs, [...waitingAll, ...tasksAll])) : []
   const catalog = homeCatalog(s.model, { workers: s.workers?.status !== 'none' })
   const chosen = homeChosen(s.model, s.home)
   const on = new Set(chosen)

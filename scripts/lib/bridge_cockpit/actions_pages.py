@@ -164,6 +164,11 @@ class PageVerbs:
             raise self.not_applicable("no such area")
         ctx.extra["workspaces"] = self.app.workspaces.changed()
 
+    def v_workspaces_enabled(self, ctx: Ctx, on: bool) -> None:
+        """The main switch of the area Workspaces"""
+        self.app.workspaces.enable(on)
+        ctx.extra["workspaces"] = self.app.workspaces.changed()
+
     def workspace_engine(self, ctx: Ctx, verb: str, slug: str) -> None:
         """One call of scripts/workspace.py, whose refusal reaches the page in its own words"""
         run = ctx.call(f"workspace.{verb}", slug, self.app.workspaces.command(verb, slug), SHORT_TIMEOUT)

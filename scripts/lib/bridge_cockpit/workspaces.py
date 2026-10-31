@@ -5,8 +5,9 @@ An area comes from workplace.workspaces, its rules from workflow/workspaces/<id>
 scripts/workspace.py, on every state, so an edited file shows at once). The switches are kept in
 .bridge/cockpit/workspaces.json, so the page never writes bridge-config.yaml and a click makes no commit.
 
-Two switches. Shown takes an area out of the bar, the chips and the shelf, it stays in the picker. Active is the
-stronger one: a resting workspace leaves the picker too and its rules no longer hold. Neither deletes anything or stops
+A main switch over everything: off, the cockpit has no picker or filter and shows all, the choices below it stay
+for when it comes back on. Then two switches per area. Shown says whether an area stands in the picker, the chips and the shelf. Active is the stronger one: a
+resting workspace's rules no longer hold and it leaves the picker too. Neither deletes anything or stops
 a background run, and the line All still counts them. An archived workspace rests, and a child rests with its parent.
 
 Delete takes any area but the default: its file through the engine, then its entry out of bridge-config.yaml, a copy of
@@ -38,21 +39,21 @@ class Workspaces:
         self.path = Path(app.state_dir) / FILE
         self.lock = threading.Lock()
         self.rev = 0
-        self.off, self.inactive = self._load()
+        self.off, self.inactive, self.enabled = self._load()
         self.gone: list[str] = []          # deleted since the start: a page keeps the boot's list of areas until it loads again
 
-    def _load(self) -> tuple[list[str], list[str]]:
+    def _load(self) -> tuple[list[str], list[str], bool]:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return [], []
+            return [], [], True
         names = lambda k: [n for n in data.get(k) or [] if isinstance(n, str)] if isinstance(data, dict) else []
-        return names("off"), names("inactive")
+        return names("off"), names("inactive"), not isinstance(data, dict) or data.get("enabled") is not False
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"off": self.off, "inactive": self.inactive}, ensure_ascii=False), encoding="utf-8")
+        tmp.write_text(json.dumps({"enabled": self.enabled, "off": self.off, "inactive": self.inactive}, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, self.path)
 
     def areas(self) -> list[str]:
@@ -86,7 +87,9 @@ class Workspaces:
         items += [self._item(None, r, hidden, resting, by_id, fixed) for r in rows
                   if r["id"] not in placed and key_of(r.get("area")) not in known]
         asleep = [i for i in items if not i["active"] or i["active_held_by"]]
-        return {"rev": self.rev, "inactive": [i["key"] for i in asleep], "gone": gone,
+        if not self.enabled:      # the main switch: every area shows, the choices wait for it to come back on
+            return {"rev": self.rev, "enabled": False, "inactive": [], "gone": gone, "off": gone, "items": items}
+        return {"rev": self.rev, "enabled": True, "inactive": [i["key"] for i in asleep], "gone": gone,
                 "off": [*(i["area"] for i in items if i["area"] and (not i["on"] or i["held_by"] or i in asleep)), *gone],
                 "items": items}
 
@@ -122,6 +125,13 @@ class Workspaces:
             self.rev += 1
             self._save()
         return True
+
+    def enable(self, on: bool) -> None:
+        """The main switch; the switches of each area stay as they are"""
+        with self.lock:
+            self.enabled = on
+            self.rev += 1
+            self._save()
 
     def activate(self, key: str, on: bool) -> dict | None:
         """Active or resting; the item as it stood, None: no such one"""

@@ -44,18 +44,8 @@ the name, a chip or a jump set it, the start page views, Work, Chat and
 Sessions all show it, and a project chosen on the start page before carries
 over.
 
-**On the bridge** (the start page's stage view) the areas are one bar of pills under
-the greeting instead of the shelf and the chips below the stage, so the filter stands
-in the first screen beside what it filters. *All* comes first, then each area with
-something open, what waits on you first, then what is at work, then the most open,
-*No area* last. A pill shows one figure: what waits on you (in the warning colour),
-else how many tabs work there, else its tasks, else its tabs at rest; its title names
-all of them. An area whose only open tab is an empty shell has no pill. The areas of
-`workplace.workspaces` with nothing open wait behind *+n quiet*, which opens them in
-place. A pill picks the area like a line of the shelf (a second click shows every
-area again), and the Today card beside the bridge follows it. An alias of a workspace
-is never an area of its own: a task under an alias counts under the workspace's
-name. An issue or pull request without an area takes the area of the workspace
+An alias of a workspace is never an area of its own: a task under an alias counts under the
+workspace's name. An issue or pull request without an area takes the area of the workspace
 whose `repos:` match its repository ([`workplace.md`](workplace.md)).
 
 **Every number is a jump** to the page that holds those things, with the area
@@ -90,17 +80,21 @@ page says so. The cost card opens on `sources.cost_center`. These pages carry th
 The filter stands in the browser only: it changes what the page shows, not what the server
 sends, and it keeps nothing from a session. That is the job of a workspace's `boundary`.
 
+**The main switch** heads Settings, Workspaces. Off, the cockpit has no picker or chips
+and no filter, whatever the address or a stored choice says, and it shows all, as a Bridge
+that wants none of this. The switches below it stay for when it comes back on.
+
 **The picker** stands in the header on every page: All and each active workspace, a child
 under its parent. A click sets the one area filter.
 
 **Active and shown.** Settings, Workspaces lists every area with its rules in one line,
-two switches and Delete. *Active* is the stronger one: a resting workspace leaves the picker
-and the bar, and its rules no longer hold. *Shown* only takes an area out of the bar, the
-chips and the shelf, it stays in the picker. Neither deletes anything, background runs go on,
+two switches and Delete. *Active* is the stronger one: a resting workspace's rules no longer hold, and it
+leaves the picker too. *Shown* says whether an area stands in the picker, the chips and the
+shelf. Neither deletes anything, background runs go on,
 and the line All still counts it. The switches are kept in `.bridge/cockpit/workspaces.json`,
 so they hold in every browser and make no commit. A workspace archived with
 `workspace.py archive` rests, and waking it restores its file. A child rests with its parent
-and leaves the bar with it, its switch then held.
+and leaves the picker with it, its switch then held.
 
 **Delete** takes any area but the default, where everything without an area lands. It says
 first what it touches and offers the last button only when nothing stops it: an open tab of

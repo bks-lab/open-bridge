@@ -395,6 +395,18 @@ def test_a_collected_record_opens_by_its_slug_and_its_path(tmp_path):
     assert details.task_file(tmp_path, "first", "notes.md", "work/streams/jobs/2026-10/first")["text"] == "note"
 
 
+# ---------------------------------------------------------------- the main switch
+
+def test_the_main_switch_lets_every_area_show_and_keeps_the_choices(cockpit):
+    cockpit.act("workspace_switch", area="Home", on=False)
+    cockpit.act("workspace_active", key="Billing", on=False)
+    state = cockpit.act("workspaces_enabled", on=False)["workspaces"]
+    assert (state["enabled"], state["off"], state["inactive"]) == (False, [], [])
+    assert cockpit.app.workspaces.__class__(cockpit.app).state()["enabled"] is False
+    state = cockpit.act("workspaces_enabled", on=True)["workspaces"]
+    assert state["enabled"] is True and sorted(state["off"]) == ["Billing", "Home"]
+
+
 # ---------------------------------------------------------------- active and shown, and deleting any area
 
 CONFIG = """# my bridge

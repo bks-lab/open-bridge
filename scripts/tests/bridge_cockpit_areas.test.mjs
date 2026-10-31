@@ -503,12 +503,12 @@ test('start page views: the news band only when switched on for the start page; 
     assert.ok(on.$('.ticker'), view)
     // in page order: the day shelf before the areas, the areas before any chip row
     const els = walk(off)
-    const areas = els.findIndex(x => x.hasClass(view === 'stage' ? 'stage-areas' : 'home-areas'))
+    const areas = els.findIndex(x => x.hasClass('home-areas'))
     const chips = els.findIndex(x => x.hasClass('home-chips'))
     const day = els.findIndex(x => x.getAttribute('aria-labelledby') === 'home-day')
-    assert.ok(areas >= 0, view)
-    // on the stage the areas are its bar in the head: no table and no chip row below it
+    // on the stage the picker in the header stands for the areas: no table and no chip row below it
     if (view === 'stage') { assert.equal(off.$('.home-areas'), null); assert.equal(chips, -1); continue }
+    assert.ok(areas >= 0, view)
     if (day >= 0) assert.ok(day < areas, view)
     if (chips >= 0) assert.ok(areas < chips, view)
   }
@@ -770,34 +770,6 @@ test('every list named waiting on you shows the asks, so its count is the count 
 
 // ---------------------------------------------------------------- the area bar of the stage (round: start areas)
 
-test('areaBar: the areas with something open, what needs you first, one figure each; the configured rest is quiet', () => {
-  const line = (name, x = {}) => ({ name, waiting: 0, running: 0, tasks: 0, resting: 0, review: 0, overdue: 0, ...x })
-  const lines = [line('Ops', { running: 2, tasks: 3, resting: 1 }), line('Home', { tasks: 1 }), line('Lab', { waiting: 1, tasks: 2 }),
-    line('Desk', { resting: 2 }), { ...line('', { tasks: 1 }), none: true }]
-  const bar = logic.areaBar(lines, ['ops', 'Lab', 'Home', 'Desk', 'Shop', 'Garden'])
-  assert.deepEqual(bar.pills.map(p => [p.name, p.fig.kind, p.fig.n]),
-    [['Lab', 'waiting', 1], ['Ops', 'running', 2], ['Desk', 'resting', 2], ['Home', 'tasks', 1], ['', 'tasks', 1]])
-  assert.ok(bar.pills.at(-1).none)
-  // the configured areas without a line, any case, in their order
-  assert.deepEqual(bar.quiet, ['Shop', 'Garden'])
-  // every pill says all its numbers in its title, in the page language
-  assert.equal(logic.areaBarTitle(bar.pills[1], en.home), en.home.areaBarParts({ waiting: 0, running: 2, tasks: 3, resting: 1 }))
-  assert.deepEqual(logic.areaBar([], []), { pills: [], quiet: [] })
-})
-
-test('areaBar: a pill says what is to review or overdue, and a line with nothing to say makes no pill', () => {
-  const line = (name, x = {}) => ({ name, waiting: 0, running: 0, tasks: 0, resting: 0, review: 0, overdue: 0, ...x })
-  const bar = logic.areaBar([line('Ops', { review: 1 }), line('Lab', { overdue: 2, tasks: 1 }), line('Home'),
-    { ...line('', { review: 1 }), none: true }], [])
-  assert.deepEqual(bar.pills.map(p => [p.name, p.fig.kind, p.fig.n]), [['Lab', 'overdue', 2], ['Ops', 'review', 1], ['', 'review', 1]])
-  for (const lang of ['en', 'de']) {
-    const h = text.TABLES[lang].home
-    for (const k of ['review', 'overdue']) assert.ok(h.areaFig[k](1).length > 0, `${lang} ${k}`)
-    assert.match(logic.areaBarTitle(bar.pills[0], h), /2/)
-    assert.notEqual(logic.areaBarTitle(bar.pills[1], h), h.areaBarParts({}))
-  }
-})
-
 test('the area lines: an alias is no line of its own, an empty shell makes no area, a tab at rest counts', () => {
   const tabs = [
     { ref: 'a', name: 'shell', workspace: 'Shop', state: 'shell' },
@@ -819,39 +791,6 @@ test('the area lines: an alias is no line of its own, an empty shell makes no ar
   assert.equal(areas.find(a => a.name === 'Desk').resting, 1)
 })
 
-test('the stage carries the areas as one bar under the greeting; a pill filters, the quiet ones open on a click', async () => {
-  const { logic } = loadedRooms
-  const base = cockpitState(NOW, { ui: { page: '@start' } })
-  const tiles = logic.homeViewSet(logic.homeChosen(base.model, null), 'stage')
-  const s = { ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] },
-    boot: { ...base.boot, config: { areas: ['Ops', 'Demo', 'Docs', 'Garden'] } } }
-  const c = recorder()
-  const el = mount(html`<${HomePage} s=${s} c=${c} />`)
-  const bar = el.$('.stage-greet .stage-areas')
-  assert.ok(bar, 'the bar stands in the stage head')
-  const pills = bar.$$('button.area-pill')
-  assert.equal(pills[0].text().trim(), en.home.all)
-  assert.equal(pills[0].getAttribute('aria-pressed'), 'true')
-  assert.ok(pills.length > 2)
-  // one figure per pill and its numbers in the title; no key hint anywhere
-  for (const p of pills.slice(1, -1)) { assert.ok(p.getAttribute('title')); assert.equal(p.$$('.area-pill-fig').length, 1) }
-  assert.doesNotMatch(bar.text(), /\b(g a|j|k)\b.*key/i)
-  const quiet = bar.button(en.home.areaQuiet(1))
-  quiet.click()
-  pills[1].click()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'setArea'), [['setArea', pills[1].$('.area-pill-name').text()]])
-  const open = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
-  open.$('.stage-areas').button(en.home.areaQuiet(1)).click()
-  for (let i = 0; i < 50 && !open.$('.stage-areas').text().includes('Garden'); i++) await new Promise(r => setTimeout(r, 20))
-  assert.ok(open.$('.stage-areas').text().includes('Garden'))
-  // a picked area: its pill is pressed, a second click shows every area again
-  const picked = mount(html`<${HomePage} s=${{ ...s, ui: { ...s.ui, area: 'Ops' } }} c=${c} />`)
-  const on = picked.$$('.stage-areas button.area-pill').find(p => p.getAttribute('aria-pressed') === 'true')
-  assert.equal(on.$('.area-pill-name').text(), 'Ops')
-  on.click()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'setArea').at(-1), ['setArea', null])
-})
-
 test('area aliases fold into their area for tabs and rows: one pill, its count, its filter (review of #572)', () => {
   logic.setAreaAliases({ Hm: 'Home' })
   try {
@@ -863,7 +802,6 @@ test('area aliases fold into their area for tabs and rows: one pill, its count, 
     assert.ok(logic.inProject({ area_names: ['Hm'] }, 'home'))
     const lines = logic.homeAreas(tabs, [{ id: 'now', rows: [] }, { id: 'work', rows: [] }], [], NOW)
     assert.deepEqual(lines.map(a => [a.name, a.running, a.resting]), [['Home', 1, 1]])
-    assert.deepEqual(logic.areaBar(lines, ['Home', 'Shop']).quiet, ['Shop'])
   } finally { logic.setAreaAliases({}) }
 })
 
@@ -919,7 +857,7 @@ test('the settings list a child under its parent, with two switches', () => {
   assert.ok(el.text().includes('Off with Acme'))
   assert.ok(el.text().includes('A filter, no rules of its own yet'))
   assert.ok(el.text().includes('Resting'))
-  assert.equal(el.$$('[role="switch"]').length, 10)
+  assert.equal(el.$$('[role="switch"]').length, 11)
 })
 
 test('each switch says what it switches, a resting one cannot be shown', () => {
@@ -930,6 +868,18 @@ test('each switch says what it switches, a resting one cannot be shown', () => {
   el.$$('[role="switch"]').find(x => x.getAttribute('aria-label') === 'Show Home').click()
   assert.deepEqual(c.calls.at(-1), ['workspaceSwitch', 'Home', false])
   assert.equal(el.$$('[role="switch"]').find(x => x.getAttribute('aria-label') === 'Show Old').hasAttribute('disabled'), true)
+})
+
+test('the main switch off leaves all: no list, no picker, and the choice to come back', () => {
+  const c = recorder()
+  const off = wsState({ workspaces: { rev: 1, enabled: false, off: [], inactive: [], gone: [], items: WS_ITEMS } })
+  assert.equal(logic.workspacesOn(off), false)
+  assert.equal(logic.workspacesOn({}), true)
+  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${off} c=${c} />`)
+  assert.equal(el.$$('[role="switch"]').length, 1)
+  el.$('[role="switch"]').click()
+  assert.deepEqual(c.calls.at(-1), ['workspacesEnabled', true])
+  assert.equal(mount(html`<${views.workspaces.WorkspacePicker} s=${off} c=${c} />`).$$('button').length, 0)
 })
 
 test('every area can go but the default', () => {
@@ -962,7 +912,9 @@ test('the picker offers what is active, with the children under their parent', a
   const c = recorder()
   const el = mount(html`<${views.workspaces.WorkspacePicker} s=${wsState()} c=${c} />`)
   assert.equal(el.$$('button')[0].text().startsWith('All'), true)
-  assert.deepEqual(views.workspaces.pickable(wsState()).map(i => i.key), ['Acme', 'Billing', 'Home', 'Inbox'])
+  assert.deepEqual(views.workspaces.pickable(wsState()).map(i => i.key), ['Acme', 'Billing', 'Home', 'Old', 'Inbox'])
+  const shy = wsState({ workspaces: { rev: 1, off: ['Old', 'Home'], inactive: ['Old'], gone: [], items: WS_ITEMS } })
+  assert.deepEqual(views.workspaces.pickable(shy).map(i => i.key), ['Acme', 'Billing', 'Inbox'])
   el.$$('button')[0].click()
   await new Promise(r => setTimeout(r))
   el.$$('.pop-item').find(b => b.text() === 'Billing').click()
