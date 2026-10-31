@@ -30,6 +30,7 @@ from overlay.py) so the engine stays self-contained.
 import argparse
 import glob
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -50,13 +51,18 @@ WORKSPACES_DIR = "workflow/workspaces"
 LOCK_FILE = "workspaces.lock.yaml"
 MEMBER_BASE = ".bridge/workspaces"
 SCHEMA = "docs/schemas/workspace.schema.yaml"
+TRASH_BASE = ".bridge/trash"
+
+LEVELS = ("view", "room", "wall")           # how far a workspace keeps a session in, loosest first
+RULE_BLOCKS = ("refs", "writing", "boundary")   # what a child inherits key by key
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SCP_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+$")
 ALLOWED_URL_SCHEMES = ("https", "ssh", "file")
 
 # Field order used when (re)writing a definition — known keys first, extras kept.
-DEF_ORDER = ["schema_version", "id", "title", "description", "directory",
+DEF_ORDER = ["schema_version", "id", "title", "description", "directory", "area", "parent",
+             "archived_at", "refs", "writing", "boundary",
              "created_at", "updated_at", "overlays", "repos", "session_ref",
              "x-provider"]
 
@@ -252,6 +258,7 @@ class Consumer:
             if isinstance(data, dict):
                 base = {k: v for k, v in data.items()
                         if k not in ("id", "title", "description", "directory",
+                                     "area", "parent", "archived_at", *RULE_BLOCKS,
                                      "created_at", "updated_at", "overlays",
                                      "repos", "session_ref", "x-provider")}
                 return base
@@ -282,6 +289,14 @@ class Consumer:
         pattern = os.path.join(self.root, WORKSPACES_DIR, "*.yaml")
         return sorted(p for p in glob.glob(pattern)
                       if not os.path.basename(p).startswith("_"))
+
+    def all_definitions(self) -> dict:
+        """Every definition by its file name; an unreadable file counts as an empty one."""
+        out = {}
+        for path in self.list_definitions():
+            data = load_yaml_file(path)
+            out[os.path.splitext(os.path.basename(path))[0]] = data if isinstance(data, dict) else {}
+        return out
 
     # --- lock -------------------------------------------------------------
     def load_lock(self):
@@ -577,6 +592,55 @@ def _publish_identity(consumer: Consumer, ws_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Rules: what a workspace holds to, and what a child takes from its parent
+# ---------------------------------------------------------------------------
+
+def children_of(defs: dict, ws_id: str) -> list[str]:
+    return sorted(k for k, d in defs.items() if d.get("parent") == ws_id)
+
+
+def effective(defs: dict, ws_id: str) -> dict:
+    """A workspace with its parent's rules laid under its own. `inherited` names what came from the parent."""
+    own = defs[ws_id]
+    parent = defs.get(own.get("parent")) or {}
+    row = {"id": ws_id, "title": own.get("title") or ws_id, "description": own.get("description"),
+           "area": own.get("area") or parent.get("area"), "parent": own.get("parent"),
+           "archived": bool(own.get("archived_at")), "children": children_of(defs, ws_id), "inherited": []}
+    if "area" not in own and parent.get("area"):
+        row["inherited"].append("area")
+    for block in RULE_BLOCKS:
+        mine = own.get(block) or {}
+        theirs = parent.get(block) or {}
+        row[block] = {**theirs, **mine}
+        row["inherited"] += [f"{block}.{k}" for k in theirs if k not in mine]
+    return row
+
+
+def rule_problems(defs: dict, ws_id: str) -> list[str]:
+    """What is wrong between a workspace and its parent: a child may only narrow, and there are two levels."""
+    own = defs[ws_id]
+    name = own.get("parent")
+    if not name:
+        return []
+    if name == ws_id or name not in defs:
+        return [f"parent '{name}' does not exist"]
+    parent = defs[name]
+    problems = []
+    if parent.get("parent"):
+        problems.append(f"parent '{name}' has a parent itself, workspaces have two levels")
+    mine = own.get("boundary") or {}
+    theirs = parent.get("boundary") or {}
+    level, above = mine.get("level"), theirs.get("level", LEVELS[0])
+    if level in LEVELS and above in LEVELS and LEVELS.index(level) < LEVELS.index(above):
+        problems.append(f"boundary.level '{level}' is looser than the parent's '{above}'")
+    if isinstance(mine.get("skills"), list) and isinstance(theirs.get("skills"), list):
+        extra = sorted(set(mine["skills"]) - set(theirs["skills"]))
+        if extra:
+            problems.append(f"boundary.skills {', '.join(extra)} are not in the parent's list")
+    return problems
+
+
+# ---------------------------------------------------------------------------
 # Subcommands
 # ---------------------------------------------------------------------------
 
@@ -590,6 +654,13 @@ def cmd_create(consumer: Consumer, args) -> int:
     if os.path.exists(consumer.def_path(ws_id)):
         raise WorkspaceError(
             f"workspace '{ws_id}' already exists at {WORKSPACES_DIR}/{ws_id}.yaml.")
+    parent = getattr(args, "parent", None)
+    if parent:
+        above = consumer.all_definitions().get(parent)
+        if above is None:
+            raise WorkspaceError(f"parent '{parent}' does not exist.")
+        if above.get("parent"):
+            raise WorkspaceError(f"parent '{parent}' has a parent itself, workspaces have two levels.")
     ts = now_iso()
     data = consumer.template_base()
     data["schema_version"] = 1
@@ -599,6 +670,10 @@ def cmd_create(consumer: Consumer, args) -> int:
         data["description"] = args.description
     if getattr(args, "dir", None):
         data["directory"] = args.dir
+    if getattr(args, "area", None):
+        data["area"] = args.area
+    if parent:
+        data["parent"] = parent
     data["created_at"] = ts
     data["updated_at"] = ts
     data["overlays"] = []
@@ -608,7 +683,11 @@ def cmd_create(consumer: Consumer, args) -> int:
     return 0
 
 
-def cmd_list(consumer: Consumer, _args) -> int:
+def cmd_list(consumer: Consumer, args) -> int:
+    if getattr(args, "json", False):
+        everything = consumer.all_definitions()
+        print(json.dumps([effective(everything, k) for k in sorted(everything)], ensure_ascii=False))
+        return 0
     defs = consumer.list_definitions()
     if not defs:
         print("No workspaces defined yet (workflow/workspaces/*.yaml).")
@@ -636,6 +715,15 @@ def cmd_list(consumer: Consumer, _args) -> int:
     return 0
 
 
+def cmd_show(consumer: Consumer, args) -> int:
+    defs = consumer.all_definitions()
+    if args.name not in defs:
+        raise WorkspaceError(f"workspace '{args.name}' not found ({WORKSPACES_DIR}/{args.name}.yaml).")
+    row = effective(defs, args.name)
+    print(json.dumps(row, ensure_ascii=False) if args.json else dump_yaml(row).rstrip())
+    return 0
+
+
 def _fallback_validate(data: dict):
     """Structural validation used only when check-jsonschema is unavailable."""
     for key in ("schema_version", "id", "title"):
@@ -657,6 +745,9 @@ def _fallback_validate(data: dict):
     for o in data.get("overlays") or []:
         if not (isinstance(o, dict) and o.get("name")):
             return False, "each overlay needs a name"
+    level = (data.get("boundary") or {}).get("level")
+    if level is not None and level not in LEVELS:
+        return False, f"invalid boundary.level '{level}' ({'|'.join(LEVELS)})"
     return True, ""
 
 
@@ -691,10 +782,14 @@ def cmd_validate(consumer: Consumer, args) -> int:
         print("No workspace definitions to validate.")
         return 0
     schema = consumer.schema_path()
+    defs = consumer.all_definitions()
     failed = 0
     for f in files:
         ok, reason = validate_one(f, schema)
         base = os.path.basename(f)
+        problems = rule_problems(defs, os.path.splitext(base)[0])
+        if ok and problems:
+            ok, reason = False, "; ".join(problems)
         if ok:
             print(f"PASS — {base}")
         else:
@@ -895,6 +990,106 @@ def cmd_remove_repo(consumer: Consumer, args) -> int:
         f"'{ws_id}'.")
 
 
+def cmd_archive(consumer: Consumer, args) -> int:
+    consumer.require_user_branch()
+    definition, _ = consumer.load_definition(args.name)
+    defs = consumer.all_definitions()
+    live = [c for c in children_of(defs, args.name) if not defs[c].get("archived_at")]
+    if live:
+        raise WorkspaceError(f"'{args.name}' still has live children: {', '.join(live)}.")
+    definition["archived_at"] = definition["updated_at"] = now_iso()
+    consumer.write_definition(args.name, definition)
+    print(f"archived workspace '{args.name}'")
+    return 0
+
+
+def cmd_restore(consumer: Consumer, args) -> int:
+    consumer.require_user_branch()
+    definition, _ = consumer.load_definition(args.name)
+    parent = definition.get("parent")
+    if parent and (consumer.all_definitions().get(parent) or {}).get("archived_at"):
+        raise WorkspaceError(f"parent '{parent}' is archived, restore it first.")
+    definition.pop("archived_at", None)
+    definition["updated_at"] = now_iso()
+    consumer.write_definition(args.name, definition)
+    print(f"restored workspace '{args.name}'")
+    return 0
+
+
+def delete_blockers(consumer: Consumer, ws_id: str, definition: dict) -> list[str]:
+    """What keeps a workspace from going: a child, an overlay, work only one of its clones holds."""
+    blockers = []
+    children = children_of(consumer.all_definitions(), ws_id)
+    if children:
+        blockers.append(f"children: {', '.join(children)}")
+    overlays = definition_overlay_names(definition)
+    if overlays:
+        blockers.append(f"subscribed overlays: {', '.join(overlays)}")
+    for rel in code_member_paths(definition):
+        clone_abs = os.path.join(consumer.root, rel)
+        if not os.path.isdir(clone_abs):
+            continue
+        member = os.path.basename(rel.rstrip("/"))
+        if run_git(["-C", clone_abs, "status", "--porcelain"], check=False).stdout.strip():
+            blockers.append(f"clone '{member}' has uncommitted work")
+        elif run_git(["-C", clone_abs, "log", "--oneline", "--branches", "--not", "--remotes"],
+                     check=False).stdout.strip():
+            blockers.append(f"clone '{member}' has unpushed commits")
+    return blockers
+
+
+def _retire_identity(consumer: Consumer, ws_id: str) -> None:
+    """Archive this workspace's row in the shared registry. Like the publish, a hiccup there changes nothing here."""
+    try:
+        if SCRIPT_DIR not in sys.path:
+            sys.path.insert(0, SCRIPT_DIR)
+        import workspace_registry  # pyright: ignore[reportMissingImports]
+        ref = hashlib.sha256(os.path.realpath(consumer.root).encode()).hexdigest()[:12] + ":" + ws_id
+        registry = workspace_registry.Registry()
+        for row in registry.list_workspaces():
+            if (row.get("extensions") or {}).get("open-bridge", {}).get("id") == ref:
+                registry.archive_workspace(row["id"])
+    except Exception as exc:
+        sys.stderr.write(f"workspace: shared-registry retire failed (local state unaffected): {exc}\n")
+
+
+def cmd_delete(consumer: Consumer, args) -> int:
+    if not args.dry_run:
+        consumer.require_user_branch()
+    ws_id = args.name
+    definition, path = consumer.load_definition(ws_id)
+    blockers = delete_blockers(consumer, ws_id, definition)
+    clones = [os.path.join(consumer.root, rel) for rel in code_member_paths(definition)]
+    clones = [c for c in clones if os.path.isdir(c)]
+    if args.dry_run:
+        plan = {"id": ws_id, "blockers": blockers, "removes": [f"{WORKSPACES_DIR}/{ws_id}.yaml",
+                *(os.path.relpath(c, consumer.root) for c in clones)]}
+        print(json.dumps(plan, ensure_ascii=False) if args.json else dump_yaml(plan).rstrip())
+        return 0
+    if blockers:
+        raise WorkspaceError(f"cannot delete '{ws_id}': {'; '.join(blockers)}.")
+    # The same order as a member's removal: the metadata first, the folders last, and a copy of everything stays.
+    stamp = now_iso().replace(":", "").replace("-", "")
+    trash = os.path.join(consumer.root, TRASH_BASE, f"{ws_id}-{stamp}")
+    os.makedirs(trash, exist_ok=True)
+    shutil.copy2(path, trash)
+    lock = consumer.load_lock()
+    if isinstance(lock, dict) and ws_id in (lock.get("workspaces") or {}):
+        del lock["workspaces"][ws_id]
+        consumer.write_lock(lock)
+    consumer.drop_git_exclude_block(ws_id)
+    os.unlink(path)
+    for clone_abs in clones:
+        os.makedirs(os.path.join(trash, "clones"), exist_ok=True)
+        shutil.move(clone_abs, os.path.join(trash, "clones", os.path.basename(clone_abs)))
+    member_dir = os.path.join(consumer.root, MEMBER_BASE, ws_id)
+    if os.path.isdir(member_dir) and not os.listdir(member_dir):
+        os.rmdir(member_dir)
+    _retire_identity(consumer, ws_id)
+    print(f"deleted workspace '{ws_id}', a copy stays in {os.path.relpath(trash, consumer.root)}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -913,10 +1108,18 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--dir", dest="dir", help="working directory the workspace maps to")
     c.add_argument("--title", help="human-readable label (default: the id)")
     c.add_argument("--description", help="one-line purpose")
+    c.add_argument("--area", help="the cockpit area this workspace shows")
+    c.add_argument("--parent", help="the workspace this one sits under")
     c.set_defaults(func=cmd_create)
 
     li = sub.add_parser("list", help="list workspaces")
+    li.add_argument("--json", action="store_true", help="every workspace with its effective rules")
     li.set_defaults(func=cmd_list)
+
+    sh = sub.add_parser("show", help="one workspace with its effective rules")
+    sh.add_argument("name")
+    sh.add_argument("--json", action="store_true")
+    sh.set_defaults(func=cmd_show)
 
     v = sub.add_parser("validate", help="validate workspace definition(s)")
     v.add_argument("name", nargs="?", help="workspace id (default: all)")
@@ -944,6 +1147,20 @@ def build_parser() -> argparse.ArgumentParser:
     rr.add_argument("name")
     rr.add_argument("member")
     rr.set_defaults(func=cmd_remove_repo)
+
+    ac = sub.add_parser("archive", help="set a workspace aside, its file stays")
+    ac.add_argument("name")
+    ac.set_defaults(func=cmd_archive)
+
+    rs = sub.add_parser("restore", help="bring an archived workspace back")
+    rs.add_argument("name")
+    rs.set_defaults(func=cmd_restore)
+
+    de = sub.add_parser("delete", help="remove a workspace, a copy stays under .bridge/trash/")
+    de.add_argument("name")
+    de.add_argument("--dry-run", action="store_true", help="say what would go and what stops it")
+    de.add_argument("--json", action="store_true")
+    de.set_defaults(func=cmd_delete)
     return p
 
 

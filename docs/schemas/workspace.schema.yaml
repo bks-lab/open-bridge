@@ -66,6 +66,71 @@ properties:
       leading `~` are allowed (see AGENTS.md § Variable Interpolation). Default =
       repo root. Informational in increment 1 — carries no instance lifecycle.
 
+  area:
+    type: string
+    minLength: 1
+    description: |
+      The cockpit area this workspace shows: a name from
+      `workplace.workspaces`. A child without one stands under its parent's.
+
+  parent:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    description: |
+      The workspace this one sits under. A child inherits `refs`, `writing` and
+      `boundary` key by key and may only narrow them. Two levels, enforced by
+      `workspace validate`.
+
+  archived_at:
+    $ref: "#/$defs/Iso8601Utc"
+    description: "Engine-stamped by `workspace archive`, removed by `workspace restore`."
+
+  refs:
+    type: object
+    additionalProperties: false
+    description: "Names of what this workspace works with. References only, the values stay in their families."
+    properties:
+      context: {type: string, description: "workflow/contexts/<id>.yaml"}
+      mandant: {type: string, description: "identity/mandants/<id>.yaml"}
+      persona: {type: string, description: "identity/personas/<id>.yaml"}
+      project: {type: string, description: "workflow/projects/<slug>.yaml"}
+      briefing: {type: string, description: "workflow/briefings/<id>.yaml"}
+      design: {type: string, description: "identity/designs/<id>.yaml"}
+
+  writing:
+    type: object
+    additionalProperties: false
+    description: "How text leaves this workspace."
+    properties:
+      style_skill: {type: string, description: "The writing-style skill every text goes through."}
+      mail_profile: {type: string, description: "workflow/mail-profiles/<id>.yaml"}
+
+  boundary:
+    type: object
+    additionalProperties: false
+    description: "What keeps a session to this workspace. A child may only narrow it."
+    properties:
+      level:
+        enum: [view, room, wall]
+        description: |
+          view — the cockpit filters, a session sees the whole Bridge.
+          room — a session starts in a folder of its own.
+          wall — the operating system keeps it there too.
+      skills:
+        type: array
+        items: {type: string}
+        description: "The skills a session here may use. Absent: all."
+      off_topic:
+        enum: [refuse, ask, hand_over]
+        description: "What a session does with a request from outside this workspace."
+      shared_repos:
+        type: array
+        items: {type: string}
+        description: "Repos this workspace shares with others."
+      mixed_records:
+        type: string
+        description: "How a record touching several workspaces is handled here."
+
   created_at:
     $ref: "#/$defs/Iso8601Utc"
     description: "Engine-stamped when the workspace is created."

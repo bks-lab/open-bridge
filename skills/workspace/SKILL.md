@@ -52,11 +52,14 @@ overlay via `workspace subscribe … --role config` calls that same engine
 ## Command surface (the real engine CLI)
 
 All commands run through `scripts/workspace.py`. Mutating verbs (`create`,
-`subscribe`, `unsubscribe`) require a `user/*` branch (see Safety).
+`subscribe`, `unsubscribe`, `archive`, `restore`, `delete`) require a `user/*` branch (see Safety).
 
 | Intent | Command |
 |---|---|
 | Create a workspace | `workspace create <name> [--dir <path>] [--title <label>] [--description <text>]` |
+| One workspace with its effective rules | `workspace show <name> [--json]` |
+| Set aside, bring back | `workspace archive <name>`, `workspace restore <name>` |
+| Remove, a copy stays under `.bridge/trash/` | `workspace delete <name> [--dry-run]` |
 | Bind a code member repo | `workspace subscribe <name> <git-url> --role code [--ref <branch>]` |
 | Bind a config overlay | `workspace subscribe <name> <git-url> --role config [--precedence <N>]` |
 | Remove a member (code or overlay) | `workspace unsubscribe <name> <member>` |
