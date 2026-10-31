@@ -6,7 +6,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews, flowOn, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
-  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCardLine, titleOf } from './card.js'
@@ -185,6 +185,7 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
         </details>`) : null}
     ${one ? group(t.grp.ask, html`${one.bucket === 'waiting' ? item(t.action.follow_up, () => done(() => c.ask('follow_up', { key: one.key }))) : null}
       ${item(t.askChat, () => done(() => c.ask('row', { key: one.key })))}`) : null}`
+  const person = !!personOf(s)      // what is no verb of theirs stands out of the panel (access.py)
   const settlePart = () => html`${group(t.grp.close, html`${item(t.settleDone, () => settle('done'), { token: 'success', ref: first })}
       ${item(t.settleNot, discard, { token: 'on-surface-muted' })}
       ${streams ? html`<span class="settle-hint muted small">${t.streamHint}</span>` : null}
@@ -192,10 +193,10 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
     ${group(t.grp.later, html`${item(t.laterTomorrow, () => later(r => c.laterDays(r, 1, x)))}
       ${item(t.laterMonday, () => later(r => c.laterMonday(r, x)))}
       ${item(t.laterWeek, () => later(r => c.laterDays(r, 7, x)))}
-      ${item(t.settleRuns, () => done(() => c.askRunsOn(rows, x)))}
-      ${one && one.task && one.bucket === 'waiting' && !one.inbox_id
+      ${person ? null : item(t.settleRuns, () => done(() => c.askRunsOn(rows, x)))}
+      ${!person && one && one.task && one.bucket === 'waiting' && !one.inbox_id
         ? item(t.settleAgain, () => done(() => c.act('task_running', { slug: one.task }))) : null}
-      ${one && one.inbox_id && one.runs ? item(t.settleReopen, () => done(() => c.act('inbox_reopen', { id: one.inbox_id }))) : null}
+      ${!person && one && one.inbox_id && one.runs ? item(t.settleReopen, () => done(() => c.act('inbox_reopen', { id: one.inbox_id }))) : null}
       <span class="field-row panel-day">
         <input class="input input-date mono" type="text" inputmode="numeric" aria-label=${t.dateLabel} placeholder=${t.datePlaceholder}
           value=${day} aria-invalid=${dayErr ? 'true' : undefined} onInput=${e => { setDay(e.currentTarget.value); setDayErr('') }}
@@ -204,7 +205,7 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
       </span>
       ${dayErr ? html`<span class="field-err small" role="alert">${dayErr}</span>` : null}`)}
     ${group(t.grp.keep, html`${item(t.btnSaveNote, () => done(() => rows.forEach(r => c.act('note', { key: r.key, text: x }))), { off: !x })}
-      ${one?.inbox_id ? item(t.settleToTask, () => done(() => c.act('to_task', { key: one.key }))) : null}`)}
+      ${!person && one?.inbox_id ? item(t.settleToTask, () => done(() => c.act('to_task', { key: one.key }))) : null}`)}
     ${rows.some(r => !r.task && !r.inbox_id) ? html`<span class="settle-hint muted small">${t.settleHint}</span>` : null}`
   const still = html`<span class="fixed-origin" ref=${origin} aria-hidden="true"></span>`
   if (asking) {
@@ -236,6 +237,10 @@ function modelWord(s, t) {
 /** The start door of the panel: the row's one start button, its word by the row (startMode), and the ▾ beside it.
  *  Waiting and yours-alone rows open the panel at the sentence, since an agent there needs to be told what to do */
 export function StartMenu({ row, s, c, size = 'xs' }) {
+  return personOf(s) ? null : html`<${StartDoor} row=${row} s=${s} c=${c} size=${size} />`
+}
+
+function StartDoor({ row, s, c, size }) {
   const t = T()
   const mode = startMode(row)
   const [open, setOpen] = useState(false)
@@ -339,6 +344,11 @@ function RowItem({ row, s, c }) {
 }
 
 export function Section({ section, s, c, byKey, budget = 0 }) {
+  // a person's day holds what is theirs: an empty heading would only name what stays closed to them (access.py)
+  return personOf(s) && !section.total ? null : html`<${SectionBody} section=${section} s=${s} c=${c} byKey=${byKey} budget=${budget} />`
+}
+
+function SectionBody({ section, s, c, byKey, budget }) {
   const t = T()
   const expanded = !!s.ui.expanded[section.id]
   const rows = sectionRows(section, expanded, byKey, budget)

@@ -394,6 +394,7 @@ class Ctx:
         self.pick: dict = {}           # the model and effort the start of this action asks for (launch.py)
         self.locked = False            # this action holds the write lock
         self.go: dict | None = None    # where the note leads (note_go), the first note that names a place
+        self.person: str | None = None  # a person named under members: who clicked, None for the owner
         self.by: str | None = None     # who decided (BY_CHOICES), None for the person's own click
 
     @contextlib.contextmanager

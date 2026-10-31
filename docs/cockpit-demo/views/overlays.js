@@ -6,7 +6,7 @@ import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
   toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, nextInQueue, itemRow,
-  workKindOf, noteGo,
+  workKindOf, noteGo, personOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
@@ -584,15 +584,15 @@ export function MobileSwitch({ s, c }) {
   const page = onPage ? (s.ui.page === START_PAGE ? { title: t.startTab } : s.ui.page === CHECK_PAGE ? { title: t.reviewTab } : s.ui.page === SESSIONS_PAGE ? { title: t.sessionsTab } : s.ui.page === WORKERS_PAGE ? { title: t.workersTab } : s.ui.page === CHAT_PAGE ? { title: t.chatTab } : s.ui.page === AGENTS_PAGE ? { title: t.agentsTab } : s.ui.page === JEV_PAGE ? { title: 'Jev' } : s.ui.page === 'briefing' ? { title: briefingTitle(s) } : (s.model?.pages ?? []).find(p => p.id === s.ui.page)) : null
   const waiting = attentionTabs(s.tabs?.tabs).length
   const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
+  const tabs = personOf(s) ? [] : [['tabs', waiting ? `${t.pane.tabs} (${waiting})` : t.pane.tabs]]    // none on a person's page
   const items = onPage
-    ? [['day', page?.title ?? t.pane.day], ...(peek ? [['detail', t.pane.detail]] : []),
-        ['tabs', waiting ? `${t.pane.tabs} (${waiting})` : t.pane.tabs]]
-    : [['day', t.pane.day], ['detail', t.pane.detail], ['tabs', waiting ? `${t.pane.tabs} (${waiting})` : t.pane.tabs]]
+    ? [['day', page?.title ?? t.pane.day], ...(peek ? [['detail', t.pane.detail]] : []), ...tabs]
+    : [['day', t.pane.day], ['detail', t.pane.detail], ...tabs]
   const current = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane
   // On a phone the header has no room for them: the relay state and the warnings (lost connection,
   // stale model, failed pass) get their own line here, each a dot plus its written word.
   return html`<div class="mobile-switch">
     <div class="mobile-status"><${RelayBadge} s=${s} /><${AsOf} s=${s} c=${c} /></div>
-    <${Segmented} label=${t.pagesLabel} current=${current} values=${items} onPick=${v => c.setPane(v)} />
+    ${items.length > 1 ? html`<${Segmented} label=${t.pagesLabel} current=${current} values=${items} onPick=${v => c.setPane(v)} />` : null}
   </div>`
 }

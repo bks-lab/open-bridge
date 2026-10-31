@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -42,6 +43,23 @@ CMUX_APP = "/Applications/cmux.app/Contents/Resources/bin/cmux"
 SCRIPT_PATHS = ("scripts/briefing.py", "scripts/workspace.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
                 "scripts/bridge-resources.py", "scripts/triage.py", "scripts/work-find.py",
                 "skills/cmux/scripts/cmux_layout.py", "skills/github-projects-manager/scripts/issue_transition.py")
+
+
+ACTING = threading.local()      # who a verb runs for on this thread (access.py), unset for the owner
+
+
+@contextmanager
+def acting(person: str | None):
+    """Scripts started inside this block write `person` as who did it"""
+    ACTING.person = person
+    try:
+        yield
+    finally:
+        ACTING.person = None
+
+
+def acting_as() -> str | None:
+    return getattr(ACTING, "person", None)
 
 
 class RunnerRefused(Exception):
@@ -154,7 +172,12 @@ class Runner:
         env = dict(os.environ)
         env.pop("BRIDGE_TAB_SLUG", None)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
-        env["BRIDGE_ACTOR"] = "web"
+        person = acting_as()
+        env["BRIDGE_ACTOR"] = person or "web"
+        if person:
+            env["BRIDGE_PERSON"] = person     # task.py names them on its log row
+        else:
+            env.pop("BRIDGE_PERSON", None)
         return env
 
     def run(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None] | None = None) -> RunResult:

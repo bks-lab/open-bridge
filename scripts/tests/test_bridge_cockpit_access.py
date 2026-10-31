@@ -23,6 +23,7 @@ from test_bridge_cockpit import World, a2a_peers, ok, private_key_dir  # noqa: E
 from lib.bridge_cockpit import access as ac  # noqa: E402
 from lib.bridge_cockpit import actions_base as ab  # noqa: E402
 from lib.bridge_cockpit import details  # noqa: E402
+from lib import work_find  # noqa: E402
 from lib.bridge_cockpit import server as srv  # noqa: E402
 import workspace as engine  # noqa: E402
 
@@ -394,6 +395,155 @@ def test_every_field_is_classified(world):
     assert set(row) - ac.ROW_FIELDS - set(ac.ROW_NEUTRAL) == set()
     detail = details.task_detail(world.root, "home-task", [])
     assert set(detail) - ac.TASK_FIELDS - set(ac.TASK_NEUTRAL) - ac.TASK_DROPPED == set()
+    plant_records(world)
+    record = work_find.records(world.root)["records"][0]
+    assert set(record) - ac.RECORD_FIELDS - {"held"} == set()
+
+
+# ---------------------------------------------------------------- a person's page works
+
+def plant_records(w):
+    """Open and closed files of both areas, with nothing in the model about them"""
+    def plant(folder, front, text):
+        (w.root / folder).mkdir(parents=True)
+        (w.root / folder / "STATUS.md").write_text(f"---\nstatus: doing\n{front}\n---\n\n# {text}\n", encoding="utf-8")
+        (w.root / folder / "note.md").write_text(f"{text}\n", encoding="utf-8")
+    plant("work/tasks/rec-home", "area: Home", "Own file")
+    plant("work/tasks/rec-alias", "area: House", "Alias file")
+    plant("work/tasks/rec-context", "context: home", "Context file")
+    plant("work/tasks/rec-job", "area: Job", f"{MARK} file")
+    plant("work/tasks/rec-none", "priority: P2", f"{MARK} no area")
+    plant("work/done/2026-09/old-home", "area: Home", "Old own file")
+    plant("work/done/2026-09/old-job", "area: Job", f"{MARK} old file")
+    plant("work/done/2026-08/rec-job", "area: Home", "Own file under a foreign slug")
+
+
+def records_of(w):
+    status, _, data = get(w, "/api/records")
+    assert status == 200
+    return json.loads(data)
+
+
+def test_a_person_gets_the_records_of_their_area_only(world):
+    plant_records(world)
+    out = records_of(world)
+    assert {r["slug"] for r in out["records"]} == {"rec-home", "rec-alias", "rec-context", "old-home", "rec-job"}
+    assert {r["area"] for r in out["records"]} == {"Home"}
+    assert out["total"] == 5 and out["truncated"] is False
+    assert MARK.encode() not in json.dumps(out).encode()
+
+
+def test_a_record_carries_only_listed_fields(world):
+    plant_records(world)
+    for record in records_of(world)["records"]:
+        assert set(record) <= ac.RECORD_FIELDS
+
+
+def test_a_record_of_a_person_outside_the_scope_stays_shut(world):
+    plant_records(world)
+    assert get(world, "/api/task?slug=rec-none")[0] == 403
+    assert get(world, "/api/task?slug=old-job&path=work/done/2026-09/old-job")[0] == 403
+    assert get(world, "/api/task?slug=old-home&path=work/done/2026-09/old-job")[0] == 403
+    assert get(world, "/api/task?slug=rec-job")[0] == 403          # the open one of that name is foreign
+
+
+def test_an_own_closed_record_opens_with_its_file(world):
+    plant_records(world)
+    status, _, data = get(world, "/api/task?slug=old-home&path=work/done/2026-09/old-home")
+    assert status == 200 and b"Old own file" in data
+    status, _, data = get(world, "/api/task?slug=old-home&path=work/done/2026-09/old-home&file=note.md")
+    assert status == 200 and b"Old own file" in data
+    status, _, data = get(world, "/api/task?slug=rec-job&path=work/done/2026-08/rec-job")
+    assert status == 200 and MARK.encode() not in data
+
+
+def test_an_own_open_record_opens_though_the_model_does_not_list_it(world):
+    plant_records(world)
+    status, _, data = get(world, "/api/task?slug=rec-context")
+    assert status == 200 and b"Context file" in data
+
+
+def test_a_slug_held_by_two_areas_does_not_open_without_its_path(world):
+    plant_records(world)
+    (world.root / "work" / "streams" / "rec-home").mkdir(parents=True)
+    (world.root / "work" / "streams" / "rec-home" / "STATUS.md").write_text(f"---\nstatus: doing\narea: Job\n---\n\n# {MARK}\n", encoding="utf-8")
+    assert get(world, "/api/task?slug=rec-home")[0] == 403
+
+
+def test_a_taken_name_closes_the_records_at_once(world):
+    plant_records(world)
+    assert records_of(world)["records"]
+    path = world.root / "workflow" / "workspaces" / "home.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("members: [pat]\n", ""), encoding="utf-8")
+    assert get(world, "/api/records")[0] == 403
+
+
+def test_bootstrap_tells_a_person_what_their_page_holds(world):
+    _, _, data = get(world, "/api/bootstrap")
+    person = json.loads(data)["config"]["person"]
+    assert person["name"] == "pat"
+    assert person["pages"] == list(ac.PERSON_PAGES)
+    assert set(person["routes"]) == set(ac.PERSON_GET | ac.PERSON_POST | ac.PUBLIC)
+    assert set(person["verbs"]) == set(ac.PERSON_VERBS)
+    assert "/api/workers" not in person["routes"] and "/api/seen" not in person["routes"]
+
+
+def test_a_person_gets_the_plain_day_and_no_work_through(world):
+    work = world.app.access.work({"view": "flow", "focus_to_files": True, "files_scope": "x", "views": ["due", "source", "flow"],
+                                  "flow": {"enabled": True, "max_running": 3, "person": "owner"}})
+    assert work["view"] == "due" and work["views"] == ["due"] and work["flow"] == {"enabled": False}
+    assert work["focus_to_files"] is False and work["files_scope"] is None
+
+
+def test_the_owner_page_has_no_person_block(world):
+    _, _, data = world.request("GET", "/api/bootstrap", headers=world.cookie)
+    assert "person" not in json.loads(data)["config"]
+
+
+def test_an_action_of_a_person_names_them_in_the_audit_log(world):
+    status, _, data = post(world, "/api/action", {"verb": "priority", "args": {"key": "task:home-task", "value": "P1"}})
+    assert status == 200, data
+    lines = (world.app.state_dir / "audit.log").read_text(encoding="utf-8").splitlines()
+    assert any(" priority " in x and "person=pat" in x for x in lines)
+
+
+def test_an_action_of_the_owner_names_nobody(world):
+    assert world.post("/api/action", {"verb": "priority", "args": {"key": "task:home-task", "value": "P1"}})[0] == 200
+    log = (world.app.state_dir / "audit.log").read_text(encoding="utf-8")
+    assert " priority " in log and "person=" not in log
+
+
+def test_the_history_keeps_who_closed_it(world):
+    entry = world.app.history.add("done", [{"key": "x", "title": "x", "kind": "inbox"}], person="pat")
+    assert any(e["id"] == entry and e["person"] == "pat" for e in world.app.history.entries)
+
+
+def test_the_scripts_learn_who_acts_and_only_for_that_call():
+    from lib.bridge_cockpit import runner as rn
+    run = rn.Runner.__new__(rn.Runner)
+    assert run.env()["BRIDGE_ACTOR"] == "web" and "BRIDGE_PERSON" not in run.env()
+    with rn.acting("pat"):
+        env = run.env()
+        assert env["BRIDGE_ACTOR"] == "pat" and env["BRIDGE_PERSON"] == "pat"
+    assert run.env()["BRIDGE_ACTOR"] == "web" and "BRIDGE_PERSON" not in run.env()
+
+
+def test_an_inbox_event_of_a_person_carries_their_name(world):
+    from lib.bridge_cockpit import runner as rn
+    assert world.app.actions.inbox("close")[world.app.actions.inbox("close").index("--by") + 1] == "web"
+    with rn.acting("pat"):
+        argv = world.app.actions.inbox("close")
+    assert argv[argv.index("--by") + 1] == "pat"
+
+
+def test_a_log_row_of_task_py_names_the_person(tmp_path, monkeypatch):
+    import datetime as dt
+    sys.path.insert(0, str(LIB.parent.parent))
+    import task as tk
+    monkeypatch.setenv("BRIDGE_PERSON", "pat")
+    (tmp_path / "work").mkdir()
+    tk.append_log_row(tmp_path, dt.datetime(2026, 10, 9, 9, 0), "home-task", "closed: done")
+    assert "closed: done (pat)" in (tmp_path / "work" / "log.md").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------- members: on the workspace

@@ -1077,16 +1077,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.events(person)
         elif path == "/api/task":
-            slug, rel = one("slug"), one("file") or None
-            if one("path") or not details.SLUG_RE.match(slug) or f"task:{slug}" not in access.visible(person):
+            slug, rel, folder = one("slug"), one("file") or None, one("path") or None
+            if not details.SLUG_RE.match(slug) or (folder is not None and (len(folder) > 200 or folder.split("/")[-1] != slug)) \
+                    or not access.record_open(person, slug, folder):
                 self.send_error_json("not_yours", "this is not open to you", status=403)
             elif rel is not None:
-                result = details.task_file(app.root, slug, rel, None) if len(rel) <= 300 and details.FILE_RE.match(rel) else None
+                result = details.task_file(app.root, slug, rel, folder) if len(rel) <= 300 and details.FILE_RE.match(rel) else None
                 self.send_json(200, access.clean(app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such file")
             else:
-                result = details.task_detail(app.root, slug, app.inbox_listing(), None, app.cfg.origin_map,
+                result = details.task_detail(app.root, slug, app.inbox_listing(), folder, app.cfg.origin_map,
                                              ctx=app.card_ctx(f"task:{slug}"))
                 self.send_json(200, access.task(person, app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such task")
+        elif path == "/api/records":
+            self.send_json(200, app.scrub_tree(access.records(person)))
         else:   # /api/inbox, the one left of PERSON_GET
             item_id = one("id")
             if not details.INBOX_ID_RE.match(item_id) or f"inbox:{item_id}" not in access.visible(person):

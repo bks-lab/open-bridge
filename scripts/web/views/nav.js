@@ -3,7 +3,7 @@
 // fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FILES_PAGE, FLOW_PAGE, areaBadge, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, fieldsWall, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
+import { personOf, FILES_PAGE, FLOW_PAGE, areaBadge, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, fieldsWall, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -249,6 +249,9 @@ function pageList(s) {
   // `settings` (the Setup page) has none either, it stands in Settings, Setup, whose tab carries its count; a sub page
   // (parentOf: a profile page with `under:`, or the Workers page placed under one) has none either, the bar of
   // its folder and the menu at its parent's tab open it; Settings is the last of all
+  // a person (access.py): the tabs the server names, the rest would stand empty for them
+  const person = personOf(s)
+  if (person) return person.pages.map(id => ({ id }))
   return [{ id: START_PAGE }, { id: 'briefing' }, ...(filesOn(s) ? [{ id: FILES_PAGE }] : []), { id: CHAT_PAGE }, ...(sessionsInFlow(s) ? [] : [{ id: SESSIONS_PAGE, more: true }]),
     ...(s.workers?.status === 'none' || parentOf(s, WORKERS_PAGE) ? [] : [{ id: WORKERS_PAGE, more: true }]),
     ...((s.agents?.peers ?? []).length && !chatAsWorkspaces(s) ? [{ id: AGENTS_PAGE, more: true }] : []), ...(reviewHomeOf(s) || checkInFlow(s) ? [] : [{ id: CHECK_PAGE, more: true }]),

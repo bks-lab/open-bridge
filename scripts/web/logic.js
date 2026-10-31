@@ -997,11 +997,14 @@ export function connLost(conn, sinceMs, now) {
  * The states the page must never hide, at any width: a lost connection (the data shown no longer
  * updates), a model from the last run, a pass that failed. Each is a dot plus a written word.
  */
+/** A person named under `members:` (access.py), as bootstrap names them; null for the owner */
+export const personOf = s => s?.boot?.config?.person ?? null
+
 export function pageWarnings(s, t) {
   const out = []
   // no driver serves `launch`: every "Let AI do it" fails until workplace.driver is set (18.10.); not known yet is no warning
   const caps = s.driver?.caps
-  if (Array.isArray(caps) && !caps.includes('launch')) out.push({ token: 'warning', word: t.noDriver, title: t.noDriverTitle, kind: 'driver' })
+  if (Array.isArray(caps) && !caps.includes('launch') && !personOf(s)) out.push({ token: 'warning', word: t.noDriver, title: t.noDriverTitle, kind: 'driver' })
   if (connLost(s.conn, s.connMs, s.now)) out.push({ token: 'warning', word: t.connLost })
   if (s.model?.stale) out.push({ token: 'warning', word: t.staleModel })
   const ld = s.loading ?? {}
@@ -2176,7 +2179,7 @@ export function railShown(page, chatLayout = 'classic', hidden = false) {
 /** railShown for the state as it is: Work through (a view of the work tab) has its own columns, the details of
  *  the point in front on the right, so the tab column folds there too */
 export function railOn(s, hidden = s?.ui?.railHidden) {
-  return railShown(s?.ui?.page, s?.rooms?.layout, hidden) && !(s?.ui?.page === 'briefing' && workViewIn(s) === 'flow')
+  return !personOf(s) && railShown(s?.ui?.page, s?.rooms?.layout, hidden) && !(s?.ui?.page === 'briefing' && workViewIn(s) === 'flow')
 }
 
 /** Whether a tab may close (round 6d): it neither works nor asks (waiting at its prompt with no question, options

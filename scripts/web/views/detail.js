@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas, startWaiting,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCard, TASK_FACTS_SKIP, describeKey, describeOf } from './card.js'
@@ -185,7 +185,7 @@ function TeamBlock({ row, s, c }) {
 function AreaPick({ row, s, c, busy }) {
   const t = T()
   const areas = s.boot?.config?.areas ?? []
-  if (!row.inbox_id || row.task || !areas.length) return null
+  if (!row.inbox_id || row.task || !areas.length || personOf(s)) return null
   const current = row.area ?? ''
   const names = current && !areas.includes(current) ? [...areas, current] : areas
   return html`<div class="sub-block">

@@ -112,17 +112,30 @@ const rangeQuery = days => `${days?.from ? `&from=${days.from}` : ''}${days?.to 
  * The API used by the app. `transport` defaults to the real server; the mock mode
  * passes an in-page stand-in with the same three methods.
  */
-export function createApi(transport = httpTransport()) {
+export function createApi(line = httpTransport()) {
   let csrf = null
+  // a person's page (access.py): bootstrap names the routes and verbs that are theirs, the rest never leaves. It
+  // answers as a route an older server does not have, which every loader takes for "nothing here"
+  let routes = null
+  let verbs = null
+  const notHere = () => Promise.resolve({ status: 404, ok: false, data: null, error: { code: 'not_here', message: '', field: null } })
+  const open = path => !routes || routes.has(String(path).split('?')[0])
+  const transport = { ...line,
+    get: path => (open(path) ? line.get(path) : notHere()),
+    post: (path, body, token) => (open(path) ? line.post(path, body, token) : notHere()) }
   return {
     setCsrf(token) {
       csrf = token
+    },
+    setAccess(person) {
+      routes = person ? new Set(person.routes ?? []) : null
+      verbs = person ? new Set(person.verbs ?? []) : null
     },
     get: path => transport.get(path),
     post: (path, body) => transport.post(path, body, csrf),
     bootstrap: () => transport.get('/api/bootstrap'),
     state: () => transport.get('/api/state'),
-    action: (verb, args) => transport.post('/api/action', { verb, args: args ?? {} }, csrf),
+    action: (verb, args) => (verbs && !verbs.has(verb) ? notHere() : transport.post('/api/action', { verb, args: args ?? {} }, csrf)),
     ask: (kind, args, extra) => transport.post('/api/ask', { kind, args: args ?? {}, ...(extra ?? {}) }, csrf),
     // the recommended model for each row an agent may start with (launch, Auto); at most 20 keys
     route: keys => transport.post('/api/route', { keys }, csrf),

@@ -69,15 +69,18 @@ class History:
             pass
 
     def add(self, verb: str, items: list[dict], at_ms: float | None = None, backfilled: bool = False,
-            by: str | None = None) -> str | None:
+            by: str | None = None, person: str | None = None) -> str | None:
         """One entry; `by` says who decided when it was not the person's own click (a suggestion, a batch, the
-        instruction line), kept on the entry for the Activity tab, acted on nowhere"""
+        instruction line), kept on the entry for the Activity tab, acted on nowhere; `person` who clicked, where it
+        was not the owner (access.py)"""
         if not items:
             return None
         entry = {"id": "h" + uuid.uuid4().hex[:10], "at_ms": int(self.clock() if at_ms is None else at_ms),
                  "verb": verb, "items": items, "backfilled": backfilled}
         if isinstance(by, str) and by:
             entry["by"] = by
+        if isinstance(person, str) and person:
+            entry["person"] = person
         with self.lock:
             self.entries.append(entry)
             self.entries.sort(key=lambda e: e["at_ms"])

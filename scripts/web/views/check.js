@@ -5,7 +5,7 @@
 import { html, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   formatClock, formatDay, indexRows, isoDate, short, VERDICT_ORDER, centsText, confidenceDots, reviewRows,
-  verdictCounts, verdictToken, checkFlow, runProgress, verdictSegments,
+  verdictCounts, verdictToken, checkFlow, runProgress, verdictSegments, personOf,
 } from '../logic.js'
 import { flash, flowAlpha, flowPoints, nowSec } from '../motion.js'
 import { T, language } from '../text.js'
@@ -96,7 +96,11 @@ function VerdictBar({ counts, c }) {
 }
 
 /** "Check tasks", or the caller's `label`; while a check runs it says so with the seconds, the server allows one at a time */
-export function CheckButton({ s, c, size = 'sm', variant = 'secondary', label = null }) {
+export function CheckButton(props) {
+  return personOf(props.s) ? null : html`<${CheckDoor} ...${props} />`
+}
+
+function CheckDoor({ s, c, size = 'sm', variant = 'secondary', label = null }) {
   const t = T()
   const running = s.model?.review?.running
   const sec = running ? Math.max(0, Math.round((s.now - running.started_ms) / 1000)) : 0
@@ -130,6 +134,7 @@ export function ReviewStrip({ s, c }) {
 
 /** In a task's detail: the recommendation with its reason and evidence, and what to do about it */
 export function ReviewBlock({ row, s, c }) {
+  if (personOf(s)) return null       // a check asks a model (access.py)
   const t = T()
   const rv = row.review
   const running = !!s.model?.review?.running

@@ -20,7 +20,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { formatDay, indexRows } from '../logic.js'
+import { formatDay, indexRows, personOf } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Btn, Chip } from './parts.js'
@@ -315,6 +315,7 @@ function Proposal({ prop, card, dkey, s, c, onDone }) {
 /** "Describe with AI": busy while any describe runs (the server runs one at a time: this card's action, another
  *  card's, a run of the server's own pass); this item's run and its last error said in a live region */
 function Describe({ card, d, dkey, s, c, box }) {
+  if (personOf(s)) return null      // no model on a person's page (access.py)
   const w = T().card
   const running = !!d?.running
   const busy = running || !!s?.ui?.busy?.[dkey] || describeBusy(s)
