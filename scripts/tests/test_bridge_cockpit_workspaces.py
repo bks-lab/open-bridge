@@ -345,3 +345,60 @@ workplace:
         assert dict(w.app.cfg.area_tags)["Acme"] == ("Acme", "AC", "acme-ops", "acme-*", "billing")
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- records a stream collects by month
+
+from lib import work_find as wf  # noqa: E402
+from lib.bridge_cockpit.actions import RECORD_PATH_RE  # noqa: E402
+
+
+def status(path, **front):
+    path.mkdir(parents=True)
+    head = "\n".join(f"{k}: {v}" for k, v in front.items())
+    (path / "STATUS.md").write_text(f"---\n{head}\n---\n\n# {path.name}\n", encoding="utf-8")
+
+
+def test_a_stream_collecting_by_month_lists_each_record(tmp_path):
+    status(tmp_path / "work/streams/jobs/2026-10/first", status="doing")
+    status(tmp_path / "work/streams/jobs/2026-09/second", status="done", area="Elsewhere")
+    (tmp_path / "work/streams/jobs/STATUS.md").write_text("---\narea: Freelance\n---\n", encoding="utf-8")
+    status(tmp_path / "work/streams/plain", status="doing")
+    rows = {r["slug"]: r for r in wf.records(tmp_path)["records"]}
+    assert set(rows) == {"jobs", "first", "second", "plain"}
+    assert rows["first"]["path"] == "work/streams/jobs/2026-10/first"
+    assert rows["first"]["area"] == "Freelance"
+    assert rows["second"]["area"] == "Elsewhere"
+    assert rows["first"]["kind"] == "stream"
+
+
+def test_a_folder_that_only_collects_is_no_record(tmp_path):
+    status(tmp_path / "work/streams/jobs/2026-10/first", status="doing")
+    assert [r["slug"] for r in wf.records(tmp_path)["records"]] == ["first"]
+
+
+def test_a_stream_with_plain_subfolders_stays_one_record(tmp_path):
+    status(tmp_path / "work/streams/plain/notes", status="doing")
+    status(tmp_path / "work/streams/plain/2026-10/no-status-here-either")
+    (tmp_path / "work/streams/plain/2026-10/no-status-here-either/STATUS.md").unlink()
+    assert [r["slug"] for r in wf.records(tmp_path)["records"]] == ["plain"]
+
+
+def test_a_path_inside_a_collected_record_belongs_to_it():
+    assert wf._folder_of_path("work/streams/jobs/2026-10/first/notes.md") == "work/streams/jobs/2026-10/first"
+    assert wf._folder_of_path("work/streams/jobs/notes.md") == "work/streams/jobs"
+
+
+def test_a_question_can_name_a_collected_record():
+    assert RECORD_PATH_RE.match("work/streams/jobs/2026-10/first")
+    assert not RECORD_PATH_RE.match("work/streams/jobs/2026-10")
+    assert not RECORD_PATH_RE.match("work/streams/jobs/../secret")
+
+
+def test_a_collected_record_opens_by_its_slug_and_its_path(tmp_path):
+    from lib.bridge_cockpit import details
+    status(tmp_path / "work/streams/jobs/2026-10/first", status="doing")
+    (tmp_path / "work/streams/jobs/2026-10/first/notes.md").write_text("note", encoding="utf-8")
+    assert details._place(tmp_path, "first", None)[0] == "stream"
+    assert details._place(tmp_path, "first", "work/streams/jobs/2026-10/first") is not None
+    assert details.task_file(tmp_path, "first", "notes.md", "work/streams/jobs/2026-10/first")["text"] == "note"

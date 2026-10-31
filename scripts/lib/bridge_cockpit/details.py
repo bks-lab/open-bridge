@@ -39,6 +39,7 @@ except ImportError:                       # loaded with scripts/lib on the path,
     from inbox_verbs import TERMINAL  # type: ignore[no-redef]
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
+MONTH_RE = re.compile(r"^[0-9]{4}-[0-9]{2}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 LOG_ROW_RE = re.compile(r"^\| \d{4}-\d{2}-\d{2} \d{2}:\d{2} \|")
 SECTION_MAX = 6000
@@ -192,7 +193,12 @@ def _place(root: Path, slug: str, folder: str | None) -> tuple[str, Path] | None
     """(kind, STATUS.md) of a slug: the open one first, then a stream, then the newest closed one; `folder`
     picks exactly that one of these places"""
     done = root / "work" / "done"
-    places = [("task", root / "work" / "tasks"), ("stream", root / "work" / "streams")]
+    streams = root / "work" / "streams"
+    places = [("task", root / "work" / "tasks"), ("stream", streams)]
+    # the records a stream collects by month (work_find.known_folders), so a click on one opens it
+    if streams.is_dir():
+        places += [("stream", month) for stream in sorted(streams.iterdir()) if stream.is_dir()
+                   for month in sorted(stream.iterdir(), reverse=True) if month.is_dir() and MONTH_RE.match(month.name)]
     if done.is_dir():
         places += [("done", month) for month in sorted(done.iterdir(), reverse=True) if month.is_dir()]
     for kind, base in places:

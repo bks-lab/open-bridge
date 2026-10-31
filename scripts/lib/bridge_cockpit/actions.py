@@ -51,7 +51,8 @@ from .actions_work import WorkVerbs
 #: the verbs of Work through's rounds 3 and 4, refused with flow_off before their arguments are checked
 FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach", "flow_merge"})
 #: a folder of one record, as work_find.known_folders names it (a question to the records names them so)
-RECORD_PATH_RE = re.compile(r"^work/(?:(?:tasks|streams)|done/[0-9]{4}-[0-9]{2})/[a-z0-9][a-z0-9-]{0,79}\Z")
+RECORD_PATH_RE = re.compile(r"^work/(?:(?:tasks|streams)|done/[0-9]{4}-[0-9]{2}|streams/[a-z0-9][a-z0-9-]{0,79}/[0-9]{4}-[0-9]{2})"
+                            r"/[a-z0-9][a-z0-9-]{0,79}\Z")
 
 
 # The argument types of SPEC. Most are one pattern or one list of words with the message a refusal names;
