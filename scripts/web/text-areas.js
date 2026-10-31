@@ -81,8 +81,6 @@ export const HOME = {
       overdue && `${overdue} overdue`, running && `${running} working`, review && `${review} to review`,
       tasks && (tasks === 1 ? '1 task' : `${tasks} tasks`), resting && (resting === 1 ? '1 tab at rest' : `${resting} tabs at rest`)]
       .filter(Boolean).join(' · ') || 'nothing open',
-    areaFig: { overdue: n => `${n} overdue`, review: n => `${n} to review`, running: n => `${n} working`, tasks: n => (n === 1 ? '1 task' : `${n} tasks`), resting: n => `${n} at rest` },
-    areaQuiet: n => `+${n} quiet`, areaQuietLess: 'fewer',
     areaFilter: name => `Area: ${name}`,
     areaClear: 'Show every area',
     areaNoTabs: name => `No agent tab in ${name}`,
@@ -259,9 +257,6 @@ export const HOME = {
       overdue && `${overdue} überfällig`, review && `${review} fertig prüfen`,
       running && `${running} ${running === 1 ? 'arbeitet' : 'arbeiten'}`, tasks && (tasks === 1 ? '1 Aufgabe' : `${tasks} Aufgaben`),
       resting && (resting === 1 ? '1 Tab ruht' : `${resting} Tabs ruhen`)].filter(Boolean).join(' · ') || 'nichts offen',
-    areaFig: { overdue: n => `${n} überfällig`, review: n => `${n} fertig prüfen`, running: n => `${n} ${n === 1 ? 'arbeitet' : 'arbeiten'}`, tasks: n => (n === 1 ? '1 Aufgabe' : `${n} Aufgaben`),
-      resting: n => `${n} ${n === 1 ? 'ruht' : 'ruhen'}` },
-    areaQuiet: n => `+${n} ruhig`, areaQuietLess: 'weniger',
     areaFilter: name => `Bereich: ${name}`,
     areaClear: 'Alle Bereiche zeigen',
     areaNoTabs: name => `Kein Agenten-Tab in ${name}`,

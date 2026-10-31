@@ -148,8 +148,6 @@ export function restingIn(tabs, name) {
   return (tabs ?? []).filter(t => restingTab(t) && areaKey(t.workspace) === want).length
 }
 
-// the order of the figures a pill of the area bar shows: the first one that is not 0
-const BAR_FIGS = ['waiting', 'overdue', 'running', 'review', 'tasks', 'resting']
 
 let TAGS = new Map()
 /** The tags of workplace.workspaces (boot, config.area_tags): what a log row's tag may say for an area */
@@ -203,6 +201,9 @@ export function areaBadge(s, page) {
   return n ? { kind: 'count', n } : { kind: 'none' }
 }
 
+/** The main switch of the settings: off, the cockpit has no picker or filter and shows all. An older server has none */
+export const workspacesOn = s => s?.workspaces?.enabled !== false
+
 /** The areas switched off on the settings page, as keys; an area may stand under an alias */
 export const areasOff = s => new Set((s?.workspaces?.off ?? []).map(areaKey))
 
@@ -212,25 +213,6 @@ export function withoutOff(s, list) {
   if (!off.size) return list ?? []
   return (list ?? []).filter(a => (typeof a === 'string' ? !off.has(areaKey(a)) : a.none || !off.has(areaKey(a.name))))
 }
-
-/** The bar of areas on the stage: a pill per area line (homeAreas, flowAreas) with one figure, what waits on you,
- *  else what is at work, else the tasks, else the tabs at rest; what waits first, then what works, then the most
- *  open, the line "No area" last; a line with no figure above 0 makes no pill. `configured` (workplace.workspaces)
- *  gives the quiet areas: those without a pill */
-export function areaBar(lines, configured = []) {
-  const pills = (lines ?? []).flatMap(a => {
-    const kind = BAR_FIGS.find(k => (a[k] ?? 0) > 0)
-    return kind ? [{ ...a, fig: { kind, n: a[kind] } }] : []
-  }).sort((x, y) => (x.none ? 1 : 0) - (y.none ? 1 : 0) || (y.waiting ?? 0) - (x.waiting ?? 0) || (y.running ?? 0) - (x.running ?? 0)
-    || ((y.tasks ?? 0) + (y.resting ?? 0)) - ((x.tasks ?? 0) + (x.resting ?? 0)) || String(x.name).localeCompare(String(y.name)))
-  const have = new Set(pills.filter(p => !p.none).map(p => areaKey(p.name)))
-  const quiet = [...new Set((configured ?? []).filter(n => typeof n === 'string' && n.trim() && !have.has(areaKey(n))))]
-  return { pills, quiet }
-}
-
-/** Every number of a pill in words, for its title */
-export const areaBarTitle = (pill, h) => h.areaBarParts({ waiting: pill.waiting ?? 0, overdue: pill.overdue ?? 0,
-  running: pill.running ?? 0, review: pill.review ?? 0, tasks: pill.tasks ?? 0, resting: pill.resting ?? 0 })
 
 /** Where a number of the areas leads, the area as the filter there (ui.area): tabs alone that want you
  *  are answered in the chat, one after the other (its walk); rows, or rows and tabs, wait in Work, what is due first, as do

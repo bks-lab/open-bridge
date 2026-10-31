@@ -3,12 +3,11 @@
 // two switches and Delete, a child under its parent.
 // The rules every component keeps stand at the head of components.js.
 //
-// Active is the stronger switch: a resting workspace leaves the picker and the bar, its rules no longer hold. Shown only
-// takes it out of the bar (areas.js areasOff), it stays in the picker. Neither deletes anything, nothing stops, and the
-// line All still counts it. Delete says what it touches first (verb workspace_plan), and the default area has none.
+// Active is the stronger switch: a resting workspace's rules no longer hold. Shown says whether it stands in the picker
+// (areas.js areasOff). Neither deletes anything, nothing stops, and All still counts it. Delete says what it touches first (verb workspace_plan), and the default area has none.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { projectTone } from '../logic.js'
+import { areaKey, areasOff, projectTone, workspacesOn } from '../logic.js'
 import { T } from '../text.js'
 import { Btn } from './parts.js'
 // a cycle (settings.js draws WorkspaceSettings): these parts are used only inside render functions
@@ -29,10 +28,10 @@ export function workspaceTree(items) {
   return all.filter(i => !i.parent || !ids.has(i.parent)).flatMap(p => [p, ...all.filter(i => p.id && i.parent === p.id)])
 }
 
-/** What the picker offers: the active workspaces with an area of their own */
+/** What the picker offers: the active and shown workspaces with an area of their own */
 export function pickable(s) {
-  const asleep = new Set(s.workspaces?.inactive ?? [])
-  return workspaceTree(s.workspaces?.items).filter(i => i.area && !asleep.has(i.key))
+  const away = areasOff(s)
+  return workspaceTree(s.workspaces?.items).filter(i => i.area && !away.has(areaKey(i.area)))
 }
 
 /** The picker in the header: the area the whole cockpit shows, on every page */
@@ -40,7 +39,7 @@ export function WorkspacePicker({ s, c }) {
   const t = T().workspaces
   const { pop, open, close } = usePop()
   const items = pickable(s)
-  if (!items.length) return null
+  if (!items.length || !workspacesOn(s)) return null
   const pick = area => { close(); c.setArea(area) }
   const dot = name => html`<span class=${`home-area-dot tk-${projectTone(name)}`} aria-hidden="true"></span>`
   return html`<div class="hdr-pick">
@@ -94,7 +93,10 @@ function Item({ it, s, c, ask, setAsk }) {
 export function WorkspaceSettings({ s, c }) {
   const t = T().workspaces
   const [ask, setAsk] = useState(null)
-  return html`<${Card} title=${t.title} intro=${t.intro}>
+  const on = workspacesOn(s)
+  const head = html`<${Switch} on=${on} label=${t.mainLabel} onChange=${c.workspacesEnabled} />`
+  if (!on) return html`<${Card} title=${t.title} intro=${t.mainOff} head=${head} off />`
+  return html`<${Card} title=${t.title} intro=${t.intro} head=${head}>
     ${workspaceTree(s.workspaces?.items).map(it => html`<${Item} key=${it.key} it=${it} s=${s} c=${c}
       ask=${ask?.key === it.key ? ask : null} setAsk=${setAsk} />`)}
   <//>`

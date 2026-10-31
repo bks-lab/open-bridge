@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  tabWalkView, walkRefs, inProject, areasOff, areaKey, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
+  tabWalkView, walkRefs, inProject, areasOff, areaKey, workspacesOn, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace,
@@ -418,8 +418,9 @@ function applyState(payload) {
   fixPage()
   offerTour()
   if (!bootSeen && payload.model) pageSeen(store.get().ui.page)
+  if (!workspacesOn(store.get()) && store.get().ui.area) ctl.setArea(null)
   if (wsWord) {
-    const area = areaOfWord(store.get(), wsWord)
+    const area = workspacesOn(store.get()) ? areaOfWord(store.get(), wsWord) : null
     wsWord = null
     if (area) ctl.setArea(area)
   }
@@ -587,7 +588,7 @@ const handlers = {
   },
   // a switch or a workspace's file changed, here or in another browser
   workspaces(w) {
-    store.set(s => (newerTicker(s.workspaces, w) ? { ...s, workspaces: w } : s))
+    workspacesAnswer({ workspaces: w })
   },
   // the decision guide changed: a reading started or ended, a tab left, the switches changed here or elsewhere
   guide(g) {
@@ -887,7 +888,7 @@ function workspacesAnswer(r) {
   if (!r?.workspaces) return r
   store.set(s => (newerTicker(s.workspaces, r.workspaces) ? { ...s, workspaces: r.workspaces } : s))
   const s = store.get()
-  if (s.ui.area && areasOff(s).has(areaKey(s.ui.area))) ctl.setArea(null)
+  if (s.ui.area && (!workspacesOn(s) || areasOff(s).has(areaKey(s.ui.area)))) ctl.setArea(null)
   return r
 }
 
@@ -1729,6 +1730,7 @@ const ctl = {
   tickerProfile: async llm => tickerAnswer(await act('ticker_profile', { llm: !!llm })),
   // the area Workspaces of the settings page: a switch is kept beside the config, the rest goes through the engine
   workspaceSwitch: async (area, on) => workspacesAnswer(await act('workspace_switch', { area, on })),
+  workspacesEnabled: async on => workspacesAnswer(await act('workspaces_enabled', { on })),
   workspaceActive: async (key, on) => workspacesAnswer(await act('workspace_active', { key, on })),
   workspacePlan: key => act('workspace_plan', { key }),
   workspaceDelete: async key => workspacesAnswer(await act('workspace_delete', { key })),

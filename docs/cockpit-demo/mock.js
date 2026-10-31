@@ -1095,7 +1095,7 @@ export function buildState(now = Date.now(), opts = {}) {
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
     guide: guideState(tabs, now),
-    workspaces: { rev: 0, off: [], inactive: [], gone: [], items: [
+    workspaces: { rev: 0, enabled: true, off: [], inactive: [], gone: [], items: [
       { key: 'Acme', area: 'Acme', id: 'acme', title: 'Acme', parent: null, children: ['acme-billing'], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
       { key: 'Billing', area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
       { key: 'Home', area: 'Home', id: null, title: 'Home', parent: null, children: [], archived: false, level: null, style: null, mail: null, persona: null, on: true, held_by: null, active: true, active_held_by: null, fixed: false },
@@ -2798,6 +2798,11 @@ export function createMockTransport(opts = {}) {
           const off = state.workspaces.off.filter(a => a !== args.area)
           state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, off: args.on ? off : [...off, args.area],
             items: state.workspaces.items.map(i => (i.area === args.area ? { ...i, on: !!args.on } : i)) }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: setting saved'
+        }
+        if (verb === 'workspaces_enabled') {
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, enabled: !!args.on }
           result.workspaces = state.workspaces
           result.note = 'Mock: setting saved'
         }
