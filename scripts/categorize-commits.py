@@ -590,6 +590,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/review.py",
     "scripts/lib/bridge_cockpit/sessions.py",
     "scripts/lib/bridge_cockpit/access.py",               # who sees what: a person on a workspace gets its areas
+    "scripts/lib/bridge_cockpit/work_sync.py",
     "scripts/tests/test_bridge_cockpit_access.py",        # leak tests and the guards over routes, verbs, events, fields
     "scripts/lib/bridge_cockpit/workspaces.py",           # the Workspaces area of the settings page: switches beside the config
     "scripts/web/views/workspaces.js",
