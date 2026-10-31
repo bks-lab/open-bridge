@@ -292,7 +292,10 @@ garbage-collected base fall back to a 2-way diff and a prompt
 (overlay replaces it). Behavioural kinds (skill / agent / standing-order)
 **ignore** `overlay-wins` for first materialize and force a `[y]`
 regardless, asked once per skill folder (all or none) and once per agent or
-standing-order file.
+standing-order file. Every question insists on an answer: `y` or `n`, an empty
+line is `n`, anything else repeats the question. `a` answers yes to this and
+every later gate of the run; the questions that delete a file or overwrite the
+consumer's own file never fall under it and are asked one by one.
 
 **Precedence** resolves collisions *across* overlays. Each overlay carries an
 integer `precedence`; **higher wins** a destination collision. The engine
@@ -497,6 +500,8 @@ load-bearing order, condensed:
     files the consumer already has and the files upstream removed from it (a
     withheld folder is not pruned); only `on_conflict: skip` keeps a consumer's
     own file inside an accepted folder. Config and rule files batch-confirm.
+    `a` at any gate says yes to all remaining gates of the run; an unknown
+    answer repeats the question, it is never read as no.
 12. **Write a COPY atomically** (never a symlink); `materialized_sha256 = hash
     as written`.
 13. **Ecosystem fragment**: `ecosystem.<org>.yaml` goes through Steps 4 to 12

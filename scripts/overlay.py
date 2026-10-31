@@ -347,8 +347,58 @@ def prompt_line(msg: str) -> str:
         return ""
 
 
-def prompt_yes(msg: str) -> bool:
-    return prompt_line(f"{msg} [y/N] ").lower() in ("y", "yes")
+# One run's answer state. "a" at a gate means "yes to every remaining question
+# of this kind in this run"; main() resets it, tests call reset_prompts().
+_YES_ALL = False
+
+
+def reset_prompts() -> None:
+    global _YES_ALL
+    _YES_ALL = False
+
+
+def prompt_yes(msg: str, *, batch: bool = True) -> bool:
+    """Ask a yes/no question and insist on an answer.
+
+    Accepted: y/yes → True · n/no or an empty line → False · a/all → True and
+    every later `batch` question of this run is answered yes without asking.
+    Anything else repeats the question: before this, "a" was read as "no" and
+    silently withheld a skill folder. End of input counts as an empty line, so
+    a non-tty never loops.
+
+    batch=False marks a question "a" never covers: deleting files or
+    overwriting the consumer's own file is asked one by one, always.
+    """
+    global _YES_ALL
+    if _YES_ALL and batch:
+        print(f"{msg} [y/N/a] a  (yes to all)")
+        return True
+    options = "[y/N/a]" if batch else "[y/N]"
+    while True:
+        raw = prompt_line(f"{msg} {options} ")
+        ans = raw.lower()
+        if ans in ("y", "yes"):
+            return True
+        if ans in ("", "n", "no"):
+            return False
+        if ans in ("a", "all") and batch:
+            _YES_ALL = True
+            return True
+        hint = ("y = yes, n = no, a = yes to all remaining questions of this run"
+                if batch else "y = yes, n = no (this question is asked one by one)")
+        print(f"    unrecognised answer {raw!r}: {hint}")
+
+
+def prompt_choice(msg: str, choices: str, default: str) -> str:
+    """Ask for one letter out of `choices`; an empty line is `default`, anything
+    else repeats the question instead of being read as the default."""
+    while True:
+        ans = prompt_line(msg).lower()
+        if ans == "":
+            return default
+        if ans in choices:
+            return ans
+        print(f"    unrecognised answer {ans!r}: one of {', '.join(choices)}")
 
 
 # ---------------------------------------------------------------------------
@@ -1566,7 +1616,7 @@ def three_way(consumer: Consumer, cache: str, it: PlanItem,
         return None, "conflict"
     print(f"\n  CONFLICT on locally-modified {it.dest}")
     print("    [k] keep local   [u] take upstream   [s] skip")
-    choice = prompt_line("    choose: ").lower()
+    choice = prompt_choice("    choose: ", "kus", "s")
     if choice == "u":
         return it.staged_bytes, "conflict-resolved-upstream"
     if choice == "k":
@@ -1777,7 +1827,8 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                         f"(non-interactive)\n")
                     continue
                 if it.dest not in overwrite_ok and not prompt_yes(
-                        f"  {it.dest} exists (user-owned). Overwrite?"):
+                        f"  {it.dest} exists (user-owned). Overwrite?",
+                        batch=False):
                     counts["skipped"] += 1
                     continue
             # overlay-wins or confirmed prompt → write as a clean copy.
@@ -1848,7 +1899,7 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                   "instead of extended), not an intentional bulk removal "
                   "upstream.")
             allow_large_prune = prompt_yes(
-                f"  Really delete all {len(clean_orphans)} files?")
+                f"  Really delete all {len(clean_orphans)} files?", batch=False)
             if not allow_large_prune:
                 sys.stderr.write(
                     f"  KEPT   {len(clean_orphans)} files: large-prune batch "
@@ -1876,7 +1927,8 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                     consumer.warn_legacy_import(pr["dest"])
         else:
             if interactive and prompt_yes(
-                    f"  upstream removed {pr['dest']} but it is modified. Delete?"):
+                    f"  upstream removed {pr['dest']} but it is modified. Delete?",
+                    batch=False):
                 counts["orphan"] += 1
                 if not dry:
                     os.remove(os.path.join(consumer.root, pr["dest"]))
@@ -2470,7 +2522,8 @@ def cmd_remove(consumer: Consumer, args) -> int:
                 deleted += 1
             else:
                 if interactive and prompt_yes(
-                        f"  {f['dest']} is locally-modified. Delete anyway?"):
+                        f"  {f['dest']} is locally-modified. Delete anyway?",
+                        batch=False):
                     os.remove(dest_abs)
                     deleted += 1
                 else:
@@ -2686,6 +2739,7 @@ def resolve_repo_root(args) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    reset_prompts()
     root = resolve_repo_root(args)
     # Run with the consumer root as cwd so categorize-commits' frontmatter
     # reads resolve, and relative git ops behave.
