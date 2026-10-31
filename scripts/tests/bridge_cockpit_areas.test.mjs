@@ -905,41 +905,68 @@ test('without a block from the server every area stays', () => {
 })
 
 const WS_ITEMS = [
-  { area: 'Acme', id: 'acme', parent: null, level: 'room', style: 'acme-style', mail: 'acme', on: true, archived: false },
-  { area: 'Billing', id: 'acme-billing', parent: 'acme', level: 'room', on: false, held_by: 'Acme', archived: false },
-  { area: 'Home', id: null, parent: null, on: true, archived: false },
-  { area: 'Old', id: 'old', parent: null, on: true, archived: true },
+  { key: 'Acme', area: 'Acme', id: 'acme', parent: null, level: 'room', style: 'acme-style', mail: 'acme', on: true, active: true },
+  { key: 'Billing', area: 'Billing', id: 'acme-billing', parent: 'acme', level: 'room', on: false, held_by: 'Acme', active: true },
+  { key: 'Home', area: 'Home', id: null, parent: null, on: true, active: true },
+  { key: 'Old', area: 'Old', id: null, parent: null, on: true, active: false },
+  { key: 'Inbox', area: 'Inbox', id: null, parent: null, on: true, active: true, fixed: true },
 ]
+const wsState = (over = {}) => ({ ...cockpitState(NOW), workspaces: { rev: 1, off: [], inactive: ['Old'], gone: [], items: WS_ITEMS }, ...over })
 
-test('the settings list a child under its parent and archived ones apart', () => {
-  const s = { ...cockpitState(NOW), workspaces: { rev: 1, off: [], items: WS_ITEMS } }
-  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${s} c=${recorder()} />`)
-  const names = el.$$('.set-label').map(n => n.text())
-  assert.deepEqual(names.slice(0, 3), ['Acme', 'Billing', 'Home'])
+test('the settings list a child under its parent, with two switches', () => {
+  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${wsState()} c=${recorder()} />`)
+  assert.deepEqual(el.$$('.set-label').map(n => n.text()).slice(0, 3), ['Acme', 'Billing', 'Home'])
   assert.ok(el.text().includes('Off with Acme'))
   assert.ok(el.text().includes('A filter, no rules of its own yet'))
-  assert.ok(el.button('Restore'))
+  assert.ok(el.text().includes('Resting'))
+  assert.equal(el.$$('[role="switch"]').length, 10)
 })
 
-test('a switch goes out with its area, a child held by its parent cannot be switched', () => {
+test('each switch says what it switches, a resting one cannot be shown', () => {
   const c = recorder()
-  const s = { ...cockpitState(NOW), workspaces: { rev: 1, off: [], items: WS_ITEMS } }
-  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${s} c=${c} />`)
-  const switches = el.$$('[role="switch"]')
-  assert.equal(switches[1].hasAttribute('disabled'), true)
-  switches[2].click()
+  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${wsState()} c=${c} />`)
+  el.$$('[role="switch"]').find(x => x.getAttribute('aria-label') === 'Home active').click()
+  assert.deepEqual(c.calls.at(-1), ['workspaceActive', 'Home', false])
+  el.$$('[role="switch"]').find(x => x.getAttribute('aria-label') === 'Show Home').click()
   assert.deepEqual(c.calls.at(-1), ['workspaceSwitch', 'Home', false])
+  assert.equal(el.$$('[role="switch"]').find(x => x.getAttribute('aria-label') === 'Show Old').hasAttribute('disabled'), true)
 })
 
-test('delete asks a second click', async () => {
+test('every area can go but the default', () => {
+  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${wsState()} c=${recorder()} />`)
+  assert.equal(el.$$('button').filter(b => b.text() === 'Delete').length, 4)
+  assert.ok(el.text().includes('always stays'))
+})
+
+test('delete says what it touches before the last button', async () => {
+  const calls = []
+  const ctl = { workspacePlan: async () => ({ plan: { key: 'Home', tasks: 2, records: 4, tabs: 0, children: [], fixed: false } }), workspaceDelete: x => calls.push(x) }
+  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${wsState()} c=${ctl} />`)
+  el.$$('button').filter(b => b.text() === 'Delete')[2].click()
+  await new Promise(r => setTimeout(r, 5))
+  assert.ok(el.text().includes('2 open tasks'))
+  el.button('Delete for good').click()
+  assert.deepEqual(calls, ['Home'])
+})
+
+test('an open tab stops a delete, the button stays away', async () => {
+  const c = { workspacePlan: async () => ({ plan: { key: 'Home', tasks: 0, records: 0, tabs: 3, children: [], fixed: false } }) }
+  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${wsState()} c=${c} />`)
+  el.$$('button').filter(b => b.text() === 'Delete')[2].click()
+  await new Promise(r => setTimeout(r, 5))
+  assert.ok(el.text().includes('3 open tabs'))
+  assert.equal(el.button('Delete for good'), null)
+})
+
+test('the picker offers what is active, with the children under their parent', async () => {
   const c = recorder()
-  const s = { ...cockpitState(NOW), workspaces: { rev: 1, off: [], items: WS_ITEMS } }
-  const el = mount(html`<${views.workspaces.WorkspaceSettings} s=${s} c=${c} />`)
-  el.$$('button').find(b => b.text() === 'Delete').click()
-  assert.equal(c.calls.filter(x => x[0] === 'workspaceDelete').length, 0)
+  const el = mount(html`<${views.workspaces.WorkspacePicker} s=${wsState()} c=${c} />`)
+  assert.equal(el.$$('button')[0].text().startsWith('All'), true)
+  assert.deepEqual(views.workspaces.pickable(wsState()).map(i => i.key), ['Acme', 'Billing', 'Home', 'Inbox'])
+  el.$$('button')[0].click()
   await new Promise(r => setTimeout(r))
-  el.$$('button').find(b => b.text() === 'Click again: deletes').click()
-  assert.deepEqual(c.calls.at(-1), ['workspaceDelete', 'acme'])
+  el.$$('.pop-item').find(b => b.text() === 'Billing').click()
+  assert.deepEqual(c.calls.at(-1), ['setArea', 'Billing'])
 })
 
 // ---------------------------------------------------------------- what follows the area beyond Work, Chat and Sessions

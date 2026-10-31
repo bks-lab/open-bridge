@@ -90,15 +90,25 @@ page says so. The cost card opens on `sources.cost_center`. These pages carry th
 The filter stands in the browser only: it changes what the page shows, not what the server
 sends, and it keeps nothing from a session. That is the job of a workspace's `boundary`.
 
-**Switching an area off.** Settings, Workspaces lists every area with a switch, its rules
-in one line, and Archive and Delete for one with a file under `workflow/workspaces/`
-([`workspaces.md`](workspaces.md)). Off takes the area out of the bar, the chips and the
-shelf; nothing is deleted, background runs go on, and the line All still counts it. The
-switch is kept in `.bridge/cockpit/workspaces.json`, so it holds in every browser and makes
-no commit. An archived workspace counts as off, and so does the child of one that is off,
-whose switch is then held. Delete wants a second click and is refused while a tab of the
-area is open, a child stands, or a clone holds unsaved work. It removes the file, not the
-area, which stays in `workplace.workspaces`, and it never touches tasks or records.
+**The picker** stands in the header on every page: All and each active workspace, a child
+under its parent. A click sets the one area filter.
+
+**Active and shown.** Settings, Workspaces lists every area with its rules in one line,
+two switches and Delete. *Active* is the stronger one: a resting workspace leaves the picker
+and the bar, and its rules no longer hold. *Shown* only takes an area out of the bar, the
+chips and the shelf, it stays in the picker. Neither deletes anything, background runs go on,
+and the line All still counts it. The switches are kept in `.bridge/cockpit/workspaces.json`,
+so they hold in every browser and make no commit. A workspace archived with
+`workspace.py archive` rests, and waking it restores its file. A child rests with its parent
+and leaves the bar with it, its switch then held.
+
+**Delete** takes any area but the default, where everything without an area lands. It says
+first what it touches and offers the last button only when nothing stops it: an open tab of
+the area, a child, or a clone with unsaved work. It removes the workspace's file through
+`workspace.py delete`, then the area's entry from `bridge-config.yaml` through
+`workspace.py area-remove`, line by line so comments stay, with a copy of both under
+`.bridge/trash/`. The page writes the config only here. Tasks of the area fall to the
+default area, records keep their name, and nothing else goes.
 
 A tab that went idle is finished, not waiting on you (its badge reads "done", and the header's Tabs button does not count it): the
 walk through the tabs skips it, and By status lists it under "Finished, to

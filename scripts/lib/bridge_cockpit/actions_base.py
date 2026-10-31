@@ -215,9 +215,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "guide_settings_reset": {},
     # the Workspaces area of the settings page (workspaces.py): a switch beside the config, the rest through the engine
     "workspace_switch": {"area": ("title", True), "on": ("bool", True)},
-    "workspace_archive": {"slug": ("slug", True)},
-    "workspace_restore": {"slug": ("slug", True)},
-    "workspace_delete": {"slug": ("slug", True)},
+    "workspace_active": {"key": ("title", True), "on": ("bool", True)},
+    "workspace_plan": {"key": ("title", True)},
+    "workspace_delete": {"key": ("title", True)},
     # the first-run tour: finished or skipped (v: the page's tour version), and taken back to offer it again
     "tour_done": {"how": ("tour_how", True), "v": ("index", True)},
     "tour_reset": {},
@@ -258,13 +258,13 @@ GO_FIELDS = {
     "ask": ("id", re.compile(r"^q[0-9a-f]{10}\Z")),
     "claude": None,
 }
-READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
+READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose", "workspace_plan"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
                          "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys",
-                         "tab_new", "workspace_new", "workspace_close", "workspace_switch"})
+                         "tab_new", "workspace_new", "workspace_close", "workspace_switch", "workspace_active"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb

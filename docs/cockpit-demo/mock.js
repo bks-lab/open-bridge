@@ -1095,10 +1095,10 @@ export function buildState(now = Date.now(), opts = {}) {
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
     guide: guideState(tabs, now),
-    workspaces: { rev: 0, off: [], items: [
-      { area: 'Acme', id: 'acme', title: 'Acme', parent: null, children: ['acme-billing'], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null },
-      { area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null },
-      { area: 'Home', id: null, title: 'Home', parent: null, children: [], archived: false, level: null, style: null, mail: null, persona: null, on: true, held_by: null },
+    workspaces: { rev: 0, off: [], inactive: [], gone: [], items: [
+      { key: 'Acme', area: 'Acme', id: 'acme', title: 'Acme', parent: null, children: ['acme-billing'], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
+      { key: 'Billing', area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
+      { key: 'Home', area: 'Home', id: null, title: 'Home', parent: null, children: [], archived: false, level: null, style: null, mail: null, persona: null, on: true, held_by: null, active: true, active_held_by: null, fixed: false },
     ] },
     // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
@@ -2800,6 +2800,19 @@ export function createMockTransport(opts = {}) {
             items: state.workspaces.items.map(i => (i.area === args.area ? { ...i, on: !!args.on } : i)) }
           result.workspaces = state.workspaces
           result.note = 'Mock: setting saved'
+        }
+        if (verb === 'workspace_active') {
+          const inactive = state.workspaces.inactive.filter(k => k !== args.key)
+          const rest = args.on ? inactive : [...inactive, args.key]
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, inactive: rest, off: [...new Set([...state.workspaces.off.filter(k => k !== args.key), ...rest])] }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: setting saved'
+        }
+        if (verb === 'workspace_plan') result.plan = { key: args.key, tasks: 2, records: 4, tabs: 0, children: [], fixed: false, blockers: [] }
+        if (verb === 'workspace_delete') {
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, gone: [...state.workspaces.gone, args.key], items: state.workspaces.items.filter(i => i.key !== args.key) }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: deleted'
         }
         if (verb === 'tour_done' || verb === 'tour_reset') {
           state.tour = { ...state.tour, done: verb === 'tour_done' ? { how: args.how, v: args.v, at: isoIn(0, now()) } : null }

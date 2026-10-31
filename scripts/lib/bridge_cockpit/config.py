@@ -96,6 +96,8 @@ class WebConfig:
     area_aliases: tuple = ()
     # (name, tags) per area: the log follows the area by these (areas.js tagInArea)
     area_tags: tuple = ()
+    # the workspace marked default: what has no area lands there, so it cannot be deleted
+    area_default: str | None = None
     # Jev (TypeSafe): off unless integrations.typesafe.enabled; the key only ever as a keychain reference
     jev_enabled: bool = False
     jev_key_ref: str | None = None
@@ -752,6 +754,8 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     area_repos = area_repos_of(_dict(raw.get("workplace")).get("workspaces"))
     area_aliases = area_aliases_of(_dict(raw.get("workplace")).get("workspaces"))
     area_tags = area_tags_of(_dict(raw.get("workplace")).get("workspaces"))
+    area_default = next((ws["name"].strip() for ws in _dict(raw.get("workplace")).get("workspaces") or ()
+                         if isinstance(ws, dict) and ws.get("default") and isinstance(ws.get("name"), str)), None)
 
     ts = _dict(_dict(raw.get("integrations")).get("typesafe"))
     ref = ts.get("key_ref")
@@ -772,7 +776,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
 
     cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
-                    voice=voice, target=target, control=control, areas=areas, area_repos=area_repos, area_aliases=area_aliases, area_tags=area_tags, jev_enabled=ts.get("enabled") is True,
+                    voice=voice, target=target, control=control, areas=areas, area_repos=area_repos, area_aliases=area_aliases, area_tags=area_tags, area_default=area_default, jev_enabled=ts.get("enabled") is True,
                     jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                     jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),

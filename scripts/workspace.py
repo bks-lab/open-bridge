@@ -57,6 +57,7 @@ LEVELS = ("view", "room", "wall")           # how far a workspace keeps a sessio
 RULE_BLOCKS = ("refs", "writing", "boundary", "sources")   # what a child inherits key by key
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+SLUG_CUT_RE = re.compile(r"[^a-z0-9-]+")
 SCP_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+$")
 ALLOWED_URL_SCHEMES = ("https", "ssh", "file")
 
@@ -1053,6 +1054,72 @@ def _retire_identity(consumer: Consumer, ws_id: str) -> None:
         sys.stderr.write(f"workspace: shared-registry retire failed (local state unaffected): {exc}\n")
 
 
+def cut_area(text: str, name: str) -> tuple[str, str]:
+    """The config text without the entry `name` of workplace.workspaces, and that entry. Line by line, so every
+    comment and the order stay; the result is proved against a parse of the whole file."""
+    lines = text.splitlines(keepends=True)
+    indent = lambda line: len(line) - len(line.lstrip(" "))
+    blank = lambda line: not line.strip() or line.lstrip().startswith("#")
+    top = next((i for i, x in enumerate(lines) if re.match(r"workplace:\s*(#.*)?$", x)), None)
+    key = None if top is None else next((i for i in range(top + 1, len(lines))
+                                         if re.match(r" +workspaces:\s*(#.*)?$", lines[i])), None)
+    if key is None:
+        raise WorkspaceError("no workplace.workspaces list in bridge-config.yaml.")
+    start = None
+    want = name.strip().casefold()
+    i = key + 1
+    first = next((j for j in range(i, len(lines)) if not blank(lines[j])), None)
+    if first is None or not lines[first].lstrip().startswith("- "):
+        raise WorkspaceError("workplace.workspaces is no block list.")
+    ind = indent(lines[first])
+    i = first
+    while i < len(lines):
+        if blank(lines[i]):
+            i += 1
+            continue
+        if indent(lines[i]) != ind or not lines[i].lstrip().startswith("- "):
+            break
+        end = i + 1
+        while end < len(lines) and (blank(lines[end]) or indent(lines[end]) > ind):
+            end += 1
+        while blank(lines[end - 1]):       # a comment after the entry belongs to the next one
+            end -= 1
+        entry = yaml.safe_load("".join(x[ind:] for x in lines[i:end]))[0]
+        if isinstance(entry, dict) and str(entry.get("name") or "").strip().casefold() == want:
+            start = (i, end, entry)
+            break
+        i = end
+    if start is None:
+        raise WorkspaceError(f"no area '{name}' in workplace.workspaces.")
+    i, end, entry = start
+    if entry.get("default"):
+        raise WorkspaceError(f"'{entry['name']}' is the default area, what has no area lands there.")
+    out = "".join(lines[:i] + lines[end:])
+    before, after = yaml.safe_load(text), yaml.safe_load(out)
+    before["workplace"]["workspaces"].remove(entry)
+    if before != after:
+        raise WorkspaceError("could not cut the entry cleanly, bridge-config.yaml stays as it is.")
+    return out, "".join(lines[i:end])
+
+
+def cmd_area_remove(consumer: Consumer, args) -> int:
+    consumer.require_user_branch()
+    path = os.path.join(consumer.root, "bridge-config.yaml")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as exc:
+        raise WorkspaceError(f"cannot read bridge-config.yaml: {exc}") from None
+    out, entry = cut_area(text, args.name)
+    stamp = now_iso().replace(":", "").replace("-", "")
+    trash = os.path.join(consumer.root, TRASH_BASE, f"area-{SLUG_CUT_RE.sub('-', args.name.lower())}-{stamp}")
+    os.makedirs(trash, exist_ok=True)
+    atomic_write_bytes(os.path.join(trash, "entry.yaml"), entry.encode("utf-8"))
+    atomic_write_bytes(path, out.encode("utf-8"))
+    print(f"removed area '{args.name}', its entry stays in {os.path.relpath(trash, consumer.root)}")
+    return 0
+
+
 def cmd_delete(consumer: Consumer, args) -> int:
     if not args.dry_run:
         consumer.require_user_branch()
@@ -1161,6 +1228,10 @@ def build_parser() -> argparse.ArgumentParser:
     de.add_argument("--dry-run", action="store_true", help="say what would go and what stops it")
     de.add_argument("--json", action="store_true")
     de.set_defaults(func=cmd_delete)
+
+    ra = sub.add_parser("area-remove", help="take an area out of workplace.workspaces, a copy of its entry stays")
+    ra.add_argument("name")
+    ra.set_defaults(func=cmd_area_remove)
     return p
 
 

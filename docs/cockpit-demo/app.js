@@ -1729,9 +1729,9 @@ const ctl = {
   tickerProfile: async llm => tickerAnswer(await act('ticker_profile', { llm: !!llm })),
   // the area Workspaces of the settings page: a switch is kept beside the config, the rest goes through the engine
   workspaceSwitch: async (area, on) => workspacesAnswer(await act('workspace_switch', { area, on })),
-  workspaceArchive: async slug => workspacesAnswer(await act('workspace_archive', { slug })),
-  workspaceRestore: async slug => workspacesAnswer(await act('workspace_restore', { slug })),
-  workspaceDelete: async slug => workspacesAnswer(await act('workspace_delete', { slug })),
+  workspaceActive: async (key, on) => workspacesAnswer(await act('workspace_active', { key, on })),
+  workspacePlan: key => act('workspace_plan', { key }),
+  workspaceDelete: async key => workspacesAnswer(await act('workspace_delete', { key })),
   // the decision guide: a reading returns at once and ends with a guide event; the switches save at once
   // what a waiting tab's pane in the chat shows: the reading, both, or the terminal; kept in this browser
   guideRead: async ref => guideAnswer(await act('guide_read', { tab_ref: ref })),
