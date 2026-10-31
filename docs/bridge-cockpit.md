@@ -3510,7 +3510,7 @@ share or clean up.
 |---|---|---|
 | `token` | the key, kept across restarts until `new-token` (readable by you only) | no |
 | `server.json` | the running server: pid, port, version, never the key (readable by you only) | no |
-| `work-sync.jsonl` | the paths of a person's entries that wait to be committed and pushed (`serve --served` only) |  |
+| `work-sync.jsonl` | the paths of a person's entries that wait to be committed and pushed (`serve --served` only) | no |
 | `server.log` | errors, dated, never a key, cookie or request body; kept to one backup (`server.log.1`) | no |
 | `stdout.log` | what the process itself prints: the dated line of each start, and a crash before the server is up | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
