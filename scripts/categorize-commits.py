@@ -287,6 +287,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/hooks/pre-push",
     "scripts/inbox-approve.py",
     "scripts/inbox.py",
+    "scripts/work-sync.py",
     "scripts/lib/inbox_verbs.py",   # the verbs that end an item, shared with the cockpit
     "scripts/learning-ledger.py",
     "scripts/memory-location.py",
@@ -442,6 +443,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/check-generated-output.py",
     "scripts/tests/test_generated_output_escapes.py",
     "scripts/tests/test_inbox.py",
+    "scripts/tests/test_work_sync.py",
     "scripts/tests/test_inbox_approve.py",
     "scripts/tests/test_inbox_area.py",
     "scripts/tests/test_inbox_mute.py",

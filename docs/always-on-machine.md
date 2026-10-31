@@ -113,6 +113,21 @@ key or a token scoped to this one private repository). Two reasons:
 deploy key writes the whole repository. If your git host can restrict a
 credential to paths or to a branch, use that as the second lock.
 
+### A cockpit on this machine
+
+`python3 scripts/bridge-cockpit.py serve --served` runs the cockpit for the people named in a workspace's `members:`
+on this machine: no model, no terminal driver, no daily triage, no relay, still bound to 127.0.0.1. Run it with the
+Python that has PyYAML, under whatever keeps your services alive.
+
+A puller may reset this clone, so a person's entry must not stay uncommitted. After each of their actions the
+cockpit compares `work/` before and after, keeps the changed paths in `work-sync.jsonl` beside its state and has
+`scripts/work-sync.py` commit exactly those and push them. Only `work/tasks/`, `work/done/`, `work/inbox/` and
+`work/log.md` are accepted. Files another session left open stay out. Without a network the commit waits locally,
+so the puller must rebase and push such commits as it does for the inbox, extended to the same paths.
+
+Two machines now append to `work/log.md`. Put `work/log.md merge=union` into the instance's `.gitattributes`, or
+every rebase over a log row conflicts.
+
 The [push guard](../rules/push-guard.md) is unchanged. The machine pushes to your
 private origin. A `user/*` branch still never reaches a public upstream, and the
 pre-push hook on the machine's clone (`git config core.hooksPath scripts/hooks`)

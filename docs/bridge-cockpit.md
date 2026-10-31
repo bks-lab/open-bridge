@@ -195,6 +195,8 @@ asks for a fresh link (`url`, or `/cockpit`). `new-token` makes a new key on
 the next start, which also ends every cookie, and every browser goes through
 `url` once more.
 
+**On an always-on machine.** `serve --served` is the cockpit for people, without a model, a terminal or the daily triage; their entries are committed and pushed as they land ([always-on machine](always-on-machine.md#a-cockpit-on-this-machine)).
+
 **Always there.** Without autostart the server runs until you stop it or the
 computer restarts. `autostart on` (macOS) installs a LaunchAgent
 (`~/Library/LaunchAgents/ai.open-bridge.cockpit.<hash>.plist`) that starts
@@ -3508,6 +3510,7 @@ share or clean up.
 |---|---|---|
 | `token` | the key, kept across restarts until `new-token` (readable by you only) | no |
 | `server.json` | the running server: pid, port, version, never the key (readable by you only) | no |
+| `work-sync.jsonl` | the paths of a person's entries that wait to be committed and pushed (`serve --served` only) |  |
 | `server.log` | errors, dated, never a key, cookie or request body; kept to one backup (`server.log.1`) | no |
 | `stdout.log` | what the process itself prints: the dated line of each start, and a crash before the server is up | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |

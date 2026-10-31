@@ -177,10 +177,13 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
     cfg, code = check_config(root, args.ignore_disabled)
     if cfg is None:
         return code
-    from lib.bridge_cockpit.server import make_server
+    from lib.bridge_cockpit.server import make_server, served_config, served_runner
     port = cfg.port if args.port is None else args.port
+    served = getattr(args, "served", False)
     try:
-        server = make_server(root, port=port, state_dir=state_dir, cfg=cfg, background=False, code_root=DEFAULT_ROOT)
+        server = make_server(root, port=port, state_dir=state_dir, cfg=served_config(cfg) if served else cfg,
+                             runner=served_runner(root, code=DEFAULT_ROOT) if served else None, background=False,
+                             code_root=DEFAULT_ROOT)
     except OSError as error:
         if error.errno in (errno.EADDRINUSE, errno.EACCES):
             if running_info(root, state_dir):
@@ -490,6 +493,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("serve", help="run the server in the foreground")
     p.add_argument("--port", type=int, default=None, help="port (0 = any free one; default cockpit.port)")
     p.add_argument("--ignore-disabled", action="store_true", help="start even when cockpit.enabled is not true")
+    p.add_argument("--served", action="store_true",
+                   help="for an always-on machine: no model, no terminal, no daily triage, a person's entries are pushed")
     p = sub.add_parser("start", help="start in the background or reuse the running server")
     p.add_argument("--port", type=int, default=None)
     p.add_argument("--ignore-disabled", action="store_true")

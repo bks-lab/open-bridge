@@ -498,7 +498,13 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
                 else:
                     with self.write_lock:
                         ctx.locked = True
-                        self.recorded(ctx, handler, clean)
+                        syncs = self.app.work_sync if viewer is not None else None
+                        before = syncs.snapshot() if syncs else None
+                        try:
+                            self.recorded(ctx, handler, clean)
+                        finally:
+                            if syncs:
+                                syncs.after(before, viewer)   # a refused step may already have written
         finally:
             # what a verb names is read anew by the Activity tab (activity.py keeps a feed CACHE_MS); a plan of the
             # instruction line changes nothing
