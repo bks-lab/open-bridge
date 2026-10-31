@@ -6,7 +6,7 @@
 // the caller can treat 202 and 409 (relay offline) as answers. A network failure gives
 // status 0 and error code "network".
 
-const EVENTS = ['hello', 'state', 'view', 'view_pages', 'tabs', 'loading', 'note', 'relay', 'relay_state', 'alert', 'sessions', 'quick', 'quick_live', 'agents', 'triage', 'home', 'launch', 'ticker', 'guide', 'tour', 'describe', 'acks']
+const EVENTS = ['hello', 'state', 'view', 'view_pages', 'tabs', 'loading', 'note', 'relay', 'relay_state', 'alert', 'sessions', 'quick', 'quick_live', 'agents', 'triage', 'home', 'launch', 'ticker', 'guide', 'workspaces', 'tour', 'describe', 'acks']
 
 function failure(status, code, message) {
   return { status, ok: false, data: null, error: { code, message, field: null } }

@@ -158,6 +158,37 @@ class PageVerbs:
         self.app.guide.reset()
         self.guide_changed(ctx)
 
+    def v_workspace_switch(self, ctx: Ctx, area: str, on: bool) -> None:
+        """An area in or out of the bar, kept beside the config; nothing else changes"""
+        if not self.app.workspaces.switch(area, on):
+            raise self.not_applicable("no such area")
+        ctx.extra["workspaces"] = self.app.workspaces.changed()
+
+    def workspace_engine(self, ctx: Ctx, verb: str, slug: str, done: str) -> None:
+        """A workspace's file through scripts/workspace.py, whose refusal reaches the page in its own words"""
+        app = self.app
+        run = ctx.call(f"workspace.{verb}", slug, app.workspaces.command(verb, slug), SHORT_TIMEOUT)
+        if not run.ok:
+            why = re.sub(r"^\s*workspace:\s*", "", (run.err or run.out or "").strip())
+            raise ActionError(409, "not_applicable", self.tx["workspace_refused"].format(why=m.short(why, 200)), None)
+        ctx.extra["workspaces"] = app.workspaces.changed()
+        ctx.note(self.tx[done].format(name=slug))
+
+    def v_workspace_archive(self, ctx: Ctx, slug: str) -> None:
+        self.workspace_engine(ctx, "archive", slug, "workspace_archived")
+
+    def v_workspace_restore(self, ctx: Ctx, slug: str) -> None:
+        self.workspace_engine(ctx, "restore", slug, "workspace_restored")
+
+    def v_workspace_delete(self, ctx: Ctx, slug: str) -> None:
+        """Refused while a tab of its area is open: the engine knows files, the cockpit knows tabs"""
+        app = self.app
+        area = str(app.workspaces.area_of(slug) or "").strip().lower()
+        tabs = [t for t in app.tabs.tab_list() if area and str(t.get("workspace") or "").strip().lower() == area]
+        if tabs:
+            raise ActionError(409, "not_applicable", self.tx["workspace_tabs_open"].format(n=len(tabs)), None)
+        self.workspace_engine(ctx, "delete", slug, "workspace_deleted")
+
     def guide_changed(self, ctx: Ctx) -> None:
         state = self.app.guide.state()
         ctx.extra["guide"] = state

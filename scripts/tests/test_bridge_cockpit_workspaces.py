@@ -224,3 +224,102 @@ def test_schema_takes_the_new_fields(repo):
     jsonschema.validate(good, schema)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**good, "boundary": {"level": "fort"}}, schema)
+
+
+# ---------------------------------------------------------------- the cockpit: Settings, Workspaces
+
+import sys  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_bridge_cockpit import World, private_key_dir  # noqa: E402,F401  (the autouse fixture comes along)
+from lib.bridge_cockpit.actions import ActionError  # noqa: E402
+from lib.bridge_cockpit.runner import RunResult  # noqa: E402
+
+AREAS_CFG = """
+workplace:
+  workspaces:
+    - {name: Acme, description: "a customer"}
+    - {name: Billing, description: "part of it"}
+    - {name: Home, description: "the house"}
+"""
+
+
+@pytest.fixture
+def cockpit(tmp_path):
+    w = World(tmp_path, config=AREAS_CFG)
+    (w.root / "workflow/workspaces").mkdir(parents=True, exist_ok=True)
+    yield w
+    w.close()
+
+
+def items(w):
+    return {i["area"]: i for i in w.app.workspaces.state()["items"]}
+
+
+def test_every_area_stands_in_the_list_with_or_without_a_file(cockpit):
+    define(cockpit.root, "acme", area="Acme", boundary={"level": "room"}, writing={"style_skill": "acme-style"})
+    got = items(cockpit)
+    assert set(got) >= {"Acme", "Billing", "Home"}
+    assert (got["Acme"]["id"], got["Acme"]["level"], got["Acme"]["style"]) == ("acme", "room", "acme-style")
+    assert got["Home"]["id"] is None
+
+
+def test_a_file_change_shows_without_a_restart(cockpit):
+    assert items(cockpit)["Home"]["id"] is None
+    define(cockpit.root, "home", area="Home")
+    assert items(cockpit)["Home"]["id"] == "home"
+
+
+def test_a_switch_is_kept_beside_the_config_and_survives_a_restart(cockpit):
+    before = (cockpit.root / "bridge-config.yaml").read_text(encoding="utf-8")
+    res = cockpit.act("workspace_switch", area="Home", on=False)
+    assert res["workspaces"]["off"] == ["Home"]
+    assert (cockpit.root / "bridge-config.yaml").read_text(encoding="utf-8") == before
+    assert cockpit.app.workspaces.__class__(cockpit.app).state()["off"] == ["Home"]
+    assert cockpit.act("workspace_switch", area="Home", on=True)["workspaces"]["off"] == []
+
+
+def test_a_switch_takes_the_area_in_any_spelling_and_refuses_an_unknown_one(cockpit):
+    assert cockpit.act("workspace_switch", area="home", on=False)["workspaces"]["off"] == ["Home"]
+    with pytest.raises(ActionError):
+        cockpit.act("workspace_switch", area="Nowhere", on=False)
+
+
+def test_an_off_parent_holds_its_child_and_an_archived_one_counts_as_off(cockpit):
+    define(cockpit.root, "acme", area="Acme")
+    define(cockpit.root, "acme-billing", parent="acme", area="Billing")
+    define(cockpit.root, "home", area="Home", archived_at="2026-01-01T00:00:00Z")
+    cockpit.act("workspace_switch", area="Acme", on=False)
+    state = cockpit.app.workspaces.state()
+    assert sorted(state["off"]) == ["Acme", "Billing", "Home"]
+    got = {i["area"]: i for i in state["items"]}
+    assert got["Billing"]["held_by"] == "Acme"
+    assert got["Home"]["archived"] is True
+
+
+def test_archive_restore_and_delete_go_through_the_engine(cockpit):
+    define(cockpit.root, "home", area="Home")
+    cockpit.act("workspace_archive", slug="home")
+    cockpit.act("workspace_restore", slug="home")
+    cockpit.act("workspace_delete", slug="home")
+    calls = [c for c in cockpit.runner.calls if any(str(a).endswith("workspace.py") for a in c)]
+    assert [c[-2:] for c in calls] == [["archive", "home"], ["restore", "home"], ["delete", "home"]]
+
+
+def test_delete_refuses_while_a_tab_of_the_area_is_open(cockpit):
+    define(cockpit.root, "home", area="Home")
+    with cockpit.app.tabs.lock:
+        cockpit.app.tabs.tabs = [*cockpit.app.tabs.tabs, {"ref": "tab:9", "name": "x", "workspace": "Home"}]
+    with pytest.raises(ActionError) as raised:
+        cockpit.act("workspace_delete", slug="home")
+    assert raised.value.status == 409
+    assert not [c for c in cockpit.runner.calls if "delete" in c]
+
+
+def test_an_engine_refusal_reaches_the_page_in_its_words(cockpit):
+    define(cockpit.root, "home", area="Home")
+    refused = RunResult(False, 1, "", "workspace: cannot delete 'home': children: x.\n", 0)
+    cockpit.runner.handlers["workspace.--repo-root"] = lambda argv: refused
+    with pytest.raises(ActionError) as raised:
+        cockpit.act("workspace_delete", slug="home")
+    assert "children: x" in raised.value.message

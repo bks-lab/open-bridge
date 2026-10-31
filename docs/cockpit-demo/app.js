@@ -15,7 +15,7 @@ import {
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
   upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
-  tabWalkView, walkRefs, inProject, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
+  tabWalkView, walkRefs, inProject, areasOff, areaKey, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace,
@@ -200,6 +200,7 @@ const store = createStore({
   driver: { caps: null },
   launch: null,        // the model an agent tab starts with (state.launch); null: an older server, the choice stays hidden
   ticker: null,        // the news ticker (state.ticker); null: an older server, the band and its settings stay hidden
+  workspaces: null,    // the areas with their switches and rules (state.workspaces); null: an older server
   guide: null,         // the decision guide of waiting tabs (state.guide); null: an older server, the guide stays hidden
   tour: null,          // the first-run tour (state.tour): { enabled, done }; null: an older server, it never starts by itself
   work: null,          // the work tab as the config sets it (state.work): { view, focus_to_files }; null: an older server, as before
@@ -398,6 +399,7 @@ function applyState(payload) {
     launch: payload.launch ?? s.launch,
     ticker: payload.ticker ?? s.ticker,
     guide: payload.guide ?? s.guide,
+    workspaces: payload.workspaces ?? s.workspaces,
     tour: payload.tour ?? s.tour,
     work: payload.work ?? s.work,
     themes: payload.themes ?? s.themes,
@@ -575,6 +577,10 @@ const handlers = {
   // the news ticker changed: new items, a refresh or an edit ended, settings saved here or in another browser
   ticker(tk) {
     store.set(s => (newerTicker(s.ticker, tk) ? { ...s, ticker: tk } : s))
+  },
+  // a switch or a workspace's file changed, here or in another browser
+  workspaces(w) {
+    store.set(s => (newerTicker(s.workspaces, w) ? { ...s, workspaces: w } : s))
   },
   // the decision guide changed: a reading started or ended, a tab left, the switches changed here or elsewhere
   guide(g) {
@@ -866,6 +872,15 @@ function tickerAnswer(r) {
     if (newerTicker(s.ticker, r?.ticker)) return { ...s, ticker: r.ticker }
     return s
   })
+  return r
+}
+
+/** The workspaces block an answer carries; an area just switched off lets go of the filter that held it */
+function workspacesAnswer(r) {
+  if (!r?.workspaces) return r
+  store.set(s => (newerTicker(s.workspaces, r.workspaces) ? { ...s, workspaces: r.workspaces } : s))
+  const s = store.get()
+  if (s.ui.area && areasOff(s).has(areaKey(s.ui.area))) ctl.setArea(null)
   return r
 }
 
@@ -1705,6 +1720,11 @@ const ctl = {
   // the interest profile: keywords from the open tasks at once, or (llm) Haiku's line, only on its button;
   // a proposal the settings show until the owner saves it into the interests
   tickerProfile: async llm => tickerAnswer(await act('ticker_profile', { llm: !!llm })),
+  // the area Workspaces of the settings page: a switch is kept beside the config, the rest goes through the engine
+  workspaceSwitch: async (area, on) => workspacesAnswer(await act('workspace_switch', { area, on })),
+  workspaceArchive: async slug => workspacesAnswer(await act('workspace_archive', { slug })),
+  workspaceRestore: async slug => workspacesAnswer(await act('workspace_restore', { slug })),
+  workspaceDelete: async slug => workspacesAnswer(await act('workspace_delete', { slug })),
   // the decision guide: a reading returns at once and ends with a guide event; the switches save at once
   // what a waiting tab's pane in the chat shows: the reading, both, or the terminal; kept in this browser
   guideRead: async ref => guideAnswer(await act('guide_read', { tab_ref: ref })),

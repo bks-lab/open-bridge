@@ -2455,8 +2455,8 @@ test('settings: a page of its own behind More, always there, with the launch gro
   }
   const page = read('views/settings.js')
   assert.match(page, /export function SettingsPage\(\{ s, c \}\)/)
-  assert.match(page, /const SECTIONS = \['setup', 'start', 'look', 'launch', 'ticker', 'guide', 'boards'\]/)          // the areas; a later one joins the list
-  assert.match(page, /const AREAS = \{ setup: SetupArea, start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings \}/)
+  assert.match(page, /const SECTIONS = \['setup', 'start', 'look', 'workspaces', 'launch', 'ticker', 'guide', 'boards'\]/)          // the areas; a later one joins the list
+  assert.match(page, /const AREAS = \{ setup: SetupArea, start: StartArea, look: LookArea, workspaces: WorkspaceSettings, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings \}/)
   // the ticker's group draws with the page's own parts, no copies of them
   for (const part of ['Switch', 'Card', 'Row']) assert.match(page, new RegExp(`^export function ${part}\\(`, 'm'), part)
   const tickerView = read('views/ticker.js')

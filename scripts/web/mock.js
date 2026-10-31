@@ -1095,6 +1095,11 @@ export function buildState(now = Date.now(), opts = {}) {
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
     guide: guideState(tabs, now),
+    workspaces: { rev: 0, off: [], items: [
+      { area: 'Acme', id: 'acme', title: 'Acme', parent: null, children: ['acme-billing'], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null },
+      { area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null },
+      { area: 'Home', id: null, title: 'Home', parent: null, children: [], archived: false, level: null, style: null, mail: null, persona: null, on: true, held_by: null },
+    ] },
     // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
     // the Chat as cmux (cockpit.chat_layout: workspaces): ?chat=workspaces
@@ -2789,6 +2794,13 @@ export function createMockTransport(opts = {}) {
           result.note = verb === 'guide_settings' ? 'Mock: setting saved' : 'Mock: settings from the config again'
         }
         if (verb.startsWith('guide_')) result.guide = state.guide
+        if (verb === 'workspace_switch') {
+          const off = state.workspaces.off.filter(a => a !== args.area)
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, off: args.on ? off : [...off, args.area],
+            items: state.workspaces.items.map(i => (i.area === args.area ? { ...i, on: !!args.on } : i)) }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: setting saved'
+        }
         if (verb === 'tour_done' || verb === 'tour_reset') {
           state.tour = { ...state.tour, done: verb === 'tour_done' ? { how: args.how, v: args.v, at: isoIn(0, now()) } : null }
           result.tour = state.tour
