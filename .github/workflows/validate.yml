@@ -474,6 +474,11 @@ jobs:
       - name: Run briefing meeting-obligations suite
         run: python3 -m pytest skills/briefing/tests/test_meeting_obligations.py -q -rs
 
+      # The greeting's usage panel. Hermetic: one bash function against a cache
+      # file in a temp directory, no network.
+      - name: Run bridge-greeting suite
+        run: python3 -m pytest skills/bridge-greeting/tests -q -rs
+
   # The cockpit demo (docs/cockpit-demo/) in a real browser: every page of the
   # page bar opens, in en and de, without a console error. Its own job, so the
   # browser download stays out of the script-suites job.
