@@ -17,6 +17,7 @@ scripts/web/ with a fixed set of extensions.
 from __future__ import annotations
 
 import collections
+import dataclasses
 import datetime as dt
 import hashlib
 import hmac
@@ -50,6 +51,7 @@ from .collector import Collector
 from .logrange import LogRange, Refused, Stale as LogStale, check as check_logrange, check_days as check_range
 from .daybook import DayBook
 from .returns import Launches
+from .work_sync import WorkSync
 from .launch import LaunchError, LaunchModel
 from .ticker import Ticker
 from .workspaces import Workspaces
@@ -131,6 +133,7 @@ def cost_ledger():
 CAPS_TTL_S = 300
 CAPS_RETRY_S = 15      # a failed read is tried again this soon, the last good answer standing meanwhile
 CAPS_TIMEOUT = 20
+WORK_SYNC_TIMEOUT_S = 180
 TAB_REF_RE = re.compile(r"^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}\Z")   # the terminal driver's name for a tab
 ERROR_STATUS = {"unauthorized": 401, "forbidden_origin": 403, "bad_host": 403, "bad_fetch_site": 403, "not_found": 404,
                 "method_not_allowed": 405, "unsupported_media_type": 415, "payload_too_large": 413,
@@ -242,6 +245,7 @@ class App:
         self.daybook = DayBook(self.state_dir, clock)     # the start page's day by day (daybook.py)
         self.launches = Launches(self.state_dir, clock)   # every start handed to a tab, for the return channel (returns.py)
         self.graph = Graph(self.root)                       # the inner room's knowledge graph (graph.py)
+        self.work_sync = self.make_work_sync() if cfg.served else None
         self.asks_enabled = True   # the tab poll reads what the waiting tabs ask (tabs.py, asks.py); tests switch it off
         self.tabs = TabPoller(self)
         self.review = Review(self)
@@ -425,11 +429,22 @@ class App:
                 self._colors = (stamp, body, static_etag(stamp[2] ^ which, len(body) + stamp[3]))
             return self._colors[1], self._colors[2]
 
+    def make_work_sync(self) -> WorkSync:
+        def run(paths: list[str], person: str) -> int:
+            argv = [self.runner.python, self.runner.script("scripts/work-sync.py"), "--root", str(self.root),
+                    "--actor", person]
+            for path in paths:
+                argv += ["--path", path]
+            return self.runner.run(argv, WORK_SYNC_TIMEOUT_S).code
+        return WorkSync(self.root, self.state_dir, run, self.log_error)
+
     def driver_caps(self, fresh: bool = False) -> list[str]:
         """The verbs the terminal driver serves (workplace.py caps): what the page may offer for a tab.
         Asked once and then every few minutes. A read that fails keeps the last good answer and is tried
         again after CAPS_RETRY_S (one hiccup used to switch Yes, No and jump off for five minutes); only a
         driver never read successfully serves nothing. Callers at the same moment share one read."""
+        if self.cfg.served:
+            return []
         with self._caps_lock:
             hit = self._caps
             if not fresh and hit is not None and time.monotonic() - hit[0] < (CAPS_TTL_S if hit[2] else CAPS_RETRY_S):
@@ -844,25 +859,39 @@ class App:
     def start(self) -> None:
         self.collector.load_stale()
         self.collector.request("both")
-        self.tabs.schedule(0)
+        if not self.cfg.served:
+            self.tabs.schedule(0)
         if self.cfg.triage_daily:
             self.triage.start_daily()  # what each task and inbox item is, once a day by itself (cockpit.triage_daily)
         self.start_layout_backup()     # the cmux layout, every snapshot_minutes, only on change
         self.describe.start_auto()     # each item's brief kept by itself, only with cockpit.describe.auto on
         self.history.backfill(self.root, self.state_dir / "audit.log")   # closes from before the history
-        for target, name in ((self.collector.worker, "collect"), (self.tabs.loop, "tabs"), (self.watcher.loop, "watch"),
-                             (self.ticker.loop, "ticker-loop")):
+        loops = [(self.collector.worker, "collect"), (self.watcher.loop, "watch"), (self.ticker.loop, "ticker-loop")]
+        loops += [(self.work_sync.loop, "work-sync")] if self.work_sync else [(self.tabs.loop, "tabs")]
+        for target, name in loops:
             thread = threading.Thread(target=target, name=f"bridge-cockpit-{name}", daemon=True)
             thread.start()
             self.threads.append(thread)
 
     def stop(self) -> None:
         self.stopping = True
+        if self.work_sync:
+            self.work_sync.stop()
         self.collector.shutdown()
         self.tabs.shutdown()
         self.watcher.shutdown()
         # what still runs for the page (a quick answer, a triage, a review) ends with it (review C9)
         self.runner.terminate_all()
+
+
+def served_config(cfg: WebConfig) -> WebConfig:
+    """The cockpit of an always-on machine: it serves people, it does not run the owner's day."""
+    return dataclasses.replace(cfg, served=True, relay=False, triage_daily=False, snapshot_minutes=0)
+
+
+def served_runner(root: Path | str, code: Path | str | None = None) -> Runner:
+    """No model and no terminal: a question to a model and a tab stay on the owner's own machine."""
+    return Runner(root, cmux=None, claude=None, codex=None, code=code)
 
 
 USAGE_RANGES = (7, 30, 90)

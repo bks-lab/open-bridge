@@ -112,6 +112,8 @@ class WebConfig:
     idle_minutes: float = 10      # a waiting tab still this long that asks nothing is done, not waiting (0 = off)
     # the triage sorts every task and inbox item once a day by itself (a model call): only when asked for
     triage_daily: bool = False
+    # serve --served: this cockpit runs on another machine for the people of its workspaces (server.served_config)
+    served: bool = False
     chat_layout: str = "classic"
     # a quick chat untouched this many hours leaves the list into the archive (cockpit.chat_keep_hours, 0: never)
     chat_keep_hours: float = 24

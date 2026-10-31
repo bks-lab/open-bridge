@@ -287,6 +287,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/hooks/pre-push",
     "scripts/inbox-approve.py",
     "scripts/inbox.py",
+    "scripts/work-sync.py",
     "scripts/lib/inbox_verbs.py",   # the verbs that end an item, shared with the cockpit
     "scripts/learning-ledger.py",
     "scripts/memory-location.py",
@@ -442,6 +443,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/check-generated-output.py",
     "scripts/tests/test_generated_output_escapes.py",
     "scripts/tests/test_inbox.py",
+    "scripts/tests/test_work_sync.py",
     "scripts/tests/test_inbox_approve.py",
     "scripts/tests/test_inbox_area.py",
     "scripts/tests/test_inbox_mute.py",
@@ -588,6 +590,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/review.py",
     "scripts/lib/bridge_cockpit/sessions.py",
     "scripts/lib/bridge_cockpit/access.py",               # who sees what: a person on a workspace gets its areas
+    "scripts/lib/bridge_cockpit/work_sync.py",
     "scripts/tests/test_bridge_cockpit_access.py",        # leak tests and the guards over routes, verbs, events, fields
     "scripts/lib/bridge_cockpit/workspaces.py",           # the Workspaces area of the settings page: switches beside the config
     "scripts/web/views/workspaces.js",
