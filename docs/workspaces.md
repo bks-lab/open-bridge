@@ -409,6 +409,16 @@ a looser `level`, a skill the parent's list lacks, a parent that is missing, or 
 third level. `show` and `list --json` give the merged result, with `inherited`
 naming what came from the parent.
 
+### Members
+
+`members:` names the people who may open a workspace in the cockpit, besides the
+owner: lowercase names, each once. A person sees and changes only the areas of the
+workspaces naming them. A child inherits the list and may only narrow it. Under a
+parent without a list a child names its own, and those people get the child alone,
+the parent stays closed to them. A workspace with members needs an area, and one that
+rests or is archived closes for them at once. What the cockpit shows a person:
+[`bridge-cockpit.md`](bridge-cockpit.md#4-safety-model).
+
 ### Branch gate
 
 The **mutating** verbs — `create`, `subscribe`, `unsubscribe` (and their aliases

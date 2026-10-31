@@ -57,13 +57,14 @@ LEVELS = ("view", "room", "wall")           # how far a workspace keeps a sessio
 RULE_BLOCKS = ("refs", "writing", "boundary", "sources")   # what a child inherits key by key
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+MEMBER_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")   # a person on a workspace (members:), the cockpit reads the same words
 SLUG_CUT_RE = re.compile(r"[^a-z0-9-]+")
 SCP_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+$")
 ALLOWED_URL_SCHEMES = ("https", "ssh", "file")
 
 # Field order used when (re)writing a definition — known keys first, extras kept.
 DEF_ORDER = ["schema_version", "id", "title", "description", "directory", "area", "parent",
-             "archived_at", "refs", "writing", "boundary", "sources",
+             "archived_at", "members", "refs", "writing", "boundary", "sources",
              "created_at", "updated_at", "overlays", "repos", "session_ref",
              "x-provider"]
 
@@ -259,7 +260,7 @@ class Consumer:
             if isinstance(data, dict):
                 base = {k: v for k, v in data.items()
                         if k not in ("id", "title", "description", "directory",
-                                     "area", "parent", "archived_at", *RULE_BLOCKS,
+                                     "area", "parent", "archived_at", "members", *RULE_BLOCKS,
                                      "created_at", "updated_at", "overlays",
                                      "repos", "session_ref", "x-provider")}
                 return base
@@ -614,6 +615,9 @@ def effective(defs: dict, ws_id: str) -> dict:
         theirs = parent.get(block) or {}
         row[block] = {**theirs, **mine}
         row["inherited"] += [f"{block}.{k}" for k in theirs if k not in mine]
+    row["members"] = list(own["members"] if "members" in own else parent.get("members") or [])
+    if "members" not in own and parent.get("members"):
+        row["inherited"].append("members")
     return row
 
 
@@ -622,11 +626,15 @@ def rule_problems(defs: dict, ws_id: str) -> list[str]:
     own = defs[ws_id]
     name = own.get("parent")
     if not name:
-        return []
+        return ["members need an area to open"] if own.get("members") and not own.get("area") else []
     if name == ws_id or name not in defs:
         return [f"parent '{name}' does not exist"]
     parent = defs[name]
     problems = []
+    if isinstance(own.get("members"), list) and parent.get("members"):
+        extra = sorted(set(own["members"]) - set(parent["members"]))
+        if extra:
+            problems.append(f"members {', '.join(extra)} are not on the parent")
     if parent.get("parent"):
         problems.append(f"parent '{name}' has a parent itself, workspaces have two levels")
     mine = own.get("boundary") or {}
@@ -746,6 +754,10 @@ def _fallback_validate(data: dict):
     for o in data.get("overlays") or []:
         if not (isinstance(o, dict) and o.get("name")):
             return False, "each overlay needs a name"
+    members = data.get("members", [])
+    if not isinstance(members, list) or not all(isinstance(x, str) and MEMBER_RE.match(x) for x in members) \
+            or len(set(members)) != len(members):
+        return False, "members must be unique lowercase names"
     level = (data.get("boundary") or {}).get("level")
     if level is not None and level not in LEVELS:
         return False, f"invalid boundary.level '{level}' ({'|'.join(LEVELS)})"

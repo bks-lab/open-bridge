@@ -97,6 +97,16 @@ properties:
       briefing: {type: string, description: "workflow/briefings/<id>.yaml"}
       design: {type: string, description: "identity/designs/<id>.yaml"}
 
+  members:
+    type: array
+    uniqueItems: true
+    items: {type: string, pattern: "^[a-z][a-z0-9-]{0,39}$"}
+    description: |
+      The people who may open this workspace in the cockpit, besides the owner.
+      A person sees and changes only the areas of the workspaces naming them.
+      A child inherits the list and may only narrow it; under a parent without
+      one it names its own, and those people get the child alone.
+
   writing:
     type: object
     additionalProperties: false

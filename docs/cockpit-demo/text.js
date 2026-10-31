@@ -1586,6 +1586,7 @@ const en = {
   errors: {
     unauthorized: 'Not signed in. Open the cockpit with the link from the command below.',
     forbidden_origin: 'Refused: the request did not come from this page.',
+    not_yours: 'This is not part of your workspaces.',
     bad_host: 'Refused: wrong host name.',
     bad_fetch_site: 'Refused: cross site request.',
     not_found: 'Not found.',
@@ -3327,6 +3328,7 @@ const de = {
   errors: {
     unauthorized: 'Nicht angemeldet. Öffne das Cockpit mit dem Link aus dem Befehl unten.',
     forbidden_origin: 'Abgelehnt: die Anfrage kam nicht von dieser Seite.',
+    not_yours: 'Das gehört nicht zu deinen Workspaces.',
     bad_host: 'Abgelehnt: falscher Hostname.',
     bad_fetch_site: 'Abgelehnt: Anfrage von einer fremden Seite.',
     not_found: 'Nicht gefunden.',

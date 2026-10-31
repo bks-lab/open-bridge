@@ -73,6 +73,7 @@ from . import prio
 from .usage import Usage
 from .runner import Runner, RunnerRefused
 from .design import resolved, stylesheet
+from . import access as ac
 from .store import WebStore, append_clicks, append_log, atomic_write_json
 try:                       # Jev is an optional integration: without its file it is simply off
     from . import jev
@@ -147,9 +148,11 @@ def instance_id(root: Path) -> str:
 
 
 class SSEClient:
-    def __init__(self):
+    def __init__(self, viewer: str | None = None, cut: Callable[[str, Any], Any] | None = None):
         self.queue: queue.Queue = queue.Queue(maxsize=SSE_QUEUE)
         self.closed = False
+        self.viewer = viewer             # a person's page (access.py): `cut` decides what of an event reaches it
+        self.cut = cut
         self.id = secrets.token_hex(8)   # sent in `hello`; the page names itself with it on /api/presence
         self.visible = True              # a page in a background browser tab says so and stops counting
 
@@ -159,8 +162,8 @@ class SSEHub:
         self.lock = threading.Lock()
         self.clients: set[SSEClient] = set()
 
-    def add(self) -> SSEClient:
-        client = SSEClient()
+    def add(self, viewer: str | None = None, cut: Callable[[str, Any], Any] | None = None) -> SSEClient:
+        client = SSEClient(viewer, cut)
         with self.lock:
             self.clients.add(client)
         return client
@@ -173,10 +176,11 @@ class SSEHub:
         with self.lock:
             return sum(1 for c in self.clients if c.visible or not visible_only)
 
-    def set_visible(self, client_id: str, visible: bool) -> bool | None:
-        """Flags one page as shown or hidden; True when it just came back, None when no such page is open."""
+    def set_visible(self, client_id: str, visible: bool, viewer: str | None = None) -> bool | None:
+        """Flags one page as shown or hidden; True when it just came back, None when no such page is open.
+        A person reaches their own pages only."""
         with self.lock:
-            client = next((c for c in self.clients if c.id == client_id), None)
+            client = next((c for c in self.clients if c.id == client_id and (viewer is None or c.viewer == viewer)), None)
             if client is None:
                 return None
             back = visible and not client.visible
@@ -189,9 +193,16 @@ class SSEHub:
             clients = list(self.clients)
         for client in clients:
             try:
-                client.queue.put_nowait((event, data))
+                if client.viewer is None:
+                    client.queue.put_nowait((event, data))
+                    continue
+                cut = client.cut(event, payload) if client.cut else None   # a page of a person: nothing unless it says so
+                if cut is not None:
+                    client.queue.put_nowait((event, json.dumps(cut, ensure_ascii=False, separators=(",", ":"))))
             except queue.Full:
                 client.closed = True  # it reconnects and receives `state`
+            except Exception:         # a cut that breaks sends nothing, and the owner's pages still get the event
+                continue
 
 
 class App:
@@ -216,6 +227,8 @@ class App:
         self.clock = clock
         self.token = token
         self.csrf = derived(token, "csrf")      # what the page sends back in X-Bridge-Token, never the key
+        self.version = VERSION
+        self.access = ac.Access(self)           # what a person named under members: gets, the owner is not touched
         self._codes_lock = threading.Lock()
         self._codes_used: dict[str, int] = {}   # nonce of a redeemed login code -> its second, until it expires
         self.tx = T(cfg.language, cfg.control)
@@ -327,10 +340,47 @@ class App:
             self._codes_used[nonce] = ts
         return True
 
-    def session_value(self, now_s: int | None = None) -> str:
-        """The cookie: its second of issue and a MAC over it with the key, so it ends after COOKIE_AGE_S."""
+    def redeem_person(self, code: str) -> str | None:
+        """Whom a login code of a person logs in, None for anything else. Spent and aged like the owner's."""
+        fields = (code or "").split(".")
+        if len(fields) != 4 or not ac.PERSON_RE.match(fields[0]) or not fields[2].isdigit() or len(fields[2]) > 12:
+            return None
+        person, nonce, stamp, given = fields
+        if not hmac.compare_digest(given.encode("utf-8"), mac(self.token, f"person-code|{person}|{nonce}|{stamp}").encode("utf-8")):
+            return None
+        ts, now = int(stamp), self.now_s()
+        if not (-CLOCK_SKEW_S <= now - ts <= CODE_AGE_S) or ts < self.started_ms // 1000 - CLOCK_SKEW_S:
+            return None
+        with self._codes_lock:
+            if nonce in self._codes_used:
+                return None
+            self._codes_used[nonce] = ts
+        return person
+
+    def session_value(self, now_s: int | None = None, person: str | None = None) -> str:
+        """The cookie: its second of issue and a MAC over it with the key, so it ends after COOKIE_AGE_S. A person's
+        names them in the MAC as well, under its own word: it is no owner's cookie and no other person's."""
         ts = self.now_s() if now_s is None else now_s
+        if person is not None:
+            return f"{person}.{ts}.{mac(self.token, f'person|{person}|{ts}')}"
         return f"{ts}.{mac(self.token, f'session|{ts}')}"
+
+    def session_person(self, value: str) -> str | None:
+        """Whom a person's cookie names, None for anything else"""
+        fields = (value or "").split(".")
+        if len(fields) != 3 or not ac.PERSON_RE.match(fields[0]) or not fields[1].isdigit() or len(fields[1]) > 12:
+            return None
+        person, stamp, given = fields
+        if not hmac.compare_digest(given.encode("utf-8"), mac(self.token, f"person|{person}|{stamp}").encode("utf-8")):
+            return None
+        return person if -CLOCK_SKEW_S <= self.now_s() - int(stamp) <= COOKIE_AGE_S else None
+
+    def person_client(self, person: str) -> SSEClient:
+        """A live page of a person: every event goes through access.py on its way there"""
+        return self.hub.add(person, lambda event, payload: self.access.event(person, event, payload))
+
+    def csrf_of(self, person: str | None) -> str:
+        return self.csrf if person is None else derived(self.token, f"csrf|{person}")
 
     def session_ok(self, value: str) -> bool:
         _, ts = parse_signed(self.token, "session", value, parts=2)
@@ -847,6 +897,7 @@ def etag_matches(header: str | None, etag: str) -> bool:
 
 
 class Handler(BaseHTTPRequestHandler):
+    person: str | None = None     # set by cookie_ok on every request: a person named under members:, None for the owner
     server_version = "bridge-cockpit"
     sys_version = ""
     protocol_version = "HTTP/1.1"
@@ -916,18 +967,23 @@ class Handler(BaseHTTPRequestHandler):
         return site is None or site in ("same-origin", "none")
 
     def csrf_ok(self, value: str | None) -> bool:
-        return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.csrf.encode("utf-8"))
+        return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.csrf_of(self.person).encode("utf-8"))
 
     def cookie_ok(self) -> bool:
         """Any cookie of our name holding a valid session value. Parsed by hand: SimpleCookie drops every cookie
         after one it cannot parse, and another app on 127.0.0.1 (any port) may have set such one."""
         name = self.app.cookie_name
+        self.person = None
+        found = None
         for header in self.headers.get_all("Cookie") or []:
             for part in header.split(";"):
                 key, sep, value = part.strip().partition("=")
-                if sep and key.strip() == name and self.app.session_ok(value.strip().strip('"')):
-                    return True
-        return False
+                if sep and key.strip() == name:
+                    if self.app.session_ok(value.strip().strip('"')):
+                        return True
+                    found = found or self.app.session_person(value.strip().strip('"'))
+        self.person = found       # a person's cookie: every answer below goes through access.py
+        return found is not None
 
     def precheck(self) -> bool:
         if not self.host_ok():
@@ -982,12 +1038,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/" and "code" in query:
             given = query["code"][0] if query["code"] else ""
-            if self.app.redeem(given):
+            owner = self.app.redeem(given)
+            person = None if owner else self.app.redeem_person(given)
+            if owner or person:
                 # keep the page's own switches (mock mode, language) so `url` plus &mock=1 still works
                 keep = [(k, query[k][0]) for k in VIEW_PARAMS if query.get(k) and VIEW_VALUE_RE.match(query[k][0])]
                 location = "/" + (f"?{urllib.parse.urlencode(keep)}" if keep else "")
                 self.send_bytes(303, b"", "text/plain; charset=utf-8", extra={
-                    "Location": location, "Set-Cookie": f"{app.cookie_name}={app.session_value()}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_AGE_S}"})
+                    "Location": location, "Set-Cookie": f"{app.cookie_name}={app.session_value(person=person)}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_AGE_S}"})
             else:
                 self.send_unauthorized(path)
             return
@@ -1002,7 +1060,45 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.get_static(path)
 
+    def get_api_person(self, person: str, path: str, query: dict) -> None:
+        """All a person can ask for: what access.py lists, cut there. Nothing falls through to the owner's routes."""
+        app, access = self.app, self.app.access
+        one = lambda name: (query.get(name) or [""])[0]  # noqa: E731
+        if path not in ac.PERSON_GET or not access.scope(person):
+            self.send_error_json("not_yours", "this is not open to you", status=403)
+        elif path == "/api/bootstrap":
+            self.send_json(200, access.bootstrap(person))
+        elif path == "/api/state":
+            self.send_json(200, access.state(person))
+        elif path == "/api/events":
+            origin = self.headers.get("Origin")
+            if origin is not None and not self.origin_ok(origin):
+                self.send_error_json("forbidden_origin", "wrong origin")
+                return
+            self.events(person)
+        elif path == "/api/task":
+            slug, rel = one("slug"), one("file") or None
+            if one("path") or not details.SLUG_RE.match(slug) or f"task:{slug}" not in access.visible(person):
+                self.send_error_json("not_yours", "this is not open to you", status=403)
+            elif rel is not None:
+                result = details.task_file(app.root, slug, rel, None) if len(rel) <= 300 and details.FILE_RE.match(rel) else None
+                self.send_json(200, access.clean(app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such file")
+            else:
+                result = details.task_detail(app.root, slug, app.inbox_listing(), None, app.cfg.origin_map,
+                                             ctx=app.card_ctx(f"task:{slug}"))
+                self.send_json(200, access.task(person, app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such task")
+        else:   # /api/inbox, the one left of PERSON_GET
+            item_id = one("id")
+            if not details.INBOX_ID_RE.match(item_id) or f"inbox:{item_id}" not in access.visible(person):
+                self.send_error_json("not_yours", "this is not open to you", status=403)
+                return
+            result = details.inbox_detail(app.root, item_id, app.inbox_listing(), app.cfg.origin_map, ctx=app.card_ctx(f"inbox:{item_id}"))
+            self.send_json(200, access.inbox(app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such inbox item")
+
     def get_api(self, path: str, query: dict) -> None:
+        if self.person is not None:
+            self.get_api_person(self.person, path, query)
+            return
         app = self.app
         one = lambda name: (query.get(name) or [""])[0]  # noqa: E731
         if path == "/api/bootstrap":
@@ -1391,9 +1487,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_bytes(200, body, "text/css; charset=utf-8", static=True, extra={"ETag": etag})
 
-    def events(self) -> None:
+    def events(self, person: str | None = None) -> None:
         app = self.app
-        client = app.hub.add()
+        client = app.person_client(person) if person else app.hub.add()
         try:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -1409,7 +1505,8 @@ class Handler(BaseHTTPRequestHandler):
             self.write_event("hello", json.dumps({"version": VERSION, "started_ms": app.started_ms,
                                                   "language": app.cfg.language, "client": client.id},
                                                  separators=(",", ":")))
-            self.write_event("state", json.dumps(app.state_payload(), ensure_ascii=False, separators=(",", ":")))
+            state = app.access.state(person) if person else app.state_payload()
+            self.write_event("state", json.dumps(state, ensure_ascii=False, separators=(",", ":")))
             app.on_client_connect()
             idle = 0.0
             while not client.closed and not app.stopping:
@@ -1445,6 +1542,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self.origin_ok(self.headers.get("Origin")):
             self.send_error_json("forbidden_origin", "wrong or missing Origin")
+            return
+        person = self.person
+        if person is not None and (path not in ac.PERSON_POST or not self.app.access.scope(person)):
+            self.send_error_json("not_yours", "this is not open to you", status=403)
             return
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype != "application/json":
@@ -1485,7 +1586,8 @@ class Handler(BaseHTTPRequestHandler):
         app = self.app
         try:
             if path == "/api/action":
-                self.send_json(200, app.actions.execute(body.get("verb"), body.get("args")))
+                done = app.actions.execute(body.get("verb"), body.get("args"), viewer=person)
+                self.send_json(200, {"ok": bool(done.get("ok"))} if person else done)
             elif path == "/api/ask":
                 for name in body:
                     if name not in ("kind", "args", "via", "model", "conv", "place", "origin", "keys"):
@@ -1515,7 +1617,7 @@ class Handler(BaseHTTPRequestHandler):
                 visible = body.get("visible")
                 if not isinstance(visible, bool):
                     raise ActionError(400, "invalid_argument", "visible must be true or false", "visible")
-                back = app.hub.set_visible(str(body.get("client") or "")[:40], visible)
+                back = app.hub.set_visible(str(body.get("client") or "")[:40], visible, viewer=person)
                 if back is None:
                     raise ActionError(404, "not_found", "no such page is connected", "client")
                 if back:
@@ -1611,10 +1713,13 @@ def derived(token: str, purpose: str) -> str:
     return mac(token, f"derived|{purpose}")
 
 
-def login_code(token: str, now_ms: float, nonce: str | None = None) -> str:
-    """A one-time login code `<nonce>.<second>.<mac>`: what `url` prints instead of the key."""
+def login_code(token: str, now_ms: float, nonce: str | None = None, person: str | None = None) -> str:
+    """A one-time login code `<nonce>.<second>.<mac>`: what `url` prints instead of the key. For a person named under
+    members: of a workspace `<person>.<nonce>.<second>.<mac>` (`url --person`)."""
     nonce = nonce or secrets.token_hex(8)
     ts = int(now_ms // 1000)
+    if person is not None:
+        return f"{person}.{nonce}.{ts}.{mac(token, f'person-code|{person}|{nonce}|{ts}')}"
     return f"{nonce}.{ts}.{mac(token, f'code|{nonce}|{ts}')}"
 
 
