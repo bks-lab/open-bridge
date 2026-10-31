@@ -81,6 +81,7 @@ their defaults:
 | `voice` | `false` | the browser also speaks a tab that starts waiting for you |
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
+| `served.ask` | none | `auth` (`login`, the service user's Claude login, or `key`), with `key` also `key_ref` (`keychain://<service>/<account>`) or `key_env` (a variable's name), `claude` (the CLI's absolute path where a service's PATH does not find it), `model` (`haiku`, `sonnet`), `daily_questions` (per person, 30). Without the block their Chat says it is not set up. Section "A person's question" |
 | `served.access` | none | `team_domain`, `aud`, `host`: a served cockpit behind a sign-in gateway, section 2. A wrong block stops the start |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); a chat handed to a tab stays this long after the latest of its handoff, its result and its item's end; 0 keeps them, then only the limit of 30 applies. An empty chat names the time it keeps a question ("Questions stay in the list for 7 days" with `168`) |
@@ -3215,6 +3216,16 @@ its port. Another local web server you open can therefore read the cookie and
 use it until it ends. That needs a program running on your computer, which
 could also read the key in `token`; stop the dashboard (`bridge-cockpit.py stop`) when
 you test web code you do not trust on this computer.
+
+### A person's question
+
+With `cockpit.served.ask` the Chat of a person works, in `scripts/lib/bridge_cockpit/person_ask.py`. It is not the owner's quick question. Before each question the documents of their files are copied into `<state>/people/<name>/room`, chosen by the rule of their files tab, and `sources.documents` of their workspaces comes along: folders through a mirror that a thread of its own refreshes at most every ten minutes, so a question never waits, and named files of the Bridge such as `folder/*.yaml`. `scripts/lib/document_paths.py` refuses the home folder, code, cloud-synced and system folders and wide patterns, when a definition is validated and again on the resolved folder. Links are not followed.
+
+It follows the workspace: only a workspace at `boundary.level: room` feeds the folder, and a person without one has no question. `wall` promises the operating system's sandbox, which is not built, so it opens nothing either.
+
+The session runs in that folder with Read, Grep and Glob and without settings, and Claude Code refuses a path outside the folder by itself: relative, absolute, by Grep and through a link. That is the CLI's own limit, with no sandbox of the operating system behind it. `auth: login` uses the Claude login of the service's user. **A subscription login is meant for its holder alone: use it to try this yourself, and give every further person access of their own**, `auth: key` for instance. `auth: key` runs on that key and nothing else: a configuration folder of its own holds no login and every other way to sign in is removed, so a bad key fails instead of falling back to a subscription. A question is a plain text; context, other kinds, a model, the control session are refused. What stands in a file is data, the system text says so and read tools give it nothing to act through. A person has one question running at a time and `daily_questions` a day, chats are kept per person in `chats.json`, and a session id never reaches a page.
+
+PDFs come along. With `pdftotext` (poppler) or pypdf on the machine a `.pdf.txt` stands beside each, so Grep finds their words; without one, or for a scan, only Read reaches them, one file at a time. Contents go to the model provider of that key. Referenced secrets are never resolved: a file is copied as it stands.
 
 ### A person on a workspace
 

@@ -9,7 +9,8 @@ Which rows a person sees is decided in one place, row_ok: the row names areas, e
 scope, and it names at least one. A row that names none, or names one area of theirs and one that is not, stays out.
 What a person may open or change follows from that: only what the cut model lists (visible). The scope is read from
 the definitions on every call, so taking a name off a workspace works at once, and a workspace that rests, is archived
-or cannot be read gives nothing. Questions to a model stay closed: it would read the whole Bridge from here.
+or cannot be read gives nothing. A question to a model runs apart from all this, in person_ask.py: it reads a folder
+that holds their files, not the Bridge.
 
 The records of the files tab are read from the folders, closed ones too, so the model cannot say whose they are. A
 record counts as an area's where workplace.py places a task the same way: by `area:`, by the workspace's `slugs:` or
@@ -24,7 +25,7 @@ import os
 import re
 from typing import Any
 
-from .. import work_find
+from .. import document_paths, work_find
 from .actions_base import ActionError
 from .config import read_config_file
 from .describe import _module
@@ -38,8 +39,8 @@ OWNER_GET = frozenset({
     "/api/flow/doc", "/api/github", "/api/graph", "/api/graph/node", "/api/history", "/api/inbox/noise", "/api/issue",
     "/api/logrange", "/api/page", "/api/relay", "/api/tab-history", "/api/tab/screen", "/api/ticker",
     "/api/timeline", "/api/usage", "/api/workers"})
-PERSON_POST = frozenset({"/api/action", "/api/presence"})
-OWNER_POST = frozenset({"/api/ask", "/api/reload", "/api/route", "/api/seen", "/api/clicks", "/api/flow/attach",
+PERSON_POST = frozenset({"/api/action", "/api/ask", "/api/presence"})
+OWNER_POST = frozenset({"/api/reload", "/api/route", "/api/seen", "/api/clicks", "/api/flow/attach",
                         "/api/triage/run"})
 
 # the tabs of a person's page, in this order: Start, Today, the files, the Chat. The rest would stand empty
@@ -68,7 +69,7 @@ OWNER_EVENTS = frozenset({"ticker", "guide", "quick", "sessions", "agents", "rel
                           "alert"})
 
 # the state as a person gets it: these are worked out below, the rest is the empty shape the page knows
-STATE_PERSON = frozenset({"ok", "server", "model", "loading", "workspaces", "work"})
+STATE_PERSON = frozenset({"ok", "server", "model", "loading", "workspaces", "work", "person_ask"})
 STATE_NEUTRAL: dict[str, Any] = {
     "tabs": {"at_ms": 0, "tabs": [], "error": None, "control": None, "workspaces": None}, "notes": [],
     "relay": {"enabled": False, "online": False, "reason": "off", "session": None, "records": []},
@@ -162,6 +163,42 @@ class Access:
             self.app.log_error(f"access: {exc!r}")
             return frozenset()
 
+    def ask_scope(self, person: str) -> frozenset:
+        """The areas a person's question reads: those of their workspaces at boundary.level room. `view` keeps a session
+        out, and `wall` promises a sandbox that is not built, so neither opens a folder."""
+        try:
+            scope = self.scope(person)
+            return frozenset(k for row in self.app.workspaces.rows() if person in (row.get("members") or [])
+                             and (k := key_of(row.get("area") or row.get("id"))) in scope
+                             and (row.get("boundary") or {}).get("level") == "room")
+        except Exception as exc:     # whatever went wrong, it must end in nothing
+            self.app.log_error(f"access: {exc!r}")
+            return frozenset()
+
+    def documents(self, person: str) -> list[str]:
+        """What sources.documents opens for a person: folders as they really lie, patterns as written. Each is checked
+        again here, a folder after its links are resolved, so nothing walks around the rule. Anything wrong is left out."""
+        try:
+            scope, found = self.scope(person), []
+            for row in self.app.workspaces.rows():
+                if person not in (row.get("members") or []) or key_of(row.get("area") or row.get("id")) not in scope:
+                    continue
+                if (row.get("boundary") or {}).get("level") != "room":
+                    continue
+                for item in (row.get("sources") or {}).get("documents") or []:
+                    if document_paths.problem(item):
+                        continue
+                    if not item.startswith(("/", "~")):
+                        found.append(item)
+                        continue
+                    real = os.path.realpath(os.path.expanduser(item))
+                    if os.path.isdir(real) and not document_paths.problem(real):
+                        found.append(real)
+            return sorted(set(found))
+        except Exception as exc:     # whatever went wrong, it must end in nothing
+            self.app.log_error(f"access: {exc!r}")
+            return []
+
     def canon(self, name: Any) -> str:
         aliases = {key_of(a): key_of(n) for a, n in getattr(self.app.cfg, "area_aliases", ())}
         return aliases.get(key_of(name), key_of(name))
@@ -244,7 +281,8 @@ class Access:
         app, scope = self.app, self.scope(person)
         return {**STATE_NEUTRAL, "ok": True, "server": {"version": app.version, "started_ms": app.started_ms, "person": person},
                 "model": self.model(app.collector.model, scope), "loading": self.loading(app.collector.loading_state()),
-                "workspaces": self.workspaces(app.workspaces.state(), scope), "work": self.work(app.work_state())}
+                "workspaces": self.workspaces(app.workspaces.state(), scope), "work": self.work(app.work_state()),
+                "person_ask": app.person_ask.state(person)}
 
     def bootstrap(self, person: str) -> dict:
         app, cfg, scope = self.app, self.app.cfg, self.scope(person)

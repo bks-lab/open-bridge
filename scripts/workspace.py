@@ -629,17 +629,31 @@ def stray_logins(own: dict, members: list | None) -> list[str]:
     return [f"logins name {', '.join(stray)}, who are not members"] if stray else []
 
 
+def document_problems(own: dict, parent: dict | None = None) -> list[str]:
+    """sources.documents: nothing the shape rule refuses, and a child only inside what its parent names"""
+    from lib import document_paths   # noqa: PLC0415 - the one rule, shared with the cockpit
+    listed = (own.get("sources") or {}).get("documents") or []
+    above = ((parent or {}).get("sources") or {}).get("documents") or []
+    problems = [f"sources.documents '{item}' {why}" for item in listed
+                if (why := document_paths.problem(item))]
+    for item in listed:
+        if above and not any(item == up or str(item).startswith(f"{up}/") for up in above):
+            problems.append(f"sources.documents '{item}' is not inside the parent's")
+    return problems
+
+
 def rule_problems(defs: dict, ws_id: str) -> list[str]:
     """What is wrong between a workspace and its parent: a child may only narrow, and there are two levels."""
     own = defs[ws_id]
     name = own.get("parent")
     if not name:
-        return stray_logins(own, own.get("members")) + (
+        return stray_logins(own, own.get("members")) + document_problems(own) + (
             ["members need an area to open"] if own.get("members") and not own.get("area") else [])
     if name == ws_id or name not in defs:
         return [f"parent '{name}' does not exist"]
     parent = defs[name]
     problems = stray_logins(own, own.get("members") if "members" in own else parent.get("members"))
+    problems += document_problems(own, parent)
     if isinstance(own.get("members"), list) and parent.get("members"):
         extra = sorted(set(own["members"]) - set(parent["members"]))
         if extra:

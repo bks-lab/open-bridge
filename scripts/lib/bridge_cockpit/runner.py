@@ -98,6 +98,7 @@ class Runner:
         self.python = sys.executable
         self.cmux = resolve_cmux() if cmux == "auto" else cmux
         self.claude = resolve_claude() if claude == "auto" else claude
+        self.person_claude: str | None = self.claude   # a person's question; a served cockpit sets it alone (server.py)
         self.codex = resolve("codex") if codex == "auto" else codex
         # the activity of a point reads two git logs of a task's folder (activity.py); without git it reads file times
         self.git = shutil.which("git") if git == "auto" else git
@@ -223,11 +224,29 @@ class Runner:
                 except OSError:
                     proc.kill()
 
-    def _spawn_lines(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None]) -> RunResult:
+    def run_person(self, argv: list[str], timeout_s: float, cwd: Path, key: str | None = None,
+                   config_dir: Path | None = None) -> RunResult:
+        """A person's question (person_ask.py), in their folder. With a key on that key and on nothing else: a
+        configuration folder of its own holds no login, and every other way to sign in is taken out. Without one on
+        the login of the user this service runs as."""
+        if not self.person_claude or not argv_ok(argv, self.person_claude, set(CLAUDE_MODELS.values())):
+            raise RunnerRefused("not a person's question")
+        env = self.env()
+        if key is None:
+            env.pop("ANTHROPIC_API_KEY", None)
+            return self._spawn_lines(list(argv), timeout_s, lambda line: None, cwd=cwd, env=env)
+        for name in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
+                     "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"):
+            env.pop(name, None)
+        env.update(ANTHROPIC_API_KEY=key, CLAUDE_CONFIG_DIR=str(config_dir))
+        return self._spawn_lines(list(argv), timeout_s, lambda line: None, cwd=cwd, env=env)
+
+    def _spawn_lines(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None],
+                     cwd: Path | None = None, env: dict | None = None) -> RunResult:
         start = time.monotonic()
         try:
-            proc = subprocess.Popen(argv, cwd=str(self.root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, env=self.env(), start_new_session=True, shell=False)
+            proc = subprocess.Popen(argv, cwd=str(cwd or self.root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, env=env or self.env(), start_new_session=True, shell=False)
         except OSError as error:
             return RunResult(False, -1, "", str(error), int((time.monotonic() - start) * 1000))
         self._track(proc, argv)
