@@ -13,7 +13,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, parseDate, short, startNote, suggestedVerb, verbsFor } from '../logic.js'
+import { personOf, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, parseDate, short, startNote, suggestedVerb, verbsFor } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
@@ -58,7 +58,8 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const t = T()
   const f = t.flow
   const lang = language()
-  const offered = verbsFor(row)
+  // a person gets the verbs of the row, none that hands it to a model or a tab (access.py)
+  const offered = verbsFor(row).filter(v => !personOf(s) || ['done', 'later', 'drop'].includes(v))
   const yes = offerYes && row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved'
   const yesStrong = yesFirst && yes
   const strong = primary === false || yesStrong ? null : primary ?? suggestedVerb(row, s.triage?.items?.[row.key] ?? null)

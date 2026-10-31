@@ -7,9 +7,9 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, homeView, homeViewSet,
-  jevModelValid, launchPatch, moveAmong,
+  jevModelValid, launchPatch, moveAmong, personOf,
 } from '../logic.js'
-import { T } from '../text.js'
+import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { catalogLabel } from './home.js'
 import { Btn, Chip, Empty, Icon, StateLine, useRoving } from './parts.js'
@@ -489,7 +489,26 @@ const AREAS = { setup: SetupArea, start: StartArea, look: LookArea, workspaces: 
 const AREA_ICONS = { setup: 'bulb', start: 'home', look: 'sun', workspaces: 'sliders', launch: 'spark', ticker: 'bell', guide: 'chat', boards: 'sliders' }
 
 /** The page: the areas as a list on the left (a row of buttons on a narrow screen), the one chosen beside it */
+/** What a person sets for themselves (access.py): the colours and the language, kept on the server for them, whatever
+ *  device they come from. No setting of the Bridge stands here */
+function PersonSettings({ s, c }) {
+  const t = T()
+  const kept = personOf(s).settings ?? {}
+  return html`<div class="col col-page settings-page">
+    <header class="page-head settings-head"><h2 class="detail-title">${t.settings.title}</h2></header>
+    <${Card} title=${t.settings.themeTitle}>
+      <${Segmented} label=${t.settings.themeTitle} current=${s.ui.theme} values=${['auto', 'light', 'dark'].map(v => [v, t.theme[v]])}
+        onPick=${v => { c.setTheme(v); c.act('person_settings', { theme: v }) }} />
+    <//>
+    <${Card} title=${t.person.language}>
+      <${Segmented} label=${t.person.language} current=${kept.language ?? language()} values=${[['de', 'Deutsch'], ['en', 'English']]}
+        onPick=${v => Promise.resolve(c.act('person_settings', { language: v })).then(() => window.location.reload())} />
+    <//>
+  </div>`
+}
+
 export function SettingsPage({ s, c }) {
+  if (personOf(s)) return html`<${PersonSettings} s=${s} c=${c} />`
   const w = T().settings
   const sections = sectionsOf(s)
   // a stored choice the Bridge no longer offers (Setup without its page) falls back to the start page's area

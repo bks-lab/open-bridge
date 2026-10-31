@@ -339,6 +339,9 @@ kbd {
 .day-more { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
 .day-more-title { margin: 0 4px; color: var(--on-surface-muted); }
 .day-counts { padding: 8px 10px 2px; font-size: 12.5px; }
+.person-new { display: flex; gap: 8px; padding: 8px 10px 2px; }
+.person-new input { flex: 1; min-width: 0; }
+.person-new select { max-width: 40%; }
 .layout-wide .day-counts { display: none; }
 /* a narrow day column puts a row's buttons under its title, so the title keeps the full width */
 .col-day { container-type: inline-size; }
