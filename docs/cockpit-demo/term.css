@@ -94,6 +94,11 @@
 /* the keyboard: the box that takes it stays out of sight, the frame and the line in the corner say where it goes */
 .term .tabview-body { position: relative; cursor: text; outline: none; }
 .term .tabview-body.is-typing { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+/* the conversation above the screen; the view keeps what you read in place itself (TermScreen), in every browser */
+.term .tabview-body { overflow-anchor: none; }
+.term-seam { margin: 12px 0; padding: 3px 0; border-block: 1px solid var(--border); color: var(--on-surface-faint); text-align: center; }
+.term-end { position: sticky; bottom: 32px; z-index: 1; display: flex; justify-content: flex-end; height: 0; }
+.term-end button { align-self: flex-end; padding: 3px 9px; border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--accent); font: inherit; font-size: var(--text-label); cursor: pointer; }
 .term-input { position: sticky; bottom: 0; display: block; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; resize: none; overflow: hidden; }
 .term-status {
   position: sticky; bottom: 0; width: fit-content; margin: 4px 0 0 auto; padding: 1px 8px; border-radius: var(--radius-sm);

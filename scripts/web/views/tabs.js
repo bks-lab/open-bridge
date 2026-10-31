@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, noTabDriver, screenLines, screenPoll, previewText, railOn, SCREEN_FAST_MS, SCREEN_FAST_FOR_MS, SCREEN_POLL_MS, tabStateKey, termEcho, termKey, termParts, termPaste, termQueue } from '../logic.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, pastMerge, pastShown, pastText, screenLines, screenPoll, previewText, railOn, SCREEN_FAST_MS, SCREEN_FAST_FOR_MS, SCREEN_POLL_MS, tabStateKey, termEcho, termKey, termParts, termPaste, termQueue } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -16,6 +16,9 @@ import { TabReply } from './reply.js'
 
 const TERM_BATCH = 64            // the steps of one call (actions_base.py TERM_STEPS_MAX)
 const TERM_PASTE_MAX = 32000
+const PAST_LEFT_MS = 2000        // leaving the end reads the past again, unless it was read this recently
+const PAST_AGAIN_MS = 10_000     // a tab that goes on while you read above it: its past is read this often, at most
+const PAST_NEAR_TOP = 1200       // px from the top where the next older turns are read
 
 // ---------------------------------------------------------------- agent tabs
 
@@ -67,6 +70,35 @@ export function useTabScreen(c, ref) {
   return { screen, err, poke: () => poke.current() }
 }
 
+/** What went before the screen of an agent tab, from its session file: { held, fresh, older }. Read when the tab opens,
+ *  so the bar shows there is more; `fresh(ms)` reads the end again unless that happened within `ms`, `older` the turns
+ *  before those held. One read at a time, and nothing that comes back for a tab the field has left */
+function useTabPast(c, ref) {
+  const [held, setHeld] = useState(null)
+  const run = useRef({ at: 0, busy: false })
+  const read = async before => {
+    const now = run.current
+    if (!ref || now.busy) return
+    now.busy = true
+    const r = await c.tabHistory(ref, '', before)
+    now.busy = false
+    if (run.current !== now) return
+    now.at = Date.now()
+    if (r?.ok) setHeld(h => pastMerge(h, r.data, before != null))
+    else if (before != null) setHeld(h => h && { ...h, more: false })
+  }
+  useEffect(() => {
+    run.current = { at: 0, busy: false }
+    setHeld(null)
+    read()
+  }, [ref])
+  return {
+    held,
+    fresh: ms => { if (Date.now() - run.current.at >= ms) read() },
+    older: () => { if (held?.more && held.turns.length) read(held.turns[0].i) },
+  }
+}
+
 /** A tab's terminal as lines, coloured by kind and tone (logic.js screenLines, termParts). While it is live the cursor
  *  stands in the prompt when one is near the end, else behind the last line; solid and blinking while you type, an
  *  outline otherwise, as in a terminal without focus. `echo` is what you typed and the screen does not show yet */
@@ -80,11 +112,13 @@ export function TermLines({ text, live = false, typing = false, echo = '', empty
 }
 
 /** The screen of a tab as a terminal: read as useTabScreen reads it, the end in view unless you scrolled up. With
+ *  `past` (an agent tab, which keeps no scrollback in the terminal) the conversation stands above it, without what the
+ *  screen still shows, so the wheel goes on upwards into it; a growing past leaves what you read where it is. With
  *  `canType` it takes the keyboard: a click on it (no selection made) puts the focus in a hidden box, and from there
  *  a key goes straight to the tab, in order, one batch at a time, what piles up meanwhile in the next (tab_keys).
  *  The box, and not the screen itself, so a dead key, an Option character and a paste arrive as what they make. Cmd
  *  stays the Mac's, a click beside it or Ctrl+] gives the keyboard back to the page */
-export function TermScreen({ tabRef, screen, live = false, empty, canType = false, c, poke, focusRef = null, onSelect = null }) {
+export function TermScreen({ tabRef, screen, live = false, empty, canType = false, c, poke, focusRef = null, onSelect = null, past = false }) {
   const t = T()
   const body = useRef(null)
   const stick = useRef(true)
@@ -92,10 +126,25 @@ export function TermScreen({ tabRef, screen, live = false, empty, canType = fals
   const queue = useRef({ steps: [], busy: false, composing: false })
   const [echo, setEcho] = useState('')
   const [typing, setTyping] = useState(false)
+  const [away, setAway] = useState(false)
+  const { held, fresh, older } = useTabPast(c, past ? tabRef : null)
+  const pastEl = useRef(null)
+  const pastHeight = useRef(0)
+  const pastWords = useMemo(() => (held && screen ? pastText(pastShown(held.turns, screen.text ?? '')) : ''), [held, screen?.text])
+  const pastLines = useMemo(() => (pastWords
+    ? html`<div class="term-past" ref=${pastEl}><${TermLines} text=${pastWords} /><p class="term-seam small">${t.tools.pastSeam}</p></div>` : null), [pastWords, t])
+  // another tab in this field opens at its end
+  useLayoutEffect(() => { stick.current = true; setAway(false) }, [tabRef])
   useLayoutEffect(() => {
     const el = body.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [screen?.text, echo])
+    if (!el) return
+    const height = pastEl.current?.offsetHeight ?? 0
+    if (stick.current) el.scrollTop = el.scrollHeight
+    else if (height !== pastHeight.current) el.scrollTop += height - pastHeight.current
+    pastHeight.current = height
+  }, [screen?.text, echo, pastLines])
+  // the tab goes on while you read above: what leaves its screen must still meet the past
+  useEffect(() => { if (!stick.current) fresh(PAST_AGAIN_MS) }, [screen?.hash])
   // the screen has what was typed: the echo goes, unless more is on its way
   useEffect(() => {
     const q = queue.current
@@ -155,9 +204,23 @@ export function TermScreen({ tabRef, screen, live = false, empty, canType = fals
   }
   // the focus on the screen itself (after a selection, after Ctrl+]): a letter starts typing, the arrows still scroll
   const onBodyKey = e => { if (e.target === e.currentTarget && e.key.length === 1 && !e.metaKey && !e.ctrlKey) toField() }
+  const onScroll = e => {
+    const el = e.currentTarget
+    const left = stick.current
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    setAway(!stick.current)
+    if (left && !stick.current) fresh(PAST_LEFT_MS)
+    if (el.scrollTop < PAST_NEAR_TOP) older()
+  }
+  const toEnd = () => {
+    const el = body.current
+    stick.current = true
+    setAway(false)
+    if (el) el.scrollTop = el.scrollHeight
+  }
   return html`<div class=${`tabview-body${typing ? ' is-typing' : ''}`} ref=${body} tabindex="0" role="log" aria-label=${t.tabViewLog}
-    onMouseUp=${canType ? onMouseUp : undefined} onKeyDown=${canType ? onBodyKey : undefined}
-    onScroll=${e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
+    onMouseUp=${canType ? onMouseUp : undefined} onKeyDown=${canType ? onBodyKey : undefined} onScroll=${onScroll}>
+    ${pastLines}
     <${TermLines} text=${screen?.text} live=${live} typing=${typing} echo=${echo} empty=${empty} />
     ${canType ? html`<textarea class="term-input" ref=${field} rows="1" aria-label=${t.termInput} autocomplete="off" autocapitalize="off" spellcheck="false"
       onKeyDown=${onKey} onInput=${e => { if (!e.isComposing && !queue.current.composing) take(e.currentTarget) }} onPaste=${onPaste}
@@ -165,6 +228,7 @@ export function TermScreen({ tabRef, screen, live = false, empty, canType = fals
       onCompositionEnd=${e => { queue.current.composing = false; take(e.currentTarget) }}
       onFocus=${() => setTyping(true)} onBlur=${() => setTyping(false)}></textarea>
     <p class="term-status small muted">${typing ? t.termTyping : t.termClick}</p>` : null}
+    ${away ? html`<div class="term-end"><button type="button" onClick=${toEnd}>↓ ${t.tools.toEnd}</button></div>` : null}
   </div>`
 }
 
@@ -215,7 +279,7 @@ export function TabView({ s, c }) {
         </div>
       </div>` : null}
       ${!claude || ref ? html`<${TermScreen} tabRef=${ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
-        canType=${canTab(s, 'keys')} c=${c} poke=${poke} />` : html`<div></div>`}
+        canType=${canTab(s, 'keys')} c=${c} poke=${poke} past=${tab?.state !== 'shell'} />` : html`<div></div>`}
       <footer class="tabview-foot">
         ${tab ? html`<${TabReply} tab=${tab} s=${s} c=${c} bare />` : null}
         <${SendBox} id="tabview-input" label=${t.msgPlaceholder} value=${text} setValue=${setText} onSend=${send} busy=${busy}

@@ -351,6 +351,13 @@ Under a field's head stand the tools: **Stop** (or Ctrl+C in a shell), **Command
 text, **Keys** as buttons, **History** and the size of the type. A command is typed as you would type it, through
 `tab_keys`, and stays off while the tab asks or holds a draft; `/clear` asks once more on its row. **History** shows an
 agent tab's whole conversation from its session file and a shell's scrollback, with a search (`GET /api/tab-history`).
+
+**Scrolling up reads on.** An agent that repaints its own screen (Claude Code in full-screen mode) leaves the terminal
+no scrollback, so a read of the tab gives only the lines in view. Above that screen the field shows the conversation
+from the session file, so the wheel goes on upwards into it. Older turns come as you near the top, what you read stays
+in place while they arrive or the tab goes on working, and **To the end** brings you back. A line marks where the
+terminal starts; the text of a long answer runs on across it, nothing stands twice. Tools show as one line, their output
+is not in a session's turns. A shell keeps its own scrollback, of which the field holds the last 400 lines.
 The tab's own status line, where it names them, gives the head its model, context and cost.
 
 `+` on a workspace starts a chat: Claude with a first sentence or none, a shell, or an earlier session going on.
@@ -1535,7 +1542,7 @@ sends, Shift+Enter a new line). Escape or a click outside closes it.
 `GET /api/tab-history?ref=...` (read only) answers with the whole conversation,
 searchable: `{ok, ref, name, source, turns, total, matched, truncated, at_ms}`,
 each turn `{i, role, text, at_ms}`. A tab that runs a Claude session answers from
-the session's transcript (`source: "session"`): the tab is tied to the session by
+the session's transcript (`source: "session"`, and its id as `sid`): the tab is tied to the session by
 the live session list (the session's process carries the tab's `CMUX_SURFACE_ID`
 or `TMUX_PANE`, which the scan matches to the tab list: `tab.ref` of a session in
 `sessions.sessions` of the state), the newest session of a tab decides, and its turns are `user`, `agent` and `tool` (one short

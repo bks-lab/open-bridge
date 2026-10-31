@@ -681,6 +681,33 @@ test('the terminal: a paste goes out whole, a driver without keys leaves it to r
   assert.ok(read.$('.term-cursor'), 'still a screen')
 })
 
+test('an agent tab has its past above the screen: what the screen still shows is not told twice', async () => {
+  const { TermScreen } = views.tabs
+  const asked = []
+  const c = { tabHistory: async (ref, q, before) => {
+    asked.push([ref, q, before])
+    return { ok: true, data: { source: 'session', sid: 'a', truncated: false, turns: [{ i: 0, role: 'user', text: 'An earlier question about the broker', at_ms: 0 }, { i: 1, role: 'agent', text: 'The answer still on the screen', at_ms: 0 }] } }
+  } }
+  const el = mount(html`<${TermScreen} tabRef="surface:10" screen=${{ text: '⏺ The answer still on the screen\n❯', hash: 'a' }} live empty="x" c=${c} poke=${() => {}} past />`)
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(asked, [['surface:10', '', undefined]], 'read once on opening')
+  const past = el.$('.term-past')
+  assert.ok(past, 'above the screen')
+  assert.match(past.text(), /An earlier question/)
+  assert.doesNotMatch(past.text(), /still on the screen/)
+  assert.ok(el.$('.term-seam'), 'the seam says where the terminal starts')
+})
+
+test('a shell has its own scrollback: no past is read, and none stands above the screen', async () => {
+  const { TermScreen } = views.tabs
+  const asked = []
+  const c = { tabHistory: async () => { asked.push(1); return { ok: true, data: { source: 'terminal', turns: [] } } } }
+  const el = mount(html`<${TermScreen} tabRef="surface:10" screen=${{ text: '$ ls', hash: 'a' }} live empty="x" c=${c} poke=${() => {}} />`)
+  await new Promise(r => setTimeout(r, 0))
+  assert.deepEqual(asked, [])
+  assert.equal(el.$('.term-past'), null)
+})
+
 test('the open tab ends in the same bar the lists have: back, where you stand, what comes next and Next', () => {
   const c = recorder()
   const bar = tabPane('surface:10', c).$('.next-up')

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""The whole conversation of a tab, searchable, for the tab view (GET /api/tab-history).
+"""The whole conversation of a tab, searchable, for the tab view (GET /api/tab-history): the History panel, and
+what stands above the screen of an agent tab, which keeps no scrollback in the terminal (TermScreen).
 
 The screen of a tab is what the terminal shows now. A tab that runs an agent session has more: the session's
 transcript (~/.claude/projects/<folder>/<session id>.jsonl). The tab is tied to its session by the live
@@ -18,7 +19,8 @@ turns are kept per file, the newest; the rest is counted (`dropped`) and flagged
 through the cockpit's scrub before it is kept, so the search cannot find what the scrub hides.
 
 An answer is the newest matching turns in order, at most `limit` and ANSWER_BYTES of text, `before` pages back
-to older ones (a turn's `i` is its place in the conversation). A search is a plain case-insensitive substring
+to older ones (a turn's `i` is its place in the conversation). One from a transcript names it (`sid`), so a page
+that holds turns can tell another session in the same tab. A search is a plain case-insensitive substring
 over the text. Everything here reads; nothing is written and no agent runs.
 """
 from __future__ import annotations
@@ -298,12 +300,12 @@ class TabHistory:
             return blocks, ""
 
     def read(self, ref: str, q: str = "", limit: int = ANSWER_TURNS, before: int | None = None) -> tuple[dict | None, str]:
-        """(answer, error) for a tab: {source, turns, total, matched, truncated}, from the transcript of its session,
+        """(answer, error) for a tab: {source, sid, turns, total, matched, truncated}, from the transcript of its session,
         else from the terminal; None and why when the terminal cannot be read either"""
         path = self.transcript_of(ref)
         got = self.session_turns(path) if path else None
         if got:
-            return {"source": "session", **window(got[0], got[1], q, limit, before)}, ""
+            return {"source": "session", "sid": path.stem, **window(got[0], got[1], q, limit, before)}, ""
         blocks, err = self.terminal_turns(ref)
         if blocks is None:
             return None, err
