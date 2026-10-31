@@ -592,6 +592,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/access.py",               # who sees what: a person on a workspace gets its areas
     "scripts/lib/bridge_cockpit/work_sync.py",
     "scripts/tests/test_bridge_cockpit_access.py",        # leak tests and the guards over routes, verbs, events, fields
+    "scripts/lib/bridge_cockpit/signin.py",               # who a served request is: the gateway's signed token, nothing else
+    "scripts/tests/test_bridge_cockpit_signin.py",        # forged, expired, foreign tokens and the owner's ways shut
     "scripts/lib/bridge_cockpit/workspaces.py",           # the Workspaces area of the settings page: switches beside the config
     "scripts/web/views/workspaces.js",
     "scripts/lib/bridge_cockpit/tab_history.py",          # a tab's whole conversation, searchable: /api/tab-history

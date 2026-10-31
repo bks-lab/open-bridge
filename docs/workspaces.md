@@ -419,6 +419,10 @@ the parent stays closed to them. A workspace with members needs an area, and one
 rests or is archived closes for them at once. What the cockpit shows a person:
 [`bridge-cockpit.md`](bridge-cockpit.md#4-safety-model).
 
+`logins:` says which signed-in address is which member, for a served cockpit behind a sign-in gateway
+(`cockpit.served.access`, [`docs/always-on-machine.md`](always-on-machine.md)): `logins: {pat: pat@example.org}`. A name
+here must be a member, an address on two people opens for neither, and a child that repeats a name wins over its parent.
+
 ### Branch gate
 
 The **mutating** verbs — `create`, `subscribe`, `unsubscribe` (and their aliases

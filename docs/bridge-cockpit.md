@@ -81,6 +81,7 @@ their defaults:
 | `voice` | `false` | the browser also speaks a tab that starts waiting for you |
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
+| `served.access` | none | `team_domain`, `aud`, `host`: a served cockpit behind a sign-in gateway, section 2. A wrong block stops the start |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
 | `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); a chat handed to a tab stays this long after the latest of its handoff, its result and its item's end; 0 keeps them, then only the limit of 30 applies. An empty chat names the time it keeps a question ("Questions stay in the list for 7 days" with `168`) |
 | `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `flow` (Work through, with `flow.enabled`); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. `files` names no view of the work tab any more: the first visit of the work tab opens the Files tab once ([The Files tab](#the-files-tab)), and the work tab keeps the view it falls back to. A click on the tab's switch still picks another for this browser, until the key changes |
@@ -196,6 +197,29 @@ the next start, which also ends every cookie, and every browser goes through
 `url` once more.
 
 **On an always-on machine.** `serve --served` is the cockpit for people, without a model, a terminal or the daily triage; their entries are committed and pushed as they land ([always-on machine](always-on-machine.md#a-cockpit-on-this-machine)).
+
+**Behind a sign-in gateway.** With `cockpit.served.access` a served cockpit may stand behind Cloudflare Access (or
+any gateway signing the same RS256 assertion). It still binds `127.0.0.1`; a tunnel brings the requests in.
+
+```yaml
+cockpit:
+  served:
+    access:
+      team_domain: team.example.org   # the team's address, without https://
+      aud: <the application's audience tag>
+      host: cockpit.example.org       # the public address of this cockpit
+```
+
+Each workspace then says who may sign in under which address: `members: [pat]` plus `logins: {pat: pat@example.org}`.
+
+There is no owner on such a server. Every request needs the public name and a token signed by the gateway for this
+application, checked here on each request (`scripts/lib/bridge_cockpit/signin.py`): signature against the team's
+`/cdn-cgi/access/certs`, issuer, audience, expiry, then the address mapped through `logins:`. The plain address header
+counts for nothing, the key's cookie, a login link and `url` open nothing, and no cookie is set. An unknown address gets
+a page saying so. Only `/api/health` answers without a token, and only under the local name, for the status probe. A
+half block stops the start instead of opening the server. Without the block, or without `--served`, nothing changes.
+
+Open a tunnel only after the gateway's application and its rule stand: the check here is the second lock, not the only one.
 
 **Always there.** Without autostart the server runs until you stop it or the
 computer restarts. `autostart on` (macOS) installs a LaunchAgent
@@ -3240,6 +3264,9 @@ other area.
 
 This holds inside the cockpit. All of it runs as one user of the machine, so it is no
 wall against a fault in the server itself: that is the `wall` level of a workspace.
+
+A served cockpit behind a sign-in gateway has no owner and takes a person only from a signed token: section 2, "Behind a
+sign-in gateway".
 
 ## 5. Asking Claude: the relay
 

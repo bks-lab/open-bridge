@@ -107,6 +107,16 @@ properties:
       A child inherits the list and may only narrow it; under a parent without
       one it names its own, and those people get the child alone.
 
+  logins:
+    type: object
+    additionalProperties: false
+    patternProperties:
+      "^[a-z][a-z0-9-]{0,39}$": {type: string, pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"}
+    description: |
+      A served cockpit behind a sign-in gateway: which signed-in address is which
+      member (cockpit.served.access). A name here must be a member. An address
+      on two people opens for neither.
+
   writing:
     type: object
     additionalProperties: false

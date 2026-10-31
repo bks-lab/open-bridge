@@ -57,6 +57,7 @@ LEVELS = ("view", "room", "wall")           # how far a workspace keeps a sessio
 RULE_BLOCKS = ("refs", "writing", "boundary", "sources")   # what a child inherits key by key
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+LOGIN_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")   # the signed-in address of a member (logins:)
 MEMBER_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")   # a person on a workspace (members:), the cockpit reads the same words
 SLUG_CUT_RE = re.compile(r"[^a-z0-9-]+")
 SCP_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+$")
@@ -64,7 +65,7 @@ ALLOWED_URL_SCHEMES = ("https", "ssh", "file")
 
 # Field order used when (re)writing a definition — known keys first, extras kept.
 DEF_ORDER = ["schema_version", "id", "title", "description", "directory", "area", "parent",
-             "archived_at", "members", "refs", "writing", "boundary", "sources",
+             "archived_at", "members", "logins", "refs", "writing", "boundary", "sources",
              "created_at", "updated_at", "overlays", "repos", "session_ref",
              "x-provider"]
 
@@ -260,7 +261,7 @@ class Consumer:
             if isinstance(data, dict):
                 base = {k: v for k, v in data.items()
                         if k not in ("id", "title", "description", "directory",
-                                     "area", "parent", "archived_at", "members", *RULE_BLOCKS,
+                                     "area", "parent", "archived_at", "members", "logins", *RULE_BLOCKS,
                                      "created_at", "updated_at", "overlays",
                                      "repos", "session_ref", "x-provider")}
                 return base
@@ -618,7 +619,14 @@ def effective(defs: dict, ws_id: str) -> dict:
     row["members"] = list(own["members"] if "members" in own else parent.get("members") or [])
     if "members" not in own and parent.get("members"):
         row["inherited"].append("members")
+    logins = {**(parent.get("logins") or {}), **(own.get("logins") or {})}
+    row["logins"] = {name: mail for name, mail in logins.items() if name in row["members"]}
     return row
+
+
+def stray_logins(own: dict, members: list | None) -> list[str]:
+    stray = sorted(set(own.get("logins") or {}) - set(members or []))
+    return [f"logins name {', '.join(stray)}, who are not members"] if stray else []
 
 
 def rule_problems(defs: dict, ws_id: str) -> list[str]:
@@ -626,11 +634,12 @@ def rule_problems(defs: dict, ws_id: str) -> list[str]:
     own = defs[ws_id]
     name = own.get("parent")
     if not name:
-        return ["members need an area to open"] if own.get("members") and not own.get("area") else []
+        return stray_logins(own, own.get("members")) + (
+            ["members need an area to open"] if own.get("members") and not own.get("area") else [])
     if name == ws_id or name not in defs:
         return [f"parent '{name}' does not exist"]
     parent = defs[name]
-    problems = []
+    problems = stray_logins(own, own.get("members") if "members" in own else parent.get("members"))
     if isinstance(own.get("members"), list) and parent.get("members"):
         extra = sorted(set(own["members"]) - set(parent["members"]))
         if extra:
@@ -758,6 +767,10 @@ def _fallback_validate(data: dict):
     if not isinstance(members, list) or not all(isinstance(x, str) and MEMBER_RE.match(x) for x in members) \
             or len(set(members)) != len(members):
         return False, "members must be unique lowercase names"
+    logins = data.get("logins", {})
+    if not isinstance(logins, dict) or not all(isinstance(k, str) and MEMBER_RE.match(k) and isinstance(v, str) and LOGIN_RE.match(v)
+                                               for k, v in logins.items()):
+        return False, "logins must map a member to an email address"
     level = (data.get("boundary") or {}).get("level")
     if level is not None and level not in LEVELS:
         return False, f"invalid boundary.level '{level}' ({'|'.join(LEVELS)})"
