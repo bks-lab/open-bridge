@@ -82,6 +82,8 @@ LOG_ROW_RE = re.compile(r"^\| \d{4}-\d{2}-\d{2} \d{2}:\d{2} \|")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 KIND_ORDER = {"task": 0, "stream": 0, "done": 1, "log": 2, "archive": 2}
 RECORDS_MAX = 2000
+#: a month folder inside a stream that collects records of its own (work/streams/<slug>/<month>/<record>)
+MONTH_RE = re.compile(r"^[0-9]{4}-[0-9]{2}\Z")
 FRONT_MAX = 8000
 BLOCK_MAX = 50
 BLOCK_WORD_MAX = 60
@@ -217,8 +219,19 @@ def known_folders(root: Path) -> list[tuple[str, str, str]]:
             continue
         for d in sorted(base.iterdir()):
             if d.is_dir() and not d.is_symlink() and SLUG_RE.match(d.name):
-                out.append((d.name, kind, d.relative_to(root).as_posix()))
+                nested = _collected(root, d) if kind == "stream" else []
+                # a folder that only collects is no record itself
+                if not nested or (d / "STATUS.md").is_file():
+                    out.append((d.name, kind, d.relative_to(root).as_posix()))
+                out += [(n.name, kind, n.relative_to(root).as_posix()) for n in nested]
     return out
+
+
+def _collected(root: Path, stream: Path) -> list[Path]:
+    """The records a stream collects by month, each a folder with a STATUS.md, newest month first"""
+    months = [m for m in stream.iterdir() if m.is_dir() and not m.is_symlink() and MONTH_RE.match(m.name)]
+    return [d for m in sorted(months, reverse=True) for d in sorted(m.iterdir())
+            if d.is_dir() and not d.is_symlink() and SLUG_RE.match(d.name) and (d / "STATUS.md").is_file()]
 
 
 def known_slugs(root: Path) -> dict[str, tuple[str, str]]:
@@ -230,8 +243,11 @@ def known_slugs(root: Path) -> dict[str, tuple[str, str]]:
 
 
 def _folder_of_path(rel: str) -> str | None:
-    """The file folder a path lies in: `work/tasks/<slug>`, `work/streams/<slug>`, `work/done/<month>/<slug>`."""
+    """The file folder a path lies in: `work/tasks/<slug>`, `work/streams/<slug>`, `work/done/<month>/<slug>`,
+    or a record a stream collects, `work/streams/<slug>/<month>/<record>`."""
     parts = rel.split("/")
+    if len(parts) >= 6 and parts[1] == "streams" and MONTH_RE.match(parts[3]):
+        return "/".join(parts[:5])
     if len(parts) >= 4 and parts[1] in ("tasks", "streams"):
         return "/".join(parts[:3])
     if len(parts) >= 5 and parts[1] == "done":
@@ -454,6 +470,14 @@ def records(root: Path | str, limit: int = RECORDS_MAX) -> dict:
     """Every file as a record (module doc), the newest change first, a record without a day last, at most `limit`"""
     root = Path(root).resolve()
     out = []
+
+    def stream_area(folder: str) -> str | None:
+        """The area of the stream a record is collected in: one line there covers them all"""
+        parts = folder.split("/")
+        if len(parts) != 5:
+            return None
+        return front_from(status_text(root, "/".join(parts[:3]))).get("area")
+
     for slug, kind, folder in known_folders(root):
         text = status_text(root, folder)     # read once: its front matter, title and kind come from this text
         front = front_from(text)
@@ -461,7 +485,7 @@ def records(root: Path | str, limit: int = RECORDS_MAX) -> dict:
         day = next((str(front[k])[:10] for k in ("last_updated", "closed", "created")
                     if front.get(k) not in (None, "") and not isinstance(front[k], bool)), None)
         out.append({"slug": slug, "kind": kind, "path": folder, "title": title_from(text, slug), "status": status,
-                    "priority": _word(front.get("priority"), 10), "area": _word(front.get("area") or front.get("context"), 60),
+                    "priority": _word(front.get("priority"), 10), "area": _word(front.get("area") or front.get("context") or stream_area(folder), 60),
                     "updated": day, "work_kind": kind_from(text, kind)})
     out.sort(key=lambda r: r["updated"] or "", reverse=True)
     return {"ok": True, "total": len(out), "truncated": len(out) > limit, "records": out[:limit]}

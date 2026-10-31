@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's Files tab: three columns as Work through (the list, the open record, its point's buttons), a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file in the one list, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
 type: guide
-last_updated: 2026-10-29
+last_updated: 2026-10-31
 related:
   - bridge-cockpit.md
   - cockpit-areas.md
@@ -65,7 +65,9 @@ in the middle (below), and the list with the words typed stays beside it.
 The field is the one search of the tab: an opened record has no second one.
 
 The records come from `GET /api/records`, a read: every folder of `work/tasks/`,
-`work/streams/` and `work/done/`, its front matter read in place (status,
+`work/streams/` and `work/done/`, and the records a stream collects by month
+(`work/streams/<slug>/<month>/<record>/STATUS.md`, each with the stream's `area:` unless it
+names its own; a folder that only collects is no record itself), its front matter read in place (status,
 priority, area or context, the last change, title, kind), newest first, at most
 2000. A record's area comes from one place for the list and the opened record:
 the area of its row, else of its file of `model.files`, else the one its front
