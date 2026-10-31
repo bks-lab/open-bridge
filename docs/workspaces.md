@@ -1,7 +1,7 @@
 ---
 summary: "Workspaces — two halves: a machine-global SHARED identity registry (~/.workspaces/workspaces.json, v2, multi-writer, written by the standalone workspace_registry.py) and a repo-local materialization engine (workspace.py) that binds config overlays[] + member repos[] with a lock, public-fork-safe code checkout, and delegation to the overlay engine."
 type: guide
-last_updated: 2026-07-10
+last_updated: 2026-10-31
 related:
   - docs/org-overlays.md
   - docs/multi-instance.md
@@ -348,12 +348,16 @@ The engine CLI:
 ```
 workspace [--repo-root R] <subcommand> …
 
-create       <name> [--dir DIR] [--title T] [--description D]
-list
+create       <name> [--dir DIR] [--title T] [--description D] [--area A] [--parent P]
+list         [--json]
+show         <name> [--json]
 validate     [name]
 status       [name]
 subscribe    <name> <git-url> [--ref R] [--role code|config]   # alias: add-repo   (--role default: code)
 unsubscribe  <name> <member>                                   # alias: remove-repo
+archive      <name>
+restore      <name>
+delete       <name> [--dry-run] [--json]
 ```
 
 `subscribe` / `unsubscribe` are the **canonical** verb names; `add-repo` /
@@ -376,15 +380,38 @@ unsubscribe  <name> <member>                                   # alias: remove-r
 - **`unsubscribe`** (alias `remove-repo`) — remove a code member (delete clone, drop
   the lock entry, refresh the exclude block) or a config overlay (delegate
   `overlay.py remove`).
+- **`show`** — one workspace with its effective rules, see [Rules](#rules).
+- **`archive`** / **`restore`** — set a workspace aside and bring it back; the file
+  stays. A parent with a live child is not archived, a child of an archived parent
+  is not restored.
+- **`delete`** — remove the definition, its lock entry and its clones, with a copy
+  of all of it under `.bridge/trash/<id>-<time>/`. It refuses while a child stands,
+  an overlay is subscribed, or a clone holds uncommitted or unpushed work; tasks,
+  records, memory and the log are never touched. `--dry-run` says what would go
+  and what stops it.
+
+### Rules
+
+A definition may carry what a session in the workspace holds to, as references
+into the families that own the values: `area` (the cockpit area), `refs`,
+`writing` and `boundary`. `boundary.level` is how far it goes: `view` filters the
+cockpit, `room` starts a session in a folder of its own, `wall` adds the operating
+system's sandbox.
+
+`parent` makes a workspace a child. It inherits `refs`, `writing` and `boundary`
+key by key, and its `area` when it names none. It may only narrow: `validate` fails
+a looser `level`, a skill the parent's list lacks, a parent that is missing, or a
+third level. `show` and `list --json` give the merged result, with `inherited`
+naming what came from the parent.
 
 ### Branch gate
 
 The **mutating** verbs — `create`, `subscribe`, `unsubscribe` (and their aliases
-`add-repo` / `remove-repo`) — refuse to run unless the current branch is `user/*`
+`add-repo` / `remove-repo`), `archive`, `restore`, `delete` — refuse to run unless the current branch is `user/*`
 (or detached / non-repo). This is the same
 gate `overlay.py` enforces and it honours the same env escape
 (`BRIDGE_OVERLAY_ALLOW_ANY_BRANCH=1`) so a shared test harness works. The
-**read-only** verbs (`list`, `validate`, `status`) run on any branch.
+**read-only** verbs (`list`, `show`, `validate`, `status`, `delete --dry-run`) run on any branch.
 
 ### Exit codes
 

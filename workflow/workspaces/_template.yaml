@@ -26,6 +26,19 @@ description: "One-line purpose of this workspace."   # optional
 # root. Informational in increment 1 — it carries no instance lifecycle.
 # directory: "${projects_root}/demo"
 
+# The rules a session here holds to (all optional, docs/workspaces.md § Rules).
+# References only: the values stay in their own families.
+# area: Demo                   # the cockpit area, a name from workplace.workspaces
+# parent: demo-parent          # sits under that workspace, inherits and may only narrow
+# refs: {persona: demo, context: demo, mandant: demo, project: demo, briefing: demo, design: demo}
+# writing: {style_skill: demo-style, mail_profile: demo}
+# boundary:
+#   level: view                # view | room | wall
+#   skills: [mail-draft]       # absent: all
+#   off_topic: ask             # refuse | ask | hand_over
+#   shared_repos: []
+#   mixed_records: ask
+
 # created_at / updated_at are engine-stamped on create + every mutation —
 # do not hand-set them.
 
