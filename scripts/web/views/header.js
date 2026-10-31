@@ -12,6 +12,7 @@ import {
 import { AgentMark, agentBadge } from './agents.js'
 import { usePopover } from './pages.js'
 import { Btn, Dot, Icon, Spinner, StateLine, useRoving, useTween } from './parts.js'
+import { WorkspacePicker } from './workspaces.js'
 
 // ---------------------------------------------------------------- header and page bar
 
@@ -198,6 +199,7 @@ export function Header({ s, c }) {
           <span class="hdr-demo-long">${s.boot.scratch.kind === 'copy' ? t.scratchBadge : t.stateBadge}</span>
           <span class="hdr-demo-short">${s.boot.scratch.kind === 'copy' ? t.scratchBadgeShort : t.stateBadgeShort}</span></span>` : null}</div>
     </div>
+    <${WorkspacePicker} s=${s} c=${c} />
     <span class="hdr-headline" aria-hidden="true"></span>
     <div class="hdr-right">
       <${LoadingIndicator} s=${s} />

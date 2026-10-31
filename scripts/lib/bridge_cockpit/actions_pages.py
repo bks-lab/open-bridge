@@ -164,30 +164,47 @@ class PageVerbs:
             raise self.not_applicable("no such area")
         ctx.extra["workspaces"] = self.app.workspaces.changed()
 
-    def workspace_engine(self, ctx: Ctx, verb: str, slug: str, done: str) -> None:
-        """A workspace's file through scripts/workspace.py, whose refusal reaches the page in its own words"""
-        app = self.app
-        run = ctx.call(f"workspace.{verb}", slug, app.workspaces.command(verb, slug), SHORT_TIMEOUT)
+    def workspace_engine(self, ctx: Ctx, verb: str, slug: str) -> None:
+        """One call of scripts/workspace.py, whose refusal reaches the page in its own words"""
+        run = ctx.call(f"workspace.{verb}", slug, self.app.workspaces.command(verb, slug), SHORT_TIMEOUT)
         if not run.ok:
             why = re.sub(r"^\s*workspace:\s*", "", (run.err or run.out or "").strip())
             raise ActionError(409, "not_applicable", self.tx["workspace_refused"].format(why=m.short(why, 200)), None)
-        ctx.extra["workspaces"] = app.workspaces.changed()
-        ctx.note(self.tx[done].format(name=slug))
 
-    def v_workspace_archive(self, ctx: Ctx, slug: str) -> None:
-        self.workspace_engine(ctx, "archive", slug, "workspace_archived")
+    def v_workspace_active(self, ctx: Ctx, key: str, on: bool) -> None:
+        """A workspace at work or resting; waking one archived by hand restores its file"""
+        item = self.app.workspaces.find(key)
+        if item is None:
+            raise self.not_applicable("no such workspace")
+        if on and item["archived"]:
+            self.workspace_engine(ctx, "restore", item["id"])
+        self.app.workspaces.activate(key, on)
+        ctx.extra["workspaces"] = self.app.workspaces.changed()
 
-    def v_workspace_restore(self, ctx: Ctx, slug: str) -> None:
-        self.workspace_engine(ctx, "restore", slug, "workspace_restored")
+    def v_workspace_plan(self, ctx: Ctx, key: str) -> None:
+        """What a delete would touch, for the page to say before the click"""
+        item = self.app.workspaces.find(key)
+        if item is None:
+            raise self.not_applicable("no such workspace")
+        ctx.extra["plan"] = self.app.workspaces.plan(item)
 
-    def v_workspace_delete(self, ctx: Ctx, slug: str) -> None:
-        """Refused while a tab of its area is open: the engine knows files, the cockpit knows tabs"""
+    def v_workspace_delete(self, ctx: Ctx, key: str) -> None:
+        """The file, then the area; refused while a tab is open, a child stands, or it is the default"""
         app = self.app
-        area = str(app.workspaces.area_of(slug) or "").strip().lower()
-        tabs = [t for t in app.tabs.tab_list() if area and str(t.get("workspace") or "").strip().lower() == area]
-        if tabs:
-            raise ActionError(409, "not_applicable", self.tx["workspace_tabs_open"].format(n=len(tabs)), None)
-        self.workspace_engine(ctx, "delete", slug, "workspace_deleted")
+        item = app.workspaces.find(key)
+        if item is None:
+            raise self.not_applicable("no such workspace")
+        plan = app.workspaces.plan(item)
+        if plan["blockers"]:
+            word = {"tabs": "workspace_tabs_open", "children": "workspace_has_children", "fixed": "workspace_fixed"}[plan["blockers"][0]]
+            raise ActionError(409, "not_applicable", self.tx[word].format(n=plan["tabs"], names=", ".join(plan["children"])), None)
+        if item["id"]:
+            self.workspace_engine(ctx, "delete", item["id"])
+        if item["area"]:
+            self.workspace_engine(ctx, "area-remove", item["area"])
+            app.workspaces.forget(item["area"])
+        ctx.extra["workspaces"] = app.workspaces.changed()
+        ctx.note(self.tx["workspace_deleted"].format(name=item["key"]))
 
     def guide_changed(self, ctx: Ctx) -> None:
         state = self.app.guide.state()

@@ -358,6 +358,7 @@ unsubscribe  <name> <member>                                   # alias: remove-r
 archive      <name>
 restore      <name>
 delete       <name> [--dry-run] [--json]
+area-remove  <area>
 ```
 
 `subscribe` / `unsubscribe` are the **canonical** verb names; `add-repo` /
@@ -389,6 +390,9 @@ delete       <name> [--dry-run] [--json]
   an overlay is subscribed, or a clone holds uncommitted or unpushed work; tasks,
   records, memory and the log are never touched. `--dry-run` says what would go
   and what stops it.
+- **`area-remove`** — take an area out of `workplace.workspaces`, line by line so
+  every comment stays, the result proved against a parse of the whole file, a copy
+  of the entry under `.bridge/trash/`. It refuses the default area.
 
 ### Rules
 
@@ -408,7 +412,7 @@ naming what came from the parent.
 ### Branch gate
 
 The **mutating** verbs — `create`, `subscribe`, `unsubscribe` (and their aliases
-`add-repo` / `remove-repo`), `archive`, `restore`, `delete` — refuse to run unless the current branch is `user/*`
+`add-repo` / `remove-repo`), `archive`, `restore`, `delete`, `area-remove` — refuse to run unless the current branch is `user/*`
 (or detached / non-repo). This is the same
 gate `overlay.py` enforces and it honours the same env escape
 (`BRIDGE_OVERLAY_ALLOW_ANY_BRANCH=1`) so a shared test harness works. The

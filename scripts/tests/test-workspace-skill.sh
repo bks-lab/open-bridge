@@ -83,7 +83,7 @@ echo; echo "── 4. documented flags exist in the engine ───────
 ENGINE_FLAGS="$(python3 - "$ENGINE" <<'PY'
 import subprocess, sys, re
 flags = set()
-subs = ["create","list","show","validate","status","subscribe","unsubscribe","archive","restore","delete"]
+subs = ["create","list","show","validate","status","subscribe","unsubscribe","archive","restore","delete","area-remove"]
 for s in ["--help"] + list(subs):
     args = [sys.executable, sys.argv[1]] + ([s] if s == "--help" else [s, "--help"])
     out = subprocess.run(args, capture_output=True, text=True).stdout

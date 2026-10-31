@@ -60,6 +60,7 @@ All commands run through `scripts/workspace.py`. Mutating verbs (`create`,
 | One workspace with its effective rules | `workspace show <name> [--json]` |
 | Set aside, bring back | `workspace archive <name>`, `workspace restore <name>` |
 | Remove, a copy stays under `.bridge/trash/` | `workspace delete <name> [--dry-run]` |
+| Take an area out of the config | `workspace area-remove <area>` |
 | Bind a code member repo | `workspace subscribe <name> <git-url> --role code [--ref <branch>]` |
 | Bind a config overlay | `workspace subscribe <name> <git-url> --role config [--precedence <N>]` |
 | Remove a member (code or overlay) | `workspace unsubscribe <name> <member>` |

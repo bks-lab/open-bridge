@@ -2817,6 +2817,11 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .set-card-body > .set-row:first-child, .set-card-body > .view-pick:first-child + .set-row { border-top: 0; padding-top: 4px; }
 .set-row.is-wide { grid-template-columns: minmax(0, 1fr); }
 .ws-item.is-child { padding-left: 20px; }
+.ws-tools { align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.ws-switch { display: inline-flex; align-items: center; gap: 6px; }
+.ws-ask { margin: 0 0 10px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-sunken, var(--accent-subtle)); }
+.hdr-pick { margin-left: 16px; }
+.pop-item.is-child { padding-left: 24px; }
 .ws-item:first-child .set-row { border-top: 0; }
 .set-text { display: grid; gap: 2px; min-width: 0; }
 .set-label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; color: var(--on-surface); }

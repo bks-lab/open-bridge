@@ -297,21 +297,12 @@ def test_an_off_parent_holds_its_child_and_an_archived_one_counts_as_off(cockpit
     assert got["Home"]["archived"] is True
 
 
-def test_archive_restore_and_delete_go_through_the_engine(cockpit):
-    define(cockpit.root, "home", area="Home")
-    cockpit.act("workspace_archive", slug="home")
-    cockpit.act("workspace_restore", slug="home")
-    cockpit.act("workspace_delete", slug="home")
-    calls = [c for c in cockpit.runner.calls if any(str(a).endswith("workspace.py") for a in c)]
-    assert [c[-2:] for c in calls] == [["archive", "home"], ["restore", "home"], ["delete", "home"]]
-
-
 def test_delete_refuses_while_a_tab_of_the_area_is_open(cockpit):
     define(cockpit.root, "home", area="Home")
     with cockpit.app.tabs.lock:
         cockpit.app.tabs.tabs = [*cockpit.app.tabs.tabs, {"ref": "tab:9", "name": "x", "workspace": "Home"}]
     with pytest.raises(ActionError) as raised:
-        cockpit.act("workspace_delete", slug="home")
+        cockpit.act("workspace_delete", key="Home")
     assert raised.value.status == 409
     assert not [c for c in cockpit.runner.calls if "delete" in c]
 
@@ -321,7 +312,7 @@ def test_an_engine_refusal_reaches_the_page_in_its_words(cockpit):
     refused = RunResult(False, 1, "", "workspace: cannot delete 'home': children: x.\n", 0)
     cockpit.runner.handlers["workspace.--repo-root"] = lambda argv: refused
     with pytest.raises(ActionError) as raised:
-        cockpit.act("workspace_delete", slug="home")
+        cockpit.act("workspace_delete", key="Home")
     assert "children: x" in raised.value.message
 
 
@@ -402,3 +393,128 @@ def test_a_collected_record_opens_by_its_slug_and_its_path(tmp_path):
     assert details._place(tmp_path, "first", None)[0] == "stream"
     assert details._place(tmp_path, "first", "work/streams/jobs/2026-10/first") is not None
     assert details.task_file(tmp_path, "first", "notes.md", "work/streams/jobs/2026-10/first")["text"] == "note"
+
+
+# ---------------------------------------------------------------- active and shown, and deleting any area
+
+CONFIG = """# my bridge
+workplace:
+  # the areas
+  workspaces:
+    - {name: Acme, contexts: [acme]}  # a customer
+    - name: Billing
+      contexts:
+        - billing
+    # before Home
+    - {name: Home}
+    - {name: Inbox, default: true}
+  driver: none
+other: 1
+"""
+
+
+def config_repo(repo):
+    (repo / "bridge-config.yaml").write_text(CONFIG, encoding="utf-8")
+    return repo
+
+
+def areas_in(repo):
+    return [w["name"] for w in yaml.safe_load((repo / "bridge-config.yaml").read_text(encoding="utf-8"))["workplace"]["workspaces"]]
+
+
+@pytest.mark.parametrize("name,left", [("Acme", ["Billing", "Home", "Inbox"]), ("billing", ["Acme", "Home", "Inbox"])])
+def test_area_remove_takes_one_entry_and_leaves_the_rest_of_the_file(repo, name, left):
+    config_repo(repo)
+    res = ws(repo, "area-remove", name)
+    assert res.returncode == 0, res.stderr
+    assert areas_in(repo) == left
+    text = (repo / "bridge-config.yaml").read_text(encoding="utf-8")
+    assert "# my bridge" in text and "# before Home" in text and "driver: none" in text and "other: 1" in text
+    assert list((repo / ".bridge/trash").glob("area-*/entry.yaml"))
+
+
+def test_area_remove_refuses_the_default_and_an_unknown_name(repo):
+    config_repo(repo)
+    before = (repo / "bridge-config.yaml").read_text(encoding="utf-8")
+    assert ws(repo, "area-remove", "Inbox").returncode == 1
+    assert ws(repo, "area-remove", "Nowhere").returncode == 1
+    assert (repo / "bridge-config.yaml").read_text(encoding="utf-8") == before
+
+
+def test_area_remove_keeps_to_the_branch_gate(repo):
+    config_repo(repo)
+    git(repo, "checkout", "-q", "-b", "main")
+    assert ws(repo, "area-remove", "Acme").returncode == 1
+    assert "Acme" in areas_in(repo)
+
+
+def test_active_and_shown_are_two_things(cockpit):
+    res = cockpit.act("workspace_switch", area="Home", on=False)
+    assert res["workspaces"]["inactive"] == [] and res["workspaces"]["off"] == ["Home"]
+    res = cockpit.act("workspace_active", key="Billing", on=False)
+    assert res["workspaces"]["inactive"] == ["Billing"]
+    assert sorted(res["workspaces"]["off"]) == ["Billing", "Home"]
+    got = items(cockpit)
+    assert (got["Billing"]["active"], got["Billing"]["on"]) == (False, True)
+    assert cockpit.app.workspaces.__class__(cockpit.app).state()["inactive"] == ["Billing"]
+
+
+def test_a_workspace_without_an_area_can_rest_too(cockpit):
+    define(cockpit.root, "side")
+    cockpit.act("workspace_active", key="side", on=False)
+    row = next(i for i in cockpit.app.workspaces.state()["items"] if i["id"] == "side")
+    assert row["active"] is False
+
+
+def test_an_inactive_parent_rests_its_child(cockpit):
+    define(cockpit.root, "acme", area="Acme")
+    define(cockpit.root, "acme-billing", parent="acme", area="Billing")
+    state = cockpit.act("workspace_active", key="Acme", on=False)["workspaces"]
+    assert "Billing" in state["inactive"]
+    assert {i["area"]: i for i in state["items"]}["Billing"]["active_held_by"] == "Acme"
+
+
+def test_waking_an_archived_workspace_restores_its_file(cockpit):
+    define(cockpit.root, "home", area="Home", archived_at="2026-01-01T00:00:00Z")
+    assert "Home" in cockpit.app.workspaces.state()["inactive"]
+    cockpit.act("workspace_active", key="Home", on=True)
+    assert [c[-2:] for c in cockpit.runner.calls if "restore" in c] == [["restore", "home"]]
+
+
+def test_the_plan_names_what_a_delete_touches(cockpit):
+    status(cockpit.root / "work/tasks/one", status="doing", area="Home")
+    status(cockpit.root / "work/done/2026-01/old", status="done", area="Home")
+    plan = cockpit.act("workspace_plan", key="Home")["plan"]
+    assert (plan["tasks"], plan["records"], plan["tabs"], plan["children"]) == (1, 1, 0, [])
+    assert plan["fixed"] is False and plan["blockers"] == []
+
+
+def test_the_plan_stops_at_a_child_an_open_tab_and_the_default(tmp_path):
+    w = World(tmp_path, config=AREAS_CFG.replace("{name: Home,", "{name: Home, default: true,"))
+    try:
+        (w.root / "workflow/workspaces").mkdir(parents=True, exist_ok=True)
+        define(w.root, "acme", area="Acme")
+        define(w.root, "acme-billing", parent="acme", area="Billing")
+        assert w.act("workspace_plan", key="Acme")["plan"]["children"] == ["acme-billing"]
+        assert w.act("workspace_plan", key="Acme")["plan"]["blockers"]
+        assert w.act("workspace_plan", key="Home")["plan"]["fixed"] is True
+        with pytest.raises(ActionError):
+            w.act("workspace_delete", key="Home")
+    finally:
+        w.close()
+
+
+def test_delete_takes_a_plain_area_out_of_the_config_and_the_page(cockpit):
+    cockpit.act("workspace_switch", area="Home", on=False)
+    res = cockpit.act("workspace_delete", key="Home")
+    assert [c[-2:] for c in cockpit.runner.calls if "area-remove" in c] == [["area-remove", "Home"]]
+    assert "Home" not in {i["area"] for i in res["workspaces"]["items"]}
+    assert "Home" in res["workspaces"]["gone"]
+    assert "Home" not in cockpit.app.cfg.areas
+
+
+def test_delete_goes_through_the_file_first_and_then_the_area(cockpit):
+    define(cockpit.root, "home", area="Home")
+    cockpit.act("workspace_delete", key="Home")
+    calls = [c[-2:] for c in cockpit.runner.calls if any(str(a).endswith("workspace.py") for a in c)]
+    assert calls == [["delete", "home"], ["area-remove", "Home"]]
