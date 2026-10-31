@@ -766,6 +766,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_costs.test.mjs",
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
+    "scripts/tests/bridge_cockpit_person.test.mjs",
     "scripts/tests/bridge_cockpit_logrange.test.mjs",
     "scripts/tests/bridge_cockpit_flow.test.mjs",
     "scripts/tests/bridge_cockpit_prio.test.mjs",

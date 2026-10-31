@@ -6,7 +6,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, keepHoursOf, listedChats, reminderArgs } from '../logic.js'
+import { personOf, short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, keepHoursOf, listedChats, reminderArgs } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { ControlNotice } from './header.js'
@@ -267,7 +267,19 @@ export function QuickChat({ s, c }) {
 
 /** The Chat tab: every kept chat on the left (first question, when, model, cost), the open one on the
  *  right with its box ready; a chat goes on where it stopped, also after a restart of the dashboard */
+/** The Chat of a person (access.py): a question could read the whole Bridge from here, so it stays off and says so */
+function ChatOff() {
+  const t = T()
+  return html`<div class="col col-page chatpage term">
+    <header class="page-head"><h2 class="detail-title">${t.chatTab}</h2></header>
+    <p class="muted page-note">${t.chatArea.personOff}</p></div>`
+}
+
 export function ChatPage({ s, c }) {
+  return personOf(s) ? html`<${ChatOff} />` : html`<${ChatOn} s=${s} c=${c} />`
+}
+
+function ChatOn({ s, c }) {
   const t = T()
   const lang = language()
   const q = s.quick ?? {}

@@ -256,6 +256,8 @@ def append_log_row(root: Path, now: dt.datetime, context: str, what: str) -> Non
     b = _briefing()
     log = root / "work" / "log.md"
     text = log.read_text(encoding="utf-8") if log.is_file() else ""
+    person = os.environ.get("BRIDGE_PERSON")    # a person named under members: clicked it in the cockpit, not the owner
+    what = f"{what} ({person})" if person else what
     row = f"| {now:%Y-%m-%d %H:%M} | {LOG_GLYPH} | {context} | {what.replace('|', '/')} |"
     new = b.log_row(text, now, row, row, b._new_day_block(root, now, b._weekday(now)))
     log.write_text(new if text else new.lstrip("\n"), encoding="utf-8")

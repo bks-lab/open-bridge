@@ -51,7 +51,7 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   askPlan, detailNeedsLoad, dossierStep, duration, fileContext, fileFacts, fileOf, fileQueue, fileReason,
   fileResults, filesAll, findContext, focusIndex, formatDay, indexRows, placeKind, prioToken, projectTone,
-  queueLeftOut, RECORD_KINDS, RECORD_STATES, recordArea, recordList, recordPoint, rowProject, short, stepAge, suggestedStep, tabOfTask,
+  queueLeftOut, RECORD_KINDS, RECORD_STATES, recordArea, recordList, recordPoint, rowProject, short, stepAge, suggestedStep, tabOfTask, personOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCard, cardOf, describeOf } from './card.js'
@@ -256,7 +256,11 @@ export function Drawers({ data, res = null, folder = null, s, c }) {
 }
 
 /** One line to ask in: the words go to c.askFile with the context as data and the task it names (or none) */
-function AskBox({ cls, label, placeholder, context, task, s, c }) {
+function AskBox(props) {
+  return personOf(props.s) ? null : html`<${AskField} ...${props} />`     // no model on a person's page (access.py)
+}
+
+function AskField({ cls, label, placeholder, context, task, s, c }) {
   const d = T().dossier
   const [text, setText] = useState('')
   const submit = async e => {
@@ -322,7 +326,11 @@ function FindResults({ s, c, open }) {
 
 /** No step known: a suggestion on request. One read-only question (c.suggestNext), its answer shown, written
  *  to STATUS.md only on Take over (c.takeNext, verb task_set_next) */
-function Suggest({ x, s, c, context }) {
+function Suggest(props) {
+  return personOf(props.s) ? null : html`<${SuggestBox} ...${props} />`
+}
+
+function SuggestBox({ x, s, c, context }) {
   const d = T().dossier.suggest
   const mine = s.ui.suggest?.slug === x.slug ? s.ui.suggest : null
   if (!mine) {

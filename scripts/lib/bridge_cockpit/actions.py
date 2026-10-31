@@ -32,6 +32,7 @@ from .card_fields import validate_brief
 from .config import TARGETS
 from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as AGENT_PEER_RE
 from .quick import CONV_RE
+from .runner import acting, acting_as
 from .relay import RELAY_ID_RE
 from .history import REOPEN_AS
 from .store import CLICK_NAME_RE, CLICK_PAGE_RE, append_log
@@ -319,7 +320,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
 
     def inbox(self, *args: str) -> list[str]:
         app = self.app
-        return [sys.executable, app.runner.script("scripts/inbox.py"), "--root", str(app.root), "--by", "web", *args]
+        return [sys.executable, app.runner.script("scripts/inbox.py"), "--root", str(app.root), "--by", acting_as() or "web", *args]
 
     def task_cmd(self, *args: str) -> list[str]:
         app = self.app
@@ -478,6 +479,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         if verb in NEEDS_CAP and NEEDS_CAP[verb] not in self.app.driver_caps():
             raise ActionError(503, "driver_cannot", f"the terminal driver cannot {NEEDS_CAP[verb]} a tab")
         ctx = Ctx(self, verb)
+        ctx.person = viewer
         ctx.subject = ",".join(clean.get("keys", [])) or clean.get("key") or clean.get("tab_ref") or clean.get("ws_ref") \
             or clean.get("proposal") or clean.get("relay_id") or clean.get("slug") or clean.get("id") or ""
         handler = getattr(self, f"v_{verb}")
@@ -485,17 +487,18 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         ctx.by = clean.pop("by", None)
         touched = self.touched(clean)
         try:
-            if verb in READ_ONLY_VERBS:
-                handler(ctx, **clean)
-            elif verb in LOCAL_VERBS:
-                self.recorded(ctx, handler, clean)
-            elif verb in LAYOUT_VERBS:
-                with self.layout_lock:
+            with acting(viewer):    # the scripts of this call write the person's name, not the page's
+                if verb in READ_ONLY_VERBS:
+                    handler(ctx, **clean)
+                elif verb in LOCAL_VERBS:
                     self.recorded(ctx, handler, clean)
-            else:
-                with self.write_lock:
-                    ctx.locked = True
-                    self.recorded(ctx, handler, clean)
+                elif verb in LAYOUT_VERBS:
+                    with self.layout_lock:
+                        self.recorded(ctx, handler, clean)
+                else:
+                    with self.write_lock:
+                        ctx.locked = True
+                        self.recorded(ctx, handler, clean)
         finally:
             # what a verb names is read anew by the Activity tab (activity.py keeps a feed CACHE_MS); a plan of the
             # instruction line changes nothing
@@ -537,7 +540,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             if ctx.steps or ctx.notes or ctx.settled:
                 self.audit(ctx)
             if ctx.history and getattr(self.app, "history", None) is not None:
-                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history, by=ctx.by)
+                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history, by=ctx.by, person=ctx.person)
                 ctx.extra["undo"] = [{"title": x["title"], "kind": x["kind"], "undo": x["undo"]}
                                      for x in ctx.history if x.get("undo")]
             if refused is not None:
@@ -546,7 +549,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
     def audit(self, ctx: Ctx) -> None:
         exits = ",".join(str(s["exit"]) for s in ctx.steps) or "-"
         ok = all(s["ok"] for s in ctx.steps)
-        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **({"by": ctx.by} if ctx.by else {}), **ctx.audit_extra)
+        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **({"by": ctx.by} if ctx.by else {}),
+                        **({"person": ctx.person} if ctx.person else {}), **ctx.audit_extra)
 
     def audit_line(self, verb: str, subject: str = "", **fields: Any) -> None:
         """One line in audit.log: time, verb, subject, then key=value. The one writer of that file, for

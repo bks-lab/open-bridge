@@ -3203,7 +3203,22 @@ For a person the rule runs the other way round from the owner's page: nothing go
 out unless `scripts/lib/bridge_cockpit/access.py` lists it.
 
 - **Routes and verbs:** the state, the live channel, a task and an inbox item they can
-  see, and the verbs that move their own rows. Every other route and verb answers 403.
+  see, the records of the files tab, and the verbs that move their own rows. Every other
+  route and verb answers 403.
+- **Their page:** Start, Today, the files and the Chat, named by the server in bootstrap
+  with their routes and verbs. The page sends nothing else (`api.js`) and shows no
+  control for it: no tabs, Ask, History or reload, no Let AI do it, no check, no pin, no
+  Work through. Today is the plain day, empty sections stay out, and the Chat says that
+  questions are not set up. The files search filters their own list, the server's search
+  reads the whole Bridge and stays closed.
+- **Records:** every file of their areas, closed ones too, placed by the rule
+  `workplace.py` places a task with: `area:`, then `slugs:`, then `contexts:`. What only
+  the default area would take stays out. A slug that also names a folder outside their
+  areas does not open without its exact path.
+- **Who did it:** `audit.log` and the history carry `person=<name>`, `task.py` adds the
+  name to its row in `work/log.md`, and an inbox event is written under their name
+  (`BRIDGE_PERSON` and `BRIDGE_ACTOR` for that one call). Rows that a script writes
+  beside these, such as the note on a task, carry no name yet.
 - **Rows:** a row shows when every area it names is one of theirs. A row without an
   area, or with one of theirs and another, stays out.
 - **Fields:** the state and the model are rebuilt from a list, and everything else is

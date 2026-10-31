@@ -10,6 +10,13 @@ scope, and it names at least one. A row that names none, or names one area of th
 What a person may open or change follows from that: only what the cut model lists (visible). The scope is read from
 the definitions on every call, so taking a name off a workspace works at once, and a workspace that rests, is archived
 or cannot be read gives nothing. Questions to a model stay closed: it would read the whole Bridge from here.
+
+The records of the files tab are read from the folders, closed ones too, so the model cannot say whose they are. A
+record counts as an area's where workplace.py places a task the same way: by `area:`, by the workspace's `slugs:` or
+by its `contexts:`. What only the default area catches stays out, as a row without an area does.
+
+What a person's page shows follows from here as well: bootstrap names their pages, routes and verbs, and the page
+sends nothing else (api.js), so a closed route is no error on their screen.
 """
 from __future__ import annotations
 
@@ -17,20 +24,26 @@ import os
 import re
 from typing import Any
 
+from .. import work_find
 from .actions_base import ActionError
+from .config import read_config_file
+from .describe import _module
 
 PERSON_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}\Z")      # the same words as members: in docs/schemas/workspace.schema.yaml
 
 PUBLIC = frozenset({"/api/health"})
-PERSON_GET = frozenset({"/api/bootstrap", "/api/state", "/api/events", "/api/task", "/api/inbox"})
+PERSON_GET = frozenset({"/api/bootstrap", "/api/state", "/api/events", "/api/task", "/api/inbox", "/api/records"})
 OWNER_GET = frozenset({
     "/api/agents", "/api/chats/archive", "/api/costs", "/api/costs/statement", "/api/find", "/api/flow/activity",
     "/api/flow/doc", "/api/github", "/api/graph", "/api/graph/node", "/api/history", "/api/inbox/noise", "/api/issue",
-    "/api/logrange", "/api/page", "/api/records", "/api/relay", "/api/tab-history", "/api/tab/screen", "/api/ticker",
+    "/api/logrange", "/api/page", "/api/relay", "/api/tab-history", "/api/tab/screen", "/api/ticker",
     "/api/timeline", "/api/usage", "/api/workers"})
 PERSON_POST = frozenset({"/api/action", "/api/presence"})
 OWNER_POST = frozenset({"/api/ask", "/api/reload", "/api/route", "/api/seen", "/api/clicks", "/api/flow/attach",
                         "/api/triage/run"})
+
+# the tabs of a person's page, in this order: Start, Today, the files, the Chat. The rest would stand empty
+PERSON_PAGES = ("@start", "briefing", "@files", "@chat")
 
 # verb -> the arguments that name what it changes; each of them has to be a row the person sees
 PERSON_VERBS = {"note": ("key",), "done": ("key",), "later": ("key",), "drop": ("key",), "priority": ("key",),
@@ -87,19 +100,21 @@ MODEL_NEUTRAL: dict[str, Any] = {
 
 ROW_FIELDS = frozenset({
     "key", "bucket", "section", "number", "title", "why", "sources", "inbox_id", "gate", "task", "ref", "priority", "urgency",
-    "area", "area_names", "task_type", "due", "has_action", "inbox_state", "mark", "is_new", "is_changed", "selectable",
+    "area", "area_names", "task_type", "due", "has_action", "inbox_state", "mark", "is_new", "is_changed",
     "closable", "stream", "settle", "status", "next", "origin", "work_kind", "about_kind", "inbox_kind", "art", "updated",
     "until", "card",
     # what a task row and a file row carry beside these
     "slug", "label", "age", "stale", "type", "kind", "blocked_by", "path_kind"})
 ROW_NEUTRAL: dict[str, Any] = {"url": None, "link": None, "inbox_key": None, "tab": None, "actions": [], "starting": False,
                                "adopt_candidates": [], "team": None, "team_suggestions": [], "review": None,
-                               "also_inbox": [], "on_board": None, "describe": None}
+                               "also_inbox": [], "on_board": None, "describe": None, "selectable": False}
 TASK_FIELDS = frozenset({"ok", "slug", "kind", "work_kind", "origin", "front", "sections", "brief", "files", "inbox", "card"})
 TASK_NEUTRAL: dict[str, Any] = {"related": [], "log": [], "describe": None}
 TASK_DROPPED = frozenset({"path"})       # where it lies on this machine, the page of a person needs no folder
 INBOX_FIELDS = frozenset({"ok", "id", "item", "origin", "card"})
 INBOX_ITEM = frozenset({"summary", "detail", "detail_truncated", "kind", "gate", "urgency", "state", "due", "created"})
+RECORD_FIELDS = frozenset({"slug", "kind", "path", "title", "status", "priority", "area", "updated", "work_kind"})
+RECORDS_ALL = 10 ** 6       # read them all: the cap of work_find.records would cut before the area does
 LOADING_FIELDS = frozenset({"pass", "fresh", "started_ms", "eta_ms"})
 WORKSPACE_ITEM = frozenset({"key", "area", "id", "title", "on", "fixed", "active", "level"})
 WORKSPACE_NEUTRAL: dict[str, Any] = {"parent": None, "children": [], "held_by": None, "active_held_by": None}
@@ -208,9 +223,9 @@ class Access:
         return {k: v for k, v in (payload or {}).items() if k in LOADING_FIELDS}
 
     def work(self, state: dict) -> dict:
-        flow = {k: v for k, v in (state.get("flow") or {}).items() if k != "person"}
-        return {"view": state.get("view"), "focus_to_files": state.get("focus_to_files"), "files_scope": state.get("files_scope"),
-                "flow": flow, "views": state.get("views"), "files_search": {"enabled": False, "block": [], "left": 0}}
+        """The plain day: Work through, the instruction line and the sources all lead to a model or a tab"""
+        return {"view": "due", "focus_to_files": False, "files_scope": None, "flow": {"enabled": False}, "views": ["due"],
+                "files_search": {"enabled": False, "block": [], "left": 0}}
 
     def state(self, person: str) -> dict:
         app, scope = self.app, self.scope(person)
@@ -227,7 +242,36 @@ class Access:
                 "config": {"port": app.port, "relay": False, "tabs_seconds": cfg.tabs_seconds, "full_minutes": cfg.full_minutes,
                            "voice": False, "target": None, "control": None, "profile": None, "areas": areas,
                            "area_aliases": {a: n for a, n in getattr(cfg, "area_aliases", ()) if mine(a)},
-                           "area_tags": {n: [n] for n in areas}, "clicks": False}}
+                           "area_tags": {n: [n] for n in areas}, "clicks": False,
+                           "person": {"name": person, "pages": list(PERSON_PAGES), "verbs": sorted(PERSON_VERBS),
+                                      "routes": sorted(PERSON_GET | PERSON_POST | PUBLIC)}}}
+
+    # ------------------------------------------------------------ the files tab
+
+    def record_area(self, record: dict, spaces: list[dict]) -> str | None:
+        """The area of a record, by the rule the tasks follow, None where only the default would take it"""
+        word = record.get("area")
+        found = _module("_cockpit_workplace", "workplace.py").workspace_for({"slug": record["slug"], "area": word, "context": word},
+                                                                            {"workspaces": spaces})
+        return found.get("name") if any(found is ws for ws in spaces) and not found.get("default") else None
+
+    def placed(self) -> list[dict]:
+        """Every record with the area it counts for"""
+        spaces = (read_config_file(self.app.root).get("workplace") or {}).get("workspaces") or []
+        return [{**r, "area": self.record_area(r, spaces)} for r in work_find.records(self.app.root, RECORDS_ALL)["records"]]
+
+    def records(self, person: str) -> dict:
+        scope = self.scope(person)
+        mine = [{k: v for k, v in r.items() if k in RECORD_FIELDS} for r in self.placed() if r["area"] and self.canon(r["area"]) in scope]
+        return self.clean({"ok": True, "total": len(mine), "truncated": False, "records": mine})
+
+    def record_open(self, person: str, slug: str, folder: str | None) -> bool:
+        """Whether a person may read this file: the model lists it for them, or every folder it could mean is theirs"""
+        if folder is None and f"task:{slug}" in self.visible(person):
+            return True
+        scope = self.scope(person)
+        same = [r for r in self.placed() if r["slug"] == slug and (r["path"] == folder if folder else r["kind"] != "done")]
+        return bool(same) and all(r["area"] and self.canon(r["area"]) in scope for r in same)
 
     def event(self, person: str, event: str, payload: Any) -> Any:
         """What one event becomes for a person, None for nothing"""

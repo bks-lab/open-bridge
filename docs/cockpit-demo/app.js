@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  personOf, upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, areasOff, areaKey, workspacesOn, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
@@ -1504,6 +1504,7 @@ const ctl = {
   // the search of the files view: an answer for words no longer asked is dropped. `from` 'start': asked by the start
   // of the files tab, which shows the hits in its own list (the results above a file leave them out)
   async findFiles(q, from = null) {
+    if (personOf(store.get())) return store.set(s => ({ ...s, find: null }))   // the search reads the whole Bridge (access.py); their list filters by itself
     const words = String(q ?? '').replace(/\s+/g, ' ').trim()
     if (words.length < 2) return store.set(s => ({ ...s, find: { q: words, status: 'tooShort', data: null, error: null, from } }))
     store.set(s => ({ ...s, find: { q: words, status: 'loading', data: s.find?.data ?? null, error: null, from } }))
@@ -2177,6 +2178,7 @@ async function boot() {
     return
   }
   api.setCsrf(b.data.csrf)
+  api.setAccess(b.data.config?.person)    // a person's page sends only what bootstrap names (access.py)
   // the aliases of workplace.workspaces: a tab or a row under an alias stands in its area (areas.js)
   setAreaAliases(b.data.config?.area_aliases)
   setAreaTags(b.data.config?.area_tags)

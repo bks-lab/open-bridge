@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
+import { personOf, agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
@@ -47,6 +47,8 @@ export function AsOf({ s, c, brief = false }) {
   const busy = !!s.loading?.pass && !!s.loading?.fresh
   // the tooltip names the key r only while the shortcuts are on (app.js keydown): off, the key does nothing
   const reload = s.ui?.shortcuts ? `${t.reloadTitle} (r)` : t.reloadTitle
+  // a person (access.py) reads the time, a new pass is not theirs to start
+  if (personOf(s)) return html`<span class="hdr-asof">${brief ? null : html`<${Warnings} s=${s} /><span class="muted asof-text">${words}</span>`}</span>`
   return html`<span class="hdr-asof">
     ${brief ? null : html`<${Warnings} s=${s} />`}
     <button type="button" class="asof-btn" title=${`${words} · ${reload}`} aria-label=${`${words}, ${t.reloadTitle}`}
@@ -175,7 +177,7 @@ function HelpMenu({ s, c }) {
       <span class="settle-hint label-caps muted" role="presentation">${t.settings.lookupTitle}</span>
       ${LOOKUP_TOPICS.filter(id => id !== 'keys' || s.ui.shortcuts).map(id => html`<button key=${id} type="button" role="menuitem" class="settle-item"
         onClick=${pick(() => c.openLookup(id))}><span>${t.help.tabs[id]}</span></button>`)}
-      <button type="button" role="menuitem" class="settle-item" onClick=${pick(() => c.tourStart())}><span>${t.tour.again}</span></button>
+      ${personOf(s) ? null : html`<button type="button" role="menuitem" class="settle-item" onClick=${pick(() => c.tourStart())}><span>${t.tour.again}</span></button>`}
     </span>` : null}
   </span>`
 }
@@ -189,6 +191,7 @@ export function Header({ s, c }) {
   const waiting = tabsButtonCount(s.tabs?.tabs)
   // on the Chat, Ask opens no window over the chat that is open already: the cursor goes into its field (round 6d C4)
   const onChat = s.ui.page === CHAT_PAGE && !s.ui.tabView
+  const person = !!personOf(s)   // their page has no tabs, questions, history or running agents (access.py)
   return html`<header class="hdr">
     <div class="hdr-id">
       <span class="eyebrow">${t.appName}</span>
@@ -205,17 +208,17 @@ export function Header({ s, c }) {
       <${LoadingIndicator} s=${s} />
       <${AsOf} s=${s} c=${c} brief=${s.layout === 'narrow'} />
       ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}
-      ${s.layout === 'medium' || (s.layout === 'wide' && !railOn(s)) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
+      ${!person && (s.layout === 'medium' || (s.layout === 'wide' && !railOn(s))) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
         onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'} cls="hdr-tabs">${t.tabsButton(waiting)}<//>` : null}
-      <${Btn} variant=${(s.quick?.convs ?? []).some(chatRunning) ? 'primary' : 'secondary'}
-        size="sm" icon="send" onClick=${() => onChat ? c.askHere() : c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
-      <${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
-        pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()} cls="hdr-history"><span class="hide-narrow">${t.historyButton}</span><//>
+      ${person ? null : html`<${Btn} variant=${(s.quick?.convs ?? []).some(chatRunning) ? 'primary' : 'secondary'}
+        size="sm" icon="send" onClick=${() => onChat ? c.askHere() : c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>`}
+      ${person ? null : html`<${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
+        pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()} cls="hdr-history"><span class="hide-narrow">${t.historyButton}</span><//>`}
       <${Btn} variant="ghost" size="sm" icon="bell" label=${t.notesTitle} title=${t.notesTitle}
         onClick=${() => c.setDrawer(s.ui.drawer === 'notes' ? null : 'notes')} pressed=${s.ui.drawer === 'notes'} cls="hdr-notes" />
-      ${s.layout === 'narrow' ? null : html`<${AgentsChip} s=${s} c=${c} />`}
-      ${s.layout === 'narrow' ? null : html`<${RelayBadge} s=${s} c=${c} />`}
-      ${s.layout === 'narrow' ? null : html`<${StartControl} s=${s} c=${c} short />`}
+      ${s.layout === 'narrow' || person ? null : html`<${AgentsChip} s=${s} c=${c} />`}
+      ${s.layout === 'narrow' || person ? null : html`<${RelayBadge} s=${s} c=${c} />`}
+      ${s.layout === 'narrow' || person ? null : html`<${StartControl} s=${s} c=${c} short />`}
       <${HelpMenu} s=${s} c=${c} />
     </div>
   </header>`

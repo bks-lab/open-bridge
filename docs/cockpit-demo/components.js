@@ -7,7 +7,7 @@
 // views/, which imports what it uses from the others. app.js imports from here only.
 
 import { html, useEffect, useLayoutEffect, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { areaScope, cardPlan, indexRows, logLayout, railOn, triageKey, workKinds, workPageOf } from './logic.js'
+import { areaScope, cardPlan, indexRows, logLayout, personOf, railOn, triageKey, workKinds, workPageOf } from './logic.js'
 import { T } from './text.js'
 import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
@@ -177,8 +177,9 @@ export function App({ store, ctl }) {
   const pane = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane
   // a wide page that shows sessions itself or needs the width folds the tab column to its header button
   const rail = layout === 'wide' && railOn(s)
-  const tabsDrawer = layout === 'medium' || (layout === 'wide' && !rail)
-  const showTabsCol = rail || (layout === 'narrow' && pane === 'tabs')
+  const person = !!personOf(s)     // no tabs on a person's page (access.py), on no width
+  const tabsDrawer = !person && (layout === 'medium' || (layout === 'wide' && !rail))
+  const showTabsCol = rail || (!person && layout === 'narrow' && pane === 'tabs')
   const main = onPage
     ? html`<${PageView} s=${v} c=${ctl} />${peek ? html`<${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}`
     : html`<${DayColumn} s=${v} c=${ctl} byKey=${shownKey} /><${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />`

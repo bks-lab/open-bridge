@@ -5,10 +5,12 @@
 
 export const CHAT = {
   en: {
+    personOff: 'Questions to the AI are not set up for you yet.',
     label: 'What the chat shows', work: 'Work', a2a: n => `A2A (${n})`,
     agents: 'Agents (A2A)', running: 'An agent is answering', waiting: 'An answer waits for its owner',
   },
   de: {
+    personOff: 'Fragen an die KI sind für dich noch nicht eingerichtet.',
     label: 'Was der Chat zeigt', work: 'Arbeit', a2a: n => `A2A (${n})`,
     agents: 'Agenten (A2A)', running: 'Ein Agent antwortet gerade', waiting: 'Eine Antwort wartet auf die Freigabe',
   },

@@ -8,7 +8,7 @@ import {
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
-  flowAreas, flowOn, startWaiting, withoutOff, pageFollowsArea, workspacesOn,
+  flowAreas, flowOn, startWaiting, withoutOff, pageFollowsArea, workspacesOn, personOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -198,6 +198,7 @@ function HomeShelf({ id, title, count, more, onMore, empty, children }) {
 
 /** The star that pins a row to the start page, or takes it off */
 export function PinStar({ rowKey, s, c }) {
+  if (personOf(s)) return null       // the start page's pins are the owner's
   const h = T().home
   const on = (s.home?.pins ?? []).includes(rowKey)
   return html`<button type="button" class=${`pin-star${on ? ' is-on' : ''}`} aria-pressed=${String(on)}
