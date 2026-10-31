@@ -1008,7 +1008,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def fetch_site_ok(self) -> bool:
         site = self.headers.get("Sec-Fetch-Site")
-        return site is None or site in ("same-origin", "none")
+        if site is None or site in ("same-origin", "none"):
+            return True
+        # the sign-in gateway answers on a domain of its own and sends the browser back: that one step, a plain
+        # navigation to the page, comes from elsewhere. It changes nothing, and the token still decides
+        return (bool(self.app.sign_in) and self.command == "GET" and urllib.parse.urlsplit(self.path).path == "/"
+                and self.headers.get("Sec-Fetch-Mode") == "navigate" and self.headers.get("Sec-Fetch-Dest") == "document")
 
     def csrf_ok(self, value: str | None) -> bool:
         return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.csrf_of(self.person).encode("utf-8"))

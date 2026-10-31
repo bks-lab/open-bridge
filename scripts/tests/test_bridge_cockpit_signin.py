@@ -313,6 +313,26 @@ def test_nothing_opens_without_a_good_token(served, name, assertion, code):
         assert status(outside(served, path, assertion)) == code, path
 
 
+NAVIGATION = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+
+
+def test_the_page_opens_when_the_gateway_sends_the_browser_back(served):
+    code, _, data = outside(served, "/", token(), NAVIGATION)
+    assert code == 200 and MARK.encode() not in data
+
+
+def test_a_navigation_from_elsewhere_still_needs_a_good_token(served):
+    assert status(outside(served, "/", None, NAVIGATION)) == 403
+
+
+@pytest.mark.parametrize("path,extra", [
+    ("/api/state", NAVIGATION), ("/app.js", NAVIGATION),
+    ("/", {**NAVIGATION, "Sec-Fetch-Dest": "iframe"}), ("/", {**NAVIGATION, "Sec-Fetch-Mode": "no-cors"}),
+    ("/", {"Sec-Fetch-Site": "cross-site"})])
+def test_only_the_page_itself_may_come_from_elsewhere(served, path, extra):
+    assert status(outside(served, path, token(), extra)) == 403
+
+
 def test_the_address_header_alone_counts_for_nothing(served):
     got = outside(served, extra={"Cf-Access-Authenticated-User-Email": "pat@example.org"})
     assert status(got) == 403
