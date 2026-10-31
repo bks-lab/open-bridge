@@ -414,7 +414,8 @@ out a workspace:
   its **overview**: every point as a row of a table, grouped as on the left,
   with its box, title, stage, area and the suggestion with half a sentence of
   why (below), a line over it naming where the suggestions come from, and on
-  top the sticky batch bar. A click on a title opens the
+  top the sticky batch bar. Each group's head has a box of its own that ticks
+  that group alone, so all reports go at once without the questions. A click on a title opens the
   **point**: on top **Back to overview** with the theme's name beside it, a
   line "n ticked" with **See in the overview** while points are ticked, then
   the point as a card that carries its content only: its kind in its head (the
