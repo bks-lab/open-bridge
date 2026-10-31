@@ -394,12 +394,13 @@ delete       <name> [--dry-run] [--json]
 
 A definition may carry what a session in the workspace holds to, as references
 into the families that own the values: `area` (the cockpit area), `refs`,
-`writing` and `boundary`. `boundary.level` is how far it goes: `view` filters the
+`writing`, `boundary` and `sources` (the calendars of the workspace by name, its
+cost center). `boundary.level` is how far it goes: `view` filters the
 cockpit, `room` starts a session in a folder of its own, `wall` adds the operating
 system's sandbox.
 
-`parent` makes a workspace a child. It inherits `refs`, `writing` and `boundary`
-key by key, and its `area` when it names none. It may only narrow: `validate` fails
+`parent` makes a workspace a child. It inherits `refs`, `writing`, `boundary` and
+`sources` key by key, and its `area` when it names none. It may only narrow: `validate` fails
 a looser `level`, a skill the parent's list lacks, a parent that is missing, or a
 third level. `show` and `list --json` give the merged result, with `inherited`
 naming what came from the parent.

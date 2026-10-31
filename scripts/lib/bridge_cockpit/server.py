@@ -1015,7 +1015,8 @@ class Handler(BaseHTTPRequestHandler):
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
                                             "control": cfg.control, "profile": cfg.profile,
                                             "areas": list(cfg.areas),
-                                            "area_aliases": dict(getattr(cfg, "area_aliases", ())), "clicks": bool(getattr(cfg, "usage_clicks", True))}})
+                                            "area_aliases": dict(getattr(cfg, "area_aliases", ())),
+                                            "area_tags": {k: list(v) for k, v in getattr(cfg, "area_tags", ())}, "clicks": bool(getattr(cfg, "usage_clicks", True))}})
         elif path == "/api/state":
             self.send_json(200, app.state_payload())
         elif path == "/api/events":

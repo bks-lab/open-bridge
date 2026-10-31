@@ -54,7 +54,7 @@ SCHEMA = "docs/schemas/workspace.schema.yaml"
 TRASH_BASE = ".bridge/trash"
 
 LEVELS = ("view", "room", "wall")           # how far a workspace keeps a session in, loosest first
-RULE_BLOCKS = ("refs", "writing", "boundary")   # what a child inherits key by key
+RULE_BLOCKS = ("refs", "writing", "boundary", "sources")   # what a child inherits key by key
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SCP_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+$")
@@ -62,7 +62,7 @@ ALLOWED_URL_SCHEMES = ("https", "ssh", "file")
 
 # Field order used when (re)writing a definition — known keys first, extras kept.
 DEF_ORDER = ["schema_version", "id", "title", "description", "directory", "area", "parent",
-             "archived_at", "refs", "writing", "boundary",
+             "archived_at", "refs", "writing", "boundary", "sources",
              "created_at", "updated_at", "overlays", "repos", "session_ref",
              "x-provider"]
 

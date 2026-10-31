@@ -7,7 +7,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { shiftDays, dayStart, dayTime, filterRows, formatDay, isoDate, logDays, logHours, logTopics, rangeDay, rangeEdges, rangeOneDay,
+import { areaLog, shiftDays, dayStart, dayTime, filterRows, formatDay, isoDate, logDays, logHours, logTopics, rangeDay, rangeEdges, rangeOneDay,
   rangeStep, repoBusy, repoRange, skipText, sparkOf, weekdayNames } from '../logic.js'
 import { T, language } from '../text.js'
 import { Marked, PageSearch } from './timeline.js'
@@ -23,7 +23,7 @@ const webOf = it => (it.link?.kind === 'web' ? it.link.href : /^https?:\/\//.tes
 /** The log sections of a page's main column and the rows they hold, the rows loaded after the first ones among them */
 function logRows(page, s) {
   return (page.sections ?? []).filter(sec => sec.view === 'log' && sec.place !== 'rail')
-    .flatMap(sec => s.more?.[`${page.id}/${sec.id}`]?.items ?? sec.items ?? [])
+    .flatMap(sec => areaLog(s, s.more?.[`${page.id}/${sec.id}`]?.items ?? sec.items ?? []))
 }
 
 /** The rows of a log (PageSection with `view: log`) under sticky hour heads: time, glyph, context and the text

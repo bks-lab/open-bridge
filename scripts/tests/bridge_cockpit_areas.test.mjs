@@ -941,3 +941,53 @@ test('delete asks a second click', async () => {
   el.$$('button').find(b => b.text() === 'Click again: deletes').click()
   assert.deepEqual(c.calls.at(-1), ['workspaceDelete', 'acme'])
 })
+
+// ---------------------------------------------------------------- what follows the area beyond Work, Chat and Sessions
+
+test('?ws= takes an area by its name, its workspace id or an alias, in any spelling', () => {
+  const s = { boot: { config: { areas: ['Acme', 'Home'] } }, workspaces: { items: [{ area: 'Acme', id: 'acme-corp' }] } }
+  assert.equal(logic.areaOfWord(s, 'acme'), 'Acme')
+  assert.equal(logic.areaOfWord(s, 'acme-corp'), 'Acme')
+  assert.equal(logic.areaOfWord(s, 'nowhere'), null)
+  assert.equal(logic.areaOfWord(s, ''), null)
+})
+
+test('a log tag stands in an area by its name, context or repo, with a star', () => {
+  logic.setAreaTags({ Acme: ['acme', 'acme-*', 'billing'] })
+  assert.equal(logic.tagInArea('Billing', 'Acme'), true)
+  assert.equal(logic.tagInArea('acme-web', 'Acme'), true)
+  assert.equal(logic.tagInArea('home', 'Acme'), false)
+  const s = { ui: { area: 'Acme' } }
+  assert.deepEqual(logic.areaLog(s, [{ group: 'acme-web' }, { group: 'home' }, {}]), [{ group: 'acme-web' }])
+  assert.equal(logic.areaLog({ ui: {} }, [{ group: 'home' }]).length, 1)
+  logic.setAreaTags({})
+})
+
+test('an area without tags keeps its log: nothing says which rows are its own', () => {
+  logic.setAreaTags({})
+  assert.equal(logic.areaLog({ ui: { area: 'Home' } }, [{ group: 'x' }]).length, 1)
+})
+
+test('dates follow the calendars of the workspace; none named means no filter, an empty list means none', () => {
+  const at = (area, calendars) => ({ ui: { area }, workspaces: { items: [{ area: 'Acme', calendars }] } })
+  const items = [{ cal: { calendar: 'Work' } }, { cal: { calendar: 'Family' } }]
+  assert.deepEqual(logic.areaDates(at('Acme', ['Work']), items).items.map(i => i.cal.calendar), ['Work'])
+  assert.equal(logic.areaDates(at('Acme', []), items).items.length, 0)
+  assert.equal(logic.areaDates(at('Acme', []), items).none, true)
+  assert.equal(logic.areaDates(at('Acme', null), items).items.length, 2)
+  assert.equal(logic.areaDates(at(null, ['Work']), items).items.length, 2)
+})
+
+test('costs take the cost center of the workspace', () => {
+  const s = { ui: { area: 'Acme' }, workspaces: { items: [{ area: 'Acme', cost_center: 'acme-cloud' }] } }
+  assert.equal(logic.areaCostCenter(s), 'acme-cloud')
+  assert.equal(logic.areaCostCenter({ ...s, ui: {} }), null)
+})
+
+test('the Work tab counts its area under a filter, without one the server\'s badge stands', () => {
+  const page = { id: 'briefing', badge: { kind: 'count', n: 9 }, sections: [{ weight: 1, rows: [{ area: 'Acme' }, { area: 'Home' }] }] }
+  const model = { pages: [page], sections: page.sections }
+  assert.deepEqual(logic.areaBadge({ ui: { area: 'Acme' }, model }, page), { kind: 'count', n: 1 })
+  assert.deepEqual(logic.areaBadge({ ui: {}, model }, page), page.badge)
+  assert.deepEqual(logic.areaBadge({ ui: { area: 'Nobody' }, model }, page), { kind: 'none' })
+})

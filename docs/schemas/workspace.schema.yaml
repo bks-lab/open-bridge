@@ -131,6 +131,19 @@ properties:
         type: string
         description: "How a record touching several workspaces is handled here."
 
+  sources:
+    type: object
+    additionalProperties: false
+    description: "Where the cockpit finds what belongs here beyond tasks, tabs and issues."
+    properties:
+      calendars:
+        type: array
+        items: {type: string}
+        description: "The calendars of this workspace by name. Absent: no filter. Empty: none of them."
+      cost_center:
+        type: string
+        description: "workflow/cost-centers/<id>.yaml, the project the cost card opens on."
+
   created_at:
     $ref: "#/$defs/Iso8601Utc"
     description: "Engine-stamped when the workspace is created."

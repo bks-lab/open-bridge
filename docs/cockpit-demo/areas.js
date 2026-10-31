@@ -151,6 +151,58 @@ export function restingIn(tabs, name) {
 // the order of the figures a pill of the area bar shows: the first one that is not 0
 const BAR_FIGS = ['waiting', 'overdue', 'running', 'review', 'tasks', 'resting']
 
+let TAGS = new Map()
+/** The tags of workplace.workspaces (boot, config.area_tags): what a log row's tag may say for an area */
+export function setAreaTags(map) {
+  TAGS = new Map(Object.entries(map ?? {}).map(([name, tags]) => [areaKey(name), (tags ?? []).map(t => String(t).toLowerCase())]))
+}
+
+const globbed = (word, pattern) => new RegExp(`^${pattern.split('*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(word)
+
+/** Does a log tag stand in an area? */
+export const tagInArea = (tag, area) => (TAGS.get(areaKey(area)) ?? []).some(p => globbed(String(tag ?? '').toLowerCase(), p))
+
+/** A page under the area filter that is no page of AREA_PAGES: its log, its dates or its cost card follow the area */
+export function pageFollowsArea(page) {
+  return !!page && ((page.sections ?? []).some(x => x.view === 'log' || (x.view === 'agenda' && x.kind === 'calendar')) || (page.cards ?? []).includes?.('costs'))
+}
+
+/** The area a word of ?ws= means: its name, an alias, or the id of its workspace; none: null */
+export function areaOfWord(s, word) {
+  const want = areaKey(word)
+  if (!want) return null
+  const byId = (s?.workspaces?.items ?? []).find(i => i.area && (i.id ?? '').toLowerCase() === want)
+  return byId?.area ?? (s?.boot?.config?.areas ?? []).find(a => areaKey(a) === want) ?? null
+}
+
+const itemOf = s => (s?.ui?.area ? (s.workspaces?.items ?? []).find(i => i.area && areaKey(i.area) === areaKey(s.ui.area)) : null)
+
+/** The log rows of the area; an area with no tags keeps them all, nothing says which are its own */
+export function areaLog(s, items) {
+  const area = s?.ui?.area
+  if (!area || !(TAGS.get(areaKey(area)) ?? []).length) return items
+  return (items ?? []).filter(it => tagInArea(it.group, area))
+}
+
+/** The dates of the area by the calendars its workspace names. None named: no filter. An empty list: none, and `none` says so */
+export function areaDates(s, items) {
+  const names = itemOf(s)?.calendars
+  if (!Array.isArray(names)) return { items, none: false }
+  return { items: (items ?? []).filter(it => names.includes(it.cal?.calendar)), none: !names.length }
+}
+
+/** The project the cost card opens on under an area */
+export const areaCostCenter = s => itemOf(s)?.cost_center ?? null
+
+/** A page's badge under the area filter: the counting rows of that area, else the server's */
+export function areaBadge(s, page) {
+  const area = s?.ui?.area
+  const counting = (page?.sections ?? []).filter(x => x.weight > 0 && Array.isArray(x.rows))
+  if (!area || !counting.length || page?.badge?.kind !== 'count') return page?.badge
+  const n = counting.reduce((sum, x) => sum + x.rows.filter(r => inProject(r, area)).length * x.weight, 0)
+  return n ? { kind: 'count', n } : { kind: 'none' }
+}
+
 /** The areas switched off on the settings page, as keys; an area may stand under an alias */
 export const areasOff = s => new Set((s?.workspaces?.off ?? []).map(areaKey))
 

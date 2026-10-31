@@ -7,7 +7,7 @@
 import { html, useEffect, useMemo, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T, language } from '../text.js'
 import { Btn, Chip, Icon, MarkChip, StateLine } from './parts.js'
-import { rowActionKey } from '../logic.js'
+import { areaDates, rowActionKey } from '../logic.js'
 
 const MODES = ['agenda', 'week', 'month']
 const MODE_KEY = 'cockpit.dates.mode'
@@ -272,8 +272,9 @@ function Month({ byDay, anchor, todayKey, onDay }) {
 }
 
 /** The agenda view of a calendar section: figures, filters, and the events by day, as a week or a month */
-export function DatesAgenda({ items, page, section, s, c }) {
+export function DatesAgenda({ items: every, page, section, s, c }) {
   const t = T()
+  const { items, none } = areaDates(s, every)
   const now = s.now || Date.now()
   const todayKey = dayKey(new Date(now))
   const [mode, setModeRaw] = useState(readMode)
@@ -323,6 +324,7 @@ export function DatesAgenda({ items, page, section, s, c }) {
     ? `${new Intl.DateTimeFormat(language(), { day: '2-digit', month: '2-digit' }).format(weekStart)} ${t.cal.to} ${new Intl.DateTimeFormat(language(), { day: '2-digit', month: '2-digit' }).format(addDays(weekStart, 6))}`
     : new Intl.DateTimeFormat(language(), { month: 'long', year: 'numeric' }).format(parseDay(monthAnchor))
   return html`<div class="cal">
+    ${none ? html`<p class="muted small">${t.cal.noneOfArea(s.ui.area)}</p>` : null}
     <${Figures} figures=${section.cal_figures} filter=${filter} setFilter=${setFilter} />
     <div class="cal-tools">
       <div class="ghb-mode" role="group" aria-label=${t.cal.viewLabel}>${modes.map(m => html`<button type="button" key=${m}

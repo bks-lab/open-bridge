@@ -638,6 +638,7 @@ const en = {
   },
   // the dates page as an agenda (views/dates.js): figures, filters, agenda, week and month
   cal: {
+    noneOfArea: a => `${a} names no calendar, so no dates show here.`,
     today: 'Today', tomorrow: 'Tomorrow', allDay: 'all day', to: 'to', running: 'now',
     min: m => `${m} min`, h: h => `${h} h`, hm: (h, m) => `${h} h ${m}`,
     figuresLabel: 'Figures of your dates',
@@ -2393,6 +2394,7 @@ const de = {
     bodyCut: 'Hier gekürzt, der Rest auf GitHub.', commentsTitle: (total, shown) => total > shown ? `Letzte ${shown} von ${total} Kommentaren` : `Kommentare (${total})`,
   },
   cal: {
+    noneOfArea: a => `${a} nennt keinen Kalender, deshalb stehen hier keine Termine.`,
     today: 'Heute', tomorrow: 'Morgen', allDay: 'ganztägig', to: 'bis', running: 'läuft',
     min: m => `${m} min`, h: h => `${h} h`, hm: (h, m) => `${h} h ${m}`,
     figuresLabel: 'Kennzahlen deiner Termine',

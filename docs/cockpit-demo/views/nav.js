@@ -3,7 +3,7 @@
 // fixed page ids.
 // The rules every component keeps stand at the head of components.js.
 
-import { FILES_PAGE, FLOW_PAGE, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, fieldsWall, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
+import { FILES_PAGE, FLOW_PAGE, areaBadge, checkInFlow, fieldsBeside, fieldsClose, fieldsDrop, fieldsHold, fieldsLayout, fieldsOf, fieldsPick, fieldsSwap, fieldsTopic, fieldsWall, filesOn, jobCounts, listedChats, reviewHome, roomToKeep, sessionsInFlow, subPageTile, walkRefs, wantsYou, workPageOf, workViewIn, workViewsIn } from '../logic.js'
 import { T } from '../text.js'
 
 // the Jev page's id; components.js loads the page itself only when Jev is switched on
@@ -219,12 +219,12 @@ export function folderPlaces(s, id) {
  *  page under it, so their alarm still shows on the one tab left. Upkeep of the workers never colours it */
 export function tabBadgeOf(s, page) {
   const subs = subPagesOf(s, page?.id)
-  if (!subs.length) return page?.badge
+  if (!subs.length) return areaBadge(s, page)
   const pages = s.model?.pages ?? []
   const badOf = p => (p?.badge?.kind === 'bad' ? p.badge.n : 0)
   const bad = badOf(page) + subs.reduce((n, id) => n + (id === WORKERS_PAGE ? jobCounts(s.workers?.data).failing
     : badOf(pages.find(p => p.id === id))), 0)
-  return bad > 0 ? { kind: 'bad', n: bad } : page.badge
+  return bad > 0 ? { kind: 'bad', n: bad } : areaBadge(s, page)
 }
 
 /** The badge beside a page's title: its tab's, but a sub page's plain "ok" only on a live all clear (an alarm

@@ -5,7 +5,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  formatDay, weekdayNames, tokenText, USAGE_SOURCES, stackBars, shownLabels, sparkPoints, moneyText, budgetBar, costBars,
+  areaCostCenter, formatDay, weekdayNames, tokenText, USAGE_SOURCES, stackBars, shownLabels, sparkPoints, moneyText, budgetBar, costBars,
   costDay, costTotals, costYesterday, costTone, costSources, costCenterChoices, costPersonaChoices, costCenterBudget, costScope, costMonths, clockTime, SERIES_REST, USAGE_RANGES, USAGE_DIMS, NO_BRIDGE, usageParts,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -160,7 +160,9 @@ export function CostCard({ page, s, c }) {
   const personas = data ? costPersonaChoices(data) : []
   const who = personas.includes(persona) ? persona : 'all'
   const choices = data ? costCenterChoices(data, who) : []
-  const what = choices.includes(center) ? center : 'all'
+  // under an area the card opens on the project its workspace names, a pick here still goes first
+  const held = areaCostCenter(s)
+  const what = choices.includes(center) && center !== 'all' ? center : choices.includes(held) ? held : 'all'
   const shown = data ? costScope(data, what, who) : data
   const budget = data ? costCenterBudget(data, what) : null
   const centerText = v => (v === 'all' ? t.costsCenterAll : v === 'none' ? t.costsCenterNone

@@ -70,16 +70,25 @@ leads nowhere.
 keeps the rows of the area (the folded ones and the hidden ones too), its
 page items and, in the tab column beside it, the area's tabs; the middle's
 headline counts what waits in the area (as its line on the overview does),
-while dates, status and tidying stay for all areas and say so; Chat the area's tabs (the control tab stays; `n` walks only
+while status and tidying stay for all areas and say so; Chat the area's tabs (the control tab stays; `n` walks only
 them), Sessions the sessions whose tab, else whose folder, is in the area,
 and the starts of its rows. A section counts what it shows; rows still to
 load say "(area filtered)". The keys act only on rows the page shows: a new
 filter empties the picks and lets go of a focus or an open row it hides. A
 bar over these pages, and over the start page's other views, names it
 ("Area: ACME ✕"); the ✕ shows every area again, and so does `Esc` once an
-open row or the picks are closed. The
-page tabs' badges and the header always count everything. On Work the same
+open row or the picks are closed. A page tab's count follows the filter, a tab's red
+findings and the rest of the header count everything. On Work the same
 bar carries the star "Only pinned", which keeps the rows you pinned.
+
+**Beyond Work, Chat and Sessions.** The address `?ws=<area or workspace id>` opens the
+cockpit under that filter. The log keeps the rows whose tag stands in the area: its name,
+an alias, a context or a repo of its `workplace.workspaces` entry, a star allowed; an area
+with none of these keeps every row. Dates follow `sources.calendars` of the area's workspace
+([`workspaces.md`](workspaces.md)): no such key, no filter; an empty list, no dates, and the
+page says so. The cost card opens on `sources.cost_center`. These pages carry the bar too.
+The filter stands in the browser only: it changes what the page shows, not what the server
+sends, and it keeps nothing from a session. That is the job of a workspace's `boundary`.
 
 **Switching an area off.** Settings, Workspaces lists every area with a switch, its rules
 in one line, and Archive and Delete for one with a file under `workflow/workspaces/`

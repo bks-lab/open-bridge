@@ -323,3 +323,25 @@ def test_an_engine_refusal_reaches_the_page_in_its_words(cockpit):
     with pytest.raises(ActionError) as raised:
         cockpit.act("workspace_delete", slug="home")
     assert "children: x" in raised.value.message
+
+
+def test_sources_are_inherited_and_reach_the_page(cockpit):
+    define(cockpit.root, "acme", area="Acme", sources={"calendars": ["Work"], "cost_center": "acme-cloud"})
+    define(cockpit.root, "acme-billing", parent="acme", area="Billing")
+    got = items(cockpit)
+    assert got["Acme"]["calendars"] == ["Work"]
+    assert (got["Billing"]["calendars"], got["Billing"]["cost_center"]) == (["Work"], "acme-cloud")
+    assert got["Home"]["calendars"] is None
+
+
+def test_the_tags_of_an_area_come_from_its_config(tmp_path):
+    cfg = """
+workplace:
+  workspaces:
+    - {name: Acme, aliases: [AC], contexts: [acme-ops], repos: ["org/acme-*", "org/billing"]}
+"""
+    w = World(tmp_path, config=cfg)
+    try:
+        assert dict(w.app.cfg.area_tags)["Acme"] == ("Acme", "AC", "acme-ops", "acme-*", "billing")
+    finally:
+        w.close()
