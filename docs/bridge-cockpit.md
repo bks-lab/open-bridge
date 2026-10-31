@@ -3190,6 +3190,40 @@ use it until it ends. That needs a program running on your computer, which
 could also read the key in `token`; stop the dashboard (`bridge-cockpit.py stop`) when
 you test web code you do not trust on this computer.
 
+### A person on a workspace
+
+The owner logs in with the key and sees everything. A person named under `members:`
+of a workspace ([`workspaces.md`](workspaces.md#members)) is logged in with
+`python3 scripts/bridge-cockpit.py url --person <name>`, a link good once for a
+minute, and from then on carries a cookie of their own with its own request token.
+The server still answers on `127.0.0.1` only; this is the first half of opening a
+cockpit to others, not a way in from outside.
+
+For a person the rule runs the other way round from the owner's page: nothing goes
+out unless `scripts/lib/bridge_cockpit/access.py` lists it.
+
+- **Routes and verbs:** the state, the live channel, a task and an inbox item they can
+  see, and the verbs that move their own rows. Every other route and verb answers 403.
+- **Rows:** a row shows when every area it names is one of theirs. A row without an
+  area, or with one of theirs and another, stays out.
+- **Fields:** the state and the model are rebuilt from a list, and everything else is
+  the empty shape the page knows: no sessions, tabs, agents, relay, notes, costs,
+  usage, pages, calendar or paths of the machine. Events other than the model, the
+  workspaces and the loading state do not reach their page.
+- **Opening and changing:** only what the cut model lists. A verb naming any other row
+  answers 403 before anything runs.
+- **Questions to a model are closed** (403). Started from the Bridge's root a model
+  reads the whole Bridge, so this waits for a read view of their own.
+
+The workspaces are read on every call: taking a name off a list works at once, and a
+workspace that rests, is archived or cannot be read gives nothing. A route, verb, event
+or field added later counts as closed, and `test_bridge_cockpit_access.py` fails until
+it is classified. It also walks every route and event with a marker planted in the
+other area.
+
+This holds inside the cockpit. All of it runs as one user of the machine, so it is no
+wall against a fault in the server itself: that is the `wall` level of a workspace.
+
 ## 5. Asking Claude: the relay
 
 "Ask Claude", "Follow up" and the free question need a model. There are no

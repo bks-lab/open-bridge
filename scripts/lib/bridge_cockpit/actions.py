@@ -463,12 +463,16 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
 
     # ------------------------------------------------------------ entry point
 
-    def execute(self, verb: Any, args: Any) -> dict:
+    def execute(self, verb: Any, args: Any, viewer: str | None = None) -> dict:
+        if viewer is not None:          # a person: the verb is theirs before anything about it is said
+            self.app.access.verb_ok(verb)
         # the verbs of Work through's round 3 answer flow_off while the page is off, before their arguments are read:
         # a 400 for a bad argument would say the verb is there
         if verb in FLOW_OFF_FIRST and not act.flow_on(self.app):
             raise ActionError(409, "flow_off", act.TEXT[act._lang(self.app)]["off"])
         clean = self.validate(verb, args)
+        if viewer is not None:
+            self.app.access.check(viewer, verb, clean)
         if verb in CMUX_VERBS and not self.app.runner.cmux:
             raise ActionError(503, "cmux_unavailable", "the cmux CLI is not available")
         if verb in NEEDS_CAP and NEEDS_CAP[verb] not in self.app.driver_caps():

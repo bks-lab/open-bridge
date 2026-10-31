@@ -6,7 +6,7 @@ tabs and sessions, workers, machines, tokens).
     python3 scripts/bridge-cockpit.py serve [--port N] [--ignore-disabled]   # foreground
     python3 scripts/bridge-cockpit.py start [--port N] [--json]              # in the background, reused
     python3 scripts/bridge-cockpit.py open [--via auto|cmux|system|none] [--json]   # start, then open the page
-    python3 scripts/bridge-cockpit.py url                                    # a login link, good once for a minute
+    python3 scripts/bridge-cockpit.py url [--person NAME]                    # a login link, good once for a minute
     python3 scripts/bridge-cockpit.py status [--json]
     python3 scripts/bridge-cockpit.py stop
     python3 scripts/bridge-cockpit.py autostart on|off|status                # macOS: run from login on, always there
@@ -137,10 +137,11 @@ def read_key(state_dir: Path) -> str:
     return value
 
 
-def link(info: dict, state_dir: Path) -> str:
-    """A login link: a code made from the key, good once and for a minute, never the key itself."""
+def link(info: dict, state_dir: Path, person: str | None = None) -> str:
+    """A login link: a code made from the key, good once and for a minute, never the key itself. With a person it
+    logs that person in, who sees only the workspaces naming them under members: (access.py)."""
     from lib.bridge_cockpit.server import login_code
-    return f"http://127.0.0.1:{info['port']}/?code={login_code(read_key(state_dir), time.time() * 1000)}"
+    return f"http://127.0.0.1:{info['port']}/?code={login_code(read_key(state_dir), time.time() * 1000, person=person)}"
 
 
 def plain(port: int) -> str:
@@ -316,7 +317,13 @@ def cmd_url(args, root: Path, state_dir: Path) -> int:
     if not info:
         print("bridge-cockpit: not running", file=sys.stderr)
         return 1
-    print(link(info, state_dir))
+    person = getattr(args, "person", None)
+    if person is not None:
+        from lib.bridge_cockpit.access import PERSON_RE
+        if not PERSON_RE.match(person):
+            print("bridge-cockpit: not a person's name", file=sys.stderr)
+            return 2
+    print(link(info, state_dir, person))
     return 0
 
 
@@ -490,7 +497,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("open", help="start, then open the page")
     p.add_argument("--via", choices=["auto", "cmux", "system", "none"], default=None)
     p.add_argument("--json", action="store_true")
-    sub.add_parser("url", help="print a login link (a one-time code, good for a minute)")
+    p = sub.add_parser("url", help="print a login link (a one-time code, good for a minute)")
+    p.add_argument("--person", default=None, help="log in this person from members: of a workspace, not the owner")
     p = sub.add_parser("status", help="is it running")
     p.add_argument("--json", action="store_true")
     sub.add_parser("stop", help="stop the server")
