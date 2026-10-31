@@ -10,7 +10,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { RANGE_PRESETS, shiftDays, chartGeometry, clockTime, dayStart, dayTime, isoDate, logRangeRows, logTodayRows,
   niceMax, rangeCounts, rangeDay, rangeEdges, rangeOf, rangeOneDay, rangeSlice, rangeStep, rangeStepAuto, rangeSteps,
-  rangeTicks, shortDay } from '../logic.js'
+  rangeTicks, shortDay, areaLog } from '../logic.js'
 import { T, language } from '../text.js'
 
 /** The kinds the chart of Every day stacks, bottom up, each with its colour token */
@@ -96,6 +96,7 @@ export function rangeView(page, s, state) {
   } else {
     asc = logTodayRows(s.more?.[`${page.id}/${log?.id}`]?.items ?? log?.items ?? [], now)
   }
+  asc = areaLog(s, asc)
   // compact: the rows came from the range's answer without their text (they carry an id), not from the section
   return { cur, asc, rows: rangeSlice(asc, cur.from, cur.to), first, repos: data?.repos ?? null, held, want, now,
     compact: asc.length > 0 && asc[0].id != null }

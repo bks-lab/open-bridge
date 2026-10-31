@@ -11,6 +11,7 @@ import {
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
   cardPlan, moneyText, costBoard, itemRow, ghFiltered, ghMyLogin,
+  areaLog,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -499,7 +500,7 @@ export function PageSection({ page, section, s, c, q = '', topic = null }) {
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
   else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} s=${s} steps=${section.steps ?? 'menu'} />`
   else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
-  else if (section.view === 'log') body = html`<${LogRows} items=${items} page=${page.id} section=${section.id} c=${c} words=${words} />`
+  else if (section.view === 'log') body = html`<${LogRows} items=${areaLog(s, items)} page=${page.id} section=${section.id} c=${c} words=${words} />`
   else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} whole=${!!words} />`
   // a github-work section on its board view: the GitHub list (views/github.js), not the general table
   else if (section.view === 'board' && gh) body = html`<${GitHubList} items=${items} page=${page.id} section=${section} s=${s} c=${c} byKey=${byKey} filter=${ghFilter} setFilter=${setGhFilter} me=${ghMyLogin(all)} />`

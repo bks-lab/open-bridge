@@ -39,6 +39,8 @@ description: "One-line purpose of this workspace."   # optional
 #   shared_repos: []
 #   mixed_records: ask
 
+# sources: {calendars: [Demo], cost_center: demo}   # calendars absent: no filter, empty: none
+
 # created_at / updated_at are engine-stamped on create + every mutation —
 # do not hand-set them.
 

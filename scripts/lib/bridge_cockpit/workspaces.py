@@ -88,6 +88,7 @@ class Workspaces:
                 "children": row.get("children") or [], "archived": bool(row.get("archived")),
                 "level": (row.get("boundary") or {}).get("level"), "style": (row.get("writing") or {}).get("style_skill"),
                 "mail": (row.get("writing") or {}).get("mail_profile"), "persona": (row.get("refs") or {}).get("persona"),
+                "calendars": (row.get("sources") or {}).get("calendars"), "cost_center": (row.get("sources") or {}).get("cost_center"),
                 "on": key_of(area) not in off, "held_by": held}
 
     def switch(self, area: str, on: bool) -> bool:

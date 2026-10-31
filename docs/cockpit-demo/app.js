@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
-  upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, areasOff, areaKey, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
@@ -26,6 +26,8 @@ const params = new URLSearchParams(window.location.search)
 const MOCK = params.get('mock') === '1'
 // ?theme=light|dark forces the mode for this load and is never saved (the website demo); theme.js does the same
 const THEME_OVERRIDE = themeOverride(window.location.search)
+// ?ws=<area or workspace id> opens the cockpit filtered to it, once, when the first state came
+let wsWord = params.get('ws')
 
 // ---------------------------------------------------------------- storage (per viewer, optional)
 
@@ -416,6 +418,11 @@ function applyState(payload) {
   fixPage()
   offerTour()
   if (!bootSeen && payload.model) pageSeen(store.get().ui.page)
+  if (wsWord) {
+    const area = areaOfWord(store.get(), wsWord)
+    wsWord = null
+    if (area) ctl.setArea(area)
+  }
 }
 
 let workOffer = true   // a visit takes the work tab's view from the config once, on its first state with one
@@ -2170,6 +2177,7 @@ async function boot() {
   api.setCsrf(b.data.csrf)
   // the aliases of workplace.workspaces: a tab or a row under an alias stands in its area (areas.js)
   setAreaAliases(b.data.config?.area_aliases)
+  setAreaTags(b.data.config?.area_tags)
   setLanguage(b.data.language)
   setControl(b.data.config?.control)
   document.documentElement.lang = language()

@@ -94,6 +94,8 @@ class WebConfig:
     area_repos: tuple = ()
     # (alias, name) for every alias of workplace.workspaces: the page folds a tab's or a row's name into its area
     area_aliases: tuple = ()
+    # (name, tags) per area: the log follows the area by these (areas.js tagInArea)
+    area_tags: tuple = ()
     # Jev (TypeSafe): off unless integrations.typesafe.enabled; the key only ever as a keychain reference
     jev_enabled: bool = False
     jev_key_ref: str | None = None
@@ -688,6 +690,20 @@ def _aliases(ws: dict) -> tuple:
     return tuple(a.strip() for a in raw if isinstance(a, str) and a.strip()) if isinstance(raw, list) else ()
 
 
+def area_tags_of(spaces: Any) -> tuple:
+    """(name, tags) per named workspace: what a log row's tag may say for it, its name, aliases, contexts and repos
+    (the part after the owner, a star kept)."""
+    out = []
+    for ws in spaces if isinstance(spaces, list) else ():
+        name = ws.get("name") if isinstance(ws, dict) else None
+        if not isinstance(name, str) or not name.strip():
+            continue
+        contexts = [c for c in ws.get("contexts") or () if isinstance(c, str) and c.strip()]
+        repos = [r.split("/")[-1] for r in ws.get("repos") or () if isinstance(r, str) and r.strip()]
+        out.append((name.strip(), (name.strip(), *_aliases(ws), *contexts, *repos)))
+    return tuple(out)
+
+
 def area_aliases_of(spaces: Any) -> tuple:
     """(alias, name) for every alias of every named workspace, in their order."""
     return tuple((alias, ws["name"].strip()) for ws in (spaces if isinstance(spaces, list) else ())
@@ -735,6 +751,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     areas = tuple(dict.fromkeys(n.strip() for n in names if isinstance(n, str) and n.strip()))
     area_repos = area_repos_of(_dict(raw.get("workplace")).get("workspaces"))
     area_aliases = area_aliases_of(_dict(raw.get("workplace")).get("workspaces"))
+    area_tags = area_tags_of(_dict(raw.get("workplace")).get("workspaces"))
 
     ts = _dict(_dict(raw.get("integrations")).get("typesafe"))
     ref = ts.get("key_ref")
@@ -755,7 +772,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
 
     cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
-                    voice=voice, target=target, control=control, areas=areas, area_repos=area_repos, area_aliases=area_aliases, jev_enabled=ts.get("enabled") is True,
+                    voice=voice, target=target, control=control, areas=areas, area_repos=area_repos, area_aliases=area_aliases, area_tags=area_tags, jev_enabled=ts.get("enabled") is True,
                     jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),
                     jev_person=text_or_none(ts.get("person"), 300), jev_criteria=jev_criteria_of(ts.get("criteria")),
                     jev_model=jev_model, launch_model=launch_model, ticker=tk.ticker_of(w.get("ticker")),

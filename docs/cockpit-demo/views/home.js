@@ -8,7 +8,7 @@ import {
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
-  flowAreas, flowOn, startWaiting, withoutOff,
+  flowAreas, flowOn, startWaiting, withoutOff, pageFollowsArea,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -629,7 +629,8 @@ export function AreaBar({ s, c }) {
   // on the start page the bar names the area its views show; the overview has no filter (its names jump)
   const chosen = homeChosen(s.model, s.home)
   const start = page === START_PAGE && (homeView(chosen) !== 'areas' || chosen.some(id => id.startsWith('d:')))
-  if (!AREA_PAGES.has(page) && !start) return null
+  const follows = pageFollowsArea((s.model?.pages ?? []).find(p => p.id === page))
+  if (!AREA_PAGES.has(page) && !start && !(follows && s.ui.area)) return null
   // the star of Work acts in the files tab too (areas.js areaScope), so its chip stands there as well
   const work = (page === 'briefing' && workViewNow(s) !== 'flow') || page === '@files'
   const pins = s.home?.pins ?? []
