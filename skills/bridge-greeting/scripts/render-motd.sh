@@ -469,11 +469,10 @@ show_claude_usage() {
   local data
   data=$(<"$CLAUDE_CACHE")
 
-  local week_pct five_pct reset_at
-  read -r week_pct five_pct reset_at < <(
+  local week_pct reset_at
+  read -r week_pct reset_at < <(
     echo "$data" | jq -r '[
       (.seven_day.utilization // empty | tostring | split(".")[0]),
-      (.five_hour.utilization // empty | tostring | split(".")[0]),
       (.seven_day.resets_at // empty)
     ] | join(" ")' 2>/dev/null
   )
@@ -527,7 +526,7 @@ except:
   printf "┐${RESET}\n"
 
   # Shared label width for alignment
-  local lbl_w=9  # "5h window" is longest at 9 chars
+  local lbl_w=9
 
   # Week usage line
   local pct_str
@@ -541,37 +540,6 @@ except:
   anim_sleep 0.04
   printf "  ${DIM}│${RESET} ${DIM}%s${RESET} ${color}%s${RESET} ${BOLD}%s${RESET}%*s ${DIM}│${RESET}\n" \
     "$label" "$bar" "$pct_str" "$pad" ""
-
-  # 5h window line
-  if [[ -n "$five_pct" && "$five_pct" != "null" ]]; then
-    local five_str
-    printf -v five_str "%3d%%" "$five_pct"
-    local five_label
-    printf -v five_label "%-${lbl_w}s" "5h window"
-    local five_filled=$(( five_pct * bar_width / 100 ))
-    (( five_filled > bar_width )) && five_filled=$bar_width
-    local five_empty=$(( bar_width - five_filled ))
-
-    local five_bar=""
-    local five_color="$BRAND_PRIMARY"
-    if (( five_pct >= 80 )); then
-      five_color="$RED"
-    elif (( five_pct >= 50 )); then
-      five_color='\033[38;2;255;165;0m'
-    fi
-
-    printf -v five_bar '%*s' "$five_filled" ''; five_bar=${five_bar// /█}
-    local five_frac=$(( (five_pct * bar_width) % 100 ))
-    if (( five_frac >= 50 && five_filled < bar_width )); then
-      five_bar+="▌"
-      five_empty=$(( five_empty - 1 ))
-    fi
-    printf -v five_pad '%*s' "$five_empty" ''; five_bar+="$five_pad"
-
-    anim_sleep 0.04
-    printf "  ${DIM}│${RESET} ${DIM}%s${RESET} ${five_color}%s${RESET} ${BOLD}%s${RESET}%*s ${DIM}│${RESET}\n" \
-      "$five_label" "$five_bar" "$five_str" "$pad" ""
-  fi
 
   # Reset date line
   if [[ -n "$reset_str" ]]; then
