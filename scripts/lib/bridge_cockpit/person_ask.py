@@ -42,8 +42,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import jev, quick
+from . import quick
 from .actions_base import ActionError
+from .config import parse_keychain_ref
 from .text import TABLES
 
 MODELS = ("haiku", "sonnet")
@@ -86,7 +87,7 @@ def settings_problem(block: Any) -> str | None:
     path = block.get("claude")
     if path is not None and not (isinstance(path, str) and path.startswith("/") and ".." not in path.split("/")):
         return "claude must be an absolute path"
-    if ref and jev.parse_keychain_ref(ref) is None:
+    if ref and parse_keychain_ref(ref) is None:
         return "key_ref must be keychain://<service>/<account>"
     if env and not (isinstance(env, str) and ENV_RE.match(env)):
         return "key_env must name an environment variable"
@@ -250,10 +251,15 @@ class PersonAsk:
             return None
         if got.key_env:
             return (os.environ.get(got.key_env) or "").strip() or None
-        try:
-            return jev.resolve_key(environ={}, ref=got.key_ref)
-        except jev.JevError:
+        found = parse_keychain_ref(got.key_ref)
+        if found is None:
             return None
+        try:
+            res = subprocess.run(["/usr/bin/security", "find-generic-password", "-s", found[0], "-a", found[1], "-w"],
+                                 capture_output=True, text=True, timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return (res.stdout.strip() or None) if res.returncode == 0 else None
 
     def available(self, person: str) -> bool:
         got = self.settings

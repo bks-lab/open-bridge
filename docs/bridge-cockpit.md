@@ -3566,6 +3566,7 @@ share or clean up.
 | `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |
 | `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
+| `people/<name>/chats.json` | a person's chats, day count and session ids, with their reading folder `room` beside it; `documents/` and `pdf-words/` beside `people/` hold the mirror of `sources.documents` | yes: a person's chats |
 | `chats/` | every chat and agent conversation that left its list, whole, one file a month (`quick-YYYY-MM.jsonl`, `agents-YYYY-MM.jsonl`), never deleted (folder and files readable by you only) | yes: the chats |
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
