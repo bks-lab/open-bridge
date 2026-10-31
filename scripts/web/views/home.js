@@ -8,7 +8,7 @@ import {
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
-  flowAreas, flowOn, startWaiting,
+  flowAreas, flowOn, startWaiting, withoutOff,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
@@ -483,9 +483,12 @@ function areasAll(areas, name) {
 /** The areas of the start page and their line All: with Work through on what it shows under each area (flow.js
  *  flowAreas, All counted once), else the start page's own count (homeAreas, All their sum) */
 function startAreas(s, allName) {
-  if (flowOn(s)) return flowAreas(s)
+  if (flowOn(s)) {
+    const flow = flowAreas(s)
+    return { ...flow, areas: withoutOff(s, flow.areas) }
+  }
   const areas = homeAreas(s.tabs?.tabs ?? [], s.model?.sections, returnsOf(s), s.now || Date.now())
-  return { areas, all: areasAll(areas, allName) }
+  return { areas: withoutOff(s, areas), all: areasAll(areas, allName) }
 }
 
 /** One line of the areas: the name, then the numbers, each a jump to the page that holds those things
@@ -677,7 +680,7 @@ function HomeBoard({ s, c }) {
   const rowsOf = id => (s.model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const waitingAll = rowsOf('now')
   const tasksAll = rowsOf('work').filter(r => r.task)
-  const projects = homeProjects(tabs, [...waitingAll, ...tasksAll])
+  const projects = withoutOff(s, homeProjects(tabs, [...waitingAll, ...tasksAll]))
   const catalog = homeCatalog(s.model, { workers: s.workers?.status !== 'none' })
   const chosen = homeChosen(s.model, s.home)
   const on = new Set(chosen)

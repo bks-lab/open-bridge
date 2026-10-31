@@ -7,7 +7,7 @@ import {
   duration, indexRows, jobCounts, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
   asksYou, countInProject, startWaiting, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
   MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey,
-  itemRow, workPageOf, statusSplit, areaBar, areaBarTitle, areaJump,
+  itemRow, workPageOf, statusSplit, areaBar, areaBarTitle, areaJump, withoutOff,
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
@@ -505,7 +505,7 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
 function AreaPills({ s, c, areas }) {
   const h = T().home
   const [open, setOpen] = useState(false)
-  const { pills, quiet } = areaBar(areas, s.boot?.config?.areas ?? [])
+  const { pills, quiet } = areaBar(areas, withoutOff(s, s.boot?.config?.areas ?? []))
   const want = String(s.ui.area ?? '').trim().toLowerCase()
   const isOn = name => !!want && String(name).trim().toLowerCase() === want
   const fig = p => (p.fig.kind === 'waiting'

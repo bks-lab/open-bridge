@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's areas: the project chips, the Areas lines of the start page and their numbers, where each number leads, the one area filter over Work, Chat and Sessions, and why a tab gone idle is finished rather than waiting on you."
 type: guide
-last_updated: 2026-10-29
+last_updated: 2026-10-31
 related:
   - bridge-cockpit.md
   - cockpit-files.md
@@ -80,6 +80,16 @@ bar over these pages, and over the start page's other views, names it
 open row or the picks are closed. The
 page tabs' badges and the header always count everything. On Work the same
 bar carries the star "Only pinned", which keeps the rows you pinned.
+
+**Switching an area off.** Settings, Workspaces lists every area with a switch, its rules
+in one line, and Archive and Delete for one with a file under `workflow/workspaces/`
+([`workspaces.md`](workspaces.md)). Off takes the area out of the bar, the chips and the
+shelf; nothing is deleted, background runs go on, and the line All still counts it. The
+switch is kept in `.bridge/cockpit/workspaces.json`, so it holds in every browser and makes
+no commit. An archived workspace counts as off, and so does the child of one that is off,
+whose switch is then held. Delete wants a second click and is refused while a tab of the
+area is open, a child stands, or a clone holds unsaved work. It removes the file, not the
+area, which stays in `workplace.workspaces`, and it never touches tasks or records.
 
 A tab that went idle is finished, not waiting on you (its badge reads "done", and the header's Tabs button does not count it): the
 walk through the tabs skips it, and By status lists it under "Finished, to

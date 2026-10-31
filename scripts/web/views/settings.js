@@ -15,10 +15,11 @@ import { catalogLabel } from './home.js'
 import { Btn, Chip, Empty, Icon, StateLine, useRoving } from './parts.js'
 import { GuideSettings } from './guide.js'
 import { TickerSettings } from './ticker.js'
+import { WorkspaceSettings } from './workspaces.js'
 import { BoardSettings } from './github.js'
 import { PageSection } from './pages.js'
 
-const SECTIONS = ['setup', 'start', 'look', 'launch', 'ticker', 'guide', 'boards']
+const SECTIONS = ['setup', 'start', 'look', 'workspaces', 'launch', 'ticker', 'guide', 'boards']
 const STATION_KINDS = ['quota', 'count', 'page']
 
 // ---------------------------------------------------------------- the parts every area uses
@@ -484,8 +485,8 @@ function sectionsOf(s) {
 }
 
 // the news ticker on the start page: its own group from views/ticker.js
-const AREAS = { setup: SetupArea, start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings }
-const AREA_ICONS = { setup: 'bulb', start: 'home', look: 'sun', launch: 'spark', ticker: 'bell', guide: 'chat', boards: 'sliders' }
+const AREAS = { setup: SetupArea, start: StartArea, look: LookArea, workspaces: WorkspaceSettings, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings }
+const AREA_ICONS = { setup: 'bulb', start: 'home', look: 'sun', workspaces: 'sliders', launch: 'spark', ticker: 'bell', guide: 'chat', boards: 'sliders' }
 
 /** The page: the areas as a list on the left (a row of buttons on a narrow screen), the one chosen beside it */
 export function SettingsPage({ s, c }) {

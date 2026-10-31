@@ -3472,6 +3472,7 @@ share or clean up.
 | `tabs-seen.json` | since when each agent tab is in its state, so how long a tab has waited survives a restart of the server | no: tab ids and times only |
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
 | `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |
+| `workspaces.json` | the areas switched off on the settings page (`{"off": [names]}`) | no |
 | `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |
 | `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |

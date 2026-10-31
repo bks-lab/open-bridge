@@ -2,7 +2,7 @@
 """Subprocess runner of the cockpit: one program allowlist, timeouts, a clean env.
 
 Every script call of the server goes through `Runner.run`. Before a process starts,
-`check` refuses any argv that is not one of the eight Bridge scripts of SCRIPT_PATHS (run
+`check` refuses any argv that is not one of the Bridge scripts of SCRIPT_PATHS (run
 with this interpreter) or one of the exact shapes below it lets through: an A2A ask, a quick
 question, codex read-only, the Haiku judge, organize, describe, the themes of Work through, the summary of
 a point's activity and the instruction line, Prio's read-in with Haiku, the files tab's question to its records, the two git logs the activity reads, and ps for one
@@ -39,7 +39,7 @@ from .quick import argv_ok, resolve_claude
 from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
 
 CMUX_APP = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-SCRIPT_PATHS = ("scripts/briefing.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
+SCRIPT_PATHS = ("scripts/briefing.py", "scripts/workspace.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
                 "scripts/bridge-resources.py", "scripts/triage.py", "scripts/work-find.py",
                 "skills/cmux/scripts/cmux_layout.py", "skills/github-projects-manager/scripts/issue_transition.py")
 

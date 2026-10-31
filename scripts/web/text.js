@@ -698,6 +698,7 @@ const en = {
       launch: { title: 'Model choice', sub: 'What an agent tab starts with' },
       ticker: { title: 'News ticker', sub: 'Feeds, selection, interests, Haiku as editor' },
       guide: { title: 'Decision guide', sub: 'Haiku reads waiting sessions and offers next steps' },
+      workspaces: { title: 'Workspaces', sub: 'Which areas show, and the rules they hold to' },
       boards: { title: 'GitHub boards', sub: 'Which boards are asked, and with what' },
     },
     everywhere: 'holds in every browser',
@@ -1165,6 +1166,13 @@ const en = {
       help: { title: 'Help and settings', body: 'Help, the ? on the right, starts Explain: notes over any page on what each part is for. It also holds the marks, keys and costs to look up, and this tour. Settings stands at the end of the tabs, behind More when the bar is full.' },
       done: { title: 'You are set', body: 'That was the tour. The cockpit is an early version and keeps growing: what you miss, tell your Bridge in the chat.' },
     },
+  },
+  workspaces: {
+    title: 'Workspaces', intro: 'Off takes an area out of the bar and the overview. Nothing is deleted, background runs go on, and All still shows it.',
+    noFile: 'A filter, no rules of its own yet', level: { view: 'View', room: 'Room', wall: 'Wall' },
+    mailProfile: p => `mail ${p}`, persona: p => `as ${p}`, heldBy: p => `Off with ${p}`,
+    switchLabel: n => `Show ${n}`, archive: 'Archive', delete: 'Delete', deleteAgain: 'Click again: deletes', restore: 'Restore',
+    archived: 'Archived', archivedIntro: 'Set aside: the file stays, the area does not show.', archivedMark: 'archived',
   },
   guide: {
     title: 'Decision guide',
@@ -2445,6 +2453,7 @@ const de = {
       launch: { title: 'Modellwahl', sub: 'Womit ein Agenten-Tab startet' },
       ticker: { title: 'Nachrichtenband', sub: 'Feeds, Auswahl, Interessen, Haiku als Redakteur' },
       guide: { title: 'Entscheidungshilfe', sub: 'Haiku liest wartende Sitzungen und bietet nächste Schritte an' },
+      workspaces: { title: 'Workspaces', sub: 'Welche Bereiche erscheinen, und ihre Regeln' },
       boards: { title: 'GitHub-Boards', sub: 'Welche Boards abgefragt werden, und wie' },
     },
     everywhere: 'gilt in jedem Browser',
@@ -2900,6 +2909,13 @@ const de = {
       help: { title: 'Hilfe und Einstellungen', body: 'Die Hilfe, das ? rechts, startet Erklären: Notizen über jeder Seite, wofür jeder Teil da ist. Darin stehen auch Zeichen, Tasten und Kosten zum Nachschlagen und diese Einführung. Die Einstellungen stehen am Ende der Reiter, hinter Mehr, wenn die Leiste voll ist.' },
       done: { title: 'Alles bereit', body: 'Das war die Einführung. Das Cockpit ist eine frühe Version und wächst weiter: was dir fehlt, sag deiner Bridge im Chat.' },
     },
+  },
+  workspaces: {
+    title: 'Workspaces', intro: 'Aus nimmt einen Bereich aus der Leiste und der Übersicht. Gelöscht wird nichts, Hintergrundläufe laufen weiter, unter Alle bleibt er sichtbar.',
+    noFile: 'Ein Filter, noch ohne eigene Regeln', level: { view: 'Sicht', room: 'Raum', wall: 'Wand' },
+    mailProfile: p => `Mail ${p}`, persona: p => `als ${p}`, heldBy: p => `Aus zusammen mit ${p}`,
+    switchLabel: n => `${n} anzeigen`, archive: 'Archivieren', delete: 'Löschen', deleteAgain: 'Nochmal klicken: löscht', restore: 'Zurückholen',
+    archived: 'Archiviert', archivedIntro: 'Beiseitegelegt: die Datei bleibt, der Bereich erscheint nicht.', archivedMark: 'archiviert',
   },
   guide: {
     title: 'Entscheidungshilfe',

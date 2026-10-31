@@ -151,6 +151,16 @@ export function restingIn(tabs, name) {
 // the order of the figures a pill of the area bar shows: the first one that is not 0
 const BAR_FIGS = ['waiting', 'overdue', 'running', 'review', 'tasks', 'resting']
 
+/** The areas switched off on the settings page, as keys; an area may stand under an alias */
+export const areasOff = s => new Set((s?.workspaces?.off ?? []).map(areaKey))
+
+/** Lines or names without the areas switched off; the line "No area" stays */
+export function withoutOff(s, list) {
+  const off = areasOff(s)
+  if (!off.size) return list ?? []
+  return (list ?? []).filter(a => (typeof a === 'string' ? !off.has(areaKey(a)) : a.none || !off.has(areaKey(a.name))))
+}
+
 /** The bar of areas on the stage: a pill per area line (homeAreas, flowAreas) with one figure, what waits on you,
  *  else what is at work, else the tasks, else the tabs at rest; what waits first, then what works, then the most
  *  open, the line "No area" last; a line with no figure above 0 makes no pill. `configured` (workplace.workspaces)

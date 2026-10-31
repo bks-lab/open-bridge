@@ -52,6 +52,7 @@ from .daybook import DayBook
 from .returns import Launches
 from .launch import LaunchError, LaunchModel
 from .ticker import Ticker
+from .workspaces import Workspaces
 from .graph import Graph
 from .config import WORK_VIEWS, WebConfig, flow_defaults, load_web_config
 from .relay import Relay, default_key_dir, load_key
@@ -250,6 +251,7 @@ class App:
         self.actions = Actions(self)
         self.launch_model = LaunchModel(self)         # the model an agent starts with (launch.py)
         self.ticker = Ticker(self)                     # the news ticker of the start page (ticker.py)
+        self.workspaces = Workspaces(self)             # the switches of the settings page (workspaces.py)
         self.guide = Guide(self)                       # the decision guide of waiting tabs (guide.py)
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
@@ -452,6 +454,7 @@ class App:
                 # Prio's second ranker: whether Haiku can read in, its runs left today, the fallback (prio.py)
                 "prio": prio.state(self),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
+                "workspaces": self.workspaces.state(),
                 "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(),
                 # the model calls of the Activity tab and the instruction line: the runs left today (activity.py)
                 "flow_ai": self.activity.flow_ai(),
