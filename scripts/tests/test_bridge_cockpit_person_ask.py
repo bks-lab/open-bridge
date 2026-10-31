@@ -320,7 +320,7 @@ def test_a_wrong_block_stops_the_start(block, word):
 def test_a_good_block_reads():
     got = cf.served_ask_of({"ask": {"auth": "key", "key_ref": "keychain://a/b", "model": "sonnet", "daily_questions": 5}})
     assert got.key_ref == "keychain://a/b" and got.model == "sonnet" and got.daily_questions == 5
-    assert cf.served_ask_of({"ask": {}}).auth == "login"
+    assert cf.served_ask_of({"ask": {"people": ["pat"]}}).auth == "login"
     assert cf.served_ask_of({}) is None and cf.served_ask_of(None) is None
 
 
@@ -490,3 +490,22 @@ def test_a_wide_pattern_is_refused(path):
 def test_a_narrow_pattern_passes(path):
     from lib import document_paths as dp
     assert dp.problem(path) is None
+
+
+def test_only_the_named_people_may_ask(asked):
+    asked.app.cfg = dataclasses.replace(asked.app.cfg, served_ask=dataclasses.replace(asked.app.cfg.served_ask, people=["sam"]))
+    assert status_of(question(asked)) == 403
+    asked.app.cfg = dataclasses.replace(asked.app.cfg, served_ask=dataclasses.replace(asked.app.cfg.served_ask, people=["pat"]))
+    assert status_of(question(asked)) == 202
+
+
+@pytest.mark.parametrize("block,word", [
+    ({"auth": "login"}, "people"), ({"auth": "login", "people": []}, "people"), ({"people": "pat"}, "people"),
+    ({"auth": "login", "people": ["pat", "sam"]}, "one")])
+def test_a_login_belongs_to_one_named_person(block, word):
+    problem = pa.settings_problem(block)
+    assert problem and word in problem
+
+
+def test_a_login_for_its_owner_is_fine():
+    assert pa.settings_problem({"auth": "login", "people": ["pat"]}) is None

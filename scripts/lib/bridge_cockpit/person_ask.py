@@ -69,6 +69,7 @@ class Settings:
     claude: str | None = None       # the absolute path of the CLI where a service's PATH does not find it
     model: str = "haiku"
     daily_questions: int = 30       # per person
+    people: list | None = None      # who may ask; a login needs it: one person's subscription serves that person alone
 
 
 def settings_problem(block: Any) -> str | None:
@@ -96,6 +97,13 @@ def settings_problem(block: Any) -> str | None:
     count = block.get("daily_questions", 30)
     if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 1000:
         return "daily_questions must be 1 to 1000"
+    people = block.get("people")
+    if people is not None and not (isinstance(people, list) and people and all(isinstance(x, str) and x for x in people)):
+        return "people must be a list of names"
+    if auth == "login" and not people:
+        return "with auth: login needs people: the one person whose login it is"
+    if auth == "login" and len(people) > 1:
+        return "with auth: login serves one person, a subscription is not for others"
     return None
 
 
@@ -264,7 +272,7 @@ class PersonAsk:
     def available(self, person: str) -> bool:
         got = self.settings
         return bool(got and self.app.runner.person_claude and (got.auth == "login" or self.key())
-                    and self.app.access.ask_scope(person))
+                    and (got.people is None or person in got.people) and self.app.access.ask_scope(person))
 
     # ------------------------------------------------------------ the kept chats
 
