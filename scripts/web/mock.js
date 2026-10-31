@@ -2240,9 +2240,14 @@ export function createMockTransport(opts = {}) {
       }
       if (url.pathname === '/api/tab-history') {
         const q = (url.searchParams.get('q') ?? '').toLowerCase()
-        const all = [{ i: 0, role: 'user', text: 'Go on with the task', at_ms: 0 }, { i: 1, role: 'agent', text: 'Reading the task folder and the last log rows.', at_ms: 0 }, { i: 2, role: 'tool', text: 'Bash: node --test scripts/tests', at_ms: 0 }]
-        const turns = all.filter(x => !q || x.text.toLowerCase().includes(q))
-        return ok({ source: 'session', turns, total: all.length, matched: turns.length, truncated: false })
+        const earlier = Array.from({ length: 90 }, (_, k) => [{ role: 'user', text: `Question ${k + 1}: what does step ${k + 1} of the guide need?` },
+          { role: 'tool', text: `Read: docs/guide/step-${k + 1}.md` }, { role: 'agent', text: `Step ${k + 1} needs **one** change in the guide.\n\nThe rest of it stands as it is.` }][k % 3])
+        const all = [...earlier, { role: 'user', text: 'Go on with the task' }, { role: 'agent', text: 'Reading the task folder and the last log rows.' }, { role: 'tool', text: 'Bash: node --test scripts/tests' }]
+          .map((x, i) => ({ ...x, i, at_ms: 0 }))
+        const matching = all.filter(x => !q || x.text.toLowerCase().includes(q))
+        const before = Number(url.searchParams.get('before') ?? Infinity)
+        const turns = matching.filter(x => x.i < before).slice(-30)
+        return ok({ source: 'session', sid: 'demo', turns, total: all.length, matched: matching.length, truncated: turns[0]?.i > matching[0]?.i })
       }
       if (url.pathname === '/api/tab/screen') {
         const tab = state.tabs.tabs.find(x => x.ref === url.searchParams.get('ref'))

@@ -416,7 +416,7 @@ function TabPane({ s, c, tab, i = 0, split = false }) {
       histOn=${histOn} setHistOn=${setHistOn} setSize=${d => setSize(v => Math.min(6, Math.max(-3, v + d)))} />
     <div class="term-stage" style=${size ? { '--term-step': `${size}px` } : undefined}>
       <${TermScreen} tabRef=${tab.ref} screen=${screen} live=${!!screen && !err} empty=${screen ? t.tabViewEmpty : t.loading}
-        canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} onSelect=${setSel} />
+        canType=${canTab(s, 'keys')} c=${c} poke=${poke} focusRef=${typeHere} onSelect=${setSel} past=${tab.state !== 'shell'} />
       ${sel ? html`<${SelectionBar} sel=${sel} tab=${tab} s=${s} c=${c} slug=${slug} onClose=${() => setSel(null)} />` : null}
       ${histOn ? html`<${HistoryPanel} tab=${tab} c=${c} onClose=${() => setHistOn(false)} />` : null}
     </div>

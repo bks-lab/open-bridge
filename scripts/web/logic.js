@@ -1297,6 +1297,78 @@ export function screenLines(text) {
   return out
 }
 
+// what went before the screen of an agent tab. An agent that repaints its screen leaves the terminal no scrollback, so
+// what it scrolled away is read from the session file (GET /api/tab-history) and stands above the screen (TermScreen)
+const PAST_HEAD = 32    // letters of a turn's opening that find it on the screen
+const PAST_SHORT = 8    // fewer than this finds anything
+const PAST_MISS = 2     // turns in a row not on the screen end the look
+const PAST_LOOK = 8     // lines of words at the top of the screen tried where a turn runs on to it
+
+const letters = text => String(text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+
+/** How many of a tab's turns (oldest first) stand before its screen. The screen is the end of the conversation as
+ *  drawn, wrapped and without the markdown, so a turn is on it when the letters of its opening are, read from the end.
+ *  A tool's line is not looked for (the terminal folds those), and a turn found further back after PAST_MISS turns
+ *  that are not on it is another one in the same words */
+export function pastCut(turns, screen) {
+  const seen = letters(screen)
+  let cut = turns.length
+  let miss = 0
+  for (let k = turns.length - 1; k >= 0 && miss < PAST_MISS; k--) {
+    if (turns[k].role === 'tool') continue
+    const head = letters(turns[k].text.split('\n', 1)[0]).slice(0, PAST_HEAD)
+    if (head.length < PAST_SHORT) continue
+    if (seen.includes(head)) { cut = k; miss = 0 } else miss++
+  }
+  return cut
+}
+
+/** Where a turn runs on to the screen: `text` up to the first line of words the screen starts with, null when none of
+ *  those is in it. The last such place, for it is the end of the turn that stands there */
+function pastTrim(text, screen) {
+  const all = letters(text)
+  const starts = String(screen ?? '').split('\n').map(letters).filter(l => l.length >= PAST_SHORT).slice(0, PAST_LOOK)
+  for (const line of starts) {
+    const at = all.lastIndexOf(line.slice(0, PAST_HEAD))
+    if (at < 0) continue
+    let seen = 0
+    for (const m of text.matchAll(/[\p{L}\p{N}]/gu)) if (seen++ === at) return text.slice(0, m.index).trimEnd()
+  }
+  return null
+}
+
+/** The turns to stand above a screen: those before it (pastCut), and of a long answer that scrolled half out of it the
+ *  part that is gone, so the text runs on across the seam. Tools after that answer are on the screen too */
+export function pastShown(turns, screen) {
+  const kept = turns.slice(0, pastCut(turns, screen))
+  let k = kept.length - 1
+  while (k >= 0 && kept[k].role === 'tool') k--
+  const text = k >= 0 ? pastTrim(kept[k].text, screen) : null
+  if (text == null) return kept
+  return text ? [...kept.slice(0, k), { ...kept[k], text }] : kept.slice(0, k)
+}
+
+/** A read of the history (tab_history.py) put to what is held: { sid, turns, more }. The end of a new read replaces
+ *  the end, older pages go before it, and another session in the tab starts anew. Only a session file is a past: a
+ *  tab without one has its scrollback on the screen */
+export function pastMerge(held, read, older = false) {
+  const same = !!held && read?.source === 'session' && held.sid === read.sid
+  const turns = read?.turns ?? []
+  if (older) return same ? { ...held, turns: [...turns, ...held.turns], more: !!read.truncated && turns.length > 0 } : held
+  if (read?.source !== 'session') return null
+  if (!same) return { sid: read.sid, turns, more: !!read.truncated }
+  const first = turns[0]?.i ?? Infinity
+  const kept = held.turns.filter(x => x.i < first)
+  return { ...held, turns: [...kept, ...turns], more: kept.length ? held.more : !!read.truncated }
+}
+
+/** Turns as the terminal draws them, for screenLines: its marks, the lines of a turn under the first, no bold markers.
+ *  A tool's output is not in a transcript's turns, its call stands as one line */
+export function pastText(turns) {
+  const block = (mark, text) => mark + text.replace(/\*\*/g, '').split('\n').map(l => l.trimEnd()).join('\n  ')
+  return turns.map(x => (x.role === 'tool' ? `⎿  ${x.text}` : block(x.role === 'user' ? '❯ ' : '⏺ ', x.text))).join('\n\n').replace(/^ +$/gm, '')
+}
+
 // the live terminal: a key press as what it sends, none for what the browser or the Mac keeps. Text is no key here: it
 // comes through the input event, so a dead key and an Option character arrive as what they make
 const TERM_NAMED = { Enter: 'enter', Escape: 'escape', Tab: 'tab', Backspace: 'backspace', Delete: 'delete', ArrowUp: 'up', ArrowDown: 'down',

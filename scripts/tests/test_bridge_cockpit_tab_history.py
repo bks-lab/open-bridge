@@ -347,6 +347,7 @@ def test_a_tab_with_a_session_answers_from_its_transcript_and_not_from_the_termi
                                     ("user", "thanks"), ("agent", "Done.")]
     assert [t["i"] for t in data["turns"]] == [0, 1, 2, 3, 4] and data["turns"][1]["at_ms"] == ms(2)
     assert (data["total"], data["matched"], data["truncated"]) == (5, 5, False)
+    assert data["sid"] == SID, "the page tells two sessions of a tab apart by it"
     assert w.runner.of("workplace.screen") == [] and w.runner.calls == []
 
 
