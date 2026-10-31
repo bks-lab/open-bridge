@@ -7,7 +7,7 @@
 // and the walk bar of an open point goes the order of the table (walkOrder). On top, sticky, the batch bar: All, Tick
 // the suggestions (the rows whose suggestion is done, drop or later, never Let AI do it), how many are ticked and what
 // their suggestions would do, Run the suggestions, and for all ticked the same Done, Later until or Drop because (one
-// reason for all). The boxes are one selection with the left column's (ui.flowPicked). A batch plans what goes
+// reason for all). Each group has a box of its own over its rows, so the reports go at once without the questions. The boxes are one selection with the left column's (ui.flowPicked). A batch plans what goes
 // (logic.js batchPlan), says itself in one line with Confirm, and only then does anything go out (app.js flowBatch,
 // each call quiet, one toast); afterwards Undo the batch, once, takes every point back. Let AI do it in a batch starts
 // a point only with its own sentence and while fewer than cockpit.flow.max_running run; the rest stays out, and the
@@ -232,7 +232,12 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
     <table class="flow-ov-table">
       <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${w.pickAll}</span></th><th>${w.cols.point}</th><th>${w.cols.stage}</th>
         <th>${w.cols.area}</th><th>${w.cols.suggestion}</th></tr></thead>
-      <tbody>${bands.map(b => html`<tr key=${`band-${b.band}`} class="flow-ov-group"><th colspan="5" scope="colgroup"><span class="label-caps">${f.groups[b.band]}</span></th></tr>
+      <tbody>${bands.map(b => {
+        const ids = b.rows.filter(r => r.row).map(r => r.id)
+        const all = ids.length > 0 && ids.every(id => picked.has(id))
+        return html`<tr key=${`band-${b.band}`} class="flow-ov-group"><th colspan="5" scope="colgroup"><span class="flow-ov-grouphead">
+          ${ids.length ? html`<input type="checkbox" class="flow-ov-grouppick" aria-label=${w.pickGroup(f.groups[b.band])} checked=${all}
+            onClick=${() => c.flowPick(ids, !all)} />` : null}<span class="label-caps">${f.groups[b.band]}</span></span></th></tr>
         ${b.rows.map(r => {
           const row = r.row
           const title = row?.title ?? titleFor(r.x)
@@ -255,7 +260,7 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
             <td class="flow-ov-area small">${area}</td>
             <td class="flow-ov-sug">${row ? html`<${Suggestion} sug=${flowSuggestion(row, s)} s=${s} />` : null}</td>
           </tr>`
-        })}`)}</tbody>
+        })}`})}</tbody>
     </table>
   </section>`
 }
