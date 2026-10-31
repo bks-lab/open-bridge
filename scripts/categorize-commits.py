@@ -369,6 +369,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_overlay_export_exclusions.py",
     "scripts/tests/test_overlay_export_foreign.py",
     "scripts/tests/test_overlay_export_managed_prune.py",
+    "scripts/tests/test_overlay_prompts.py",
     "scripts/tests/test_precommit_env_guard.py",
     "scripts/tests/test_push_guard_content_net.py",
     "scripts/tests/test_validators_coverage.py",

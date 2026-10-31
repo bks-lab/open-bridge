@@ -111,7 +111,10 @@ conflict/precedence model, and 3-way base recovery live in `references/workflow.
    SKILL.md never lands without the reference it routes to. config / rule
    files batch-confirm. `--yes` is valid non-interactively for
    **non-behavioural** files only; a behavioural unit is then **withheld**
-   whole, and `status` counts it as `pending-confirm`.
+   whole, and `status` counts it as `pending-confirm`. Interactively, `a`
+   answers yes to every remaining gate of the run; an unknown answer repeats
+   the question. Deleting a file or overwriting the consumer's own file is
+   asked one by one, `a` never covers it.
 4. **Leak gate BEFORE write.** Every staged file passes a **raw-secret regex**
    (accounts = `azure-keyvault://` / `keychain://` / `1password://` URI refs
    only) on the staged temp file; the `no-scrub-leak.py` CORE-boundary scan runs
