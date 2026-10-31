@@ -2976,7 +2976,7 @@ test('what opens in the middle comes into view: the top of the middle scrolled u
   try {
     const left = logic.flowParts(demoFlow()).leftOut.groups[0].reason
     mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: left })} c=${recorder()} />`)
-    await tick()
+    await until(() => seen.length > 0)
     assert.ok(seen.some(([cls, opts]) => cls.includes('flow-main') && opts?.block === 'start'), 'the middle scrolled into view')
   } finally {
     proto.getBoundingClientRect = had.rect

@@ -193,6 +193,7 @@ work:
 #   full_minutes: 10       # on open, run the full briefing (trackers, checks) again when the last is older
 #   voice: false           # a tab that waits for you is also spoken (by the browser)
 #   triage_daily: false    # true: sort every task and inbox item once a day by itself (a small model call)
+#   served: {}           # serve --served behind a sign-in gateway: access: {team_domain, aud, host}, docs/bridge-cockpit.md
 #   snapshot_minutes: 60   # save the cmux layout (only on change) while the cockpit runs; 0 = only on Save
 #   idle_minutes: 10       # a waiting tab still this long that asks nothing counts as done, not waiting; 0 = off
 #   language: en           # de | en for the page's words; default language.conversation, else en

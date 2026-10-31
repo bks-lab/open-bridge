@@ -22,6 +22,7 @@ from . import describe as dsc
 from . import guide as gd
 from . import origin as og
 from . import prio as pr
+from . import signin as si
 from . import themes as thm
 from . import ticker as tk
 
@@ -114,6 +115,8 @@ class WebConfig:
     triage_daily: bool = False
     # serve --served: this cockpit runs on another machine for the people of its workspaces (server.served_config)
     served: bool = False
+    # cockpit.served.access: behind a sign-in gateway, a signed token says who a request is and there is no owner (signin.py)
+    served_access: Any = None
     chat_layout: str = "classic"
     # a quick chat untouched this many hours leaves the list into the archive (cockpit.chat_keep_hours, 0: never)
     chat_keep_hours: float = 24
@@ -416,6 +419,7 @@ BLOCK = {
     "files_scope": ("choice", "files_scope", FILES_SCOPES),
     "origin_map": ("origin_map",), "describe": ("describe",), "a2a_sources": ("a2a_sources",),
     "flow": ("flow",), "work_views": ("work_views",), "files_search": ("files_search",),
+    "served": ("served",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host", "clicks")   # read by usage.remote_hosts, clicks by the loader
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -625,6 +629,8 @@ def check_block(block: Any, cfg: WebConfig, where: str = "cockpit", keys: dict =
         if kind == "ticker":
             out += _check_ticker(value, cfg, at)
             continue
+        if kind == "served":      # read strictly by served_access_of, a wrong block stops the start
+            continue
         if kind == "usage":
             out += _check_usage(value, at)
             continue
@@ -713,11 +719,26 @@ def area_aliases_of(spaces: Any) -> tuple:
     return tuple((alias, ws["name"].strip()) for ws in (spaces if isinstance(spaces, list) else ())
                  if isinstance(ws, dict) and isinstance(ws.get("name"), str) and ws["name"].strip() for alias in _aliases(ws))
 
+def served_access_of(block: Any):
+    """`cockpit.served.access`, read strictly: a block that is there and wrong stops the start."""
+    if block is None:
+        return None
+    if not isinstance(block, dict) or set(block) - {"access"}:
+        raise WebConfigError("cockpit.served takes only access")
+    if "access" not in block:
+        return None
+    problem = si.settings_problem(block["access"])
+    if problem:
+        raise WebConfigError(f"cockpit.served.access {problem}")
+    return si.Settings(**block["access"])
+
+
 def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     root = Path(root).resolve()
     raw = read_config_file(root) if data is None else data
     where = "cockpit"
     w = _dict(raw.get("cockpit"))
+    served_access = served_access_of(w.get("served"))
 
     if "port" in w and w.get("port") is not None:
         port = w["port"]
@@ -795,5 +816,5 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24,
-                    usage_clicks=_dict(w.get("usage")).get("clicks") is not False)
+                    usage_clicks=_dict(w.get("usage")).get("clicks") is not False, served_access=served_access)
     return replace(cfg, config_warnings=check_block(raw.get("cockpit"), cfg))

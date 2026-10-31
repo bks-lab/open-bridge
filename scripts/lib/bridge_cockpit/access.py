@@ -130,6 +130,19 @@ class Access:
 
     # ------------------------------------------------------------ who may see which area
 
+    def person_of(self, address: str | None) -> str | None:
+        """Who a signed-in address is: the member a workspace maps it to under `logins:`. Read on every call, so
+        taking the line away works at once. An address on two people opens for neither."""
+        if not address:
+            return None
+        try:
+            found = {name for row in self.app.workspaces.rows() for name, mail in (row.get("logins") or {}).items()
+                     if isinstance(mail, str) and mail.strip().lower() == address and name in (row.get("members") or [])}
+        except Exception as exc:
+            self.app.log_error(f"access: {exc!r}")
+            return None
+        return found.pop() if len(found) == 1 else None
+
     def scope(self, person: str) -> frozenset:
         """The areas of a person, as key_of spells them. Empty for anything that cannot be read."""
         try:

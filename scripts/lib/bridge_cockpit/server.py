@@ -45,6 +45,7 @@ from . import card as cd
 from . import details
 from .. import work_find
 from . import model as m
+from . import signin as si
 from .actions import ActionError, Actions
 from .actions_base import SPEC, note_go
 from .collector import Collector
@@ -146,6 +147,12 @@ UNAUTHORIZED_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf
                      "</body></html>")
 
 
+NOT_OPEN_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Bridge Cockpit</title></head>"
+                 "<body><p>This sign-in is not open here. Ask the person who runs this cockpit to add your address.</p>"
+                 "<p>Diese Anmeldung ist hier nicht freigegeben. Bitte die Person, die dieses Cockpit betreibt, deine "
+                 "Adresse einzutragen.</p></body></html>")
+
+
 def instance_id(root: Path) -> str:
     return hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:12]
 
@@ -232,6 +239,8 @@ class App:
         self.csrf = derived(token, "csrf")      # what the page sends back in X-Bridge-Token, never the key
         self.version = VERSION
         self.access = ac.Access(self)           # what a person named under members: gets, the owner is not touched
+        # behind a sign-in gateway: a signed token says who a request is, there is no owner and no cookie (signin.py)
+        self.sign_in = si.SignIn(cfg.served_access, clock) if cfg.served and cfg.served_access else None
         self._codes_lock = threading.Lock()
         self._codes_used: dict[str, int] = {}   # nonce of a redeemed login code -> its second, until it expires
         self.tx = T(cfg.language, cfg.control)
@@ -982,13 +991,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ checks
 
-    def host_ok(self) -> bool:
+    def local_host(self) -> bool:
         host = self.headers.get("Host", "")
         port = self.app.port
         return host in (f"127.0.0.1:{port}", f"localhost:{port}")
 
+    def host_ok(self) -> bool:
+        gate = self.app.sign_in
+        return self.local_host() or bool(gate and self.headers.get("Host", "") == gate.settings.host)
+
     def origin_ok(self, origin: str | None) -> bool:
         port = self.app.port
+        if self.app.sign_in:
+            return origin == f"https://{self.app.sign_in.settings.host}"
         return origin in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
 
     def fetch_site_ok(self) -> bool:
@@ -998,9 +1013,26 @@ class Handler(BaseHTTPRequestHandler):
     def csrf_ok(self, value: str | None) -> bool:
         return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.csrf_of(self.person).encode("utf-8"))
 
+    def signed_in(self, path: str) -> bool:
+        """Behind the gateway: the public name and a good token naming a person, or a refusal. Only the token counts,
+        never a cookie, a login code or the address header. This sets self.person; there is no owner here."""
+        gate = self.app.sign_in
+        self.person = None
+        if self.headers.get("Host", "") == gate.settings.host:
+            self.person = self.app.access.person_of(gate.address(self.headers.get("Cf-Access-Jwt-Assertion")))
+        if self.person is not None:
+            return True
+        if path.startswith("/api/"):
+            self.send_error_json("not_signed_in", "this sign-in is not open here", status=403)
+        else:
+            self.send_bytes(403, NOT_OPEN_PAGE.encode("utf-8"), "text/html; charset=utf-8", html=True)
+        return False
+
     def cookie_ok(self) -> bool:
         """Any cookie of our name holding a valid session value. Parsed by hand: SimpleCookie drops every cookie
         after one it cannot parse, and another app on 127.0.0.1 (any port) may have set such one."""
+        if self.app.sign_in:
+            return self.person is not None      # signed_in ran first
         name = self.app.cookie_name
         self.person = None
         found = None
@@ -1059,13 +1091,15 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlsplit(self.path)
         path, query = parsed.path, urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
         app = self.app
+        if app.sign_in and not (path == "/api/health" and self.local_host()) and not self.signed_in(path):
+            return
         if path == "/api/health":
             self.send_json(200, {"ok": True, "version": VERSION, "instance": app.instance})
             return
         if path in PUBLIC_ICONS:
             self.get_static(path)
             return
-        if path == "/" and "code" in query:
+        if path == "/" and "code" in query and not app.sign_in:
             given = query["code"][0] if query["code"] else ""
             owner = self.app.redeem(given)
             person = None if owner else self.app.redeem_person(given)
@@ -1569,6 +1603,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.precheck():
             return
         path = urllib.parse.urlsplit(self.path).path
+        if self.app.sign_in and not self.signed_in("/api/"):
+            return
         if not self.cookie_ok() or not self.csrf_ok(self.headers.get("X-Bridge-Token")):
             self.send_unauthorized("/api/")
             return

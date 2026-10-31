@@ -133,6 +133,10 @@ private origin. A `user/*` branch still never reaches a public upstream, and the
 pre-push hook on the machine's clone (`git config core.hooksPath scripts/hooks`)
 enforces that there too. Arm it when you clone.
 
+To reach it from outside, put a sign-in gateway in front and set `cockpit.served.access`: the cockpit then takes a person
+only from the gateway's signed token and has no owner login at all ([`docs/bridge-cockpit.md`](bridge-cockpit.md#2-open-it),
+"Behind a sign-in gateway"). Never open a tunnel to a served cockpit without that block.
+
 ## 6. A first probe: declare, run, inspect, retire
 
 Before any real watcher, prove the whole loop with one harmless run. Declare a
