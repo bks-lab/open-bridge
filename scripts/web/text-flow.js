@@ -33,7 +33,7 @@ export const FLOW = {
     walk2: { label: 'Walk through the points', prev: 'Previous point', next: 'Next point', last: 'That was the last point here.',
       nextSide: name => `Next: ${name}`, toSide: 'Go there' },
     list: {
-      label: 'The points of this group', pickAll: 'All', pick: title => `Tick ${title}`, tick: n => `Tick the suggestions (${n})`,
+      label: 'The points of this group', pickAll: 'All', pickGroup: group => `Tick all of ${group}`, pick: title => `Tick ${title}`, tick: n => `Tick the suggestions (${n})`,
       ticked: (n, parts) => (parts ? `${n} ticked: ${parts}` : `${n} ticked`), nothing: 'Nothing ticked', run: 'Run the suggestions',
       confirm: 'Confirm', cancel: 'Cancel', undo: 'Undo the batch',
       ran: n => (n === 1 ? '1 point decided in one batch' : `${n} points decided in one batch`),
@@ -247,7 +247,7 @@ export const FLOW = {
     walk2: { label: 'Durch die Punkte gehen', prev: 'Vorheriger Punkt', next: 'Nächster Punkt', last: 'Das war der letzte Punkt hier.',
       nextSide: name => `Weiter mit: ${name}`, toSide: 'Dorthin' },
     list: {
-      label: 'Die Punkte dieser Gruppe', pickAll: 'Alle', pick: title => `${title} anhaken`, tick: n => `Vorschläge anhaken (${n})`,
+      label: 'Die Punkte dieser Gruppe', pickAll: 'Alle', pickGroup: group => `Alle von ${group} anhaken`, pick: title => `${title} anhaken`, tick: n => `Vorschläge anhaken (${n})`,
       ticked: (n, parts) => (parts ? `${n} angehakt: ${parts}` : `${n} angehakt`), nothing: 'Nichts angehakt', run: 'Vorschläge ausführen',
       confirm: 'Bestätigen', cancel: 'Abbrechen', undo: 'Stapel rückgängig',
       ran: n => (n === 1 ? '1 Punkt in einem Stapel entschieden' : `${n} Punkte in einem Stapel entschieden`),

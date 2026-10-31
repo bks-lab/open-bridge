@@ -194,6 +194,8 @@
 .flow-ov-table thead th { color: var(--on-surface-muted); font-size: var(--text-label); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .flow-ov-pickcol, .flow-ov-row > td:first-child { width: 1%; }
 .flow-ov-group th { padding-top: 12px; border-bottom: 0; color: var(--on-surface-muted); }
+.flow-ov-grouphead { display: inline-flex; align-items: center; gap: 12px; }
+.flow-ov-grouppick { margin: 0; }
 .flow-ov-row.is-picked { background: var(--surface-raised); }
 .flow-ov-point { min-width: 0; }
 .flow-ov-open { display: block; padding: 0; border: 0; background: transparent; color: var(--on-surface); font: inherit; font-weight: 600; text-align: left; cursor: pointer; overflow-wrap: anywhere; }

@@ -442,6 +442,30 @@ test('a theme entered: the left column keeps the same list, the one entered mark
   assert.match(picked.$('.flow-ov-bar').text(), new RegExp(en.flow.list.ticked(1, '')))
 })
 
+test('the overview: a group has its own box, it ticks that group and no other, and goes off again', () => {
+  const reps = ['20261009-1000-r1', '20261009-1000-r2'].map(id => report(id, { area: 'Ops' }))
+  const groupState = ui => cockpitState(NOW, { ...state({ now: [ask('20261009-0900-a-q', { area: 'Ops' }), ...reps] }),
+    ui: { ...state().ui, page: 'briefing', workView: 'flow', flowSide: { areas: 'a:ops' }, flowView: 'overview', flowPicked: [], ...ui } })
+  const keys = reps.map(r => r.key)
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${groupState()} c=${c} />`)
+  const reports = el.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.reports)
+  const box = reports.$('.flow-ov-grouppick')
+  assert.equal(box.getAttribute('aria-label'), en.flow.list.pickGroup(en.flow.groups.reports))
+  assert.ok(!box.hasAttribute('checked'))
+  box.click()
+  assert.deepEqual(c.calls.at(-1), ['flowPick', keys, true])
+  // ticked, it shows it, a click takes the group out again; one row of the group ticked is not the group ticked
+  const c2 = recorder()
+  const on = mount(html`<${FlowPage} s=${groupState({ flowPicked: keys })} c=${c2} />`)
+  const again = on.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.reports).$('.flow-ov-grouppick')
+  assert.ok(again.hasAttribute('checked'))
+  again.click()
+  assert.deepEqual(c2.calls.at(-1), ['flowPick', keys, false])
+  const half = mount(html`<${FlowPage} s=${groupState({ flowPicked: [keys[0]] })} c=${recorder()} />`)
+  assert.ok(!half.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.reports).$('.flow-ov-grouppick').hasAttribute('checked'))
+})
+
 test('the open point: Back to overview, what is ticked, the card with its verbs, the walk on to the next theme', () => {
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${opsState({ flowView: 'point', flowAt: { id: 'task:a', i: 1 }, flowPicked: ['task:a'] })} c=${c} />`)
