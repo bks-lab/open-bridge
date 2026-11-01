@@ -172,7 +172,7 @@ def codex_argv_ok(argv: list[str], binary: str | None) -> bool:
 #: alone reads the whole disk, keys included; this profile was proved with planted files on macOS against the home
 #: folder, temp folders and external disks, by `cat`, `ls` and `grep` and through a real run and its resume.
 PERSON_CODEX_WALL = ('{":minimal"="read",":workspace_roots"={"."="read"},"/private/tmp"="none","/tmp"="none",'
-                     '"/private/var/folders"="none","/Volumes"="none","/Users/Shared"="none"}')
+                     '"/private/var/folders"="none","/Volumes"="none"}')
 PERSON_CODEX_FLAGS = ["exec", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--json",
                       "-c", 'approval_policy="never"', "-c", 'web_search="disabled"', "-c", "project_doc_max_bytes=0",
                       "-c", 'cli_auth_credentials_store="file"', "-c", 'shell_environment_policy.inherit="core"',
