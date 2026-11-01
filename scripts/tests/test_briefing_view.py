@@ -155,9 +155,9 @@ def test_triage_sorts_every_row_by_what_to_do_with_it():
     assert "Post the launch note" in b["do"]                    # only you, due tomorrow
     assert "Reschedule the sparring" in b["plan"]               # yours, no date
     assert "Time tracking: Sketch the data model" in b["plan"]  # next step who: me, with what it belongs to
-    assert "Draft the TypeSafe request" in b["delegate"]        # next step who: bridge
+    assert "CV matching: Draft the TypeSafe request" in b["delegate"]        # next step who: bridge
     assert "Austria onboarding" in b["waiting"]                 # blocked_by
-    assert "Free up the mini" in b["waiting"]                   # next step at another person
+    assert "Bridge to bridge: Free up the mini" in b["waiting"]  # next step at another person
     assert any("keys" in t for t in b["drop"])                  # quiet task: park?
     assert not any("Restore test" in t for t in b["plan"])      # a quiet task is shown once, under drop
 

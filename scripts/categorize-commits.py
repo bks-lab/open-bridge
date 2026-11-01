@@ -461,6 +461,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/briefing_view.py",
     "scripts/tests/test_briefing.py",
     "scripts/tests/test_briefing_providers.py",
+    "scripts/tests/test_briefing_truthful_rows.py",
     "scripts/tests/test_briefing_view.py",
     "scripts/tests/test_briefing_activity.py",
     "scripts/tests/test_briefing_pages.py",
