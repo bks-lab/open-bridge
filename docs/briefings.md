@@ -171,6 +171,13 @@ value, and any value read through the engine is scrubbed from error lines.
 The sections say where the data comes from. The `view:` block says how the
 reader sees it, and every person picks their own:
 
+A printed briefing (`briefing.py render`) honours what was decided in the
+cockpit: a row marked done or put off there (`work/cockpit/settled/`) stays away
+and counts in the housekeeping line. `max_items` caps the whole view, but every
+bucket keeps a few rows, so a long plan cannot hide what waits on others. A
+task's row names its task before the step, with the words before the first colon
+of a long title. `who:` means the reader for `me`, `for:` and `cockpit.person_name`.
+
 | `style` | What the reader gets |
 |---|---|
 | `sources` | One block per section, in profile order. The default: a profile without `view:` looks as it always did. |

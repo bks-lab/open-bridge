@@ -154,10 +154,10 @@ def test_triage_sorts_every_row_by_what_to_do_with_it():
     b = buckets(view)
     assert "Post the launch note" in b["do"]                    # only you, due tomorrow
     assert "Reschedule the sparring" in b["plan"]               # yours, no date
-    assert "Sketch the data model" in b["plan"]                 # next step who: me
-    assert "Draft the TypeSafe request" in b["delegate"]        # next step who: bridge
+    assert "Time tracking: Sketch the data model" in b["plan"]  # next step who: me, with what it belongs to
+    assert "CV matching: Draft the TypeSafe request" in b["delegate"]        # next step who: bridge
     assert "Austria onboarding" in b["waiting"]                 # blocked_by
-    assert "Free up the mini" in b["waiting"]                   # next step at another person
+    assert "Bridge to bridge: Free up the mini" in b["waiting"]  # next step at another person
     assert any("keys" in t for t in b["drop"])                  # quiet task: park?
     assert not any("Restore test" in t for t in b["plan"])      # a quiet task is shown once, under drop
 
@@ -213,7 +213,7 @@ def test_mutes_hide_matching_rows_and_say_how_many():
     view = bv.build(sample(), profile(view={"style": "triage"},
                                       mutes=[{"section": "advise", "when": {"check": "quiet"}}]))
     assert not any("keys" in t for t in buckets(view).get("drop", []))
-    assert "Restore test" in buckets(view)["plan"]               # the task itself is back in its bucket
+    assert "Keychain backup: Restore test" in buckets(view)["plan"]   # the task itself is back in its bucket
     assert any("1 muted" in h for h in view["hygiene"])
 
 
@@ -490,7 +490,7 @@ def test_advice_without_a_row_to_carry_it_is_shown():
 def test_an_advise_section_left_out_does_not_hide_the_quiet_task():
     p = profile(view={"style": "triage"})
     p["sections"][1]["bucket"] = "none"
-    assert "Restore test" in buckets(bv.build(sample(), p))["plan"]
+    assert "Keychain backup: Restore test" in buckets(bv.build(sample(), p))["plan"]
 
 
 def test_plan_uses_the_profiles_waiting_title():
@@ -1019,7 +1019,7 @@ def test_inbox_rows_carry_urgency_and_task_rows_carry_priority():
     rows = [i for b in bv.build(r, profile(view={"style": "triage"}))["buckets"] for i in b["items"]]
     by = {x["title"]: x for x in rows}
     assert by["Renew"]["urgency"] == "now"
-    assert by["Ship it"]["priority"] == "P1"
+    assert by["alpha: Ship it"]["priority"] == "P1"
 
 
 def test_an_inbox_row_carries_its_key_so_a_dashboard_sees_which_tab_filed_it():
@@ -1131,7 +1131,7 @@ def test_a_task_next_step_more_urgent_than_its_inbox_line_keeps_its_own_row():
         sec("tasks", "tasks", [task_item("review", "Product review",
                                          nxt={"what": "Send the review", "who": "me", "due": "2026-10-05"})]))
     rows = {x["title"]: x["bucket"] for x in _rows_of(bv.build(r, profile(view={"style": "triage"})))}
-    assert rows == {"Send the review": "do", "Some day: a better name": "plan"}
+    assert rows == {"Product review: Send the review": "do", "Some day: a better name": "plan"}
 
 
 def test_an_inbox_line_in_a_hidden_bucket_folds_nothing_into_it():
