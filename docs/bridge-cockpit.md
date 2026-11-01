@@ -211,6 +211,11 @@ cockpit:
 ```
 
 Each workspace then says who may sign in under which address: `members: [pat]` plus `logins: {pat: pat@example.org}`.
+A person's page holds Start, Today with Work through where the owner has it on (the points of their areas and the verbs
+Done, Later, Drop, no model and no tab), Dates where their workspaces name calendars under `sources.calendars` (only those
+calendars, read from the calendar sections of the briefing), the files, the Chat and their own Settings (colours and
+language, kept per person in `people/<name>.json` of the state folder, never in `bridge-config.yaml`). Today offers a field
+for a new task: it lands in the backlog of their area, by `task.py new --area`.
 
 There is no owner on such a server. Every request needs the public name and a token signed by the gateway for this
 application, checked here on each request (`scripts/lib/bridge_cockpit/signin.py`): signature against the team's

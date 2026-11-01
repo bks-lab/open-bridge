@@ -44,6 +44,7 @@ import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.mo
 import {
   asksSomething, duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn, runningOf,
   prepTargets, previewText, prioLoaded, prioOn, reportsTicked, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
+  personOf
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
@@ -305,7 +306,7 @@ function FlowBody({ s, c }) {
       <${WorkSwitch} s=${s} c=${c} />
       <p class="muted small">${[f.count(counts.points, runs.n, counts.left), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
     </header>
-    ${driver ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
+    ${driver || personOf(s) ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
     <div class=${`flow-grid${x ? '' : ' no-aside'}`}>
       <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} running=${runs} left=${parts.leftOut}
         run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />

@@ -72,7 +72,13 @@ def collect(root: Path) -> dict:
                      "status": [{"title": f"{MARK} status", "count": 1}]},
             "pages": [{"id": "systems", "title": f"{MARK} page", "sections": [
                 {"id": "checks", "kind": "command", "title": f"{MARK} checks", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
-                 "total": 1, "items": [{"id": "x", "title": f"{MARK} alarm", "tone": "bad", "ask": True}]}]}]}
+                 "total": 1, "items": [{"id": "x", "title": f"{MARK} alarm", "tone": "bad", "ask": True}]}]},
+                {"id": "days", "title": f"{MARK} dates", "sections": [
+                    {"id": "dates", "kind": "calendar", "title": f"{MARK} dates", "status": "ok", "view": "agenda", "total": 3,
+                     "cal_figures": {"count": 3, "next": f"{MARK} client call"}, "items": [
+                         {"id": "own", "title": "School fair", "cal": {"calendar": "Family", "day": "2026-10-09", "start": "10:00", "minutes": 60}},
+                         {"id": "job", "title": f"{MARK} client call", "cal": {"calendar": "Work", "day": "2026-10-09", "start": "11:00", "minutes": 30}},
+                         {"id": "bare", "title": f"{MARK} no calendar", "cal": {"day": "2026-10-09"}}]}]}]}
 
 
 @pytest.fixture
@@ -80,7 +86,7 @@ def world(tmp_path):
     w = World(tmp_path, config=CONFIG, serve=True, prepare=False)
     root = w.root
     (root / "workflow" / "workspaces").mkdir(parents=True)
-    for ws, area, members in (("home", "Home", "members: [pat]\n"), ("job", "Job", "")):
+    for ws, area, members in (("home", "Home", "members: [pat]\nsources: {calendars: [Family]}\n"), ("job", "Job", "sources: {calendars: [Work]}\n")):
         (root / "workflow" / "workspaces" / f"{ws}.yaml").write_text(
             f"schema_version: 1\nid: {ws}\ntitle: {area}\narea: {area}\n{members}", encoding="utf-8")
     for slug, text in (("home-task", "Home"), ("job-task", MARK), ("mixed-task", MARK), ("bare-task", MARK)):
@@ -375,7 +381,7 @@ def test_every_verb_is_classified():
     assert set(ab.SPEC) - set(ac.PERSON_VERBS) - ac.OWNER_VERBS == set()
     assert set(ac.PERSON_VERBS) & ac.OWNER_VERBS == set()
     for verb, names in ac.PERSON_VERBS.items():
-        assert names and set(names) <= set(ab.SPEC[verb]), verb
+        assert (names or verb in ac.SELF_VERBS) and set(names) <= set(ab.SPEC[verb]), verb
 
 
 def test_every_event_is_classified():
@@ -482,17 +488,27 @@ def test_bootstrap_tells_a_person_what_their_page_holds(world):
     _, _, data = get(world, "/api/bootstrap")
     person = json.loads(data)["config"]["person"]
     assert person["name"] == "pat"
-    assert person["pages"] == list(ac.PERSON_PAGES)
+    assert person["pages"] == world.app.access.pages("pat")
+    assert "@settings" in person["pages"] and ac.DATES_PAGE in person["pages"]
     assert set(person["routes"]) == set(ac.PERSON_GET | ac.PERSON_POST | ac.PUBLIC)
     assert set(person["verbs"]) == set(ac.PERSON_VERBS)
     assert "/api/workers" not in person["routes"] and "/api/seen" not in person["routes"]
 
 
-def test_a_person_gets_the_plain_day_and_no_work_through(world):
+def test_a_person_gets_work_through_without_a_model_or_a_terminal(world):
     work = world.app.access.work({"view": "flow", "focus_to_files": True, "files_scope": "x", "views": ["due", "source", "flow"],
-                                  "flow": {"enabled": True, "max_running": 3, "person": "owner"}})
-    assert work["view"] == "due" and work["views"] == ["due"] and work["flow"] == {"enabled": False}
+                                  "flow": {"enabled": True, "max_running": 3, "person": "owner", "drop_reasons": ["a"],
+                                           "instruct": {"enabled": True}, "themes": {"enabled": True}, "summary": {"enabled": True},
+                                           "attach": {"enabled": True}, "prio": {"enabled": True}, "prep_ahead": 3}})
+    assert work["view"] == "due" and work["views"] == ["due", "flow"] and work["flow"]["enabled"] is True
+    assert work["flow"]["drop_reasons"] == ["a"] and "person" not in work["flow"] and work["flow"]["prep_ahead"] == 0
+    assert not any(work["flow"][k]["enabled"] for k in ("instruct", "themes", "summary", "attach", "prio"))
     assert work["focus_to_files"] is False and work["files_scope"] is None
+
+
+def test_work_through_stays_off_where_the_owner_has_it_off(world):
+    work = world.app.access.work({"views": ["due", "flow"], "flow": {"enabled": False}})
+    assert work["views"] == ["due"] and work["flow"]["enabled"] is False
 
 
 def test_the_owner_page_has_no_person_block(world):
@@ -579,3 +595,112 @@ def test_a_bad_list_of_members_fails(value):
     good = {"schema_version": 1, "id": "x", "title": "X"}
     assert engine._fallback_validate(good)[0] is True
     assert engine._fallback_validate({**good, "members": value})[0] is False
+
+
+# ---------------------------------------------------------------- a new task
+
+def new_task(w, payload, person="pat"):
+    return post(w, "/api/action", {"verb": "task_new", "args": payload}, person)
+
+
+def test_a_person_files_a_new_task_in_their_area(world):
+    world.runner.calls.clear()
+    status, _, data = new_task(world, {"title": "Pack the bags", "area": "Home"})
+    assert status == 200, data
+    argv = next(c for c in world.runner.calls if "new" in c)
+    assert "--headline=Pack the bags" in argv and "--area=Home" in argv and argv[argv.index("--status") + 1] == "backlog"
+
+
+@pytest.mark.parametrize("area", ["Job", "Nowhere", "", "../Job"])
+def test_a_new_task_goes_nowhere_else(world, area):
+    world.runner.calls.clear()
+    status, _, _ = new_task(world, {"title": "Pack the bags", "area": area})
+    assert status in (400, 403) and not any("new" in c for c in world.runner.calls)
+
+
+def test_an_alias_of_an_own_area_is_the_area(world):
+    world.runner.calls.clear()
+    assert new_task(world, {"title": "Fix the door", "area": "House"})[0] == 200
+    assert "--area=Home" in next(c for c in world.runner.calls if "new" in c)
+
+
+def test_task_py_writes_the_area_into_a_new_task(tmp_path):
+    import task as tasks
+    (tmp_path / "work" / "tasks").mkdir(parents=True)
+    out = tasks.new_task(tmp_path, headline="Pack the bags", area="Home")
+    text = (tmp_path / out["path"]).read_text(encoding="utf-8")
+    assert "\narea: Home\n" in text and "status: backlog" in text
+
+
+# ---------------------------------------------------------------- the dates
+
+def dates_of(w, person="pat"):
+    _, _, data = get(w, "/api/state", person)
+    return [p for p in json.loads(data)["model"]["pages"] if p["id"] == ac.DATES_PAGE]
+
+
+def test_a_person_sees_the_dates_of_their_workspace_only(world):
+    pages = dates_of(world)
+    assert len(pages) == 1
+    section = pages[0]["sections"][0]
+    assert (section["kind"], section["view"]) == ("calendar", "agenda")
+    assert [i["title"] for i in section["items"]] == ["School fair"]
+    assert section["cal_figures"] is None and MARK not in json.dumps(pages)
+
+
+def test_today_lists_the_own_dates_of_today_only(world):
+    real, access = world.app.clock, world.app.access
+    world.app.clock = lambda: time.mktime((2026, 10, 9, 12, 0, 0, 0, 0, -1)) * 1000
+    try:
+        model = access.model(world.app.collector.model, access.scope("pat"), access.calendars("pat"))
+    finally:
+        world.app.clock = real
+    assert model["agenda"] == [{"when": "10:00", "title": "School fair"}]
+
+
+def test_no_calendars_named_no_dates(world):
+    (world.root / "workflow" / "workspaces" / "home.yaml").write_text(
+        "schema_version: 1\nid: home\ntitle: Home\narea: Home\nmembers: [pat]\n", encoding="utf-8")
+    world.app.workspaces.reload() if hasattr(world.app.workspaces, "reload") else None
+    assert dates_of(world) == [] and ac.DATES_PAGE not in world.app.access.pages("pat")
+
+
+def test_the_page_stands_without_any_date_collected(world):
+    assert world.app.access.dates({"pages": []}, frozenset(["Family"]))[0]["sections"][0]["items"] == []
+
+
+def test_a_date_carries_only_listed_fields_and_names_no_neighbour(world):
+    own = {"title": "School fair", "detail": MARK, "url": MARK, "cal": {"calendar": "Family", "overlaps": [f"{MARK} call"], "x": MARK}}
+    page = world.app.access.dates({"pages": [{"sections": [{"kind": "calendar", "items": [own]}]}]}, frozenset(["Family"]))[0]
+    item = page["sections"][0]["items"][0]
+    assert MARK not in json.dumps(page)
+    assert set(item) <= ac.DATE_FIELDS | set(ac.DATE_NEUTRAL) and set(item["cal"]) <= ac.DATE_CAL | {"overlaps"}
+
+
+# ---------------------------------------------------------------- a person's own settings
+
+def settings(w, args, person="pat"):
+    return post(w, "/api/action", {"verb": "person_settings", "args": args}, person)
+
+
+def test_a_person_keeps_their_own_settings_on_the_server(world):
+    assert settings(world, {"theme": "dark", "language": "de"})[0] == 200
+    _, _, data = get(world, "/api/bootstrap")
+    boot = json.loads(data)
+    assert boot["config"]["person"]["settings"] == {"theme": "dark", "language": "de"} and boot["language"] == "de"
+    assert json.loads((world.app.state_dir / "people" / "pat.json").read_text())["theme"] == "dark"
+
+
+def test_the_settings_of_one_person_are_not_the_next_ones(world):
+    (world.root / "workflow" / "workspaces" / "home.yaml").write_text(
+        "schema_version: 1\nid: home\ntitle: Home\narea: Home\nmembers: [pat, sam]\n", encoding="utf-8")
+    settings(world, {"theme": "dark"})
+    _, _, data = get(world, "/api/bootstrap", "sam")
+    assert json.loads(data)["config"]["person"]["settings"] == {}
+
+
+@pytest.mark.parametrize("args", [{"theme": "neon"}, {"language": "xx"}, {"cockpit": {"enabled": False}}, {"theme": "dark", "port": 1}])
+def test_only_a_person_setting_can_be_set(world, args):
+    assert settings(world, args)[0] == 400
+    assert not (world.app.state_dir / "people" / "pat.json").exists()
+    assert (world.root / "bridge-config.yaml").read_text() == CONFIG

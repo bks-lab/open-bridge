@@ -26,6 +26,7 @@ const someNames = (names, lang) => {
 }
 
 const en = {
+  person: { newTitle: 'New task', newArea: 'Area of the task', newAdd: 'Add', language: 'Language' },
   appName: 'Bridge',
   cockpit: 'Cockpit',
   skip: 'Skip to content',
@@ -1821,6 +1822,7 @@ const en = {
 }
 
 const de = {
+  person: { newTitle: 'Neue Aufgabe', newArea: 'Bereich der Aufgabe', newAdd: 'Anlegen', language: 'Sprache' },
   appName: 'Bridge',
   cockpit: 'Cockpit',
   skip: 'Zum Inhalt springen',

@@ -493,6 +493,29 @@ export function NoModel({ s, cls = 'col col-day' }) {
   return html`<div class=${cls} aria-busy="true"><div class="panel panel-pad"><${Skeleton} lines=${7} /></div></div>`
 }
 
+/** A person files a new task here, in the backlog of their area (access.py holds it there); with several the area first */
+function PersonNewTask({ s, c }) {
+  const t = T().person
+  const areas = s.boot?.config?.areas ?? []
+  const [title, setTitle] = useState('')
+  const [area, setArea] = useState(areas[0] ?? '')
+  const send = e => {
+    e.preventDefault()
+    const text = title.trim()
+    if (!text || !area) return
+    setTitle('')
+    c.act('task_new', { title: text, area })
+  }
+  if (!areas.length) return null
+  return html`<form class="person-new" onSubmit=${send}>
+    ${areas.length > 1 ? html`<select aria-label=${t.newArea} value=${area} onChange=${e => setArea(e.target.value)}>
+      ${areas.map(a => html`<option key=${a} value=${a}>${a}</option>`)}</select>` : null}
+    <input type="text" maxlength="200" aria-label=${t.newTitle} placeholder=${t.newTitle} value=${title}
+      onInput=${e => setTitle(e.target.value)} />
+    <${Btn} size="sm" variant="primary" disabled=${!title.trim()} onClick=${send}>${t.newAdd}<//>
+  </form>`
+}
+
 export function DayColumn({ s, c, byKey }) {
   const t = T()
   const m = s.model
@@ -503,6 +526,7 @@ export function DayColumn({ s, c, byKey }) {
   return html`<div class="col col-day" ref=${colRef}>
     <div class=${`panel day-panel${s.ui.picked.length ? ' is-picking' : ''}`}>
       <${WorkSwitch} s=${s} c=${c} />
+      ${personOf(s) ? html`<${PersonNewTask} s=${s} c=${c} />` : null}
       <${SelectionBar} s=${s} c=${c} />
       <${AlarmBanner} s=${s} c=${c} />
       <div class="day-counts muted"><span class="day-asof">${t.sourceAsOf(m.collected_at)}</span></div>

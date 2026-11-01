@@ -47,6 +47,11 @@ class PageVerbs:
         self.app.store.set_home_tiles(ids, seen)
         self.app.broadcast("home", self.app.store.home())
 
+    def v_person_settings(self, ctx: Ctx, theme: str | None = None, language: str | None = None) -> None:
+        if not ctx.person:
+            raise self.not_applicable("settings of a person")
+        self.app.access.set_settings(ctx.person, theme, language)
+
     def v_tour_done(self, ctx: Ctx, how: str, v: int) -> None:
         """The first-run tour was finished or skipped: kept on the server, so no other browser offers it again"""
         self.app.store.set_tour(how, v)
