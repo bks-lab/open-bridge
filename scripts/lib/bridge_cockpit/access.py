@@ -52,8 +52,8 @@ DATES_PAGE = "dates"
 # verb -> the arguments that name what it changes; each of them has to be a row the person sees
 PERSON_VERBS = {"note": ("key",), "done": ("key",), "later": ("key",), "drop": ("key",), "priority": ("key",),
                 "urgency": ("key",), "task_set_next": ("key",), "task_close": ("keys",), "settle": ("keys",),
-                "task_new": ("area",), "person_settings": ()}
-SELF_VERBS = frozenset({"person_settings"})     # about the person, no row
+                "task_new": ("area",), "person_settings": (), "ask_engine": ()}
+SELF_VERBS = frozenset({"person_settings", "ask_engine"})     # about people, no row; person_ask.py checks the manager
 PERSON_LANGUAGES = ("de", "en")
 PERSON_THEMES = ("auto", "light", "dark")
 OWNER_VERBS = frozenset("""

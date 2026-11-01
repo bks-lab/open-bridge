@@ -917,6 +917,8 @@ def served_runner(root: Path | str, code: Path | str | None = None, ask: Any = N
     cockpit.served.ask a person's question has the CLI, on its own road alone (Runner.run_person)."""
     runner = Runner(root, cmux=None, claude=None, codex=None, code=code)
     runner.person_claude = (ask.claude or resolve_claude()) if ask else None
+    if ask and ask.codex:
+        runner.person_codex = ask.codex.get("path") or resolve("codex")
     return runner
 
 

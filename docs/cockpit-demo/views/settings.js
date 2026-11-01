@@ -504,6 +504,15 @@ function PersonSettings({ s, c }) {
       <${Segmented} label=${t.person.language} current=${kept.language ?? language()} values=${[['de', 'Deutsch'], ['en', 'English']]}
         onPick=${v => Promise.resolve(c.act('person_settings', { language: v })).then(() => window.location.reload())} />
     <//>
+    ${s.personAsk?.manage?.length ? html`<${Card} title=${t.person.chatTitle}>
+      ${s.personAsk.manage.map(row => html`<div class="person-engine" key=${row.person}>
+        <strong>${row.person}</strong>
+        <${Segmented} label=${`${t.person.chatTitle}: ${row.person}`} current=${row.engine}
+          values=${[...row.options, 'off'].map(v => [v, t.person.engine[v]])}
+          onPick=${v => c.act('ask_engine', { person: row.person, engine: v })} />
+        ${row.engine === 'codex' && !row.signed_in ? html`<span class="muted small">${t.person.chatLogin}</span>` : null}
+      </div>`)}
+    <//>` : null}
   </div>`
 }
 

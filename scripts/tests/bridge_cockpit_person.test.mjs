@@ -84,6 +84,19 @@ test('the settings of a person hold the colours and the language and nothing of 
   assert.equal(box.$('.settings-nav'), null)
 })
 
+test('the manager switches the chat of each person, a person without the list sees none of it', () => {
+  const manage = [{ person: 'pat', engine: 'claude', options: ['claude', 'codex'], signed_in: true },
+    { person: 'sam', engine: 'codex', options: ['codex'], signed_in: false }]
+  const c = recorder()
+  const box = mount(html`<${views.settings.SettingsPage} s=${{ ...asPerson(), personAsk: { available: true, convs: [], manage } }} c=${c} />`)
+  assert.ok(box.text().includes(T().person.chatTitle))
+  assert.ok(box.text().includes(T().person.chatLogin))
+  box.$$('.person-engine button').find(b => b.textContent.trim() === T().person.engine.codex).click()
+  assert.deepEqual(c.calls.find(x => x[0] === 'act')?.slice(1), ['ask_engine', { person: 'pat', engine: 'codex' }])
+  const none = mount(html`<${views.settings.SettingsPage} s=${{ ...asPerson(), personAsk: { available: true, convs: [], manage: null } }} c=${recorder()} />`)
+  assert.equal(none.$('.person-engine'), null)
+})
+
 test('a row offers a person its own verbs, none that hands it on', () => {
   const s = asPerson()
   const row = s.model.sections.flatMap(x => x.rows ?? []).find(r => r.key)
