@@ -201,6 +201,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "task_new": {"title": ("line", True), "area": ("line", True)},
     # what a person sets for themselves (access.py): kept per person, no setting of the Bridge
     "person_settings": {"theme": ("line", False), "language": ("line", False)},
+    "ask_engine": {"person": ("line", True), "engine": ("line", True)},
     "to_task_undo": {"id": ("inbox_id", True), "slug": ("slug", True)},
     "to_task": {"key": ("key", True), "status": ("reopen_as", False)},
     "session_link": {"session": ("session_id", True), "slug": ("slug", True)},
@@ -265,7 +266,7 @@ GO_FIELDS = {
 }
 READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose", "workspace_plan"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
-LOCAL_VERBS = frozenset({"person_settings", "pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
+LOCAL_VERBS = frozenset({"person_settings", "ask_engine", "pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
                          "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
                          "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys",

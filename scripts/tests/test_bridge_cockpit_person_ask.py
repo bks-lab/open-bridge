@@ -17,6 +17,7 @@ from test_bridge_cockpit_access import MARK, get, post, world  # noqa: E402,F401
 from lib.bridge_cockpit import config as cf  # noqa: E402
 from lib.bridge_cockpit import person_ask as pa  # noqa: E402
 from lib.bridge_cockpit import quick, server as srv  # noqa: E402
+from lib import ai_services as ai  # noqa: E402
 from lib.bridge_cockpit.runner import Runner, RunnerRefused, RunResult  # noqa: E402
 
 KEY = "sk-test-not-a-real-key"
@@ -281,7 +282,7 @@ def test_login_runs_on_the_service_users_login(tmp_path, monkeypatch):
 
 
 def test_login_needs_no_key(asked):
-    asked.app.cfg = dataclasses.replace(asked.app.cfg, served_ask=pa.Settings())
+    asked.app.cfg = dataclasses.replace(asked.app.cfg, served_ask=pa.Settings(people=["pat"]))
     assert status_of(question(asked)) == 202
     settled(asked)
     assert asked.calls[0]["key"] is None and asked.calls[0]["config_dir"] is None
@@ -509,3 +510,127 @@ def test_a_login_belongs_to_one_named_person(block, word):
 
 def test_a_login_for_its_owner_is_fine():
     assert pa.settings_problem({"auth": "login", "people": ["pat"]}) is None
+
+
+# ------------------------------------------------------------ Codex, one login a person
+
+THREAD = "01a195e8-4b2d-7102-bdfa-34101f7287e1"
+CODEX_ANSWER = "\n".join(json.dumps(x) for x in ({"type": "thread.started", "thread_id": THREAD},
+                                                {"type": "item.completed", "item": {"type": "agent_message", "text": "From Codex"}},
+                                                {"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}})) + "\n"
+
+
+@pytest.fixture
+def codex(asked, monkeypatch):
+    path = asked.root / "workflow" / "workspaces" / "job.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + "members: [sam]\n", encoding="utf-8")
+    asked.app.cfg = dataclasses.replace(asked.app.cfg, served_ask=pa.Settings(
+        people=["sam"], manager="sam", codex={"people": ["sam", "pat"]}, daily_questions=30))
+    asked.runner.person_codex = "/opt/codex"
+    asked.runner.person_claude = "/opt/claude"
+    monkeypatch.setattr(pa, "CODEX_WALL_PROVED", True)
+    asked.codex_calls = []
+
+    def run_person_codex(argv, timeout, cwd, home):
+        asked.codex_calls.append({"argv": argv, "cwd": cwd, "home": home})
+        return RunResult(True, 0, CODEX_ANSWER, "", 5)
+
+    monkeypatch.setattr(asked.runner, "run_person_codex", run_person_codex)
+    home = asked.app.person_ask.codex_home("pat")
+    home.mkdir(parents=True)
+    (home / "auth.json").write_text("{}", encoding="utf-8")
+    return asked
+
+
+def choose(w, person, engine, who="sam"):
+    return post(w, "/api/action", {"verb": "ask_engine", "args": {"person": person, "engine": engine}}, person=who)
+
+
+def test_a_person_without_claude_runs_on_their_own_codex_login(codex):
+    assert codex.app.person_ask.engine("pat") == "codex"
+    assert status_of(question(codex)) == 202
+    state = settled(codex)
+    assert state["convs"][0]["turns"][0]["a"] == "From Codex" and state["engine"] == "codex"
+    assert codex.calls == [] and codex.codex_calls[0]["home"] == codex.app.person_ask.codex_home("pat")
+    assert codex.codex_calls[0]["cwd"] == codex.app.person_ask.folder("pat") / "room"
+
+
+def test_codex_without_a_login_stays_off(codex):
+    (codex.app.person_ask.codex_home("pat") / "auth.json").unlink()
+    assert not codex.app.person_ask.available("pat")
+
+
+def test_codex_stays_off_where_its_wall_was_not_proved(codex, monkeypatch):
+    monkeypatch.setattr(pa, "CODEX_WALL_PROVED", False)
+    assert not codex.app.person_ask.available("pat")
+
+
+def test_a_claude_login_never_serves_someone_else(codex):
+    assert codex.app.person_ask.options("pat") == ["codex"]
+    assert status_of(choose(codex, "pat", "claude")) == 400
+    assert codex.app.person_ask.engine("pat") == "codex"
+
+
+def test_only_the_manager_switches(codex):
+    assert status_of(choose(codex, "sam", "codex", who="pat")) == 403
+    assert codex.app.person_ask.engine("sam") == "claude"
+    assert status_of(choose(codex, "sam", "codex")) == 200
+    assert codex.app.person_ask.engine("sam") == "codex"
+
+
+def test_off_closes_the_chat_of_a_person(codex):
+    assert status_of(choose(codex, "pat", "off")) == 200
+    assert not codex.app.person_ask.available("pat")
+    assert status_of(question(codex)) == 403
+
+
+def test_only_the_manager_gets_the_list_and_it_names_no_path(codex):
+    assert codex.app.person_ask.state("pat")["manage"] is None
+    rows = codex.app.person_ask.state("sam")["manage"]
+    assert rows == [{"person": "sam", "engine": "claude", "options": ["claude", "codex"], "signed_in": False},
+                    {"person": "pat", "engine": "codex", "options": ["codex"], "signed_in": True}]
+
+
+def test_a_switch_starts_a_new_session_in_the_same_chat(codex):
+    question(codex)
+    conv = settled(codex)["convs"][0]["id"]
+    assert status_of(question(codex, conv=conv)) == 202
+    settled(codex)
+    assert THREAD in codex.codex_calls[1]["argv"]
+    data = codex.app.person_ask.read("pat")
+    data["convs"][0]["engine"] = "claude"
+    codex.app.person_ask.write("pat", data)
+    assert status_of(question(codex, conv=conv)) == 202
+    settled(codex)
+    assert THREAD not in codex.codex_calls[2]["argv"]
+
+
+def test_the_codex_run_gets_a_clean_environment(tmp_path, monkeypatch):
+    runner = Runner(tmp_path, cmux=None, claude=None, codex=None)
+    runner.person_codex = "/opt/homebrew/bin/codex"
+    seen = {}
+    monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
+    monkeypatch.setattr(runner, "_spawn_lines", lambda argv, timeout, on_line, cwd=None, env=None: seen.update(env=env, cwd=cwd))
+    argv = ai.person_codex_argv(runner.person_codex, tmp_path, "Hello", "Answer")
+    runner.run_person_codex(argv, 5, tmp_path, tmp_path / "codex")
+    assert set(seen["env"]) == {"PATH", "HOME", "CODEX_HOME", "LANG"}
+    assert seen["env"]["CODEX_HOME"] == str(tmp_path / "codex")
+    with pytest.raises(RunnerRefused):
+        runner.run_person_codex([*argv[:-2], "--dangerously-bypass-approvals-and-sandbox", *argv[-2:]], 5, tmp_path, tmp_path)
+
+
+@pytest.mark.parametrize("block, word", [
+    ({"people": ["a"], "codex": []}, "codex"),
+    ({"people": ["a"], "codex": {"people": []}}, "codex"),
+    ({"people": ["a"], "codex": {"people": ["b"], "other": 1}}, "codex"),
+    ({"people": ["a"], "codex": {"people": ["b"], "path": "codex"}}, "absolute"),
+    ({"people": ["a"], "codex": {"people": ["b"], "model": "a b"}}, "model"),
+    ({"people": ["a"], "manager": "b"}, "manager"),
+    ({"manager": "a"}, "people"),
+])
+def test_a_wrong_block_is_named(block, word):
+    assert word in (pa.settings_problem(block) or "")
+
+
+def test_codex_alone_needs_no_claude_login():
+    assert pa.settings_problem({"codex": {"people": ["b"]}, "manager": "b"}) is None

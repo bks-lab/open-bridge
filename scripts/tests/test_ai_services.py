@@ -212,3 +212,26 @@ def test_the_docs_show_the_declared_list():
 def test_the_template_names_no_list_of_its_own():
     text = (ROOT / "workflow/ai-services/_template.yaml").read_text(encoding="utf-8")
     assert "cockpit-describe" not in text and "ai-run.py --list" in text
+
+
+def test_person_codex_holds_the_wall_on_every_road():
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", 'Say "hi"\nnow')
+    assert "--sandbox" not in argv and not any("bypass" in a for a in argv)
+    assert 'default_permissions="room"' in argv and "permissions.room.network.enabled=false" in argv
+    wall = next(a for a in argv if a.startswith("permissions.room.filesystem="))
+    for closed in ("/private/tmp", "/tmp", "/Volumes", "/private/var/folders"):
+        assert f'"{closed}"="none"' in wall
+    assert 'web_search="disabled"' in argv and "project_doc_max_bytes=0" in argv
+    assert ai.person_codex_argv_ok(argv, "/bin/codex")
+    again = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", "gpt-5", "01a195e8-4b2d-7102-bdfa-34101f7287e1")
+    assert ai.person_codex_argv_ok(again, "/bin/codex")
+    assert again.index("resume") > again.index("permissions.room.network.enabled=false")
+
+
+def test_person_codex_refuses_any_other_shape():
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer")
+    assert not ai.person_codex_argv_ok(["/other", *argv[1:]], "/bin/codex")
+    assert not ai.person_codex_argv_ok([*argv[:-2], "--add-dir", "/", *argv[-2:]], "/bin/codex")
+    assert not ai.person_codex_argv_ok([argv[0], *argv[2:]], "/bin/codex")
+    with pytest.raises(ValueError):
+        ai.person_codex_argv("/bin/codex", "room", "Hello", "Answer")

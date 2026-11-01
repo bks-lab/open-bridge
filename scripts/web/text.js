@@ -26,7 +26,7 @@ const someNames = (names, lang) => {
 }
 
 const en = {
-  person: { newTitle: 'New task', newArea: 'Area of the task', newAdd: 'Add', language: 'Language' },
+  person: { newTitle: 'New task', newArea: 'Area of the task', newAdd: 'Add', language: 'Language', chatTitle: 'Chat for each person', chatLogin: 'Codex is not signed in for this person yet', engine: { claude: 'Claude', codex: 'Codex', off: 'Off' } },
   appName: 'Bridge',
   cockpit: 'Cockpit',
   skip: 'Skip to content',
@@ -1824,7 +1824,7 @@ const en = {
 }
 
 const de = {
-  person: { newTitle: 'Neue Aufgabe', newArea: 'Bereich der Aufgabe', newAdd: 'Anlegen', language: 'Sprache' },
+  person: { newTitle: 'Neue Aufgabe', newArea: 'Bereich der Aufgabe', newAdd: 'Anlegen', language: 'Sprache', chatTitle: 'Chat je Person', chatLogin: 'Codex ist für diese Person noch nicht angemeldet', engine: { claude: 'Claude', codex: 'Codex', off: 'Aus' } },
   appName: 'Bridge',
   cockpit: 'Cockpit',
   skip: 'Zum Inhalt springen',

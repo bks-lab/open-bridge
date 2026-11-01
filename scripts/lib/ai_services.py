@@ -168,6 +168,56 @@ def codex_argv_ok(argv: list[str], binary: str | None) -> bool:
         return False
 
 
+#: What the sandbox lets a person's run read: the working folder and what a shell needs, nothing else. "read-only"
+#: alone reads the whole disk, keys included; this profile was proved with planted files on macOS against the home
+#: folder, temp folders and external disks, by `cat`, `ls` and `grep` and through a real run and its resume.
+PERSON_CODEX_WALL = ('{":minimal"="read",":workspace_roots"={"."="read"},"/private/tmp"="none","/tmp"="none",'
+                     '"/private/var/folders"="none","/Volumes"="none","/Users/Shared"="none"}')
+PERSON_CODEX_FLAGS = ["exec", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--json",
+                      "-c", 'approval_policy="never"', "-c", 'web_search="disabled"', "-c", "project_doc_max_bytes=0",
+                      "-c", 'cli_auth_credentials_store="file"', "-c", 'shell_environment_policy.inherit="core"',
+                      "-c", 'default_permissions="room"', "-c", f"permissions.room.filesystem={PERSON_CODEX_WALL}",
+                      "-c", "permissions.room.network.enabled=false",
+                      "--disable", "hooks", "--disable", "apps", "--disable", "multi_agent",
+                      "--disable", "remote_plugin", "--disable", "skill_mcp_dependency_install"]
+
+
+def person_codex_argv(binary: str, room: Path | str, prompt: str, system: str, model: str | None = None,
+                      session: str | None = None) -> list[str]:
+    """A person's question: in their folder, behind the wall above. Nothing of the request but the words reaches it"""
+    if not str(room).startswith("/"):
+        raise ValueError("a person's folder is an absolute path")
+    if model is not None and not MODEL_RE.fullmatch(model):
+        raise ValueError("invalid Codex model")
+    if session is not None and not SESSION_RE.fullmatch(session):
+        raise ValueError("invalid Codex session")
+    argv = [binary, *PERSON_CODEX_FLAGS, "-C", str(room), "-c", f"developer_instructions={json.dumps(system, ensure_ascii=False)}"]
+    if model:
+        argv += ["--model", model]
+    if session:
+        argv += ["resume", session]
+    return argv + ["--", prompt]
+
+
+def person_codex_argv_ok(argv: list[str], binary: str | None) -> bool:
+    """The one shape a person's run may have: rebuilt from its parts, so no flag slips in between them"""
+    at = len(PERSON_CODEX_FLAGS) + 1
+    if not binary or len(argv) < at + 6 or argv[0] != binary or argv[-2] != "--" or argv[at] != "-C" or argv[at + 2] != "-c":
+        return False
+    name, _, value = argv[at + 3].partition("=")
+    tail, model, session = argv[at + 4:-2], None, None
+    if tail[:1] == ["--model"] and len(tail) >= 2:
+        model, tail = tail[1], tail[2:]
+    if tail[:1] == ["resume"] and len(tail) == 2:
+        session, tail = tail[1], []
+    try:
+        system = json.loads(value)
+        return (name == "developer_instructions" and not tail and isinstance(system, str)
+                and argv == person_codex_argv(binary, argv[at + 1], argv[-1], system, model, session))
+    except ValueError:
+        return False
+
+
 class CodexStream:
     def __init__(self):
         self.text = ""

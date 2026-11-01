@@ -52,6 +52,12 @@ class PageVerbs:
             raise self.not_applicable("settings of a person")
         self.app.access.set_settings(ctx.person, theme, language)
 
+    def v_ask_engine(self, ctx: Ctx, person: str, engine: str) -> None:
+        """Which road carries a person's questions: the manager's switch on their Settings page (person_ask.py)"""
+        if not ctx.person:
+            raise self.not_applicable("the road of a person's question")
+        self.app.person_ask.set_engine(ctx.person, person, engine)
+
     def v_tour_done(self, ctx: Ctx, how: str, v: int) -> None:
         """The first-run tour was finished or skipped: kept on the server, so no other browser offers it again"""
         self.app.store.set_tour(how, v)

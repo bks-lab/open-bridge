@@ -37,7 +37,7 @@ from ..model_route import haiku_argv_ok
 from ..work_find import HISTORY_ANSWER_SCHEMA, HISTORY_TERMS_SCHEMA, history_argv_ok
 from ..work_find import ask_argv_ok as files_argv_ok
 from .quick import argv_ok, resolve_claude
-from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
+from ..ai_services import codex_argv_ok, person_codex_argv_ok, resolve, select, CLAUDE_MODELS
 
 CMUX_APP = "/Applications/cmux.app/Contents/Resources/bin/cmux"
 SCRIPT_PATHS = ("scripts/briefing.py", "scripts/workspace.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
@@ -99,6 +99,7 @@ class Runner:
         self.cmux = resolve_cmux() if cmux == "auto" else cmux
         self.claude = resolve_claude() if claude == "auto" else claude
         self.person_claude: str | None = self.claude   # a person's question; a served cockpit sets it alone (server.py)
+        self.person_codex: str | None = None           # the same with cockpit.served.ask.codex
         self.codex = resolve("codex") if codex == "auto" else codex
         # the activity of a point reads two git logs of a task's folder (activity.py); without git it reads file times
         self.git = shutil.which("git") if git == "auto" else git
@@ -239,6 +240,15 @@ class Runner:
                      "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"):
             env.pop(name, None)
         env.update(ANTHROPIC_API_KEY=key, CLAUDE_CONFIG_DIR=str(config_dir))
+        return self._spawn_lines(list(argv), timeout_s, lambda line: None, cwd=cwd, env=env)
+
+    def run_person_codex(self, argv: list[str], timeout_s: float, cwd: Path, home: Path) -> RunResult:
+        """A person's question on Codex, in their folder and on the login in their own Codex home. It gets a clean
+        environment: nothing of the service's reaches the run, and what it reads is held by the wall of person_codex_argv"""
+        if not self.person_codex or not person_codex_argv_ok(argv, self.person_codex):
+            raise RunnerRefused("not a person's question")
+        env = {"PATH": f"{Path(self.person_codex).parent}:/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(home),
+               "CODEX_HOME": str(home), "LANG": "en_US.UTF-8"}
         return self._spawn_lines(list(argv), timeout_s, lambda line: None, cwd=cwd, env=env)
 
     def _spawn_lines(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None],

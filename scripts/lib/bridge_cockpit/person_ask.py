@@ -18,6 +18,12 @@ as: a subscription login is meant for its holder alone, so this is for the owner
 access of their own. `key` runs on the named key and on nothing else: the run gets a configuration folder of its own and
 loses every other way to sign in (Runner.run_person), so a key that fails is an error, never a subscription.
 
+`cockpit.served.ask.codex` opens a second road. Each person named there has a Codex login of their own in
+<state>/people/<name>/codex, so one login still serves one person, and `manager` may switch each person between what
+they are allowed, or off, on their Settings page (ask-engines.json, never bridge-config.yaml). Codex reads through a
+shell, and its sandbox "read-only" reads the whole disk, so the run carries a wall of its own that the operating system
+holds: ai_services.PERSON_CODEX_WALL. That wall is proved on macOS only; elsewhere the road stays closed.
+
 It follows the workspace: only a workspace at `boundary.level: room` feeds the folder, and the question is off for a
 person who has none. `wall` promises the operating system's sandbox, which is not built, so it opens nothing either.
 
@@ -37,13 +43,16 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
 from . import quick
-from .actions_base import ActionError
+from .actions_base import ActionError, bad_arg
+from ..ai_services import MODEL_RE, parse_codex, person_codex_argv
+from .store import atomic_write_json, read_json
 from .config import parse_keychain_ref
 from .text import TABLES
 
@@ -70,6 +79,8 @@ class Settings:
     model: str = "haiku"
     daily_questions: int = 30       # per person
     people: list | None = None      # who may ask; a login needs it: one person's subscription serves that person alone
+    codex: dict | None = None       # people, optional model and path: who may ask on a Codex login of their own
+    manager: str | None = None      # who switches each person's road on their Settings page
 
 
 def settings_problem(block: Any) -> str | None:
@@ -100,10 +111,36 @@ def settings_problem(block: Any) -> str | None:
     people = block.get("people")
     if people is not None and not (isinstance(people, list) and people and all(isinstance(x, str) and x for x in people)):
         return "people must be a list of names"
-    if auth == "login" and not people:
+    codex = block.get("codex")
+    problem = None if codex is None else codex_problem(codex)
+    if problem:
+        return problem
+    if auth == "login" and not people and codex is None:
         return "with auth: login needs people: the one person whose login it is"
-    if auth == "login" and len(people) > 1:
+    if auth == "login" and people and len(people) > 1:
         return "with auth: login serves one person, a subscription is not for others"
+    manager = block.get("manager")
+    if manager is not None:
+        named = [*(people or []), *((codex or {}).get("people") or [])]
+        if not named:
+            return "manager needs people to manage"
+        if manager not in named:
+            return "manager must be one of the people"
+    return None
+
+
+def codex_problem(block: Any) -> str | None:
+    if not isinstance(block, dict):
+        return "codex must be a mapping"
+    if set(block) - {"people", "model", "path"}:
+        return "codex takes people, model and path"
+    people, model, path = block.get("people"), block.get("model"), block.get("path")
+    if not (isinstance(people, list) and people and all(isinstance(x, str) and x for x in people)):
+        return "codex needs people: each on a login of their own"
+    if model is not None and not (isinstance(model, str) and MODEL_RE.fullmatch(model)):
+        return "codex model is not a model name"
+    if path is not None and not (isinstance(path, str) and path.startswith("/") and ".." not in path.split("/")):
+        return "codex path must be an absolute path"
     return None
 
 
@@ -237,6 +274,9 @@ class Documents:
                 os.link(path, goal)
 
 
+CODEX_WALL_PROVED = sys.platform == "darwin"     # ai_services.PERSON_CODEX_WALL
+
+
 class PersonAsk:
     def __init__(self, app: Any):
         self.app = app
@@ -269,10 +309,65 @@ class PersonAsk:
             return None
         return (res.stdout.strip() or None) if res.returncode == 0 else None
 
-    def available(self, person: str) -> bool:
+    def options(self, person: str) -> list[str]:
+        """What may carry this person's questions: a login serves the one person named for it"""
         got = self.settings
-        return bool(got and self.app.runner.person_claude and (got.auth == "login" or self.key())
-                    and (got.people is None or person in got.people) and self.app.access.ask_scope(person))
+        if got is None:
+            return []
+        claude = person in got.people if got.people is not None else got.auth == "key"
+        return [*(["claude"] if claude else []), *(["codex"] if person in ((got.codex or {}).get("people") or ()) else [])]
+
+    def engines_path(self) -> Path:
+        return self.app.state_dir / "ask-engines.json"
+
+    def engine(self, person: str) -> str:
+        """The road the manager chose, or the first one this person has; `off` when there is none"""
+        options = self.options(person)
+        kept = read_json(self.engines_path())
+        chosen = kept.get(person) if isinstance(kept, dict) else None
+        return chosen if chosen == "off" or chosen in options else (options[0] if options else "off")
+
+    def codex_home(self, person: str) -> Path:
+        return self.folder(person) / "codex"
+
+    def signed_in(self, person: str) -> bool:
+        return (self.codex_home(person) / "auth.json").is_file()
+
+    def ready(self, person: str) -> bool:
+        engine = self.engine(person)
+        if engine == "claude":
+            return bool(self.app.runner.person_claude and (self.settings.auth == "login" or self.key()))
+        return bool(engine == "codex" and CODEX_WALL_PROVED and self.app.runner.person_codex and self.signed_in(person))
+
+    def available(self, person: str) -> bool:
+        return bool(self.settings and self.ready(person) and self.app.access.ask_scope(person))
+
+    def managed(self) -> list[str]:
+        got = self.settings
+        return list(dict.fromkeys([*(got.people or []), *((got.codex or {}).get("people") or [])])) if got else []
+
+    def manage(self, person: str) -> list[dict] | None:
+        """The list of the Settings page, for the manager alone"""
+        got = self.settings
+        if got is None or got.manager != person:
+            return None
+        return [{"person": name, "engine": self.engine(name), "options": self.options(name), "signed_in": self.signed_in(name)}
+                for name in self.managed()]
+
+    def set_engine(self, actor: str, person: str, engine: str) -> None:
+        got = self.settings
+        if got is None or got.manager != actor:
+            raise ActionError(403, "not_yours", "this action is not open to you")
+        if person not in self.managed():
+            raise bad_arg("person", "not one of the people who may ask")
+        if engine != "off" and engine not in self.options(person):
+            raise bad_arg("engine", "not open to this person")
+        with self.lock:
+            kept = read_json(self.engines_path())
+            atomic_write_json(self.engines_path(), {**(kept if isinstance(kept, dict) else {}), person: engine})
+        self.push(person)
+        if actor != person:
+            self.push(actor)
 
     # ------------------------------------------------------------ the kept chats
 
@@ -310,7 +405,8 @@ class PersonAsk:
         open_now = self.available(person)
         if open_now:      # the page is open: the first question should find the folders mirrored
             self.documents.refresh([d for d in self.app.access.documents(person) if d.startswith("/")])
-        return {"available": open_now, "left": self.left(data), "convs": convs}
+        return {"available": open_now, "left": self.left(data), "convs": convs, "engine": self.engine(person),
+                "manage": self.manage(person)}
 
     # ------------------------------------------------------------ the folder
 
@@ -406,10 +502,12 @@ class PersonAsk:
             chat["turns"].append({"q": text, "a": None, "error": None, "at_ms": now})
             data["convs"] = data["convs"][:KEEP_CONVS]
             self.write(person, data)
-        conv_id, session = chat["id"], chat.get("session")
+        engine = self.engine(person)
+        conv_id = chat["id"]
+        session = chat.get("session") if chat.get("engine", "claude") == engine else None   # a session lives on one road
         self.documents.refresh([d for d in self.app.access.documents(person) if d.startswith("/")])
-        self.app.actions.audit_line("ask", "free", via="person", conv=conv_id, model=self.settings.model, chars=len(text))
-        threading.Thread(target=self.run, args=(person, conv_id, text, session), daemon=True).start()
+        self.app.actions.audit_line("ask", "free", via="person", conv=conv_id, model=self.model_of(engine), chars=len(text))
+        threading.Thread(target=self.run, args=(person, conv_id, text, session, engine), daemon=True).start()
         self.push(person)
         return 202, {"ok": True, "conv": conv_id}
 
@@ -417,20 +515,31 @@ class PersonAsk:
         language = self.app.cfg.language if self.app.cfg.language in TABLES else "en"
         return TABLES[language]["person_ask_system"].format(who=person, today=self.today())
 
-    def run(self, person: str, conv: str, text: str, session: str | None) -> None:
+    def model_of(self, engine: str) -> str:
+        return ((self.settings.codex or {}).get("model") or "codex") if engine == "codex" else self.settings.model
+
+    def ask_claude(self, person: str, room: Path, text: str, session: str | None) -> tuple[Any, dict | None]:
+        argv = quick.build_argv(self.app.runner.person_claude, self.settings.model, text, self.system(person), session)
+        key, config = None, None
+        if self.settings.auth == "key":
+            key, config = self.key(), self.folder(person) / "claude"
+            if not key:
+                raise RuntimeError("no key")
+            config.mkdir(exist_ok=True, mode=0o700)
+        done = self.app.runner.run_person(argv, quick.QUICK_TIMEOUT, room, key, config)
+        return done, quick.parse_answer(done.out)
+
+    def ask_codex(self, person: str, room: Path, text: str, session: str | None) -> tuple[Any, dict | None]:
+        got = self.settings.codex or {}
+        argv = person_codex_argv(self.app.runner.person_codex, room, text, self.system(person), got.get("model"), session)
+        done = self.app.runner.run_person_codex(argv, quick.QUICK_TIMEOUT, room, self.codex_home(person))
+        return done, parse_codex(done.out)
+
+    def run(self, person: str, conv: str, text: str, session: str | None, engine: str = "claude") -> None:
         answer, failed = None, None
         try:
-            room = self.room(person)
-            model = self.settings.model
-            argv = quick.build_argv(self.app.runner.person_claude, model, text, self.system(person), session)
-            key, config = None, None
-            if self.settings.auth == "key":
-                key, config = self.key(), self.folder(person) / "claude"
-                if not key:
-                    raise RuntimeError("no key")
-                config.mkdir(exist_ok=True, mode=0o700)
-            done = self.app.runner.run_person(argv, quick.QUICK_TIMEOUT, room, key, config)
-            parsed = quick.parse_answer(done.out)
+            room = self.room(person).resolve()
+            done, parsed = (self.ask_codex if engine == "codex" else self.ask_claude)(person, room, text, session)
             if parsed and not parsed["error"] and done.ok:
                 answer = parsed
             else:
@@ -446,6 +555,7 @@ class PersonAsk:
                 if answer:
                     turn["a"] = answer["text"]
                     chat["session"] = answer["session"] or chat.get("session")
+                    chat["engine"] = engine
                     chat["total_usd"] = answer["total_usd"]
                 else:
                     turn["error"] = failed
