@@ -63,6 +63,35 @@ test('the owner page sends everything as before', async () => {
   assert.equal(t.sent.length, 4)
 })
 
+test('a person files a new task in their area, with one area there is nothing to choose', async () => {
+  const s = asPerson({ boot: {} })
+  const withAreas = areas => ({ ...s, boot: { ...s.boot, config: { ...s.boot?.config, person, areas } } })
+  const one = mount(html`<${views.day.DayColumn} s=${withAreas(['Home'])} c=${recorder()} byKey=${new Map()} />`)
+  assert.ok(one.$('.person-new input'))
+  assert.equal(one.$('.person-new select'), null)
+  const two = mount(html`<${views.day.DayColumn} s=${withAreas(['Home', 'Yard'])} c=${recorder()} byKey=${new Map()} />`)
+  assert.ok(two.$('.person-new select'))
+})
+
+test('the owner gets no such field', () => {
+  const box = mount(html`<${views.day.DayColumn} s=${cockpitState(NOW)} c=${recorder()} byKey=${new Map()} />`)
+  assert.equal(box.$('.person-new'), null)
+})
+
+test('the settings of a person hold the colours and the language and nothing of the Bridge', () => {
+  const box = mount(html`<${views.settings.SettingsPage} s=${asPerson()} c=${recorder()} />`)
+  assert.ok(box.text().includes(T().person.language))
+  assert.equal(box.$('.settings-nav'), null)
+})
+
+test('a row offers a person its own verbs, none that hands it on', () => {
+  const s = asPerson()
+  const row = s.model.sections.flatMap(x => x.rows ?? []).find(r => r.key)
+  const box = mount(html`<${views.verbbar.VerbBar} row=${row} s=${s} c=${recorder()} verbs=${['do', 'advise', 'done', 'later', 'drop']} />`)
+  const words = box.text()
+  assert.ok(!words.includes(T().flow.verbs.do) && words.includes(T().flow.verbs.done))
+})
+
 test('the tabs of a person are the ones the server names, in their order', () => {
   assert.deepEqual(nav.pageOrder(asPerson()), person.pages)
 })

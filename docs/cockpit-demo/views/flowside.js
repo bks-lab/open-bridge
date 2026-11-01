@@ -40,6 +40,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, canTab, DAY, duration, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
   isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, reportsTicked, short, tabCloseOffer, triageRunning, verbsFor, workPageOf, workViewsIn,
+  personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
@@ -147,7 +148,7 @@ export function FlowSide({ sides, entered, mode, all, view, running = null, left
     <${NotNowNarrow} left=${left} open=${open} c=${c} />
     <${RunningRow} running=${running} on=${view === 'running' || view === 'run'} c=${c} />
     <${SideList} sides=${sides} entered=${entered} mode=${mode} points=${all} marked=${view === 'overview' || view === 'point'} s=${s} c=${c} />
-    <${CheckRow} s=${s} c=${c} on=${view === 'check'} />
+    ${personOf(s) ? null : html`<${CheckRow} s=${s} c=${c} on=${view === 'check'} />`}
     <${NotNowBlock} left=${left} open=${open} c=${c} />
   </aside>`
 }

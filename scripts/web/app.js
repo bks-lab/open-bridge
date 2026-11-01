@@ -2189,6 +2189,9 @@ async function boot() {
   }
   api.setCsrf(b.data.csrf)
   api.setAccess(b.data.config?.person)    // a person's page sends only what bootstrap names (access.py)
+  // their colours follow them from device to device, kept on the server
+  const personTheme = b.data.config?.person?.settings?.theme
+  if (personTheme) ctl.setTheme(personTheme)
   // the aliases of workplace.workspaces: a tab or a row under an alias stands in its area (areas.js)
   setAreaAliases(b.data.config?.area_aliases)
   setAreaTags(b.data.config?.area_tags)

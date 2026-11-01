@@ -556,7 +556,8 @@ def _new_slug(text: str) -> str:
 
 
 def new_task(root: Path, slug: str | None = None, *, headline: str | None = None, status: str = "backlog",
-             from_inbox: str | None = None, task_type: str = "admin", now: dt.datetime | None = None) -> dict:
+             from_inbox: str | None = None, task_type: str = "admin", area: str | None = None,
+             now: dt.datetime | None = None) -> dict:
     """A new work/tasks/<slug>/STATUS.md (the template's required fields, a short body). From an inbox item the
     headline and the situation come from the item, the origin names it, and the item closes with a pointer to
     the task: an inbox item that turned out to be work for more than one sitting becomes a task."""
@@ -577,13 +578,15 @@ def new_task(root: Path, slug: str | None = None, *, headline: str | None = None
     slug = slug or _new_slug(headline)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
         raise ValueError(f"not a task slug: {slug!r}")
+    if area is not None and not re.fullmatch(r"\w[\w .-]*", area):
+        raise ValueError(f"not an area: {area!r}")
     work = root / "work"
     if any(p.is_dir() for p in (work / "tasks" / slug, work / "streams" / slug)) or any((work / "done").glob(f"*/{slug}")):
         raise ValueError(f"a task {slug!r} exists already")
     origin = (f"inbox {item.id} ({str(item.created or '')[:10]}, {item.source}): {item.summary}" if item
               else f"Ad-hoc {today}")
     situation = (item.detail or item.summary) if item else headline
-    fm = [f"slug: {slug}", f"type: {task_type}", f"status: {status}", "priority: P2", f'created: "{today}"',
+    fm = [f"slug: {slug}", f"type: {task_type}", f"status: {status}", *([f"area: {area}"] if area else []), "priority: P2", f'created: "{today}"',
           f'last_updated: "{today}"', f"headline: {json.dumps(headline, ensure_ascii=False)}",
           f"origin: {json.dumps(origin, ensure_ascii=False)}", "sync:", "  bridge_only: true"]
     body = (f"# {headline}\n\n## Situation\n\n{situation}\n\n## Status\n\nNew{' (from the inbox)' if item else ''}.\n\n"
@@ -1816,6 +1819,7 @@ def main(argv=None) -> int:
     nw = sub.add_parser("new", help="a new task in work/tasks/, also from an inbox item (which then closes)")
     nw.add_argument("slug", nargs="?")
     nw.add_argument("--headline")
+    nw.add_argument("--area", help="the area of workplace.workspaces the task belongs to")
     nw.add_argument("--from-inbox", dest="from_inbox")
     nw.add_argument("--status", choices=NEW_STATUSES, default="backlog")
     nw.add_argument("--type", dest="task_type", default="admin")
@@ -1904,7 +1908,7 @@ def main(argv=None) -> int:
             return 0
         if args.cmd == "new":
             out = new_task(root, args.slug, headline=args.headline, status=args.status, from_inbox=args.from_inbox,
-                           task_type=args.task_type)
+                           task_type=args.task_type, area=args.area)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"new task {out['slug']} ({out['status']})")
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)

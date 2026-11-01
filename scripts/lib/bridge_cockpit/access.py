@@ -21,14 +21,16 @@ sends nothing else (api.js), so a closed route is no error on their screen.
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 import re
 from typing import Any
 
 from .. import document_paths, work_find
-from .actions_base import ActionError
+from .actions_base import ActionError, bad_arg
 from .config import read_config_file
 from .describe import _module
+from .store import atomic_write_json, read_json
 
 PERSON_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}\Z")      # the same words as members: in docs/schemas/workspace.schema.yaml
 
@@ -43,12 +45,17 @@ PERSON_POST = frozenset({"/api/action", "/api/ask", "/api/presence"})
 OWNER_POST = frozenset({"/api/reload", "/api/route", "/api/seen", "/api/clicks", "/api/flow/attach",
                         "/api/triage/run"})
 
-# the tabs of a person's page, in this order: Start, Today, the files, the Chat. The rest would stand empty
-PERSON_PAGES = ("@start", "briefing", "@files", "@chat")
+# the tabs of a person's page, in this order; the dates stand after Today where their workspaces name calendars
+PERSON_PAGES = ("@start", "briefing", "@files", "@chat", "@settings")
+DATES_PAGE = "dates"
 
 # verb -> the arguments that name what it changes; each of them has to be a row the person sees
 PERSON_VERBS = {"note": ("key",), "done": ("key",), "later": ("key",), "drop": ("key",), "priority": ("key",),
-                "urgency": ("key",), "task_set_next": ("key",), "task_close": ("keys",), "settle": ("keys",)}
+                "urgency": ("key",), "task_set_next": ("key",), "task_close": ("keys",), "settle": ("keys",),
+                "task_new": ("area",), "person_settings": ()}
+SELF_VERBS = frozenset({"person_settings"})     # about the person, no row
+PERSON_LANGUAGES = ("de", "en")
+PERSON_THEMES = ("auto", "light", "dark")
 OWNER_VERBS = frozenset("""
     a2a_ask a2a_forget a2a_poll account_status adopt advise approve_all area ask_via_tab chat_remind chat_tab
     collect_context describe_apply describe_discard describe_run do_it explain_note files_ask finding_ack
@@ -99,6 +106,14 @@ MODEL_NEUTRAL: dict[str, Any] = {
     "review": {"running": False, "error": None, "last": None, "keys": []}, "days": {"quota": {}, "counts": {}},
     "week": {"quota": {}, "counts": {}}, "returns": []}
 
+# a date as a person gets it: what the calendar says, nothing a page of the owner hangs on it. No overlaps: they name
+# the events beside it, which may stand in a calendar that is not theirs. No figures either, they count all of them
+FLOW_KEPT = frozenset({"drop_reasons", "return_after_s"})
+FLOW_OFF: dict[str, Any] = {"prep_ahead": 0, "infer_sessions": False, **{k: {"enabled": False} for k in ("instruct", "themes", "summary", "attach", "prio")}}
+DATE_FIELDS = frozenset({"title", "when", "id", "cal", "group"})
+DATE_NEUTRAL: dict[str, Any] = {"detail": "", "tone": None, "url": None, "task": None, "ask": False, "mark": None, "lines": [],
+                                "actions": None, "flags": None, "tags": None}
+DATE_CAL = frozenset({"start", "end", "day", "minutes", "all_day", "calendar", "info", "where", "online", "people", "past", "running"})
 ROW_FIELDS = frozenset({
     "key", "bucket", "section", "number", "title", "why", "sources", "inbox_id", "gate", "task", "ref", "priority", "urgency",
     "area", "area_names", "task_type", "due", "has_action", "inbox_state", "mark", "is_new", "is_changed",
@@ -199,6 +214,20 @@ class Access:
             self.app.log_error(f"access: {exc!r}")
             return []
 
+    def calendars(self, person: str) -> frozenset:
+        """The calendars the person's workspaces name under sources: none named, no dates"""
+        try:
+            scope = self.scope(person)
+            return frozenset(c for row in self.app.workspaces.rows()
+                             if person in (row.get("members") or []) and key_of(row.get("area")) in scope
+                             for c in (row.get("sources") or {}).get("calendars") or [])
+        except Exception as exc:
+            self.app.log_error(f"access: {exc!r}")
+            return frozenset()
+
+    def pages(self, person: str) -> list[str]:
+        return [*PERSON_PAGES[:2], *([DATES_PAGE] if self.calendars(person) else []), *PERSON_PAGES[2:]]
+
     def canon(self, name: Any) -> str:
         aliases = {key_of(a): key_of(n) for a, n in getattr(self.app.cfg, "area_aliases", ())}
         return aliases.get(key_of(name), key_of(name))
@@ -227,7 +256,22 @@ class Access:
     def rows(self, rows: Any, scope: frozenset) -> list[dict]:
         return [self.row(r) for r in rows or [] if isinstance(r, dict) and self.row_ok(r, scope)]
 
-    def model(self, model: dict | None, scope: frozenset) -> dict | None:
+    def dates(self, model: dict, calendars: frozenset) -> list[dict]:
+        """The one page of dates of a person: the events of the calendar sections whose calendar is theirs, which stay
+        out with their section where another calendar shares it. The page stands while nothing is collected yet"""
+        items = [{**DATE_NEUTRAL, **{k: v for k, v in i.items() if k in DATE_FIELDS},
+                  "cal": {**{k: v for k, v in i["cal"].items() if k in DATE_CAL}, "overlaps": []}}
+                 for p in model.get("pages") or [] for s in p.get("sections") or [] if s.get("kind") == "calendar"
+                 for i in s.get("items") or [] if (i.get("cal") or {}).get("calendar") in calendars]
+        title = "Termine" if getattr(self.app.cfg, "language", "") == "de" else "Dates"
+        return [{"id": DATES_PAGE, "title": title, "group": "main", "overview": False, "search": False, "cards": None, "under": None,
+                 "subs": [], "jev": None, "sections": [{
+                     "id": DATES_PAGE, "kind": "calendar", "title": title, "status": "ok", "reason": "", "alarm": False,
+                     "left_out": False, "empty": "", "items": items, "count": len(items), "total": len(items), "weight": 0, "bad": 0,
+                     "as_of": None, "view": "agenda", "place": None, "cal_figures": None, "hide_empty": False, "hide_ok": False,
+                     "steps": None, "stale": None, "boards": None, "metrics": []}]}]
+
+    def model(self, model: dict | None, scope: frozenset, calendars: frozenset = frozenset()) -> dict | None:
         if not isinstance(model, dict):
             return None
         sections, seen = [], set()
@@ -249,6 +293,11 @@ class Access:
                "approvable": [a for a in model.get("approvable") or [] if (a if isinstance(a, str) else a.get("key")) in seen]}
         if "deferred" in model:
             out["deferred"] = self.rows(model["deferred"], scope)
+        if calendars:
+            out["pages"] = self.dates(model, calendars)
+            today = dt.date.fromtimestamp(self.app.clock() / 1000).isoformat()
+            out["agenda"] = [{"when": i["cal"].get("start") or "", "title": i["title"]}
+                             for i in out["pages"][0]["sections"][0]["items"] if i["cal"].get("day") == today and not i["cal"].get("info")]
         return self.clean(out)
 
     def visible(self, person: str) -> set[str]:
@@ -273,14 +322,17 @@ class Access:
         return {k: v for k, v in (payload or {}).items() if k in LOADING_FIELDS}
 
     def work(self, state: dict) -> dict:
-        """The plain day: Work through, the instruction line and the sources all lead to a model or a tab"""
-        return {"view": "due", "focus_to_files": False, "files_scope": None, "flow": {"enabled": False}, "views": ["due"],
-                "files_search": {"enabled": False, "block": [], "left": 0}}
+        """The day, and Work through where the owner has it on: the points and the verbs that are theirs. Everything in it
+        that leads to a model or a tab is off"""
+        flow = {**{k: v for k, v in (state.get("flow") or {}).items() if k in FLOW_KEPT}, **FLOW_OFF}
+        on = (state.get("flow") or {}).get("enabled") is True
+        return {"view": "due", "focus_to_files": False, "files_scope": None, "flow": {**flow, "enabled": on},
+                "views": ["due", "flow"] if on else ["due"], "files_search": {"enabled": False, "block": [], "left": 0}}
 
     def state(self, person: str) -> dict:
         app, scope = self.app, self.scope(person)
         return {**STATE_NEUTRAL, "ok": True, "server": {"version": app.version, "started_ms": app.started_ms, "person": person},
-                "model": self.model(app.collector.model, scope), "loading": self.loading(app.collector.loading_state()),
+                "model": self.model(app.collector.model, scope, self.calendars(person)), "loading": self.loading(app.collector.loading_state()),
                 "workspaces": self.workspaces(app.workspaces.state(), scope), "work": self.work(app.work_state()),
                 "person_ask": app.person_ask.state(person)}
 
@@ -288,13 +340,15 @@ class Access:
         app, cfg, scope = self.app, self.app.cfg, self.scope(person)
         areas = [n for n in cfg.areas if key_of(n) in scope]
         mine = lambda name: self.canon(name) in scope  # noqa: E731
-        return {"ok": True, "csrf": app.csrf_of(person), "language": cfg.language, "version": app.version, "scratch": None,
+        settings = self.settings(person)
+        return {"ok": True, "csrf": app.csrf_of(person), "language": settings.get("language") or cfg.language, "version": app.version,
+                "scratch": None,
                 "config_warnings": [],
                 "config": {"port": app.port, "relay": False, "tabs_seconds": cfg.tabs_seconds, "full_minutes": cfg.full_minutes,
                            "voice": False, "target": None, "control": None, "profile": None, "areas": areas,
                            "area_aliases": {a: n for a, n in getattr(cfg, "area_aliases", ()) if mine(a)},
                            "area_tags": {n: [n] for n in areas}, "clicks": False,
-                           "person": {"name": person, "pages": list(PERSON_PAGES), "verbs": sorted(PERSON_VERBS),
+                           "person": {"name": person, "pages": self.pages(person), "verbs": sorted(PERSON_VERBS), "settings": settings,
                                       "routes": sorted(PERSON_GET | PERSON_POST | PUBLIC)}}}
 
     # ------------------------------------------------------------ the files tab
@@ -330,7 +384,7 @@ class Access:
         if not scope or event not in PERSON_EVENTS:
             return None
         if event == "view":
-            return self.model(payload, scope)
+            return self.model(payload, scope, self.calendars(person))
         if event == "workspaces":
             return self.workspaces(payload, scope)
         return self.loading(payload)
@@ -348,11 +402,32 @@ class Access:
 
     # ------------------------------------------------------------ what a person may change
 
+    def settings(self, person: str) -> dict:
+        """What a person set for themselves, kept per person beside the cockpit's state, never in bridge-config.yaml"""
+        kept = read_json(self.app.state_dir / "people" / f"{person}.json")
+        return {k: v for k, v in (kept if isinstance(kept, dict) else {}).items() if k in ("theme", "language")}
+
+    def set_settings(self, person: str, theme: str | None, language: str | None) -> None:
+        if theme is not None and theme not in PERSON_THEMES:
+            raise bad_arg("theme", "not a theme")
+        if language is not None and language not in PERSON_LANGUAGES:
+            raise bad_arg("language", "not a language")
+        folder = self.app.state_dir / "people"
+        folder.mkdir(parents=True, exist_ok=True)
+        new = {k: v for k, v in (("theme", theme), ("language", language)) if v is not None}
+        atomic_write_json(folder / f"{person}.json", {**self.settings(person), **new})
+
     def verb_ok(self, verb: Any) -> None:
         if not isinstance(verb, str) or verb not in PERSON_VERBS:
             raise ActionError(403, "not_yours", "this action is not open to you")
 
     def check(self, person: str, verb: str, clean: dict) -> None:
+        if verb in SELF_VERBS:
+            return
+        if verb == "task_new":
+            if self.canon(clean["area"]) not in self.scope(person):
+                raise ActionError(403, "not_yours", "this area is not in your workspaces")
+            return
         targets: list[str] = []
         for name in PERSON_VERBS[verb]:
             value = clean.get(name)

@@ -401,6 +401,19 @@ class WorkVerbs:
         else:
             ctx.note(self.tx["area_failed"].format(err=m.short(run.err, 100)), bad=True)
 
+    def v_task_new(self, ctx: Ctx, title: str, area: str) -> None:
+        """A new task in the backlog of an area, by the name the Bridge knows it under"""
+        access = self.app.access
+        name = next((n for n in self.app.cfg.areas if access.canon(n) == access.canon(area)), None)
+        if not name:
+            raise bad_arg("area", "not an area")
+        run = ctx.call("task.new", title, self.task_cmd("new", f"--headline={title}", f"--area={name}", "--status", "backlog", "--json"), SHORT_TIMEOUT)
+        if run.ok:
+            ctx.note(self.tx["task_new"].format(title=m.short(title, 60)))
+            ctx.delta()
+        else:
+            ctx.note(self.tx["task_new_failed"].format(err=m.short(run.err, 100)), bad=True)
+
     def v_priority(self, ctx: Ctx, key: str, value: str) -> None:
         row = self.entry(key)["row"]
         # an inbox row names the task it came from; its priority is not that task's to change from here

@@ -19,7 +19,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { activityWhen, atWork, batchPlan, batchPreselect, batchSummary, DAY, dropReasonWord, flowDrive, flowSettings, flowSuggestion, FLOW_BANDS, FLOW_YOU,
-  formatDay, isoDate, jevWhy, mergeable, mergeKeep, nextMonday, pointBand, rankerName, rowProject, rowRunning, short, stageTone } from '../logic.js'
+  formatDay, isoDate, jevWhy, personOf, mergeable, mergeKeep, nextMonday, pointBand, rankerName, rowProject, rowRunning, short, stageTone } from '../logic.js'
 import { T, TABLES, language } from '../text.js'
 import { KindTag } from './day.js'
 import { Btn, Dot } from './parts.js'
@@ -159,7 +159,7 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
   // the bar's own batch; one of the instruction line says itself under that line, never twice
   const done = (s.ui.flowBatch?.from ?? 'overview') === from ? s.ui.flowBatch : null
   const reasons = flowSettings(s).drop_reasons
-  const merging = mergeable(chosen)
+  const merging = personOf(s) ? [] : mergeable(chosen)      // a merge is no verb of a person's (access.py)
   const canMerge = merging.length >= 2 && merging.length === chosen.length
   const verb = v => {
     const off = !chosen.length
@@ -202,7 +202,7 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
       <${Btn} size="sm" variant="ghost" onClick=${() => setPlan(null)}>${w.cancel}<//>
     </div>` : null}
     ${done && !done.running && done.n ? html`<div class="flow-list-done" role="status"><span>${w.ran(done.n)}</span>
-      ${done.undo?.length ? html`<${Btn} size="sm" variant="secondary" icon="back" onClick=${() => c.flowBatchUndo()}>${w.undo}<//>` : null}</div>` : null}
+      ${done.undo?.length && !personOf(s) ? html`<${Btn} size="sm" variant="secondary" icon="back" onClick=${() => c.flowBatchUndo()}>${w.undo}<//>` : null}</div>` : null}
   </div>`
 }
 
@@ -213,6 +213,7 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
   const lang = language()
   const nowMs = s.now || Date.now()
   const bands = bandsOf(points, band)
+  const person = !!personOf(s)       // their list: the points and the verbs that are theirs, no AI's suggestion
   const rows = bands.flatMap(b => b.rows)
   const pickable = rows.filter(r => r.row)
   // the ticked points, and what runs ticked on the strip above (logic.js laneRows): for a merge or Done
@@ -224,14 +225,14 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
   const checked = s.model?.review?.last?.reviewed_at ? formatDay(String(s.model.review.last.reviewed_at).slice(0, 10), lang) : null
   if (!rows.length) return html`<section class="flow-overview" aria-label=${w.label}><p class="muted">${w.empty}</p></section>`
   return html`<section class="flow-overview" aria-label=${w.label}>
-    <${BatchBar} pickable=${pickable} chosen=${chosen} onPick=${(keys, on) => c.flowPick(keys, on)} verbs=${['suggested', 'done', 'later', 'drop']}
-      planOf=${(how, value) => batchPlan(chosen, how, s, value, lang)} onRun=${plan => c.flowBatch(plan?.calls ?? [])} suggest s=${s} c=${c} />
-    <p class="flow-list-from muted small">${[from.has('triage') && day ? w.from.triage(day) : null, from.has('check') && checked ? w.from.check(checked) : null,
+    <${BatchBar} pickable=${pickable} chosen=${chosen} onPick=${(keys, on) => c.flowPick(keys, on)} verbs=${person ? ['done', 'later', 'drop'] : ['suggested', 'done', 'later', 'drop']}
+      planOf=${(how, value) => batchPlan(chosen, how, s, value, lang)} onRun=${plan => c.flowBatch(plan?.calls ?? [])} suggest=${!person} s=${s} c=${c} />
+    ${person ? null : html`<p class="flow-list-from muted small">${[from.has('triage') && day ? w.from.triage(day) : null, from.has('check') && checked ? w.from.check(checked) : null,
       from.has('themes') ? w.from.themes : null,
-      from.has('jev') ? w.from.jev(formatDay(isoDate(nowMs), lang), rankerName(ranker)) : null, w.honest].filter(Boolean).join(' · ')}</p>
+      from.has('jev') ? w.from.jev(formatDay(isoDate(nowMs), lang), rankerName(ranker)) : null, w.honest].filter(Boolean).join(' · ')}</p>`}
     <table class="flow-ov-table">
       <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${w.pickAll}</span></th><th>${w.cols.point}</th><th>${w.cols.stage}</th>
-        <th>${w.cols.area}</th><th>${w.cols.suggestion}</th></tr></thead>
+        <th>${w.cols.area}</th>${person ? null : html`<th>${w.cols.suggestion}</th>`}</tr></thead>
       <tbody>${bands.map(b => {
         const ids = b.rows.filter(r => r.row).map(r => r.id)
         const all = ids.length > 0 && ids.every(id => picked.has(id))
@@ -258,7 +259,7 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
                 : age == null ? '' : html` <span class="mono">${w.age(age)}</span>`}</span>` : null}</td>
             <td class="flow-ov-stage small"><${Dot} token=${tone.token} pulse=${tone.pulse} /> ${kindFor(r.x)}</td>
             <td class="flow-ov-area small">${area}</td>
-            <td class="flow-ov-sug">${row ? html`<${Suggestion} sug=${flowSuggestion(row, s)} s=${s} />` : null}</td>
+            ${person ? null : html`<td class="flow-ov-sug">${row ? html`<${Suggestion} sug=${flowSuggestion(row, s)} s=${s} />` : null}</td>`}
           </tr>`
         })}`})}</tbody>
     </table>
