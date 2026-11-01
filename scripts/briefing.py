@@ -652,7 +652,7 @@ def profile_problems(data, stem: str) -> list:
     for key in ("schema_version", "scope", "id", "sections"):
         if key not in data:
             out.append(f"missing {key}")
-    for key in sorted(set(data) - PROFILE_KEYS - {"_path", "_language"}):
+    for key in sorted(set(data) - PROFILE_KEYS - {"_path", "_language", "_person"}):
         out.append(f"unknown key {key}")
     if data.get("schema_version") not in (None, 1):
         out.append("schema_version must be 1")
@@ -815,8 +815,10 @@ def sec_inbox(section: dict, ctx: Context) -> list:
                 items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(until),
                               "urgency": item.urgency, "kind": item.kind, "gate": item.gate, "task": item.task,
                               "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
-                              "has_action": bool(item.action), "area": item.area, "from": item.source})
-    items.sort(key=lambda i: (order.get(i["urgency"], 3), i["id"]))
+                              "has_action": bool(item.action), "area": item.area, "from": item.source,
+                              **({"waiting_on": item.deferral["on"]} if (item.deferral or {}).get("on") else {})})
+    # what has a date comes first within its urgency: a section's `max` cuts after this
+    items.sort(key=lambda i: (order.get(i["urgency"], 3), str(i.get("due") or "9999"), i["id"]))
     return items
 
 
@@ -2207,6 +2209,25 @@ def render(result: dict) -> str:
     return "\n".join(out)
 
 
+def settled_record(root: Path, now: dt.datetime) -> dict:
+    """What the person decided in the cockpit (work/cockpit/settled/): the keys marked done or not doing and the
+    rows put off, with the day they show again. Read for the printed briefing, so a row closed there does not
+    come back here. Empty when the record cannot be read: a briefing never fails for it."""
+    empty: dict = {"dismissed": [], "hidden": {}}
+    folder = root / "work" / "cockpit" / "settled"
+    if not folder.is_dir():
+        return empty
+    lib = str(ROOT / "scripts" / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    try:
+        from bridge_cockpit.settled import SettledStore
+        _keys, hidden, dismissed = SettledStore(folder, lambda: 0).state(f"{now:%Y-%m-%d}")
+    except (ImportError, OSError, ValueError):
+        return empty
+    return {"dismissed": sorted(dismissed), "hidden": hidden}
+
+
 def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False) -> str:
     """The briefing as the profile's `view:` (or a one-off `style`) wants it shown."""
     view = _view()
@@ -2537,7 +2558,9 @@ def main(argv=None) -> int:
 
     try:
         # the profile carries the Bridge's language, so its default words come in it (briefing_view.labels_for)
-        profile = {**select(root, cfg, getattr(args, "id", None)), "_language": conversation_language(cfg)}
+        profile = {**select(root, cfg, getattr(args, "id", None)), "_language": conversation_language(cfg),
+                   # who a next step's `who:` means when it names the person (the cockpit's flow.js reads the same key)
+                   "_person": ((cfg.get("cockpit") or {}) if isinstance(cfg.get("cockpit"), dict) else {}).get("person_name")}
     except Ambiguous as exc:
         print(f"briefing: choose a profile: {', '.join(exc.ids)} (or set default: true in one)", file=sys.stderr)
         return 2
@@ -2600,14 +2623,17 @@ def main(argv=None) -> int:
         result["inbox"] = {"filed": filed, "closed": closed}
         result["housekeeping"] = housekeep(root, ctx.now, summary=_summary(result, profile, args.style),
                                            profile_id=profile["id"])
+    if args.cmd == "render":
+        result["settled"] = settled_record(root, ctx.now)     # never saved: save_snapshot keeps its own fields
     if args.cmd == "render" and _view().style_of(profile, args.style) != "sources":
         view_cfg = profile.get("view") if isinstance(profile.get("view"), dict) else {}
         if view_cfg.get("overview") == "file":
             # Long blocks are where a hand copy into the chat goes wrong: they live in a file.
             path = root / SNAPSHOTS / f"{profile['id']}.overview.txt"
-            path.parent.mkdir(parents=True, exist_ok=True)
             built = _view().build(result, profile, args.style)
-            path.write_text(_view().draw_overview(built), encoding="utf-8")
+            if not args.no_save:      # --no-save leaves every file of the morning's run as it is
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(_view().draw_overview(built), encoding="utf-8")
             note = built["labels"]["overview_file"].format(path=path.relative_to(root))
             result["housekeeping"] = list(result.get("housekeeping") or []) + [note]
     if not args.no_save:

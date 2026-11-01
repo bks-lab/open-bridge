@@ -105,6 +105,8 @@ def overlay_items(data: list) -> list:
     out = []
     for d in data:
         name = d.get("name")
+        if d.get("materializes") is False:
+            continue          # declared without a `materialize:` block: a promote target, nothing to sync down
         if not d.get("materialized"):
             out.append(_row(name, f"Overlay {name}: subscribed but never materialized (overlay sync {name})"))
             continue
@@ -140,7 +142,8 @@ def main(argv=None) -> int:
         try:
             data = json.loads(_run([sys.executable, str(overlay), "status", "--json"], cwd=str(args.root),
                                    timeout=120))
-            rows += overlay_items(data)
+            blocks = {u.get("name"): bool(u.get("materialize")) for u in upstreams}
+            rows += overlay_items([{**d, "materializes": blocks.get(d.get("name"), True)} for d in data])
         except Exception as exc:  # noqa: BLE001
             rows.append(_row("overlays", f"Overlay state unknown: {exc}", "blocked"))
     print(json.dumps(rows, ensure_ascii=False))
