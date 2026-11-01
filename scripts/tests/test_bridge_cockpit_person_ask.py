@@ -634,3 +634,11 @@ def test_a_wrong_block_is_named(block, word):
 
 def test_codex_alone_needs_no_claude_login():
     assert pa.settings_problem({"codex": {"people": ["b"]}, "manager": "b"}) is None
+
+
+def test_each_road_is_told_the_tools_it_has(codex):
+    question(codex)
+    settled(codex)
+    system = next(a for a in codex.codex_calls[0]["argv"] if a.startswith("developer_instructions="))
+    assert "Read, Grep" not in system and "grep" in system and "cat" in system
+    assert "Read, Grep" in codex.app.person_ask.system("pat", "claude")
