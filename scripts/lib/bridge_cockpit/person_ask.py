@@ -511,9 +511,10 @@ class PersonAsk:
         self.push(person)
         return 202, {"ok": True, "conv": conv_id}
 
-    def system(self, person: str) -> str:
+    def system(self, person: str, engine: str = "claude") -> str:
         language = self.app.cfg.language if self.app.cfg.language in TABLES else "en"
-        return TABLES[language]["person_ask_system"].format(who=person, today=self.today())
+        table = TABLES[language]
+        return table["person_ask_system"].format(who=person, today=self.today(), tools=table["person_ask_tools"][engine])
 
     def model_of(self, engine: str) -> str:
         return ((self.settings.codex or {}).get("model") or "codex") if engine == "codex" else self.settings.model
@@ -531,7 +532,7 @@ class PersonAsk:
 
     def ask_codex(self, person: str, room: Path, text: str, session: str | None) -> tuple[Any, dict | None]:
         got = self.settings.codex or {}
-        argv = person_codex_argv(self.app.runner.person_codex, room, text, self.system(person), got.get("model"), session)
+        argv = person_codex_argv(self.app.runner.person_codex, room, text, self.system(person, "codex"), got.get("model"), session)
         done = self.app.runner.run_person_codex(argv, quick.QUICK_TIMEOUT, room, self.codex_home(person))
         return done, parse_codex(done.out)
 
