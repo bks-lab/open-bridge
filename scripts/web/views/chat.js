@@ -267,7 +267,7 @@ export function QuickChat({ s, c }) {
 
 /** The Chat tab: every kept chat on the left (first question, when, model, cost), the open one on the
  *  right with its box ready; a chat goes on where it stopped, also after a restart of the dashboard */
-/** The Chat of a person (access.py): a question could read the whole Bridge from here, so it stays off and says so */
+/** The Chat of a person without a key (person_ask.py): their question stays off and says so */
 function ChatOff() {
   const t = T()
   return html`<div class="col col-page chatpage term">
@@ -275,8 +275,46 @@ function ChatOff() {
     <p class="muted page-note">${t.chatArea.personOff}</p></div>`
 }
 
+/** The Chat of a person: one plain field and their own chats. The server reads only their files (person_ask.py),
+ *  so nothing here hands work on, picks a model or sends what the page shows */
+function ChatPerson({ s, c }) {
+  const t = T(), w = t.chatArea, ask = s.personAsk
+  const [text, setText] = useState('')
+  const [fresh, setFresh] = useState(false)
+  const conv = fresh ? null : ask.convs[0] ?? null
+  const running = ask.convs.some(x => x.running)
+  const body = useStickToEnd(conv, null)
+  const send = async e => {
+    e.preventDefault()
+    const words = text.trim()
+    if (!words || running || !ask.left) return
+    if (await c.personAsk(words, conv?.id)) { setText(''); setFresh(false) }
+  }
+  return html`<div class="col col-page chatpage term">
+    <header class="page-head"><h2 class="detail-title">${t.chatTab}</h2></header>
+    <p class="muted page-note">${w.personNote}</p>
+    <div class="person-chat" ref=${body}>
+      ${conv ? conv.turns.map((x, i) => html`<div class="qturn" key=${i}>
+        <div class="qq">${x.q}</div>
+        ${x.a ? html`<${Prose} cls="qa" text=${x.a} />` : x.error ? html`<p class="muted">${w.personFailed}</p>`
+          : html`<${StateLine} token="info" word=${w.personWait} />`}
+      </div>`) : html`<p class="muted">${w.personEmpty}</p>`}
+    </div>
+    <form class="person-ask" onSubmit=${send}>
+      <textarea class="input" rows="3" maxlength=${4000} aria-label=${w.personBox} placeholder=${w.personBox}
+        value=${text} onInput=${e => setText(e.currentTarget.value)} />
+      <div class="person-ask-row">
+        <${Btn} variant="primary" onClick=${send} disabled=${running || !ask.left || !text.trim()}>${w.personAsk}<//>
+        ${conv ? html`<${Btn} onClick=${() => setFresh(true)}>${w.personNew}<//>` : null}
+        <span class="muted small">${w.personLeft(ask.left)}</span>
+      </div>
+    </form>
+  </div>`
+}
+
 export function ChatPage({ s, c }) {
-  return personOf(s) ? html`<${ChatOff} />` : html`<${ChatOn} s=${s} c=${c} />`
+  if (personOf(s)) return s.personAsk?.available ? html`<${ChatPerson} s=${s} c=${c} />` : html`<${ChatOff} />`
+  return html`<${ChatOn} s=${s} c=${c} />`
 }
 
 function ChatOn({ s, c }) {

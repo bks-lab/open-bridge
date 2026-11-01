@@ -45,6 +45,7 @@ from . import card as cd
 from . import details
 from .. import work_find
 from . import model as m
+from . import person_ask as pa
 from . import signin as si
 from .actions import ActionError, Actions
 from .actions_base import SPEC, note_go
@@ -74,6 +75,7 @@ from .tab_history import QUERY_MAX as HISTORY_QUERY_MAX, TabHistory, paging as h
 from .guide import Guide
 from . import prio
 from .usage import Usage
+from .quick import resolve_claude
 from .runner import Runner, RunnerRefused
 from .design import resolved, stylesheet
 from . import access as ac
@@ -197,6 +199,17 @@ class SSEHub:
             client.visible = visible
             return back
 
+    def to_viewer(self, viewer: str, event: str, payload: Any) -> None:
+        """One event for the pages of one person and nobody else, the owner's pages included"""
+        data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        with self.lock:
+            clients = [c for c in self.clients if c.viewer == viewer]
+        for client in clients:
+            try:
+                client.queue.put_nowait((event, data))
+            except queue.Full:
+                client.closed = True
+
     def publish(self, event: str, payload: Any) -> None:
         data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         with self.lock:
@@ -238,6 +251,7 @@ class App:
         self.token = token
         self.csrf = derived(token, "csrf")      # what the page sends back in X-Bridge-Token, never the key
         self.version = VERSION
+        self.person_ask = pa.PersonAsk(self)    # a person's question: their files, their key, read only
         self.access = ac.Access(self)           # what a person named under members: gets, the owner is not touched
         # behind a sign-in gateway: a signed token says who a request is, there is no owner and no cookie (signin.py)
         self.sign_in = si.SignIn(cfg.served_access, clock) if cfg.served and cfg.served_access else None
@@ -898,9 +912,12 @@ def served_config(cfg: WebConfig) -> WebConfig:
     return dataclasses.replace(cfg, served=True, relay=False, triage_daily=False, snapshot_minutes=0)
 
 
-def served_runner(root: Path | str, code: Path | str | None = None) -> Runner:
-    """No model and no terminal: a question to a model and a tab stay on the owner's own machine."""
-    return Runner(root, cmux=None, claude=None, codex=None, code=code)
+def served_runner(root: Path | str, code: Path | str | None = None, ask: Any = None) -> Runner:
+    """No model and no terminal: a question to a model and a tab stay on the owner's own machine. With
+    cockpit.served.ask a person's question has the CLI, on its own road alone (Runner.run_person)."""
+    runner = Runner(root, cmux=None, claude=None, codex=None, code=code)
+    runner.person_claude = (ask.claude or resolve_claude()) if ask else None
+    return runner
 
 
 USAGE_RANGES = (7, 30, 90)
@@ -1658,7 +1675,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         app = self.app
         try:
-            if path == "/api/action":
+            if person is not None and path == "/api/ask":
+                status, payload = app.person_ask.ask(person, body)
+                self.send_json(status, payload)
+            elif path == "/api/action":
                 done = app.actions.execute(body.get("verb"), body.get("args"), viewer=person)
                 self.send_json(200, {"ok": bool(done.get("ok"))} if person else done)
             elif path == "/api/ask":

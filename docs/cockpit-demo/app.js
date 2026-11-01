@@ -388,6 +388,7 @@ function applyState(payload) {
     tabs: payload.tabs ?? s.tabs,
     sessions: payload.sessions ?? s.sessions,
     quick: payload.quick ?? s.quick,
+    personAsk: payload.person_ask ?? s.personAsk,
     agents: payload.agents ?? s.agents,
     triage: payload.triage ?? s.triage,
     jev: payload.jev ?? s.jev,
@@ -556,6 +557,9 @@ const handlers = {
   },
   // the answer while it is written: the new piece of its text and what it reads; null when the turn is
   // over. It goes to its own small store, so only the chat re-renders, not the page (views/chat.js)
+  person_ask(p) {
+    store.set(s => ({ ...s, personAsk: p }))
+  },
   quick_live(p) {
     quickLive.set(applyQuickLive(quickLive.get(), p))
   },
@@ -1532,6 +1536,12 @@ const ctl = {
   taskFile: (slug, file, path) => api.taskFile(slug, file, path),
   // a question in a file or about the results: a quick read-only chat with the file (or the list) as data;
   // `task` names an open task only (dossier.js), the server checks it again
+  // a person's question: their text, nothing the page shows goes along (person_ask.py)
+  personAsk: (text, conv) => withBusy('ask:free', 'free', async () => {
+    const res = await api.ask('free', { text }, { via: 'quick', ...(conv ? { conv } : {}) })
+    if (!res.ok) failNote(res)
+    return res.ok
+  }),
   askFile: (text, context, task) => withBusy('ask:free', 'free', async () => {
     const ui = store.get().ui
     const args = { text, ...(context ? { context } : {}), ...(task ? { task } : {}) }

@@ -163,6 +163,10 @@ properties:
       cost_center:
         type: string
         description: "workflow/cost-centers/<id>.yaml, the project the cost card opens on."
+      documents:
+        type: array
+        items: {type: string}
+        description: "What a person's questions may read beside the files of this workspace: folders (absolute or ~/), or named files of the Bridge (folder/*.yaml). Read only. scripts/lib/document_paths.py refuses the home folder, code, cloud folders and wide patterns."
 
   created_at:
     $ref: "#/$defs/Iso8601Utc"

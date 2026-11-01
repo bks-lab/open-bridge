@@ -182,7 +182,7 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
     served = getattr(args, "served", False)
     try:
         server = make_server(root, port=port, state_dir=state_dir, cfg=served_config(cfg) if served else cfg,
-                             runner=served_runner(root, code=DEFAULT_ROOT) if served else None, background=False,
+                             runner=served_runner(root, code=DEFAULT_ROOT, ask=cfg.served_ask) if served else None, background=False,
                              code_root=DEFAULT_ROOT)
     except OSError as error:
         if error.errno in (errno.EADDRINUSE, errno.EACCES):

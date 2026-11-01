@@ -135,7 +135,7 @@ enforces that there too. Arm it when you clone.
 
 To reach it from outside, put a sign-in gateway in front and set `cockpit.served.access`: the cockpit then takes a person
 only from the gateway's signed token and has no owner login at all ([`docs/bridge-cockpit.md`](bridge-cockpit.md#2-open-it),
-"Behind a sign-in gateway"). Never open a tunnel to a served cockpit without that block.
+"Behind a sign-in gateway"). Never open a tunnel to a served cockpit without that block. Questions to a model stay off until `cockpit.served.ask` is set (`docs/bridge-cockpit.md`, "A person's question"). Install `poppler` for the words of PDFs.
 
 ## 6. A first probe: declare, run, inspect, retire
 

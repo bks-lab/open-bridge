@@ -117,6 +117,8 @@ class WebConfig:
     served: bool = False
     # cockpit.served.access: behind a sign-in gateway, a signed token says who a request is and there is no owner (signin.py)
     served_access: Any = None
+    # cockpit.served.ask: the key and the limit of a person's question (person_ask.py), off without it
+    served_ask: Any = None
     chat_layout: str = "classic"
     # a quick chat untouched this many hours leaves the list into the archive (cockpit.chat_keep_hours, 0: never)
     chat_keep_hours: float = 24
@@ -719,12 +721,23 @@ def area_aliases_of(spaces: Any) -> tuple:
     return tuple((alias, ws["name"].strip()) for ws in (spaces if isinstance(spaces, list) else ())
                  if isinstance(ws, dict) and isinstance(ws.get("name"), str) and ws["name"].strip() for alias in _aliases(ws))
 
+def served_ask_of(block: Any):
+    """`cockpit.served.ask`, read strictly: the key a person's question runs on. Without it their question stays off."""
+    if not isinstance(block, dict) or "ask" not in block:
+        return None
+    from . import person_ask as pa     # it reads this module's neighbours, not the other way round
+    problem = pa.settings_problem(block["ask"])
+    if problem:
+        raise WebConfigError(f"cockpit.served.ask {problem}")
+    return pa.Settings(**block["ask"])
+
+
 def served_access_of(block: Any):
     """`cockpit.served.access`, read strictly: a block that is there and wrong stops the start."""
     if block is None:
         return None
-    if not isinstance(block, dict) or set(block) - {"access"}:
-        raise WebConfigError("cockpit.served takes only access")
+    if not isinstance(block, dict) or set(block) - {"access", "ask"}:
+        raise WebConfigError("cockpit.served takes only access and ask")
     if "access" not in block:
         return None
     problem = si.settings_problem(block["access"])
@@ -739,6 +752,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     where = "cockpit"
     w = _dict(raw.get("cockpit"))
     served_access = served_access_of(w.get("served"))
+    served_ask = served_ask_of(w.get("served"))
 
     if "port" in w and w.get("port") is not None:
         port = w["port"]
@@ -816,5 +830,5 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     snapshot_minutes=snapshot_minutes, idle_minutes=idle_minutes, triage_daily=w.get("triage_daily") is True,
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24,
-                    usage_clicks=_dict(w.get("usage")).get("clicks") is not False, served_access=served_access)
+                    usage_clicks=_dict(w.get("usage")).get("clicks") is not False, served_access=served_access, served_ask=served_ask)
     return replace(cfg, config_warnings=check_block(raw.get("cockpit"), cfg))
