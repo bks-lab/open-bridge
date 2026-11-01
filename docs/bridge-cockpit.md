@@ -3577,6 +3577,7 @@ share or clean up.
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
 | `people/<name>/chats.json` | a person's chats, day count and session ids, with their reading folder `room` and their Codex login `codex` beside it; `documents/` and `pdf-words/` beside `people/` hold the mirror of `sources.documents` | yes: a person's chats |
 | `ask-engines.json` | which road carries each person's questions, as `served.ask.manager` set it | no |
+| `people/<name>/codex/auth.json` | the Codex login of one person, written by `codex login`; the cockpit only looks whether it is there | no |
 | `chats/` | every chat and agent conversation that left its list, whole, one file a month (`quick-YYYY-MM.jsonl`, `agents-YYYY-MM.jsonl`), never deleted (folder and files readable by you only) | yes: the chats |
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
