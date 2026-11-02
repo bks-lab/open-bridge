@@ -63,6 +63,8 @@ is absent (`node`, `uv`) is skipped, not failed. Steps run four at a time
 suite also takes the cores the other steps leave. `--full` needs `pytest` in the interpreter that runs
 it (or pass `--python`), and inside every step `python3` is that interpreter.
 `--list` shows the steps and `--only TEXT` narrows them.
+On an instance the leak scan (`no-scrub-leak.py`) reads only the files that ship
+as core: your own data carries names on purpose.
 
 **If your instance is private**, there is nothing to hand-edit after a merge. The shipped
 root `.gitignore` ignores instance data for every clone, and on a private origin
