@@ -235,6 +235,9 @@ line wrap a sequence of daily blocks. `/archive` rolls a finished period into
 `work/archive/{bucket}/` and resets `log.md` from
 `work/templates/week-skeleton.md`.
 
+A Bridge that runs on two machines appends rows to `log.md` on both. The root `.gitattributes` sets
+`work/log.md merge=union`, so a rebase keeps both sides' rows instead of stopping on a conflict.
+
 ### Cadence — `work.archive_cadence`
 
 How often that roll happens is configurable:

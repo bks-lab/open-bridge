@@ -1,0 +1,4 @@
+# A Bridge that runs on two machines appends log rows on both. Without the
+# union merge driver every rebase over a log row conflicts; with it, both
+# sides' appended rows are kept.
+work/log.md merge=union
