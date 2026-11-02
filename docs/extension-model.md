@@ -79,8 +79,16 @@ checked with no frontmatter present.
 | `scripts/` outside `SCRIPTS_CORE_ALLOWLIST` | `scripts/example-tool.sh` | `user` |
 | a skill folder without a readable `SKILL.md` | `skills/example/references/notes.md` | `user` |
 | any other wrapper family, deny by default | `workflow/meetings/example.yaml`, `identity/mail-footers/example.yaml` | `user` |
-| wrapper templates and schemas | `workflow/meetings/_template.yaml`, `identity/personas/_schema.yaml`, `identity/designs/_template.md` | `core` |
-| everything else | `AGENTS.md`, `docs/example.md`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
+| wrapper templates and schemas of a family registered in `docs/data-model.yaml` | `workflow/meetings/_template.yaml`, `identity/personas/_schema.yaml`, `identity/designs/_template.md` | `core` |
+| wrapper templates and schemas of a family that is NOT registered there | `workflow/made-up-family/_schema.yaml`, `infra/made-up-family/_template.yaml` | `user` |
+| folders that ship wholesale (`docs/`, `rules/*.md`, `protocols/`, `trackers/`, `themes/`, `examples/`, `.github/`, `bin/`, `.claude/agents/`), the shipped root files and hooks | `AGENTS.md`, `docs/example.md`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
+| **anything no rule above claims** (fail-closed: shipping is opt-in) | `some/brand-new/thing.yaml`, `.claude/hooks/some-instance-hook.sh`, `NOTES.md` | `user` |
+
+**Fail-closed default.** A path no rule claims is `user`, never `core`. Shipping
+to the public repo is opt-in: a new file in a new folder stays local until a
+rule or a `VERIFIED_CORE` entry says it ships. A file that upstream already
+ships and that classifies `user` is a missing rule, and
+`test_every_file_upstream_ships_stays_core` fails on it.
 
 **Instance data versus promote tier.** Two questions share the word USER. One
 is where a file lives in git: instance data sits on your `user/*` branch and is
