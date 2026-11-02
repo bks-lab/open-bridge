@@ -125,8 +125,8 @@ cockpit compares `work/` before and after, keeps the changed paths in `work-sync
 `work/log.md` are accepted. Files another session left open stay out. Without a network the commit waits locally,
 so the puller must rebase and push such commits as it does for the inbox, extended to the same paths.
 
-Two machines now append to `work/log.md`. Put `work/log.md merge=union` into the instance's `.gitattributes`, or
-every rebase over a log row conflicts.
+Two machines now append to `work/log.md`. The root `.gitattributes` ships `work/log.md merge=union` for that reason;
+keep the line if your instance carries its own `.gitattributes`, or every rebase over a log row conflicts.
 
 The [push guard](../rules/push-guard.md) is unchanged. The machine pushes to your
 private origin. A `user/*` branch still never reaches a public upstream, and the
