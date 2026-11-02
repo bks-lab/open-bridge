@@ -29,6 +29,10 @@ each of which had drifted when this was written:
    Pages addresses that answered 404; they are `urn:` identifiers now, and
    this keeps a new one from pointing at nothing.
 
+6. The copyright holder in a page footer (`© YEAR Holder.`) is the one the
+   LICENSE names (`Copyright (c) YEAR Holder`). The footers said "BKS-Lab and
+   Contributors" while the LICENSE says "BKS Lab GmbH and Contributors".
+
 Run: python3 scripts/check-site-basics.py
 """
 from __future__ import annotations
@@ -52,6 +56,8 @@ OG_LOCALE = re.compile(r'<meta\s+property="og:locale"\s+content="([^"]+)"')
 OG_ALT = re.compile(r'<meta\s+property="og:locale:alternate"\s+content="([^"]+)"')
 LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 VAR_HEX = re.compile(r"--([A-Za-z0-9-]+)\s*:\s*(#[0-9A-Fa-f]{3,8})\b")
+LICENSE_HOLDER = re.compile(r"^Copyright \(c\) \d{4}\s+(.+?)\s*$", re.M)
+FOOTER_HOLDER = re.compile(r"©\s*\d{4}\s+([^.<]+?)\.")
 FONT_FACE = re.compile(r'@font-face\s*\{[^}]*font-family\s*:\s*"([^"]+)"')
 FONT_DISPLAY = re.compile(r'--font-display\s*:\s*"([^"]+)"')
 ROOT_ID = re.compile(r"""^\$id\s*:\s*["']?([^"'\s#]+)["']?\s*(?:#.*)?$""", re.M)
@@ -269,8 +275,25 @@ def check_schema_ids(root: Path) -> list[str]:
     return out
 
 
+def check_footers(root: Path) -> list[str]:
+    """Every page footer names the copyright holder the LICENSE names."""
+    lic = root / "LICENSE"
+    if not lic.is_file():
+        return []
+    m = LICENSE_HOLDER.search(lic.read_text(encoding="utf-8"))
+    if not m:
+        return ["LICENSE: no 'Copyright (c) YEAR Holder' line"]
+    holder = m.group(1)
+    out: list[str] = []
+    for p in pages(root / "docs"):
+        for found in FOOTER_HOLDER.findall(p.read_text(encoding="utf-8")):
+            if found != holder:
+                out.append(f"docs/{p.name}: footer holder is '{found}', LICENSE says '{holder}'")
+    return out
+
+
 def collect(root: Path) -> list[str]:
-    return check_pages(root) + check_design(root) + check_schema_ids(root)
+    return check_pages(root) + check_design(root) + check_schema_ids(root) + check_footers(root)
 
 
 def main() -> int:

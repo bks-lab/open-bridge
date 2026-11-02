@@ -318,3 +318,22 @@ def test_404_base_must_match_the_site_path(tmp_path):
 
 def test_site_path_is_derived_from_site():
     assert csb.site_path() == "/open-bridge/"
+
+
+# ---- footer holder vs LICENSE ---------------------------------------------------
+
+LICENSE = "MIT License\n\nCopyright (c) 2026 Example Corp and Contributors\n"
+
+
+def footer_page(holder: str) -> str:
+    return page("demo.html").replace("</body>", f"<footer>© 2026 {holder}. Licenses cover copyright.</footer></body>")
+
+
+def test_footer_holder_matching_license_passes(tmp_path):
+    root = build(tmp_path, **{"LICENSE": LICENSE, "docs/demo.html": footer_page("Example Corp and Contributors")})
+    assert problems(root) == []
+
+
+def test_footer_holder_differing_from_license_is_reported(tmp_path):
+    root = build(tmp_path, **{"LICENSE": LICENSE, "docs/demo.html": footer_page("Example and Contributors")})
+    assert any("demo.html" in p and "footer holder" in p for p in problems(root))
