@@ -13,6 +13,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -183,7 +184,7 @@ PERSON_CODEX_FLAGS = ["exec", "--ignore-user-config", "--ignore-rules", "--skip-
 
 
 def person_codex_argv(binary: str, room: Path | str, prompt: str, system: str, model: str | None = None,
-                      session: str | None = None) -> list[str]:
+                      session: str | None = None, images: Any = ()) -> list[str]:
     """A person's question: in their folder, behind the wall above. Nothing of the request but the words reaches it"""
     if not str(room).startswith("/"):
         raise ValueError("a person's folder is an absolute path")
@@ -192,6 +193,10 @@ def person_codex_argv(binary: str, room: Path | str, prompt: str, system: str, m
     if session is not None and not SESSION_RE.fullmatch(session):
         raise ValueError("invalid Codex session")
     argv = [binary, *PERSON_CODEX_FLAGS, "-C", str(room), "-c", f"developer_instructions={json.dumps(system, ensure_ascii=False)}"]
+    for image in images:      # only a picture inside the person's folder comes along
+        if not str(image).startswith(f"{room}/") or ".." in str(image).split("/"):
+            raise ValueError("an image must lie inside the person's folder")
+        argv += ["--image", str(image)]
     if model:
         argv += ["--model", model]
     if session:
@@ -205,7 +210,9 @@ def person_codex_argv_ok(argv: list[str], binary: str | None) -> bool:
     if not binary or len(argv) < at + 6 or argv[0] != binary or argv[-2] != "--" or argv[at] != "-C" or argv[at + 2] != "-c":
         return False
     name, _, value = argv[at + 3].partition("=")
-    tail, model, session = argv[at + 4:-2], None, None
+    tail, model, session, images = argv[at + 4:-2], None, None, []
+    while tail[:1] == ["--image"] and len(tail) >= 2:
+        images, tail = [*images, tail[1]], tail[2:]
     if tail[:1] == ["--model"] and len(tail) >= 2:
         model, tail = tail[1], tail[2:]
     if tail[:1] == ["resume"] and len(tail) == 2:
@@ -213,7 +220,7 @@ def person_codex_argv_ok(argv: list[str], binary: str | None) -> bool:
     try:
         system = json.loads(value)
         return (name == "developer_instructions" and not tail and isinstance(system, str)
-                and argv == person_codex_argv(binary, argv[at + 1], argv[-1], system, model, session))
+                and argv == person_codex_argv(binary, argv[at + 1], argv[-1], system, model, session, images))
     except ValueError:
         return False
 
