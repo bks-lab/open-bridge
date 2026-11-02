@@ -26,6 +26,7 @@ only evidence the reader works.
 from __future__ import annotations
 
 import glob
+import importlib.util
 import os
 import re
 import textwrap
@@ -212,8 +213,31 @@ def wiring(repo: Path) -> tuple[set[str], set[str]]:
 # ---------------------------------------------------------------- live tree
 
 
+def _router():
+    spec = importlib.util.spec_from_file_location("categorize_commits", REPO / "scripts" / "categorize-commits.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def core_only(repo: Path, paths: set[str]) -> set[str]:
+    """The paths the scope router classifies `core`: the tests that ship to upstream and so must run in its CI.
+
+    A fork's own tests (an agent's or a machine's, scoped user or personal) are the fork's business and
+    no upstream job could run them. The router reads files relative to the working directory, so it
+    is asked from the repo root."""
+    router = _router()
+    here = os.getcwd()
+    os.chdir(repo)
+    try:
+        return {p for p in paths if router.classify_file(p) == "core"}
+    finally:
+        os.chdir(here)
+
+
 def test_every_test_file_is_run_by_a_ci_job():
     _, unreached = wiring(REPO)
+    unreached = core_only(REPO, unreached)
     assert not unreached, (
         "These test files are run by no CI job. Wire each into a job in "
         ".github/workflows/ (a path, a glob or its directory on a pytest line):\n  "
@@ -374,6 +398,19 @@ def test_bare_pytest_at_the_repo_root_claims_nothing(tmp_path):
             "skills/x/tests/test_a.py": ""})
     _, unreached = wiring(repo)
     assert unreached == {"skills/x/tests/test_a.py"}
+
+
+def test_only_a_core_test_file_has_to_be_wired(tmp_path):
+    repo = _repo(tmp_path, """
+        jobs:
+          a:
+            steps:
+              - run: python3 -m pytest scripts/tests/test_one.py -q
+        """, {"scripts/tests/test_ci_wiring.py": "", "agents/someinstance/test_x.py": "",
+              "scripts/tests/test_one.py": ""})
+    _, unreached = wiring(repo)
+    assert unreached == {"scripts/tests/test_ci_wiring.py", "agents/someinstance/test_x.py"}
+    assert core_only(repo, unreached) == {"scripts/tests/test_ci_wiring.py"}   # the instance test is not upstream's job
 
 
 # ---------------------------------------------------------------- the gate
