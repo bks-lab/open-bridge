@@ -103,7 +103,7 @@ def build(tmp: pathlib.Path, **override: str) -> pathlib.Path:
     files = {
         "docs/index.html": page("index.html"),
         "docs/demo.html": page("demo.html"),
-        "docs/cockpit.html": page("cockpit.html", canonical=False),
+        "docs/cockpit.html": page("cockpit.html"),
         "docs/404.html": NOT_FOUND,
         "docs/sitemap.xml": sitemap("index.html", "demo.html", "cockpit.html"),
         "docs/robots.txt": f"User-agent: *\nSitemap: {SITE}sitemap.xml\n",
@@ -150,11 +150,9 @@ def test_canonical_must_match_page_url(tmp_path):
     assert any("demo.html" in p and "canonical" in p for p in problems(root))
 
 
-def test_cockpit_pages_are_exempt_from_canonical_only(tmp_path):
-    root = build(tmp_path, **{"docs/sitemap.xml": sitemap("index.html", "demo.html")})
-    found = problems(root)
-    assert any("cockpit.html" in p and "sitemap" in p for p in found)
-    assert not any("cockpit.html" in p and "canonical" in p for p in found)
+def test_cockpit_page_needs_a_canonical_too(tmp_path):
+    root = build(tmp_path, **{"docs/cockpit.html": page("cockpit.html", canonical=False)})
+    assert any("cockpit.html" in p and "canonical" in p for p in problems(root))
 
 
 # ---- sitemap ------------------------------------------------------------------
