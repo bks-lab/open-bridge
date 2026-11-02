@@ -273,6 +273,7 @@ _SCOPE_MAP = {**_BASE_SCOPE_MAP, **_instance_scope_aliases()}
 SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/bin/gh",
     "scripts/categorize-commits.py",
+    "scripts/check-all.py",
     "scripts/check-commands-doc.py",
     "scripts/check-figure-counts.py",
     "scripts/check-inline-scripts.py",
@@ -492,6 +493,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # Registered 2026-10-24 with the CI wiring guard: validate.yml runs it,
     # so it ships with the workflow that names it.
     "scripts/tests/test_ci_wiring.py",
+    # Registered 2026-11-02 with scripts/check-all.py, the local runner it pins.
+    "scripts/tests/test_check_all.py",
     # Registered 2026-08-30 with the reachability contract. Same reason again:
     # validate.yml runs the suite, the check and its mutation battery.
     "scripts/check-reachability.py",

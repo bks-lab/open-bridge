@@ -53,6 +53,7 @@ searches again.
 | May I push this branch to that remote? | [`rules/push-guard.md`](../rules/push-guard.md#the-invariant) |
 | What is scanned before a file moves to open-bridge? | [`rules/promote-safety.md`](../rules/promote-safety.md#what-to-scan) |
 | What do I owe after a push before I call it done? | [`rules/ci-discipline.md`](../rules/ci-discipline.md) |
+| How do I run every check CI runs on my own machine? | [`docs/updating.md`](updating.md#check-everything-after-a-merge) |
 | When does work need an independent review before "done"? | [`rules/operations.md`](../rules/operations.md#pre-done-independent-review) |
 | May I trust a `status:` field that says a service is running? | [`rules/deploy-reconciliation.md`](../rules/deploy-reconciliation.md#the-rule) |
 | How much may a session load before it starts working? | [`context-budget.yaml`](../context-budget.yaml) |
