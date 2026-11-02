@@ -175,3 +175,36 @@ def test_the_longest_steps_start_first(ca, tmp_path):
     _touch(tmp_path, "scripts/tests/test-y.sh")
     names = [s.name for s in ca.order(ca.plan(tmp_path, full=True, python="python3"))]
     assert names[:2] == ["pytest scripts/tests", "bash scripts/tests/test-overlay.sh"]
+
+
+def _instance(tmp_path, with_config=True):
+    import subprocess as sp
+    _touch(tmp_path, "scripts/no-scrub-leak.py")
+    _touch(tmp_path, "scripts/categorize-commits.py",
+           "def classify_file(path):\n    return 'core' if path.startswith(('docs/', 'scripts/')) else 'user'\n")
+    _touch(tmp_path, "docs/guide.md", "x")
+    _touch(tmp_path, "work/log.md", "x")
+    if with_config:
+        _touch(tmp_path, "bridge-config.yaml", "x: 1\n")
+    sp.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    sp.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+def _leak_step(ca, root):
+    return next(s for s in ca.plan(root, full=False, python="python3") if s.name.startswith("no-scrub-leak"))
+
+
+def test_on_an_instance_the_leak_scan_reads_only_core_files(ca, tmp_path):
+    # An instance holds its user's names and addresses on purpose. The whole-repo
+    # scan read all of them: over 300 s, and every hit a false alarm. The question
+    # that matters there is whether a CORE file carries one.
+    step = _leak_step(ca, _instance(tmp_path))
+    assert "docs/guide.md" in step.argv
+    assert "work/log.md" not in step.argv
+    assert "bridge-config.yaml" not in step.argv
+
+
+def test_on_open_bridge_itself_the_leak_scan_reads_the_whole_repo(ca, tmp_path):
+    step = _leak_step(ca, _instance(tmp_path, with_config=False))
+    assert step.argv[-1].endswith("scripts/no-scrub-leak.py")

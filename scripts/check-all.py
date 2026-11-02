@@ -24,6 +24,11 @@ pytest suite also takes the cores the other steps leave; without it they run pla
 Inside every step `python3` is the interpreter that runs this script, because
 the shell suites call bare `python3`.
 
+On an instance (bridge-config.yaml present) no-scrub-leak.py reads only the
+files the scope router ships as core. The instance holds its user's names on
+purpose; the whole-repo scan read all of them, ran past its time limit, and
+every hit would have been a false alarm.
+
 A step whose tool is absent (node, uv) is skipped, not failed. Not covered: the
 onboard-sim sandbox and the cockpit-relay TypeScript check, which need network.
 pytest has to be importable by the interpreter that runs this script, or by
@@ -127,6 +132,27 @@ def _bash_steps(root: pathlib.Path, runner: pathlib.Path) -> list[Step]:
     return steps
 
 
+def core_files(root: pathlib.Path) -> list[str] | None:
+    """Tracked files the scope router classifies core, or None when this tree
+    has no router to ask."""
+    router = root / "scripts" / "categorize-commits.py"
+    if not router.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("_check_all_router", router)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.modules.pop(spec.name, None)
+    listed = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True)
+    if listed.returncode != 0:
+        return None
+    return [f for f in listed.stdout.split("\0")
+            if f and (root / f).is_file() and not (root / f).is_symlink()
+            and mod.classify_file(f) == "core"]
+
+
 def plan(root: pathlib.Path, full: bool, python: str, xdist: bool = False,
          jobs: int = DEFAULT_JOBS) -> list[Step]:
     """Every step for this tree. Absent scripts drop out: a fork that has not
@@ -137,6 +163,12 @@ def plan(root: pathlib.Path, full: bool, python: str, xdist: bool = False,
     spread = ["-n", str(max(2, (os.cpu_count() or 4) - (jobs - 1)))] if xdist else []
     table = CHECKS + (MUTATE_CHECKS if full else [])
     steps = [Step(name, [python, *argv]) for name, argv in table if (root / argv[0]).is_file()]
+    if (root / "bridge-config.yaml").is_file():
+        core = core_files(root)
+        for s in steps:
+            if s.name == "no-scrub-leak.py" and core is not None:
+                s.name = "no-scrub-leak.py (core files)"
+                s.argv = [*s.argv, *core]
     if not full:
         return steps
 
