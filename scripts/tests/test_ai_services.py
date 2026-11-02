@@ -235,3 +235,28 @@ def test_person_codex_refuses_any_other_shape():
     assert not ai.person_codex_argv_ok([argv[0], *argv[2:]], "/bin/codex")
     with pytest.raises(ValueError):
         ai.person_codex_argv("/bin/codex", "room", "Hello", "Answer")
+
+
+def test_person_codex_carries_images_from_the_persons_folder():
+    imgs = ["/room/a.png", "/room/sub/b.jpg"]
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", "gpt-5", None, imgs)
+    pairs = [(argv[i], argv[i + 1]) for i, a in enumerate(argv) if a == "--image"]
+    assert pairs == [("--image", p) for p in imgs]
+    assert argv.index("--image") < argv.index("--model")
+    assert ai.person_codex_argv_ok(argv, "/bin/codex")
+    no_model = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", images=imgs[:1])
+    assert ai.person_codex_argv_ok(no_model, "/bin/codex")
+
+
+@pytest.mark.parametrize("image", ["/elsewhere/a.png", "/room/../etc/x.png", "/roomy/a.png", "a.png", "/room"])
+def test_person_codex_refuses_an_image_outside_the_persons_folder(image):
+    with pytest.raises(ValueError):
+        ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", images=[image])
+
+
+def test_person_codex_ok_refuses_a_crafted_foreign_image():
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer")
+    at = argv.index("-C") + 4
+    for image in ("/etc/passwd", "relative.png", "/room/../etc/passwd"):
+        crafted = [*argv[:at], "--image", image, *argv[at:]]
+        assert not ai.person_codex_argv_ok(crafted, "/bin/codex")
