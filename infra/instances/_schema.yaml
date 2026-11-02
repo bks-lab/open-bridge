@@ -75,6 +75,25 @@ properties:
       private-tracked — pushed to a PRIVATE remote as offsite backup
       public          — public repo (OSS)
 
+  metadata_policy:
+    enum: [local-only, private-tracked, public]
+    description: |
+      OPTIONAL, second and NARROWER confidentiality axis, same enum rhythm as
+      data_policy, but answers a different question. `data_policy` gates real
+      CONTENT (prompt/response text, session titles, files) and must stay
+      strict for a customer instance. `metadata_policy` gates ONLY pure
+      activity metadata (tool name, timestamp, duration, counters) for a
+      sensor that is demonstrably free of any free-text payload, e.g. an
+      activity-logging sensor, never a transcript or summary consumer. A
+      single `data_policy` cannot answer both questions at once: setting it
+      to a model-permitting value to unlock a metadata-only sensor would
+      ALSO silently unlock the content path for every other consumer that
+      reads data_policy (e.g. calendar-title labelling), which is the exact
+      leak this second axis exists to prevent.
+      Fail-closed like data_policy: if this field is absent, any
+      metadata-only consumer MUST fall back to data_policy (the stricter of
+      the two), never treat a missing field as permissive.
+
   push_policy:
     enum: [never, user-branch, upstream]
     description: "never = local-only · user-branch = push own user/* only · upstream = promote target"

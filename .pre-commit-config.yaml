@@ -47,6 +47,20 @@ repos:
         pass_filenames: false
         files: ^ecosystem\.yaml$
 
+  # Generated-output guard — refuses a control character in a string that
+  # becomes markup, CSS or a script. An escape written for CSS (`\00B7`) is
+  # read by Python FIRST, as octal, and the page then carries a NUL byte; the
+  # failure surfaces far away, inside subprocess, naming neither CSS nor the
+  # character. Contract: scripts/tests/test_generated_output_escapes.py
+  - repo: local
+    hooks:
+      - id: no-control-chars-in-generated-output
+        name: Reject control characters in generated markup, CSS and JS
+        entry: python3 scripts/check-generated-output.py
+        language: system
+        pass_filenames: false
+        files: \.py$
+
   # Scrub-leak guard — catches pipe-list scope literals (e.g. `user`) that a misconfigured
   # scrub regex can produce when its replacement value is a list rather than a single token.
   # Such bugs typically mangle `scope: core`, `user/* branch` and similar

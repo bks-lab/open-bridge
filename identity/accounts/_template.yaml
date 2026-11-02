@@ -11,6 +11,11 @@ id: my-account                     # stable slug, used as reference from context
 display_name: "My Account"
 owner: my-handle                   # persona id (e.g. <persona>-company) or your handle for self
 status: active                     # active | paused | disabled
+# Optional: hourly read-only inventory for the dashboard's Resources page (scripts/cloud-inventory.py
+# on the always-on machine). Azure uses the logged-in az CLI; Cloudflare needs a read-only token.
+# inventory:
+#   enabled: true
+#   token_ref: keychain://<service>/<account>   # read-only token, never one that can write
 # docs_ref: "<org>/<infra-repo> docs/<topic>/README.md"   # optional: where the human docs live;
                                    #   this file stays the machine-readable source
 
