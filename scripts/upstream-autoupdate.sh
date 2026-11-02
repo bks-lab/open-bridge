@@ -83,6 +83,7 @@ notify() {  # $1 = message
   fi
 }
 report() { mkdir -p work; { echo "# Upstream Auto-Update — $(date '+%F %T')"; echo; printf '%s\n' "$@"; } > "$REPORT"; }
+say() { printf '%s %s\n' "$(date '+%F %T')" "$*"; }  # stdout line with its own timestamp (launchd log has none)
 is_int() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
 
 INBOX_KEY="upstream-autoupdate-checks"
@@ -154,7 +155,7 @@ mirror_core_branch() {
 git fetch "$UPSTREAM_REMOTE" -q 2>/dev/null || true
 
 behind=$(git rev-list --count "HEAD..$UPSTREAM_REF" 2>/dev/null || echo x)
-is_int "$behind" || { report "- 🔴 cannot resolve \`$UPSTREAM_REF\` (fetch failed?)"; echo "autoupdate: no upstream ref"; exit 1; }
+is_int "$behind" || { report "- 🔴 cannot resolve \`$UPSTREAM_REF\` (fetch failed?)"; say "autoupdate: no upstream ref"; exit 1; }
 if [ "$behind" -eq 0 ]; then
   # The mirror still has to be asked, and this is the path where it matters most.
   # mirror_core_branch() used to be reachable ONLY after a successful auto-merge,
@@ -168,8 +169,8 @@ if [ "$behind" -eq 0 ]; then
   mirror_line=$(mirror_core_branch)
   inbox close --key "$STALE_KEY" --note "the branch carries $UPSTREAM_REF again"
   report "- ✓ up to date (0 behind \`$UPSTREAM_REF\`)" "$mirror_line"
-  echo "autoupdate: up to date"
-  echo "autoupdate: mirror — ${mirror_line#- }"
+  say "autoupdate: up to date"
+  say "autoupdate: mirror — ${mirror_line#- }"
   exit 0
 fi
 
@@ -377,7 +378,7 @@ if [ -n "$reason" ]; then
          "- $behind commit(s) behind \`$UPSTREAM_REF\` · sentinel conflict-risk: $risk" \
          ${promote_line:+"$promote_line"} ${adapt_line:+"$adapt_line"} ${stale_line:+"$stale_line"}
   notify "⚠ open-bridge auto-update SKIPPED: $reason ($behind behind). Manual merge needed."
-  echo "autoupdate: skipped — $reason"; exit 0
+  say "autoupdate: skipped — $reason"; exit 0
 fi
 
 # ---- SAFE → auto-merge (skip the local pre-commit hook for the headless merge) ----
@@ -494,7 +495,7 @@ if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
       --detail "The daily auto-update merged $behind upstream commit(s), and these checks then failed, or gained findings, that the tree before the merge did not have: $b. The merge $undo. Merge $UPSTREAM_REF by hand, fix what the checks name, then commit. Output of the run: $CHECKS_LOG" \
       --key "$INBOX_KEY" --closes-when-json "$probe"
     notify "🔴 open-bridge auto-update: merge turned checks red ($b), $undo. Manual merge needed."
-    echo "autoupdate: checks red after merge ($b), $undo"; exit 1
+    say "autoupdate: checks red after merge ($b), $undo"; exit 1
   fi
   ran_after=$checks_ran
   n_red=$(printf '%s' "$red_after" | sed '/^$/d' | wc -l | tr -d ' ')
@@ -526,8 +527,8 @@ if [ "$merged" = 1 ]; then
   report "- ✅ auto-updated \`$before\` → \`$after\` ($behind commit(s) merged from \`$UPSTREAM_REF\`)" \
          ${resolved_line:+"$resolved_line"} ${kept_line:+"$kept_line"} "$checks_line" "$mirror_line"
   notify "✅ open-bridge auto-updated: $behind commit(s) merged ($before→$after)"
-  echo "autoupdate: merged $behind commit(s) ($before→$after)"
-  echo "autoupdate: mirror — ${mirror_line#- }"
+  say "autoupdate: merged $behind commit(s) ($before→$after)"
+  say "autoupdate: mirror — ${mirror_line#- }"
 else
   git merge --abort 2>/dev/null || true
   # The guards passed and git merge still refused (an untracked file in the way,
@@ -538,5 +539,5 @@ else
   report "- 🔴 auto-update merge FAILED and was aborted — $behind behind, manual merge needed" \
          ${stale_line:+"$stale_line"}
   notify "🔴 open-bridge auto-update merge FAILED (aborted). Manual merge needed."
-  echo "autoupdate: merge failed, aborted"; exit 1
+  say "autoupdate: merge failed, aborted"; exit 1
 fi

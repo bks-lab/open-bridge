@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -311,6 +312,18 @@ def test_generic_notifier_gets_the_message_on_stdin(w, tmp_path):
     p, status = _autoupdate_env(w, AUTOUPDATE_NOTIFY_CMD=str(hook))
     assert "auto-updated" in status, status
     assert "auto-updated" in out.read_text()
+
+
+def test_stdout_lines_carry_a_timestamp(w):
+    """launchd appends stdout to a log with no date; each line states its own."""
+    p, _ = _autoupdate_env(w)
+    lines = [l for l in p.stdout.splitlines() if "autoupdate:" in l]
+    assert lines, p.stdout + p.stderr
+    for l in lines:
+        assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} autoupdate: ", l), l
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, _ = _autoupdate_env(w)
+    assert re.search(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} autoupdate: merged ", p.stdout, re.M), p.stdout
 
 
 def test_a_failing_notifier_does_not_fail_the_run(w):
