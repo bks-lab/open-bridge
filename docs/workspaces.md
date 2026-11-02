@@ -44,6 +44,21 @@ scripts/workspace.py                 ← the workspace engine (this layer)
                          owns overlays.lock.yaml
 ```
 
+## Four things called "workspace"
+
+The word is used for four different things in CORE. Only the first is what this
+guide is about.
+
+| Where you meet it | What it is | Read |
+|---|---|---|
+| `workflow/workspaces/<id>.yaml` | The workspace definition: a named binding of config overlays and member repos, handled by `scripts/workspace.py` and `/workspace`. Code members are cloned under `.bridge/workspaces/<id>/`. | this guide |
+| `~/.workspaces/` | The machine-global shared registry of workspaces (`workspaces.json`), written by `scripts/workspace_registry.py` so several tools on one machine see the same list. It records identity and paths, not content. | [§ The shared identity registry](#the-shared-identity-registry-workspaces) |
+| a cmux workspace | A window group in the optional cmux terminal, holding tabs ("surfaces") and splits. `scripts/workplace.py` plans one per task. Unrelated to the files above, and a tab is not a workspace. | [`skills/cmux/SKILL.md`](../skills/cmux/SKILL.md) |
+| the `workspaces:` block in `ecosystem.yaml` | The older sense: a name list saying which registry repos belong together for multi-repo work (`workspaces.<name>.repos`). It does not clone or bind anything and is not read by the workspace engine. | [`ecosystem.example.yaml`](../ecosystem.example.yaml) |
+
+Rule of thumb: to check out repos or subscribe to overlays, you want the first
+row; the other three only name or group things.
+
 ## Quickstart
 
 A workspace goes from empty to a bound working set in a handful of commands. The
