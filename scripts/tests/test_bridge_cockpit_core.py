@@ -137,13 +137,50 @@ def test_the_instance_words_come_from_the_instance(tmp_path):
     assert instance_words(tmp_path / "missing") == []                 # a fresh clone: nothing to look for
 
 
+def upstream_lines(root: Path, rel: str, ref: str = "upstream/main"):
+    """The lines of `rel` as the upstream ref has them, or None when there is no such ref or file.
+    A line that is already upstream is CORE text by definition: only a line a fork added or changed can leak
+    an instance word (a remote named like a product would otherwise flag every legitimate mention of it).
+    In upstream's own CI the tree is upstream, so nothing is filtered there."""
+    probe = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", ref + "^{commit}"],
+                           capture_output=True, text=True)
+    if probe.returncode != 0:
+        return None
+    shown = subprocess.run(["git", "-C", str(root), "show", f"{ref}:{rel}"], capture_output=True, text=True)
+    if shown.returncode != 0:
+        return None
+    return set(shown.stdout.splitlines())
+
+
+def test_a_word_on_an_upstream_line_is_ignored_but_not_on_an_added_line(tmp_path):
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                       check=True, capture_output=True)
+    git("init", "-q", "-b", "main")
+    (tmp_path / "page.js").write_text("// the widget shows a gadget\nconst a = 1\n", encoding="utf-8")
+    git("add", "page.js")
+    git("commit", "-q", "-m", "base")
+    git("update-ref", "refs/remotes/upstream/main", "HEAD")
+    (tmp_path / "page.js").write_text("// the widget shows a gadget\nconst a = 1\n// gadget of mine\n", encoding="utf-8")
+    known = upstream_lines(tmp_path, "page.js")
+    assert known == {"// the widget shows a gadget", "const a = 1"}
+    word = re.compile(r"\bgadget\b")
+    lines = (tmp_path / "page.js").read_text(encoding="utf-8").splitlines()
+    assert [n for n, line in enumerate(lines, 1) if word.search(line) and line not in known] == [3]
+    assert upstream_lines(tmp_path, "missing.js") is None            # a file upstream does not have
+    assert upstream_lines(tmp_path / "nowhere", "page.js") is None   # no repo or no upstream ref: no filter
+
+
 def test_no_instance_words_in_core_dashboard_files():
     hits = []
     for rel in DASHBOARD:
         path = ROOT / rel
         if not path.is_file() or "/vendor/" in rel:
             continue
+        known = upstream_lines(ROOT, rel) or set()
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line in known:
+                continue
             if INSTANCE_WORDS.search(line):
                 hits.append(f"{rel}:{n}: {line.strip()[:120]}")
             elif PROFILE_ID.search(line) and (rel, "profile") not in EXCEPTIONS:
