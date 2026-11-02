@@ -15,6 +15,7 @@ leak into the result.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -104,3 +105,20 @@ def test_parent_claude_md_warns_without_changing_the_exit_code(tmp_path, shim):
     assert any(str(outer / "CLAUDE.md") in w for w in warns), result.stdout
     assert any(str(tmp_path / "CLAUDE.local.md") in w for w in warns), result.stdout
     assert result.returncode == baseline.returncode
+
+
+# PyYAML parity: the Windows setup has no shell to run in CI, so this is a
+# static check that it probes PyYAML and fails without it, like bin/setup.
+def test_bash_setup_checks_pyyaml() -> None:
+    text = (ROOT / "bin" / "setup").read_text(encoding="utf-8")
+    assert 'python3 -c "import yaml"' in text
+    assert "ERR PyYAML missing" in text
+
+
+def test_windows_setup_checks_pyyaml_and_fails_without_it() -> None:
+    text = (ROOT / "bin" / "setup.ps1").read_text(encoding="utf-8")
+    probe = re.search(r'-c "import yaml"', text)
+    assert probe, "setup.ps1 never probes for PyYAML"
+    block = text[probe.start():probe.start() + 600]
+    assert "ERR  PyYAML missing" in block
+    assert "$ok = $false" in block, "a missing PyYAML must fail the setup run"

@@ -133,6 +133,21 @@ if ((Test-Path "scripts\user-data.py") -and $py) {
     $ok = $false
 }
 
+# PyYAML is a hard requirement: the Bridge's own scripts read YAML from the first
+# session on (bridge-config.py, context-index.py, validate-bridge.py). Check and
+# explain, never install. Mirrors bin/setup.
+if ($py) {
+    & $py.Source -c "import yaml" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "OK   PyYAML importable"
+    } else {
+        Write-Host "ERR  PyYAML missing for $($py.Source); the Bridge's scripts cannot read their YAML."
+        Write-Host "     Install it, then re-run the setup script:"
+        Write-Host "       $($py.Name) -m pip install --user pyyaml"
+        $ok = $false
+    }
+}
+
 # Claude Code loads AGENTS.md as this repo's entry file from 2.1.277 on
 # (2.1.281 on Bedrock, Vertex, Foundry and gateways). This repo ships no
 # CLAUDE.md, so an older Claude Code starts with no instructions at all.
