@@ -9,41 +9,34 @@ every CORE file you have changed locally (committed on your user branch OR
 uncommitted in the working tree) and flags which of those the upstream has ALSO
 changed — i.e. the files that will conflict on the next `git merge upstream/main`.
 
-It classifies a path as USER (safe to diverge) vs CORE (divergence = future
-conflict) purely structurally, matching docs/structure.md:
-  USER: work/, bridge-config.yaml, ecosystem*.yaml, overlays.lock.yaml,
-        identity/{personas,accounts,mandants,contracts}/<id>, identity/agent/{SOUL,IDENTITY,INSTANCE}.md,
-        infra/{remotes,channels,backups}/<id>, workflow/{calendars,contexts,projects}/<id>,
-        rules/user/**, protocols/standing-orders/user/**, themes/<non-builtin>
-  CORE: everything else (skills/, rules/*.md, docs/, scripts/, templates/schemas,
-        AGENTS.md/README.md, .claude/agents/, protocols/standing-orders/*.md)
-  A root CLAUDE.md stays on the CORE side here on purpose, see ENTRY_HINT.
+It classifies a path with the canonical scope router, `classify_file()` in
+scripts/categorize-commits.py (the same one /bridge-promote uses), so skill
+`metadata.scope`, cluster-wrapper frontmatter, org and personal paths all count
+as non-CORE. Only a path the router calls `core` can diverge CORE.
+  A root CLAUDE.md stays on the CORE side here on purpose, see ENTRY_FILE.
+  A CORE path declared in bridge-config.yaml `promote.local_adaptations` is an
+  intentional local edit: reported separately, never a warning, but still a
+  conflict risk when upstream changed it too.
 
 Exit code: 0 = no CORE conflict risk, 2 = conflict-risk file(s) present.
 
 Usage:
   bridge-divergence-check.py [--upstream upstream/main] [--json]
 """
-import argparse, json, os, re, subprocess, sys
+import argparse, importlib.util, json, os, subprocess, sys
 
-BUILTIN_THEMES = {"professional", "professional-de", "professional-fr", "professional-zh-cn", "_template", "_schema"}
+HERE = os.path.dirname(os.path.abspath(__file__))
 
-# A path is USER (safe to diverge from CORE) if it matches one of these.
-USER_PATTERNS = [
-    r"^work/",
-    r"^imports/",
-    r"^bridge-config\.ya?ml$",
-    r"^ecosystem(\.[a-z0-9-]+)?\.ya?ml$",
-    r"^overlays\.lock\.ya?ml$",
-    r"^\.bridge/",
-    r"^identity/(personas|accounts|mandants|contracts)/(?!_)[^/]+\.(ya?ml|md)$",
-    r"^identity/agent/(SOUL|IDENTITY|INSTANCE)\.md$",
-    r"^infra/(remotes|channels|backups)/(?!_)[^/]+(\.ya?ml|\.md|/.*)$",
-    r"^infra/(scheduled|instances)/(?!_)",
-    r"^workflow/(calendars|contexts|projects)/(?!_)[^/]+\.(ya?ml|md)$",
-    r"^rules/(user|org)/",
-    r"^protocols/standing-orders/(user|org)/",
-]
+
+def _load(name, filename):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, filename))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_router = _load("categorize_commits_for_divergence", "categorize-commits.py")
+_resolve = _load("upstream_resolve_for_divergence", "upstream-resolve.py")
 
 
 # A root CLAUDE.md classifies `user` in the promote router (it must never reach
@@ -55,14 +48,9 @@ ENTRY_HINT = ("upstream removed CLAUDE.md: run python3 scripts/migrate-entry-fil
               "(docs/updating.md)")
 
 
-def is_user(path):
-    if any(re.search(p, path) for p in USER_PATTERNS):
-        return True
-    # custom (non-builtin) theme file = USER
-    m = re.match(r"^themes/([a-z0-9-]+)\.ya?ml$", path)
-    if m and m.group(1) not in BUILTIN_THEMES:
-        return True
-    return False
+def is_core(path):
+    """CORE per the canonical scope router; the entry file is CORE on purpose."""
+    return path == ENTRY_FILE or _router.classify_file(path) == "core"
 
 
 def git(*args):
@@ -94,8 +82,13 @@ def main():
         l for l in git("diff", "--name-only", "HEAD").splitlines() if l)
     upstream_all = name_set(f"{base}..{a.upstream}")
 
-    local_core = sorted(f for f in local_all if not is_user(f))
-    conflict_risk = sorted(f for f in local_core if f in upstream_all)
+    core_all = sorted(f for f in local_all if is_core(f))
+    adaptations, _problems = _resolve.load_adaptations("bridge-config.yaml")
+    declared = {f: r for f in core_all
+                if (r := _resolve.adaptation_for(f, adaptations))}
+    declared_list = sorted(declared)
+    local_core = [f for f in core_all if f not in declared]
+    conflict_risk = sorted(f for f in core_all if f in upstream_all)
 
     # The fork still has a root CLAUDE.md that upstream no longer ships.
     has_local_entry = os.path.isfile(ENTRY_FILE) or subprocess.run(
@@ -109,6 +102,7 @@ def main():
     result = {
         "behind": behind, "ahead": ahead,
         "local_core_edits": local_core,
+        "declared_adaptations": declared_list,
         "conflict_risk": conflict_risk,
         "verdict": "at-risk" if conflict_risk else ("diverged" if local_core else "clean"),
         "hints": hints,
@@ -118,17 +112,23 @@ def main():
         print(json.dumps(result, indent=2))
     else:
         print(f"upstream drift: {behind} behind, {ahead} ahead ({a.upstream})")
-        print(f"local CORE edits: {len(local_core)}  |  conflict-risk on next merge: {len(conflict_risk)}")
+        print(f"local CORE edits: {len(local_core)}  |  declared local adaptations: "
+              f"{len(declared_list)}  |  conflict-risk on next merge: {len(conflict_risk)}")
         if conflict_risk:
             print("\n⚠ CONFLICT-RISK (CORE file changed both locally and upstream):")
             for f in conflict_risk:
-                print(f"  ✗ {f}")
-        if local_core:
-            noconf = [f for f in local_core if f not in conflict_risk]
-            if noconf:
-                print("\n⚠ diverged CORE files (no upstream change yet — promote or revert):")
-                for f in noconf:
-                    print(f"  · {f}")
+                tag = "  (declared in promote.local_adaptations)" if f in declared else ""
+                print(f"  ✗ {f}{tag}")
+        noconf = [f for f in local_core if f not in conflict_risk]
+        if noconf:
+            print("\n⚠ diverged CORE files (no upstream change yet — promote or revert):")
+            for f in noconf:
+                print(f"  · {f}")
+        quiet = [f for f in declared_list if f not in conflict_risk]
+        if quiet:
+            print("\n✓ declared local adaptations (promote.local_adaptations, not a warning):")
+            for f in quiet:
+                print(f"  · {f} — {declared[f][:60]}")
         for h in hints:
             print(f"\n→ {h}")
         if result["verdict"] == "clean":

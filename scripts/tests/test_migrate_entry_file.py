@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import os
 import pathlib
 import subprocess
@@ -544,14 +545,95 @@ def test_agents_md_mode_refuses_to_restore_a_pre_import_version(tmp_path):
     assert w.snapshot() == before
 
 
-def test_divergence_check_counts_instance_md_as_user():
-    """The migration's default target is USER, as the promote router says;
-    the sentinel must not report a fork that migrated as diverged CORE."""
+def _divergence_module():
     import importlib.util
     spec = importlib.util.spec_from_file_location("divergence", DIVERGENCE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    return mod
+
+
+def test_divergence_check_counts_instance_md_as_user():
+    """The migration's default target is USER, as the promote router says;
+    the sentinel must not report a fork that migrated as diverged CORE."""
+    mod = _divergence_module()
     for rel in ("identity/agent/INSTANCE.md", "identity/agent/IDENTITY.md",
                 "identity/agent/SOUL.md"):
-        assert mod.is_user(rel), rel
-    assert not mod.is_user("identity/agent/README.md")
+        assert not mod.is_core(rel), rel
+    assert mod.is_core("rules/some-rule.md")
+    assert mod.is_core("CLAUDE.md")  # the entry file stays on the CORE side on purpose
+
+
+# ------------------------------------------ divergence: canonical router --
+
+CONFIG_WITH_ADAPTATION = (
+    "identity: {}\npromote:\n  local_adaptations:\n"
+    "    - path: docs/declared-guide.md\n"
+    "      reason: instance-specific tweak that never ships upstream, kept on purpose\n"
+)
+
+
+def divergence(repo, *args):
+    return subprocess.run([sys.executable, str(DIVERGENCE), "--upstream", "upstream/main", *args],
+                          cwd=repo, env=ENV, capture_output=True, text=True)
+
+
+def diverge_world(w, config=CONFIG_WITH_ADAPTATION):
+    write(w.fork, "bridge-config.yaml", config)
+    write(w.fork, "skills/demo-skill/SKILL.md",
+          "---\nname: demo-skill\ndescription: x\nmetadata:\n  scope: personal\n---\n# Demo\n")
+    write(w.fork, "workflow/workloads/demo-job.yaml", "id: demo-job\n")
+    write(w.fork, "docs/real-core.md", "# Core doc\n")
+    write(w.fork, "docs/declared-guide.md", "# local\n")
+    commit(w.fork, "fork work")
+    git(w.fork, "fetch", "-q", "upstream")
+
+
+def test_divergence_uses_the_scope_router_and_declared_adaptations(w):
+    diverge_world(w)
+    p = divergence(w.fork, "--json")
+    assert p.returncode == 0, p.stdout + p.stderr
+    out = json.loads(p.stdout)
+    assert out["local_core_edits"] == ["docs/real-core.md"]
+    assert out["declared_adaptations"] == ["docs/declared-guide.md"]
+    assert out["conflict_risk"] == []
+    assert out["verdict"] == "diverged"
+
+
+def test_declared_adaptations_alone_are_not_diverged(w):
+    diverge_world(w)
+    git(w.fork, "rm", "-q", "docs/real-core.md"); commit(w.fork, "drop")
+    out = json.loads(divergence(w.fork, "--json").stdout)
+    assert out["local_core_edits"] == []
+    assert out["verdict"] == "clean"
+
+
+def test_declared_adaptation_changed_upstream_is_conflict_risk(w):
+    diverge_world(w)
+    write(w.up, "docs/declared-guide.md", "# upstream\n"); commit(w.up, "up change")
+    git(w.fork, "fetch", "-q", "upstream")
+    p = divergence(w.fork, "--json")
+    out = json.loads(p.stdout)
+    assert p.returncode == 2
+    assert out["conflict_risk"] == ["docs/declared-guide.md"]
+    assert out["verdict"] == "at-risk"
+    assert "docs/declared-guide.md" not in out["local_core_edits"]
+    text = divergence(w.fork).stdout
+    assert "declared in promote.local_adaptations" in text
+
+
+def test_divergence_without_config_key_declares_nothing(w):
+    diverge_world(w, config="identity: {}\n")
+    out = json.loads(divergence(w.fork, "--json").stdout)
+    assert out["declared_adaptations"] == []
+    assert out["local_core_edits"] == ["docs/declared-guide.md", "docs/real-core.md"]
+
+
+def test_divergence_text_output_shape(w):
+    diverge_world(w)
+    text = divergence(w.fork).stdout
+    assert "local CORE edits: 1  |  declared local adaptations: 1  |  conflict-risk on next merge: 0" in text
+    assert "diverged CORE files" in text and "docs/real-core.md" in text
+    assert "declared local adaptations (promote.local_adaptations, not a warning):" in text
+    assert "docs/declared-guide.md" in text and "instance-specific tweak" in text
+    assert "demo-skill" not in text and "demo-job" not in text
