@@ -273,6 +273,7 @@ _SCOPE_MAP = {**_BASE_SCOPE_MAP, **_instance_scope_aliases()}
 SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/bin/gh",
     "scripts/categorize-commits.py",
+    "scripts/check-all.py",
     "scripts/check-commands-doc.py",
     "scripts/check-figure-counts.py",
     "scripts/check-inline-scripts.py",

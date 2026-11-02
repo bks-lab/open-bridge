@@ -1,7 +1,7 @@
 ---
 summary: "Keeping a Bridge current: the manual CORE merge, the unattended daily auto-update and its fail-closed guards, org overlay sync, and how a CORE fix you made flows back without leaving a permanent divergence."
 type: guide
-last_updated: 2026-10-30
+last_updated: 2026-11-02
 related:
   - install.md
   - org-overlays.md
@@ -9,6 +9,7 @@ related:
   - ../scripts/upstream-autoupdate.sh
   - ../scripts/install-upstream-autoupdate.sh
   - ../scripts/migrate-entry-file.py
+  - ../scripts/check-all.py
 ---
 
 # Updating your Bridge
@@ -44,6 +45,24 @@ upstream/main` once. Details: [install.md](install.md).
 
 Before a merge, `python3 scripts/bridge-divergence-check.py` lists every CORE
 file you changed locally and flags the ones upstream changed too.
+
+### Check everything after a merge
+
+```bash
+python3 scripts/check-all.py           # every checker CI runs, under a minute
+python3 scripts/check-all.py --full    # plus every test suite, several minutes
+```
+
+One line per step, the tail of the output for a red one, a sum at the end, exit 0
+when nothing is red. The fast tier is a table in the script that a test holds to
+every `scripts/check-*.py` and `scripts/validate-*.py`; the full tier finds its
+suites by glob. Each step runs with an empty, temporary global git config, so a
+step that sets git identity cannot reach your `~/.gitconfig`. A step whose tool
+is absent (`node`, `uv`) is skipped, not failed. Steps run four at a time
+(`--jobs`), the longest first; with `pytest-xdist` installed the large pytest
+suite also takes the cores the other steps leave. `--full` needs `pytest` in the interpreter that runs
+it (or pass `--python`), and inside every step `python3` is that interpreter.
+`--list` shows the steps and `--only TEXT` narrows them.
 
 **If your instance is private**, there is nothing to hand-edit after a merge. The shipped
 root `.gitignore` ignores instance data for every clone, and on a private origin
