@@ -252,7 +252,8 @@ def _instance_scope_aliases() -> dict[str, str]:
 
 _SCOPE_MAP = {**_BASE_SCOPE_MAP, **_instance_scope_aliases()}
 
-# Everything else not matched above defaults to CORE.
+# Everything else not matched above defaults to USER (fail-closed): a path no
+# rule knows stays local until someone gives it a rule. Shipping is opt-in.
 
 # ---------------------------------------------------------------------------
 
@@ -828,6 +829,19 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
 # Position (after PERSONAL/USER/ORG) means a careless addition here degrades to
 # a no-op instead of overriding a denylist.
 VERIFIED_CORE = frozenset({
+    # Agent-tool wiring that ships. Enumerated: .claude/hooks/ also holds
+    # instance-only hooks (a hook is code, and it names this machine's paths),
+    # so the folder is not core wholesale.
+    ".agents/skills",                 # the symlink itself (the tracked entry has no trailing path)
+    ".claude/skills",
+    ".claude/settings.json",
+    ".claude/hooks/README.md",
+    ".claude/hooks/consent-boundary-check.sh",
+    ".claude/hooks/session-start-phase0.sh",
+    ".claude/hooks/worklog-drift-check.sh",
+    ".codex/hooks.json",
+    ".vibe/hooks.toml",
+    "imports/.gitkeep",               # keeps the USER imports/ folder present on a clone
     "identity/agent/README.md",
     "identity/agent/_soul-deck.schema.yaml",
     "identity/agent/_soul-deck.yaml",
@@ -839,6 +853,40 @@ VERIFIED_CORE = frozenset({
     "workflow/contexts/_doc-system.template.yaml",
     "workflow/projects/README.md",
 })
+
+# Files directly at the repo root that ship. The root is a flat namespace an
+# instance also writes to (bridge-config.yaml, ecosystem.yaml, notes), so it is
+# an enumeration, never a shape: a new root file is user until listed here.
+# `.gitignore` and `.bridge-origin` are deliberately absent: they are inverted per
+# tier (USER_PATTERNS, test_inverted_root_files_never_ship).
+ROOT_CORE = frozenset({
+    ".gitattributes", ".pre-commit-config.yaml",
+    ".yamllint.yml", "ACKNOWLEDGMENTS.md", "AGENTS.md", "AUTHORS", "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "DESIGN.md", "GEMINI.md", "LICENSE",
+    "README.md", "ROADMAP.md", "SECURITY.md", "SETUP.md", "SUPPORT.md",
+    "TRADEMARK.md", "bridge-config.yaml.template", "context-budget.yaml",
+    "ecosystem.example.yaml", "pr-review-prompt.md",
+})
+
+# Folders that ship wholesale. Reached only AFTER every user/org/personal rule
+# above, so the carve-outs (docs/applications.md, rules/user/, rules/org/,
+# protocols/standing-orders/user/, undeclared themes, a doc's own `scope:`)
+# have already answered. A folder is listed because the whole folder is CORE by
+# design (docs/structure.md), not because it happened to hold only CORE files.
+#   - rules/ is top-level files only; a subfolder is a tier and an unknown one
+#     stays user.
+#   - agents/ ships its runtime, template, gateway and tests; every
+#     agents/<name>/ instance is user (USER_PATTERNS).
+#   - bin/ is the setup entry point; scripts/ is its own allowlist; skills/ and
+#     .claude/agents/ route by declared scope.
+CORE_PATTERNS_RE = re.compile(
+    r"^(?:docs|protocols|trackers|themes|mods|examples|\.github|bin)/"
+    r"|^\.(?:claude|agents)/skills/"             # discovery symlink: skills/ routes by its own scope
+    r"|^\.claude/agents/"                         # sub-agents; a declared scope already answered above
+    r"|^rules/[^/]+\.md$"
+    r"|^agents/(?:_runtime/|_template/|_gateway/|tests/)"
+    r"|^agents/(?:__init__\.py|README\.md|pyproject\.toml|\.gitignore)$"
+)
 
 # The root repair. _CLUSTER_WRAPPER_RE enumerates the types that declare a scope; AGENTS.md § Layout
 # documents a GENERIC <wrapper>/<types>/ rule. Every type added since — checks,
@@ -888,6 +936,35 @@ WRAPPER_TESTS_CORE = re.compile(r"^(?:infra/remotes|infra/object-stores|workflow
 # generic and in English for exactly this step. Before that they named real
 # hosts, real customers and one real person, so the family stayed out and its
 # CI guard stayed red, which is the shape this list is meant to have.
+
+
+# Families CORE registers, read the way scripts/data-model.py reads its core
+# model (docs/data-model.yaml, `families:` rows with a `path:`), but with a line
+# scan: this module is dependency-free by design (no yaml import). Read from the
+# router's own tree, never the cwd, so the answer does not depend on where a
+# caller runs from. Cached: classify_file runs once per path.
+_FAMILY_SCAFFOLD_RE = re.compile(
+    r"^((?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*)/_(?:schema|template)\.(?:yaml|md)$"
+)
+_FAMILY_ROW_RE = re.compile(r"^\s*-\s+path:\s*[\"']?((?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*)/[\"']?\s*$")
+_REGISTERED_FAMILIES: frozenset[str] | None = None
+
+
+def _registered_families() -> frozenset[str]:
+    global _REGISTERED_FAMILIES
+    if _REGISTERED_FAMILIES is None:
+        found: set[str] = set()
+        model = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "data-model.yaml")
+        try:
+            with open(model, encoding="utf-8") as fh:
+                for line in fh:
+                    m = _FAMILY_ROW_RE.match(line)
+                    if m:
+                        found.add(m.group(1))
+        except OSError:
+            pass                      # unreadable model: no family registered, scaffolds stay user
+        _REGISTERED_FAMILIES = frozenset(found)
+    return _REGISTERED_FAMILIES
 
 
 def _unquote(path: str) -> str:
@@ -954,8 +1031,8 @@ def classify_file(path: str) -> str:
         if re.search(p, path):
             return "org"
     # scripts/ is allowlisted, not denylisted — see SCRIPTS_CORE_ALLOWLIST.
-    if path.startswith("scripts/") and path not in SCRIPTS_CORE_ALLOWLIST:
-        return "user"
+    if path.startswith("scripts/"):
+        return "core" if path in SCRIPTS_CORE_ALLOWLIST else "user"
     # Skill/agent files — frontmatter `scope:` overrides path inference.
     # For ANY file under skills/<name>/, read the scope from that skill's SKILL.md
     # (fixes the leak where skills/<name>/references/foo.md was treated as core
@@ -982,11 +1059,22 @@ def classify_file(path: str) -> str:
     # here and is now dead — the deny-by-default USER_PATTERNS entry claims the
     # whole directory earlier, and it missed IDENTITY-lore.md anyway. A branch
     # that can never fire is worse than no branch: the next reader believes it.
-    if path in VERIFIED_CORE:
+    if path in VERIFIED_CORE or path in ROOT_CORE or CORE_PATTERNS_RE.search(path):
         return "core"
     if CLUSTER_WRAPPER_FALLBACK.search(path):
         return "user"
-    return "core"
+    # `_schema`/`_template` of a family: CORE only when docs/data-model.yaml
+    # registers the family. An instance-only family (its row lives in
+    # work/data-model.yaml) keeps its scaffold local.
+    m = _FAMILY_SCAFFOLD_RE.match(path)
+    if m:
+        return "core" if m.group(1) in _registered_families() else "user"
+    # Fail-closed terminal default. A path nothing above claims is NOT assumed
+    # to ship to the public repo: it stays `user` until a rule (or VERIFIED_CORE
+    # for a true one-off) says otherwise. A new upstream file that lands here
+    # fails test_every_file_upstream_ships_stays_core, which is the prompt to
+    # add that rule.
+    return "user"
 
 
 # ---------------------------------------------------------------------------

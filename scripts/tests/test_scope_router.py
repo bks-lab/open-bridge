@@ -7,8 +7,9 @@ ships to **bks-lab/open-bridge**, a PUBLIC MIT repo, so a wrong `core` is a leak
 and a wrong non-`core` silently cuts this instance off from upstream updates.
 Both directions are asserted here.
 
-The router is an ORDERED denylist that ends in `return "core"` — fail-OPEN. Every
-path family added after a rule was written therefore defaults to shipping. These
+The router is an ORDERED rule list that ends in `return "user"`, fail-CLOSED (it
+ended in `return "core"` until 2026-11): a path family added after a rule was
+written stays local until it is given a rule. These
 tests pin the families that were found misrouted on 2026-08-01, and — just as
 importantly — pin the paths that must NOT move, because the obvious
 generalisations of the fix would route real PII into the public repo.
@@ -568,12 +569,24 @@ def test_non_ascii_path_is_not_anchored_away():
 # change to fail-closed updates this test on purpose rather than by accident.
 # ---------------------------------------------------------------------------
 def test_unknown_path_default_is_pinned():
-    got = tier("some/brand-new/unregistered-thing.yaml")
-    assert got in {"core", "user"}, f"unexpected default {got!r}"
-    if got == "core":
-        pytest.xfail(
-            "router still fails OPEN: an unregistered path ships to the public repo by default"
-        )
+    """Fail-closed: a path no rule knows stays local, never ships to the public repo."""
+    assert tier("some/brand-new/unregistered-thing.yaml") == "user"
+
+
+def test_unknown_hook_is_user():
+    assert tier(".claude/hooks/some-instance-hook.sh") == "user"
+
+
+@pytest.mark.parametrize("name", ["_schema.yaml", "_template.yaml"])
+def test_scaffold_of_unregistered_family_is_user(name):
+    # A family docs/data-model.yaml does not list is not a CORE family, so its
+    # scaffold files are not CORE either.
+    assert tier(f"workflow/made-up-family/{name}") == "user"
+
+
+@pytest.mark.parametrize("name", ["_schema.yaml", "_template.yaml"])
+def test_scaffold_of_registered_family_stays_core(name):
+    assert tier(f"infra/channels/{name}") == "core"
 
 
 # ---------------------------------------------------------------------------
