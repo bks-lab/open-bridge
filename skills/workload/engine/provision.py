@@ -430,8 +430,22 @@ def apply(plan_obj: Plan, w, host, artifact, ctx, *, dry_run, timeout_sec,
             steps = tuple(plan_obj.steps) or _steps_of(
                 artifact, "install_steps" if plan_obj.action == "create" else "replace_steps",
                 host, lenient=False)
-            for step in steps:
-                runner(step, host, timeout_sec=timeout_sec)
+            try:
+                for step in steps:
+                    runner(step, host, timeout_sec=timeout_sec)
+            except (errors.StepFailed, errors.StepTimeout) as failed:
+                # A replace that stops halfway has usually already unloaded the
+                # running unit. Stopping there leaves the service down until a
+                # human notices, which is what happened on a real machine when a
+                # bootstrap failed right after the bootout. Bring the previous
+                # unit back first, then report the failure.
+                if plan_obj.action != "replace":
+                    raise
+                notes = _roll_back(artifact, host, runner=runner, timeout_sec=timeout_sec)
+                told = "; ".join([str(failed),
+                                  "the previous files were put back and loaded again"]
+                                 + notes)
+                raise type(failed)(told, **getattr(failed, "fields", {})) from failed
 
             stamp_mod.write_stamp(
                 _stamp_for(w, host, artifact, adopted=False, root=root), host, ctx,
@@ -449,8 +463,10 @@ def apply(plan_obj: Plan, w, host, artifact, ctx, *, dry_run, timeout_sec,
                 # file is worse than litter.
                 _drop_previous(artifact, host, runner=runner, timeout_sec=timeout_sec)
             else:
-                _restore_previous(artifact, host, runner=runner, timeout_sec=timeout_sec)
-                findings.append("the verify did not pass, so the previous files were restored")
+                findings.extend(_roll_back(artifact, host, runner=runner,
+                                           timeout_sec=timeout_sec))
+                findings.append("the verify did not pass, so the previous files were "
+                                "restored and loaded again")
 
         return Outcome(plan_obj.action, verified, evidence, tuple(findings))
 
@@ -502,6 +518,38 @@ def _restore_previous(artifact, host, *, runner, timeout_sec) -> None:
                   f"[ -f {path}{PREVIOUS_SUFFIX} ] && mv {path}{PREVIOUS_SUFFIX} {path} || true"),
             purpose=f"restore the previous {f.path}",
         ), host, timeout_sec=timeout_sec)
+
+
+def _reload_steps(artifact, host) -> tuple:
+    """The backend's replace plan without its writes: unload, wait, load.
+
+    Used after `_restore_previous`, when the files on the machine are already
+    the old ones again and only the loaded unit still has to follow them.
+    """
+    paths = {str(f.path) for f in artifact.files}
+
+    def writes(step) -> bool:
+        purpose = step.purpose or ""
+        return any(purpose == f"write {p}" or purpose.startswith(f"write {p}, part ")
+                   for p in paths)
+
+    steps = _steps_of(artifact, "replace_steps", host, lenient=True)
+    return tuple(s for s in steps if not writes(s))
+
+
+def _roll_back(artifact, host, *, runner, timeout_sec) -> list:
+    """Put the previous files back AND load them. Returns what went wrong, if anything.
+
+    Restoring the file alone is half a rollback: the service manager still
+    holds the new unit until something unloads it and loads the old bytes.
+    """
+    _restore_previous(artifact, host, runner=runner, timeout_sec=timeout_sec)
+    for step in _reload_steps(artifact, host):
+        try:
+            runner(step, host, timeout_sec=timeout_sec)
+        except (errors.StepFailed, errors.StepTimeout) as again:
+            return [f"loading the previous unit failed too, needs a hand: {again}"]
+    return []
 
 
 def _declaration_ref(w, root) -> str:

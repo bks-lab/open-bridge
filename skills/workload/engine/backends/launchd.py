@@ -16,6 +16,7 @@ Three things here are scars, not style:
 from __future__ import annotations
 
 import plistlib
+import shlex
 
 from engine.model import (
     Guarantee,
@@ -27,6 +28,37 @@ from engine.model import (
 )
 
 from . import base, wrapper
+
+#: How long a replace waits for launchd to let go of the old unit before it
+#: loads the new one. `launchctl bootout` returns while the old process is still
+#: shutting down, and a bootstrap in that window fails with "5: Input/output
+#: error" and leaves the unit unloaded. Measured on a unit whose TERM handler
+#: takes 3 s: gone after 3.3 s. Thirty seconds covers a slow daemon with room.
+UNLOAD_WAIT_SEC = 30
+
+
+def unload_wait_step(unit_ref: str, *, wait_sec: float | None = None,
+                     elevated: bool = False) -> Step:
+    """A step that returns once launchd no longer knows `unit_ref`.
+
+    Polls `launchctl print` every 0.1 s and fails after `wait_sec`, so a unit
+    that never unloads stops the replace instead of racing it.
+    """
+    wait = UNLOAD_WAIT_SEC if wait_sec is None else wait_sec
+    tries = max(1, int(round(wait * 10)))
+    ref = shlex.quote(unit_ref)
+    script = (
+        f"i=0; while launchctl print {ref} >/dev/null 2>&1; do "
+        f"i=$((i+1)); if [ \"$i\" -ge {tries} ]; then "
+        f"echo 'launchd still holds {unit_ref} after {wait}s' >&2; exit 1; fi; "
+        f"sleep 0.1; done; exit 0"
+    )
+    return Step(
+        argv=("/bin/sh", "-c", script),
+        purpose=f"wait until launchd has let go of {unit_ref}",
+        timeout_sec=int(wait) + 15,
+        requires_elevation=elevated,
+    )
 
 #: launchd will not start a second copy of a job whose previous run is still
 #: going, so single flight comes free. It promises nothing else: there is no
@@ -245,13 +277,14 @@ class LaunchdBackend:
     def replace_steps(self, a, h) -> tuple:
         # bootout FIRST, then the new bytes, then bootstrap. kickstart is not
         # here on purpose: it restarts what is loaded, it does not reload a
-        # changed unit, so a schedule change silently would not take.
+        # changed unit, so a schedule change silently would not take. The wait
+        # after the bootout is not optional: see UNLOAD_WAIT_SEC.
         steps = [Step(
             argv=("launchctl", "bootout", a.unit_ref),
             purpose=f"unload the running {a.unit_ref}",
             expect_rc=(0, 3, 113),
             requires_elevation=self.requires_elevation,
-        )]
+        ), unload_wait_step(a.unit_ref, elevated=self.requires_elevation)]
         steps.extend(self._write_steps(a))
         steps.append(Step(
             argv=("launchctl", "bootstrap", self._domain_of(a), self._unit_file(a)),
