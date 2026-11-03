@@ -548,6 +548,42 @@ class Adopting(ProvisionBase):
         self.assertTrue(outcome.verified)
         self.assertIn("adopted", str(outcome.action) + " " + runner.joined_calls)
 
+    def test_an_adopted_hand_made_unit_is_replaced_without_force(self):
+        """A hand made unit has no guard script, the render has one. Adopt used
+        to fall back to the RENDERED digest when the file counts differed, so the
+        stamp claimed the bridge's own version was on the machine. The next
+        provision then saw "stamp equals render, files differ" and refused with
+        foreign-edit, although nobody had touched anything since the adopt. Found
+        three times in one morning on real machines; each needed --force."""
+        from unittest import mock
+        w, a = self.load("block-style-report"), self.artifact()
+        self.assertGreater(len(a.files), 1, "the case needs a render with a guard script")
+        unit = next(f for f in a.files if str(f.path).endswith(".plist"))
+        runner = RecordingRunner()
+        runner.add("launchctl print", completed_from("launchctl-print-no-marker.txt"))
+        runner.add(f"cat {unit.path}", FakeCompleted(stdout="<plist>made by hand</plist>\n"))
+        for f in a.files:
+            if f is not unit:
+                runner.add(f"cat {f.path}", FakeCompleted(rc=1, stdout=""))
+        captured = []
+        root = make_repo(self.tmpdir())
+        with mock.patch.object(provision.stamp_mod, "write_stamp",
+                               side_effect=lambda st, *x, **k: captured.append(st)):
+            provision.adopt(w, self.host(), a, self.ctx(), timeout_sec=10,
+                            dry_run=False, runner=runner, root=root)
+        self.assertEqual(len(captured), 1)
+        stamp = captured[0]
+        self.assertNotEqual(stamp.artifact_digest, a.digest,
+                            "the stamp must record what is there, not what would be rendered")
+
+        live = provision.RenderedFile(path=unit.path, mode=unit.mode,
+                                      content="<plist>made by hand</plist>\n")
+        digests = {str(f.path): None for f in a.files}
+        digests[str(unit.path)] = base.digest_of([live])
+        obs = self.observation(a, present=True, running=True, stamp=stamp,
+                               file_digests=digests)
+        self.assertEqual(provision.plan(w, a, obs).action, "replace")
+
     def test_adopt_refuses_when_nothing_is_there(self):
         w, a = self.load("block-style-report"), self.artifact()
         runner = RecordingRunner()
