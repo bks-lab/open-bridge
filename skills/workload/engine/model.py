@@ -860,6 +860,11 @@ def script_finding(*, source, key_path, detail, hint):
 # is the point. A finding here is meant to be true, not frequent.
 _BARE_EXIT_ZERO = re.compile(r"^exit\s+0\s*(?:#.*)?$")
 
+# An exit that can carry a failure: a non-zero literal or a variable, anywhere
+# on a line that is not a comment. Its presence makes "returns zero however the
+# run went" false, whatever the last line says.
+_A_WAY_TO_FAIL = re.compile(r'(?:^|[\s;&|{(])exit\s+(?:[1-9][0-9]*|"?\$)')
+
 
 def ends_in_bare_exit_zero(text: str) -> bool:
     """Is the last line of this script an `exit 0` nothing can prevent?
@@ -880,11 +885,18 @@ def ends_in_bare_exit_zero(text: str) -> bool:
     a rule that is silent, because the answer arrives while somebody is
     deciding whether to trust a report.
     """
-    for line in reversed(text.splitlines()):
+    lines = text.splitlines()
+    for line in reversed(lines):
         stripped = line.rstrip()
         if not stripped.strip() or stripped.lstrip().startswith("#"):
             continue
-        return bool(_BARE_EXIT_ZERO.match(stripped))
+        if not _BARE_EXIT_ZERO.match(stripped):
+            return False
+        # A script whose failure paths leave EARLIER with their own code reaches
+        # this line only on success; it can say that it failed. Found on a real
+        # update job (exit 65, 75 and 1 before a final `exit 0`).
+        return not any(_A_WAY_TO_FAIL.search(other) for other in lines
+                       if not other.lstrip().startswith("#"))
     return False
 
 
