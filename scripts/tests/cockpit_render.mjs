@@ -412,3 +412,30 @@ export function recorder() {
     },
   })
 }
+
+// ---------------------------------------------------------------- waiting for state, not for time
+
+/**
+ * Polls `cond` on 0 ms timers until it is truthy, so a test waits for the state it asserts and not for a fixed
+ * time that a loaded machine overruns. Fails with a message naming `what` after `timeout` ms.
+ */
+export async function waitFor(cond, { timeout = 2000, what = String(cond) } = {}) {
+  for (const end = Date.now() + timeout; ;) {
+    if (cond()) return
+    if (Date.now() > end) throw new Error(`waitFor timed out after ${timeout} ms: ${what}`)
+    await new Promise(r => setTimeout(r, 0))
+  }
+}
+
+/**
+ * Lets `rounds` timer rounds pass (each a 0 ms timer, then a macrotask turn), which runs the requestAnimationFrame
+ * shim (a 0 ms timer) and the effects and renders those queue, however loaded the machine is. Counts rounds, not
+ * milliseconds, so it is deterministic; use it before a negative assert ("never twice", "not called"), and
+ * waitFor for a positive one.
+ */
+export async function settle(rounds = 5) {
+  for (let i = 0; i < rounds; i++) {
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setImmediate(r))
+  }
+}

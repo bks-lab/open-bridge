@@ -10,7 +10,7 @@
 // describe button asks for a brief; a proposal is applied, edited or discarded right there.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const { html, views, text, logic } = await loadCockpit()
 const en = text.TABLES.en
@@ -18,7 +18,7 @@ const de = text.TABLES.de
 const { ItemCard, ItemCardLine } = views.card
 
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
-const tick = () => new Promise(r => setTimeout(r, 10))
+const tick = () => rounds()
 
 const proto = Object.getPrototypeOf(document.body)
 proto.focus ??= function focus() { document.activeElement = this }
@@ -372,14 +372,14 @@ test('card: the focus goes to the form on Edit and back to the describe button a
   const c = answering()
   const el = mount(html`<${ItemCard} card=${{ ...TASK, written: 'human' }} d=${HUMAN} dkey="task:demo-task" s=${s0()} c=${c} />`)
   el.$('.card-proposal').button(en.card.edit).click()
-  await tick()
+  await waitFor(() => el.$('form.card-edit') && document.activeElement === el.$('form.card-edit').$('[name="goal"]'), { what: 'the focus on the first field of the form' })
   assert.ok(document.activeElement === el.$('form.card-edit').$('[name="goal"]'), 'the first field of the form')
   el.$('form.card-edit').dispatch('submit')
-  await tick()
+  await waitFor(() => el.$('.card-describe button') && document.activeElement === el.$('.card-describe button'), { what: 'the focus on the describe button' })
   assert.ok(document.activeElement === el.$('.card-describe button'), 'the describe button')
   const discard = mount(html`<${ItemCard} card=${{ ...TASK, written: 'human' }} d=${HUMAN} dkey="task:demo-task" s=${s0()} c=${answering()} />`)
   discard.$('.card-proposal').button(en.card.discard).click()
-  await tick()
+  await waitFor(() => discard.$('.card-describe button') && document.activeElement === discard.$('.card-describe button'), { what: 'the focus on the describe button after Discard' })
   assert.ok(document.activeElement === discard.$('.card-describe button'), 'the describe button after Discard')
   const running = mount(html`<${ItemCard} card=${TASK} d=${{ ...AI, running: true }} dkey="task:demo-task" s=${s0()} c=${recorder()} />`)
   assert.equal(running.$('.card-describe [role="status"]').text(), en.card.running)

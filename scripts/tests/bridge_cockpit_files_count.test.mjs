@@ -9,12 +9,12 @@
 // a list to open each, every area again with one click, and the empty view naming the same reasons.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const { html, views, text, logic } = await loadCockpit()
 const en = text.TABLES.en
 const de = text.TABLES.de
-const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+const tick = () => rounds()
 
 // a fixed local "now": Friday, 9 October 2026, noon (the same moment the other suites use)
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()

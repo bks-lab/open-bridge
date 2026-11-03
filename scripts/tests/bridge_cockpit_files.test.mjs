@@ -11,7 +11,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const WEB = path.join(here, '..', 'web')
@@ -24,7 +24,7 @@ const { Header } = views.header
 
 const read = rel => fs.readFileSync(path.join(WEB, rel), 'utf8')
 const boxValue = box => box.value ?? box.getAttribute('value') ?? ''
-const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+const tick = () => rounds()
 
 // a fixed local "now": Friday, 9 October 2026, noon (the same moment the other suites use)
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
