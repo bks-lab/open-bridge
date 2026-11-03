@@ -178,6 +178,65 @@ class ReplaceIsBootoutThenBootstrap(BackendBase):
         self.assertIn("bootstrap", install)
 
 
+class ReplaceWaitsUntilLaunchdHasLetGo(BackendBase):
+    """`launchctl bootout` returns before the old process is gone.
+
+    A bootstrap in that window fails with "5: Input/output error" and leaves the
+    unit unloaded. Found on a real machine on a daemon that needs a few seconds
+    to shut down; reproduced with a unit whose TERM handler sleeps 3 s: an
+    immediate bootstrap failed, the same bootstrap after the label vanished from
+    `launchctl print` (3.3 s) succeeded.
+    """
+
+    def _steps(self):
+        a = self.artifact("block-style-report")
+        return a, launchd.LAUNCHD_USER.replace_steps(a, FakeHost.from_fixture("host-a"))
+
+    def test_a_wait_sits_between_the_bootout_and_the_bootstrap(self):
+        a, steps = self._steps()
+        texts = [" ".join(str(x) for x in s.argv) for s in steps]
+        out = next(i for i, t in enumerate(texts) if "bootout" in t)
+        strap = next(i for i, t in enumerate(texts) if "bootstrap" in t)
+        waits = [i for i, t in enumerate(texts)
+                 if "launchctl print" in t and a.unit_ref in t]
+        self.assertTrue(waits, "nothing waits for launchd to let go of the old unit")
+        self.assertTrue(out < waits[0] < strap)
+
+    def test_the_wait_is_bounded(self):
+        _, steps = self._steps()
+        wait = next(s for s in steps if "launchctl print" in " ".join(s.argv))
+        self.assertIsNotNone(wait.timeout_sec)
+        self.assertLessEqual(wait.timeout_sec, 120)
+
+    def _run_wait(self, loaded_for: int, wait_sec: float):
+        """Run the real wait script against a fake launchctl that reports the
+        label as loaded for its first `loaded_for` calls."""
+        import os, subprocess, tempfile
+        from pathlib import Path
+        tmp = Path(tempfile.mkdtemp())
+        counter = tmp / "n"
+        counter.write_text("0")
+        fake = tmp / "launchctl"
+        fake.write_text(
+            "#!/bin/sh\n"
+            f"n=$(cat {counter}); n=$((n+1)); echo $n > {counter}\n"
+            f"[ $n -le {loaded_for} ] && exit 0 || exit 113\n")
+        fake.chmod(0o755)
+        step = launchd.unload_wait_step("gui/501/com.example.slow", wait_sec=wait_sec)
+        env = dict(os.environ, PATH=f"{tmp}:/bin:/usr/bin")
+        done = subprocess.run(list(step.argv), env=env, capture_output=True, timeout=30)
+        return done.returncode, int(counter.read_text())
+
+    def test_the_wait_ends_as_soon_as_the_label_is_gone(self):
+        rc, calls = self._run_wait(loaded_for=3, wait_sec=5)
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, 4)
+
+    def test_the_wait_fails_when_launchd_never_lets_go(self):
+        rc, _ = self._run_wait(loaded_for=10_000, wait_sec=0.5)
+        self.assertNotEqual(rc, 0, "a unit that never unloads must stop the replace")
+
+
 class DisableIsPersistentAndCarriesTheReason(BackendBase):
 
     def test_disable_is_more_than_a_bootout(self):

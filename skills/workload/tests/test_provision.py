@@ -340,6 +340,62 @@ class Applying(ProvisionBase):
                       "a failed replace has to put the previous files back")
         self.assertIn("restore", " ".join(str(f) for f in outcome.findings).lower())
 
+    def test_a_failed_verify_after_a_replace_loads_the_previous_unit_again(self):
+        """Putting the old file back is half a rollback: launchd still holds the
+        new unit until something unloads it and loads the old bytes."""
+        w, a = self.load("block-style-report"), self.artifact()
+        runner = RecordingRunner()
+        runner.add("print", FakeCompleted(rc=113,
+                                          stdout=read_output("launchctl-print-notfound.txt")))
+        obs = self.provisioned(w, a, stamp=self.stamp_for(w, a, artifact_digest=OTHER_DIGEST),
+                               marker_digest=OTHER_DIGEST)
+        plan = provision.plan(w, a, obs)
+        root = make_repo(self.tmpdir())
+        provision.apply(plan, w, self.host(), a, self.ctx(),
+                        dry_run=False, timeout_sec=10, runner=runner, root=root)
+        straps = [c["joined"] for c in runner.calls if "launchctl bootstrap" in c["joined"]]
+        self.assertEqual(len(straps), 2,
+                         "after the restore the previous unit has to be loaded again")
+        restore = next(i for i, c in enumerate(runner.calls)
+                       if ".prev" in c["joined"] and "mv " in c["joined"])
+        self.assertTrue(any("launchctl bootstrap" in c["joined"]
+                            for c in runner.calls[restore:]))
+
+    def test_a_failed_bootstrap_during_a_replace_brings_the_previous_unit_back(self):
+        """The real failure: bootout succeeded, the bootstrap of the new bytes
+        failed, and the run stopped there. The unit stayed unloaded, a
+        production service was down until a human put the old file back."""
+        w, a = self.load("block-style-report"), self.artifact()
+
+        class FirstBootstrapFails(RecordingRunner):
+            straps = 0
+
+            def __call__(inner, argv=None, *args, step=None, **kwargs):
+                text = " ".join(str(x) for x in getattr(argv, "argv", argv or ()))
+                if "bootstrap" in text:
+                    inner.straps += 1
+                    if inner.straps == 1:
+                        inner.calls.append({"argv": (), "joined": text, "kwargs": kwargs,
+                                            "step": argv})
+                        raise errors.StepFailed(argv=("launchctl", "bootstrap"), rc=5,
+                                                stderr="Bootstrap failed: 5: Input/output error")
+                return RecordingRunner.__call__(inner, argv, *args, step=step, **kwargs)
+
+        runner = FirstBootstrapFails()
+        obs = self.provisioned(w, a, stamp=self.stamp_for(w, a, artifact_digest=OTHER_DIGEST),
+                               marker_digest=OTHER_DIGEST)
+        plan = provision.plan(w, a, obs)
+        self.assertEqual(plan.action, "replace")
+        root = make_repo(self.tmpdir())
+        with self.assertRaises(errors.StepFailed) as caught:
+            provision.apply(plan, w, self.host(), a, self.ctx(),
+                            dry_run=False, timeout_sec=10, runner=runner, root=root)
+        self.assertEqual(runner.straps, 2, "the previous unit must be bootstrapped again")
+        calls = runner.joined_calls
+        self.assertIn(".prev", calls, "the previous files must be put back")
+        self.assertLess(calls.index("mv "), calls.rindex("bootstrap"))
+        self.assertIn("previous", str(caught.exception).lower())
+
     def test_a_verify_timeout_leaves_the_outcome_unverified(self):
         w, a = self.load("block-style-report"), self.artifact()
         runner = RecordingRunner()
