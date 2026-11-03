@@ -569,15 +569,11 @@ MUTATIONS = (
         file="engine/provision.py",
         search="    guard = lock_mod.workload_lock(Path(root), w.id) if root is not None else nullcontext()\n"
                "    with guard:\n"
-               "        live_digest = (digest_of(list(obs.live_files))\n"
-               "                       if len(obs.live_files) == len(artifact.files) and obs.live_files\n"
-               "                       else artifact.digest)\n"
+               "        live_digest = digest_of(list(obs.live_files))\n"
                "        stamp_mod.write_stamp(\n"
                "            _stamp_for(w, host, artifact, adopted=True, artifact_digest=live_digest, root=root),\n"
                "            host, ctx, timeout_sec=timeout_sec, runner=runner)",
-        replace="    live_digest = (digest_of(list(obs.live_files))\n"
-                "                   if len(obs.live_files) == len(artifact.files) and obs.live_files\n"
-                "                   else artifact.digest)\n"
+        replace="    live_digest = digest_of(list(obs.live_files))\n"
                 "    stamp_mod.write_stamp(\n"
                 "        _stamp_for(w, host, artifact, adopted=True, artifact_digest=live_digest, root=root),\n"
                 "        host, ctx, timeout_sec=timeout_sec, runner=runner)\n"
@@ -587,6 +583,17 @@ MUTATIONS = (
         scar="two sessions write one ownership record for the same id, which is the "
              "collision the lock exists for and the one thing adopt changes at all",
         test="tests.test_provision.TheLockIsExclusive.test_adopt_holds_the_lock_too",
+    ),
+    Mutation(
+        name="adopt-stamps-the-render-when-a-file-is-missing",
+        file="engine/provision.py",
+        search="        live_digest = digest_of(list(obs.live_files))\n",
+        replace="        live_digest = (digest_of(list(obs.live_files))\n"
+                "                       if len(obs.live_files) == len(artifact.files) and obs.live_files\n"
+                "                       else artifact.digest)\n",
+        scar="a hand made unit without the guard script was stamped with the rendered "
+             "digest, and every later provision refused it as foreign-edit",
+        test="tests.test_provision.Adopting.test_an_adopted_hand_made_unit_is_replaced_without_force",
     ),
     Mutation(
         name="the-machine-guard-denies-nothing",

@@ -665,13 +665,14 @@ def adopt(w, host, artifact, ctx, *, timeout_sec, dry_run, runner=None, root=Non
     # Under the same lock as apply: adopt writes the ownership record, and two
     # sessions writing one record for the same id is the collision the lock is
     # there for.
+    #
+    # The stamp carries the digest of what is THERE, even when that is fewer
+    # files than the render (a hand made unit has no guard script). Falling back
+    # to the rendered digest claimed the bridge's own version was on the
+    # machine, and the next provision then refused with foreign-edit over a file
+    # nobody had touched. An empty set hashes to a value no render has.
     guard = lock_mod.workload_lock(Path(root), w.id) if root is not None else nullcontext()
     with guard:
-        # The digest of what is THERE, even when that is fewer files than the
-        # render (a hand made unit has no guard script). Falling back to the
-        # rendered digest claimed the bridge's own version was on the machine,
-        # and the next provision then refused with foreign-edit over a file
-        # nobody had touched. An empty set hashes to a value no render has.
         live_digest = digest_of(list(obs.live_files))
         stamp_mod.write_stamp(
             _stamp_for(w, host, artifact, adopted=True, artifact_digest=live_digest, root=root),
