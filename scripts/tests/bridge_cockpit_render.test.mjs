@@ -10,7 +10,7 @@
 // as long as the page shows the same thing.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const { html, views, text } = await loadCockpit()
 const { ReturnCard, returnsOf } = views.home
@@ -26,7 +26,7 @@ const MIN = 60000
 
 const tabOf = (s, ref) => s.tabs.tabs.find(t => t.ref === ref)
 const labels = el => el.$$('button').map(b => b.text())
-const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+const tick = () => rounds()
 /** Waits for an effect with a bounded loop of ticks (slow runners take more than one) */
 async function until(done, n = 100) {
   for (let i = 0; i < n && !done(); i++) await tick()
@@ -1117,7 +1117,7 @@ async function loadChat() {
   return { vendor: await load('vendor/htm-preact-3.1.1.module.js'), chat: await load('views/chat.js'), logic: await load('logic.js') }
 }
 
-const settle = () => new Promise(r => setTimeout(r, 20))
+const settle = () => rounds()
 
 test('quick_live: a piece of an answer re-renders the chat thread, never the page around it', async () => {
   const { vendor, chat, logic } = await loadChat()
@@ -2145,6 +2145,7 @@ test('hints: more than one round pages on with Next, Back and the arrow keys, th
   await tick()
   document.dispatch('keydown', { key: 'ArrowRight' })
   document.dispatch('keydown', { key: 'ArrowLeft' })          // nothing before the first round
+  await waitFor(() => went.length >= 2, { what: 'Next and the arrow key both paged on' })
   assert.deepEqual(went, [1, 1])
   const lastRound = mount(html`<${HintsLayer} layout=${layout} at=${2} go=${n => went.push(n)} c=${recorder()} />`)
   assert.deepEqual(lastRound.$$('.hints-note').map(n => n.getAttribute('data-hint')), ['ask'])

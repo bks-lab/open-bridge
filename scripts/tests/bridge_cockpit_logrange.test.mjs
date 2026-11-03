@@ -9,7 +9,7 @@
 // range, and the three search modes.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const { logic } = await loadCockpit()
 
@@ -131,7 +131,7 @@ test('the own commits of a range per repository, the busiest first, a sparkline 
 const { html, components, text, mock } = await loadCockpit()
 const { mount, recorder } = await import('./cockpit_render.mjs')
 const en = text.TABLES.en, de = text.TABLES.de
-const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+const tick = () => rounds()
 const sec = ms => Math.floor(ms / 1000)
 
 const TODAY_ROWS = [

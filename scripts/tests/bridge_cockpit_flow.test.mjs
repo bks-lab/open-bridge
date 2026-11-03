@@ -11,13 +11,13 @@
 import fs from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const { html, views, text, logic, mock } = await loadCockpit()
 const { FlowPage } = views.flow
 const { VerbBar } = views.verbbar
 const en = text.TABLES.en
-const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+const tick = () => rounds()
 // effects run after the render; under a loaded runner 20 ms may not be enough, so wait for what the test expects
 const until = async (ok, ms = 2000) => { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick() }
 // the page bar reads its active tab back with querySelector, listens for resize and measures its tabs (as in the
@@ -589,7 +589,8 @@ test('the themes: the view asks for the points without one, never twice in a ren
   const base = { ...state({ work: [task('a'), task('b')] }), ui: { ...state().ui, page: 'briefing', workView: 'flow' } }
   let c = recorder()
   const el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...base, themes: th })} c=${c} />`)
-  await tick()
+  await waitFor(() => c.calls.some(x => x[0] === 'flowThemesAuto'), { what: 'the first flowThemesAuto call' })
+  await tick()                                                 // then let a second one show itself before "never twice"
   assert.deepEqual(c.calls.filter(x => x[0] === 'flowThemesAuto'), [['flowThemesAuto', ['task:b']]])
   // Themes beside Areas on top, the theme of the point, Order themes again
   assert.ok(el.$('.flow-side .seg'))

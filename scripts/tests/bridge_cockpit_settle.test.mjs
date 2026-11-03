@@ -7,7 +7,7 @@
 // of its own: a close the check recommends still arrives with its reason as the prefilled sentence.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const { html, views, text, logic } = await loadCockpit()
 const en = text.TABLES.en
@@ -48,7 +48,7 @@ const doors = el => el.$$('.settle').filter(x => !x.getAttribute('class').split(
 const actions = d => d.$('.block-actions')
 /** What a textarea shows: Preact writes `value` as an attribute in this small DOM, a test may set the property */
 const shown = el => el.value ?? el.getAttribute('value')
-const tick = () => new Promise(r => setTimeout(r, 10))
+const tick = () => rounds()
 
 test('settle: a task detail with a check recommendation offers the close door once', async () => {
   const d = await detail('task:demo-task').d

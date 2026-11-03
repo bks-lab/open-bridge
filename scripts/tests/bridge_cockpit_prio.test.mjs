@@ -12,13 +12,13 @@
 import fs from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
 const { html, views, text, logic, mock } = await loadCockpit()
 const { FlowPage } = views.flow
 const en = text.TABLES.en
 const de = text.TABLES.de
-const tick = () => new Promise(resolve => setTimeout(resolve, 20))
+const tick = () => rounds()
 const proto = Object.getPrototypeOf(document.createElement('div'))
 if (!proto.querySelector) proto.querySelector = function querySelector(sel) { return this.$(sel) }
 globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
