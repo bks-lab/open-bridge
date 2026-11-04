@@ -168,7 +168,7 @@ export const FLOW = {
     // round 3: the tabs under the card of an open point, its one Activity, the fields on the right, the instruction line
     ptabs: { label: 'About this point', desc: 'Description', steps: 'Steps', activity: 'Activity', related: 'Related' },
     desc: { none: 'No goal, story or criteria written yet.', loading: 'Reading the task' },
-    steps: { none: 'No steps in the file.', done: 'done', todo: 'open' },
+    steps: { none: 'No steps in the file.', done: 'done', todo: 'open', page: title => `On the page ${title}` },
     related: { none: 'Nothing related.', rows: 'Other items of this task', paths: 'Named in STATUS.md' },
     activity: {
       label: 'Activity', filters: 'Show', loading: 'Reading the activity', none: 'Nothing happened here yet.', noneHere: 'Nothing of this kind.',
@@ -195,6 +195,7 @@ export const FLOW = {
     fields: {
       can: 'What you can do', label: 'Fields',
       theme: 'Theme', area: 'Area', who: 'Who works on it', prio: 'Prio', urgency: 'Urgent', impact: 'Important', effort: 'Effort', due: 'Due',
+      when: 'Urgency', team: 'Team', check: 'Task check',
       source: 'Source', created: 'Created', moved: 'Moved', none: 'not set', link: 'Open the link',
       level: { high: 'high', mid: 'medium', low: 'low' },
       quadrant: { now: 'Do now', plan: 'Plan', hand: 'Hand off', drop: 'Drop' }, onlyYou: 'only you',
@@ -225,6 +226,8 @@ export const FLOW = {
       about: 'What it is about', needs: why => (why ? `needs you: ${why}` : 'needs you'), detail: 'Description as filed',
       cut: 'The description goes on in the item.', sections: n => (n === 1 ? 'From the file: 1 section of STATUS.md' : `From the file: ${n} sections of STATUS.md`),
       details: 'Details', parent: 'Belongs to', open: 'Open', net: 'Show in the net',
+      // stage 3: a tab already running on a task, assigned to it; the asks folded into a row, under Related
+      adopt: name => `Assign tab ${name}`, asked: 'Asked about it', onGitHub: 'What it says on GitHub',
       tabAsks: name => `Tab ${name} asks`, tabWaits: name => `Tab ${name} waits`, days: n => (n === 1 ? '1 day' : `${n} days`),
       facts: { kind: 'Kind', urgency: 'Urgency', gate: 'Approval', closer: 'Who closes it', closes: 'Closes on its own when', runs: 'Runs on yes',
         key: 'Key', id: 'Id', blocked: 'Blocked by', file: 'File', ref: 'Ref' },
@@ -419,7 +422,7 @@ export const FLOW = {
     // round 3: the tabs under the card of an open point, its one Activity, the fields on the right, the instruction line
     ptabs: { label: 'Zu diesem Punkt', desc: 'Beschreibung', steps: 'Schritte', activity: 'Aktivität', related: 'Verwandt' },
     desc: { none: 'Noch kein Ziel, keine Story und keine Kriterien geschrieben.', loading: 'Aufgabe wird gelesen' },
-    steps: { none: 'Keine Schritte in der Akte.', done: 'erledigt', todo: 'offen' },
+    steps: { none: 'Keine Schritte in der Akte.', done: 'erledigt', todo: 'offen', page: title => `Auf der Seite ${title}` },
     related: { none: 'Nichts Verwandtes.', rows: 'Andere Einträge dieser Aufgabe', paths: 'In STATUS.md genannt' },
     activity: {
       label: 'Aktivität', filters: 'Zeigen', loading: 'Aktivität wird gelesen', none: 'Hier ist noch nichts passiert.', noneHere: 'Nichts dieser Art.',
@@ -446,6 +449,7 @@ export const FLOW = {
     fields: {
       can: 'Was du tun kannst', label: 'Felder',
       theme: 'Thema', area: 'Bereich', who: 'Wer arbeitet daran', prio: 'Prio', urgency: 'Dringend', impact: 'Wichtig', effort: 'Aufwand', due: 'Fällig',
+      when: 'Dringlichkeit', team: 'Team', check: 'Aufgaben-Prüfung',
       source: 'Quelle', created: 'Angelegt', moved: 'Bewegt', none: 'nicht gesetzt', link: 'Link öffnen',
       level: { high: 'hoch', mid: 'mittel', low: 'niedrig' },
       quadrant: { now: 'Jetzt', plan: 'Planen', hand: 'Abgeben', drop: 'Weg' }, onlyYou: 'nur du',
@@ -474,6 +478,7 @@ export const FLOW = {
       about: 'Worum es geht', needs: why => (why ? `braucht dich: ${why}` : 'braucht dich'), detail: 'Beschreibung, wie abgelegt',
       cut: 'Die Beschreibung geht im Eintrag weiter.', sections: n => (n === 1 ? 'Aus der Akte: 1 Abschnitt von STATUS.md' : `Aus der Akte: ${n} Abschnitte von STATUS.md`),
       details: 'Details', parent: 'Gehört zu', open: 'Öffnen', net: 'Im Netz zeigen',
+      adopt: name => `Tab ${name} zuordnen`, asked: 'Dazu gefragt', onGitHub: 'Was auf GitHub steht',
       tabAsks: name => `Tab ${name} fragt`, tabWaits: name => `Tab ${name} wartet`, days: n => (n === 1 ? '1 Tag' : `${n} Tagen`),
       facts: { kind: 'Art', urgency: 'Dringlichkeit', gate: 'Freigabe', closer: 'Wer schließt', closes: 'Schließt sich von selbst, wenn', runs: 'Läuft nach Ja',
         key: 'Schlüssel', id: 'Kennung', blocked: 'Blockiert durch', file: 'Akte', ref: 'Verweis' },

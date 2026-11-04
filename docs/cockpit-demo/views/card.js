@@ -20,7 +20,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { formatDay, indexRows, personOf } from '../logic.js'
+import { formatDay, indexRows, nextWho, personOf } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Btn, Chip } from './parts.js'
@@ -130,10 +130,12 @@ function Chips({ card, has }) {
   return items.length ? html`<p class="card-chips">${items}</p>` : null
 }
 
-function NextLine({ next }) {
+/** The next step in one line: what, who takes it in words (logic.js nextWho: you, the Bridge, the owner by the
+ *  configured name, anyone else capitalised), by when */
+function NextLine({ next, s }) {
   const w = T().card
   if (!next?.what) return null
-  const who = next.who ? w.who[next.who] ?? next.who : null
+  const who = nextWho(next.who, s, language())
   return html`<p class="card-next"><span class="label-caps">${w.next}</span> <span class="card-next-what">${next.what}</span>
     ${who ? html`<span class="muted"> · ${who}</span>` : null}${next.due ? html`<span class="muted"> · ${w.due(dayOf(next.due))}</span>` : null}</p>`
 }
@@ -348,7 +350,7 @@ export function ItemCard({ card, d = null, dkey = null, s, c, title = false, ski
     ${title && card.title ? html`<p class="card-title">${card.title}</p>` : null}
     ${summary ? html`<p class="card-summary">${summary}</p>` : null}
     <${Brief} card=${card} d=${d} has=${has} c=${c} />
-    ${has('next') ? html`<${NextLine} next=${card.next} />` : null}
+    ${has('next') ? html`<${NextLine} next=${card.next} s=${s} />` : null}
     <${Chips} card=${card} has=${has} />
     ${has('progress') ? html`<${Progress} p=${card.progress} />` : null}
     ${has('gaps') ? html`<${Gaps} card=${card} dkey=${dkey} s=${s} c=${c} />` : null}
