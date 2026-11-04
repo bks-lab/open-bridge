@@ -14,8 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULTS = {
-    # apple-mail | outlook | eml | none. `none` only writes the bundle.
+    # apple-mail | outlook | imap | eml | none. `none` only writes the bundle.
     "client": "",
+    # IMAP accounts that hold drafts per sender address, and the machines
+    # (`use_on`) where drafts from that address go to them: clients/imap.py.
+    "imap_accounts": [],
     # plain | minimal | design. `design` derives every colour from DESIGN.md.
     "theme": "design",
     "persona": "",

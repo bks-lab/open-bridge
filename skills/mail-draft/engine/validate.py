@@ -119,4 +119,32 @@ def run(root: Path) -> list[str]:
                 if ref and ref not in profs:
                     problems.append(f"identity/mandants/{path.name}: {who} names mail_profile '{ref}', "
                                     f"which is not in workflow/mail-profiles/")
+    problems += imap_problems(root)
+    return problems
+
+
+def imap_problems(root: Path) -> list[str]:
+    """Accounts under `mail.imap_accounts` that a draft could not use. Never echoes a value."""
+    from .clients import imap
+    from .config import load
+    try:
+        cfg = load(root)
+    except ConfigError as err:
+        return [f"bridge-config.yaml: {err}"]
+    raw = cfg.get("imap_accounts")
+    if raw in (None, [], ""):
+        return []
+    if not isinstance(raw, list):
+        return ["bridge-config.yaml: mail.imap_accounts must be a list of accounts"]
+    problems, seen = [], set()
+    for i, account in enumerate(raw):
+        where = f"bridge-config.yaml: mail.imap_accounts[{i}]"
+        if not isinstance(account, dict):
+            problems.append(f"{where}: an account is a mapping (address, host, password_ref, use_on)")
+            continue
+        address = imap.sender_address(str(account.get("address") or ""))
+        problems += [f"{where}: {p}" for p in imap.account_problems(account)]
+        if address and address in seen:
+            problems.append(f"{where}: {address} has a second account; only the first would ever be used")
+        seen.add(address)
     return problems

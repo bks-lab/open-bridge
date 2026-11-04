@@ -313,7 +313,25 @@ def build(req: Request, cfg: MailConfig) -> Draft:
         if str(p) not in seen:
             seen.add(str(p))
             d.attachments.append(p)
-    d.client = req.client or str(profile.get("client") or cfg.get("client") or default_client())
+    from .clients import imap  # noqa: PLC0415
+    # The machine beats the profile: an account that holds drafts for this
+    # sender on this machine is a fact about where the person can read them,
+    # a profile's client is a preference. Only the command line beats both,
+    # and a reply stays in the client that holds the original.
+    route = None if req.client or req.reply else imap.routed(cfg, d.sender)
+    if route:
+        d.client = "imap"
+        d.decisions.append(f"client imap: mail.imap_accounts holds drafts from "
+                           f"{imap.sender_address(d.sender)} on {route[1]}")
+    else:
+        d.client = req.client or str(profile.get("client") or cfg.get("client") or default_client())
+    if d.client == "imap":
+        account = imap.account_for(cfg, d.sender)
+        address = imap.sender_address(d.sender) or "(no sender)"
+        if account is None:
+            d.errors.append(f"client imap: no mail.imap_accounts entry holds drafts for {address}")
+        else:
+            d.errors += [f"mail.imap_accounts {address}: {p}" for p in imap.account_problems(account)]
     d.priority = req.priority or str(profile.get("priority") or "normal")
 
     from . import validate  # noqa: PLC0415
