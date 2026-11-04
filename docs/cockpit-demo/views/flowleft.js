@@ -163,7 +163,7 @@ const restDay = row => (/^\d{4}-\d{2}-\d{2}/.test(String(row.updated ?? '')) ? S
 /** Why a row of Later is no point now (round 6 B, its entry's kind): until when it is put off, hidden or not due yet,
  *  on whom it waits (its blocker, the person its next step names, else others; an item with your yes on an agent),
  *  what blocks it or since when it rests */
-function laterWhy(e, lang) {
+function laterWhy(e, lang, s = null) {
   const f = T().flow.notnow
   const w = f.why
   const row = e.row
@@ -172,7 +172,7 @@ function laterWhy(e, lang) {
     if (row.inbox_state === 'approved') return w.approved
     // a next step that is the owner's own waits on nobody named: others; a person by the name the page gives them
     const next = String(row.card?.next?.who ?? '').trim()
-    const who = by || (whoKind(next, null) === 'person' ? nextWho(next, null, lang) : '')
+    const who = by || (whoKind(next, s) === 'person' ? nextWho(next, s, lang) : '')
     return who ? w.waits(who) : w.others
   }
   if (e.kind === 'resting') {
@@ -242,8 +242,8 @@ export function LeftList({ group, s, c }) {
               onClick=${() => c.flowLeftPick([row.key], !picked.has(row.key))} /></td>
             <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
               <span class="flow-ov-stand muted small">${stand ? short(stand, 160) : reason === 'running'
-                ? html`<span class="flow-ov-why">${laterWhy(e, lang)}</span>` : null}</span></td>
-            ${reason === 'later' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang)}</span> ${backOne(e)}</td>`
+                ? html`<span class="flow-ov-why">${laterWhy(e, lang, s)}</span>` : null}</span></td>
+            ${reason === 'later' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang, s)}</span> ${backOne(e)}</td>`
               : html`<td class="flow-ov-step small">${step ? html`<span>${short(step.what, 90)}</span> <${WhoChip} who=${step.who ?? e.who} s=${s} />`
                 : e.who ? html`<${WhoChip} who=${e.who} s=${s} />` : null}${ask ? html`<span class="flow-ov-when muted">${ask}</span>`
                 : reason === 'running' ? null : html`<span class="flow-ov-when muted">${whenOf(e, reason, s, lang)}</span>`}</td>`}
@@ -265,7 +265,7 @@ export function LeftList({ group, s, c }) {
               onClick=${() => c.flowLeftPick([row.key], !picked.has(row.key))} /></td>
             <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
               <span class="flow-ov-sub muted small"><${KindTag} row=${row} s=${s} /></span></td>
-            ${reason === 'later' ? html`<td class="flow-ov-stage flow-ov-why small">${laterWhy(e, lang)}</td>`
+            ${reason === 'later' ? html`<td class="flow-ov-stage flow-ov-why small">${laterWhy(e, lang, s)}</td>`
               : html`<td class="flow-ov-stage small">${whenOf(e, reason, s, lang)}</td>`}
             <td class="flow-ov-area small">${rowProject(row)}</td>
             ${reason === 'later' ? html`<td class="flow-ov-act">${backOne(e)}</td>` : null}

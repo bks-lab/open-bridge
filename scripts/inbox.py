@@ -20,6 +20,7 @@ things as open that had been solved hours earlier, because the sentence saying
     python3 scripts/inbox.py run             # execute what a person released
     python3 scripts/inbox.py render          # regenerate work/inbox.md (a view)
     python3 scripts/inbox.py reopen <id> [--note TEXT]   # undo a close, drop or reject
+    python3 scripts/inbox.py probe --json '{"gh_issue": "org/repo#12", "state": "closed"}'   # one probe, read only
 
 LAYOUT. ``work/inbox/<id>/item.yaml`` is written once and never changed.
 Every later change (a note, a yes, a close) is a NEW file under
@@ -259,6 +260,14 @@ def probe(spec, *, now: dt.datetime | None = None, gh: GhRunner | None = None,
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, json.JSONDecodeError):
         return None
     return None
+
+
+def probe_once(spec, *, gh: GhRunner | None = None, base: Path | None = None) -> bool | None:
+    """One probe, read only: what `inbox.py probe` answers (the cockpit's check-in look reads the state of a GitHub
+    ref with it). A probe that runs a command anywhere in it is refused (ValueError): this way only reads."""
+    if not isinstance(spec, dict) or _has_command(spec):
+        raise ValueError("a probe here is a mapping that runs no command")
+    return probe(spec, gh=gh, base=base)
 
 
 # ---------------------------------------------------------------- model
@@ -1117,6 +1126,8 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--days", type=int, default=30)
     st.add_argument("--json", action="store_true")
     sub.add_parser("check", help="close every item whose closes_when holds, open every one whose waits_for holds")
+    pb = sub.add_parser("probe", help="answer one probe, read only (never a command probe): {\"result\": true|false|null}")
+    pb.add_argument("--json", required=True, dest="spec_json", help='e.g. {"gh_pr": "org/repo#70", "state": "merged"}')
     rn = sub.add_parser("run", help="execute released actions (free, yes, or yes-once-condition)")
     rn.add_argument("--dry-run", action="store_true")
     sub.add_parser("render", help="regenerate work/inbox.md")
@@ -1243,6 +1254,14 @@ def _all_clear(root: Path) -> tuple:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd == "probe":
+        # read only: no item, no event, no actor; a command probe or no mapping is refused
+        try:
+            print(json.dumps({"result": probe_once(json.loads(args.spec_json), base=args.root)}))
+        except ValueError as exc:
+            print(f"inbox.py probe: {exc}", file=sys.stderr)
+            return 2
+        return 0
     actor = args.by or _default_actor()
     box = Inbox(args.root / "work" / "inbox", actor=actor, runner=_runner(args.root), all_clear=_all_clear(args.root))
     try:

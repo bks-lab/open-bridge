@@ -637,6 +637,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_prio.py",
     "scripts/lib/bridge_cockpit/activity.py",             # Work through: the Activity of a point, its documents, attach
     "scripts/tests/test_bridge_cockpit_activity.py",
+    "scripts/lib/bridge_cockpit/checkin.py",              # Work through: the Bridge looks before a check-in
+    "scripts/tests/test_bridge_cockpit_checkin.py",
     "scripts/lib/bridge_cockpit/instruct.py",             # Work through: the instruction line's sentence as checked steps
     "scripts/tests/test_bridge_cockpit_instruct.py",
     "scripts/tests/test_bridge_cockpit_sessions.py",      # Work through: the task a live session is seen working on

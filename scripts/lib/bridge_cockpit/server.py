@@ -63,6 +63,7 @@ from .relay import Relay, default_key_dir, load_key
 from .agents import Agents
 from .bridges import Bridges
 from .triage import Triage
+from .checkin import Looker
 from .describe import Describer
 from .themes import Themes
 from .activity import Activity
@@ -281,6 +282,7 @@ class App:
         self.bridges = Bridges(self.root)
         self.triage = Triage(self)
         self.describe = Describer(self)                # each item's brief, written and kept (describe.py)
+        self.checkin = Looker(self)                    # the look before a check-in, by itself (checkin.py)
         self.themes = Themes(self)                     # the themes of the Work through page (themes.py)
         self.activity = Activity(self)                 # a point's Activity tab: feed, documents, summary (activity.py)
         self.instruct = Instruct(self)                 # the instruction line of Work through (instruct.py)
@@ -737,7 +739,14 @@ class App:
     def card_sources(self) -> dict:
         """What every card is built with besides its item (card.py): the triage items and the brief proposals,
         by key. A failure here never stops the page: the cards are built without them."""
-        return {"triage": self.card_triage(), "describe": self.describe_items()}
+        return {"triage": self.card_triage(), "describe": self.describe_items(), "looks": self.checkin_looks()}
+
+    def checkin_looks(self) -> dict:
+        """The looks before a check-in by key (checkin.py), {} on any failure: the card asks as before"""
+        try:
+            return self.checkin.found_by_key()
+        except Exception:  # noqa: BLE001 - a broken store never stops the page
+            return {}
 
     def workers_view(self) -> dict | None:
         """The worker view the Resources section keeps (scripts/bridge-resources.py workers), None without one"""
@@ -888,6 +897,7 @@ class App:
             self.triage.start_daily()  # what each task and inbox item is, once a day by itself (cockpit.triage_daily)
         self.start_layout_backup()     # the cmux layout, every snapshot_minutes, only on change
         self.describe.start_auto()     # each item's brief kept by itself, only with cockpit.describe.auto on
+        self.checkin.start_auto()      # the look before a check-in, only with cockpit.flow.checkin on
         self.history.backfill(self.root, self.state_dir / "audit.log")   # closes from before the history
         loops = [(self.collector.worker, "collect"), (self.watcher.loop, "watch"), (self.ticker.loop, "ticker-loop")]
         loops += [(self.work_sync.loop, "work-sync")] if self.work_sync else [(self.tabs.loop, "tabs")]

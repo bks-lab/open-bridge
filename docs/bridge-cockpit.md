@@ -117,6 +117,9 @@ their defaults:
 | `flow.instruct.model` | none | the model of the instruction line, `haiku`, `sonnet` or `opus`; none: the service `cockpit-instruct` of `workflow/ai-services/` (default Haiku) |
 | `flow.attach.enabled` | `false` | Attach a document at the foot of a point's Activity: the file goes into the deliverables folder of the point's open task (never elsewhere), see [Work through](#work-through-flow). Off, the button does not show and the route refuses |
 | `flow.attach.max_mb` | `10` | the largest document Attach takes, in megabytes (1 to 25); the page checks the size before it sends |
+| `flow.checkin.enabled` | `false` | the Bridge looks before a check-in: on a check-in's day or the day before, one small model call reads what the Bridge already holds of the point since it was handed over and the check-in card says what it found and where, see [The Bridge looks before a check-in](#the-bridge-looks-before-a-check-in). Off, a check-in asks you as before |
+| `flow.checkin.budget_per_day` | `10` | how many looks a day may call the model; `0` none. A look with nothing new since the hand-over and no ref to read needs no call; a failed call counts. Over it, the card asks as before |
+| `flow.checkin.model` | none | the model of the look, `haiku`, `sonnet` or `opus`; none: the service `cockpit-checkin` of `workflow/ai-services/` (default Haiku) |
 | `flow.prio.fallback` | `none` | `haiku`: a read-in with Jev on a click that fails (Jev busy, 5xx, a timeout, no key; never a refusal such as 401 or 403) runs Haiku instead, while `flow.prio.haiku.enabled`, within its budget, and Prio's foot says so; the daily order never falls back. `none`: the failure stands |
 | `flow.prio.haiku.enabled` | `false` | **Read in with Haiku** at Prio's foot: a small Claude model ranks the points as Jev does, see [Work through](#work-through-flow). Off, the button does not show and the route refuses (`prio_off`). Haiku needs no Jev: `integrations.typesafe` may be off |
 | `flow.prio.haiku.budget_per_day` | `6` | how many read-ins a day Haiku may run (the fallback included); `0` none. A run is counted before the call, also when it fails |
@@ -549,6 +552,9 @@ out a workspace:
   new day), **Stuck** (back to you, verb `checkin_stuck`, the reason as a note),
   **Drop ▾** and **Follow up with <who>** (the Bridge starts on a draft of a
   follow-up through the mail-draft skill, never sends it). The right column then holds no 2x2, only More.
+  With `cockpit.flow.checkin` on, the Bridge looked first and the card says so
+  under **The Bridge looked**: what it found and where, what it could not read,
+  or that nothing new came since the hand-over (below).
 
   Under it the **Fields**, like the sidebar of an issue tracker, four of them:
   **Theme** (to change, with the themes on), **Area**, **Who** (who takes the
@@ -1139,9 +1145,11 @@ application's) in **Steps**, each a button of two clicks as on the page (a
 GitHub row's of one), the asks the briefing folded into a row under **Related**
 (**Asked about it**, each a click into the same view) and the sessions linked to
 its task there too (a live one **To tab**, an ended one **Go on in it**). Who
-takes a next step reads in words: you and the Bridge as before, the owner by
-the name `cockpit.person_name` gives, anyone else by the name as STATUS.md
-writes it with its first letter capital. What the item drawer held stands in the view: its facts
+takes a next step reads in words: you and the Bridge as before, anyone else by
+the name as STATUS.md writes it with its first letter capital. The owner (a step
+whose `who:` is the name `cockpit.person_name` gives) reads as **you** on the
+who chip of Work through, as the band does; a sentence that names the owner to
+someone else keeps the name. What the item drawer held stands in the view: its facts
 under **Details ▾** at the foot of the fields (created and the source stay fields),
 what it is about (the triage's gist, why only you can do it, its reason) and the
 description as filed on top of **Description**, a task's STATUS.md in its sections
@@ -2662,6 +2670,40 @@ calls at once. A card reads `written` (`ai`, `human` or none), `stale`, the
 waiting `proposal`, `running`, `last_error`, `stale_why` and `refs` (what the
 stored brief names, resolved) from `describe.state_for`.
 
+### The Bridge looks before a check-in
+
+A point in progress with someone (**In progress ▾**, verb `work_on`) comes back
+on its check-in day and asks how it stands. With `cockpit.flow.checkin` on, the
+Bridge looks first, on that day or the day before, so the card can say what it
+already knows (`scripts/lib/bridge_cockpit/checkin.py`):
+
+- **What it reads.** Only what the Bridge already holds of the point, and only
+  what came after the hand-over (the day the check-in was set): its Activity
+  (the item's events and notes, the task's notes and status changes, the rows
+  of `work/log.md` naming it, its documents, the starts of agents), the front
+  matter of the task's STATUS.md (status, next step, what blocks it), and the
+  state of up to four GitHub refs the point names (an issue closed or open, a
+  pull request merged or not), read through `inbox.py probe`, the probe code
+  `closes_when` uses. It asks nobody and writes nowhere but its own state file.
+- **One call.** A small model (`cockpit.flow.checkin.model`, else the service
+  `cockpit-checkin`, default Haiku), no tools, no session, no settings, a fixed
+  schema: whether it found something new, one or two sentences, and the labels
+  of the sources the sentence rests on. The rules say: only the sources given,
+  each fact with its label, never an inference, a plan or a promise.
+- **What stands.** A label the model was not given is dropped, and a finding
+  that names none is no finding. What could not be read (a ref whose state the
+  probe could not tell) is said by the Bridge itself, never by the model. With
+  nothing since the hand-over and no ref to read, the look is "Nothing new since
+  <day>" without a call.
+- **Once per check-in day.** A look is kept per point with the check-in day it
+  was for; Still running (a new day) is a new check-in and looked at again. A
+  failed call leaves the card asking as before and is tried again the next day
+  at the earliest; over `budget_per_day` nothing is called, and the card asks.
+
+The card shows it under **The Bridge looked**: the sentence, "Where: <labels>",
+"Could not read: <what>", or "Nothing new since <day>". The answers stay the
+same. The looks live in `flow-checkin.json` with the calls of the day.
+
 ### One card for every item
 
 Every task, stream and inbox item looks the same wherever it opens: in the
@@ -3818,6 +3860,7 @@ share or clean up.
 | `flow-prio.json` | the read-ins with Haiku of the last day (`prio.py`, `cockpit.flow.prio.haiku.budget_per_day`): the time and cost of each call | no |
 | `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, the runs of the last day (the budget), and the last 500 moves of a point from one theme to another (the names as they were, by the AI or a person) for its Activity | yes: theme names and the reasons of the suggestions |
 | `flow-activity.json` | Activity of Work through (`activity.py`): the summary of each point kept with the fingerprint of the rows it read, and the calls of the summary, of the instruction line and of Ask AI on the Files tab (under `files`) per day (their budgets) | yes: the summaries |
+| `flow-checkin.json` | the looks of the Bridge before a check-in (`checkin.py`, `cockpit.flow.checkin`): per point the newest look, the check-in day it was for, what it found and where, what it could not read, and the calls of the day (its budget) | yes: what it found |
 | `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
 | `relay/done/` | what became of each (written by that session) | yes: the answers |
 | `relay/heartbeat/` | one file per Claude Code session with the relay on | no |
@@ -4255,9 +4298,24 @@ What changes besides:
    ([`docs/inbox.md`](inbox.md)). An older page ignores them.
 4. **Titles that read.** `inbox.py add` warns, never refuses, on a title over 80
    characters, a path, a file name, an id or English words in a German Bridge.
-5. **Not built yet.** The Bridge looking for itself before a check-in comes up
-   (`cockpit.flow.checkin`, a model reading the item's trail and saying what it
-   found on the card) is not part of this version; a check-in asks you.
+5. **The Bridge looks before a check-in.** That came with the next version, off
+   by default: [Upgrading: the Bridge looks before a check-in](#upgrading-the-bridge-looks-before-a-check-in).
+
+### Upgrading: the Bridge looks before a check-in
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true` and `cockpit.flow.checkin.enabled: true` (off by
+default). With both, a pass of the server every ten minutes looks at each
+check-in due today or tomorrow, once per check-in day, within
+`budget_per_day` (default 10), and the check-in card says what it found
+([The Bridge looks before a check-in](#the-bridge-looks-before-a-check-in)).
+What is new: the service `cockpit-checkin` in `workflow/ai-services/` (Claude
+only, default Haiku), the state file `flow-checkin.json`, the field
+`checkin.found` on a row (`{text, where, unread, nothing, since, at_ms, model}`;
+an older page ignores it), and `inbox.py probe --json '<probe>'`, which answers
+one probe read only (`{"result": true|false|null}`, a probe that runs a
+command refused) and is how the look reads the state of a GitHub ref. No verb
+changes.
 
 ### Upgrading: settled rows in git
 

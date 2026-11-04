@@ -18,6 +18,7 @@ import yaml
 from .. import model_route as mr
 from .. import work_find as wf
 from . import activity as act
+from . import checkin as cki
 from . import describe as dsc
 from . import guide as gd
 from . import origin as og
@@ -51,9 +52,11 @@ FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 
 # themes: the nested block of the themes the page groups its points by (themes.py, cockpit.flow.themes); summary,
 # instruct and attach the nested blocks of the Activity tab and the instruction line (activity.py, instruct.py), each
 # off by default, the two that call a model within a budget a day; prio the nested block of Prio's second ranker and
-# its fallback (prio.py, cockpit.flow.prio: fallback none or haiku, haiku {enabled, budget_per_day, model}, off)
+# its fallback (prio.py, cockpit.flow.prio: fallback none or haiku, haiku {enabled, budget_per_day, model}, off);
+# checkin the look of the Bridge before a check-in (checkin.py, cockpit.flow.checkin {enabled, budget_per_day, model},
+# off by default, BUDGET looks a day)
 FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "infer_sessions",
-             "themes", "summary", "instruct", "attach", "prio")
+             "themes", "summary", "instruct", "attach", "prio", "checkin")
 FLOW_REASON_MAX = 80
 FLOW_REASONS_MAX = 12
 FLOW_RETURN_MAX = 3600
@@ -211,7 +214,7 @@ def ai_uses(cfg: Any) -> dict:
     flow = getattr(cfg, "flow", None) or {}
     blocks = {pr.SERVICE: (flow.get("prio") or {}).get("haiku"), thm.SERVICE: flow.get("themes"),
               act.SERVICE: flow.get("summary"), act.INSTRUCT_SERVICE: flow.get("instruct"),
-              act.FILES_SERVICE: getattr(cfg, "files_search", None)}
+              act.FILES_SERVICE: getattr(cfg, "files_search", None), cki.SERVICE: flow.get("checkin")}
     out = {}
     for sid, b in blocks.items():
         b = b if isinstance(b, dict) else {}
@@ -234,7 +237,7 @@ def flow_defaults() -> dict:
     return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20,
             **{key: default for key, default, _low in FLOW_INTS}, "infer_sessions": True, "themes": thm.defaults(),
             "summary": act.ai_defaults(act.SUMMARY_BUDGET), "instruct": act.ai_defaults(act.INSTRUCT_BUDGET),
-            "attach": act.attach_defaults(), "prio": pr.defaults()}
+            "attach": act.attach_defaults(), "prio": pr.defaults(), "checkin": cki.defaults()}
 
 
 def files_search_defaults() -> dict:
@@ -331,6 +334,7 @@ def flow_of(value: Any) -> dict:
     out["instruct"] = act.ai_of(value.get("instruct"), act.INSTRUCT_BUDGET)
     out["attach"] = act.attach_of(value.get("attach"))
     out["prio"] = pr.prio_of(value.get("prio"))
+    out["checkin"] = act.ai_of(value.get("checkin"), cki.BUDGET)
     return out
 
 
@@ -361,6 +365,8 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
             out += thm.check(v, used["themes"], at)
         elif key in ("summary", "instruct"):
             out += act.ai_check(v, used[key], at, act.SERVICE if key == "summary" else act.INSTRUCT_SERVICE)
+        elif key == "checkin":
+            out += act.ai_check(v, used[key], at, cki.SERVICE)
         elif key == "attach":
             out += act.attach_check(v, used["attach"], at)
         elif key == "prio":

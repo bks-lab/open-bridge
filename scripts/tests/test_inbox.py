@@ -1005,3 +1005,29 @@ def test_cli_add_warns_on_a_title_and_files_it_all_the_same(tmp_path):
     assert r.returncode == 0
     assert "title" in r.stderr and "path" in r.stderr
     assert r.stdout.strip()
+
+
+def test_cli_probe_answers_one_probe_and_never_runs_a_command(tmp_path):
+    """the read-only probe the cockpit's check-in look reads a GitHub ref's state with (inbox.py probe)"""
+    r = run_cli(tmp_path, "probe", "--json", '{"path_exists": "work/inbox"}')
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"result": True}
+    r = run_cli(tmp_path, "probe", "--json", '{"path_exists": "nowhere"}')
+    assert json.loads(r.stdout) == {"result": False}
+    r = run_cli(tmp_path, "probe", "--json", '{"something": "else"}')
+    assert json.loads(r.stdout) == {"result": None}, "an unknown probe is unknown, never true"
+    for spec in ('{"command": ["touch", "x"]}', '{"any": [{"command": ["touch", "x"]}]}', "not json", "[1]"):
+        r = run_cli(tmp_path, "probe", "--json", spec)
+        assert r.returncode == 2 and not (tmp_path / "repo" / "x").exists(), spec
+
+
+def test_probe_once_reads_a_ref_through_the_gh_runner_and_refuses_commands():
+    calls = []
+
+    def fake_gh(args):
+        calls.append(args)
+        return json.dumps({"state": "CLOSED"})
+    assert inbox.probe_once({"gh_issue": "org/repo#12", "state": "closed"}, gh=fake_gh) is True
+    assert calls[0][:3] == ["issue", "view", "12"]
+    with pytest.raises(ValueError):
+        inbox.probe_once({"command": ["true"]}, gh=fake_gh)
