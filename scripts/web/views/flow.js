@@ -31,7 +31,9 @@
 // ui.flowReadAt, To the list leads back; they never stand in the queue nor among what needs you); a row that stands
 // nowhere on the page opens as a point
 // of its own (view `solo`, ui.flowSolo, logic.js soloPoint: another area's, a closed task, a settled item, read only
-// without an open row; Back leads to the overview, or to the reports card it was opened from); under it Check tasks,
+// without an open row; Back leads to the overview, or to the reports card it was opened from). Stage 3: a row a way
+// opened from a list (the task check, a page's rows, the start page, the Due list: ui.flowList, logic.js pointList)
+// walks that list, and To the list leads back to where it stood, whichever of these views it opened in; under it Check tasks,
 // the task check in the middle (view `check`,
 // round 6 c, views/flowleft.js CheckList). Round 5: the left column lists no point, the middle does; what
 // opens in the middle is brought into view where the page scrolled its top away. Prio orders the left column by Jev's
@@ -52,8 +54,8 @@
 
 import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, instructScope, laneRows, leftWalk, pointsIn, runningOf,
-  prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf
+  flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, instructScope, laneRows, leftWalk, pointListAt, pointsIn,
+  runningOf, prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf, pointName
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
@@ -63,7 +65,7 @@ import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
 import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
-import { PointView, pointKind, pointTitle, useSoloLoad } from './flowpoint.js'
+import { PointView, pointStandWord, pointTitle, useSoloLoad } from './flowpoint.js'
 import { Calm } from './focus.js'
 import { Btn } from './parts.js'
 import { VerbBar } from './verbbar.js'
@@ -75,7 +77,7 @@ function Rest({ s, c }) {
   return html`<${Calm} s=${s} c=${c} title=${f.rest.title} sub=${f.rest.sub} action=${false} />
     <section class="flow-rest" aria-labelledby="flow-rest">
       <h2 id="flow-rest" class="label-caps">${f.rest.suggest}</h2>
-      ${ideas.length ? html`<ul>${ideas.map(row => html`<li key=${row.key}><span class="flow-rest-title">${short(row.title, 90)}</span>
+      ${ideas.length ? html`<ul>${ideas.map(row => html`<li key=${row.key}><span class="flow-rest-title">${short(pointName(row), 90)}</span>
         <${VerbBar} row=${row} s=${s} c=${c} verbs=${['do']} primary="do" /></li>`)}</ul>` : html`<p class="muted small">${f.rest.none}</p>`}
     </section>`
 }
@@ -176,8 +178,13 @@ function FlowBody({ s, c }) {
   // walks the queue (after its last, the next theme), an entry of Running now walks nothing, a row of Not now walks its
   // group and goes back to its list, a point of its own goes back where it came from (the reports card, else the
   // overview)
-  const walk2 = { words: { ...f.walk2, queue: t.dossier.walk.queue }, titleFor: pointTitle, tagsOf: () => null, whyOf: pointKind, cls: 'flow-walk' }
-  const point = !x ? null : view === 'run'
+  const walk2 = { words: { ...f.walk2, queue: t.dossier.walk.queue }, titleFor: pointTitle, tagsOf: () => null, whyOf: pointStandWord, cls: 'flow-walk' }
+  // stage 3: a row opened from a list walks that list and goes back to where it stood, wherever it opened
+  const list = pointListAt(s.ui.flowList, x)
+  const listBack = s.ui.flowList ? { word: f.one.backList, onClick: () => c.flowListBack() } : null
+  const listWalk = list ? { ...walk2, queue: list.items.map(e => ({ id: e.key, title: e.title || e.key })), i: list.i, go: k => c.flowListGo(k),
+    titleFor: e => e.title, whyOf: () => '', done: f.walk2.last } : null
+  const placed = !x ? null : view === 'run'
     ? { back: { word: fromRunning ? f.run.back : f.point.back, onClick: () => (fromRunning ? c.flowRunning() : c.flowOverview()) }, theme: f.run.label }
     : view === 'leftPoint'
       ? { back: { word: f.one.backList, onClick: () => c.flowLeft(group.reason) }, theme: f.notnow.group[group.reason],
@@ -191,6 +198,7 @@ function FlowBody({ s, c }) {
           above: picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
             <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null,
           walk: { ...walk2, queue, i, go, done: f.walk2.last, onwards } }
+  const point = placed && list ? { ...placed, back: listBack, walk: listWalk, above: null } : placed
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
@@ -203,7 +211,7 @@ function FlowBody({ s, c }) {
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
         ${point ? html`<${PointView} x=${x} ...${point} scope=${scope} n=${view === 'point' ? queue.length : 1} s=${s} c=${c} />`
           : view === 'solo' ? html`<header class="flow-main-head">
-              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//></header>
+              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${listBack?.onClick ?? (() => c.flowOverview())}>${listBack?.word ?? f.point.back}<//></header>
             <p class="muted" role="status">${soloEntry?.status === 'error' || (soloEntry?.data && !alone) ? f.one.gone : f.one.loading}</p>`
           : view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} /><p class="muted small flow-main-hint">${f.notnow.hint}</p>`
           : view === 'read' ? html`<${ReadList} read=${parts.read} c=${c} />`
@@ -218,7 +226,7 @@ function FlowBody({ s, c }) {
             ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />
               <p class="muted small flow-main-hint">${f.prio.hint}</p>`
               : !all.length ? html`<${Rest} s=${s} c=${c} />`
-              : html`<${FlowOverview} key=${side} points=${queue} running=${runRows} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind}
+              : html`<${FlowOverview} key=${side} points=${queue} running=${runRows} picked=${picked} titleFor=${pointTitle} kindFor=${pointStandWord}
                 band=${band} s=${s} c=${c} />`}
             ${all.length ? html`<div class="flow-dock"><${InstructLine} scope=${scope} s=${s} c=${c} /></div>` : null}`
           : null}

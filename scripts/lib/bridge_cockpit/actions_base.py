@@ -202,6 +202,10 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "inbox_reopen": {"id": ("inbox_id", True), "note": ("text", False)},
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
     "task_running": {"slug": ("slug", True)},
+    # stage 4 of the one point view: In progress with someone until a check-in day, its undo and Stuck on the check-in
+    "work_on": {"key": ("key", True), "who": ("line", True), "until": ("date", True), "text": ("text", False)},
+    "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False)},
+    "checkin_stuck": {"key": ("key", True), "text": ("text", False)},
     # the files view takes over a suggested next step: next: {what} with a dated note (task.py next)
     "task_set_next": {"key": ("key", True), "text": ("line", True)},
     # taking a to_task back: the task it made closes as declined, the inbox item opens again

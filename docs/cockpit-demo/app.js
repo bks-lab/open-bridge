@@ -17,8 +17,9 @@ import {
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, areasOff, areaKey, workspacesOn, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
-  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, flowWhere, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
+  canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn,
+  pointBack, pointList,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -248,6 +249,9 @@ const store = createStore({
     flowLeftAt: null, flowSolo: null, flowLine: 'instruct', flowAsk: null,
     // stage 2: a finished AI run of Finished, to read open in the middle ({id, i}), null for the list
     flowReadAt: null,
+    // stage 3: the list a way to the point in front came from ({items, i, back}, logic.js pointList): the walk walks it,
+    // To the list leads back to where it stood; every other way inside Work through lets it go
+    flowList: null,
     // round 3: the tab under the card of an open point (it stays from point to point, kept in this browser), the
     // filter of its Activity, and the plan the instruction line made of a sentence, waiting for Run
     flowTab: ['desc', 'steps', 'activity', 'related'].find(v => v === load('bridge-cockpit.flowTab', 'desc')) ?? 'desc',
@@ -936,25 +940,27 @@ const ctl = {
   },
   select(key) {
     const s = store.get()
-    // the work tab without Due shows no day column to select in (a click on a tab's name, views/tabs.js): Work
-    // through opens the row's point, entry or group of Not now, anything else the row's detail beside the page
-    const work = { ...s, ui: { ...s.ui, page: 'briefing' } }
-    const view = workViewIn(work)
-    if (view !== 'due') {
-      // stage 1 of the one point view: its point, entry or row of Not now, the row itself in the middle
-      const to = view === 'flow' ? flowWhere(areaScope(work), key) : null
-      if (!to) return ctl.peek(key, null)
-      return ctl.openPoint(key)
+    // stage 3: where Work through is on a row opens in its one point view from Due too, the Due list as its walk and
+    // To the list back to Due; clearing the selection stays
+    if (key && pointViewOn(s)) {
+      const due = s.ui.page === 'briefing' && workViewIn(s) === 'due'
+      return ctl.openPoint(key, null, due ? pointList(dayQueue(areaScope(s).model), key, pointBack(s)) : null)
     }
+    // the work tab without Due shows no day column to select in (a click on a tab's name, views/tabs.js): the row's
+    // detail beside the page, Work through being off here
+    if (workViewIn({ ...s, ui: { ...s.ui, page: 'briefing' } }) !== 'due') return ctl.peek(key, null)
     setUi({ selectedKey: key, focusKey: key, pageDetail: false, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
     if (s.ui.page !== 'briefing') setUi({ page: 'briefing' })
     if (s.layout === 'narrow') requestAnimationFrame(() => window.scrollTo(0, 0))
     else requestAnimationFrame(() => document.querySelector('.detail-scroll')?.scrollTo?.(0, 0))
   },
   /** Open a row's detail next to the current page (a task on the tasks page); the page stays.
-   *  `queue` is the list it was opened from, so the detail's foot offers the next one */
+   *  `queue` is the list it was opened from, so the detail's foot offers the next one. Where Work through is on (stage
+   *  3 of the one point view) the row opens in its one point view instead, any row (an issue, a pull request, a page's
+   *  row: a point of its own where it stands nowhere), the queue as its walk and To the list back to the page */
   peek(key, from, queue = null, { keepFocus = false } = {}) {
     const s = store.get()
+    if (key && pointViewOn(s)) return ctl.openPoint(key, null, pointList(queue, key, pointBack(s)))
     // the next of a list keeps the title the list was left from, so closing goes back there
     peekFrom = from ?? (queue ? peekFrom : null)
     setUi({ selectedKey: key, pageDetail: true, queue, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
@@ -970,22 +976,43 @@ const ctl = {
    *  through is on (stage 1 of the one point view, logic.js pointViewOn) every such way opens the row in its one
    *  point view there instead (openPoint), from any page, card or drawer link; the drawer stays for a Bridge without */
   openItem(key, it = null, where = {}, prev = null, queue = null) {
-    if (pointViewOn(store.get())) return ctl.openPoint(key)
+    const s = store.get()
+    if (pointViewOn(s)) return ctl.openPoint(key, null, pointList(queue, key, pointBack(s)))
     setUi({ drawer: 'item', item: { key, it, page: where.page ?? null, section: where.section ?? null, prev }, queue })
   },
   /** Stage 1 of the one point view: a row by its key on the work tab in Work through, in the middle where it stands
    *  there (logic.js pointOpen): its point at the level of all, its entry of Running now, its row in its group of Not
    *  now, else a point of its own (another area's row, a closed task, `file` the folder of a closed copy, a settled
    *  item). Whatever stood over the page (a drawer, the detail beside it, a tab's view) closes; the work tab shows
-   *  Work through, kept as its view the way every switch keeps one (workViewGo) */
-  openPoint(key, file = null) {
+   *  Work through, kept as its view the way every switch keeps one (workViewGo). Stage 3: `list` the list the way came
+   *  from (logic.js pointList), which the walk walks and To the list leads back from (flowListGo, flowListBack) */
+  openPoint(key, file = null, list = null) {
     const s = store.get()
     const patch = pointOpen(s, key, file)
     if (!patch) return
     const go = workViewGo(s, 'flow')
     if (go.save) save('bridge-cockpit.workTab', go.view)
     if (s.ui.page !== 'briefing') ctl.setPage('briefing')
-    setUi({ drawer: null, item: null, info: null, queue: null, pageDetail: false, selectedKey: null, tabView: null, inner: false, workView: go.view, ...patch })
+    setUi({ drawer: null, item: null, info: null, queue: null, pageDetail: false, selectedKey: null, tabView: null, inner: false, workView: go.view, ...patch,
+      flowList: list })
+  },
+  /** The row k of the list the point in front came from, in the same view; the list and where it leads back stay */
+  flowListGo(k) {
+    const list = store.get().ui.flowList
+    const to = list?.items?.[k]
+    if (to) ctl.openPoint(to.key, null, { ...list, i: k })
+  },
+  /** To the list: back to where the list stood when the way opened the row (its page, or on the work tab the view and
+   *  the place of Work through), the list let go */
+  flowListBack() {
+    const back = store.get().ui.flowList?.back ?? null
+    setUi({ flowList: null })
+    if (!back) return ctl.flowOverview()
+    if (back.page && back.page !== 'briefing') return ctl.setPage(back.page)
+    // the work tab's view it stood in (Due, Work through) is kept the way every switch keeps one
+    const go = back.ui.workView ? workViewGo(store.get(), back.ui.workView) : null
+    if (go?.save) save('bridge-cockpit.workTab', go.view)
+    setUi({ flowPlan: null, ...back.ui, ...(go ? { workView: go.view } : {}) })
   },
   closeItem() {
     setUi({ drawer: null, item: null, queue: null })
@@ -1006,11 +1033,11 @@ const ctl = {
   },
   // any other page item (a table row, a resource tile, a gauge): its detail in a drawer. Where Work through is on, an
   // item that stands on its page as a row (an application, an issue) opens as its point (stage 1, logic.js infoPoint);
-  // one that is no row (a gauge, a date, a machine) keeps its drawer, and `drawer` keeps it for the steps of a point
-  // (its Steps button, views/flowside.js), which stand only there
-  openInfo(it, page, section, drawer = false) {
+  // one that is no row (a gauge, a date, a machine) keeps its drawer. A point's own steps stand in its Steps tab
+  // (stage 3), so no way opens this drawer for them any more
+  openInfo(it, page, section) {
     const s = store.get()
-    const key = !drawer && pointViewOn(s) ? infoPoint(s, it) : null
+    const key = pointViewOn(s) ? infoPoint(s, it) : null
     if (key) return ctl.openPoint(key)
     setUi({ drawer: 'info', info: { it, page, section } })
   },
@@ -1356,7 +1383,7 @@ const ctl = {
   },
   clearTimelineAsk: () => store.set(s => ({ ...s, timelineAsk: null })),
   // the Work through page: a card brought to the front by its id, a chip (its queue starts over), one more decision
-  flowGo: (id, i) => setUi(ui => ({ flowAt: { id, i }, flowView: 'point', flowPlan: ui.flowAt?.id === id ? ui.flowPlan : null })),
+  flowGo: (id, i) => setUi(ui => ({ flowAt: { id, i }, flowView: 'point', flowPlan: ui.flowAt?.id === id ? ui.flowPlan : null, flowList: null })),
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
   flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
   // To tab on a card: the jump goes out and is remembered for the return card; a driver that cannot jump shows the
@@ -1390,22 +1417,23 @@ const ctl = {
   // pulled in or folded again
   // (a plan of the instruction line belongs to the scope it was made for: another point or side drops it)
   flowSide: (id, view = 'overview') => setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: id ?? null },
-    flowAt: null, flowView: view === 'point' ? 'point' : 'overview', flowPicked: [], flowPlan: null })),
-  flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [], flowPlan: null }) },
-  flowOverview: () => setUi(ui => ({ flowView: 'overview', flowPlan: ui.flowView === 'overview' ? ui.flowPlan : null })),
+    flowAt: null, flowView: view === 'point' ? 'point' : 'overview', flowPicked: [], flowPlan: null, flowList: null })),
+  flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [], flowPlan: null, flowList: null }) },
+  flowOverview: () => setUi(ui => ({ flowView: 'overview', flowPlan: ui.flowView === 'overview' ? ui.flowPlan : null, flowList: null })),
   // round 4: an entry of Running now opened in the middle, a group of Not now shown as a list there with its own ticks
   // an entry of Running now remembers whether it was opened from the list of them, so Back leads there again
-  flowRun: id => setUi(ui => ({ flowView: 'run', flowRunId: id ?? null, flowRunFrom: ui.flowView === 'running' ? 'running' : 'overview', flowPlan: null })),
-  flowRunning: () => setUi({ flowView: 'running', flowRunId: null, flowPlan: null }),
+  flowRun: id => setUi(ui => ({ flowView: 'run', flowRunId: id ?? null, flowRunFrom: ui.flowView === 'running' ? 'running' : 'overview', flowPlan: null,
+    flowList: null })),
+  flowRunning: () => setUi({ flowView: 'running', flowRunId: null, flowPlan: null, flowList: null }),
   flowLeft: reason => setUi(ui => ({ flowView: 'left', flowLeft: reason ?? null, flowLeftAt: null, flowLeftPicked: ui.flowLeft === reason ? ui.flowLeftPicked : [],
-    flowPlan: null })),
+    flowPlan: null, flowList: null })),
   // stage 1: a row of the group open shown in the one point view (a title of the list, the walk bar), its place kept
-  flowLeftOpen: (key, i = 0) => setUi(ui => ({ flowView: 'left', flowLeftAt: { id: key, i }, flowPlan: ui.flowLeftAt?.id === key ? ui.flowPlan : null })),
+  flowLeftOpen: (key, i = 0) => setUi(ui => ({ flowView: 'left', flowLeftAt: { id: key, i }, flowPlan: ui.flowLeftAt?.id === key ? ui.flowPlan : null, flowList: null })),
   // stage 2: the finished AI runs as a list in the middle, one of them in the one point view (its place kept)
-  flowRead: () => setUi({ flowView: 'read', flowReadAt: null, flowPlan: null }),
-  flowReadOpen: (id, i = 0) => setUi(ui => ({ flowView: 'read', flowReadAt: { id, i }, flowPlan: ui.flowReadAt?.id === id ? ui.flowPlan : null })),
+  flowRead: () => setUi({ flowView: 'read', flowReadAt: null, flowPlan: null, flowList: null }),
+  flowReadOpen: (id, i = 0) => setUi(ui => ({ flowView: 'read', flowReadAt: { id, i }, flowPlan: ui.flowReadAt?.id === id ? ui.flowPlan : null, flowList: null })),
   // stage 1: a row alone in the one point view (a report of the reports card, `from` the point it was opened from)
-  flowSolo: (key, from = null) => setUi({ flowView: 'solo', flowSolo: { key, file: null, from }, flowPlan: null }),
+  flowSolo: (key, from = null) => setUi({ flowView: 'solo', flowSolo: { key, file: null, from }, flowPlan: null, flowList: null }),
   // stage 1: the line under the card instructs or asks; a question about the point goes the files view's way (askFile:
   // a free quick question with the point as data, `task` an open task only), its answer stands under the line
   flowLine: mode => setUi({ flowLine: mode === 'ask' ? 'ask' : 'instruct' }),
@@ -1421,7 +1449,7 @@ const ctl = {
   }),
   flowAskClose: () => setUi({ flowAsk: null }),
   // round 6 c: the task check in the middle, its row under Not now
-  flowCheck: () => setUi({ flowView: 'check', flowRunId: null, flowPlan: null }),
+  flowCheck: () => setUi({ flowView: 'check', flowRunId: null, flowPlan: null, flowList: null }),
   flowLeftPick: (keys, on) => setUi(ui => {
     const picked = new Set(ui.flowLeftPicked ?? [])
     for (const k of keys ?? []) { if (on) picked.add(k); else picked.delete(k) }

@@ -711,6 +711,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/flowleft.js",          # Work through: Not now, its groups and their lists
     "scripts/web/views/flowprio.js",          # Work through: Prio, the 2x2 grid of Jev's squares
     "scripts/web/views/flowpoint.js",         # Work through: the one point view, its card, tabs, line and walk
+    "scripts/web/views/flowsimple.js",        # Work through, stage 4: the strong button, the four states, More and Order
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",
@@ -787,6 +788,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_prio.test.mjs",
     "scripts/tests/bridge_cockpit_point.test.mjs",      # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/tests/bridge_cockpit_read.test.mjs",       # finished AI runs: the group to read, the plain sentence, the run's verbs
+    "scripts/tests/bridge_cockpit_simple.test.mjs",     # stage 4: the name, the stand, the step, the bands, More, the check-in
     "scripts/tests/bridge_cockpit_settle.test.mjs",
     "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",

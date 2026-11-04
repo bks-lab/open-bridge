@@ -988,7 +988,7 @@ def _next_what(value) -> str | None:
 
 
 def _next_part(value, key: str) -> str | None:
-    """The `who` or `due` of a `next:` mapping, as text; None for a plain `next:` or one without it."""
+    """The `who`, `due` or `check` of a `next:` mapping, as text; None for a plain `next:` or one without it."""
     part = value.get(key) if isinstance(value, dict) else None
     if not isinstance(part, (str, int, float, dt.date)) or isinstance(part, bool):
         return None
@@ -1022,7 +1022,9 @@ def task_rows(root: Path, cfg: dict, today: dt.date, include_all: bool = False) 
                      "origin": (t.get("origin") or "")[:300] or None,
                      "headline": t.get("headline"), "brief": t.get("brief"), "progress": t.get("progress"),
                      "placeholder": t.get("placeholder") is True,
-                     "next_who": _next_part(t.get("next"), "who"), "next_due": _next_part(t.get("next"), "due")})
+                     "next_who": _next_part(t.get("next"), "who"), "next_due": _next_part(t.get("next"), "due"),
+                     # the check-in day of a step in progress with someone (STATUS.md next.check, the cockpit's In progress)
+                     "next_check": _next_part(t.get("next"), "check")})
     rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     return sorted(rows, key=lambda r: (rank.get(r["priority"] or "", 4), -r["score"], r["slug"]))
 

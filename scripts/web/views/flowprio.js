@@ -16,7 +16,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { formatDay, haikuReady, isoDate, jevQuadrants, jevReady, pointKeys, pointsIn, rankerName, short, workPageOf } from '../logic.js'
+import { formatDay, haikuReady, isoDate, jevQuadrants, jevReady, pointKeys, pointsIn, pointName, rankerName, short, workPageOf } from '../logic.js'
 import { T, language } from '../text.js'
 import { listRows } from './flowlist.js'
 import { SideDot, sideName } from './flowside.js'
@@ -25,8 +25,8 @@ import { Btn } from './parts.js'
 // the titles a square names before it says how many more it holds
 const SQUARE_TITLES = 4
 
-/** A row's title in a square (logic listRows): its row's, else its card's, else its tab's */
-const titleOf = r => (r.row?.title ?? r.x?.title ?? r.x?.tab?.name) ?? ''
+/** A row's title in a square (logic listRows): its row's name (logic.js pointName), else its card's, else its tab's */
+const titleOf = r => (r.row ? pointName(r.row) : null) || r.x?.title || r.x?.tab?.name || ''
 
 /** When Jev's order was made: its day in the page's words and the time */
 export function orderTime(at, lang = language()) {
@@ -50,7 +50,7 @@ export function PrioSource({ order, n }) {
 /** The foot of Prio's level one: ranker, time and count of the order (or that it reads in, failed, has none), what
  *  the private words held back, a fallback that ran, and Read in with Jev and Read in with Haiku (each while its ranker
  *  can read in, Haiku grey once its runs of the day are spent; both busy while one reads in) */
-export function PrioFoot({ s, c }) {
+export function PrioFoot({ s, c, reads = true }) {
   const f = T().flow.prio
   const page = workPageOf(s.model?.pages)
   if (!page) return null
@@ -67,12 +67,12 @@ export function PrioFoot({ s, c }) {
     ${held ? html`<p class="muted small">${f.held(held)}</p>` : null}
     ${!busy && o?.fallback ? html`<p class="muted small">${f.fellBack}</p>` : null}
     ${!busy && order?.error ? html`<p class="muted small" role="alert">${o ? `${f.failed(rankerName(order.ranker))}: ` : ''}${short(String(order.error), 160)}</p>` : null}
-    <div class="flow-prio-reads">
+    ${reads ? html`<div class="flow-prio-reads">
       ${jevReady(s) ? html`<${Btn} size="xs" variant="secondary" icon="spark" busy=${busy && order?.ranker === 'jev'} disabled=${busy}
         onClick=${() => c.flowPrioRead(page.id, 'jev')}>${f.readJev}<//>` : null}
       ${haikuReady(s) ? html`<${Btn} size="xs" variant="secondary" icon="spark" busy=${busy && order?.ranker === 'haiku'} disabled=${busy || spent}
         title=${spent ? f.budget : undefined} onClick=${() => c.flowPrioRead(page.id, 'haiku')}>${f.readHaiku}<//>` : null}
-    </div>
+    </div>` : null}
   </div>`
 }
 

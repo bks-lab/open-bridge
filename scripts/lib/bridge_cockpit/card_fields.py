@@ -24,7 +24,10 @@ stored or shown, `errors` says everything that was wrong. A text over its limit 
 punctuation (U+2012 to U+2015, em and en dash among them) or a control or format character (Unicode Cc or
 Cf, a line break included, and U+2028, U+2029: YAML reads some as a line break and refuses others, so the text
 would not read back as written) is an error and left out of `clean`, never cut or rewritten, so a wrong text is never shown as if it were right; a list of more than five criteria keeps the
-first five and says so. Without a usable goal there is no brief and `clean` is None.
+first five and says so. Without a usable goal there is no brief and `clean` is None. Since stage 4 of the one
+point view a brief may carry `name` (at most 60 characters and 8 words, never a path, an issue or ticket number or
+a file name: the page shows it where a title is a slug or too long) and `stand` (one sentence of at most 140
+characters: where the item stands and why it is here); a wrong one is left out like any text.
 
 `brief_basis(text)` is the sha256 prefix (16 hex characters) of a STATUS.md with its `brief:` block taken out
 of the front matter (and one blank line directly before it), so writing the brief does not change it and any
@@ -45,16 +48,23 @@ import unicodedata
 from typing import Any
 
 CARD_FIELDS = ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "brief_refs", "next", "state",
-               "owner", "priority", "due", "area", "updated", "source", "links", "progress", "written", "gaps")
+               "owner", "priority", "due", "area", "updated", "source", "links", "progress", "written", "gaps",
+               # stage 4 of the one point view: the brief's short name and its one sentence of where the item stands
+               "name", "stand")
 #: what a card's `gaps` can name (card.py): what the card misses, for the page to offer a fix
 GAPS = ("no_goal", "no_next", "placeholder_next", "task_closed", "no_content", "unresolved_ref")
-NEXT_FIELDS = ("what", "who", "due", "from", "since")
+NEXT_FIELDS = ("what", "who", "due", "from", "since", "check")
 STATE_FIELDS = ("word", "blocked_by", "since")
 PROGRESS_FIELDS = ("done", "total")
 STORY_FIELDS = ("as", "want", "so_that")
-BRIEF_FIELDS = ("goal", "story", "acceptance", "by", "at", "basis", "edited")
+BRIEF_FIELDS = ("goal", "story", "acceptance", "by", "at", "basis", "edited", "name", "stand")
 #: characters; `acceptance_items` is the most criteria a brief keeps (a stream has none)
-BRIEF_LIMITS = {"goal": 140, "story": 80, "acceptance_items": 5, "acceptance_len": 120}
+BRIEF_LIMITS = {"goal": 140, "story": 80, "acceptance_items": 5, "acceptance_len": 120, "name": 60, "name_words": 8, "stand": 140}
+# what a name never holds (stage 4): a path, an issue or pull request number, a file name; the rules of the prompt
+# say the rest (no ids, host names, status words, day counts), the gate checks what it can tell for sure
+_NAME_PATH_RE = re.compile(r"(?:^|\s)(?:~|\.{0,2})/\S|\S/\S+/|\w/[\w.-]+#\d")
+_NAME_NUMBER_RE = re.compile(r"#\d|\bPR ?\d|\b[A-Z]{2,}-\d+\b")
+_NAME_FILE_RE = re.compile(r"\b[\w-]+\.(?:md|py|js|mjs|ts|json|ya?ml|sh|txt|html?|css|toml|log|csv|pdf|plist)\b", re.I)
 
 _DASH_RE = re.compile("[‒-―]")
 # matched with fullmatch: `$` would also take a value that ends in a newline
@@ -97,6 +107,24 @@ def validate_brief(obj: Any) -> tuple[dict | None, list[str]]:
         goal = _text(obj["goal"], "goal", BRIEF_LIMITS["goal"], errors)
         if goal is not None:
             clean["goal"] = goal
+    if "name" in obj:
+        name = _text(obj["name"], "name", BRIEF_LIMITS["name"], errors)
+        if name is not None:
+            words = len(name.split())
+            if words > BRIEF_LIMITS["name_words"]:
+                errors.append(f"name: {words} words, at most {BRIEF_LIMITS['name_words']}")
+            elif _NAME_NUMBER_RE.search(name):
+                errors.append("name: carries an issue, pull request or ticket number, say what it is in words")
+            elif _NAME_PATH_RE.search(name):
+                errors.append("name: names a path, say what it is in everyday words")
+            elif _NAME_FILE_RE.search(name):
+                errors.append("name: names a file, say what it is in everyday words")
+            else:
+                clean["name"] = name
+    if "stand" in obj:
+        stand = _text(obj["stand"], "stand", BRIEF_LIMITS["stand"], errors)
+        if stand is not None:
+            clean["stand"] = stand
     if "story" in obj:
         story = obj["story"]
         if not isinstance(story, dict):

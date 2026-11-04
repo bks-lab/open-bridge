@@ -188,7 +188,6 @@
 .flow-ov-verbs { display: inline-flex; flex-wrap: wrap; gap: 8px; }
 .flow-list-confirm, .flow-list-done { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface); }
 .flow-list-confirm > span { flex: 1 1 260px; color: var(--ink); }
-.flow-list-from { margin: 0; }
 .flow-ov-table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); font-size: var(--text-sm); }
 .flow-ov-table th, .flow-ov-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 .flow-ov-table thead th { color: var(--on-surface-muted); font-size: var(--text-label); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
@@ -205,7 +204,6 @@
 .flow-ov-running { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; color: var(--on-surface-muted); }
 /* a long ref in the kind chip wraps inside the column instead of pushing the table under the right column */
 .flow-ov-sub .kind { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.flow-ov-sug { min-width: 9em; }
 /* the stage keeps its words whole: the column grows to fit them */
 .flow-ov-stage { white-space: nowrap; }
 .flow-ov-stage .dot { margin-right: 4px; }
@@ -340,7 +338,6 @@
   .flow-ov-row > td { width: auto; border-bottom: 0; padding: 4px 8px; }
   .flow-ov-row > td.flow-ov-point { grid-column: 2 / -1; }
   .flow-ov-row > td.flow-ov-stage { grid-column: 2; }
-  .flow-ov-row > td.flow-ov-sug { grid-column: 2 / -1; padding-bottom: 8px; }
   .flow-ov-row > td.flow-ov-act { grid-column: 2 / -1; padding-bottom: 8px; }
 }
 
@@ -399,9 +396,6 @@
 .flow-card-head { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
 .flow-card-head .btn { min-height: 0; }
 .flow-pin.btn[aria-pressed='true'] { color: var(--warning); }
-.flow-card .flow-next { gap: 4px; margin: 2px 0 0; padding: 12px 16px 14px; }
-.flow-card .flow-next p { margin: 0; }
-.flow-card .flow-next .dz-step-title { font-size: var(--text-body); }
 .flow-about { display: flex; flex-direction: column; gap: 10px; }
 .flow-about-gist, .flow-about-text { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--border);
   border-radius: var(--radius-md); background: var(--surface-raised); }
@@ -431,3 +425,38 @@
 .flow-ov-what { min-width: 14em; color: var(--on-surface); }
 .flow-raw > summary { cursor: pointer; }
 .flow-raw > p { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+/* stage 4, simpler: a point says its name, where it stands and its next step (views/flowpoint.js StepLine), who as a chip */
+.flow-step { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 4px 0 0; }
+.flow-step .label-caps { color: var(--on-surface-muted); }
+.flow-step-what { font-weight: 600; color: var(--on-surface); }
+.flow-who { font-weight: 600; }
+.flow-who-me { background: color-mix(in srgb, var(--warning) 12%, var(--surface)); color: var(--warning); border-color: transparent; }
+.flow-who-bridge { background: color-mix(in srgb, var(--info) 12%, var(--surface)); color: var(--info); border-color: transparent; }
+.flow-who-person { color: var(--on-surface); }
+/* the right column: the strong button, the four states in a quiet 2x2, More as a menu (views/flowsimple.js) */
+.flow-simple { display: flex; flex-direction: column; gap: 8px; }
+.flow-simple .verbbar-strong { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; padding-block: 6px; line-height: 1.35; }
+.verbbar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.verbbar-grid .verbbar-state { justify-content: center; }
+.flow-more { position: relative; }
+.flow-more-toggle, .flow-order-toggle { font-weight: 600; }
+.flow-more-menu { display: flex; flex-direction: column; margin-top: 6px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface); }
+.flow-more-item { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--on-surface);
+  font: inherit; font-size: var(--text-sm); text-align: left; text-decoration: none; cursor: pointer; }
+.flow-more-item:hover, .flow-more-item:focus-visible { background: var(--surface-raised); }
+.flow-work .flow-work-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* the overview and the lists: the stand under the name, the step beside it (views/flowlist.js, views/flowleft.js) */
+.flow-ov-stand { display: block; margin-top: 2px; }
+.flow-ov-step { min-width: 12em; }
+.flow-ov-when { display: block; margin-top: 2px; }
+.flow-ov-hint { margin: 0 0 8px; }
+.flow-ov-bar.is-ticked { position: sticky; top: 0; z-index: 2; }
+/* a check-in whose day came: its answers on the card (views/flowpoint.js CheckinCard) */
+.flow-checkin-acts { margin-top: 12px; }
+.flow-looked { margin-top: 10px; padding: 8px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); }
+.flow-looked p { margin: 0; }
+/* Description: what else is stored, folded under one line */
+.flow-stored { margin-top: 8px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; }
+.flow-stored > summary { cursor: pointer; font-weight: 600; }

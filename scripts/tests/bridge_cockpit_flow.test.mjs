@@ -18,12 +18,42 @@ const { FlowPage } = views.flow
 const { VerbBar } = views.verbbar
 const en = text.TABLES.en
 const tick = () => rounds()
+/** The field Who (stage 4): its few words, and the whole line it keeps on hover */
+const whoOf = el => {
+  const span = el.$('.flow-aside [data-field=who] dd span')
+  return { text: span?.text() ?? el.$('.flow-aside [data-field=who] dd')?.text() ?? '', title: span?.getAttribute('title') ?? '' }
+}
+// stage 4, simpler: the strong button, the four states in a 2x2, More with every other verb
+const sw = en.flow.simple
+const STATES = [en.flow.verbs.done, `${sw.work} ▾`, `${sw.later} ▾`, `${sw.drop} ▾`]
+const MORE = `${sw.more} ▾`
+/** What the menu More holds once opened, in its order */
+async function menuOf(el) {
+  const t = el.$('.flow-aside .flow-more-toggle')
+  if (!t) return []
+  if (t.getAttribute('aria-expanded') !== 'true') { t.click(); await tick() }
+  return [...el.$$('.flow-aside .flow-more-menu .flow-more-item'), ...el.$$('.flow-aside .flow-more-menu .flow-more-close button')].map(b => b.text().trim())
+}
+/** The Details fold of the fields opened (stage 4: every field but Theme, Area, Who and Due stands in it) */
+async function details(el) {
+  const t = el.$('.flow-aside .flow-facts-toggle')
+  if (t && t.getAttribute('aria-expanded') !== 'true') { t.click(); await tick() }
+  return el
+}
+/** The Order menu under the left column opened (stage 4): its items' words */
+async function orderOf(el) {
+  const t = el.$('.flow-side .flow-order-toggle')
+  if (!t) return []
+  if (t.getAttribute('aria-expanded') !== 'true') { t.click(); await tick() }
+  return el.$$('.flow-side .flow-order .flow-more-item').map(b => b.text().trim())
+}
 // effects run after the render; under a loaded runner 20 ms may not be enough, so wait for what the test expects
 const until = async (ok, ms = 2000) => { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick() }
 // the page bar reads its active tab back with querySelector, listens for resize and measures its tabs (as in the
 // aria suite): a DOM without layout says 0, so it neither folds nor moves its marker
 const proto = Object.getPrototypeOf(document.createElement('div'))
 if (!proto.querySelector) proto.querySelector = function querySelector(sel) { return this.$(sel) }
+proto.focus ??= function focus() { document.activeElement = this }
 globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
 for (const k of ['offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth']) Object.defineProperty(proto, k, { get: () => 0, configurable: true })
 
@@ -69,7 +99,7 @@ test('flowQueue: the groups stand in a fixed order, a Jev rank only orders insid
   // without a rank the priority orders the tasks
   const plain = queueOf({ ...s, jevOrder: {} }).filter(x => x.group === 'doing').map(x => x.row.task)
   assert.deepEqual(plain, ['ranked', 'plain'])
-  assert.deepEqual(logic.FLOW_GROUPS, ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
+  assert.deepEqual(logic.FLOW_GROUPS, ['checkin', 'back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
 })
 
 test('flowQueue: a question without a task and a task on P3 both stand in it, reports as one card at the end', () => {
@@ -113,13 +143,15 @@ test('flowParts: what is put off, waits, rests, is a stream or an idea stands in
   const parts = logic.flowParts(s)
   assert.deepEqual(queueOf(s).map(x => x.id), ['task:kept'])
   const why = Object.fromEntries(parts.leftOut.groups.map(g => [g.reason, g.rows.map(x => x.row.key)]))
-  // round 4: inside a group by priority, then age; round 6 B: Later holds what is put off, waits and rests, in order
-  assert.deepEqual(why, { later: ['task:put-off', 'task:waits', 'task:blocked'], stream: ['task:stream-one'],
+  // round 4: inside a group by priority, then age; stage 4: what waits on others runs elsewhere, Later holds what is put
+  // off and what rests, in order
+  assert.deepEqual(why, { running: ['task:waits'], later: ['task:put-off', 'task:blocked'], stream: ['task:stream-one'],
     idea: ['task:backlog-one', 'inbox:20261009-0900-a-idea'] })
-  assert.deepEqual(parts.leftOut.groups[0].rows.map(e => e.kind), ['later', 'waiting', 'resting'])
-  assert.equal(parts.leftOut.groups[0].rows[0].until, '2026-10-20')
+  const laterGroup = parts.leftOut.groups.find(g => g.reason === 'later')
+  assert.deepEqual(laterGroup.rows.map(e => e.kind), ['later', 'resting'])
+  assert.equal(laterGroup.rows[0].until, '2026-10-20')
   assert.equal(parts.leftOut.total, 6)
-  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => !['watch', 'github'].includes(k)))
+  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => k !== 'github'))
   // the ideas and the backlog come back only on the calm card, at most three: by rank, else the priority first
   assert.deepEqual(logic.restSuggestions(s, 3).map(r => r.key), ['task:backlog-one', 'inbox:20261009-0900-a-idea'])
   assert.deepEqual(logic.restSuggestions(s, 1).map(r => r.key), ['task:backlog-one'])
@@ -198,8 +230,10 @@ test('the return card: every answer forgets the jump', async () => {
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
   assert.match(el.$('.flow-card').text(), new RegExp(en.flow.backAsk))
-  // one way back (29.10.2026: Not yet did what Runs on does, so it went)
+  // one way back (29.10.2026: Not yet did what Runs on does, so it went); stage 4: in More
   assert.equal(el.button(en.flow.notYet), null)
+  el.$('.flow-aside .flow-more-toggle').click()
+  await tick()
   el.button(en.flow.runsOn).click()
   assert.deepEqual(c.calls.at(-1), ['flowBack'])
   el.button(en.flow.verbs.done).click()
@@ -322,12 +356,17 @@ test('the verb bar: the suggested verb is the primary button, Later offers the d
   assert.equal(stream.button(`${en.flow.verbs.drop} ▾`), null)
 })
 
-test('a card whose tab asks starts nothing: the tab takes no sentence while it asks, so Let AI do it stands off with why', () => {
+test('a card whose tab asks starts nothing: the tab takes no sentence while it asks, so Let AI do it stands off with why', async () => {
   const s = cockpitState(NOW, state({ work: [task('run')], tabs: [{ ref: 'surface:9', name: 'run', slug: 'run', state: 'needs-you', since_ms: NOW - MIN }] }))
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
-  assert.ok(el.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'), 'the start stands in its place, off (stage 1)')
-  assert.match(el.$('.flow-aside .verbbar-off').text(), new RegExp(en.flow.basic.off.working))
-  assert.ok(el.button(en.flow.verbs.advise) && el.button(en.flow.toTab))
+  // stage 4: Done and Drop off with why while it asks; the card answers it (yes, no), so To tab waits in More
+  assert.ok(el.button(`${en.flow.simple.drop} ▾`).hasAttribute('disabled'))
+  assert.match(el.$('.flow-aside .verbbar-off').text(), new RegExp(en.flow.basic.off.asks))
+  assert.equal(el.$('.flow-aside .verbbar-strong'), null)
+  assert.ok((await menuOf(el)).includes(en.flow.toTab))
+  // a driver that cannot answer it from here (no keys): To tab is the strong button
+  const off = mount(html`<${FlowPage} s=${{ ...s, driver: { caps: ['tabs', 'launch', 'focus', 'screen'] } }} c=${recorder()} />`)
+  assert.equal(off.$('.flow-aside .verbbar-strong').text(), en.flow.toTab)
 })
 
 // ---------------------------------------------------------------- the page
@@ -426,18 +465,15 @@ test('a theme entered: the left column keeps the same list, the one entered mark
   for (const gone of ['.flow-pt', '.flow-pt-pick', '.flow-pt-chip', '.flow-side-back', '.flow-side-title', '.flow-side-tick', 'input[type=checkbox]']) {
     assert.ok(!side.$(gone), gone)
   }
-  // the middle: the theme's name, the groups as a table with a box, a stage and an area; a title opens the point
+  // the middle: the theme's name, the bands by who takes the next step as a table with a box; a title opens the point
   assert.match(el.$('.flow-main-head').text(), /Ops/)
-  assert.deepEqual(el.$$('.flow-ov-group').map(h => h.text()), [en.flow.groups.you, en.flow.groups.doing])
+  assert.deepEqual(el.$$('.flow-ov-group').map(h => h.text()), [en.flow.groups.you])
   const rows = el.$$('.flow-ov-row')
   assert.equal(rows.length, 2)
-  assert.match(rows[1].text(), /Ops/)
   rows[0].$('.flow-ov-open').click()
   assert.deepEqual(c.calls.at(-1), ['flowGo', 'inbox:20261009-0900-a-q', 0])
   rows[1].$('.flow-ov-pick').click()
   assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:a'], true])
-  // the stage keeps its words whole: no ellipsis in its cell
-  assert.ok(!rows[1].$('.flow-ov-stage').getAttribute('class').includes('ellipsis'))
   const picked = mount(html`<${FlowPage} s=${opsState({ flowPicked: ['task:a'] })} c=${recorder()} />`)
   assert.deepEqual(picked.$$('.flow-ov-pick').map(b => b.hasAttribute('checked')), [false, true])
   assert.match(picked.$('.flow-ov-bar').text(), new RegExp(en.flow.list.ticked(1, '')))
@@ -447,24 +483,26 @@ test('the overview: a group has its own box, it ticks that group and no other, a
   const reps = ['20261009-1000-r1', '20261009-1000-r2'].map(id => report(id, { area: 'Ops' }))
   const groupState = ui => cockpitState(NOW, { ...state({ now: [ask('20261009-0900-a-q', { area: 'Ops' }), ...reps] }),
     ui: { ...state().ui, page: 'briefing', workView: 'flow', flowSide: { areas: 'a:ops' }, flowView: 'overview', flowPicked: [], ...ui } })
+  // stage 4: the reports a Bridge files freely are the Bridge's (gate free), the question is yours: two bands
   const keys = reps.map(r => r.key)
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${groupState()} c=${c} />`)
-  const reports = el.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.reports)
+  const reports = el.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.you)
   const box = reports.$('.flow-ov-grouppick')
-  assert.equal(box.getAttribute('aria-label'), en.flow.list.pickGroup(en.flow.groups.reports))
+  assert.equal(box.getAttribute('aria-label'), en.flow.list.pickGroup(en.flow.groups.you))
   assert.ok(!box.hasAttribute('checked'))
+  const all = ['inbox:20261009-0900-a-q', ...keys]
   box.click()
-  assert.deepEqual(c.calls.at(-1), ['flowPick', keys, true])
+  assert.deepEqual(c.calls.at(-1), ['flowPick', all, true])
   // ticked, it shows it, a click takes the group out again; one row of the group ticked is not the group ticked
   const c2 = recorder()
-  const on = mount(html`<${FlowPage} s=${groupState({ flowPicked: keys })} c=${c2} />`)
-  const again = on.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.reports).$('.flow-ov-grouppick')
+  const on = mount(html`<${FlowPage} s=${groupState({ flowPicked: all })} c=${c2} />`)
+  const again = on.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.you).$('.flow-ov-grouppick')
   assert.ok(again.hasAttribute('checked'))
   again.click()
-  assert.deepEqual(c2.calls.at(-1), ['flowPick', keys, false])
+  assert.deepEqual(c2.calls.at(-1), ['flowPick', all, false])
   const half = mount(html`<${FlowPage} s=${groupState({ flowPicked: [keys[0]] })} c=${recorder()} />`)
-  assert.ok(!half.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.reports).$('.flow-ov-grouppick').hasAttribute('checked'))
+  assert.ok(!half.$$('.flow-ov-group').find(h => h.text() === en.flow.groups.you).$('.flow-ov-grouppick').hasAttribute('checked'))
 })
 
 test('the open point: Back to overview, what is ticked, the card with its verbs, the walk on to the next theme', () => {
@@ -503,28 +541,22 @@ test('the open point: Back to overview, what is ticked, the card with its verbs,
   assert.equal(none.$('.flow-picked-line'), null)
 })
 
-test('the open point carries the suggestion the overview shows: its words on the right above the buttons, its verb the strong one', () => {
+test('the open point applies the suggestion with one strong button, its reason and source as its title, no line of its own', () => {
   const q = 'inbox:20261009-0900-a-q'
   const themes = themesState({ suggest: { [q]: { verb: 'done', reason: 'Answered in the thread', at_ms: NOW - MIN } } })
   const s = opsState({ flowView: 'point', flowAt: { id: q, i: 0 }, flowMode: 'areas' })
   const el = mount(html`<${FlowPage} s=${{ ...s, themes }} c=${recorder()} />`)
-  // the same suggestion as in the overview's table, with its half sentence of why, on the right over the buttons
-  const advice = el.$('.flow-aside .flow-can-sug')
-  assert.ok(advice, 'the suggestion stands on the right')
-  assert.match(advice.text(), new RegExp(en.flow.list.cols.suggestion))
-  assert.match(advice.text(), new RegExp(en.flow.list.verb.done))
-  assert.match(advice.text(), /Answered in the thread/)
+  assert.equal(el.$('.flow-aside .flow-can-sug'), null, 'stage 4: no line of its own, the stand says why')
   assert.ok(!el.$('.flow-card .flow-sug'), 'not on the card')
-  // the strong button is the suggested verb, not Advise; the basic verbs keep their one order (stage 1)
   const strong = el.$$('.flow-aside .flow-can button').filter(b => b.getAttribute('class').includes('primary')).map(b => b.text().trim())
   assert.deepEqual(strong, [en.flow.verbs.done])
-  assert.equal(el.$('.flow-aside .flow-can button').text().trim(), `${en.flow.verbs.do} ▾`)
-  // without a suggestion: no line
+  assert.equal(el.$('.flow-aside .verbbar-strong').getAttribute('title'), `Answered in the thread · ${en.flow.list.from.themes}`)
+  // without a suggestion: no strong button
   const plain = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
-  assert.equal(plain.$('.flow-can-sug'), null)
+  assert.equal(plain.$('.flow-aside .verbbar-strong'), null)
 })
 
-test('In progress: the card shows the last lines, the field says who works on it, To tab, and Let AI go on only without a tab at work', () => {
+test('In progress: the card shows the last lines, the field says who works on it, To tab the strong button, nothing starts beside a tab at work', async () => {
   const busy = { ref: 'surface:21', name: 'busy', slug: 'busy', state: 'working', since_ms: NOW - 18 * MIN, last: 'Running the tests' }
   let c = recorder()
   // round 4: a task a live tab works on runs, so it opens from Running now (view run)
@@ -533,18 +565,22 @@ test('In progress: the card shows the last lines, the field says who works on it
   const card = el.$('.flow-card')
   assert.match(card.text(), new RegExp(`${en.flow.run.label} · ${en.flow.doing.stage.working}`))
   assert.equal(card.$('.flow-who'), null, 'no box who works on it in the card')
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab busy: at work, for 18 min/)
+  assert.equal(whoOf(el).text, en.flow.simple.whoTab(en.flow.doing.stage.working))
+  assert.match(whoOf(el).title, /Agent tab busy: at work, for 18 min/)
   assert.match(card.$('.fx-screen').text(), /Running the tests/)
   assert.ok(!el.$('.flow-aside .fx-screen'), 'the screen only in the card')
-  // a tab at work: To tab is the strong button, View beside it, Let AI do it off (no second agent beside it)
-  assert.ok(el.button(en.flow.toTab).hasClass('btn-primary') && el.button(en.flow.view) && el.button(en.flow.verbs.done))
+  // stage 4: a tab at work: To tab is the strong button, Done in the four states, View in More; nothing starts here
+  // (no second agent beside it: no Let AI go on)
+  assert.equal(el.$('.flow-aside .verbbar-strong').text(), en.flow.toTab)
+  assert.ok(el.button(en.flow.verbs.done))
   assert.equal(el.button(`${en.flow.doing.goOn} ▾`), null)
-  assert.ok(el.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'))
-  // no tab open: when it last moved, and Let AI go on with it
+  assert.ok((await menuOf(el)).includes(en.flow.view))
+  // no tab open: when it last moved; no strong button of its own, the Bridge takes it on through In progress
   c = recorder()
   el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ work: [task('quiet', { updated: '2026-10-06' })] }), ui: { ...state().ui, page: 'briefing', workView: 'flow' } })} c=${c} />`)
   assert.match(el.$('.flow-aside [data-field=who]').text(), /Nobody works on it right now, last moved 3 days ago/)
-  assert.ok(el.button(`${en.flow.doing.goOn} ▾`).hasClass('btn-primary'))
+  assert.equal(el.$('.flow-aside .verbbar-strong'), null)
+  assert.ok(el.button(`${sw.work} ▾`))
   assert.equal(el.button(en.flow.toTab), null)
 })
 
@@ -557,7 +593,7 @@ test('Details beside the page: with the detail column open the right column of W
   assert.match(css, /@container \(max-width: 480px\) \{ \.flow-dock \.dz-walk \{ flex-wrap: wrap;/)
 })
 
-test('Sort again at the foot of the left column where By source, which carries the triage rerun, is off (round 6 B)', () => {
+test('Sort again in Order under the left column where By source, which carries the triage rerun, is off (round 6 B, stage 4)', async () => {
   const at = (views, themes, busy = {}) => {
     const s = { ...state({ work: [task('a'), task('b')] }), themes, ui: { ...state().ui, page: 'briefing', workView: 'flow', flowView: 'overview', busy } }
     s.model.pages = [{ id: 'arbeit', title: 'Work', group: 'work', sections: [] }]
@@ -567,20 +603,21 @@ test('Sort again at the foot of the left column where By source, which carries t
   for (const themes of [themesState(), { enabled: false }]) {
     const c = recorder()
     const el = mount(html`<${FlowPage} s=${cockpitState(NOW, at(['files', 'flow'], themes))} c=${c} />`)
-    const b = el.$$('.flow-side .flow-side-foot button').find(x => x.text() === en.flow.side.resort)
-    assert.ok(b, `Sort again with the themes ${themes.enabled ? 'on' : 'off'}`)
-    assert.ok(b.hasClass('btn-ghost'))
+    const words = await orderOf(el)
+    assert.ok(words.includes(en.flow.side.resort), `Sort again with the themes ${themes.enabled ? 'on' : 'off'}`)
+    const b = el.$$('.flow-side .flow-order .flow-more-item').find(x => x.text() === en.flow.side.resort)
     assert.equal(b.getAttribute('title'), en.triage.rerunTitle)
     b.click()
     assert.deepEqual(c.calls.find(x => x[0] === 'triageRun'), ['triageRun', false])
-    if (themes.enabled) assert.ok(el.$('.flow-side-foot').$$('button').some(x => x.text() === en.flow.side.regroup), 'beside Order themes again')
+    if (themes.enabled) assert.ok(words.includes(en.flow.side.regroup), 'beside Order themes again')
   }
-  // busy while the triage runs, and not there while By source offers its own
+  // off and busy while the triage runs, and not there while By source offers its own
   const busy = mount(html`<${FlowPage} s=${cockpitState(NOW, at(['files', 'flow'], themesState(), { [logic.TRIAGE_BUSY]: true }))} c=${recorder()} />`)
-  const b = busy.$$('.flow-side-foot button').find(x => x.text() === en.flow.side.resort)
+  await orderOf(busy)
+  const b = busy.$$('.flow-side .flow-order .flow-more-item').find(x => x.text() === en.flow.side.resort)
   assert.ok(b.getAttribute('disabled') != null && b.getAttribute('aria-busy') === 'true')
   const all = mount(html`<${FlowPage} s=${cockpitState(NOW, at(null, themesState()))} c=${recorder()} />`)
-  assert.ok(!all.$$('.flow-side button').some(x => x.text() === en.flow.side.resort), 'By source carries it')
+  assert.ok(!(await orderOf(all)).includes(en.flow.side.resort), 'By source carries it')
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.side.resort, lang)
   assert.equal(text.TABLES.de.flow.side.resort, 'Neu einordnen')
 })
@@ -593,10 +630,10 @@ test('the themes: the view asks for the points without one, never twice in a ren
   await waitFor(() => c.calls.some(x => x[0] === 'flowThemesAuto'), { what: 'the first flowThemesAuto call' })
   await tick()                                                 // then let a second one show itself before "never twice"
   assert.deepEqual(c.calls.filter(x => x[0] === 'flowThemesAuto'), [['flowThemesAuto', ['task:b']]])
-  // Themes beside Areas on top, the theme of the point, Order themes again
+  // Themes beside Areas on top, the theme of the point, Order themes again in Order (stage 4)
   assert.ok(el.$('.flow-side .seg'))
   assert.ok(el.$('.flow-theme-pick select'))
-  assert.ok(el.button(en.flow.side.regroup))
+  assert.ok((await orderOf(el)).includes(en.flow.side.regroup))
   for (const themes of [themesState({ budget_left: 0 }), { enabled: false }]) {
     c = recorder()
     const quiet = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...base, themes })} c=${c} />`)
@@ -1044,13 +1081,14 @@ test('a tab card says the tab waits where it asks nothing, and asks only where i
   assert.equal(text.TABLES.de.flow.kind.waits, 'Tab wartet')
 })
 
-test('a point whose tab waits at its prompt: its close stands with the tab ways, and Done once where the close ends the point', () => {
+test('a point whose tab waits at its prompt: Done once, closing the tab where the close ends the point; the close alone in More', async () => {
   const tab = { ref: 'surface:12', name: 'a research', slug: 'a', state: 'waiting', behind: { task: 'a', item: null }, since_ms: NOW - 14 * MIN }
   const s = pointState({ rows: [task('a', { area: 'Ops' })], tabs: [tab] })
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   const can = el.$$('.flow-aside .flow-can button').map(b => b.text())
-  assert.ok(can.includes(en.btnDoneCloseTab) && can.includes(en.btnCloseTabOnly), can.join(' | '))
+  assert.ok(can.includes(en.btnDoneCloseTab), can.join(' | '))
   assert.ok(!can.includes(en.flow.verbs.done), can.join(' | '))
+  assert.ok((await menuOf(el)).includes(en.btnCloseTabOnly))
   // at work it neither closes nor loses its Done
   const busy = mount(html`<${FlowPage} s=${pointState({ rows: [task('a', { area: 'Ops' })], tabs: [{ ...tab, state: 'working' }] })} c=${recorder()} />`)
   assert.ok(!busy.$('.flow-aside .tab-close'))
@@ -1148,7 +1186,7 @@ test('In progress: every doing task with what drives it, a review task stays a t
       { ref: 'surface:24', name: 'started', state: 'working', since_ms: NOW - 4 * MIN }], sessions,
     returns: [startOf('started', 'working', { tab: { ref: 'surface:24' }, at_ms: NOW - 4 * MIN })] })
   const parts = logic.flowParts(s)
-  assert.deepEqual(logic.FLOW_GROUPS, ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
+  assert.deepEqual(logic.FLOW_GROUPS, ['checkin', 'back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
   // the doing ones: a start of the cockpit, a session typed by hand, the task with its working tab (these three run, round 4:
   // in Running now), the quiet one (a point)
   assert.deepEqual(parts.doing.map(x => x.row.task), ['quiet'])
@@ -1288,7 +1326,7 @@ test('batchPlan: the suggestions take done, drop and later, never Let AI do it u
   assert.deepEqual(plan.calls.map(x => x.args), [{ key: 'task:d1', until: '2026-10-12', by: 'batch' }, { key: 'task:d2', until: '2026-10-12', by: 'batch' }])
 })
 
-test('the overview: suggestions with where they come from, Tick, the ticked line, Run with one line to confirm, then one undo', async () => {
+test('the overview: Tick the suggestions in the hint line, the bar once a row is ticked, Run with one line to confirm, then one undo', async () => {
   const rows = [task('d1'), task('drop'), task('agent'), task('mine')]
   const triage = { last: { at: '2026-10-09T07:00:00' }, items: { 'task:d1': { verdict: 'close', reason: 'The guide is merged' },
     'task:agent': { doer: 'ai', reason: 'A small change' } } }
@@ -1299,19 +1337,16 @@ test('the overview: suggestions with where they come from, Tick, the ticked line
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${cockpitState(NOW, base)} c=${c} />`)
   assert.equal(el.$$('.flow-ov-row').length, 4)
-  const from = el.$('.flow-list-from').text()
-  assert.match(from, /from the triage of/)
-  assert.match(from, new RegExp(en.flow.list.from.themes))
-  assert.match(from, new RegExp(en.flow.list.honest))
-  assert.match(el.$$('.flow-ov-row')[0].$('.flow-ov-sug').text(), /The guide is merged/)
-  // the suggestion stands once, in the middle: no chip and no Tick in the left column
-  assert.match(el.$$('.flow-ov-row')[0].$('.flow-ov-sug').text(), new RegExp(en.flow.list.verb.done))
+  // stage 4: no line of where the suggestions come from and none in a row (a row says its name, its stand and its
+  // step); nothing ticked, no bar: one hint line holds Tick the suggestions
+  assert.equal(el.$('.flow-list-from'), null)
+  assert.equal(el.$('.flow-ov-bar'), null)
+  assert.ok(el.$('.flow-ov-hint').text().includes(en.flow.list.hintTick))
   assert.ok(!el.$('aside .flow-pt-chip'), 'aside .flow-pt-chip')
-  // Tick in the bar: done and drop, never Let AI do it; nothing goes out
+  // Tick in the hint line: done and drop, never Let AI do it; nothing goes out
   el.button(en.flow.list.tick(2)).click()
   assert.deepEqual(c.calls.at(-1), ['flowPick', ['task:d1', 'task:drop'], true])
   assert.equal(c.calls.filter(x => x[0] === 'act' || x[0] === 'flowBatch').length, 0)
-  assert.ok(el.button(en.flow.list.run).hasAttribute('disabled'))
   // two ticked: the bar counts them by their suggestion, Run plans, Confirm sends and clears the boxes
   const s2 = cockpitState(NOW, { ...base, ui: { ...base.ui, flowPicked: ['task:d1', 'task:drop'] } })
   const c2 = recorder()
@@ -1339,12 +1374,12 @@ test('the overview: suggestions with where they come from, Tick, the ticked line
   assert.deepEqual(c.calls.at(-1), ['flowBatchUndo'])
 })
 
-test('pointBand: the left column and the overview group the points as Needs you, In progress, Tasks, Reports', () => {
-  assert.deepEqual(logic.FLOW_BANDS, ['you', 'doing', 'task', 'issue', 'reports'])
-  for (const g of logic.FLOW_YOU) assert.equal(logic.pointBand({ group: g }), 'you')
-  assert.equal(logic.pointBand({ group: 'doing' }), 'doing')
-  assert.equal(logic.pointBand({ group: 'task' }), 'task')
-  assert.equal(logic.pointBand({ group: 'reports' }), 'reports')
+test('pointBand: the overview groups the points by who takes the next step (stage 4: Check-in, Needs you, The Bridge does)', () => {
+  assert.deepEqual(logic.FLOW_BANDS, ['checkin', 'you', 'bridge'])
+  for (const g of logic.FLOW_YOU.filter(g => g !== 'checkin')) assert.equal(logic.pointBand({ group: g }), 'you')
+  assert.equal(logic.pointBand({ group: 'checkin' }), 'checkin')
+  for (const g of ['doing', 'task', 'issue', 'reports']) assert.equal(logic.pointBand({ group: g }), 'you', g)
+  assert.equal(logic.pointBand({ group: 'task', row: { card: { next: { what: 'Run the tests', who: 'bridge' } } } }), 'bridge')
 })
 
 test('themesAsker: each key once, but a run that failed leaves its keys free for the next ask', async () => {
@@ -1472,7 +1507,8 @@ test('flowFields: the fields of a point in their order, never a status; Prio fro
   const s = pointState()
   const x = queueOf(s)[0]
   const fields = logic.flowFields(x, s, feedOf(), detailOf())
-  assert.deepEqual(fields.map(f => f.id), ['area', 'who', 'prio', 'urgency', 'impact', 'effort', 'due', 'source', 'created', 'moved'])
+  // stage 3: an open task has its task check as a field too (views/check.js ReviewBlock), its priority to change in Prio
+  assert.deepEqual(fields.map(f => f.id), ['area', 'who', 'prio', 'urgency', 'impact', 'effort', 'due', 'check', 'source', 'created', 'moved'])
   assert.ok(!fields.some(f => ['status', 'state'].includes(f.id)), 'no Status field: the card head says it')
   const by = Object.fromEntries(fields.map(f => [f.id, f]))
   assert.deepEqual(by.prio.jev, { quadrant: 'plan', rank: 4, who: null, ranker: null })
@@ -1503,24 +1539,24 @@ test('flowAction and the verb bar carry by: a suggestion taken, a batch, an inst
   assert.deepEqual(logic.flowAction('later', task('a'), '2026-10-12', 'instruction'), { verb: 'later', args: { key: 'task:a', until: '2026-10-12', by: 'instruction' } })
   assert.deepEqual(logic.flowAction('drop', task('a'), 'x', 'batch'), { verb: 'shelve', args: { key: 'task:a', reason: 'x', by: 'batch' } })
   assert.deepEqual(logic.flowAction('do', task('a'), 'Go', 'instruction'), { verb: 'do_it', args: { keys: ['task:a'], note: 'Go', by: 'instruction' } })
-  // the primary that came from the suggestion sends by suggestion; another verb of the same bar sends none
+  // the strong button that came from the suggestion sends by suggestion; another verb of the same column sends none
   const themes = themesState({ suggest: { 'task:a': { verb: 'done', reason: 'Merged', at_ms: NOW } } })
   const s = { ...pointState(), themes }
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
-  el.button(en.flow.verbs.done).click()
+  el.$('.flow-aside .verbbar-strong').click()
   await tick()
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'settle', { keys: ['task:a'], outcome: 'done', by: 'suggestion' }])
   const c2 = recorder()
   const el2 = mount(html`<${FlowPage} s=${s} c=${c2} />`)
-  el2.button(`${en.flow.verbs.later} ▾`).click()
+  el2.button(`${sw.later} ▾`).click()
   await tick()
   el2.button(en.flow.later.tomorrow).click()
   await tick()
   assert.deepEqual(c2.calls.find(x => x[0] === 'act'), ['act', 'later', { key: 'task:a', until: '2026-10-10' }])
 })
 
-test('the card carries content only: no verbs, no source, no area, no who; the state in its head; the tabs under it', () => {
+test('the card carries content only: no verbs, no source, no area, no who; the state in its head; the tabs under it', async () => {
   const busy = { ref: 'surface:21', name: 'busy', slug: 'a', state: 'working', since_ms: NOW - 18 * MIN, last: 'one\ntwo\nthree\nfour\nfive\nRunning the tests' }
   const s = pointState({ tabs: [busy] })
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
@@ -1539,7 +1575,7 @@ test('the card carries content only: no verbs, no source, no area, no who; the s
   const q = pointState({ rows: [ask('20261009-0900-a-q', { area: 'Ops', origin: { category: 'bot', detail: 'issue-radar' } })], feed: feedOf('inbox:20261009-0900-a-q'), detail: null })
   const qel = mount(html`<${FlowPage} s=${q} c=${recorder()} />`)
   assert.equal(qel.$('.flow-card .origin'), null)
-  assert.ok(qel.$('.flow-aside [data-field=source] .origin'))
+  assert.ok((await details(qel)).$('.flow-aside [data-field=source] .origin'), 'stage 4: the source in Details')
   assert.deepEqual(qel.$$('.flow-ptabs [role=tab]').map(b => b.getAttribute('data-tab')), ['desc', 'activity'])
 })
 
@@ -1708,34 +1744,35 @@ test('the feed is read when a point opens, again when it is stale, never for the
   assert.deepEqual(logic.invalidateDetails({ inbox: {}, task: {} }, task('a')).activity, {})
 })
 
-test('the right column: What you can do with the suggestion and the verbs stacked, then the fields; Status is no field', () => {
+test('the right column: What you can do with the strong button, the four states and More, then four fields; the rest under Details', async () => {
   const themes = themesState({ assign: { 'task:a': 't000001' }, suggest: { 'task:a': { verb: 'later', reason: 'Waits for the vendor', until: '2026-10-12', at_ms: NOW } } })
   const el = mount(html`<${FlowPage} s=${{ ...pointState(), themes }} c=${recorder()} />`)
   const aside = el.$('.flow-aside')
   assert.match(aside.$('.flow-can').text(), new RegExp(en.flow.fields.can))
-  assert.match(aside.$('.flow-can-sug').text(), /Waits for the vendor/)
-  assert.ok(aside.$('.flow-can .verbbar.is-stack'), 'the verbs stand under each other')
-  // the basic verbs in their one order, the suggested one strong in its place (stage 1)
-  const basic = aside.$$('.flow-can .verbbar-basic button')
-  assert.deepEqual(basic.map(b => b.text()), [`${en.flow.doing.goOn} ▾`, en.flow.verbs.done, `${en.flow.verbs.later} ▾`, `${en.flow.verbs.drop} ▾`])
-  assert.deepEqual(basic.filter(b => b.hasClass('btn-primary')).map(b => b.text()), [`${en.flow.verbs.later} ▾`])
-  const fields = aside.$$('.flow-fields dt').map(d => d.text())
-  assert.deepEqual(fields, [en.flow.fields.theme, en.flow.fields.area, en.flow.fields.who, en.flow.fields.prio, en.flow.fields.urgency,
-    en.flow.fields.impact, en.flow.fields.effort, en.flow.fields.due, en.flow.fields.source, en.flow.fields.created, en.flow.fields.moved])
+  assert.equal(aside.$('.flow-can-sug'), null, 'the suggestion is no line of its own: the stand says why, the strong button applies it')
+  // the suggested verb is the one strong button, over the four states and More
+  // Later with the day it suggests: the words say what the click does
+  assert.deepEqual(acts(el), [`[${en.flow.list.laterUntil(logic.formatDay('2026-10-12', 'en'))}]`, ...STATES, MORE])
+  assert.equal(aside.$('.verbbar-strong').getAttribute('title'), `Waits for the vendor · ${en.flow.list.from.themes}`)
+  const fields = aside.$$('.flow-fields > dl > .meta-item dt').map(d => d.text())
+  assert.deepEqual(fields, [en.flow.fields.theme, en.flow.fields.area, en.flow.fields.who, en.flow.fields.due])
   assert.ok(aside.$('[data-field=theme] select'), 'the theme can be changed there')
-  assert.match(aside.$('[data-field=prio]').text(), new RegExp(`${en.flow.fields.quadrant.plan}.*Jev #4`))
-  assert.ok(aside.$('[data-field=urgency] .meter-fill'))
-  assert.match(aside.$('[data-field=source] a').getAttribute('href'), /example\.org\/tickets\/7/)
+  // everything else under Details: Prio, Jev's bars, the task check, Source, Created, Moved
+  aside.$('.flow-facts-toggle').click()
+  await tick()
+  const rest = el.$$('.flow-facts .meta-item[data-field]').map(m => m.getAttribute('data-field'))
+  assert.deepEqual(rest, ['prio', 'urgency', 'impact', 'effort', 'check', 'source', 'created', 'moved'])
+  assert.match(el.$('.flow-facts [data-field=prio]').text(), new RegExp(`${en.flow.fields.quadrant.plan}.*Jev #4`))
+  assert.match(el.$('.flow-facts [data-field=source] a').getAttribute('href'), /example\.org\/tickets\/7/)
 })
 
-test('the right column by card: a live tab gives To tab and View, a finished start Done and close, the reports All seen', () => {
-  // a tab that asks: the basic verbs off but Later, then To tab strong and View under them
+test('the right column by card: a live tab gives To tab and View, a finished start Done and close, the reports All seen', async () => {
+  // a tab that asks what its card answers: no strong button, the states off but Later, View and To tab in More
   const asks = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ work: [task('run')], tabs: [{ ref: 'surface:9', name: 'run', slug: 'run', state: 'needs-you', since_ms: NOW - MIN }] }))} c=${recorder()} />`)
-  const kind = asks.$('.flow-aside .flow-can .verbbar-kind')
-  assert.equal(kind.$$('button')[0].text(), en.flow.toTab)
-  assert.ok(kind.$$('button')[0].hasClass('btn-primary'))
-  assert.equal(kind.$$('button')[1].text(), en.flow.view)
-  assert.ok(asks.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'))
+  assert.equal(asks.$('.flow-aside .verbbar-strong'), null)
+  const menu = await menuOf(asks)
+  assert.ok(menu.includes(en.flow.view) && menu.includes(en.flow.toTab), menu.join(' | '))
+  assert.ok(asks.button(`${sw.drop} ▾`).hasAttribute('disabled'))
   // the reports: Seen for the ticked ones on the right, Seen on each report in the card
   const r = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: [report('20261009-0901-a-r')] }))} c=${recorder()} />`)
   assert.ok(r.$('.flow-aside').$$('button').some(b => b.text() === en.flow.seenTicked(0)))
@@ -1789,7 +1826,9 @@ test('the reports: Seen on the right settles only the ticked reports, All seen o
 // ---------------------------------------------------------------- the buttons on the right by kind (29.10.2026)
 
 /** The ways on the right of a point in their order, the strong one in brackets: every button and every link styled as
- *  one, Details (the link, the fold of the facts) and the STATUS.md link left out; `tail` only those set apart under the verbs (.verbbar-tail) */
+ *  one under What you can do (the fields' own controls, a team's role and the task check's, stage 3, are no ways),
+ *  Details (the link, the fold of the facts) and the STATUS.md link left out; `tail` only those set apart under the
+ *  verbs (.verbbar-tail) */
 function acts(el, tail = false) {
   const out = []
   const walk = (n, apart) => {
@@ -1803,45 +1842,48 @@ function acts(el, tail = false) {
     }
     for (const k of n.childNodes) walk(k, there)
   }
-  walk(el.$('.flow-aside'), false)
+  walk(el.$('.flow-aside .flow-can'), false)
   return out
 }
 const panel = w => `${w} ▾`
+
 const onTab = (st, over = {}) => ({ ref: 'surface:9', name: 'run', slug: 'run', state: st, since_ms: NOW - 18 * MIN, ...over })
 const right = (st, c = recorder()) => mount(html`<${FlowPage} s=${cockpitState(NOW, st)} c=${c} />`)
 
-test('the right column: no strong button without a suggestion, the basic verbs in one order, Advise under them (B)', () => {
-  const v = en.flow.verbs
-  assert.deepEqual(acts(right(state({ now: [ask('20261009-0900-a-q')] }))), [panel(v.do), v.done, panel(v.later), panel(v.drop), panel(en.flow.basic.task), v.advise])
-  // a suggestion makes its verb the strong one, in its place (stage 1: the order never moves)
+test('the right column: no strong button without a suggestion, the four states, More with what else applies (B)', async () => {
+  const el = right(state({ now: [ask('20261009-0900-a-q')] }))
+  assert.deepEqual(acts(el), [...STATES, MORE])
+  assert.deepEqual(await menuOf(el), [en.flow.basic.task, sw.describe, sw.advise])
+  // a suggestion makes its verb the strong button, over the states
   const s = state({ now: [ask('20261009-0900-a-q')], themes: { enabled: true, assign: {}, themes: [], suggest: { 'inbox:20261009-0900-a-q': { verb: 'later', reason: 'x', at_ms: NOW } } } })
-  assert.equal(acts(right(s))[2], `[${panel(v.later)}]`)
+  // without a day of its own, Later in a week
+  assert.equal(acts(right(s))[0], `[${en.flow.list.laterUntil(logic.formatDay('2026-10-16', 'en'))}]`)
 })
 
-test('the right column: a finding with an action ready gives its yes first and strong (D)', () => {
-  const v = en.flow.verbs
+test('the right column: a finding with an action ready gives its yes as the strong button (D)', () => {
   const y = ask('20261009-0900-a-y', { gate: 'your-yes', has_action: true, art: 'finding' })
-  assert.deepEqual(acts(right(state({ now: [y] }))), [panel(v.do), v.done, panel(v.later), panel(v.drop), panel(en.flow.basic.task), `[${en.flow.approve}]`, v.advise])
+  assert.deepEqual(acts(right(state({ now: [y] }))), [`[${en.flow.approve}]`, ...STATES, MORE])
 })
 
-test('the right column: a task in review offers the basic verbs with Done strong, then Improve and Advise (C)', async () => {
-  const v = en.flow.verbs
+test('the right column: a task in review offers the four states, Improve in More (C)', async () => {
   const c = recorder()
   const el = right(state({ work: [task('r', { status: 'review' })] }), c)
-  assert.deepEqual(acts(el), [panel(v.do), `[${v.done}]`, panel(v.later), panel(v.drop), panel(en.flow.improve.button), v.advise, en.flow.one.net])
+  assert.deepEqual(acts(el), [...STATES, MORE])
+  const menu = await menuOf(el)
+  assert.ok(menu.includes(en.flow.improve.button) && menu.includes(en.flow.one.net), menu.join(' | '))
   // Improve opens the sentence for a new start, which goes out only with words in it
-  el.$$('.flow-aside button').find(b => b.text() === panel(en.flow.improve.button)).click()
+  el.$$('.flow-aside .flow-more-item').find(b => b.text() === en.flow.improve.button).click()
   await until(() => el.$('.flow-aside .flow-improve textarea'))
   assert.ok(el.$('.flow-aside .flow-improve textarea'), 'the field for what is still to do')
 })
 
-test('the right column: an issue says Hide for what only leaves this list, Open on GitHub under the basic verbs (A)', () => {
-  const v = en.flow.verbs
+test('the right column: an issue has the four states, Open on GitHub first in More (A)', async () => {
   const issue = ref('acme/app', 7, { bucket: 'do' })
   const el = right(state({ now: [issue] }))
-  assert.deepEqual(acts(el), [panel(v.do), en.flow.hide, panel(v.later), panel(v.drop), en.flow.onWeb(issue.url), v.advise])
+  assert.deepEqual(acts(el), [...STATES, MORE])
+  assert.equal((await menuOf(el))[0], en.flow.onWeb(issue.url))
   assert.equal(en.flow.onWeb('https://github.com/acme/app/issues/7'), 'Open on GitHub')
-  const a = el.$('.flow-aside a.btn')
+  const a = el.$('.flow-aside a.flow-more-item')
   assert.equal(a.getAttribute('href'), issue.url)
   assert.equal(a.getAttribute('target'), '_blank')
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.hide && text.TABLES[lang].flow.onWeb, lang)
@@ -1860,17 +1902,23 @@ const withPlan = plan => {
 const gitIssue = (over = {}) => ref('acme/app', 7, { bucket: 'do', url: 'https://github.com/acme/app/issues/7', ...over })
 const iw = en.flow.issue
 /** Until the card read its board: the line no longer says it is reading */
-const read = el => until(() => el.$('.flow-issue-on') && el.$('.flow-issue-on').text() !== iw.loading)
+const read = async el => {
+  // stage 4: the board's moves stand in More, Board moves opens them under the states
+  if (!el.$('.flow-issue-on') && el.$('.flow-aside .flow-more-toggle')) {
+    await menuOf(el)
+    el.$$('.flow-aside .flow-more-item').find(b => b.text() === en.flow.simple.board)?.click()
+    await tick()
+  }
+  return until(() => el.$('.flow-issue-on') && el.$('.flow-issue-on').text() !== iw.loading)
+}
 
-test('an issue on a board: Set to review and Done after Open on GitHub, under the basic verbs, the board and its status above them', async () => {
-  const v = en.flow.verbs
+test('an issue on a board: Set to review and Done under Board moves in More, the board and its status above them', async () => {
   const c = withPlan({ ok: true, data: PLAN() })
   const el = right(state({ now: [gitIssue()] }), c)
   await read(el)
   assert.deepEqual(c.calls.find(x => x[0] === 'issuePlan'), ['issuePlan', 'acme/app#7'])
   assert.match(el.$('.flow-issue-on').text(), /Ops: In Progress/)
-  assert.deepEqual(acts(el), [panel(v.do), en.flow.hide, panel(v.later), panel(v.drop), en.flow.onWeb('https://github.com/acme/app/issues/7'),
-    panel(iw.review), panel(iw.done), iw.check, v.advise])
+  assert.deepEqual(acts(el), [...STATES, MORE, panel(iw.review), panel(iw.done), iw.check])
 })
 
 test('Set to review asks what is done first, then sends issue_review with it', async () => {
@@ -1904,14 +1952,17 @@ test('Done says what the click will do and the board rules before it sends issue
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'issue_done', { key: 'ref:acme/app#7' }])
 })
 
-test('the AI suggests closing: the button that fits is the strong one, its reason already in the field, Hide stays plain', async () => {
+test('the AI suggests closing: the strong button opens the board moves, the one that fits strong there with its reason in the field', async () => {
   const s = state({ now: [gitIssue()], themes: { enabled: true, assign: {}, themes: [], suggest: { 'ref:acme/app#7': { verb: 'done', reason: 'PR #9 is merged', at_ms: NOW } } } })
   const c = withPlan({ ok: true, data: PLAN() })
   const el = right(s, c)
-  await read(el)
+  // stage 4: an issue closes by its board's rules, so the suggestion's Done opens the board's moves
+  assert.equal(acts(el)[0], `[${panel(sw.boardDone)}]`)
+  el.$('.flow-aside .verbbar-strong').click()
+  await until(() => el.$('.flow-issue-on') && el.$('.flow-issue-on').text() !== iw.loading)
   const all = acts(el)
-  assert.equal(all[5], `[${panel(iw.review)}]`, all.join(' | '))
-  assert.ok(all.includes(en.flow.hide), 'Hide is no longer strong')
+  assert.deepEqual(all.filter(w => w.startsWith('[')), [`[${panel(iw.review)}]`], all.join(' | '))
+  assert.ok(all.includes(en.flow.verbs.done), 'the Done of the states (Hide for an issue) stays plain')
   el.$$('.flow-aside button').find(b => b.text() === panel(iw.review)).click()
   await until(() => el.$('.flow-issue-panel textarea'))
   const box = el.$('.flow-issue-panel textarea')
@@ -1971,7 +2022,7 @@ test('an issue on no board of workflow/projects/ and a pull request keep Hide on
   const none = right(state({ now: [gitIssue()] }), withPlan({ ok: true, data: PLAN({ boards: [] }) }))
   await read(none)
   assert.equal(none.$('.flow-issue-on').text(), iw.none)
-  assert.ok(!acts(none).some(w => w.includes(iw.review) || w.includes(iw.done)))
+  assert.ok(!acts(none).some(w => w === panel(iw.review) || w === panel(iw.done)))
   const c = withPlan({ ok: true, data: PLAN() })
   const pr = right(state({ now: [gitIssue({ url: 'https://github.com/acme/app/pull/7' })] }), c)
   assert.ok(!pr.$('.flow-issue-on'))
@@ -1979,29 +2030,25 @@ test('an issue on no board of workflow/projects/ and a pull request keep Hide on
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.issue.confirmDone, lang)
 })
 
-test('the right column: the return card has one way back, Runs on (E)', () => {
-  const v = en.flow.verbs
+test('the right column: the return card has one way back, Runs on in More (E)', async () => {
   const el = right(state({ work: [task('other')], tabs: [onTab('waiting', { ref: 'surface:5', slug: 'other' })],
     ui: { flowJump: { key: 'task:other', ref: 'surface:5', title: 'x', at: NOW - MIN, armed: true } } }))
-  assert.deepEqual(acts(el), [panel(v.do), `[${v.done}]`, panel(v.later), panel(v.drop), v.advise, en.flow.runsOn, en.flow.one.net])
+  assert.ok((await menuOf(el)).includes(en.flow.runsOn))
 })
 
-test('the right column: a tab waiting at its prompt puts its close last and apart (F)', () => {
-  const v = en.flow.verbs
+test('the right column: a tab waiting at its prompt gives To tab strong, View and its close in More (F)', async () => {
   const el = right(state({ work: [task('run')], tabs: [onTab('waiting')] }))
-  const all = acts(el)
-  assert.deepEqual(all.slice(0, 8), [panel(v.do), v.done, panel(v.later), panel(v.drop), `[${en.flow.toTab}]`, en.flow.view, v.advise, en.flow.one.net])
-  assert.deepEqual(acts(el, true), all.slice(8))
-  assert.ok(acts(el, true).includes(en.btnCloseTab), 'the close stands apart')
+  assert.deepEqual(acts(el), [`[${en.flow.toTab}]`, ...STATES, MORE])
+  const menu = await menuOf(el)
+  assert.ok(menu.includes(en.flow.view) && menu.includes(en.btnCloseTab), menu.join(' | '))
 })
 
-test('the right column: while a tab asks, only Later of the basic verbs goes, then To tab, View and Advise; nothing closes what waits for you (H)', () => {
-  const v = en.flow.verbs
+test('the right column: while a tab asks, the card answers it, only Later and In progress of the states go; nothing closes what waits for you (H)', async () => {
   const el = right(state({ work: [task('run')], tabs: [onTab('needs-you')] }))
-  assert.deepEqual(acts(el), [panel(v.do), v.done, panel(v.later), panel(v.drop), `[${en.flow.toTab}]`, en.flow.view, v.advise, en.flow.one.net])
-  const on = el.$$('.flow-aside .verbbar-basic button').filter(b => !b.hasAttribute('disabled')).map(b => b.text())
-  assert.deepEqual(on, [panel(v.later)], 'only Later of them goes')
-  assert.match(el.$('.flow-aside .verbbar-off').text(), new RegExp(en.flow.basic.off.asks))
+  assert.deepEqual(acts(el), [...STATES, MORE])
+  const on = el.$$('.flow-aside .verbbar-grid button').filter(b => !b.hasAttribute('disabled')).map(b => b.text())
+  assert.deepEqual(on, [`${sw.work} ▾`, `${sw.later} ▾`], 'only Later and In progress go')
+  assert.ok(!(await menuOf(el)).some(w => w === en.btnCloseTab), 'no close while it asks')
 })
 
 test('the right column: a finished start, View and Improve right after Done, the tab ways apart at the end (G)', () => {
@@ -2014,14 +2061,11 @@ test('the right column: a finished start, View and Improve right after Done, the
   assert.deepEqual(acts(el, true), all.slice(6))
 })
 
-test('the right column: where the close of the tab behind it ends the point, Done and close tab stands with the verbs', () => {
-  // a tab waiting at its prompt with the task behind it: its close offers Done for it, so Done in its place closes the
-  // tab too (stage 1: one Done, where Done always stands), Close tab only apart at the end
+test('the right column: where the close of the tab behind it ends the point, Done and close tab stands in Done\'s place', async () => {
   const wait = { ref: 'surface:12', name: 'a', slug: 'a', state: 'waiting', behind: { task: 'a', item: null }, since_ms: NOW - 14 * MIN }
-  const v = en.flow.verbs
-  const all = acts(right(state({ work: [task('a')], tabs: [wait] })))
-  assert.deepEqual(all, [panel(v.do), en.btnDoneCloseTab, panel(v.later), panel(v.drop), `[${en.flow.toTab}]`, en.flow.view, v.advise, en.flow.one.net,
-    en.btnCloseTabOnly])
+  const el = right(state({ work: [task('a')], tabs: [wait] }))
+  assert.deepEqual(acts(el), [`[${en.flow.toTab}]`, en.btnDoneCloseTab, ...STATES.slice(1), MORE])
+  assert.ok((await menuOf(el)).includes(en.btnCloseTabOnly))
   // a driver that closes tabs but starts none still shows that Done
   const noLaunch = acts(right({ ...state({ work: [task('a')], tabs: [wait] }), driver: { caps: ['close'] } }))
   assert.ok(noLaunch.includes(en.btnDoneCloseTab), noLaunch.join(' | '))
@@ -2053,13 +2097,13 @@ test('no Details at the point (stage 1): what the drawer held stands in the one 
   assert.deepEqual(c.calls.find(x => x[0] === 'flowSolo'), ['flowSolo', reps[1].key, 'reports'])
   const alone = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: reps, ui: { flowView: 'solo', flowSolo: { key: reps[1].key, file: null, from: 'reports' } } }))} c=${c} />`)
   assert.match(alone.$('.flow-card').text(), new RegExp(reps[1].title))
-  assert.ok(alone.$('.flow-aside .verbbar-basic'), 'its verbs: the row is open')
+  assert.ok(alone.$('.flow-aside .verbbar-grid'), 'its verbs, the four states (stage 4): the row is open')
   alone.button(en.flow.point.back).click()
   assert.deepEqual(c.calls.at(-1), ['flowGo', 'reports', 0])
   for (const lang of ['en', 'de']) assert.equal(text.TABLES[lang].flow.details, 'Details')
 })
 
-test('nothing twice: state in the card head, who and source in the fields, the screen in the card, the suggestion on the right', () => {
+test('nothing twice: state in the card head, who and source in the fields, the screen in the card, the suggestion on the right', async () => {
   const busy = { ref: 'surface:21', name: 'busy', slug: 'a', state: 'working', since_ms: NOW - 18 * MIN, last: 'Running the tests' }
   const themes = themesState({ assign: { 'task:a': 't000001' }, suggest: { 'task:a': { verb: 'done', reason: 'Merged', at_ms: NOW } } })
   const el = mount(html`<${FlowPage} s=${{ ...pointState({ tabs: [busy] }), themes }} c=${recorder()} />`)
@@ -2070,8 +2114,11 @@ test('nothing twice: state in the card head, who and source in the fields, the s
   assert.deepEqual(where('.fx-kind'), [1, 0, 0], 'the state once, in the card head')
   assert.deepEqual(where('.state-line'), [0, 0, 0], 'who drives it is the field, no state line of its tab')
   assert.deepEqual(where('.fx-screen'), [1, 0, 0], 'the screen once, in the card')
+  // stage 4: the suggestion once, the strong button on the right (a tab at work: To tab, the suggestion waits); the
+  // source once, in Details
+  assert.deepEqual(where('.flow-sug'), [0, 0, 0], 'no line of the suggestion')
+  await details(el)
   assert.deepEqual(where('.origin'), [0, 1, 0], 'the source once, in the fields')
-  assert.deepEqual(where('.flow-sug'), [0, 1, 0], 'the suggestion once, on the right')
   assert.deepEqual(where('[data-field=who]'), [0, 1, 0], 'who works on it once, in the fields')
   assert.equal(aside.$$('dt').filter(d => /status|state/i.test(d.text())).length, 0)
 })
@@ -2334,7 +2381,8 @@ test('the card never says who works on it: no tab state, no started ago; the fie
   let el = mount(html`<${FlowPage} s=${q} c=${recorder()} />`)
   assert.ok(!el.$('.flow-card .state-line'), 'no tab state in the card')
   assert.doesNotMatch(el.$('.flow-card').text(), /a research/)
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab a research: waiting, for 14 min/)
+  assert.equal(whoOf(el).text, 'Agent tab (waiting)')
+  assert.match(whoOf(el).title, /Agent tab a research: waiting, for 14 min/)
   const busy = { ref: 'surface:21', name: 'notes', slug: 'a', state: 'working', since_ms: NOW - 10 * MIN, last: 'Reading the notes' }
   el = mount(html`<${FlowPage} s=${pointState({ tabs: [busy] })} c=${recorder()} />`)
   assert.ok(!el.$('.flow-card .fx-meta'), 'no line who drives it in the card')
@@ -2344,7 +2392,8 @@ test('the card never says who works on it: no tab state, no started ago; the fie
   const st = cockpitState(NOW, state({ work: [task('fin')], tabs: [asks], returns: [startOf('fin', 'asks', { tab: { ref: 'surface:10' } })] }))
   el = mount(html`<${FlowPage} s=${st} c=${recorder()} />`)
   assert.doesNotMatch(el.$('.flow-card').text(), new RegExp(en.flow.started('30 min')))
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /Started from the cockpit 30 min ago/)
+  assert.equal(whoOf(el).text, en.flow.simple.whoBridge(en.flow.doing.stage.asks))
+  assert.match(whoOf(el).title, /Started from the cockpit 30 min ago/)
   el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ tabs: [dialog()] }))} c=${recorder()} />`)
   assert.ok(!el.$('.flow-card .state-line'), 'a tab alone: its kind says it asks, no state line')
 })
@@ -2410,19 +2459,18 @@ test('the instruction line names what it speaks for: the reports by their count,
   assert.equal(text.TABLES.de.flow.instruct.every(9, 11), 'Gilt für 9 von 11 Punkten')
 })
 
-test('a tab that waits at its prompt is live too: To tab and View lead what the kind adds in one style, Let AI do it off, no Give your yes', () => {
+test('a tab that waits at its prompt is live too: To tab the one strong button, View in More, no Give your yes (stage 4)', async () => {
   const waits = { ref: 'surface:12', name: 'a research', slug: 'a', state: 'waiting', since_ms: NOW - 14 * MIN }
   const yes = { gate: 'your-yes', has_action: true }
   for (const tab of [waits, { ...waits, state: 'working' }]) {
     const s = pointState({ rows: [ask('20261009-0900-a-q', { task: 'a', ...yes })], feed: feedOf('inbox:20261009-0900-a-q'), tabs: [tab] })
     assert.equal(logic.flowLive(queueOf(s)[0], s)?.ref, 'surface:12', tab.state)
     const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
-    const can = el.$$('.flow-aside .flow-can .verbbar-kind button')
-    assert.deepEqual(can.slice(0, 2).map(b => b.text()), [en.flow.toTab, en.flow.view], tab.state)
-    assert.ok(can[0].hasClass('btn-primary') && can[1].hasClass('btn-secondary'), tab.state)
-    assert.equal(el.$$('.flow-aside .flow-can button').filter(b => b.hasClass('btn-ghost')).length, 0, 'one style in the stack')
-    assert.ok(el.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'), `${tab.state}: Let AI do it off`)
+    const can = el.$$('.flow-aside .flow-can button')
+    assert.equal(el.$('.flow-aside .verbbar-strong').text(), en.flow.toTab, tab.state)
+    assert.equal(can.filter(b => b.hasClass('btn-primary')).length, 1, `${tab.state}: one strong button`)
     assert.ok(!can.some(b => b.text() === en.flow.approve), tab.state)
+    assert.ok((await menuOf(el)).includes(en.flow.view), tab.state)
   }
 })
 
@@ -2468,16 +2516,16 @@ test('Activity words every state as the page does: an inbox item open, a task in
   }
 })
 
-test('the source in the fields: the chip stays in the column, the task of an item opens as its point, an issue opens on the web by its ref', () => {
+test('the source in the fields: the chip stays in the column, the task of an item opens as its point, an issue opens on the web by its ref', async () => {
   const c = recorder()
   const row = task('a', { area: 'Ops', url: 'https://example.org/repo/issues/12', origin: { category: 'bot', word_key: null, detail: 'issue-radar', raw: null, ref: 'example/repo#3' } })
-  const el = mount(html`<${FlowPage} s=${pointState({ rows: [row], detail: detailOf({ front: { status: 'doing' } }) })} c=${c} />`)
+  const el = await details(mount(html`<${FlowPage} s=${pointState({ rows: [row], detail: detailOf({ front: { status: 'doing' } }) })} c=${c} />`))
   const src = el.$('.flow-aside [data-field=source]')
   assert.ok(src.$('.origin'), 'the chip stays')
   // stage 1: a task's own file is no link to the point it is (Details says its path)
   assert.equal(src.$$('button').find(b => b.text() === 'STATUS.md'), undefined)
   const q = ask('20261009-0900-a-q', { task: 'a', area: 'Ops' })
-  const item = mount(html`<${FlowPage} s=${pointState({ rows: [q, row], feed: feedOf(q.key) })} c=${c} />`)
+  const item = await details(mount(html`<${FlowPage} s=${pointState({ rows: [q, row], feed: feedOf(q.key) })} c=${c} />`))
   const status = item.$('.flow-aside [data-field=source]').$$('button').find(b => b.text() === 'STATUS.md')
   assert.ok(status, 'the task an item belongs to, as a link')
   status.click()
@@ -2657,8 +2705,9 @@ test('I1: every open row of the dump stands exactly once, as a point, in Running
   assert.equal(uni.size, 2 + 3 + 2 + 87 + 9 + 4 + 7)
   assert.ok(!uni.has('task:settled-1'), 'a row settled here is not open')
   const by = Object.fromEntries(parts.leftOut.groups.map(g => [g.reason, g.rows.length]))
-  assert.equal(by.watch, 87)
-  assert.deepEqual([...new Set(parts.leftOut.groups.find(g => g.reason === 'watch').rows.map(e => e.repo))], ['acme/app', 'acme/docs'])
+  const watched = parts.leftOut.groups.find(g => g.reason === 'running').rows.filter(e => e.kind === 'watch')
+  assert.equal(watched.length, 87)
+  assert.deepEqual([...new Set(watched.map(e => e.repo))], ['acme/app', 'acme/docs'])
   assert.equal(by.stream, 1)
   assert.equal(by.idea, 6)
   // the ref in Now with bucket do is a point of its own group, Issues and PRs
@@ -2730,20 +2779,22 @@ test('flowParts rules: hidden, put off, approved, idea, waiting and resting, rep
   assert.deepEqual(kind('later').map(e => [e.why, e.until]), [['hidden', '2026-10-11'], ['deferred', '2026-10-12']])
   assert.deepEqual(kind('waiting').map(e => e.row.key).sort(), ['inbox:20261009-0903-a-ok', 'inbox:20261009-0904-a-w', 'ref:acme/app#2', 'task:waits'].sort())
   assert.deepEqual(kind('resting').map(e => e.row.key).sort(), ['inbox:20261009-0905-a-rest', 'task:blocked', 'task:drop-one', 'task:no-state'].sort())
-  assert.deepEqual(left.later, [...kind('later'), ...kind('waiting'), ...kind('resting')].map(e => e.row.key))
+  // stage 4: Running elsewhere holds what waits on others and what is watched, Later what is put off and what rests
+  assert.deepEqual(left.later, [...kind('later'), ...kind('resting')].map(e => e.row.key))
+  assert.deepEqual(left.running, [...kind('waiting'), ...kind('watch')].map(e => e.row.key))
   assert.deepEqual(left.idea.sort(), ['inbox:20261009-0902-a-idea', 'task:backlog-one'].sort())
   assert.deepEqual(left.stream, ['task:stream-one'])
-  assert.deepEqual(left.watch, ['ref:acme/docs#3', 'item:grp/app#4', 'title:A date'])
-  assert.deepEqual(parts.leftOut.groups.find(g => g.reason === 'watch').rows.map(e => e.repo), ['acme/docs', 'grp/app', null])
+  assert.deepEqual(kind('watch').map(e => e.row.key), ['ref:acme/docs#3', 'item:grp/app#4', 'title:A date'])
+  assert.deepEqual(kind('watch').map(e => e.repo), ['acme/docs', 'grp/app', null])
   assert.deepEqual(parts.question.map(x => x.id), ['inbox:20261009-0900-a-q'])
   assert.deepEqual(parts.reports[0].rows.map(r => r.key), ['inbox:20261009-0901-a-r'])
   assert.deepEqual(parts.task.map(x => x.id), ['task:review-one'])
   assert.deepEqual(parts.doing.map(x => x.id), ['task:doing-one'])
   // an issue or PR in Now, by bucket do or urgency now, is a point of Issues and PRs, the soonest due first
   assert.deepEqual(parts.issue.map(x => x.row.key), ['ref:acme/app#1', 'ref:acme/app#9'])
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['later', 'idea', 'stream', 'watch', 'github'])
-  assert.deepEqual(logic.FLOW_GROUPS, ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
-  assert.deepEqual(logic.FLOW_BANDS, ['you', 'doing', 'task', 'issue', 'reports'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'idea', 'stream', 'github'])
+  assert.deepEqual(logic.FLOW_GROUPS, ['checkin', 'back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
+  assert.deepEqual(logic.FLOW_BANDS, ['checkin', 'you', 'bridge'])
   assert.deepEqual(logic.FLOW_CHIPS.tasks, ['task', 'issue'])
   // fileRow: a file of model.files as a row the verbs work on
   assert.deepEqual(logic.fileRow(fileOf('x', { kind: 'stream', area_names: ['Docs'], deferred_until: '2026-10-30' })), { key: 'task:x', task: 'x', title: 'File x',
@@ -2837,8 +2888,8 @@ test('leftPlan: Back on per entry, the other verbs as a batch plans them', () =>
   // done, later, drop, do: exactly as batchPlan
   const rows = [e(ref('acme/app', 1)), e(task('st', { stream: true }))]
   assert.deepEqual(logic.leftPlan(rows, 'done', s).calls, logic.batchPlan(rows.map(x => x.row), 'done', s).calls)
-  assert.deepEqual(logic.LEFT_VERBS, { later: ['back', 'later', 'done', 'drop'], idea: ['do', 'later', 'done', 'drop'], stream: ['later'],
-    watch: ['later', 'done', 'drop'] })
+  assert.deepEqual(logic.LEFT_VERBS, { running: ['back', 'later', 'done', 'drop'], later: ['back', 'later', 'done', 'drop'],
+    idea: ['do', 'later', 'done', 'drop'], stream: ['later'] })
 })
 
 test('B, merge: only open finite tasks, the one with more activity stays, then the newest move, then the state', () => {
@@ -2998,21 +3049,25 @@ test('what opens in the middle comes into view: the top of the middle scrolled u
   }
 })
 
-test('the run view: the card, its tabs and the instruction line, no walk bar; Not this task unlinks a recognised session', () => {
+test('the run view: the card, its tabs and the instruction line, no walk bar; Not this task unlinks a recognised session', async () => {
   const s = demoFlow()
   const seen = logic.flowParts(s).lane.find(x => x.how === 'seen')
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'run', flowRunId: seen.id })} c=${c} />`)
-  assert.match(el.$('.flow-card').text(), new RegExp(seen.title))
+  // stage 4: the card names the row as every view does (a slug as its H1: its brief's name)
+  assert.match(el.$('.flow-card').text(), new RegExp(logic.pointName(seen.row)))
   assert.equal(el.$('.flow-walk'), null)
   assert.ok(el.$('.flow-ptabs'))
   assert.ok(el.$('aside .flow-run-cat.is-on'), 'Running now is marked on the left while one of its entries is open')
-  const can = el.$$('.flow-aside .flow-can .verbbar-kind button')
-  assert.equal(can[0].text(), en.flow.toTab)
-  assert.ok(can[0].hasClass('btn-primary'))
-  el.button(en.flow.run.unlink).click()
+  // stage 4: To tab the strong button, Not this task in More
+  const strong = el.$('.flow-aside .verbbar-strong')
+  assert.equal(strong.text(), en.flow.toTab)
+  assert.ok(strong.hasClass('btn-primary'))
+  assert.ok((await menuOf(el)).includes(en.flow.run.unlink))
+  el.$$('.flow-aside .flow-more-item').find(b => b.text() === en.flow.run.unlink).click()
   assert.deepEqual(c.calls.at(-1), ['act', 'session_unlink', { session: seen.session.sid }])
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /docs search/)
+  assert.equal(whoOf(el).text, en.flow.simple.whoSession)
+  assert.match(whoOf(el).title, /docs search/)
   // an entry gone (finished, unlinked): the overview again
   const gone = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'run', flowRunId: 'session:surface:99' })} c=${recorder()} />`)
   assert.ok(gone.$('.flow-overview') || gone.$('.flow-prio'))
@@ -3044,23 +3099,24 @@ test('Not now: a button per group at the foot of the left column, a click shows 
   assert.match(list.$('.flow-main').text(), new RegExp(en.flow.notnow.hint.slice(0, 30)))
   const tr = list.$$('.flow-ov-row').find(r => r.text().includes(sunday.row.title))
   assert.match(tr.$('.flow-ov-why').text(), new RegExp(en.flow.notnow.why.ahead('.+', '.+')))
-  assert.deepEqual(list.$$('.flow-ov-verbs button').map(b => b.text()), [en.flow.notnow.back, `${en.flow.verbs.later} ▾`, en.flow.verbs.done, `${en.flow.verbs.drop} ▾`])
+  assert.deepEqual(list.$$('.flow-ov-verbs button').map(b => b.text()).filter(Boolean), [en.flow.notnow.back, `${en.flow.verbs.later} ▾`, en.flow.verbs.done, `${en.flow.verbs.drop} ▾`])
+  assert.ok(list.button(en.flow.list.clear), 'stage 4: the ticks cleared in one click')
   list.button(en.flow.notnow.back).click()
   await tick()
   assert.match(list.$('.flow-list-confirm').text(), /1 back on/)
   list.button(en.flow.list.confirm).click()
   await tick()
   assert.deepEqual(c2.calls.find(x => x[0] === 'flowEarly'), ['flowEarly', { [sunday.row.key]: sunday.until }])
-  // the watched issues and pull requests no GitHub list holds under a head per repository
-  const watch = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'watch' })} c=${recorder()} />`)
-  const heads = watch.$$('.flow-ov-group').map(h => h.text())
-  assert.ok(heads.includes('example/repo') && heads.includes('grp/app') && !heads.includes('example/tools'), heads.join(', '))
+  // stage 4: the watched issues and pull requests no GitHub list holds run elsewhere, each with its repository
+  const watch = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'running' })} c=${recorder()} />`)
+  const said = watch.$$('.flow-ov-stand').map(x => x.text()).join(' | ')
+  assert.ok(said.includes('example/repo') && said.includes('grp/app') && !said.includes('example/tools'), said)
   // stage 1: every title opens its row in the one point view in the middle, an issue too (Open on GitHub stands there)
   const wc = recorder()
-  const watch2 = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'watch' })} c=${wc} />`)
+  const watch2 = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'running' })} c=${wc} />`)
   assert.ok(watch2.$$('.flow-ov-open').every(b => b.localName === 'button'), 'no title leaves the page')
   watch2.$$('.flow-ov-open')[1].click()
-  const rows = logic.leftWalk(logic.flowParts(demoFlow()), 'watch')
+  const rows = logic.leftWalk(logic.flowParts(demoFlow()), 'running')
   assert.deepEqual(wc.calls.at(-1), ['flowLeftOpen', rows[1].id, 1])
 })
 
@@ -3076,17 +3132,17 @@ test('Not now: the rows a GitHub list holds fold into one line that leads there,
   // only the watched rows of a board fold: one that needs you stays a point, one put off stays under Later
   assert.deepEqual(by.github.rows.map(e => e.row.key), ['ref:acme/app#2', 'ref:acme/app#3'])
   assert.deepEqual(by.github.at, { ...gh, title: 'GitHub' })
-  assert.deepEqual(by.watch.rows.map(e => e.row.key), ['ref:acme/docs#4', 'ref:checks/disk-low'])
+  assert.deepEqual(by.running.rows.filter(e => e.kind === 'watch').map(e => e.row.key), ['ref:acme/docs#4', 'ref:checks/disk-low'])
   assert.deepEqual(parts.issue.map(x => x.row.key), ['ref:acme/app#7'])
   assert.deepEqual(by.later.rows.map(e => e.row.key), ['ref:acme/app#9'])
   // the line counts its rows: Not now holds them, so points, Running now and Not now still add up to every open row
   assert.equal(parts.counts.left, 5)
   assert.equal(parts.leftOut.total, 5)
-  // the left column: Watching and Later as group buttons, the GitHub rows as one quiet line that opens the list
+  // the left column: Running elsewhere and Later as group buttons (stage 4), the GitHub rows as one quiet line that opens the list
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'overview' } }} c=${c} />`)
   const block = el.$('aside .flow-notnow')
-  assert.deepEqual(block.$$('.flow-notnow-item').map(b => b.$('.flow-side-label').text()), [en.flow.notnow.group.later, en.flow.notnow.group.watch])
+  assert.deepEqual(block.$$('.flow-notnow-item').map(b => b.$('.flow-side-label').text()), [en.flow.notnow.group.running, en.flow.notnow.group.later])
   const line = block.$('.flow-notnow-line')
   assert.equal(line.text().trim(), en.flow.notnow.onPage(2, 'GitHub'))
   assert.equal(line.getAttribute('title'), en.flow.notnow.onPageTitle('GitHub'))
@@ -3322,9 +3378,9 @@ test('UX-1: a task in Running now has a box only for merging; with a point ticke
     assert.deepEqual(logic.batchPlan([lane], how, s, how === 'later' ? '2026-10-12' : 'x').skipped.map(x => x.why), ['working'], how)
   }
   assert.deepEqual(logic.batchPlan([lane, point], 'done', s).calls, [{ verb: 'settle', args: { keys: ['task:board-ui', 'task:points-walk'], outcome: 'done', by: 'batch' } }])
-  // All ticks the points, not what runs
+  // All ticks the points, not what runs (stage 4: the bar, and its All, stand once a row is ticked)
   const c2 = recorder()
-  const el2 = mount(html`<${FlowPage} s=${twinState()} c=${c2} />`)
+  const el2 = mount(html`<${FlowPage} s=${twinState({ flowPicked: ['task:other'] })} c=${c2} />`)
   el2.$('.flow-ov-all').click()
   assert.deepEqual(c2.calls.at(-1)[1].sort(), ['task:other', 'task:points-walk'])
   assert.equal(logic.mergeKeep([point, lane], {}, new Set(['task:board-ui'])), 'task:board-ui')
@@ -3411,10 +3467,10 @@ test('UX-4: Back on clears only a real wait; a task whose next step is the perso
   assert.deepEqual(plan.skipped.map(x => [x.row.key, x.why]), [['task:other', 'not_offered']])
   // without a person named, nothing changes: who is someone else
   const s2 = state({ later: [{ ...task('mine'), ...me }] })
-  assert.deepEqual(logic.flowParts(s2).leftOut.groups.map(g => [g.reason, g.rows.map(e => e.kind)]), [['later', ['waiting']]])
+  assert.deepEqual(logic.flowParts(s2).leftOut.groups.map(g => [g.reason, g.rows.map(e => e.kind)]), [['running', ['waiting']]])
 })
 
-test('UX-6 and UX-7: Prio reads in again at the foot of its left column; a square names every point it counts', async () => {
+test('UX-6 and UX-7: Prio says its order at the foot of its left column, reads in again from Order; a square names every point it counts', async () => {
   const base = mock.buildState(NOW, { workPage: true })
   const st = cockpitState(NOW, { model: base.model, ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowMode: 'prio', flowPicked: [] } })
   const order = { at_ms: NOW - 30 * MIN, items: [] }
@@ -3424,10 +3480,14 @@ test('UX-6 and UX-7: Prio reads in again at the foot of its left column; a squar
   const foot = el.$('aside .flow-prio-foot')
   assert.ok(foot, 'the foot of Prio level one')
   assert.match(foot.text(), new RegExp(en.flow.prio.foot('Jev', views.flowprio.orderTime(order.at_ms), 0)))
-  foot.$('button').click()
+  // stage 4: Read in with Jev in Order under the list
+  assert.ok((await orderOf(el)).includes(en.flow.prio.readJev))
+  el.$$('aside .flow-order .flow-more-item').find(b => b.text() === en.flow.prio.readJev).click()
   assert.deepEqual(c.calls.at(-1), ['flowPrioRead', 'work', 'jev'])
   const busy = mount(html`<${FlowPage} s=${{ ...s, jevOrder: { work: { order, running: true, ranker: 'jev', error: null } } }} c=${recorder()} />`)
-  assert.ok(busy.$$('aside .flow-prio-foot button').every(b => b.hasAttribute('disabled')), 'both wait while one reads in')
+  const reads = [en.flow.prio.readJev, en.flow.prio.readHaiku]
+  await orderOf(busy)
+  assert.ok(busy.$$('aside .flow-order .flow-more-item').filter(b => reads.includes(b.text())).every(b => b.hasAttribute('disabled')), 'both wait while one reads in')
   // every point stands unrated: the square lists four, the line says how many more, the reports by their rows
   const none = el.$('.flow-prio-none .flow-prio-sq')
   const n = Number(none.$('.flow-prio-n').text())
@@ -3436,13 +3496,13 @@ test('UX-6 and UX-7: Prio reads in again at the foot of its left column; a squar
   if (n > 4) assert.match(none.text(), new RegExp(en.flow.prio.more(n - 4)))
 })
 
-test('the overview says of a task nobody works on when it last moved; Watching sorts issue numbers as numbers', () => {
+test('the overview says of a task nobody works on when it last moved; the watched sort issue numbers as numbers', () => {
   const s = state({ work: [task('idle', { updated: '2026-10-05', created: '2026-10-08' })], ui: { flowView: 'overview', flowPicked: [] } })
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   const tr = el.$$('.flow-ov-row').find(r => r.text().includes('Task idle'))
   assert.match(tr.text(), new RegExp(en.flow.doing.none(4)))
   const w = state({ later: [ref('acme/app', 18), ref('acme/app', 2), ref('acme/app', 101)] })
-  const watch = logic.flowParts(w).leftOut.groups.find(g => g.reason === 'watch').rows.map(e => e.row.key)
+  const watch = logic.flowParts(w).leftOut.groups.find(g => g.reason === 'running').rows.filter(e => e.kind === 'watch').map(e => e.row.key)
   assert.deepEqual(watch, ['ref:acme/app#2', 'ref:acme/app#18', 'ref:acme/app#101'])
 })
 
@@ -3513,11 +3573,13 @@ test('R6B 1b: flowWhere finds a row on the page by its key, and select opens it 
   // a question that stands for its task: the task's key finds that question
   const covered = state({ now: [ask('20261009-0901-a-t', { task: 'cov' })], work: [task('cov')] })
   assert.deepEqual(logic.flowWhere(covered, 'task:cov'), { view: 'point', id: 'inbox:20261009-0901-a-t' })
-  // a click on a tab's name (views/tabs.js TabCard) selects its row: without Due it opens where the view holds it,
-  // in Work through its point, entry or group, elsewhere the detail beside the page
+  // a click on a tab's name (views/tabs.js TabCard) selects its row: with Work through on it opens in the one point
+  // view where the row stands (openPoint, logic.js pointOpen over flowWhere; stage 3: from Due too), elsewhere the
+  // detail beside the page
   const select = method('select(key) {')
+  assert.match(select, /pointViewOn\(/)
+  assert.match(select, /openPoint\(/)
   assert.match(select, /workViewIn\(/)
-  assert.match(select, /flowWhere\(/)
   assert.match(select, /peek\(/)
 })
 
@@ -3535,7 +3597,7 @@ test('R6B 1c: Work through before the first state says it loads or why it cannot
   assert.match(day.text(), new RegExp(en.connLost))
 })
 
-test('R6B 1d: a row with steps of its own (an application) opens them in the info drawer from Work through', () => {
+test('R6B 1d: a row with steps of its own (an application) shows them in its Steps tab from Work through (stage 3: no drawer)', async () => {
   const app = { key: 'item:apps:app-7', ref: 'app-7', title: 'Application seven', bucket: 'do', urgency: 'today', sources: ['apps'] }
   const item = { index: 0, key: 'item:work/apps/app-7', title: 'Application seven', row_id: 'app-7', actions: [{ id: 'followed_up', label: 'Followed up' }] }
   const pages = [{ id: 'work', title: 'Work', group: 'work', sections: [{ id: 'apps', items: [item] }] }]
@@ -3548,15 +3610,15 @@ test('R6B 1d: a row with steps of its own (an application) opens them in the inf
   // the open point: its steps beside its verbs
   const c = recorder()
   const point = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'point', flowAt: { id: app.key, i: 0 } } }} c=${c} />`)
-  const btn = point.$$('.flow-aside .flow-can button').find(b => b.text().startsWith(en.rowSteps))
-  assert.ok(btn, 'the steps on the point')
-  btn.click()
-  assert.deepEqual(c.calls.at(-1), ['openInfo', item, 'work', 'apps', true], 'the steps keep their drawer')
+  // stage 4: Steps in More
+  assert.ok((await menuOf(point)).some(w => w.startsWith(en.rowSteps)), 'the steps on the point')
+  point.$$('.flow-aside .flow-more-item').find(b => b.text().startsWith(en.rowSteps)).click()
+  assert.deepEqual(c.calls.at(-1), ['flowTab', 'steps'], 'the steps stand in the point\'s Steps tab')
   // in a list of Not now its title opens the row in the one view (stage 1), where its steps stand beside its verbs
   const watched = state({ later: [{ ...app, bucket: 'plan', urgency: null }] })
   watched.model.pages = pages
   const lc = recorder()
-  const list = mount(html`<${FlowPage} s=${{ ...watched, ui: { ...watched.ui, flowView: 'left', flowLeft: 'watch', flowLeftPicked: [] } }} c=${lc} />`)
+  const list = mount(html`<${FlowPage} s=${{ ...watched, ui: { ...watched.ui, flowView: 'left', flowLeft: 'running', flowLeftPicked: [] } }} c=${lc} />`)
   const title = list.$$('.flow-ov-open').find(b => b.text().includes('Application seven'))
   assert.equal(title.localName, 'button')
   title.click()
@@ -3579,15 +3641,15 @@ test('R6B 1e: the task check speaks on the point: close, stale and waiting sugge
   const tri = at => ({ last: { at }, items: { 'task:closing': { verdict: 'stale', reason: 'From the triage' } } })
   assert.equal(logic.flowSuggestion(rows[0], { ...s, triage: tri('2026-10-09T07:00:00') }).from, 'check')
   assert.equal(logic.flowSuggestion(rows[0], { ...s, triage: tri('2026-10-09T09:00:00') }).from, 'triage')
-  // Tick the suggestions takes them, the overview and the point say where they come from
+  // Tick the suggestions takes them; stage 4: the point's strong button applies it and says why and where it comes from
   assert.deepEqual(logic.batchPreselect(rows, s), ['task:closing', 'task:stale', 'task:waits'])
   const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'overview', flowPicked: [] } }} c=${recorder()} />`)
+  assert.ok(el.button(en.flow.list.tick(3)))
   const day = logic.formatDay('2026-10-09', 'en')
-  assert.match(el.$('.flow-list-from').text(), new RegExp(en.flow.list.from.check(day)))
-  const sug = el.$$('.flow-ov-row').find(r => r.text().includes('Task closing')).$('.flow-sug')
-  assert.equal(sug.getAttribute('title'), en.flow.list.from.check(day))
   const point = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'point', flowAt: { id: 'task:closing', i: 0 } } }} c=${recorder()} />`)
-  assert.match(point.$('.flow-aside .flow-can-sug').text(), /The guide is merged/)
+  const strong = point.$('.flow-aside .verbbar-strong')
+  assert.equal(strong.text(), en.flow.verbs.done)
+  assert.equal(strong.getAttribute('title'), `The guide is merged · ${en.flow.list.from.check(day)}`)
 })
 
 test('R6B 1f, 2c and 2d: Jev\'s daily order and the themes are asked in every order of the left column, Jev never anew by itself', async () => {
@@ -3682,23 +3744,26 @@ test('R6B 2e: a sentence to all or to the ticked ones leaves a row an agent work
   assert.deepEqual(one.calls.map(x => x.verb), ['later', 'later', 'shelve', 'settle'])
 })
 
-test('R6B 2f: one group Later holds what is put off, what waits on others and what rests, each row saying why, its verbs its own', () => {
+test('R6B 2f, stage 4: Running elsewhere holds what waits on others, Later what is put off and what rests, each row saying why, its verbs its own', () => {
   const s = state({ work: [task('blocked', { blocked_by: 'the vendor' }), task('quiet', { bucket: 'resting', updated: '2026-10-01' }),
     task('waits', { bucket: 'waiting', card: { next: { what: 'answer', who: 'Bob' } } })],
   later: [ask('20261009-0904-a-w', { bucket: 'waiting' }), ask('20261009-0903-a-ok', { inbox_state: 'approved' })],
   hidden: [task('put-off', { hidden_until: '2026-10-20' })] })
   const parts = logic.flowParts(s)
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['later', 'idea', 'stream', 'watch', 'github'])
-  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), ['later'])
-  const later = parts.leftOut.groups[0].rows
-  assert.deepEqual(later.map(e => [e.row.key, e.kind]), [['task:put-off', 'later'], ['task:waits', 'waiting'], ['inbox:20261009-0903-a-ok', 'waiting'],
-    ['inbox:20261009-0904-a-w', 'waiting'], ['task:blocked', 'resting'], ['task:quiet', 'resting']])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'idea', 'stream', 'github'])
+  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), ['running', 'later'])
+  const [running, later] = parts.leftOut.groups.map(g => g.rows)
+  assert.deepEqual(running.map(e => [e.row.key, e.kind]), [['task:waits', 'waiting'], ['inbox:20261009-0903-a-ok', 'waiting'], ['inbox:20261009-0904-a-w', 'waiting']])
+  assert.deepEqual(later.map(e => [e.row.key, e.kind]), [['task:put-off', 'later'], ['task:blocked', 'resting'], ['task:quiet', 'resting']])
   checkInvariant(s, '2f')
-  // the column Why: until when, on whom, since when
+  // the column Why of Later: until when, what blocks it, since when; Running elsewhere says on whom it waits under the name
   const lang = 'en'
-  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'left', flowLeft: 'later', flowLeftPicked: [] } }} c=${recorder()} />`)
-  assert.ok(el.$$('th').some(th => th.text() === en.flow.notnow.cols.why))
-  const why = Object.fromEntries(el.$$('.flow-ov-row').map(tr => [tr.$('.flow-ov-open').text(), tr.$('.flow-ov-why').text()]))
+  const whyOf = flowLeft => {
+    const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'left', flowLeft, flowLeftPicked: [] } }} c=${recorder()} />`)
+    if (flowLeft === 'later') assert.ok(el.$$('th').some(th => th.text() === en.flow.notnow.cols.why))
+    return Object.fromEntries(el.$$('.flow-ov-row').map(tr => [tr.$('.flow-ov-open').text(), tr.$('.flow-ov-why').text()]))
+  }
+  const why = { ...whyOf('later'), ...whyOf('running') }
   const w = en.flow.notnow.why
   assert.equal(why['Task put-off'], w.hidden(logic.formatDay('2026-10-20', lang)))
   assert.equal(why['Task waits'], w.waits('Bob'))
@@ -3707,7 +3772,7 @@ test('R6B 2f: one group Later holds what is put off, what waits on others and wh
   assert.equal(why['Task blocked'], w.blocked('the vendor'))
   assert.equal(why['Task quiet'], w.resting(logic.formatDay('2026-10-01', lang)))
   // each row keeps its own verbs: Back on unhides, runs a blocked task again, keeps a resting one
-  const plan = logic.leftPlan(later, 'back', s)
+  const plan = logic.leftPlan([...running, ...later], 'back', s)
   assert.deepEqual(plan.calls.map(x => [x.verb, x.args.key ?? x.args.slug ?? x.args.keys?.[0]]),
     [['unhide', 'task:put-off'], ['task_running', 'blocked'], ['task_keep', 'task:quiet']])
   assert.deepEqual(logic.LEFT_VERBS.later, ['back', 'later', 'done', 'drop'])
@@ -3721,7 +3786,7 @@ test('Later: Back on in one click on each row that can come back, beside the bat
   const rowOf = title => el.$$('.flow-ov-row').find(tr => tr.$('.flow-ov-open').text() === title)
   const back = tr => tr.$$('button').find(b => b.text() === en.flow.notnow.back)
   assert.ok(back(rowOf('Task put-off')) && back(rowOf('Task blocked')), 'a row put off and a blocked task')
-  assert.ok(!back(rowOf('Question 20261009-0904-a-w')), 'nothing to take back on: no button')
+  assert.equal(rowOf('Question 20261009-0904-a-w'), undefined, 'stage 4: what waits on others runs elsewhere')
   back(rowOf('Task put-off')).click()
   assert.deepEqual(c.calls.find(x => x[0] === 'flowBatch'), ['flowBatch', [{ verb: 'unhide', args: { key: 'task:put-off' } }], 'left'])
   // the column Why still says only why, and wraps so the button beside it keeps its room
@@ -3738,7 +3803,7 @@ test('R6B 2g: the right column stands only while a point or an entry is open; a 
   assert.ok(el.$('.flow-grid').hasClass('no-aside'))
   const pt = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'point', flowAt: { id: 'task:a', i: 0 } } }} c=${recorder()} />`)
   assert.ok(pt.$('.flow-aside .flow-can') && !pt.$('.flow-grid').hasClass('no-aside'))
-  const left = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'left', flowLeft: 'later', flowLeftPicked: [] } }} c=${recorder()} />`)
+  const left = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'left', flowLeft: 'running', flowLeftPicked: [] } }} c=${recorder()} />`)
   assert.ok(!left.$('.flow-aside'))
   assert.match(left.$('.flow-main').text(), new RegExp(en.flow.notnow.hint.slice(0, 30)))
 })
@@ -3921,7 +3986,8 @@ test('round 6 c P2: where Work through is on, the check has no tab and every way
 test('6d: a record open in the files tab carries the right column of Work through for its point, the same verbs', () => {
   const s = cockpitState(NOW, { ui: { page: '@files' } })
   const parts = logic.flowParts(s)
-  const point = logic.flowQueue(parts, 'all').find(x => x.kind === 'row' && x.row?.task && x.row.key === `task:${x.row.task}`)
+  // a task point that is no check-in (stage 4: a check-in answers on its card, its right column holds More only)
+  const point = logic.flowQueue(parts, 'all').find(x => x.kind === 'row' && x.group !== 'checkin' && x.row?.task && x.row.key === `task:${x.row.task}`)
   assert.ok(point, 'the demo has a task point')
   const words = el => el.$$('.flow-aside .flow-can button').map(b => b.text().trim())
   const flow = mount(html`<${views.flowside.FlowAside} x=${point} s=${s} c=${recorder()} />`)

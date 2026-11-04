@@ -97,7 +97,7 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 FRONT_KEYS = ("type", "status", "origin", "headline", "next", "blocked_by")
 #: the version of SYSTEM and its rules; a brief describe wrote from an older one is stale (module doc)
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 #: the writes of one text a brief with an unresolved reference gets: the first and one more try of the pass
 REF_TRIES = 2
 FOLDER_FILES_MAX = 12    # files of a task folder offered as references
@@ -106,8 +106,10 @@ _STORY = {"type": "object", "additionalProperties": False, "required": ["as", "w
           "properties": {k: {"type": "string", "maxLength": BRIEF_LIMITS["story"]} for k in ("as", "want", "so_that")}}
 #: the answer's shape, passed as --json-schema, with the limits, so an answer over one is sent back to the model
 #: rather than left out after the call; card_fields.validate_brief is the gate after it
-SCHEMA = json.dumps({"type": "object", "additionalProperties": False, "required": ["goal", "story", "acceptance"],
-                     "properties": {"goal": {"type": "string", "maxLength": BRIEF_LIMITS["goal"]},
+SCHEMA = json.dumps({"type": "object", "additionalProperties": False, "required": ["name", "stand", "goal", "story", "acceptance"],
+                     "properties": {"name": {"type": "string", "maxLength": BRIEF_LIMITS["name"]},
+                                    "stand": {"type": "string", "maxLength": BRIEF_LIMITS["stand"]},
+                                    "goal": {"type": "string", "maxLength": BRIEF_LIMITS["goal"]},
                                     "story": {"anyOf": [_STORY, {"type": "null"}]},
                                     "acceptance": {"type": "array",
                                                    "items": {"type": "string", "maxLength": BRIEF_LIMITS["acceptance_len"]},
@@ -117,7 +119,9 @@ SCHEMA = json.dumps({"type": "object", "additionalProperties": False, "required"
 MIN_CRITERIA = 2
 
 SYSTEM = """You write the brief of one item of a personal work tracker: what it is for and when it is done, never how to do it.
-Answer with JSON only: {{"goal": "...", "story": {{"as": "...", "want": "...", "so_that": "..."}} or null, "acceptance": [...]}}.
+Answer with JSON only: {{"name": "...", "stand": "...", "goal": "...", "story": {{"as": "...", "want": "...", "so_that": "..."}} or null, "acceptance": [...]}}.
+- name: what the item is, as a person names it in a list: at most {name} characters and about 7 words, everyday words. Never ids, paths, file names, host names, process names, issue, pull request or ticket numbers, never a status ("waits for", "done", "park?"), never a count of days.
+- stand: one sentence of at most {stand} characters: where it stands now and why it is here. No step to take, the step stands apart.
 - goal: one sentence of at most {goal} characters saying what is different once the item is done. Never repeat the title word for word.
 - story: only when it fits naturally (someone who gains something from it), else null. Each part at most {story} characters, without the words "as", "I want" or "so that" in front.
 - acceptance: {criteria}
@@ -223,15 +227,17 @@ def prompt(item: dict, language: str) -> tuple[str, str]:
     criteria = CRITERIA_STREAM if stream else CRITERIA_TASK.format(n=BRIEF_LIMITS["acceptance_items"],
                                                                    len=BRIEF_LIMITS["acceptance_len"])
     system = SYSTEM.format(goal=BRIEF_LIMITS["goal"], story=BRIEF_LIMITS["story"], criteria=criteria,
-                           language=language or "English")
+                           name=BRIEF_LIMITS["name"], stand=BRIEF_LIMITS["stand"], language=language or "English")
     return system, f"{DATA_LABEL}\n{item['data']}"
 
 
 def brief_sha(brief: Any) -> str | None:
-    """The hash of a brief's text (goal, story, acceptance): what a hand edit changes"""
+    """The hash of a brief's text (goal, story, acceptance, and its name and stand where it has them): what a hand edit
+    changes. A brief without a name or a stand hashes as before stage 4, so none looks edited by the new fields"""
     if not isinstance(brief, dict):
         return None
-    text = json.dumps({k: brief.get(k) for k in ("goal", "story", "acceptance")}, sort_keys=True, ensure_ascii=False)
+    keys = ("goal", "story", "acceptance", *(k for k in ("name", "stand") if brief.get(k) is not None))
+    text = json.dumps({k: brief.get(k) for k in keys}, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
@@ -276,6 +282,9 @@ def parse(out: str, item: dict, requested: str, today: str) -> dict:
         return res
     raw: dict = {"goal": answer.get("goal"), "acceptance": [] if item.get("kind") == "stream" else
                  (answer.get("acceptance") if isinstance(answer.get("acceptance"), list) else [])}
+    for key in ("name", "stand"):          # stage 4: the gate leaves out a wrong one, the brief stays
+        if isinstance(answer.get(key), str) and answer[key].strip():
+            raw[key] = answer[key]
     story = answer.get("story")
     if isinstance(story, dict) and all(isinstance(story.get(k), str) and story[k].strip() for k in ("as", "want", "so_that")):
         raw["story"] = {k: story[k] for k in ("as", "want", "so_that")}
@@ -732,14 +741,17 @@ class Describer:
 
     def stale_why(self, item: dict, entry: dict) -> str | None:
         """Why a stored brief is stale: `basis` (the text moved on), `prompt` (describe wrote it from an older
-        prompt) or `refs` (it names a reference a reader cannot reach, and with auto: stale the pass has one more
-        try for this text); None when it is not, or has none. A person's brief is stale only by its basis."""
+        prompt), `refs` (it names a reference a reader cannot reach, and with auto: stale the pass has one more
+        try for this text) or `fields` (a person's brief without the name and stand of stage 4: the pass proposes
+        once); None when it is not, or has none. A person's brief is stale only by its basis, else by `fields`."""
         if not item.get("raw_brief"):
             return None
         if (item.get("brief") or {}).get("basis") != item["basis"]:
             return "basis"
         if self.protected(item, entry):
-            return None
+            # a person's brief without the name and stand of stage 4: one proposal for it (once per basis, pass_once)
+            brief = item.get("brief") or {}
+            return "fields" if not (brief.get("name") and brief.get("stand")) else None
         if entry.get("prompt_version") != PROMPT_VERSION:
             return "prompt"
         tries = entry.get("ref_tries") if isinstance(entry.get("ref_tries"), int) else REF_TRIES
@@ -1016,6 +1028,7 @@ class Describer:
                 with write_lock():
                     self.mark_edited(item)
                 self.changed(key)
+                continue          # marked without a model call; what the person's brief still lacks waits a pass
             missing = not item.get("raw_brief")
             stale = not missing and self.stale_why(item, entry) is not None
             if not (missing or (cfg["auto"] == "stale" and stale)):

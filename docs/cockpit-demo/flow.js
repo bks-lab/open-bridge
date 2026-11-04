@@ -11,46 +11,58 @@
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, projectTone, replyOptions, replySend, rowOverdue,
-  restingIn, rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
+import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, pointName, pointOriginal, projectTone, replyOptions, replySend,
+  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
 
-// the groups of the queue, in the order the page walks them: the return card after a jump, a tab that asks, what an
-// agent finished, a start that got lost, a question for you (these five need you), a task in progress nobody works on
-// right now, the tasks in review, the issues and pull requests of Now, the reports as one card. What runs stands in
-// Running now (parts.lane and the live sessions, parts.sessions), never in the queue
-export const FLOW_GROUPS = ['back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports']
+// the groups of the queue, in the order the page walks them: a check-in whose day came (stage 4: In progress with
+// someone, it asks how it stands), the return card after a jump, a tab that asks, what an agent finished, a start that
+// got lost, a question for you (these need you), a task in progress nobody works on right now, the tasks in review,
+// the issues and pull requests of Now, the reports as one card. What runs stands in Running now (parts.lane and the
+// live sessions, parts.sessions), never in the queue
+export const FLOW_GROUPS = ['checkin', 'back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports']
 
 // the groups that need you: the left column counts them in the warning tone
-export const FLOW_YOU = ['back', 'asks', 'result', 'lost', 'question']
+export const FLOW_YOU = ['checkin', 'back', 'asks', 'result', 'lost', 'question']
 
-// the bands the left column and the overview of a theme group the points in, in the queue's order: what needs you,
-// what is in progress, the tasks in review, the issues and pull requests, the reports (pointBand)
-export const FLOW_BANDS = ['you', 'doing', 'task', 'issue', 'reports']
+// the bands the overview groups the points in, in the queue's order (stage 4, by who takes the next step): a check-in
+// whose day came, what needs you (yours, a tab that asks, a question, a finished start), what the Bridge does (its step
+// is the Bridge's, first or alone). What runs stands in Running now (pointBand)
+export const FLOW_BANDS = ['checkin', 'you', 'bridge']
 
-/** The band of a point: a group that needs you is `you`, any other its own group */
-export const pointBand = x => (FLOW_YOU.includes(x?.group) ? 'you' : x?.group)
+/** The band of a point (stage 4): a check-in its own, a group that needs you `you`, any other by who takes its next
+ *  step (the row's card next.who: the Bridge, first or alone, is `bridge`, everyone else `you`); `row` the row of a
+ *  reports card it stands for */
+export function pointBand(x, row = null) {
+  if (x?.group === 'checkin') return 'checkin'
+  if (FLOW_YOU.includes(x?.group)) return 'you'
+  const who = String((row ?? x?.row)?.card?.next?.who ?? '').toLowerCase()
+  return who === 'bridge' || who === 'bridge_then_me' ? 'bridge' : 'you'
+}
 
 // the groups a filter of the queue shows; `all` shows every group (the page shows all, by theme or area)
 export const FLOW_CHIPS = { all: FLOW_GROUPS, you: FLOW_YOU, running: ['doing'], tasks: ['task', 'issue'], reports: ['reports'] }
 
-// the groups of Not now, the open rows that are no point now, in the order the left column lists them: Later (round 6
-// B: put off or due later than the lead time, waiting on others, resting, one group with the reason on each row), ideas
-// and the backlog, the streams, the issues and pull requests watched, and those of them a GitHub list holds (`github`,
-// the row's on_board: they stand on that page, so Not now names them in one line that leads there, views/flowleft.js)
-export const FLOW_LEFT_OUT = ['later', 'idea', 'stream', 'watch', 'github']
+// the groups of Not now, the open rows that are no point now, in the order the left column lists them (stage 4):
+// Running elsewhere (In progress with someone until its check-in day, waiting on others or a condition, given your yes
+// and waiting to run, the issues and pull requests watched), Later (put off or due later than the lead time, resting,
+// one group with the reason on each row), ideas and the backlog, the streams, and the watched rows a GitHub list holds
+// (`github`, the row's on_board: they stand on that page, so Not now names them in one line that leads there)
+export const FLOW_LEFT_OUT = ['running', 'later', 'idea', 'stream', 'github']
 
-// why a row of Not now is no point (its entry's `kind`): the kinds Later holds, in the order it lists them, then the
-// groups of their own
-const LATER_KINDS = ['later', 'waiting', 'resting']
-const LEFT_KINDS = [...LATER_KINDS, 'idea', 'stream', 'watch', 'github']
+// why a row of Not now is no point (its entry's `kind`): the kinds Running elsewhere and Later hold, in the order they
+// list them, then the groups of their own
+const RUNNING_KINDS = ['checkin', 'waiting', 'watch']
+const LATER_KINDS = ['later', 'resting']
+const LEFT_KINDS = [...RUNNING_KINDS, ...LATER_KINDS, 'idea', 'stream', 'github']
+const GROUP_KINDS = { running: RUNNING_KINDS, later: LATER_KINDS }
 
 // the verbs each group of Not now offers in its batch bar (a row a verb does not fit stays out, not_offered); Back on
 // in Later acts on each row by why it waits, as it did in the three groups (leftPlan)
-export const LEFT_VERBS = { later: ['back', 'later', 'done', 'drop'], idea: ['do', 'later', 'done', 'drop'], stream: ['later'],
-  watch: ['later', 'done', 'drop'] }
+export const LEFT_VERBS = { running: ['back', 'later', 'done', 'drop'], later: ['back', 'later', 'done', 'drop'],
+  idea: ['do', 'later', 'done', 'drop'], stream: ['later'] }
 
 // the five verbs, in the order the verb bar shows them
 export const FLOW_VERBS = ['do', 'advise', 'done', 'later', 'drop']
@@ -216,8 +228,8 @@ export function flowWhere(s, key) {
 /** The page item with steps of its own that a row of a command section stands for (an application: followed up,
  *  turned down), as the info drawer opens it (c.openInfo): {it, page, section}, the first section of a page named
  *  like the row's source whose item carries the row's own id (row.ref, the item's row_id) and steps; else null. Its
- *  steps stand only on the page that lists it (the work page: the view By source) and in that drawer, so Work
- *  through leads there (round 6 B) */
+ *  steps stand on the page that lists it (the work page: the view By source) and, since stage 3 of the one point
+ *  view, in the point's Steps tab (views/flowtabs.js StepsPane), no longer in a drawer */
 export function pageStepsOf(row, s) {
   if (!row?.ref) return null
   for (const p of s?.model?.pages ?? []) {
@@ -305,7 +317,8 @@ export function flowParts(s) {
   const used = new Set()      // row keys a card, an entry of the lane or a group already stands for
   const usedTabs = new Set()
   const take = row => { if (row?.key) used.add(row.key) }
-  const out = { back: null, asks: [], result: [], lost: [], question: [], doing: [], task: [], issue: [], reports: [], lane: [], sessions: [], read: [] }
+  const out = { back: null, checkin: [], asks: [], result: [], lost: [], question: [], doing: [], task: [], issue: [], reports: [], lane: [], sessions: [],
+    read: [] }
   const readDays = flowSettings(s).read_days
   const tabOf = ref => allTabs.find(t => t.ref === ref) ?? null
   if (driver) {
@@ -438,6 +451,17 @@ export function flowParts(s) {
   // R1 what is hidden until a day
   for (const [key, r] of uni) if (from.get(key) === 'hidden' && !used.has(key)) leave('later', r, { why: 'hidden', until: r.hidden_until ?? null })
   const open = () => [...uni.values()].filter(r => !used.has(r.key))
+  // stage 4, In progress with someone: until its check-in day the row runs elsewhere (an inbox item put off as a
+  // check-in, a task whose step is with someone until then), on that day it comes back as a check-in on top
+  for (const r of open()) {
+    const ck = r.checkin
+    if (!ck?.until || !DAY_RE.test(String(ck.until))) continue
+    if (String(ck.until).slice(0, 10) > today) leave('checkin', r, { why: r.inbox_id ? 'deferred' : 'checkin', until: String(ck.until).slice(0, 10), who: ck.who ?? null })
+    else {
+      out.checkin.push({ group: 'checkin', id: r.key, kind: 'row', row: r, checkin: ck })
+      used.add(r.key)
+    }
+  }
   // R2 to R7 the inbox items: put off, given your yes, ideas, waiting or resting, the reports, the questions
   const questions = []
   const reports = []
@@ -489,10 +513,12 @@ export function flowParts(s) {
   // Running now, the newest first
   out.lane.sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
   left.later.sort((a, b) => (a.until && b.until ? a.until.localeCompare(b.until) : a.until ? -1 : b.until ? 1 : 0) || byTitle(a.row, b.row))
+  left.checkin.sort((a, b) => a.until.localeCompare(b.until) || byTitle(a.row, b.row))
+  out.checkin.sort((a, b) => String(a.checkin.until).localeCompare(String(b.checkin.until)) || byKey(a.row, b.row))
   for (const k of ['watch', 'github']) left[k].sort((a, b) => (a.repo && b.repo ? a.repo.localeCompare(b.repo) : a.repo ? -1 : b.repo ? 1 : 0) || byKey(a.row, b.row))
   for (const k of ['waiting', 'resting', 'idea', 'stream']) left[k].sort((a, b) => byPrio(a.row, b.row) || byAge(a.row, b.row))
   // Later holds its three kinds in their order, each sorted as it was; the GitHub line names the list its rows stand in
-  const groups = FLOW_LEFT_OUT.map(reason => ({ reason, rows: (reason === 'later' ? LATER_KINDS : [reason]).flatMap(k => left[k]) }))
+  const groups = FLOW_LEFT_OUT.map(reason => ({ reason, rows: (GROUP_KINDS[reason] ?? [reason]).flatMap(k => left[k]) }))
     .filter(g => g.rows.length)
     .map(g => (g.reason === 'github' ? { ...g, at: boardOf(g.rows, model.pages) } : g))
   const leftN = groups.reduce((n, g) => n + g.rows.length, 0)
@@ -893,6 +919,16 @@ export function batchPreselect(rows, s) {
  *  agent is on it already, atWork) or running */
 export function batchPlan(rows, how, s, value = '', lang = 'en') {
   const by = how === 'suggested' ? 'suggestion' : 'batch'
+  // stage 4: In progress for every ticked row, with one person until one check-in day (value {who, until})
+  if (how === 'work') {
+    const calls = []
+    const skipped = []
+    for (const row of rows ?? []) {
+      if (!row?.key || isStream(row)) skipped.push({ row, why: 'not_offered' })
+      else calls.push({ verb: 'work_on', args: { key: row.key, who: value?.who, until: value?.until } })
+    }
+    return { calls, skipped, counts: { done: 0, later: 0, drop: 0, do: 0, work: calls.length }, how, value, days: [value?.until].filter(Boolean), reasons: [] }
+  }
   const done = []
   const later = []
   const drop = []
@@ -965,6 +1001,8 @@ export function leftPlan(entries, verb, s, value = '', lang = 'en') {
   for (const e of entries ?? []) {
     const row = e.row
     if (e.why === 'hidden') calls.push({ verb: 'unhide', args: { key: row.key } })
+    // a task's check-in (stage 4): its step comes back to its owner, the day goes
+    else if (e.why === 'checkin' && isTaskRow(row)) calls.push({ verb: 'task_next', args: { slug: row.task, who: 'me', clear_check: true } })
     else if (e.why === 'deferred' && row.inbox_id) calls.push({ verb: 'inbox_reopen', args: { id: row.inbox_id } })
     else if (e.why === 'ahead') early.push(row.key)
     // running again clears a blocker (task.py wait --clear); a wait that comes from a next step of someone else has
@@ -1132,13 +1170,16 @@ export const ACTIVITY_FILTERS = ['all', 'notes', 'docs', 'state', 'agents', 'cod
 export const INSTRUCT_MAX = 50
 
 /** The tabs a point has under its card: Description and Activity on every point with a row, Steps and Related where
- *  the row has a task (an inbox item that names one reads that task); a tab alone and the reports card have none */
-export function pointTabs(x) {
+ *  the row has a task (an inbox item that names one reads that task); since stage 3 also Steps where the row has steps
+ *  of its own on a page (pageStepsOf: an application's) and Related where asks about it were folded into it
+ *  (row.also_inbox); a tab alone and the reports card have none */
+export function pointTabs(x, s = null) {
   const row = x && x.kind !== 'reports' ? x.row : null
   if (!row?.key) return []
   // a finished AI run: what it was asked, its start and end, its item or task (stage 2 of the one point view)
   if (x.group === 'read') return ['desc', 'activity', 'related']
-  return FLOW_TABS.filter(id => id === 'desc' || id === 'activity' || !!row.task)
+  const has = { desc: true, activity: true, steps: !!row.task || !!pageStepsOf(row, s), related: !!row.task || (row.also_inbox ?? []).some(a => a?.id) }
+  return FLOW_TABS.filter(id => has[id])
 }
 
 /** The tab shown: the one chosen (ui.flowTab, kept from point to point) where the point has it, else Description */
@@ -1154,14 +1195,18 @@ export function stepsOf(detail) {
 
 /** What is related to a point: the task an item names as its `parent` (its row in the model, else what its file says;
  *  none on the task itself), the other rows of that task as they stand in the model (its inbox items) and the paths
- *  its STATUS.md names under related (the file card's references). {parent, rows, paths} */
+ *  its STATUS.md names under related (the file card's references); since stage 3 the asks the briefing folded into
+ *  the row (`asked`, row.also_inbox: no row of their own) and the sessions linked to its task (`sessions`, the
+ *  detail column's list: s.sessions.links). {parent, rows, paths, asked, sessions} */
 export function relatedOf(x, s, detail) {
   const row = x && x.kind !== 'reports' ? x.row : null
-  if (!row?.task) return { parent: null, rows: [], paths: [] }
+  const asked = (row?.also_inbox ?? []).filter(a => a?.id).map(a => ({ key: `inbox:${a.id}`, title: a.title || a.id }))
+  if (!row?.task) return { parent: null, rows: [], paths: [], asked, sessions: [] }
   const own = `task:${row.task}`
   const all = [...indexRows(s?.model).values()].filter(r => r.task === row.task && r.key !== row.key)
   const parent = row.key === own ? null : all.find(r => r.key === own) ?? { key: own, task: row.task, title: detail?.card?.title || row.task }
-  return { parent, rows: all.filter(r => r.key !== own), paths: (detail?.related ?? []).map(String).filter(Boolean) }
+  const sessions = (s?.sessions?.links ?? []).filter(l => l?.task === row.task)
+  return { parent, rows: all.filter(r => r.key !== own), paths: (detail?.related ?? []).map(String).filter(Boolean), asked, sessions }
 }
 
 /** The rows of the activity under a filter, in the server's order (the newest first) */
@@ -1215,26 +1260,41 @@ export function refOfUrl(href) {
 }
 
 /** The fields of the right column, in their order, each {id, ...} for the view to word: the theme (themes on), the
- *  area, who works on it (flowDrive), the prio (Jev's quadrant and rank from the feed, else the triage's rank, else the
- *  priority), the three bars of Jev, due, the source (its row, row.url, else STATUS.md's origin when it is a link),
- *  created and moved. Never the status: the card's head says it. A closed point (a point of its own read only, stage 1
- *  of the one point view) has no theme to move and nobody who works on it; a finished AI run (stage 2) no theme */
+ *  area, the urgency of an inbox item (`when`), who works on it (flowDrive), the prio (Jev's quadrant and rank from the
+ *  feed, else the triage's rank, else the priority), the three bars of Jev, due, a task's team and its task check, the
+ *  source (its row, row.url, else STATUS.md's origin when it is a link), created and moved. Never the status: the card's
+ *  head says it. A closed point (a point of its own read only, stage 1 of the one point view) has no theme to move and
+ *  nobody who works on it; a finished AI run (stage 2) no theme. Stage 3: what the detail column changed is changed
+ *  here, `edit` where the point's row is open and the server's verb takes it (actions_work.py): the area of an inbox
+ *  item without a task (verb area, one of the configured areas or none, the owner's only), its urgency (verb urgency)
+ *  and a task's priority (verb priority, the prio field); a task's team (`team`: one started or one to start, verb
+ *  team_role) and its task check (`check`: the verdict, Keep open and Check again) are the owner's */
 export function flowFields(x, s, feed = null, detail = null) {
   if (!x) return []
   const reports = x.kind === 'reports'
   const row = reports ? null : x.row ?? null
   const facts = feed?.facts ?? {}
   const jev = facts.jev && typeof facts.jev === 'object' ? facts.jev : null
+  const person = !!s?.boot?.config?.person
+  const open = !!row?.key && !x.readOnly && x.group !== 'read'
+  const task = open && isTaskRow(row)
+  const areas = s?.boot?.config?.areas ?? []
   const out = []
   if (s?.themes?.enabled === true && row?.key && !x.readOnly && x.group !== 'read') out.push({ id: 'theme', value: s.themes.assign?.[row.key] ?? null })
-  out.push({ id: 'area', value: pointArea(x) })
+  out.push({ id: 'area', value: pointArea(x), edit: open && !!row.inbox_id && !row.task && areas.length > 0 && !person ? areas : null })
+  if (row?.inbox_id) out.push({ id: 'when', value: row.urgency ?? null, edit: open })
   if (!reports && !x.readOnly) out.push({ id: 'who', drive: flowDrive(x, s) })
   if (!reports) {
     const rank = row ? s?.triage?.items?.[row.key]?.next_rank : null
     out.push({ id: 'prio', jev: jev ? { quadrant: jev.quadrant ?? null, rank: jev.rank ?? null, who: jev.who ?? null, ranker: jev.ranker ?? null } : null,
-      rank: !jev && Number.isFinite(rank) ? rank : null, priority: row?.priority ?? null })
+      rank: !jev && Number.isFinite(rank) ? rank : null, priority: row?.priority ?? null, edit: task })
     if (jev) for (const id of ['urgency', 'impact', 'effort']) if (Number.isFinite(jev[id])) out.push({ id, value: jev[id] })
     out.push({ id: 'due', value: row?.due ?? null })
+  }
+  if (task && !person) {
+    const teams = s?.model?.teams ?? []
+    if ((row.team && teams.some(t => t.id === row.team.team_id)) || (row.team_suggestions ?? []).some(id => teams.some(t => t.id === id))) out.push({ id: 'team' })
+    out.push({ id: 'check', review: row.review ?? null })
   }
   const origin = typeof detail?.front?.origin === 'string' ? detail.front.origin.trim() : ''
   const link = /^https?:\/\/\S+$/.test(origin) ? origin : null
@@ -1247,6 +1307,25 @@ export function flowFields(x, s, feed = null, detail = null) {
     out.push({ id: 'moved', value: facts.moved ?? detail?.front?.last_updated ?? started })
   }
   return out
+}
+
+// the fields that stand in the right column of the one point view (stage 4), in their order; every other one of
+// flowFields stands in the fold Details at their foot
+export const SIMPLE_FIELDS = ['theme', 'area', 'who', 'due']
+
+/** The fields of a point split for the one point view (stage 4): {top, rest}. `top` Theme, Area, Who (who works on it,
+ *  and the step's who where nobody does: `step`) and Due, or the day it asks again where a check-in is set (`ask`);
+ *  `rest`, for the fold Details, the original title where the name shown is another, then every other field in its
+ *  order (Prio with its picker, Urgency with its picker, Jev's bars, Team, Task check, Source, Created, Moved) */
+export function fieldsSplit(fields, x, s) {
+  const row = x?.kind === 'reports' ? null : x?.row ?? null
+  const step = row?.card?.next?.what ? { who: row.card.next.who ?? null } : null
+  const check = row?.checkin?.until ?? row?.card?.next?.check ?? null
+  const top = fields.filter(f => SIMPLE_FIELDS.includes(f.id)).map(f => (f.id === 'who' ? { ...f, step }
+    : f.id === 'due' && check ? { id: 'ask', value: check } : f))
+  const original = row ? pointOriginal(row) : null
+  const rest = [...(original ? [{ id: 'original', value: original }] : []), ...fields.filter(f => !SIMPLE_FIELDS.includes(f.id))]
+  return { top, rest }
 }
 
 /** A local moment as activity.py words it: "YYYY-MM-DDTHH:MM" */
@@ -1285,7 +1364,7 @@ export function instructScope(x, queue, picked, name, s) {
     const row = x.row ?? null
     if (!row?.key) return null
     const tab = flowTabOf(x, s)
-    return { point: true, picked: false, reports: false, keys: [row.key], n: 1, cut: false, title: row.title ?? '', tab: takesWords(tab, s) ? tab : null, name }
+    return { point: true, picked: false, reports: false, keys: [row.key], n: 1, cut: false, title: pointName(row), tab: takesWords(tab, s) ? tab : null, name }
   }
   const all = (queue ?? []).flatMap(pointKeys)
   const ticked = picked?.size ? all.filter(k => picked.has(k)) : []

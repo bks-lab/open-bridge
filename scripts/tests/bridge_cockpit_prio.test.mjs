@@ -19,8 +19,16 @@ const { FlowPage } = views.flow
 const en = text.TABLES.en
 const de = text.TABLES.de
 const tick = () => rounds()
+/** Stage 4: the menu Order under the left column opened, its items */
+async function orderItems(el) {
+  const t = el.$('aside .flow-order-toggle')
+  if (t && t.getAttribute('aria-expanded') !== 'true') { t.click(); await tick() }
+  return el.$$('aside .flow-order .flow-more-item')
+}
+const READS = () => [en.flow.prio.readJev, en.flow.prio.readHaiku]
 const proto = Object.getPrototypeOf(document.createElement('div'))
 if (!proto.querySelector) proto.querySelector = function querySelector(sel) { return this.$(sel) }
+proto.focus ??= function focus() { document.activeElement = this }
 globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
 for (const k of ['offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth']) Object.defineProperty(proto, k, { get: () => 0, configurable: true })
 
@@ -128,16 +136,18 @@ test('the square of now says urgent and important, and "only you" only for what 
   assert.ok(!now2.text().includes(en.flow.prio.onlyYou(1)) && !/only you/.test(now2.text()))
 })
 
-test('the foot offers both rankers at all times; each reads in the points of the view; the line names ranker, time and count', () => {
+test('Order offers both rankers at all times; each reads in the points of the view; the foot names ranker, time and count', async () => {
   const order = { at_ms: NOW - 30 * MIN, ranker: 'haiku', sent: 18, skipped: { private: 2, same: 1 }, items: [] }
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${prioState(order)} c=${c} />`)
   const foot = el.$('aside .flow-prio-foot')
-  const buttons = foot.$$('button')
-  assert.deepEqual(buttons.map(b => b.text()), [en.flow.prio.readJev, en.flow.prio.readHaiku])
-  buttons[0].click()
+  // stage 4: the read-ins stand in Order under the list, the foot says the order
+  assert.equal(foot.$$('button').length, 0)
+  const reads = async () => (await orderItems(el)).filter(b => READS().includes(b.text()))
+  assert.deepEqual((await reads()).map(b => b.text()), READS())
+  ;(await reads())[0].click()
   assert.deepEqual(c.calls.at(-1), ['flowPrioRead', 'work', 'jev'])
-  buttons[1].click()
+  ;(await reads())[1].click()
   assert.deepEqual(c.calls.at(-1), ['flowPrioRead', 'work', 'haiku'])
   const time = views.flowprio.orderTime(order.at_ms)
   assert.match(foot.text(), new RegExp(en.flow.prio.foot('Haiku', time, 18)))
@@ -147,10 +157,11 @@ test('the foot offers both rankers at all times; each reads in the points of the
   assert.match(el.$('.flow-prio-from').text(), /Haiku/)
   // Jev switched off: only Haiku; Haiku's runs used up: its button is there and grey
   const off = mount(html`<${FlowPage} s=${{ ...prioState(order), jev: { enabled: false } }} c=${recorder()} />`)
-  assert.deepEqual(off.$$('aside .flow-prio-foot button').map(b => b.text()), [en.flow.prio.readHaiku])
+  assert.deepEqual((await orderItems(off)).map(b => b.text()).filter(w => READS().includes(w)), [en.flow.prio.readHaiku])
   const spent = mount(html`<${FlowPage} s=${prioState(order, { prio: { haiku: { enabled: true, ready: true, budget_left: 0 } } })} c=${recorder()} />`)
-  const hb = spent.$$('aside .flow-prio-foot button').find(b => b.text() === en.flow.prio.readHaiku)
+  const hb = (await orderItems(spent)).find(b => b.text() === en.flow.prio.readHaiku)
   assert.ok(hb.hasAttribute('disabled'))
+  assert.equal(hb.getAttribute('title'), en.flow.prio.budget)
   // a Jev read-in that fell back says so
   const fell = mount(html`<${FlowPage} s=${prioState({ ...order, fallback: { from: 'jev', code: 'jev_upstream' } })} c=${recorder()} />`)
   assert.match(fell.$('aside .flow-prio-foot').text(), new RegExp(en.flow.prio.fellBack))
@@ -217,7 +228,7 @@ test('a point without a title of its own is not sent; its key never stands in fo
   assert.deepEqual(keys, ['task:named'])
 })
 
-test('the day\'s order waits until the page read what it shows; Haiku switched off has no button', () => {
+test('the day\'s order waits until the page read what it shows; Haiku switched off has no button', async () => {
   const s = { ...state(), driver: { caps: ['launch', 'tabs'] }, loading: { pass: null } }
   assert.equal(logic.prioLoaded({ ...s, tabs: { tabs: [], at_ms: 0 } }), false, 'the tabs not read yet')
   assert.equal(logic.prioLoaded({ ...s, tabs: { tabs: [], at_ms: NOW } }), true)
@@ -225,5 +236,5 @@ test('the day\'s order waits until the page read what it shows; Haiku switched o
   assert.equal(logic.prioLoaded({ ...s, model: null }), false)
   const order = { at_ms: NOW - 30 * MIN, ranker: 'jev', sent: 1, skipped: {}, items: [] }
   const off = mount(html`<${FlowPage} s=${prioState(order, { prio: { haiku: { enabled: false, ready: false, budget_left: 6 } } })} c=${recorder()} />`)
-  assert.deepEqual(off.$$('aside .flow-prio-foot button').map(b => b.text()), [en.flow.prio.readJev])
+  assert.deepEqual((await orderItems(off)).map(b => b.text()).filter(w => READS().includes(w)), [en.flow.prio.readJev])
 })

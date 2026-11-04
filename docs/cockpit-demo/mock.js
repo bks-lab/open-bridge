@@ -271,6 +271,27 @@ const WORDS = {
     'Order new business cards': 'Neue Visitenkarten bestellen',
     'Send the weekly digest': 'Den Wochenüberblick verschicken',
     'Audit the licenses of the example dependencies': 'Die Lizenzen der Beispiel-Abhängigkeiten prüfen',
+    // stage 4 of the one point view: the names and stands of the briefs, the steps
+    'Two of five setup steps are written down; the review of the demo report comes next.':
+      'Zwei von fünf Einrichtungsschritten sind aufgeschrieben; als Nächstes kommt die Prüfung des Demo-Berichts.',
+    'Lena checks the links of the new index page; one of three criteria is met.': 'Lena prüft die Links der neuen Indexseite; eines von drei Kriterien ist erfüllt.',
+    'The notes list every change; the agent tab asks before it tags the release.': 'Die Notizen nennen jede Änderung; der Agenten-Tab fragt, bevor er die Version markiert.',
+    'Rebuild the search index of the docs site': 'Den Suchindex der Doku-Seite neu aufbauen',
+    'The new index builds; the search box still asks the old one.': 'Der neue Index baut; das Suchfeld fragt noch den alten.',
+    'Switch the search box to the new index': 'Das Suchfeld auf den neuen Index umstellen',
+    'The search box of the docs site finds every page by its words': 'Das Suchfeld der Doku-Seite findet jede Seite über ihre Wörter',
+    'Update the setup docs after the port change': 'Die Einrichtungsdoku nach dem Portwechsel anpassen',
+    'Three sections still name the old port; the Bridge has the change ready for your yes.': 'Drei Abschnitte nennen noch den alten Port; die Bridge hat die Änderung für dein Ja bereit.',
+    'Send the reworded checklist back': 'Die umformulierte Checkliste zurückschicken',
+    'Alex rewords the checklist; the first draft came on Monday.': 'Alex formuliert die Checkliste um; der erste Entwurf kam am Montag.',
+    "Kim compares the quote with last year's order.": 'Kim vergleicht das Angebot mit der Bestellung vom letzten Jahr.',
+    'Polish the wording of the release checklist': 'Den Wortlaut der Release-Checkliste glätten',
+    'Check the quote for the new laptops': 'Das Angebot für die neuen Laptops prüfen',
+    'Compare both wordings and keep the clearer one': 'Beide Fassungen vergleichen und die klarere behalten',
+    'Two wordings of the checklist exist; the Bridge can compare them.': 'Es gibt zwei Fassungen der Checkliste; die Bridge kann sie vergleichen.',
+    // an item's next step as card.py words it (text.py next), shown on its step line
+    'decide': 'entscheiden', 'give your yes': 'dein Ja geben', 'read': 'lesen', 'check the result': 'Ergebnis prüfen',
+    'The report waits for a read': 'Der Bericht wartet aufs Lesen',
   },
 }
 
@@ -500,6 +521,7 @@ function organizeProposal(now) {
 // the briefs of the demo (card_fields.py shape) and how describe sees them: who wrote them, outdated or not, a proposal
 const MOCK_BRIEFS = {
   'task:demo-task': { brief: { goal: 'A new team member sets up the demo project in under an hour',
+    stand: 'Two of five setup steps are written down; the review of the demo report comes next.',
     story: { as: 'a new team member', want: 'a written guide for the demo setup', so_that: 'I am ready to work on the first day' },
     acceptance: ['Every setup step is written down with its command', 'Two colleagues followed the guide without asking',
       'Issue example-org/demo-project#12 links the finished guide'], by: 'claude-haiku-5-5', at: '2026-10-08', edited: false },
@@ -508,19 +530,35 @@ const MOCK_BRIEFS = {
   refs: { goal: null, story: null, acceptance: [null, null, [{ text: 'Issue ' },
     { text: 'example-org/demo-project#12', ref: { kind: 'web', href: 'https://example.org/demo-project/issues/12' } },
     { text: ' links the finished guide' }]] } },
-  'task:docs-refresh': { brief: { goal: 'Readers find every docs page from one index',
+  // its next step taken by a colleague, as STATUS.md names her (next.who: lena)
+  'task:docs-refresh': { who: 'lena', brief: { goal: 'Readers find every docs page from one index',
+    stand: 'Lena checks the links of the new index page; one of three criteria is met.',
     acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken'], by: 'claude-haiku-5-5', at: '2026-10-02', edited: true },
   written: 'human', stale: false, progress: { done: 1, total: 3 },
   proposal: { id: 'd0a1b2c3d4e', by: 'claude-haiku-5-5', brief: { goal: 'Readers find every page from one index, grouped by topic',
     story: { as: 'a reader of the docs', want: 'one index of every page', so_that: 'I never search the folder' },
     acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken', 'The index groups the pages by topic'] } } },
   'task:alpha-release': { brief: { goal: 'The alpha release notes name every change since the last tag',
+    stand: 'The notes list every change; the agent tab asks before it tags the release.',
     acceptance: ['Each change links its pull request', 'The open points of the review (§3) are answered'], by: 'claude-haiku-5-5', at: '2026-09-28', edited: false },
   written: 'ai', stale: true, progress: { done: 3, total: 4 },
   // a reference nobody can reach from the card: which review? The card says so, and the brief is tried once more
   refs: { goal: null, story: null, acceptance: [null, [{ text: 'The open points of the review (' }, { text: '§3', unresolved: true },
     { text: ') are answered' }]] }, extraGaps: ['unresolved_ref'] },
   'task:old-cleanup': { next: 'First step', progress: { done: 0, total: 2 } },
+  // stage 4: an H1 that is a slug, and an item whose title is long and technical, each named by its brief; a step the
+  // Bridge takes; a step with someone until its check-in day (buildState sets the days)
+  'task:search-index': { who: 'bridge', next: 'Switch the search box to the new index',
+    brief: { name: 'Rebuild the search index of the docs site', stand: 'The new index builds; the search box still asks the old one.',
+      goal: 'The search box of the docs site finds every page by its words', by: 'claude-haiku-5-5', at: '2026-10-06', edited: false },
+    written: 'ai', stale: false, progress: { done: 2, total: 3 } },
+  'inbox:20261009-0915-update-docs-e5f6': { brief: { name: 'Update the setup docs after the port change',
+    stand: 'Three sections still name the old port; the Bridge has the change ready for your yes.', by: 'claude-haiku-5-5', at: '2026-10-09' } },
+  'task:release-wording': { who: 'bridge', next: 'Compare both wordings and keep the clearer one',
+    brief: { stand: 'Two wordings of the checklist exist; the Bridge can compare them.', by: 'claude-haiku-5-5', at: '2026-10-07' } },
+  'task:release-polish': { who: 'alex', next: 'Send the reworded checklist back',
+    brief: { stand: 'Alex rewords the checklist; the first draft came on Monday.', by: 'claude-haiku-5-5', at: '2026-10-05' } },
+  'inbox:20261008-1600-quote-check-3e4f': { brief: { stand: 'Kim compares the quote with last year\'s order.', by: 'claude-haiku-5-5', at: '2026-10-08' } },
   'inbox:20261009-0940-filed-board-c2d3': { gaps: ['no_goal', 'task_closed', 'no_content'], closedTask: 'release-notes-2026-09' },
   'inbox:20261009-0900-review-demo-a1b2': { summary: 'The report of the demo check is ready to read.' },
 }
@@ -537,7 +575,8 @@ function mockCard(r, m = {}, now = Date.now()) {
   const kind = inbox ? 'inbox' : task ? (r.work_kind === 'stream' || r.stream ? 'stream' : 'task') : 'info'
   const b = m.brief ?? null
   const what = m.next ?? r.next?.what ?? null
-  const next = task ? (what ? { what, who: r.next?.from === 'status' || m.next ? 'me' : null, due: null, from: r.next?.from ?? 'status', since: r.next?.since ?? null } : null)
+  const next = task ? (what ? { what, who: m.who ?? (r.next?.from === 'status' || m.next ? 'me' : null), due: null, from: r.next?.from ?? 'status', since: r.next?.since ?? null,
+    check: m.check ?? null } : null)
     : inbox ? { what: r.inbox_kind === 'decision' ? 'decide' : r.gate === 'your-yes' ? 'give your yes' : r.inbox_kind === 'result' ? 'check the result' : 'read',
       who: r.gate === 'free' ? 'bridge' : 'me', due: r.due ?? null, from: 'item', since: null } : null
   const gaps = m.gaps ?? (task ? [!b?.goal && 'no_goal', !next && 'no_next', m.next === 'First step' && 'placeholder_next',
@@ -549,6 +588,8 @@ function mockCard(r, m = {}, now = Date.now()) {
       : r.link?.kind === 'web' ? [{ kind: 'web', href: r.link.href, label: r.ref ?? r.title }] : []
   const card = {
     kind, subkind: inbox ? r.inbox_kind ?? null : kind === 'info' && r.ref ? 'tracker' : null, title: r.title,
+    // stage 4: what the brief calls it and where it stands (card_fields.py name, stand)
+    name: b?.name ?? null, stand: b?.stand ?? null,
     summary: m.summary ?? null, goal: b?.goal ?? null, story: b?.story ?? null, acceptance: b?.acceptance ?? null,
     brief_refs: m.refs ?? null, next,
     state: { word: inbox ? r.inbox_state ?? 'open' : task ? r.status ?? 'doing' : r.status ?? null, blocked_by: null, since: null },
@@ -556,7 +597,7 @@ function mockCard(r, m = {}, now = Date.now()) {
     updated: null, source: r.origin ?? null, links, progress: m.progress ?? null,
     written: b ? (m.written === 'human' ? 'human' : 'ai') : m.summary ? 'item' : 'title', gaps,
   }
-  const describe = b || m.proposal ? { written: m.written ?? null, stale: !!m.stale, stale_why: m.stale ? 'basis' : null,
+  const describe = b?.goal || m.proposal ? { written: m.written ?? null, stale: !!m.stale, stale_why: m.stale ? 'basis' : null,
     running: false, last_error: null, warnings: (m.extraGaps ?? []).includes('unresolved_ref') ? ['Unresolved reference: §3'] : [],
     model_mismatch: false, proposal: m.proposal ? { ...m.proposal, at_ms: now - 40 * MIN } : null, by: b?.by ?? null, at: b?.at ?? null } : null
   return { card, describe }
@@ -642,7 +683,8 @@ export function buildState(now = Date.now(), opts = {}) {
       actions: [A('do', true), A('advise')], selectable: true,
     }),
     docs: row({
-      key: 'inbox:20261009-0915-update-docs-e5f6', bucket: 'delegate', section: 'give', title: 'Update the setup docs after the config change',
+      key: 'inbox:20261009-0915-update-docs-e5f6', bucket: 'delegate', section: 'give',
+      title: 'config: docs/setup.md still names port 8790 after the switch to cockpit.port in scripts/web/config.yaml (3 sections)',
       origin: O('session', 'claude', 'claude'), inbox_kind: 'decision',
       why: ['needs your yes', `due ${isoIn(-3, now).slice(8)}.${isoIn(-3, now).slice(5, 7)}`, 'changed since 08:40'], due: isoIn(-3, now),
       sources: ['inbox'], inbox_id: '20261009-0915-update-docs-e5f6', gate: 'your-yes',
@@ -751,7 +793,7 @@ export function buildState(now = Date.now(), opts = {}) {
       status: 'review', updated: isoIn(-2, now), actions: [A('do', true), A('advise')], selectable: true, closable: true,
     }),
     search: row({
-      key: 'task:search-index', bucket: 'tasks', section: 'work', title: 'Rebuild the search index of the docs site', sources: ['tasks'],
+      key: 'task:search-index', bucket: 'tasks', section: 'work', title: 'search-index', sources: ['tasks'],
       origin: O('bridge', null, 'Ad-hoc 2026-10-06'), work_kind: 'task', task: 'search-index', priority: 'P2', area: 'Docs', area_names: ['Docs'],
       status: 'doing', updated: isoIn(0, now), actions: [A('do', true), A('advise')], selectable: true, closable: true,
     }),
@@ -809,6 +851,11 @@ export function buildState(now = Date.now(), opts = {}) {
   // state_for): one brief written by AI, one a person edited with a proposal waiting, one outdated, one with gaps
   for (const r of Object.values(rows)) Object.assign(r, mockCard(r, MOCK_BRIEFS[r.key], now))
   for (const r of Object.values(rows)) r.art = r.inbox_id ? ART_OF_KIND[r.inbox_kind] ?? 'ask' : null
+  // stage 4, In progress with someone (collector.checkin_of): the checklist with Alex since a week, its check-in day
+  // came yesterday; the laptop quote with Kim until Monday, so it runs elsewhere until then
+  rows.polish.checkin = { who: 'alex', until: isoIn(-1, now), since: isoIn(-8, now) }
+  rows.polish.card.next = { ...rows.polish.card.next, check: isoIn(-1, now) }
+  rows.deferred.checkin = { who: 'kim', until: isoIn(3, now), since: isoIn(-1, now) }
   // what waits for you, as the server counts it (collector.py): the rows of Now that ask
   const forYou = sections[0].rows.filter(r => !r.inbox_id || r.art === 'ask').length
   // the open rows Work through places once each (collector.py counts.flow_open), counted here by their keys
@@ -1136,6 +1183,8 @@ export function buildState(now = Date.now(), opts = {}) {
       views: Array.isArray(opts.views) && opts.views.length ? opts.views : ['due', 'source', 'jev', 'files', 'flow'],
       // the files tab's question to its records (cockpit.files_search): on in the demo, the Health area kept private
       files_search: { enabled: true, block: ['Health'], left: 20 },
+      // who the cockpit belongs to (cockpit.person_name, sent with Work through on): a next step naming her is hers
+      ...(opts.flow !== false ? { person: 'Mara' } : {}),
       flow: { enabled: opts.flow !== false, drop_reasons: ['resolves_itself', 'not_needed', 'someone_else', 'not_worth_it'], return_after_s: 20,
         // round 4: a point comes up two days before its due; a session's task is recognised from what it did
         ahead_days: 2, infer_sessions: true,
@@ -1164,7 +1213,9 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     cmux: { ok: true, error: null },
-    sessions: { at_ms: now - 8000, sessions: empty ? [] : [
+    // the sessions linked to a task by hand (sessions.py links): one live in its tab, one ended that goes on in a new one
+    sessions: { at_ms: now - 8000, links: empty ? [] : [{ sid: '2f7a0c55-0000-4000-8000-000000000003', task: 'demo-task', name: 'demo-bridge-research' },
+      { sid: '5e2d7f31-0000-4000-8000-000000000009', task: 'demo-task', name: 'demo-task outline' }], sessions: empty ? [] : [
       { id: '7a16c7b2', pid: 101, name: 'demo-bridge-fc', project: 'demo-bridge', cwd: '/demo/bridge', here: true, status: 'busy',
         since_ms: now - 4 * MIN, started_ms: now - 95 * MIN, kind: 'interactive', version: '2.1.0', remote: true,
         tab: { ref: 'surface:3', ws_ref: 'workspace:1', name: 'Control', workspace: 'Control', state: 'working', is_control: true },
@@ -1799,8 +1850,9 @@ function triageState(now, running = null) {
       { topic: 'docs' }),
     'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small',
       { topic: 'docs', next_rank: 1, rank_at: now - 3 * 3600000 }),
-    'inbox:20261009-0915-update-docs-e5f6': x('inbox', 'Update the setup docs after the config change', 'Update the setup docs after the config change',
-      'keep', 'ai', 'small', { topic: 'docs' }),
+    // a gist that only repeats the title (the day list leaves it out)
+    'inbox:20261009-0915-update-docs-e5f6': x('inbox', 'config: docs/setup.md still names port 8790 after the switch to cockpit.port in scripts/web/config.yaml (3 sections)',
+      'config: docs/setup.md still names port 8790 after the switch to cockpit.port in scripts/web/config.yaml (3 sections)', 'keep', 'ai', 'small', { topic: 'docs' }),
     'task:alpha-release': x('task', 'Prepare the alpha release notes', 'Release notes from the merged changes', 'continue', 'you', null,
       { why: 'the wording for the announcement' }),
     'inbox:demo-inbox-4': x('inbox', 'Release checklist', 'A review asked on the checklist PR', 'unclear', 'you', null, { reason: 'no answer from the team yet' }),
@@ -2080,6 +2132,49 @@ export function createMockTransport(opts = {}) {
       wait(() => emit('sessions', state.sessions), 60)
       return null
     }
+    // stage 4 (actions_work.py work_on, task_next, checkin_stuck): In progress with someone until a check-in day, a
+    // task's step to someone, a check-in that hangs back to the owner; the sentence a note in Activity
+    const anyRow = key => rowOf(key) ?? (state.model.task_rows ?? []).find(r => r.key === key) ?? null
+    const note = (key, text) => {
+      if (!String(text ?? '').trim()) return
+      added[key] = [feedRow(now(), { id: `note:w${Object.values(added).flat().length + 1}`, kind: 'note', filters: ['notes'],
+        text: String(text).trim(), by: { kind: 'you', name: null } }), ...(added[key] ?? [])]
+    }
+    const stepTo = (r, who, check) => {
+      if (r.card?.next) r.card = { ...r.card, next: { ...r.card.next, who, check } }
+    }
+    if (verb === 'work_on') {
+      const r = anyRow(args.key)
+      if (!r) return fail(409, 'stale_row', 'no such row')
+      const was = { who: r.card?.next?.who ?? null, state: r.inbox_state ?? null }
+      r.checkin = { who: args.who, until: args.until, since: isoIn(0, now()) }
+      if (r.inbox_id) Object.assign(r, { inbox_state: 'deferred', until: args.until })
+      stepTo(r, args.who, args.until)
+      note(r.key, args.text)
+      publish()
+      const undo = r.inbox_id ? { verb: 'inbox_reopen', args: { id: r.inbox_id } } : r.task ? { verb: 'task_next', args: { slug: r.task, who: was.who ?? 'me', clear_check: true } }
+        : { verb: 'unhide', args: { key: r.key } }
+      return ok({ ...result, note: `Mock: with ${args.who} until ${args.until}`, undo: [{ title: r.title, kind: r.inbox_id ? 'inbox' : 'task', undo }] })
+    }
+    if (verb === 'task_next') {
+      const r = anyRow(`task:${args.slug}`)
+      if (!r) return fail(409, 'stale_row', 'no such task')
+      const check = args.clear_check ? null : args.check ?? r.card?.next?.check ?? null
+      stepTo(r, args.who ?? r.card?.next?.who ?? 'me', check)
+      r.checkin = check ? { who: args.who ?? r.checkin?.who ?? null, until: check, since: r.checkin?.since ?? isoIn(0, now()) } : null
+      publish()
+      return ok({ ...result, note: '' })
+    }
+    if (verb === 'checkin_stuck') {
+      const r = anyRow(args.key)
+      if (!r) return fail(409, 'stale_row', 'no such row')
+      r.checkin = null
+      if (r.inbox_id) Object.assign(r, { inbox_state: 'open', until: null })
+      stepTo(r, 'me', null)
+      note(r.key, args.text)
+      publish()
+      return ok({ ...result, note: 'Mock: back to you' })
+    }
     if (verb === 'unhide') {
       const at = (state.model.hidden ?? []).findIndex(r => r.key === args.key)
       if (at < 0) return null
@@ -2092,7 +2187,8 @@ export function createMockTransport(opts = {}) {
     }
     if (verb === 'inbox_reopen') {
       const r = rowOf(`inbox:${args.id}`)
-      if (r?.inbox_state === 'deferred') { Object.assign(r, { inbox_state: 'open', until: null }); publish() }
+      // an answer ends a check-in (details._checkin)
+      if (r?.inbox_state === 'deferred') { Object.assign(r, { inbox_state: 'open', until: null, checkin: null }); publish() }
       return null
     }
     if (verb === 'task_running' || verb === 'task_keep') {
@@ -2232,7 +2328,9 @@ export function createMockTransport(opts = {}) {
         if (opts.auth === false) return fail(401, 'unauthorized', 'no cookie')
         // the check of the cockpit: block finds nothing in the invented config (config_warnings, #402)
         return ok({ ok: true, csrf: 'mock', language: opts.lang || 'en', version: '0.1.0', config_warnings: [],
-          config: { port: 8797, relay: true, tabs_seconds: 10, full_minutes: 10, voice: false, target: 'area', control: 'Control', profile: 'morning' } })
+          config: { port: 8797, relay: true, tabs_seconds: 10, full_minutes: 10, voice: false, target: 'area', control: 'Control', profile: 'morning',
+            // the areas an inbox item can be given (workplace.workspaces), as the rows of the demo name them
+            areas: ['Demo', 'Docs', 'Ops'] } })
       }
       if (url.pathname === '/api/state') return ok(state)
       if (url.pathname === '/api/inbox') return ok(inboxDetail(url.searchParams.get('id'), state))
@@ -2495,6 +2593,14 @@ export function createMockTransport(opts = {}) {
           return ok({ ...result, note: `Mock: now the task ${slug}`, task: slug })
         }
 
+        // stage 3: the fields of the one point view change the row in place (actions_work.py area, urgency, priority)
+        if (['area', 'urgency', 'priority'].includes(verb)) {
+          const row = state.model.sections.flatMap(x => x.rows).find(r => r.key === args.key)
+          if (!row) return fail(409, 'stale_row', 'no such row')
+          Object.assign(row, verb === 'area' ? { area: args.value ?? null, area_names: args.value ? [args.value] : [] } : { [verb]: args.value })
+          publish()
+          return ok({ ...result, note: `Mock: ${verb} ${args.value ?? 'none'}` })
+        }
         // Check with AI on an issue card: the demo finds it done from a merged pull request
         if (verb === 'issue_check') {
           await new Promise(r => wait(r, 700))

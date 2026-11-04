@@ -113,11 +113,11 @@ def _new(**fields: Any) -> dict:
     return {k: fields.get(k) for k in CARD_FIELDS}
 
 
-def _next(what: Any = None, who: Any = None, due: Any = None, src: Any = None, since: Any = None) -> dict | None:
+def _next(what: Any = None, who: Any = None, due: Any = None, src: Any = None, since: Any = None, check: Any = None) -> dict | None:
     what = _s(what)
     if what is None:
         return None
-    return dict(zip(NEXT_FIELDS, (what, _s(who), _s(due), _s(src), _s(since))))
+    return dict(zip(NEXT_FIELDS, (what, _s(who), _s(due), _s(src), _s(since), _s(check))))
 
 
 def _state(word: Any = None, blocked_by: Any = None, since: Any = None) -> dict | None:
@@ -369,9 +369,10 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
     if _s(nxt_row.get("what")):
         status_next = nxt_row.get("from") == "status"
         nxt = _next(nxt_row["what"], t.get("next_who") if status_next else None,
-                    t.get("next_due") if status_next else None, nxt_row.get("from"), nxt_row.get("since"))
+                    t.get("next_due") if status_next else None, nxt_row.get("from"), nxt_row.get("since"),
+                    t.get("next_check") if status_next else None)
     else:
-        nxt = _next(t.get("next"), t.get("next_who"), t.get("next_due"), "status", t.get("updated"))
+        nxt = _next(t.get("next"), t.get("next_who"), t.get("next_due"), "status", t.get("updated"), t.get("next_check"))
     word = "done" if closed else _s(row.get("status")) or _s(t.get("status"))
     # the owner words only (me, bridge, bridge_then_me): a person named as next.who stays in next.who
     who = _s(t.get("next_who"))
@@ -395,7 +396,7 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
                 due=_s(row.get("due")) or _s(t.get("next_due")), area=_s(row.get("area")) or _s(t.get("area")),
                 updated=_s(t.get("updated")), source=origin, links=links,
                 progress=t.get("progress") if isinstance(t.get("progress"), dict) else None,
-                written=written, gaps=gaps)
+                written=written, gaps=gaps, name=(brief or {}).get("name"), stand=(brief or {}).get("stand"))
 
 
 def _inbox_next(kind: Any, gate: Any, facts: Mapping, ctx: Ctx) -> dict | None:
@@ -462,7 +463,8 @@ def inbox_card(item_id: str, title: Any, ctx: Ctx, *, facts: Mapping | None = No
                 area=_s(row.get("area")) or _s(f.get("area")), updated=_s(f.get("updated")) or _s(f.get("created")),
                 source=origin, links=links, written=written,
                 gaps=_gaps(("no_goal", not (brief or {}).get("goal")), ("task_closed", closed_task),
-                           ("no_content", empty and not brief), ("unresolved_ref", unresolved)))
+                           ("no_content", empty and not brief), ("unresolved_ref", unresolved)),
+                name=(brief or {}).get("name"), stand=(brief or {}).get("stand"))
 
 
 def github_card(it: Mapping, ctx: Ctx) -> dict:

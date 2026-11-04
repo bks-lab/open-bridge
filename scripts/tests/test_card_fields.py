@@ -33,12 +33,12 @@ GOOD = {"goal": "Invoices reach the customer without a manual resend",
 def test_card_fields_name_the_whole_wire_shape_in_order():
     assert cf.CARD_FIELDS == ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "brief_refs", "next", "state",
                               "owner", "priority", "due", "area", "updated", "source", "links", "progress",
-                              "written", "gaps")
-    assert cf.NEXT_FIELDS == ("what", "who", "due", "from", "since")
+                              "written", "gaps", "name", "stand")
+    assert cf.NEXT_FIELDS == ("what", "who", "due", "from", "since", "check")
     assert cf.STATE_FIELDS == ("word", "blocked_by", "since")
     assert cf.PROGRESS_FIELDS == ("done", "total")
     assert cf.STORY_FIELDS == ("as", "want", "so_that")
-    assert cf.BRIEF_FIELDS == ("goal", "story", "acceptance", "by", "at", "basis", "edited")
+    assert cf.BRIEF_FIELDS == ("goal", "story", "acceptance", "by", "at", "basis", "edited", "name", "stand")
 
 
 def test_the_limits_are_the_ones_both_schemas_declare():
@@ -52,6 +52,8 @@ def test_the_limits_are_the_ones_both_schemas_declare():
     assert brief["properties"]["acceptance"]["items"]["maxLength"] == cf.BRIEF_LIMITS["acceptance_len"]
     for part in cf.STORY_FIELDS:
         assert brief["properties"]["story"]["properties"][part]["maxLength"] == cf.BRIEF_LIMITS["story"]
+    assert brief["properties"]["name"]["maxLength"] == cf.BRIEF_LIMITS["name"]
+    assert brief["properties"]["stand"]["maxLength"] == cf.BRIEF_LIMITS["stand"]
     item = yaml.safe_load((ROOT / "work/templates/_schema.inbox-item.yaml").read_text(encoding="utf-8"))
     assert item["$defs"]["brief"] == brief, "the inbox describe event carries the same brief as STATUS.md"
 
@@ -261,3 +263,31 @@ def test_a_control_or_format_character_is_an_error_never_written(char):
     assert clean is None and any("control or format character" in e for e in errors)
     clean, errors = cf.validate_brief({**GOOD, "acceptance": ["No invoice is delivered twice", f"a{char}b"]})
     assert clean["acceptance"] == ["No invoice is delivered twice"] and errors
+
+
+# ---------------------------------------------------------------- a name and where it stands (stage 4 of the cockpit)
+
+def test_a_brief_may_carry_a_short_name_and_one_sentence_of_where_it_stands():
+    brief = {**GOOD, "name": "Invoices reach the customer", "stand": "Two invoices came back last week, the rest went out."}
+    clean, errors = cf.validate_brief(brief)
+    assert errors == [] and clean["name"] == "Invoices reach the customer" and clean["stand"].startswith("Two invoices")
+    assert cf.BRIEF_LIMITS["name"] == 60 and cf.BRIEF_LIMITS["stand"] == 140 and cf.BRIEF_LIMITS["name_words"] == 8
+
+
+@pytest.mark.parametrize("name,why", [
+    ("x" * 61, "characters"),
+    ("one two three four five six seven eight nine", "words"),
+    ("Check /var/log for errors", "path"),
+    ("Fix acme/app#12 at last", "number"),
+    ("Update notes.md", "file"),
+    ("Cockpit \u2013 one view", "dash"),
+])
+def test_a_name_with_a_path_a_number_a_file_or_too_many_words_is_left_out_never_cut(name, why):
+    clean, errors = cf.validate_brief({**GOOD, "name": name})
+    assert "name" not in clean and clean["goal"] == GOOD["goal"]
+    assert any(e.startswith("name:") and why in e for e in errors), errors
+
+
+def test_a_stand_over_its_limit_is_left_out():
+    clean, errors = cf.validate_brief({**GOOD, "stand": "y" * 141})
+    assert "stand" not in clean and any(e.startswith("stand:") for e in errors)

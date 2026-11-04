@@ -256,7 +256,7 @@ python3 scripts/inbox.py unmute <rule-id>                   # lift one
 python3 scripts/inbox.py stats [--days 30] [--json]         # per source: filed, dropped by a person, muted
 python3 scripts/inbox.py reopen <id> [--note "why"]           # take a close, drop or reject back
 python3 scripts/inbox.py close --key <key> [--note "why"]     # every live item filed under that key
-python3 scripts/inbox.py defer <id> --until 2026-10-08
+python3 scripts/inbox.py defer <id> --until 2026-10-08 [--on lena] [--check]   # --check: a check-in with --on
 python3 scripts/inbox.py urgency <id> now|today|later       # re-rank; the latest urgency event wins
 python3 scripts/inbox.py area <id> <workspace> | --clear    # the area of an item without a task
 python3 scripts/inbox.py describe <id> --brief-json '{"goal": "..."}' | --clear   # what it is about
@@ -271,7 +271,25 @@ python3 scripts/inbox.py sync [--no-push]
 
 `--by` (or `$BRIDGE_ACTOR`, default the host name) sets who an event is
 attributed to. `add` takes `--area`, `--due`, `--detail`, `--key`, `--waits-for-json`, `--urgency` (default
-`today`) and `--gate` (default `your-yes`). Items are `from` a machine and job
+`today`) and `--gate` (default `your-yes`).
+
+**A title that reads in a list.** `add` warns on stderr, never refuses, where a
+title (`--summary`) is hard to read in a list: longer than 80 characters, with a
+path, a file name or an id in it (a long hex or numbered token), or with English
+words in a Bridge whose language is German. Each warning is one line that says
+what to change (`title: 112 characters, at most 80: say what it is in a few
+words, the rest goes in --detail`); the item is filed as given. The cockpit
+names an item by its brief's `name` where describe wrote one
+([`bridge-cockpit.md`](bridge-cockpit.md#each-items-brief)), so a technical
+title is not lost, but a title that reads needs no brief to be understood.
+
+**A check-in.** `defer --until <day> --on <who> --check` puts an item off as "in
+progress with someone until that day": the event stores `check: true` beside
+`waits_on`. Until the day the cockpit lists it under Running elsewhere ("with
+<who> · asks on <day>"); on the day it comes back as a check-in that asks how it
+stands. An answer ends the check-in: `approve`, `reopen`, or any close. A plain
+`defer` (without `--check`) stays a later, as before. The cockpit's In progress
+verb (`work_on`) sends exactly this for an inbox item. Items are `from` a machine and job
 (`homebox/issue-radar`), not a person.
 
 ## Dropping with a reason, and muting a loud source

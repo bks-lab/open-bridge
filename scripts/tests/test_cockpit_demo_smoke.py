@@ -441,8 +441,9 @@ def test_a_batch_of_the_work_through_overview_says_itself_in_one_toast_with_one_
     page.wait_for_selector(".pagebar-tabs [role=tab]")
     page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
     page.wait_for_selector("#main .flow-grid .flow-overview")
-    page.locator("#main .flow-ov-bar .btn-secondary").first.click()
-    page.locator("#main .flow-ov-verbs .btn-primary").click()
+    # the batch bar stands once a row is ticked: Tick the suggestions is a link in the hint line
+    page.locator("#main .flow-ov-hint .flow-ov-tick").click()
+    page.locator("#main .flow-ov-bar.is-ticked .flow-ov-verbs .btn-primary").click()
     page.wait_for_selector("#main .flow-list-confirm")
     page.locator("#main .flow-list-confirm .btn-primary").click()
     page.wait_for_selector("#main .flow-list-done")
@@ -488,7 +489,8 @@ def test_the_right_column_stays_whole_and_an_asking_point_keeps_its_tabs_in_view
     page.wait_for_selector(".pagebar-tabs [role=tab]")
     page.locator(".pagebar-tabs > [role=tab]").nth(1).click()
     page.wait_for_selector("#main .flow-grid .flow-overview .flow-ov-open")
-    page.locator("#main .flow-ov-open").first.click()
+    # a check-in stands on top and answers on its card; the demo's first point whose tab asks comes under it
+    page.locator("#main .flow-ov-open", has_text="Einstiegsanleitung").first.click()
     page.wait_for_selector("#main .flow-card .reply-btns")
     page.wait_for_timeout(200)
     bar = page.locator("#main .flow-ptabs-bar").bounding_box()

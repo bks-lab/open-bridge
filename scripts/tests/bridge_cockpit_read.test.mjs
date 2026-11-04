@@ -20,6 +20,7 @@ const tick = () => rounds()
 const until = async (ok, ms = 2000) => { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick() }
 const proto = Object.getPrototypeOf(document.createElement('div'))
 if (!proto.querySelector) proto.querySelector = function querySelector(sel) { return this.$(sel) }
+proto.focus ??= function focus() { document.activeElement = this }
 globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
 for (const k of ['offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth']) Object.defineProperty(proto, k, { get: () => 0, configurable: true })
 
@@ -215,7 +216,10 @@ test('Who works on it for a start that still runs reads its stage in words and d
   const lane = { group: 'doing', lane: true, id: 'start:task:long', kind: 'start', row: task('long'), tab: null, start: run, stage: 'working', how: 'start', title: 'x', at: run.at_ms }
   const s = flowState({ work: [task('long')], returns: [run] })
   const el = mount(html`<${views.flowside.FlowAside} x=${lane} s=${s} c=${recorder()} />`)
-  const who = el.$('[data-field=who]').text()
+  // stage 4: who and its state in a few words, the whole line on hover
+  const span = el.$('[data-field=who] dd span')
+  assert.equal(span.text(), en.flow.simple.whoBridge(en.flow.doing.stage.working))
+  const who = span.getAttribute('title')
   assert.ok(who.includes(en.flow.one.days(5)), who)
   assert.ok(!who.includes('143:'), who)
 })

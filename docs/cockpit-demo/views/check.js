@@ -133,15 +133,16 @@ export function ReviewStrip({ s, c }) {
 }
 
 /** In a task's detail: the recommendation with its reason and evidence, and what to do about it */
-export function ReviewBlock({ row, s, c }) {
+export function ReviewBlock({ row, s, c, bare = false }) {
   if (personOf(s)) return null       // a check asks a model (access.py)
   const t = T()
   const rv = row.review
   const running = !!s.model?.review?.running
   const busy = !!s.ui.busy[row.key]
   const closer = s.model?.review?.last?.escalate_ct
-  return html`<div class="sub-block review-block">
-    <h4 class="sub-title">${t.reviewTitle}</h4>
+  // `bare` without its heading, where the place names it (the field Task check of the one point view, stage 3)
+  return html`<div class=${bare ? 'review-block is-bare' : 'sub-block review-block'}>
+    ${bare ? null : html`<h4 class="sub-title">${t.reviewTitle}</h4>`}
     ${rv ? html`<div class="review-rec">
         <div class="review-head">
           <${StateLine} token=${verdictToken(rv.verdict)} strong word=${t.verdictName[rv.verdict] ?? rv.verdict} />

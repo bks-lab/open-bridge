@@ -12,7 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
-const { html, views, text } = await loadCockpit()
+const { html, views, text, logic } = await loadCockpit()
 const { ReturnCard, returnsOf } = views.home
 const { TabControls } = views.detail
 const { SessionCard } = views.sessions
@@ -2255,9 +2255,10 @@ test('next up: a small bar under a detail opened from a list: back, where you st
   const el = mount(html`<${NextUp} s=${s} c=${c} byKey=${byKey} current=${rows[1].key} />`)
   assert.ok(el.$('nav.next-up'))
   assert.equal(el.$('.next-up-pos').text(), en.nextPos(2, 5))
-  assert.equal(el.$('.next-up-title').text(), rows[2].title)
+  // a long title shortened (the demo has a long technical one, stage 4)
+  assert.equal(el.$('.next-up-title').text(), logic.short(rows[2].title, 90))
   // the two after the next one stand open below it, each a click away
-  assert.deepEqual(el.$$('.next-up-later button').map(b => b.text()), [rows[3].title, rows[4].title])
+  assert.deepEqual(el.$$('.next-up-later button').map(b => b.text()), [logic.short(rows[3].title, 80), logic.short(rows[4].title, 80)])
   el.button(en.nextOpen).click()
   assert.deepEqual(c.calls.at(-1), ['openNext', entry(rows[2])])
   el.$$('.next-up-later button')[1].click()
@@ -2640,7 +2641,7 @@ test('with cockpit.focus_to_files a focus of one step still offers the files vie
 
 test('the demo shows the work tab as the default config does, and ?work=files&focus_to_files=1&files_scope=all as the switches do', () => {
   const { mock } = loadedRooms
-  const work = st => { const { flow, views, files_search: _fs, ...rest } = st.work; return rest }
+  const work = st => { const { flow, views, files_search: _fs, person: _p, ...rest } = st.work; return rest }
   // the files tab's question to its records is on in the demo, the Health area kept private (round 6c)
   assert.deepEqual(mock.buildState(NOW).work.files_search, { enabled: true, block: ['Health'], left: 20 })
   // every view of the work tab (cockpit.work_views), ?views=files,flow narrows it
@@ -2652,6 +2653,9 @@ test('the demo shows the work tab as the default config does, and ?work=files&fo
   // the Work through page is on in the demo, ?flow=0 shows the cockpit without it
   assert.equal(mock.buildState(NOW).work.flow.enabled, true)
   assert.equal(mock.buildState(NOW, { flow: false }).work.flow.enabled, false)
+  // with it, who the cockpit belongs to (cockpit.person_name, server.py work_state), an invented name
+  assert.equal(mock.buildState(NOW).work.person, 'Mara')
+  assert.equal(mock.buildState(NOW, { flow: false }).work.person, undefined)
   // the demo lists every file, the backlog too, so ?files_scope=all has something to show
   assert.ok(mock.buildState(NOW).model.files.some(f => f.status === 'backlog'))
 })

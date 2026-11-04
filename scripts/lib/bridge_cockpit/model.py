@@ -280,6 +280,8 @@ def _base_row(**extra) -> dict:
            # the day a task's STATUS.md last changed (the task list's `updated`), and the day a deferred inbox item
            # comes back (its newest defer): what Work through reads for "last moved" and its list Later
            "updated": None, "until": None,
+           # stage 4: In progress with a check-in ({who, until, since}, collector.checkin_of), None without one
+           "checkin": None,
            # where the row comes from (origin.py classifies them): the inbox item's `from` or the task's origin, the
            # inbox item's kind, the provider and kind of the section it came from, the task or stream it is about
            "origin_raw": None, "inbox_kind": None, "origin_provider": None, "origin_section_kind": None,
@@ -710,6 +712,7 @@ def parse_tasks(out: Any) -> list[dict]:
             "brief": t.get("brief") if isinstance(t.get("brief"), dict) else None,
             "headline": as_text_or_null(t.get("headline")),
             "next_who": as_text_or_null(t.get("next_who")), "next_due": as_text_or_null(t.get("next_due")),
+            "next_check": as_text_or_null(t.get("next_check")),
             "progress": _progress(t.get("progress")),
             # the template's first step still stands in its checklist (card.py gap placeholder_next)
             "placeholder": t.get("placeholder") is True,

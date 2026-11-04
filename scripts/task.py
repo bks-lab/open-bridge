@@ -388,11 +388,22 @@ def wait_task(root: Path, slug: str, *, until: str | None = None, on: str | None
 
 # ---------------------------------------------------------------- next step
 
-def set_next(root: Path, slug: str, text: str | None = None, *, clear: bool = False, today: str | None = None) -> dict:
-    """The task's next step as ``next: {what}``, dated by last_updated and a note; clear takes it away."""
+#: who takes a next step: one line, as short as a name (bridge, me, a person)
+WHO_MAX = 60
+
+
+def set_next(root: Path, slug: str, text: str | None = None, *, clear: bool = False, today: str | None = None,
+             who: str | None = None, check: str | None = None, clear_check: bool = False) -> dict:
+    """The task's next step as ``next: {what}``, dated by last_updated and a note; clear takes it away.
+
+    `who` and `check` (stage 4 of the cockpit's one point view, In progress with a check-in): who takes the step and
+    the day the cockpit asks how it stands (``next.check``), the step itself kept (or `text` in its place), its
+    due and estimate too; `clear_check` takes the day back. A note says it, as for every next step."""
     today = today or dt.date.today().isoformat()
     path = find_status(root, slug)
     old = path.read_bytes().decode("utf-8")
+    if who is not None or check is not None or clear_check:
+        return _set_next_owner(root, path, old, slug, text, who, check, clear_check, today)
     new = remove_fields(old, ("next",))
     if clear:
         new = add_note(new, "Next step cleared", today)
@@ -411,9 +422,50 @@ def set_next(root: Path, slug: str, text: str | None = None, *, clear: bool = Fa
     return {"slug": slug, "next": what}
 
 
+def _set_next_owner(root: Path, path: Path, old: str, slug: str, text: str | None, who: str | None, check: str | None,
+                    clear_check: bool, today: str) -> dict:
+    """set_next with who and the check-in day: the next step kept whole (what, due, estimate), who and check set"""
+    fm, _ = _front_and_body(old)
+    nxt = dict(fm.get("next")) if isinstance(fm.get("next"), dict) else ({"what": fm["next"]} if isinstance(fm.get("next"), str) else {})
+    if text is not None:
+        if "\n" in text or "\r" in text or not " ".join(text.split()) or len(" ".join(text.split())) > 300:
+            raise ValueError("the next step must be one line of 1 to 300 characters")
+        nxt["what"] = " ".join(text.split())
+    if not str(nxt.get("what") or "").strip():
+        raise ValueError(f"{slug} has no next step to give someone: name the step too")
+    if who is not None:
+        raw = str(who)
+        who = " ".join(raw.split())
+        if not who or "\n" in raw or "\r" in raw or len(who) > WHO_MAX:
+            raise ValueError(f"who takes the step: one line of 1 to {WHO_MAX} characters")
+        nxt["who"] = who
+    if check is not None:
+        dt.date.fromisoformat(check)      # YYYY-MM-DD or a ValueError
+        nxt["check"] = check
+    if clear_check:
+        nxt.pop("check", None)
+    order = [k for k in ("what", "who", "due", "estimate_min", "check") if k in nxt] + [k for k in nxt if k not in
+                                                                                      ("what", "who", "due", "estimate_min", "check")]
+    parts = []
+    for k in order:
+        v = nxt[k]
+        v = v.isoformat() if isinstance(v, (dt.date, dt.datetime)) else v
+        parts.append(f"{k}: {v}" if isinstance(v, int) and not isinstance(v, bool) or (k in ("due", "check") and isinstance(v, str)
+                                                                                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v))
+                     else f"{k}: {json.dumps(str(v), ensure_ascii=False)}")
+    line = "{" + ", ".join(parts) + "}"
+    words = (f"In progress with {nxt['who']}, check-in {nxt['check']}" if nxt.get("check")
+             else f"Next step with {nxt.get('who') or 'me'}, no check-in")
+    new = add_note(set_fields(remove_fields(old, ("next",)), [("next", line, "status")]), words, today)
+    path.write_bytes(new.encode("utf-8"))
+    with contextlib.redirect_stdout(sys.stderr):
+        regenerate_board(root)
+    return {"slug": slug, "next": nxt.get("what"), "who": nxt.get("who"), "check": nxt.get("check")}
+
+
 # ---------------------------------------------------------------- brief
 
-BRIEF_ORDER = ("goal", "story", "acceptance", "by", "at", "basis", "edited")
+BRIEF_ORDER = ("name", "stand", "goal", "story", "acceptance", "by", "at", "basis", "edited")
 
 
 def brief_block(brief: dict, nl: str = "\n") -> str:
@@ -1817,6 +1869,9 @@ def main(argv=None) -> int:
     nx.add_argument("slug")
     nx.add_argument("text", nargs="?")
     nx.add_argument("--clear", action="store_true")
+    nx.add_argument("--who", help="who takes the step (bridge, me, a person); the step is kept")
+    nx.add_argument("--check", help="YYYY-MM-DD: the day the cockpit asks how the step stands (next.check)")
+    nx.add_argument("--clear-check", dest="clear_check", action="store_true", help="take the check-in day back")
     nx.add_argument("--json", action="store_true")
     nw = sub.add_parser("new", help="a new task in work/tasks/, also from an inbox item (which then closes)")
     nw.add_argument("slug", nargs="?")
@@ -1887,7 +1942,9 @@ def main(argv=None) -> int:
         if args.cmd == "next":
             if args.clear and args.text is not None:
                 raise ValueError("a step or --clear, not both")
-            out = set_next(root, args.slug, args.text, clear=args.clear)
+            if args.clear and (args.who is not None or args.check or args.clear_check):
+                raise ValueError("--clear takes the whole step away: no --who, --check or --clear-check beside it")
+            out = set_next(root, args.slug, args.text, clear=args.clear, who=args.who, check=args.check, clear_check=args.clear_check)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']}: next step cleared" if args.clear else f"{out['slug']}: next {out['next']}"))
             return 0

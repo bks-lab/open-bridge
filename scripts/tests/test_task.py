@@ -977,3 +977,28 @@ def test_a_task_closed_as_merged_fits_the_status_schema(repo):
     bad = {**front, "merged_into": "Not A Slug"}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(bad, schema)
+
+
+def test_next_who_and_check_put_a_task_in_progress_with_someone_and_keep_its_step(repo):
+    # stage 4 of the cockpit's one point view: In progress with a person and a check-in day (next.who, next.check)
+    import datetime
+    import yaml
+    today = datetime.date.today().isoformat()
+    p = repo / "work/tasks/alpha/STATUS.md"
+    p.write_text(STATUS.replace("status: doing\n", "status: doing\nnext: {what: Send the draft, who: me, due: 2026-11-20}\n", 1),
+                 encoding="utf-8")
+    r = run(repo, "next", "alpha", "--who", "lena", "--check", "2026-11-11", "--json")
+    assert r.returncode == 0, r.stderr
+    front = yaml.safe_load(p.read_text(encoding="utf-8").split("---\n")[1])
+    assert front["next"] == {"what": "Send the draft", "who": "lena", "due": datetime.date(2026, 11, 20), "check": datetime.date(2026, 11, 11)}
+    assert f"- {today}: In progress with lena, check-in 2026-11-11" in p.read_text(encoding="utf-8")
+    # the check-in taken back: the step stays, who goes back to the owner
+    assert run(repo, "next", "alpha", "--who", "me", "--clear-check").returncode == 0
+    front = yaml.safe_load(p.read_text(encoding="utf-8").split("---\n")[1])
+    assert front["next"] == {"what": "Send the draft", "who": "me", "due": datetime.date(2026, 11, 20)}
+    # a task without a step takes a check-in with a step of its own words; a bad day or who is refused
+    assert run(repo, "next", "river", "--who", "lena", "--check", "2026-11-11").returncode == 1, "no step to keep"
+    assert run(repo, "next", "river", "Ask the vendor", "--who", "lena", "--check", "2026-11-11").returncode == 0
+    assert yaml.safe_load((repo / "work/streams/river/STATUS.md").read_text(encoding="utf-8").split("---\n")[1])["next"]["who"] == "lena"
+    for bad in (("next", "alpha", "--check", "11.11.2026"), ("next", "alpha", "--who", "a\nb"), ("next", "alpha", "--who", "x" * 61)):
+        assert run(repo, *bad).returncode == 1, bad

@@ -989,13 +989,6 @@ def _topic(text, limit: int = 40) -> str:
     return head if TOPIC_MIN <= len(head) <= limit else _short(text, limit)
 
 
-def _about(topic, step) -> str:
-    """A step with what it belongs to: "Approve in daily use" alone says nothing, on a list of unrelated rows."""
-    step = " ".join(str(step or "").split())
-    name = _topic(topic)
-    return step if not name or step.lower().startswith(name.lower()) else f"{name}: {step}"
-
-
 def _plain_stamps(title, now: dt.datetime, labels: dict) -> str:
     """A machine's `2026-11-02 16:30` in a title, the way a person says it: "tomorrow 16:30"."""
     return STAMP.sub(lambda m: _fmt_when(f"{m[1]}T{m[2]}", now, labels), str(title or ""))
@@ -1260,7 +1253,9 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 elif isinstance(nxt, dict) and nxt.get("what"):
                     who = str(nxt.get("who") or "me").lower()
                     due = _when(nxt.get("due"))
-                    why = []
+                    # the row is named by its task (its H1) and says its step apart: a name glued to a step stood
+                    # twice on the cockpit's card and cut the topic at its first colon (#605, undone in stage 4)
+                    why = [labels["next_step"].format(what=_short(nxt["what"], 80))]
                     if nxt.get("due"):
                         why.append(labels["due"].format(when=_fmt_when(nxt["due"], now, labels)))
                     extra = {"task": iid, "due": nxt.get("due"), "priority": item.get("priority"), "origin_raw": item.get("origin")}
@@ -1276,7 +1271,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                                labels["waiting_days"].format(n=age) if age is not None else ""] + why
                         extra["nudge"] = age is not None and age >= nudge_days
                     # your own next step outranks a card nobody has looked at (OWN_RANK)
-                    add(f"task:{iid}", row(sid, item, forced or bucket, _about(item.get("title"), nxt["what"]), why,
+                    add(f"task:{iid}", row(sid, item, forced or bucket, item.get("title"), why,
                                            1 if bucket == "do" else 3, step=nxt["what"], **extra))
                 else:
                     out["no_next"].append(iid)

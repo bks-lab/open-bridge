@@ -22,7 +22,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { dropReasonWord, errorText, flowSettings, formatDay, INSTRUCT_MAX, instructCalls, instructWhy, personOf, pointContext, short } from '../logic.js'
+import { dropReasonWord, errorText, flowSettings, formatDay, INSTRUCT_MAX, instructCalls, instructWhy, personOf, pointContext, pointName, rowName, short } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { Btn } from './parts.js'
@@ -40,8 +40,10 @@ function stepWord(st, f, lang) {
  *  logic.js instructCalls, and the server's); a point not among them says only why */
 function StepPoints({ st, k, skipped, s, f }) {
   const mine = skipped.filter(x => x.step === k)
-  const points = [...(st.keys ?? []).map((key, i) => ({ key, title: st.titles?.[i] ?? mine.find(x => x.key === key)?.title ?? key,
-    why: mine.find(x => x.key === key)?.why ?? null })), ...(st.skipped ?? []).map(x => ({ key: x.key, title: x.title, why: instructWhy(st, x, s) }))]
+  // the server words a point by its raw title: the page names it as every view does (logic.js rowName)
+  const name = (key, title) => (key ? rowName(s, key) : null) ?? title
+  const points = [...(st.keys ?? []).map((key, i) => ({ key, title: name(key, st.titles?.[i] ?? mine.find(x => x.key === key)?.title ?? key),
+    why: mine.find(x => x.key === key)?.why ?? null })), ...(st.skipped ?? []).map(x => ({ key: x.key, title: name(x.key, x.title), why: instructWhy(st, x, s) }))]
   if (!points.length) return null
   return html`: ${points.map((p, i) => html`<span key=${`${p.key}${i}`} class="flow-instruct-pt">${i ? ', ' : ''}${!p.why ? short(p.title || p.key, 70)
     : html`${p.title || p.key ? html`<del>${short(p.title || p.key, 70)}</del> ` : null}<span class="flow-instruct-skip muted small">(${f.skipped[p.why] ?? p.why})</span>`}</span>`)}`
@@ -120,7 +122,7 @@ function AskLine({ x, s, c }) {
     const r = await c.flowAsk(v, pointContext(x, s, own ? detail : null, item, language()), task, row.key)
     if (r?.ok) { setText(''); if (box.current) box.current.style.height = 'auto' } else if (r?.error) setErr(errorText(r.error, t))
   }
-  return html`<p class="flow-instruct-scope muted small">${t.flow.instruct.point(short(row.title ?? row.key, 80))}</p>
+  return html`<p class="flow-instruct-scope muted small">${t.flow.instruct.point(short(pointName(row) || row.key, 80))}</p>
     <form class="flow-instruct-row" onSubmit=${e => { e.preventDefault(); send() }}>
       <label class="sr-only" for="flow-ask-text">${f.label}</label>
       <textarea id="flow-ask-text" ref=${box} class="input textarea flow-instruct-text" rows="1" maxlength="4000" placeholder=${f.placeholder}

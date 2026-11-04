@@ -326,13 +326,16 @@ class Item:
 
     @property
     def deferral(self) -> dict | None:
-        """The defer in force: {"until", "on"}. `on` is what it waits on ("runs on": a person, a run);
-        a plain "later" has none. A yes or a reopen takes a defer back, as in `state`."""
+        """The defer in force: {"until", "on", "check"}. `on` is what it waits on ("runs on": a person, a run);
+        a plain "later" has none. `check` marks a check-in (the cockpit's In progress: with `on` until the day,
+        which then asks how it stands rather than coming back as a plain later). A yes or a reopen takes a defer
+        back, as in `state`."""
         current = None
         for e in self.events:
             if e.verb == "defer":
                 # stored as waits_on: a bare `on` key is a boolean to YAML 1.1 readers (the first events wrote it)
-                current = {"until": e.data.get("until"), "on": e.data.get("waits_on") or e.data.get("on")}
+                current = {"until": e.data.get("until"), "on": e.data.get("waits_on") or e.data.get("on"),
+                           "check": e.data.get("check") is True}
             elif e.verb in ("approve", "reopen") or e.verb in TERMINAL:
                 current = None
         return current
@@ -412,6 +415,54 @@ def source_key(source) -> str:
 
 def _warn(text: str) -> None:
     print(f"inbox: {text}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------- a title a person reads (stage 4 of the cockpit)
+
+#: a title longer than this is a sentence, not a name a list can show
+TITLE_LINT_MAX = 80
+_PATH_RE = re.compile(r"(?:^|\s)(?:~|\.{0,2})/\S|\b[A-Za-z]:\\")
+_FILE_RE = re.compile(r"\b[\w-]+\.(?:md|py|js|mjs|ts|json|ya?ml|sh|txt|html?|css|toml|log|csv|pdf|plist)\b", re.I)
+_ID_RE = re.compile(r"\b\d{8}-\d{4}\b|\b[0-9a-f]{12,}\b|\b[a-z]+(?:-[a-z0-9]+){3,}\b")
+#: everyday English words that do not occur in German text: two of them in a German Bridge's title is English
+_ENGLISH = {"the", "and", "with", "for", "of", "to", "is", "are", "check", "update", "fix", "run", "please", "from", "this",
+            "that", "should", "needs", "waiting", "failed", "after", "before", "again"}
+
+
+def title_lint(summary: str, language: str | None) -> list[str]:
+    """What makes a title hard to read in a list, each as one line that says what to change: over TITLE_LINT_MAX
+    characters, a path, a file name, an id-like token (an inbox id, a hash, a slug of four parts), or English words
+    where the Bridge's language is German. Only words: `add` warns and files the item all the same"""
+    text = " ".join(str(summary or "").split())
+    out = []
+    if len(text) > TITLE_LINT_MAX:
+        out.append(f"title: {len(text)} characters, at most {TITLE_LINT_MAX}: say what it is in a few words, the rest goes in --detail")
+    if _PATH_RE.search(text):
+        out.append("title: names a path: say what it is about, the path goes in --detail")
+    if _FILE_RE.search(text):
+        out.append("title: names a file: say what it is about, the file name goes in --detail")
+    if _ID_RE.search(text):
+        out.append("title: carries an id-like token: name the thing in words, the id goes in --detail or --key")
+    if str(language or "").lower().startswith("de"):
+        words = [w.lower() for w in re.findall(r"[A-Za-z]+", text)]
+        if sum(w in _ENGLISH for w in words) >= 2:
+            out.append("title: reads English, the Bridge speaks German: write the title in German")
+    return out
+
+
+def _language(root: Path) -> str | None:
+    """The Bridge's language as the cockpit reads it: cockpit.language, else language.conversation"""
+    path = root / "bridge-config.yaml"
+    try:
+        data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    own = (data.get("cockpit") or {}).get("language") if isinstance(data.get("cockpit"), dict) else None
+    conv = data.get("language")
+    conv = conv.get("conversation") if isinstance(conv, dict) else conv
+    return next((v for v in (own, conv) if isinstance(v, str) and v), None)
 
 
 _NO_TIME = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
@@ -1038,6 +1089,8 @@ def build_parser() -> argparse.ArgumentParser:
     df.add_argument("id")
     df.add_argument("--until", required=True, help="YYYY-MM-DD")
     df.add_argument("--on", default=None, help="what it waits on (\"runs on\"): a person or a run; quiet until then")
+    df.add_argument("--check", action="store_true",
+                    help="a check-in (the cockpit's In progress): with --on until the day, which then asks how it stands")
     ur = sub.add_parser("urgency", help="re-prioritise an open item")
     ur.add_argument("id")
     ur.add_argument("value", choices=URGENCIES)
@@ -1199,6 +1252,9 @@ def main(argv=None) -> int:
             box.event(item.id, "seen", summary=args.summary)
             print(f"quiet {item.id} {closed.by} {closed.at}")
         elif args.cmd == "add":
+            # a title a person reads in a list (stage 4): warned about, never refused
+            for line in title_lint(args.summary, _language(args.root)):
+                _warn(line)
             try:
                 args.area = area_name(args.root, args.area)
             except ValueError as exc:
@@ -1266,7 +1322,11 @@ def main(argv=None) -> int:
             (args.root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")
         elif args.cmd == "defer":
             dt.date.fromisoformat(args.until)
-            box.event(box.resolve(args.id), "defer", until=args.until, **({"waits_on": args.on} if args.on else {}))
+            if args.check and not args.on:
+                print("inbox: a check-in names who has it: --check needs --on", file=sys.stderr)
+                return 2
+            box.event(box.resolve(args.id), "defer", until=args.until, **({"waits_on": args.on} if args.on else {}),
+                      **({"check": True} if args.check else {}))
         elif args.cmd == "urgency":
             box.set_urgency(box.resolve(args.id), args.value)
             (args.root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")

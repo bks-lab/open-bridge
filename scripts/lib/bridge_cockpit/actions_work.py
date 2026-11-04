@@ -225,6 +225,92 @@ class WorkVerbs:
                 self.hide_until(ctx, row, until)
         self.app.collector.request("both")
 
+    def v_work_on(self, ctx: Ctx, key: str, who: str, until: str, text: str | None = None) -> None:
+        """In progress with someone until a check-in day (stage 4 of the one point view): an inbox item is put off
+        with who has it and the check-in marker (inbox.py defer --on --check), a task's step goes to them with the day
+        (task.py next --who --check, the step kept), any other row is hidden until the day; the sentence (What runs?)
+        as a note. On the day the point comes back and asks how it stands. Each can be taken back."""
+        who = " ".join(str(who or "").split())
+        if not who or "\n" in str(who) or len(who) > 60:
+            raise bad_arg("who", "one line of 1 to 60 characters: who has it")
+        found = self.entry(key)
+        row = found["row"]
+        words = self.tx["work_on_note"].format(who=who, until=until) + (f": {text}" if text else "")
+        if row.get("inbox_id"):
+            item = self.inbox_id(row)
+            if not self.write_note(ctx, row, words):
+                return
+            run = ctx.call("inbox.defer", item, self.inbox("defer", item, "--until", until, "--on", who, "--check"), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+            ctx.history.append(history_item(row["key"], row["title"], "inbox", f"in progress with {who} until {until}", item))
+            self.settle(ctx, row, self.tx["work_on_back"].format(who=who, until=until))
+            return
+        if row.get("task"):
+            slug = self.slug(row)
+            run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--who", who, "--check", until, "--json"), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+            if text:
+                self.write_note(ctx, row, words)
+            # who had the step before: the undo gives it back (the card's next.who, else the owner)
+            old_who = (((found.get("out") or {}).get("card") or {}).get("next") or {}).get("who")
+            ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
+                                "did": f"in progress with {who} until {until}", "ident": slug, "undone_ms": None,
+                                "work_kind": "stream" if row.get("stream") else "task",
+                                "undo": {"verb": "task_next", "args": {"slug": slug, "who": old_who or "me",
+                                                                       "clear_check": True}}})
+            ctx.note(self.tx["work_on_back"].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
+            ctx.delta()
+            self.app.collector.request("both")
+            return
+        self.write_note(ctx, row, words)
+        self.hide_until(ctx, row, until)
+
+    def v_task_next(self, ctx: Ctx, slug: str, who: str | None = None, check: str | None = None,
+                    clear_check: bool = False) -> None:
+        """Who takes a task's step and its check-in day (task.py next --who --check / --clear-check), the step kept:
+        the undo of In progress, and the check-in's answers on a task"""
+        if who is None and check is None and not clear_check:
+            raise bad_arg("who", "give who, a check-in day or clear_check")
+        argv = self.task_cmd("next", slug, *(["--who", who] if who else []), *(["--check", check] if check else []),
+                             *(["--clear-check"] if clear_check else []), "--json")
+        run = ctx.call("task.next", slug, argv, SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
+            return
+        if getattr(self.app, "history", None) is not None:
+            self.app.history.mark_undone("task_next", slug)
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def v_checkin_stuck(self, ctx: Ctx, key: str, text: str | None = None) -> None:
+        """Stuck, an answer on a check-in (stage 4): the check-in ends and the point needs the owner again, with the
+        person's reason as a note. An inbox item opens again (inbox.py reopen takes its defer back), a task's step
+        comes back to its owner without a day (task.py next --who me --clear-check)."""
+        row = self.entry(key)["row"]
+        words = self.tx["stuck_note"].format(text=text) if text else self.tx["stuck_plain"]
+        if row.get("inbox_id"):
+            item = self.inbox_id(row)
+            run = ctx.call("inbox.reopen", item, self.inbox("reopen", item, "--note", words), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+        elif row.get("task"):
+            slug = self.slug(row)
+            run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--who", "me", "--clear-check", "--json"), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+            self.write_note(ctx, row, words)
+        else:
+            self.write_note(ctx, row, words)
+        ctx.note(words + f": {m.short(row['title'], 60)}", go=row_go(row))
+        ctx.delta()
+        self.app.collector.request("both")
+
     def v_task_running(self, ctx: Ctx, slug: str) -> None:
         """A task that ran on is worked on again: blocked_by and quiet_until go (task.py wait --clear)."""
         run = ctx.call("task.wait", slug, self.task_cmd("wait", slug, "--clear", "--json"), SHORT_TIMEOUT)

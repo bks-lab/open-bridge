@@ -57,7 +57,8 @@ SELF_VERBS = frozenset({"person_settings", "ask_engine"})     # about people, no
 PERSON_LANGUAGES = ("de", "en")
 PERSON_THEMES = ("auto", "light", "dark")
 OWNER_VERBS = frozenset("""
-    a2a_ask a2a_forget a2a_poll account_status adopt advise approve_all area ask_via_tab chat_remind chat_tab
+    a2a_ask a2a_forget a2a_poll account_status adopt advise approve_all area ask_via_tab chat_remind chat_tab checkin_stuck
+    task_next work_on
     collect_context describe_apply describe_discard describe_run do_it explain_note files_ask finding_ack
     finding_unack flow_activity_summary flow_attach flow_instruct flow_merge flow_theme_move flow_theme_new
     flow_theme_rename flow_themes_run github_board github_board_default guide_read guide_settings
@@ -118,7 +119,7 @@ ROW_FIELDS = frozenset({
     "key", "bucket", "section", "number", "title", "why", "sources", "inbox_id", "gate", "task", "ref", "priority", "urgency",
     "area", "area_names", "task_type", "due", "has_action", "inbox_state", "mark", "is_new", "is_changed",
     "closable", "stream", "settle", "status", "next", "origin", "work_kind", "about_kind", "inbox_kind", "art", "updated",
-    "until", "card",
+    "until", "card", "checkin",
     # what a task row and a file row carry beside these
     "slug", "label", "age", "stale", "type", "kind", "blocked_by", "path_kind"})
 ROW_NEUTRAL: dict[str, Any] = {"url": None, "link": None, "inbox_key": None, "tab": None, "actions": [], "starting": False,

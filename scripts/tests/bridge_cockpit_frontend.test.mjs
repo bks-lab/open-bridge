@@ -3771,6 +3771,8 @@ test('the style files: every class selector is used by the page, or built from a
     'term-': ['user', 'claude', 'tool', 'frame', 'plain', 'gap', 'rule', 'work', 'hint', 'add', 'del', 'mark', 'path', 'url', 'ok', 'bad'],
     // a suggestion of the list of Work through, by its verb (views/flowlist.js)
     'flow-sug-': ['done', 'drop', 'later', 'do', 'you'],
+    // who takes a next step, as a chip by its kind (views/parts.js WhoChip, logic.js whoKind; stage 4)
+    'flow-who-': ['me', 'bridge', 'person'],
   }
   for (const p of Object.keys(DYNAMIC)) assert.ok(src.includes(`${p}\${`), `allowed prefix ${p} is built nowhere any more`)
   const built = c => Object.entries(DYNAMIC).some(([p, ok]) => c.startsWith(p) && (ok === null || ok.includes(c.slice(p.length))))

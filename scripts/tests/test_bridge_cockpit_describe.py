@@ -30,8 +30,9 @@ GOAL = "Ship the demo so the team can try it on Friday"
 CRITERIA = ["The demo opens without an error", "Two colleagues tried it and said so"]
 
 
-def answer(goal=GOAL, acceptance=CRITERIA, story=None, used=HAIKU, cost=0.0021, structured=True):
-    brief = {"goal": goal, "acceptance": acceptance, "story": story}
+def answer(goal=GOAL, acceptance=CRITERIA, story=None, used=HAIKU, cost=0.0021, structured=True, name=None, stand=None):
+    brief = {"goal": goal, "acceptance": acceptance, "story": story,
+             **({"name": name} if name is not None else {}), **({"stand": stand} if stand is not None else {})}
     out = {"type": "result", "subtype": "success", "is_error": False, "total_cost_usd": cost,
            "modelUsage": {used: {"costUSD": cost}} if used else {}}
     if structured:
@@ -845,7 +846,8 @@ def test_an_ai_brief_from_an_older_prompt_is_stale_and_rewritten_an_edited_one_n
         path.write_text(json.dumps(data), encoding="utf-8")
         state = w.app.describe.state_for("task:demo-task")
         assert state["stale"] is True and state["stale_why"] == "prompt"
-        w.runner.handlers["claude.p"] = lambda argv: answer(goal="The demo is shipped and tried")
+        w.runner.handlers["claude.p"] = lambda argv: answer(goal="The demo is shipped and tried", name="Demo for the team",
+                                                            stand="The demo is shipped and two colleagues tried it.")
         n = len(calls_for(w))
         w.app.describe.pass_once()
         assert len(calls_for(w)) == n + 1 and brief_of(w)["goal"] == "The demo is shipped and tried"
@@ -923,3 +925,43 @@ def test_the_words_of_describe_live_in_text_py():
     assert set(TABLES["de"]["describe"]) == set(TABLES["en"]["describe"])
     src = Path(ds.__file__).read_text(encoding="utf-8")
     assert not [line for line in src.splitlines() if any(ch in line for ch in "äöüÄÖÜß")]
+
+
+# ---------------------------------------------------------------- a name and where it stands (stage 4 of the cockpit)
+
+def test_the_answer_asks_for_a_name_and_where_it_stands_and_both_reach_the_brief():
+    schema = json.loads(dsc.SCHEMA)
+    assert {"name", "stand"} <= set(schema["required"])
+    assert schema["properties"]["name"]["maxLength"] == 60 and schema["properties"]["stand"]["maxLength"] == 140
+    system, _ = dsc.prompt({"kind": "task", "data": "{}"}, "German")
+    assert "name:" in system and "stand:" in system and "Never ids" in system
+    got = dsc.parse(answer(name="Demo for the team", stand="The demo runs, two colleagues have not tried it yet.").out,
+                    ITEM, HAIKU, "2026-10-25")
+    assert got["brief"]["name"] == "Demo for the team" and got["brief"]["stand"].startswith("The demo runs")
+    # a name the gate refuses is left out, the brief stays
+    bad = dsc.parse(answer(name="Fix acme/app#7 now").out, ITEM, HAIKU, "2026-10-25")
+    assert "name" not in bad["brief"] and any(e.startswith("name:") for e in bad["errors"])
+
+
+def test_the_prompt_of_stage_4_makes_the_older_briefs_stale_and_a_brief_hash_without_a_name_stays_as_it_was():
+    assert dsc.PROMPT_VERSION == 3
+    brief = {"goal": GOAL, "acceptance": CRITERIA}
+    text = json.dumps({k: brief.get(k) for k in ("goal", "story", "acceptance")}, sort_keys=True, ensure_ascii=False)
+    import hashlib
+    assert dsc.brief_sha(brief) == hashlib.sha256(text.encode("utf-8")).hexdigest()[:16], "no brief looks hand edited"
+    assert dsc.brief_sha({**brief, "name": "Demo"}) != dsc.brief_sha(brief), "a changed name is a hand edit"
+
+
+def test_a_persons_brief_without_a_name_gets_one_proposal_for_it(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        w.act("describe_run", key="task:demo-task")
+        item = w.app.describe.item("task:demo-task")
+        entry = w.app.describe.entry("task:demo-task")
+        assert "name" not in (item.get("brief") or {})
+        # a person's brief (edited): stale only for its missing name and stand, so the pass proposes once
+        assert w.app.describe.stale_why({**item, "edited": True}, entry) == "fields"
+        assert w.app.describe.stale_why({**item, "edited": True, "brief": {**item["brief"], "name": "Demo", "stand": "It runs."}},
+                                        entry) is None
+    finally:
+        w.close()
