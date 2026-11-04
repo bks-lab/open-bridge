@@ -487,3 +487,22 @@ test('the Files tab with Work through on: a record opens in the one point view, 
   assert.ok(card.$('.dz-cover'))
   assert.equal(card.$('.flow-main .flow-ptabs'), null)
 })
+
+test('a tab that asks about a row: the card is titled by the point opened, the tab named in the line under it', () => {
+  const t = task('guide', { title: 'Write the setup guide' })
+  const tab = { ref: 'surface:9', name: 'guide research', slug: 'guide', state: 'needs-you', since_ms: NOW - MIN, ask: { text: 'Shall I go on?' } }
+  const el = mount(html`<${FlowPage} s=${flowState({ work: [t], tabs: [tab], ui: { flowView: 'point', flowAt: { id: 'tab:surface:9', i: 0 } } })} c=${recorder()} />`)
+  assert.equal(el.$('.flow-card .fx-title').text().trim(), 'Write the setup guide')
+  assert.equal(el.$('.flow-card .fx-sub').text(), en.flow.one.tabAsks('guide research'))
+  assert.match(el.$('.flow-card').text(), /Shall I go on\?/)
+  assert.match(el.$('.dz-walk')?.text() ?? 'Write the setup guide', /Write the setup guide|1 of/)
+  // the Files tab opens the same point under the same title
+  const s = flowState({ work: [t], tabs: [tab], ui: { page: '@files', dossierOpen: 'guide' } })
+  const files = mount(html`<${DossierView} s=${s} c=${recorder()} />`)
+  assert.equal(files.$('.flow-card .fx-title').text().trim(), 'Write the setup guide')
+  // a tab with no row behind it is the point: its name is the title
+  const alone = { ...tab, slug: null, ref: 'surface:8', name: 'loose' }
+  const el2 = mount(html`<${FlowPage} s=${flowState({ tabs: [alone], ui: { flowView: 'point', flowAt: { id: 'tab:surface:8', i: 0 } } })} c=${recorder()} />`)
+  assert.equal(el2.$('.flow-card .fx-title').text().trim(), 'loose')
+  assert.equal(de.flow.one.tabAsks('x'), 'Tab x fragt')
+})

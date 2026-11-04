@@ -7,7 +7,8 @@
 // rule is logic.js pointViewOn; without Work through the Files tab keeps its file card). On top the way back (Back to
 // overview, To the list, Close the record) with where it was opened from, then the card, held by its id: its kind in
 // its head (the state, the only place it stands) with the kind of row and Pin at the end of the head (the start page's
-// pins, c.pin), its title, its task or the headline of its file as the line under it, its next step with who takes it
+// pins, c.pin), its title (always the title of the point opened: a tab that asks about a row names itself in the line
+// under it, Tab x asks), its task or the headline of its file as the line under it, its next step with who takes it
 // as a tinted box (card.py next, else STATUS.md's next:), what its tab asks with one set of answers, a start's result,
 // the live tab's screen. Under it the tabs of the point (views/flowtabs.js PointTabs), at the foot the instruction line
 // with Instruct or Ask (views/flowinstruct.js) over the walk bar (views/dossier.js Walk). The right column beside it is
@@ -24,6 +25,7 @@ import {
   stageTone, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { titleOf } from './card.js'
 import { KindTag } from './day.js'
 import { Walk } from './dossier.js'
 import { InstructLine } from './flowinstruct.js'
@@ -39,12 +41,13 @@ const SCREEN_LINES = 12
 /** The last lines of a tab's screen, the way they stood */
 const tailLines = (text, n = SCREEN_LINES) => String(text ?? '').split('\n').map(previewText).filter(Boolean).slice(-n)
 
-/** A card's title in the walk bar and the strip under it */
+/** A card's title in the walk bar and the strip under it: the title of the point opened, a tab's name only for a tab
+ *  with no row behind it */
 function cardTitle(x) {
   const f = T().flow
   if (x.kind === 'back') return f.back(x.jump.title)
   if (x.kind === 'start') return x.start.title
-  if (x.kind === 'tab') return x.tab.name
+  if (x.kind === 'tab') return x.row ? titleOf(x.row) : x.tab.name
   if (x.kind === 'reports') return f.reports(x.rows.length)
   return x.row.title
 }
@@ -227,9 +230,14 @@ export function PointCard({ x, n = 1, s, c }) {
   if (x.kind === 'start') return html`<${StartCard} x=${x} s=${s} c=${c} />`
   if (x.kind === 'reports') return html`<${ReportsCard} x=${x} s=${s} c=${c} />`
   if (x.kind === 'tab') {
+    // the card says the point that was opened: the title of its row, the tab's name as a line under it (Tab x asks)
+    // with its question; a tab with no row behind it is the point, so its name is the title
+    const question = x.tab.ask?.text ? short(x.tab.ask.text.split('\n').find(Boolean), 200) : null
+    const asking = !(x.tab.state === 'waiting' && !asksSomething(x.tab.ask))
     return html`<${Hero} x=${{ kind: 'tab', id: x.tab.ref, tab: x.tab }} n=${n} tabOf=${() => null} s=${s} c=${c} kindWord=${cardKind(x)} openable=${false}
       foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${x.row ? html`<${HeadEnd} row=${x.row} s=${s} c=${c} />` : null}
-      sub=${x.tab.ask?.text ? short(x.tab.ask.text.split('\n').find(Boolean), 200) : null}>
+      title=${x.row ? titleOf(x.row) : null} sub=${x.row ? (asking ? f.one.tabAsks(x.tab.name) : f.one.tabWaits(x.tab.name)) : question}
+      lead=${x.row && question ? html`<p class="flow-ask">${question}</p>` : null}>
       <${AskBlock} tab=${x.tab} s=${s} c=${c} />
     <//>`
   }
