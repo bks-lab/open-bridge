@@ -64,8 +64,16 @@ trust: "public"
 # wrapper), never in this file; the loader refuses a raw `token:` key, a missing or
 # a token under 32 characters. tailscale_login additionally binds a token to the
 # identity `tailscale serve` asserts, so a copied token alone is not enough.
+# connector_token_env (optional) is ONE token for the local A2A connector instead of
+# one per peer: the connector names the asker in the X-A2A-Sender header (a plain id,
+# a-z 0-9 . _ -), which is read only behind a valid token. A new peer then needs only
+# its folder under access.peers_dir, no token and no entry here. peers may stay empty;
+# peer tokens and tailscale_login work beside it. Accepted only when the agent binds
+# to 127.0.0.1 or ::1 (the start fails otherwise, there is no override). A sender
+# without a folder is answered REJECTED.
 # auth:
 #   mode: bearer
+#   connector_token_env: AGENT_CONNECTOR_TOKEN
 #   peers:
 #     - id: <peer-name>
 #       token_env: AGENT_PEER_TOKEN_<PEER>

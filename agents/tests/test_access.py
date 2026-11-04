@@ -270,7 +270,7 @@ def test_a_peer_whose_folder_vanished_gets_nothing(make_client, tmp_path):
         f.unlink()
     (cfg.access.peers_dir / "bob").rmdir()
     task = _ask(client, BOB)
-    assert task["status"]["state"] == "TASK_STATE_FAILED"
+    assert task["status"]["state"] == "TASK_STATE_REJECTED"
     assert _FakeRunner.scopes == []
 
 

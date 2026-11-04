@@ -36,6 +36,18 @@ REQUEST_SKILLS = (
 )
 
 
+def _token_description(cfg) -> str:
+    if cfg.auth.connector_token:
+        text = (
+            "Token of the local A2A connector of this Bridge; the connector names the "
+            "asker in the X-A2A-Sender header."
+        )
+        if cfg.auth.peers:
+            text += " Direct callers use the per-peer token issued by the operator of this Bridge."
+        return text
+    return "Per-peer token issued by the operator of this Bridge."
+
+
 def build_agent_card(cfg: AgentConfig) -> AgentCard:
     skills = [
         AgentSkill(
@@ -71,7 +83,7 @@ def build_agent_card(cfg: AgentConfig) -> AgentCard:
         security_schemes["bearer"] = SecurityScheme(
             http_auth_security_scheme=HTTPAuthSecurityScheme(
                 scheme="Bearer",
-                description="Per-peer token issued by the operator of this Bridge.",
+                description=_token_description(cfg),
             )
         )
         security_requirements.append(SecurityRequirement(schemes={"bearer": StringList()}))

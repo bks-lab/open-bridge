@@ -262,7 +262,7 @@ class ClaudeAgentExecutor(AgentExecutor):
             if scope is None:
                 # No folder for this peer: nothing to read, and no shared fallback.
                 logger.warning("executor: no folder for peer", extra={"task_id": task.id, "peer": peer})
-                await updater.failed(
+                await updater.reject(
                     message=updater.new_agent_message([new_text_part(self._msg["no_folder"])])
                 )
                 return

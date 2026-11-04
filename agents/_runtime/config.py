@@ -20,7 +20,7 @@ import yaml
 
 from .access import AccessConfig, parse_access
 from .approval import ApprovalConfig, parse_approval
-from .auth import AuthConfig, parse_auth
+from .auth import AuthConfig, check_connector_loopback, parse_auth
 from .policy import RequestsConfig, parse_requests
 
 logger = logging.getLogger(__name__)
@@ -210,6 +210,7 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
         )
 
     auth = parse_auth(instance, spec.get("auth"))
+    check_connector_loopback(instance, auth, host)
     if trust == "peer" and not auth.enabled:
         raise ValueError(
             f"agent '{instance}': trust: peer needs an auth: block (mode: bearer); "

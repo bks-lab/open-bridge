@@ -59,7 +59,9 @@ Between the two sits `trust: peer`, for another person's Bridge asking yours: th
 caller is known but not trusted with your repo. It keeps the outer face's hardening
 (cwd = a curated share folder, strict tools) and adds authentication: an `auth:`
 block with one bearer token per peer, optionally bound to a network identity asserted
-by a local proxy (`Tailscale-User-Login` from `tailscale serve`). The JSON-RPC
+by a local proxy (`Tailscale-User-Login` from `tailscale serve`). Alternatively one
+`connector_token_env` token serves the local A2A connector, which names the asker in
+`X-A2A-Sender` (loopback bind only); a new peer then needs only its folder. The JSON-RPC
 endpoint refuses every other caller (401, or 403 when a valid token arrives from the
 wrong identity), the card declares the scheme, and the loader refuses to start a
 `peer` agent without the block or with a token it cannot find. The seam is

@@ -34,7 +34,7 @@ from a2a.utils.errors import JSON_RPC_ERROR_CODE_MAP, VersionNotSupportedError
 
 from .access import GrantCommand, Scopes
 from .approval import CommandApprover
-from .auth import PeerAuthBackend, on_auth_error, require_peer
+from .auth import PeerAuthBackend, check_connector_loopback, on_auth_error, require_peer
 from .card import build_agent_card
 from .config import AgentConfig, compose_inline_grounding, load_agent_config
 from .executor import ClaudeAgentExecutor
@@ -162,6 +162,9 @@ def build_app(cfg: AgentConfig) -> Starlette:
                 "transcript": transcript_status(),
             }
         )
+
+    # --host can move the bind after the config loaded; the check follows it.
+    check_connector_loopback(cfg.instance, cfg.auth, cfg.host)
 
     rpc_routes = [
         _with_spec_error_codes(r)
