@@ -263,6 +263,7 @@ python3 scripts/inbox.py describe <id> --brief-json '{"goal": "..."}' | --clear 
 python3 scripts/inbox.py note <id> "Sam will answer on Monday"
 python3 scripts/inbox.py wait <id> --for-json '{...}'           # asks nobody until the probe holds
 python3 scripts/inbox.py check                             # close what is done, open what waited and now holds
+python3 scripts/inbox.py probe --json '{"gh_issue": "org/repo#12", "state": "closed"}'   # one probe, read only
 python3 scripts/inbox.py run [--dry-run]                   # execute what a person released
 python3 scripts/inbox.py render                            # regenerate work/inbox.md
 python3 scripts/inbox.py validate                          # structure of items and events
