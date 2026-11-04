@@ -136,16 +136,15 @@ function SessionTask({ x, s, c }) {
   </span>`
 }
 
-/** A task's sessions: the live ones lead to their tab, an ended one goes on in a new tab (claude --resume) */
-export function TaskSessions({ row, s, c }) {
+/** A task's sessions: the live ones lead to their tab, an ended one goes on in a new tab (claude --resume). `bare`
+ *  without its block and heading, where the place names them (the Related tab of the one point view, stage 3) */
+export function TaskSessions({ row, s, c, bare = false }) {
   const t = T()
   if (!row.task) return null
   const links = (s.sessions?.links ?? []).filter(l => l.task === row.task)
   if (!links.length) return null
   const live = new Map((s.sessions?.sessions ?? []).map(x => [x.sid, x]))
-  return html`<div class="sub-block">
-    <h4 class="sub-title">${t.taskSessions(links.length)}</h4>
-    <ul class="plain task-sessions">${links.slice(0, 6).map(l => {
+  const list = html`<ul class="plain task-sessions">${links.slice(0, 6).map(l => {
       const x = live.get(l.sid)
       return html`<li key=${l.sid} class="row-in">
         <${StateLine} token=${x ? 'success' : 'on-surface-muted'} word=${x ? t.sessionLive : t.sessionEnded} />
@@ -153,8 +152,8 @@ export function TaskSessions({ row, s, c }) {
         ${x?.tab ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('tab_jump', { tab_ref: x.tab.ref })}>${t.btnToTab}<//>`
           : x ? null : html`<${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy[row.key]} onClick=${() => c.act('session_resume', { session: l.sid })}>${t.sessionResume}<//>`}
       </li>`
-    })}</ul>
-  </div>`
+    })}</ul>`
+  return bare ? list : html`<div class="sub-block"><h4 class="sub-title">${t.taskSessions(links.length)}</h4>${list}</div>`
 }
 
 /** What the AI was handed from the cockpit this week, by what it wants of you: answered or gone quiet and to

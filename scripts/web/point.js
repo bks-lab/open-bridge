@@ -11,12 +11,15 @@
 // verb that cannot go now stands off with why), the page row whose step makes an issue a task (adoptStepOf) and what a
 // question about a point carries along (pointContext, the question path of the files view). Stage 2: a finished AI
 // run opens in its group Finished, to read (pointOpen `flowReadAt`), and how long ago reads in days past a day (sinceText).
+// Stage 3: a way that comes from a list (the task check, a page's rows, the start page, the Due list) brings the list
+// along (pointList: what the walk walks; pointBack: where To the list leads; pointListAt: whether the point in front is
+// still the one it opened), and who takes a next step reads in words (nextWho).
 // Where Work through is off (cockpit.flow.enabled false, the default of open-bridge) none of it applies: the item
 // drawer (views/overlays.js ItemDrawer) and the file card of the Files tab (views/dossier.js OpenFile) stay as they
 // were. No DOM, no network, no state; logic.js passes every name on, the point test imports it under node.
 import { TABLES } from './text.js'
-import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, duration, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere, rowProject,
-  sessionsInFlow, triageKey } from './logic.js'
+import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, coveredKeys, duration, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere,
+  rowProject, sessionsInFlow, triageKey } from './logic.js'
 
 /** Whether every way to an item or a task opens the one point view: the work tab offers Work through
  *  (cockpit.flow.enabled, kept by cockpit.work_views), the rule the sessions and the task check follow too
@@ -45,6 +48,53 @@ export function pointOpen(s, key, file = null) {
     return { ...base, flowView: 'left', flowLeft: to.id, flowLeftAt: { id: key, i }, flowLeftPicked: ui.flowLeft === to.id ? ui.flowLeftPicked ?? [] : [] }
   }
   return { ...base, flowView: 'solo', flowSolo: { key, file: file ?? null } }
+}
+
+/** Where the page stands when a way opens a row from a list: its page and, on the work tab, the view and the place of
+ *  Work through (the view, the group of Not now, the row of a group, the finished run, the entry of Running now, the
+ *  point of its own, the point of the queue), so To the list leads back to that very place */
+export function pointBack(s) {
+  const ui = s?.ui ?? {}
+  const keep = ['workView', 'flowView', 'flowLeft', 'flowLeftAt', 'flowReadAt', 'flowRunId', 'flowRunFrom', 'flowSolo', 'flowAt']
+  return { page: ui.page ?? null, ui: Object.fromEntries(keep.filter(k => ui[k] !== undefined).map(k => [k, ui[k]])) }
+}
+
+/** The list a way to a row came from (the queue of peek or openItem: [{key, title}], the check's rows, a page's rows,
+ *  the start page's, the Due list), as Work through walks it with the row in front (ui.flowList): {items: [{key,
+ *  title}], i, back}, each key once in the list's order; null without a list or where the list does not hold the key */
+export function pointList(queue, key, back) {
+  const seen = new Set()
+  const items = []
+  for (const e of queue ?? []) {
+    if (!e?.key || seen.has(e.key)) continue
+    seen.add(e.key)
+    items.push({ key: String(e.key), title: e.title ?? null })
+  }
+  const i = items.findIndex(e => e.key === key)
+  return i < 0 ? null : { items, i, back: back ?? null }
+}
+
+/** The list the point in front was opened from: while that row stands there (its point, its entry, its row of a
+ *  group, a point of its own, a finished run by its key, or a point that covers it), else null and the point walks
+ *  and goes back as its place does */
+export function pointListAt(list, x) {
+  const key = list?.items?.[list.i]?.key
+  if (!key || !x) return null
+  return x.id === key || x.start?.key === key || coveredKeys(x).includes(key) ? list : null
+}
+
+/** Who takes a next step in words (card.py next.who, from STATUS.md): me and the Bridge by the card's word table, the
+ *  owner by the name the config gives (cockpit.person_name: the whole name, or its first word as STATUS.md writes it,
+ *  any case), anyone else by the name as written with its first letter capital; null without one */
+export function nextWho(who, s, lang = 'en') {
+  const raw = String(who ?? '').trim()
+  if (!raw) return null
+  const words = (TABLES[lang] ?? TABLES.en).card.who
+  const low = raw.toLowerCase()
+  if (Object.hasOwn(words, low)) return words[low]
+  const owner = String(s?.work?.person ?? s?.server?.person ?? '').trim()
+  if (owner && (low === owner.toLowerCase() || low === owner.split(/\s+/)[0].toLowerCase())) return owner
+  return raw.charAt(0).toUpperCase() + raw.slice(1)
 }
 
 /** The row a page item stands for on the page of Work through, by its key (an inbox item or a task, logic.js triageKey)
@@ -125,8 +175,8 @@ export function soloPoint(s, solo) {
 }
 
 /** The facts the item drawer held beside the fields, for the fold Details at the foot of the right column, in this
- *  order, each {id, value, ...} for the view to word, only those with a value: an inbox item its kind, urgency and
- *  approval gate, who closes it (`probe`: a check closes it) and when it closes on its own, what runs on its yes, its
+ *  order, each {id, value, ...} for the view to word, only those with a value: an inbox item its kind and approval
+ *  gate (its urgency is a field to change since stage 3, flow.js flowFields `when`), who closes it (`probe`: a check closes it) and when it closes on its own, what runs on its yes, its
  *  key and its id (from its detail, /api/inbox); a task its type, what blocks it and the path of its STATUS.md; any
  *  other row its ref and its key. Created and the source stay fields of their own */
 export function pointFacts(x, item = null, detail = null) {
@@ -136,7 +186,6 @@ export function pointFacts(x, item = null, detail = null) {
   const put = (id, value, extra = {}) => { if (value != null && String(value).trim() !== '') out.push({ id, value, ...extra }) }
   if (row.inbox_id) {
     put('kind', item?.kind ?? row.inbox_kind)
-    put('urgency', item?.urgency ?? row.urgency)
     put('gate', item?.gate ?? row.gate)
     if (item) {
       out.push({ id: 'closer', value: item.closer ?? null, probe: !!item.closes_when })
@@ -159,8 +208,10 @@ export function pointFacts(x, item = null, detail = null) {
 }
 
 /** What a point is about, on top of its Description (the item drawer's What it is about and its Detail): the day's
- *  triage of the row (its gist as the head, why it needs you where only you can do it, its reason) and the raw
- *  description of an inbox item (its detail, `cut` where the server shortened it). Null with none of them */
+ *  triage of the row (its gist as the head, why it needs you where only you can do it, its reason), the raw
+ *  description of an inbox item (its detail, `cut` where the server shortened it) and, since stage 3, why it is here
+ *  (the briefing's reasons, row.why, the detail column's Why it is here) and the lines its page writes of its task
+ *  (`lines`, pageLinesOf). Null with none of them */
 export function pointAbout(row, s, item = null) {
   if (!row?.key) return null
   const tri = s?.triage?.items?.[row.key] ?? null
@@ -169,8 +220,21 @@ export function pointAbout(row, s, item = null) {
   const you = tri?.doer === 'you'
   const why = word(tri?.reason)
   const text = word(item?.detail)
-  if (!head && !you && !why && !text) return null
-  return { head, you, need: you ? word(tri?.why) : null, why, text, cut: !!item?.detail_truncated }
+  const reasons = (Array.isArray(row.why) ? row.why : []).map(word).filter(Boolean)
+  const lines = pageLinesOf(row, s)
+  if (!head && !you && !why && !text && !reasons.length && !lines.length) return null
+  return { head, you, need: you ? word(tri?.why) : null, why, text, cut: !!item?.detail_truncated, reasons, lines }
+}
+
+/** The lines a page writes of a task (a page item that names the task and carries lines: next, blocked, a kind of its
+ *  own), the first such item's; none for a row without a task (the detail column's lines of a task) */
+export function pageLinesOf(row, s) {
+  const slug = row?.task
+  if (!slug) return []
+  for (const p of s?.model?.pages ?? []) for (const sec of p.sections ?? []) for (const it of sec.items ?? []) {
+    if (it?.task === slug && (it.lines ?? []).length) return it.lines
+  }
+  return []
 }
 
 /** The history of an inbox item (its events, /api/inbox), newest first, as rows of the filter History of Activity:

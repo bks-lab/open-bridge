@@ -1472,7 +1472,8 @@ test('flowFields: the fields of a point in their order, never a status; Prio fro
   const s = pointState()
   const x = queueOf(s)[0]
   const fields = logic.flowFields(x, s, feedOf(), detailOf())
-  assert.deepEqual(fields.map(f => f.id), ['area', 'who', 'prio', 'urgency', 'impact', 'effort', 'due', 'source', 'created', 'moved'])
+  // stage 3: an open task has its task check as a field too (views/check.js ReviewBlock), its priority to change in Prio
+  assert.deepEqual(fields.map(f => f.id), ['area', 'who', 'prio', 'urgency', 'impact', 'effort', 'due', 'check', 'source', 'created', 'moved'])
   assert.ok(!fields.some(f => ['status', 'state'].includes(f.id)), 'no Status field: the card head says it')
   const by = Object.fromEntries(fields.map(f => [f.id, f]))
   assert.deepEqual(by.prio.jev, { quadrant: 'plan', rank: 4, who: null, ranker: null })
@@ -1721,7 +1722,7 @@ test('the right column: What you can do with the suggestion and the verbs stacke
   assert.deepEqual(basic.filter(b => b.hasClass('btn-primary')).map(b => b.text()), [`${en.flow.verbs.later} ▾`])
   const fields = aside.$$('.flow-fields dt').map(d => d.text())
   assert.deepEqual(fields, [en.flow.fields.theme, en.flow.fields.area, en.flow.fields.who, en.flow.fields.prio, en.flow.fields.urgency,
-    en.flow.fields.impact, en.flow.fields.effort, en.flow.fields.due, en.flow.fields.source, en.flow.fields.created, en.flow.fields.moved])
+    en.flow.fields.impact, en.flow.fields.effort, en.flow.fields.due, en.flow.fields.check, en.flow.fields.source, en.flow.fields.created, en.flow.fields.moved])
   assert.ok(aside.$('[data-field=theme] select'), 'the theme can be changed there')
   assert.match(aside.$('[data-field=prio]').text(), new RegExp(`${en.flow.fields.quadrant.plan}.*Jev #4`))
   assert.ok(aside.$('[data-field=urgency] .meter-fill'))
@@ -1789,7 +1790,9 @@ test('the reports: Seen on the right settles only the ticked reports, All seen o
 // ---------------------------------------------------------------- the buttons on the right by kind (29.10.2026)
 
 /** The ways on the right of a point in their order, the strong one in brackets: every button and every link styled as
- *  one, Details (the link, the fold of the facts) and the STATUS.md link left out; `tail` only those set apart under the verbs (.verbbar-tail) */
+ *  one under What you can do (the fields' own controls, a team's role and the task check's, stage 3, are no ways),
+ *  Details (the link, the fold of the facts) and the STATUS.md link left out; `tail` only those set apart under the
+ *  verbs (.verbbar-tail) */
 function acts(el, tail = false) {
   const out = []
   const walk = (n, apart) => {
@@ -1803,7 +1806,7 @@ function acts(el, tail = false) {
     }
     for (const k of n.childNodes) walk(k, there)
   }
-  walk(el.$('.flow-aside'), false)
+  walk(el.$('.flow-aside .flow-can'), false)
   return out
 }
 const panel = w => `${w} ▾`
@@ -3513,11 +3516,13 @@ test('R6B 1b: flowWhere finds a row on the page by its key, and select opens it 
   // a question that stands for its task: the task's key finds that question
   const covered = state({ now: [ask('20261009-0901-a-t', { task: 'cov' })], work: [task('cov')] })
   assert.deepEqual(logic.flowWhere(covered, 'task:cov'), { view: 'point', id: 'inbox:20261009-0901-a-t' })
-  // a click on a tab's name (views/tabs.js TabCard) selects its row: without Due it opens where the view holds it,
-  // in Work through its point, entry or group, elsewhere the detail beside the page
+  // a click on a tab's name (views/tabs.js TabCard) selects its row: with Work through on it opens in the one point
+  // view where the row stands (openPoint, logic.js pointOpen over flowWhere; stage 3: from Due too), elsewhere the
+  // detail beside the page
   const select = method('select(key) {')
+  assert.match(select, /pointViewOn\(/)
+  assert.match(select, /openPoint\(/)
   assert.match(select, /workViewIn\(/)
-  assert.match(select, /flowWhere\(/)
   assert.match(select, /peek\(/)
 })
 
@@ -3535,7 +3540,7 @@ test('R6B 1c: Work through before the first state says it loads or why it cannot
   assert.match(day.text(), new RegExp(en.connLost))
 })
 
-test('R6B 1d: a row with steps of its own (an application) opens them in the info drawer from Work through', () => {
+test('R6B 1d: a row with steps of its own (an application) shows them in its Steps tab from Work through (stage 3: no drawer)', () => {
   const app = { key: 'item:apps:app-7', ref: 'app-7', title: 'Application seven', bucket: 'do', urgency: 'today', sources: ['apps'] }
   const item = { index: 0, key: 'item:work/apps/app-7', title: 'Application seven', row_id: 'app-7', actions: [{ id: 'followed_up', label: 'Followed up' }] }
   const pages = [{ id: 'work', title: 'Work', group: 'work', sections: [{ id: 'apps', items: [item] }] }]
@@ -3551,7 +3556,7 @@ test('R6B 1d: a row with steps of its own (an application) opens them in the inf
   const btn = point.$$('.flow-aside .flow-can button').find(b => b.text().startsWith(en.rowSteps))
   assert.ok(btn, 'the steps on the point')
   btn.click()
-  assert.deepEqual(c.calls.at(-1), ['openInfo', item, 'work', 'apps', true], 'the steps keep their drawer')
+  assert.deepEqual(c.calls.at(-1), ['flowTab', 'steps'], 'the steps stand in the point\'s Steps tab')
   // in a list of Not now its title opens the row in the one view (stage 1), where its steps stand beside its verbs
   const watched = state({ later: [{ ...app, bucket: 'plan', urgency: null }] })
   watched.model.pages = pages

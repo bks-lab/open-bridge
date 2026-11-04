@@ -21,7 +21,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  asksSomething, detailNeedsLoad, duration, flowDrive, formatDay, guideOf, personOf, previewText, reportsTicked, resultText, short, soloSource,
+  asksSomething, detailNeedsLoad, duration, flowDrive, formatDay, guideOf, nextWho, personOf, previewText, reportsTicked, resultText, short, soloSource,
   stageTone, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -97,11 +97,12 @@ function nextOf(row, detail) {
   return what ? { what: String(what), who: null, due: null } : null
 }
 
-/** The next step as a tinted box under the title (the file card's Next step, the drawer's next step with who) */
-function NextBox({ next }) {
+/** The next step as a tinted box under the title (the file card's Next step, the drawer's next step with who: in words,
+ *  logic.js nextWho, stage 3) */
+function NextBox({ next, s }) {
   if (!next?.what) return null
   const w = T().card
-  const who = next.who ? w.who[next.who] ?? next.who : null
+  const who = nextWho(next.who, s, language())
   return html`<section class="dz-step flow-next"><p class="dz-step-kind">${w.next}</p><p class="dz-step-title">${next.what}</p>
     ${who || next.due ? html`<p class="muted small">${[who, next.due ? w.due(formatDay(String(next.due).slice(0, 10), language())) : null].filter(Boolean).join(' · ')}</p>` : null}</section>`
 }
@@ -221,7 +222,7 @@ function DoingCard({ x, s, c }) {
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${token} pulse=${live} />${kind}</span><${HeadEnd} row=${row} s=${s} c=${c} /></header>
     <h2 id="flow-title" class="fx-title">${title}</h2>
     ${file?.headline ? html`<p class="fx-sub muted small">${file.headline}</p>` : null}
-    <${NextBox} next=${file?.next} />
+    <${NextBox} next=${file?.next} s=${s} />
     ${x.lane ? html`<p class="muted small">${[upFirst(f.run.how[x.how]), f.run.cardWhy].filter(Boolean).join('. ')}</p>` : null}
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
   </article>`
@@ -255,7 +256,7 @@ export function PointCard({ x, n = 1, s, c }) {
   const sub = x.task ? f.forTask(x.task.title) : file.headline
   return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${cardKind(x)} sub=${sub} openable=${false}
     foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${html`<${HeadEnd} row=${row} s=${s} c=${c} />`}
-    lead=${html`<${NextBox} next=${file.next} />`} />`
+    lead=${html`<${NextBox} next=${file.next} s=${s} />`} />`
 }
 
 /** The detail a point of its own is read from (logic.js soloSource: a task's STATUS.md, a closed copy by its folder,

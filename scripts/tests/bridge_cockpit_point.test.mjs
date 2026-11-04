@@ -150,10 +150,11 @@ test('soloPoint: another area\'s open row as it is, a closed task and a settled 
 const ITEM = { summary: 'Delete the scans?', detail: 'The scans of last week lie in the bin.', kind: 'decision', gate: 'only-you', urgency: 'later',
   state: 'open', task: null, key: 'bin-scans', closer: 'person', closes_when: null, action_display: null, created: '2026-10-01T16:59:00' }
 
-test('pointFacts: an inbox item\'s kind, urgency, gate, who closes it, when it closes on its own, its key and id; a task\'s type, blocker and file', () => {
+test('pointFacts: an inbox item\'s kind, gate, who closes it, when it closes on its own, its key and id; a task\'s type, blocker and file', () => {
   const q = ask('20261001-1659-a-bin')
   const facts = logic.pointFacts({ kind: 'row', row: q }, ITEM)
-  assert.deepEqual(facts.map(f => f.id), ['kind', 'urgency', 'gate', 'closer', 'closes', 'key', 'id'])
+  // the urgency is a field of its own to change (stage 3), not a fact under Details
+  assert.deepEqual(facts.map(f => f.id), ['kind', 'gate', 'closer', 'closes', 'key', 'id'])
   assert.deepEqual(facts.find(f => f.id === 'closer'), { id: 'closer', value: 'person', probe: false })
   assert.equal(facts.find(f => f.id === 'id').value, '20261001-1659-a-bin')
   // before its detail came: what the row says, never a guess for the rest
@@ -174,11 +175,16 @@ test('pointAbout: the triage\'s gist, why only you can do it and its reason, and
   const q = ask('20261001-1659-a-bin')
   const s = { triage: { items: { [q.key]: { gist: 'Empty the bin after the check', doer: 'you', why: 'deleting is only yours', reason: 'Nothing says it is done' } } } }
   assert.deepEqual(logic.pointAbout(q, s, ITEM), { head: 'Empty the bin after the check', you: true, need: 'deleting is only yours',
-    why: 'Nothing says it is done', text: 'The scans of last week lie in the bin.', cut: false })
+    why: 'Nothing says it is done', text: 'The scans of last week lie in the bin.', cut: false, reasons: [], lines: [] })
   assert.deepEqual(logic.pointAbout(q, { triage: { items: {} } }, { ...ITEM, detail_truncated: true }),
-    { head: null, you: false, need: null, why: null, text: ITEM.detail, cut: true })
+    { head: null, you: false, need: null, why: null, text: ITEM.detail, cut: true, reasons: [], lines: [] })
   assert.equal(logic.pointAbout(q, { triage: { items: {} } }, null), null)
   assert.equal(logic.pointAbout(null, s), null)
+  // stage 3: why it is here (the briefing's reasons) and the lines its page writes of its task
+  const lines = [{ kind: 'next', text: 'Ask the vendor' }]
+  const pages = [{ id: 'p', sections: [{ id: 'x', items: [{ title: 'a', task: 'a', lines }] }] }]
+  const about = logic.pointAbout(task('a', { why: ['due tomorrow', ' '] }), { triage: { items: {} }, model: { pages } })
+  assert.deepEqual([about.reasons, about.lines], [['due tomorrow'], lines])
 })
 
 test('historyRows and activityFilters: the item\'s events newest first, a filter History of their own only where there are some', () => {
@@ -275,10 +281,9 @@ test('the controller: openItem, openFile, openInfo and select open the one point
   assert.match(file, /pointViewOn\(/)
   assert.match(file, /openPoint\(/)
   assert.match(file, /fileClick\(/, 'the Files tab and the fallback keep their way')
-  const info = method('openInfo(it, page, section, drawer = false) {')
+  const info = method('openInfo(it, page, section) {')
   assert.match(info, /pointViewOn\(/)
   assert.match(info, /infoPoint\(/, 'only a page item that stands on the page as a row opens as a point')
-  assert.match(info, /!drawer/, 'the steps of a point keep their drawer')
   const point = method('openPoint(key')
   assert.match(point, /pointOpen\(/)
   assert.match(point, /workViewGo\(/, 'the work tab goes to Work through the way every view switch goes')
@@ -505,4 +510,255 @@ test('a tab that asks about a row: the card is titled by the point opened, the t
   const el2 = mount(html`<${FlowPage} s=${flowState({ tabs: [alone], ui: { flowView: 'point', flowAt: { id: 'tab:surface:8', i: 0 } } })} c=${recorder()} />`)
   assert.equal(el2.$('.flow-card .fx-title').text().trim(), 'loose')
   assert.equal(de.flow.one.tabAsks('x'), 'Tab x fragt')
+})
+
+// ---------------------------------------------------------------- stage 3: every way the same view, nothing the drawer did lost
+
+const answering = (answer = { ok: true }) => {
+  const calls = []
+  return new Proxy({}, { get: (_, p) => (p === 'calls' ? calls : p === 'then' || typeof p === 'symbol' ? undefined
+    : (...a) => { calls.push([p, ...a]); return p === 'act' ? Promise.resolve(answer) : undefined }) })
+}
+const pick = (el, value) => { el.value = value; el.dispatch('change') }
+const BOOT = { status: 'ok', config: { areas: ['Ops', 'Docs'] } }
+const pointAt = (key, over = {}) => ({ flowView: 'point', flowAt: { id: key, i: 0 }, ...over })
+
+test('pointList, pointListAt and pointBack: the list a way came from, walked in Work through, and where it leads back', () => {
+  const back = logic.pointBack(state({ ui: { page: '@check', flowView: 'check', flowLeft: 'later' } }))
+  assert.equal(back.page, '@check')
+  assert.equal(back.ui.flowView, 'check')
+  assert.equal(back.ui.flowLeft, 'later')
+  const list = logic.pointList([{ key: 'task:a', title: 'A' }, { key: 'task:b', title: 'B' }, { key: 'task:a', title: 'again' }, { title: 'no key' }], 'task:b', back)
+  assert.deepEqual(list.items, [{ key: 'task:a', title: 'A' }, { key: 'task:b', title: 'B' }], 'each key once, in the list\'s order')
+  assert.equal(list.i, 1)
+  assert.equal(list.back, back)
+  assert.equal(logic.pointList([{ key: 'task:a' }], 'task:z', back), null, 'a key the list does not hold')
+  assert.equal(logic.pointList(null, 'task:a', back), null)
+  // the point in front: the list holds while that row stands there, by its key or the key it covers
+  assert.equal(logic.pointListAt(list, { group: 'solo', id: 'task:b', kind: 'row', row: task('b') }), list)
+  assert.equal(logic.pointListAt(list, { group: 'doing', id: 'task:b', kind: 'row', row: task('b') }), list)
+  assert.equal(logic.pointListAt(list, { group: 'doing', id: 'task:a', kind: 'row', row: task('a') }), null, 'another point: the list lets go')
+  assert.equal(logic.pointListAt(null, { id: 'task:b', row: task('b') }), null)
+})
+
+test('the controller: peek, openItem and select open the one point view with the list they came from; off, the detail and the drawer stay', () => {
+  const peek = method('peek(key, from')
+  assert.match(peek, /pointViewOn\(/, 'peek asks the rule first')
+  assert.match(peek, /openPoint\(key, null, pointList\(queue, key, pointBack\(/)
+  assert.match(peek, /pageDetail: true/, 'and keeps the detail beside the page where Work through is off')
+  assert.match(method('openItem(key'), /pointList\(queue, key, pointBack\(/)
+  const sel = method('select(key) {')
+  assert.match(sel, /pointViewOn\(/)
+  assert.match(sel, /dayQueue\(/, 'a row of Due walks the Due list')
+  assert.match(method('openPoint(key'), /flowList: list/)
+  assert.match(method('flowListBack()'), /setPage\(/)
+  assert.match(method('flowListGo(k)'), /openPoint\(/)
+  // every other way inside Work through lets the list go
+  for (const head of ['flowGo:', 'flowOverview:', 'flowLeft:', 'flowLeftOpen:', 'flowRead:', 'flowReadOpen:', 'flowRun:', 'flowRunning:', 'flowSolo:',
+    'flowCheck:', 'flowSide:', 'flowMode:']) {
+    const at = APP.indexOf(`\n  ${head}`)
+    assert.ok(at >= 0, head)
+    const rest = APP.slice(at + 3)
+    const end = rest.search(/\n {2}[a-zA-Z/]/)
+    assert.match(rest.slice(0, end), /flowList: null/, head)
+  }
+})
+
+test('a row opened from a list: To the list leads back where the list stood, the walk walks that list', () => {
+  const rows = [task('a', { title: 'First' }), task('b', { title: 'Second' })]
+  const flowList = logic.pointList(rows.map(r => ({ key: r.key, title: r.title })), 'task:b', { page: '@check', ui: {} })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${flowState({ work: rows, ui: pointAt('task:b', { flowList }) })} c=${c} />`)
+  assert.match(el.$('.flow-card .fx-title').text(), /Second/)
+  assert.match(el.$('.dz-walk').text(), /2 of 2/)
+  el.$('.dz-walk').button(en.flow.walk2.prev).click()
+  assert.deepEqual(c.calls.at(-1), ['flowListGo', 0])
+  el.button(en.flow.one.backList).click()
+  assert.deepEqual(c.calls.at(-1), ['flowListBack'])
+  // a point of its own opened from a list: the same, even while its detail is read
+  const solo = logic.pointList([{ key: 'task:gone', title: 'Gone' }, { key: 'task:a', title: 'First' }], 'task:gone', { page: 'start', ui: {} })
+  const sc = recorder()
+  const wait = mount(html`<${FlowPage} s=${flowState({ work: rows, ui: { flowView: 'solo', flowSolo: { key: 'task:gone', file: null }, flowList: solo } })} c=${sc} />`)
+  wait.button(en.flow.one.backList).click()
+  assert.deepEqual(sc.calls.at(-1), ['flowListBack'])
+  // the list let go (another point in front): Back to the overview and the queue's walk again
+  const other = mount(html`<${FlowPage} s=${flowState({ work: rows, ui: pointAt('task:a', { flowList }) })} c=${recorder()} />`)
+  assert.ok(other.button(en.flow.point.back))
+  assert.equal(other.button(en.flow.one.backList), null)
+})
+
+test('the task check in Work through opens a task through peek, the walk over its rows', () => {
+  const t = task('a', { title: 'First', review: { verdict: 'close', reason: 'All steps are done.', confidence: 'high' } })
+  const u = task('b', { title: 'Second', review: { verdict: 'stale', reason: 'Nothing moved.', confidence: 'high' } })
+  const base = flowState({ work: [t, u], ui: { flowView: 'check', rvPicked: [], rvFilter: 'all', rvSort: null } })
+  const s = { ...base, model: { ...base.model, review: { keys: ['task:a', 'task:b'], last: { reviewed_at: '2026-10-09T08:00:00' } } } }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const open = el.$$('.c-task .info-open')
+  assert.equal(open.length, 2, 'the check lists the tasks')
+  open[1].click()
+  const call = c.calls.at(-1)
+  assert.deepEqual(call.slice(0, 2), ['peek', 'task:b'], 'peek, which opens the one view where Work through is on')
+  assert.deepEqual(call[3].map(e => e.key), ['task:a', 'task:b'], 'with the rows of the check as its list')
+})
+
+test('the fields change in place what the detail column changed: Area and Urgency of an inbox item, Prio of a task', () => {
+  const q = ask('20261009-0900-a-q', { urgency: 'today', area: 'Ops' })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${{ ...flowState({ now: [q], ui: pointAt(q.key) }), boot: BOOT }} c=${c} />`)
+  const area = el.$('[data-field=area] select')
+  assert.ok(area, 'Area is a select on an inbox item without a task')
+  assert.deepEqual(area.$$('option').map(o => o.text()), [en.areaNone, 'Ops', 'Docs'])
+  pick(area, 'Docs')
+  assert.deepEqual(c.calls.at(-1), ['act', 'area', { key: q.key, value: 'Docs' }])
+  pick(area, '')
+  assert.deepEqual(c.calls.at(-1), ['act', 'area', { key: q.key }], 'no area takes it back')
+  const when = el.$('[data-field=when] select')
+  assert.ok(when, 'Urgency is a select on an inbox item')
+  assert.equal(el.$('[data-field=when] dt').text(), en.flow.fields.when)
+  pick(when, 'now')
+  assert.deepEqual(c.calls.at(-1), ['act', 'urgency', { key: q.key, value: 'now' }])
+  assert.equal(el.$('[data-field=prio] select'), null, 'an inbox item has no priority of its own')
+  // a task: its priority, beside what Jev or the triage said
+  const tc = recorder()
+  const tel = mount(html`<${FlowPage} s=${{ ...flowState({ work: [task('a', { priority: 'P2' })], ui: pointAt('task:a') }), boot: BOOT }} c=${tc} />`)
+  const prio = tel.$('[data-field=prio] select')
+  assert.ok(prio)
+  pick(prio, 'P0')
+  assert.deepEqual(tc.calls.at(-1), ['act', 'priority', { key: 'task:a', value: 'P0' }])
+  assert.equal(tel.$('[data-field=when]'), null, 'a task has no inbox urgency')
+  assert.equal(tel.$('[data-field=area] select'), null, 'a task shows its area, as the detail column did')
+  // an item with a task shows the task's area; a person's page gives no area; a closed point changes nothing
+  const withTask = mount(html`<${FlowPage} s=${{ ...flowState({ now: [ask('20261009-0901-b-q', { task: 'a' })], work: [task('a')], ui: pointAt('inbox:20261009-0901-b-q') }), boot: BOOT }} c=${recorder()} />`)
+  assert.equal(withTask.$('[data-field=area] select'), null)
+  const person = mount(html`<${FlowPage} s=${{ ...flowState({ now: [q], ui: pointAt(q.key) }), boot: { status: 'ok', config: { areas: ['Ops'], person: 'lena' } } }} c=${recorder()} />`)
+  assert.equal(person.$('[data-field=area] select'), null, 'an area is the owner\'s to give')
+  assert.ok(person.$('[data-field=when] select'), 'urgency and priority are a person\'s verbs too (access.py)')
+  const details = { inbox: { x1: { status: 'ok', ver: 0, data: { id: 'x1', item: { ...ITEM, state: 'done', urgency: 'now' }, events: [] } } }, task: {}, activity: {} }
+  const closed = mount(html`<${FlowPage} s=${{ ...flowState({ details, ui: { flowView: 'solo', flowSolo: { key: 'inbox:x1', file: null } } }), boot: BOOT }} c=${recorder()} />`)
+  assert.equal(closed.$('[data-field=when] select'), null)
+  assert.equal(closed.$('[data-field=when] dd').text(), en.urgency.now, 'read only, in words')
+  assert.deepEqual([en.flow.fields.when, de.flow.fields.when], ['Urgency', 'Dringlichkeit'])
+})
+
+test('a task\'s team and its task check are fields: how far the team is, the next role to start, the verdict with Check again and Keep open', async () => {
+  const teams = [{ id: 'build', label: 'Build', roles: [{ id: 'impl', name: 'Implement', mode: 'go' }, { id: 'review', name: 'Review', mode: 'go' }] },
+    { id: 'research', label: 'Research', roles: [{ id: 'look', name: 'Look', mode: 'report' }] }]
+  const t = task('a', { team: { team_id: 'build', started: 1, next_role: { id: 'review', name: 'Review' }, ready: true }, team_suggestions: ['build', 'research'],
+    review: { verdict: 'stale', reason: 'Nothing moved for 30 days.', confidence: 'high', kept: false } })
+  const base = flowState({ work: [t], ui: pointAt('task:a') })
+  const s = { ...base, model: { ...base.model, teams } }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const team = el.$('[data-field=team]')
+  assert.ok(team)
+  assert.match(team.text(), new RegExp(en.teamProgress('Build', 1, 2)))
+  team.button(en.teamNext('Review')).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'team_role', { key: 'task:a', team: 'build' }])
+  team.button(en.teamStart('Research')).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'team_role', { key: 'task:a', team: 'research' }])
+  const check = el.$('[data-field=check]')
+  assert.match(check.text(), /Nothing moved for 30 days\./)
+  check.button(en.btnKeep).click()
+  assert.deepEqual(c.calls.at(-1), ['keep', ['task:a']])
+  check.button(en.btnCheckAgain).click()
+  assert.deepEqual(c.calls.at(-1), ['review', ['task:a'], false, true])
+  // an inbox item has neither; a person's page has neither (a check asks a model, a team starts agents)
+  const q = mount(html`<${FlowPage} s=${flowState({ now: [ask('20261009-0900-a-q')], ui: pointAt('inbox:20261009-0900-a-q') })} c=${recorder()} />`)
+  assert.equal(q.$('[data-field=team]'), null)
+  assert.equal(q.$('[data-field=check]'), null)
+  const person = mount(html`<${FlowPage} s=${{ ...s, boot: { status: 'ok', config: { person: 'lena' } } }} c=${recorder()} />`)
+  assert.equal(person.$('[data-field=team]'), null)
+  assert.equal(person.$('[data-field=check]'), null)
+  assert.deepEqual([en.flow.fields.team, en.flow.fields.check], ['Team', en.reviewTitle])
+})
+
+test('what else the detail column did stands in the view: the sessions and the asks folded in under Related, Take over a tab, Back on, why it is here', () => {
+  const t = task('a', { also_inbox: [{ id: '20261009-1100-ask-c1', title: 'Is the report ready?' }], why: ['due tomorrow', 'only you'],
+    adopt_candidates: [{ ref: 'surface:9', name: 'notes', workspace: 'Demo' }] })
+  const sessions = { links: [{ sid: 'aa11', task: 'a', name: 'a research' }, { sid: 'bb22', task: 'a', name: 'a draft' }],
+    sessions: [{ sid: 'aa11', tab: { ref: 'surface:3', name: 'a research' } }] }
+  const c = recorder()
+  const st = over => ({ ...flowState({ work: [t], ui: pointAt('task:a', over) }), sessions })
+  const rel = mount(html`<${FlowPage} s=${st({ flowTab: 'related' })} c=${c} />`)
+  const pane = rel.$('.flow-related')
+  assert.match(pane.text(), new RegExp(en.taskSessions(2).replace(/[()]/g, '.')))
+  pane.button(en.btnToTab).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'tab_jump', { tab_ref: 'surface:3' }])
+  pane.button(en.sessionResume).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'session_resume', { session: 'bb22' }])
+  assert.match(pane.text(), new RegExp(en.flow.one.asked))
+  pane.button('Is the report ready?').click()
+  assert.deepEqual(c.calls.at(-1), ['openItem', 'inbox:20261009-1100-ask-c1'])
+  // a row of any kind with an ask folded in has Related
+  assert.deepEqual(logic.pointTabs({ kind: 'row', row: ref('acme/app', 7, { also_inbox: [{ id: 'x', title: 'y' }] }) }, {}), ['desc', 'activity', 'related'])
+  // Take over a tab: the tab already running on it, named
+  const ac = recorder()
+  const el = mount(html`<${FlowPage} s=${st({})} c=${ac} />`)
+  el.button(en.flow.one.adopt('Demo / notes')).click()
+  assert.deepEqual(ac.calls.at(-1), ['act', 'adopt', { key: 'task:a', tab_ref: 'surface:9' }])
+  // why it is here, on top of Description
+  assert.match(el.$('.flow-desc').text(), new RegExp(en.whyTitle))
+  assert.match(el.$('.flow-desc').text(), /due tomorrow/)
+  // a row of Later comes back on from its point, as from its list
+  const hidden = task('h', { hidden_until: '2026-10-20', title: 'Hidden one' })
+  const bc = recorder()
+  const later = mount(html`<${FlowPage} s=${flowState({ hidden: [hidden], ui: { flowView: 'left', flowLeft: 'later', flowLeftAt: { id: 'task:h', i: 0 } } })} c=${bc} />`)
+  later.$('.flow-aside').button(en.flow.notnow.back).click()
+  assert.deepEqual(bc.calls.at(-1), ['flowBatch', [{ verb: 'unhide', args: { key: 'task:h' } }], 'left'])
+  assert.equal(de.flow.one.adopt('Demo / notes'), 'Tab Demo / notes zuordnen')
+})
+
+test('Steps: the steps a row has on its page stand in its Steps tab, two clicks as on the page, no drawer', async () => {
+  const app = ref('jobs/board', 4, { title: 'Application at Example', sources: ['apps'] })
+  const pages = [{ id: 'work', title: 'Work', sections: [{ id: 'apps', kind: 'list', steps: 'buttons', items: [{ index: 2, title: 'Application at Example',
+    row_id: 'jobs/board#4', actions: [{ id: 'followup', label: 'Followed up' }, { id: 'declined', label: 'Turned down' }] }] }] }]
+  const s = flowState({ now: [app], pages, ui: pointAt(app.key, { flowTab: 'steps' }) })
+  assert.deepEqual(logic.pointTabs({ kind: 'row', row: app }, s), ['desc', 'steps', 'activity'])
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const pane = el.$('.flow-ptabs-pane')
+  assert.match(pane.text(), /Followed up/)
+  pane.button('Followed up').click()
+  await tick()
+  pane.$$('button').find(b => b.text().includes('Followed up')).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'row_action', { page: 'work', section: 'apps', index: 2, action: 'followup' }])
+  // the verbs lead to the tab, never to a drawer
+  el.$('.flow-aside').button(en.rowSteps).click()
+  assert.deepEqual(c.calls.at(-1), ['flowTab', 'steps'])
+  assert.ok(!c.calls.some(x => x[0] === 'openInfo'))
+})
+
+test('nextWho: who takes a next step in words: you and the Bridge by the card\'s words, the owner by the name the config gives, anyone else capitalised', () => {
+  const s = { work: { person: 'Mara' } }
+  assert.equal(logic.nextWho('me', s, 'en'), en.card.who.me)
+  assert.equal(logic.nextWho('bridge', s, 'de'), de.card.who.bridge)
+  assert.equal(logic.nextWho('mara', s, 'en'), 'Mara', 'the owner, as cockpit.person_name spells her')
+  assert.equal(logic.nextWho('lena', s, 'en'), 'Lena')
+  assert.equal(logic.nextWho('Jan de Vries', s, 'en'), 'Jan de Vries')
+  assert.equal(logic.nextWho('', s, 'en'), null)
+  assert.equal(logic.nextWho('mara', { server: { person: 'Mara Lind' } }, 'en'), 'Mara Lind', 'by the first name of the configured one')
+  // the next step box of a point says it so
+  const t = task('a', { card: { title: 'Task a', next: { what: 'Send the draft', who: 'lena' } } })
+  const el = mount(html`<${FlowPage} s=${flowState({ work: [t], ui: pointAt('task:a') })} c=${recorder()} />`)
+  assert.match(el.$('.flow-card .flow-next').text(), /Lena/)
+  assert.doesNotMatch(el.$('.flow-card .flow-next').text(), /lena/)
+})
+
+test('a GitHub issue says what it says on GitHub under Description, read only once its fold is opened', async () => {
+  const issue = ref('acme/app', 7, { origin: { category: 'github', detail: 'acme/app', raw: null, ref: 'acme/app#7' } })
+  const calls = []
+  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined
+    : (...a) => { calls.push([p, ...a]); return p === 'github' ? Promise.resolve({ ok: false, error: { message: 'offline' } }) : undefined }) })
+  const el = mount(html`<${FlowPage} s=${flowState({ now: [issue], ui: pointAt(issue.key) })} c=${c} />`)
+  const fold = el.$('.flow-desc .flow-gh-toggle')
+  assert.equal(fold.text().trim(), `${en.flow.one.onGitHub} ▾`)
+  assert.ok(!calls.some(x => x[0] === 'github'), 'nothing is read on the way')
+  fold.click()
+  await until(() => calls.some(x => x[0] === 'github'))
+  assert.deepEqual(calls.find(x => x[0] === 'github'), ['github', 'acme/app#7', false])
+  // a task or an inbox item has none
+  const t = mount(html`<${FlowPage} s=${flowState({ work: [task('a')], ui: pointAt('task:a') })} c=${recorder()} />`)
+  assert.equal(t.$('.flow-gh-toggle'), null)
+  assert.equal(de.flow.one.onGitHub, 'Was auf GitHub steht')
 })

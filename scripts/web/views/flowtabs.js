@@ -10,7 +10,11 @@
 // (what it was asked: how it started and the person's sentence, then its item's brief), Activity (its start and end,
 // from its item) and Related (the item or task it ran on, and that item's task); one the point lacks falls back to
 // Description (logic.js pointTabs, pointTab). A tab alone and the reports card have no bar. Card and panes read at most
-// 820 px wide.
+// 820 px wide. Stage 3, what the detail column held besides: Why it is here (the briefing's reasons) and the lines its
+// page writes of its task in Description, the steps a row has on its page (an application's, logic.js pageStepsOf) in
+// Steps, as buttons of two clicks as on the page, and under Related the asks the briefing folded into the row (each a
+// click into the same view) and the sessions of its task (views/sessions.js TaskSessions: a live one to its tab, an
+// ended one goes on in a new tab).
 // Activity (ActivityPane): on top the summary of the last week on a click (cockpit.flow.summary, within the day's
 // budget), the filters with their counts (All, Notes, Documents, State, Agents, Code: logic.js ACTIVITY_FILTERS, and
 // History where an inbox item has events, the drawer's Verlauf, logic.js historyRows: a filter of its own, not counted
@@ -27,28 +31,36 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityCounts, activityFilters, activityRows, activityWhen, attachTooBig, detailNeedsLoad, errorText, flowSettings, formatDay, historyRows,
-  pointAbout, pointTab, pointTabs, relatedOf, short, stepsOf,
+  originOf, pageStepsOf, pointAbout, pointTab, pointTabs, relatedOf, rowActionKey, short, stepsOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { describeOf, ItemCard } from './card.js'
 import { OriginTag } from './day.js'
-import { Segmented } from './detail.js'
+import { Lines, Segmented } from './detail.js'
+import { GH_REF, GitHubDetail } from './github.js'
+import { RowSteps } from './pages.js'
 import { Btn, useRoving } from './parts.js'
+import { TaskSessions } from './sessions.js'
 
 // what Description leaves out: the source, the state, who, the prio and the dates stand in the fields and the card's
 // head, the next step's who and day too; the progress is the count of Steps; a missing part says itself once
 const DESC_SKIP = ['source', 'state', 'owner', 'priority', 'due', 'area', 'next', 'progress', 'gaps']
 
 /** What the point is about, on top of Description (the item drawer's What it is about and its Detail, logic.js
- *  pointAbout): the gist as its head, why it needs you, its reason, and an inbox item's description as filed */
+ *  pointAbout): the gist as its head, why it needs you, its reason, an inbox item's description as filed, and since
+ *  stage 3 why it is here (the detail column's list) and the lines its page writes of its task */
 function About({ about }) {
-  const f = T().flow.one
+  const t = T()
+  const f = t.flow.one
   if (!about) return null
   return html`<section class="flow-about">
     ${about.head || about.you || about.why ? html`<div class="flow-about-gist"><p class="label-caps">${f.about}</p>
       ${about.head ? html`<p class="flow-about-head">${about.head}</p>` : null}
       ${about.you ? html`<p><span class="flow-side-you">${f.needs(about.need)}</span></p>` : null}
       ${about.why ? html`<p class="muted small">${about.why}</p>` : null}</div>` : null}
+    ${about.reasons?.length ? html`<div class="flow-about-why"><p class="label-caps">${t.whyTitle}</p>
+      <ul class="why">${about.reasons.map((w, i) => html`<li key=${i}>${w}</li>`)}</ul></div>` : null}
+    ${about.lines?.length ? html`<${Lines} lines=${about.lines} />` : null}
     ${about.text ? html`<div class="flow-about-text"><p class="label-caps">${f.detail}</p><p class="pre">${about.text}</p>
       ${about.cut ? html`<p class="muted small">${f.cut}</p>` : null}</div>` : null}
   </section>`
@@ -76,29 +88,55 @@ function Asked({ start, events }) {
   </div></section>`
 }
 
+/** What a GitHub issue or pull request says and who is on it (the info drawer's, views/github.js GitHubDetail), read
+ *  from GitHub only once it is opened: a walk over issues asks nothing on its way */
+function GitHubFold({ gref, c }) {
+  const f = T().flow.one
+  const [open, setOpen] = useState(false)
+  return html`<div class="flow-gh">
+    <button type="button" class="btn-link flow-gh-toggle" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>${f.onGitHub} ${open ? '▴' : '▾'}</button>
+    ${open ? html`<${GitHubDetail} gref=${gref} c=${c} />` : null}
+  </div>`
+}
+
 /** Description: what it is about (a finished run what it was asked), then the goal, the story and the criteria of the
  *  point's card, written by the task or the item (none written: a line says so, not on a finished run, whose ask
- *  stands above), then a task's own STATUS.md in its sections */
+ *  stands above), then a task's own STATUS.md in its sections; a GitHub issue or pull request what it says and who is
+ *  on it (views/github.js GitHubDetail, the info drawer's, stage 3) */
 function DescPane({ row, detail, entry, item, itemCard = null, start = null, events = null, s, c }) {
   const f = T().flow.desc
   const card = (row.inbox_id ? row.card ?? itemCard ?? detail?.card : detail?.card ?? row.card) ?? null
   const d = describeOf(s, row.key, detail?.describe, row.describe)
   const loading = !!row.task && !detail && entry?.status !== 'error'
   const own = !!row.task && row.key === `task:${row.task}`
+  const gh = !row.task && !row.inbox_id && GH_REF.test(row.ref ?? '') && (originOf(row)?.category === 'github' || /\/\/github\.com\//.test(row.url ?? ''))
   return html`<div class="flow-desc">
     ${start ? html`<${Asked} start=${start} events=${events} />` : null}
     <${About} about=${pointAbout(row, s, item)} />
+    ${gh ? html`<${GitHubFold} key=${row.ref} gref=${row.ref} c=${c} />` : null}
     ${card ? html`<${ItemCard} card=${card} d=${d} dkey=${row.key} s=${s} c=${c} skip=${DESC_SKIP} cls="flow-card-brief" />` : null}
     ${card?.goal || card?.story || (card?.acceptance ?? []).length || (start && !loading) ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
     ${own ? html`<${Sections} sections=${detail?.sections} />` : null}
   </div>`
 }
 
-/** Steps: the checklist of STATUS.md as it stands, done or open (ticked there, not here) */
-function StepsPane({ steps }) {
-  const f = T().flow.steps
-  if (!steps.length) return html`<p class="muted small">${f.none}</p>`
-  return html`<ul class="flow-steps">${steps.map((st, k) => html`<li key=${k} class=${st.done ? 'is-done' : ''}>
+/** Steps: the checklist of STATUS.md as it stands, done or open (ticked there, not here); since stage 3 first the
+ *  steps the row has on its page (an application's, logic.js pageStepsOf), run by the page's command (row_action) as
+ *  the info drawer ran them: each a button of two clicks (views/pages.js RowSteps), a GitHub row's or an event's a
+ *  button of one, since they only start an agent tab */
+function StepsPane({ steps, page = null, s, c }) {
+  const t = T()
+  const f = t.flow.steps
+  const pg = page ? (s.model?.pages ?? []).find(p => p.id === page.page) : null
+  const kind = pg?.sections?.find(x => x.id === page.section)?.kind
+  const busy = page ? !!s.ui.busy?.[rowActionKey({ page: page.page, section: page.section, index: page.it.index })] : false
+  const own = page ? html`<section class="flow-page-steps"><h3 class="label-caps">${f.page(pg?.title ?? page.page)}</h3>
+    ${kind === 'tracker' || kind === 'calendar'
+      ? html`<span class="btn-row">${page.it.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="secondary" busy=${busy}
+          onClick=${() => c.act('row_action', { page: page.page, section: page.section, index: page.it.index, action: a.id })}>${a.label}<//>`)}</span>`
+      : html`<${RowSteps} it=${page.it} page=${page.page} section=${page.section} s=${s} c=${c} as="buttons" />`}</section>` : null
+  if (!steps.length) return page ? own : html`<p class="muted small">${f.none}</p>`
+  return html`${own}<ul class="flow-steps">${steps.map((st, k) => html`<li key=${k} class=${st.done ? 'is-done' : ''}>
     <span class="flow-step-mark mono">${st.done ? f.done : f.todo}</span> <span>${st.text}</span></li>`)}</ul>`
 }
 
@@ -116,13 +154,19 @@ function RunRelated({ start, item, c }) {
 }
 
 /** Related: the task an item belongs to and the other items of that task as they stand in the model, each a click
- *  into the same view (c.openItem, stage 1), and the paths STATUS.md names */
-function RelatedPane({ rel, c }) {
-  const t = T().flow
+ *  into the same view (c.openItem, stage 1), and the paths STATUS.md names; since stage 3 the asks folded into the row
+ *  (each a click into the same view) and the sessions of its task (views/sessions.js TaskSessions) */
+function RelatedPane({ rel, row, s, c }) {
+  const all = T()
+  const t = all.flow
   const f = t.related
   const open = r => html`<button type="button" class="btn-link flow-related-open" onClick=${() => c.openItem(r.key)}>${short(r.title ?? r.key, 90)}</button>`
-  if (!rel.parent && !rel.rows.length && !rel.paths.length) return html`<p class="muted small">${f.none}</p>`
+  if (!rel.parent && !rel.rows.length && !rel.paths.length && !rel.asked.length && !rel.sessions.length) return html`<p class="muted small">${f.none}</p>`
   return html`<div class="flow-related">
+    ${rel.asked.length ? html`<section><h3 class="label-caps">${t.one.asked}</h3>
+      <ul class="entries">${rel.asked.map(r => html`<li key=${r.key} class="entry">${open(r)}</li>`)}</ul></section>` : null}
+    ${rel.sessions.length ? html`<section><h3 class="label-caps">${all.taskSessions(rel.sessions.length)}</h3>
+      <${TaskSessions} row=${row} s=${s} c=${c} bare /></section>` : null}
     ${rel.parent ? html`<section><h3 class="label-caps">${t.one.parent}</h3>
       <ul class="entries"><li class="entry">${open(rel.parent)}<span class="entry-tags"><${OriginTag} row=${rel.parent} /></span></li></ul></section>` : null}
     ${rel.rows.length ? html`<section><h3 class="label-caps">${f.rows}</h3>
@@ -338,7 +382,7 @@ function ActivityPane({ row, entry, history, s, c }) {
 export function PointTabs({ x, s, c }) {
   const f = T().flow
   const keys = useRoving()
-  const tabs = pointTabs(x)
+  const tabs = pointTabs(x, s)
   const row = tabs.length ? x.row : null
   // a closed copy is read by its folder (the point's `file`), any other task by its slug
   const slug = row?.task ? x.file ?? row.task : null
@@ -357,12 +401,12 @@ export function PointTabs({ x, s, c }) {
   const steps = stepsOf(detail)
   const rel = relatedOf(x, s, detail)
   const run = x.group === 'read' ? x.start : null
-  const nRel = run ? 1 + (itemData?.item?.task ? 1 : 0) : (rel.parent ? 1 : 0) + rel.rows.length + rel.paths.length
+  const nRel = run ? 1 + (itemData?.item?.task ? 1 : 0) : (rel.parent ? 1 : 0) + rel.rows.length + rel.paths.length + rel.asked.length + rel.sessions.length
   const n = { steps: steps.length ? `${steps.filter(st => st.done).length}/${steps.length}` : null, activity: feed ? String(activityCounts(feed).all) : null,
     related: nRel ? String(nRel) : null }
-  const pane = tab === 'steps' ? html`<${StepsPane} steps=${steps} />`
+  const pane = tab === 'steps' ? html`<${StepsPane} steps=${steps} page=${pageStepsOf(row, s)} s=${s} c=${c} />`
     : tab === 'activity' ? html`<${ActivityPane} row=${row} entry=${act} history=${history} s=${s} c=${c} />`
-      : tab === 'related' ? (run ? html`<${RunRelated} start=${run} item=${itemData?.item ?? null} c=${c} />` : html`<${RelatedPane} rel=${rel} c=${c} />`)
+      : tab === 'related' ? (run ? html`<${RunRelated} start=${run} item=${itemData?.item ?? null} c=${c} />` : html`<${RelatedPane} rel=${rel} row=${row} s=${s} c=${c} />`)
         : html`<${DescPane} row=${row} detail=${detail} entry=${entry} item=${itemData?.item ?? null} itemCard=${itemData?.card ?? null}
           start=${run} events=${itemData?.events ?? null} s=${s} c=${c} />`
   return html`<section class="flow-ptabs" aria-label=${f.ptabs.label}>

@@ -22,8 +22,10 @@
 // Done; else a finding's Give your yes where it brings an action; Advise never by itself, 29.10.2026), none while a live
 // tab is on it. Under them what the point's kind adds, never in place of them: a live tab's To tab (then the strong
 // way) and View, an issue's Open on GitHub and its board's moves (IssueWays), Give your yes, Advise, Improve on a task
-// in review, the steps of a row with steps of its own on a page (an application, logic.js pageStepsOf, which open the
-// info drawer where they stand), Runs on on the return card, Not this task for a session, Show in the net for a task;
+// in review, the steps of a row with steps of its own on a page (an application, logic.js pageStepsOf, which open its
+// Steps tab, stage 3, where they stand), Runs on on the return card, Not this task for a session, Show in the net for a
+// task, Back on for a row of Later (as its list has it, logic.js leftPlan) and a tab already running on a task to
+// assign to it (the detail column's Already running?, verb adopt);
 // the tab's close (views/detail.js TabClose) apart at the end, and where that close ends the point itself Done in its
 // place closes the tab too (Done and close the tab). A start that answered or went quiet, a lost one and a start whose
 // tab asks keep their own verbs (FinishedActs: the verb the AI suggests, else Done and close the tab, then View, Open
@@ -31,12 +33,17 @@
 // ReadActs) Read, Analyse further and Make it a task; the reports Done for the ticked ones (All done when every one
 // is), a tab alone its ways. A point that is closed (a point of its own, logic.js soloPoint) says
 // so and offers nothing.
-// Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
-// else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source (its
-// chip, the STATUS.md of the task an item belongs to, an issue or a pull request by its ref on the web), Created,
-// Moved; no Status field, the card's head says it. Stage 1: at their foot Details ▾ folds open what the item drawer
-// held beside them (logic.js pointFacts: an inbox item's kind, urgency, approval, who closes it, when it closes on its
-// own, what runs on its yes, key and id; a task's type, blocker and file). Where Work through is off (the Files tab of
+// Under it the fields (logic.js flowFields): Theme (to change), Area, Urgency (an inbox item's), Who works on it, Prio
+// (Jev's quadrant and rank, else the triage's rank, else the priority), Urgent, Important and Effort as small bars from
+// Jev, Due, Team and Task check (a task's), Source (its chip, the STATUS.md of the task an item belongs to, an issue or
+// a pull request by its ref on the web), Created, Moved; no Status field, the card's head says it. Stage 3: what the
+// detail column changed is changed in its field, a select as Theme is one: Area (an inbox item without a task, one of
+// the configured areas or none, the owner's), Urgency (verb urgency) and a task's priority beside its Prio (verb
+// priority), each through the server's verb as before, no undo as before; Team says how far a task's team is and
+// starts its next role or a team that fits (verb team_role), Task check shows the verdict of the last check with Keep
+// open and Check again (views/check.js ReviewBlock). Stage 1: at their foot Details ▾ folds open what the item drawer
+// held beside them (logic.js pointFacts: an inbox item's kind, approval, who closes it, when it closes on its own,
+// what runs on its yes, key and id; a task's type, blocker and file). Where Work through is off (the Files tab of
 // a Bridge without it) the fold is the link Details under the verbs, which opens the row's drawer (an inbox item, a
 // task) or its detail column (any other row), as before.
 // For the mouse: no text names a key.
@@ -45,12 +52,13 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowRunning,
-  flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, meterLevel, pageStepsOf, pointFacts, pointViewOn, probeText, refOfUrl, replySend,
-  reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf
+  flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts, pointViewOn, probeText, refOfUrl,
+  replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { ReviewBlock } from './check.js'
 import { OriginTag } from './day.js'
-import { Segmented, TabClose } from './detail.js'
+import { Segmented, TabClose, TeamBlock } from './detail.js'
 import { CheckRow, NotNowBlock, NotNowNarrow, ReadRow } from './flowleft.js'
 import { Suggestion } from './flowlist.js'
 import { PrioFoot } from './flowprio.js'
@@ -429,9 +437,18 @@ function BasicActs({ x, row, s, c, sug }) {
   const web = issue && row.url ? html`<a class="btn btn-secondary btn-sm" href=${row.url} target="_blank" rel="noopener noreferrer">${f.onWeb(row.url)}</a>` : null
   const moves = board ? html`<${IssueWays} key=${row.key} row=${row} s=${s} c=${c} sug=${sug} />` : null
   const improve = review ? html`<${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>` : null
-  // a row with steps of its own on a page (an application): they stand in the info drawer, one click away
+  // a row with steps of its own on a page (an application): they stand in its Steps tab (stage 3), one click away
   const page = pageStepsOf(row, s)
-  const steps = page ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openInfo(page.it, page.page, page.section, true)}>${t.rowSteps} ▾<//>` : null
+  const steps = page ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.flowTab('steps')}>${t.rowSteps}<//>` : null
+  // a row of Later comes back on from its point as from its list (logic.js leftPlan: by why it waits)
+  const backOn = x.group === 'left' && x.left === 'later' && x.entry ? leftPlan([x.entry], 'back', s, '', language()) : null
+  const back1 = backOn?.counts.back ? html`<${Btn} size="sm" variant="secondary" onClick=${async () => {
+    if (backOn.early.length) c.flowEarly({ [row.key]: x.entry.until })
+    if (backOn.calls.length) await c.flowBatch(backOn.calls, 'left')
+  }}>${f.notnow.back}<//>` : null
+  // a tab already running on a task, free in its area: assign it (the detail column's Already running?, verb adopt)
+  const adopt1 = !personOf(s) && row.task && !row.inbox_id ? (row.adopt_candidates ?? []).map(a => html`<${Btn} key=${a.ref} size="sm" variant="secondary"
+    busy=${!!s.ui.busy?.[row.key]} title=${t.adoptTitle} onClick=${() => c.act('adopt', { key: row.key, tab_ref: a.ref })}>${f.one.adopt(`${a.workspace} / ${a.name}`)}<//>`) : null
   const runsOn = back ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.flowBack()}>${f.runsOn}<//>` : null
   // an entry of Running now: a session the cockpit linked or recognised can be told it works on something else
   const unlink = x.lane && x.kind === 'session' && x.session?.sid
@@ -443,7 +460,7 @@ function BasicActs({ x, row, s, c, sug }) {
   return html`<${VerbBar} row=${row} s=${s} c=${c} fixed stack verbs=${[...basic.map(v => v.id), 'advise']} off=${off} primary=${primary}
       suggested=${!back && !!said && primary === said} words=${words} handlers=${handlers} toTask=${toTask} yes=${!live && !review && !running}
       yesFirst=${!primary} onDone=${back ? () => c.flowBack() : null} lead=${html`${ways}${web}${moves}${improve}`}
-      extra=${html`${steps}${runsOn}${unlink}${net}`} tail=${closer} />
+      extra=${html`${back1}${steps}${adopt1}${runsOn}${unlink}${net}`} tail=${closer} />
     ${fix ? html`<${Improve} row=${row} tab=${tab && tab.state === 'waiting' && canTab(s, 'send') ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
 }
 
@@ -610,6 +627,18 @@ function Facts({ x, item, detail }) {
       <dt>${f.facts[fld.id]}</dt><dd>${word(fld)}</dd></div>`)}</dl>` : null}`
 }
 
+/** A field changed in place (stage 3, the detail column's pickers): a select named for a screen reader by its field,
+ *  `none` the empty choice (an area taken back, or a value not set yet that cannot be picked again), the server's verb
+ *  on a change (`onPick`), off while the row's verb runs */
+function FieldPick({ label, value, choices, none = null, busy = false, onPick }) {
+  const now = value ?? ''
+  return html`<select class="input input-sm flow-field-pick" aria-label=${label} disabled=${busy} value=${now}
+    onChange=${e => { const v = e.currentTarget.value; if (v !== now) onPick(v) }}>
+    ${none ? html`<option value="" disabled=${!!none.off}>${none.word}</option>` : null}
+    ${choices.map(([v, word]) => html`<option key=${v} value=${v}>${word}</option>`)}
+  </select>`
+}
+
 /** The fields of the point, like an issue tracker's sidebar (logic.js flowFields); with the one point view (stage 1)
  *  the drawer's facts folded under Details at their foot */
 function Fields({ x, s, c }) {
@@ -625,17 +654,38 @@ function Fields({ x, s, c }) {
   const none = html`<span class="muted">${f.none}</span>`
   // a link on the web by its ref where it is an issue or a pull request ("repo#12"), else by its address
   const link = href => html`<a href=${href} target="_blank" rel="noopener noreferrer" title=${href}>${refOfUrl(href) ?? short(String(href).replace(/^https?:\/\//, ''), 40)}</a>`
+  const busy = !!(row && s.ui.busy?.[row.key])
   const value = fld => {
     if (fld.id === 'theme') return html`<${ThemePick} key=${row.key} row=${row} s=${s} c=${c} compact />`
-    if (fld.id === 'area') return fld.value || none
+    if (fld.id === 'area') {
+      if (!fld.edit) return fld.value || none
+      // stage 3, the detail column's area: one of the configured areas, or none (verb area takes it back)
+      const names = fld.value && !fld.edit.includes(fld.value) ? [...fld.edit, fld.value] : fld.edit
+      return html`<${FieldPick} label=${f.area} value=${fld.value} none=${{ word: t.areaNone }} choices=${names.map(a => [a, a])} busy=${busy}
+        onPick=${v => c.act('area', v ? { key: row.key, value: v } : { key: row.key })} />`
+    }
+    if (fld.id === 'when') {
+      const word = fld.value ? t.urgency[fld.value] ?? fld.value : null
+      if (!fld.edit) return word || none
+      return html`<${FieldPick} label=${f.when} value=${fld.value} none=${fld.value ? null : { word: f.none, off: true }} busy=${busy}
+        choices=${['now', 'today', 'later'].map(v => [v, t.urgency[v]])} onPick=${v => c.act('urgency', { key: row.key, value: v })} />`
+    }
     if (fld.id === 'who') return whoWords(fld.drive, s)
     if (fld.id === 'prio') {
       // "only you" only where the ranker said so (who: me), never read off the square
-      if (fld.jev) return [fld.jev.quadrant ? f.quadrant[fld.jev.quadrant] ?? fld.jev.quadrant : null, fld.jev.who === 'me' ? f.onlyYou : null,
-        fld.jev.rank ? f.jevPlace(fld.jev.rank, rankerName(fld.jev.ranker)) : null].filter(Boolean).join(' · ') || none
-      if (fld.rank != null) return f.rank(fld.rank)
+      const said = fld.jev ? [fld.jev.quadrant ? f.quadrant[fld.jev.quadrant] ?? fld.jev.quadrant : null, fld.jev.who === 'me' ? f.onlyYou : null,
+        fld.jev.rank ? f.jevPlace(fld.jev.rank, rankerName(fld.jev.ranker)) : null].filter(Boolean).join(' · ') : fld.rank != null ? f.rank(fld.rank) : ''
+      // stage 3, the detail column's priority of a task, beside what Jev or the triage said
+      if (fld.edit) {
+        return html`<span class="flow-prio-edit">${said ? html`<span>${said}</span>` : null}<${FieldPick} label=${t.prioPrefix} value=${fld.priority}
+          none=${fld.priority ? null : { word: f.none, off: true }} choices=${['P0', 'P1', 'P2', 'P3'].map(v => [v, v])} busy=${busy}
+          onPick=${v => c.act('priority', { key: row.key, value: v })} /></span>`
+      }
+      if (said) return said
       return fld.priority ? html`<${PrioChip} priority=${fld.priority} />` : none
     }
+    if (fld.id === 'team') return html`<${TeamBlock} row=${row} s=${s} c=${c} bare />`
+    if (fld.id === 'check') return html`<${ReviewBlock} row=${row} s=${s} c=${c} bare />`
     if (['urgency', 'impact', 'effort'].includes(fld.id)) return html`<${Meter} value=${fld.value} />`
     if (fld.id === 'due') return fld.value ? activityWhen(fld.value, lang) : none
     if (fld.id === 'source') {

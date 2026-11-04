@@ -153,7 +153,10 @@ export function Segmented({ label, values, current, onPick, busy, u }) {
   </div>`
 }
 
-function TeamBlock({ row, s, c }) {
+/** A task's team (model.teams): how far the one started is, its next role to start or what it waits for, and the
+ *  teams that fit it to start (verb team_role). `bare` without its block and heading, where the place names it (the
+ *  field Team of the one point view, stage 3) */
+export function TeamBlock({ row, s, c, bare = false }) {
   const t = T()
   const teams = s.model?.teams ?? []
   const busy = !!s.ui.busy[row.key]
@@ -161,8 +164,8 @@ function TeamBlock({ row, s, c }) {
   const team = row.team ? teams.find(x => x.id === row.team.team_id) : null
   const suggestions = (row.team_suggestions ?? []).map(id => teams.find(x => x.id === id)).filter(Boolean)
   if (!team && !suggestions.length) return null
-  return html`<div class="block">
-    <h3 class="label-caps">${t.teamTitle}</h3>
+  return html`<div class=${bare ? 'flow-team' : 'block'}>
+    ${bare ? null : html`<h3 class="label-caps">${t.teamTitle}</h3>`}
     ${team ? html`<div class="team-state">
       <span>${t.teamProgress(team.label, row.team.started, team.roles.length)}</span>
       <ol class="roles">${team.roles.map((r, i) => html`<li key=${r.id} class=${i < row.team.started ? 'is-done' : ''}>

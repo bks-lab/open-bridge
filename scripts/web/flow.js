@@ -216,8 +216,8 @@ export function flowWhere(s, key) {
 /** The page item with steps of its own that a row of a command section stands for (an application: followed up,
  *  turned down), as the info drawer opens it (c.openInfo): {it, page, section}, the first section of a page named
  *  like the row's source whose item carries the row's own id (row.ref, the item's row_id) and steps; else null. Its
- *  steps stand only on the page that lists it (the work page: the view By source) and in that drawer, so Work
- *  through leads there (round 6 B) */
+ *  steps stand on the page that lists it (the work page: the view By source) and, since stage 3 of the one point
+ *  view, in the point's Steps tab (views/flowtabs.js StepsPane), no longer in a drawer */
 export function pageStepsOf(row, s) {
   if (!row?.ref) return null
   for (const p of s?.model?.pages ?? []) {
@@ -1132,13 +1132,16 @@ export const ACTIVITY_FILTERS = ['all', 'notes', 'docs', 'state', 'agents', 'cod
 export const INSTRUCT_MAX = 50
 
 /** The tabs a point has under its card: Description and Activity on every point with a row, Steps and Related where
- *  the row has a task (an inbox item that names one reads that task); a tab alone and the reports card have none */
-export function pointTabs(x) {
+ *  the row has a task (an inbox item that names one reads that task); since stage 3 also Steps where the row has steps
+ *  of its own on a page (pageStepsOf: an application's) and Related where asks about it were folded into it
+ *  (row.also_inbox); a tab alone and the reports card have none */
+export function pointTabs(x, s = null) {
   const row = x && x.kind !== 'reports' ? x.row : null
   if (!row?.key) return []
   // a finished AI run: what it was asked, its start and end, its item or task (stage 2 of the one point view)
   if (x.group === 'read') return ['desc', 'activity', 'related']
-  return FLOW_TABS.filter(id => id === 'desc' || id === 'activity' || !!row.task)
+  const has = { desc: true, activity: true, steps: !!row.task || !!pageStepsOf(row, s), related: !!row.task || (row.also_inbox ?? []).some(a => a?.id) }
+  return FLOW_TABS.filter(id => has[id])
 }
 
 /** The tab shown: the one chosen (ui.flowTab, kept from point to point) where the point has it, else Description */
@@ -1154,14 +1157,18 @@ export function stepsOf(detail) {
 
 /** What is related to a point: the task an item names as its `parent` (its row in the model, else what its file says;
  *  none on the task itself), the other rows of that task as they stand in the model (its inbox items) and the paths
- *  its STATUS.md names under related (the file card's references). {parent, rows, paths} */
+ *  its STATUS.md names under related (the file card's references); since stage 3 the asks the briefing folded into
+ *  the row (`asked`, row.also_inbox: no row of their own) and the sessions linked to its task (`sessions`, the
+ *  detail column's list: s.sessions.links). {parent, rows, paths, asked, sessions} */
 export function relatedOf(x, s, detail) {
   const row = x && x.kind !== 'reports' ? x.row : null
-  if (!row?.task) return { parent: null, rows: [], paths: [] }
+  const asked = (row?.also_inbox ?? []).filter(a => a?.id).map(a => ({ key: `inbox:${a.id}`, title: a.title || a.id }))
+  if (!row?.task) return { parent: null, rows: [], paths: [], asked, sessions: [] }
   const own = `task:${row.task}`
   const all = [...indexRows(s?.model).values()].filter(r => r.task === row.task && r.key !== row.key)
   const parent = row.key === own ? null : all.find(r => r.key === own) ?? { key: own, task: row.task, title: detail?.card?.title || row.task }
-  return { parent, rows: all.filter(r => r.key !== own), paths: (detail?.related ?? []).map(String).filter(Boolean) }
+  const sessions = (s?.sessions?.links ?? []).filter(l => l?.task === row.task)
+  return { parent, rows: all.filter(r => r.key !== own), paths: (detail?.related ?? []).map(String).filter(Boolean), asked, sessions }
 }
 
 /** The rows of the activity under a filter, in the server's order (the newest first) */
@@ -1215,26 +1222,41 @@ export function refOfUrl(href) {
 }
 
 /** The fields of the right column, in their order, each {id, ...} for the view to word: the theme (themes on), the
- *  area, who works on it (flowDrive), the prio (Jev's quadrant and rank from the feed, else the triage's rank, else the
- *  priority), the three bars of Jev, due, the source (its row, row.url, else STATUS.md's origin when it is a link),
- *  created and moved. Never the status: the card's head says it. A closed point (a point of its own read only, stage 1
- *  of the one point view) has no theme to move and nobody who works on it; a finished AI run (stage 2) no theme */
+ *  area, the urgency of an inbox item (`when`), who works on it (flowDrive), the prio (Jev's quadrant and rank from the
+ *  feed, else the triage's rank, else the priority), the three bars of Jev, due, a task's team and its task check, the
+ *  source (its row, row.url, else STATUS.md's origin when it is a link), created and moved. Never the status: the card's
+ *  head says it. A closed point (a point of its own read only, stage 1 of the one point view) has no theme to move and
+ *  nobody who works on it; a finished AI run (stage 2) no theme. Stage 3: what the detail column changed is changed
+ *  here, `edit` where the point's row is open and the server's verb takes it (actions_work.py): the area of an inbox
+ *  item without a task (verb area, one of the configured areas or none, the owner's only), its urgency (verb urgency)
+ *  and a task's priority (verb priority, the prio field); a task's team (`team`: one started or one to start, verb
+ *  team_role) and its task check (`check`: the verdict, Keep open and Check again) are the owner's */
 export function flowFields(x, s, feed = null, detail = null) {
   if (!x) return []
   const reports = x.kind === 'reports'
   const row = reports ? null : x.row ?? null
   const facts = feed?.facts ?? {}
   const jev = facts.jev && typeof facts.jev === 'object' ? facts.jev : null
+  const person = !!s?.boot?.config?.person
+  const open = !!row?.key && !x.readOnly && x.group !== 'read'
+  const task = open && isTaskRow(row)
+  const areas = s?.boot?.config?.areas ?? []
   const out = []
   if (s?.themes?.enabled === true && row?.key && !x.readOnly && x.group !== 'read') out.push({ id: 'theme', value: s.themes.assign?.[row.key] ?? null })
-  out.push({ id: 'area', value: pointArea(x) })
+  out.push({ id: 'area', value: pointArea(x), edit: open && !!row.inbox_id && !row.task && areas.length > 0 && !person ? areas : null })
+  if (row?.inbox_id) out.push({ id: 'when', value: row.urgency ?? null, edit: open })
   if (!reports && !x.readOnly) out.push({ id: 'who', drive: flowDrive(x, s) })
   if (!reports) {
     const rank = row ? s?.triage?.items?.[row.key]?.next_rank : null
     out.push({ id: 'prio', jev: jev ? { quadrant: jev.quadrant ?? null, rank: jev.rank ?? null, who: jev.who ?? null, ranker: jev.ranker ?? null } : null,
-      rank: !jev && Number.isFinite(rank) ? rank : null, priority: row?.priority ?? null })
+      rank: !jev && Number.isFinite(rank) ? rank : null, priority: row?.priority ?? null, edit: task })
     if (jev) for (const id of ['urgency', 'impact', 'effort']) if (Number.isFinite(jev[id])) out.push({ id, value: jev[id] })
     out.push({ id: 'due', value: row?.due ?? null })
+  }
+  if (task && !person) {
+    const teams = s?.model?.teams ?? []
+    if ((row.team && teams.some(t => t.id === row.team.team_id)) || (row.team_suggestions ?? []).some(id => teams.some(t => t.id === id))) out.push({ id: 'team' })
+    out.push({ id: 'check', review: row.review ?? null })
   }
   const origin = typeof detail?.front?.origin === 'string' ? detail.front.origin.trim() : ''
   const link = /^https?:\/\/\S+$/.test(origin) ? origin : null
