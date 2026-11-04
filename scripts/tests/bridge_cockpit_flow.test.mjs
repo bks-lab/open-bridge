@@ -351,13 +351,17 @@ test('the verb bar: the suggested verb is the primary button, Later offers the d
   assert.equal(stream.button(`${en.flow.verbs.drop} ▾`), null)
 })
 
-test('a card whose tab asks starts nothing: the tab takes no sentence while it asks, so Let AI do it stands off with why', () => {
+test('a card whose tab asks starts nothing: the tab takes no sentence while it asks, so Let AI do it stands off with why', async () => {
   const s = cockpitState(NOW, state({ work: [task('run')], tabs: [{ ref: 'surface:9', name: 'run', slug: 'run', state: 'needs-you', since_ms: NOW - MIN }] }))
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
-  // stage 4: Done and Drop off with why while it asks, To tab the strong button; nothing starts from here
+  // stage 4: Done and Drop off with why while it asks; the card answers it (yes, no), so To tab waits in More
   assert.ok(el.button(`${en.flow.simple.drop} ▾`).hasAttribute('disabled'))
   assert.match(el.$('.flow-aside .verbbar-off').text(), new RegExp(en.flow.basic.off.asks))
-  assert.equal(el.$('.flow-aside .verbbar-strong').text(), en.flow.toTab)
+  assert.equal(el.$('.flow-aside .verbbar-strong'), null)
+  assert.ok((await menuOf(el)).includes(en.flow.toTab))
+  // a driver that cannot answer it from here (no keys): To tab is the strong button
+  const off = mount(html`<${FlowPage} s=${{ ...s, driver: { caps: ['tabs', 'launch', 'focus', 'screen'] } }} c=${recorder()} />`)
+  assert.equal(off.$('.flow-aside .verbbar-strong').text(), en.flow.toTab)
 })
 
 // ---------------------------------------------------------------- the page
@@ -1757,11 +1761,11 @@ test('the right column: What you can do with the strong button, the four states 
 })
 
 test('the right column by card: a live tab gives To tab and View, a finished start Done and close, the reports All seen', async () => {
-  // a tab that asks: To tab strong, the states off but Later, View in More
+  // a tab that asks what its card answers: no strong button, the states off but Later, View and To tab in More
   const asks = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ work: [task('run')], tabs: [{ ref: 'surface:9', name: 'run', slug: 'run', state: 'needs-you', since_ms: NOW - MIN }] }))} c=${recorder()} />`)
-  assert.equal(asks.$('.flow-aside .verbbar-strong').text(), en.flow.toTab)
-  assert.ok(asks.$('.flow-aside .verbbar-strong').hasClass('btn-primary'))
-  assert.ok((await menuOf(asks)).includes(en.flow.view))
+  assert.equal(asks.$('.flow-aside .verbbar-strong'), null)
+  const menu = await menuOf(asks)
+  assert.ok(menu.includes(en.flow.view) && menu.includes(en.flow.toTab), menu.join(' | '))
   assert.ok(asks.button(`${sw.drop} ▾`).hasAttribute('disabled'))
   // the reports: Seen for the ticked ones on the right, Seen on each report in the card
   const r = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: [report('20261009-0901-a-r')] }))} c=${recorder()} />`)
@@ -2033,9 +2037,9 @@ test('the right column: a tab waiting at its prompt gives To tab strong, View an
   assert.ok(menu.includes(en.flow.view) && menu.includes(en.btnCloseTab), menu.join(' | '))
 })
 
-test('the right column: while a tab asks, To tab is strong and only Later of the states goes; nothing closes what waits for you (H)', async () => {
+test('the right column: while a tab asks, the card answers it, only Later and In progress of the states go; nothing closes what waits for you (H)', async () => {
   const el = right(state({ work: [task('run')], tabs: [onTab('needs-you')] }))
-  assert.deepEqual(acts(el), [`[${en.flow.toTab}]`, ...STATES, MORE])
+  assert.deepEqual(acts(el), [...STATES, MORE])
   const on = el.$$('.flow-aside .verbbar-grid button').filter(b => !b.hasAttribute('disabled')).map(b => b.text())
   assert.deepEqual(on, [`${sw.work} ▾`, `${sw.later} ▾`], 'only Later and In progress go')
   assert.ok(!(await menuOf(el)).some(w => w === en.btnCloseTab), 'no close while it asks')

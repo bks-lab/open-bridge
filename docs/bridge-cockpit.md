@@ -504,7 +504,9 @@ out a workspace:
      hover, and nowhere else on the point. Without a suggestion it is **Give
      your yes** where an item waits for it, else **Let the Bridge: <step>** where
      the next step is the Bridge's; where the next step is yours, none stands.
-     While an agent tab is on the point it is **To tab**. A suggested Done of an
+     While an agent tab is on the point it is **To tab**, except while the tab
+     asks what its card answers (its options, yes and no): then To tab waits in
+     More and the card takes the answer. A suggested Done of an
      issue on a board opens the board's moves (**Done, on its board ▾**), where
      the move that fits is the strong one: the board's rules close it through
      review.

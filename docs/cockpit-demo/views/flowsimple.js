@@ -14,7 +14,7 @@
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   adoptStepOf, basicVerbs, canTab, DAY, dropReasonWord, flowAction, flowDriver, flowLive, flowRunning, flowSettings, flowTabOf, formatDay, haikuReady, isoDate,
-  jevReady, leftPlan, moreOf, personOf, pointName, short, strongOf, tabCloseOffer, triageRunning, workPageOf,
+  jevReady, leftPlan, moreOf, personOf, pointName, replyOptions, short, strongOf, tabCloseOffer, triageRunning, workPageOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TabClose } from './detail.js'
@@ -27,7 +27,8 @@ import { VerbBar } from './verbbar.js'
 /** The verbs of a point, simpler (stage 4 of the one point view), top to bottom: ONE strong button that applies the
  *  AI's suggestion with its verb and step (logic.js strongOf: Let the Bridge: <step>, Done, Later, Drop), else Give
  *  your yes, else the Bridge's own step, and To tab while an agent tab is on the point; then the four states in a quiet
- *  2x2 (Done, In progress ▾, Later ▾, Drop ▾; one that cannot go says why); then More ▾, the menu of every other verb
+ *  2x2 (Done, In progress ▾, Later ▾, Drop ▾; one that cannot go says why; a tab that asks what its card answers
+ *  keeps To tab in More); then More ▾, the menu of every other verb
  *  that applies (logic.js moreOf: Make it a task, Open on GitHub, the board's moves, Show in the net, Describe again,
  *  Advise, Assign tab, Back on, Steps, Runs on, Not this task) and the ways of a tab (View, its close). A check-in
  *  answers on its card: no states then, only More */
@@ -86,7 +87,11 @@ export function SimpleActs({ x, row, s, c, sug }) {
       : strong.verb === 'later' ? f.list.laterUntil(formatDay(laterDay, lang)) : w[strong.verb] ?? f.verbs[strong.verb]
   // the suggestion's why and where it comes from stand on the strong button, on hover (stage 4: no line of its own)
   const sugTitle = strong?.sug && sug ? [sugWhy(sug, lang), sugFrom(sug, lang)].filter(Boolean).join(' · ') : null
-  const strongBtn = live && flowDriver(s)
+  // a tab that asks what its card answers (its options, yes and no: logic.js replyOptions) needs no jump: To tab is
+  // strong only where the card cannot answer it, else it waits in More; a tab at work or at its prompt keeps it strong
+  const reply = x.kind === 'tab' && asks ? replyOptions(live, s, t) : null
+  const cardAnswers = !!reply && (reply.textBox || reply.buttons.some(b => b.id !== 'open'))
+  const strongBtn = live && flowDriver(s) && !cardAnswers
     ? html`<${Btn} size="sm" variant="primary" cls="verbbar-strong" onClick=${() => c.flowJump({ key: row.key, ref: live.ref, title })}>${f.toTab}<//>`
     : strong ? html`<${Btn} size="sm" variant=${viaBoard && panel === 'board' ? 'secondary' : 'primary'} cls="verbbar-strong" busy=${busy}
       pressed=${viaBoard ? panel === 'board' : undefined} title=${sugTitle || undefined} onClick=${applyStrong}>${short(strongWord, 80)}<//>` : null
@@ -115,7 +120,7 @@ export function SimpleActs({ x, row, s, c, sug }) {
   })}
     ${review ? item('improve', f.improve.button, () => { setPanel('improve'); setMore(false) }) : null}
     ${near && flowDriver(s) ? item('view', f.view, run(() => c.openTabView(near.ref))) : null}
-    ${!live && near && flowDriver(s) ? item('totab', f.toTab, run(() => c.flowJump({ key: row.key, ref: near.ref, title }))) : null}
+    ${(!live || cardAnswers) && near && flowDriver(s) ? item('totab', f.toTab, run(() => c.flowJump({ key: row.key, ref: near.ref, title }))) : null}
     ${offer ? html`<div class="flow-more-close"><${TabClose} tab=${near} s=${s} c=${c} size="sm" only=${ends} /></div>` : null}`
   const toTask = basic.some(v => v.id === 'task') ? (row.inbox_id
     ? { what: f.basic.taskInbox, run: async () => { const r = await c.act('to_task', { key: row.key }); if (r?.ok && r.task) c.openItem(`task:${r.task}`); return r } }
