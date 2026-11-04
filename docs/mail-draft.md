@@ -232,6 +232,7 @@ of its window, a missing language variant, Outlook's sender, the profile's
 |---|---|---|---|
 | `apple-mail` | a real draft, read back from Drafts: sender and attachments as saved | set from the footer's `sender`/`email`, read back | needs a Mail account with that address; gets the HTML without dark-mode rules (below) |
 | `outlook` | an open compose window; counted in Drafts where scripts can see the folder | Outlook's default account | no `--hide` (without a window Outlook stores nothing); the new Outlook shows scripts only its local folders, not the account's Drafts, so the draft is reported as an open, unverified window; the sender cannot be set by script |
+| `imap` | the draft stored in the account's Drafts folder on the server, read back from a fresh connection: subject, sender, recipients, attachments | the footer's address; it picks the account | needs an entry in `mail.imap_accounts` for that sender; no replies; see § IMAP drafts |
 | `eml` | a `.eml` with `X-Unsent: 1` | in the file | Outlook and Thunderbird open it as a draft; Apple Mail opens it read-only |
 | `none` | only the bundle | | for review or another tool |
 
@@ -258,6 +259,52 @@ long body in argv once made a client create nothing while the script reported
 success. A draft counts only when the Drafts folder counts it from a fresh
 process, because a message that is only an open window disappears with the
 next restart.
+
+## IMAP drafts
+
+A client that drives Apple Mail needs the person to allow it, once, on that
+machine's screen, and macOS ties the allowance to the exact program that asked.
+On a machine nobody sits at, the question waits for a click that never comes,
+and every update of the interpreter takes the allowance away again without a
+word. `imap` needs no mail program: the draft is stored straight into the
+account's Drafts folder on the server, so it appears on every device that has
+the account (phone, laptop, web mail), ready to be read and sent from there.
+
+Which drafts go there is set per sender address and per machine:
+
+```yaml
+# bridge-config.yaml
+mail:
+  imap_accounts:
+    - address: you@example.org          # the sender this account holds drafts for
+      host: imap.example.org
+      port: 993                         # default 993, always TLS with a checked certificate
+      user: you@example.org             # default: address
+      password_ref: keychain://mail-drafts-imap/you@example.org
+      drafts_folder: ""                 # default: the folder the server marks \Drafts; umlauts are fine
+      use_on: [always-on]               # where drafts from this address go here; [all] = every machine
+```
+
+- On a machine `use_on` names, a draft whose sender is `address` goes to IMAP,
+  whatever the profile's `client` says: where the person can read the draft is a
+  fact about the machine, a profile's client is a preference. `--client` on the
+  command line still wins, and a reply stays in Apple Mail.
+- Everywhere else nothing changes. An account without `use_on` is used only when
+  asked for with `--client imap`.
+- A machine is known by `$BRIDGE_MACHINE`, its host name, on macOS its local host
+  name, and the id of each `infra/remotes/<id>.yaml` whose `hostname:` is one of
+  those (exactly; `Box` and `Box.local` are the same machine, `mini.corp` and
+  `mini.local` are not). `mail-draft.sh explain --to <who>` says when and why `imap` was chosen.
+- `password_ref` is a reference (`rules/secret-placement.md`), resolved by the
+  secrets skill at login and never printed. A provider that refuses the normal
+  password for IMAP (Gmail does) wants an app password: create one for this
+  purpose alone, so it can be revoked on its own.
+- A draft counts when the folder shows it from a fresh connection, with its
+  subject, sender, recipients, cc and attachments; a server that indexes late
+  gets a few seconds. A server that answers OK and keeps nothing, a login that is refused, or a server that marks
+  no Drafts folder is reported by name, and no folder is ever guessed.
+- IMAP can store a message, it cannot send one. The client talks to no outgoing
+  server and has no code path to one.
 
 ## Replies
 
@@ -308,7 +355,7 @@ client.
 ```yaml
 # bridge-config.yaml
 mail:
-  client: apple-mail           # apple-mail | outlook | eml | none
+  client: apple-mail           # apple-mail | outlook | imap | eml | none
   default_profile: everyday
   language: en                 # language of footers and profiles without a suffix
   drafts_dir: .bridge/mail-drafts

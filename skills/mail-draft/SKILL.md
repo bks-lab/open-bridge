@@ -4,7 +4,7 @@ description: >-
   Drafts outgoing email and never sends: Markdown to mail-safe HTML themed from
   DESIGN.md, footers from identity/mail-footers/, occasions from
   workflow/mail-profiles/, recipients from mandants, preflight checks; Apple
-  Mail, Outlook or .eml. Trigger: "draft an email", "mail to", "email draft",
+  Mail, Outlook, IMAP or .eml. Trigger: "draft an email", "mail to", "email draft",
   "mail footer", "email signature", "mail profile".
 metadata:
   scope: core
@@ -33,6 +33,7 @@ every field: [`docs/mail-draft.md`](../../docs/mail-draft.md).
 | Who receives it, in which language, formal or not | `identity/mandants/<id>.yaml` (`mail_profile`, `defaults.language`, `defaults.address_form`) | user |
 | Colours and type | `DESIGN.md` through the `design` theme | core / fork |
 | Machine defaults (client, drafts folder) | `bridge-config.yaml` `mail:` | user |
+| Which senders store drafts on the server, on which machines | `bridge-config.yaml` `mail.imap_accounts` | user |
 
 CORE ships only the engine, the two `_schema.yaml` and the two `_template.yaml`.
 Every real footer and profile is a USER file (or `org` when a team shares one
@@ -121,6 +122,7 @@ cannot render is shown as a tile with the reason, not skipped.
 |---|---|---|---|
 | `apple-mail` | real draft, read back from Drafts (sender, attachments); replies with `--reply-to` | set from the footer, read back | default on macOS |
 | `outlook` | open window; counted in Drafts where Outlook lets scripts see it | NOT settable, reported | no `--hide`, no replies; the new Outlook hides account folders from scripts, so its drafts read as unverified |
+| `imap` | stored in the account's Drafts folder on the server, read back | the footer's address picks the account | per sender and machine via `mail.imap_accounts` (`use_on`), beats the profile's client there; no replies; password only as a reference |
 | `eml` | `.eml` with `X-Unsent: 1` | in the file | any OS; opens as a draft in Outlook and Thunderbird |
 | `none` | only the bundle | n/a | for review or another tool |
 
