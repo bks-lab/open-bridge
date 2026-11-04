@@ -253,6 +253,7 @@ def task_detail(root: Path, slug: str, listing: list | None = None, folder: str 
              "next": _text(nxt.get("what") if isinstance(nxt, dict) else nxt),
              "next_who": _text(nxt.get("who")) if isinstance(nxt, dict) else None,
              "next_due": _text(nxt.get("due")) if isinstance(nxt, dict) else None,
+             "next_check": _text(nxt.get("check")) if isinstance(nxt, dict) else None,
              "progress": cd.progress(text), "placeholder": cd.placeholder_steps(text)}
     if isinstance(nxt, dict):     # `next: {what, who}` reads as its words
         front = {**front, "next": nxt.get("what")}
@@ -412,7 +413,23 @@ def _ended(events) -> str | None:
     return ended
 
 
-def _facts(item: dict, briefs: list, updated, state_at=None, until=None, deferred=None, ended=None) -> dict:
+def _checkin(events) -> dict | None:
+    """The check-in in force (stage 4 of the one point view, the cockpit's In progress: a defer with `check`), as
+    scripts/inbox.py Item.deferral reads a defer: {who, until, since}, `since` the day it was set. It holds past its
+    day (the item is open again and asks how it stands) until an answer: another defer, a yes, a reopen or an end"""
+    current = None
+    for ev in events:
+        verb = ev.get("verb") if isinstance(ev, dict) else None
+        if verb == "defer":
+            day = str(ev.get("until") or "")[:10]
+            current = ({"who": _text(ev.get("waits_on") or ev.get("on")), "until": day, "since": _text(str(ev.get("at") or "")[:10])}
+                       if ev.get("check") is True and re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) else None)
+        elif verb in ("approve", "reopen") or verb in TERMINAL:
+            current = None
+    return current
+
+
+def _facts(item: dict, briefs: list, updated, state_at=None, until=None, deferred=None, ended=None, checkin=None) -> dict:
     """What card.inbox_card reads of an item: its detail and how it closes, its brief (the latest
     `describe` event, None when that one took the brief back) through the gate it was written through, its
     last event (`updated`), its last change of state (`state_at`), the day its newest defer names (`until`,
@@ -423,7 +440,7 @@ def _facts(item: dict, briefs: list, updated, state_at=None, until=None, deferre
             "area": _text(item.get("area")), "closes_when": _plain(item.get("closes_when")),
             "closer": _text(item.get("closer")), "brief": brief, "updated": _text(updated),
             "state_at": _text(state_at), "until": until, "deferred": deferred, "summary": _text(item.get("summary")),
-            "ended": ended}
+            "ended": ended, "checkin": checkin}
 
 
 _FACTS: dict = {}
@@ -472,7 +489,7 @@ def inbox_facts(root: Path, item_id: str) -> dict | None:
                 read.append(ev)
                 if ev.get("verb") == "describe":
                     briefs.append(ev.get("brief"))
-    facts = _facts(item, briefs, last, _state_at(read), _until(read), _deferred(read), _ended(read))
+    facts = _facts(item, briefs, last, _state_at(read), _until(read), _deferred(read), _ended(read), _checkin(read))
     with _FACTS_LOCK:
         if len(_FACTS) >= FACTS_CAP:
             _FACTS.clear()

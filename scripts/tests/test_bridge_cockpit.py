@@ -10339,3 +10339,50 @@ def test_closing_the_item_analyse_in_a_tab_filed_marks_the_job_seen_and_keeps_it
     served = served_runs(world)["chat-bot"]
     assert served["acked"]["note"] == "exit 75 was a planned restart"
     assert served["advise"] == {"inbox": new_id, "state": "done"}
+
+
+# ---------------------------------------------------------------- stage 4: In progress with a check-in
+
+def test_work_on_puts_an_item_with_someone_until_its_check_in_day_and_takes_it_back(world):
+    world.runner.calls.clear()
+    res = world.act("work_on", key=f"inbox:{YES_ID}", who="lena", until=TOMORROW, text="She drafts the contract")
+    calls = writes(world)
+    assert I(world, "defer", YES_ID, "--until", TOMORROW, "--on", "lena", "--check") in calls
+    assert any("She drafts the contract" in " ".join(c) for c in calls), "the sentence as a note"
+    assert res["settled"] == [f"inbox:{YES_ID}"]
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "inbox"][0]
+    assert undo["verb"] == "inbox_reopen"
+    # a task: who takes its step and the check-in day, the step kept; the undo puts the old who back
+    world.runner.calls.clear()
+    world.act("work_on", key="task:demo-task", who="lena", until=TOMORROW)
+    assert writes(world)[0] == K(world, "next", "demo-task", "--who", "lena", "--check", TOMORROW, "--json")
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo["verb"] == "task_next" and undo["args"]["slug"] == "demo-task" and undo["args"]["clear_check"] is True
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world)[0][:4] == K(world, "next", "demo-task")[:4] and "--clear-check" in writes(world)[0]
+    # who is one line, the day a day
+    for bad in ({"who": "", "until": TOMORROW}, {"who": "lena", "until": "tomorrow"}, {"who": "a\nb", "until": TOMORROW}):
+        with pytest.raises(ActionError):
+            world.act("work_on", key="task:demo-task", **bad)
+
+
+def test_stuck_ends_the_check_in_with_the_reason_as_a_note_and_the_point_needs_you_again(world):
+    world.runner.calls.clear()
+    world.act("checkin_stuck", key=f"inbox:{YES_ID}", text="The other side does not answer")
+    calls = writes(world)
+    assert any(c[:4] == I(world, "reopen", YES_ID)[:4] for c in calls)
+    assert any("The other side does not answer" in " ".join(c) for c in calls)
+    world.runner.calls.clear()
+    world.act("checkin_stuck", key="task:demo-task", text="Waits on the vendor")
+    calls = writes(world)
+    assert K(world, "next", "demo-task", "--who", "me", "--clear-check", "--json") in calls
+    assert any("Waits on the vendor" in " ".join(c) for c in calls)
+
+
+def test_a_check_in_reaches_the_row_from_the_item_and_from_the_task(tmp_path):
+    from lib.bridge_cockpit import details as dt_
+    events = [{"verb": "defer", "at": "2026-10-04T09:00:00+00:00", "until": "2026-10-11", "waits_on": "lena", "check": True}]
+    assert dt_._checkin(events) == {"who": "lena", "until": "2026-10-11", "since": "2026-10-04"}
+    assert dt_._checkin(events + [{"verb": "reopen", "at": "2026-10-12T09:00:00+00:00"}]) is None, "an answer ends it"
+    assert dt_._checkin([{"verb": "defer", "until": "2026-10-11", "waits_on": "lena"}]) is None, "a plain later is none"

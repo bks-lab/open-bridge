@@ -65,7 +65,7 @@ def test_a_task_row_maps_title_next_state_and_the_headline_as_summary():
     assert c["title"] == "Invoice delivery"
     assert c["summary"] == "Invoices bounce at the customer gateway"
     assert c["next"] == {"what": "Ask the customer for the rejected ids", "who": "me", "due": "2026-10-28",
-                         "from": "status", "since": "2026-10-20"}
+                         "from": "status", "since": "2026-10-20", "check": None}
     assert c["state"] == {"word": "doing", "blocked_by": None, "since": None}
     assert (c["owner"], c["priority"], c["area"], c["updated"], c["due"]) == ("me", "P1", "Billing", "2026-10-20", "2026-10-28")
     assert c["progress"] == {"done": 1, "total": 3}
@@ -148,7 +148,7 @@ def test_a_next_from_the_inbox_keeps_its_source_and_no_status_who():
     nxt = {"what": "Approve the resend", "from": "inbox", "since": "2026-10-21T09:00", "key": "inbox:x"}
     c = cd.card_of(row(next=nxt), ctx())
     assert c["next"] == {"what": "Approve the resend", "who": None, "due": None, "from": "inbox",
-                         "since": "2026-10-21T09:00"}
+                         "since": "2026-10-21T09:00", "check": None}
 
 
 def test_a_blocked_task_says_so_in_its_state():
@@ -407,7 +407,7 @@ def test_task_detail_attaches_a_card_read_from_its_status_md(tmp_path):
     assert c["kind"] == "task" and c["title"] == "Invoice delivery"
     assert c["goal"] == "Invoices reach the customer" and c["written"] == "ai"
     assert c["next"] == {"what": "Ask the customer", "who": "me", "due": "2026-10-28", "from": "status",
-                         "since": "2026-10-20"}
+                         "since": "2026-10-20", "check": None}
     assert c["progress"] == {"done": 1, "total": 2}
     assert d["front"]["next"] == "Ask the customer"          # the old fields stay as they were
 

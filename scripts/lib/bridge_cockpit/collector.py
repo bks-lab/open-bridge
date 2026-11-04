@@ -185,6 +185,16 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                       describe=describe or {}, tasks={t["slug"]: t for t in tasks}, work=dict(known.work),
                       inbox=lambda item_id: inbox_facts(root, item_id))
 
+    def checkin_of(row: dict, is_task_row: bool) -> dict | None:
+        if row.get("inbox_id"):
+            got = (card_ctx.inbox(row["inbox_id"]) or {}).get("checkin")
+            return dict(got) if isinstance(got, dict) else None
+        if is_task_row:
+            t = card_ctx.tasks.get(row.get("task")) or {}
+            day = t.get("next_check")
+            return {"who": t.get("next_who"), "until": str(day)[:10], "since": t.get("updated")} if day else None
+        return None
+
     def row_out(row: dict, section: str) -> dict:
         tab = m.tab_for(row, tabs)
         live_tab = tab if tab and m.is_live(tab) else None
@@ -247,6 +257,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "updated": row.get("updated") if is_task_row else None,
             "until": ((card_ctx.inbox(row["inbox_id"]) or {}).get("until")
                       if row.get("inbox_id") and row.get("inbox_state") == "deferred" else None),
+            # stage 4 of the one point view, In progress with a check-in: who has it, the day it asks how it stands and
+            # since when (an inbox item's defer with `check`, a task's next.who and next.check), None without one
+            "checkin": checkin_of(row, is_task_row),
         }
         # the one card of the row (card.py), from the row as it goes out (and when its item was filed)
         out["card"] = cd.card_of({**out, "created": row.get("created")}, card_ctx)
