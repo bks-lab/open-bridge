@@ -13,13 +13,17 @@
 // run opens in its group Finished, to read (pointOpen `flowReadAt`), and how long ago reads in days past a day (sinceText).
 // Stage 3: a way that comes from a list (the task check, a page's rows, the start page, the Due list) brings the list
 // along (pointList: what the walk walks; pointBack: where To the list leads; pointListAt: whether the point in front is
-// still the one it opened), and who takes a next step reads in words (nextWho).
+// still the one it opened), and who takes a next step reads in words (nextWho). Stage 4, simpler: a point says three
+// things, its name (pointName, the original title kept for Details: pointOriginal), where it stands (pointStand) and its
+// next step with who takes it (pointStep, whoKind); the right column has one strong button (strongOf), the four states
+// (SIMPLE_STATES) and More with every other verb that applies (moreOf); In progress offers who (workWho) and the days to
+// ask again (checkinDays).
 // Where Work through is off (cockpit.flow.enabled false, the default of open-bridge) none of it applies: the item
 // drawer (views/overlays.js ItemDrawer) and the file card of the Files tab (views/dossier.js OpenFile) stay as they
 // were. No DOM, no network, no state; logic.js passes every name on, the point test imports it under node.
 import { TABLES } from './text.js'
-import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, coveredKeys, duration, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere,
-  rowProject, sessionsInFlow, triageKey } from './logic.js'
+import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, coveredKeys, DAY, duration, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere,
+  isoDate, leftPlan, pageStepsOf, rowProject, sessionsInFlow, triageKey } from './logic.js'
 
 /** Whether every way to an item or a task opens the one point view: the work tab offers Work through
  *  (cockpit.flow.enabled, kept by cockpit.work_views), the rule the sessions and the task check follow too
@@ -307,3 +311,114 @@ export function pointContext(x, s, detail = null, item = null, lang = 'en') {
   const out = lines.join('\n')
   return out.length <= CONTEXT_MAX ? out : out.slice(0, CONTEXT_MAX)
 }
+
+// ---------------------------------------------------------------- stage 4: a point says three things
+
+// a title that is a slug (portal-redesign-v2) or longer than this gives way to the brief's name
+export const NAME_MAX = 60
+const SLUG_TITLE_RE = /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/
+const words = v => String(v ?? '').trim()
+const baseTitle = row => words(row?.card?.title) || words(row?.title) || words(row?.key)
+
+/** The name a point goes by: an inbox item its brief's name, else its title; a task or stream its H1 (the row's
+ *  title), unless that is a slug or longer than NAME_MAX, then the brief's name; any other row its brief's name, else
+ *  its title. The title it replaces stands in Details (pointOriginal) */
+export function pointName(row) {
+  if (!row) return ''
+  const title = baseTitle(row)
+  const name = words(row.card?.name)
+  if (!row.inbox_id && row.task) return title && !SLUG_TITLE_RE.test(title) && title.length <= NAME_MAX ? title : name || title
+  return name || title
+}
+
+/** The original title where the name shown is another, else null */
+export function pointOriginal(row) {
+  const title = baseTitle(row)
+  return row && title && pointName(row) !== title ? title : null
+}
+
+/** Where a point stands, one sentence: the brief's stand, else the triage's gist, else null */
+export function pointStand(row, s) {
+  if (!row?.key) return null
+  return words(row.card?.stand) || words(s?.triage?.items?.[row.key]?.gist) || null
+}
+
+/** Who takes a step, as a kind: `me` (me, you, the owner by name), `bridge` (the Bridge, first or alone), a `person`;
+ *  null without one */
+export function whoKind(who, s) {
+  const low = words(who).toLowerCase()
+  if (!low) return null
+  if (['bridge', 'bridge_then_me'].includes(low)) return 'bridge'
+  const owner = words(s?.work?.person ?? s?.server?.person).toLowerCase()
+  if (['me', 'you', 'self'].includes(low) || (owner && (low === owner || low === owner.split(/\s+/)[0]))) return 'me'
+  return 'person'
+}
+
+/** The next step of a point: {what, who (as written), whoKind, due, check (its check-in day, the row's or the
+ *  step's)}, null without one */
+export function pointStep(row, s) {
+  const n = row?.card?.next
+  if (!words(n?.what)) return null
+  const who = words(n.who) || null
+  return { what: words(n.what), who, whoKind: whoKind(who, s), due: n.due ?? null, check: row?.checkin?.until ?? n.check ?? null }
+}
+
+// the states every point offers in the right column, in their order (stage 4): Done, In progress ▾, Later ▾, Drop ▾
+export const SIMPLE_STATES = ['done', 'work', 'later', 'drop']
+
+/** The one strong button of a point: the AI's suggestion with its verb and the step ({verb, sug: true, step}), else
+ *  your yes where an item waits for it, else the Bridge's own step to start ({verb: do, sug: false, step}); null when
+ *  the next step is yours or there is none: the four states then stand alone */
+export function strongOf(x, s, sug = null) {
+  const row = x?.row
+  if (!row?.key) return null
+  const step = pointStep(row, s)
+  if (sug && ['do', 'done', 'later', 'drop'].includes(sug.verb)) return { verb: sug.verb, sug: true, step: step?.what ?? null }
+  if (row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved') return { verb: 'yes' }
+  if (step?.whoKind === 'bridge') return { verb: 'do', sug: false, step: step.what }
+  return null
+}
+
+const isTask = row => !!row?.task && !row.inbox_id && row.key === `task:${row.task}`
+
+/** What the menu More holds for a point, in its order, only what applies (a verb that cannot is left out): Make it a
+ *  task (an inbox item; an issue whose page offers it), Open on GitHub and the board's moves (an issue or pull request;
+ *  `board` where its board is known), Show in the net (a task), Describe again (an inbox item, a task), Advise, Assign
+ *  tab (a task with a tab running free in its area), Back on (a row of Later that can come back), Steps (a row with
+ *  steps on its page), Runs on (the return card), Not this task (a session's entry). A person gets none */
+export function moreOf(x, s, { board = false, adopt = null } = {}) {
+  const row = x?.kind === 'reports' ? null : x?.row
+  if (!row?.key || s?.boot?.config?.person) return []
+  const out = []
+  const issue = !!row.ref && !row.task && !row.inbox_id
+  if (row.inbox_id || (issue && adopt)) out.push('task')
+  if (issue && row.url) out.push('github')
+  if (issue && board) out.push('board')
+  if (isTask(row)) out.push('net')
+  if (row.inbox_id || isTask(row)) out.push('describe')
+  out.push('advise')
+  if (isTask(row) && (row.adopt_candidates ?? []).length) out.push('adopt')
+  if (x.group === 'left' && x.left === 'later' && x.entry && leftPlan([x.entry], 'back', s).counts.back) out.push('back')
+  if (pageStepsOf(row, s)) out.push('steps')
+  if (x.kind === 'back') out.push('runsOn')
+  if (x.lane && x.kind === 'session' && x.session?.sid) out.push('unlink')
+  return out
+}
+
+/** Who In progress can hand a point to: me, the Bridge, then the people the Bridge names already (who takes a next
+ *  step or has a check-in on any open row), each once, as written */
+export function workWho(s) {
+  const seen = new Set(['me', 'bridge'])
+  const out = ['me', 'bridge']
+  const rows = [...flowUniverse({ ...s, model: s?.wholeModel ?? s?.model }).values()]
+  for (const r of rows) {
+    for (const w of [r.card?.next?.who, r.checkin?.who]) {
+      const v = words(w)
+      if (v && whoKind(v, s) === 'person' && !seen.has(v.toLowerCase())) { seen.add(v.toLowerCase()); out.push(v) }
+    }
+  }
+  return out
+}
+
+/** The check-in days In progress offers: in 3 days, in a week (the default), in two weeks, {n: YYYY-MM-DD} */
+export const checkinDays = nowMs => Object.fromEntries([3, 7, 14].map(n => [n, isoDate(nowMs + n * DAY)]))

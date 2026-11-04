@@ -787,6 +787,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_prio.test.mjs",
     "scripts/tests/bridge_cockpit_point.test.mjs",      # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/tests/bridge_cockpit_read.test.mjs",       # finished AI runs: the group to read, the plain sentence, the run's verbs
+    "scripts/tests/bridge_cockpit_simple.test.mjs",     # stage 4: the name, the stand, the step, the bands, More, the check-in
     "scripts/tests/bridge_cockpit_settle.test.mjs",
     "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",
