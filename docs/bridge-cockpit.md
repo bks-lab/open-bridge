@@ -434,8 +434,8 @@ source and By Jev, there only with `cockpit.flow.enabled: true`
 (`cockpit.work_view: flow` opens the tab on it). It is laid out as cmux lays
 out a workspace:
 
-- **Left**, like the workspace sidebar or a mail app's folders, a table of
-  contents that lists no point. First the **themes** a
+- **Left**, like a mail app's folders with their mails, the list of the work:
+  every open point under its theme, area or square. First the **themes** a
   small model gives the open points across the areas (`cockpit.flow.themes`,
   below), or the **areas** (`workplace.workspaces`, the same names and colours
   as the cmux workspaces; Themes and Areas switch at the top while the themes
@@ -447,7 +447,14 @@ out a workspace:
   **Read in with Haiku** (Prio, below) and **Rename** the theme entered; one
   that runs already stands off and busy, and the line of what runs stays under
   it. A click enters one: the list stays as it is, the one entered marked, All
-  leads back, and its points stand in the middle only. With Jev or Haiku a third order, **Prio**, stands
+  leads back, and its points stand in the middle only. Under each entry stand
+  its points as a list, in the order its overview walks them, each its name and
+  its stand in a word (no boxes: ticking stays in the overview). A click on one
+  opens it in the middle with its theme entered, at its place in that theme's
+  walk, and the list stays beside it with the point open marked: the next one
+  is a click away, and the walk bar under the point goes on in the same order
+  and on into the next theme. With no point open the middle shows the overview,
+  the start view of the page. With Jev or Haiku a third order, **Prio**, stands
   beside Themes and Areas (below). On top stands **Running now** as one row
   with its count while an agent works (below), its only place: no strip of it
   stands over an overview, and the head line counts the same number. Under it

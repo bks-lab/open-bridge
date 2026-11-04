@@ -207,7 +207,7 @@ function FlowBody({ s, c }) {
     ${driver || personOf(s) ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
     <div class=${`flow-grid${x ? '' : ' no-aside'}`}>
       <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} running=${runs} left=${parts.leftOut}
-        run=${running?.id ?? null} open=${group?.reason ?? null} read=${parts.read} s=${s} c=${c} />
+        run=${running?.id ?? null} open=${group?.reason ?? null} read=${parts.read} current=${view === 'point' ? x?.id ?? null : null} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
         ${point ? html`<${PointView} x=${x} ...${point} scope=${scope} n=${view === 'point' ? queue.length : 1} s=${s} c=${c} />`
           : view === 'solo' ? html`<header class="flow-main-head">

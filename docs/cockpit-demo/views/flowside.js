@@ -49,19 +49,20 @@
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
   flowRunning, flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts,
   pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf,
-  fieldsSplit, pointName, whoBrief
+  fieldsSplit, pointName, pointsIn, whoBrief
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
 import { OriginTag } from './day.js'
 import { Segmented, TabClose, TeamBlock } from './detail.js'
 import { CheckRow, NotNowBlock, NotNowNarrow, ReadRow } from './flowleft.js'
-import { Suggestion } from './flowlist.js'
+import { Suggestion, walkOrder } from './flowlist.js'
+import { pointStandWord, pointTitle } from './flowpoint.js'
 import { PrioFoot } from './flowprio.js'
 import { RunningNarrow, RunningRow } from './flowrun.js'
 import { TAB_MSG_MAX } from './nav.js'
@@ -111,7 +112,29 @@ export function Resort({ s, c }) {
  *  while the middle shows it or one of its points (`marked`); a click enters one. The foot: Order themes again,
  *  Sort again where By source is off (Resort, in every order) and, while a theme is entered, Rename it; in Prio Ask
  *  Jev again */
-function SideList({ sides, entered, mode, points, marked, s, c }) {
+/** The points of one side as the list under its name: in the order its overview walks them (Prio's squares by Jev's
+ *  rank, Not rated yet by due), each its name and its stand in a word; a click opens it in the middle with its side
+ *  entered (c.flowSidePoint), the one open marked; the list stays while a point is open, so the next is one click away */
+function SidePoints({ side, points, mode, current, s, c }) {
+  const pts = walkOrder(pointsIn(points, side.id, s, mode), mode === 'prio' ? (side.id === 'none' ? 'due' : 'rank') : null)
+  if (!pts.length) return null
+  return html`<ul class="flow-side-pts">${pts.map((p, k) => html`<${SidePoint} key=${p.id} p=${p} on=${!!current && p.id === current}
+    open=${() => c.flowSidePoint(side.id, p.id, k)} />`)}</ul>`
+}
+
+/** One point of the list; the one open scrolls into view in the column when the walk in the middle reaches it */
+function SidePoint({ p, on, open }) {
+  const ref = useRef(null)
+  useEffect(() => { if (on) ref.current?.scrollIntoView?.({ block: 'nearest' }) }, [on])
+  const name = pointTitle(p)
+  const stand = pointStandWord(p)
+  return html`<li><button ref=${ref} type="button" class=${`flow-side-pt${on ? ' is-current' : ''}`} aria-current=${on ? 'true' : undefined}
+    title=${name} onClick=${open}>
+    <span class="flow-side-pt-name">${name}</span>${stand ? html`<span class="flow-side-pt-stand muted small">${stand}</span>` : null}
+  </button></li>`
+}
+
+function SideList({ sides, entered, mode, points, marked, current = null, s, c }) {
   const f = T().flow.side
   const th = s.themes
   const [renaming, setRenaming] = useState(false)
@@ -137,7 +160,8 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
         <span class="flow-side-name"><span class="flow-side-label">${sideName(x, mode)}</span>
           ${x.you ? html`<span class="flow-side-you">${f.you(x.you)}</span>` : null}</span>
         <span class="flow-side-open mono muted" title=${f.open(x.open)}>${x.open}</span>
-      </button></li>`)}</ul>
+      </button>
+      <${SidePoints} side=${x} points=${points} mode=${mode} current=${current} s=${s} c=${c} /></li>`)}</ul>
     ${pointViewOn(s) ? html`<${OrderMenu} mode=${mode} keys=${keys} busy=${busy} entered=${entered} naming=${renaming} setNaming=${setRenaming}
         status=${status} s=${s} c=${c} />`
     : mode === 'themes' ? html`<div class="flow-side-foot flow-side-body">
@@ -156,7 +180,7 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
  *  entries stand in the middle), the list of themes, areas or squares (logic.js flowSides) with the one entered
  *  marked, Check tasks as a block of its own above Not now at the foot; `running` and `left` the page's (logic.js runningOf, flowParts), `view` what the middle shows, `open` the
  *  group of Not now open there */
-export function FlowSide({ sides, entered, mode, all, view, running = null, left = null, run = null, open = null, read = [], s, c }) {
+export function FlowSide({ sides, entered, mode, all, view, running = null, left = null, run = null, open = null, read = [], current = null, s, c }) {
   const f = T().flow.side
   return html`<aside class="flow-side" aria-label=${f.label}>
     <label class="flow-side-select"><span class="sr-only">${f.pick}</span>
@@ -168,7 +192,7 @@ export function FlowSide({ sides, entered, mode, all, view, running = null, left
     <${NotNowNarrow} left=${left} open=${open} c=${c} />
     <${RunningRow} running=${running} on=${view === 'running' || view === 'run'} c=${c} />
     <${ReadRow} read=${read} on=${view === 'read' || view === 'readPoint'} c=${c} />
-    <${SideList} sides=${sides} entered=${entered} mode=${mode} points=${all} marked=${view === 'overview' || view === 'point'} s=${s} c=${c} />
+    <${SideList} sides=${sides} entered=${entered} mode=${mode} points=${all} marked=${view === 'overview' || view === 'point'} current=${current} s=${s} c=${c} />
     ${personOf(s) ? null : html`<${CheckRow} s=${s} c=${c} on=${view === 'check'} />`}
     <${NotNowBlock} left=${left} open=${open} c=${c} />
   </aside>`

@@ -442,7 +442,7 @@ test('the page on the demo data: the themes or areas on the left, the overview o
 const opsState = (ui = {}) => cockpitState(NOW, { ...state({ now: [ask('20261009-0900-a-q', { area: 'Ops' })], work: [task('a', { area: 'Ops' }), task('b', { area: 'Docs' })] }),
   ui: { ...state().ui, page: 'briefing', workView: 'flow', flowSide: { areas: 'a:ops' }, flowView: 'overview', flowPicked: [], ...ui } })
 
-test('a theme entered: the left column keeps the same list, the one entered marked, All first leads back, no points on it', () => {
+test('a theme entered: the left column keeps the same list, the one entered marked, All first leads back, no boxes on it', () => {
   const c = recorder()
   const st = opsState()
   const el = mount(html`<${FlowPage} s=${st} c=${c} />`)
@@ -461,7 +461,8 @@ test('a theme entered: the left column keeps the same list, the one entered mark
   assert.deepEqual(items.filter(b => b.hasClass('is-on')).length, 1)
   items.find(b => /Docs/.test(b.text())).click()
   assert.deepEqual(c.calls.at(-1), ['flowSide', 'a:docs'])
-  // no points, no boxes, no All box and no Tick on the left: the middle has them
+  // no boxes, no All box and no Tick on the left: the middle has them (the points stand there as a plain list,
+  // bridge_cockpit_work_list.test.mjs)
   for (const gone of ['.flow-pt', '.flow-pt-pick', '.flow-pt-chip', '.flow-side-back', '.flow-side-title', '.flow-side-tick', 'input[type=checkbox]']) {
     assert.ok(!side.$(gone), gone)
   }
