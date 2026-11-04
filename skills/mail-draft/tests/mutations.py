@@ -40,6 +40,7 @@ MIME = "engine/mime.py"
 VALIDATE = "engine/validate.py"
 CLI = "engine/cli.py"
 RECIPIENTS = "engine/recipients.py"
+IMAP = "engine/clients/imap.py"
 
 MUTATIONS = (
     Mutation(
@@ -580,5 +581,45 @@ MUTATIONS = (
         replace="                    if False:\n",
         test="tests.test_groups.Groups.test_member_without_email_is_named_not_dropped",
         scar="a group member without an address was left off the mail without a word",
+    ),
+    Mutation(
+        name="imap-routes-on-every-machine",
+        file=IMAP,
+        search="    hit = sorted(wanted & names)\n",
+        replace="    hit = sorted(wanted)\n",
+        test="tests.test_imap.Selection.test_other_machine_keeps_the_client_it_had",
+        scar="a machine that was undecided got its drafts moved to the server anyway",
+    ),
+    Mutation(
+        name="imap-profile-beats-machine",
+        file=DRAFT,
+        search="    route = None if req.client or req.reply else imap.routed(cfg, d.sender)\n",
+        replace="    route = None if req.client or req.reply or profile.get(\"client\") else imap.routed(cfg, d.sender)\n",
+        test="tests.test_imap.Selection.test_the_machine_beats_the_profile",
+        scar="on the always-on machine the profile's Apple Mail won, and Mail waited for a click nobody gave",
+    ),
+    Mutation(
+        name="imap-raw-password-accepted",
+        file=IMAP,
+        search="    elif not REFERENCE.match(ref):\n",
+        replace="    elif False:\n",
+        test="tests.test_imap.Selection.test_a_raw_password_is_refused_and_never_repeated",
+        scar="a password typed into bridge-config.yaml would have been used and committed",
+    ),
+    Mutation(
+        name="imap-ok-without-read-back",
+        file=IMAP,
+        search="    if stored is None:\n",
+        replace="    if False:\n",
+        test="tests.test_imap.Handoff.test_a_server_that_keeps_nothing_is_not_a_draft",
+        scar="an OK from the server is no draft: only the folder showing it is",
+    ),
+    Mutation(
+        name="imap-guesses-a-folder",
+        file=IMAP,
+        search="        if not folder:\n            return Handoff(False, \"imap\", f\"{host} marks no folder as Drafts",
+        replace="        if not folder:\n            folder = \"Drafts\"\n        if False:\n            return Handoff(False, \"imap\", f\"{host} marks no folder as Drafts",
+        test="tests.test_imap.Handoff.test_no_drafts_folder_is_a_reason_not_a_guess",
+        scar="a guessed folder name stores the draft where no device shows it as one",
     ),
 )

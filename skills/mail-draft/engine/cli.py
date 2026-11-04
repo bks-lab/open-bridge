@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
 
     c = sub.add_parser("compose", help="build the draft and hand it to the mail client")
     _add_message_args(c, reply=True)
-    c.add_argument("--client", choices=["apple-mail", "outlook", "eml", "none"])
+    c.add_argument("--client", choices=["apple-mail", "outlook", "imap", "eml", "none"])
     c.add_argument("--reply-to", metavar="MESSAGE-ID|SUBJECT",
                    help="answer this message in Apple Mail (Message-ID, or words of its subject)")
     c.add_argument("--reply-all", action="store_true", help="with --reply-to: answer every recipient")
@@ -205,6 +205,8 @@ REPLY_UNSUPPORTED = {
     "outlook": "Outlook for Mac gives scripts no reliable way to answer a message and keep its quote "
                "and attachments (it cannot even keep a new draft without an open window)",
     "eml": "an .eml file cannot carry the quote of a message that lives in the mail client",
+    "imap": "IMAP stores a new message on the server; the quote and thread of a message "
+            "in the mail client are not reachable from there",
     "none": "client none hands nothing to a mail client",
 }
 
@@ -267,6 +269,10 @@ def cmd_compose(args, cfg) -> int:
             _open(eml)
         print(f"\ndraft: {eml} (opens as a draft in Outlook and Thunderbird; Apple Mail shows it read-only)")
         return 0
+    if d.client == "imap":
+        from .clients import imap
+        result = imap.handoff(d, bundle / ".handoff", show=show, cfg=cfg)
+        return _report_handoff(d, result, reply=False)
     if d.client == "apple-mail":
         from .clients import apple_mail as client
     elif d.client == "outlook":
@@ -278,11 +284,15 @@ def cmd_compose(args, cfg) -> int:
                                      set_to=getattr(args, "reply_set_to", False))
     else:
         result = client.handoff(d, bundle / ".handoff", show=show)
+    return _report_handoff(d, result, reply=original is not None)
+
+
+def _report_handoff(d, result, reply: bool) -> int:
     print(f"\n{d.client}: {result.detail}")
     if not result.ok:
         print("draft: FAILED" + (", NOT in the Drafts folder" if result.verified is False else ""))
     elif result.verified:
-        print("draft: " + ("reply " if original is not None else "") + "in the Drafts folder")
+        print("draft: " + ("reply " if reply else "") + "in the Drafts folder")
     elif result.verified is False:
         print("draft: open as a window, NOT yet in the Drafts folder (save it there)")
     else:

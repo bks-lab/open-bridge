@@ -195,8 +195,10 @@ properties:
     description: Files attached by default (a CV for applications). `~` and ${variables} expand.
   priority: {enum: [low, normal, high]}
   client:
-    enum: [apple-mail, outlook, eml, none]
-    description: Overrides bridge-config.yaml `mail.client` for this occasion.
+    enum: [apple-mail, outlook, imap, eml, none]
+    description: >-
+      Overrides bridge-config.yaml `mail.client` for this occasion. An entry of
+      `mail.imap_accounts` whose `use_on` names this machine beats it.
 
   # ---------------------------------------------------------------- checks --
   style_skill:

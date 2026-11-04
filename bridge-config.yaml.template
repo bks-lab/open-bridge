@@ -503,12 +503,17 @@ mandants:
 # workflow/mail-profiles/, footers in identity/mail-footers/ (docs/mail-draft.md).
 # Nothing here sends; every client gets a draft.
 # mail:
-#   client: apple-mail          # apple-mail | outlook | eml | none (default: apple-mail on macOS, else eml)
+#   client: apple-mail          # apple-mail | outlook | imap | eml | none (default: apple-mail on macOS, else eml)
 #   default_profile: everyday
 #   language: en                # language of footers/profiles without a variant suffix
 #   drafts_dir: .bridge/mail-drafts
 #   labels: {done: "DONE", blocked: "BLOCKED"}
 #   attachment_words: ["attached", "enclosed"]
+#   imap_accounts:              # optional: drafts stored on the server, per sender and machine
+#     - address: you@example.org
+#       host: imap.example.org
+#       password_ref: keychain://mail-drafts-imap/you@example.org   # a reference, never the password
+#       use_on: [always-on]     # infra/remotes id or host name; [all] for every machine
 
 # ─── Document Sensor ──────────────────────────────────────────────────
 # Inbox scanning + PARA-style document routing. See workflow/contexts/doc-system.yaml.
