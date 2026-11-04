@@ -205,7 +205,7 @@ def merge(searched: list, carded: list) -> list:
             continue
         row["assigned_to_me"] = bool(row.get("assigned_to_me") or hit.get("assigned_to_me"))
         row["others"] = False                      # the search brought it: asked of you, by you or for you
-        for key in ("labels", "assignee", "assignees", "changed_at", "url", "author"):
+        for key in ("labels", "assignee", "assignees", "changed_at", "created_at", "url", "author"):
             if not row.get(key) and hit.get(key):
                 row[key] = hit[key]
         row["by_me"] = bool(row.get("by_me") or hit.get("by_me"))

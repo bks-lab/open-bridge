@@ -565,7 +565,8 @@ def test_github_board_rows_get_the_date_their_issue_last_changed(tmp_path):
     root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
     (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
         {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
-    dates = json.dumps({"data": {"i0": {"issueOrPullRequest": {"updatedAt": "2026-10-03T14:00:00Z"}}}})
+    dates = json.dumps({"data": {"i0": {"issueOrPullRequest": {"updatedAt": "2026-10-03T14:00:00Z",
+                                                               "createdAt": "2026-05-01T09:00:00Z"}}}})
     # gh 2.x lists cards without any date (live 2026-10-09); the fixture's dates stand for an older gh.
     listing = json.loads((FIX / "github-board" / "item-list.json").read_text())
     for raw in listing["items"]:
@@ -576,6 +577,7 @@ def test_github_board_rows_get_the_date_their_issue_last_changed(tmp_path):
     section = {"kind": "tracker", "provider": "github-board", "query": {"assigned_to_me": True}}
     item = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]["items"][0]
     assert item["changed_at"] == "2026-10-03T14:00:00Z"
+    assert item["created_at"] == "2026-05-01T09:00:00Z", "the same call says when it was opened"
     query = next(c for c in run.calls if c[:3] == ["gh", "api", "graphql"] and "issueOrPullRequest" in c[-1])[-1]
     assert 'repository(owner: "example-org", name: "tool")' in query and "issueOrPullRequest(number: 5)" in query
 

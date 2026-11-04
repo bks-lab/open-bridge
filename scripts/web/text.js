@@ -587,6 +587,7 @@ const en = {
   // GitHub work (views/github.js): the figures and boards above a github-work section, and an opened issue or PR
   gh: {
     today: 'today', yesterday: 'yesterday', daysAgo: n => `${n} days ago`,
+    openedAgo: when => `opened ${when}`, changedAgo: when => `changed ${when}`,
     figuresLabel: 'Figures of your GitHub work, each a filter',
     figure: { open: 'open', mine: 'yours', ask_review: 'want your review', my_pr: 'your open PRs', in_progress: 'in progress',
       review: 'in review', blocked: 'blocked', quiet: 'quiet', untasked: 'no task', closed: 'closed', landed: 'merged' },
@@ -608,7 +609,7 @@ const en = {
     openedBy: 'opened by', assigned: 'assigned:', you: 'you', nobodyAssigned: 'nobody assigned',
     pickTitle: { assignee: 'Show only the rows assigned to this person', author: 'Show only the rows this person opened' },
     checksShort: { success: 'checks green', failure: 'checks red', error: 'checks red', pending: 'checks running', expected: 'checks waiting' },
-    searchPlaceholder: 'Search title, number, label, person', sortLabel: 'Order', sort: { state: 'By state', priority: 'By priority', recent: 'Newest' },
+    searchPlaceholder: 'Search title, number, label, person', sortLabel: 'Order', sort: { state: 'By state', priority: 'By priority', recent: 'Newest', oldest: 'Oldest first' },
     foldAll: 'Fold all', unfoldAll: 'Unfold all', taskChip: slug => `task ${slug}`, streamChip: slug => `stream ${slug}`,
     taskChipTitle: 'The task of this Bridge that syncs it', untaskedChip: 'no task',
     draftCard: 'draft card', draftCardTitle: 'A draft card on the board: no issue behind it, so no number and no link',
@@ -2353,6 +2354,7 @@ const de = {
   stepConfirm: label => `${label}: sicher?`, stepConfirmTitle: 'Ein zweiter Klick führt es aus; nach ein paar Sekunden fällt es zurück',
   gh: {
     today: 'heute', yesterday: 'gestern', daysAgo: n => `vor ${n} Tagen`,
+    openedAgo: when => `eröffnet ${when}`, changedAgo: when => `geändert ${when}`,
     figuresLabel: 'Kennzahlen deiner GitHub-Arbeit, jede ein Filter',
     figure: { open: 'offen', mine: 'deine', ask_review: 'warten auf dein Review', my_pr: 'deine offenen PRs', in_progress: 'in Arbeit',
       review: 'im Review', blocked: 'blockiert', quiet: 'ohne Bewegung', untasked: 'ohne Aufgabe', closed: 'geschlossen', landed: 'gemergt' },
@@ -2374,7 +2376,7 @@ const de = {
     openedBy: 'eröffnet von', assigned: 'zugewiesen:', you: 'dir', nobodyAssigned: 'niemand zugewiesen',
     pickTitle: { assignee: 'Nur die Zeilen zeigen, die dieser Person zugewiesen sind', author: 'Nur die Zeilen zeigen, die diese Person eröffnet hat' },
     checksShort: { success: 'Prüfungen grün', failure: 'Prüfungen rot', error: 'Prüfungen rot', pending: 'Prüfungen laufen', expected: 'Prüfungen warten' },
-    searchPlaceholder: 'Titel, Nummer, Label, Person suchen', sortLabel: 'Reihenfolge', sort: { state: 'Nach Status', priority: 'Nach Priorität', recent: 'Neueste' },
+    searchPlaceholder: 'Titel, Nummer, Label, Person suchen', sortLabel: 'Reihenfolge', sort: { state: 'Nach Status', priority: 'Nach Priorität', recent: 'Neueste', oldest: 'Älteste zuerst' },
     foldAll: 'Alle zuklappen', unfoldAll: 'Alle aufklappen', taskChip: slug => `Aufgabe ${slug}`, streamChip: slug => `Stream ${slug}`,
     taskChipTitle: 'Die Aufgabe dieser Bridge, die es abgleicht', untaskedChip: 'ohne Aufgabe',
     draftCard: 'Entwurfskarte', draftCardTitle: 'Eine Entwurfskarte auf dem Board: kein Issue dahinter, also keine Nummer und kein Link',

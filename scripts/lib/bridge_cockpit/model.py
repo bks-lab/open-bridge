@@ -241,6 +241,7 @@ def parse_gh(value: Any) -> dict | None:
                     if isinstance(p, dict) and isinstance(p.get("n"), int)][:3],
             "task": as_text_or_null(value.get("task")), "stream": value.get("stream") is True,
             "changed": as_text_or_null(value.get("changed")),
+            "created": as_text_or_null(value.get("created")),
             "quiet": value.get("quiet") if isinstance(value.get("quiet"), int) else None,
             "note": as_text_or_null(value.get("note"))}
 

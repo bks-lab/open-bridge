@@ -24,7 +24,7 @@ import datetime as dt
 
 from . import load_json
 
-FIELDS = "number,title,url,state,updatedAt,labels,assignees,repository,author"
+FIELDS = "number,title,url,state,createdAt,updatedAt,labels,assignees,repository,author"
 BLOCKED_LABELS = {"blocked", "status:blocked", "on hold", "waiting"}
 
 
@@ -78,6 +78,7 @@ def normalize(raw: dict, *, is_pr: bool, me: str | None, assignee_query: str | N
         "by_me": bool(me and author == me),
         "url": raw.get("url"),
         "changed_at": raw.get("updatedAt"),
+        "created_at": raw.get("createdAt"),                 # when it was opened: the page's "Oldest first"
         "project": repo,
         "labels": labels,
         "priority": None,
@@ -123,7 +124,7 @@ def collect(section: dict, ctx) -> list:
                 item["state"] = "ready"   # worth a look (plan), not an order for today (do)
             out.setdefault(item["id"], item)   # assigned or asked to review is the stronger reading
     if query.get("authored") is True:
-        argv = ["gh", "search", "prs", "--author", "@me", *base, "--json", FIELDS + ",isDraft,createdAt"]
+        argv = ["gh", "search", "prs", "--author", "@me", *base, "--json", FIELDS + ",isDraft"]
         for raw in load_json(ctx.run(argv, timeout=ctx.timeout), "gh search prs --author"):
             item = normalize(raw, is_pr=True, me=me, assignee_query=None)
             if item["id"] in out or item["state"] == "done":
