@@ -2317,6 +2317,7 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
     pr = item.get("pr_status") if isinstance(item.get("pr_status"), dict) and item.get("type") == "pr" else None
     linked = item.get("linked_task") if isinstance(item.get("linked_task"), dict) else {}
     changed = _when(item.get("changed_at"))
+    created = _when(item.get("created_at"))      # when it was opened: the page's "Oldest first"
     quiet = (now - changed).days if changed is not None else None
     status = re.sub(r"^[^0-9A-Za-zÄÖÜäöü]+", "", _text(item.get("raw_state"))).strip()   # without its emoji
     return {"title": _text(item.get("title"))[:300], "repo": m.group(1) if m else None,
@@ -2336,6 +2337,7 @@ def github_facts(item: dict, now: dt.datetime) -> dict:
             "stream": bool(linked.get("stream")) and str(linked.get("path") or "work/streams/").startswith("work/streams/"),
             "untasked": item.get("untasked") is True,
             "changed": changed.isoformat(timespec="minutes") if changed else None,
+            "created": created.isoformat(timespec="minutes") if created else None,
             "quiet": quiet if quiet is not None and quiet >= QUIET_DAYS else None,
             "note": _text(item.get("note")) or None}
 

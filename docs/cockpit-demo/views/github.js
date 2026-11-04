@@ -213,6 +213,19 @@ export function GitHubDetail({ gref: id, c }) {
 // ---------------------------------------------------------------- the list: one row per issue or pull request
 
 const FOLD_KEY = 'cockpit.github.folded'
+// the order the viewer picked, kept as the folded boards are: someone working through old rows keeps Oldest first
+const SORT_KEY = 'cockpit.github.sort'
+
+function readSort() {
+  try { return localStorage.getItem(SORT_KEY) || 'state' } catch { return 'state' }
+}
+
+function keepSort(by) {
+  try { localStorage.setItem(SORT_KEY, by) } catch { /* a convenience, never needed */ }
+}
+
+/** The order kept for this viewer, or By state when the page does not offer it (By priority without a priority) */
+const sortOf = (by, sorts) => (sorts.includes(by) ? by : 'state')
 
 function readFolded() {
   try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) ?? '[]')) } catch { return new Set() }
@@ -333,7 +346,8 @@ function GhRow({ it, page, section, s, c, byKey, grouped = true, me = null, pick
           .map((p, i) => html`${i ? ', ' : ''}<${RowPerson} key=${p} login=${p} me=${me} dim="assignee" pick=${pick} />`)}${people.length > SHOWN_PEOPLE
           ? html`, <span class="gh-person mono muted" title=${people.slice(SHOWN_PEOPLE).map(p => `@${p}`).join(', ')}>+${people.length - SHOWN_PEOPLE}</span>` : null}</span>`
         : html`<span class="ghl-people ghl-nobody muted small">${t.gh.nobodyAssigned}</span>`}
-      <span class="muted small" title=${g.changed ?? ''}>${ago(g.changed)}</span>
+      ${g.created ? html`<span class="ghl-opened muted small" title=${g.created}>${t.gh.openedAgo(ago(g.created))}</span>` : null}
+      <span class="muted small" title=${g.changed ?? ''}>${g.created && g.changed ? t.gh.changedAgo(ago(g.changed)) : ago(g.changed)}</span>
     </div>
     <div class="ghl-acts btn-row">
       <${GhStart} it=${it} row=${settleRow} page=${page} section=${section} s=${s} c=${c} />
@@ -359,7 +373,7 @@ function BoardFacts({ b }) {
 }
 
 /** The rows of a github-work section under their board: a one-line head per board (its count and a bar of
- *  its rows' states) that folds, the board's facts under it, the rows in the work's order or newest first, a
+ *  its rows' states) that folds, the board's facts under it, the rows in the work's order, newest or oldest first, a
  *  search over everything a row names. "Group by board" off (kept per viewer): one list, each row names its board */
 export function GitHubList({ items, page, section, s, c, byKey, filter = null, setFilter = null, me = ghMyLogin(items) }) {
   const t = T()
@@ -367,11 +381,13 @@ export function GitHubList({ items, page, section, s, c, byKey, filter = null, s
   const pick = setFilter ? (d, v) => setFilter({ ...(filter ?? {}), [d]: v }) : null
   const grouped = s.ui?.ghGroup !== false
   const [q, setQ] = useState('')
-  const [by, setBy] = useState('state')
+  const [picked, setPicked] = useState(readSort)
   const [folded, setFolded] = useState(readFolded)
   const shown = items.filter(it => matches(it, q.trim()))
   // the priority order only where a board names its priority field (board.priority_field)
-  const sorts = items.some(it => it.gh?.priority) ? ['state', 'priority', 'recent'] : ['state', 'recent']
+  const sorts = items.some(it => it.gh?.priority) ? ['state', 'priority', 'recent', 'oldest'] : ['state', 'recent', 'oldest']
+  const by = sortOf(picked, sorts)
+  const setBy = k => { setPicked(k); keepSort(k) }
   const order = (section.boards ?? []).map(b => b.name)
   const groups = [...new Set(shown.map(it => it.group ?? ''))]
     .sort((a, b) => ((order.indexOf(a) + 1) || 999) - ((order.indexOf(b) + 1) || 999) || a.localeCompare(b))

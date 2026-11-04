@@ -843,6 +843,45 @@ def test_a_board_card_names_who_opened_it_through_the_lean_query(tmp_path):
     assert "author { login }" in lean
 
 
+def test_a_board_card_says_when_it_was_opened_through_the_lean_query_and_carries_it_to_the_page(tmp_path):
+    # the page's "Oldest first" order: when the issue was opened, beside when it last changed
+    bv, model = _view_and_model()
+    a = answers()
+    a[("gh", "api", "graphql")] = lean_board({
+        "__typename": "Issue", "number": 60, "title": "Card only", "url": "https://github.com/example-org/tool/issues/60",
+        "createdAt": "2026-03-01T08:00:00Z", "updatedAt": "2026-10-03T08:00:00Z",
+        "repository": {"nameWithOwner": "example-org/tool"},
+        "author": {"login": "hubot"}, "assignees": {"nodes": [{"login": "octo"}]}, "labels": {"nodes": []}})
+    rows, run = collect(bridge(tmp_path), run=FakeRun(a))
+    row = rows["example-org/tool#60"]
+    assert row["created_at"] == "2026-03-01T08:00:00Z" and row["changed_at"] == "2026-10-03T08:00:00Z"
+    lean = next(x for c in run.calls for x in c if x.startswith("query=") and "projectV2" in x)
+    for kind in ("Issue", "PullRequest", "DraftIssue"):
+        part = lean.split(f"... on {kind} {{", 1)[1].split("}", 1)[0]
+        assert "createdAt" in part, kind
+    facts = bv.github_facts(row, NOW)
+    # in local time, as `changed` is
+    local = dt.datetime(2026, 3, 1, 8, 0, tzinfo=dt.timezone.utc).astimezone().replace(tzinfo=None)
+    assert facts["created"] == local.isoformat(timespec="minutes")
+    assert model.parse_gh(facts)["created"] == facts["created"]
+    assert bv.github_facts({"id": "example-org/site#7", "title": "Page"}, NOW)["created"] is None
+    assert model.parse_gh({**facts, "created": 5})["created"] is None
+
+
+def test_the_search_asks_when_a_row_was_opened_and_fills_a_card_that_does_not_say(tmp_path):
+    a = answers()
+    hits = json.loads((FIX / "github" / "search-issues.json").read_text())
+    for hit in hits:
+        hit["createdAt"] = "2026-02-01T08:00:00Z"
+    a[("gh", "search", "issues")] = json.dumps(hits)
+    rows, run = collect(bridge(tmp_path), run=FakeRun(a))
+    assert rows["example-org/site#7"]["created_at"] == "2026-02-01T08:00:00Z", "a row the search alone found"
+    assert rows["example-org/tool#12"]["created_at"] == "2026-02-01T08:00:00Z", "a card listed without the date"
+    # every search that brings rows (the count of what you finished asks only numbers)
+    searched = [c for c in run.calls if c[:2] == ["gh", "search"] and "title" in c[-1].split(",")]
+    assert searched and all(c[-1].split(",").count("createdAt") == 1 for c in searched), "asked once, not twice"
+
+
 def test_a_pull_request_row_says_whether_it_is_a_draft_its_review_and_its_checks(tmp_path):
     a = answers()
     state = {"isDraft": True, "reviewDecision": "CHANGES_REQUESTED",

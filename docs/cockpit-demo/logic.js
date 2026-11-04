@@ -350,11 +350,17 @@ export function prioRank(priority) {
 // the work's own order on a GitHub page: what is stuck or waits on a review first, what nobody started last
 const GH_STATE_RANK = { blocked: 0, review: 1, in_progress: 2, ready: 3, new: 4 }
 
+// two ISO times, the earlier first and one that is missing after both
+const earlier = (x, y) => (x && y ? (x < y ? -1 : x > y ? 1 : 0) : x ? -1 : y ? 1 : 0)
+
 /** The rows of one board in the order the person picked: by state (the work's order), newest first, or by
- *  the board's priority (P1 before P2 before P3, equal ones in the work's order); newest first breaks a tie */
+ *  the board's priority (P1 before P2 before P3, equal ones in the work's order); newest first breaks a tie.
+ *  Oldest first, to work through old ones and close them: opened longest ago on top, opened the same minute the
+ *  one quiet the longest first, a row that does not say when it was opened last */
 export function ghSortRows(rows, by) {
   const at = it => it.gh?.changed ?? ''
   const state = it => GH_STATE_RANK[it.gh?.state] ?? 5
+  if (by === 'oldest') return [...rows].sort((a, b) => earlier(a.gh?.created, b.gh?.created) || earlier(a.gh?.changed, b.gh?.changed))
   return [...rows].sort((a, b) => by === 'recent'
     ? at(b).localeCompare(at(a))
     : (by === 'priority' ? prioRank(a.gh?.priority) - prioRank(b.gh?.priority) : 0) || state(a) - state(b) || at(b).localeCompare(at(a)))

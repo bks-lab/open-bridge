@@ -3279,6 +3279,31 @@ test('github rows: the board priority shows as a chip and sorts P1 before P2 bef
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].gh.sort.priority, lang)
 })
 
+test('github rows: Oldest first puts the row opened longest ago on top, to work through and close old ones', () => {
+  const row = (n, created, changed) => ({ index: n, gh: { state: 'ready', created, changed } })
+  const rows = [row(1, '2026-05-01T08:00', '2026-10-01T08:00'), row(2, null, '2026-10-02T08:00'),
+    row(3, '2025-12-01T08:00', '2026-10-03T08:00'), row(4, '2026-05-01T08:00', '2026-10-04T08:00'),
+    row(5, '2026-08-01T08:00', null)]
+  // opened longest ago first; opened the same day: the one quiet the longest first; a row that does not say last
+  assert.deepEqual(logic.ghSortRows(rows, 'oldest').map(r => r.index), [3, 1, 4, 5, 2])
+  // the other orders do not look at it
+  assert.deepEqual(logic.ghSortRows(rows, 'recent').map(r => r.index), [4, 3, 2, 1, 5])
+  const gh = read('views/github.js')
+  assert.match(gh, /\['state', 'priority', 'recent', 'oldest'\] : \['state', 'recent', 'oldest'\]/)
+  // the row names when it was opened beside when it last changed
+  assert.match(gh, /t\.gh\.openedAgo\(ago\(g\.created\)\)/)
+  assert.match(gh, /t\.gh\.changedAgo\(ago\(g\.changed\)\)/)
+  // the order picked is kept per viewer, as the folded boards are, and one no longer offered falls back
+  assert.match(gh, /const SORT_KEY = 'cockpit\.github\.sort'/)
+  assert.match(gh, /sorts\.includes\(by\) \? by : 'state'/)
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang].gh
+    assert.ok(t.sort.oldest, lang)
+    assert.ok(t.openedAgo('x').includes('x') && t.changedAgo('x').includes('x'), lang)
+  }
+  assert.equal(text.TABLES.de.gh.sort.oldest, 'Älteste zuerst')
+})
+
 // ---------------------------------------------------------------- the GitHub page's filter bar (round 6c)
 
 /** Rows in the shape the server sends (model.parse_gh): two boards, a row the search alone found, a draft card */
