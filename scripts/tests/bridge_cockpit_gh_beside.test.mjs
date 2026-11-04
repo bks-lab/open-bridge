@@ -123,7 +123,16 @@ test('the controller: a row beside the list opens there before any way to Work t
   const info = method('openInfo(it, page, section')
   assert.ok(info.indexOf('beside') >= 0 && info.indexOf('beside') < info.indexOf('infoPoint('), 'beside the list comes first, never a point')
   assert.match(method('closeInfo() {'), /beside/)
-  assert.match(APP, /s\.ui\.info\?\.beside && !isTypingTarget\(e\.target\)\) return ctl\.closeInfo\(\)/, 'Escape closes the column')
+  assert.match(APP, /s\.ui\.info\?\.beside && s\.ui\.info\.on === s\.ui\.page && !isTypingTarget\(e\.target\)\) return ctl\.closeInfo\(\)/, 'Escape closes the column')
   assert.match(APP, /ghWalkAt\(s\.ui\.info\.walk/, 'n and p walk the list')
   assert.match(method('setPage('), /info:/, 'another page lets the column go')
+})
+
+test('the keys act on the column only on its own page, and every way to another page lets it go', () => {
+  // Escape and n / p check the page the column was opened on: left behind elsewhere, it must not take their keys
+  assert.match(APP, /s\.ui\.info\?\.beside && s\.ui\.info\.on === s\.ui\.page && !isTypingTarget\(e\.target\)\) return ctl\.closeInfo\(\)/)
+  assert.match(APP, /\(key === 'n' \|\| key === 'p'\) && s\.ui\.info\?\.beside && s\.ui\.info\.on === s\.ui\.page/)
+  // the ways that set the page without setPage: Chat as a tab, a row's select onto the work tab
+  assert.match(method('chatAsTab:'), /info: /)
+  assert.match(method('select(key) {'), /page: 'briefing', info: /)
 })

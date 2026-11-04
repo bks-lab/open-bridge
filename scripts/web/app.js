@@ -950,7 +950,7 @@ const ctl = {
     // detail beside the page, Work through being off here
     if (workViewIn({ ...s, ui: { ...s.ui, page: 'briefing' } }) !== 'due') return ctl.peek(key, null)
     setUi({ selectedKey: key, focusKey: key, pageDetail: false, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
-    if (s.ui.page !== 'briefing') setUi({ page: 'briefing' })
+    if (s.ui.page !== 'briefing') setUi({ page: 'briefing', info: s.ui.info?.beside ? null : s.ui.info })
     if (s.layout === 'narrow') requestAnimationFrame(() => window.scrollTo(0, 0))
     else requestAnimationFrame(() => document.querySelector('.detail-scroll')?.scrollTo?.(0, 0))
   },
@@ -1773,7 +1773,7 @@ const ctl = {
     setTimeout(() => document.getElementById('quick-input')?.focus(), 0)
   },
   // the chat as a tab of its own: the open conversation goes along, the window closes
-  chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi({ page: CHAT_PAGE, tabView: null, pageDetail: false }) },
+  chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi(ui => ({ page: CHAT_PAGE, tabView: null, pageDetail: false, info: ui.info?.beside ? null : ui.info })) },
   pickQuick: conv => setUi({ quickConv: conv }),
   // "all" under the questions: every one of the last days, the archived ones read once from the server
   showAllAsks: on => {
@@ -2114,7 +2114,7 @@ function onKey(e) {
     if (s.ui.tabView) return setUi({ tabView: null })
     if (s.ui.drawer) return setUi({ drawer: null, item: null, queue: s.ui.pageDetail ? s.ui.queue : null })
     if (s.ui.pageDetail && !isTypingTarget(e.target)) return ctl.closePeek()
-    if (s.ui.info?.beside && !isTypingTarget(e.target)) return ctl.closeInfo()
+    if (s.ui.info?.beside && s.ui.info.on === s.ui.page && !isTypingTarget(e.target)) return ctl.closeInfo()
     // with nothing open over it, Escape on Work, Chat or Sessions closes an open row or the picks first,
     // then lifts the area filter
     const step = isTypingTarget(e.target) ? null : escapeStep(s.ui)
@@ -2172,7 +2172,7 @@ function onKey(e) {
     return
   }
   // n / p beside the GitHub list: the list's walk, as the column's bar walks it
-  if ((key === 'n' || key === 'p') && s.ui.info?.beside && !s.ui.drawer && s.ui.info.walk?.length) {
+  if ((key === 'n' || key === 'p') && s.ui.info?.beside && s.ui.info.on === s.ui.page && !s.ui.drawer && s.ui.info.walk?.length) {
     const v = ghWalkAt(s.ui.info.walk, s.ui.info.it)
     const to = key === 'n' ? v?.next[0] : v?.prev
     e.preventDefault()
