@@ -120,6 +120,8 @@ test('soloPoint: another area\'s open row as it is, a closed task and a settled 
   assert.equal(point.row.title, 'Old export')
   assert.equal(point.row.task, 'old')
   assert.deepEqual(point.row.settle, [], 'nothing settles a closed copy')
+  const listed = { ...closed, records: { status: 'ok', data: { records: [{ path: folder, slug: 'old', kind: 'done', area: 'Docs' }] } } }
+  assert.equal(logic.soloPoint(listed, { key: 'task:old', file: folder }).row.area, 'Docs', 'its area as the Files tab listed it')
   const ids = logic.flowFields(point, { ...closed, themes: { enabled: true, assign: {} } }).map(f => f.id)
   assert.ok(!ids.includes('theme') && !ids.includes('who'), 'no theme to move and nobody at work on a closed point')
   assert.deepEqual(logic.soloSource({ key: 'task:old', file: folder }), { kind: 'task', id: folder })

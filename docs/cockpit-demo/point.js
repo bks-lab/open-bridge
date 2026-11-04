@@ -95,9 +95,11 @@ export function soloPoint(s, solo) {
     const slug = key.slice(5)
     const stream = data.kind === 'stream' || data.work_kind === 'stream' || data.work_kind === 'done_stream'
     const closed = !!solo.file || !['task', 'stream'].includes(data.kind)
+    // its area: the card's (card.py reads the front matter), else the one the Files tab's list named for the record
+    const rec = (s?.records?.data?.records ?? []).find(r => (solo.file ? r.path === solo.file : r.slug === slug && r.kind !== 'done'))
     return { group: 'solo', id: key, kind: 'row', readOnly: closed, file: solo.file ?? null,
       row: { key, task: slug, title: data.card?.title || f.headline || slug, status: f.status ?? null, priority: f.priority ?? null,
-        task_type: f.type ?? null, area: f.area ?? null, blocked_by: f.blocked_by ?? null, card: data.card ?? null, stream,
+        task_type: f.type ?? null, area: data.card?.area || rec?.area || null, blocked_by: f.blocked_by ?? null, card: data.card ?? null, stream,
         work_kind: data.work_kind ?? null, origin: data.origin ?? null, settle: closed || stream ? [] : ['done', 'not_doing'] } }
   }
   if (src?.kind === 'inbox') {
