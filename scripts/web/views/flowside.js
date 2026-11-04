@@ -49,7 +49,7 @@
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
   flowRunning, flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts,
@@ -118,15 +118,20 @@ export function Resort({ s, c }) {
 function SidePoints({ side, points, mode, current, s, c }) {
   const pts = walkOrder(pointsIn(points, side.id, s, mode), mode === 'prio' ? (side.id === 'none' ? 'due' : 'rank') : null)
   if (!pts.length) return null
-  return html`<ul class="flow-side-pts">${pts.map((p, k) => {
-    const on = !!current && p.id === current
-    const name = pointTitle(p)
-    const stand = pointStandWord(p)
-    return html`<li key=${p.id}><button type="button" class=${`flow-side-pt${on ? ' is-current' : ''}`} aria-current=${on ? 'true' : undefined}
-      title=${name} onClick=${() => c.flowSidePoint(side.id, p.id, k)}>
-      <span class="flow-side-pt-name">${name}</span>${stand ? html`<span class="flow-side-pt-stand muted small">${stand}</span>` : null}
-    </button></li>`
-  })}</ul>`
+  return html`<ul class="flow-side-pts">${pts.map((p, k) => html`<${SidePoint} key=${p.id} p=${p} on=${!!current && p.id === current}
+    open=${() => c.flowSidePoint(side.id, p.id, k)} />`)}</ul>`
+}
+
+/** One point of the list; the one open scrolls into view in the column when the walk in the middle reaches it */
+function SidePoint({ p, on, open }) {
+  const ref = useRef(null)
+  useEffect(() => { if (on) ref.current?.scrollIntoView?.({ block: 'nearest' }) }, [on])
+  const name = pointTitle(p)
+  const stand = pointStandWord(p)
+  return html`<li><button ref=${ref} type="button" class=${`flow-side-pt${on ? ' is-current' : ''}`} aria-current=${on ? 'true' : undefined}
+    title=${name} onClick=${open}>
+    <span class="flow-side-pt-name">${name}</span>${stand ? html`<span class="flow-side-pt-stand muted small">${stand}</span>` : null}
+  </button></li>`
 }
 
 function SideList({ sides, entered, mode, points, marked, current = null, s, c }) {

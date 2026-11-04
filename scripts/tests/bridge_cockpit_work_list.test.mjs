@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cockpitState, loadCockpit, mount, recorder } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, waitFor } from './cockpit_render.mjs'
 
 const { html, views, logic } = await loadCockpit()
 const { FlowPage } = views.flow
@@ -85,6 +85,20 @@ test('with a point open the list stays, every area\'s points in it, the one open
   assert.equal(marked[0].$('.flow-side-pt-name').text(), pointTitle(open))
   assert.equal(marked[0].getAttribute('aria-current'), 'true')
   assert.ok(el.$('.flow-main.is-point'), 'the point in the middle')
+})
+
+test('walking on in the middle brings the point open into view in the list', async () => {
+  const base = state()
+  const ops = sidesOf(base).find(x => x.points.length === 2)
+  const seen = []
+  const proto = Object.getPrototypeOf(document.createElement('div'))
+  const had = proto.scrollIntoView
+  proto.scrollIntoView = function scrollIntoView(o) { seen.push([this.getAttribute('class'), o]) }
+  try {
+    mount(html`<${FlowPage} s=${state({ flowView: 'point', flowSide: { areas: ops.id }, flowAt: { id: ops.points[1].id, i: 1 } })} c=${recorder()} />`)
+    await waitFor(() => seen.length, { what: 'a row scrolled into view' }).catch(() => {})
+  } finally { if (had) proto.scrollIntoView = had; else delete proto.scrollIntoView }
+  assert.ok(seen.some(([cls, o]) => /flow-side-pt is-current/.test(cls) && o?.block === 'nearest'), 'the marked row, not the page, scrolled')
 })
 
 test('the controller: flowSidePoint enters the side and opens that point there', () => {
