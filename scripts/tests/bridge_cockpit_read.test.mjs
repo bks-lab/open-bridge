@@ -216,7 +216,10 @@ test('Who works on it for a start that still runs reads its stage in words and d
   const lane = { group: 'doing', lane: true, id: 'start:task:long', kind: 'start', row: task('long'), tab: null, start: run, stage: 'working', how: 'start', title: 'x', at: run.at_ms }
   const s = flowState({ work: [task('long')], returns: [run] })
   const el = mount(html`<${views.flowside.FlowAside} x=${lane} s=${s} c=${recorder()} />`)
-  const who = el.$('[data-field=who]').text()
+  // stage 4: who and its state in a few words, the whole line on hover
+  const span = el.$('[data-field=who] dd span')
+  assert.equal(span.text(), en.flow.simple.whoBridge(en.flow.doing.stage.working))
+  const who = span.getAttribute('title')
   assert.ok(who.includes(en.flow.one.days(5)), who)
   assert.ok(!who.includes('143:'), who)
 })

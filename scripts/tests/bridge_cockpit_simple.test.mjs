@@ -195,3 +195,97 @@ test('B1 the menu More holds every other verb that applies, per kind, none that 
   assert.ok(logic.moreOf({ group: 'left', left: 'later', kind: 'row', row: hidden, entry: { row: hidden, why: 'hidden', kind: 'later' } }, s).includes('back'))
   assert.deepEqual(logic.moreOf({ kind: 'row', row: task('a') }, { ...s, boot: { config: { person: 'lena' } } }), [], 'a person: none of the owner\'s')
 })
+
+// ---------------------------------------------------------------- after the first review: every line a person reads
+
+const LONG = 'config: docs/setup.md still names port 8790 after the switch to cockpit.port in scripts/web/config.yaml'
+const withInstruct = st => ({ ...st, work: { ...st.work, flow: { ...st.work.flow, instruct: { enabled: true, budget_per_day: 30, model: null } } } })
+
+test('A1 every line a person reads names the point by its name: the instruction line, Ask, a plan\'s points, Merge, Related', async () => {
+  const q = ask('20261009-0900-a-q', { title: LONG, card: card({ name: 'Update the setup docs' }) })
+  const st = withInstruct(flowState({ now: [q], ui: pointAt(q.key) }))
+  const parts = logic.flowParts(st)
+  const x = logic.flowQueue(parts, 'all').find(p => p.row?.key === q.key)
+  assert.equal(logic.instructScope(x, [x], new Set(), 'Ops', st).title, 'Update the setup docs')
+  const el = mount(html`<${FlowPage} s=${st} c=${recorder()} />`)
+  assert.ok(el.$('.flow-instruct-scope').text().startsWith(en.flow.instruct.point('Update the setup docs')), el.$('.flow-instruct-scope').text())
+  for (const part of ['.flow-card', '.flow-aside', '.flow-instruct', '.flow-walk']) {
+    assert.ok(!(el.$(part)?.text() ?? '').includes(LONG), `${part}: the raw title stands only under Details and in the fold What else is stored`)
+  }
+  // Ask names it the same way
+  const ak = mount(html`<${FlowPage} s=${{ ...st, ui: { ...st.ui, flowLine: 'ask' } }} c=${recorder()} />`)
+  assert.equal(ak.$('.flow-instruct-scope').text(), en.flow.instruct.point('Update the setup docs'))
+  // a plan the server words with the raw title: the page names its points by their name
+  const plan = { id: 'p1', text: 'done', point: true, n: 1, steps: [{ n: 1, op: 'done', keys: [q.key], titles: [LONG], skipped: [] }], at_ms: NOW }
+  const pl = mount(html`<${FlowPage} s=${{ ...st, ui: { ...st.ui, flowPlan: plan } }} c=${recorder()} />`)
+  assert.match(pl.$('.flow-instruct-step').text(), /Update the setup docs/)
+  assert.ok(!pl.$('.flow-instruct-step').text().includes('cockpit.port'))
+  // Merge and Related name the tasks by their name
+  const a = task('a', { title: 'setup-docs', card: card({ name: 'The setup docs' }) })
+  const b = task('b', { title: 'Task b' })
+  const two = flowState({ work: [a, b], ui: { flowView: 'overview', flowPicked: ['task:a', 'task:b'] } })
+  const mg = mount(html`<${FlowPage} s=${two} c=${recorder()} />`)
+  mg.button(`${en.flow.merge.button} ▾`).click()
+  await tick()
+  assert.ok(mg.$$('.flow-merge-title').map(t => t.text()).includes('The setup docs'))
+  // the item's Related names the task it belongs to by the task's name, not its slug of an H1
+  const rel = mount(html`<${FlowPage} s=${flowState({ work: [a, ask('20261009-0901-b-q', { task: 'a', title: LONG, card: card({ name: 'The port in the docs' }) })],
+    ui: pointAt('inbox:20261009-0901-b-q', { flowTab: 'related' }) })} c=${recorder()} />`)
+  const related = rel.$$('.flow-related-open').map(b => b.text())
+  assert.ok(related.includes('The setup docs') && !related.includes('setup-docs'), related.join(' | '))
+})
+
+test('A2 a row whose only word is its tab\'s state says it is the tab\'s: Agent tab: finished, never a bare Finished', () => {
+  // the demo's start that finished with a result, under Needs you
+  const demo = mount(html`<${FlowPage} s=${cockpitState(NOW, { ui: { page: 'briefing', workView: 'flow', flowView: 'overview', flowPicked: [] } })} c=${recorder()} />`)
+  const fin = demo.$$('.flow-ov-row').find(r => r.$('.flow-ov-open').text() === 'Settle the invoice format with the vendor')
+  assert.equal(fin.$('.flow-ov-stand').text(), en.flow.simple.tabIs(en.flow.simple.tabState.result))
+  assert.ok(!demo.$$('.flow-ov-stand').some(x => [en.flow.kind.result, en.flow.kind.idle, en.flow.kind.lost, en.flow.kind.asks].includes(x.text())),
+    'no bare tab state under a name')
+  // a tab that waits at its prompt: the card head says the same, the line says it is the tab's
+  const st = flowState({ work: [task('wt'), task('rev', { status: 'review' })],
+    tabs: [{ ref: 'surface:10', name: 'wt', slug: 'wt', state: 'waiting', since_ms: NOW - 25 * MIN }],
+    returns: [{ key: 'task:wt', item: 'wt', title: 'Task wt', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'result', in_briefing: true,
+      tab: { ref: 'surface:10' }, result: { kind: 'note', text: 'Result: nothing to do', key: null, at_ms: null } }],
+    ui: { flowView: 'overview', flowPicked: [] } })
+  const el = mount(html`<${FlowPage} s=${st} c=${recorder()} />`)
+  const stand = name => el.$$('.flow-ov-row').find(r => r.$('.flow-ov-open').text() === name).$('.flow-ov-stand').text()
+  assert.equal(stand('Task wt'), en.flow.simple.tabIs(en.flow.simple.tabState.waits))
+  assert.equal(en.flow.simple.tabIs(en.flow.simple.tabState.result), 'Agent tab: finished')
+  assert.equal(de.flow.simple.tabIs(de.flow.simple.tabState.result), 'Agenten-Tab: fertig')
+  for (const k of ['asks', 'waits', 'result', 'idle', 'done', 'lost']) for (const t of [en, de]) assert.ok(t.flow.simple.tabState[k], k)
+  // a task's own state stays its own
+  assert.equal(stand('Task rev'), en.flow.kind.task)
+})
+
+test('B2 the field Who says who and its state in a few words, the whole line on hover', () => {
+  const live = { ref: 'surface:21', name: 'a research', slug: 'a', state: 'waiting', since_ms: NOW - 11 * MIN }
+  const el = mount(html`<${FlowPage} s=${flowState({ work: [task('a')], tabs: [live], ui: pointAt('task:a') })} c=${recorder()} />`)
+  const who = el.$('.flow-aside [data-field=who] dd span')
+  assert.equal(who.text(), en.flow.simple.whoTab(en.flow.doing.stage.waiting))
+  assert.equal(who.text(), 'Agent tab (waiting)')
+  assert.match(who.getAttribute('title'), /a research/)
+  assert.equal(de.flow.simple.whoTab(de.flow.doing.stage.waiting), 'Agenten-Tab (wartet)')
+  assert.equal(en.flow.simple.whoBridge(en.flow.doing.stage.working), 'Bridge (at work)')
+  assert.equal(de.flow.simple.whoBridge(de.flow.doing.stage.working), 'Bridge (arbeitet)')
+  assert.equal(logic.whoBrief({ by: 'start', stage: 'working', since_ms: NOW - 6 * MIN }, 'en'), 'Bridge (at work)')
+  assert.equal(logic.whoBrief({ by: 'none', days: 3 }, 'en'), null, 'nobody: the line says when it last moved')
+})
+
+test('C2 Running elsewhere says on whom a row waits by name, never a raw me', () => {
+  const mine = ask('20261009-0900-a-w', { bucket: 'waiting', card: card({ next: next('read', 'me') }) })
+  const lenas = ask('20261009-0901-b-w', { bucket: 'waiting', card: card({ next: next('answer', 'lena') }) })
+  const el = mount(html`<${FlowPage} s=${flowState({ later: [mine, lenas], ui: { flowView: 'left', flowLeft: 'running', flowLeftPicked: [] } })} c=${recorder()} />`)
+  const why = Object.fromEntries(el.$$('.flow-ov-row').map(tr => [tr.$('.flow-ov-open').text(), tr.$('.flow-ov-why').text()]))
+  assert.equal(why[mine.title], en.flow.notnow.why.others)
+  assert.equal(why[lenas.title], en.flow.notnow.why.waits('Lena'))
+})
+
+test('C1 the free date of In progress says it is optional, its parse unchanged', async () => {
+  const el = mount(html`<${FlowPage} s=${flowState({ work: [task('a')], ui: pointAt('task:a') })} c=${recorder()} />`)
+  el.button(`${en.flow.simple.work} ▾`).click()
+  await tick()
+  const date = el.$$('.flow-work input').find(i => i.getAttribute('aria-label') === en.flow.simple.dateLabel)
+  assert.equal(date.getAttribute('placeholder'), en.flow.simple.dateHint)
+  assert.deepEqual([en.flow.simple.dateHint, de.flow.simple.dateHint], ['or a date', 'oder ein Datum'])
+})

@@ -469,7 +469,10 @@ out a workspace:
   you** and **The Bridge does** (its next step is the Bridge's, first or
   alone). A row says three things: its **name** (below), where it stands muted
   under it (the brief's stand, else the triage's gist, else its kind and, for a
-  task nobody works on, when it last moved), and its **next step** with who
+  task nobody works on, when it last moved; where its only word is its tab's or
+  its start's state it says so, "Agent tab: finished", never a bare "Finished"
+  that reads as if the point were done; the walk bar's next point the same),
+  and its **next step** with who
   takes it as a chip and the day it asks again or is due. Nothing ticked, one
   line says that ticking shows the batch buttons and offers **Tick the
   suggestions**; once a row is ticked the batch bar stands on top, sticky and
@@ -534,7 +537,7 @@ out a workspace:
   **In progress ▾** says who has it and until when: **Me**, **Bridge**, a person
   the instance names (`cockpit.person_name` and the people its tasks name) or
   **someone else …** with a name; then **in 3 days**, **in 1 week** (the
-  default), **in 2 weeks** or a date; and a line **What runs?** (optional, kept
+  default), **in 2 weeks** or a date (its field says "or a date"); and a line **What runs?** (optional, kept
   as a note). **Hand it over** sends verb `work_on`: an inbox item is put off
   until that day as a check-in (`inbox.py defer --until --on <who> --check`), a
   task's next step goes to that person with that day (`task.py next --who
@@ -549,8 +552,9 @@ out a workspace:
 
   Under it the **Fields**, like the sidebar of an issue tracker, four of them:
   **Theme** (to change, with the themes on), **Area**, **Who** (who takes the
-  next step as a chip while nobody works on it, else who works on it and since
-  when) and **Due** (while it is with someone **Asks again** with its check-in
+  next step as a chip while nobody works on it, else who works on it in a few
+  words, "Agent tab (waiting)", "Bridge (at work)", "Your session", with the
+  whole line, its tab's name and since when, on hover) and **Due** (while it is with someone **Asks again** with its check-in
   day). Every other field is folded under **Details ▾** at their foot:
   **Prio** (Jev's quadrant and rank while Jev's order of the point is younger
   than `rank_max_age_days`, else the day's triage rank, else the priority) with
@@ -578,7 +582,12 @@ out a workspace:
   same view (Back leads to the card).
 
 **A point's name, stand and step (stage 4).** Every view of Work through names
-a point the same way (logic.js `pointName`): an inbox item by its brief's
+a point the same way (logic.js `pointName`), in every line the person reads:
+the card, the overview, the lists of Not now, Running now, Prio's squares, the
+instruction line and Ask ("For: <name>"), a plan's steps (the server words them
+with the raw title, the page by the name, logic.js `rowName`), Merge, Related,
+the jump to a tab and the new task a finished run becomes. A sentence the Bridge
+gets (the note of a start) keeps the original title. An inbox item by its brief's
 **name**, else its title; a task or stream by its H1 (the row title the server
 sends is the H1 alone), unless the H1 is a slug or longer than 60 characters,
 then by its brief's name. Where the name is another than the title, the title

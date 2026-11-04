@@ -18,6 +18,11 @@ const { FlowPage } = views.flow
 const { VerbBar } = views.verbbar
 const en = text.TABLES.en
 const tick = () => rounds()
+/** The field Who (stage 4): its few words, and the whole line it keeps on hover */
+const whoOf = el => {
+  const span = el.$('.flow-aside [data-field=who] dd span')
+  return { text: span?.text() ?? el.$('.flow-aside [data-field=who] dd')?.text() ?? '', title: span?.getAttribute('title') ?? '' }
+}
 // stage 4, simpler: the strong button, the four states in a 2x2, More with every other verb
 const sw = en.flow.simple
 const STATES = [en.flow.verbs.done, `${sw.work} ▾`, `${sw.later} ▾`, `${sw.drop} ▾`]
@@ -560,7 +565,8 @@ test('In progress: the card shows the last lines, the field says who works on it
   const card = el.$('.flow-card')
   assert.match(card.text(), new RegExp(`${en.flow.run.label} · ${en.flow.doing.stage.working}`))
   assert.equal(card.$('.flow-who'), null, 'no box who works on it in the card')
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab busy: at work, for 18 min/)
+  assert.equal(whoOf(el).text, en.flow.simple.whoTab(en.flow.doing.stage.working))
+  assert.match(whoOf(el).title, /Agent tab busy: at work, for 18 min/)
   assert.match(card.$('.fx-screen').text(), /Running the tests/)
   assert.ok(!el.$('.flow-aside .fx-screen'), 'the screen only in the card')
   // stage 4: a tab at work: To tab is the strong button, Done in the four states, View in More; nothing starts here
@@ -2375,7 +2381,8 @@ test('the card never says who works on it: no tab state, no started ago; the fie
   let el = mount(html`<${FlowPage} s=${q} c=${recorder()} />`)
   assert.ok(!el.$('.flow-card .state-line'), 'no tab state in the card')
   assert.doesNotMatch(el.$('.flow-card').text(), /a research/)
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab a research: waiting, for 14 min/)
+  assert.equal(whoOf(el).text, 'Agent tab (waiting)')
+  assert.match(whoOf(el).title, /Agent tab a research: waiting, for 14 min/)
   const busy = { ref: 'surface:21', name: 'notes', slug: 'a', state: 'working', since_ms: NOW - 10 * MIN, last: 'Reading the notes' }
   el = mount(html`<${FlowPage} s=${pointState({ tabs: [busy] })} c=${recorder()} />`)
   assert.ok(!el.$('.flow-card .fx-meta'), 'no line who drives it in the card')
@@ -2385,7 +2392,8 @@ test('the card never says who works on it: no tab state, no started ago; the fie
   const st = cockpitState(NOW, state({ work: [task('fin')], tabs: [asks], returns: [startOf('fin', 'asks', { tab: { ref: 'surface:10' } })] }))
   el = mount(html`<${FlowPage} s=${st} c=${recorder()} />`)
   assert.doesNotMatch(el.$('.flow-card').text(), new RegExp(en.flow.started('30 min')))
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /Started from the cockpit 30 min ago/)
+  assert.equal(whoOf(el).text, en.flow.simple.whoBridge(en.flow.doing.stage.asks))
+  assert.match(whoOf(el).title, /Started from the cockpit 30 min ago/)
   el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ tabs: [dialog()] }))} c=${recorder()} />`)
   assert.ok(!el.$('.flow-card .state-line'), 'a tab alone: its kind says it asks, no state line')
 })
@@ -3058,7 +3066,8 @@ test('the run view: the card, its tabs and the instruction line, no walk bar; No
   assert.ok((await menuOf(el)).includes(en.flow.run.unlink))
   el.$$('.flow-aside .flow-more-item').find(b => b.text() === en.flow.run.unlink).click()
   assert.deepEqual(c.calls.at(-1), ['act', 'session_unlink', { session: seen.session.sid }])
-  assert.match(el.$('.flow-aside [data-field=who]').text(), /docs search/)
+  assert.equal(whoOf(el).text, en.flow.simple.whoSession)
+  assert.match(whoOf(el).title, /docs search/)
   // an entry gone (finished, unlinked): the overview again
   const gone = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'run', flowRunId: 'session:surface:99' })} c=${recorder()} />`)
   assert.ok(gone.$('.flow-overview') || gone.$('.flow-prio'))

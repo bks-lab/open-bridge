@@ -331,6 +331,29 @@ export function pointName(row) {
   return name || title
 }
 
+/** The name of the row a key stands for (pointName), wherever the model holds it: the sections, the hidden rows,
+ *  the tasks a page names, the items put off past the window; null where none holds it. For words the server sends
+ *  with a row's raw title (an instruction's plan), so the person reads the name every view shows */
+export function rowName(s, key) {
+  const m = s?.model ?? {}
+  const rows = [...(m.sections ?? []).flatMap(sec => sec.rows ?? []), ...(m.hidden ?? []), ...(m.task_rows ?? []), ...(m.deferred ?? [])]
+  const row = rows.find(r => r?.key === key)
+  return row ? pointName(row) || null : null
+}
+
+/** Who works on a point in a few words (stage 4, the field Who; logic.js flowDrive): its agent tab or the Bridge's
+ *  start with its state in brackets ("Agent tab (waiting)", "Bridge (at work)"), your session; null where nobody does
+ *  (the line says when it last moved) and for a finished run (the line names its day, short already). The whole line
+ *  stands on hover */
+export function whoBrief(d, lang = 'en') {
+  const f = (TABLES[lang] ?? TABLES.en).flow
+  const word = f.doing.stage[d?.stage] ?? ''
+  if (d?.by === 'tab') return f.simple.whoTab(word)
+  if (d?.by === 'start') return d.stage === 'done' ? null : f.simple.whoBridge(word)
+  if (d?.by === 'session') return f.simple.whoSession
+  return null
+}
+
 /** The original title where the name shown is another, else null */
 export function pointOriginal(row) {
   const title = baseTitle(row)

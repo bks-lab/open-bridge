@@ -24,7 +24,7 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { personOf, BASIC_VERBS, checkinDays, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, nextWho, parseDate, short,
-  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho } from '../logic.js'
+  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
@@ -197,7 +197,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
       ${workTo === 'bridge' ? html`<p class="muted small">${f.simple.bridgeNote}</p>` : html`<p class="label-caps">${f.simple.whenLabel}</p>
       <div class="flow-work-chips">${[3, 7, 14].map(d => html`<${Btn} key=${d} size="xs" variant="secondary"
         pressed=${!askOwn.trim() && askDay === days[d]} onClick=${() => { setAskDay(days[d]); setAskOwn('') }}>${f.simple.inDays(d)}<//>`)}</div>
-      <input class="input input-date mono" type="text" inputmode="numeric" aria-label=${f.simple.dateLabel} placeholder=${t.datePlaceholder} value=${askOwn}
+      <input class="input input-date mono" type="text" inputmode="numeric" aria-label=${f.simple.dateLabel} placeholder=${f.simple.dateHint} value=${askOwn}
         onInput=${e => setAskOwn(e.currentTarget.value)} />
       <input class="input" type="text" maxlength="300" aria-label=${f.simple.runsLabel} placeholder=${f.simple.runsLabel} value=${runs}
         onInput=${e => setRuns(e.currentTarget.value)} />`}
@@ -214,7 +214,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
       <label class="label-caps" for=${`vb-note-${row.key}`}>${f.start.label}</label>
       <textarea id=${`vb-note-${row.key}`} class="input textarea" rows="3" maxlength="2000" value=${note}
         onInput=${e => setNote(e.currentTarget.value)}></textarea>
-      <${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: row.title }]} />
+      <${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: pointName(row) }]} />
       <div class="verbbar-acts">
         <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!note.trim()} onClick=${() => start(false)}>${f.start.button}<//>
         ${note.trim() ? null : html`<span class="muted small">${f.start.empty}</span>`}

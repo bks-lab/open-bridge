@@ -129,12 +129,12 @@ export function MergePanel({ rows, s, c, onClose, onPick = () => {}, from = 'ove
       const moved = feed?.facts?.moved ?? r.updated ?? null
       return html`<li key=${r.key}><label class="flow-check">
         <input type="radio" name="flow-merge-keep" value=${r.key} checked=${r.key === keep} onClick=${() => setPick(r.key)} />
-        <span class="flow-merge-title">${short(r.title ?? r.key, 90)}</span>
+        <span class="flow-merge-title">${short(pointName(r) || r.key, 90)}</span>
         <span class="muted small">${[feed ? f.activity(Number(feed.counts?.all) || 0) : null, moved ? `${t.flow.fields.moved} ${activityWhen(moved, lang)}` : null]
           .filter(Boolean).join(' · ')}</span>
       </label></li>`
     })}</ul>
-    <p class="small">${f.explain(kept?.title ?? keep, others.length)}</p>
+    <p class="small">${f.explain(kept ? pointName(kept) : keep, others.length)}</p>
     <div class="verbbar-acts">
       <${Btn} size="sm" variant="primary" disabled=${!others.length} busy=${!!s.ui.busy?.[others.join(',')]} onClick=${run}>${f.run}<//>
       <${Btn} size="sm" variant="ghost" onClick=${onClose}>${t.flow.list.cancel}<//>
