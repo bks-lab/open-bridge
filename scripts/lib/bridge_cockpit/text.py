@@ -206,6 +206,12 @@ EN: dict = {
     "to_task_note": "Now the task {slug}",
     "to_task_undone_reason": "Taken back: back to the inbox",
     "to_task_failed": "Could not make it a task: {err}",
+    # a finished AI run (stage 2 of the one point view): read, read again, analysed further, made a task
+    "return_read": "Read: {title}", "return_unread": "To read again",
+    "analyse_note": "{note} The run before came to this: {result}",
+    "analyse_reopen": "Opened again to analyse it further",
+    "return_origin": "the AI run of {day} on {title} ({key})",
+    "return_task_undone_reason": "Taken back: the run stands to read again",
     "not_asking": "{name} is no longer asking, nothing pressed",
     "key_failed": "Key press failed: {err}",
     "said_yes": "Yes sent",
@@ -435,7 +441,14 @@ EN: dict = {
            "filed": "answer filed, {text} ({key})", "lost": "the tab ended without a word",
            # the head of the note an agent leaves on its task when it is through (a task's result line), and of the
            # note that asks the person something (workplace.py asks for it, returns.py reads it as a question)
-           "result": "Result", "question": "Question"},
+           "result": "Result", "question": "Question",
+           # what became of a done start, in plain words (returns.py plain_line; the page shows it in place of the
+           # run's own words, which fold under it)
+           "plain": {"check": "Its check found the problem gone, and the item closed itself. Nothing to do.",
+                     "closed_you": "You closed the item.", "closed": "The item was closed.",
+                     "executed": "The item's action ran.", "failed": "The item's action failed.",
+                     "dropped": "The item was dropped.", "rejected": "The item was rejected.",
+                     "ended": "The item is closed.", "task_done": "The task is closed.", "filed": "An answer was filed: {text}"}},
     # the words of a card (card.py): a user story as one sentence, the next step an inbox item or a row asks
     # for, and how an item closes on its own (its closes_when probe, the same words as text.js `probe`)
     "card": {"story": "As {as}, I want {want}, so that {so_that}.",
@@ -638,6 +651,11 @@ DE: dict = {
     "to_task_note": "Jetzt die Aufgabe {slug}",
     "to_task_undone_reason": "Zurückgenommen: wieder in den Posteingang",
     "to_task_failed": "Zur Aufgabe machen ging nicht: {err}",
+    "return_read": "Gelesen: {title}", "return_unread": "Wieder zum Lesen",
+    "analyse_note": "{note} Der Lauf davor kam zu diesem Ergebnis: {result}",
+    "analyse_reopen": "Wieder geöffnet, um es weiter zu analysieren",
+    "return_origin": "der KI-Lauf vom {day} zu {title} ({key})",
+    "return_task_undone_reason": "Zurückgenommen: der Lauf steht wieder zum Lesen",
     "not_asking": "{name} fragt nicht mehr, nichts gedrückt",
     "key_failed": "Taste ging nicht: {err}",
     "said_yes": "Ja gesendet",
@@ -865,7 +883,13 @@ DE: dict = {
     "returns": {"head": "Bei der AI", "start": "Agent gestartet aus dem Cockpit ({mode})",
            "mode": {"go": "AI machen lassen", "report": "Beraten", "context": "Infos sammeln"},
            "filed": "Antwort abgelegt, {text} ({key})", "lost": "Tab beendet ohne Rückmeldung",
-           "result": "Ergebnis", "question": "Frage"},
+           "result": "Ergebnis", "question": "Frage",
+           "plain": {"check": "Seine Prüfung fand das Problem nicht mehr, und der Eintrag hat sich selbst geschlossen. Nichts zu tun.",
+                     "closed_you": "Du hast den Eintrag geschlossen.", "closed": "Der Eintrag wurde geschlossen.",
+                     "executed": "Die Aktion des Eintrags ist gelaufen.", "failed": "Die Aktion des Eintrags ist fehlgeschlagen.",
+                     "dropped": "Der Eintrag wurde verworfen.", "rejected": "Der Eintrag wurde abgelehnt.",
+                     "ended": "Der Eintrag ist geschlossen.", "task_done": "Die Aufgabe ist abgeschlossen.",
+                     "filed": "Eine Antwort wurde abgelegt: {text}"}},
     "card": {"story": "Als {as} möchte ich {want}, damit {so_that}.",
              "next": {"decide": "entscheiden", "answer": "beantworten", "yes": "dein Ja geben", "read": "lesen",
                       "check": "Ergebnis prüfen", "closes": "schließt sich selbst, wenn {probe}",

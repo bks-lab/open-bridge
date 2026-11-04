@@ -12,6 +12,12 @@
 // keeps private (logic.js askPlan, by the server's check of each record) and how many questions are left today, and
 // the answer links the records it names. It stands in one place, under the chips of the left column, whether a
 // record is open or not, so the search stays the first thing of that column.
+// Stage 1 of the one point view (04.11.2026): where Work through is on (logic.js pointViewOn) a record opened, from the
+// list or walked, shows in the middle the same view as a point of Work through (views/flowpoint.js PointView: its card,
+// its tabs, the instruction line with Instruct or Ask, the walk over the records listed or the queue walked), Close the
+// record as its way back, the right column Work through's for it (a closed copy, or a task no row names, as a point of
+// its own, logic.js soloPoint: read only where it is closed), walking with the line of what the queue leaves out over
+// it. The file card below is the view where Work through is off, as before.
 // The middle shows one task at a time as a file, on one framed surface: a record opened, or the walk. In its head the
 // one way to close it. On the surface: the eyebrow (File, "2 of 16", status, kind, priority, the slug on the right),
 // the title as the one heading, the situation in one sentence with where it comes from and its date, then the next
@@ -50,13 +56,15 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   askPlan, detailNeedsLoad, dossierStep, duration, fileContext, fileFacts, fileOf, fileQueue, fileReason,
-  fileResults, filesAll, findContext, focusIndex, formatDay, indexRows, placeKind, prioToken, projectTone,
-  queueLeftOut, RECORD_KINDS, RECORD_STATES, recordArea, recordList, recordPoint, rowProject, short, stepAge, suggestedStep, tabOfTask, personOf,
+  fileResults, filesAll, findContext, focusIndex, formatDay, indexRows, instructScope, placeKind, pointViewOn, prioToken, projectTone,
+  queueLeftOut, RECORD_KINDS, RECORD_STATES, recordArea, recordList, recordPoint, rowProject, short, soloPoint, stepAge, suggestedStep, tabOfTask,
+  personOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCard, cardOf, describeOf } from './card.js'
 import { KindTag, OriginTag } from './day.js'
 import { FlowAside } from './flowside.js'
+import { PointView, useSoloLoad } from './flowpoint.js'
 import { Calm, Hero } from './focus.js'
 import { ReturnCard } from './home.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
@@ -639,16 +647,35 @@ export function DossierView({ s, c }) {
   // the right column: Work through's for the point the record's task stands for
   const point = recordPoint(s, open ?? x?.slug ?? null)
   const some = !!open || walking
+  // stage 1: with Work through on the record opens in the one point view; a closed copy or a task no row names as a
+  // point of its own, read from its file
+  const one = pointViewOn(s)
+  const slugOpen = open ?? x?.slug ?? null
+  const solo = one && slugOpen && !point ? { key: `task:${slugOpen.split('/').pop()}`, file: slugOpen.includes('/') ? slugOpen : null } : null
+  const soloEntry = useSoloLoad(solo, s, c)
+  const px = one ? point ?? (solo ? soloPoint(s, solo) : null) : null
+  // a record in the one view: opened, or a file of the walk (an empty walk keeps its calm card)
+  const pointing = one && (!!open || !!x)
+  const pointWalk = !px ? null : open
+    ? (at >= 0 ? { queue: walk, i: at, go: k => c.openRecord(walk[k].r.slug, walk[k].r.path), words: d.listWalk, titleFor: w => w.r.title || w.r.slug,
+      tagsOf: () => null, whyOf: w => t.taskState[w.r.status] ?? w.r.status ?? '', cls: 'flow-walk' } : null)
+    : { queue, i, cls: 'flow-walk' }
+  // walking, the line of what the queue leaves out stands over it, as over the file card
+  const pointMiddle = px ? html`<${PointView} key=${px.id} x=${px} back=${{ word: d.start.back, icon: 'close', onClick: () => c.filesHome() }}
+    theme=${d.label} walk=${pointWalk} above=${open ? null : html`<${LeftOut} gaps=${gaps} s=${s} c=${c} pos=${t.nextPos(i + 1, queue.length)} />`}
+    scope=${px.readOnly ? null : instructScope(px, [], new Set(), null, s)} s=${s} c=${c} />` : null
   // nothing open and no search from elsewhere to show: the search and its list take the whole width, as before 6d
   const home = !some && !(s.find && s.find.from !== 'start')
   return html`<div class="col col-page flow dz">
-    <div class=${`flow-grid dz-grid${point ? '' : ' no-aside'}${some ? ' is-open' : ''}${home ? ' is-home' : ''}`}>
+    <div class=${`flow-grid dz-grid${point || px ? '' : ' no-aside'}${some ? ' is-open' : ''}${home ? ' is-home' : ''}`}>
       <${FilesList} s=${s} c=${c} queue=${queue} list=${list} shown=${shown} open=${open} walked=${x?.slug ?? null} busy=${some} />
-      ${home ? null : html`<section class="flow-main dz-main" aria-label=${d.label}>
-        ${some ? html`<header class="page-head dz-head"><${Btn} variant="ghost" size="sm" icon="close" cls="dz-home"
+      ${home ? null : html`<section class=${`flow-main dz-main${px ? ' is-point' : ''}`} aria-label=${d.label}>
+        ${some && !px ? html`<header class="page-head dz-head"><${Btn} variant="ghost" size="sm" icon="close" cls="dz-home"
           onClick=${() => c.filesHome()}>${d.start.back}<//></header>` : null}
         <${FindResults} s=${s} c=${c} open=${open} />
-        ${open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} queued=${queue.some(q => q.slug === open)} foot=${listFoot} />`
+        ${pointMiddle ?? (pointing ? html`<p class="dz-pick muted" role="status">${soloEntry?.status === 'error' ? d.noFile : T().flow.one.loading}</p>` : null)}
+        ${pointing ? null
+        : open ? html`<${OpenFile} key=${open} open=${open} s=${s} c=${c} queued=${queue.some(q => q.slug === open)} foot=${listFoot} />`
         : !walking ? html`<p class="dz-pick muted">${d.start.pick}</p>`
         : x ? html`<article class="dz-file" aria-labelledby="dz-title">
         <${Cover} key=${`c${x.id}`} x=${x} s=${s} c=${c} data=${data} where=${[d.label, t.nextPos(i + 1, queue.length)]} />
@@ -669,7 +696,7 @@ export function DossierView({ s, c }) {
           <${LeftOut} gaps=${gaps} s=${s} c=${c} areaButton=${false} />`
         : html`<${Calm} s=${s} c=${c} title=${d.empty} sub=${why(d.emptySub)} action=${false} /><${LeftOut} gaps=${gaps} s=${s} c=${c} />`}
       </section>`}
-      ${point ? html`<${FlowAside} x=${point} s=${s} c=${c} />` : null}
+      ${px || point ? html`<${FlowAside} x=${px ?? point} s=${s} c=${c} />` : null}
     </div>
   </div>`
 }

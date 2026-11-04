@@ -710,6 +710,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/flowrun.js",           # Work through: Running now, in the left column and over the overview
     "scripts/web/views/flowleft.js",          # Work through: Not now, its groups and their lists
     "scripts/web/views/flowprio.js",          # Work through: Prio, the 2x2 grid of Jev's squares
+    "scripts/web/views/flowpoint.js",         # Work through: the one point view, its card, tabs, line and walk
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",
@@ -742,6 +743,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
     "scripts/web/files.js",                   # the files view: queue, drawers, search, ask a file
     "scripts/web/flow.js",                    # the Work through page: its queue, the return card, the five verbs
+    "scripts/web/point.js",                   # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",
@@ -783,6 +785,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_logrange.test.mjs",
     "scripts/tests/bridge_cockpit_flow.test.mjs",
     "scripts/tests/bridge_cockpit_prio.test.mjs",
+    "scripts/tests/bridge_cockpit_point.test.mjs",      # the one point view: where a row opens, the drawer's facts, the basic verbs
+    "scripts/tests/bridge_cockpit_read.test.mjs",       # finished AI runs: the group to read, the plain sentence, the run's verbs
     "scripts/tests/bridge_cockpit_settle.test.mjs",
     "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",

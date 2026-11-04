@@ -38,13 +38,13 @@ const VENDOR_BYTES = 13194
 const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
   ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
-const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'flow.js', 'motion.js', 'text.js', 'text-areas.js', 'text-card.js', 'text-files.js', 'text-flow.js', 'text-chat.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'flow.js', 'point.js', 'motion.js', 'text.js', 'text-areas.js', 'text-card.js', 'text-files.js', 'text-flow.js', 'text-chat.js', 'theme.js', 'mock.js', ...VIEW_FILES]
 // the page's styles: style.css and the parts index.html loads right after it, in this order
 const STYLE_FILES = ['style.css', 'areas.css', 'files.css', 'flow.css', 'term.css']
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
-for (const name of ['logic', 'areas', 'files', 'flow', 'text', 'text-areas', 'text-card', 'text-files', 'text-flow', 'text-chat', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
+for (const name of ['logic', 'areas', 'files', 'flow', 'point', 'text', 'text-areas', 'text-card', 'text-files', 'text-flow', 'text-chat', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
@@ -1314,7 +1314,7 @@ test('the chat decides per message: ask (read only) or solve it in a real Claude
 test('every card and row of a page opens its details: tables, resource tiles, gauges, grouped rows', () => {
   const comp = readComponents()
   const app = read('app.js')
-  assert.match(app, /openInfo\(it, page, section\) \{/)
+  assert.match(app, /openInfo\(it, page, section(, drawer = false)?\) \{/)
   assert.match(comp, /s\.ui\.drawer === 'info' && s\.ui\.info \? html`<\$\{InfoDrawer\}/)
   for (const name of ['InfoRow', 'ResTile', 'GaugeTile', 'GroupsView']) {
     const body = comp.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))[0]
@@ -2341,7 +2341,8 @@ test('launch: start args stay exactly as before while off; on, the choice goes a
     for (const verb of logic.START_VERBS) assert.equal(logic.withLaunch(verb, args, launch, { launchModel: 'opus' }, {}), args, verb)
   }
   assert.equal(logic.withLaunch('drop', { key: 'task:a' }, LAUNCH, {}, {}).model, undefined)
-  assert.deepEqual(logic.START_VERBS, ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff'])
+  assert.deepEqual(logic.START_VERBS, ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff',
+    'return_analyse'])
   // Auto without a recommendation: the server decides
   assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, {}, {}), { ...args, model: 'auto', effort: 'auto' })
   // Auto with one cached: its concrete model and effort, so the server need not route again

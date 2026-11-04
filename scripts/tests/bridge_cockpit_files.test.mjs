@@ -348,7 +348,10 @@ test('every walk of the files view reads the workflow runs of the sessions state
 // ---------------------------------------------------------------- the files view: one file large, the next ones after it
 
 // the files tab walking its queue (ui.filesWalk), as a link to a file or a click on its walk leaves it
-const filesOn = (over = {}) => cockpitState(NOW, { ...over, ui: { page: '@files', filesWalk: true, ...(over.ui ?? {}) } })
+/** The cockpit with Work through off (cockpit.flow.enabled false, the default of open-bridge): the Files tab keeps its
+ *  file card there; where Work through is on a record opens in the one point view (the tests at the end of this file) */
+const flowOff = st => ({ ...st, work: { ...st.work, flow: { ...(st.work?.flow ?? {}), enabled: false } } })
+const filesOn = (over = {}) => flowOff(cockpitState(NOW, { ...over, ui: { page: '@files', filesWalk: true, ...(over.ui ?? {}) } }))
 
 test('the files view shows one file as one surface: its head, its next step with the four verbs, its walk at its foot', async () => {
   const { DossierView, dossierQueue } = views.dossier
@@ -978,9 +981,9 @@ const RECORDS = [
   REC('versicherung-bestand', { title: 'Policies in review', updated: '2026-10-07' }),
   REC('old-report', { kind: 'done', path: 'work/done/2026-09/old-report', work_kind: 'done_task', status: 'done', title: 'September report', updated: '2026-09-30' }),
 ]
-const tabState = (ui = {}, over = {}) => cockpitState(NOW, { records: { status: 'ok', data: { ok: true, total: 4, truncated: false, records: RECORDS } },
+const tabState = (ui = {}, over = {}) => flowOff(cockpitState(NOW, { records: { status: 'ok', data: { ok: true, total: 4, truncated: false, records: RECORDS } },
   work: { ...cockpitState(NOW).work, files_search: { enabled: true, block: ['Versicherung', 'Gesundheit'], left: 5 } },
-  ...over, ui: { page: '@files', ...ui } })
+  ...over, ui: { page: '@files', ...ui } }))
 
 test('the files are a tab of their own beside Work: off the switch, in the bar right after Work, a stored view leads there', async () => {
   const nav = views.nav

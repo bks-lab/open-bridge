@@ -275,6 +275,116 @@ class WorkVerbs:
         self.v_inbox_reopen(ctx, id)
         history.mark_undone("to_task_undo", id)
 
+    # ------------------------------------------------------------ a finished AI run (stage 2 of the one point view)
+
+    def done_start(self, key: str) -> dict:
+        """The done start of the return channel under `key` as the model holds it (returns.py build), else refused"""
+        found = next((r for r in (self.app.collector.model or {}).get("returns") or [] if r.get("key") == key), None)
+        if not found or found.get("stage") != "done":
+            raise self.not_applicable("no finished AI run of that row in the return channel")
+        return found
+
+    @staticmethod
+    def start_said(start: dict) -> str:
+        """What a done start came to, for a new run or a task: its plain sentence, else its own words"""
+        return " ".join(str(start.get("plain") or (start.get("result") or {}).get("text") or "").split())
+
+    def v_return_read(self, ctx: Ctx, key: str) -> None:
+        """A finished AI run read: it leaves the group Finished, to read (the item and its Activity keep it); undone by
+        return_unread, which the history hands out"""
+        start = self.done_start(key)
+        if not self.app.launches.read(key, True):
+            raise self.not_applicable("that run is read already")
+        ctx.history.append({"key": key, "title": str(start.get("title") or key)[:200], "kind": "return", "did": "read",
+                            "ident": key, "undo": {"verb": "return_unread", "args": {"key": key}}, "undone_ms": None})
+        ctx.note(self.tx["return_read"].format(title=m.short(start.get("title") or key, 60)))
+        self.app.collector.rebuild()
+
+    def v_return_unread(self, ctx: Ctx, key: str) -> None:
+        """Takes a return_read back: the run stands under Finished, to read again. Only an undo the server handed out"""
+        history = getattr(self.app, "history", None)
+        if history is None or history.open_undo("return_unread", {"key": key}) is None:
+            raise self.not_applicable("nothing of that to take back", "key")
+        if not self.app.launches.read(key, False):
+            raise self.not_applicable("that run is not read", "key")
+        history.mark_undone("return_unread", key)
+        ctx.note(self.tx["return_unread"])
+        self.app.collector.rebuild()
+
+    def v_return_analyse(self, ctx: Ctx, key: str, note: str) -> None:
+        """Analyse further: a new run on the same item or task, the person's sentence with the run's result handed in
+        (start_noted, as Let AI do it with a sentence). Its item ended with the run, and nothing starts on a closed
+        item or task: it opens again first (inbox.py reopen, task.py reopen), with a note why. Without a terminal
+        driver nothing would run, so nothing opens: refused before anything is written"""
+        start = self.done_start(key)
+        if "launch" not in self.app.driver_caps():
+            raise self.not_applicable("no terminal driver starts a run here", "key")
+        item, title = start["item"], str(start.get("title") or start["item"])
+        sentence = self.tx["analyse_note"].format(note=note, result=m.short(self.start_said(start), 600))
+        if INBOX_ID_RE.match(item):
+            self.v_inbox_reopen(ctx, item, note=self.tx["analyse_reopen"])
+            row = {"key": f"inbox:{item}", "inbox_id": item, "title": title, "inbox_state": "open"}
+        elif SLUG_RE.match(item):
+            if not (self.app.root / "work" / "tasks" / item / "STATUS.md").is_file():
+                self.v_task_reopen(ctx, item, note=self.tx["analyse_reopen"])
+            row = {"key": f"task:{item}", "task": item, "title": title}
+        else:
+            raise self.not_applicable("a run starts on an inbox item or a task", "key")
+        if ctx.failed:
+            return
+        self.start_noted(ctx, [{"row": row, "tab": None}], sentence, "go", self.app.cfg.target)
+
+    def v_return_task(self, ctx: Ctx, key: str, title: str, area: str | None = None, describe: bool = True,
+                      close: bool = True) -> None:
+        """Make it a task: a new task in the backlog (task.py new, the code the inbox's to_task runs) with the run's
+        result as its situation (`describe`) and the run as its origin; `close` marks the run read. Undone by
+        return_task_undo: the task closes as declined, the run stands to read again"""
+        start = self.done_start(key)
+        name = None
+        if area:
+            name = next((n for n in self.app.cfg.areas if self.app.access.canon(n) == self.app.access.canon(area)), None)
+            if not name:
+                raise bad_arg("area", "not an area")
+        day = dt.datetime.fromtimestamp(float(start.get("at_ms") or self.app.clock()) / 1000).date().isoformat()
+        origin = self.tx["return_origin"].format(day=day, title=m.short(start.get("title") or key, 80), key=key)
+        said = self.start_said(start)
+        argv = self.task_cmd("new", f"--headline={title}", "--status", "backlog", f"--origin={origin}",
+                             *([f"--area={name}"] if name else []), *([f"--situation={said}"] if describe and said else []), "--json")
+        run = ctx.call("task.new", key, argv, SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["to_task_failed"].format(err=m.short(run.err, 100)), bad=True)
+            return
+        try:
+            slug = json.loads(run.out).get("slug") or ""
+        except ValueError:
+            slug = ""
+        read = bool(close) and self.app.launches.read(key, True)
+        if slug:
+            ctx.history.append({"key": key, "title": str(start.get("title") or key)[:200], "kind": "return", "did": f"to task {slug}",
+                                "ident": key, "undo": {"verb": "return_task_undo", "args": {"key": key, "slug": slug, "read": read}},
+                                "undone_ms": None})
+            ctx.extra["task"] = slug
+        ctx.note(self.tx["to_task_note"].format(slug=slug), go={"kind": "item", "key": f"task:{slug}"} if slug else None)
+        self.app.collector.request("both")
+
+    def v_return_task_undo(self, ctx: Ctx, key: str, slug: str, read: bool = False) -> None:
+        """Takes a return_task back: the task it made closes as declined (its folder stays findable under
+        work/done/), the run stands to read again where the task had marked it read. Only an undo the server handed out"""
+        history = getattr(self.app, "history", None)
+        it = history.open_undo("return_task_undo", {"key": key, "slug": slug, "read": read}) if history else None
+        if it is None:
+            raise self.not_applicable("nothing of that to take back", "slug")
+        run = ctx.call("task.close", slug, self.task_cmd("close", slug, "--declined", "--reason", self.tx["return_task_undone_reason"]),
+                       SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["task_close_failed"].format(title=slug, err=m.short(run.err, 100)), bad=True)
+            return
+        if read:
+            self.app.launches.read(key, False)
+        history.mark_undone("return_task_undo", slug)   # the slug names this one task: the key may have made several
+        ctx.note(self.tx["return_unread"])
+        self.app.collector.request("both")
+
     def v_hide(self, ctx: Ctx, key: str, until: str) -> None:
         self.hide_until(ctx, self.entry(key)["row"], until)
 

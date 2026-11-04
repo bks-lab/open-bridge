@@ -8,10 +8,12 @@
 import { TABLES } from './text.js'
 import { inProject } from './areas.js'
 
-// the areas, the files view and the Work through page live in files of their own; every name passes on from here
+// the areas, the files view, the Work through page and its one point view live in files of their own; every name
+// passes on from here
 export * from './areas.js'
 export * from './files.js'
 export * from './flow.js'
+export * from './point.js'
 
 /** The words of one language (text.js, rules/language-policy.md section 3); English for any other */
 const tableOf = lang => (TABLES[lang] ?? TABLES.en).logic
@@ -4153,7 +4155,7 @@ export function themeOverride(search) {
 // ---------------------------------------------------------------- the model an agent tab starts with (launch)
 
 /** The verbs that start an agent: only these carry a model and an effort, and only while launch is on */
-export const START_VERBS = ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff']
+export const START_VERBS = ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff', 'return_analyse']
 export const LAUNCH_MODELS = ['haiku', 'sonnet', 'opus']
 export const LAUNCH_EFFORTS = ['low', 'medium', 'high', 'xhigh']
 

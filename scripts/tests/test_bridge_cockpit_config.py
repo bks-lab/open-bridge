@@ -287,7 +287,7 @@ def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(t
     cfg = load_web_config(tmp_path, {})
     assert cfg.flow == {"enabled": False, "drop_reasons": ["resolves_itself", "not_needed", "someone_else", "not_worth_it"],
                         "return_after_s": 20, "prep_ahead": 2, "max_running": 4, "rank_max_age_days": 7,
-                        "rerank_per_day": 3, "ahead_days": 2, "infer_sessions": True,
+                        "rerank_per_day": 3, "ahead_days": 2, "read_days": 3, "infer_sessions": True,
                         "themes": {"enabled": False, "max_themes": 8, "budget_per_day": 6, "model": None},
                         "summary": {"enabled": False, "budget_per_day": 10, "model": None},
                         "instruct": {"enabled": False, "budget_per_day": 30, "model": None},
@@ -391,6 +391,8 @@ def test_the_flow_block_defaults_and_its_keys(tmp_path):
     ({"rerank_per_day": "3"}, "cockpit.flow.rerank_per_day", "3"),
     ({"ahead_days": -1}, "cockpit.flow.ahead_days", "2"),
     ({"ahead_days": 1.5}, "cockpit.flow.ahead_days", "2"),
+    ({"read_days": 0}, "cockpit.flow.read_days", "3"),
+    ({"read_days": "3"}, "cockpit.flow.read_days", "3"),
     ({"infer_sessions": "no"}, "cockpit.flow.infer_sessions", "true"),
 ])
 def test_a_bad_flow_value_keeps_its_default_and_says_so(tmp_path, flow, key, used):
@@ -402,7 +404,7 @@ def test_a_bad_flow_value_keeps_its_default_and_says_so(tmp_path, flow, key, use
 
 def test_every_flow_key_has_a_doc_row():
     doc = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
-    for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day", "ahead_days",
+    for key in ("enabled", "prep_ahead", "max_running", "rank_max_age_days", "rerank_per_day", "ahead_days", "read_days",
                 "infer_sessions", "summary.enabled", "summary.budget_per_day", "summary.model",
                 "instruct.enabled", "instruct.budget_per_day", "instruct.model", "attach.enabled", "attach.max_mb",
                 "prio.fallback", "prio.haiku.enabled", "prio.haiku.budget_per_day", "prio.haiku.model"):

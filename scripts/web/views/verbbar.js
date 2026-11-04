@@ -9,18 +9,26 @@
 // shows the answer in the card, with a way to start from it. What each verb sends is logic.js flowAction. On the right
 // column of Work through the verbs stand under each other (`stack`), the strong one first, a panel under them; a verb
 // whose strong button the AI suggested (`suggested`) says so to the server (by suggestion), any other click sends none.
+// Stage 1 of the one point view (`fixed`): the basic verbs stand in their one order whatever is strong (logic.js
+// BASIC_VERBS), one that cannot go now off (`off`, {verb: why}) with why in one line under them, Make it a task opens
+// a panel that says what it does before it goes (`toTask` {what, run}: verb to_task for an inbox item, the GitHub page's
+// step for an issue), and what the kind adds (Advise, Give your yes, `lead`, `extra`) in a row of its own under them.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { personOf, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, parseDate, short, startNote, suggestedVerb, verbsFor } from '../logic.js'
+import { personOf, BASIC_VERBS, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, parseDate, short, startNote, suggestedVerb, verbsFor } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
 import { Prose } from './prose.js'
 
 // the verbs that open a small panel under the bar instead of sending at once
-const PANELS = new Set(['do', 'later', 'drop'])
+const PANELS = new Set(['do', 'later', 'drop', 'task'])
+const BASIC = new Set(BASIC_VERBS)
+
+/** A list of verbs in words, the last joined by and: "Done and Drop", "Erledigt und Weg" */
+const joined = (list, and) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} ${and} ${list.at(-1)}` : list[0] ?? '')
 
 /** The answer of Advise for this row (ui.flowAdvice, a quick chat of its own), with a way to start from it */
 function Advice({ row, s, c, onStart }) {
@@ -52,9 +60,10 @@ function Advice({ row, s, c, onStart }) {
  *  answered (the return card forgets its jump), `extra` stands after them, `stack` puts them under each other with the
  *  strong one first, every other one in the same style. `first` stands before all of them (Open on GitHub), `lead`
  *  right after the strong one (View and Improve on a finished start), `tail` apart under the bar (a tab's close, so it
- *  is no click by mistake); `yesFirst` makes Give your yes the strong one, first, where it is offered */
+ *  is no click by mistake); `yesFirst` makes Give your yes the strong one, first, where it is offered. `fixed`, `off`
+ *  and `toTask`: the basic verbs of the one point view (module head) */
 export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = false, words = {}, handlers = {}, yes: offerYes = true, onDone = null,
-  extra = null, stack = false, first = null, lead = null, tail = null, yesFirst = false }) {
+  extra = null, stack = false, first = null, lead = null, tail = null, yesFirst = false, fixed = false, off = {}, toTask = null }) {
   const t = T()
   const f = t.flow
   const lang = language()
@@ -62,9 +71,14 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const offered = verbsFor(row).filter(v => !personOf(s) || ['done', 'later', 'drop'].includes(v))
   const yes = offerYes && row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved'
   const yesStrong = yesFirst && yes
-  const strong = primary === false || yesStrong ? null : primary ?? suggestedVerb(row, s.triage?.items?.[row.key] ?? null)
-  const given = (verbs ?? offered).filter(v => offered.includes(v))
-  const list = stack && given.includes(strong) ? [strong, ...given.filter(v => v !== strong)] : given
+  // fixed: the basic verbs as given (logic.js basicVerbs says which are off), Make it a task with its way, the rest as
+  // the row offers them
+  const given = fixed ? (verbs ?? []).filter(v => (v === 'task' ? !!toTask : BASIC.has(v) || offered.includes(v)))
+    : (verbs ?? offered).filter(v => offered.includes(v))
+  const strong0 = primary === false || yesStrong ? null : primary ?? suggestedVerb(row, s.triage?.items?.[row.key] ?? null)
+  // a verb that cannot go now is never the strong one
+  const strong = strong0 && !off[strong0] && given.includes(strong0) ? strong0 : null
+  const list = fixed ? given : stack && given.includes(strong) ? [strong, ...given.filter(v => v !== strong)] : given
   // the strong verb the AI suggested goes out as such; the person's own pick of any other says nothing
   const by = v => (suggested && v === strong ? 'suggestion' : null)
   const [open, setOpen] = useState(null)
@@ -99,10 +113,15 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     send(a)
   }
   const own = async v => finish(await handlers[v](by(v)))
-  const click = v => (handlers[v] ? own(v) : PANELS.has(v) ? toggle(v) : v === 'advise' ? c.flowAdvise(row.key) : send(flowAction(v, row, '', by(v))))
+  const click = v => (off[v] ? null : handlers[v] ? own(v) : PANELS.has(v) ? toggle(v) : v === 'advise' ? c.flowAdvise(row.key) : send(flowAction(v, row, '', by(v))))
+  const makeTask = async () => {
+    const r = await toTask?.run?.()
+    if (r?.ok) setOpen(null)
+    finish(r)
+  }
   const nowMs = s.now || Date.now()
   const putOff = iso => send(flowAction('later', row, iso, by('later')))
-  const word = v => words[v] ?? f.verbs[v]
+  const word = v => words[v] ?? (v === 'task' ? f.basic.task : f.verbs[v])
   const pickDay = () => {
     const iso = parseDate(day, s.now)
     if (!iso) return setDayErr(t.noDate(day || ' '))
@@ -111,21 +130,35 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   }
   const why = (other.trim() || (reason ? dropReasonWord(reason, lang) : '')).trim()
   const reasons = flowSettings(s).drop_reasons
-  const btns = list.map(v => html`<${Btn} key=${v} size="sm" variant=${v === strong ? 'primary' : 'secondary'} busy=${busy && v !== 'advise'}
-    pressed=${PANELS.has(v) ? open === v : undefined} onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`)
+  const btn = v => html`<${Btn} key=${v} size="sm" variant=${v === strong ? 'primary' : 'secondary'} busy=${busy && v !== 'advise' && !off[v]}
+    disabled=${!!off[v]} pressed=${PANELS.has(v) && !off[v] ? open === v : undefined} onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`
+  const btns = list.map(btn)
   // what `lead` follows: the strong verb where it stands first, else nothing
   const head = strong && list[0] === strong ? 1 : 0
   const yesBtn = variant => html`<${Btn} size="sm" variant=${variant} busy=${busy} onClick=${() => send({ verb: 'do_it', args: { keys: [row.key] } })}>${f.approve}<//>`
-  return html`<div class=${`verbbar${stack ? ' is-stack' : ''}`} role="group" aria-label=${f.title}>
+  // fixed: why the verbs that are off cannot go now, one line per reason
+  const offWhy = fixed ? [...new Set(list.filter(v => off[v]).map(v => off[v]))] : []
+  const offLine = offWhy.length ? html`<div class="verbbar-off">${offWhy.map(why => html`<p key=${why} class="muted small">${f.basic.offLine(
+    joined(list.filter(v => off[v] === why).map(v => f.basic.short[v] ?? word(v)), f.basic.and), f.basic.off[why] ?? why)}</p>`)}</div>` : null
+  const kind = fixed ? html`${yesStrong ? yesBtn('primary') : null}${first}${lead}${list.filter(v => !BASIC.has(v)).map(btn)}
+    ${yes && !yesStrong ? yesBtn('secondary') : null}${extra}` : null
+  return html`<div class=${`verbbar${stack ? ' is-stack' : ''}${fixed ? ' is-fixed' : ''}`} role="group" aria-label=${f.title}>
     <${Advice} row=${row} s=${s} c=${c} onStart=${answer => { setNote(startNote({ title: `${row.title}. ${f.advice.title}: ${short(answer, 500)}` }, lang)); setOpen('do') }} />
-    <div class="verbbar-row">
+    ${fixed ? html`<div class="verbbar-row verbbar-basic">${list.filter(v => BASIC.has(v)).map(btn)}</div>
+      ${offLine}
+      ${kind ? html`<div class="verbbar-row verbbar-kind">${kind}</div>` : null}`
+      : html`<div class="verbbar-row">
       ${first}
       ${yesStrong ? yesBtn('primary') : null}
       ${btns.slice(0, head)}${lead}${btns.slice(head)}
       ${yes && !yesStrong ? yesBtn(stack ? 'secondary' : 'ghost') : null}
       ${extra}
-    </div>
+    </div>`}
     ${tail ? html`<div class="verbbar-row verbbar-tail">${tail}</div>` : null}
+    ${open === 'task' && toTask ? html`<div class="verbbar-panel" role="group" aria-label=${f.basic.task}>
+      <p class="small">${toTask.what}</p>
+      <div class="verbbar-acts"><${Btn} size="sm" variant="primary" busy=${busy} onClick=${makeTask}>${f.basic.taskGo}<//></div>
+    </div>` : null}
     ${open === 'do' ? html`<div class="verbbar-panel">
       <label class="label-caps" for=${`vb-note-${row.key}`}>${f.start.label}</label>
       <textarea id=${`vb-note-${row.key}`} class="input textarea" rows="3" maxlength="2000" value=${note}

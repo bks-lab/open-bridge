@@ -783,7 +783,7 @@ class Collector:
                          "since_ms": int(seen.get(t["ref"], {}).get("since_ms", 0)),
                          "is_control": t["ref"] == app.tabs.control_ref()} for t in tabs]
                 rows = {k: (v.get("out") or v) for k, v in index.items() if isinstance(v, dict)}
-                model["returns"] = ret.build(app.launches.all(), rich, rows, app.root, app.clock())
+                model["returns"] = ret.build(app.launches.all(), rich, rows, app.root, app.clock(), app.cfg.language)
                 # an end not yet written to the item's log: written once, after the lock
                 to_log = [r for r in model["returns"] if r["stage"] in ("result", "lost") and ret.log_line(r, app.cfg.language)
                           and app.launches.mark(r["key"], r["stage"])]

@@ -62,8 +62,8 @@ export const FLOW_RETURN_MAX_MS = 4 * 3600000
 export const FLOW_QUADRANTS = ['now', 'plan', 'hand', 'drop']
 
 // the group a start of the return channel stands in by where it stands now: started and working run (Running now), a
-// done one is settled, unless it ended with a note: that one stays with the finished to look at, until taken off
-// the list (28.10.). `idle` (a quiet tab with no question, returns.py) counts as finished; a stage the page does
+// done one is settled, unless it ended with something to read: that one stands under Finished, to read (stage 2 of the
+// one point view, parts.read, readFresh) until it is read or read_days went by. `idle` (a quiet tab with no question, returns.py) counts as finished; a stage the page does
 // not know falls to the tabs that ask, since its tab no longer works
 const STAGE_GROUP = { started: 'lane', working: 'lane', asks: 'asks', idle: 'result', result: 'result', lost: 'lost', done: null }
 
@@ -89,6 +89,8 @@ export function flowSettings(s) {
     max_running: int('max_running', 4, 1), rank_max_age_days: int('rank_max_age_days', 7, 1),
     // round 4: how many days before its due a point comes up (C)
     ahead_days: int('ahead_days', 2, 0),
+    // stage 2 of the one point view: how many days a finished AI run unread stands under Finished, to read
+    read_days: int('read_days', 3, 1),
     // round 3, each off unless the server says on (an older server sends none of them)
     summary: { enabled: f.summary?.enabled === true }, instruct: { enabled: f.instruct?.enabled === true },
     attach: { enabled: f.attach?.enabled === true, max_mb: Number.isFinite(mb) && mb >= 1 ? mb : 10 } }
@@ -206,7 +208,9 @@ export function flowWhere(s, key) {
   const entry = parts.lane.find(x => x.row?.key === key)
   if (entry) return { view: 'run', id: entry.id }
   const group = parts.leftOut.groups.find(g => g.rows.some(e => e.row?.key === key))
-  return group ? { view: 'left', id: group.reason } : null
+  if (group) return { view: 'left', id: group.reason }
+  const run = (parts.read ?? []).find(x => x.start.key === key)
+  return run ? { view: 'read', id: run.id } : null
 }
 
 /** The page item with steps of its own that a row of a command section stands for (an application: followed up,
@@ -301,7 +305,8 @@ export function flowParts(s) {
   const used = new Set()      // row keys a card, an entry of the lane or a group already stands for
   const usedTabs = new Set()
   const take = row => { if (row?.key) used.add(row.key) }
-  const out = { back: null, asks: [], result: [], lost: [], question: [], doing: [], task: [], issue: [], reports: [], lane: [], sessions: [] }
+  const out = { back: null, asks: [], result: [], lost: [], question: [], doing: [], task: [], issue: [], reports: [], lane: [], sessions: [], read: [] }
+  const readDays = flowSettings(s).read_days
   const tabOf = ref => allTabs.find(t => t.ref === ref) ?? null
   if (driver) {
     // L1 the return card, only once the jump is armed (flowArm); its row and its tab stand nowhere else
@@ -318,10 +323,18 @@ export function flowParts(s) {
       let stage = flowStage(r, allTabs, nowMs)
       // answered from here: it works again, as far as the page knows, until the next read of its tab
       if (stage === 'asks' && mine.length && !mine.some(asking)) stage = 'working'
-      const group = stage === 'done' && r.result?.text ? 'result' : Object.hasOwn(STAGE_GROUP, stage) ? STAGE_GROUP[stage] : 'asks'
+      const group = stage === 'done' && r.result?.text ? (readFresh(r, nowMs, readDays) ? 'read' : null)
+        : Object.hasOwn(STAGE_GROUP, stage) ? STAGE_GROUP[stage] : 'asks'
       if (!group || used.has(r.key)) continue
       const row = uni.get(r.key) ?? null
       const tab = tabOf(r.tab?.ref) ?? mine[0] ?? null
+      if (group === 'read') {
+        // its item ended: the row of a key of its own (the item's or the task's), so its tabs, fields and the line
+        // have it; the verbs are the run's (views/flowside.js ReadActs)
+        out.read.push({ group: 'read', id: `start:${r.key}`, kind: 'start', start: r, row: row ?? runRow(r), stage, tab, title: r.title, at: r.at_ms })
+        used.add(r.key)
+        continue
+      }
       if (group === 'lane') {
         out.lane.push({ group: 'doing', lane: true, id: `start:${r.key}`, kind: 'start', row, tab, start: r, stage, how: 'start',
           title: row?.title ?? r.title, at: r.at_ms ?? null })
@@ -366,6 +379,16 @@ export function flowParts(s) {
       usedTabs.add(t.ref)
     }
     out.asks.sort((a, b) => (a.tab?.since_ms ?? a.start?.at_ms ?? 0) - (b.tab?.since_ms ?? b.start?.at_ms ?? 0))
+  } else {
+    // without a terminal driver no agent card stands here, but what a run came to is still there to read
+    for (const r of model.returns ?? []) {
+      if (r.stage !== 'done' || !r.result?.text || !readFresh(r, nowMs, readDays) || used.has(r.key)) continue
+      out.read.push({ group: 'read', id: `start:${r.key}`, kind: 'start', start: r, row: uni.get(r.key) ?? runRow(r), stage: 'done', tab: null,
+        title: r.title, at: r.at_ms })
+      used.add(r.key)
+    }
+  }
+  if (driver) {
     out.result.sort((a, b) => (a.start.at_ms ?? 0) - (b.start.at_ms ?? 0))
     out.lost.sort((a, b) => (b.start.at_ms ?? 0) - (a.start.at_ms ?? 0))
   }
@@ -478,9 +501,23 @@ export function flowParts(s) {
   const points = queue.reduce((n, x) => n + (x.kind === 'reports' ? x.rows.length : 1), 0)
   const open1 = x => !!x.row?.key && uni.has(x.row.key)
   const extra = queue.filter(x => x.kind !== 'reports' && !open1(x)).length + out.lane.filter(x => !open1(x)).length - queue.filter(x => x.covers).length
-  out.counts = { points, running: out.lane.length, left: leftN, extra, total: points + out.lane.length + leftN, sessions: out.sessions.length }
+  out.read.sort((a, b) => (b.start.ended_ms ?? b.start.at_ms ?? 0) - (a.start.ended_ms ?? a.start.at_ms ?? 0))
+  out.counts = { points, running: out.lane.length, left: leftN, extra, total: points + out.lane.length + leftN, sessions: out.sessions.length,
+    read: out.read.length }
   return out
 }
+
+/** Whether a finished AI run (a done start) still stands under Finished, to read: nobody marked it read, and its item
+ *  ended less than `days` days ago (its start, where the end is unknown); later it is still in its item's Activity */
+export function readFresh(r, nowMs, days) {
+  if (r?.read_ms) return false
+  const since = Number.isFinite(r?.ended_ms) ? r.ended_ms : r?.at_ms
+  return Number.isFinite(since) && nowMs - since < days * DAY
+}
+
+/** The row a finished run stands for once its item left the model: its key, its title, the inbox item or the task it
+ *  ran on, nothing to settle (its item ended) */
+const runRow = r => ({ key: r.key, title: r.title, ...(String(r.key).startsWith('inbox:') ? { inbox_id: r.item } : { task: r.item }), settle: [], run: true })
 
 /** Where the rows of Not now a GitHub list holds stand: the list most of them name ({page, section}, the server's
  *  on_board) with its page's title, else the page's id */
@@ -1099,6 +1136,8 @@ export const INSTRUCT_MAX = 50
 export function pointTabs(x) {
   const row = x && x.kind !== 'reports' ? x.row : null
   if (!row?.key) return []
+  // a finished AI run: what it was asked, its start and end, its item or task (stage 2 of the one point view)
+  if (x.group === 'read') return ['desc', 'activity', 'related']
   return FLOW_TABS.filter(id => id === 'desc' || id === 'activity' || !!row.task)
 }
 
@@ -1113,13 +1152,16 @@ export function stepsOf(detail) {
     .map(m => ({ done: m[1] !== ' ', text: m[2].trim() })))
 }
 
-/** What is related to a point: the other rows of its task as they stand in the model (its inbox items, the task's own
- *  row for an item that names it) and the paths its STATUS.md names under related. {rows, paths} */
+/** What is related to a point: the task an item names as its `parent` (its row in the model, else what its file says;
+ *  none on the task itself), the other rows of that task as they stand in the model (its inbox items) and the paths
+ *  its STATUS.md names under related (the file card's references). {parent, rows, paths} */
 export function relatedOf(x, s, detail) {
   const row = x && x.kind !== 'reports' ? x.row : null
-  if (!row?.task) return { rows: [], paths: [] }
-  const rows = [...indexRows(s?.model).values()].filter(r => r.task === row.task && r.key !== row.key)
-  return { rows, paths: (detail?.related ?? []).map(String).filter(Boolean) }
+  if (!row?.task) return { parent: null, rows: [], paths: [] }
+  const own = `task:${row.task}`
+  const all = [...indexRows(s?.model).values()].filter(r => r.task === row.task && r.key !== row.key)
+  const parent = row.key === own ? null : all.find(r => r.key === own) ?? { key: own, task: row.task, title: detail?.card?.title || row.task }
+  return { parent, rows: all.filter(r => r.key !== own), paths: (detail?.related ?? []).map(String).filter(Boolean) }
 }
 
 /** The rows of the activity under a filter, in the server's order (the newest first) */
@@ -1175,7 +1217,8 @@ export function refOfUrl(href) {
 /** The fields of the right column, in their order, each {id, ...} for the view to word: the theme (themes on), the
  *  area, who works on it (flowDrive), the prio (Jev's quadrant and rank from the feed, else the triage's rank, else the
  *  priority), the three bars of Jev, due, the source (its row, row.url, else STATUS.md's origin when it is a link),
- *  created and moved. Never the status: the card's head says it */
+ *  created and moved. Never the status: the card's head says it. A closed point (a point of its own read only, stage 1
+ *  of the one point view) has no theme to move and nobody who works on it; a finished AI run (stage 2) no theme */
 export function flowFields(x, s, feed = null, detail = null) {
   if (!x) return []
   const reports = x.kind === 'reports'
@@ -1183,9 +1226,9 @@ export function flowFields(x, s, feed = null, detail = null) {
   const facts = feed?.facts ?? {}
   const jev = facts.jev && typeof facts.jev === 'object' ? facts.jev : null
   const out = []
-  if (s?.themes?.enabled === true && row?.key) out.push({ id: 'theme', value: s.themes.assign?.[row.key] ?? null })
+  if (s?.themes?.enabled === true && row?.key && !x.readOnly && x.group !== 'read') out.push({ id: 'theme', value: s.themes.assign?.[row.key] ?? null })
   out.push({ id: 'area', value: pointArea(x) })
-  if (!reports) out.push({ id: 'who', drive: flowDrive(x, s) })
+  if (!reports && !x.readOnly) out.push({ id: 'who', drive: flowDrive(x, s) })
   if (!reports) {
     const rank = row ? s?.triage?.items?.[row.key]?.next_rank : null
     out.push({ id: 'prio', jev: jev ? { quadrant: jev.quadrant ?? null, rank: jev.rank ?? null, who: jev.who ?? null, ranker: jev.ranker ?? null } : null,
@@ -1265,6 +1308,9 @@ export function instructWhy(step, skip, s) {
  *  a choice takes its options on the card, one at work takes nothing (actions_tabs.py tab_send) */
 const takesWords = (tab, s) => !!tab && replyOptions(tab, s).textBox
 
+// the ops of a finished AI run the line may plan (instruct.py START_OPS)
+const RUN_OPS = ['read', 'task', 'analyse']
+
 /** What Run sends for the plan the server made of a sentence (flow_instruct): every step through the verb it names,
  *  each with by instruction. Done for several goes out as one settle; Later with its day, Drop with its reason in the
  *  page's words, both never on a row an agent works on (atWork) unless the sentence was for that one open point
@@ -1278,13 +1324,27 @@ export function instructCalls(plan, s, lang = 'en') {
   const skipped = []
   if (!plan || !Array.isArray(plan.steps)) return { calls, skipped }
   const rows = indexRows(s?.model)
+  // the finished AI runs: their keys name no open row, the line plans read, a task and analyse further for them
+  const runs = new Map((flowParts(s).read ?? []).map(x => [x.start.key, x.start]))
   let running = flowRunning(s)
   const cap = flowSettings(s).max_running
   for (const [at, step] of plan.steps.entries()) {
-    const out = (k, why) => skipped.push({ step: at, key: k, title: rows.get(k)?.title ?? null, why })
-    const keys = (step.keys ?? []).filter(k => rows.has(k) || (out(k, 'gone'), false))
+    const out = (k, why) => skipped.push({ step: at, key: k, title: rows.get(k)?.title ?? runs.get(k)?.title ?? null, why })
+    const keys = (step.keys ?? []).filter(k => rows.has(k) || runs.has(k) || (out(k, 'gone'), false))
     if (!keys.length) continue
     const op = step.op === 'mail' ? 'do' : step.op
+    if (RUN_OPS.includes(op) || keys.some(k => runs.has(k))) {
+      for (const k of keys) {
+        const r = runs.get(k)
+        if (!r || !RUN_OPS.includes(op)) { out(k, 'not_offered'); continue }
+        if (op === 'analyse' && running >= cap) { out(k, 'running'); continue }
+        if (op === 'analyse') running += 1
+        calls.push(op === 'read' ? { verb: 'return_read', args: { key: k } }
+          : op === 'task' ? { verb: 'return_task', args: { key: k, title: String(step.title ?? '').trim() || r.title, describe: true, close: true } }
+            : { verb: 'return_analyse', args: { key: k, note: step.note } })
+      }
+      continue
+    }
     if (op === 'reply') {
       const tab = (s?.tabs?.tabs ?? []).find(t => t.ref === step.tab_ref)
       const words = String(step.text ?? '').trim()

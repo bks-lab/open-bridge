@@ -63,7 +63,7 @@ OWNER_VERBS = frozenset("""
     flow_theme_rename flow_themes_run github_board github_board_default guide_read guide_settings
     guide_settings_reset hide home_tiles inbox_reopen inbox_unmute issue_check issue_done issue_review
     launch_settings launch_settings_reset organize_apply organize_propose pin quick_forget quick_handoff
-    return_forget row_action row_undo run_seen runs_on session_link session_resume session_unlink shelve snapshot
+    return_analyse return_forget return_read return_task return_task_undo return_unread row_action row_undo run_seen runs_on session_link session_resume session_unlink shelve snapshot
     snapshot_list start_agent start_control tab_close tab_done tab_go_on tab_jump tab_keys tab_move tab_new tab_no
     tab_option tab_rename tab_send tab_yes task_keep task_reopen task_review task_running task_unmerge team_role
     ticker_edit ticker_profile ticker_refresh ticker_settings ticker_settings_reset timeline_ask to_task

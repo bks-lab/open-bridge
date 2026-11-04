@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's Files tab: three columns as Work through (the list, the open record, its point's buttons), a search over every record first, Ask the AI with a block list (cockpit.files_search), one task at a time as a file, its queue, next step and drawers, the search across every task, asking a file, the suggestion, the workflow runs as results, the files under the area filter, every task as a file in the one list, and the switches cockpit.work_view, cockpit.focus_to_files, cockpit.files_scope and cockpit.files_search."
 type: guide
-last_updated: 2026-10-31
+last_updated: 2026-11-04
 related:
   - bridge-cockpit.md
   - cockpit-areas.md
@@ -28,10 +28,17 @@ this tab once and leaves the work tab on the view it falls back to.
 one layout. The left column holds the search, "Walk through the active records",
 the chips and the list of records; the middle shows the open record; the right
 column is Work through's own side column (`views/flowside.js FlowAside`) for the
-point that record is in Work through, with the same buttons (Let AI do it,
-Advise, Done, Later, Drop, To tab and View where a tab exists, the tab's close
-when it neither works nor asks (Done and close tab where its task or item is
-still open), then Details and the fields; `files.js recordPoint` picks that point). No button stands twice: a
+point that record is in Work through, with the same buttons (the basic verbs Let
+AI do it, Done, Later, Drop in one order, then To tab and View where a tab
+exists, Advise, the tab's close when it neither works nor asks (Done and close
+tab where its task or item is still open), then the fields; `files.js
+recordPoint` picks that point). Where Work through is on, the middle is Work
+through's point view as well ([One point view](bridge-cockpit.md#one-point-view)):
+the card, the tabs, the line with Instruct or Ask and the walk, the facts folded
+under Details at the foot of the fields; a closed record, or a task no row names,
+opens as a point of its own read from its file, read only where it is closed.
+Without Work through the middle is the file card below and Details stands under
+the verbs. No button stands twice: a
 step in the walk has its verbs only on the right. A closed record, or a task no
 row names, has no right column, since its buttons would act on nothing. A click
 in the list opens the record beside it (`openRecord` in app.js) and marks it in
@@ -148,8 +155,10 @@ carries `status` and `next` for it (`model.task_next`).
 A link to a task inside this tab opens it here. Anywhere else (a
 point of Work through, Not now, a card, the start page) an open task opens in
 the Files tab with that record open (`files.js fileClick`): in the walk where
-the queue holds it, else beside it. Only where `cockpit.work_views` keeps no
-`files` does a task open in the item drawer over the page, as before.
+the queue holds it, else beside it; where Work through is on it opens in Work
+through's point view on the work tab instead (`app.js openPoint`). Only where
+`cockpit.work_views` keeps no `files` does a task open in the item drawer over
+the page, as before.
 
 The view says what its queue leaves out, so a short queue explains itself.
 Under the head of the file stands one calm line: where the file stands, then

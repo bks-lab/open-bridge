@@ -385,3 +385,72 @@ def test_a_start_keeps_the_chat_it_came_from(tmp_path):
               {"key": "task:alpha", "item": "alpha", "title": "A", "mode": "go", "conv": "not a chat"}])
     out = {x["key"]: x for x in returns.build(returns.Launches(tmp_path / "state", clock).all(), [], {}, tmp_path, T0)}
     assert out[f"inbox:{ITEM}"]["conv"] == "q0123456789" and out["task:alpha"]["conv"] is None
+
+
+# ---------------------------------------------------------------- a done start in plain words (stage 2 of the one point view)
+
+def event_by(root, item, at_ms, verb, text, by):
+    d = root / "work" / "inbox" / item / "events"
+    d.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.fromtimestamp(at_ms / 1000, dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (d / f"{stamp}-00-{by}-{verb}.yaml").write_text(f"verb: {verb}\nby: {by}\nat: '{stamp}'\ntext: '{text}'\n", encoding="utf-8")
+
+
+def done(tmp_path, verb, text, by, lang="en"):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    event_by(tmp_path, ITEM, T0 + 2 * MIN, verb, text, by)
+    return {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path, T0 + 10 * MIN, lang)}[f"inbox:{ITEM}"]
+
+
+def test_a_close_by_the_items_own_check_says_the_problem_is_gone_never_the_machines_words(tmp_path):
+    r = done(tmp_path, "close", "closes_when holds", "check")
+    assert r["stage"] == "done"
+    assert r["plain"] == returns.TABLES["en"]["returns"]["plain"]["check"]
+    assert "closes_when" not in r["plain"]
+    assert r["result"]["text"] == "closes_when holds", "the run's own words stay, folded under the plain ones"
+    assert r["ended_ms"] == T0 + 2 * MIN and r["read_ms"] is None
+    de = done(tmp_path / "de", "close", "closes_when holds", "check", "de")
+    assert de["plain"] == returns.TABLES["de"]["returns"]["plain"]["check"]
+
+
+def test_every_other_end_says_itself_plainly_and_a_note_keeps_its_own_words(tmp_path):
+    w = returns.TABLES["en"]["returns"]["plain"]
+    assert done(tmp_path / "a", "close", "", "web")["plain"] == w["closed_you"]
+    assert done(tmp_path / "b", "close", "answered the vendor", "tab")["plain"] == f"{w['closed']} (answered the vendor)"
+    assert done(tmp_path / "c", "executed", "", "bridge")["plain"] == w["executed"]
+    assert done(tmp_path / "d", "drop", "", "web")["plain"] == w["dropped"]
+    assert done(tmp_path / "e", "reject", "", "web")["plain"] == w["rejected"]
+    # a note of the agent's before its item ended: its own words, without the head
+    clock = Clock(T0)
+    b = book(tmp_path / "f", clock)
+    event_by(tmp_path / "f", ITEM, T0 + MIN, "note", "Result: the vendor takes the current format", "tab")
+    event_by(tmp_path / "f", ITEM, T0 + 2 * MIN, "close", "", "web")
+    r = {x["key"]: x for x in returns.build(b.all(), [], {}, tmp_path / "f", T0 + 10 * MIN)}[f"inbox:{ITEM}"]
+    assert r["plain"] == "the vendor takes the current format"
+    # a task that moved to work/done/
+    assert returns.plain_line("task", None, None, "de") == returns.TABLES["de"]["returns"]["plain"]["task_done"]
+    # only a done start carries them
+    assert "plain" not in {x["key"]: x for x in returns.build(book(tmp_path / "g", Clock(T0)).all(), [], {}, tmp_path / "g", T0 + MIN)}["task:alpha"]
+
+
+def test_end_event_reads_the_last_end_and_a_reopen_takes_it_back(tmp_path):
+    event_by(tmp_path, ITEM, T0, "close", "closes_when holds", "check")
+    assert returns.end_event(tmp_path, ITEM) == {"verb": "close", "by": "check", "text": "closes_when holds", "at_ms": T0}
+    event_by(tmp_path, ITEM, T0 + MIN, "reopen", "", "web")
+    assert returns.end_event(tmp_path, ITEM) is None
+    assert returns.end_event(tmp_path, "not-an-id") is None
+
+
+def test_a_start_marked_read_says_when_and_can_be_unread(tmp_path):
+    clock = Clock(T0)
+    b = book(tmp_path, clock)
+    clock.ms = T0 + 5 * MIN
+    assert b.read(f"inbox:{ITEM}") is True
+    assert b.read(f"inbox:{ITEM}") is False, "read already"
+    event_by(tmp_path, ITEM, T0 + 2 * MIN, "close", "closes_when holds", "check")
+    r = {x["key"]: x for x in returns.build(returns.Launches(tmp_path / "state", clock).all(), [], {}, tmp_path, T0 + 10 * MIN)}
+    assert r[f"inbox:{ITEM}"]["read_ms"] == T0 + 5 * MIN, "kept across a restart"
+    assert b.read(f"inbox:{ITEM}", False) is True
+    assert "read_ms" not in returns.Launches(tmp_path / "state", clock).all()[1]
+    assert b.read("task:nope") is False

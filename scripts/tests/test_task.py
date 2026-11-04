@@ -385,6 +385,23 @@ def test_new_task_from_an_inbox_item_starts_in_backlog_and_closes_the_item(repo)
     assert "status: doing" in (repo / "work/tasks/beta/STATUS.md").read_text(encoding="utf-8")
 
 
+def test_new_task_takes_its_situation_and_its_origin_from_the_caller(repo):
+    """A task the cockpit makes of a finished AI run (verb return_task): the run's result as the situation, the run as
+    the origin, as from an inbox item"""
+    r = run(repo, "new", "--headline", "Analyse the export", "--situation", "The check found the export gone.",
+            "--origin", "the AI run of 2026-10-09 on Check the export (inbox:x)", "--json")
+    assert r.returncode == 0, r.stderr
+    import json as _json
+    slug = _json.loads(r.stdout)["slug"]
+    text = (repo / "work/tasks" / slug / "STATUS.md").read_text(encoding="utf-8")
+    assert "## Situation\n\nThe check found the export gone." in text
+    assert 'origin: "the AI run of 2026-10-09 on Check the export (inbox:x)"' in text
+    # without them, as before: the headline as the situation, an ad hoc origin
+    r = run(repo, "new", "--headline", "Plain one", "--json")
+    plain = (repo / "work/tasks" / _json.loads(r.stdout)["slug"] / "STATUS.md").read_text(encoding="utf-8")
+    assert "## Situation\n\nPlain one" in plain and 'origin: "Ad-hoc ' in plain
+
+
 def test_a_new_slug_is_the_head_of_the_summary_cut_between_words():
     import importlib.util
     spec = importlib.util.spec_from_file_location("task_slug", ROOT / "scripts" / "task.py")

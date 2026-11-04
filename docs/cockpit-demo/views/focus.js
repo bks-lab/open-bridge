@@ -44,9 +44,10 @@ function screenLines(text, n = 4) {
  *  the facts its fields say (`facts` false: no kind tag, source, area, return chip, priority, reasons, nor the state of
  *  its tab and since when, which the field Who works on it says), more of the tab's screen (`screen` lines), and what
  *  the tab asks as `children`; its title opens nothing there (`openable` false): the details stand beside the card, no
- *  drawer with a walk of its own */
+ *  drawer with a walk of its own. The one point view (views/flowpoint.js) adds what stands at the end of the head
+ *  (`headEnd`: the kind and Pin) and what stands right under the title (`lead`: the next step) */
 export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null, openable = true, foot = true, facts = true,
-  screen = 4, children = null }) {
+  screen = 4, headEnd = null, lead = null, children = null }) {
   const t = T()
   const f = t.home.focus
   const kind = kindOf(x, nowKeys(s))
@@ -60,12 +61,14 @@ export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = n
   return html`<article class=${`fx-hero tk-${tone}${n > 1 ? ' has-more' : ''}${n > 2 ? ' has-many' : ''}`} aria-labelledby="fx-title">
     <header class="fx-hero-top">
       <span class="fx-kind"><${Dot} token=${tone === 'accent' ? 'info' : tone} pulse=${kind === 'tab'} />${kindWord ?? f.kind[kind]}</span>
+      ${headEnd}
     </header>
     <h2 id="fx-title" class="fx-title">
       ${openable ? html`<button type="button" onClick=${e => open(e.currentTarget)}>${prio ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}</button>`
         : html`${prio ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}`}
     </h2>
     ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
+    ${lead}
     ${facts ? html`<div class="fx-meta">
       ${x.kind === 'tab' ? null : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}
       ${project ? html`<span class=${`fx-proj tk-${projectTone(project)}`}>${project}</span>` : null}
