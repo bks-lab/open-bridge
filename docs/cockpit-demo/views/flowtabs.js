@@ -1,25 +1,31 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the tabs under the card of an open point in Work through (views/flow.js), as an issue tracker keeps
-// them: Description (goal, story and criteria; the source stands in the fields on the right), Steps (n/m, the
-// checklist of its STATUS.md), Activity (count: everything that happened to the point, one list) and Related (n). The
+// The cockpit, the tabs under the card of an open point, in the one point view (views/flowpoint.js) of Work through and
+// of the Files tab, as an issue tracker keeps them: Description (since stage 1 of 04.11.2026 first what it is about,
+// from the item drawer: the triage's gist, why only you can do it and its reason, an inbox item's description as
+// filed; then goal, story and criteria; for a task the sections of its STATUS.md folded under From the file; the source
+// stands in the fields on the right, the next step in the card), Steps (n/m, the checklist of its STATUS.md), Activity
+// (count: everything that happened to the point, one list) and Related (n: the task an item belongs to, the other items
+// of that task, each a click into the same view, and the paths its STATUS.md names, the file card's references). The
 // tab chosen stays from point to point (ui.flowTab, kept in this browser); one the point lacks falls back to
 // Description (logic.js pointTabs, pointTab). A tab alone and the reports card have no bar. Card and panes read at most
 // 820 px wide.
 // Activity (ActivityPane): on top the summary of the last week on a click (cockpit.flow.summary, within the day's
-// budget), the filters with their counts (All, Notes, Documents, State, Agents, Code: logic.js ACTIVITY_FILTERS), then
-// one row per thing that happened, newest first: when, its kind, what (a change as the old value struck through, then
-// the new one; a decision taken back says so), who or what did it. A document opens in a new tab through the doc route
-// (c.docHref), a link on the web too, a tab in the page's view of it, a task in the files view. At the foot a note (the
-// verb note through the server) and, where the point has an open task, a document attached to its deliverables (size
-// checked here first, cockpit.flow.attach). The feed is read when the point opens (app.js loadActivity), again after a
-// note, an attachment or a verb on the row.
+// budget), the filters with their counts (All, Notes, Documents, State, Agents, Code: logic.js ACTIVITY_FILTERS, and
+// History where an inbox item has events, the drawer's Verlauf, logic.js historyRows: a filter of its own, not counted
+// in All), then one row per thing that happened, newest first: when, its kind, what (a change as the old value struck
+// through, then the new one; a decision taken back says so), who or what did it. A document opens in a new tab through
+// the doc route (c.docHref), a link on the web too, a tab in the page's view of it, a task in the one view. At the foot
+// a note (the verb note through the server) and, where the point has an open task, a document attached to its
+// deliverables (size checked here first, cockpit.flow.attach). The feed is read when the point opens (app.js
+// loadActivity), again after a note, an attachment or a verb on the row; a task's file is read by its slug, a closed
+// copy by its folder (the point's `file`).
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  ACTIVITY_FILTERS, activityCounts, activityRows, activityWhen, attachTooBig, detailNeedsLoad, errorText, flowSettings, formatDay, pointTab,
-  pointTabs, relatedOf, short, stepsOf,
+  activityCounts, activityFilters, activityRows, activityWhen, attachTooBig, detailNeedsLoad, errorText, flowSettings, formatDay, historyRows,
+  pointAbout, pointTab, pointTabs, relatedOf, short, stepsOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { describeOf, ItemCard } from './card.js'
@@ -31,15 +37,43 @@ import { Btn, useRoving } from './parts.js'
 // head, the next step's who and day too; the progress is the count of Steps; a missing part says itself once
 const DESC_SKIP = ['source', 'state', 'owner', 'priority', 'due', 'area', 'next', 'progress', 'gaps']
 
-/** Description: the goal, the story and the criteria of the point's card, written by the task or the item */
-function DescPane({ row, detail, entry, s, c }) {
+/** What the point is about, on top of Description (the item drawer's What it is about and its Detail, logic.js
+ *  pointAbout): the gist as its head, why it needs you, its reason, and an inbox item's description as filed */
+function About({ about }) {
+  const f = T().flow.one
+  if (!about) return null
+  return html`<section class="flow-about">
+    ${about.head || about.you || about.why ? html`<div class="flow-about-gist"><p class="label-caps">${f.about}</p>
+      ${about.head ? html`<p class="flow-about-head">${about.head}</p>` : null}
+      ${about.you ? html`<p><span class="flow-side-you">${f.needs(about.need)}</span></p>` : null}
+      ${about.why ? html`<p class="muted small">${about.why}</p>` : null}</div>` : null}
+    ${about.text ? html`<div class="flow-about-text"><p class="label-caps">${f.detail}</p><p class="pre">${about.text}</p>
+      ${about.cut ? html`<p class="muted small">${f.cut}</p>` : null}</div>` : null}
+  </section>`
+}
+
+/** A task's STATUS.md in its sections, folded under From the file (the file card's Sections) */
+function Sections({ sections }) {
+  const f = T().flow.one
+  if (!(sections ?? []).length) return null
+  return html`<details class="flow-sections"><summary>${f.sections(sections.length)}</summary>
+    ${sections.map((x, i) => html`<details key=${i} class="flow-section"><summary>${x.heading}</summary><p class="pre">${x.text}</p></details>`)}
+  </details>`
+}
+
+/** Description: what it is about, then the goal, the story and the criteria of the point's card, written by the task
+ *  or the item, then a task's own STATUS.md in its sections */
+function DescPane({ row, detail, entry, item, s, c }) {
   const f = T().flow.desc
   const card = (row.inbox_id ? row.card ?? detail?.card : detail?.card ?? row.card) ?? null
   const d = describeOf(s, row.key, detail?.describe, row.describe)
   const loading = !!row.task && !detail && entry?.status !== 'error'
+  const own = !!row.task && row.key === `task:${row.task}`
   return html`<div class="flow-desc">
+    <${About} about=${pointAbout(row, s, item)} />
     ${card ? html`<${ItemCard} card=${card} d=${d} dkey=${row.key} s=${s} c=${c} skip=${DESC_SKIP} cls="flow-card-brief" />` : null}
     ${card?.goal || card?.story || (card?.acceptance ?? []).length ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
+    ${own ? html`<${Sections} sections=${detail?.sections} />` : null}
   </div>`
 }
 
@@ -51,13 +85,18 @@ function StepsPane({ steps }) {
     <span class="flow-step-mark mono">${st.done ? f.done : f.todo}</span> <span>${st.text}</span></li>`)}</ul>`
 }
 
-/** Related: the other items of the same task as they stand in the model, the paths STATUS.md names */
-function RelatedPane({ rel }) {
-  const f = T().flow.related
-  if (!rel.rows.length && !rel.paths.length) return html`<p class="muted small">${f.none}</p>`
+/** Related: the task an item belongs to and the other items of that task as they stand in the model, each a click
+ *  into the same view (c.openItem, stage 1), and the paths STATUS.md names */
+function RelatedPane({ rel, c }) {
+  const t = T().flow
+  const f = t.related
+  const open = r => html`<button type="button" class="btn-link flow-related-open" onClick=${() => c.openItem(r.key)}>${short(r.title ?? r.key, 90)}</button>`
+  if (!rel.parent && !rel.rows.length && !rel.paths.length) return html`<p class="muted small">${f.none}</p>`
   return html`<div class="flow-related">
+    ${rel.parent ? html`<section><h3 class="label-caps">${t.one.parent}</h3>
+      <ul class="entries"><li class="entry">${open(rel.parent)}<span class="entry-tags"><${OriginTag} row=${rel.parent} /></span></li></ul></section>` : null}
     ${rel.rows.length ? html`<section><h3 class="label-caps">${f.rows}</h3>
-      <ul class="entries">${rel.rows.map(r => html`<li key=${r.key} class="entry"><span>${short(r.title, 90)}</span>
+      <ul class="entries">${rel.rows.map(r => html`<li key=${r.key} class="entry">${open(r)}
         <span class="entry-tags"><${OriginTag} row=${r} /></span></li>`)}</ul></section>` : null}
     ${rel.paths.length ? html`<section><h3 class="label-caps">${f.paths}</h3>
       <ul class="entries">${rel.paths.map(p => html`<li key=${p} class="entry"><code>${p}</code></li>`)}</ul></section>` : null}
@@ -226,19 +265,38 @@ function ActFoot({ row, feed, s, c }) {
   </div>`
 }
 
-/** Activity: the summary, the filters with their counts, the rows of the filter, the note and the attachment */
-function ActivityPane({ row, entry, s, c }) {
+/** One event of an inbox item's history (the drawer's Verlauf): when, its verb, who, until when, what it noted */
+function HistoryRow({ r }) {
+  const t = T()
+  const f = t.flow.activity
+  const lang = language()
+  return html`<li class="flow-act-row is-history">
+    <time class="flow-act-time mono" datetime=${r.at}>${activityWhen(r.at, lang)}</time>
+    <div class="flow-act-body">
+      <span class="flow-act-kind">${t.item.verb[r.verb] ?? r.verb}</span>
+      <span class="flow-act-what">${r.until ? html`<span class="flow-act-text">${t.hiddenUntil(r.until)}</span>` : null}
+        ${r.note ? html`<span class="flow-act-text">${r.note}</span>` : null}</span>
+      ${r.by ? html`<span class="flow-act-who">${f.by[r.by] ?? r.by}</span>` : null}
+    </div>
+  </li>`
+}
+
+/** Activity: the summary, the filters with their counts (History where the item has events), the rows of the filter,
+ *  the note and the attachment */
+function ActivityPane({ row, entry, history, s, c }) {
   const f = T().flow.activity
   const feed = entry?.data ?? null
   if (!feed) return html`<p class="muted small" role="status">${entry?.status === 'error' ? entry.error ?? f.loading : f.loading}</p>`
-  const filter = ACTIVITY_FILTERS.includes(s.ui.flowFilter) ? s.ui.flowFilter : 'all'
-  const counts = activityCounts(feed)
-  const rows = activityRows(feed, filter)
+  const filters = activityFilters(history)
+  const filter = filters.includes(s.ui.flowFilter) ? s.ui.flowFilter : 'all'
+  const counts = { ...activityCounts(feed), history: history.length }
+  const rows = filter === 'history' ? [] : activityRows(feed, filter)
   return html`<div class="flow-act">
     <${Summary} row=${row} feed=${feed} s=${s} c=${c} />
-    <div class="flow-act-filters"><${Segmented} label=${f.filters} values=${ACTIVITY_FILTERS.map(id => [id, `${f.filter[id]} ${counts[id]}`])}
+    <div class="flow-act-filters"><${Segmented} label=${f.filters} values=${filters.map(id => [id, `${f.filter[id]} ${counts[id]}`])}
       current=${filter} onPick=${v => c.flowFilter(v)} /></div>
-    ${rows.length ? html`<ol class="flow-act-rows">${rows.map(r => html`<${ActRow} key=${r.id} r=${r} c=${c} />`)}</ol>`
+    ${filter === 'history' ? html`<ol class="flow-act-rows">${history.map(r => html`<${HistoryRow} key=${r.id} r=${r} />`)}</ol>`
+      : rows.length ? html`<ol class="flow-act-rows">${rows.map(r => html`<${ActRow} key=${r.id} r=${r} c=${c} />`)}</ol>`
       : html`<p class="muted small">${(feed.rows ?? []).length ? f.noneHere : f.none}</p>`}
     ${feed.more ? html`<p class="muted small">${f.more}</p>` : null}
     <${ActFoot} row=${row} feed=${feed} s=${s} c=${c} />
@@ -252,7 +310,8 @@ export function PointTabs({ x, s, c }) {
   const keys = useRoving()
   const tabs = pointTabs(x)
   const row = tabs.length ? x.row : null
-  const slug = row?.task ?? null
+  // a closed copy is read by its folder (the point's `file`), any other task by its slug
+  const slug = row?.task ? x.file ?? row.task : null
   const entry = slug ? s.details?.task?.[slug] : null
   const act = row ? s.details?.activity?.[row.key] : null
   const ver = s.model?.collected_ms ?? 0
@@ -261,15 +320,19 @@ export function PointTabs({ x, s, c }) {
   if (!row) return null
   const detail = entry?.data ?? null
   const feed = act?.data ?? null
+  // an inbox item's own detail (read by the one point view, views/flowpoint.js): its description and its history
+  const itemData = row.inbox_id ? s.details?.inbox?.[row.inbox_id]?.data ?? null : null
+  const history = historyRows(itemData?.events)
   const tab = pointTab(tabs, s.ui.flowTab)
   const steps = stepsOf(detail)
   const rel = relatedOf(x, s, detail)
+  const nRel = (rel.parent ? 1 : 0) + rel.rows.length + rel.paths.length
   const n = { steps: steps.length ? `${steps.filter(st => st.done).length}/${steps.length}` : null, activity: feed ? String(activityCounts(feed).all) : null,
-    related: rel.rows.length + rel.paths.length ? String(rel.rows.length + rel.paths.length) : null }
+    related: nRel ? String(nRel) : null }
   const pane = tab === 'steps' ? html`<${StepsPane} steps=${steps} />`
-    : tab === 'activity' ? html`<${ActivityPane} row=${row} entry=${act} s=${s} c=${c} />`
-      : tab === 'related' ? html`<${RelatedPane} rel=${rel} />`
-        : html`<${DescPane} row=${row} detail=${detail} entry=${entry} s=${s} c=${c} />`
+    : tab === 'activity' ? html`<${ActivityPane} row=${row} entry=${act} history=${history} s=${s} c=${c} />`
+      : tab === 'related' ? html`<${RelatedPane} rel=${rel} c=${c} />`
+        : html`<${DescPane} row=${row} detail=${detail} entry=${entry} item=${itemData?.item ?? null} s=${s} c=${c} />`
   return html`<section class="flow-ptabs" aria-label=${f.ptabs.label}>
     <div class="flow-ptabs-bar" role="tablist" aria-label=${f.ptabs.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${tabs.map(id => html`<button type="button" key=${id} role="tab" id=${`flow-ptab-${id}`} data-tab=${id} aria-selected=${String(tab === id)}

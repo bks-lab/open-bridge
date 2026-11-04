@@ -10,9 +10,9 @@
 // folds it under the select. A click on a group shows it as a list in the middle (LeftList, view `left`): Back to
 // overview, its name, count and what it holds, the batch bar with the group's verbs (logic.js LEFT_VERBS and leftPlan:
 // Back on, Later, Done, Drop or Let AI do it, Merge where two or more ticked rows are open tasks), then a table: a box,
-// the title (it opens the row where it lives: an issue or a pull request on the web, a task in the files view, an inbox
-// item in its drawer, a row with steps of its own on a page the info drawer that holds them), its kind, when (in Later:
-// why), its area, and in Later Back on in one click where the row can come back.
+// the title (stage 1 of the one point view: it opens the row in the middle in the same view as every point,
+// views/flowpoint.js, c.flowLeftOpen; To the list leads back here, the walk bar walks this group), its kind, when (in
+// Later: why), its area, and in Later Back on in one click where the row can come back.
 // The watched rows stand under a head per repository. No instruction line and no walk bar here.
 // Round 6 c: above Not now the row Check tasks (CheckRow), a block of its own, with how many decisions the last task
 // check left (logic.js checkOpen: close and stale, never waiting or unclear), on every width; a click shows the check
@@ -24,7 +24,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { activityWhen, centsText, checkOpen, formatDay, LEFT_VERBS, leftPlan, pageStepsOf, rowProject, short } from '../logic.js'
+import { activityWhen, centsText, checkOpen, formatDay, LEFT_VERBS, leftPlan, rowProject, short } from '../logic.js'
 import { T, language } from '../text.js'
 import { CheckButton, ReviewBody } from './check.js'
 import { KindTag } from './day.js'
@@ -135,17 +135,10 @@ function laterWhy(e, lang) {
   return [e.why === 'hidden' ? w.hidden(until) : w.deferred(until), e.due ? f.due(activityWhen(e.due, lang)) : null].filter(Boolean).join(' · ')
 }
 
-/** A row's title as the way to where it lives: an issue or a pull request on the web, a task in the files view, an
- *  inbox item in its drawer, a row with steps of its own on a page the info drawer that holds them (round 6 B); a row
- *  with none of those as plain text */
-function OpenRow({ row, s, c }) {
-  const title = short(row.title ?? row.key, 120)
-  if (row.inbox_id) return html`<button type="button" class="flow-ov-open" onClick=${() => c.openItem(row.key)}>${title}</button>`
-  if (row.task && String(row.key).startsWith('task:')) return html`<button type="button" class="flow-ov-open" onClick=${() => c.openFile(row.task, null)}>${title}</button>`
-  const steps = pageStepsOf(row, s)
-  if (steps) return html`<button type="button" class="flow-ov-open" onClick=${() => c.openInfo(steps.it, steps.page, steps.section)}>${title}</button>`
-  if (row.url) return html`<a class="flow-ov-open" href=${row.url} target="_blank" rel="noopener noreferrer">${title}</a>`
-  return html`<span class="flow-ov-open">${title}</span>`
+/** A row's title as the way to the row in the one point view, in the middle (stage 1): its place `i` in the group
+ *  is its place in the walk */
+function OpenRow({ row, i, c }) {
+  return html`<button type="button" class="flow-ov-open" onClick=${() => c.flowLeftOpen(row.key, i)}>${short(row.title ?? row.key, 120)}</button>`
 }
 
 /** One group of Not now as a list in the middle, with its batch bar */
@@ -188,7 +181,7 @@ export function LeftList({ group, s, c }) {
           return html`<tr key=${row.key} class=${`flow-ov-row${picked.has(row.key) ? ' is-picked' : ''}`}>
             <td><input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(row.title ?? row.key, 60))} checked=${picked.has(row.key)}
               onClick=${() => c.flowLeftPick([row.key], !picked.has(row.key))} /></td>
-            <td class="flow-ov-point"><${OpenRow} row=${row} s=${s} c=${c} />
+            <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
               <span class="flow-ov-sub muted small"><${KindTag} row=${row} s=${s} /></span></td>
             ${reason === 'later' ? html`<td class="flow-ov-stage flow-ov-why small">${laterWhy(e, lang)}</td>`
               : html`<td class="flow-ov-stage small">${whenOf(e, reason, s, lang)}</td>`}

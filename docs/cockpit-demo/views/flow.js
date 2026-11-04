@@ -8,12 +8,14 @@
 // order (logic.js flowQueue: the return card after a jump to a tab, the tabs that ask, what an agent finished, a start
 // that got lost, the questions for you; then what is in progress; then the tasks in review; the reports as one card),
 // walked the way the overview lists them (views/flowlist.js walkOrder, one order for both, round 6 B).
-// The card carries content only (round 3, nothing twice): its kind in its head (the state, the only place it stands),
-// its title, what its tab asks with one set of answers, a start's result, the live tab's screen; who works on it is a
-// field on the right, the criteria stand in Description. Under it the
-// tabs of the point (views/flowtabs.js: Description, Steps, Activity, Related), then at the foot the instruction line
-// (views/flowinstruct.js, cockpit.flow.instruct) over the files view's walk bar (views/dossier.js Walk), which after
-// the last point leads to the first point of the next theme where something is open. Right, only while a point or an
+// The open point is the one point view (views/flowpoint.js PointView, stage 1 of 04.11.2026: every way to an item or a
+// task lands there, the Files tab shows the same): the card carries content only (round 3, nothing twice): its kind in
+// its head (the state, the only place it stands) with the kind of row and Pin, its title, its headline and its next
+// step, what its tab asks with one set of answers, a start's result, the live tab's screen; who works on it is a field
+// on the right, the criteria stand in Description. Under it the tabs of the point (views/flowtabs.js: Description,
+// Steps, Activity, Related), then at the foot the instruction line with Instruct or Ask (views/flowinstruct.js) over
+// the files view's walk bar (views/dossier.js Walk), which after the last point leads to the first point of the next
+// theme where something is open. Right, only while a point or an
 // entry of Running now is open (round 6 B: the overview, a list and the grid take the width, their hint under them),
 // what you can do and the fields (views/flowside.js FlowAside: the suggestion, the verbs, who works on it, the source).
 // To tab remembers the jump (ui.flowJump, in memory only): once the page is in view again return_after_s later, the
@@ -23,7 +25,11 @@
 // in the walk, one count for the head and the column, a row of a list an agent works on only marked; a title opens one in the middle
 // as view `run`, its card, its tabs and its instruction line, without the walk bar, its way back to the list it came
 // from); what is no point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a
-// list in the middle (view `left`) with its own batch; under it Check tasks, the task check in the middle (view `check`,
+// list in the middle (view `left`) with its own batch, a title of it the row in the one point view (ui.flowLeftAt,
+// stage 1: To the list leads back, the walk walks the group); a row that stands nowhere on the page opens as a point
+// of its own (view `solo`, ui.flowSolo, logic.js soloPoint: another area's, a closed task, a settled item, read only
+// without an open row; Back leads to the overview, or to the reports card it was opened from); under it Check tasks,
+// the task check in the middle (view `check`,
 // round 6 c, views/flowleft.js CheckList). Round 5: the left column lists no point, the middle does; what
 // opens in the middle is brought into view where the page scrolled its top away. Prio orders the left column by Jev's
 // squares (views/flowprio.js: the 2x2 grid at the level of all squares). With nothing open the calm card offers up to
@@ -36,151 +42,28 @@
 // briefs of the next points that miss one are written ahead (cockpit.flow.prep_ahead, c.flowPrep: one at a time,
 // once per key), and points without a theme ask for theirs (c.flowThemesAuto, once per key), in every order of the
 // left column, as does Jev's daily order of the work page where Jev orders it (c.flowPrioOrder, once per page load;
-// the server orders anew only on the day's first ask; with Haiku alone it reads the kept order and orders nothing). No title opens a drawer or another view; Details does, under
-// the verbs of a point and on each report (round 6 B). For the mouse: the page names no key.
+// the server orders anew only on the day's first ask; with Haiku alone it reads the kept order and orders nothing). No
+// title opens a drawer or another view: what the item drawer held stands in the one view (stage 1), a report of the
+// reports card opens alone in it (Open). For the mouse: the page names no key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  asksSomething, duration, flowDrive, flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, guideOf, instructScope, laneRows, pointsIn, runningOf,
-  prepTargets, previewText, prioLoaded, prioOn, reportsTicked, restSuggestions, resultText, short, stageTone, tabOfTask, themesToAsk, workPageOf,
-  personOf
+  flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, instructScope, laneRows, leftWalk, pointsIn, runningOf,
+  prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
-import { Walk } from './dossier.js'
 import { CheckList, LeftList } from './flowleft.js'
 import { FlowOverview, listRows, walkOrder } from './flowlist.js'
 import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
-import { DetailsLink, FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
+import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
-import { PointTabs } from './flowtabs.js'
-import { Calm, Hero } from './focus.js'
-import { GuideTree } from './guide.js'
-import { Btn, Dot } from './parts.js'
-import { AskLine, TabReply } from './reply.js'
+import { PointView, pointKind, pointTitle, useSoloLoad } from './flowpoint.js'
+import { Calm } from './focus.js'
+import { Btn } from './parts.js'
 import { VerbBar } from './verbbar.js'
-
-// the lines of a live tab's screen a card shows
-const SCREEN_LINES = 12
-
-/** The last lines of a tab's screen, the way they stood */
-const tailLines = (text, n = SCREEN_LINES) => String(text ?? '').split('\n').map(previewText).filter(Boolean).slice(-n)
-
-/** A card's title in the walk bar and the strip under it */
-function cardTitle(x) {
-  const f = T().flow
-  if (x.kind === 'back') return f.back(x.jump.title)
-  if (x.kind === 'start') return x.start.title
-  if (x.kind === 'tab') return x.tab.name
-  if (x.kind === 'reports') return f.reports(x.rows.length)
-  return x.row.title
-}
-
-/** A card's kind in a word: its group, a quiet start and one ended with a note (to look at) by its stage; a tab that
- *  waits at its prompt with nothing asked on its screen (logic.js asksSomething, the rule its close follows) waits
- *  rather than asks, so the head never says it asks beside its close */
-const cardKind = x => T().flow.kind[x.stage === 'idle' || x.stage === 'done' ? x.stage
-  : x.kind === 'tab' && x.tab?.state === 'waiting' && !asksSomething(x.tab.ask) ? 'waits' : x.group]
-
-/** What a tab asks, answered on the card: the answers to its question as one row of buttons (a dialog's options, yes
- *  and no, go on, a field), and the decision guide's steps folded under one button, without the guide's own line what
- *  it is about (the card's title says it). The way to the tab stands on the right (views/flowside.js TabWays, which
- *  remembers the jump), so neither repeats it */
-function AskBlock({ tab, s, c }) {
-  const f = T().flow.guide
-  const [open, setOpen] = useState(false)
-  if (!tab) return null
-  const guide = guideOf(s, tab).status !== 'off'
-  return html`<div class="flow-askblock">
-    <${TabReply} tab=${tab} s=${s} c=${c} compact noJump />
-    ${guide ? html`<button type="button" class="btn-link flow-guide-toggle" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>${open ? f.hide : f.show}</button>` : null}
-    ${guide && open ? html`<${GuideTree} tab=${tab} s=${s} c=${c} bare about=${false} />` : null}
-  </div>`
-}
-
-/** The return card: back from a tab the page jumped to, how did it go. Its answers stand on the right; every one
- *  forgets the jump */
-function BackCard({ x, s }) {
-  const f = T().flow
-  const ago = duration((s.now || Date.now()) - x.jump.at)
-  return html`<article class="fx-hero tk-info" aria-labelledby="flow-title">
-    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token="info" />${f.kind.back}</span><span class="mono muted small">${ago}</span></header>
-    <h2 id="flow-title" class="fx-title">${f.back(x.jump.title)}</h2>
-    <p class="flow-ask">${f.backAsk}</p>
-    ${!x.row && x.jump.key ? html`<p class="muted small">${f.backGone}</p>` : null}
-  </article>`
-}
-
-/** A start of the return channel that wants you: its tab asks, it finished (or went quiet, or ended with a note), or
- *  it got lost. The card says what came back (the result line or the question noted on its item, without its own head
- *  word) and what its tab asks, and leads back to the chat it was handed on from while that chat is kept; since when it
- *  runs is the field Who works on it, the criteria of its brief stand in Description, what to do with it on the right */
-function StartCard({ x, s, c }) {
-  const t = T()
-  const f = t.flow
-  const r = x.start
-  const tab = x.tab
-  const lines = r.result?.text ? [] : tailLines(tab?.last ?? r.tab?.last)
-  const head = r.result?.asks ? f.question : r.result?.kind === 'note' || x.stage === 'done' ? f.result : t.home.returnAnswer
-  const chat = r.conv && (s.quick?.convs ?? []).some(v => v.id === r.conv)
-  return html`<article class=${`fx-hero tk-${stageTone(x.stage === 'idle' ? 'result' : x.stage)}`} aria-labelledby="flow-title">
-    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span></header>
-    <h2 id="flow-title" class="fx-title">${r.title}</h2>
-    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${head}</span> ${short(resultText(r.result.text), 400)}</p>` : null}
-    ${chat ? html`<p><button type="button" class="btn-link small" onClick=${() => c.openAsk(r.conv)}>${f.toQuestion}</button></p>` : null}
-    ${x.stage === 'idle' && !r.result?.text ? html`<p class="muted">${f.idleSub}</p>` : null}
-    ${x.group === 'lost' ? html`<p class="muted">${f.lostSub}</p>` : null}
-    ${x.group === 'asks' ? html`<${AskLine} tab=${tab} />` : null}
-    ${lines.length && x.group !== 'asks' ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
-    ${x.group === 'asks' ? html`<${AskBlock} tab=${tab} s=${s} c=${c} />` : null}
-  </article>`
-}
-
-/** The reports as one card: each with its box and folding open with its reasons, Seen and Details (its drawer,
- *  views/flowside.js openDetails); All above them ticks every one. The boxes are the overview's (ui.flowPicked); Seen
- *  for the ticked ones stands on the right */
-function ReportsCard({ x, s, c }) {
-  const f = T().flow
-  const keys = x.rows.map(r => r.key)
-  const on = new Set(reportsTicked(x, s.ui.flowPicked))
-  const all = on.size === keys.length
-  return html`<article class="fx-hero tk-muted" aria-labelledby="flow-title">
-    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token="muted" />${f.kind.reports}</span></header>
-    <h2 id="flow-title" class="fx-title">${f.reports(x.rows.length)}</h2>
-    <label class="flow-check flow-reports-all"><input type="checkbox" checked=${all} onClick=${() => c.flowPick(keys, !all)} /><span>${f.list.pickAll}</span></label>
-    <ul class="flow-reports">${x.rows.map(r => html`<li key=${r.key} class=${on.has(r.key) ? 'is-picked' : undefined}>
-      <input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(r.title ?? '', 60))} checked=${on.has(r.key)}
-        onClick=${() => c.flowPick([r.key], !on.has(r.key))} /><details>
-      <summary>${r.title}</summary>
-      ${(r.why ?? []).length ? html`<ul class="fx-why">${r.why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
-      <div class="fx-do"><${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy?.[r.key]}
-        onClick=${() => c.act('settle', { keys: [r.key], outcome: 'done' })}>${f.seen}<//><${DetailsLink} row=${r} c=${c} /></div>
-    </details></li>`)}</ul>
-  </article>`
-}
-
-/** The card in front, by its kind, content only: a question or a task in the hero of the start page focus without its
- *  foot and without the facts the fields say, a tab that asks with its answers, a start, the return card, the reports */
-function Card({ x, n, s, c }) {
-  const f = T().flow
-  const tabs = s.tabs?.tabs ?? []
-  if (x.kind === 'back') return html`<${BackCard} x=${x} s=${s} />`
-  if (x.kind === 'start') return html`<${StartCard} x=${x} s=${s} c=${c} />`
-  if (x.kind === 'reports') return html`<${ReportsCard} x=${x} s=${s} c=${c} />`
-  if (x.kind === 'tab') {
-    return html`<${Hero} x=${{ kind: 'tab', id: x.tab.ref, tab: x.tab }} n=${n} tabOf=${() => null} s=${s} c=${c} kindWord=${cardKind(x)} openable=${false}
-      foot=${false} facts=${false} screen=${SCREEN_LINES} sub=${x.tab.ask?.text ? short(x.tab.ask.text.split('\n').find(Boolean), 200) : null}>
-      <${AskBlock} tab=${x.tab} s=${s} c=${c} />
-    <//>`
-  }
-  const row = x.row
-  const tab = row.task ? tabOfTask(tabs, row.task) : null
-  const sub = x.task ? f.forTask(x.task.title) : null
-  return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${f.kind[x.group]} sub=${sub} openable=${false}
-    foot=${false} facts=${false} screen=${SCREEN_LINES} />`
-}
 
 /** Nothing open: the calm card, and up to three ideas or backlog tasks to start, each with Let AI do it */
 function Rest({ s, c }) {
@@ -194,30 +77,6 @@ function Rest({ s, c }) {
     </section>`
 }
 
-// a word of a list as the start of a sentence
-const upFirst = t => (t ? t[0].toUpperCase() + t.slice(1) : t)
-
-/** A point in progress, or an entry of Running now: its state in its head (its dot pulses while an agent works on it,
- *  logic.js flowDrive) and the last lines of that tab's screen. Who works on it and since when is a field on the right,
- *  where its verbs stand too */
-function DoingCard({ x, s }) {
-  const f = T().flow
-  const d = flowDrive(x, s)
-  const row = x.row
-  const lines = tailLines(d.tab?.last ?? x.start?.tab?.last)
-  const live = d.by !== 'none' && (d.stage === 'working' || d.stage === 'started')
-  const title = row?.title ?? x.title ?? x.start?.title ?? ''
-  const token = d.by === 'none' ? 'muted' : stageTone(d.stage === 'needs-you' ? 'asks' : d.stage ?? 'working')
-  // an entry of Running now says so in its head with its stage, and why it stands there and not as a point
-  const kind = x.lane ? [f.run.label, f.doing.stage[d.stage] ?? d.stage].filter(Boolean).join(' · ') : f.kind.doing
-  return html`<article class=${`fx-hero tk-${token === 'muted' ? 'muted' : 'info'}`} aria-labelledby="flow-title">
-    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${token} pulse=${live} />${kind}</span></header>
-    <h2 id="flow-title" class="fx-title">${title}</h2>
-    ${x.lane ? html`<p class="muted small">${[upFirst(f.run.how[x.how]), f.run.cardWhy].filter(Boolean).join('. ')}</p>` : null}
-    ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
-  </article>`
-}
-
 /** Brings the top of the middle back into the page column where it scrolled up out of sight: the column that
  *  scrolls is the page's (.col), on a narrow screen the window */
 function intoView(el) {
@@ -225,10 +84,6 @@ function intoView(el) {
   const col = el.closest?.('.col')?.getBoundingClientRect?.()
   if (el.getBoundingClientRect().top < Math.max(0, col?.top ?? 0) - 1) el.scrollIntoView({ block: 'start' })
 }
-
-/** A point's title and its kind in a word, for the tabs, the walk and the list */
-const pointTitle = x => (x.group === 'doing' ? x.row?.title ?? x.title ?? x.start?.title ?? x.tab?.name ?? '' : cardTitle(x))
-const pointKind = x => (x.group === 'doing' ? T().flow.kind.doing : cardKind(x))
 
 /** The page; before the first state (or without one: the connection gone, a pass failed) it says so, as Due does,
  *  never the calm card's All decided over an empty queue (round 6 B) */
@@ -255,13 +110,20 @@ function FlowBody({ s, c }) {
   // one count of Running now for the head and the left column (runningOf), and no strip of it over any overview
   const runs = runningOf(parts)
   const i = focusIndex(queue, s.ui.flowAt)
-  // the middle: the point open, an entry of Running now, a group of Not now, the task check, else the overview; what went (a point
-  // decided, a start that finished, a group emptied) falls back to the overview
+  // the middle: the point open, an entry of Running now, a group of Not now (its list, or one of its rows as a point,
+  // ui.flowLeftAt, stage 1), a point of its own (ui.flowSolo, stage 1), the task check, else the overview; what went (a
+  // point decided, a start that finished, a group emptied) falls back to the overview, a row that left its group to
+  // the next row of that group, or to its list
   const running = s.ui.flowView === 'run' ? parts.lane.find(e => e.id === s.ui.flowRunId) ?? null : null
   const group = s.ui.flowView === 'left' ? parts.leftOut.groups.find(g => g.reason === s.ui.flowLeft) ?? null : null
-  const view = running ? 'run' : group ? 'left' : s.ui.flowView === 'check' ? 'check' : s.ui.flowView === 'running' && runs.n ? 'running'
-    : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
-  const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : null
+  const leftQueue = group && s.ui.flowLeftAt ? leftWalk(parts, group.reason) : []
+  const li = focusIndex(leftQueue, s.ui.flowLeftAt)
+  const solo = s.ui.flowView === 'solo' ? s.ui.flowSolo ?? null : null
+  const soloEntry = useSoloLoad(solo, s, c)
+  const alone = solo ? soloPoint(s, solo) : null
+  const view = running ? 'run' : group ? (leftQueue.length ? 'leftPoint' : 'left') : solo ? 'solo' : s.ui.flowView === 'check' ? 'check'
+    : s.ui.flowView === 'running' && runs.n ? 'running' : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
+  const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : view === 'leftPoint' ? leftQueue[li] ?? null : view === 'solo' ? alone : null
   const driver = flowDriver(s)
   // the boxes: every point with a row, and what runs with a task of its own (for a merge and Done only)
   const runRows = laneRows(lane)
@@ -291,16 +153,33 @@ function FlowBody({ s, c }) {
   const loaded = prioLoaded(s)
   useEffect(() => { if (work && order === undefined && loaded) c.flowPrioOrder(work.id) }, [work?.id, order === undefined, loaded])
   const name = sideName(entered, mode)
-  // what the instruction line speaks for: the point or the entry open, else the ticked points or every point of the side
-  const scope = view === 'left' || view === 'check' ? null : instructScope(x, queue, picked, entered ? name : null, s)
+  // what the instruction line speaks for: the point or the entry open, else the ticked points or every point of the side;
+  // nothing on a point of its own that is closed (its verbs act on nothing), Ask still asks about it
+  const scope = view === 'left' || view === 'check' || (view === 'solo' && (!x || x.readOnly)) ? null
+    : instructScope(x, queue, picked, entered ? name : null, s)
   const counts = parts.counts
   const grid = mode === 'prio' && !entered
   // what opens in the middle comes into view: its top scrolled up out of the page column is brought back (round 5)
   const main = useRef(null)
-  useEffect(() => { requestAnimationFrame(() => intoView(main.current)) }, [view, group?.reason, running?.id, side, view === 'point' ? x?.id : null])
+  useEffect(() => { requestAnimationFrame(() => intoView(main.current)) }, [view, group?.reason, running?.id, side, ['point', 'leftPoint', 'solo'].includes(view) ? x?.id : null])
   // back from an entry of Running now: to the list it was opened from (ui.flowRunFrom), else to the overview
   const fromRunning = view === 'run' && s.ui.flowRunFrom === 'running'
-  const card = x ? (x.group === 'doing' ? html`<${DoingCard} x=${x} s=${s} />` : html`<${Card} x=${x} n=${queue.length} s=${s} c=${c} />`) : null
+  // the point in the middle, the one view of it (views/flowpoint.js), by where it was opened: a point of the queue
+  // walks the queue (after its last, the next theme), an entry of Running now walks nothing, a row of Not now walks its
+  // group and goes back to its list, a point of its own goes back where it came from (the reports card, else the
+  // overview)
+  const walk2 = { words: { ...f.walk2, queue: t.dossier.walk.queue }, titleFor: pointTitle, tagsOf: () => null, whyOf: pointKind, cls: 'flow-walk' }
+  const point = !x ? null : view === 'run'
+    ? { back: { word: fromRunning ? f.run.back : f.point.back, onClick: () => (fromRunning ? c.flowRunning() : c.flowOverview()) }, theme: f.run.label }
+    : view === 'leftPoint'
+      ? { back: { word: f.one.backList, onClick: () => c.flowLeft(group.reason) }, theme: f.notnow.group[group.reason],
+        walk: { ...walk2, queue: leftQueue, i: li, go: k => c.flowLeftOpen(leftQueue[k].id, k), done: f.walk2.last } }
+      : view === 'solo'
+        ? { back: { word: f.point.back, onClick: () => (solo.from ? c.flowGo(solo.from, 0) : c.flowOverview()) }, theme: f.one.solo }
+        : { back: { word: f.point.back, onClick: () => c.flowOverview() }, theme: name,
+          above: picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
+            <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null,
+          walk: { ...walk2, queue, i, go, done: f.walk2.last, onwards } }
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
@@ -311,7 +190,11 @@ function FlowBody({ s, c }) {
       <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} running=${runs} left=${parts.leftOut}
         run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
-        ${view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} /><p class="muted small flow-main-hint">${f.notnow.hint}</p>`
+        ${point ? html`<${PointView} x=${x} ...${point} scope=${scope} n=${view === 'point' ? queue.length : 1} s=${s} c=${c} />`
+          : view === 'solo' ? html`<header class="flow-main-head">
+              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//></header>
+            <p class="muted" role="status">${soloEntry?.status === 'error' || (soloEntry?.data && !alone) ? f.one.gone : f.one.loading}</p>`
+          : view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} /><p class="muted small flow-main-hint">${f.notnow.hint}</p>`
           : view === 'check' ? html`<${CheckList} s=${s} c=${c} />`
           : view === 'running' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
@@ -319,15 +202,6 @@ function FlowBody({ s, c }) {
             </header>
             <${RunningStrip} lane=${runs.loose} picked=${picked} bare s=${s} c=${c} />
             <${SessionCards} sessions=${runs.sessions} picked=${picked} s=${s} c=${c} />`
-          : view === 'run' ? html`<header class="flow-main-head">
-              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => (fromRunning ? c.flowRunning() : c.flowOverview())}>${fromRunning ? f.run.back : f.point.back}<//>
-              <span class="flow-main-theme muted">${f.run.label}</span>
-            </header>
-            <div class="flow-point">
-              <div class="flow-card" key=${x.id}>${card}</div>
-              <${PointTabs} x=${x} s=${s} c=${c} />
-            </div>
-            <div class="flow-dock"><${InstructLine} key=${x.id} scope=${scope} s=${s} c=${c} /></div>`
           : view === 'overview' ? html`<header class="flow-main-head"><h2 class="flow-main-title">${entered ? html`<${SideDot} side=${entered} />` : null}${name}</h2></header>
             ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />
               <p class="muted small flow-main-hint">${f.prio.hint}</p>`
@@ -335,21 +209,7 @@ function FlowBody({ s, c }) {
               : html`<${FlowOverview} key=${side} points=${queue} running=${runRows} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind}
                 band=${band} s=${s} c=${c} />`}
             ${all.length ? html`<div class="flow-dock"><${InstructLine} scope=${scope} s=${s} c=${c} /></div>` : null}`
-          : html`<header class="flow-main-head">
-              <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
-              <span class="flow-main-theme muted">${name}</span>
-            </header>
-            ${picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
-              <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null}
-            <div class="flow-point">
-              <div class="flow-card" key=${x.id}>${card}</div>
-              <${PointTabs} x=${x} s=${s} c=${c} />
-            </div>
-            <div class="flow-dock">
-              <${InstructLine} key=${x.id} scope=${scope} s=${s} c=${c} />
-              <${Walk} queue=${queue} i=${i} s=${s} c=${c} go=${go} words=${{ ...f.walk2, queue: t.dossier.walk.queue }} titleFor=${pointTitle}
-                tagsOf=${() => null} whyOf=${pointKind} done=${f.walk2.last} onwards=${onwards} cls="flow-walk" />
-            </div>`}
+          : null}
       </section>
       ${x ? html`<${FlowAside} x=${x} s=${s} c=${c} />` : null}
     </div>

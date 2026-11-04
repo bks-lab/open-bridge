@@ -130,17 +130,18 @@
 .dz-lead { margin: 0; max-width: 68ch; color: var(--on-surface); font-size: var(--text-body); line-height: 1.5; overflow-wrap: anywhere; }
 .dz-src { display: block; margin-top: 2px; font-size: var(--text-sm); color: var(--on-surface-muted); }
 
-/* the next step: the one strong element, the hero of the focus set as a tinted block inside the surface */
-.dz .fx-hero, .dz-step {
+/* the next step: the one strong element, the hero of the focus set as a tinted block inside the surface; the card of
+   the one point view (views/flowpoint.js, .flow-card) keeps the look Work through gives it, in this tab too */
+.dz .fx-hero:not(.flow-card .fx-hero), .dz-step {
   gap: 10px; padding: 16px 20px 18px; border: 0; border-left: 3px solid var(--tk, var(--accent)); border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: color-mix(in srgb, var(--tk, var(--accent)) 9%, var(--surface-raised)); box-shadow: none; animation: none;
 }
 .dz-step { display: flex; flex-direction: column; }
-.dz .fx-hero .fx-kind, .dz-step-kind { font-size: var(--text-label); letter-spacing: 0.08em; }
+.dz .fx-hero:not(.flow-card .fx-hero) .fx-kind, .dz-step-kind { font-size: var(--text-label); letter-spacing: 0.08em; }
 .dz-step-kind { margin: 0; font-weight: 700; text-transform: uppercase; color: var(--accent); }
-.dz .fx-hero .fx-title, .dz-step-title { margin: 0; font-family: var(--font-ui); font-size: 20px; font-weight: 600; line-height: 1.3; color: var(--ink); overflow-wrap: anywhere; }
-.dz .fx-hero .fx-title > button:hover { text-underline-offset: 4px; }
-.dz .fx-sub { margin: -4px 0 0; }
+.dz .fx-hero:not(.flow-card .fx-hero) .fx-title, .dz-step-title { margin: 0; font-family: var(--font-ui); font-size: 20px; font-weight: 600; line-height: 1.3; color: var(--ink); overflow-wrap: anywhere; }
+.dz .fx-hero:not(.flow-card .fx-hero) .fx-title > button:hover { text-underline-offset: 4px; }
+.dz .fx-hero:not(.flow-card .fx-hero) .fx-sub { margin: -4px 0 0; }
 .dz .fx-acts { margin-top: 4px; }
 .dz .fx-do .btn-sm { min-height: 36px; }
 .dz .fx-calm { padding: 28px 30px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface-raised); }
@@ -237,7 +238,7 @@
   .dz-drawers, .dz-ask, .dz-foot { margin: 0 -16px; }
   .dz-drawer > summary, .dz-ask, .dz-walk { padding-left: 16px; padding-right: 16px; }
   .dz-drawer > :not(summary) { margin: 0 16px; }
-  .dz .fx-hero, .dz-step { padding: 14px 14px 16px; }
+  .dz .fx-hero:not(.flow-card .fx-hero), .dz-step { padding: 14px 14px 16px; }
   .dz .fx-acts { flex-direction: row; align-items: center; }
   .dz-walk { gap: 8px; }
   .dz-walk-next { display: none; }
