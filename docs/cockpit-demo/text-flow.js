@@ -16,7 +16,9 @@ export const FLOW = {
       rename: 'Rename the theme', renameLabel: 'New name', save: 'Save', cancel: 'Cancel',
       prio: 'Prio', allQuads: 'All squares',
     },
-    groups: { you: 'Needs you', doing: 'In progress', task: 'Tasks', issue: 'Issues and PRs', reports: 'Reports', rank: 'By rank', due: 'By due day' },
+    groups: { you: 'Needs you', doing: 'In progress', task: 'Tasks', issue: 'Issues and PRs', reports: 'Reports', rank: 'By rank', due: 'By due day',
+      // stage 4: the bands by who takes the next step
+      checkin: 'Check-in', bridge: 'The Bridge does it' },
     point: { back: 'Back to overview', ticked: n => `${n} ticked`, see: 'See in the overview' },
     tabs: { label: 'Open points', count: n => (n === 1 ? '1 point' : `${n} points`) },
     doing: {
@@ -42,7 +44,8 @@ export const FLOW = {
       jevWhy: { drop: who => `neither urgent nor important, says ${who}`, hand: who => `urgent, not important: the Bridge can do it, says ${who}` },
       verb: { done: 'Done', drop: 'Drop', later: 'Later', do: 'Let AI do it', you: 'Needs you' },
       laterUntil: day => `Later until ${day}`, age: d => (d === 0 ? 'today' : `${d} d`),
-      cols: { point: 'Point', stage: 'Stage', area: 'Area', suggestion: 'AI suggestion' },
+      cols: { point: 'Point', stage: 'Stage', area: 'Area', suggestion: 'AI suggestion', step: 'Next step' },
+      hintTick: 'Ticking shows the batch buttons.', clear: 'Clear the ticks',
       empty: 'Nothing open here.',
     },
     batch: {
@@ -52,7 +55,8 @@ export const FLOW = {
         const parts = [p.counts.back ? `${p.counts.back} back on` : null, p.counts.done ? `${p.counts.done} done` : null,
           p.counts.drop ? `${p.counts.drop} drop${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} later until ${p.days.map(day).join(', ')}` : null,
-          p.counts.do ? `${p.counts.do} to an agent` : null].filter(Boolean)
+          p.counts.do ? `${p.counts.do} to an agent` : null,
+          p.counts.work ? `${p.counts.work} in progress with ${p.value?.who ?? ''} until ${p.days.map(day).join(', ')}` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'stays' : 'stay'} out` : null
         return [parts.join(', ') || 'Nothing to do', out].filter(Boolean).join('; ')
       },
@@ -72,7 +76,7 @@ export const FLOW = {
       stage: { started: 'starting', working: 'at work' }, session: 'your session', since: m => `for ${m} min`,
     },
     kind: { back: 'Back from a tab', asks: 'A tab asks', waits: 'A tab waits', result: 'Finished', idle: 'Quiet', done: 'To look at', lost: 'Tab gone', question: 'A question for you', doing: 'In progress', task: 'In review',
-      issue: 'An issue to do', reports: 'Reports' },
+      issue: 'An issue to do', reports: 'Reports', checkin: 'Check-in' },
     back: name => `Back from the tab ${name}`, backAsk: 'How did it go?', backGone: 'The item of this tab is settled already.',
     started: ago => `started ${ago} ago`, lostSub: 'No tab and no answer since the start.', since: ago => `for ${ago}`,
     idleSub: 'The tab went quiet, no question read on its screen.', result: 'Result', criteria: 'Criteria to check yourself',
@@ -122,11 +126,14 @@ export const FLOW = {
     },
     notnow: {
       label: 'Not now',
-      group: { later: 'Later', idea: 'Ideas and backlog', stream: 'Streams', watch: 'Watching' },
-      sub: { later: 'Put off, hidden until a day or due later than the lead time, waiting on others, or resting', idea: 'Ideas from the inbox and tasks in the backlog',
+      group: { running: 'Running elsewhere', later: 'Later', idea: 'Ideas and backlog', stream: 'Streams', watch: 'Watching' },
+      sub: { running: 'With someone or waiting on something. It comes back by itself on its check-in day and asks how it stands.',
+        later: 'Put off, hidden until a day or due later than the lead time, or resting', idea: 'Ideas from the inbox and tasks in the backlog',
         stream: 'Long runners, they come through their inbox items', watch: 'Issues and pull requests, by repository' },
+      // a row of Running elsewhere: with whom, and the day it asks again
+      with: (who, day) => [who ? `with ${who}` : null, day ? `asks on ${day}` : null].filter(Boolean).join(' · '),
       from: day => `from ${day}`, until: day => `until ${day}`, due: when => `due ${when}`, otherRepo: 'Other sources', back: 'Back on',
-      hint: 'Ticked rows take the buttons of the bar. A title opens the row here, in the same view as every point.', empty: 'Nothing here.',
+      hint: 'A title opens the row here, in the same view as every point.', empty: 'Nothing here.',
       cols: { when: 'When', why: 'Why' },
       // why a row of Later is no point now (views/flowleft.js laterWhy): until when, on whom, since when
       why: { hidden: d => (d ? `hidden until ${d}` : 'hidden'), deferred: d => (d ? `put off until ${d}` : 'put off'),
@@ -194,8 +201,8 @@ export const FLOW = {
     },
     fields: {
       can: 'What you can do', label: 'Fields',
-      theme: 'Theme', area: 'Area', who: 'Who works on it', prio: 'Prio', urgency: 'Urgent', impact: 'Important', effort: 'Effort', due: 'Due',
-      when: 'Urgency', team: 'Team', check: 'Task check',
+      theme: 'Theme', area: 'Area', who: 'Who', prio: 'Prio', urgency: 'Urgent', impact: 'Important', effort: 'Effort', due: 'Due',
+      when: 'Urgency', team: 'Team', check: 'Task check', ask: 'Check-in', original: 'Original title',
       source: 'Source', created: 'Created', moved: 'Moved', none: 'not set', link: 'Open the link',
       level: { high: 'high', mid: 'medium', low: 'low' },
       quadrant: { now: 'Do now', plan: 'Plan', hand: 'Hand off', drop: 'Drop' }, onlyYou: 'only you',
@@ -243,6 +250,23 @@ export const FLOW = {
     },
     // stage 2: the finished AI runs, a group of their own on top of the left column (views/flowleft.js ReadRow,
     // ReadList), their card and their verbs (views/flowpoint.js, views/flowside.js ReadActs)
+    // stage 4, simpler: a point's three things, the strong button, the four states, More, In progress, the check-in
+    simple: {
+      step: 'Next step', asksOn: day => `asks on ${day}`, dueOn: day => `due ${day}`,
+      strongDo: step => `Let the Bridge: ${step}`, startStep: step => `${step}. Note the result as a line beginning with Result: on the item.`,
+      dropSug: 'as the AI suggests', more: 'More', board: 'Board moves', boardDone: 'Done, on its board', describe: 'Describe again', advise: 'Get advice',
+      work: 'In progress', later: 'Later', drop: 'Drop', whoLabel: 'Who has it?', me: 'Me', bridge: 'Bridge', other: 'someone else …', otherLabel: 'Name',
+      bridgeNote: 'The Bridge starts on it now, with a sentence of yours. It reports back as every start does.',
+      whenLabel: 'When to ask again?', inDays: n => (n === 3 ? 'in 3 days' : n === 7 ? 'in 1 week' : n === 14 ? 'in 2 weeks' : `in ${n} days`),
+      dateLabel: 'Date …', runsLabel: 'What runs? (optional)', take: 'Hand it over', toBridge: 'On to the start', cancel: 'Cancel',
+      checkinKind: 'Check-in', someone: 'someone', answers: 'How does it stand?',
+      since: (day, who) => (day ? `In progress with ${who} since ${day}. How does it stand?` : `In progress with ${who}. How does it stand?`),
+      looked: 'The Bridge looked', still: 'Still running', stuck: 'Stuck', stuckWhy: 'Why? (optional, kept as a note)', stuckGo: 'Back to me',
+      chase: (who, name) => `Draft a follow-up to ${who} on how "${name}" stands. A draft only, with the mail-draft skill, never send it.`,
+      chaseButton: who => `Follow up with ${who}`,
+      more2: 'What else is stored', original: 'Original title', headline: 'Headline', story: 'User story',
+      order: 'Order',
+    },
     read: {
       label: 'Finished, to read', sub: 'AI runs whose item ended after them. Read takes one off the list; unread, it leaves by itself after a few days.',
       empty: 'Nothing to read.', kind: 'Finished, to read', cols: { what: 'What came of it', when: 'Ended' },
@@ -275,7 +299,8 @@ export const FLOW = {
       rename: 'Thema umbenennen', renameLabel: 'Neuer Name', save: 'Speichern', cancel: 'Abbrechen',
       prio: 'Prio', allQuads: 'Alle Quadrate',
     },
-    groups: { you: 'Braucht dich', doing: 'In Arbeit', task: 'Aufgaben', issue: 'Issues und PRs', reports: 'Meldungen', rank: 'Nach Rang', due: 'Nach Fälligkeit' },
+    groups: { you: 'Braucht dich', doing: 'In Arbeit', task: 'Aufgaben', issue: 'Issues und PRs', reports: 'Meldungen', rank: 'Nach Rang', due: 'Nach Fälligkeit',
+      checkin: 'Nachfrage', bridge: 'Bridge macht' },
     point: { back: 'Zur Übersicht', ticked: n => `${n} angehakt`, see: 'In der Übersicht ansehen' },
     tabs: { label: 'Offene Punkte', count: n => (n === 1 ? '1 Punkt' : `${n} Punkte`) },
     doing: {
@@ -301,7 +326,8 @@ export const FLOW = {
       jevWhy: { drop: who => `weder dringend noch wichtig, sagt ${who}`, hand: who => `dringend, nicht wichtig: die Bridge kann es, sagt ${who}` },
       verb: { done: 'Erledigt', drop: 'Weg', later: 'Später', do: 'Bridge macht', you: 'Fragt dich' },
       laterUntil: day => `Später bis ${day}`, age: d => (d === 0 ? 'heute' : `${d} T`),
-      cols: { point: 'Punkt', stage: 'Stand', area: 'Bereich', suggestion: 'Vorschlag der AI' },
+      cols: { point: 'Punkt', stage: 'Stand', area: 'Bereich', suggestion: 'Vorschlag der AI', step: 'Nächster Schritt' },
+      hintTick: 'Anhaken zeigt die Stapelknöpfe.', clear: 'Haken entfernen',
       empty: 'Hier ist nichts offen.',
     },
     batch: {
@@ -311,7 +337,8 @@ export const FLOW = {
         const parts = [p.counts.back ? `${p.counts.back} wieder dran` : null, p.counts.done ? `${p.counts.done} erledigt` : null,
           p.counts.drop ? `${p.counts.drop} weg${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} später bis ${p.days.map(day).join(', ')}` : null,
-          p.counts.do ? `${p.counts.do} an einen Agenten` : null].filter(Boolean)
+          p.counts.do ? `${p.counts.do} an einen Agenten` : null,
+          p.counts.work ? `${p.counts.work} in Arbeit bei ${p.value?.who ?? ''} bis ${p.days.map(day).join(', ')}` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'bleibt' : 'bleiben'} draußen` : null
         return [parts.join(', ') || 'Nichts zu tun', out].filter(Boolean).join('; ')
       },
@@ -331,7 +358,7 @@ export const FLOW = {
       stage: { started: 'startet', working: 'arbeitet' }, session: 'deine Sitzung', since: m => `seit ${m} Min`,
     },
     kind: { back: 'Zurück aus einem Tab', asks: 'Tab fragt', waits: 'Tab wartet', result: 'Fertig', idle: 'Still', done: 'Zum Ansehen', lost: 'Tab verschwunden', question: 'Frage an dich', doing: 'In Arbeit', task: 'In Prüfung',
-      issue: 'Issue zu tun', reports: 'Meldungen' },
+      issue: 'Issue zu tun', reports: 'Meldungen', checkin: 'Nachfrage' },
     back: name => `Zurück aus dem Tab ${name}`, backAsk: 'Wie ging es aus?', backGone: 'Der Eintrag dieses Tabs ist schon erledigt.',
     started: ago => `gestartet vor ${ago}`, lostSub: 'Seit dem Start kein Tab und keine Antwort.', since: ago => `seit ${ago}`,
     idleSub: 'Der Tab ist still, auf seinem Bildschirm keine Frage erkannt.', result: 'Ergebnis', criteria: 'Kriterien zum Selbstprüfen',
@@ -380,11 +407,13 @@ export const FLOW = {
     },
     notnow: {
       label: 'Nicht dran',
-      group: { later: 'Später', idea: 'Ideen und Backlog', stream: 'Streams', watch: 'Beobachten' },
-      sub: { later: 'Verschoben, ausgeblendet oder erst später fällig, wartet auf andere oder ruht', idea: 'Ideen aus dem Posteingang und Aufgaben im Backlog',
+      group: { running: 'Läuft', later: 'Später', idea: 'Ideen und Backlog', stream: 'Streams', watch: 'Beobachten' },
+      sub: { running: 'Liegt bei jemandem oder wartet auf etwas. Kommt am Nachfragetag von selbst zurück und fragt nach dem Stand.',
+        later: 'Verschoben, ausgeblendet oder erst später fällig, oder ruht', idea: 'Ideen aus dem Posteingang und Aufgaben im Backlog',
         stream: 'Daueraufgaben, sie kommen über ihre Posteingangspunkte', watch: 'Issues und Pull Requests, nach Repository' },
+      with: (who, day) => [who ? `bei ${who}` : null, day ? `fragt am ${day}` : null].filter(Boolean).join(' · '),
       from: day => `ab ${day}`, until: day => `bis ${day}`, due: when => `fällig ${when}`, otherRepo: 'Andere Quellen', back: 'Wieder dran',
-      hint: 'Angehakte Zeilen nehmen die Knöpfe der Leiste. Ein Titel öffnet die Zeile hier, in derselben Ansicht wie jeden Punkt.', empty: 'Hier ist nichts.',
+      hint: 'Ein Titel öffnet die Zeile hier, in derselben Ansicht wie jeden Punkt.', empty: 'Hier ist nichts.',
       cols: { when: 'Wann', why: 'Warum' },
       why: { hidden: d => (d ? `ausgeblendet bis ${d}` : 'ausgeblendet'), deferred: d => (d ? `verschoben bis ${d}` : 'verschoben'),
         ahead: (due, d) => `fällig ${due}, wieder dran ab ${d}`, waits: who => `wartet auf ${who}`, others: 'wartet auf andere',
@@ -448,8 +477,8 @@ export const FLOW = {
     },
     fields: {
       can: 'Was du tun kannst', label: 'Felder',
-      theme: 'Thema', area: 'Bereich', who: 'Wer arbeitet daran', prio: 'Prio', urgency: 'Dringend', impact: 'Wichtig', effort: 'Aufwand', due: 'Fällig',
-      when: 'Dringlichkeit', team: 'Team', check: 'Aufgaben-Prüfung',
+      theme: 'Thema', area: 'Bereich', who: 'Wer', prio: 'Prio', urgency: 'Dringend', impact: 'Wichtig', effort: 'Aufwand', due: 'Fällig',
+      when: 'Dringlichkeit', team: 'Team', check: 'Aufgaben-Prüfung', ask: 'Nachfrage', original: 'Originaltitel',
       source: 'Quelle', created: 'Angelegt', moved: 'Bewegt', none: 'nicht gesetzt', link: 'Link öffnen',
       level: { high: 'hoch', mid: 'mittel', low: 'niedrig' },
       quadrant: { now: 'Jetzt', plan: 'Planen', hand: 'Abgeben', drop: 'Weg' }, onlyYou: 'nur du',
@@ -491,6 +520,22 @@ export const FLOW = {
         stream: 'ein Stream läuft weiter', unsettled: 'diese Zeile lässt sich hier nicht schließen' },
       offLine: (verbs, why) => `${verbs}: ${why}.`, and: 'und',
       short: { do: 'Bridge macht', done: 'Erledigt', later: 'Später', drop: 'Weg', task: 'Zur Aufgabe machen' },
+    },
+    simple: {
+      step: 'Nächster Schritt', asksOn: day => `fragt am ${day}`, dueOn: day => `fällig ${day}`,
+      strongDo: step => `Bridge macht: ${step}`, startStep: step => `${step}. Halte das Ergebnis als Zeile mit Ergebnis: am Eintrag fest.`,
+      dropSug: 'wie die KI vorschlägt', more: 'Mehr', board: 'Board-Schritte', boardDone: 'Erledigt, auf dem Board', describe: 'Neu beschreiben', advise: 'Rat holen',
+      work: 'In Arbeit', later: 'Später', drop: 'Weg', whoLabel: 'Wer ist dran?', me: 'Ich', bridge: 'Bridge', other: 'andere …', otherLabel: 'Name',
+      bridgeNote: 'Die Bridge legt jetzt los, mit einem Satz von dir. Sie meldet sich zurück wie jeder Start.',
+      whenLabel: 'Wann nachfragen?', inDays: n => (n === 3 ? 'in 3 Tagen' : n === 7 ? 'in 1 Woche' : n === 14 ? 'in 2 Wochen' : `in ${n} Tagen`),
+      dateLabel: 'Datum …', runsLabel: 'Was läuft? (optional)', take: 'Übernehmen', toBridge: 'Weiter zum Start', cancel: 'Abbrechen',
+      checkinKind: 'Nachfrage', someone: 'jemandem', answers: 'Wie ist der Stand?',
+      since: (day, who) => (day ? `Seit ${day} in Arbeit bei ${who}. Wie ist der Stand?` : `In Arbeit bei ${who}. Wie ist der Stand?`),
+      looked: 'Die Bridge hat nachgesehen', still: 'Läuft noch', stuck: 'Hängt', stuckWhy: 'Warum? (optional, bleibt als Notiz)', stuckGo: 'Zurück zu mir',
+      chase: (who, name) => `Entwirf eine Nachfrage an ${who} zum Stand von „${name}“. Nur als Entwurf mit dem mail-draft-Skill, nichts senden.`,
+      chaseButton: who => `Bei ${who} nachhaken`,
+      more2: 'Was sonst dazu gespeichert ist', original: 'Originaltitel', headline: 'Kopfzeile', story: 'User Story',
+      order: 'Ordnen',
     },
     read: {
       label: 'Fertig, zum Lesen', sub: 'KI-Läufe, deren Eintrag danach geendet hat. Gelesen nimmt einen aus der Liste; ungelesen geht er nach ein paar Tagen von selbst.',

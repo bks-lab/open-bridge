@@ -50,7 +50,7 @@ export function PrioSource({ order, n }) {
 /** The foot of Prio's level one: ranker, time and count of the order (or that it reads in, failed, has none), what
  *  the private words held back, a fallback that ran, and Read in with Jev and Read in with Haiku (each while its ranker
  *  can read in, Haiku grey once its runs of the day are spent; both busy while one reads in) */
-export function PrioFoot({ s, c }) {
+export function PrioFoot({ s, c, reads = true }) {
   const f = T().flow.prio
   const page = workPageOf(s.model?.pages)
   if (!page) return null
@@ -67,12 +67,12 @@ export function PrioFoot({ s, c }) {
     ${held ? html`<p class="muted small">${f.held(held)}</p>` : null}
     ${!busy && o?.fallback ? html`<p class="muted small">${f.fellBack}</p>` : null}
     ${!busy && order?.error ? html`<p class="muted small" role="alert">${o ? `${f.failed(rankerName(order.ranker))}: ` : ''}${short(String(order.error), 160)}</p>` : null}
-    <div class="flow-prio-reads">
+    ${reads ? html`<div class="flow-prio-reads">
       ${jevReady(s) ? html`<${Btn} size="xs" variant="secondary" icon="spark" busy=${busy && order?.ranker === 'jev'} disabled=${busy}
         onClick=${() => c.flowPrioRead(page.id, 'jev')}>${f.readJev}<//>` : null}
       ${haikuReady(s) ? html`<${Btn} size="xs" variant="secondary" icon="spark" busy=${busy && order?.ranker === 'haiku'} disabled=${busy || spent}
         title=${spent ? f.budget : undefined} onClick=${() => c.flowPrioRead(page.id, 'haiku')}>${f.readHaiku}<//>` : null}
-    </div>
+    </div>` : null}
   </div>`
 }
 

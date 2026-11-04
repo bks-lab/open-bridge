@@ -30,12 +30,12 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { activityWhen, centsText, checkOpen, formatDay, isoDate, LEFT_VERBS, leftPlan, rowProject, short } from '../logic.js'
+import { activityWhen, centsText, checkOpen, formatDay, isoDate, LEFT_VERBS, leftPlan, pointName, pointStand, pointStep, pointViewOn, rowProject, short } from '../logic.js'
 import { T, language } from '../text.js'
 import { CheckButton, ReviewBody } from './check.js'
 import { KindTag } from './day.js'
 import { ageDays, BatchBar } from './flowlist.js'
-import { Btn, Dot } from './parts.js'
+import { Btn, Dot, WhoChip } from './parts.js'
 
 /** The buttons of the groups of Not now, each with its count, the one open marked; the rows a GitHub list holds as
  *  one line that leads to that list (the group's `at`) */
@@ -179,6 +179,9 @@ function laterWhy(e, lang) {
     return day ? w.resting(formatDay(day, lang)) : w.rests
   }
   const until = e.until ? formatDay(e.until, lang) : null
+  // stage 4: a row in progress with someone says with whom and the day it asks again
+  if (e.kind === 'checkin') return f.with(e.who ? String(e.who)[0].toUpperCase() + String(e.who).slice(1) : null, until)
+  if (e.kind === 'watch') return e.repo ?? ''
   if (e.why === 'ahead') return w.ahead(activityWhen(e.due, lang), until)
   return [e.why === 'hidden' ? w.hidden(until) : w.deferred(until), e.due ? f.due(activityWhen(e.due, lang)) : null].filter(Boolean).join(' · ')
 }
@@ -186,7 +189,7 @@ function laterWhy(e, lang) {
 /** A row's title as the way to the row in the one point view, in the middle (stage 1): its place `i` in the group
  *  is its place in the walk */
 function OpenRow({ row, i, c }) {
-  return html`<button type="button" class="flow-ov-open" onClick=${() => c.flowLeftOpen(row.key, i)}>${short(row.title ?? row.key, 120)}</button>`
+  return html`<button type="button" class="flow-ov-open" onClick=${() => c.flowLeftOpen(row.key, i)}>${short(pointName(row), 120)}</button>`
 }
 
 /** One group of Not now as a list in the middle, with its batch bar */
@@ -211,14 +214,42 @@ export function LeftList({ group, s, c }) {
     const plan = reason === 'later' ? leftPlan([e], 'back', s, '', lang) : null
     return plan?.counts.back ? html`<${Btn} size="xs" variant="ghost" cls="flow-ov-back" onClick=${() => runOn([e], plan)}>${f.notnow.back}<//>` : null
   }
-  return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">
-    <header class="flow-main-head">
+  const head0 = html`<header class="flow-main-head">
       <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
       <h2 id="flow-left-h" class="flow-main-title">${f.notnow.group[reason]} <span class="mono muted">${group.rows.length}</span></h2>
     </header>
     <p class="muted small flow-left-sub">${f.notnow.sub[reason]}</p>
     <${BatchBar} pickable=${pickable} chosen=${chosen.map(e => e.row)} onPick=${(ks, on) => c.flowLeftPick(ks, on)} verbs=${LEFT_VERBS[reason] ?? []}
-      planOf=${(how, value) => leftPlan(chosen, how, s, value, lang)} onRun=${run} from="left" s=${s} c=${c} />
+      planOf=${(how, value) => leftPlan(chosen, how, s, value, lang)} onRun=${run} from="left" s=${s} c=${c} />`
+  if (pointViewOn(s)) {
+    // stage 4: a row says its name and where it stands, beside it its next step with who takes it and, while it runs
+    // elsewhere, the day it asks again; Later says why it waits, with Back on
+    const day = v => formatDay(String(v).slice(0, 10), lang)
+    return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">${head0}
+      ${group.rows.length ? html`<table class="flow-ov-table">
+        <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${f.list.pickAll}</span></th><th>${f.list.cols.point}</th>
+          <th>${reason === 'later' ? f.notnow.cols.why : f.list.cols.step}</th></tr></thead>
+        <tbody>${group.rows.map(e => {
+          const row = e.row
+          const stand = pointStand(row, s)
+          const step = pointStep(row, s)
+          const ask = e.until && (reason === 'running' || e.kind === 'checkin') ? f.simple.asksOn(day(e.until)) : null
+          return html`<tr key=${row.key} class=${`flow-ov-row${picked.has(row.key) ? ' is-picked' : ''}`}>
+            <td><input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(pointName(row), 60))} checked=${picked.has(row.key)}
+              onClick=${() => c.flowLeftPick([row.key], !picked.has(row.key))} /></td>
+            <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
+              <span class="flow-ov-stand muted small">${stand ? short(stand, 160) : reason === 'running'
+                ? html`<span class="flow-ov-why">${laterWhy(e, lang)}</span>` : null}</span></td>
+            ${reason === 'later' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang)}</span> ${backOne(e)}</td>`
+              : html`<td class="flow-ov-step small">${step ? html`<span>${short(step.what, 90)}</span> <${WhoChip} who=${step.who ?? e.who} s=${s} />`
+                : e.who ? html`<${WhoChip} who=${e.who} s=${s} />` : null}${ask ? html`<span class="flow-ov-when muted">${ask}</span>`
+                : reason === 'running' ? null : html`<span class="flow-ov-when muted">${whenOf(e, reason, s, lang)}</span>`}</td>`}
+          </tr>`
+        })}</tbody>
+      </table>` : html`<p class="muted">${f.notnow.empty}</p>`}
+    </section>`
+  }
+  return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">${head0}
     ${group.rows.length ? html`<table class="flow-ov-table">
       <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${f.list.pickAll}</span></th><th>${f.list.cols.point}</th><th>${reason === 'later' ? f.notnow.cols.why : f.notnow.cols.when}</th>
         <th>${f.list.cols.area}</th>${reason === 'later' ? html`<th class="flow-ov-actcol"><span class="sr-only">${f.notnow.back}</span></th>` : null}</tr></thead>

@@ -13,18 +13,25 @@
 // BASIC_VERBS), one that cannot go now off (`off`, {verb: why}) with why in one line under them, Make it a task opens
 // a panel that says what it does before it goes (`toTask` {what, run}: verb to_task for an inbox item, the GitHub page's
 // step for an issue), and what the kind adds (Advise, Give your yes, `lead`, `extra`) in a row of its own under them.
+// Stage 4, simpler (`simple`): the four states in a quiet 2x2 (logic.js SIMPLE_STATES: Done, In progress ▾, Later ▾,
+// Drop ▾), one that cannot go now off with why under them; In progress opens who has it (you, the Bridge, the people
+// the Bridge names, someone else) and when to ask again (in 3 days, a week, two weeks, a date) with an optional
+// sentence (verb work_on); the Bridge is Let AI do it, its start sentence and model. The strong button and More stand
+// apart (views/flowside.js SimpleActs); `apply` asks the bar to open one of its panels from outside (the strong
+// button's start when the cap of what runs is reached).
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { personOf, BASIC_VERBS, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, parseDate, short, startNote, suggestedVerb, verbsFor } from '../logic.js'
+import { personOf, BASIC_VERBS, checkinDays, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, nextWho, parseDate, short,
+  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
 import { Prose } from './prose.js'
 
 // the verbs that open a small panel under the bar instead of sending at once
-const PANELS = new Set(['do', 'later', 'drop', 'task'])
+const PANELS = new Set(['do', 'later', 'drop', 'task', 'work'])
 const BASIC = new Set(BASIC_VERBS)
 
 /** A list of verbs in words, the last joined by and: "Done and Drop", "Erledigt und Weg" */
@@ -63,7 +70,8 @@ function Advice({ row, s, c, onStart }) {
  *  is no click by mistake); `yesFirst` makes Give your yes the strong one, first, where it is offered. `fixed`, `off`
  *  and `toTask`: the basic verbs of the one point view (module head) */
 export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = false, words = {}, handlers = {}, yes: offerYes = true, onDone = null,
-  extra = null, stack = false, first = null, lead = null, tail = null, yesFirst = false, fixed = false, off = {}, toTask = null }) {
+  extra = null, stack = false, first = null, lead = null, tail = null, yesFirst = false, fixed = false, off = {}, toTask = null, simple = false,
+  opened = null }) {
   const t = T()
   const f = t.flow
   const lang = language()
@@ -81,8 +89,14 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const list = fixed ? given : stack && given.includes(strong) ? [strong, ...given.filter(v => v !== strong)] : given
   // the strong verb the AI suggested goes out as such; the person's own pick of any other says nothing
   const by = v => (suggested && v === strong ? 'suggestion' : null)
-  const [open, setOpen] = useState(null)
+  const [open, setOpen] = useState(opened)
   const [note, setNote] = useState(() => startNote(row, lang))
+  // In progress (stage 4): who has it, when to ask again (a week by default), what runs
+  const [who, setWho] = useState(null)
+  const [otherWho, setOtherWho] = useState('')
+  const [askDay, setAskDay] = useState(() => checkinDays(s.now || Date.now())[7])
+  const [askOwn, setAskOwn] = useState('')
+  const [runs, setRuns] = useState('')
   const [reason, setReason] = useState(null)
   const [other, setOther] = useState('')
   const [day, setDay] = useState('')
@@ -103,6 +117,14 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     finish(r)
   }
   const toggle = v => { setOpen(open === v ? null : v); setManual(null); setCrowd(0) }
+  // In progress goes out to the person picked, or as Let AI do it where the Bridge has it (its start panel)
+  const workTo = who === 'other' ? otherWho.trim() : who
+  const workGo = () => {
+    if (workTo === 'bridge') { setOpen('do'); return }
+    const day = askOwn.trim() ? parseDate(askOwn, s.now) : askDay
+    if (!workTo || !day) return
+    send({ verb: 'work_on', args: { key: row.key, who: workTo, until: day, ...(runs.trim() ? { text: runs.trim() } : {}) } })
+  }
   // Start: at once below the cap of what runs, else after Start anyway (the count read at the click, no timer)
   const start = force => {
     const a = flowAction('do', row, note, by('do'))
@@ -121,7 +143,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   }
   const nowMs = s.now || Date.now()
   const putOff = iso => send(flowAction('later', row, iso, by('later')))
-  const word = v => words[v] ?? (v === 'task' ? f.basic.task : f.verbs[v])
+  const word = v => words[v] ?? (v === 'task' ? f.basic.task : simple && f.simple[v] ? f.simple[v] : f.verbs[v])
   const pickDay = () => {
     const iso = parseDate(day, s.now)
     if (!iso) return setDayErr(t.noDate(day || ' '))
@@ -142,9 +164,19 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     joined(list.filter(v => off[v] === why).map(v => f.basic.short[v] ?? word(v)), f.basic.and), f.basic.off[why] ?? why)}</p>`)}</div>` : null
   const kind = fixed ? html`${yesStrong ? yesBtn('primary') : null}${first}${lead}${list.filter(v => !BASIC.has(v)).map(btn)}
     ${yes && !yesStrong ? yesBtn('secondary') : null}${extra}` : null
-  return html`<div class=${`verbbar${stack ? ' is-stack' : ''}${fixed ? ' is-fixed' : ''}`} role="group" aria-label=${f.title}>
+  const days = checkinDays(nowMs)
+  const people = simple && open === 'work' ? workWho(s) : []
+  const simpleBtn = v => html`<${Btn} key=${v} size="xs" variant="secondary" cls="verbbar-state" busy=${busy && !off[v]} disabled=${!!off[v]}
+    title=${off[v] ? f.basic.off[off[v]] ?? off[v] : undefined} pressed=${PANELS.has(v) && !off[v] ? open === v : undefined}
+    onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`
+  const simpleOff = simple ? [...new Set(SIMPLE_STATES.filter(v => off[v]).map(v => off[v]))] : []
+  return html`<div class=${`verbbar${stack ? ' is-stack' : ''}${fixed ? ' is-fixed' : ''}${simple ? ' is-simple' : ''}`} role="group" aria-label=${f.title}>
     <${Advice} row=${row} s=${s} c=${c} onStart=${answer => { setNote(startNote({ title: `${row.title}. ${f.advice.title}: ${short(answer, 500)}` }, lang)); setOpen('do') }} />
-    ${fixed ? html`<div class="verbbar-row verbbar-basic">${list.filter(v => BASIC.has(v)).map(btn)}</div>
+    ${simple ? html`${first}<div class="verbbar-grid">${SIMPLE_STATES.map(simpleBtn)}</div>
+      ${simpleOff.length ? html`<div class="verbbar-off">${simpleOff.map(why => html`<p key=${why} class="muted small">${f.basic.offLine(
+        joined(SIMPLE_STATES.filter(v => off[v] === why).map(v => f.basic.short[v] ?? word(v)), f.basic.and), f.basic.off[why] ?? why)}</p>`)}</div>` : null}
+      ${extra}`
+    : fixed ? html`<div class="verbbar-row verbbar-basic">${list.filter(v => BASIC.has(v)).map(btn)}</div>
       ${offLine}
       ${kind ? html`<div class="verbbar-row verbbar-kind">${kind}</div>` : null}`
       : html`<div class="verbbar-row">
@@ -155,6 +187,25 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
       ${extra}
     </div>`}
     ${tail ? html`<div class="verbbar-row verbbar-tail">${tail}</div>` : null}
+    ${open === 'work' ? html`<div class="verbbar-panel flow-work" role="group" aria-label=${f.simple.work}>
+      <p class="label-caps">${f.simple.whoLabel}</p>
+      <div class="flow-work-chips">${people.map(p => html`<${Btn} key=${p} size="xs" variant="secondary" pressed=${who === p}
+        onClick=${() => setWho(p)}>${p === 'me' ? f.simple.me : p === 'bridge' ? f.simple.bridge : nextWho(p, s, lang)}<//>`)}
+        <${Btn} size="xs" variant="secondary" pressed=${who === 'other'} onClick=${() => setWho('other')}>${f.simple.other}<//></div>
+      ${who === 'other' ? html`<input class="input" type="text" maxlength="60" aria-label=${f.simple.otherLabel} placeholder=${f.simple.otherLabel} value=${otherWho}
+        onInput=${e => setOtherWho(e.currentTarget.value)} />` : null}
+      ${workTo === 'bridge' ? html`<p class="muted small">${f.simple.bridgeNote}</p>` : html`<p class="label-caps">${f.simple.whenLabel}</p>
+      <div class="flow-work-chips">${[3, 7, 14].map(d => html`<${Btn} key=${d} size="xs" variant="secondary"
+        pressed=${!askOwn.trim() && askDay === days[d]} onClick=${() => { setAskDay(days[d]); setAskOwn('') }}>${f.simple.inDays(d)}<//>`)}</div>
+      <input class="input input-date mono" type="text" inputmode="numeric" aria-label=${f.simple.dateLabel} placeholder=${t.datePlaceholder} value=${askOwn}
+        onInput=${e => setAskOwn(e.currentTarget.value)} />
+      <input class="input" type="text" maxlength="300" aria-label=${f.simple.runsLabel} placeholder=${f.simple.runsLabel} value=${runs}
+        onInput=${e => setRuns(e.currentTarget.value)} />`}
+      <div class="verbbar-acts">
+        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!workTo} onClick=${workGo}>${workTo === 'bridge' ? f.simple.toBridge : f.simple.take}<//>
+        <${Btn} size="sm" variant="ghost" onClick=${() => setOpen(null)}>${f.simple.cancel}<//>
+      </div>
+    </div>` : null}
     ${open === 'task' && toTask ? html`<div class="verbbar-panel" role="group" aria-label=${f.basic.task}>
       <p class="small">${toTask.what}</p>
       <div class="verbbar-acts"><${Btn} size="sm" variant="primary" busy=${busy} onClick=${makeTask}>${f.basic.taskGo}<//></div>

@@ -51,9 +51,10 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowRunning,
-  flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts, pointViewOn, probeText, refOfUrl,
-  replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf
+  activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
+  flowRunning, flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts,
+  pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf,
+  fieldsSplit
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -65,8 +66,9 @@ import { PrioFoot } from './flowprio.js'
 import { RunningNarrow, RunningRow } from './flowrun.js'
 import { TAB_MSG_MAX } from './nav.js'
 import { LaunchPick } from './launch.js'
-import { Btn, PrioChip } from './parts.js'
+import { Btn, PrioChip, WhoChip } from './parts.js'
 import { VerbBar } from './verbbar.js'
+import { OrderMenu, SimpleActs } from './flowsimple.js'
 
 /** The words of a side: its theme or area name, else All or None in the words of the mode */
 export function sideName(side, mode) {
@@ -83,7 +85,7 @@ export const SideDot = ({ side }) => html`<span class=${`flow-side-dot tk-${side
   style=${side?.color ? { '--ws-color': side.color } : undefined} aria-hidden="true"></span>`
 
 /** Rename a theme a person picked: a field with Save; the name is a person's from then on (themes.py rename) */
-function Rename({ theme, c, onDone }) {
+export function Rename({ theme, c, onDone }) {
   const f = T().flow.side
   const [name, setName] = useState(theme.name)
   const v = name.trim()
@@ -98,7 +100,7 @@ function Rename({ theme, c, onDone }) {
 
 /** Sort again: the daily triage asked anew for what changed (c.triageRun, small model, cents), the button By source
  *  carries in its strip (triage.js TriageBar). Only where a work page exists and By source is not on offer (round 6 B) */
-function Resort({ s, c }) {
+export function Resort({ s, c }) {
   if (!workPageOf(s.model?.pages) || workViewsIn(s).includes('area')) return null
   return html`<${Btn} size="xs" variant="ghost" busy=${triageRunning(s)} title=${T().triage.rerunTitle}
     onClick=${() => c.triageRun(false)}>${T().flow.side.resort}<//>`
@@ -136,7 +138,9 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
           ${x.you ? html`<span class="flow-side-you">${f.you(x.you)}</span>` : null}</span>
         <span class="flow-side-open mono muted" title=${f.open(x.open)}>${x.open}</span>
       </button></li>`)}</ul>
-    ${mode === 'themes' ? html`<div class="flow-side-foot flow-side-body">
+    ${pointViewOn(s) ? html`<${OrderMenu} mode=${mode} keys=${keys} busy=${busy} entered=${entered} naming=${renaming} setNaming=${setRenaming}
+        status=${status} s=${s} c=${c} />`
+    : mode === 'themes' ? html`<div class="flow-side-foot flow-side-body">
       <${Btn} size="xs" variant="secondary" icon="spark" busy=${busy} disabled=${!keys.length || th?.budget_left === 0}
         onClick=${() => c.flowThemes('regroup', keys.slice(0, 50))}>${f.regroup}<//>
       <${Resort} s=${s} c=${c} />
@@ -146,6 +150,7 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
     </div>` : html`${mode === 'prio' ? html`<${PrioFoot} s=${s} c=${c} />` : null}${Resort({ s, c }) ? html`<div class="flow-side-foot flow-side-body">
       <${Resort} s=${s} c=${c} /></div>` : null}`}`
 }
+
 
 /** The left column, a table of contents (round 5): Running now as one row on top (views/flowrun.js RunningRow, the
  *  entries stand in the middle), the list of themes, areas or squares (logic.js flowSides) with the one entered
@@ -228,7 +233,7 @@ function besideClose(verbs, row, tab, s) {
 
 /** Improve on a finished start: what is still to do, as words to the tab while its agent waits there (tab_send
  *  through the reply guard), else as the sentence of a new start (do_it, never without one) */
-function Improve({ row, tab, s, c, onDone }) {
+export function Improve({ row, tab, s, c, onDone }) {
   const t = T()
   const f = t.flow.improve
   const [text, setText] = useState('')
@@ -301,7 +306,7 @@ function FinishedActs({ x, s, c, sug, forget }) {
 }
 
 // an issue on GitHub, not a pull request: the rows whose board an issue card reads (GET /api/issue)
-const GITHUB_ISSUE = row => /^[\w.-]+\/[\w.-]+#\d+$/.test(String(row?.ref ?? '')) && /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+/.test(String(row?.url ?? ''))
+export const GITHUB_ISSUE = row => /^[\w.-]+\/[\w.-]+#\d+$/.test(String(row?.ref ?? '')) && /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+/.test(String(row?.url ?? ''))
 
 /** What Done on an issue does, board by board (issue_transition.py): the review comment and the review state first
  *  on every board that has review states while the issue is not in review there (K1), then the done state, then the
@@ -578,6 +583,8 @@ function PointActs({ x, s, c, sug }) {
   // the return card of a tab without an item: its one way back
   if (x.kind === 'back' && !row) return html`<div class="fx-do"><${Btn} size="sm" variant="secondary" onClick=${() => c.flowBack()}>${f.runsOn}<//></div>`
   if (!row) return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${unlink ? html`<div class="fx-do">${unlink}</div>` : null}`
+  // stage 4: with Work through on, one strong button, the four states and More; off, the verbs as before
+  if (pointViewOn(s)) return html`<${SimpleActs} key=${x.id} x=${x} row=${row} s=${s} c=${c} sug=${sug} />`
   return html`<${BasicActs} x=${x} row=${row} s=${s} c=${c} sug=${sug} />`
 }
 
@@ -606,12 +613,13 @@ function Meter({ value }) {
 
 /** The facts the item drawer held beside the fields (stage 1, logic.js pointFacts), folded under Details at the foot
  *  of the fields: in words, a key, an id or a path as code */
-function Facts({ x, item, detail }) {
+function Facts({ x, item, detail, rest = [], value = null }) {
   const t = T()
   const f = t.flow.one
   const [open, setOpen] = useState(false)
   const facts = pointFacts(x, item, detail)
-  if (!facts.length) return null
+  if (!facts.length && !rest.length) return null
+  const fw = t.flow.fields
   const word = fld => {
     if (fld.id === 'kind') return x.row?.inbox_id ? t.item.kindName[fld.value] ?? fld.value : String(fld.value)
     if (fld.id === 'urgency') return t.urgency[fld.value] ?? fld.value
@@ -623,7 +631,10 @@ function Facts({ x, item, detail }) {
   }
   return html`<button type="button" class="btn-link flow-facts-toggle" aria-expanded=${String(open)} aria-controls="flow-facts"
       onClick=${() => setOpen(!open)}>${f.details} ${open ? '▴' : '▾'}</button>
-    ${open ? html`<dl id="flow-facts" class="meta flow-meta flow-facts">${facts.map(fld => html`<div class="meta-item" key=${fld.id} data-fact=${fld.id}>
+    ${open ? html`<dl id="flow-facts" class="meta flow-meta flow-facts">
+      ${rest.map(fld => html`<div class="meta-item" key=${`f-${fld.id}`} data-field=${fld.id}><dt>${fw[fld.id]}</dt><dd>${fld.id === 'original'
+        ? fld.value : value(fld)}</dd></div>`)}
+      ${facts.map(fld => html`<div class="meta-item" key=${fld.id} data-fact=${fld.id}>
       <dt>${f.facts[fld.id]}</dt><dd>${word(fld)}</dd></div>`)}</dl>` : null}`
 }
 
@@ -670,7 +681,9 @@ function Fields({ x, s, c }) {
       return html`<${FieldPick} label=${f.when} value=${fld.value} none=${fld.value ? null : { word: f.none, off: true }} busy=${busy}
         choices=${['now', 'today', 'later'].map(v => [v, t.urgency[v]])} onPick=${v => c.act('urgency', { key: row.key, value: v })} />`
     }
-    if (fld.id === 'who') return whoWords(fld.drive, s)
+    // stage 4: who takes the step as a chip where nobody works on it, else who works on it
+    if (fld.id === 'who') return one && fld.drive?.by === 'none' && fld.step?.who ? html`<${WhoChip} who=${fld.step.who} s=${s} />` : whoWords(fld.drive, s)
+    if (fld.id === 'ask') return activityWhen(fld.value, lang)
     if (fld.id === 'prio') {
       // "only you" only where the ranker said so (who: me), never read off the square
       const said = fld.jev ? [fld.jev.quadrant ? f.quadrant[fld.jev.quadrant] ?? fld.jev.quadrant : null, fld.jev.who === 'me' ? f.onlyYou : null,
@@ -701,11 +714,14 @@ function Fields({ x, s, c }) {
     if (fld.id === 'created' || fld.id === 'moved') return fld.value ? activityWhen(fld.value, lang) : none
     return none
   }
+  // stage 4: Theme, Area, Who and Due (or the day it asks again) on top, every other field folded under Details
+  const all = flowFields(x, s, feed, detail)
+  const { top, rest } = one ? fieldsSplit(all, x, s) : { top: all, rest: [] }
   return html`<section class="flow-fields flow-aside-part" aria-labelledby="flow-fields">
     <h3 id="flow-fields" class="label-caps">${f.label}</h3>
-    <dl class="meta flow-meta">${flowFields(x, s, feed, detail).map(fld => html`<div class="meta-item" key=${fld.id} data-field=${fld.id}>
+    <dl class="meta flow-meta">${top.map(fld => html`<div class="meta-item" key=${fld.id} data-field=${fld.id}>
       <dt>${f[fld.id]}</dt><dd>${value(fld)}</dd></div>`)}</dl>
-    ${one ? html`<${Facts} key=${x.id} x=${x} item=${item} detail=${detail} />` : null}
+    ${one ? html`<${Facts} key=${x.id} x=${x} item=${item} detail=${detail} rest=${rest} value=${value} />` : null}
   </section>`
 }
 
@@ -720,7 +736,8 @@ const DetailsLink = ({ row, c }) => html`<button type="button" class="btn-link f
 
 /** The right column: What you can do and the fields of the point open, or of the entry of Running now; nothing while
  *  none is open (round 6 B: no empty Fields card, the middle takes the width). A closed point says so in place of its
- *  verbs. Under the verbs Details only where Work through is off (module head) */
+ *  verbs. Under the verbs Details only where Work through is off (module head). Stage 4: with Work through on the AI's
+ *  suggestion is no line of its own (the point's stand says why, the strong button applies it) */
 export function FlowAside({ x, s, c }) {
   const t = T()
   const f = t.flow
@@ -730,7 +747,7 @@ export function FlowAside({ x, s, c }) {
   return html`<aside class="flow-aside" aria-label=${f.fields.can}>
     <section class="flow-can flow-aside-part" aria-labelledby="flow-can">
       <h3 id="flow-can" class="label-caps">${f.fields.can}</h3>
-      ${sug ? html`<p class="flow-can-sug"><span class="label-caps">${f.list.cols.suggestion}</span> <${Suggestion} sug=${sug} s=${s} /></p>` : null}
+      ${sug && !pointViewOn(s) ? html`<p class="flow-can-sug"><span class="label-caps">${f.list.cols.suggestion}</span> <${Suggestion} sug=${sug} s=${s} /></p>` : null}
       ${x.readOnly ? html`<p class="muted small flow-readonly">${f.one.readOnly}</p>` : html`<${PointActs} key=${x.id} x=${x} s=${s} c=${c} sug=${sug} />`}
       ${row?.key && !pointViewOn(s) ? html`<p class="flow-can-more"><${DetailsLink} row=${row} c=${c} /></p>` : null}
     </section>
