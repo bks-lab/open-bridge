@@ -12,7 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cockpitState, loadCockpit, mount, recorder, settle as rounds, waitFor } from './cockpit_render.mjs'
 
-const { html, views, text } = await loadCockpit()
+const { html, views, text, logic } = await loadCockpit()
 const { ReturnCard, returnsOf } = views.home
 const { TabControls } = views.detail
 const { SessionCard } = views.sessions
@@ -2255,9 +2255,10 @@ test('next up: a small bar under a detail opened from a list: back, where you st
   const el = mount(html`<${NextUp} s=${s} c=${c} byKey=${byKey} current=${rows[1].key} />`)
   assert.ok(el.$('nav.next-up'))
   assert.equal(el.$('.next-up-pos').text(), en.nextPos(2, 5))
-  assert.equal(el.$('.next-up-title').text(), rows[2].title)
+  // a long title shortened (the demo has a long technical one, stage 4)
+  assert.equal(el.$('.next-up-title').text(), logic.short(rows[2].title, 90))
   // the two after the next one stand open below it, each a click away
-  assert.deepEqual(el.$$('.next-up-later button').map(b => b.text()), [rows[3].title, rows[4].title])
+  assert.deepEqual(el.$$('.next-up-later button').map(b => b.text()), [logic.short(rows[3].title, 80), logic.short(rows[4].title, 80)])
   el.button(en.nextOpen).click()
   assert.deepEqual(c.calls.at(-1), ['openNext', entry(rows[2])])
   el.$$('.next-up-later button')[1].click()
