@@ -104,8 +104,8 @@ def _line(value: Any, cap: int) -> str:
 def clean(text: Any) -> str:
     """The model's text as the card shows it: one paragraph, a dash as punctuation made a comma, capped"""
     text = " ".join(str(text or "").split())
-    text = re.sub(r"\s+[—–-]{1,2}\s+", ", ", text)
-    text = re.sub(r"[—–]", ", ", text).replace(" ,", ",")
+    text = re.sub(r"\s+[\u2014\u2013-]{1,2}\s+", ", ", text)
+    text = re.sub(r"[\u2014\u2013]", ", ", text).replace(" ,", ",")
     return text[:FOUND_MAX].strip()
 
 
