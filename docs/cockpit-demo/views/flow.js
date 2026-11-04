@@ -55,7 +55,7 @@
 import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, instructScope, laneRows, leftWalk, pointListAt, pointsIn,
-  runningOf, prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf
+  runningOf, prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf, pointName
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
@@ -65,7 +65,7 @@ import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
 import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
-import { PointView, pointKind, pointTitle, useSoloLoad } from './flowpoint.js'
+import { PointView, pointStandWord, pointTitle, useSoloLoad } from './flowpoint.js'
 import { Calm } from './focus.js'
 import { Btn } from './parts.js'
 import { VerbBar } from './verbbar.js'
@@ -77,7 +77,7 @@ function Rest({ s, c }) {
   return html`<${Calm} s=${s} c=${c} title=${f.rest.title} sub=${f.rest.sub} action=${false} />
     <section class="flow-rest" aria-labelledby="flow-rest">
       <h2 id="flow-rest" class="label-caps">${f.rest.suggest}</h2>
-      ${ideas.length ? html`<ul>${ideas.map(row => html`<li key=${row.key}><span class="flow-rest-title">${short(row.title, 90)}</span>
+      ${ideas.length ? html`<ul>${ideas.map(row => html`<li key=${row.key}><span class="flow-rest-title">${short(pointName(row), 90)}</span>
         <${VerbBar} row=${row} s=${s} c=${c} verbs=${['do']} primary="do" /></li>`)}</ul>` : html`<p class="muted small">${f.rest.none}</p>`}
     </section>`
 }
@@ -178,7 +178,7 @@ function FlowBody({ s, c }) {
   // walks the queue (after its last, the next theme), an entry of Running now walks nothing, a row of Not now walks its
   // group and goes back to its list, a point of its own goes back where it came from (the reports card, else the
   // overview)
-  const walk2 = { words: { ...f.walk2, queue: t.dossier.walk.queue }, titleFor: pointTitle, tagsOf: () => null, whyOf: pointKind, cls: 'flow-walk' }
+  const walk2 = { words: { ...f.walk2, queue: t.dossier.walk.queue }, titleFor: pointTitle, tagsOf: () => null, whyOf: pointStandWord, cls: 'flow-walk' }
   // stage 3: a row opened from a list walks that list and goes back to where it stood, wherever it opened
   const list = pointListAt(s.ui.flowList, x)
   const listBack = s.ui.flowList ? { word: f.one.backList, onClick: () => c.flowListBack() } : null
@@ -226,7 +226,7 @@ function FlowBody({ s, c }) {
             ${grid ? html`<${PrioSource} order=${order} n=${all.length} /><${PrioGrid} sides=${sides} points=${all} s=${s} c=${c} />
               <p class="muted small flow-main-hint">${f.prio.hint}</p>`
               : !all.length ? html`<${Rest} s=${s} c=${c} />`
-              : html`<${FlowOverview} key=${side} points=${queue} running=${runRows} picked=${picked} titleFor=${pointTitle} kindFor=${pointKind}
+              : html`<${FlowOverview} key=${side} points=${queue} running=${runRows} picked=${picked} titleFor=${pointTitle} kindFor=${pointStandWord}
                 band=${band} s=${s} c=${c} />`}
             ${all.length ? html`<div class="flow-dock"><${InstructLine} scope=${scope} s=${s} c=${c} /></div>` : null}`
           : null}

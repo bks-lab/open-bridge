@@ -54,7 +54,7 @@ import {
   activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
   flowRunning, flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts,
   pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf,
-  fieldsSplit
+  fieldsSplit, pointName, whoBrief
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -298,7 +298,7 @@ function FinishedActs({ x, s, c, sug, forget }) {
     ${r.result?.key ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openItem(r.result.key, null)}>${t.home.returnOpenAnswer}<//>` : null}
     <${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>
     <${Btn} size="sm" variant="secondary" onClick=${() => c.act('runs_on', { keys: [row.key], until: tomorrow })}>${f.runsOn}<//>`
-  const tail = ways ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.flowJump({ key: row.key, ref: tab.ref, title: r.title })}>${f.toTab}<//>
+  const tail = ways ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.flowJump({ key: row.key, ref: tab.ref, title: pointName(row) || r.title })}>${f.toTab}<//>
     <${TabClose} tab=${tab} s=${s} c=${c} size="sm" only />` : null
   return html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary=${said ?? 'done'} suggested=${!!said}
       words=${tab ? { done: f.doneClose } : {}} handlers=${tab ? { done: doneClose } : {}} yes=${false} lead=${lead} tail=${tail} stack />
@@ -415,7 +415,7 @@ function BasicActs({ x, row, s, c, sug }) {
   const tab = back ? null : flowTabOf(x, s)
   const near = live || tab
   const asks = live?.state === 'needs-you'
-  const title = row.title ?? x.title ?? x.start?.title ?? tab?.name ?? ''
+  const title = pointName(row) || x.title || x.start?.title || tab?.name || ''
   // a point in progress whose agent works: a live tab, or a start of the cockpit that runs
   const running = x.group === 'doing' && (!!live || (x.kind === 'start' && ['started', 'working'].includes(x.stage)))
   const adopt = adoptStepOf(row, s)
@@ -483,7 +483,8 @@ function ReadActs({ x, s, c }) {
   const [open, setOpen] = useState(null)
   const [note, setNote] = useState('')
   const [crowd, setCrowd] = useState(0)
-  const [title, setTitle] = useState(r.title ?? '')
+  // the new task's H1: the name the row is shown by, which the person may change
+  const [title, setTitle] = useState((x.row?.key ? pointName(x.row) : null) || r.title || '')
   const areas = s.boot?.config?.areas ?? []
   const [area, setArea] = useState(() => areas.find(a => a.toLowerCase() === String(x.row?.area ?? '').toLowerCase()) ?? '')
   const [describe, setDescribe] = useState(true)
@@ -519,7 +520,7 @@ function ReadActs({ x, s, c }) {
     ${open === 'analyse' ? html`<div class="verbbar-panel">
       <label class="label-caps" for=${`${id}-note`}>${f.read.analyseLabel}</label>
       <textarea id=${`${id}-note`} class="input textarea" rows="3" maxlength="2000" value=${note} onInput=${e => setNote(e.currentTarget.value)}></textarea>
-      <${LaunchPick} s=${s} c=${c} items=${[{ key: r.key, title: r.title }]} />
+      <${LaunchPick} s=${s} c=${c} items=${[{ key: r.key, title: (x.row?.key ? pointName(x.row) : null) || r.title }]} />
       <p class="muted small">${f.read.analyseNote}</p>
       <div class="verbbar-acts"><${Btn} size="sm" variant="primary" busy=${busy} disabled=${!note.trim()} onClick=${() => analyse(false)}>${f.read.analyseGo}<//></div>
       ${crowd ? html`<div class="verbbar-acts" role="alert"><span class="small">${f.start.busy(crowd)}</span>
@@ -546,7 +547,7 @@ function PointActs({ x, s, c, sug }) {
   const row = x.kind === 'reports' ? null : x.row ?? null
   const live = flowLive(x, s)
   const tab = flowTabOf(x, s)
-  const title = row?.title ?? x.title ?? x.start?.title ?? tab?.name ?? ''
+  const title = (row ? pointName(row) : null) || x.title || x.start?.title || tab?.name || ''
   if (x.kind === 'reports') {
     // only the ticked reports, All seen only when every one is ticked; nothing ticked says how to tick
     const keys = reportsTicked(x, s.ui.flowPicked)
@@ -682,7 +683,12 @@ function Fields({ x, s, c }) {
         choices=${['now', 'today', 'later'].map(v => [v, t.urgency[v]])} onPick=${v => c.act('urgency', { key: row.key, value: v })} />`
     }
     // stage 4: who takes the step as a chip where nobody works on it, else who works on it
-    if (fld.id === 'who') return one && fld.drive?.by === 'none' && fld.step?.who ? html`<${WhoChip} who=${fld.step.who} s=${s} />` : whoWords(fld.drive, s)
+    if (fld.id === 'who') {
+      if (one && fld.drive?.by === 'none' && fld.step?.who) return html`<${WhoChip} who=${fld.step.who} s=${s} />`
+      // stage 4: who and its state in a few words, the whole line on hover
+      const brief = one ? whoBrief(fld.drive, lang) : null
+      return brief ? html`<span title=${whoWords(fld.drive, s)}>${brief}</span>` : whoWords(fld.drive, s)
+    }
     if (fld.id === 'ask') return activityWhen(fld.value, lang)
     if (fld.id === 'prio') {
       // "only you" only where the ranker said so (who: me), never read off the square

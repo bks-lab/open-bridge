@@ -31,7 +31,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityCounts, activityFilters, activityRows, activityWhen, attachTooBig, detailNeedsLoad, errorText, flowSettings, formatDay, historyRows,
-  originOf, pageStepsOf, pointAbout, pointOriginal, pointTab, pointTabs, pointViewOn, relatedOf, rowActionKey, short, stepsOf,
+  originOf, pageStepsOf, pointAbout, pointOriginal, pointTab, pointTabs, pointViewOn, relatedOf, rowActionKey, rowName, short, stepsOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { describeOf, ItemCard } from './card.js'
@@ -194,7 +194,7 @@ function RelatedPane({ rel, row, s, c }) {
   const all = T()
   const t = all.flow
   const f = t.related
-  const open = r => html`<button type="button" class="btn-link flow-related-open" onClick=${() => c.openItem(r.key)}>${short(r.title ?? r.key, 90)}</button>`
+  const open = r => html`<button type="button" class="btn-link flow-related-open" onClick=${() => c.openItem(r.key)}>${short(rowName(s, r.key) ?? r.title ?? r.key, 90)}</button>`
   if (!rel.parent && !rel.rows.length && !rel.paths.length && !rel.asked.length && !rel.sessions.length) return html`<p class="muted small">${f.none}</p>`
   return html`<div class="flow-related">
     ${rel.asked.length ? html`<section><h3 class="label-caps">${t.one.asked}</h3>

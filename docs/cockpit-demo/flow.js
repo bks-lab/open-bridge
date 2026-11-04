@@ -11,7 +11,7 @@
 // The queue reads the rows of /api/state as they are: no store of its own. Its groups stand in an order fixed here,
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
-import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, pointOriginal, projectTone, replyOptions, replySend,
+import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, pointName, pointOriginal, projectTone, replyOptions, replySend,
   rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
@@ -1364,7 +1364,7 @@ export function instructScope(x, queue, picked, name, s) {
     const row = x.row ?? null
     if (!row?.key) return null
     const tab = flowTabOf(x, s)
-    return { point: true, picked: false, reports: false, keys: [row.key], n: 1, cut: false, title: row.title ?? '', tab: takesWords(tab, s) ? tab : null, name }
+    return { point: true, picked: false, reports: false, keys: [row.key], n: 1, cut: false, title: pointName(row), tab: takesWords(tab, s) ? tab : null, name }
   }
   const all = (queue ?? []).flatMap(pointKeys)
   const ticked = picked?.size ? all.filter(k => picked.has(k)) : []

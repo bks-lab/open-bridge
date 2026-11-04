@@ -30,7 +30,8 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { activityWhen, centsText, checkOpen, formatDay, isoDate, LEFT_VERBS, leftPlan, pointName, pointStand, pointStep, pointViewOn, rowProject, short } from '../logic.js'
+import { activityWhen, centsText, checkOpen, formatDay, isoDate, LEFT_VERBS, leftPlan, nextWho, pointName, pointStand, pointStep, pointViewOn, rowProject, short,
+  whoKind } from '../logic.js'
 import { T, language } from '../text.js'
 import { CheckButton, ReviewBody } from './check.js'
 import { KindTag } from './day.js'
@@ -104,7 +105,7 @@ export function ReadList({ read, c }) {
     ${read.length ? html`<table class="flow-ov-table">
       <thead><tr><th>${f.list.cols.point}</th><th>${f.read.cols.what}</th><th>${f.read.cols.when}</th>${withArea ? html`<th>${f.list.cols.area}</th>` : null}</tr></thead>
       <tbody>${read.map((x, i) => html`<tr key=${x.id} class="flow-ov-row">
-        <td class="flow-ov-point"><button type="button" class="flow-ov-open" onClick=${() => c.flowReadOpen(x.id, i)}>${short(x.start.title ?? x.start.key, 120)}</button></td>
+        <td class="flow-ov-point"><button type="button" class="flow-ov-open" onClick=${() => c.flowReadOpen(x.id, i)}>${short((x.row?.key ? pointName(x.row) : null) || x.start.title || x.start.key, 120)}</button></td>
         <td class="flow-ov-what small">${short(x.start.plain ?? x.start.result?.text ?? '', 160)}</td>
         <td class="flow-ov-stage small">${ended(x)}</td>
         ${withArea ? html`<td class="flow-ov-area small">${rowProject(x.row)}</td>` : null}
@@ -169,7 +170,9 @@ function laterWhy(e, lang) {
   const by = String(row.blocked_by ?? row.card?.state?.blocked_by ?? '').trim()
   if (e.kind === 'waiting') {
     if (row.inbox_state === 'approved') return w.approved
-    const who = by || String(row.card?.next?.who ?? '').trim()
+    // a next step that is the owner's own waits on nobody named: others; a person by the name the page gives them
+    const next = String(row.card?.next?.who ?? '').trim()
+    const who = by || (whoKind(next, null) === 'person' ? nextWho(next, null, lang) : '')
     return who ? w.waits(who) : w.others
   }
   if (e.kind === 'resting') {
@@ -258,7 +261,7 @@ export function LeftList({ group, s, c }) {
         ${group.rows.filter(e => head === undefined || (e.repo ?? null) === head).map(e => {
           const row = e.row
           return html`<tr key=${row.key} class=${`flow-ov-row${picked.has(row.key) ? ' is-picked' : ''}`}>
-            <td><input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(row.title ?? row.key, 60))} checked=${picked.has(row.key)}
+            <td><input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(pointName(row) || row.key, 60))} checked=${picked.has(row.key)}
               onClick=${() => c.flowLeftPick([row.key], !picked.has(row.key))} /></td>
             <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
               <span class="flow-ov-sub muted small"><${KindTag} row=${row} s=${s} /></span></td>

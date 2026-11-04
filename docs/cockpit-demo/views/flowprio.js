@@ -16,7 +16,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { formatDay, haikuReady, isoDate, jevQuadrants, jevReady, pointKeys, pointsIn, rankerName, short, workPageOf } from '../logic.js'
+import { formatDay, haikuReady, isoDate, jevQuadrants, jevReady, pointKeys, pointsIn, pointName, rankerName, short, workPageOf } from '../logic.js'
 import { T, language } from '../text.js'
 import { listRows } from './flowlist.js'
 import { SideDot, sideName } from './flowside.js'
@@ -25,8 +25,8 @@ import { Btn } from './parts.js'
 // the titles a square names before it says how many more it holds
 const SQUARE_TITLES = 4
 
-/** A row's title in a square (logic listRows): its row's, else its card's, else its tab's */
-const titleOf = r => (r.row?.title ?? r.x?.title ?? r.x?.tab?.name) ?? ''
+/** A row's title in a square (logic listRows): its row's name (logic.js pointName), else its card's, else its tab's */
+const titleOf = r => (r.row ? pointName(r.row) : null) || r.x?.title || r.x?.tab?.name || ''
 
 /** When Jev's order was made: its day in the page's words and the time */
 export function orderTime(at, lang = language()) {

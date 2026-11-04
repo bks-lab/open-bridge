@@ -67,8 +67,24 @@ function cardKind(x) {
     const r = x.row ?? {}
     return x.readOnly ? t.item.stateName[r.inbox_state] ?? t.taskState[r.status] ?? r.inbox_state ?? r.status ?? f.one.solo : f.one.solo
   }
-  return f.kind[x.stage === 'idle' || x.stage === 'done' ? x.stage
-    : x.kind === 'tab' && x.tab?.state === 'waiting' && !asksSomething(x.tab.ask) ? 'waits' : x.group]
+  return f.kind[kindKey(x)]
+}
+
+/** The key of a card's kind (cardKind): a quiet start and one ended with a note by its stage, a tab that waits at its
+ *  prompt with nothing asked as waits, else its group */
+const kindKey = x => (x.stage === 'idle' || x.stage === 'done' ? x.stage
+  : x.kind === 'tab' && x.tab?.state === 'waiting' && !asksSomething(x.tab.ask) ? 'waits' : x.group)
+
+// the kinds that are a tab's or a start's state, not the point's own (stage 4: said as the tab's)
+const TAB_KINDS = new Set(['asks', 'waits', 'result', 'idle', 'done', 'lost'])
+
+/** What the overview says under a name that has no stand (stage 4): where the only word is its tab's or its start's
+ *  state, it says it is the tab's ("Agent tab: finished", never a bare Finished that reads as if the point were done),
+ *  any other point its kind (In review, In progress, A question for you) */
+export function pointStandWord(x) {
+  const f = T().flow
+  const key = ['left', 'read', 'solo', 'doing'].includes(x.group) ? null : kindKey(x)
+  return key && TAB_KINDS.has(key) ? f.simple.tabIs(f.simple.tabState[key]) : pointKind(x)
 }
 
 /** A point's title and its kind in a word, for the tabs, the walk and the list */
@@ -216,7 +232,7 @@ function StartCard({ x, s, c }) {
   const said = x.group === 'read' && r.plain ? r.plain : null
   return html`<article class=${`fx-hero tk-${stageTone(x.stage === 'idle' ? 'result' : x.stage)}`} aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span></header>
-    <h2 id="flow-title" class="fx-title">${r.title}</h2>
+    <h2 id="flow-title" class="fx-title">${(x.row?.key ? pointName(x.row) : null) || r.title}</h2>
     ${said ? html`<p class="flow-answer"><span class="label-caps">${head}</span> ${said}</p>
       ${raw && resultText(raw) !== said ? html`<details class="flow-raw"><summary class="small muted">${f.read.raw}</summary>
         <p class="mono small">${short(raw, 600)}</p></details>` : null}`
@@ -243,9 +259,9 @@ function ReportsCard({ x, s, c }) {
     <h2 id="flow-title" class="fx-title">${f.reports(x.rows.length)}</h2>
     <label class="flow-check flow-reports-all"><input type="checkbox" checked=${all} onClick=${() => c.flowPick(keys, !all)} /><span>${f.list.pickAll}</span></label>
     <ul class="flow-reports">${x.rows.map(r => html`<li key=${r.key} class=${on.has(r.key) ? 'is-picked' : undefined}>
-      <input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(r.title ?? '', 60))} checked=${on.has(r.key)}
+      <input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(pointName(r), 60))} checked=${on.has(r.key)}
         onClick=${() => c.flowPick([r.key], !on.has(r.key))} /><details>
-      <summary>${r.title}</summary>
+      <summary>${pointName(r)}</summary>
       ${(r.why ?? []).length ? html`<ul class="fx-why">${r.why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
       <div class="fx-do"><${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy?.[r.key]}
         onClick=${() => c.act('settle', { keys: [r.key], outcome: 'done' })}>${f.seen}<//>
