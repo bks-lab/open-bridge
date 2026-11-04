@@ -27,12 +27,15 @@ last_updated: YYYY-MM-DD    # Same — `date +%Y-%m-%d`; equals `created` for a 
 origin: "<where this task came from>"
 
 # Optional: the brief, what a card shows about this task. One shape with the `describe` event of
-# an inbox item (_schema.status.yaml $defs/Brief, card_fields.py validate_brief). goal at most
-# 140 characters, story parts at most 80, at most 5 acceptance criteria of 120 (testable outcomes,
+# an inbox item (_schema.status.yaml $defs/Brief, card_fields.py validate_brief). name (what the
+# cockpit calls it where the H1 is a slug or long) at most 60 characters, stand (where it stands, one
+# sentence) at most 140, goal at most 140 characters, story parts at most 80, at most 5 acceptance criteria of 120 (testable outcomes,
 # not steps; a stream has none), no dash as punctuation. by is the model id as modelUsage reports
 # it, never an alias; basis the sha256 prefix of this file without the block; edited turns true
 # once a person changed it.
 # brief:
+#   name: "Invoices without a resend"
+#   stand: "The format is agreed; the test run with the customer is next."
 #   goal: "Invoices reach the customer without a manual resend"
 #   story: {as: "an accountant", want: "every invoice delivered once", so_that: "nobody chases a resend"}
 #   acceptance:

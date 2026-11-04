@@ -94,7 +94,7 @@ their defaults:
 | `files_search.model` | none | the model, `haiku`, `sonnet` or `opus`; none: the service `cockpit-files` of `workflow/ai-services/` (default Haiku) |
 | `files_search.block` | `[]` | words that keep a record private: a record whose area (front matter and row), context, theme, path, title or the text that would go (the start of its STATUS.md, front matter and `related:` included) holds one, case folded, never reaches the model; the server drops it before the request is built, and the page says how many stay back and by which words (the records carry the server's decision, so the count before the click is the server's). A word also matches inside a longer one: `Steuer` holds back a record on `Steuerung` too, it holds back more, never less. At most 50 words of 60 characters |
 | `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
-| `describe` | `auto: off` | each item's brief (goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
+| `describe` | `auto: off` | each item's brief (name, stand, goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
 | `flow.enabled` | `false` | the view Work through of the work tab: everything open grouped by theme or area, one point at a time as a card with five verbs, or as a list with suggestions and a batch, see [Work through](#work-through-flow). Off, the view does not exist |
 | `flow.drop_reasons` | `[resolves_itself, not_needed, someone_else, not_worth_it]` | the reasons "Drop because" offers to click, beside a free field; the four keys are worded by the page in both languages, a reason of your own (1 to 80 characters, at most 12) stands as written |
 | `flow.return_after_s` | `20` | after "To tab" on a card, how many seconds later (at most 4 hours) the page asks how it went once it is in view again; `0` asks at the first return. Switching apps without "To tab" never asks |
@@ -438,10 +438,13 @@ out a workspace:
   as the cmux workspaces; Themes and Areas switch at the top while the themes
   are on): one entry per theme or area that holds a point, with its colour,
   how many need you (in the warning tone) and how many are open, **No theme
-  yet** or **No area** last, under **All themes** (or All areas), and **Order
-  themes again** at the foot. A click enters one: the list stays as it is, the
-  one entered marked, All leads back, and its points stand in the middle only.
-  A theme entered can be renamed. With Jev or Haiku a third order, **Prio**, stands
+  yet** or **No area** last, under **All themes** (or All areas), and under the
+  list one menu **Order ▾** with what orders it, each only where it applies:
+  **Order themes again**, **Sort again** (below), **Read in with Jev** and
+  **Read in with Haiku** (Prio, below) and **Rename** the theme entered; one
+  that runs already stands off and busy, and the line of what runs stays under
+  it. A click enters one: the list stays as it is, the one entered marked, All
+  leads back, and its points stand in the middle only. With Jev or Haiku a third order, **Prio**, stands
   beside Themes and Areas (below). On top stands **Running now** as one row
   with its count while an agent works (below), its only place: no strip of it
   stands over an overview, and the head line counts the same number. Under it
@@ -461,18 +464,25 @@ out a workspace:
   On a narrow screen the list is one select over the middle, Running now a
   strip over it and Not now folded under it.
 - **In the middle**, on entering a theme (and at the level of all of them),
-  its **overview**: every point as a row of a table, grouped as on the left,
-  with its box, title, stage, area and the suggestion with half a sentence of
-  why (below), a line over it naming where the suggestions come from, and on
-  top the sticky batch bar. Each group's head has a box of its own that ticks
-  that group alone, so all reports go at once without the questions. A click on a title opens the
+  its **overview**: every point as a row of a table in three bands by who takes
+  its next step, **Check-in** (a point whose check-in day came, below), **Needs
+  you** and **The Bridge does** (its next step is the Bridge's, first or
+  alone). A row says three things: its **name** (below), where it stands muted
+  under it (the brief's stand, else the triage's gist, else its kind and, for a
+  task nobody works on, when it last moved), and its **next step** with who
+  takes it as a chip and the day it asks again or is due. Nothing ticked, one
+  line says that ticking shows the batch buttons and offers **Tick the
+  suggestions**; once a row is ticked the batch bar stands on top, sticky and
+  compact (below). Each band's head has a box of its own that ticks that band
+  alone. A click on a name opens the
   **point**: on top **Back to overview** with the theme's name beside it, a
   line "n ticked" with **See in the overview** while points are ticked, then
   the point as a card that carries its content only: its kind in its head (the
   one place its state stands) with what kind of row it is and **Pin** (it pins
-  the row to the start page) at the end, the title, the task it is about or the
-  headline of its file under it, its **next step** with who takes it as a
-  tinted box, the tab's question with one row of
+  the row to the start page) at the end, its name, where it stands in one
+  sentence under it (else the task it is about), its **next step** in one line
+  (Next step, the step, who takes it as a chip, its due day or the day it asks
+  again), the tab's question with one row of
   answers (the decision guide folded under **Show the decision guide**), what
   came back, the last lines of its tab's screen. Who works on it and since when
   is a field on the right, the criteria of its brief stand in Description. Under
@@ -485,60 +495,101 @@ out a workspace:
   drawer or another view: this is the one point view, the same wherever a row
   opens ([One point view](#one-point-view)).
 - **Right**, only while a point or an entry is open (the overview and a list
-  of Not now take its width), **What you can do**: the AI's suggestion as
-  one sentence (on an open point the only place it stands; the overview shows
-  it as a column, because there one picks without a point open), then the verbs under each other in one style, the suggested
-  one the strong button. Every point offers the **basic verbs** in one order:
-  **Let AI do it**, **Done**, **Later until**, **Drop because**, and **Make it a
-  task** on every inbox item (verb `to_task`: a task in the backlog, the item
-  closes with a pointer to it, and the task opens in the same view) and on an
-  issue without a task whose GitHub page offers its step "Make it a task" (an
-  agent tab makes it; a pull request has no such step). A verb that cannot go
-  now stays in its place, off, with one line under the verbs that says why: Let
-  AI do it while an agent works on the point (no second agent beside it, as the
-  instruction line and a batch have it) or once its yes is given, Done and Drop
-  while its tab asks (nothing closes what waits for an answer) and on a stream.
-  Strong is only what the AI suggests, as before (a task in review Done, a point
-  in progress Let AI go on with it, the return card Done, else a finding's Give
-  your yes where it brings an action). Under them what the point's kind adds,
-  never in their place: while an agent tab is on the point (at work, asking, or
-  waiting at its prompt) **To tab** as the strong way and **View**, an issue's
-  **Open on GitHub** and its board's moves, Give your yes, **Advise**, Improve on
-  a task in review, **Steps** of an application (it opens the tab Steps), Runs on
-  on the return card, Not this task for a session, **Show in the net** for a task,
-  **Back on** for a row of Later (as its list has it) and **Assign tab
-  <workspace> / <name>** for a tab already running free in a task's area (verb
-  `adopt`, the detail column's "Already running?"); the tab's
-  close apart at the end (where it ends the point, Done in its place is **Done
-  and close tab**). A finished, lost or asking start keeps its own verbs (the
-  verb the AI suggests strong, else Done and close the tab). Under it
-  the **Fields**, like the sidebar of an issue tracker:
-  **Theme** (to change, with the themes on), **Area**, **Urgency** (an inbox
-  item's), **Who works on it**,
+  of Not now take its width), **What you can do**, in three parts:
+  1. **One strong button** that applies the AI's suggestion at once, with its
+     verb and the step: **Let the Bridge: <step>** (a start with the step as its
+     sentence), **Done**, **Later** (until the day suggested, else in a week) or
+     **Drop** (with the reason suggested). Its reason and where it comes from
+     (the triage of a day, the task check, Jev, the themes run) stand on it on
+     hover, and nowhere else on the point. Without a suggestion it is **Give
+     your yes** where an item waits for it, else **Let the Bridge: <step>** where
+     the next step is the Bridge's; where the next step is yours, none stands.
+     While an agent tab is on the point it is **To tab**. A suggested Done of an
+     issue on a board opens the board's moves (**Done, on its board ▾**), where
+     the move that fits is the strong one: the board's rules close it through
+     review.
+  2. **The four states** in a quiet 2x2: **Done**, **In progress ▾**, **Later
+     ▾** and **Drop ▾** (an issue's Done hides it). One that cannot go now stays
+     in its place, off, with one line that says why: Done and Drop while its tab
+     asks (nothing closes what waits for an answer) and on a stream. Where the
+     close of the tab behind it ends the point, Done is **Done and close tab**.
+     A finished, lost or asking start keeps its own verbs (the verb the AI
+     suggests strong, else Done and close the tab).
+  3. **More ▾**, a menu of every other verb that applies; a verb that cannot
+     apply is left out: **Make it a task** (verb `to_task` on an inbox item: a
+     task in the backlog, the item closes with a pointer to it, and the task
+     opens in the same view; on an issue without a task whose GitHub page offers
+     the step, an agent tab makes it), **Open on GitHub** and **Board moves** (an
+     issue or a pull request; the moves only where its board is known: Set to
+     review, Done and Check with AI), **Show in the net** (a task), **Describe
+     again**, **Get advice**, **Assign tab <workspace> / <name>** (verb `adopt`
+     for a tab already running free in a task's area), **Back on** (a row of
+     Later), **Steps** (a row with steps on its page; it opens the tab Steps),
+     **Runs on** (the return card), **Not this task** (a session's entry),
+     **Improve** (a task in review), and while an agent tab is on the point
+     **View**, **To tab** and the tab's close.
+
+  **In progress ▾** says who has it and until when: **Me**, **Bridge**, a person
+  the instance names (`cockpit.person_name` and the people its tasks name) or
+  **someone else …** with a name; then **in 3 days**, **in 1 week** (the
+  default), **in 2 weeks** or a date; and a line **What runs?** (optional, kept
+  as a note). **Hand it over** sends verb `work_on`: an inbox item is put off
+  until that day as a check-in (`inbox.py defer --until --on <who> --check`), a
+  task's next step goes to that person with that day (`task.py next --who
+  --check`), any other row is hidden until it. **Bridge** is Let AI do it: the
+  panel of a start, with a sentence of yours. Each has an undo. Until its day
+  the row runs elsewhere (Not now, **Running elsewhere**, "with <who> · asks on
+  <day>"); on that day it comes back on top as a **check-in**: "In progress with
+  <who> since <day>. How does it stand?" with **Done**, **Still running ▾** (a
+  new day), **Stuck** (back to you, verb `checkin_stuck`, the reason as a note),
+  **Drop ▾** and **Follow up with <who>** (the Bridge starts on a draft of a
+  follow-up through the mail-draft skill, never sends it). The right column then holds no 2x2, only More.
+
+  Under it the **Fields**, like the sidebar of an issue tracker, four of them:
+  **Theme** (to change, with the themes on), **Area**, **Who** (who takes the
+  next step as a chip while nobody works on it, else who works on it and since
+  when) and **Due** (while it is with someone **Asks again** with its check-in
+  day). Every other field is folded under **Details ▾** at their foot:
   **Prio** (Jev's quadrant and rank while Jev's order of the point is younger
-  than `rank_max_age_days`, else the day's triage rank, else the priority),
-  **Urgent**, **Important** and **Effort** as small bars (only with Jev's
-  order), **Due**, **Team** and **Task check** (a task's), **Source** (its chip, **STATUS.md** of the task an item
-  belongs to, which opens that task in the same view, an issue or a pull request by its ref on the web),
-  **Created** and **Moved** (the newest row of its Activity). There is no Status
-  field: the card's head says it, and
-  who works on it and the source stand only here. What the detail column
-  changed is changed in its field, a select as Theme is one, through the same
-  verbs and their guards: **Area** of an inbox item without a task (one of the
-  configured areas, or No area; the owner's only, verb `area`), its **Urgency**
-  (now, today, later, verb `urgency`) and a task's priority beside its Prio
-  (P0 to P3, verb `priority`); none has an undo, as before. **Team** says how far
-  a task's team is (its roles started), starts its next role or a team that
-  fits (verb `team_role`); **Task check** shows the verdict of the last check
-  with its reason, **Keep open** and **Check again** (or **Check** before the
-  first). Neither stands on a person's page. A closed point shows the values as
-  words. At the foot of the fields **Details ▾** folds open what the item
-  drawer held beside them: an inbox item's kind, approval, who closes
-  it, when it closes on its own, what runs on its yes, its key and its id; a
-  task's type, what blocks it and the path of its STATUS.md. There is no Details
-  link and no drawer from a point; each report of the reports card has **Open**
-  beside Seen, which shows that report alone in the same view (Back leads to the
-  card).
+  than `rank_max_age_days`, else the day's triage rank, else the priority) with
+  a task's priority beside it, **Urgency** (an inbox item's), **Urgent**,
+  **Important** and **Effort** as small bars (only with Jev's order), **Team**
+  and **Task check** (a task's), **Source** (its chip, **STATUS.md** of the task
+  an item belongs to, which opens that task in the same view, an issue or a
+  pull request by its ref on the web), **Created**, **Moved** (the newest row
+  of its Activity), the **Original title** where the point is shown by another
+  name, and the facts the item drawer held: an inbox item's kind, approval, who
+  closes it, when it closes on its own, what runs on its yes, its key and its
+  id; a task's type, what blocks it and the path of its STATUS.md. There is no
+  Status field: the card's head says it. What the detail column changed is
+  changed in its field, a select as Theme is one, through the same verbs and
+  their guards: **Area** of an inbox item without a task (one of the configured
+  areas, or No area; the owner's only, verb `area`), its **Urgency** (now,
+  today, later, verb `urgency`) and a task's priority (P0 to P3, verb
+  `priority`); none has an undo, as before. **Team** says how far a task's team
+  is (its roles started), starts its next role or a team that fits (verb
+  `team_role`); **Task check** shows the verdict of the last check with its
+  reason, **Keep open** and **Check again** (or **Check** before the first).
+  Neither stands on a person's page. A closed point shows the values as words.
+  There is no Details link and no drawer from a point; each report of the
+  reports card has **Open** beside Seen, which shows that report alone in the
+  same view (Back leads to the card).
+
+**A point's name, stand and step (stage 4).** Every view of Work through names
+a point the same way (logic.js `pointName`): an inbox item by its brief's
+**name**, else its title; a task or stream by its H1 (the row title the server
+sends is the H1 alone), unless the H1 is a slug or longer than 60 characters,
+then by its brief's name. Where the name is another than the title, the title
+stands as **Original title** under Details and in Description's fold. Under the
+name stands where it stands, one sentence: the brief's **stand**, else the
+day's triage gist, else nothing; the AI's suggestion has no line of its own any
+more. The next step is one line: the step, who takes it as a chip (you in the
+warning tone, the Bridge in the info tone, a person plain) and its due day or,
+while it is with someone, the day it asks again. **Description** keeps the goal
+in sight and folds everything else under **What else is stored ▾**: the
+original title, the headline, what it is about, the description as filed, the
+user story (only where its "as" is not the owner), the criteria and the
+sections of STATUS.md.
 
 Before the first state arrives the middle shows the loading or warning block
 Due shows, never "All decided". A click on a tab's name (the tab column, the
@@ -693,24 +744,26 @@ stored) opens Running now. What the badge counted stands here as points already.
 A Bridge without Work through keeps the tab and its page.
 
 **Not now.** At the foot of the left column, every open row that is no point
-and does not run, in four groups and one line: **Later** holds what is put off
-(hidden until a day, put off in the inbox, or due later than the lead time),
-what waits on others (on a person or a run, and an item the Bridge runs on its
-own after your yes; a task whose next step names you, `cockpit.person_name` or
-"me", waits on nobody else and is a point) and what rests (blocked, quiet for
-long, up for parking, a task whose status is unknown), in that order, each row
-with its reason in the column **Why** ("put off until", "waits on", "blocked:",
-"resting since"); **Ideas and backlog** (ideas of the inbox, also one put off
-with the day it comes back, and backlog tasks), **Streams** (they come through
-their inbox items) and **Watching** (issues and pull requests that are not in
-Now, by repository). A watched row that stands on a GitHub list of a page (the
+and does not run here, in four groups and one line, in this order: **Running
+elsewhere** holds what is in progress with someone until its check-in day
+("with <who> · asks on <day>"), what waits on others (on a person or a run, and
+an item the Bridge runs on its own after your yes; a task whose next step names
+you, `cockpit.person_name` or "me", waits on nobody else and is a point) and
+the issues and pull requests watched that are not in Now (each with its
+repository); **Later** holds what is put off (hidden until a day, put off in
+the inbox, or due later than the lead time) and what rests (blocked, quiet for
+long, up for parking, a task whose status is unknown), each row with its reason
+in the column **Why** ("put off until", "blocked:", "resting since"); **Ideas and
+backlog** (ideas of the inbox, also one put off with the day it comes back, and
+backlog tasks) and **Streams** (they come through their inbox items). A watched row that stands on a GitHub list of a page (the
 row's `on_board`) is folded into one quiet line "n on GitHub" (the page's
 title): a click opens that page at that list, and the line counts its rows, so
 the head's sum stays whole. A checkup warning, an application, a follow-up
 point, a row that needs you or one put off never fold. A click on a group shows
-its list in the middle: a box, the title, its kind, when (from or until a day,
-due; in Later, why), its area, and the batch bar with the verbs the group
-offers. A title opens the row in the middle in the one point view, an issue,
+its list in the middle: a box, the name with where it stands (in Running
+elsewhere, else on whom it waits), its next step with who takes it and the day
+it asks again (in Later, why), and the batch bar with the verbs the group
+offers once a row is ticked. A title opens the row in the middle in the one point view, an issue,
 an inbox item or a task alike, with the same tabs, fields and verbs as every
 point: **To the list** leads back to the group, and the walk bar walks the
 group's rows (after a decision the next row moves up; once the group is empty,
@@ -718,10 +771,10 @@ the overview).
 
 | Group | Verbs of its batch bar |
 |---|---|
+| Running elsewhere | Back on (each row by why it waits; a check-in comes back to you), Later, Done, Drop |
 | Later | Back on (each row by why it waits), Later, Done, Drop |
 | Ideas and backlog | Let AI do it, Later, Done, Drop |
 | Streams | Later |
-| Watching | Later, Done, Drop |
 
 **Back on** takes a row up again: a hidden row shows (`unhide`), a deferred
 item opens (`inbox_reopen`), a blocked task runs on (`task_running` clears its
@@ -820,9 +873,9 @@ points that come later are given the themes there are, a new theme only where
 none fits, never more than `max_themes`. The page asks only when the view shows
 points without a theme (each once per page load), and **Order themes again**
 orders every point anew; there is no timer. Where the work tab offers no By
-source, **Sort again** stands beside it in every order of the left column: the
-daily triage asked anew for what changed (below), the button By source carries in
-its strip. Every run counts against
+source, **Sort again** stands beside it in Order ▾ in every order of the left
+column: the daily triage asked anew for what changed (below), the button By
+source carries in its strip. Every run counts against
 `budget_per_day`; once it is spent, what has no theme yet stands under **No
 theme yet** until the next day. A point you move to another theme or a new one,
 and a theme you rename, stay as you set them through every later run. With the
@@ -960,8 +1013,8 @@ until, Drop because and Runs on; any answer forgets the jump. Switching
 to another app and back without To tab never brings it.
 
 **The tabs under the card**, as an issue tracker has them: **Description**
-(the goal, the story and the criteria of the point's brief; its source stands in
-the fields), **Steps** with how many of how many are done (the checklist of
+(the goal of the point's brief in sight, the rest folded under **What else is
+stored ▾**, above; its source stands in the fields), **Steps** with how many of how many are done (the checklist of
 STATUS.md, read only), **Activity** with how many rows it holds, and **Related**
 with how many (the other rows of the same task, the paths STATUS.md names). The
 tab you pick stays from point to point (remembered in this browser); a tab the
@@ -1081,11 +1134,11 @@ writes it with its first letter capital. What the item drawer held stands in the
 under **Details ▾** at the foot of the fields (created and the source stay fields),
 what it is about (the triage's gist, why only you can do it, its reason) and the
 description as filed on top of **Description**, a task's STATUS.md in its sections
-folded under **From the file**, the headline of its file under the title, its
-next step as a box in the card, the item's events as the filter **History** of
+folded under **From the file** (stage 4: under What else is stored, with the
+headline of its file), its next step as a line in the card, the item's events as the filter **History** of
 **Activity**, the task an item belongs to and the paths its STATUS.md names in
 **Related** (each a click into the same view), the star as **Pin** in the card's
-head, Open on GitHub among the verbs. Without Work through (the default of
+head, Open on GitHub in More. Without Work through (the default of
 open-bridge) the item drawer and the file card of the Files tab stay as they
 were, Details under the verbs included.
 
@@ -2488,7 +2541,12 @@ being listed.
 A brief says what an item is for and when it is done: a `goal` (one sentence of
 what is different afterwards), a user `story` {as, want, so_that} when one fits,
 and two to five `acceptance` criteria, checkable outcomes rather than steps (a
-stream has none). Its shape and limits are `card_fields.py`; a task keeps it in
+stream has none). Since stage 4 of the one point view it also carries a `name`,
+what the cockpit calls the item (at most 60 characters and about seven words, in
+the instance's language, never an id, a path or a file name), and a `stand`,
+where it stands now in one sentence (at most 140 characters); Work through shows
+both ([A point's name, stand and step](#work-through-flow)). Its shape and
+limits are `card_fields.py`; a task keeps it in
 the `brief:` block of its STATUS.md (`task.py brief`), an inbox item in its
 `describe` event (`inbox.py describe`).
 
@@ -2551,7 +2609,26 @@ so a file made later in the folder is found.
 describe wrote from an older version (or before there was one) that nobody
 changed counts as stale, so `auto: stale` writes it again within the budget of
 the hour. A person's brief is never rewritten for it. The view's `stale_why`
-says which reason holds: `basis` (the text moved on), `prompt` or `refs`.
+says which reason holds: `basis` (the text moved on), `prompt`, `refs` or
+`fields`. The rules of stage 4 (`PROMPT_VERSION` 3) ask for the name and the
+stand, so every brief describe wrote before them counts as stale (`prompt`),
+and a brief without a name or a stand counts as stale too: describe's own is
+written again, a person's gets one proposal that adds them (`fields`, once per
+text), which the person takes over or drops; the rest of a person's brief stays
+as it is.
+
+**How long a backlog takes.** At the default `budget_per_hour: 20` the pass
+writes at most 20 briefs an hour, one call at a time, a pass every ten minutes:
+a backlog of N briefs without a name and a stand takes about N / 20 hours (100
+items about five hours, 400 about a day), and only with `auto: stale`. With
+`auto: missing` the pass writes only items that have no brief at all; the older
+ones get their name and stand when Work through prepares its next cards
+(`flow.prep_ahead`, within the same budget) or on a click of **Describe again**
+(More ▾). There is no one-shot verb. For one run through the backlog, raise
+`budget_per_hour` for that time (for 100 items, `100`, at about $0.002 a call
+near $0.20) with `auto: stale`, restart the server and set it back afterwards;
+the calls still go one at a time, so the pace is then how long each call takes
+(a call at `medium` thinks for some seconds).
 
 "Describe" on a card (`describe_run {key}`) asks for one item now; it counts
 against the budget but is never refused. The Work through page writes the
@@ -4127,6 +4204,49 @@ info drawer no longer opens for them. The Details fold no longer lists an inbox
 item's urgency: it is the field Urgency. The server is unchanged: every field
 and button sends the verb the detail column sent. Without Work through the
 detail column and the item drawer stay as they were.
+
+### Upgrading: a simpler point view
+
+Nothing has to be done by hand, and the page changes only with
+`cockpit.flow.enabled: true`. With it a point has fewer buttons and less text
+([Work through](#work-through-flow)): one strong button that applies the AI's
+suggestion, the four states (Done, In progress, Later, Drop) in a quiet 2x2,
+every other verb in **More ▾**; four fields on top (Theme, Area, Who, Due) and
+the rest under **Details ▾**; the AI's suggestion as a line of its own and the
+overview's suggestion column are gone (the strong button carries its reason on
+hover, the hint line ticks the suggestions); the overview bands by who takes
+the next step (Check-in, Needs you, The Bridge does), and its batch bar stands
+only once a row is ticked; the left column's buttons are one menu **Order ▾**;
+Not now's **Watching** is part of **Running elsewhere**, which holds what is in
+progress with someone and what waits on others, and Later holds what is put off
+and what rests.
+
+What changes besides:
+
+1. **Task titles.** A task's or stream's row title is its H1 alone again (the
+   briefing composed "H1: what it is about" before); its next step stays apart
+   in the row's why ([Briefing profiles](briefings.md)).
+2. **Briefs.** A brief carries a `name` and a `stand`, and the rules are
+   version 3: with `cockpit.describe.auto: stale` the briefs describe wrote are
+   written again within the budget of the hour, a person's brief without them
+   gets one proposal ([How long a backlog takes](#each-items-brief)). Older
+   briefs read as before; a page or a tool that does not read the two fields is
+   not affected. Both schemas (`_schema.status.yaml`, `_schema.inbox-item.yaml`)
+   name them.
+3. **In progress with someone.** New owner verbs `work_on` (an inbox item put off
+   until a day as a check-in, a task's next step to someone until that day,
+   any other row hidden until it, each with an undo), `task_next` (who and the
+   check-in day of a task's step) and `checkin_stuck` (back to the owner, the
+   reason as a note). A row carries `checkin` ({who, until, since}) and the card's
+   `next` carries `check`. `inbox.py defer` takes `--check` (the defer is a
+   check-in; `--on` names who has it), `task.py next` takes `--who`, `--check`
+   and `--clear-check`, and STATUS.md's `next:` block may carry `check:`
+   ([`docs/inbox.md`](inbox.md)). An older page ignores them.
+4. **Titles that read.** `inbox.py add` warns, never refuses, on a title over 80
+   characters, a path, a file name, an id or English words in a German Bridge.
+5. **Not built yet.** The Bridge looking for itself before a check-in comes up
+   (`cockpit.flow.checkin`, a model reading the item's trail and saying what it
+   found on the card) is not part of this version; a check-in asks you.
 
 ### Upgrading: settled rows in git
 
