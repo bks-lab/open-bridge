@@ -368,6 +368,16 @@ export function ghSortRows(rows, by) {
     : (by === 'priority' ? prioRank(a.gh?.priority) - prioRank(b.gh?.priority) : 0) || state(a) - state(b) || at(b).localeCompare(at(a)))
 }
 
+/** Where a row opened beside the GitHub list stands in that list's walk (the rows as the list showed them when it was
+ *  clicked, views/github.js GitHubList): its place, how many, the one before and the ones after; null when the row is
+ *  not in it (it changed or left) */
+export function ghWalkAt(walk, it) {
+  if (!it || !Array.isArray(walk)) return null
+  const i = walk.findIndex(x => x?.index === it.index && x?.title === it.title)
+  if (i < 0) return null
+  return { pos: i + 1, total: walk.length, prev: walk[i - 1] ?? null, next: walk.slice(i + 1) }
+}
+
 // the GitHub page's filter bar (round 6c, views/github.js): Board, Assigned to, Opened by (round 6d: the one Person
 // split in two), Repository, Kind and Board status, one choice each, combined with the figure picked; GH_ME stands
 // for you, GH_NONE for no board and for nobody assigned

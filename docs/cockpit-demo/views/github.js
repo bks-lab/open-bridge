@@ -7,7 +7,7 @@
 // Everything here reads; a row has one start, its lead step with the other steps under ▾ (row_action, an agent tab)
 // and Close beside it; a board's switch is the person's own choice, made in the settings, which list every board with
 // the mode a new one starts with (github_board, github_board_default).
-import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { T } from '../text.js'
 import { Prose } from './prose.js'
 import { Btn, Chip, Icon, PrioChip, Spinner, StateLine } from './parts.js'
@@ -152,7 +152,7 @@ export function GitHubDetail({ gref: id, c }) {
   const [st, setSt] = useState({ status: 'loading', data: null })
   const load = fresh => {
     setSt(x => ({ status: 'loading', data: x.data }))
-    c.github(id, fresh).then(res => setSt(res.ok ? { status: 'ok', data: res.data } : { status: 'error', error: res.error, data: null }))
+    Promise.resolve(c.github?.(id, fresh)).then(res => setSt(res?.ok ? { status: 'ok', data: res.data } : { status: 'error', error: res?.error, data: null }))
   }
   useEffect(() => { load(false) }, [id])
   const d = st.data
@@ -298,7 +298,13 @@ function RowPerson({ login, me, dim, pick }) {
     onClick=${e => { e.stopPropagation(); pick(dim, mine ? GH_ME : login) }}>${word}</button>` : html`<span class="gh-person mono">${word}</span>`
 }
 
-function GhRow({ it, page, section, s, c, byKey, grouped = true, me = null, pick = null }) {
+/** Whether `it` of this section is the row open beside the list (app.js openInfo with beside) */
+const besideIs = (s, page, section, it) => {
+  const info = s?.ui?.info
+  return !!info?.beside && info.page === page && info.section === section && info.it?.index === it.index && info.it?.title === it.title
+}
+
+function GhRow({ it, page, section, s, c, byKey, grouped = true, me = null, pick = null, walk = null }) {
   const t = T()
   const g = it.gh ?? {}
   const labels = g.labels ?? []
@@ -309,9 +315,15 @@ function GhRow({ it, page, section, s, c, byKey, grouped = true, me = null, pick
   const found = (pageItemActs(it) || it.inbox || (it.task && byKey.has(`task:${it.task}`))) ? actionRow(it, byKey) : null
   // the row the close door acts on, with the agent tab the page item names
   const settleRow = found && it.tab && !found.tab ? { ...found, tab: { ref: it.tab.ref, state: it.tab.state, live: it.tab.live ?? it.tab.state !== 'shell' } } : found
-  const open = () => c.openInfo(it, page, section)
+  // beside the list, never over it or in Work through: the list stays on the left, the next row one click away
+  const open = () => c.openInfo(it, page, section, { beside: true, walk })
+  const current = besideIs(s, page, section, it)
+  const ref = useRef(null)
+  // a walk with back, next, n or p brings the row it reaches into view in the list
+  useEffect(() => { if (current) ref.current?.scrollIntoView?.({ block: 'nearest' }) }, [current])
   const repoName = g.repo ? g.repo.split('/').pop() : ''
-  return html`<li class=${`ghl-row${g.quiet ? ' is-quiet' : ''}`} tabindex="0"
+  return html`<li ref=${ref} class=${`ghl-row${g.quiet ? ' is-quiet' : ''}${current ? ' is-current' : ''}`} tabindex="0"
+    aria-current=${current ? 'true' : undefined}
     onClick=${e => { if (rowClickOpens(e)) open() }}
     onKeyDown=${e => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); open() } }}>
     <${TypeIcon} type=${g.type} token=${token} />
@@ -398,6 +410,9 @@ export function GitHubList({ items, page, section, s, c, byKey, filter = null, s
     setFolded(next)
     keepFolded(next)
   }
+  const groupRows = new Map(groups.map(g => [g, ghSortRows(shown.filter(it => (it.group ?? '') === g), by)]))
+  // the walk a row opened beside the list takes: the rows in the order shown, a folded board's left out
+  const walk = grouped ? groups.filter(g => !folded.has(g)).flatMap(g => groupRows.get(g)) : ghSortRows(shown, by)
   const allFolded = groups.length > 0 && groups.every(g => folded.has(g))
   const foldAll = () => {
     const next = allFolded ? new Set() : new Set(groups)
@@ -415,9 +430,9 @@ export function GitHubList({ items, page, section, s, c, byKey, filter = null, s
       <${Btn} size="xs" variant="ghost" cls="ghl-group-toggle" pressed=${grouped} onClick=${() => c.setGhGroup(!grouped)}>${t.gh.groupByBoard}<//>
       ${grouped && groups.length > 1 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${foldAll}>${allFolded ? t.gh.unfoldAll : t.gh.foldAll}<//>` : null}
     </div>
-    ${!shown.length ? html`<p class="muted">${t.filterNone}</p>` : !grouped ? html`<ul class="ghl-rows">${ghSortRows(shown, by).map(it => html`<${GhRow}
-      key=${it.index} it=${it} page=${page} section=${section.id} s=${s} c=${c} byKey=${byKey} grouped=${false} me=${me} pick=${pick} />`)}</ul>` : groups.map(g => {
-      const rows = ghSortRows(shown.filter(it => (it.group ?? '') === g), by)
+    ${!shown.length ? html`<p class="muted">${t.filterNone}</p>` : !grouped ? html`<ul class="ghl-rows">${walk.map(it => html`<${GhRow}
+      key=${it.index} it=${it} page=${page} section=${section.id} s=${s} c=${c} byKey=${byKey} grouped=${false} me=${me} pick=${pick} walk=${walk} />`)}</ul>` : groups.map(g => {
+      const rows = groupRows.get(g)
       const isFolded = folded.has(g)
       const counts = rows.reduce((n, it) => ({ ...n, [it.gh?.state ?? 'new']: (n[it.gh?.state ?? 'new'] ?? 0) + 1 }), {})
       const board = (section.boards ?? []).find(b => b.name === g && b.mode !== 'off')
@@ -431,7 +446,7 @@ export function GitHubList({ items, page, section, s, c, byKey, filter = null, s
         </button>
         ${board ? html`<${BoardFacts} b=${board} />` : null}
         ${isFolded ? null : html`<ul class="ghl-rows">${rows.map(it => html`<${GhRow} key=${it.index} it=${it} page=${page}
-          section=${section.id} s=${s} c=${c} byKey=${byKey} me=${me} pick=${pick} />`)}</ul>`}
+          section=${section.id} s=${s} c=${c} byKey=${byKey} me=${me} pick=${pick} walk=${walk} />`)}</ul>`}
       </section>`
     })}
   </div>`

@@ -294,7 +294,7 @@ test('the controller: openItem, openFile, openInfo and select open the one point
   assert.match(file, /pointViewOn\(/)
   assert.match(file, /openPoint\(/)
   assert.match(file, /fileClick\(/, 'the Files tab and the fallback keep their way')
-  const info = method('openInfo(it, page, section) {')
+  const info = method('openInfo(it, page, section')
   assert.match(info, /pointViewOn\(/)
   assert.match(info, /infoPoint\(/, 'only a page item that stands on the page as a row opens as a point')
   const point = method('openPoint(key')
@@ -762,20 +762,19 @@ test('nextWho: who takes a next step in words: you and the Bridge by the card\'s
   assert.doesNotMatch(el.$('.flow-card .flow-step').text(), /lena/)
 })
 
-test('a GitHub issue says what it says on GitHub under Description, read only once its fold is opened', async () => {
+test('a GitHub issue says what it says on GitHub under Description, read from GitHub as soon as the point opens', async () => {
   const issue = ref('acme/app', 7, { origin: { category: 'github', detail: 'acme/app', raw: null, ref: 'acme/app#7' } })
   const calls = []
   const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined
     : (...a) => { calls.push([p, ...a]); return p === 'github' ? Promise.resolve({ ok: false, error: { message: 'offline' } }) : undefined }) })
   const el = mount(html`<${FlowPage} s=${flowState({ now: [issue], ui: pointAt(issue.key) })} c=${c} />`)
-  const fold = el.$('.flow-desc .flow-gh-toggle')
-  assert.equal(fold.text().trim(), `${en.flow.one.onGitHub} ▾`)
-  assert.ok(!calls.some(x => x[0] === 'github'), 'nothing is read on the way')
-  fold.click()
+  assert.equal(el.$('.flow-gh-toggle'), null, 'no fold to open first')
+  assert.equal(el.$('.flow-desc .flow-gh .label-caps').text().trim(), en.flow.one.onGitHub)
+  assert.ok(!el.$('.flow-stored .flow-gh'), 'not folded under More')
   await until(() => calls.some(x => x[0] === 'github'))
   assert.deepEqual(calls.find(x => x[0] === 'github'), ['github', 'acme/app#7', false])
   // a task or an inbox item has none
   const t = mount(html`<${FlowPage} s=${flowState({ work: [task('a')], ui: pointAt('task:a') })} c=${recorder()} />`)
-  assert.equal(t.$('.flow-gh-toggle'), null)
+  assert.equal(t.$('.flow-gh'), null)
   assert.equal(de.flow.one.onGitHub, 'Was auf GitHub steht')
 })

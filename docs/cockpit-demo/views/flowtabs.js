@@ -89,14 +89,13 @@ function Asked({ start, events }) {
 }
 
 /** What a GitHub issue or pull request says and who is on it (the info drawer's, views/github.js GitHubDetail), read
- *  from GitHub only once it is opened: a walk over issues asks nothing on its way */
+ *  from GitHub as soon as the point opens, as the info drawer read it (kept ten minutes on the server) */
 function GitHubFold({ gref, c }) {
   const f = T().flow.one
-  const [open, setOpen] = useState(false)
-  return html`<div class="flow-gh">
-    <button type="button" class="btn-link flow-gh-toggle" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>${f.onGitHub} ${open ? '▴' : '▾'}</button>
-    ${open ? html`<${GitHubDetail} gref=${gref} c=${c} />` : null}
-  </div>`
+  return html`<section class="flow-gh">
+    <h3 class="label-caps">${f.onGitHub}</h3>
+    <${GitHubDetail} gref=${gref} c=${c} />
+  </section>`
 }
 
 /** Whether a user story is the owner's own ("as the operator of this tracker", "as myself"): its `as` names the owner
@@ -127,17 +126,17 @@ function DescPane({ row, detail, entry, item, itemCard = null, start = null, eve
     const headline = detail?.front?.headline ?? null
     const about = pointAbout(row, s, item)
     const story = card?.story && !ownerStory(card.story.as, s)
-    const stored = !!(original || headline || about || gh || story || (card?.acceptance ?? []).length || (own && (detail?.sections ?? []).length))
+    const stored = !!(original || headline || about || story || (card?.acceptance ?? []).length || (own && (detail?.sections ?? []).length))
     return html`<div class="flow-desc">
       ${start ? html`<${Asked} start=${start} events=${events} />` : null}
       ${card ? html`<${ItemCard} card=${card} d=${d} dkey=${row.key} s=${s} c=${c} skip=${[...DESC_SKIP, 'summary', 'story', 'acceptance']} cls="flow-card-brief" />` : null}
-      ${card?.goal || stored || (start && !loading) ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
+      ${card?.goal || stored || gh || (start && !loading) ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
+      ${gh ? html`<${GitHubFold} key=${row.ref} gref=${row.ref} c=${c} />` : null}
       ${stored ? html`<details class="flow-stored"><summary>${w.more2}</summary>
         ${original || headline ? html`<dl class="meta flow-meta">
           ${original ? html`<div class="meta-item"><dt>${w.original}</dt><dd>${original}</dd></div>` : null}
           ${headline ? html`<div class="meta-item"><dt>${w.headline}</dt><dd>${headline}</dd></div>` : null}</dl>` : null}
         <${About} about=${about} />
-        ${gh ? html`<${GitHubFold} key=${row.ref} gref=${row.ref} c=${c} />` : null}
         ${card && (story || (card.acceptance ?? []).length) ? html`<${ItemCard} card=${story ? card : { ...card, story: null }} d=${null} dkey=${null} s=${s} c=${null}
           skip=${[...DESC_SKIP, 'summary', 'goal', 'describe']} cls="flow-card-brief" />` : null}
         ${own ? html`<${Sections} sections=${detail?.sections} />` : null}

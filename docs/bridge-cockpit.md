@@ -1130,6 +1130,15 @@ or a settled item read from its file and read only). A page item that is no row
 (a gauge, a date, a machine) keeps its info drawer. The Files tab shows the same view for a record ([The Files
 tab](#the-files-tab)).
 
+One place keeps its own way: a row of the **GitHub list** opens beside the list,
+never in Work through and never over the list. The list keeps the left half and
+marks the open row; the right half shows the row's steps and what GitHub says
+(read as it opens). A click on another row on the left switches the right, the
+bar at its foot walks the list as it is shown (search, order, the boards
+unfolded) with **Back** and **Next** (and `n` / `p` with the shortcuts on),
+Escape or the cross gives the room back to the list. On a phone the row takes
+the screen and the switch above leads back to the list.
+
 Every way to a row means every way, also those that opened the detail column
 beside a page: a title of the task check, a task row on a page, a row of the
 start page that is no inbox item nor task (an issue, a pull request, a
@@ -1139,8 +1148,8 @@ leads back to where it stood (the task check, the page, the start page, Due),
 whichever group of Work through the row stands in. What the detail column held
 besides stands in the view too: **Why it is here** (the briefing's reasons) and
 the lines its page writes of its task on top of **Description**, a GitHub
-issue's or pull request's text and people under **What it says on GitHub ▾**
-there (read only once it is opened), the steps a row has on its page (an
+issue's or pull request's text and people under **What it says on GitHub**
+there (read from GitHub as soon as the point opens), the steps a row has on its page (an
 application's) in **Steps**, each a button of two clicks as on the page (a
 GitHub row's of one), the asks the briefing folded into a row under **Related**
 (**Asked about it**, each a click into the same view) and the sessions linked to

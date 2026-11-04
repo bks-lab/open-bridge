@@ -19,7 +19,7 @@ import {
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn,
-  pointBack, pointList,
+  pointBack, pointList, ghWalkAt,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -950,7 +950,7 @@ const ctl = {
     // detail beside the page, Work through being off here
     if (workViewIn({ ...s, ui: { ...s.ui, page: 'briefing' } }) !== 'due') return ctl.peek(key, null)
     setUi({ selectedKey: key, focusKey: key, pageDetail: false, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
-    if (s.ui.page !== 'briefing') setUi({ page: 'briefing' })
+    if (s.ui.page !== 'briefing') setUi({ page: 'briefing', info: s.ui.info?.beside ? null : s.ui.info })
     if (s.layout === 'narrow') requestAnimationFrame(() => window.scrollTo(0, 0))
     else requestAnimationFrame(() => document.querySelector('.detail-scroll')?.scrollTo?.(0, 0))
   },
@@ -1034,15 +1034,27 @@ const ctl = {
   // any other page item (a table row, a resource tile, a gauge): its detail in a drawer. Where Work through is on, an
   // item that stands on its page as a row (an application, an issue) opens as its point (stage 1, logic.js infoPoint);
   // one that is no row (a gauge, a date, a machine) keeps its drawer. A point's own steps stand in its Steps tab
-  // (stage 3), so no way opens this drawer for them any more
-  openInfo(it, page, section) {
+  // (stage 3), so no way opens this drawer for them any more. A row of the GitHub list (`beside`, views/github.js)
+  // opens in a column beside its list instead, never as a point and never over the list: the list stays on the left
+  // to click the next row, `walk` the rows as the list showed them for back, next, n and p (logic.js ghWalkAt)
+  openInfo(it, page, section, { beside = false, walk = null } = {}) {
     const s = store.get()
+    if (beside) {
+      setUi({ drawer: null, item: null, pageDetail: false, selectedKey: null, queue: null,
+        info: { it, page, section, beside: true, on: s.ui.page, walk }, pane: s.layout === 'narrow' ? 'detail' : s.ui.pane })
+      requestAnimationFrame(() => {
+        if (s.layout === 'narrow') window.scrollTo(0, 0)
+        else document.querySelector('.col-detail .detail-scroll')?.scrollTo?.(0, 0)
+      })
+      return
+    }
     const key = pointViewOn(s) ? infoPoint(s, it) : null
     if (key) return ctl.openPoint(key)
     setUi({ drawer: 'info', info: { it, page, section } })
   },
   closeInfo() {
-    setUi({ drawer: null, info: null })
+    // the column beside the GitHub list gives its room back to the list (on a phone: back to the list)
+    setUi(ui => ({ drawer: null, info: null, pane: ui.info?.beside ? 'day' : ui.pane }))
   },
   closePeek() {
     setUi({ pageDetail: false, selectedKey: null, queue: null, pane: 'day' })
@@ -1096,7 +1108,8 @@ const ctl = {
     save('bridge-cockpit.page', id)
     // a page with the tab column beside it closes the tab drawer a folded page opened
     const drawer = s.layout === 'wide' && railShown(id, s.rooms?.layout, s.ui.railHidden) && s.ui.drawer === 'tabs' ? null : s.ui.drawer
-    setUi({ page: id, pageDetail: false, queue: null, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null })
+    setUi({ page: id, pageDetail: false, queue: null, drawer, pane: s.layout === 'narrow' ? 'day' : s.ui.pane, workersFilter: null,
+      info: s.ui.info?.beside ? null : s.ui.info })
     pageSeen(id)
   },
   // the task check: on the page where inbox and tasks stand together (its tasks label chosen), else its own tab,
@@ -1760,7 +1773,7 @@ const ctl = {
     setTimeout(() => document.getElementById('quick-input')?.focus(), 0)
   },
   // the chat as a tab of its own: the open conversation goes along, the window closes
-  chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi({ page: CHAT_PAGE, tabView: null, pageDetail: false }) },
+  chatAsTab: () => { save('bridge-cockpit.page', CHAT_PAGE); setUi(ui => ({ page: CHAT_PAGE, tabView: null, pageDetail: false, info: ui.info?.beside ? null : ui.info })) },
   pickQuick: conv => setUi({ quickConv: conv }),
   // "all" under the questions: every one of the last days, the archived ones read once from the server
   showAllAsks: on => {
@@ -2101,6 +2114,7 @@ function onKey(e) {
     if (s.ui.tabView) return setUi({ tabView: null })
     if (s.ui.drawer) return setUi({ drawer: null, item: null, queue: s.ui.pageDetail ? s.ui.queue : null })
     if (s.ui.pageDetail && !isTypingTarget(e.target)) return ctl.closePeek()
+    if (s.ui.info?.beside && s.ui.info.on === s.ui.page && !isTypingTarget(e.target)) return ctl.closeInfo()
     // with nothing open over it, Escape on Work, Chat or Sessions closes an open row or the picks first,
     // then lifts the area filter
     const step = isTypingTarget(e.target) ? null : escapeStep(s.ui)
@@ -2156,6 +2170,13 @@ function onKey(e) {
     gPending = true
     gTimer = setTimeout(() => { gPending = false }, 1500)
     return
+  }
+  // n / p beside the GitHub list: the list's walk, as the column's bar walks it
+  if ((key === 'n' || key === 'p') && s.ui.info?.beside && s.ui.info.on === s.ui.page && !s.ui.drawer && s.ui.info.walk?.length) {
+    const v = ghWalkAt(s.ui.info.walk, s.ui.info.it)
+    const to = key === 'n' ? v?.next[0] : v?.prev
+    e.preventDefault()
+    return to ? ctl.openInfo(to, s.ui.info.page, s.ui.info.section, { beside: true, walk: s.ui.info.walk }) : undefined
   }
   // n / p in a detail opened from a list (beside the page or in the item drawer): walk that list
   // (the Today list walks its own rows: a row picked there is open in the center)
