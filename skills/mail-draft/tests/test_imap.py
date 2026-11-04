@@ -39,6 +39,10 @@ class FakeServer:
         self.logins: list[tuple[str, str]] = []
         self.connections = 0
         self.drop_appends = False                    # a server that answers OK and keeps nothing
+        self.literal_names = False                   # LIST answers names as literals, like some servers
+        self.hidden_searches = 0                     # searches that miss a fresh message (late index)
+        self.searches = 0
+        self.rewrite = None                          # bytes -> bytes, what the server keeps
 
     def connect(self, host, port):
         self.connections += 1
@@ -56,6 +60,7 @@ class FakeConnection:
 
     def login(self, user, password):
         self.server.logins.append((user, password))
+        password.encode("ascii")                     # imaplib sends commands as ASCII
         if password != self.server.password:
             raise imaplib.IMAP4.error("[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
         return "OK", [b"logged in"]
@@ -64,7 +69,12 @@ class FakeConnection:
         lines = []
         for name in self.server.folders:
             flag = self.server.flags.get(name, "")
-            lines.append(f'({flag} \\HasNoChildren) "/" "{name}"'.replace("( ", "(").encode())
+            head = f'({flag} \\HasNoChildren) "/" '.replace("( ", "(")
+            if self.server.literal_names:
+                lines.append(((head + "{" + str(len(name)) + "}").encode(), name.encode()))
+                lines.append(b"")
+            else:
+                lines.append(f'{head}"{name}"'.encode())
         return "OK", lines
 
     def append(self, mailbox, flags, date_time, message):
@@ -73,7 +83,8 @@ class FakeConnection:
         if name not in self.server.folders:
             return "NO", [b"[TRYCREATE] no such folder"]
         if not self.server.drop_appends:
-            self.server.folders[name].append(bytes(message))
+            kept = bytes(message)
+            self.server.folders[name].append(self.server.rewrite(kept) if self.server.rewrite else kept)
         return "OK", [b"[APPENDUID 1 7] (Success)"]
 
     def select(self, mailbox, readonly=False):
@@ -86,6 +97,9 @@ class FakeConnection:
     def search(self, charset, *criteria):
         assert criteria[:2] == ("HEADER", "Message-ID"), criteria
         wanted = criteria[2].strip('"')
+        self.server.searches += 1
+        if self.server.searches <= self.server.hidden_searches:
+            return "OK", [b""]
         hits = [str(i + 1) for i, raw in enumerate(self.server.folders[self.selected])
                 if message_from_bytes(raw, policy=policy.default)["Message-ID"] == wanted]
         return "OK", [" ".join(hits).encode()]
@@ -201,7 +215,7 @@ class Handoff(BridgeCase):
         d = self.build(to=["acme/anna"], attachments=[str(self.root / "cv.pdf")], **kw)
         self.assertEqual(d.errors, [])
         return d, imap.handoff(d, self.root / ".handoff", cfg=self.cfg(),
-                               connect=self.server.connect, password=password)
+                               connect=self.server.connect, password=password, sleep=lambda s: None)
 
     def stored(self):
         return [message_from_bytes(raw, policy=policy.default) for raw in self.server.folders["[Mail]/Drafts"]]
@@ -309,3 +323,97 @@ class Cli(BridgeCase):
         self.assertIn("host", problems)
         self.assertIn("password_ref", problems)
         self.assertNotIn("plain-value", problems)
+
+
+class Hardening(BridgeCase):
+    """What real servers and real networks do that a first fake did not."""
+
+    def setUp(self):
+        super().setUp()
+        self.write("bridge-config.yaml", ACCOUNT.format(use_on="all"))
+        self.server = FakeServer()
+
+    def handoff(self, password="right", **kw):
+        from engine.clients import imap
+        d = self.build(to=["acme/anna"], attachments=[str(self.root / "cv.pdf")], **kw)
+        self.assertEqual(d.errors, [])
+        return d, imap.handoff(d, self.root / ".handoff", cfg=self.cfg(), connect=self.server.connect,
+                               password=password, sleep=lambda s: None)
+
+    def test_the_connection_verifies_the_server_certificate(self):
+        import ssl
+        from engine.clients import imap
+        with mock.patch("imaplib.IMAP4_SSL") as ctor:
+            imap._connect("imap.example.com", 993)
+        context = ctor.call_args.kwargs.get("ssl_context")
+        self.assertIsNotNone(context, "without a context imaplib checks no certificate at all")
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
+    def test_folder_names_given_as_literals_are_read(self):
+        self.server.literal_names = True
+        _, result = self.handoff()
+        self.assertTrue(result.ok, result.detail)
+
+    def test_a_drafts_folder_that_cannot_be_selected_is_skipped(self):
+        self.server.flags = {"[Mail]/Drafts": "\\Drafts \\Noselect"}
+        _, result = self.handoff()
+        self.assertFalse(result.ok)
+        self.assertEqual(self.server.appended, [])
+
+    def test_a_configured_folder_with_umlauts_travels_as_modified_utf7(self):
+        self.server.folders["Entw&APw-rfe"] = []
+        self.write("bridge-config.yaml", ACCOUNT.format(use_on="all") + "      drafts_folder: Entwürfe\n")
+        _, result = self.handoff()
+        self.assertTrue(result.ok, result.detail)
+        self.assertEqual(self.server.appended[0][0], '"Entw&APw-rfe"')
+
+    def test_a_late_index_is_waited_for(self):
+        self.server.hidden_searches = 2
+        _, result = self.handoff()
+        self.assertTrue(result.verified, result.detail)
+        self.assertEqual(len(self.server.folders["[Mail]/Drafts"]), 1)
+
+    def test_a_draft_that_never_shows_says_to_look_before_trying_again(self):
+        self.server.hidden_searches = 99
+        _, result = self.handoff()
+        self.assertFalse(result.ok)
+        self.assertIn("before running again", result.detail)
+
+    def test_a_password_imap_cannot_carry_is_a_reason_not_a_traceback(self):
+        self.server.password = "pässwort"
+        _, result = self.handoff(password="pässwort")
+        self.assertFalse(result.ok)
+        self.assertNotIn("pässwort", result.detail)
+        self.assertNotIn("ä", result.detail)
+
+    def test_a_dropped_cc_is_not_a_draft(self):
+        def drop_cc(raw):
+            return re.sub(rb"(?m)^Cc: .*\r?\n", b"", raw)
+        self.server.rewrite = drop_cc
+        _, result = self.handoff(cc=["sam@example.org"])
+        self.assertFalse(result.ok)
+        self.assertIn("cc", result.detail)
+
+    def test_a_refolded_subject_is_still_the_draft(self):
+        def refold(raw):
+            return re.sub(rb"(?m)^Subject: (.*)$", rb"Subject:  \1 ", raw, count=1)
+        self.server.rewrite = refold
+        _, result = self.handoff()
+        self.assertTrue(result.verified, result.detail)
+
+
+class MachineNamesExact(BridgeCase):
+    """A name matches a remote exactly, `.local` aside; a shared first label is no match."""
+
+    def names(self, hostname, local=""):
+        from engine.clients import imap
+        return imap.machine_names(self.root, hostname=hostname, local_hostname=local, env={})
+
+    def test_dot_local_is_the_same_machine(self):
+        self.write("infra/remotes/always-on.yaml", "hostname: Box\n")
+        self.assertIn("always-on", self.names("Box.local"))
+
+    def test_a_shared_first_label_is_another_machine(self):
+        self.write("infra/remotes/office.yaml", "hostname: mini.corp.example\n")
+        self.assertNotIn("office", self.names("mini.local", "mini"))

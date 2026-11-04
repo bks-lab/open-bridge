@@ -22,12 +22,15 @@ outgoing mail server and has no code path to one.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import imaplib
 import importlib
 import importlib.util
 import os
 import re
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -38,6 +41,9 @@ from pathlib import Path
 from . import Handoff
 
 TIMEOUT = 30
+#: Searches before a stored draft counts as missing: some servers index a
+#: fresh message a moment after they answered OK.
+READ_BACK_ATTEMPTS = 4
 #: A reference names a store and an entry; a value has no scheme.
 REFERENCE = re.compile(r"^[a-z][a-z0-9+.-]*://\S+$")
 LIST_LINE = re.compile(r'^\((?P<flags>[^)]*)\)\s+(?P<delim>"[^"]*"|NIL)\s+(?P<name>.+)$')
@@ -109,12 +115,7 @@ def machine_names(root: Path, *, hostname: str | None = None, local_hostname: st
     raw = str(env.get("BRIDGE_MACHINE") or "").split(",")
     raw.append(socket.gethostname() if hostname is None else hostname)
     raw.append(_local_hostname() if local_hostname is None else local_hostname)
-    names = set()
-    for name in raw:
-        name = name.strip().lower()
-        if name:
-            names.add(name)
-            names.add(name.split(".")[0])
+    names = {_host(name) for name in raw} - {""}
     remotes = root / "infra" / "remotes"
     if remotes.is_dir():
         from ..config import ConfigError, load_yaml
@@ -125,10 +126,20 @@ def machine_names(root: Path, *, hostname: str | None = None, local_hostname: st
                 data = load_yaml(path)
             except ConfigError:
                 continue
-            host = str((data or {}).get("hostname") or "").strip().lower() if isinstance(data, dict) else ""
-            if host and (host in names or host.split(".")[0] in names):
+            host = _host(str(data.get("hostname") or "")) if isinstance(data, dict) else ""
+            if host and host in names:
                 names.add(path.stem.lower())
     return names
+
+
+def _host(name: str) -> str:
+    """A host name to compare: lower case, `Box.local` and `Box` the same, nothing else shortened.
+
+    Cutting every name at its first dot made `mini.corp.example` and `mini.local`
+    one machine; only the mDNS suffix is the same machine by definition.
+    """
+    name = name.strip().lower().rstrip(".")
+    return name[: -len(".local")] if name.endswith(".local") else name
 
 
 def routed(cfg, sender: str, names: set[str] | None = None) -> tuple[dict, str] | None:
@@ -157,7 +168,7 @@ def _password(root: Path, ref: str) -> str:
     if not (engine_dir / "__init__.py").is_file():
         raise ConfigError("password_ref needs the secrets skill (skills/secrets) to resolve, "
                           f"and this Bridge has none at {engine_dir}")
-    pkg = "_mail_draft_secrets_engine"
+    pkg = "_mail_draft_secrets_" + hashlib.sha256(str(engine_dir.resolve()).encode()).hexdigest()[:12]
     if pkg not in sys.modules:
         spec = importlib.util.spec_from_file_location(pkg, engine_dir / "__init__.py",
                                                       submodule_search_locations=[str(engine_dir)])
@@ -169,7 +180,7 @@ def _password(root: Path, ref: str) -> str:
     resolve = importlib.import_module(f"{pkg}.resolve")
     errors = importlib.import_module(f"{pkg}.errors")
     try:
-        return resolve.Resolver(resolve.Options(root=str(root))).require(ref).expose_text().strip()
+        return resolve.Resolver(resolve.Options(root=str(root))).require(ref).expose_text()
     except errors.SecretsError as err:
         raise ConfigError(f"password_ref {ref}: {err}") from None
 
@@ -177,11 +188,38 @@ def _password(root: Path, ref: str) -> str:
 # -- the server --------------------------------------------------------------
 
 def _connect(host: str, port: int):
-    return imaplib.IMAP4_SSL(host, port, timeout=TIMEOUT)
+    # Without a context imaplib builds one that checks neither the certificate
+    # nor the host name, and the login sends the password to whoever answers.
+    return imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=TIMEOUT)
 
 
 def _quote(mailbox: str) -> str:
     return '"' + mailbox.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _utf7(name: str) -> str:
+    """A configured folder name as IMAP spells it (RFC 3501 modified UTF-7).
+
+    A name in plain ASCII is taken as the server lists it and left alone, so a
+    name copied from a LIST answer (`Entw&APw-rfe`) still works.
+    """
+    if all(0x20 <= ord(c) <= 0x7E for c in name):
+        return name
+    out, run = [], []
+
+    def flush():
+        if run:
+            packed = base64.b64encode("".join(run).encode("utf-16-be")).decode("ascii")
+            out.append("&" + packed.rstrip("=").replace("/", ",") + "-")
+            run.clear()
+    for c in name:
+        if 0x20 <= ord(c) <= 0x7E:
+            flush()
+            out.append("&-" if c == "&" else c)
+        else:
+            run.append(c)
+    flush()
+    return "".join(out)
 
 
 def _unquote(name: str) -> str:
@@ -197,9 +235,18 @@ def _drafts_folder(conn) -> str:
     if typ != "OK":
         return ""
     for line in lines or []:
+        literal = None
+        if isinstance(line, tuple) and len(line) == 2:
+            # A name sent as a literal: (b'(\\Drafts) "/" {6}', b'Drafts').
+            line, literal = line
         text = line.decode("utf-8", "replace") if isinstance(line, bytes) else str(line)
         m = LIST_LINE.match(text)
-        if m and "\\drafts" in m.group("flags").lower().split():
+        if not m:
+            continue
+        flags = m.group("flags").lower().split()
+        if "\\drafts" in flags and "\\noselect" not in flags:
+            if literal is not None:
+                return literal.decode("utf-8", "replace") if isinstance(literal, bytes) else str(literal)
             return _unquote(m.group("name"))
     return ""
 
@@ -211,16 +258,23 @@ def _logout(conn) -> None:
         pass
 
 
-def _read_back(connect, host, port, user, password, folder, message_id):
+def _read_back(connect, host, port, user, password, folder, message_id, sleep):
     """The stored message, fetched from a fresh connection, or None."""
     conn = connect(host, port)
     try:
         conn.login(user, password)
-        typ, _ = conn.select(_quote(folder), readonly=True)
-        if typ != "OK":
-            return None
-        typ, data = conn.search(None, "HEADER", "Message-ID", _quote(message_id))
-        numbers = (data[0] or b"").split() if typ == "OK" and data else []
+        numbers = []
+        for attempt in range(READ_BACK_ATTEMPTS):
+            if attempt:
+                sleep(1.5)
+            # Selecting again is what makes a server show what arrived meanwhile.
+            typ, _ = conn.select(_quote(folder), readonly=True)
+            if typ != "OK":
+                return None
+            typ, data = conn.search(None, "HEADER", "Message-ID", _quote(message_id))
+            numbers = (data[0] or b"").split() if typ == "OK" and data else []
+            if numbers:
+                break
         if not numbers:
             return None
         typ, data = conn.fetch(numbers[-1].decode() if isinstance(numbers[-1], bytes) else numbers[-1], "(RFC822)")
@@ -232,7 +286,8 @@ def _read_back(connect, host, port, user, password, folder, message_id):
         _logout(conn)
 
 
-def handoff(d, workdir: Path, show: bool = True, *, cfg, connect=None, password: str | None = None) -> Handoff:
+def handoff(d, workdir: Path, show: bool = True, *, cfg, connect=None, password: str | None = None,
+            sleep=None) -> Handoff:
     """Store the draft and read it back. `show` has no meaning here: there is no window."""
     from .. import mime
     from ..config import ConfigError
@@ -249,6 +304,7 @@ def handoff(d, workdir: Path, show: bool = True, *, cfg, connect=None, password:
     user = str(account.get("user") or account["address"]).strip()
     configured = str(account.get("drafts_folder") or "").strip()
     connect = connect or _connect
+    sleep = sleep or time.sleep
     try:
         secret = password if password is not None else _password(cfg.root, str(account["password_ref"]).strip())
     except ConfigError as err:
@@ -267,13 +323,18 @@ def handoff(d, workdir: Path, show: bool = True, *, cfg, connect=None, password:
         except imaplib.IMAP4.error as err:
             return Handoff(False, "imap", f"{host} refused the login for {user} ({_plain(err)}); "
                                           "check the password behind password_ref, nothing was stored")
-        folder = configured or _drafts_folder(conn)
+        folder = _utf7(configured) if configured else _drafts_folder(conn)
         if not folder:
             return Handoff(False, "imap", f"{host} marks no folder as Drafts; set drafts_folder for "
                                           f"{address} in mail.imap_accounts, nothing was stored")
         typ, data = conn.append(_quote(folder), "(\\Draft \\Seen)", imaplib.Time2Internaldate(time.time()), raw)
         if typ != "OK":
             return Handoff(False, "imap", f"{host} did not store the draft in {folder}: {_plain(data)}")
+    except UnicodeError:
+        # imaplib sends every command as ASCII. The error would quote the
+        # offending characters, and they may be part of the password.
+        return Handoff(False, "imap", f"{host}: the login holds characters IMAP cannot carry here "
+                                      "(only ASCII); nothing was stored")
     except (OSError, imaplib.IMAP4.error) as err:
         return Handoff(False, "imap", f"{host}: the connection failed while storing ({_plain(err)})")
     finally:
@@ -281,14 +342,15 @@ def handoff(d, workdir: Path, show: bool = True, *, cfg, connect=None, password:
 
     attached = [p.name for p in d.attachments if p.is_file()]
     notes = [f"{len(d.to)} recipient(s)", f"{len(attached)} attachment(s)", f"sender {address}",
-             f"folder {folder} on {host}"]
+             f"folder {configured or folder} on {host}"]
     try:
-        stored = _read_back(connect, host, port, user, secret, folder, message_id)
+        stored = _read_back(connect, host, port, user, secret, folder, message_id, sleep)
     except (OSError, imaplib.IMAP4.error) as err:
         notes.append(f"stored, but the read-back failed ({_plain(err)})")
         return Handoff(True, "imap", ", ".join(notes), verified=None)
     if stored is None:
-        notes.append("the server answered OK, but the folder does not show the draft")
+        notes.append("the server answered OK, but the folder does not show the draft; it may still "
+                     "appear, so look in the folder before running again")
         return Handoff(False, "imap", ", ".join(notes), verified=False)
     gaps = _differences(d, stored, attached)
     if gaps:
@@ -299,13 +361,16 @@ def handoff(d, workdir: Path, show: bool = True, *, cfg, connect=None, password:
 
 def _differences(d, stored, attached: list[str]) -> list[str]:
     gaps = []
-    if str(stored["Subject"] or "") != d.subject:
+    if " ".join(str(stored["Subject"] or "").split()) != " ".join(d.subject.split()):
         gaps.append("subject")
     if sender_address(str(stored["From"] or "")) != sender_address(d.sender):
         gaps.append("sender")
     to = {a.lower() for _, a in getaddresses([str(stored["To"] or "")])}
     if to != {r.address.lower() for r in d.to}:
         gaps.append("recipients")
+    cc = {a.lower() for _, a in getaddresses([str(stored["Cc"] or "")]) if a}
+    if cc != {r.address.lower() for r in d.cc}:
+        gaps.append("cc")
     names = sorted(p.get_filename() or "" for p in stored.iter_attachments())
     if names != sorted(attached):
         gaps.append(f"attachments {len(names)} of {len(attached)}")

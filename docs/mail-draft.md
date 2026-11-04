@@ -278,10 +278,10 @@ mail:
   imap_accounts:
     - address: you@example.org          # the sender this account holds drafts for
       host: imap.example.org
-      port: 993                         # default 993, always TLS
+      port: 993                         # default 993, always TLS with a checked certificate
       user: you@example.org             # default: address
       password_ref: keychain://mail-drafts-imap/you@example.org
-      drafts_folder: ""                 # default: the folder the server marks \Drafts
+      drafts_folder: ""                 # default: the folder the server marks \Drafts; umlauts are fine
       use_on: [always-on]               # where drafts from this address go here; [all] = every machine
 ```
 
@@ -293,13 +293,15 @@ mail:
   asked for with `--client imap`.
 - A machine is known by `$BRIDGE_MACHINE`, its host name, on macOS its local host
   name, and the id of each `infra/remotes/<id>.yaml` whose `hostname:` is one of
-  those. `mail-draft.sh explain --to <who>` says when and why `imap` was chosen.
+  those (exactly; `Box` and `Box.local` are the same machine, `mini.corp` and
+  `mini.local` are not). `mail-draft.sh explain --to <who>` says when and why `imap` was chosen.
 - `password_ref` is a reference (`rules/secret-placement.md`), resolved by the
   secrets skill at login and never printed. A provider that refuses the normal
   password for IMAP (Gmail does) wants an app password: create one for this
   purpose alone, so it can be revoked on its own.
-- A draft counts when the folder shows it from a fresh connection. A server that
-  answers OK and keeps nothing, a login that is refused, or a server that marks
+- A draft counts when the folder shows it from a fresh connection, with its
+  subject, sender, recipients, cc and attachments; a server that indexes late
+  gets a few seconds. A server that answers OK and keeps nothing, a login that is refused, or a server that marks
   no Drafts folder is reported by name, and no folder is ever guessed.
 - IMAP can store a message, it cannot send one. The client talks to no outgoing
   server and has no code path to one.
