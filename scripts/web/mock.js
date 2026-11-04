@@ -292,6 +292,10 @@ const WORDS = {
     // an item's next step as card.py words it (text.py next), shown on its step line
     'decide': 'entscheiden', 'give your yes': 'dein Ja geben', 'read': 'lesen', 'check the result': 'Ergebnis prüfen',
     'The report waits for a read': 'Der Bericht wartet aufs Lesen',
+    // what the Bridge found before the check-in (checkin.py)
+    'Alex wrote in a note that the reworded checklist is ready for a read, and the pull request example/tools#4 is merged.':
+      'Alex hat in einer Notiz geschrieben, dass die umformulierte Checkliste zum Lesen bereit ist, und der Pull Request example/tools#4 ist gemergt.',
+    'the state of example/repo#9': 'den Stand von example/repo#9',
   },
 }
 
@@ -545,7 +549,8 @@ const MOCK_BRIEFS = {
   // a reference nobody can reach from the card: which review? The card says so, and the brief is tried once more
   refs: { goal: null, story: null, acceptance: [null, [{ text: 'The open points of the review (' }, { text: '§3', unresolved: true },
     { text: ') are answered' }]] }, extraGaps: ['unresolved_ref'] },
-  'task:old-cleanup': { next: 'First step', progress: { done: 0, total: 2 } },
+  // the owner's step by her name in STATUS.md (next.who: mara): the who chip says you, as the band does
+  'task:old-cleanup': { next: 'First step', who: 'mara', progress: { done: 0, total: 2 } },
   // stage 4: an H1 that is a slug, and an item whose title is long and technical, each named by its brief; a step the
   // Bridge takes; a step with someone until its check-in day (buildState sets the days)
   'task:search-index': { who: 'bridge', next: 'Switch the search box to the new index',
@@ -853,7 +858,12 @@ export function buildState(now = Date.now(), opts = {}) {
   for (const r of Object.values(rows)) r.art = r.inbox_id ? ART_OF_KIND[r.inbox_kind] ?? 'ask' : null
   // stage 4, In progress with someone (collector.checkin_of): the checklist with Alex since a week, its check-in day
   // came yesterday; the laptop quote with Kim until Monday, so it runs elsewhere until then
-  rows.polish.checkin = { who: 'alex', until: isoIn(-1, now), since: isoIn(-8, now) }
+  // the Bridge looked before the check-in (checkin.py): what it found and where, what it could not read
+  const noted = localIso(now - 2 * DAY - 2 * 3600000)
+  rows.polish.checkin = { who: 'alex', until: isoIn(-1, now), since: isoIn(-8, now),
+    found: { text: 'Alex wrote in a note that the reworded checklist is ready for a read, and the pull request example/tools#4 is merged.',
+      where: [`note ${noted}`, 'example/tools#4'], unread: ['the state of example/repo#9'], nothing: false, since: isoIn(-8, now),
+      at_ms: now - 50 * MIN, model: 'haiku' } }
   rows.polish.card.next = { ...rows.polish.card.next, check: isoIn(-1, now) }
   rows.deferred.checkin = { who: 'kim', until: isoIn(3, now), since: isoIn(-1, now) }
   // what waits for you, as the server counts it (collector.py): the rows of Now that ask
