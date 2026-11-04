@@ -742,6 +742,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
     "scripts/web/files.js",                   # the files view: queue, drawers, search, ask a file
     "scripts/web/flow.js",                    # the Work through page: its queue, the return card, the five verbs
+    "scripts/web/point.js",                   # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",

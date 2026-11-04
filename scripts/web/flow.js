@@ -1113,13 +1113,16 @@ export function stepsOf(detail) {
     .map(m => ({ done: m[1] !== ' ', text: m[2].trim() })))
 }
 
-/** What is related to a point: the other rows of its task as they stand in the model (its inbox items, the task's own
- *  row for an item that names it) and the paths its STATUS.md names under related. {rows, paths} */
+/** What is related to a point: the task an item names as its `parent` (its row in the model, else what its file says;
+ *  none on the task itself), the other rows of that task as they stand in the model (its inbox items) and the paths
+ *  its STATUS.md names under related (the file card's references). {parent, rows, paths} */
 export function relatedOf(x, s, detail) {
   const row = x && x.kind !== 'reports' ? x.row : null
-  if (!row?.task) return { rows: [], paths: [] }
-  const rows = [...indexRows(s?.model).values()].filter(r => r.task === row.task && r.key !== row.key)
-  return { rows, paths: (detail?.related ?? []).map(String).filter(Boolean) }
+  if (!row?.task) return { parent: null, rows: [], paths: [] }
+  const own = `task:${row.task}`
+  const all = [...indexRows(s?.model).values()].filter(r => r.task === row.task && r.key !== row.key)
+  const parent = row.key === own ? null : all.find(r => r.key === own) ?? { key: own, task: row.task, title: detail?.card?.title || row.task }
+  return { parent, rows: all.filter(r => r.key !== own), paths: (detail?.related ?? []).map(String).filter(Boolean) }
 }
 
 /** The rows of the activity under a filter, in the server's order (the newest first) */
@@ -1175,7 +1178,8 @@ export function refOfUrl(href) {
 /** The fields of the right column, in their order, each {id, ...} for the view to word: the theme (themes on), the
  *  area, who works on it (flowDrive), the prio (Jev's quadrant and rank from the feed, else the triage's rank, else the
  *  priority), the three bars of Jev, due, the source (its row, row.url, else STATUS.md's origin when it is a link),
- *  created and moved. Never the status: the card's head says it */
+ *  created and moved. Never the status: the card's head says it. A closed point (a point of its own read only, stage 1
+ *  of the one point view) has no theme to move and nobody who works on it */
 export function flowFields(x, s, feed = null, detail = null) {
   if (!x) return []
   const reports = x.kind === 'reports'
@@ -1183,9 +1187,9 @@ export function flowFields(x, s, feed = null, detail = null) {
   const facts = feed?.facts ?? {}
   const jev = facts.jev && typeof facts.jev === 'object' ? facts.jev : null
   const out = []
-  if (s?.themes?.enabled === true && row?.key) out.push({ id: 'theme', value: s.themes.assign?.[row.key] ?? null })
+  if (s?.themes?.enabled === true && row?.key && !x.readOnly) out.push({ id: 'theme', value: s.themes.assign?.[row.key] ?? null })
   out.push({ id: 'area', value: pointArea(x) })
-  if (!reports) out.push({ id: 'who', drive: flowDrive(x, s) })
+  if (!reports && !x.readOnly) out.push({ id: 'who', drive: flowDrive(x, s) })
   if (!reports) {
     const rank = row ? s?.triage?.items?.[row.key]?.next_rank : null
     out.push({ id: 'prio', jev: jev ? { quadrant: jev.quadrant ?? null, rank: jev.rank ?? null, who: jev.who ?? null, ranker: jev.ranker ?? null } : null,
