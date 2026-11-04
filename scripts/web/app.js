@@ -1431,6 +1431,10 @@ const ctl = {
   // (a plan of the instruction line belongs to the scope it was made for: another point or side drops it)
   flowSide: (id, view = 'overview') => setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: id ?? null },
     flowAt: null, flowView: view === 'point' ? 'point' : 'overview', flowPicked: [], flowPlan: null, flowList: null })),
+  // a point of the left column's list: its side entered and that very point open in the middle, at its place `i` in the
+  // side's walk (views/flowside.js SidePoints); the list stays beside it
+  flowSidePoint: (side, id, i = 0) => setUi(ui => ({ flowSide: { ...(ui.flowSide ?? {}), [flowMode({ ...store.get(), ui })]: side ?? null },
+    flowAt: { id, i }, flowView: 'point', flowPicked: [], flowPlan: ui.flowAt?.id === id ? ui.flowPlan : null, flowList: null })),
   flowMode: mode => { save('bridge-cockpit.flowMode', mode); setUi({ flowMode: mode, flowAt: null, flowView: 'overview', flowPicked: [], flowPlan: null, flowList: null }) },
   flowOverview: () => setUi(ui => ({ flowView: 'overview', flowPlan: ui.flowView === 'overview' ? ui.flowPlan : null, flowList: null })),
   // round 4: an entry of Running now opened in the middle, a group of Not now shown as a list there with its own ticks
