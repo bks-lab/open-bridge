@@ -227,20 +227,25 @@ def test_a_profile_carrying_the_person_still_validates():
 # ---------------------------------------------------------------- titles a reader understands
 
 
-def test_a_task_row_says_what_it_is_about():
+def test_a_task_row_is_titled_by_its_h1_and_keeps_its_step_apart():
+    # the cockpit's one point view (stage 4): the name is the task's H1, the step stands on a line of its own
     r = result(sec("tasks", "tasks", [task("t1", "Portal redesign", nxt={"what": "Approve in daily use", "who": "me"})]))
-    assert titles(bv.build(r, profile()))["plan"] == ["Portal redesign: Approve in daily use"]
+    row = bv.build(r, profile())["buckets"][0]["items"][0]
+    assert titles(bv.build(r, profile()))["plan"] == ["Portal redesign"]
+    assert row["step"] == "Approve in daily use"
+    assert "next: Approve in daily use" in row["why"]
 
 
-def test_a_long_task_title_gives_its_topic_only():
+def test_a_long_task_title_stays_whole_and_is_never_glued_to_its_step():
     long = "Portal redesign: a long sentence on everything the work should do one day"
     r = result(sec("tasks", "tasks", [task("t1", long, nxt={"what": "Approve it", "who": "me"})]))
-    assert titles(bv.build(r, profile()))["plan"] == ["Portal redesign: Approve it"]
+    assert titles(bv.build(r, profile()))["plan"] == [long]
 
 
-def test_a_step_already_naming_its_task_is_not_named_twice():
+def test_a_step_already_naming_its_task_stays_the_step():
     r = result(sec("tasks", "tasks", [task("t1", "Portal", nxt={"what": "Portal: approve it", "who": "me"})]))
-    assert titles(bv.build(r, profile()))["plan"] == ["Portal: approve it"]
+    row = bv.build(r, profile())["buckets"][0]["items"][0]
+    assert row["title"] == "Portal" and row["step"] == "Portal: approve it"
 
 
 def test_a_task_row_folded_into_an_inbox_line_gives_the_bare_step():
