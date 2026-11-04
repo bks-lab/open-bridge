@@ -230,6 +230,7 @@ work:
 #     rank_max_age_days: 7 # a Jev rank older than this does not order the tasks
 #     rerank_per_day: 3    # how often a day a click on "order again" may ask Jev anew
 #     ahead_days: 2        # a point due further ahead waits under Not now, Later, until this many days before
+#     read_days: 3         # a finished AI run unread leaves Finished, to read after this many days
 #     infer_sessions: true # a live session that names one open task in its transcript runs under Running now
 #     summary: {enabled: false, budget_per_day: 10}    # Activity: a small model sums up the last week on a click
 #     instruct: {enabled: false, budget_per_day: 30}   # the instruction line: a sentence becomes steps, run on a click

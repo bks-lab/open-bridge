@@ -23,6 +23,13 @@ Where a start stands is read from what the Bridge already has, nothing is asked 
             moved to work/done/
 - lost      no tab, no answer, and the start is a while ago
 
+A done start carries what became of it in plain words (`plain`, plain_line, in the cockpit's language: text.py
+returns.plain): a close by the item's own check says the check found the problem gone and the item closed itself,
+nothing to do; a close by a person, an action that ran or failed, a drop or a reject say so; a note keeps its own
+words without its head; a task that moved to work/done/ says it is closed. With it the moment its item ended
+(`ended_ms`, None where unknown) and when the person marked it read (`read_ms`, Launches.read; the page's group
+Finished, to read leaves it out from then, and by itself cockpit.flow.read_days after it ended).
+
 The return channel also writes to the item itself, so the task's notes and the inbox item's events carry it
 for every other reader (the briefing, other sessions, a later look back): one line when it starts, and one
 when it ends with an answer or without a word. What the agent wrote itself (a note on, or the close of, its
@@ -111,6 +118,22 @@ class Launches:
                     return True
             return False
 
+    def read(self, key: str, on: bool = True) -> bool:
+        """Mark a start read (its result looked at: the group Finished, to read leaves it out), or not read again;
+        False for a start the channel does not hold, or one already so"""
+        with self.lock:
+            for x in self._items:
+                if x["key"] == key:
+                    if bool(x.get("read_ms")) == on:
+                        return False
+                    if on:
+                        x["read_ms"] = self.clock()
+                    else:
+                        x.pop("read_ms", None)
+                    self._save()
+                    return True
+            return False
+
     def forget(self, key: str) -> bool:
         """Take a start out of the return channel"""
         with self.lock:
@@ -149,7 +172,7 @@ def inbox_answers(root: Path, item: str, since_ms: float) -> list:
             text = ev.get("text") or ev.get("note") or ""
             if ev["verb"] == "note" and str(text).strip().startswith((*OWN_HEADS, START_NOTE)):
                 continue   # the cockpit's own start and "no word" lines, in any language, and the person's order are no answer
-            out.append({"verb": ev["verb"], "text": str(text).strip()[:600], "at_ms": at})
+            out.append({"verb": ev["verb"], "text": str(text).strip()[:600], "at_ms": at, "by": str(ev.get("by") or "")})
     return out
 
 
@@ -221,6 +244,66 @@ def _last_end(root: Path, item: str) -> tuple[bool, float | None]:
     return True, _stamp_ms(ends[-1][1])
 
 
+def end_event(root: Path, item: str) -> dict | None:
+    """The last end of an inbox item not taken back since (closed, executed, dropped or rejected), as {verb, by, text,
+    at_ms}: who ended it (`check`: its own closes_when, inbox.py check) and what it said; None while it is open"""
+    if not INBOX_ID_RE.match(item):
+        return None
+    folder = Path(root) / "work" / "inbox" / item / "events"
+    try:
+        ends = sorted((p for p in folder.iterdir() if EVENT_VERB_RE.search(p.name)), key=lambda p: p.name)
+    except OSError:
+        return None
+    if not ends:
+        return None
+    verb = EVENT_VERB_RE.search(ends[-1].name).group(1)
+    if verb == "reopen":
+        return None
+    try:
+        ev = yaml.safe_load(ends[-1].read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        ev = None
+    ev = ev if isinstance(ev, dict) else {}
+    return {"verb": verb, "by": str(ev.get("by") or ""), "text": " ".join(str(ev.get("text") or ev.get("note") or "").split())[:600],
+            "at_ms": _stamp_ms(ends[-1].name)}
+
+
+# the words inbox.py check writes when an item's closes_when holds (inbox.py Inbox.check)
+CHECK_TEXT = "closes_when holds"
+# who the person is in an item's events: the cockpit acts as web (BRIDGE_ACTOR), the command line as cli
+PERSON_BY = ("web", "cli")
+
+
+def plain_line(kind: str, result: dict | None, end: dict | None, lang: str) -> str:
+    """What became of a done start in plain words (module doc): `kind` inbox or task, `result` the start's answer,
+    `end` its item's last end (end_event)"""
+    w = _words(lang)["plain"]
+    res = result or {}
+    text = " ".join(str(res.get("text") or "").split())
+    if res.get("kind") == "note" and text:
+        return _without_head(text)
+    if res.get("kind") == "filed" and text:
+        return w["filed"].format(text=text)
+    if kind == "task":
+        return w["task_done"]
+    e = end or {}
+    verb, by = e.get("verb") or res.get("kind"), e.get("by") or res.get("by") or ""
+    said = " ".join(str(e.get("text") or text or "").split())
+    if verb == "close" and (by == "check" or said == CHECK_TEXT):
+        return w["check"]
+    base = {"close": w["closed_you"] if by in PERSON_BY else w["closed"], "executed": w["executed"], "failed": w["failed"],
+            "drop": w["dropped"], "reject": w["rejected"]}.get(verb, w["ended"])
+    return f"{base} ({_without_head(said)[:300]})" if said and said != CHECK_TEXT else base
+
+
+def _without_head(text: str) -> str:
+    """A note's words without the head the channel puts before them (Result:, Question:, in either language)"""
+    for head in (*RESULT_HEADS, *QUESTION_HEADS):
+        if text.startswith(head):
+            return text[len(head):].strip()
+    return text
+
+
 def ended_at(root: Path, item: str) -> float | None:
     """When an inbox item was ended and not reopened since, in ms; None while it is open, and None as well
     when its end carries no readable time: "closed at an unknown moment" never counts as closed after a start"""
@@ -266,8 +349,8 @@ def _tab_for(item: str, tabs: list) -> dict | None:
     return mine[0] if mine else None
 
 
-def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> list:
-    """Where each start stands, newest first, at most SHOW_MAX"""
+def build(launches: list, tabs: list, rows: dict, root: Path, now: float, lang: str = "en") -> list:
+    """Where each start stands, newest first, at most SHOW_MAX; a done one with its plain sentence (module doc)"""
     out = []
     for x in launches[:SHOW_MAX]:
         item, at = x["item"], float(x.get("at_ms") or 0)
@@ -314,8 +397,18 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float) -> lis
                     "stage": stage, "in_briefing": x["key"] in rows,
                     "tab": {"ref": tab["ref"], "state": tab.get("state"), "since_ms": tab.get("since_ms"),
                             "last": str(tab.get("last") or "")[:300]} if tab else None,
-                    "result": result})
+                    "result": result, **_done_words(x, item, stage, result, root, lang)})
     return out
+
+
+def _done_words(x: dict, item: str, stage: str, result: dict | None, root: Path, lang: str) -> dict:
+    """A done start's plain sentence, when its item ended and when the person read it; nothing for any other stage"""
+    if stage != "done":
+        return {}
+    inbox = bool(INBOX_ID_RE.match(item))
+    end = end_event(root, item) if inbox else None
+    return {"plain": plain_line("inbox" if inbox else "task", result, end, lang), "ended_ms": end.get("at_ms") if end else None,
+            "read_ms": x.get("read_ms")}
 
 
 LINES = {code: TABLES[code]["returns"] for code in TABLES}   # the words live in text.py

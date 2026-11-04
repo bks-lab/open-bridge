@@ -40,11 +40,12 @@ FILES_SCOPES = ("active", "all")
 # return_after_s is how long after a jump to a tab the page asks how it went, once it is in view again.
 # FLOW_INTS: how many cards ahead get their brief prepared (0: none), how many starts may run before Let AI do it
 # asks first, how old a Jev rank may be and still order the tasks, how often a day a click may order them anew,
-# how many days before its due day a point stands in front (later ones wait under Not now, Later);
+# how many days before its due day a point stands in front (later ones wait under Not now, Later), how many days a
+# finished AI run unread stands under Finished, to read (it stays in its item's Activity);
 # each with its default and minimum (a value below it keeps the default)
 FLOW_DROP_REASONS = ("resolves_itself", "not_needed", "someone_else", "not_worth_it")
 FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 7, 1), ("rerank_per_day", 3, 0),
-             ("ahead_days", 2, 0))
+             ("ahead_days", 2, 0), ("read_days", 3, 1))
 # infer_sessions: a live session in a tab that names one open task in the end of its own transcript runs under
 # Running now as work on that task (sessions.py infer), without a link by hand; only while the page is on
 # themes: the nested block of the themes the page groups its points by (themes.py, cockpit.flow.themes); summary,
@@ -152,7 +153,7 @@ class WebConfig:
     # kinds, effort}; auto off unless switched on, the button on a card works either way
     describe: dict = field(default_factory=dsc.defaults)
     # the Work through page (cockpit.flow, flow_of): {enabled, drop_reasons, return_after_s, prep_ahead,
-    # max_running, rank_max_age_days, rerank_per_day, ahead_days, infer_sessions, ...}; off by default
+    # max_running, rank_max_age_days, rerank_per_day, ahead_days, read_days, infer_sessions, ...}; off by default
     flow: dict = field(default_factory=lambda: flow_defaults())
     # the views the work tab's switch offers (cockpit.work_views, work_views_of): all of them unless the config
     # names fewer; files is always among them, every "open the file" link leads there (the files tab, round 6c)

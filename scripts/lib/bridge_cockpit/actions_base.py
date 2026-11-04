@@ -173,6 +173,14 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
     "pin": {"key": ("key", True), "on": ("bool", True)},
     "return_forget": {"key": ("key", True)},
+    # a finished AI run (stage 2 of the one point view): read (and its undo), analysed further with a sentence, made a
+    # task (title, area, its result as the situation, the run then read; and its undo)
+    "return_read": {"key": ("key", True)},
+    "return_unread": {"key": ("key", True)},
+    "return_analyse": {"key": ("key", True), "note": ("text", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "return_task": {"key": ("key", True), "title": ("line", True), "area": ("line", False), "describe": ("bool", False),
+                    "close": ("bool", False)},
+    "return_task_undo": {"key": ("key", True), "slug": ("slug", True), "read": ("bool", False)},
     # the files view: a workflow run's result checked, so it no longer waits in its task's file
     "run_seen": {"id": ("run_id", True)},
     # a finding marked seen (a job, worker:<host>:<id>, or a page row): grey and counted nowhere until it changes,

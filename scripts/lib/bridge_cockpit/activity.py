@@ -1205,7 +1205,19 @@ class Activity:
         if not flow_on(self.app):
             raise ActionError(409, "flow_off", self.tx()["off"])
         key = check_key(key, "key")
-        return key, self.app.actions.entry(key)
+        try:
+            return key, self.app.actions.entry(key)
+        except ActionError:
+            # a finished AI run (a done start of the return channel, stage 2 of the one point view): its item closed
+            # and left the model, its start and end are still read from the item's folder or the task's file
+            run = next((r for r in (self.app.collector.model or {}).get("returns") or []
+                        if r.get("key") == key and r.get("stage") == "done"), None)
+            if run is None:
+                raise
+            item = str(run.get("item") or "")
+            row = {"key": key, "title": run.get("title") or item,
+                   **({"inbox_id": item} if details.INBOX_ID_RE.match(item) else {"task": item} if details.SLUG_RE.match(item) else {})}
+            return key, {"row": row, "out": row}
 
     def view(self, key: Any, fresh: bool = False) -> dict:
         """GET /api/flow/activity: the feed of one point (module doc), kept CACHE_MS"""

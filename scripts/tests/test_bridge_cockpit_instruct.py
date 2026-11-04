@@ -289,3 +289,32 @@ def test_every_start_the_line_plans_carries_the_never_send_clause():
                                points, "send it", TODAY, [], True, MAIL_NOTE, DO_NOTE)
     [do] = steps
     assert "mail" not in do and do["note"] == DO_NOTE.format(text="Send the mail to the vendor now, do not draft")
+
+
+# ---------------------------------------------------------------- a finished AI run (stage 2 of the one point view)
+
+def test_a_finished_run_is_a_point_that_takes_read_task_and_analyse_only(world):
+    """A done start whose item closed: its key names no open row, the return channel holds it; the plan may read it,
+    make it a task with a title, or analyse it further with a sentence that says never send"""
+    world.app.launches.record([{"key": YES, "item": YES_ID, "title": "Tidy labels", "mode": "go"}])
+    import datetime as _dt
+    stamp = _dt.datetime.fromtimestamp(world.clock() / 1000 + 60, _dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (world.root / "work" / "inbox" / YES_ID / "events" / f"{stamp}-01-check-close.yaml").write_text(
+        "verb: close\nby: check\ntext: 'closes_when holds'\n", encoding="utf-8")
+    world.runner.handlers["inbox.list"] = lambda argv: ok([])
+    world.app.collector.request("both")
+    world.app.collector.drain()
+    world.app.collector.rebuild()
+    world.runner.handlers["claude.p"] = lambda argv: answer([
+        step("read", [1]), step("task", [1], text="Tidy the labels for good"), step("analyse", [1], note="Look which labels came back"),
+        step("done", [1])])
+    res = world.act("flow_instruct", text="read it, make a task of it and look further", keys=[YES], point=True)
+    data, _sentence = sent(world.runner.of("claude.p")[-1])
+    assert data["points"] == [{"n": 1, "title": "Tidy labels", "kind": "run", "offers": ["read", "task", "analyse"], "live_tab": False}]
+    read, task, analyse, done = res["plan"]["steps"]
+    assert read == {"n": 1, "op": "read", "keys": [YES], "titles": ["Tidy labels"], "skipped": []}
+    assert task["op"] == "task" and task["title"] == "Tidy the labels for good" and task["keys"] == [YES]
+    assert analyse["op"] == "analyse" and analyse["note"] == DO_NOTE.format(text="Look which labels came back")
+    assert done["keys"] == [] and done["skipped"] == [{"key": YES, "title": "Tidy labels", "why": "not_offered"}]
+    # an open row takes none of them
+    assert "read" not in ins.offers({"task": "demo-task", "settle": ["done"]}, False, True)

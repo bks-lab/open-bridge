@@ -10,7 +10,8 @@
     python3 scripts/task.py unmerge <keep> --from <slug> [--as doing|backlog|review] [--json]
     python3 scripts/task.py review [slug ...] [--all] [--fresh] [--keep SLUG ...] [--json]
     python3 scripts/task.py wait <slug> --until YYYY-MM-DD [--on TEXT] | --clear [--json]
-    python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--json]
+    python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--situation TEXT]
+        [--origin TEXT] [--json]
     python3 scripts/task.py log [--] <context> <text>
     python3 scripts/task.py next <slug> [--] <text> | --clear [--json]
     python3 scripts/task.py brief <slug> --brief-json JSON [--basis HEX] [--edited] | --mark-edited [--json]
@@ -557,10 +558,11 @@ def _new_slug(text: str) -> str:
 
 def new_task(root: Path, slug: str | None = None, *, headline: str | None = None, status: str = "backlog",
              from_inbox: str | None = None, task_type: str = "admin", area: str | None = None,
-             now: dt.datetime | None = None) -> dict:
+             situation: str | None = None, origin: str | None = None, now: dt.datetime | None = None) -> dict:
     """A new work/tasks/<slug>/STATUS.md (the template's required fields, a short body). From an inbox item the
     headline and the situation come from the item, the origin names it, and the item closes with a pointer to
-    the task: an inbox item that turned out to be work for more than one sitting becomes a task."""
+    the task: an inbox item that turned out to be work for more than one sitting becomes a task. `situation` and
+    `origin` given win (the cockpit's task of a finished AI run: its result, the run)."""
     now = now or dt.datetime.now()
     today = now.date().isoformat()
     if status not in NEW_STATUSES:
@@ -583,9 +585,9 @@ def new_task(root: Path, slug: str | None = None, *, headline: str | None = None
     work = root / "work"
     if any(p.is_dir() for p in (work / "tasks" / slug, work / "streams" / slug)) or any((work / "done").glob(f"*/{slug}")):
         raise ValueError(f"a task {slug!r} exists already")
-    origin = (f"inbox {item.id} ({str(item.created or '')[:10]}, {item.source}): {item.summary}" if item
-              else f"Ad-hoc {today}")
-    situation = (item.detail or item.summary) if item else headline
+    origin = " ".join((origin or "").split()) or (f"inbox {item.id} ({str(item.created or '')[:10]}, {item.source}): {item.summary}"
+                                                  if item else f"Ad-hoc {today}")
+    situation = (situation or "").strip() or ((item.detail or item.summary) if item else headline)
     fm = [f"slug: {slug}", f"type: {task_type}", f"status: {status}", *([f"area: {area}"] if area else []), "priority: P2", f'created: "{today}"',
           f'last_updated: "{today}"', f"headline: {json.dumps(headline, ensure_ascii=False)}",
           f"origin: {json.dumps(origin, ensure_ascii=False)}", "sync:", "  bridge_only: true"]
@@ -1823,6 +1825,8 @@ def main(argv=None) -> int:
     nw.add_argument("--from-inbox", dest="from_inbox")
     nw.add_argument("--status", choices=NEW_STATUSES, default="backlog")
     nw.add_argument("--type", dest="task_type", default="admin")
+    nw.add_argument("--situation", help="the text of ## Situation (default: the item's detail, else the headline)")
+    nw.add_argument("--origin", help="the origin: line (default: the inbox item, else Ad-hoc <day>)")
     nw.add_argument("--json", action="store_true")
     br = sub.add_parser("brief", help="write or replace the task's brief block (goal, story, acceptance), "
                                       "or --mark-edited after a person changed it")
@@ -1908,7 +1912,7 @@ def main(argv=None) -> int:
             return 0
         if args.cmd == "new":
             out = new_task(root, args.slug, headline=args.headline, status=args.status, from_inbox=args.from_inbox,
-                           task_type=args.task_type, area=args.area)
+                           task_type=args.task_type, area=args.area, situation=args.situation, origin=args.origin)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"new task {out['slug']} ({out['status']})")
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)

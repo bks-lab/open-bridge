@@ -5240,6 +5240,98 @@ def test_a_start_that_ran_enters_the_return_channel_and_can_be_taken_out(world):
     refused(world, "not_applicable", "return_forget", key="task:other-task")
 
 
+# ---------------------------------------------------------------- a finished AI run (stage 2 of the one point view)
+
+from lib.bridge_cockpit.text import TABLES as _TX  # noqa: E402  (the plain words of a finished run)
+
+
+def finished_run(world, verb="close", by="check", text="closes_when holds"):
+    """A start on the yes item whose item its check closed afterwards: a done start of the return channel"""
+    world.app.launches.record([{"key": f"inbox:{YES_ID}", "item": YES_ID, "title": "Tidy labels", "mode": "go"}])
+    stamp = dt.datetime.fromtimestamp(world.clock() / 1000 + 60, dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (world.root / "work" / "inbox" / YES_ID / "events" / f"{stamp}-01-{by}-{verb}.yaml").write_text(
+        f"verb: {verb}\nby: {by}\ntext: '{text}'\n", encoding="utf-8")
+    world.app.collector.rebuild()
+    return next(r for r in world.app.collector.model["returns"] if r["key"] == f"inbox:{YES_ID}")
+
+
+def test_a_finished_run_says_in_plain_words_what_became_of_it(world):
+    r = finished_run(world)
+    assert r["stage"] == "done"
+    assert r["plain"] == _TX["en"]["returns"]["plain"]["check"]
+    assert r["result"]["text"] == "closes_when holds" and r["ended_ms"] and r["read_ms"] is None
+
+
+def test_the_activity_of_a_finished_run_reads_its_closed_item(world):
+    world.app.cfg = dataclasses.replace(world.app.cfg, flow={**world.app.cfg.flow, "enabled": True})
+    finished_run(world)
+    world.runner.handlers["inbox.list"] = lambda argv: ok([])
+    feed = world.app.activity.view(f"inbox:{YES_ID}", fresh=True)
+    assert feed["ok"] and any(r["kind"] == "status" for r in feed["rows"]), "its end stands in its Activity"
+    with pytest.raises(ActionError):
+        world.app.activity.view("inbox:20261001-0900-gone-a1b2", fresh=True)
+
+
+def test_read_takes_a_finished_run_off_its_list_and_its_undo_puts_it_back(world):
+    finished_run(world)
+    key = f"inbox:{YES_ID}"
+    out = world.act("return_read", key=key)
+    assert out["ok"] and [u["undo"] for u in out["undo"]] == [{"verb": "return_unread", "args": {"key": key}}]
+    r = next(x for x in world.app.collector.model["returns"] if x["key"] == key)
+    assert r["read_ms"], "marked read, still in the channel (and in the item's Activity)"
+    refused(world, "not_applicable", "return_read", key=key)
+    world.act("return_unread", key=key)
+    assert next(x for x in world.app.collector.model["returns"] if x["key"] == key)["read_ms"] is None
+    refused(world, "not_applicable", "return_unread", key=key)          # taken back once only
+    refused(world, "not_applicable", "return_read", key="task:demo-task")  # no finished run of that row
+
+
+def test_make_it_a_task_of_a_finished_run_takes_its_result_and_names_the_run(world):
+    finished_run(world)
+    key = f"inbox:{YES_ID}"
+    slugs = iter(["tidy-the-labels", "second"])
+    world.runner.handlers["task.new"] = lambda argv: ok({"slug": next(slugs), "status": "backlog", "warnings": []})
+    out = world.act("return_task", key=key, title="Tidy the labels for good", describe=True, close=True)
+    argv = world.runner.of("task.new")[-1]
+    assert "--headline=Tidy the labels for good" in argv and "--status" in argv
+    assert f"--situation={_TX['en']['returns']['plain']['check']}" in argv
+    assert any(a.startswith("--origin=the AI run of ") and key in a for a in argv)
+    assert out["task"] == "tidy-the-labels"
+    assert [u["undo"] for u in out["undo"]] == [{"verb": "return_task_undo", "args": {"key": key, "slug": "tidy-the-labels", "read": True}}]
+    assert next(x for x in world.app.collector.model["returns"] if x["key"] == key)["read_ms"], "closed afterwards: read"
+    # without the description and without closing it
+    out2 = world.act("return_task", key=key, title="Second", describe=False, close=False)
+    assert not any(a.startswith("--situation=") for a in world.runner.of("task.new")[-1])
+    # the undo closes the task as declined and the run stands to read again
+    world.act("return_task_undo", key=key, slug="tidy-the-labels", read=True)
+    close = world.runner.of("task.close")[-1]
+    assert "tidy-the-labels" in close and "--declined" in close
+    assert next(x for x in world.app.collector.model["returns"] if x["key"] == key)["read_ms"] is None
+    refused(world, "not_applicable", "return_task_undo", key=key, slug="tidy-the-labels", read=True)
+    refused(world, "invalid_argument", "return_task", key=key, title="x", area="Nowhere")
+    assert out2["ok"]
+
+
+def test_analyse_further_opens_the_item_again_and_starts_with_the_sentence_and_the_result(world):
+    finished_run(world)
+    key = f"inbox:{YES_ID}"
+    world.runner.handlers["workplace.launch"] = lambda argv: ok(
+        {"ok": True, "items": [{"item": YES_ID, "label": "Tidy labels", "ref": "surface:21"}], "report": ["started 1"]})
+    world.act("return_analyse", key=key, note="Check which labels came back")
+    assert world.runner.of("inbox.reopen"), "a closed item takes no start: it opens again first"
+    notes = [c for c in world.runner.of("inbox.note") if any(str(a).startswith("Start note: Check which labels came back") for a in c)]
+    assert notes and any(_TX["en"]["returns"]["plain"]["check"] in str(a) for a in notes[-1]), "the result goes along"
+    launch = world.runner.of("workplace.launch")[-1]
+    assert YES_ID in launch[launch.index("--items") + 1] and "--start-note" in launch
+    # no terminal driver: nothing opens, nothing starts
+    finished_run(world)
+    world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": []})
+    world.app.driver_caps(fresh=True)
+    before = len(world.runner.of("inbox.reopen"))
+    refused(world, "not_applicable", "return_analyse", key=key, note="again")
+    assert len(world.runner.of("inbox.reopen")) == before
+
+
 def test_a_failed_start_does_not_enter_the_return_channel(world):
     world.runner.handlers["workplace.launch"] = lambda argv: fail("driver failed")
     world.act("do_it", keys=["task:other-task"])
