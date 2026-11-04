@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, a page's search over every day before with Ask AI, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-30
+last_updated: 2026-11-04
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -415,6 +415,14 @@ question to the AI has its own field and a button "Ask the AI about these n reco
 click sends, how many stay private and how many questions are left today, and the search words are never the
 question. It has a page of its own: [`cockpit-files.md`](cockpit-files.md).
 
+Where Work through is on (`cockpit.flow.enabled: true`), a record opened from the list, or walked, shows in the
+middle the same view as a point of Work through ([One point view](#one-point-view)): its card, its tabs, the
+instruction line with Instruct or Ask, the walk over the records listed (or the queue walked, with the line of what
+it leaves out over it), **Close the record** as its way back, and the right column of that point. A closed copy, or
+a task no row names, opens as a point of its own, read from its file; a closed one offers no verb. Without Work
+through (the default) the record keeps its file card with its drawers and **Details** under the verbs, as described
+above.
+
 ### Work through (`@flow`)
 
 **Work through** is a view of the work tab, last in its switch beside Due, By
@@ -458,48 +466,69 @@ out a workspace:
   **point**: on top **Back to overview** with the theme's name beside it, a
   line "n ticked" with **See in the overview** while points are ticked, then
   the point as a card that carries its content only: its kind in its head (the
-  one place its state stands), the title, the tab's question with one row of
+  one place its state stands) with what kind of row it is and **Pin** (it pins
+  the row to the start page) at the end, the title, the task it is about or the
+  headline of its file under it, its **next step** with who takes it as a
+  tinted box, the tab's question with one row of
   answers (the decision guide folded under **Show the decision guide**), what
   came back, the last lines of its tab's screen. Who works on it and since when
   is a field on the right, the criteria of its brief stand in Description. Under
   the card the point's **tabs** (below), at the
-  foot the **instruction line** (below, while it is on) and under it the files
+  foot the line with **Instruct | Ask** (below) and under it the files
   view's walk bar
   (**Previous point**, "n of m", the next title, **Next point**). After the
   last point of a theme or area it leads to the first point of the next one
   where something is open. Neither the title nor anything else opens the item
-  drawer or another view.
+  drawer or another view: this is the one point view, the same wherever a row
+  opens ([One point view](#one-point-view)).
 - **Right**, only while a point or an entry is open (the overview and a list
   of Not now take its width), **What you can do**: the AI's suggestion as
   one sentence (on an open point the only place it stands; the overview shows
   it as a column, because there one picks without a point open), then the verbs under each other in one style, the suggested
-  one the strong button. While an agent tab is on the point (at work, asking, or
-  waiting at its prompt) **To tab** leads and **View** follows, and neither
-  Let AI do it nor Give your yes stands there: no second agent starts beside
-  it, as the instruction line and a batch have it. On a finished start the verb
-  the AI suggests is the strong one too, else Done and close the tab. Under it
+  one the strong button. Every point offers the **basic verbs** in one order:
+  **Let AI do it**, **Done**, **Later until**, **Drop because**, and **Make it a
+  task** on every inbox item (verb `to_task`: a task in the backlog, the item
+  closes with a pointer to it, and the task opens in the same view) and on an
+  issue without a task whose GitHub page offers its step "Make it a task" (an
+  agent tab makes it; a pull request has no such step). A verb that cannot go
+  now stays in its place, off, with one line under the verbs that says why: Let
+  AI do it while an agent works on the point (no second agent beside it, as the
+  instruction line and a batch have it) or once its yes is given, Done and Drop
+  while its tab asks (nothing closes what waits for an answer) and on a stream.
+  Strong is only what the AI suggests, as before (a task in review Done, a point
+  in progress Let AI go on with it, the return card Done, else a finding's Give
+  your yes where it brings an action). Under them what the point's kind adds,
+  never in their place: while an agent tab is on the point (at work, asking, or
+  waiting at its prompt) **To tab** as the strong way and **View**, an issue's
+  **Open on GitHub** and its board's moves, Give your yes, **Advise**, Improve on
+  a task in review, the steps of an application, Runs on on the return card,
+  Not this task for a session and **Show in the net** for a task; the tab's
+  close apart at the end (where it ends the point, Done in its place is **Done
+  and close tab**). A finished, lost or asking start keeps its own verbs (the
+  verb the AI suggests strong, else Done and close the tab). Under it
   the **Fields**, like the sidebar of an issue tracker:
   **Theme** (to change, with the themes on), **Area**, **Who works on it**,
   **Prio** (Jev's quadrant and rank while Jev's order of the point is younger
   than `rank_max_age_days`, else the day's triage rank, else the priority),
   **Urgent**, **Important** and **Effort** as small bars (only with Jev's
-  order), **Due**, **Source** (its chip, **STATUS.md** that opens the task in
-  the item drawer over the page, an issue or a pull request by its ref on the web),
+  order), **Due**, **Source** (its chip, **STATUS.md** of the task an item
+  belongs to, which opens that task in the same view, an issue or a pull request by its ref on the web),
   **Created** and **Moved** (the newest row of its Activity). There is no Status
   field: the card's head says it, and
   who works on it and the source stand only here. A row with steps of its own
   on a page (an application) has **Steps ▾**, which opens the info drawer that
-  holds them. Under the verbs of every point or entry with a row stands
-  **Details**: an inbox item or a task opens its item drawer, with every verb Due
-  has (urgency, area, as a task, follow up, gather info, own workspace, advise as
-  a tab, take over a tab), any other row its detail column beside the page (Prio,
-  area, urgency, take over a tab). The reports carry it on each report in the
-  card, beside Seen.
+  holds them. At the foot of the fields **Details ▾** folds open what the item
+  drawer held beside them: an inbox item's kind, urgency, approval, who closes
+  it, when it closes on its own, what runs on its yes, its key and its id; a
+  task's type, what blocks it and the path of its STATUS.md. There is no Details
+  link and no drawer from a point; each report of the reports card has **Open**
+  beside Seen, which shows that report alone in the same view (Back leads to the
+  card).
 
 Before the first state arrives the middle shows the loading or warning block
 Due shows, never "All decided". A click on a tab's name (the tab column, the
 Chat) opens what it works on here: its point, its entry under Running now or
-its group of Not now. Jev's daily order and the themes are asked for in every
+its row of Not now in the same view. Jev's daily order and the themes are asked for in every
 mode, once a load; "Ask Jev again" stays a click. The pill "Only pinned" does
 not stand here, it filters nothing in this view. **Next point** follows the
 order of the overview.
@@ -623,9 +652,11 @@ the head's sum stays whole. A checkup warning, an application, a follow-up
 point, a row that needs you or one put off never fold. A click on a group shows
 its list in the middle: a box, the title, its kind, when (from or until a day,
 due; in Later, why), its area, and the batch bar with the verbs the group
-offers. A title opens the row where it lives: an issue or pull request on the
-web, a task in the item drawer, an inbox item in its card, a row with steps of
-its own on a page in the info drawer.
+offers. A title opens the row in the middle in the one point view, an issue,
+an inbox item or a task alike, with the same tabs, fields and verbs as every
+point: **To the list** leads back to the group, and the walk bar walks the
+group's rows (after a decision the next row moves up; once the group is empty,
+the overview).
 
 | Group | Verbs of its batch bar |
 |---|---|
@@ -943,6 +974,42 @@ unless the sentence spoke for that one point), and **Undo the instruction** stan
 line once; **Change** puts the sentence back into the field, **Discard** drops
 the plan. Opening another point or the overview drops the plan too. Every call
 counts against `budget_per_day`, one runs at a time.
+
+On an open point the line has two ways, **Instruct | Ask** (de: Anweisen |
+Fragen), a switch over it while the instruction line is on. **Ask** sends the
+sentence as a question about this point the way the Files tab asks a file: one
+read-only quick question with the point as data (a task its folder and cover, any
+other row its title, key, state, brief, next step, what the triage made of it and
+its description; the task named only where the point is an open task), and the
+answer stands under the line with **Close**. Ask needs no
+`cockpit.flow.instruct`: with the instruction line off, and on a closed point,
+the line asks only. A person's page asks nothing here.
+
+#### One point view
+
+Where Work through is on (`cockpit.flow.enabled: true`, kept by
+`cockpit.work_views`), every way to an item or a task opens it in the point view
+of Work through, never in a drawer or a view of its own: a title on the start
+page, a page or a card, a link in a chat, a toast, the Related tab, Source's
+STATUS.md, a search hit, a row of a list of Not now. It lands on the work tab in
+Work through, in the middle, where the row stands there: its point (at the level
+of all, the walk walks the queue), its entry under Running now, its row in its
+group of Not now (To the list, the walk walks the group), else a **point of its
+own** (another area's row with its verbs, a task no section lists, a closed task
+or a settled item read from its file and read only). A page item that is no row
+(a gauge, a date, a machine) keeps its info drawer, and so do the steps of an
+application. The Files tab shows the same view for a record ([The Files
+tab](#the-files-tab)). What the item drawer held stands in the view: its facts
+under **Details ▾** at the foot of the fields (created and the source stay fields),
+what it is about (the triage's gist, why only you can do it, its reason) and the
+description as filed on top of **Description**, a task's STATUS.md in its sections
+folded under **From the file**, the headline of its file under the title, its
+next step as a box in the card, the item's events as the filter **History** of
+**Activity**, the task an item belongs to and the paths its STATUS.md names in
+**Related** (each a click into the same view), the star as **Pin** in the card's
+head, Open on GitHub among the verbs. Without Work through (the default of
+open-bridge) the item drawer and the file card of the Files tab stay as they
+were, Details under the verbs included.
 
 **Without a terminal driver** the cards of the agents (groups 1 to 4), Running
 now and every way to a tab stay out. A start then hands out the
@@ -3935,6 +4002,20 @@ Each change is code; two config keys are worth a look, and one script is new.
    by**; a Person kept in this browser reads back as Assigned to.
 8. **Explain.** New verb `explain_note {text, page, view, area}` and
    `POST /api/clicks {events}` (at most 60 events; no audit line, as presence).
+
+### Upgrading: one point view
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true`. With it, every way that opened an inbox item or a
+task in the item drawer or the Files tab's file card opens it in Work through's
+point view instead ([One point view](#one-point-view)); the Files tab shows the
+same view for a record. The link **Details** under the verbs is gone (its facts
+fold open under Details at the foot of the fields), a title of a list of Not now
+opens the row in the middle instead of jumping to the web, the Files tab or a
+drawer, the verbs of a point stand in one order with **Make it a task** on every
+inbox item, and the line under a point asks as well as instructs. The server is
+unchanged: Make it a task is the verb `to_task`, an issue's is the GitHub page's
+step "Make it a task", Ask is the free quick question of the Files tab.
 
 ### Upgrading: settled rows in git
 
