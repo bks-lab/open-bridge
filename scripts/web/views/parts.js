@@ -3,9 +3,9 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { markToken, prioToken, rovingIndex, short, verdictToken } from '../logic.js'
+import { markToken, nextWho, prioToken, rovingIndex, short, verdictToken, whoKind } from '../logic.js'
 import { nowSec, reducedMotion, settled, springTo } from '../motion.js'
-import { T } from '../text.js'
+import { T, language } from '../text.js'
 
 // ---------------------------------------------------------------- motion (motion.js, from the explainer films)
 
@@ -238,6 +238,15 @@ export function SkipFix({ s, c, title, reason }) {
 export function Chip({ token, children, title, cls = '' }) {
   return html`<span class=${`chip ${token ? `chip-tk tk-${token}` : ''} ${cls}`} title=${title}>
     ${token ? html`<${Dot} token=${token} />` : null}<span>${children}</span></span>`
+}
+
+/** Who takes a step as a small chip (stage 4 of the one point view): you, the Bridge or a person in words (logic.js
+ *  nextWho), in the warning tone for you, the info tone for the Bridge, plain for anyone else; nothing without one */
+export function WhoChip({ who, s }) {
+  const word = nextWho(who, s, language())
+  if (!word) return null
+  const kind = whoKind(who, s)
+  return html`<span class=${`chip flow-who flow-who-${kind}`}>${word}</span>`
 }
 
 export function StateLine({ token, word, strong }) {

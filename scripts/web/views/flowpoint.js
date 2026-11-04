@@ -8,9 +8,12 @@
 // overview, To the list, Close the record) with where it was opened from, then the card, held by its id: its kind in
 // its head (the state, the only place it stands) with the kind of row and Pin at the end of the head (the start page's
 // pins, c.pin), its title (always the title of the point opened: a tab that asks about a row names itself in the line
-// under it, Tab x asks), its task or the headline of its file as the line under it, its next step with who takes it
-// as a tinted box (card.py next, else STATUS.md's next:), what its tab asks with one set of answers, a start's result,
-// the live tab's screen. Under it the tabs of the point (views/flowtabs.js PointTabs), at the foot the instruction line
+// under it, Tab x asks), what its tab asks with one set of answers, a start's result, the live tab's screen. Stage 4,
+// simpler: a point says three things, its name (logic.js pointName: an inbox item's brief name, a task's H1 unless a
+// slug or too long), where it stands in one sentence under it (pointStand: the brief's stand, else the triage's gist)
+// and its next step in one line (StepLine: the step, who as a chip, its due or check-in day); the headline, the
+// original title and the rest of what is stored stand folded in Description. A check-in whose day came has a card of
+// its own (CheckinCard: since when with whom, How does it stand?, its answers on the card). Under it the tabs of the point (views/flowtabs.js PointTabs), at the foot the instruction line
 // with Instruct or Ask (views/flowinstruct.js) over the walk bar (views/dossier.js Walk). The right column beside it is
 // views/flowside.js FlowAside, which the page places. The cards of a start, of a tab that asks, of the return card and
 // of the reports stand here as they did in views/flow.js (stage 2 does the finished starts). A point's detail is read
@@ -21,18 +24,17 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  asksSomething, detailNeedsLoad, duration, flowDrive, formatDay, guideOf, nextWho, personOf, previewText, reportsTicked, resultText, short, soloSource,
-  stageTone, tabOfTask,
+  asksSomething, checkinDays, detailNeedsLoad, dropReasonWord, duration, flowAction, flowDrive, flowSettings, formatDay, guideOf, nextWho, personOf,
+  pointName, pointStand, pointStep, previewText, reportsTicked, resultText, short, soloSource, stageTone, tabOfTask,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { titleOf } from './card.js'
 import { KindTag } from './day.js'
 import { Walk } from './dossier.js'
 import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
 import { Hero } from './focus.js'
 import { GuideTree } from './guide.js'
-import { Btn, Dot } from './parts.js'
+import { Btn, Dot, WhoChip } from './parts.js'
 import { AskLine, TabReply } from './reply.js'
 
 // the lines of a live tab's screen a card shows
@@ -47,9 +49,9 @@ function cardTitle(x) {
   const f = T().flow
   if (x.kind === 'back') return f.back(x.jump.title)
   if (x.kind === 'start') return x.start.title
-  if (x.kind === 'tab') return x.row ? titleOf(x.row) : x.tab.name
+  if (x.kind === 'tab') return x.row ? pointName(x.row) : x.tab.name
   if (x.kind === 'reports') return f.reports(x.rows.length)
-  return x.row.title
+  return pointName(x.row)
 }
 
 /** A card's kind in a word: its group, a quiet start and one ended with a note (to look at) by its stage; a tab that
@@ -70,7 +72,7 @@ function cardKind(x) {
 }
 
 /** A point's title and its kind in a word, for the tabs, the walk and the list */
-export const pointTitle = x => (x.group === 'doing' ? x.row?.title ?? x.title ?? x.start?.title ?? x.tab?.name ?? '' : cardTitle(x))
+export const pointTitle = x => (x.group === 'doing' ? (x.row ? pointName(x.row) : x.title ?? x.start?.title ?? x.tab?.name ?? '') : cardTitle(x))
 export const pointKind = x => (x.group === 'doing' ? T().flow.kind.doing : cardKind(x))
 
 /** Pin at the end of a card's head (the star of the start page, c.pin; the item drawer had it): pressed while the
@@ -97,14 +99,18 @@ function nextOf(row, detail) {
   return what ? { what: String(what), who: null, due: null } : null
 }
 
-/** The next step as a tinted box under the title (the file card's Next step, the drawer's next step with who: in words,
- *  logic.js nextWho, stage 3) */
-function NextBox({ next, s }) {
-  if (!next?.what) return null
-  const w = T().card
-  const who = nextWho(next.who, s, language())
-  return html`<section class="dz-step flow-next"><p class="dz-step-kind">${w.next}</p><p class="dz-step-title">${next.what}</p>
-    ${who || next.due ? html`<p class="muted small">${[who, next.due ? w.due(formatDay(String(next.due).slice(0, 10), language())) : null].filter(Boolean).join(' · ')}</p>` : null}</section>`
+/** The next step in one line under the stand (stage 4): Next step, its words, who as a chip (logic.js nextWho: you,
+ *  the Bridge, a person) and its due day or, while it is with someone, the day it asks again; none without a step.
+ *  `next` the step as card.py or STATUS.md give it, where the row's card has none */
+export function StepLine({ row, next = null, s }) {
+  const f = T().flow.simple
+  const lang = language()
+  const step = pointStep(row, s) ?? (next?.what ? { what: String(next.what), who: next.who ?? null, due: next.due ?? null, check: row?.checkin?.until ?? null } : null)
+  if (!step) return null
+  const day = v => formatDay(String(v).slice(0, 10), lang)
+  const when = step.check ? f.asksOn(day(step.check)) : step.due ? f.dueOn(day(step.due)) : null
+  return html`<p class="flow-step"><span class="label-caps">${f.step}</span> <span class="flow-step-what">${step.what}</span>
+    <${WhoChip} who=${step.who} s=${s} />${when ? html` <span class="muted small">${when}</span>` : null}</p>`
 }
 
 /** What a card says of its row's file: the task's detail (its own, or the folder of a closed copy), its headline as
@@ -114,6 +120,53 @@ function fileOf(x, s) {
   const own = !!row?.task && row.key === `task:${row.task}`
   const detail = own ? s.details?.task?.[x.file ?? row.task]?.data ?? null : null
   return { detail, headline: detail?.front?.headline ?? null, next: nextOf(row, detail) }
+}
+
+/** A check-in whose day came (stage 4, logic.js flowParts `checkin`): since when it is with whom and How does it stand?,
+ *  what the Bridge found when it looked (a note of the check-in run, where one is), then the answers on the card: Done,
+ *  Still running ▾ (a new check-in day), Stuck (back to you, with why as a note), Drop ▾ and Follow up with <who> (a
+ *  start that drafts a follow-up to that person, never sends it). The right column then has no states, only More */
+function CheckinCard({ x, n = 1, s, c }) {
+  const t = T()
+  const f = t.flow.simple
+  const lang = language()
+  const row = x.row
+  const ck = x.checkin ?? row.checkin ?? {}
+  const who = nextWho(ck.who, s, lang) || f.someone
+  const [open, setOpen] = useState(null)
+  const [why, setWhy] = useState('')
+  const busy = !!s.ui?.busy?.[row.key]
+  const days = checkinDays(s.now || Date.now())
+  const send = async a => { if (!a) return; const r = await c.act(a.verb, a.args); if (r?.ok) { setOpen(null); c.flowDecided() } }
+  const since = ck.since ? formatDay(String(ck.since).slice(0, 10), lang) : null
+  const name = pointName(row)
+  const reasons = flowSettings(s).drop_reasons
+  return html`<article class="fx-hero tk-warning flow-checkin" aria-labelledby="flow-title">
+    <header class="fx-hero-top"><span class="fx-kind"><${Dot} token="warning" />${f.checkinKind}</span><${HeadEnd} row=${row} s=${s} c=${c} /></header>
+    <h2 id="flow-title" class="fx-title">${name}</h2>
+    <p class="fx-sub">${f.since(since, who)}</p>
+    ${ck.found ? html`<div class="flow-looked"><p class="label-caps">${f.looked}</p><p>${ck.found}</p></div>` : null}
+    <div class="verbbar-acts flow-checkin-acts" role="group" aria-label=${f.answers}>
+      <${Btn} size="sm" variant="secondary" busy=${busy} onClick=${() => send(flowAction('done', row, ''))}>${t.flow.verbs.done}<//>
+      <${Btn} size="sm" variant="secondary" pressed=${open === 'still'} onClick=${() => setOpen(open === 'still' ? null : 'still')}>${f.still} ▾<//>
+      <${Btn} size="sm" variant="secondary" pressed=${open === 'stuck'} onClick=${() => setOpen(open === 'stuck' ? null : 'stuck')}>${f.stuck}<//>
+      <${Btn} size="sm" variant="secondary" pressed=${open === 'drop'} onClick=${() => setOpen(open === 'drop' ? null : 'drop')}>${t.flow.verbs.drop} ▾<//>
+      ${personOf(s) ? null : html`<${Btn} size="sm" variant="primary" busy=${busy}
+        onClick=${() => send(flowAction('do', row, f.chase(who, name)))}>${f.chaseButton(who)}<//>`}
+    </div>
+    ${open === 'still' ? html`<div class="verbbar-panel verbbar-acts" role="group" aria-label=${f.still}>
+      ${[3, 7, 14].map(d => html`<${Btn} key=${d} size="sm" variant="secondary" busy=${busy}
+        onClick=${() => send({ verb: 'work_on', args: { key: row.key, who: ck.who || 'me', until: days[d] } })}>${f.inDays(d)}<//>`)}
+    </div>` : null}
+    ${open === 'stuck' ? html`<div class="verbbar-panel" role="group" aria-label=${f.stuck}>
+      <label class="label-caps" for=${`ck-why-${row.key}`}>${f.stuckWhy}</label>
+      <span class="field-row"><input id=${`ck-why-${row.key}`} class="input" type="text" maxlength="300" value=${why} onInput=${e => setWhy(e.currentTarget.value)} />
+        <${Btn} size="sm" variant="primary" busy=${busy} onClick=${() => send({ verb: 'checkin_stuck', args: { key: row.key, ...(why.trim() ? { text: why.trim() } : {}) } })}>${f.stuckGo}<//></span>
+    </div>` : null}
+    ${open === 'drop' ? html`<div class="verbbar-panel verbbar-acts" role="group" aria-label=${t.flow.drop.label}>
+      ${reasons.map(r => html`<${Btn} key=${r} size="sm" variant="secondary" busy=${busy} onClick=${() => send(flowAction('drop', row, dropReasonWord(r, lang)))}>${dropReasonWord(r, lang)}<//>`)}
+    </div>` : null}
+  </article>`
 }
 
 /** What a tab asks, answered on the card: the answers to its question as one row of buttons (a dialog's options, yes
@@ -213,7 +266,7 @@ function DoingCard({ x, s, c }) {
   const row = x.row
   const lines = tailLines(d.tab?.last ?? x.start?.tab?.last)
   const live = d.by !== 'none' && (d.stage === 'working' || d.stage === 'started')
-  const title = row?.title ?? x.title ?? x.start?.title ?? ''
+  const title = row ? pointName(row) : x.title ?? x.start?.title ?? ''
   const token = d.by === 'none' ? 'muted' : stageTone(d.stage === 'needs-you' ? 'asks' : d.stage ?? 'working')
   // an entry of Running now says so in its head with its stage, and why it stands there and not as a point
   const kind = x.lane ? [f.run.label, f.doing.stage[d.stage] ?? d.stage].filter(Boolean).join(' · ') : f.kind.doing
@@ -221,8 +274,8 @@ function DoingCard({ x, s, c }) {
   return html`<article class=${`fx-hero tk-${token === 'muted' ? 'muted' : 'info'}`} aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${token} pulse=${live} />${kind}</span><${HeadEnd} row=${row} s=${s} c=${c} /></header>
     <h2 id="flow-title" class="fx-title">${title}</h2>
-    ${file?.headline ? html`<p class="fx-sub muted small">${file.headline}</p>` : null}
-    <${NextBox} next=${file?.next} s=${s} />
+    ${row && pointStand(row, s) ? html`<p class="fx-sub">${pointStand(row, s)}</p>` : null}
+    ${row ? html`<${StepLine} row=${row} next=${file?.next} s=${s} />` : null}
     ${x.lane ? html`<p class="muted small">${[upFirst(f.run.how[x.how]), f.run.cardWhy].filter(Boolean).join('. ')}</p>` : null}
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
   </article>`
@@ -234,6 +287,7 @@ function DoingCard({ x, s, c }) {
 export function PointCard({ x, n = 1, s, c }) {
   const f = T().flow
   const tabs = s.tabs?.tabs ?? []
+  if (x.group === 'checkin') return html`<${CheckinCard} x=${x} n=${n} s=${s} c=${c} />`
   if (x.group === 'doing') return html`<${DoingCard} x=${x} s=${s} c=${c} />`
   if (x.kind === 'back') return html`<${BackCard} x=${x} s=${s} />`
   if (x.kind === 'start') return html`<${StartCard} x=${x} s=${s} c=${c} />`
@@ -245,7 +299,7 @@ export function PointCard({ x, n = 1, s, c }) {
     const asking = !(x.tab.state === 'waiting' && !asksSomething(x.tab.ask))
     return html`<${Hero} x=${{ kind: 'tab', id: x.tab.ref, tab: x.tab }} n=${n} tabOf=${() => null} s=${s} c=${c} kindWord=${cardKind(x)} openable=${false}
       foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${x.row ? html`<${HeadEnd} row=${x.row} s=${s} c=${c} />` : null}
-      title=${x.row ? titleOf(x.row) : null} sub=${x.row ? (asking ? f.one.tabAsks(x.tab.name) : f.one.tabWaits(x.tab.name)) : question}
+      title=${x.row ? pointName(x.row) : null} sub=${x.row ? (asking ? f.one.tabAsks(x.tab.name) : f.one.tabWaits(x.tab.name)) : question}
       lead=${x.row && question ? html`<p class="flow-ask">${question}</p>` : null}>
       <${AskBlock} tab=${x.tab} s=${s} c=${c} />
     <//>`
@@ -253,10 +307,11 @@ export function PointCard({ x, n = 1, s, c }) {
   const row = x.row
   const tab = row.task ? tabOfTask(tabs, row.task) : null
   const file = fileOf(x, s)
-  const sub = x.task ? f.forTask(x.task.title) : file.headline
-  return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${cardKind(x)} sub=${sub} openable=${false}
-    foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${html`<${HeadEnd} row=${row} s=${s} c=${c} />`}
-    lead=${html`<${NextBox} next=${file.next} s=${s} />`} />`
+  // stage 4: the name, where it stands, its next step; a question about a task names that task where it says no more
+  const sub = pointStand(row, s) ?? (x.task ? f.forTask(pointName(x.task)) : null)
+  return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${cardKind(x)} title=${pointName(row)}
+    sub=${sub} openable=${false} foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${html`<${HeadEnd} row=${row} s=${s} c=${c} />`}
+    lead=${html`<${StepLine} row=${row} next=${file.next} s=${s} />`} />`
 }
 
 /** The detail a point of its own is read from (logic.js soloSource: a task's STATUS.md, a closed copy by its folder,

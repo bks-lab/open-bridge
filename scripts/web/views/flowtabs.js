@@ -31,7 +31,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   activityCounts, activityFilters, activityRows, activityWhen, attachTooBig, detailNeedsLoad, errorText, flowSettings, formatDay, historyRows,
-  originOf, pageStepsOf, pointAbout, pointTab, pointTabs, relatedOf, rowActionKey, short, stepsOf,
+  originOf, pageStepsOf, pointAbout, pointOriginal, pointTab, pointTabs, pointViewOn, relatedOf, rowActionKey, short, stepsOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { describeOf, ItemCard } from './card.js'
@@ -99,6 +99,16 @@ function GitHubFold({ gref, c }) {
   </div>`
 }
 
+/** Whether a user story is the owner's own ("as the operator of this tracker", "as myself"): its `as` names the owner
+ *  (cockpit.person_name) or the owner's own role; such a story says nothing a reader needs and stays out (stage 4) */
+export function ownerStory(as, s) {
+  const text = String(as ?? '').toLowerCase()
+  if (!text) return true
+  const owner = String(s?.work?.person ?? s?.server?.person ?? '').trim().toLowerCase()
+  if (owner && (text.includes(owner) || text.includes(owner.split(/\s+/)[0]))) return true
+  return /\b(i|me|myself|owner|operator|ich|mich|inhaber|betreiber|nutzer des|user of)\b/.test(text)
+}
+
 /** Description: what it is about (a finished run what it was asked), then the goal, the story and the criteria of the
  *  point's card, written by the task or the item (none written: a line says so, not on a finished run, whose ask
  *  stands above), then a task's own STATUS.md in its sections; a GitHub issue or pull request what it says and who is
@@ -110,6 +120,30 @@ function DescPane({ row, detail, entry, item, itemCard = null, start = null, eve
   const loading = !!row.task && !detail && entry?.status !== 'error'
   const own = !!row.task && row.key === `task:${row.task}`
   const gh = !row.task && !row.inbox_id && GH_REF.test(row.ref ?? '') && (originOf(row)?.category === 'github' || /\/\/github\.com\//.test(row.url ?? ''))
+  if (pointViewOn(s)) {
+    // stage 4: the goal stands, everything else that is stored folds under one line
+    const w = T().flow.simple
+    const original = pointOriginal(row)
+    const headline = detail?.front?.headline ?? null
+    const about = pointAbout(row, s, item)
+    const story = card?.story && !ownerStory(card.story.as, s)
+    const stored = !!(original || headline || about || gh || story || (card?.acceptance ?? []).length || (own && (detail?.sections ?? []).length))
+    return html`<div class="flow-desc">
+      ${start ? html`<${Asked} start=${start} events=${events} />` : null}
+      ${card ? html`<${ItemCard} card=${card} d=${d} dkey=${row.key} s=${s} c=${c} skip=${[...DESC_SKIP, 'summary', 'story', 'acceptance']} cls="flow-card-brief" />` : null}
+      ${card?.goal || stored || (start && !loading) ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
+      ${stored ? html`<details class="flow-stored"><summary>${w.more2}</summary>
+        ${original || headline ? html`<dl class="meta flow-meta">
+          ${original ? html`<div class="meta-item"><dt>${w.original}</dt><dd>${original}</dd></div>` : null}
+          ${headline ? html`<div class="meta-item"><dt>${w.headline}</dt><dd>${headline}</dd></div>` : null}</dl>` : null}
+        <${About} about=${about} />
+        ${gh ? html`<${GitHubFold} key=${row.ref} gref=${row.ref} c=${c} />` : null}
+        ${card && (story || (card.acceptance ?? []).length) ? html`<${ItemCard} card=${story ? card : { ...card, story: null }} d=${null} dkey=${null} s=${s} c=${null}
+          skip=${[...DESC_SKIP, 'summary', 'goal', 'describe']} cls="flow-card-brief" />` : null}
+        ${own ? html`<${Sections} sections=${detail?.sections} />` : null}
+      </details>` : null}
+    </div>`
+  }
   return html`<div class="flow-desc">
     ${start ? html`<${Asked} start=${start} events=${events} />` : null}
     <${About} about=${pointAbout(row, s, item)} />

@@ -24,19 +24,20 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, laneRows, short, stageTone } from '../logic.js'
+import { duration, laneRows, pointName, short, stageTone } from '../logic.js'
 import { T } from '../text.js'
 import { TabWays } from './flowside.js'
 import { CHAT_PAGE, chatAsWorkspaces } from './nav.js'
 import { Btn, Dot } from './parts.js'
 import { SessionCard } from './sessions.js'
 
-/** The words of an entry of Running now: its title, its tab's name, its stage, since when and how it is known */
+/** The words of an entry of Running now: its title (its row's name, stage 4: logic.js pointName), its tab's name, its
+ *  stage, since when and how it is known */
 export function laneWords(x, s) {
   const f = T().flow
   const nowMs = s.now || Date.now()
   return {
-    title: x.row?.title ?? x.title ?? x.start?.title ?? x.tab?.name ?? '',
+    title: (x.row ? pointName(x.row) : null) || x.title || x.start?.title || x.tab?.name || '',
     tab: x.tab?.name ?? '',
     stage: f.doing.stage[x.stage] ?? x.stage ?? '',
     since: Number.isFinite(x.at) ? f.since(duration(nowMs - x.at)) : '',

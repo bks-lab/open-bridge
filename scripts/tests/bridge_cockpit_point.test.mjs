@@ -22,6 +22,18 @@ const en = text.TABLES.en
 const de = text.TABLES.de
 const tick = () => rounds()
 const until = async (ok, ms = 2000) => { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick() }
+/** Stage 4: the fold Details of the fields opened (every field but Theme, Area, Who and Due stands in it) */
+async function openDetails(el) {
+  const t = el.$('.flow-aside .flow-facts-toggle')
+  if (t && t.getAttribute('aria-expanded') !== 'true') { t.click(); await tick() }
+  return el
+}
+/** Stage 4: the item of the menu More whose words are `word` (or start with them), the menu opened first */
+async function moreItem(el, word) {
+  const t = el.$('.flow-aside .flow-more-toggle')
+  if (t && t.getAttribute('aria-expanded') !== 'true') { t.click(); await tick() }
+  return el.$$('.flow-aside .flow-more-item').find(b => b.text() === word || b.text().startsWith(word)) ?? null
+}
 const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web')
 const APP = fs.readFileSync(path.join(WEB, 'app.js'), 'utf8')
 const method = head => {
@@ -32,6 +44,7 @@ const method = head => {
 }
 const proto = Object.getPrototypeOf(document.createElement('div'))
 if (!proto.querySelector) proto.querySelector = function querySelector(sel) { return this.$(sel) }
+proto.focus ??= function focus() { document.activeElement = this }
 globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
 for (const k of ['offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth']) Object.defineProperty(proto, k, { get: () => 0, configurable: true })
 
@@ -305,7 +318,7 @@ test('Not now: a title opens the row in the one point view in the middle, To the
   const el = mount(html`<${FlowPage} s=${flowState({ hidden: rows, ui: { flowView: 'left', flowLeft: 'later', flowLeftAt: { id: 'task:b', i: 1 } } })} c=${c} />`)
   assert.match(el.$('.flow-card .fx-title').text(), /Second/)
   assert.match(el.$('.flow-card .fx-kind').text(), new RegExp(en.flow.notnow.group.later), 'its group in the head')
-  assert.ok(el.$('.flow-ptabs') && el.$('.flow-aside .verbbar-basic'), 'the same tabs and verbs as every point')
+  assert.ok(el.$('.flow-ptabs') && el.$('.flow-aside .verbbar-grid'), 'the same tabs and verbs as every point (stage 4: the four states)')
   assert.equal(el.$('.flow-leftlist'), null, 'the list gives way to the point')
   assert.match(el.$('.dz-walk').text(), /2 of 2/)
   el.button(en.flow.one.backList).click()
@@ -327,7 +340,9 @@ test('a point of its own: a closed task reads its file and offers nothing, Ask s
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${flowState({ details, ui: { flowView: 'solo', flowSolo: { key: 'task:old', file: folder } } })} c=${c} />`)
   assert.match(el.$('.flow-card .fx-title').text(), /Old export/)
-  assert.match(el.$('.flow-card').text(), /Shipped the export/, 'the headline as the line under the title')
+  // stage 4: the headline is stored with the rest, folded in Description
+  assert.ok(!el.$('.flow-card').text().includes('Shipped the export'), 'no headline under the title')
+  assert.match(el.$('.flow-ptabs .flow-stored').text(), /Shipped the export/, 'the headline in the fold What else is stored')
   assert.match(el.$('.flow-aside .flow-readonly').text(), new RegExp(en.flow.one.readOnly))
   assert.equal(el.$('.flow-aside .verbbar'), null, 'no verb acts on a closed copy')
   assert.equal(el.button(en.flow.instruct.send), null, 'no instruction')
@@ -342,7 +357,7 @@ test('a point of its own: a closed task reads its file and offers nothing, Ask s
   assert.deepEqual(lc.calls.find(x => x[0] === 'loadTask'), ['loadTask', folder])
 })
 
-test('the card of a point: its kind and Pin in the head, the next step as a box under the title', () => {
+test('the card of a point: its kind and Pin in the head, the next step in one line under the title with who as a chip', () => {
   const t = task('a', { card: { title: 'Task a', next: { what: 'Send the draft', who: 'me' } } })
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${flowState({ work: [t], ui: { flowView: 'point', flowAt: { id: 'task:a', i: 0 } } })} c=${c} />`)
@@ -352,9 +367,9 @@ test('the card of a point: its kind and Pin in the head, the next step as a box 
   assert.equal(pin.text().trim(), `☆ ${en.flow.one.pin}`)
   pin.click()
   assert.deepEqual(c.calls.at(-1), ['pin', 'task:a', true])
-  const next = el.$('.flow-card .flow-next')
+  const next = el.$('.flow-card .flow-step')
   assert.match(next.text(), /Send the draft/)
-  assert.match(next.text(), new RegExp(en.card.who.me))
+  assert.equal(next.$('.flow-who').text(), en.card.who.me)
   const pinned = mount(html`<${FlowPage} s=${{ ...flowState({ work: [t], ui: { flowView: 'point', flowAt: { id: 'task:a', i: 0 } } }), home: { pins: ['task:a'] } }} c=${recorder()} />`)
   assert.equal(pinned.$('.flow-card .flow-pin').text().trim(), `★ ${en.flow.one.pinned}`)
 })
@@ -414,7 +429,7 @@ test('Make it a task: every inbox item offers it through a panel that says what 
   const c = new Proxy({}, { get: (_, p) => (p === 'calls' ? calls : p === 'then' || typeof p === 'symbol' ? undefined
     : (...a) => { calls.push([p, ...a]); return p === 'act' ? Promise.resolve({ ok: true, task: 'new-one' }) : undefined }) })
   const el = mount(html`<${FlowPage} s=${flowState({ now: [q], ui: { flowView: 'point', flowAt: { id: q.key, i: 0 } } })} c=${c} />`)
-  el.button(`${en.flow.basic.task} ▾`).click()
+  ;(await moreItem(el, en.flow.basic.task)).click()
   await tick()
   assert.match(el.$('.verbbar-panel').text(), new RegExp(en.flow.basic.taskInbox))
   el.button(en.flow.basic.taskGo).click()
@@ -426,7 +441,7 @@ test('Make it a task: every inbox item offers it through a panel that says what 
   const pages = [{ id: 'gh', title: 'GitHub', sections: [{ id: 'mine', kind: 'tracker', items: [{ index: 3, row_id: 'acme/app#7', actions: [{ id: 'adopt', label: 'x' }] }] }] }]
   const ic = recorder()
   const iel = mount(html`<${FlowPage} s=${flowState({ now: [issue], pages, ui: { flowView: 'point', flowAt: { id: issue.key, i: 0 } } })} c=${ic} />`)
-  iel.button(`${en.flow.basic.task} ▾`).click()
+  ;(await moreItem(iel, en.flow.basic.task)).click()
   await tick()
   assert.match(iel.$('.verbbar-panel').text(), new RegExp(en.flow.basic.taskIssue.slice(0, 20)))
   iel.button(en.flow.basic.taskGo).click()
@@ -434,7 +449,7 @@ test('Make it a task: every inbox item offers it through a panel that says what 
   assert.deepEqual(ic.calls.find(x => x[0] === 'act'), ['act', 'row_action', { page: 'gh', section: 'mine', index: 3, action: 'adopt' }])
   // a task is one already, a pull request has no step
   const tel = mount(html`<${FlowPage} s=${flowState({ work: [task('a')], ui: { flowView: 'point', flowAt: { id: 'task:a', i: 0 } } })} c=${recorder()} />`)
-  assert.equal(tel.button(`${en.flow.basic.task} ▾`), null)
+  assert.equal(await moreItem(tel, en.flow.basic.task), null)
   assert.equal(de.flow.basic.task, 'Zur Aufgabe machen')
 })
 
@@ -481,7 +496,7 @@ test('the Files tab with Work through on: a record opens in the one point view, 
   const el = mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, filesWalk: true, dossierAt: { id: x.id, i: queue.indexOf(x) } } }} c=${c} />`)
   assert.ok(el.$('.flow-main .flow-card') && el.$('.flow-main .flow-ptabs'), 'the card and the tabs of a point')
   assert.equal(el.$('.dz-cover'), null, 'no file card')
-  assert.ok(el.$('.flow-aside .verbbar-basic'), 'the right column of Work through')
+  assert.ok(el.$('.flow-aside .verbbar-grid'), 'the right column of Work through')
   assert.equal(el.$('.flow-aside .flow-details'), null, 'no Details link')
   assert.ok(el.$('.flow-main .dz-walk'), 'the walk')
   el.button(en.dossier.start.back).click()
@@ -602,10 +617,11 @@ test('the task check in Work through opens a task through peek, the walk over it
   assert.deepEqual(call[3].map(e => e.key), ['task:a', 'task:b'], 'with the rows of the check as its list')
 })
 
-test('the fields change in place what the detail column changed: Area and Urgency of an inbox item, Prio of a task', () => {
+test('the fields change in place what the detail column changed: Area and Urgency of an inbox item, Prio of a task', async () => {
   const q = ask('20261009-0900-a-q', { urgency: 'today', area: 'Ops' })
   const c = recorder()
-  const el = mount(html`<${FlowPage} s=${{ ...flowState({ now: [q], ui: pointAt(q.key) }), boot: BOOT }} c=${c} />`)
+  // stage 4: Area on top, Urgency and Prio in Details
+  const el = await openDetails(mount(html`<${FlowPage} s=${{ ...flowState({ now: [q], ui: pointAt(q.key) }), boot: BOOT }} c=${c} />`))
   const area = el.$('[data-field=area] select')
   assert.ok(area, 'Area is a select on an inbox item without a task')
   assert.deepEqual(area.$$('option').map(o => o.text()), [en.areaNone, 'Ops', 'Docs'])
@@ -621,7 +637,7 @@ test('the fields change in place what the detail column changed: Area and Urgenc
   assert.equal(el.$('[data-field=prio] select'), null, 'an inbox item has no priority of its own')
   // a task: its priority, beside what Jev or the triage said
   const tc = recorder()
-  const tel = mount(html`<${FlowPage} s=${{ ...flowState({ work: [task('a', { priority: 'P2' })], ui: pointAt('task:a') }), boot: BOOT }} c=${tc} />`)
+  const tel = await openDetails(mount(html`<${FlowPage} s=${{ ...flowState({ work: [task('a', { priority: 'P2' })], ui: pointAt('task:a') }), boot: BOOT }} c=${tc} />`))
   const prio = tel.$('[data-field=prio] select')
   assert.ok(prio)
   pick(prio, 'P0')
@@ -631,11 +647,11 @@ test('the fields change in place what the detail column changed: Area and Urgenc
   // an item with a task shows the task's area; a person's page gives no area; a closed point changes nothing
   const withTask = mount(html`<${FlowPage} s=${{ ...flowState({ now: [ask('20261009-0901-b-q', { task: 'a' })], work: [task('a')], ui: pointAt('inbox:20261009-0901-b-q') }), boot: BOOT }} c=${recorder()} />`)
   assert.equal(withTask.$('[data-field=area] select'), null)
-  const person = mount(html`<${FlowPage} s=${{ ...flowState({ now: [q], ui: pointAt(q.key) }), boot: { status: 'ok', config: { areas: ['Ops'], person: 'lena' } } }} c=${recorder()} />`)
+  const person = await openDetails(mount(html`<${FlowPage} s=${{ ...flowState({ now: [q], ui: pointAt(q.key) }), boot: { status: 'ok', config: { areas: ['Ops'], person: 'lena' } } }} c=${recorder()} />`))
   assert.equal(person.$('[data-field=area] select'), null, 'an area is the owner\'s to give')
   assert.ok(person.$('[data-field=when] select'), 'urgency and priority are a person\'s verbs too (access.py)')
   const details = { inbox: { x1: { status: 'ok', ver: 0, data: { id: 'x1', item: { ...ITEM, state: 'done', urgency: 'now' }, events: [] } } }, task: {}, activity: {} }
-  const closed = mount(html`<${FlowPage} s=${{ ...flowState({ details, ui: { flowView: 'solo', flowSolo: { key: 'inbox:x1', file: null } } }), boot: BOOT }} c=${recorder()} />`)
+  const closed = await openDetails(mount(html`<${FlowPage} s=${{ ...flowState({ details, ui: { flowView: 'solo', flowSolo: { key: 'inbox:x1', file: null } } }), boot: BOOT }} c=${recorder()} />`))
   assert.equal(closed.$('[data-field=when] select'), null)
   assert.equal(closed.$('[data-field=when] dd').text(), en.urgency.now, 'read only, in words')
   assert.deepEqual([en.flow.fields.when, de.flow.fields.when], ['Urgency', 'Dringlichkeit'])
@@ -649,7 +665,7 @@ test('a task\'s team and its task check are fields: how far the team is, the nex
   const base = flowState({ work: [t], ui: pointAt('task:a') })
   const s = { ...base, model: { ...base.model, teams } }
   const c = recorder()
-  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  const el = await openDetails(mount(html`<${FlowPage} s=${s} c=${c} />`))
   const team = el.$('[data-field=team]')
   assert.ok(team)
   assert.match(team.text(), new RegExp(en.teamProgress('Build', 1, 2)))
@@ -664,16 +680,16 @@ test('a task\'s team and its task check are fields: how far the team is, the nex
   check.button(en.btnCheckAgain).click()
   assert.deepEqual(c.calls.at(-1), ['review', ['task:a'], false, true])
   // an inbox item has neither; a person's page has neither (a check asks a model, a team starts agents)
-  const q = mount(html`<${FlowPage} s=${flowState({ now: [ask('20261009-0900-a-q')], ui: pointAt('inbox:20261009-0900-a-q') })} c=${recorder()} />`)
+  const q = await openDetails(mount(html`<${FlowPage} s=${flowState({ now: [ask('20261009-0900-a-q')], ui: pointAt('inbox:20261009-0900-a-q') })} c=${recorder()} />`))
   assert.equal(q.$('[data-field=team]'), null)
   assert.equal(q.$('[data-field=check]'), null)
-  const person = mount(html`<${FlowPage} s=${{ ...s, boot: { status: 'ok', config: { person: 'lena' } } }} c=${recorder()} />`)
+  const person = await openDetails(mount(html`<${FlowPage} s=${{ ...s, boot: { status: 'ok', config: { person: 'lena' } } }} c=${recorder()} />`))
   assert.equal(person.$('[data-field=team]'), null)
   assert.equal(person.$('[data-field=check]'), null)
   assert.deepEqual([en.flow.fields.team, en.flow.fields.check], ['Team', en.reviewTitle])
 })
 
-test('what else the detail column did stands in the view: the sessions and the asks folded in under Related, Take over a tab, Back on, why it is here', () => {
+test('what else the detail column did stands in the view: the sessions and the asks folded in under Related, Take over a tab, Back on, why it is here', async () => {
   const t = task('a', { also_inbox: [{ id: '20261009-1100-ask-c1', title: 'Is the report ready?' }], why: ['due tomorrow', 'only you'],
     adopt_candidates: [{ ref: 'surface:9', name: 'notes', workspace: 'Demo' }] })
   const sessions = { links: [{ sid: 'aa11', task: 'a', name: 'a research' }, { sid: 'bb22', task: 'a', name: 'a draft' }],
@@ -695,7 +711,7 @@ test('what else the detail column did stands in the view: the sessions and the a
   // Take over a tab: the tab already running on it, named
   const ac = recorder()
   const el = mount(html`<${FlowPage} s=${st({})} c=${ac} />`)
-  el.button(en.flow.one.adopt('Demo / notes')).click()
+  ;(await moreItem(el, en.flow.one.adopt('Demo / notes'))).click()
   assert.deepEqual(ac.calls.at(-1), ['act', 'adopt', { key: 'task:a', tab_ref: 'surface:9' }])
   // why it is here, on top of Description
   assert.match(el.$('.flow-desc').text(), new RegExp(en.whyTitle))
@@ -704,7 +720,8 @@ test('what else the detail column did stands in the view: the sessions and the a
   const hidden = task('h', { hidden_until: '2026-10-20', title: 'Hidden one' })
   const bc = recorder()
   const later = mount(html`<${FlowPage} s=${flowState({ hidden: [hidden], ui: { flowView: 'left', flowLeft: 'later', flowLeftAt: { id: 'task:h', i: 0 } } })} c=${bc} />`)
-  later.$('.flow-aside').button(en.flow.notnow.back).click()
+  ;(await moreItem(later, en.flow.notnow.back)).click()
+  await tick()
   assert.deepEqual(bc.calls.at(-1), ['flowBatch', [{ verb: 'unhide', args: { key: 'task:h' } }], 'left'])
   assert.equal(de.flow.one.adopt('Demo / notes'), 'Tab Demo / notes zuordnen')
 })
@@ -723,8 +740,8 @@ test('Steps: the steps a row has on its page stand in its Steps tab, two clicks 
   await tick()
   pane.$$('button').find(b => b.text().includes('Followed up')).click()
   assert.deepEqual(c.calls.at(-1), ['act', 'row_action', { page: 'work', section: 'apps', index: 2, action: 'followup' }])
-  // the verbs lead to the tab, never to a drawer
-  el.$('.flow-aside').button(en.rowSteps).click()
+  // the verbs lead to the tab, never to a drawer (stage 4: Steps in More)
+  ;(await moreItem(el, en.rowSteps)).click()
   assert.deepEqual(c.calls.at(-1), ['flowTab', 'steps'])
   assert.ok(!c.calls.some(x => x[0] === 'openInfo'))
 })
@@ -741,8 +758,8 @@ test('nextWho: who takes a next step in words: you and the Bridge by the card\'s
   // the next step box of a point says it so
   const t = task('a', { card: { title: 'Task a', next: { what: 'Send the draft', who: 'lena' } } })
   const el = mount(html`<${FlowPage} s=${flowState({ work: [t], ui: pointAt('task:a') })} c=${recorder()} />`)
-  assert.match(el.$('.flow-card .flow-next').text(), /Lena/)
-  assert.doesNotMatch(el.$('.flow-card .flow-next').text(), /lena/)
+  assert.match(el.$('.flow-card .flow-step').text(), /Lena/)
+  assert.doesNotMatch(el.$('.flow-card .flow-step').text(), /lena/)
 })
 
 test('a GitHub issue says what it says on GitHub under Description, read only once its fold is opened', async () => {
