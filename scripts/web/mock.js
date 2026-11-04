@@ -508,7 +508,8 @@ const MOCK_BRIEFS = {
   refs: { goal: null, story: null, acceptance: [null, null, [{ text: 'Issue ' },
     { text: 'example-org/demo-project#12', ref: { kind: 'web', href: 'https://example.org/demo-project/issues/12' } },
     { text: ' links the finished guide' }]] } },
-  'task:docs-refresh': { brief: { goal: 'Readers find every docs page from one index',
+  // its next step taken by a colleague, as STATUS.md names her (next.who: lena)
+  'task:docs-refresh': { who: 'lena', brief: { goal: 'Readers find every docs page from one index',
     acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken'], by: 'claude-haiku-5-5', at: '2026-10-02', edited: true },
   written: 'human', stale: false, progress: { done: 1, total: 3 },
   proposal: { id: 'd0a1b2c3d4e', by: 'claude-haiku-5-5', brief: { goal: 'Readers find every page from one index, grouped by topic',
@@ -537,7 +538,7 @@ function mockCard(r, m = {}, now = Date.now()) {
   const kind = inbox ? 'inbox' : task ? (r.work_kind === 'stream' || r.stream ? 'stream' : 'task') : 'info'
   const b = m.brief ?? null
   const what = m.next ?? r.next?.what ?? null
-  const next = task ? (what ? { what, who: r.next?.from === 'status' || m.next ? 'me' : null, due: null, from: r.next?.from ?? 'status', since: r.next?.since ?? null } : null)
+  const next = task ? (what ? { what, who: m.who ?? (r.next?.from === 'status' || m.next ? 'me' : null), due: null, from: r.next?.from ?? 'status', since: r.next?.since ?? null } : null)
     : inbox ? { what: r.inbox_kind === 'decision' ? 'decide' : r.gate === 'your-yes' ? 'give your yes' : r.inbox_kind === 'result' ? 'check the result' : 'read',
       who: r.gate === 'free' ? 'bridge' : 'me', due: r.due ?? null, from: 'item', since: null } : null
   const gaps = m.gaps ?? (task ? [!b?.goal && 'no_goal', !next && 'no_next', m.next === 'First step' && 'placeholder_next',
@@ -1136,6 +1137,8 @@ export function buildState(now = Date.now(), opts = {}) {
       views: Array.isArray(opts.views) && opts.views.length ? opts.views : ['due', 'source', 'jev', 'files', 'flow'],
       // the files tab's question to its records (cockpit.files_search): on in the demo, the Health area kept private
       files_search: { enabled: true, block: ['Health'], left: 20 },
+      // who the cockpit belongs to (cockpit.person_name, sent with Work through on): a next step naming her is hers
+      ...(opts.flow !== false ? { person: 'Mara' } : {}),
       flow: { enabled: opts.flow !== false, drop_reasons: ['resolves_itself', 'not_needed', 'someone_else', 'not_worth_it'], return_after_s: 20,
         // round 4: a point comes up two days before its due; a session's task is recognised from what it did
         ahead_days: 2, infer_sessions: true,
@@ -1164,7 +1167,9 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     cmux: { ok: true, error: null },
-    sessions: { at_ms: now - 8000, sessions: empty ? [] : [
+    // the sessions linked to a task by hand (sessions.py links): one live in its tab, one ended that goes on in a new one
+    sessions: { at_ms: now - 8000, links: empty ? [] : [{ sid: '2f7a0c55-0000-4000-8000-000000000003', task: 'demo-task', name: 'demo-bridge-research' },
+      { sid: '5e2d7f31-0000-4000-8000-000000000009', task: 'demo-task', name: 'demo-task outline' }], sessions: empty ? [] : [
       { id: '7a16c7b2', pid: 101, name: 'demo-bridge-fc', project: 'demo-bridge', cwd: '/demo/bridge', here: true, status: 'busy',
         since_ms: now - 4 * MIN, started_ms: now - 95 * MIN, kind: 'interactive', version: '2.1.0', remote: true,
         tab: { ref: 'surface:3', ws_ref: 'workspace:1', name: 'Control', workspace: 'Control', state: 'working', is_control: true },
@@ -2232,7 +2237,9 @@ export function createMockTransport(opts = {}) {
         if (opts.auth === false) return fail(401, 'unauthorized', 'no cookie')
         // the check of the cockpit: block finds nothing in the invented config (config_warnings, #402)
         return ok({ ok: true, csrf: 'mock', language: opts.lang || 'en', version: '0.1.0', config_warnings: [],
-          config: { port: 8797, relay: true, tabs_seconds: 10, full_minutes: 10, voice: false, target: 'area', control: 'Control', profile: 'morning' } })
+          config: { port: 8797, relay: true, tabs_seconds: 10, full_minutes: 10, voice: false, target: 'area', control: 'Control', profile: 'morning',
+            // the areas an inbox item can be given (workplace.workspaces), as the rows of the demo name them
+            areas: ['Demo', 'Docs', 'Ops'] } })
       }
       if (url.pathname === '/api/state') return ok(state)
       if (url.pathname === '/api/inbox') return ok(inboxDetail(url.searchParams.get('id'), state))
@@ -2495,6 +2502,14 @@ export function createMockTransport(opts = {}) {
           return ok({ ...result, note: `Mock: now the task ${slug}`, task: slug })
         }
 
+        // stage 3: the fields of the one point view change the row in place (actions_work.py area, urgency, priority)
+        if (['area', 'urgency', 'priority'].includes(verb)) {
+          const row = state.model.sections.flatMap(x => x.rows).find(r => r.key === args.key)
+          if (!row) return fail(409, 'stale_row', 'no such row')
+          Object.assign(row, verb === 'area' ? { area: args.value ?? null, area_names: args.value ? [args.value] : [] } : { [verb]: args.value })
+          publish()
+          return ok({ ...result, note: `Mock: ${verb} ${args.value ?? 'none'}` })
+        }
         // Check with AI on an issue card: the demo finds it done from a merged pull request
         if (verb === 'issue_check') {
           await new Promise(r => wait(r, 700))
