@@ -27,7 +27,10 @@ would not read back as written) is an error and left out of `clean`, never cut o
 first five and says so. Without a usable goal there is no brief and `clean` is None. Since stage 4 of the one
 point view a brief may carry `name` (at most 60 characters and 8 words, never a path, an issue or ticket number or
 a file name: the page shows it where a title is a slug or too long) and `stand` (one sentence of at most 140
-characters: where the item stands and why it is here); a wrong one is left out like any text.
+characters: where the item stands and why it is here); a wrong one is left out like any text. A placeholder is no
+text either (found live: a model answered "placeholder" for a goal): placeholder, TODO, TBD, n/a, lorem, "...", "…",
+a value in angle brackets, or the field's own key as its value, case and the punctuation around it aside. A
+placeholder goal means no brief; a placeholder name, stand, story part or criterion is left out.
 
 `brief_basis(text)` is the sha256 prefix (16 hex characters) of a STATUS.md with its `brief:` block taken out
 of the front matter (and one blank line directly before it), so writing the brief does not change it and any
@@ -67,6 +70,11 @@ _NAME_NUMBER_RE = re.compile(r"#\d|\bPR ?\d|\b[A-Z]{2,}-\d+\b")
 _NAME_FILE_RE = re.compile(r"\b[\w-]+\.(?:md|py|js|mjs|ts|json|ya?ml|sh|txt|html?|css|toml|log|csv|pdf|plist)\b", re.I)
 
 _DASH_RE = re.compile("[‒-―]")
+# what a model or a template writes where it has nothing to say: the whole text, case and the punctuation around it aside
+_PLACEHOLDER_WORDS = frozenset(("placeholder", "todo", "tbd", "n/a"))
+_PLACEHOLDER_EDGE = " \t.,;:!?'\"()[]{}*_`\u2026"
+_ANGLE_RE = re.compile(r"<[^<>]*>")
+_LOREM_RE = re.compile(r"lorem\b")
 # matched with fullmatch: `$` would also take a value that ends in a newline
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _BASIS_RE = re.compile(r"[0-9a-f]{16}")
@@ -74,11 +82,25 @@ _BASIS_RE = re.compile(r"[0-9a-f]{16}")
 _MODEL_RE = re.compile(r"(?=.*\d)[A-Za-z0-9][A-Za-z0-9._:/@-]*")
 
 
+def placeholder(text: str, key: str) -> bool:
+    """Whether a text only holds a place: a placeholder word, an ellipsis, a value in angle brackets, or the field's
+    own key (`key`: goal, name, stand, as, want, so_that, acceptance)"""
+    low = text.strip().casefold()
+    if _ANGLE_RE.fullmatch(low):
+        return True
+    bare = low.strip(_PLACEHOLDER_EDGE)
+    keys = {key.casefold(), key.casefold().replace("_", " ")}
+    return not bare or bare in _PLACEHOLDER_WORDS or bare in keys or bool(_LOREM_RE.match(bare))
+
+
 def _text(value: Any, name: str, limit: int, errors: list) -> str | None:
     if not isinstance(value, str) or not value.strip():
         errors.append(f"{name}: not a text")
         return None
     text = value.strip()
+    if placeholder(text, name.split(".")[-1].split("[")[0]):
+        errors.append(f"{name}: a placeholder ({text[:30]!r}), not a text")
+        return None
     if len(text) > limit:
         errors.append(f"{name}: {len(text)} characters, at most {limit}")
         return None

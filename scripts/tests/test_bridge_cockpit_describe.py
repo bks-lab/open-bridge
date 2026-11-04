@@ -965,3 +965,63 @@ def test_a_persons_brief_without_a_name_gets_one_proposal_for_it(tmp_path):
                                         entry) is None
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- found live: a stale brief rewritten to "placeholder"
+
+OLD_STORY = {"as": "a colleague", "want": "to try the demo", "so_that": "I can give feedback"}
+OLD_CRITERIA = ["The demo opens without an error", "Two colleagues tried it and said so", "The guide names every step",
+                "The feedback is written down", "A second run needs no help"]
+
+
+def _stale_by_prompt(w):
+    """describe wrote a full brief, then the prompt moved on: stale, the pass rewrites it"""
+    w.runner.handlers["claude.p"] = lambda argv: answer(story=OLD_STORY, acceptance=OLD_CRITERIA)
+    w.act("describe_run", key="task:demo-task")
+    path, data = store_items(w)
+    data["items"]["task:demo-task"]["prompt_version"] = dsc.PROMPT_VERSION - 1
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert w.app.describe.state_for("task:demo-task")["stale_why"] == "prompt"
+    return brief_of(w)
+
+
+def test_a_placeholder_answer_leaves_the_old_brief_as_it_is(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        before = _stale_by_prompt(w)
+        assert before["acceptance"] == OLD_CRITERIA and before["story"] == OLD_STORY
+        # the answer of the live case: a fine name, the rest placeholder, no criteria
+        w.runner.handlers["claude.p"] = lambda argv: answer(goal="placeholder", acceptance=[], name="Demo for the team",
+                                                            stand="placeholder")
+        w.app.describe.pass_once()
+        assert brief_of(w) == before, "no write: the goal is a placeholder, so there is no usable brief"
+        entry = w.app.describe.entry("task:demo-task")
+        assert "placeholder" in (entry.get("last_error") or "") and entry.get("failed_basis")
+    finally:
+        w.close()
+
+
+def test_a_rewrite_never_trades_criteria_for_none_it_keeps_the_old_ones(tmp_path):
+    w = make_world(tmp_path, auto="stale")
+    try:
+        _stale_by_prompt(w)
+        w.runner.handlers["claude.p"] = lambda argv: answer(goal="The demo is shipped and tried", acceptance=[],
+                                                            name="Demo for the team", stand="The demo runs, nobody tried it yet.")
+        w.app.describe.pass_once()
+        after = brief_of(w)
+        assert after["goal"] == "The demo is shipped and tried" and after["name"] == "Demo for the team"
+        assert after["acceptance"] == OLD_CRITERIA, "the criteria of the brief before stay"
+        warnings = w.app.describe.state_for("task:demo-task")["warnings"]
+        assert any("kept" in x.lower() and "5" in x for x in warnings), warnings
+        # a stream keeps none, as before
+        assert dsc.keep_criteria({"goal": "g", "acceptance": []}, {"acceptance": OLD_CRITERIA}, "stream")[0]["acceptance"] == []
+    finally:
+        w.close()
+
+
+def test_the_prompt_shows_no_placeholder_values_to_copy():
+    system, _ = dsc.prompt({"kind": "task", "data": "{}"}, "English")
+    assert '"..."' not in system and "[...]" not in system
+    assert "placeholder" in system.lower(), "the rules say a placeholder is no answer"
+    for field in ("name", "stand", "goal", "story", "acceptance"):
+        assert f"{field}:" in system, field
