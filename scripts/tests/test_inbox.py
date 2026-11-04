@@ -678,14 +678,14 @@ def test_runs_on_is_a_defer_that_names_what_it_waits_on(box):
     # stored as waits_on, never a bare `on` key (a boolean to YAML 1.1 readers)
     stored = "\n".join(f.read_text(encoding="utf-8") for f in (box.root / item_id / "events").glob("*defer*"))
     assert "waits_on: an answer from the vendor" in stored and "'on'" not in stored
-    assert item.state == "deferred" and item.deferral == {"until": "2099-01-01", "on": "an answer from the vendor"}
+    assert item.state == "deferred" and item.deferral == {"until": "2099-01-01", "on": "an answer from the vendor", "check": False}
     assert item.as_dict()["waiting_on"] == "an answer from the vendor" and item.as_dict()["deferred_until"] == "2099-01-01"
     box.event(item_id, "defer", until="2099-02-01")            # a plain later: nothing it waits on
-    assert box.get(item_id).deferral == {"until": "2099-02-01", "on": None}
+    assert box.get(item_id).deferral == {"until": "2099-02-01", "on": None, "check": False}
     box.reopen(item_id)
     assert box.get(item_id).deferral is None and "waiting_on" not in box.get(item_id).as_dict()
     box.event(item_id, "defer", until="2099-03-01", on="an older event")   # the first events wrote `on`: still read
-    assert box.get(item_id).deferral == {"until": "2099-03-01", "on": "an older event"}
+    assert box.get(item_id).deferral == {"until": "2099-03-01", "on": "an older event", "check": False}
 
 
 def test_reopen_takes_back_a_defer(box):
@@ -959,3 +959,49 @@ def test_cli_add_waits_for_and_wait(tmp_path):
     assert r.returncode == 0 and sorted(r.stdout.split()) == sorted(["ready", first, "ready", second])
     assert {i["state"] for i in json.loads(run_cli(tmp_path, "list", "--json").stdout)} == {"open"}
     assert run_cli(tmp_path, "validate").returncode == 0
+
+
+# ---------------------------------------------------------------- in progress with a check-in (stage 4 of the cockpit)
+
+def test_a_defer_with_check_is_a_check_in_with_someone_not_a_plain_later(box):
+    item = add(box)
+    box.event(item, "defer", until="2026-10-11", waits_on="lena", check=True)
+    got = box.get(item)
+    assert got.state == "deferred"
+    assert got.deferral == {"until": "2026-10-11", "on": "lena", "check": True}
+    # a plain later is none
+    other = add(box, summary="another thing")
+    box.event(other, "defer", until="2026-10-11")
+    assert box.get(other).deferral == {"until": "2026-10-11", "on": None, "check": False}
+
+
+def test_cli_defer_check_writes_the_marker(tmp_path):
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "decision", "--summary", "Contract signed")
+    item_id = r.stdout.strip().split()[-1]
+    r = run_cli(tmp_path, "defer", item_id, "--until", "2026-10-11", "--on", "lena", "--check")
+    assert r.returncode == 0, r.stderr
+    events = sorted((tmp_path / "repo" / "work" / "inbox" / item_id / "events").glob("*-defer.yaml"))
+    ev = yaml.safe_load(events[-1].read_text(encoding="utf-8"))
+    assert ev["check"] is True and ev["waits_on"] == "lena" and ev["until"] == "2026-10-11"
+    assert run_cli(tmp_path, "defer", item_id, "--until", "2026-10-11", "--check").returncode == 2, "a check-in names who has it"
+
+
+# ---------------------------------------------------------------- a title a person reads (stage 4 of the cockpit)
+
+def test_title_lint_names_what_to_change_and_never_refuses():
+    lint = inbox.title_lint
+    assert lint("Pay the hosting invoice", "en") == []
+    long = "A finding about everything that happened on the server last night while the backups ran and failed twice"
+    assert any("80" in w for w in lint(long, "en"))
+    assert any("path" in w for w in lint("Check /var/log/syslog for errors", "en"))
+    assert any("file" in w for w in lint("Update notes.md with the new steps", "en"))
+    assert any("id" in w for w in lint("Look at 20261009-0900-a-q again", "en"))
+    assert any("English" in w for w in lint("Check the backup of the server", "de"))
+    assert lint("Die Sicherung des Servers prüfen", "de") == []
+
+
+def test_cli_add_warns_on_a_title_and_files_it_all_the_same(tmp_path):
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "finding", "--summary", "Check /var/log/syslog for errors")
+    assert r.returncode == 0
+    assert "title" in r.stderr and "path" in r.stderr
+    assert r.stdout.strip()
