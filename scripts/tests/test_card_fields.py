@@ -291,3 +291,40 @@ def test_a_name_with_a_path_a_number_a_file_or_too_many_words_is_left_out_never_
 def test_a_stand_over_its_limit_is_left_out():
     clean, errors = cf.validate_brief({**GOOD, "stand": "y" * 141})
     assert "stand" not in clean and any(e.startswith("stand:") for e in errors)
+
+
+# ---------------------------------------------------------------- a placeholder is no text (found live: goal "placeholder")
+
+PLACEHOLDERS = ["placeholder", "Placeholder", " PLACEHOLDER ", "TODO", "todo.", "TBD", "n/a", "N/A", "lorem",
+                "Lorem ipsum dolor sit amet", "...", "…", "<goal>", "<what is different once it is done>", "[placeholder]"]
+
+
+@pytest.mark.parametrize("value", PLACEHOLDERS)
+def test_a_placeholder_goal_is_no_brief(value):
+    clean, errors = cf.validate_brief({**GOOD, "goal": value})
+    assert clean is None and any(e.startswith("goal:") and "placeholder" in e for e in errors), errors
+
+
+@pytest.mark.parametrize("value", PLACEHOLDERS)
+def test_a_placeholder_name_or_stand_is_left_out_the_brief_stays(value):
+    clean, errors = cf.validate_brief({**GOOD, "name": value, "stand": value})
+    assert clean["goal"] == GOOD["goal"] and "name" not in clean and "stand" not in clean
+    assert {e.split(":")[0] for e in errors if "placeholder" in e} == {"name", "stand"}
+
+
+def test_the_fields_own_key_as_its_value_is_a_placeholder():
+    for key in ("goal", "Goal", "GOAL"):
+        assert cf.validate_brief({**GOOD, "goal": key})[0] is None
+    clean, _ = cf.validate_brief({**GOOD, "name": "name", "stand": "Stand"})
+    assert "name" not in clean and "stand" not in clean
+    clean, errors = cf.validate_brief({**GOOD, "story": {"as": "as", "want": "to try it", "so_that": "I learn"}})
+    assert "story" not in clean and any(e.startswith("story.as:") for e in errors)
+    clean, errors = cf.validate_brief({**GOOD, "acceptance": ["acceptance", "No invoice is delivered twice", "TBD"]})
+    assert clean["acceptance"] == ["No invoice is delivered twice"]
+    assert sum("placeholder" in e for e in errors) == 2
+
+
+def test_a_real_text_that_holds_such_a_word_passes():
+    for goal in ("The placeholder images on the site are replaced by photos", "Every TODO in the parser is resolved",
+                 "Invoices for n/a customers go to the default address", "A goal of the team <with a note>"):
+        assert cf.validate_brief({**GOOD, "goal": goal})[0]["goal"] == goal, goal

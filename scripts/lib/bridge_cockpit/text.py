@@ -338,7 +338,8 @@ EN: dict = {
                   "failed": "The model gave no usable brief: {why}", "changed": "The item changed while the brief was written",
                   "too_big": "The item is too large to describe", "marked": "A brief changed by hand is kept as it is",
                   "no_front": "The STATUS.md has no closed frontmatter (a block between two lines of three hyphens), so no brief can be written into it",
-                  "unresolved": "Unresolved reference: {ref}"},
+                  "unresolved": "Unresolved reference: {ref}",
+                  "kept": "Kept the {n} criteria of the brief before: the new answer had none"},
     # the notes and errors of the themes of Work through (themes.py)
     "themes": {"off": "Themes are switched off (cockpit.flow.themes.enabled)",
                 "unavailable": "Themes are not available: the service cockpit-themes needs a Claude model",
@@ -789,7 +790,8 @@ DE: dict = {
                   "changed": "Der Eintrag hat sich geändert, während die Beschreibung entstand",
                   "too_big": "Der Eintrag ist zu groß zum Beschreiben", "marked": "Eine von Hand geänderte Beschreibung bleibt, wie sie ist",
                   "no_front": "Die STATUS.md hat keinen geschlossenen Frontmatter (einen Block zwischen zwei Zeilen aus drei Bindestrichen), dort kann keine Beschreibung hinein",
-                  "unresolved": "Nicht auffindbarer Verweis: {ref}"},
+                  "unresolved": "Nicht auffindbarer Verweis: {ref}",
+                  "kept": "Die {n} Kriterien der Beschreibung davor behalten: die neue Antwort hatte keine"},
     # the notes and errors of the themes of Work through (themes.py)
     "themes": {"off": "Themen sind ausgeschaltet (cockpit.flow.themes.enabled)",
                 "unavailable": "Themen gehen nicht: der Dienst cockpit-themes braucht ein Claude-Modell",

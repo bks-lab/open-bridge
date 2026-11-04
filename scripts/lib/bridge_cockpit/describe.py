@@ -118,8 +118,18 @@ SCHEMA = json.dumps({"type": "object", "additionalProperties": False, "required"
 #: the fewest criteria a task's brief should have; one with fewer is written all the same, with a warning
 MIN_CRITERIA = 2
 
+
+def keep_criteria(new: dict, old: Any, kind: str) -> tuple[dict, int]:
+    """A rewrite never trades the criteria of the brief before for none (found live): where the new brief of a task
+    has none and the one it replaces has some, those stay. (brief, how many were kept); a stream keeps none"""
+    before = (old or {}).get("acceptance") if isinstance(old, dict) else None
+    if kind == "stream" or (new.get("acceptance") or []) or not isinstance(before, list) or not before:
+        return new, 0
+    return {**new, "acceptance": list(before)}, len(before)
+
 SYSTEM = """You write the brief of one item of a personal work tracker: what it is for and when it is done, never how to do it.
-Answer with JSON only: {{"name": "...", "stand": "...", "goal": "...", "story": {{"as": "...", "want": "...", "so_that": "..."}} or null, "acceptance": [...]}}.
+Answer with JSON only, with the fields name, stand, goal, story (an object with as, want and so_that, or null) and acceptance (a list), each as the rules below say.
+- Every text says something about this item. A placeholder is no answer: never "placeholder", "TODO", "TBD", "n/a", an ellipsis, a word in angle brackets or the field's name as its text.
 - name: what the item is, as a person names it in a list: at most {name} characters and about 7 words, everyday words. Never ids, paths, file names, host names, process names, issue, pull request or ticket numbers, never a status ("waits for", "done", "park?"), never a count of days.
 - stand: one sentence of at most {stand} characters: where it stands now and why it is here. No step to take, the step stands apart.
 - goal: one sentence of at most {goal} characters saying what is different once the item is done. Never repeat the title word for word.
@@ -962,7 +972,12 @@ class Describer:
                             warnings=_warnings(got["errors"], missing, tx))
                 outcome = "proposal"
             else:
-                self.write(now, got["brief"], edited=False, call=call, warnings=_warnings(got["errors"], missing, tx),
+                brief, kept = keep_criteria(got["brief"], now.get("brief"), now["kind"])
+                errors = got["errors"]
+                if kept:
+                    # the answer's own "too few criteria" no longer holds: the kept ones stand, said once
+                    errors = [e for e in errors if not e.startswith("acceptance:")] + [tx["kept"].format(n=kept)]
+                self.write(now, brief, edited=False, call=call, warnings=_warnings(errors, missing, tx),
                            unresolved=missing)
                 outcome = "written"
         self.changed(key)

@@ -2593,7 +2593,14 @@ STATUS.md travels through git: on another machine or in a fresh clone a brief
 describe wrote has no hash, so it counts as a person's (the model only
 proposes for it, and a hand edit of it is not marked). What the gate left out
 of a brief it still wrote (a text over its limit, fewer than two criteria for
-a task) is kept as the card's `warnings`.
+a task) is kept as the card's `warnings`. A placeholder is no text to the gate
+(`card_fields.py placeholder`): "placeholder", TODO, TBD, n/a, lorem, an
+ellipsis, a value in angle brackets or the field's own key as its value, case and
+the punctuation around it aside. A placeholder goal gives no brief, so nothing is
+written and the brief before stays as it is; a placeholder name, stand, story part
+or criterion is left out like any wrong text. A rewrite of a brief describe wrote
+never trades its criteria for none: where the new answer of a task has no
+criteria, the ones of the brief before stay, with a warning that says so.
 
 **References.** A criterion has to make sense from the card alone, so the data
 carries `references`: what a reader can reach from the item
