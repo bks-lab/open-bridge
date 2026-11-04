@@ -289,3 +289,61 @@ test('C1 the free date of In progress says it is optional, its parse unchanged',
   assert.equal(date.getAttribute('placeholder'), en.flow.simple.dateHint)
   assert.deepEqual([en.flow.simple.dateHint, de.flow.simple.dateHint], ['or a date', 'oder ein Datum'])
 })
+
+// ---------------------------------------------------------------- C4: the Bridge looks before a check-in
+
+test('C4 the check-in card says what the Bridge found and where, what it could not read, or that nothing new came', () => {
+  const look = { text: 'Lena noted that the labels are tidied.', where: ['note 2026-10-05T12:00', 'example/repo#41'],
+    unread: ['the state of example/repo#12'], nothing: false, since: '2026-10-01', at_ms: NOW - 60 * MIN, model: 'haiku' }
+  const back = (found, lang = 'en') => {
+    text.setLanguage(lang)
+    try {
+      const row = task('back', { bucket: 'waiting', checkin: { who: 'lena', until: '2026-10-08', since: '2026-10-01', ...(found ? { found } : {}) },
+        card: card({ next: next('Sign it', 'lena', { check: '2026-10-08' }) }) })
+      return mount(html`<${FlowPage} s=${flowState({ work: [row], ui: pointAt('task:back') })} c=${recorder()} />`)
+    } finally {
+      text.setLanguage('en')
+    }
+  }
+  const el = back(look)
+  const box = el.$('.flow-card .flow-looked')
+  assert.ok(box.text().includes(en.flow.simple.looked))
+  assert.equal(box.$('.flow-looked-text').text(), look.text)
+  // a source in the page's words: a row of Activity by its kind and day, a ref as it is
+  assert.equal(box.$('.flow-looked-where').text(),
+    en.flow.simple.lookedWhere([en.flow.simple.lookedLabel(en.flow.activity.kind.note, logic.formatDay('2026-10-05', 'en')), 'example/repo#41'].join(', ')))
+  assert.equal(de.flow.simple.lookedLabel('Notiz', 'Mo., 5. Okt.'), 'Notiz vom Mo., 5. Okt.')
+  assert.equal(box.$('.flow-looked-unread').text(), en.flow.simple.lookedUnread(look.unread.join(', ')))
+  // nothing new: the page words it, with the day it was handed over
+  const none = back({ ...look, text: '', where: [], unread: [], nothing: true, model: null })
+  assert.equal(none.$('.flow-looked-text').text(), en.flow.simple.nothingSince(logic.formatDay('2026-10-01', 'en')))
+  assert.equal(none.$('.flow-looked-where'), null)
+  assert.equal(none.$('.flow-looked-unread'), null)
+  // no look (off, failed, over its budget): the card asks as before, no box
+  assert.equal(back(null).$('.flow-looked'), null)
+  assert.equal(de.flow.simple.nothingSince('1. Okt.'), 'Seit 1. Okt. nichts Neues.')
+  assert.ok(de.flow.simple.lookedWhere('x') && de.flow.simple.lookedUnread('x'))
+})
+
+test('the who chip names the owner as you, as the band does; a sentence to someone else may name them', () => {
+  const st = (lang = 'en') => {
+    text.setLanguage(lang)
+    try {
+      const t = task('mine', { card: card({ next: next('Sign the contract', 'mara') }) })
+      return mount(html`<${FlowPage} s=${flowState({ work: [t], ui: { flowView: 'overview', flowPicked: [] } })} c=${recorder()} />`)
+    } finally {
+      text.setLanguage('en')
+    }
+  }
+  const chip = st().$('.flow-ov-step .flow-who')
+  assert.equal(chip.text(), en.card.who.me)
+  assert.ok(chip.hasClass('flow-who-me'))
+  assert.equal(st('de').$('.flow-ov-step .flow-who').text(), de.card.who.me)
+  assert.equal(logic.chipWho('mara', { work: { person: 'Mara' } }, 'en'), en.card.who.me)
+  assert.equal(logic.chipWho('lena', { work: { person: 'Mara' } }, 'en'), 'Lena')
+  assert.equal(logic.nextWho('mara', { work: { person: 'Mara' } }, 'en'), 'Mara', 'nextWho still names the owner for a sentence')
+  // a row waiting on the owner's own step waits on no one else
+  const w = ask('20261009-0902-c-w', { bucket: 'waiting', card: card({ next: next('read', 'mara') }) })
+  const el = mount(html`<${FlowPage} s=${flowState({ later: [w], ui: { flowView: 'left', flowLeft: 'running', flowLeftPicked: [] } })} c=${recorder()} />`)
+  assert.equal(el.$('.flow-ov-why').text(), en.flow.notnow.why.others)
+})

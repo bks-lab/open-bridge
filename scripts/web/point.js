@@ -101,6 +101,14 @@ export function nextWho(who, s, lang = 'en') {
   return raw.charAt(0).toUpperCase() + raw.slice(1)
 }
 
+/** Who takes a step as the who chip of Work through says it (views/parts.js WhoChip): the owner as you (the band
+ *  and the mockup say "du"), the Bridge, else nextWho's words. A sentence that names the owner to someone else keeps
+ *  nextWho */
+export function chipWho(who, s, lang = 'en') {
+  if (whoKind(who, s) === 'me') return (TABLES[lang] ?? TABLES.en).card.who.me
+  return nextWho(who, s, lang)
+}
+
 /** The row a page item stands for on the page of Work through, by its key (an inbox item or a task, logic.js triageKey)
  *  or its own id (the ref of a row such as an application or an issue, row_id): the key where that row stands there
  *  (a point, an entry, a row of Not now), else null, and the item keeps its info drawer (a gauge, a date, a machine) */

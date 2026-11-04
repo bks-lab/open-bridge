@@ -161,7 +161,7 @@ function CheckinCard({ x, n = 1, s, c }) {
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token="warning" />${f.checkinKind}</span><${HeadEnd} row=${row} s=${s} c=${c} /></header>
     <h2 id="flow-title" class="fx-title">${name}</h2>
     <p class="fx-sub">${f.since(since, who)}</p>
-    ${ck.found ? html`<div class="flow-looked"><p class="label-caps">${f.looked}</p><p>${ck.found}</p></div>` : null}
+    <${Looked} found=${ck.found} lang=${lang} />
     <div class="verbbar-acts flow-checkin-acts" role="group" aria-label=${f.answers}>
       <${Btn} size="sm" variant="secondary" busy=${busy} onClick=${() => send(flowAction('done', row, ''))}>${t.flow.verbs.done}<//>
       <${Btn} size="sm" variant="secondary" pressed=${open === 'still'} onClick=${() => setOpen(open === 'still' ? null : 'still')}>${f.still} ▾<//>
@@ -183,6 +183,29 @@ function CheckinCard({ x, n = 1, s, c }) {
       ${reasons.map(r => html`<${Btn} key=${r} size="sm" variant="secondary" busy=${busy} onClick=${() => send(flowAction('drop', row, dropReasonWord(r, lang)))}>${dropReasonWord(r, lang)}<//>`)}
     </div>` : null}
   </article>`
+}
+
+/** What the Bridge found when it looked before the check-in (checkin.py, row.checkin.found): its sentence and the
+ *  sources it rests on, what it could not read, or nothing new since the hand-over, in the page's words. None without
+ *  a look (off, failed, over its budget): the card asks as before */
+function Looked({ found, lang }) {
+  const t = T().flow
+  const f = t.simple
+  // a source as checkin.py labels it: a row of Activity "<kind> <day>[T<time>]" by its kind and day, a ref as it is
+  const label = l => {
+    const m = /^([a-z]+) (\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2})?$/.exec(String(l))
+    return m ? f.lookedLabel(t.activity.kind[m[1]] ?? m[1], formatDay(m[2], lang)) : String(l)
+  }
+  if (!found || typeof found !== 'object') return null
+  const since = found.since ? formatDay(String(found.since).slice(0, 10), lang) : null
+  const words = found.nothing ? (since ? f.nothingSince(since) : '') : String(found.text ?? '')
+  const where = found.nothing ? [] : (found.where ?? []).filter(Boolean)
+  const unread = (found.unread ?? []).filter(Boolean)
+  if (!words && !unread.length) return null
+  return html`<div class="flow-looked"><p class="label-caps">${f.looked}</p>
+    ${words ? html`<p class="flow-looked-text">${words}</p>` : null}
+    ${where.length ? html`<p class="flow-looked-where muted small">${f.lookedWhere(where.map(label).join(', '))}</p>` : null}
+    ${unread.length ? html`<p class="flow-looked-unread muted small">${f.lookedUnread(unread.join(', '))}</p>` : null}</div>`
 }
 
 /** What a tab asks, answered on the card: the answers to its question as one row of buttons (a dialog's options, yes
