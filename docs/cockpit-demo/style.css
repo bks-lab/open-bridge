@@ -953,6 +953,12 @@ kbd {
 .ghl-row:hover { background: var(--surface-muted); }
 .ghl-row:focus-visible { outline: 2px solid var(--secondary); outline-offset: -2px; }
 .ghl-row.is-quiet .ghl-title { color: var(--on-surface-muted); }
+/* the row open in the column beside the list, marked as a picked row of the work tab is */
+.ghl-row.is-current, .ghl-row.is-current:hover { background: var(--accent-subtle); box-shadow: inset 0 0 0 1px var(--accent-line); }
+/* with a row open beside it the list has half the width: a row stacks as on a small screen */
+.with-detail .ghl-row { grid-template-columns: 22px minmax(0, 1fr); }
+.with-detail .ghl-side { grid-column: 2; justify-items: start; text-align: left; display: flex; flex-wrap: wrap; gap: 8px; }
+.with-detail .ghl-acts { grid-column: 2; justify-content: flex-start; gap: 4px; }
 .ghl-icon { color: var(--tk); align-self: start; margin-top: 2px; }
 .ghl-main { min-width: 0; display: grid; gap: 2px; }
 .ghl-title { margin: 0; font-size: var(--text-sm); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
@@ -1976,6 +1982,9 @@ kbd {
 .idrawer-title { font-size: 17px; font-weight: 650; line-height: 1.35; color: var(--on-surface); overflow-wrap: anywhere; }
 .idrawer-actions { flex-wrap: wrap; gap: 6px; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
 .idrawer-body { flex: 1 1 auto; overflow-y: auto; padding: 4px 20px 24px; }
+/* a row of the GitHub list beside its list (views/overlays.js InfoDrawer beside): a column of the page, the column scrolls */
+.idrawer.idrawer-beside { width: auto; overflow: visible; }
+.idrawer-beside .idrawer-body { overflow: visible; }
 .idrawer-sec { padding: 14px 0; border-bottom: 1px solid var(--border); }
 .idrawer-sec:last-child { border-bottom: 0; }
 .idrawer-sec > .label-caps { display: block; margin-bottom: 8px; }

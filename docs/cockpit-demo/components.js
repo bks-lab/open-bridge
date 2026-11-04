@@ -173,7 +173,9 @@ export function App({ store, ctl }) {
   const shownKey = v === s ? byKey : indexRows(v.model)
   const onPage = onPageOf(s)
   const layout = s.layout
-  const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
+  // a row of the GitHub list open beside its list (app.js openInfo with beside), on the page it was opened on
+  const ghSide = onPage && !!s.ui.info?.beside && s.ui.info.on === s.ui.page
+  const peek = onPage && ((s.ui.pageDetail && !!s.ui.selectedKey) || ghSide)
   const pane = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane
   // a wide page that shows sessions itself or needs the width folds the tab column to its header button
   const rail = layout === 'wide' && railOn(s)
@@ -181,7 +183,8 @@ export function App({ store, ctl }) {
   const tabsDrawer = !person && (layout === 'medium' || (layout === 'wide' && !rail))
   const showTabsCol = rail || (!person && layout === 'narrow' && pane === 'tabs')
   const main = onPage
-    ? html`<${PageView} s=${v} c=${ctl} />${peek ? html`<${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}`
+    ? html`<${PageView} s=${v} c=${ctl} />${ghSide ? html`<${InfoDrawer} s=${s} c=${ctl} beside />`
+      : peek ? html`<${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />` : null}`
     : html`<${DayColumn} s=${v} c=${ctl} byKey=${shownKey} /><${DetailColumn} s=${s} c=${ctl} byKey=${byKey} />`
   // the page tabs keep their own row on every width: in the header of a wide screen they shared the room
   // with the tools, and the widest screen showed the fewest tabs

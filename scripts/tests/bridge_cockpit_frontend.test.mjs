@@ -1314,7 +1314,7 @@ test('the chat decides per message: ask (read only) or solve it in a real Claude
 test('every card and row of a page opens its details: tables, resource tiles, gauges, grouped rows', () => {
   const comp = readComponents()
   const app = read('app.js')
-  assert.match(app, /openInfo\(it, page, section(, drawer = false)?\) \{/)
+  assert.match(app, /openInfo\(it, page, section(, \{ beside = false, walk = null \} = \{\})?\) \{/)
   assert.match(comp, /s\.ui\.drawer === 'info' && s\.ui\.info \? html`<\$\{InfoDrawer\}/)
   for (const name of ['InfoRow', 'ResTile', 'GaugeTile', 'GroupsView']) {
     const body = comp.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))[0]

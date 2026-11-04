@@ -6,7 +6,7 @@ import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
   toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, nextInQueue, itemRow,
-  workKindOf, noteGo, personOf,
+  workKindOf, noteGo, personOf, ghWalkAt,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
@@ -21,7 +21,7 @@ import {
 import { MeterBar, RowSteps, StatusMenu } from './pages.js'
 import { GH_REF, GitHubDetail } from './github.js'
 import { CalendarFacts } from './dates.js'
-import { Btn, Dot, Empty, Icon, SeenBtn, Spinner, StateLine } from './parts.js'
+import { Btn, Dot, Empty, Icon, SeenBtn, Spinner, StateLine, WalkBar } from './parts.js'
 import { TaskSessions } from './sessions.js'
 import { TabsColumn } from './tabs.js'
 
@@ -298,11 +298,13 @@ export function ItemDrawer({ s, c, byKey }) {
 }
 
 /** The detail of any page item that is not an inbox item or task: everything the row carries, its link,
- *  its own steps, its account status and "ask". It follows the item as the page holds it now */
-export function InfoDrawer({ s, c }) {
+ *  its own steps, its account status and "ask". It follows the item as the page holds it now. `beside`: a row of
+ *  the GitHub list, drawn as a column of the page beside its list (components.js), not over it: no scrim and no
+ *  focus held in it, so the next row is one click away on the left; its foot walks the list as it was shown */
+export function InfoDrawer({ s, c, beside = false }) {
   const t = T()
-  const ref = useFocusOnOpen(true)
-  const { it, page, section } = s.ui.info
+  const ref = useFocusOnOpen(!beside)
+  const { it, page, section, walk = null } = s.ui.info
   const pg = (s.model?.pages ?? []).find(x => x.id === page)
   const sec = pg?.sections?.find(x => x.id === section)
   const cur = sec?.items?.find(x => x.index === it.index && x.title === it.title) ?? it
@@ -321,8 +323,7 @@ export function InfoDrawer({ s, c }) {
   const others = dated
     ? upcomingEvents(s.model, s.now || Date.now()).filter(e => !(e.it.at === cur.at && e.it.title === cur.title)).slice(0, 15)
     : []
-  return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) close() }}>
-    <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="info-title" ref=${ref}>
+  const content = html`
       <header class="idrawer-head">
         <div class="idrawer-head-main">
           <span class="eyebrow">${[pg?.title, sec?.title].filter(Boolean).join(' · ')}</span>
@@ -366,8 +367,21 @@ export function InfoDrawer({ s, c }) {
             <button type="button" class="btn-link" onClick=${() => c.openInfo(e.it, e.page, e.section)}>${e.it.title}</button>
             ${e.it.detail ? html`<span class="muted small">${detailText(e.it.detail, t)}</span>` : null}</li>`)}</ul></section>` : null}
         ${!ghRef && !cur.cal && !cur.detail && !cur.meter && !facts.length && !(cur.lines ?? []).length ? html`<p class="muted">${t.infoNothingMore}</p>` : null}
-      </div>
-    </aside>
+      </div>`
+  if (beside) {
+    const at = ghWalkAt(walk, cur) ?? ghWalkAt(walk, it)
+    const step = e => c.openInfo(e, page, section, { beside: true, walk })
+    const entry = (e, max) => ({ key: `${e.index}`, title: short(e.gh?.title || e.title, max), look: e.title, onOpen: () => step(e),
+      sub: e.gh?.number ? html`<span class="mono">${(e.gh.repo ?? '').split('/').pop()}#${e.gh.number}</span>` : null })
+    return html`<div class="col col-detail">
+      <div class="detail-scroll"><article class="panel idrawer idrawer-beside" aria-labelledby="info-title">${content}</article></div>
+      ${at && at.total > 1 ? html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[at.pos, at.total]}
+        onPrev=${at.prev ? () => step(at.prev) : null} next=${at.next[0] ? entry(at.next[0], 90) : null}
+        later=${at.next.slice(1, 4).map(e => entry(e, 80))} done=${t.nextDone} />` : null}
+    </div>`
+  }
+  return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) close() }}>
+    <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="info-title" ref=${ref}>${content}</aside>
   </div>`
 }
 
@@ -583,7 +597,7 @@ export function MobileSwitch({ s, c }) {
   const onPage = onPageOf(s)
   const page = onPage ? (s.ui.page === START_PAGE ? { title: t.startTab } : s.ui.page === CHECK_PAGE ? { title: t.reviewTab } : s.ui.page === SESSIONS_PAGE ? { title: t.sessionsTab } : s.ui.page === WORKERS_PAGE ? { title: t.workersTab } : s.ui.page === CHAT_PAGE ? { title: t.chatTab } : s.ui.page === AGENTS_PAGE ? { title: t.agentsTab } : s.ui.page === JEV_PAGE ? { title: 'Jev' } : s.ui.page === 'briefing' ? { title: briefingTitle(s) } : (s.model?.pages ?? []).find(p => p.id === s.ui.page)) : null
   const waiting = attentionTabs(s.tabs?.tabs).length
-  const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
+  const peek = onPage && ((s.ui.pageDetail && !!s.ui.selectedKey) || (!!s.ui.info?.beside && s.ui.info.on === s.ui.page))
   const tabs = personOf(s) ? [] : [['tabs', waiting ? `${t.pane.tabs} (${waiting})` : t.pane.tabs]]    // none on a person's page
   const items = onPage
     ? [['day', page?.title ?? t.pane.day], ...(peek ? [['detail', t.pane.detail]] : []), ...tabs]
