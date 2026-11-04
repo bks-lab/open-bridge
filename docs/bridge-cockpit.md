@@ -107,6 +107,7 @@ their defaults:
 | `flow.themes.model` | none | the model of the themes, `haiku`, `sonnet` or `opus`; none: the service `cockpit-themes` of `workflow/ai-services/` (default Haiku) |
 | `flow.rerank_per_day` | `3` | how often a day a click on "order again" may ask Jev anew; `0` only the order of the day's first call. Reserved: the page has no such button yet, so nothing reads it |
 | `flow.ahead_days` | `2` | a point with a due day further ahead than this many days, and not urgency now, waits under Not now, Later, until that many days before it (a due with a time counts by its day); `0` waits for the day itself, `366` shows everything at once as before |
+| `flow.read_days` | `3` | a finished AI run (a start whose item ended after it) that nobody marked **Read** leaves the group Finished, to read this many days after its item ended (by its start where that time is unknown); it stays in its item's Activity. At least `1` |
 | `flow.infer_sessions` | `true` | with `flow.enabled`, a live Claude session in a tab that names one open task in the end of its own transcript (`task.py <verb> <slug>`, `work/tasks/<slug>/`, `task:<slug>`) runs under Running now as work on it, without a link by hand; only the slug and the sign leave the server. A link by hand or a start from the cockpit wins, Not this task undoes it for good |
 | `flow.summary.enabled` | `false` | the summary on top of a point's Activity tab: a click on "Summarise since last week" has a small model sum up what happened to the point in at most three sentences, see [Work through](#work-through-flow). Off, the button does not show |
 | `flow.summary.budget_per_day` | `10` | how many summaries a day may call the model; a point whose rows did not change answers the kept one without a call and without counting. `0` calls none |
@@ -443,7 +444,9 @@ out a workspace:
   A theme entered can be renamed. With Jev or Haiku a third order, **Prio**, stands
   beside Themes and Areas (below). On top stands **Running now** as one row
   with its count while an agent works (below), its only place: no strip of it
-  stands over an overview, and the head line counts the same number. At the foot **Check tasks** as a
+  stands over an overview, and the head line counts the same number. Under it
+  **Finished, to read** with its count while an AI run finished and nobody read
+  it yet (below). At the foot **Check tasks** as a
   block of its own with what the last check left to decide ("2 to decide",
   "nothing to decide"; "running" during a run, "not run yet" before the first),
   and under it **Not now** with its groups (below): a click on Check tasks shows
@@ -562,7 +565,9 @@ point across a group, a Jev rank only orders inside one:
 | 8 | Issues and PRs | an issue or pull request in Now (urgency now or today, or to do) | a due day first, then priority |
 | 9 | Reports | the reports (art `report`), as one tab | the oldest first |
 
-Groups 1 to 5 **need you**: the left column counts them. Every open row stands
+Groups 1 to 5 **need you**: the left column counts them. A start whose item
+ended after it (stage `done`) stands in none of them and never counts as
+needing you: it is under **Finished, to read** (below). Every open row stands
 exactly once: on a point, under Running now or in one group of Not now; a start,
 a tab or a question about a task takes that task out of the others. A tab that
 asks brings the task of the session linked to it (by hand, by its task tab or
@@ -598,12 +603,10 @@ compact card of the Sessions page (state, title as the jump to its tab, its
 agents, two lines of its tab, one next step, a task to link), one card per tab;
 an entry in a session's tab is that card, and **View in chat** opens the tab in
 the Chat where the Chat lays out its tabs (`chat_layout: workspaces`). A tab
-that asks is a point (A tab asks), never here. A start that ended with a note does not
-vanish: it stays as a card **To look at** with that note (headed Question when
-the note asks) and, while the chat it was handed from is still kept, **Open
-the question it came from** (each start remembers its chat, `conv` in
-`launches.json`); **Take off the list** removes it. A start that ended
-without a note leaves as before. A note headed `Question:` or `Frage:` keeps
+that asks is a point (A tab asks), never here. A start whose item ended after
+it with a word of its end (a note, the close, the action that ran) does not
+vanish: it stands under **Finished, to read** (below). A start that ended
+without any word leaves as before. A note headed `Question:` or `Frage:` keeps
 its start at the stage `asks`, also once its tab is gone, until a tab works on
 it again or the item closes; a tab still for over a minute after that note,
 with nothing asked on its screen, was answered in the terminal and stands
@@ -626,6 +629,49 @@ session and remembers that it does not work on that task (`session_unlink`,
 kept in `state.json` as `session_refused`), so it is not recognised on it
 again; Link on the Sessions page takes that back. The Sessions page marks a
 recognised task as such.
+
+**Finished, to read.** An AI run whose item or task ended after its start
+(stage `done`) is no point and never needs you: it stands in a group of its own,
+a row under Running now with its count. A click lists the runs in the middle,
+the newest end first (the same table as the other lists: the title, what came of
+it, the day it ended, the area where one has it), and a title opens the run in
+the one point view (To the list, the walk walks the group). What came of it is
+one plain sentence in the page's language, which the server writes next to the
+run's own text (`plain` beside `result` in `model.returns`): a close by the
+item's own check says that its check found the problem gone and the item closed
+itself, nothing to do; a close by a person, an action that ran, a drop or a
+rejection say so plainly; a note keeps its own words. The card shows that
+sentence and folds the run's own text under **The run's words** (de: Wortlaut
+des Laufs). **Who works on it** says "AI run of <day>, finished"; for a start
+that still runs it names its stage in words and, past a day, the days, never a
+raw stage or more than 24 hours. Its tabs are **Description** (what the run was
+asked: how it started and the person's sentence, the newest `Start note:` on its
+item), **Activity** (its start and its end among the item's events) and
+**Related** (the item or task it ran on, and the task that item belongs to).
+The right column offers, in this order:
+
+- **Read** (strong): takes the run off the list (`return_read`, `read_ms` in
+  `launches.json`), with Undo (`return_unread`). This was **Take off the list**.
+- **Analyse further ▾**: a panel with an empty sentence, model and effort, and a
+  new run on the same item or task through the same start as Let AI do it, its
+  sentence and the run's result handed in as the note on the item
+  (`return_analyse`). A closed item or task opens again for it first, with a
+  note why; like every start it has no Undo. The same guard as Let AI do it: without a terminal
+  driver the button is off and says why, past `max_running` it asks first.
+- **Make it a task ▾**: a panel with the title from the run, the area (one of
+  the configured areas, or none), **Take the result as the description** and
+  **Take this run off the list afterwards**, both ticked. The server writes a new
+  task in the backlog with `task.py new` (`--situation` the result, `--origin`
+  naming the run), marks the run read when the second box is ticked, and the
+  new task opens in the same view (`return_task`, Undo declines that task and
+  puts the run back).
+
+Later until and Drop because do not apply: the item already ended. The
+instruction line works on a run too: the planner may plan **read**, **task**
+(Make it a task with a title) and **analyse** (Analyse further with a
+sentence), each through the verb above. Unread, a run leaves the group by itself
+`flow.read_days` days (default 3) after its item ended; it stays in the item's
+Activity. Without a terminal driver the group still lists what a run came to.
 
 **No Sessions tab beside it.** Where the work tab offers Work through
 (`cockpit.flow.enabled`, kept by `cockpit.work_views`) the bar has no Sessions
@@ -955,7 +1001,9 @@ on a point that point ("For: <title>", and "a reply goes to its live tab" while
 its tab waits at its prompt), on the Reports card its reports, in the overview
 the ticked points or all points of the theme (at most 50 go, and the label says
 so). A point with no item behind it (a tab alone, a start whose item is not in
-the list) has no line. **Send** hands the sentence
+the list) has no line, except a finished AI run under Finished, to read: the
+line speaks for it by its key, and the planner may plan Read, Make it a task and
+Analyse further for it. **Send** hands the sentence
 and the points (their titles, kinds, the verbs each offers and whether a tab
 runs, nothing more) to a
 small model that answers with steps of the verbs there are: Done, Later until a
@@ -4016,6 +4064,23 @@ drawer, the verbs of a point stand in one order with **Make it a task** on every
 inbox item, and the line under a point asks as well as instructs. The server is
 unchanged: Make it a task is the verb `to_task`, an issue's is the GitHub page's
 step "Make it a task", Ask is the free quick question of the Files tab.
+
+### Upgrading: finished AI runs to read
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true`. A start whose item ended after it (stage `done`)
+used to stand among the finished as a card **To look at** for days, with its end
+as machine text and **Take off the list** as its only verb. It now stands under
+**Finished, to read** in [Work through](#work-through-flow) and needs you no
+more. The server adds three fields to a done
+start in `model.returns`: `plain` (the sentence in the page's language),
+`ended_ms` and `read_ms`; a page that does not read them is not affected. New
+verbs, all owner only: `return_read`, `return_unread`, `return_analyse`,
+`return_task` and `return_task_undo`. `task.py new` takes two optional flags,
+`--situation` (the text of the section Situation) and `--origin` (the origin
+line). `instruct.py` plans `read`, `task` and `analyse` for a finished run. One
+new key, `cockpit.flow.read_days` (default 3). `return_forget` stays: a lost or
+answered start, the start page and an older page still take a start off with it.
 
 ### Upgrading: settled rows in git
 
