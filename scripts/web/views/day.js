@@ -25,13 +25,13 @@ export const KIND_MARK = { task: '▣', stream: '↻', done_task: '✓', done_st
 /** What a row is (rowKind), first on every row and in every head, in one shape that stands apart from the state
  *  chips: the state changes, the kind does not. A report or an issue about a task or stream names it, the word Task
  *  or Stream written out (never colour alone); `link` makes that name open it (not inside a row's own button, where
- *  a second button cannot stand) */
-export function KindTag({ row, s, c, link = false }) {
+ *  a second button cannot stand); `bare` leaves the task it names out (the head of the one point view says it below) */
+export function KindTag({ row, s, c, link = false, bare = false }) {
   const t = T()
   const k = rowKind(row, s)
   const title = k.task ? (indexRows(s?.model).get(`task:${k.task}`)?.title ?? k.task) : null
   // an issue or item that names its task, unless the task's title only repeats the row's own
-  const about = (k.kind === 'inbox' || k.kind === 'issue') && k.task && title !== row?.title
+  const about = !bare && (k.kind === 'inbox' || k.kind === 'issue') && k.task && title !== row?.title
     ? html`<span class="kind-about"> · ${t.kindAbout} <span class=${`kind-about-what kind-${k.taskKind ?? 'task'}`}><span aria-hidden="true">${KIND_MARK[k.taskKind ?? 'task']}</span> ${t.kind[k.taskKind ?? 'task']}:</span> ${link && c
       ? html`<button type="button" class="btn-link" onClick=${() => c.select(`task:${k.task}`)}>${short(title, 48)}</button>`
       : short(title, 48)}</span>` : null

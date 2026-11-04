@@ -14,33 +14,38 @@
 // Running now and Not now fold under it.
 // FlowAside, the right column of an open point (round 3; round 6 B: only while one is open), as an issue tracker's
 // sidebar: on top What you can do, the AI suggestion in one line (on an open point the only place it stands; the task
-// check's verdict counts as one) and the card's verbs under each other, the strong one first, every other one in the
-// same style (views/verbbar.js stack): a live tab (at work, asking, or waiting at its prompt, logic.js flowLive) gives
-// To tab and View and neither Let AI do it nor Give your yes (while it asks only Advise and Later besides: nothing
-// closes what waits for an answer), a point in progress without one Let AI go on, a finished start the verb the AI
-// suggests (else Done and close the tab), then View, Open answer, Improve and Runs on, then the other verbs, a task in
-// review Done, Improve, Later, Drop and Advise, a lost one Start again, Done, Drop and Forget, the return card Done,
-// Later, Drop and Runs on, the reports Done for the ticked ones (All done when every one is), an issue Open on GitHub
-// first and Hide for what only leaves this list. Strong is only what the AI suggests, else a finding's Give your yes
-// where it brings an action; Advise is never strong by itself (29.10.2026). A row with steps of its own on a page (an
-// application, logic.js pageStepsOf) its steps, which open the info drawer where they stand (round 6 B). Under the
-// verbs Details opens the row's drawer (an inbox item, a task) or its detail column (any other row), where every verb
-// of Due stands (round 6 B).
-// Round 6d: a tab's close (views/detail.js TabClose) while it neither works nor asks, a finished start whose item left
-// the list too; where that close offers Done and close tab for the point itself, Done leaves the verbs. Since
-// 29.10.2026 the close (and on a finished start the jump to the tab) stands apart under the verbs, never between them.
+// check's verdict counts as one), then the verbs under each other in one style (views/verbbar.js stack). Stage 1 of the
+// one point view (04.11.2026): every point with a row offers the basic verbs in one order (logic.js basicVerbs: Let AI
+// do it, Done, Later until, Drop because, Make it a task on an inbox item or an issue without a task), a verb that
+// cannot go now stands off with why under them (an agent works on it, its tab asks, a stream, its yes given); strong is
+// only what the AI suggests, as before (a task in review Done, a point in progress Let AI go on with it, the return card
+// Done; else a finding's Give your yes where it brings an action; Advise never by itself, 29.10.2026), none while a live
+// tab is on it. Under them what the point's kind adds, never in place of them: a live tab's To tab (then the strong
+// way) and View, an issue's Open on GitHub and its board's moves (IssueWays), Give your yes, Advise, Improve on a task
+// in review, the steps of a row with steps of its own on a page (an application, logic.js pageStepsOf, which open the
+// info drawer where they stand), Runs on on the return card, Not this task for a session, Show in the net for a task;
+// the tab's close (views/detail.js TabClose) apart at the end, and where that close ends the point itself Done in its
+// place closes the tab too (Done and close the tab). A finished start, a lost one and a start whose tab asks keep their
+// own verbs (FinishedActs: the verb the AI suggests, else Done and close the tab, then View, Open answer, Improve and
+// Runs on; a lost one Start again, Done, Drop and Forget; stage 2 does them), the reports Done for the ticked ones (All
+// done when every one is), a tab alone its ways. A point that is closed (a point of its own, logic.js soloPoint) says
+// so and offers nothing.
 // Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
 // else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source (its
-// chip, STATUS.md to the files view, an issue or a pull request by its ref on the web), Created, Moved. No Status
-// field: the card's head says it.
+// chip, the STATUS.md of the task an item belongs to, an issue or a pull request by its ref on the web), Created,
+// Moved; no Status field, the card's head says it. Stage 1: at their foot Details ▾ folds open what the item drawer
+// held beside them (logic.js pointFacts: an inbox item's kind, urgency, approval, who closes it, when it closes on its
+// own, what runs on its yes, key and id; a task's type, blocker and file). Where Work through is off (the Files tab of
+// a Bridge without it) the fold is the link Details under the verbs, which opens the row's drawer (an inbox item, a
+// task) or its detail column (any other row), as before.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  activityWhen, canTab, DAY, duration, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowSuggestion, flowTabOf,
-  isoDate, meterLevel, pageStepsOf, refOfUrl, replySend, reportsTicked, short, tabCloseOffer, triageRunning, verbsFor, workPageOf, workViewsIn,
-  personOf
+  activityWhen, adoptStepOf, basicVerbs, canTab, DAY, duration, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
+  flowSuggestion, flowTabOf, isoDate, meterLevel, pageStepsOf, pointFacts, pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short,
+  tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
@@ -186,9 +191,9 @@ export function ThemePick({ row, s, c, compact = false }) {
   </div>`
 }
 
-// the verbs on a card whose tab asks: no start, the tab takes no sentence while it asks (actions_work.py start_noted)
+// the verbs while a start's tab asks: nothing that closes or drops what waits for an answer; while it waits at its
+// prompt also no start beside it (actions_work.py start_noted)
 const ASKING_VERBS = ['advise', 'done', 'later', 'drop']
-// the verbs while its tab asks: nothing that closes or drops what waits for an answer
 const ASKS_VERBS = ['advise', 'later']
 
 /** To tab and View for the tab of a point: the jump is remembered for the return card (c.flowJump). `strong`: the
@@ -203,11 +208,11 @@ export function TabWays({ tab, row, title, s, c, strong = false, close = true })
     ${close ? html`<${TabClose} tab=${tab} s=${s} c=${c} size="sm" only=${close === 'only'} />` : null}`
 }
 
-/** The verbs of a point beside its tab's close: where the close offers Done and close tab for this very row (what
+/** The verbs of a start beside its tab's close: where the close offers Done and close tab for this very row (what
  *  stands behind the tab is the row), Done leaves the bar, so one Done stands there */
 function besideClose(verbs, row, tab, s) {
   const offer = row && tab ? tabCloseOffer(tab, s) : null
-  return offer?.done && offer.keys.includes(row.key) ? (verbs ?? verbsFor(row)).filter(v => v !== 'done') : verbs
+  return offer?.done && offer.keys.includes(row.key) ? verbs.filter(v => v !== 'done') : verbs
 }
 
 /** Improve on a finished start: what is still to do, as words to the tab while its agent waits there (tab_send
@@ -382,21 +387,65 @@ export function IssueWays({ row, s, c, sug }) {
     </div>` : null}`
 }
 
-/** A task in review: Done strong (where the AI suggests no other of Done, Later and Drop), Improve right after it
- *  (what is still to do, to its tab while its agent waits there, else as a new start), Later, Drop, Advise; no Let AI
- *  do it, the work is done and waits for a look */
-function ReviewActs({ row, tab, s, c, sug, extra, first, tail }) {
-  const f = T().flow
+/** The verbs of a point with a row (stage 1, module head): the basic verbs in their one order, off with why where
+ *  they cannot go, the strong one by today's rule; under them what the kind adds, the tab's close apart at the end */
+function BasicActs({ x, row, s, c, sug }) {
+  const t = T()
+  const f = t.flow
   const [fix, setFix] = useState(false)
-  const live = !!tab && tab.state === 'waiting' && canTab(s, 'send')
-  const said = ['done', 'later', 'drop'].includes(sug?.verb) ? sug.verb : null
-  const improve = html`<${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>`
-  return html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${besideClose(['done', 'later', 'drop', 'advise'], row, tab, s)} primary=${said ?? 'done'}
-      suggested=${!!said} yes=${false} first=${first} lead=${improve} extra=${extra} tail=${tail} stack />
-    ${fix ? html`<${Improve} row=${row} tab=${live ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
+  // the return card asks how the tab went: its answers, not the tab's ways again
+  const back = x.kind === 'back'
+  const live = back ? null : flowLive(x, s)
+  const tab = back ? null : flowTabOf(x, s)
+  const near = live || tab
+  const asks = live?.state === 'needs-you'
+  const title = row.title ?? x.title ?? x.start?.title ?? tab?.name ?? ''
+  // a point in progress whose agent works: a live tab, or a start of the cockpit that runs
+  const running = x.group === 'doing' && (!!live || (x.kind === 'start' && ['started', 'working'].includes(x.stage)))
+  const adopt = adoptStepOf(row, s)
+  const basic = basicVerbs(row, { live: !!live, asks, running, person: !!personOf(s), adopt })
+  const off = Object.fromEntries(basic.filter(v => v.off).map(v => [v.id, v.off]))
+  // the close of the tab behind it: where it ends this very row, Done in its place closes the tab as well
+  const offer = near && !asks ? tabCloseOffer(near, s) : null
+  const ends = !!offer?.done && offer.keys.includes(row.key)
+  const review = !live && !!row.task && row.status === 'review' && x.group !== 'doing'
+  const issue = !!row.ref && !row.task && !row.inbox_id
+  const board = issue && !live && GITHUB_ISSUE(row)
+  // strong only what the AI suggests (the board's button takes an issue's Done), as before: Done on a task in review
+  // and on the return card, Let AI go on with it on a point in progress nobody works on; nothing beside a live tab
+  const said = ['do', 'done', 'later', 'drop'].includes(sug?.verb) ? sug.verb : null
+  const primary = live ? false : back ? 'done' : review ? said ?? 'done' : x.group === 'doing' ? said ?? (running ? 'done' : 'do')
+    : board && said === 'done' ? false : said ?? false
+  const words = { ...(issue ? { done: f.hide } : {}), ...(x.group === 'doing' && !running ? { do: f.doing.goOn } : {}), ...(ends ? { done: t.btnDoneCloseTab } : {}) }
+  const handlers = ends ? { done: by => c.act('tab_done', { tab_ref: near.ref, ...(by ? { by } : {}) }) } : {}
+  const toTask = basic.some(v => v.id === 'task') ? (row.inbox_id
+    ? { what: f.basic.taskInbox, run: async () => { const r = await c.act('to_task', { key: row.key }); if (r?.ok && r.task) c.openItem(`task:${r.task}`); return r } }
+    : { what: f.basic.taskIssue, run: () => c.act('row_action', { ...adopt, action: 'adopt' }) }) : null
+  // what the kind adds: the tab's ways first (To tab the strong way while it lives), an issue's page and its board
+  const ways = near && flowDriver(s) ? html`<${TabWays} tab=${near} row=${row} title=${title} s=${s} c=${c} strong=${!!live} close=${false} />` : null
+  const web = issue && row.url ? html`<a class="btn btn-secondary btn-sm" href=${row.url} target="_blank" rel="noopener noreferrer">${f.onWeb(row.url)}</a>` : null
+  const moves = board ? html`<${IssueWays} key=${row.key} row=${row} s=${s} c=${c} sug=${sug} />` : null
+  const improve = review ? html`<${Btn} size="sm" variant="secondary" pressed=${fix} onClick=${() => setFix(!fix)}>${f.improve.button} ▾<//>` : null
+  // a row with steps of its own on a page (an application): they stand in the info drawer, one click away
+  const page = pageStepsOf(row, s)
+  const steps = page ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openInfo(page.it, page.page, page.section, true)}>${t.rowSteps} ▾<//>` : null
+  const runsOn = back ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.flowBack()}>${f.runsOn}<//>` : null
+  // an entry of Running now: a session the cockpit linked or recognised can be told it works on something else
+  const unlink = x.lane && x.kind === 'session' && x.session?.sid
+    ? html`<${Btn} size="sm" variant="secondary" busy=${!!s.ui.busy?.session_unlink} onClick=${() => c.act('session_unlink', { session: x.session.sid })}>${f.run.unlink}<//>` : null
+  // the task in the net of the Bridge (the item drawer's Show in the net)
+  const slug = row.task && !personOf(s) ? row.task : null
+  const net = slug ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openInner(`task:${slug}`)}>${f.one.net}<//>` : null
+  const closer = offer ? html`<${TabClose} tab=${near} s=${s} c=${c} size="sm" only=${ends} />` : null
+  return html`<${VerbBar} row=${row} s=${s} c=${c} fixed stack verbs=${[...basic.map(v => v.id), 'advise']} off=${off} primary=${primary}
+      suggested=${!back && !!said && primary === said} words=${words} handlers=${handlers} toTask=${toTask} yes=${!live && !review && !running}
+      yesFirst=${!primary} onDone=${back ? () => c.flowBack() : null} lead=${html`${ways}${web}${moves}${improve}`}
+      extra=${html`${steps}${runsOn}${unlink}${net}`} tail=${closer} />
+    ${fix ? html`<${Improve} row=${row} tab=${tab && tab.state === 'waiting' && canTab(s, 'send') ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
 }
 
-/** The verbs of the point in front, by its card, under each other, the strong one first */
+/** The verbs of the point in front, by its card, under each other: the reports, a start (its own verbs), a tab alone
+ *  (its ways), every other point the basic verbs and what its kind adds (BasicActs) */
 function PointActs({ x, s, c, sug }) {
   const t = T()
   const f = t.flow
@@ -404,24 +453,6 @@ function PointActs({ x, s, c, sug }) {
   const live = flowLive(x, s)
   const tab = flowTabOf(x, s)
   const title = row?.title ?? x.title ?? x.start?.title ?? tab?.name ?? ''
-  // a live tab, at work, asking or at its prompt: its ways first, To tab the strong one, and no second agent started
-  // beside it (no Let AI do it, no Give your yes); its close apart at the end of the verbs, never between them (a tab
-  // without a row has no verbs: its close stays with its ways)
-  const lead = live ? html`<div class="fx-do"><${TabWays} tab=${live} row=${row} title=${title} s=${s} c=${c} strong close=${!row} /></div>` : null
-  // a tab that asks waits for an answer: nothing closes or drops what it works on until it no longer asks
-  const asks = live?.state === 'needs-you'
-  const near = live || tab
-  // where the close ends the point itself (Done and close tab, besideClose takes Done out of the verbs) it stands with
-  // the verbs, right after the tab's ways; a close that only closes stands apart at the end
-  const offer = row && near && !asks ? tabCloseOffer(near, s) : null
-  const ends = !!offer?.done && offer.keys.includes(row.key)
-  const closer = offer ? html`<${TabClose} tab=${near} s=${s} c=${c} size="sm" />` : null
-  const shut = ends ? null : closer
-  const front = ends ? closer : null
-  // a row with steps of its own on a page (an application): they stand in the info drawer, one click away
-  const page = row ? pageStepsOf(row, s) : null
-  const steps = page ? html`<${Btn} size="sm" variant="secondary" onClick=${() => c.openInfo(page.it, page.page, page.section)}>${t.rowSteps} ▾<//>` : null
-  const ways = tab && !live ? html`<${TabWays} tab=${tab} row=${row} title=${title} s=${s} c=${c} close=${!row} />` : null
   if (x.kind === 'reports') {
     // only the ticked reports, All seen only when every one is ticked; nothing ticked says how to tick
     const keys = reportsTicked(x, s.ui.flowPicked)
@@ -430,27 +461,19 @@ function PointActs({ x, s, c, sug }) {
       onClick=${() => { if (keys.length) c.act('settle', { keys, outcome: 'done' }) }}>${all ? f.allSeen : f.seenTicked(keys.length)}<//></div>
       ${keys.length ? null : html`<p class="muted small flow-reports-hint">${f.tickReports}</p>`}`
   }
-  if (x.kind === 'back') {
-    const back = () => c.flowBack()
-    const rest = html`<${Btn} size="sm" variant="secondary" onClick=${back}>${f.runsOn}<//>`
-    return row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['done', 'later', 'drop']} primary="done" onDone=${back} extra=${rest} stack />`
-      : html`<div class="fx-do">${rest}</div>`
-  }
-  // an entry of Running now: a session the cockpit linked or recognised can be told it works on something else
+  // a tab without a row (or an entry without one): its ways, its close with them; nothing else acts on it
+  const lead = live ? html`<div class="fx-do"><${TabWays} tab=${live} row=${row} title=${title} s=${s} c=${c} strong close=${!row} /></div>` : null
+  const ways = tab && !live ? html`<${TabWays} tab=${tab} row=${row} title=${title} s=${s} c=${c} close=${!row} />` : null
   const unlink = x.lane && x.kind === 'session' && x.session?.sid
     ? html`<${Btn} size="sm" variant="secondary" busy=${!!s.ui.busy?.session_unlink} onClick=${() => c.act('session_unlink', { session: x.session.sid })}>${f.run.unlink}<//>` : null
-  if (x.group === 'doing') {
-    if (!row) return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${unlink ? html`<div class="fx-do">${unlink}</div>` : null}`
-    // at work: Done, Later, Drop beside its tab; without an agent at work Let AI go on with it. The strong one: the way
-    // to a live tab, else the verb the AI suggests where the card has it, else Let AI go on (Done while a start runs)
-    const running = !!live || (x.kind === 'start' && ['started', 'working'].includes(x.stage))
-    const verbs = asks ? ['advise', 'later'] : running ? ['done', 'later', 'drop'] : ['do', 'done', 'later', 'drop']
-    const said = verbs.includes(sug?.verb) ? sug.verb : null
-    return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? verbs : besideClose(verbs, row, live || tab, s)} primary=${live ? false : said ?? (running ? 'done' : 'do')} suggested=${!live && !!said}
-      words=${running ? {} : { do: f.doing.goOn }} yes=${!running} extra=${html`${steps}${ways}${unlink}`} first=${front} tail=${shut} stack />`
-  }
-  if (x.kind === 'start') {
+  if (x.kind === 'start' && !x.lane) {
+    // a start keeps its own verbs (stage 2 of the one point view does the finished ones)
     const r = x.start
+    const asks = live?.state === 'needs-you'
+    const near = live || tab
+    const offer = row && near && !asks ? tabCloseOffer(near, s) : null
+    const ends = !!offer?.done && offer.keys.includes(row.key)
+    const closer = offer ? html`<${TabClose} tab=${near} s=${s} c=${c} size="sm" />` : null
     const forget = html`<${Btn} size="sm" variant="secondary" onClick=${() => c.act('return_forget', { key: r.key })}>${t.home.returnForget}<//>`
     if (x.group === 'lost') {
       return row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${['do', 'done', 'drop']} primary="do" words=${{ do: f.verbs.restart }} extra=${forget} stack />`
@@ -458,26 +481,13 @@ function PointActs({ x, s, c, sug }) {
     }
     if (x.group === 'result') return html`<${FinishedActs} x=${x} s=${s} c=${c} sug=${sug} forget=${forget} />`
     // a start whose tab asks: its ways, then the verbs that leave the tab its question
-    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} extra=${ways} first=${front} tail=${shut} stack />`
-      : ways ? html`<div class="fx-do">${ways}</div>` : null}`
+    return html`${lead}${row ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, near, s)} primary=${false}
+      yes=${false} extra=${ways} first=${ends ? closer : null} tail=${ends ? null : closer} stack />` : ways ? html`<div class="fx-do">${ways}</div>` : null}`
   }
-  if (x.kind === 'tab') return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${row
-    ? html`<${VerbBar} row=${row} s=${s} c=${c} verbs=${asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, live || tab, s)} primary=${false} yes=${false} first=${front} tail=${shut} stack />` : null}`
-  // a task in review: Done strong, then Improve (ReviewActs)
-  if (!live && row?.task && row.status === 'review') return html`<${ReviewActs} row=${row} tab=${tab} s=${s} c=${c} sug=${sug} extra=${html`${steps}${ways}`} first=${front} tail=${shut} />`
-  // a question, a finding, an issue or a task: its verbs, strong only the one the AI suggests (no Advise by default),
-  // else a finding's yes where it brings an action. An issue's Done only leaves this list (Hide), the way to its page first
-  const verb = sug?.verb
-  const primary0 = live ? false : ['do', 'done', 'later', 'drop'].includes(verb) ? verb : false
-  const issue = !!row?.ref && !row.task && !row.inbox_id
-  const web = issue && row.url ? html`<a class="btn btn-secondary btn-sm" href=${row.url} target="_blank" rel="noopener noreferrer">${f.onWeb(row.url)}</a>` : null
-  // a GitHub issue moves on its board (IssueWays); the AI's close lands on the button there, not on Hide
-  const board = issue && !live && GITHUB_ISSUE(row)
-  const moves = board ? html`<${IssueWays} key=${row.key} row=${row} s=${s} c=${c} sug=${sug} />` : null
-  const primary = board && primary0 === 'done' ? false : primary0
-  const verbs = live ? (asks ? ASKS_VERBS : besideClose(ASKING_VERBS, row, near, s)) : besideClose(null, row, near, s)
-  return html`${lead}<${VerbBar} row=${row} s=${s} c=${c} verbs=${verbs} primary=${primary} suggested=${!!primary} yes=${!live} yesFirst=${!primary}
-    words=${issue ? { done: f.hide } : {}} first=${html`${front}${web}${moves}`} extra=${html`${steps}${ways}`} tail=${shut} stack />`
+  // the return card of a tab without an item: its one way back
+  if (x.kind === 'back' && !row) return html`<div class="fx-do"><${Btn} size="sm" variant="secondary" onClick=${() => c.flowBack()}>${f.runsOn}<//></div>`
+  if (!row) return html`${lead ?? (ways ? html`<div class="fx-do">${ways}</div>` : null)}${unlink ? html`<div class="fx-do">${unlink}</div>` : null}`
+  return html`<${BasicActs} x=${x} row=${row} s=${s} c=${c} sug=${sug} />`
 }
 
 /** Who works on a point, in words: its tab and how long, a start of the cockpit, a session by hand, else when it last
@@ -500,14 +510,41 @@ function Meter({ value }) {
     <span>${f.level[meterLevel(value)]}</span></span>`
 }
 
-/** The fields of the point, like an issue tracker's sidebar (logic.js flowFields) */
+/** The facts the item drawer held beside the fields (stage 1, logic.js pointFacts), folded under Details at the foot
+ *  of the fields: in words, a key, an id or a path as code */
+function Facts({ x, item, detail }) {
+  const t = T()
+  const f = t.flow.one
+  const [open, setOpen] = useState(false)
+  const facts = pointFacts(x, item, detail)
+  if (!facts.length) return null
+  const word = fld => {
+    if (fld.id === 'kind') return x.row?.inbox_id ? t.item.kindName[fld.value] ?? fld.value : String(fld.value)
+    if (fld.id === 'urgency') return t.urgency[fld.value] ?? fld.value
+    if (fld.id === 'gate') return t.gate[fld.value] ?? fld.value
+    if (fld.id === 'closer') return fld.value ? t.item.closerKind[fld.value] ?? fld.value : fld.probe ? t.item.closerKind.probe : t.item.none
+    if (fld.id === 'closes') return probeText(fld.value, t) ?? t.item.noProbe
+    if (['runs', 'key', 'id', 'ref', 'file'].includes(fld.id)) return html`<code class="flow-fact-code">${fld.value}</code>`
+    return String(fld.value)
+  }
+  return html`<button type="button" class="btn-link flow-facts-toggle" aria-expanded=${String(open)} aria-controls="flow-facts"
+      onClick=${() => setOpen(!open)}>${f.details} ${open ? '▴' : '▾'}</button>
+    ${open ? html`<dl id="flow-facts" class="meta flow-meta flow-facts">${facts.map(fld => html`<div class="meta-item" key=${fld.id} data-fact=${fld.id}>
+      <dt>${f.facts[fld.id]}</dt><dd>${word(fld)}</dd></div>`)}</dl>` : null}`
+}
+
+/** The fields of the point, like an issue tracker's sidebar (logic.js flowFields); with the one point view (stage 1)
+ *  the drawer's facts folded under Details at their foot */
 function Fields({ x, s, c }) {
   const t = T()
   const f = t.flow.fields
   const lang = language()
+  const one = pointViewOn(s)
   const row = x.kind === 'reports' ? null : x.row ?? null
   const feed = row ? s.details?.activity?.[row.key]?.data ?? null : null
-  const detail = row?.task ? s.details?.task?.[row.task]?.data ?? null : null
+  // a closed copy is read by its folder (the point's `file`), any other task by its slug
+  const detail = row?.task ? s.details?.task?.[x.file ?? row.task]?.data ?? null : null
+  const item = row?.inbox_id ? s.details?.inbox?.[row.inbox_id]?.data?.item ?? null : null
   const none = html`<span class="muted">${f.none}</span>`
   // a link on the web by its ref where it is an issue or a pull request ("repo#12"), else by its address
   const link = href => html`<a href=${href} target="_blank" rel="noopener noreferrer" title=${href}>${refOfUrl(href) ?? short(String(href).replace(/^https?:\/\//, ''), 40)}</a>`
@@ -526,8 +563,9 @@ function Fields({ x, s, c }) {
     if (fld.id === 'due') return fld.value ? activityWhen(fld.value, lang) : none
     if (fld.id === 'source') {
       const rows = fld.rows ?? (fld.row ? [fld.row] : [])
-      // the task's file opens in the files view, where its STATUS.md stands
-      const slug = fld.row?.task ?? null
+      // the task's file opens in the files view, where its STATUS.md stands; with the one point view the task an item
+      // belongs to opens as its point, and a task's own file stands in Details, never a link to the point itself
+      const slug = fld.row?.task && !(one && fld.row.key === `task:${fld.row.task}`) ? fld.row.task : null
       if (!rows.length && !slug && !fld.url && !fld.link) return none
       return html`<span class="flow-source">${rows.map(r => html`<${OriginTag} key=${r.key} row=${r} />`)}
         ${slug ? html`<button type="button" class="btn-link flow-source-file" onClick=${() => c.openFile(slug, null)}>STATUS.md</button>` : null}
@@ -540,33 +578,34 @@ function Fields({ x, s, c }) {
     <h3 id="flow-fields" class="label-caps">${f.label}</h3>
     <dl class="meta flow-meta">${flowFields(x, s, feed, detail).map(fld => html`<div class="meta-item" key=${fld.id} data-field=${fld.id}>
       <dt>${f[fld.id]}</dt><dd>${value(fld)}</dd></div>`)}</dl>
+    ${one ? html`<${Facts} key=${x.id} x=${x} item=${item} detail=${detail} />` : null}
   </section>`
 }
 
-/** Details of a row (round 6 B): an inbox item or a task in its drawer, with every verb Due has (urgency, area, as a
- *  task, follow up, gather info, own workspace, advise as a tab, take over a tab), any other row in its detail column
- *  beside the page (Prio, area, urgency, take over a tab) */
-export const openDetails = (c, row) => (row.inbox_id || String(row.key).startsWith('task:') ? c.openItem(row.key, row) : c.peek(row.key, null))
+/** Details of a row where Work through is off (the right column of a record in the Files tab): an inbox item or a
+ *  task opens its drawer, any other row its detail column beside the page (Prio, area, urgency, take over a tab). With
+ *  the one point view (stage 1) none: what the drawer held stands in the view itself */
+const openDetails = (c, row) => (row.inbox_id || String(row.key).startsWith('task:') ? c.openItem(row.key, row) : c.peek(row.key, null))
 
-/** The link Details under the verbs of a row */
-export const DetailsLink = ({ row, c }) => html`<button type="button" class="btn-link flow-details" title=${T().flow.detailsTitle}
+/** The link Details under the verbs of a row (Work through off only) */
+const DetailsLink = ({ row, c }) => html`<button type="button" class="btn-link flow-details" title=${T().flow.detailsTitle}
   onClick=${() => openDetails(c, row)}>${T().flow.details}</button>`
 
 /** The right column: What you can do and the fields of the point open, or of the entry of Running now; nothing while
- *  none is open (round 6 B: no empty Fields card, the middle takes the width). Under the verbs Details, where the point
- *  or the entry has a row (the reports carry it on each report in the card) */
+ *  none is open (round 6 B: no empty Fields card, the middle takes the width). A closed point says so in place of its
+ *  verbs. Under the verbs Details only where Work through is off (module head) */
 export function FlowAside({ x, s, c }) {
   const t = T()
   const f = t.flow
   if (!x) return null
   const row = x.kind === 'reports' ? null : x.row ?? null
-  const sug = row ? flowSuggestion(row, s) : null
+  const sug = row && !x.readOnly ? flowSuggestion(row, s) : null
   return html`<aside class="flow-aside" aria-label=${f.fields.can}>
     <section class="flow-can flow-aside-part" aria-labelledby="flow-can">
       <h3 id="flow-can" class="label-caps">${f.fields.can}</h3>
       ${sug ? html`<p class="flow-can-sug"><span class="label-caps">${f.list.cols.suggestion}</span> <${Suggestion} sug=${sug} s=${s} /></p>` : null}
-      <${PointActs} key=${x.id} x=${x} s=${s} c=${c} sug=${sug} />
-      ${row?.key ? html`<p class="flow-can-more"><${DetailsLink} row=${row} c=${c} /></p>` : null}
+      ${x.readOnly ? html`<p class="muted small flow-readonly">${f.one.readOnly}</p>` : html`<${PointActs} key=${x.id} x=${x} s=${s} c=${c} sug=${sug} />`}
+      ${row?.key && !pointViewOn(s) ? html`<p class="flow-can-more"><${DetailsLink} row=${row} c=${c} /></p>` : null}
     </section>
     <${Fields} x=${x} s=${s} c=${c} />
   </aside>`

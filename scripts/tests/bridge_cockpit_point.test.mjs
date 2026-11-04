@@ -15,9 +15,13 @@ import path from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { loadCockpit } from './cockpit_render.mjs'
+import { cockpitState, loadCockpit, mount, recorder, settle as rounds } from './cockpit_render.mjs'
 
-const { text, logic } = await loadCockpit()
+const { html, views, text, logic } = await loadCockpit()
+const en = text.TABLES.en
+const de = text.TABLES.de
+const tick = () => rounds()
+const until = async (ok, ms = 2000) => { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick() }
 const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web')
 const APP = fs.readFileSync(path.join(WEB, 'app.js'), 'utf8')
 const method = head => {
@@ -26,6 +30,10 @@ const method = head => {
   const end = APP.indexOf('\n  },', at)
   return APP.slice(at, end > 0 ? end : at + 2000)
 }
+const proto = Object.getPrototypeOf(document.createElement('div'))
+if (!proto.querySelector) proto.querySelector = function querySelector(sel) { return this.$(sel) }
+globalThis.window ??= { addEventListener() {}, removeEventListener() {}, innerWidth: 1280 }
+for (const k of ['offsetLeft', 'offsetWidth', 'scrollWidth', 'clientWidth']) Object.defineProperty(proto, k, { get: () => 0, configurable: true })
 
 // a fixed local "now": Friday, 9 October 2026, noon (the moment the other suites use)
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
@@ -273,4 +281,207 @@ test('the controller: openItem, openFile, openInfo and select open the one point
   assert.match(point, /pointOpen\(/)
   assert.match(point, /workViewGo\(/, 'the work tab goes to Work through the way every view switch goes')
   assert.match(method('select(key) {'), /openPoint\(/)
+})
+
+// ---------------------------------------------------------------- the one view, mounted
+
+const { FlowPage } = views.flow
+const { DossierView, dossierQueue } = views.dossier
+const flowState = (over = {}) => cockpitState(NOW, state(over))
+
+test('Not now: a title opens the row in the one point view in the middle, To the list leads back, the walk walks the group', () => {
+  const rows = [task('b', { hidden_until: '2026-10-21', title: 'Second' }), task('a', { hidden_until: '2026-10-20', title: 'First' })]
+  const c = recorder()
+  const list = mount(html`<${FlowPage} s=${flowState({ hidden: rows, ui: { flowView: 'left', flowLeft: 'later', flowLeftPicked: [] } })} c=${c} />`)
+  list.$$('.flow-ov-open')[1].click()
+  assert.deepEqual(c.calls.at(-1), ['flowLeftOpen', 'task:b', 1])
+  const el = mount(html`<${FlowPage} s=${flowState({ hidden: rows, ui: { flowView: 'left', flowLeft: 'later', flowLeftAt: { id: 'task:b', i: 1 } } })} c=${c} />`)
+  assert.match(el.$('.flow-card .fx-title').text(), /Second/)
+  assert.match(el.$('.flow-card .fx-kind').text(), new RegExp(en.flow.notnow.group.later), 'its group in the head')
+  assert.ok(el.$('.flow-ptabs') && el.$('.flow-aside .verbbar-basic'), 'the same tabs and verbs as every point')
+  assert.equal(el.$('.flow-leftlist'), null, 'the list gives way to the point')
+  assert.match(el.$('.dz-walk').text(), /2 of 2/)
+  el.button(en.flow.one.backList).click()
+  assert.deepEqual(c.calls.at(-1), ['flowLeft', 'later'])
+  el.$('.dz-walk').button(en.flow.walk2.prev).click()
+  assert.deepEqual(c.calls.at(-1), ['flowLeftOpen', 'task:a', 0])
+  // a row that left its group: the next of the group in its place, the list once the group is empty
+  const moved = mount(html`<${FlowPage} s=${flowState({ hidden: [rows[1]], ui: { flowView: 'left', flowLeft: 'later', flowLeftAt: { id: 'task:b', i: 1 } } })} c=${c} />`)
+  assert.match(moved.$('.flow-card .fx-title').text(), /First/)
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].flow.one.backList, lang)
+  assert.equal(de.flow.one.backList, 'Zur Liste')
+})
+
+test('a point of its own: a closed task reads its file and offers nothing, Ask still asks; Back to the overview', async () => {
+  const folder = 'work/done/2026-10/old'
+  const details = { inbox: {}, activity: {}, task: { [folder]: { status: 'ok', ver: 0, data: { slug: 'old', kind: 'done', work_kind: 'done_task',
+    path: `${folder}/STATUS.md`, front: { status: 'done', type: 'feature', headline: 'Shipped the export' }, card: { title: 'Old export', goal: 'Export works' },
+    sections: [{ heading: 'Situation', text: 'Done in October.' }] } } } }
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${flowState({ details, ui: { flowView: 'solo', flowSolo: { key: 'task:old', file: folder } } })} c=${c} />`)
+  assert.match(el.$('.flow-card .fx-title').text(), /Old export/)
+  assert.match(el.$('.flow-card').text(), /Shipped the export/, 'the headline as the line under the title')
+  assert.match(el.$('.flow-aside .flow-readonly').text(), new RegExp(en.flow.one.readOnly))
+  assert.equal(el.$('.flow-aside .verbbar'), null, 'no verb acts on a closed copy')
+  assert.equal(el.button(en.flow.instruct.send), null, 'no instruction')
+  assert.ok(el.button(en.flow.ask.send), 'a question still goes')
+  el.button(en.flow.point.back).click()
+  assert.deepEqual(c.calls.at(-1), ['flowOverview'])
+  // not read yet: it is read, and the middle says so
+  const lc = recorder()
+  const wait = mount(html`<${FlowPage} s=${flowState({ ui: { flowView: 'solo', flowSolo: { key: 'task:old', file: folder } } })} c=${lc} />`)
+  assert.match(wait.$('.flow-main').text(), new RegExp(en.flow.one.loading))
+  await until(() => lc.calls.some(x => x[0] === 'loadTask'))
+  assert.deepEqual(lc.calls.find(x => x[0] === 'loadTask'), ['loadTask', folder])
+})
+
+test('the card of a point: its kind and Pin in the head, the next step as a box under the title', () => {
+  const t = task('a', { card: { title: 'Task a', next: { what: 'Send the draft', who: 'me' } } })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${flowState({ work: [t], ui: { flowView: 'point', flowAt: { id: 'task:a', i: 0 } } })} c=${c} />`)
+  const head = el.$('.flow-card .fx-hero-top')
+  assert.ok(head.$('.kind-tag') || head.text().includes(en.kind.task), 'the kind of row in the head')
+  const pin = el.$('.flow-card .flow-pin')
+  assert.equal(pin.text().trim(), `☆ ${en.flow.one.pin}`)
+  pin.click()
+  assert.deepEqual(c.calls.at(-1), ['pin', 'task:a', true])
+  const next = el.$('.flow-card .flow-next')
+  assert.match(next.text(), /Send the draft/)
+  assert.match(next.text(), new RegExp(en.card.who.me))
+  const pinned = mount(html`<${FlowPage} s=${{ ...flowState({ work: [t], ui: { flowView: 'point', flowAt: { id: 'task:a', i: 0 } } }), home: { pins: ['task:a'] } }} c=${recorder()} />`)
+  assert.equal(pinned.$('.flow-card .flow-pin').text().trim(), `★ ${en.flow.one.pinned}`)
+})
+
+test('what the drawer held: the facts under Details, what it is about and the description in Description, the history in Activity, the parent in Related', async () => {
+  const id = '20261001-1659-a-bin'
+  const q = ask(id, { task: 'a', title: 'Delete the scans?' })
+  const details = { task: {}, activity: { [q.key]: { status: 'ok', ver: 0, data: { rows: [], counts: { all: 0 }, can: { note: true } } } },
+    inbox: { [id]: { status: 'ok', ver: 0, data: { id, item: ITEM, events: [{ verb: 'defer', by: 'web', at: '2026-10-03T09:00:00', until: '2026-10-05' }] } } } }
+  const triage = { items: { [q.key]: { gist: 'Empty the bin after the check', doer: 'you', why: 'deleting is only yours', reason: 'Nothing says it is done' } } }
+  const base = over => cockpitState(NOW, { ...state({ now: [q], work: [task('a')], ui: { flowView: 'point', flowAt: { id: q.key, i: 0 }, ...over } }), details, triage })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${base({})} c=${c} />`)
+  // the fold Details at the foot of the fields
+  assert.equal(el.$('.flow-facts'), null, 'folded')
+  el.$('.flow-facts-toggle').click()
+  await tick()
+  const facts = Object.fromEntries(el.$$('.flow-facts .meta-item').map(m => [m.getAttribute('data-fact'), m.$('dd').text()]))
+  assert.equal(facts.kind, en.item.kindName.decision)
+  assert.equal(facts.gate, en.gate['only-you'] ?? 'only-you')
+  assert.equal(facts.closer, en.item.closerKind.person)
+  assert.equal(facts.closes, en.item.noProbe)
+  assert.equal(facts.id, id)
+  // Description: what it is about, the description as filed
+  const desc = el.$('.flow-desc')
+  assert.match(desc.text(), new RegExp(en.flow.one.about))
+  assert.match(desc.text(), /Empty the bin after the check/)
+  assert.match(desc.text(), new RegExp(en.flow.one.needs('deleting is only yours')))
+  assert.match(desc.text(), /The scans of last week lie in the bin\./)
+  // Activity: History, a filter of its own
+  const act = mount(html`<${FlowPage} s=${base({ flowTab: 'activity', flowFilter: 'history' })} c=${recorder()} />`)
+  const hist = act.$$('.flow-act-row.is-history')
+  assert.equal(hist.length, 1)
+  assert.match(hist[0].text(), new RegExp(en.item.verb.defer))
+  assert.ok(act.$$('.flow-act-filters button').some(b => b.text().startsWith(en.flow.activity.filter.history)))
+  // Related: the task it belongs to, a click opens it in the same view
+  const rc = recorder()
+  const rel = mount(html`<${FlowPage} s=${base({ flowTab: 'related' })} c=${rc} />`)
+  assert.match(rel.$('.flow-related').text(), new RegExp(en.flow.one.parent))
+  rel.$('.flow-related-open').click()
+  assert.deepEqual(rc.calls.at(-1), ['openItem', 'task:a'])
+})
+
+test('a task\'s Description folds its STATUS.md under From the file', () => {
+  const details = { inbox: {}, activity: {}, task: { a: { status: 'ok', ver: 0, data: { slug: 'a', kind: 'task', path: 'work/tasks/a/STATUS.md', front: {},
+    card: { title: 'Task a', goal: 'Ship it' }, sections: [{ heading: 'Situation', text: 'Half way.' }, { heading: 'Next Steps', text: '- [ ] ship' }], related: [] } } } }
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ work: [task('a')], ui: { flowView: 'point', flowAt: { id: 'task:a', i: 0 } } }), details })} c=${recorder()} />`)
+  const fold = el.$('.flow-desc .flow-sections')
+  assert.ok(fold)
+  assert.match(fold.$('summary').text(), new RegExp(en.flow.one.sections(2)))
+  assert.deepEqual(fold.$$('.flow-section summary').map(x => x.text()), ['Situation', 'Next Steps'])
+})
+
+test('Make it a task: every inbox item offers it through a panel that says what it does; an issue through its page\'s step', async () => {
+  const q = ask('20261009-0900-a-q')
+  const calls = []
+  const c = new Proxy({}, { get: (_, p) => (p === 'calls' ? calls : p === 'then' || typeof p === 'symbol' ? undefined
+    : (...a) => { calls.push([p, ...a]); return p === 'act' ? Promise.resolve({ ok: true, task: 'new-one' }) : undefined }) })
+  const el = mount(html`<${FlowPage} s=${flowState({ now: [q], ui: { flowView: 'point', flowAt: { id: q.key, i: 0 } } })} c=${c} />`)
+  el.button(`${en.flow.basic.task} ▾`).click()
+  await tick()
+  assert.match(el.$('.verbbar-panel').text(), new RegExp(en.flow.basic.taskInbox))
+  el.button(en.flow.basic.taskGo).click()
+  await until(() => calls.some(x => x[0] === 'openItem'))
+  assert.deepEqual(calls.find(x => x[0] === 'act'), ['act', 'to_task', { key: q.key }])
+  assert.deepEqual(calls.find(x => x[0] === 'openItem'), ['openItem', 'task:new-one'], 'the new task opens in the same view')
+  // an issue with the GitHub page's step
+  const issue = ref('acme/app', 7, { bucket: 'do' })
+  const pages = [{ id: 'gh', title: 'GitHub', sections: [{ id: 'mine', kind: 'tracker', items: [{ index: 3, row_id: 'acme/app#7', actions: [{ id: 'adopt', label: 'x' }] }] }] }]
+  const ic = recorder()
+  const iel = mount(html`<${FlowPage} s=${flowState({ now: [issue], pages, ui: { flowView: 'point', flowAt: { id: issue.key, i: 0 } } })} c=${ic} />`)
+  iel.button(`${en.flow.basic.task} ▾`).click()
+  await tick()
+  assert.match(iel.$('.verbbar-panel').text(), new RegExp(en.flow.basic.taskIssue.slice(0, 20)))
+  iel.button(en.flow.basic.taskGo).click()
+  await tick()
+  assert.deepEqual(ic.calls.find(x => x[0] === 'act'), ['act', 'row_action', { page: 'gh', section: 'mine', index: 3, action: 'adopt' }])
+  // a task is one already, a pull request has no step
+  const tel = mount(html`<${FlowPage} s=${flowState({ work: [task('a')], ui: { flowView: 'point', flowAt: { id: 'task:a', i: 0 } } })} c=${recorder()} />`)
+  assert.equal(tel.button(`${en.flow.basic.task} ▾`), null)
+  assert.equal(de.flow.basic.task, 'Zur Aufgabe machen')
+})
+
+test('Instruct or Ask: a switch over the line on a point; Ask sends a question about the point the files view\'s way, its answer under the line', async () => {
+  const q = ask('20261009-0900-a-q', { title: 'Delete the scans?' })
+  const st = over => cockpitState(NOW, { ...state({ now: [q], ui: { flowView: 'point', flowAt: { id: q.key, i: 0 }, ...over } }),
+    work: { flow: { enabled: true, drop_reasons: [], return_after_s: 20, instruct: { enabled: true, budget_per_day: 30, model: null } } } })
+  const c = recorder()
+  const el = mount(html`<${FlowPage} s=${st({})} c=${c} />`)
+  const mode = el.$('.flow-line-mode')
+  assert.deepEqual(mode.$$('button').map(b => b.text()), [en.flow.ask.instruct, en.flow.ask.ask])
+  mode.button(en.flow.ask.ask).click()
+  assert.deepEqual(c.calls.at(-1), ['flowLine', 'ask'])
+  const ac = recorder()
+  const asking = mount(html`<${FlowPage} s=${st({ flowLine: 'ask' })} c=${ac} />`)
+  assert.equal(asking.button(en.flow.instruct.send), null)
+  const box = asking.$('#flow-ask-text')
+  box.value = 'what happened since Monday?'
+  box.dispatch('input')
+  await tick()
+  asking.$('.flow-instruct-row').button(en.flow.ask.send).click()
+  await until(() => ac.calls.some(x => x[0] === 'flowAsk'))
+  const call = ac.calls.find(x => x[0] === 'flowAsk')
+  assert.equal(call[1], 'what happened since Monday?')
+  assert.match(call[2], /Delete the scans\?/, 'the point goes along as data')
+  assert.equal(call[3], null, 'an inbox item names no task')
+  assert.equal(call[4], q.key)
+  // the answer under the line
+  const quick = { available: true, convs: [{ id: 'q0000000001', running: false, turns: [{ q: 'x', a: 'Nothing moved since Monday.' }] }] }
+  const ans = mount(html`<${FlowPage} s=${{ ...st({ flowLine: 'ask', flowAsk: { key: q.key, conv: 'q0000000001' } }), quick }} c=${recorder()} />`)
+  assert.match(ans.$('.flow-ask-answer').text(), /Nothing moved since Monday\./)
+  // the controller asks the files view's way: a free quick question with the point as data
+  const ask_ = method('flowAsk: (text, context, task, key)')
+  assert.match(ask_, /api\.ask\('free'/)
+  assert.match(ask_, /via: 'quick'/)
+  assert.deepEqual([de.flow.ask.instruct, de.flow.ask.ask], ['Anweisen', 'Fragen'])
+})
+
+test('the Files tab with Work through on: a record opens in the one point view, its walk over the list, Close the record; off, the file card stays', async () => {
+  const s = cockpitState(NOW, { ui: { page: '@files' } })
+  const queue = dossierQueue(s)
+  const x = queue.find(q => q.reason === 'task') ?? queue[0]
+  const c = recorder()
+  const el = mount(html`<${DossierView} s=${{ ...s, ui: { ...s.ui, filesWalk: true, dossierAt: { id: x.id, i: queue.indexOf(x) } } }} c=${c} />`)
+  assert.ok(el.$('.flow-main .flow-card') && el.$('.flow-main .flow-ptabs'), 'the card and the tabs of a point')
+  assert.equal(el.$('.dz-cover'), null, 'no file card')
+  assert.ok(el.$('.flow-aside .verbbar-basic'), 'the right column of Work through')
+  assert.equal(el.$('.flow-aside .flow-details'), null, 'no Details link')
+  assert.ok(el.$('.flow-main .dz-walk'), 'the walk')
+  el.button(en.dossier.start.back).click()
+  assert.deepEqual(c.calls.at(-1), ['filesHome'])
+  // Work through off: the file card and the Details link, as before
+  const off = { ...s, work: { ...s.work, flow: { ...s.work.flow, enabled: false } }, ui: { ...s.ui, filesWalk: true, dossierAt: { id: x.id, i: queue.indexOf(x) } } }
+  const card = mount(html`<${DossierView} s=${off} c=${recorder()} />`)
+  assert.ok(card.$('.dz-cover'))
+  assert.equal(card.$('.flow-main .flow-ptabs'), null)
 })

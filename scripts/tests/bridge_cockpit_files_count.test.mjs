@@ -47,9 +47,11 @@ function model() {
 const tabs = [{ ref: 't', workspace: 'ACME', state: 'needs-you', slug: 'q', name: 'asks about q' }]
 
 /** The state as the files view sees it, under the filters of Work (components.js hands it areaScope) */
+/** The files tab walking (its file card: Work through off, cockpit.flow.enabled false; with it on the walk shows the one
+ *  point view, with the same line over it) */
 function seen(ui = {}, over = {}) {
-  const s = cockpitState(NOW, { model: model(), tabs: { tabs }, sessions: { runs: [] }, ...over, ui: { page: '@files', filesWalk: true, ...ui } })
-  return logic.areaScope(s)
+  const base = cockpitState(NOW, { model: model(), tabs: { tabs }, sessions: { runs: [] }, ...over, ui: { page: '@files', filesWalk: true, ...ui } })
+  return logic.areaScope({ ...base, work: { ...base.work, flow: { ...base.work.flow, enabled: false } } })
 }
 
 const counts = gaps => Object.fromEntries(gaps.groups.map(g => [g.reason, g.rows.map(x => x.slug)]))

@@ -322,10 +322,11 @@ test('the verb bar: the suggested verb is the primary button, Later offers the d
   assert.equal(stream.button(`${en.flow.verbs.drop} ▾`), null)
 })
 
-test('a card whose tab asks offers no start: the tab takes no sentence while it asks', () => {
+test('a card whose tab asks starts nothing: the tab takes no sentence while it asks, so Let AI do it stands off with why', () => {
   const s = cockpitState(NOW, state({ work: [task('run')], tabs: [{ ref: 'surface:9', name: 'run', slug: 'run', state: 'needs-you', since_ms: NOW - MIN }] }))
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
-  assert.equal(el.button(`${en.flow.verbs.do} ▾`), null)
+  assert.ok(el.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'), 'the start stands in its place, off (stage 1)')
+  assert.match(el.$('.flow-aside .verbbar-off').text(), new RegExp(en.flow.basic.off.working))
   assert.ok(el.button(en.flow.verbs.advise) && el.button(en.flow.toTab))
 })
 
@@ -514,10 +515,10 @@ test('the open point carries the suggestion the overview shows: its words on the
   assert.match(advice.text(), new RegExp(en.flow.list.verb.done))
   assert.match(advice.text(), /Answered in the thread/)
   assert.ok(!el.$('.flow-card .flow-sug'), 'not on the card')
-  // the strong button is the suggested verb, not Advise, and the first of the stack
+  // the strong button is the suggested verb, not Advise; the basic verbs keep their one order (stage 1)
   const strong = el.$$('.flow-aside .flow-can button').filter(b => b.getAttribute('class').includes('primary')).map(b => b.text().trim())
   assert.deepEqual(strong, [en.flow.verbs.done])
-  assert.equal(el.$('.flow-aside .flow-can button').text().trim(), en.flow.verbs.done)
+  assert.equal(el.$('.flow-aside .flow-can button').text().trim(), `${en.flow.verbs.do} ▾`)
   // without a suggestion: no line
   const plain = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   assert.equal(plain.$('.flow-can-sug'), null)
@@ -535,10 +536,10 @@ test('In progress: the card shows the last lines, the field says who works on it
   assert.match(el.$('.flow-aside [data-field=who]').text(), /Agent tab busy: at work, for 18 min/)
   assert.match(card.$('.fx-screen').text(), /Running the tests/)
   assert.ok(!el.$('.flow-aside .fx-screen'), 'the screen only in the card')
-  // a tab at work: To tab is the strong button, View beside it, no Let AI do it
+  // a tab at work: To tab is the strong button, View beside it, Let AI do it off (no second agent beside it)
   assert.ok(el.button(en.flow.toTab).hasClass('btn-primary') && el.button(en.flow.view) && el.button(en.flow.verbs.done))
   assert.equal(el.button(`${en.flow.doing.goOn} ▾`), null)
-  assert.equal(el.button(`${en.flow.verbs.do} ▾`), null)
+  assert.ok(el.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'))
   // no tab open: when it last moved, and Let AI go on with it
   c = recorder()
   el = mount(html`<${FlowPage} s=${cockpitState(NOW, { ...state({ work: [task('quiet', { updated: '2026-10-06' })] }), ui: { ...state().ui, page: 'briefing', workView: 'flow' } })} c=${c} />`)
@@ -1521,7 +1522,7 @@ test('the card carries content only: no verbs, no source, no area, no who; the s
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   const card = el.$('.flow-card')
   assert.equal(card.$('.fx-acts'), null, 'no foot on the card')
-  assert.equal(card.$$('button').length, 0, 'no button on a card of a task at work')
+  assert.deepEqual(card.$$('button').map(b => b.text().trim()), [`☆ ${en.flow.one.pin}`], 'no verb on a card of a task at work, only Pin in its head')
   assert.equal(card.$('.origin'), null, 'the source stands in the fields only')
   assert.equal(card.$('.fx-proj'), null, 'the area stands in the fields only')
   assert.equal(card.$('.flow-who'), null)
@@ -1710,10 +1711,10 @@ test('the right column: What you can do with the suggestion and the verbs stacke
   assert.match(aside.$('.flow-can').text(), new RegExp(en.flow.fields.can))
   assert.match(aside.$('.flow-can-sug').text(), /Waits for the vendor/)
   assert.ok(aside.$('.flow-can .verbbar.is-stack'), 'the verbs stand under each other')
-  // the suggested verb first and strong
-  const first = aside.$('.flow-can .verbbar-row button')
-  assert.ok(first.hasClass('btn-primary'))
-  assert.equal(first.text(), `${en.flow.verbs.later} ▾`)
+  // the basic verbs in their one order, the suggested one strong in its place (stage 1)
+  const basic = aside.$$('.flow-can .verbbar-basic button')
+  assert.deepEqual(basic.map(b => b.text()), [`${en.flow.doing.goOn} ▾`, en.flow.verbs.done, `${en.flow.verbs.later} ▾`, `${en.flow.verbs.drop} ▾`])
+  assert.deepEqual(basic.filter(b => b.hasClass('btn-primary')).map(b => b.text()), [`${en.flow.verbs.later} ▾`])
   const fields = aside.$$('.flow-fields dt').map(d => d.text())
   assert.deepEqual(fields, [en.flow.fields.theme, en.flow.fields.area, en.flow.fields.who, en.flow.fields.prio, en.flow.fields.urgency,
     en.flow.fields.impact, en.flow.fields.effort, en.flow.fields.due, en.flow.fields.source, en.flow.fields.created, en.flow.fields.moved])
@@ -1724,13 +1725,13 @@ test('the right column: What you can do with the suggestion and the verbs stacke
 })
 
 test('the right column by card: a live tab gives To tab and View, a finished start Done and close, the reports All seen', () => {
-  // a tab that asks: To tab strong, View, no Let AI do it
+  // a tab that asks: the basic verbs off but Later, then To tab strong and View under them
   const asks = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ work: [task('run')], tabs: [{ ref: 'surface:9', name: 'run', slug: 'run', state: 'needs-you', since_ms: NOW - MIN }] }))} c=${recorder()} />`)
-  const can = asks.$('.flow-aside .flow-can')
-  assert.equal(can.$$('button')[0].text(), en.flow.toTab)
-  assert.ok(can.$$('button')[0].hasClass('btn-primary'))
-  assert.equal(can.$$('button')[1].text(), en.flow.view)
-  assert.equal(asks.button(`${en.flow.verbs.do} ▾`), null)
+  const kind = asks.$('.flow-aside .flow-can .verbbar-kind')
+  assert.equal(kind.$$('button')[0].text(), en.flow.toTab)
+  assert.ok(kind.$$('button')[0].hasClass('btn-primary'))
+  assert.equal(kind.$$('button')[1].text(), en.flow.view)
+  assert.ok(asks.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'))
   // the reports: Seen for the ticked ones on the right, Seen on each report in the card
   const r = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: [report('20261009-0901-a-r')] }))} c=${recorder()} />`)
   assert.ok(r.$('.flow-aside').$$('button').some(b => b.text() === en.flow.seenTicked(0)))
@@ -1784,12 +1785,13 @@ test('the reports: Seen on the right settles only the ticked reports, All seen o
 // ---------------------------------------------------------------- the buttons on the right by kind (29.10.2026)
 
 /** The ways on the right of a point in their order, the strong one in brackets: every button and every link styled as
- *  one, Details and the STATUS.md link left out; `tail` only those set apart under the verbs (.verbbar-tail) */
+ *  one, Details (the link, the fold of the facts) and the STATUS.md link left out; `tail` only those set apart under the verbs (.verbbar-tail) */
 function acts(el, tail = false) {
   const out = []
   const walk = (n, apart) => {
     if (n.nodeType !== 1) return
     const there = apart || n.hasClass('verbbar-tail')
+    if (n.hasClass('flow-facts-toggle')) return
     if (n.localName === 'button' || (n.localName === 'a' && n.hasClass('btn'))) {
       const w = n.text().trim()
       if ((!tail || there) && w && w !== en.flow.details && !/STATUS\.md$/.test(w)) out.push(n.hasClass('btn-primary') ? `[${w}]` : w)
@@ -1804,36 +1806,36 @@ const panel = w => `${w} ▾`
 const onTab = (st, over = {}) => ({ ref: 'surface:9', name: 'run', slug: 'run', state: st, since_ms: NOW - 18 * MIN, ...over })
 const right = (st, c = recorder()) => mount(html`<${FlowPage} s=${cockpitState(NOW, st)} c=${c} />`)
 
-test('the right column: no strong button without a suggestion, Advise is one verb among the others (B)', () => {
+test('the right column: no strong button without a suggestion, the basic verbs in one order, Advise under them (B)', () => {
   const v = en.flow.verbs
-  assert.deepEqual(acts(right(state({ now: [ask('20261009-0900-a-q')] }))), [panel(v.do), v.advise, v.done, panel(v.later), panel(v.drop)])
-  // a suggestion still makes its verb the strong one, first
+  assert.deepEqual(acts(right(state({ now: [ask('20261009-0900-a-q')] }))), [panel(v.do), v.done, panel(v.later), panel(v.drop), panel(en.flow.basic.task), v.advise])
+  // a suggestion makes its verb the strong one, in its place (stage 1: the order never moves)
   const s = state({ now: [ask('20261009-0900-a-q')], themes: { enabled: true, assign: {}, themes: [], suggest: { 'inbox:20261009-0900-a-q': { verb: 'later', reason: 'x', at_ms: NOW } } } })
-  assert.equal(acts(right(s))[0], `[${panel(v.later)}]`)
+  assert.equal(acts(right(s))[2], `[${panel(v.later)}]`)
 })
 
 test('the right column: a finding with an action ready gives its yes first and strong (D)', () => {
   const v = en.flow.verbs
   const y = ask('20261009-0900-a-y', { gate: 'your-yes', has_action: true, art: 'finding' })
-  assert.deepEqual(acts(right(state({ now: [y] }))), [`[${en.flow.approve}]`, panel(v.do), v.advise, v.done, panel(v.later), panel(v.drop)])
+  assert.deepEqual(acts(right(state({ now: [y] }))), [panel(v.do), v.done, panel(v.later), panel(v.drop), panel(en.flow.basic.task), `[${en.flow.approve}]`, v.advise])
 })
 
-test('the right column: a task in review offers Done strong, then Improve, Later, Drop and Advise, no Let AI do it (C)', async () => {
+test('the right column: a task in review offers the basic verbs with Done strong, then Improve and Advise (C)', async () => {
   const v = en.flow.verbs
   const c = recorder()
   const el = right(state({ work: [task('r', { status: 'review' })] }), c)
-  assert.deepEqual(acts(el), [`[${v.done}]`, panel(en.flow.improve.button), panel(v.later), panel(v.drop), v.advise])
+  assert.deepEqual(acts(el), [panel(v.do), `[${v.done}]`, panel(v.later), panel(v.drop), panel(en.flow.improve.button), v.advise, en.flow.one.net])
   // Improve opens the sentence for a new start, which goes out only with words in it
   el.$$('.flow-aside button').find(b => b.text() === panel(en.flow.improve.button)).click()
   await until(() => el.$('.flow-aside .flow-improve textarea'))
   assert.ok(el.$('.flow-aside .flow-improve textarea'), 'the field for what is still to do')
 })
 
-test('the right column: an issue says Hide for what only leaves this list, Open on GitHub first (A)', () => {
+test('the right column: an issue says Hide for what only leaves this list, Open on GitHub under the basic verbs (A)', () => {
   const v = en.flow.verbs
   const issue = ref('acme/app', 7, { bucket: 'do' })
   const el = right(state({ now: [issue] }))
-  assert.deepEqual(acts(el), [en.flow.onWeb(issue.url), panel(v.do), v.advise, en.flow.hide, panel(v.later), panel(v.drop)])
+  assert.deepEqual(acts(el), [panel(v.do), en.flow.hide, panel(v.later), panel(v.drop), en.flow.onWeb(issue.url), v.advise])
   assert.equal(en.flow.onWeb('https://github.com/acme/app/issues/7'), 'Open on GitHub')
   const a = el.$('.flow-aside a.btn')
   assert.equal(a.getAttribute('href'), issue.url)
@@ -1856,15 +1858,15 @@ const iw = en.flow.issue
 /** Until the card read its board: the line no longer says it is reading */
 const read = el => until(() => el.$('.flow-issue-on') && el.$('.flow-issue-on').text() !== iw.loading)
 
-test('an issue on a board: Set to review and Done after Open on GitHub, the board and its status above them', async () => {
+test('an issue on a board: Set to review and Done after Open on GitHub, under the basic verbs, the board and its status above them', async () => {
   const v = en.flow.verbs
   const c = withPlan({ ok: true, data: PLAN() })
   const el = right(state({ now: [gitIssue()] }), c)
   await read(el)
   assert.deepEqual(c.calls.find(x => x[0] === 'issuePlan'), ['issuePlan', 'acme/app#7'])
   assert.match(el.$('.flow-issue-on').text(), /Ops: In Progress/)
-  assert.deepEqual(acts(el), [en.flow.onWeb('https://github.com/acme/app/issues/7'), panel(iw.review), panel(iw.done), iw.check, panel(v.do), v.advise,
-    en.flow.hide, panel(v.later), panel(v.drop)])
+  assert.deepEqual(acts(el), [panel(v.do), en.flow.hide, panel(v.later), panel(v.drop), en.flow.onWeb('https://github.com/acme/app/issues/7'),
+    panel(iw.review), panel(iw.done), iw.check, v.advise])
 })
 
 test('Set to review asks what is done first, then sends issue_review with it', async () => {
@@ -1904,7 +1906,7 @@ test('the AI suggests closing: the button that fits is the strong one, its reaso
   const el = right(s, c)
   await read(el)
   const all = acts(el)
-  assert.equal(all[1], `[${panel(iw.review)}]`, all.join(' | '))
+  assert.equal(all[5], `[${panel(iw.review)}]`, all.join(' | '))
   assert.ok(all.includes(en.flow.hide), 'Hide is no longer strong')
   el.$$('.flow-aside button').find(b => b.text() === panel(iw.review)).click()
   await until(() => el.$('.flow-issue-panel textarea'))
@@ -1943,7 +1945,7 @@ test('Check with AI: the click sends issue_check, its done makes the fitting but
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'issue_check', { key: 'ref:acme/app#7' }])
   assert.match(el.$('.flow-issue-check').text(), new RegExp(`${iw.verdict.done}.*Both boxes ticked`))
   assert.ok(el.$('.flow-issue-check').text().includes('#13 merged'))
-  assert.equal(acts(el)[1], `[${panel(iw.review)}]`)
+  assert.equal(acts(el)[5], `[${panel(iw.review)}]`)
   el.$$('.flow-aside button').find(b => b.text() === panel(iw.review)).click()
   await until(() => el.$('.flow-issue-panel textarea'))
   const box = el.$('.flow-issue-panel textarea')
@@ -1977,22 +1979,25 @@ test('the right column: the return card has one way back, Runs on (E)', () => {
   const v = en.flow.verbs
   const el = right(state({ work: [task('other')], tabs: [onTab('waiting', { ref: 'surface:5', slug: 'other' })],
     ui: { flowJump: { key: 'task:other', ref: 'surface:5', title: 'x', at: NOW - MIN, armed: true } } }))
-  assert.deepEqual(acts(el), [`[${v.done}]`, panel(v.later), panel(v.drop), en.flow.runsOn])
+  assert.deepEqual(acts(el), [panel(v.do), `[${v.done}]`, panel(v.later), panel(v.drop), v.advise, en.flow.runsOn, en.flow.one.net])
 })
 
 test('the right column: a tab waiting at its prompt puts its close last and apart (F)', () => {
   const v = en.flow.verbs
   const el = right(state({ work: [task('run')], tabs: [onTab('waiting')] }))
   const all = acts(el)
-  assert.deepEqual(all.slice(0, 6), [`[${en.flow.toTab}]`, en.flow.view, v.advise, v.done, panel(v.later), panel(v.drop)])
-  assert.deepEqual(acts(el, true), all.slice(6))
+  assert.deepEqual(all.slice(0, 8), [panel(v.do), v.done, panel(v.later), panel(v.drop), `[${en.flow.toTab}]`, en.flow.view, v.advise, en.flow.one.net])
+  assert.deepEqual(acts(el, true), all.slice(8))
   assert.ok(acts(el, true).includes(en.btnCloseTab), 'the close stands apart')
 })
 
-test('the right column: while a tab asks, only To tab, View, Advise and Later; nothing closes what waits for you (H)', () => {
+test('the right column: while a tab asks, only Later of the basic verbs goes, then To tab, View and Advise; nothing closes what waits for you (H)', () => {
   const v = en.flow.verbs
-  assert.deepEqual(acts(right(state({ work: [task('run')], tabs: [onTab('needs-you')] }))),
-    [`[${en.flow.toTab}]`, en.flow.view, v.advise, panel(v.later)])
+  const el = right(state({ work: [task('run')], tabs: [onTab('needs-you')] }))
+  assert.deepEqual(acts(el), [panel(v.do), v.done, panel(v.later), panel(v.drop), `[${en.flow.toTab}]`, en.flow.view, v.advise, en.flow.one.net])
+  const on = el.$$('.flow-aside .verbbar-basic button').filter(b => !b.hasAttribute('disabled')).map(b => b.text())
+  assert.deepEqual(on, [panel(v.later)], 'only Later of them goes')
+  assert.match(el.$('.flow-aside .verbbar-off').text(), new RegExp(en.flow.basic.off.asks))
 })
 
 test('the right column: a finished start, View and Improve right after Done, the tab ways apart at the end (G)', () => {
@@ -2006,12 +2011,13 @@ test('the right column: a finished start, View and Improve right after Done, the
 })
 
 test('the right column: where the close of the tab behind it ends the point, Done and close tab stands with the verbs', () => {
-  // a tab waiting at its prompt with the task behind it: its close offers Done for it (besideClose takes Done out of
-  // the verbs), so that Done stands right after the tab's ways, not apart at the end (review 29.10.2026)
+  // a tab waiting at its prompt with the task behind it: its close offers Done for it, so Done in its place closes the
+  // tab too (stage 1: one Done, where Done always stands), Close tab only apart at the end
   const wait = { ref: 'surface:12', name: 'a', slug: 'a', state: 'waiting', behind: { task: 'a', item: null }, since_ms: NOW - 14 * MIN }
   const v = en.flow.verbs
   const all = acts(right(state({ work: [task('a')], tabs: [wait] })))
-  assert.deepEqual(all, [`[${en.flow.toTab}]`, en.flow.view, en.btnDoneCloseTab, en.btnCloseTabOnly, v.advise, panel(v.later), panel(v.drop)])
+  assert.deepEqual(all, [panel(v.do), en.btnDoneCloseTab, panel(v.later), panel(v.drop), `[${en.flow.toTab}]`, en.flow.view, v.advise, en.flow.one.net,
+    en.btnCloseTabOnly])
   // a driver that closes tabs but starts none still shows that Done
   const noLaunch = acts(right({ ...state({ work: [task('a')], tabs: [wait] }), driver: { caps: ['close'] } }))
   assert.ok(noLaunch.includes(en.btnDoneCloseTab), noLaunch.join(' | '))
@@ -2025,33 +2031,27 @@ test('the reports say Done like every other card (I)', () => {
   assert.equal(text.TABLES.de.flow.seenTicked(2), 'Erledigt (2 angehakt)')
 })
 
-test('Details at the point (round 6 B): an inbox item or a task opens its drawer, any other row its detail column, a report its own', () => {
-  const details = el => el.$$('.flow-aside .flow-can button').filter(b => b.text() === en.flow.details)
-  const q = ask('20261009-0900-a-q1')
-  const t = task('a')
-  const issue = ref('acme/app', 7, { bucket: 'do' })
-  for (const [s, call] of [[state({ now: [q] }), ['openItem', q.key]], [state({ work: [t] }), ['openItem', t.key]],
-    [state({ now: [issue] }), ['peek', issue.key, null]]]) {
-    const c = recorder()
-    const el = mount(html`<${FlowPage} s=${cockpitState(NOW, s)} c=${c} />`)
-    const links = details(el)
-    assert.equal(links.length, 1, `one Details at ${call[1]}`)
-    assert.ok(links[0].hasClass('btn-link'), 'a link in the style of the column, below the verbs')
-    links[0].click()
-    const got = c.calls.find(x => x[0] === call[0])
-    assert.ok(got, `${call[0]} for ${call[1]}`)
-    assert.deepEqual(got.slice(0, call.length), call)
-    if (call[0] === 'openItem') assert.equal(got[2]?.key, call[1], 'the drawer gets the row')
+test('no Details at the point (stage 1): what the drawer held stands in the one view, a report opens alone in it', () => {
+  const details = el => el.$$('.flow-aside button').filter(b => b.text() === en.flow.details)
+  for (const s of [state({ now: [ask('20261009-0900-a-q1')] }), state({ work: [task('a')] }), state({ now: [ref('acme/app', 7, { bucket: 'do' })] })]) {
+    const el = mount(html`<${FlowPage} s=${cockpitState(NOW, s)} c=${recorder()} />`)
+    assert.equal(details(el).length, 0, 'no link to a drawer')
+    assert.ok(el.$('.flow-aside .flow-facts-toggle'), 'the facts fold at the foot of the fields')
   }
-  // the reports: one point of many rows, so Details stands on each report in the card, beside its Seen
+  // the reports: one point of many rows; each report opens alone in the one view (Open), Back leads to this card
   const reps = [report('20261009-0901-a-r'), report('20261009-0902-a-r')]
   const c = recorder()
   const el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: reps }))} c=${c} />`)
-  assert.equal(details(el).length, 0)
-  const each = el.$$('.flow-reports > li').map(li => li.$$('button').find(b => b.text() === en.flow.details))
+  assert.equal(el.$$('.flow-reports button').filter(b => b.text() === en.flow.details).length, 0)
+  const each = el.$$('.flow-reports > li').map(li => li.$$('button').find(b => b.text() === en.flow.one.open))
   assert.equal(each.filter(Boolean).length, 2)
   each[1].click()
-  assert.deepEqual(c.calls.find(x => x[0] === 'openItem').slice(0, 2), ['openItem', reps[1].key])
+  assert.deepEqual(c.calls.find(x => x[0] === 'flowSolo'), ['flowSolo', reps[1].key, 'reports'])
+  const alone = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: reps, ui: { flowView: 'solo', flowSolo: { key: reps[1].key, file: null, from: 'reports' } } }))} c=${c} />`)
+  assert.match(alone.$('.flow-card').text(), new RegExp(reps[1].title))
+  assert.ok(alone.$('.flow-aside .verbbar-basic'), 'its verbs: the row is open')
+  alone.button(en.flow.point.back).click()
+  assert.deepEqual(c.calls.at(-1), ['flowGo', 'reports', 0])
   for (const lang of ['en', 'de']) assert.equal(text.TABLES[lang].flow.details, 'Details')
 })
 
@@ -2189,9 +2189,13 @@ test('the instruction line: one row while empty, its scope above it, Send asks t
   // in the overview: the ticked points or the whole side, and the line stays without a walk bar
   const ov = mount(html`<${FlowPage} s=${pointState({ ui: { flowView: 'overview', flowSide: { areas: 'a:ops' } } })} c=${recorder()} />`)
   assert.match(ov.$('.flow-instruct-scope').text(), new RegExp(en.flow.instruct.side(1, 'Ops')))
-  // off by default: no line
+  // off by default: no instruction, the line asks only (stage 1), without the switch
   const no = mount(html`<${FlowPage} s=${pointState({ flow: { instruct: { enabled: false } } })} c=${recorder()} />`)
-  assert.equal(no.$('.flow-instruct'), null)
+  assert.equal(no.button(en.flow.instruct.send), null)
+  assert.equal(no.$('.flow-line-mode'), null)
+  assert.ok(no.button(en.flow.ask.send), 'Ask stands on the point')
+  const ovNo = mount(html`<${FlowPage} s=${pointState({ flow: { instruct: { enabled: false } }, ui: { flowView: 'overview' } })} c=${recorder()} />`)
+  assert.equal(ovNo.$('.flow-instruct'), null, 'the overview has no question about a point')
 })
 
 test('the texts of round 3: both languages, the sixteen refusals worded, no key named, no dash', () => {
@@ -2402,18 +2406,19 @@ test('the instruction line names what it speaks for: the reports by their count,
   assert.equal(text.TABLES.de.flow.instruct.every(9, 11), 'Gilt für 9 von 11 Punkten')
 })
 
-test('a tab that waits at its prompt is live too: To tab and View lead in one style, no Let AI do it, no Give your yes', () => {
+test('a tab that waits at its prompt is live too: To tab and View lead what the kind adds in one style, Let AI do it off, no Give your yes', () => {
   const waits = { ref: 'surface:12', name: 'a research', slug: 'a', state: 'waiting', since_ms: NOW - 14 * MIN }
   const yes = { gate: 'your-yes', has_action: true }
   for (const tab of [waits, { ...waits, state: 'working' }]) {
     const s = pointState({ rows: [ask('20261009-0900-a-q', { task: 'a', ...yes })], feed: feedOf('inbox:20261009-0900-a-q'), tabs: [tab] })
     assert.equal(logic.flowLive(queueOf(s)[0], s)?.ref, 'surface:12', tab.state)
     const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
-    const can = el.$$('.flow-aside .flow-can button')
+    const can = el.$$('.flow-aside .flow-can .verbbar-kind button')
     assert.deepEqual(can.slice(0, 2).map(b => b.text()), [en.flow.toTab, en.flow.view], tab.state)
     assert.ok(can[0].hasClass('btn-primary') && can[1].hasClass('btn-secondary'), tab.state)
-    assert.equal(can.filter(b => b.hasClass('btn-ghost')).length, 0, 'one style in the stack')
-    assert.ok(!can.some(b => b.text() === `${en.flow.verbs.do} ▾` || b.text() === en.flow.approve), tab.state)
+    assert.equal(el.$$('.flow-aside .flow-can button').filter(b => b.hasClass('btn-ghost')).length, 0, 'one style in the stack')
+    assert.ok(el.button(`${en.flow.verbs.do} ▾`).hasAttribute('disabled'), `${tab.state}: Let AI do it off`)
+    assert.ok(!can.some(b => b.text() === en.flow.approve), tab.state)
   }
 })
 
@@ -2459,14 +2464,18 @@ test('Activity words every state as the page does: an inbox item open, a task in
   }
 })
 
-test('the source in the fields: the chip stays in the column, STATUS.md opens the files view, an issue opens on the web by its ref', () => {
+test('the source in the fields: the chip stays in the column, the task of an item opens as its point, an issue opens on the web by its ref', () => {
   const c = recorder()
   const row = task('a', { area: 'Ops', url: 'https://example.org/repo/issues/12', origin: { category: 'bot', word_key: null, detail: 'issue-radar', raw: null, ref: 'example/repo#3' } })
   const el = mount(html`<${FlowPage} s=${pointState({ rows: [row], detail: detailOf({ front: { status: 'doing' } }) })} c=${c} />`)
   const src = el.$('.flow-aside [data-field=source]')
   assert.ok(src.$('.origin'), 'the chip stays')
-  const status = src.$$('button').find(b => b.text() === 'STATUS.md')
-  assert.ok(status, 'STATUS.md as a link')
+  // stage 1: a task's own file is no link to the point it is (Details says its path)
+  assert.equal(src.$$('button').find(b => b.text() === 'STATUS.md'), undefined)
+  const q = ask('20261009-0900-a-q', { task: 'a', area: 'Ops' })
+  const item = mount(html`<${FlowPage} s=${pointState({ rows: [q, row], feed: feedOf(q.key) })} c=${c} />`)
+  const status = item.$('.flow-aside [data-field=source]').$$('button').find(b => b.text() === 'STATUS.md')
+  assert.ok(status, 'the task an item belongs to, as a link')
   status.click()
   assert.deepEqual(c.calls.at(-1), ['openFile', 'a', null])
   const link = src.$$('a').find(a => a.getAttribute('href') === 'https://example.org/repo/issues/12')
@@ -2994,7 +3003,7 @@ test('the run view: the card, its tabs and the instruction line, no walk bar; No
   assert.equal(el.$('.flow-walk'), null)
   assert.ok(el.$('.flow-ptabs'))
   assert.ok(el.$('aside .flow-run-cat.is-on'), 'Running now is marked on the left while one of its entries is open')
-  const can = el.$$('.flow-aside .flow-can button')
+  const can = el.$$('.flow-aside .flow-can .verbbar-kind button')
   assert.equal(can[0].text(), en.flow.toTab)
   assert.ok(can[0].hasClass('btn-primary'))
   el.button(en.flow.run.unlink).click()
@@ -3042,7 +3051,13 @@ test('Not now: a button per group at the foot of the left column, a click shows 
   const watch = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'watch' })} c=${recorder()} />`)
   const heads = watch.$$('.flow-ov-group').map(h => h.text())
   assert.ok(heads.includes('example/repo') && heads.includes('grp/app') && !heads.includes('example/tools'), heads.join(', '))
-  assert.ok(watch.$$('.flow-ov-open').some(a => a.getAttribute('href')?.startsWith('https://example.org/')), 'an issue opens on the web')
+  // stage 1: every title opens its row in the one point view in the middle, an issue too (Open on GitHub stands there)
+  const wc = recorder()
+  const watch2 = mount(html`<${FlowPage} s=${demoFlow({ flowView: 'left', flowLeft: 'watch' })} c=${wc} />`)
+  assert.ok(watch2.$$('.flow-ov-open').every(b => b.localName === 'button'), 'no title leaves the page')
+  watch2.$$('.flow-ov-open')[1].click()
+  const rows = logic.leftWalk(logic.flowParts(demoFlow()), 'watch')
+  assert.deepEqual(wc.calls.at(-1), ['flowLeftOpen', rows[1].id, 1])
 })
 
 test('Not now: the rows a GitHub list holds fold into one line that leads there, the rest stay watched, the counts hold (G3)', () => {
@@ -3532,8 +3547,8 @@ test('R6B 1d: a row with steps of its own (an application) opens them in the inf
   const btn = point.$$('.flow-aside .flow-can button').find(b => b.text().startsWith(en.rowSteps))
   assert.ok(btn, 'the steps on the point')
   btn.click()
-  assert.deepEqual(c.calls.at(-1), ['openInfo', item, 'work', 'apps'])
-  // in a list of Not now its title opens the drawer too
+  assert.deepEqual(c.calls.at(-1), ['openInfo', item, 'work', 'apps', true], 'the steps keep their drawer')
+  // in a list of Not now its title opens the row in the one view (stage 1), where its steps stand beside its verbs
   const watched = state({ later: [{ ...app, bucket: 'plan', urgency: null }] })
   watched.model.pages = pages
   const lc = recorder()
@@ -3541,7 +3556,7 @@ test('R6B 1d: a row with steps of its own (an application) opens them in the inf
   const title = list.$$('.flow-ov-open').find(b => b.text().includes('Application seven'))
   assert.equal(title.localName, 'button')
   title.click()
-  assert.deepEqual(lc.calls.at(-1), ['openInfo', item, 'work', 'apps'])
+  assert.deepEqual(lc.calls.at(-1), ['flowLeftOpen', app.key, 0])
 })
 
 test('R6B 1e: the task check speaks on the point: close, stale and waiting suggest Done, Drop and Later, the newer of check and triage first', () => {
@@ -3902,7 +3917,7 @@ test('round 6 c P2: where Work through is on, the check has no tab and every way
 test('6d: a record open in the files tab carries the right column of Work through for its point, the same verbs', () => {
   const s = cockpitState(NOW, { ui: { page: '@files' } })
   const parts = logic.flowParts(s)
-  const point = logic.flowQueue(parts, 'all').find(x => x.kind === 'row' && x.row?.task)
+  const point = logic.flowQueue(parts, 'all').find(x => x.kind === 'row' && x.row?.task && x.row.key === `task:${x.row.task}`)
   assert.ok(point, 'the demo has a task point')
   const words = el => el.$$('.flow-aside .flow-can button').map(b => b.text().trim())
   const flow = mount(html`<${views.flowside.FlowAside} x=${point} s=${s} c=${recorder()} />`)

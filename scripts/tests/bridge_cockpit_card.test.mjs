@@ -250,13 +250,19 @@ test('card: the demo task has the same title in the list, the drawer and the fil
   await tick()
   assert.equal(drawer.$('.idrawer-title').text(), title)
   assert.ok(drawer.$('.card-goal-text'), 'the card in the drawer')
-  // the files view, opened on the demo task
+  // the files view, opened on the demo task: the file card where Work through is off, the one point view where it is on
   const queue = views.dossier.dossierQueue(s)
   const k = queue.findIndex(x => x.slug === 'demo-task')
   assert.ok(k >= 0, 'the demo task is a file')
-  const file = mount(html`<${views.dossier.DossierView} s=${{ ...s, ui: { ...s.ui, page: '@files', filesWalk: true, dossierAt: { id: queue[k].id, i: k } } }} c=${recorder()} />`)
+  const ui = { ...s.ui, page: '@files', filesWalk: true, dossierAt: { id: queue[k].id, i: k } }
+  const off = { ...s, work: { ...s.work, flow: { ...s.work.flow, enabled: false } }, ui }
+  const file = mount(html`<${views.dossier.DossierView} s=${off} c=${recorder()} />`)
   assert.equal(file.$('.dz-title').text(), title)
   assert.equal(file.$('.card-goal-text').text(), row.card.goal)
+  // (the card of its point in Work through: here its tab asks, so the card is that tab's; the brief stands in Description)
+  const point = mount(html`<${views.dossier.DossierView} s=${{ ...s, ui }} c=${recorder()} />`)
+  assert.ok(point.$('.flow-card .fx-title'))
+  assert.equal(point.$('.flow-ptabs .card-goal-text').text(), row.card.goal)
 })
 
 test('card: the demo shows the four ways a brief stands: AI written, edited with a proposal, outdated, with gaps', () => {
