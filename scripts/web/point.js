@@ -9,12 +9,13 @@
 // what it is about and the raw description, on top of Description; historyRows and activityFilters: the item's history
 // as a filter of Activity), the basic verbs in their one order (BASIC_VERBS, basicVerbs: every point offers them, a
 // verb that cannot go now stands off with why), the page row whose step makes an issue a task (adoptStepOf) and what a
-// question about a point carries along (pointContext, the question path of the files view).
+// question about a point carries along (pointContext, the question path of the files view). Stage 2: a finished AI
+// run opens in its group Finished, to read (pointOpen `flowReadAt`), and how long ago reads in days past a day (sinceText).
 // Where Work through is off (cockpit.flow.enabled false, the default of open-bridge) none of it applies: the item
 // drawer (views/overlays.js ItemDrawer) and the file card of the Files tab (views/dossier.js OpenFile) stay as they
 // were. No DOM, no network, no state; logic.js passes every name on, the point test imports it under node.
 import { TABLES } from './text.js'
-import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere, rowProject,
+import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, duration, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere, rowProject,
   sessionsInFlow, triageKey } from './logic.js'
 
 /** Whether every way to an item or a task opens the one point view: the work tab offers Work through
@@ -37,6 +38,8 @@ export function pointOpen(s, key, file = null) {
   const base = { flowPicked: [], flowPlan: null }
   if (to?.view === 'point') return { ...base, flowView: 'point', flowAt: { id: to.id, i: 0 }, flowSide: { ...(ui.flowSide ?? {}), [flowMode(s)]: null } }
   if (to?.view === 'run') return { ...base, flowView: 'run', flowRunId: to.id, flowRunFrom: 'overview' }
+  // a finished AI run (stage 2): in its group Finished, to read, held as the queue holds a point
+  if (to?.view === 'read') return { ...base, flowView: 'read', flowReadAt: { id: to.id, i: Math.max(0, (flowParts(work).read ?? []).findIndex(x => x.id === to.id)) } }
   if (to?.view === 'left') {
     const i = Math.max(0, leftWalk(flowParts(work), to.id).findIndex(x => x.id === key))
     return { ...base, flowView: 'left', flowLeft: to.id, flowLeftAt: { id: key, i }, flowLeftPicked: ui.flowLeft === to.id ? ui.flowLeftPicked ?? [] : [] }
@@ -53,6 +56,14 @@ export function infoPoint(s, it) {
   const rows = [...flowUniverse(work).values()]
   const key = triageKey(it) ?? (typeof it.row_id === 'string' && it.row_id ? rows.find(r => r.ref === it.row_id)?.key ?? null : null)
   return key && flowWhere(work, key) ? key : null
+}
+
+/** How long ago, in words that never say hours above a day: minutes and hours within a day (logic.js duration), days
+ *  after it (text-flow.js one.days, the case the sentences of Who works on it take) */
+export function sinceText(ms, lang = 'en') {
+  const min = Math.max(0, Math.floor(Number(ms) / 60000) || 0)
+  if (min < 24 * 60) return duration(min * 60000)
+  return (TABLES[lang] ?? TABLES.en).flow.one.days(Math.floor(min / (24 * 60)))
 }
 
 /** The rows of a group of Not now as points, in the order its list shows them: the walk of a row opened from that

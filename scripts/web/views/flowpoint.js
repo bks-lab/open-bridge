@@ -60,6 +60,7 @@ function cardKind(x) {
   const t = T()
   const f = t.flow
   if (x.group === 'left') return f.notnow.group[x.left] ?? f.notnow.label
+  if (x.group === 'read') return f.read.kind
   if (x.group === 'solo') {
     const r = x.row ?? {}
     return x.readOnly ? t.item.stateName[r.inbox_state] ?? t.taskState[r.status] ?? r.inbox_state ?? r.status ?? f.one.solo : f.one.solo
@@ -144,7 +145,8 @@ function BackCard({ x, s }) {
 }
 
 /** A start of the return channel that wants you: its tab asks, it finished (or went quiet, or ended with a note), or
- *  it got lost. The card says what came back (the result line or the question noted on its item, without its own head
+ *  it got lost; or a finished AI run to read (stage 2: what became of it in plain words, the run's words folded under
+ *  The run's words). The card says what came back (the result line or the question noted on its item, without its own head
  *  word) and what its tab asks, and leads back to the chat it was handed on from while that chat is kept; since when it
  *  runs is the field Who works on it, the criteria of its brief stand in Description, what to do with it on the right */
 function StartCard({ x, s, c }) {
@@ -155,10 +157,16 @@ function StartCard({ x, s, c }) {
   const lines = r.result?.text ? [] : tailLines(tab?.last ?? r.tab?.last)
   const head = r.result?.asks ? f.question : r.result?.kind === 'note' || x.stage === 'done' ? f.result : t.home.returnAnswer
   const chat = r.conv && (s.quick?.convs ?? []).some(v => v.id === r.conv)
+  // a finished AI run (stage 2): what became of it in plain words (returns.py plain_line), the run's own words folded
+  const raw = String(r.result?.text ?? '').trim()
+  const said = x.group === 'read' && r.plain ? r.plain : null
   return html`<article class=${`fx-hero tk-${stageTone(x.stage === 'idle' ? 'result' : x.stage)}`} aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token=${stageTone(x.stage === 'idle' ? 'result' : x.stage)} />${cardKind(x)}</span></header>
     <h2 id="flow-title" class="fx-title">${r.title}</h2>
-    ${r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${head}</span> ${short(resultText(r.result.text), 400)}</p>` : null}
+    ${said ? html`<p class="flow-answer"><span class="label-caps">${head}</span> ${said}</p>
+      ${raw && resultText(raw) !== said ? html`<details class="flow-raw"><summary class="small muted">${f.read.raw}</summary>
+        <p class="mono small">${short(raw, 600)}</p></details>` : null}`
+      : r.result?.text ? html`<p class="flow-answer"><span class="label-caps">${head}</span> ${short(resultText(r.result.text), 400)}</p>` : null}
     ${chat ? html`<p><button type="button" class="btn-link small" onClick=${() => c.openAsk(r.conv)}>${f.toQuestion}</button></p>` : null}
     ${x.stage === 'idle' && !r.result?.text ? html`<p class="muted">${f.idleSub}</p>` : null}
     ${x.group === 'lost' ? html`<p class="muted">${f.lostSub}</p>` : null}

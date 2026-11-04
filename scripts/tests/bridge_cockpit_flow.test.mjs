@@ -963,29 +963,33 @@ test('a finished or quiet start whose item is not in the list (put off, resting)
   }
 })
 
-test('a start that ended with a note stays a card to look at, with its note and the way back to its question', () => {
-  // 28.10.: the tab closed the item with its note, and Running now showed nothing at all
+test('a start that ended with a note stands to read under Finished, to read, with its words and the way back to its question', () => {
+  // 28.10.: the tab closed the item with its note, and Running now showed nothing at all; stage 2 of the one point view
+  // (04.11.): a group of its own, no longer a point that needs you
   const ID = '20261028-0736-chat-bot-a1b2'
   const done = (over = {}) => ({ key: `inbox:${ID}`, item: ID, title: 'Chat bot job', mode: 'go', at_ms: NOW - 30 * MIN, stage: 'done',
-    in_briefing: false, tab: null, conv: 'q0123456789', result: { kind: 'close', text: 'Result: the bot runs, nothing to change', key: null, at_ms: NOW - MIN }, ...over })
+    in_briefing: false, tab: null, conv: 'q0123456789', ended_ms: NOW - MIN, plain: 'the bot runs, nothing to change',
+    result: { kind: 'close', text: 'Result: the bot runs, nothing to change', key: null, at_ms: NOW - MIN }, ...over })
   let parts = logic.flowParts(state({ returns: [done()] }))
-  assert.deepEqual(parts.result.map(x => [x.start.key, x.stage]), [[`inbox:${ID}`, 'done']])
+  assert.deepEqual(parts.read.map(x => [x.start.key, x.stage]), [[`inbox:${ID}`, 'done']])
+  assert.deepEqual(parts.result, [])
   // ended without a word it is settled, as before
   parts = logic.flowParts(state({ returns: [done({ result: { kind: 'close', text: '', key: null, at_ms: NOW - MIN } })] }))
-  assert.deepEqual(parts.result, [])
+  assert.deepEqual(parts.read, [])
   const c = recorder()
-  const s = cockpitState(NOW, state({ returns: [done()], quick: { convs: [{ id: 'q0123456789', turns: [{ q: 'what is with the bot?', a: 'x' }] }] } }))
+  const open = { flowView: 'read', flowReadAt: { id: `start:inbox:${ID}`, i: 0 } }
+  const s = cockpitState(NOW, state({ returns: [done()], quick: { convs: [{ id: 'q0123456789', turns: [{ q: 'what is with the bot?', a: 'x' }] }] }, ui: open }))
   const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
   const card = el.$('.flow-card')
-  assert.match(card.text(), new RegExp(en.flow.kind.done))
+  assert.match(card.text(), new RegExp(en.flow.read.kind))
   assert.match(card.$('.flow-answer').text(), /the bot runs, nothing to change/)
   el.button(en.flow.toQuestion).click()
   assert.deepEqual(c.calls.find(x => x[0] === 'openAsk'), ['openAsk', 'q0123456789'])
-  // seen: taken off the list
-  el.button(text.TABLES.en.home.returnForget).click()
-  assert.deepEqual(c.calls.at(-1), ['act', 'return_forget', { key: `inbox:${ID}` }])
+  // read: taken off the list
+  el.button(en.flow.read.read).click()
+  assert.deepEqual(c.calls.at(-1), ['act', 'return_read', { key: `inbox:${ID}` }])
   // its question is gone from the chats (archived): no way back offered
-  const gone = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ returns: [done()], quick: { convs: [] } }))} c=${recorder()} />`)
+  const gone = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ returns: [done()], quick: { convs: [] }, ui: open }))} c=${recorder()} />`)
   assert.ok(!gone.button(en.flow.toQuestion), 'no link to an archived question')
   // a note that asks: the card asks under the question's own head
   const asks = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ returns: [done({ stage: 'asks',

@@ -26,7 +26,10 @@
 // as view `run`, its card, its tabs and its instruction line, without the walk bar, its way back to the list it came
 // from); what is no point now stands in Not now at the foot of the left column (views/flowleft.js), a group of it as a
 // list in the middle (view `left`) with its own batch, a title of it the row in the one point view (ui.flowLeftAt,
-// stage 1: To the list leads back, the walk walks the group); a row that stands nowhere on the page opens as a point
+// stage 1: To the list leads back, the walk walks the group); the finished AI runs a group of their own under Running
+// now (stage 2, views/flowleft.js ReadRow and ReadList, view `read`, one of them the run in the one point view with
+// ui.flowReadAt, To the list leads back; they never stand in the queue nor among what needs you); a row that stands
+// nowhere on the page opens as a point
 // of its own (view `solo`, ui.flowSolo, logic.js soloPoint: another area's, a closed task, a settled item, read only
 // without an open row; Back leads to the overview, or to the reports card it was opened from); under it Check tasks,
 // the task check in the middle (view `check`,
@@ -54,7 +57,7 @@ import {
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
-import { CheckList, LeftList } from './flowleft.js'
+import { CheckList, LeftList, ReadList } from './flowleft.js'
 import { FlowOverview, listRows, walkOrder } from './flowlist.js'
 import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
@@ -121,9 +124,14 @@ function FlowBody({ s, c }) {
   const solo = s.ui.flowView === 'solo' ? s.ui.flowSolo ?? null : null
   const soloEntry = useSoloLoad(solo, s, c)
   const alone = solo ? soloPoint(s, solo) : null
-  const view = running ? 'run' : group ? (leftQueue.length ? 'leftPoint' : 'left') : solo ? 'solo' : s.ui.flowView === 'check' ? 'check'
+  // stage 2: the finished AI runs, their list or one of them (ui.flowReadAt), held as the queue holds a point
+  const reading = s.ui.flowView === 'read' && parts.read.length
+  const ri = focusIndex(parts.read, s.ui.flowReadAt)
+  const view = running ? 'run' : group ? (leftQueue.length ? 'leftPoint' : 'left') : solo ? 'solo'
+    : reading ? (s.ui.flowReadAt ? 'readPoint' : 'read') : s.ui.flowView === 'check' ? 'check'
     : s.ui.flowView === 'running' && runs.n ? 'running' : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
-  const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : view === 'leftPoint' ? leftQueue[li] ?? null : view === 'solo' ? alone : null
+  const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : view === 'leftPoint' ? leftQueue[li] ?? null : view === 'solo' ? alone
+    : view === 'readPoint' ? parts.read[ri] ?? null : null
   const driver = flowDriver(s)
   // the boxes: every point with a row, and what runs with a task of its own (for a merge and Done only)
   const runRows = laneRows(lane)
@@ -155,13 +163,13 @@ function FlowBody({ s, c }) {
   const name = sideName(entered, mode)
   // what the instruction line speaks for: the point or the entry open, else the ticked points or every point of the side;
   // nothing on a point of its own that is closed (its verbs act on nothing), Ask still asks about it
-  const scope = view === 'left' || view === 'check' || (view === 'solo' && (!x || x.readOnly)) ? null
+  const scope = view === 'left' || view === 'read' || view === 'check' || (view === 'solo' && (!x || x.readOnly)) ? null
     : instructScope(x, queue, picked, entered ? name : null, s)
   const counts = parts.counts
   const grid = mode === 'prio' && !entered
   // what opens in the middle comes into view: its top scrolled up out of the page column is brought back (round 5)
   const main = useRef(null)
-  useEffect(() => { requestAnimationFrame(() => intoView(main.current)) }, [view, group?.reason, running?.id, side, ['point', 'leftPoint', 'solo'].includes(view) ? x?.id : null])
+  useEffect(() => { requestAnimationFrame(() => intoView(main.current)) }, [view, group?.reason, running?.id, side, ['point', 'leftPoint', 'solo', 'readPoint'].includes(view) ? x?.id : null])
   // back from an entry of Running now: to the list it was opened from (ui.flowRunFrom), else to the overview
   const fromRunning = view === 'run' && s.ui.flowRunFrom === 'running'
   // the point in the middle, the one view of it (views/flowpoint.js), by where it was opened: a point of the queue
@@ -176,6 +184,9 @@ function FlowBody({ s, c }) {
         walk: { ...walk2, queue: leftQueue, i: li, go: k => c.flowLeftOpen(leftQueue[k].id, k), done: f.walk2.last } }
       : view === 'solo'
         ? { back: { word: f.point.back, onClick: () => (solo.from ? c.flowGo(solo.from, 0) : c.flowOverview()) }, theme: f.one.solo }
+      : view === 'readPoint'
+        ? { back: { word: f.one.backList, onClick: () => c.flowRead() }, theme: f.read.label,
+          walk: { ...walk2, queue: parts.read, i: ri, go: k => c.flowReadOpen(parts.read[k].id, k), done: f.walk2.last } }
         : { back: { word: f.point.back, onClick: () => c.flowOverview() }, theme: name,
           above: picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
             <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null,
@@ -188,13 +199,14 @@ function FlowBody({ s, c }) {
     ${driver || personOf(s) ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
     <div class=${`flow-grid${x ? '' : ' no-aside'}`}>
       <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} running=${runs} left=${parts.leftOut}
-        run=${running?.id ?? null} open=${group?.reason ?? null} s=${s} c=${c} />
+        run=${running?.id ?? null} open=${group?.reason ?? null} read=${parts.read} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
         ${point ? html`<${PointView} x=${x} ...${point} scope=${scope} n=${view === 'point' ? queue.length : 1} s=${s} c=${c} />`
           : view === 'solo' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//></header>
             <p class="muted" role="status">${soloEntry?.status === 'error' || (soloEntry?.data && !alone) ? f.one.gone : f.one.loading}</p>`
           : view === 'left' ? html`<${LeftList} key=${group.reason} group=${group} s=${s} c=${c} /><p class="muted small flow-main-hint">${f.notnow.hint}</p>`
+          : view === 'read' ? html`<${ReadList} read=${parts.read} c=${c} />`
           : view === 'check' ? html`<${CheckList} s=${s} c=${c} />`
           : view === 'running' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>

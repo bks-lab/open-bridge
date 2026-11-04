@@ -6,7 +6,8 @@
 // (at most 50 go, and the label says so); on the reports card its reports. Where no key stands behind the point (a tab
 // alone, a start whose item is not in the list) there is no line. Send asks the server: a small model turns the
 // sentence into steps of the verbs there are (Done, Later until, Drop because, Let AI do it with a sentence, a reply to
-// the live tab; a mail draft is a start whose sentence says draft only, never send). Then "This is how I understood
+// the live tab; a mail draft is a start whose sentence says draft only, never send; on a finished AI run Read, Make it
+// a task with its title and Analyse further with its sentence, stage 2). Then "This is how I understood
 // it": the steps in words, each point that drops out of a step struck through in it with why, what was unclear; Run
 // (off without a step to run), Change (the sentence back in the field) and Discard. Nothing runs without Run: Run sends
 // the steps through the verbs and their undo (logic.js instructCalls, app.js flowBatch: quiet, one toast), its undo
@@ -64,7 +65,8 @@ function Plan({ plan, s, c, onChange }) {
       return html`<li key=${k} class=${`flow-instruct-step${runs ? '' : ' is-out'}`}>
         <span class="flow-instruct-op">${stepWord(st, f, lang)}</span><${StepPoints} st=${st} k=${k} skipped=${skipped} s=${s} f=${f} />
         ${st.op === 'reply' && st.text ? html` <q class="flow-instruct-said">${st.text}</q>` : null}
-        ${(st.op === 'do' || st.op === 'mail') && st.note && runs ? html`<span class="flow-instruct-note muted small">${st.note}</span>` : null}
+        ${st.op === 'task' && st.title ? html` <q class="flow-instruct-said">${st.title}</q>` : null}
+        ${['do', 'mail', 'analyse'].includes(st.op) && st.note && runs ? html`<span class="flow-instruct-note muted small">${st.note}</span>` : null}
       </li>`
     })}</ol>` : null}
     ${plan.unclear ? html`<p class="small flow-instruct-unclear"><span class="label-caps">${f.unclear}</span> ${plan.unclear}</p>` : null}
