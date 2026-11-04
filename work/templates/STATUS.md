@@ -50,6 +50,9 @@ origin: "<where this task came from>"
 # Optional: the next step and who takes it (bridge | me | a person). The briefing's
 # triage view sorts the task by it; without one it lands under housekeeping.
 # next: {what: "<next step>", who: me, due: YYYY-MM-DD, estimate_min: 30}
+# With someone else and a check-in day (the cockpit's In progress, task.py next --who --check): until
+# that day the task runs elsewhere, on it the cockpit asks how it stands.
+# next: {what: "<next step>", who: "<a person>", check: YYYY-MM-DD}
 # Optional: the model (haiku | sonnet | opus) and effort (low | medium | high | xhigh) an agent tab for this
 # task starts with from the cockpit; set by hand, it beats Auto (docs/bridge-cockpit.md, cockpit.launch_model).
 # model: opus

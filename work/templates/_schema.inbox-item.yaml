@@ -99,6 +99,20 @@ $defs:
       scripts/lib/bridge_cockpit/card_fields.py validate_brief; its
       BRIEF_LIMITS are the limits below. No text holds a dash as punctuation.
     properties:
+      name:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: |
+          Stage 4 of the cockpit's one point view: what the item is, as a person
+          names it in a list, at most about 7 words (card_fields.py allows 8),
+          everyday words; never a path, an issue or ticket number or a file name.
+          The page shows it where a title is a slug or longer than 60 characters.
+      stand:
+        type: string
+        minLength: 1
+        maxLength: 140
+        description: "Stage 4: one sentence, where the item stands now and why it is here"
       goal:
         type: string
         minLength: 1
