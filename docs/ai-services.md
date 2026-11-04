@@ -33,6 +33,7 @@ provider and is not listed.
 | `task-review` | claude, codex | `scripts/task.py` |
 | `triage` | claude, codex | `scripts/triage.py` |
 | `cockpit-activity` | claude | `scripts/lib/bridge_cockpit/activity.py` |
+| `cockpit-checkin` | claude | `scripts/lib/bridge_cockpit/checkin.py` |
 | `cockpit-describe` | claude | `scripts/lib/bridge_cockpit/describe.py` |
 | `cockpit-files` | claude | `scripts/lib/bridge_cockpit/actions_work.py` |
 | `cockpit-instruct` | claude | `scripts/lib/bridge_cockpit/instruct.py` |

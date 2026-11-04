@@ -136,14 +136,17 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 seq: int, stale: bool, profile: str | None, tx: dict,
                 review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
                 describe: dict | None = None, files: list[dict] | None = None,
-                carry_deferred: bool = False, pairs: dict | None = None, acks: dict | None = None) -> tuple[dict, dict]:
+                carry_deferred: bool = False, pairs: dict | None = None, acks: dict | None = None,
+                looks: dict | None = None) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
     triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py).
     `carry_deferred` (Work through on) adds `deferred`: the inbox items a page lists that are put off past the
     briefing's window, as rows (deferred_rows). `pairs` (model.page_twins of the view) is worked out here when the
     caller has none: a row of Due and the page items of the same thing take one decision (model.decision_twins),
     and a row names the GitHub list it stands in (`on_board`, model.board_places). `acks` (store.acks) are the
-    findings marked seen: such a page row stays, grey, and counts toward no badge and no alarm (model.ack_item)."""
+    findings marked seen: such a page row stays, grey, and counts toward no badge and no alarm (model.ack_item).
+    `looks` (checkin.py found_by_key): what the Bridge found before a check-in, by key, put on the row's check-in
+    as `found` while it is for that check-in's day."""
     today = m.iso_date(now)
     pairs = m.page_twins(view) if pairs is None else pairs
     twins = m.decision_twins(pairs)
@@ -185,15 +188,22 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                       describe=describe or {}, tasks={t["slug"]: t for t in tasks}, work=dict(known.work),
                       inbox=lambda item_id: inbox_facts(root, item_id))
 
+    looks = looks or {}
+
     def checkin_of(row: dict, is_task_row: bool) -> dict | None:
+        got = None
         if row.get("inbox_id"):
             got = (card_ctx.inbox(row["inbox_id"]) or {}).get("checkin")
-            return dict(got) if isinstance(got, dict) else None
-        if is_task_row:
+            got = dict(got) if isinstance(got, dict) else None
+        elif is_task_row:
             t = card_ctx.tasks.get(row.get("task")) or {}
             day = t.get("next_check")
-            return {"who": t.get("next_who"), "until": str(day)[:10], "since": t.get("updated")} if day else None
-        return None
+            got = {"who": t.get("next_who"), "until": str(day)[:10], "since": t.get("updated")} if day else None
+        # what the Bridge found when it looked, only for the check-in in force (checkin.py)
+        look = looks.get(row.get("key")) if got else None
+        if isinstance(look, dict) and look.get("until") == got.get("until") and isinstance(look.get("found"), dict):
+            got["found"] = look["found"]
+        return got
 
     def row_out(row: dict, section: str) -> dict:
         tab = m.tab_for(row, tabs)

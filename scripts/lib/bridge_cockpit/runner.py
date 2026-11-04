@@ -27,6 +27,7 @@ from typing import Callable
 
 from . import activity
 from . import agents
+from . import checkin
 from . import describe
 from . import instruct
 from . import issue_check
@@ -145,6 +146,9 @@ class Runner:
             return
         # Check with AI on an issue card: one call with the issue as data, a fixed schema, no tools (issue_check.py)
         if issue_check.argv_ok(argv, self.claude):
+            return
+        # the look before a check-in: one call with what the Bridge holds of the point, a fixed schema (checkin.py)
+        if checkin.argv_ok(argv, self.claude):
             return
         # the themes of the Work through page: one call with the open points as data, a fixed schema (themes.py)
         if themes.argv_ok(argv, self.claude):

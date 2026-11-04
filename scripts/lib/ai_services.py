@@ -35,6 +35,7 @@ SERVICES = {
     "task-review": {"providers": ("claude", "codex"), "code": "scripts/task.py"},
     "triage": {"providers": ("claude", "codex"), "code": "scripts/triage.py"},
     "cockpit-activity": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/activity.py"},
+    "cockpit-checkin": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/checkin.py"},
     "cockpit-describe": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/describe.py"},
     "cockpit-files": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/actions_work.py"},
     "cockpit-instruct": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/instruct.py"},

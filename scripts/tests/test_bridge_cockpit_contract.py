@@ -403,6 +403,23 @@ def s_describe(w: World) -> None:
     w.act("describe_run", key=f"inbox:{YES_ID}")
 
 
+def s_checkin(w: World) -> None:
+    """The look before a check-in reads the state of a ref the point names through inbox.py probe (read only)"""
+    events = w.root / "work" / "inbox" / YES_ID / "events"
+    (events / "20261002T090000Z-02-web-defer.yaml").write_text(
+        f"verb: defer\nby: web\nat: '2026-10-02T09:00:00+00:00'\nuntil: '{tbc.TODAY}'\nwaits_on: lena\ncheck: true\n",
+        encoding="utf-8")
+    (events / "20261005T100000Z-03-web-note.yaml").write_text(
+        "verb: note\nby: web\nat: '2026-10-05T10:00:00+00:00'\ntext: see https://github.com/example/repo/pull/41\n",
+        encoding="utf-8")
+    w.runner.handlers["inbox.probe"] = lambda argv: ok({"result": True})
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": "", "total_cost_usd": 0.0001,
+                                                     "modelUsage": {"claude-haiku-5-5": {}},
+                                                     "structured_output": {"found": False, "text": "", "where": []}})
+    w.app.collector.rebuild()
+    w.app.checkin.pass_once()
+
+
 @dataclass
 class Scenario:
     drive: Callable[[World], None]
@@ -413,6 +430,7 @@ class Scenario:
 EFFORT_CFG = tbc.LAUNCH_CFG.format(more="    effort: true\n")
 WORKSPACES_CFG = "cockpit:\n  enabled: true\n  language: en\n  chat_layout: workspaces\n"
 FLOW_CFG = "cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n"
+CHECKIN_CFG = FLOW_CFG + "    checkin:\n      enabled: true\n"
 
 SCENARIOS = {
     "passes": Scenario(s_passes, {"briefing.collect", "workplace.tasks", "workplace.teams", "workplace.status",
@@ -443,6 +461,7 @@ SCENARIOS = {
     "returns": Scenario(s_returns, {"task.note", "inbox.note"}),
     "workspaces": Scenario(s_workspaces, {"workplace.workspaces"}, config=WORKSPACES_CFG),
     "describe": Scenario(s_describe, {"task.brief", "inbox.describe"}),
+    "checkin": Scenario(s_checkin, {"inbox.probe"}, config=CHECKIN_CFG),
     "organize": Scenario(s_organize, {"workplace.workspaces", "workplace.move-tab", "workplace.rename",
                                       "workplace.rename-workspace", "workplace.workspace-color",
                                       "workplace.workspace-description"}, config=WORKSPACES_CFG),
