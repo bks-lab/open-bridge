@@ -504,24 +504,36 @@ out a workspace:
   never in their place: while an agent tab is on the point (at work, asking, or
   waiting at its prompt) **To tab** as the strong way and **View**, an issue's
   **Open on GitHub** and its board's moves, Give your yes, **Advise**, Improve on
-  a task in review, the steps of an application, Runs on on the return card,
-  Not this task for a session and **Show in the net** for a task; the tab's
+  a task in review, **Steps** of an application (it opens the tab Steps), Runs on
+  on the return card, Not this task for a session, **Show in the net** for a task,
+  **Back on** for a row of Later (as its list has it) and **Assign tab
+  <workspace> / <name>** for a tab already running free in a task's area (verb
+  `adopt`, the detail column's "Already running?"); the tab's
   close apart at the end (where it ends the point, Done in its place is **Done
   and close tab**). A finished, lost or asking start keeps its own verbs (the
   verb the AI suggests strong, else Done and close the tab). Under it
   the **Fields**, like the sidebar of an issue tracker:
-  **Theme** (to change, with the themes on), **Area**, **Who works on it**,
+  **Theme** (to change, with the themes on), **Area**, **Urgency** (an inbox
+  item's), **Who works on it**,
   **Prio** (Jev's quadrant and rank while Jev's order of the point is younger
   than `rank_max_age_days`, else the day's triage rank, else the priority),
   **Urgent**, **Important** and **Effort** as small bars (only with Jev's
-  order), **Due**, **Source** (its chip, **STATUS.md** of the task an item
+  order), **Due**, **Team** and **Task check** (a task's), **Source** (its chip, **STATUS.md** of the task an item
   belongs to, which opens that task in the same view, an issue or a pull request by its ref on the web),
   **Created** and **Moved** (the newest row of its Activity). There is no Status
   field: the card's head says it, and
-  who works on it and the source stand only here. A row with steps of its own
-  on a page (an application) has **Steps ▾**, which opens the info drawer that
-  holds them. At the foot of the fields **Details ▾** folds open what the item
-  drawer held beside them: an inbox item's kind, urgency, approval, who closes
+  who works on it and the source stand only here. What the detail column
+  changed is changed in its field, a select as Theme is one, through the same
+  verbs and their guards: **Area** of an inbox item without a task (one of the
+  configured areas, or No area; the owner's only, verb `area`), its **Urgency**
+  (now, today, later, verb `urgency`) and a task's priority beside its Prio
+  (P0 to P3, verb `priority`); none has an undo, as before. **Team** says how far
+  a task's team is (its roles started), starts its next role or a team that
+  fits (verb `team_role`); **Task check** shows the verdict of the last check
+  with its reason, **Keep open** and **Check again** (or **Check** before the
+  first). Neither stands on a person's page. A closed point shows the values as
+  words. At the foot of the fields **Details ▾** folds open what the item
+  drawer held beside them: an inbox item's kind, approval, who closes
   it, when it closes on its own, what runs on its yes, its key and its id; a
   task's type, what blocks it and the path of its STATUS.md. There is no Details
   link and no drawer from a point; each report of the reports card has **Open**
@@ -1045,9 +1057,27 @@ of all, the walk walks the queue), its entry under Running now, its row in its
 group of Not now (To the list, the walk walks the group), else a **point of its
 own** (another area's row with its verbs, a task no section lists, a closed task
 or a settled item read from its file and read only). A page item that is no row
-(a gauge, a date, a machine) keeps its info drawer, and so do the steps of an
-application. The Files tab shows the same view for a record ([The Files
-tab](#the-files-tab)). What the item drawer held stands in the view: its facts
+(a gauge, a date, a machine) keeps its info drawer. The Files tab shows the same view for a record ([The Files
+tab](#the-files-tab)).
+
+Every way to a row means every way, also those that opened the detail column
+beside a page: a title of the task check, a task row on a page, a row of the
+start page that is no inbox item nor task (an issue, a pull request, a
+tracker's row), a row of Due, a tab's name. A way that comes from a list brings
+the list along: the walk walks that list in its order, and **To the list**
+leads back to where it stood (the task check, the page, the start page, Due),
+whichever group of Work through the row stands in. What the detail column held
+besides stands in the view too: **Why it is here** (the briefing's reasons) and
+the lines its page writes of its task on top of **Description**, a GitHub
+issue's or pull request's text and people under **What it says on GitHub ▾**
+there (read only once it is opened), the steps a row has on its page (an
+application's) in **Steps**, each a button of two clicks as on the page (a
+GitHub row's of one), the asks the briefing folded into a row under **Related**
+(**Asked about it**, each a click into the same view) and the sessions linked to
+its task there too (a live one **To tab**, an ended one **Go on in it**). Who
+takes a next step reads in words: you and the Bridge as before, the owner by
+the name `cockpit.person_name` gives, anyone else by the name as STATUS.md
+writes it with its first letter capital. What the item drawer held stands in the view: its facts
 under **Details ▾** at the foot of the fields (created and the source stay fields),
 what it is about (the triage's gist, why only you can do it, its reason) and the
 description as filed on top of **Description**, a task's STATUS.md in its sections
@@ -4081,6 +4111,22 @@ verbs, all owner only: `return_read`, `return_unread`, `return_analyse`,
 line). `instruct.py` plans `read`, `task` and `analyse` for a finished run. One
 new key, `cockpit.flow.read_days` (default 3). `return_forget` stays: a lost or
 answered start, the start page and an older page still take a start off with it.
+
+### Upgrading: every way the one point view
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true`. With it, the last ways that opened the detail
+column beside a page open the one point view as well: a title of the task
+check, a task row on a page, a row of the start page that is no inbox item nor
+task, a row of Due, a tab's name. A way from a list walks that list and leads
+back to it. The detail column's pickers are fields now (Area, Urgency, the
+priority under Prio), and so are its team and the task check; its session
+list, the asks folded into a row, Why it is here and Already running? moved
+into the view as well; the steps of an application stand in its Steps tab, the
+info drawer no longer opens for them. The Details fold no longer lists an inbox
+item's urgency: it is the field Urgency. The server is unchanged: every field
+and button sends the verb the detail column sent. Without Work through the
+detail column and the item drawer stay as they were.
 
 ### Upgrading: settled rows in git
 
