@@ -2,7 +2,7 @@
 // The cockpit, the columns around the middle of Work through (views/flow.js), laid out as cmux lays out a workspace.
 // FlowSide, the left column as a table of contents, like a mail app's folders (round 5: it lists no point, the middle
 // does). On top Running now as one row with its count (views/flowrun.js RunningRow: what runs is no point; a click shows
-// its entries in the middle), at the foot Not now (views/flowleft.js NotNowBlock: the open rows that are no point now,
+// its entries in the middle), under it Finished, to read (views/flowleft.js ReadRow, stage 2: the finished AI runs), at the foot Not now (views/flowleft.js NotNowBlock: the open rows that are no point now,
 // by group), under it Check tasks (views/flowleft.js CheckRow, round 6 c: the task check in the middle), all on every
 // side and in every mode. Between them Themes, Areas or Prio where two of them are on offer
 // (logic.js flowModes, flowMode), then All themes (or All areas, All squares) and one entry per theme or area that holds
@@ -25,10 +25,11 @@
 // in review, the steps of a row with steps of its own on a page (an application, logic.js pageStepsOf, which open the
 // info drawer where they stand), Runs on on the return card, Not this task for a session, Show in the net for a task;
 // the tab's close (views/detail.js TabClose) apart at the end, and where that close ends the point itself Done in its
-// place closes the tab too (Done and close the tab). A finished start, a lost one and a start whose tab asks keep their
-// own verbs (FinishedActs: the verb the AI suggests, else Done and close the tab, then View, Open answer, Improve and
-// Runs on; a lost one Start again, Done, Drop and Forget; stage 2 does them), the reports Done for the ticked ones (All
-// done when every one is), a tab alone its ways. A point that is closed (a point of its own, logic.js soloPoint) says
+// place closes the tab too (Done and close the tab). A start that answered or went quiet, a lost one and a start whose
+// tab asks keep their own verbs (FinishedActs: the verb the AI suggests, else Done and close the tab, then View, Open
+// answer, Improve and Runs on; a lost one Start again, Done, Drop and Forget); a finished AI run to read (stage 2,
+// ReadActs) Read, Analyse further and Make it a task; the reports Done for the ticked ones (All done when every one
+// is), a tab alone its ways. A point that is closed (a point of its own, logic.js soloPoint) says
 // so and offers nothing.
 // Under it the fields (logic.js flowFields): Theme (to change), Area, Who works on it, Prio (Jev's quadrant and rank,
 // else the triage's rank, else the priority), Urgent, Important and Effort as small bars from Jev, Due, Source (its
@@ -43,18 +44,19 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  activityWhen, adoptStepOf, basicVerbs, canTab, DAY, duration, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
-  flowSuggestion, flowTabOf, isoDate, meterLevel, pageStepsOf, pointFacts, pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short,
-  tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf
+  activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes, flowRunning,
+  flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, meterLevel, pageStepsOf, pointFacts, pointViewOn, probeText, refOfUrl, replySend,
+  reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { OriginTag } from './day.js'
 import { Segmented, TabClose } from './detail.js'
-import { CheckRow, NotNowBlock, NotNowNarrow } from './flowleft.js'
+import { CheckRow, NotNowBlock, NotNowNarrow, ReadRow } from './flowleft.js'
 import { Suggestion } from './flowlist.js'
 import { PrioFoot } from './flowprio.js'
 import { RunningNarrow, RunningRow } from './flowrun.js'
 import { TAB_MSG_MAX } from './nav.js'
+import { LaunchPick } from './launch.js'
 import { Btn, PrioChip } from './parts.js'
 import { VerbBar } from './verbbar.js'
 
@@ -141,7 +143,7 @@ function SideList({ sides, entered, mode, points, marked, s, c }) {
  *  entries stand in the middle), the list of themes, areas or squares (logic.js flowSides) with the one entered
  *  marked, Check tasks as a block of its own above Not now at the foot; `running` and `left` the page's (logic.js runningOf, flowParts), `view` what the middle shows, `open` the
  *  group of Not now open there */
-export function FlowSide({ sides, entered, mode, all, view, running = null, left = null, run = null, open = null, s, c }) {
+export function FlowSide({ sides, entered, mode, all, view, running = null, left = null, run = null, open = null, read = [], s, c }) {
   const f = T().flow.side
   return html`<aside class="flow-side" aria-label=${f.label}>
     <label class="flow-side-select"><span class="sr-only">${f.pick}</span>
@@ -152,6 +154,7 @@ export function FlowSide({ sides, entered, mode, all, view, running = null, left
     <${RunningNarrow} running=${running} s=${s} c=${c} on=${run} />
     <${NotNowNarrow} left=${left} open=${open} c=${c} />
     <${RunningRow} running=${running} on=${view === 'running' || view === 'run'} c=${c} />
+    <${ReadRow} read=${read} on=${view === 'read' || view === 'readPoint'} c=${c} />
     <${SideList} sides=${sides} entered=${entered} mode=${mode} points=${all} marked=${view === 'overview' || view === 'point'} s=${s} c=${c} />
     ${personOf(s) ? null : html`<${CheckRow} s=${s} c=${c} on=${view === 'check'} />`}
     <${NotNowBlock} left=${left} open=${open} c=${c} />
@@ -444,6 +447,75 @@ function BasicActs({ x, row, s, c, sug }) {
     ${fix ? html`<${Improve} row=${row} tab=${tab && tab.state === 'waiting' && canTab(s, 'send') ? tab : null} s=${s} c=${c} onDone=${() => setFix(false)} />` : null}`
 }
 
+/** The verbs of a finished AI run (stage 2), in this order: Read (strong: it leaves Finished, to read, verb
+ *  return_read with its undo), Analyse further (a panel with the person's sentence, empty, and the model to start with;
+ *  a new run on the same item with this run's result handed in, return_analyse, kept to max_running as Let AI do it
+ *  is, off without a terminal driver), Make it a task (a panel: its title from the run's, the area, the result as the
+ *  description and the run off the list afterwards, both ticked; return_task, then the new task opens in the same
+ *  view). Later and Drop do not apply: the run's item ended. Under them the answer it filed, and the tab's close where
+ *  its tab is still there */
+function ReadActs({ x, s, c }) {
+  const t = T()
+  const f = t.flow
+  const r = x.start
+  const [open, setOpen] = useState(null)
+  const [note, setNote] = useState('')
+  const [crowd, setCrowd] = useState(0)
+  const [title, setTitle] = useState(r.title ?? '')
+  const areas = s.boot?.config?.areas ?? []
+  const [area, setArea] = useState(() => areas.find(a => a.toLowerCase() === String(x.row?.area ?? '').toLowerCase()) ?? '')
+  const [describe, setDescribe] = useState(true)
+  const [close, setClose] = useState(true)
+  const busy = !!s.ui.busy?.[r.key]
+  const driver = flowDriver(s)
+  const toggle = v => { setOpen(open === v ? null : v); setCrowd(0) }
+  const analyse = async force => {
+    const v = note.trim()
+    if (!v) return
+    const n = force ? 0 : flowRunning(s)
+    if (n >= flowSettings(s).max_running) { setCrowd(n); return }
+    setCrowd(0)
+    const res = await c.act('return_analyse', { key: r.key, note: v })
+    if (res?.ok) { setOpen(null); setNote(''); c.flowDecided() }
+  }
+  const makeTask = async () => {
+    const res = await c.act('return_task', { key: r.key, title: title.trim(), ...(area ? { area } : {}), describe, close })
+    if (res?.ok) { setOpen(null); if (res.task) c.openItem(`task:${res.task}`) }
+  }
+  const offer = x.tab ? tabCloseOffer(x.tab, s) : null
+  const id = `read-${r.key}`
+  return html`<div class="verbbar is-stack is-fixed" role="group" aria-label=${f.title}>
+    <div class="verbbar-row verbbar-basic">
+      <${Btn} size="sm" variant="primary" busy=${busy} onClick=${() => c.act('return_read', { key: r.key })}>${f.read.read}<//>
+      <${Btn} size="sm" variant="secondary" pressed=${open === 'analyse'} disabled=${!driver} onClick=${() => toggle('analyse')}>${f.read.analyse} ▾<//>
+      <${Btn} size="sm" variant="secondary" pressed=${open === 'task'} onClick=${() => toggle('task')}>${f.basic.task} ▾<//>
+    </div>
+    ${driver ? null : html`<div class="verbbar-off"><p class="muted small">${f.read.noDriver}</p></div>`}
+    ${r.result?.key ? html`<div class="verbbar-row verbbar-kind">
+      <${Btn} size="sm" variant="secondary" onClick=${() => c.openItem(r.result.key, null)}>${t.home.returnOpenAnswer}<//></div>` : null}
+    ${offer ? html`<div class="verbbar-row verbbar-tail"><${TabClose} tab=${x.tab} s=${s} c=${c} size="sm" /></div>` : null}
+    ${open === 'analyse' ? html`<div class="verbbar-panel">
+      <label class="label-caps" for=${`${id}-note`}>${f.read.analyseLabel}</label>
+      <textarea id=${`${id}-note`} class="input textarea" rows="3" maxlength="2000" value=${note} onInput=${e => setNote(e.currentTarget.value)}></textarea>
+      <${LaunchPick} s=${s} c=${c} items=${[{ key: r.key, title: r.title }]} />
+      <p class="muted small">${f.read.analyseNote}</p>
+      <div class="verbbar-acts"><${Btn} size="sm" variant="primary" busy=${busy} disabled=${!note.trim()} onClick=${() => analyse(false)}>${f.read.analyseGo}<//></div>
+      ${crowd ? html`<div class="verbbar-acts" role="alert"><span class="small">${f.start.busy(crowd)}</span>
+        <${Btn} size="sm" variant="secondary" busy=${busy} onClick=${() => analyse(true)}>${f.start.anyway}<//></div>` : null}
+    </div>` : null}
+    ${open === 'task' ? html`<div class="verbbar-panel">
+      <label class="label-caps" for=${`${id}-title`}>${f.read.taskTitle}</label>
+      <input id=${`${id}-title`} class="input" type="text" maxlength="200" value=${title} onInput=${e => setTitle(e.currentTarget.value)} />
+      ${areas.length ? html`<label class="label-caps" for=${`${id}-area`}>${f.read.taskArea}</label>
+        <select id=${`${id}-area`} class="input" value=${area} onChange=${e => setArea(e.currentTarget.value)}>
+          <option value="">${f.read.noArea}</option>${areas.map(a => html`<option key=${a} value=${a}>${a}</option>`)}</select>` : null}
+      <label class="flow-check"><input type="checkbox" checked=${describe} onClick=${() => setDescribe(!describe)} /><span>${f.read.taskDescribe}</span></label>
+      <label class="flow-check"><input type="checkbox" checked=${close} onClick=${() => setClose(!close)} /><span>${f.read.taskClose}</span></label>
+      <div class="verbbar-acts"><${Btn} size="sm" variant="primary" busy=${busy} disabled=${!title.trim()} onClick=${makeTask}>${f.read.taskGo}<//></div>
+    </div>` : null}
+  </div>`
+}
+
 /** The verbs of the point in front, by its card, under each other: the reports, a start (its own verbs), a tab alone
  *  (its ways), every other point the basic verbs and what its kind adds (BasicActs) */
 function PointActs({ x, s, c, sug }) {
@@ -466,8 +538,10 @@ function PointActs({ x, s, c, sug }) {
   const ways = tab && !live ? html`<${TabWays} tab=${tab} row=${row} title=${title} s=${s} c=${c} close=${!row} />` : null
   const unlink = x.lane && x.kind === 'session' && x.session?.sid
     ? html`<${Btn} size="sm" variant="secondary" busy=${!!s.ui.busy?.session_unlink} onClick=${() => c.act('session_unlink', { session: x.session.sid })}>${f.run.unlink}<//>` : null
+  // a finished AI run to read (stage 2): Read, Analyse further, Make it a task
+  if (x.group === 'read') return html`<${ReadActs} key=${x.id} x=${x} s=${s} c=${c} />`
   if (x.kind === 'start' && !x.lane) {
-    // a start keeps its own verbs (stage 2 of the one point view does the finished ones)
+    // a start keeps its own verbs
     const r = x.start
     const asks = live?.state === 'needs-you'
     const near = live || tab
@@ -491,13 +565,16 @@ function PointActs({ x, s, c, sug }) {
 }
 
 /** Who works on a point, in words: its tab and how long, a start of the cockpit, a session by hand, else when it last
- *  moved (logic.js flowDrive) */
+ *  moved (logic.js flowDrive). Stage 2: a finished run names its day (AI run of <day>, finished), how long ago reads in
+ *  days past a day (logic.js sinceText), and a stage the page has no word for never shows as its raw id */
 function whoWords(d, s) {
   const t = T()
   const f = t.flow.doing
+  const lang = language()
   const nowMs = s.now || Date.now()
-  const ago = d.since_ms ? duration(nowMs - d.since_ms) : null
-  const word = f.stage[d.stage] ?? t.state[d.stage] ?? d.stage
+  if (d.by === 'start' && d.stage === 'done' && Number.isFinite(d.since_ms)) return t.flow.read.run(formatDay(isoDate(d.since_ms), lang))
+  const ago = d.since_ms ? sinceText(nowMs - d.since_ms, lang) : null
+  const word = f.stage[d.stage] ?? t.state[d.stage] ?? ''
   return d.by === 'tab' ? f.tab(d.tab.name, word, ago) : d.by === 'start' ? f.start(word, ago ?? '') : d.by === 'session'
     ? f.session(d.tab?.name ?? '', ago) : f.none(d.days)
 }

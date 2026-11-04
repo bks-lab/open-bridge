@@ -4149,7 +4149,7 @@ export function themeOverride(search) {
 // ---------------------------------------------------------------- the model an agent tab starts with (launch)
 
 /** The verbs that start an agent: only these carry a model and an effort, and only while launch is on */
-export const START_VERBS = ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff']
+export const START_VERBS = ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff', 'return_analyse']
 export const LAUNCH_MODELS = ['haiku', 'sonnet', 'opus']
 export const LAUNCH_EFFORTS = ['low', 'medium', 'high', 'xhigh']
 

@@ -423,3 +423,11 @@
   background: var(--surface-raised); }
 .flow-ask-answer p { margin: 0; }
 .flow-report-open { margin-left: 4px; font-size: var(--text-sm); }
+/* stage 2: Finished, to read under Running now (views/flowleft.js ReadRow; it stays on a narrow screen), a finished
+   run's own words folded under its plain sentence */
+.flow-read-row .flow-side-name { flex-direction: row; }
+/* in Finished, to read the title keeps a readable width and the plain sentence wraps beside it */
+.flow-readlist .flow-ov-point { min-width: 12em; }
+.flow-ov-what { min-width: 14em; color: var(--on-surface); }
+.flow-raw > summary { cursor: pointer; }
+.flow-raw > p { margin: 4px 0 0; overflow-wrap: anywhere; }

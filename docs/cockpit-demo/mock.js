@@ -18,6 +18,24 @@ const WORDS = {
   de: {
     // Today: rows, reasons, headline
     'Review the demo report': 'Den Demo-Bericht prüfen',
+    // the finished AI runs (stage 2 of the one point view)
+    'Check the free space on the backup disk': 'Den freien Platz auf der Sicherungsplatte prüfen',
+    'Find out why the nightly export stopped': 'Herausfinden, warum der nächtliche Export stehen blieb',
+    'Remind the team of the release freeze': 'Das Team an den Release-Stopp erinnern',
+    'Check whether the old export is still used': 'Prüfen, ob der alte Export noch gebraucht wird',
+    'Its check found the problem gone, and the item closed itself. Nothing to do.': 'Seine Prüfung fand das Problem nicht mehr, und der Eintrag hat sich selbst geschlossen. Nichts zu tun.',
+    'the export runs again, its schedule entry was missing': 'der Export läuft wieder, sein Eintrag im Zeitplan fehlte',
+    "The item's action ran. (sent the reminder)": 'Die Aktion des Eintrags ist gelaufen. (Erinnerung verschickt)',
+    'nobody uses the old export any more': 'den alten Export braucht niemand mehr',
+    // the run's own words and the sentences they started with (the prefix Start note: is the server's marker and stays)
+    'Result: the export runs again, its schedule entry was missing': 'Ergebnis: der Export läuft wieder, sein Eintrag im Zeitplan fehlte',
+    'Result: nobody uses the old export any more': 'Ergebnis: den alten Export braucht niemand mehr',
+    'sent the reminder': 'Erinnerung verschickt',
+    'Invented example detail of a finished run.': 'Erfundenes Beispiel für das Detail eines fertigen Laufs.',
+    'Start note: Find out what fills the backup disk': 'Start note: Herausfinden, was die Sicherungsplatte füllt',
+    'Start note: Find out why the nightly export stopped': 'Start note: Herausfinden, warum der nächtliche Export stehen blieb',
+    'Start note: Remind the team of the release freeze': 'Start note: Das Team an den Release-Stopp erinnern',
+    'Start note: Check whether the old export is still used': 'Start note: Prüfen, ob der alte Export noch gebraucht wird',
     'Prepare the alpha release notes': 'Die Notizen zur Alpha-Version vorbereiten',
     'Tidy the issue labels on the demo board': 'Die Issue-Labels auf dem Demo-Board aufräumen',
     'Update the setup docs after the config change': 'Die Einrichtungs-Doku nach der Config-Änderung nachziehen',
@@ -1037,6 +1055,11 @@ export function buildState(now = Date.now(), opts = {}) {
     { key: 'task:vendor-reply', item: 'vendor-reply', title: 'Settle the invoice format with the vendor', mode: 'go', at_ms: now - 90 * MIN,
       stage: 'result', in_briefing: true, tab: null,
       result: { kind: 'note', text: 'Result: the vendor takes the current format, nothing to change', key: null, at_ms: null } },
+    // stage 2 of the one point view: finished AI runs, their item ended after them (returns.py build, stage done, with
+    // its plain sentence): closed by its own check, closed with the agent's note, its action ran, a task closed
+    ...DONE_RUNS.map(d => ({ key: d.key, item: d.key.split(':')[1], title: d.title, mode: d.mode, at_ms: now - d.hours * 60 * MIN, stage: 'done',
+      in_briefing: false, tab: null, conv: null, ended_ms: now - d.ended * 60 * MIN, read_ms: null, plain: d.plain,
+      result: { kind: d.kind, text: d.text, key: null, at_ms: now - d.ended * 60 * MIN, by: d.by } })),
   ]
 
   const relayOnline = !opts.offline
@@ -1196,9 +1219,34 @@ export function buildState(now = Date.now(), opts = {}) {
   }, WORDS[opts.lang])
 }
 
+// the finished AI runs of the demo (stage 2 of the one point view), invented: each kind of end once
+const DONE_RUNS = [
+  { key: 'inbox:20261008-0700-backup-disk-c1d2', title: 'Check the free space on the backup disk', mode: 'go', hours: 26, ended: 20,
+    kind: 'close', by: 'check', text: 'closes_when holds', ask: 'Find out what fills the backup disk',
+    plain: 'Its check found the problem gone, and the item closed itself. Nothing to do.' },
+  { key: 'inbox:20261008-1500-nightly-export-d3e4', title: 'Find out why the nightly export stopped', mode: 'report', hours: 18, ended: 15,
+    kind: 'note', by: 'tab', text: 'Result: the export runs again, its schedule entry was missing',
+    plain: 'the export runs again, its schedule entry was missing' },
+  { key: 'inbox:20261009-0600-freeze-reminder-e5f6', title: 'Remind the team of the release freeze', mode: 'go', hours: 6, ended: 5,
+    kind: 'executed', by: 'bridge', text: 'sent the reminder', plain: "The item's action ran. (sent the reminder)" },
+  { key: 'task:old-export-check', title: 'Check whether the old export is still used', mode: 'go', hours: 30, ended: 28,
+    kind: 'note', by: 'tab', text: 'Result: nobody uses the old export any more', plain: 'nobody uses the old export any more' },
+]
+
 function inboxDetail(id, state) {
   const rows = (state.model?.sections ?? []).flatMap(s => s.rows)
   const r = rows.find(x => x.inbox_id === id)
+  // an item a finished AI run ran on: closed, its start sentence and its end among its events
+  const run = DONE_RUNS.find(d => d.key === `inbox:${id}`)
+  if (!r && run) {
+    return { ok: true, id, item: { summary: run.title, detail: 'Invented example detail of a finished run.', kind: 'todo', gate: 'free', urgency: 'later',
+      state: 'done', task: null, due: null, key: id.split('-').slice(2, -1).join('-'), from: 'demo-check', created: '2026-10-08T07:00:00',
+      action_display: null, has_closes_when: run.by === 'check', closer: run.by === 'check' ? null : 'person', closes_when: run.by === 'check' ? { path_exists: 'demo.flag' } : null },
+    events: [{ verb: 'add', by: 'demo-check', at: '2026-10-08T07:00:00' },
+      { verb: 'note', by: 'web', at: '2026-10-08T07:05:00', text: `Start note: ${run.ask ?? run.title}` },
+      { verb: run.kind === 'note' ? 'close' : run.kind, by: run.by, at: '2026-10-08T16:00:00', text: run.text }],
+    origin: O('other', 'demo-check', 'demo-check'), card: null, describe: null }
+  }
   // an ask folded into a row has no row of its own: its title comes from the row that carries it
   const asked = rows.flatMap(x => x.also_inbox ?? []).find(a => a.id === id)
   const hasAction = !!r?.has_action
@@ -1835,6 +1883,17 @@ function feedRows(row, now) {
       day(3, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'open' } }),
     ]
   }
+  // a finished AI run's item (stage 2): the person's start note and the end that closed it, as activity.py reads its events
+  const run = DONE_RUNS.find(d => d.key === row.key)
+  if (run) {
+    const done = run.kind === 'dropped' ? 'dropped' : 'done'
+    const by = run.by === 'web' ? { kind: 'you', name: null } : { kind: 'bridge', name: run.by }
+    return [
+      ago(run.ended * 60, { id: 'status:1', kind: 'status', filters: ['state'], text: run.text, change: { field: 'status', old: 'open', new: done }, by }),
+      ago(run.hours * 60 - 1, { id: 'note:1', kind: 'note', filters: ['notes'], text: `Start note: ${run.ask ?? run.title}`, by: { kind: 'you', name: null } }),
+      day(5, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'open' } }),
+    ]
+  }
   return [day(5, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: row.status ?? 'open' } })]
 }
 
@@ -2053,7 +2112,9 @@ export function createMockTransport(opts = {}) {
   // Work through, round 3: the row of a key, the feed of a point (an inbox item that names a task reads the task's), the
   // refusals of flow_off and of a key no longer in the list
   const flowOff = () => (state.work?.flow?.enabled ? null : fail(409, 'flow_off', 'Work through is off'))
-  const rowOf = key => state.model.sections.flatMap(x => x.rows).find(r => r.key === key) ?? null
+  // a finished AI run (stage 2) stands for its item, which left the sections: activity.py reads it from its folder
+  const runRow = key => { const d = DONE_RUNS.find(x => x.key === key); return d ? { key, title: d.title, ...(key.startsWith('inbox:') ? { inbox_id: key.slice(6) } : { task: key.slice(5) }) } : null }
+  const rowOf = key => state.model.sections.flatMap(x => x.rows).find(r => r.key === key) ?? runRow(key)
   // the starts of the return channel on a row, as activity.py lists them, where the invented feed has none of its own
   const startRows = row => (state.model.returns ?? []).filter(r => r.key === row.key).map((r, k) => {
     const tab = state.tabs.tabs.find(t => t.ref === r.tab?.ref) ?? null
@@ -2414,6 +2475,26 @@ export function createMockTransport(opts = {}) {
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
         // "What bothers you here?": the window says itself that it was noted, the demo keeps no proposal
         if (verb === 'explain_note') return ok({ ...result, note: '' })
+        // a finished AI run (stage 2 of the one point view): read takes it off its list (and back on), a task of it
+        // opens as a new backlog task, analyse further starts a new run (Running now, as a start does)
+        if (verb === 'return_read' || verb === 'return_unread') {
+          const at = verb === 'return_read' ? now() : null
+          state.model = { ...state.model, seq: (state.model.seq ?? 0) + 1,
+            returns: (state.model.returns ?? []).map(r => (r.key === args.key ? { ...r, read_ms: at } : r)) }
+          emit('view', state.model)
+          return ok({ ...result, note: verb === 'return_read' ? 'Mock: read' : 'Mock: to read again',
+            undo: verb === 'return_read' ? [{ title: 'run', kind: 'return', undo: { verb: 'return_unread', args: { key: args.key } } }] : [] })
+        }
+        if (verb === 'return_task') {
+          const slug = String(args.title ?? 'new-task').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'new-task'
+          if (args.close) {
+            state.model = { ...state.model, seq: (state.model.seq ?? 0) + 1,
+              returns: (state.model.returns ?? []).map(r => (r.key === args.key ? { ...r, read_ms: now() } : r)) }
+            emit('view', state.model)
+          }
+          return ok({ ...result, note: `Mock: now the task ${slug}`, task: slug })
+        }
+
         // Check with AI on an issue card: the demo finds it done from a merged pull request
         if (verb === 'issue_check') {
           await new Promise(r => wait(r, 700))

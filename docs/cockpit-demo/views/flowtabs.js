@@ -6,7 +6,9 @@
 // stands in the fields on the right, the next step in the card), Steps (n/m, the checklist of its STATUS.md), Activity
 // (count: everything that happened to the point, one list) and Related (n: the task an item belongs to, the other items
 // of that task, each a click into the same view, and the paths its STATUS.md names, the file card's references). The
-// tab chosen stays from point to point (ui.flowTab, kept in this browser); one the point lacks falls back to
+// tab chosen stays from point to point (ui.flowTab, kept in this browser); a finished AI run (stage 2) has Description
+// (what it was asked: how it started and the person's sentence, then its item's brief), Activity (its start and end,
+// from its item) and Related (the item or task it ran on, and that item's task); one the point lacks falls back to
 // Description (logic.js pointTabs, pointTab). A tab alone and the reports card have no bar. Card and panes read at most
 // 820 px wide.
 // Activity (ActivityPane): on top the summary of the last week on a click (cockpit.flow.summary, within the day's
@@ -61,18 +63,33 @@ function Sections({ sections }) {
   </details>`
 }
 
-/** Description: what it is about, then the goal, the story and the criteria of the point's card, written by the task
- *  or the item, then a task's own STATUS.md in its sections */
-function DescPane({ row, detail, entry, item, s, c }) {
+/** What a finished AI run was asked (stage 2): how it started (Let AI do it, Advise, Collect context) and the
+ *  person's sentence it started with, the newest "Start note:" on its item before it ended, else that it had none */
+function Asked({ start, events }) {
+  const f = T().flow.read
+  const notes = (events ?? []).filter(e => e?.verb === 'note' && /^Start note:/.test(String(e.text ?? e.note ?? '')))
+  const said = notes.length ? String(notes[notes.length - 1].text ?? notes[notes.length - 1].note).replace(/^Start note:\s*/, '') : null
+  return html`<section class="flow-about"><div class="flow-about-gist">
+    <p class="label-caps">${f.asked}</p>
+    <p class="flow-about-head">${f.mode[start.mode] ?? start.mode}</p>
+    <p class=${said ? '' : 'muted small'}>${said ?? f.noNote}</p>
+  </div></section>`
+}
+
+/** Description: what it is about (a finished run what it was asked), then the goal, the story and the criteria of the
+ *  point's card, written by the task or the item (none written: a line says so, not on a finished run, whose ask
+ *  stands above), then a task's own STATUS.md in its sections */
+function DescPane({ row, detail, entry, item, itemCard = null, start = null, events = null, s, c }) {
   const f = T().flow.desc
-  const card = (row.inbox_id ? row.card ?? detail?.card : detail?.card ?? row.card) ?? null
+  const card = (row.inbox_id ? row.card ?? itemCard ?? detail?.card : detail?.card ?? row.card) ?? null
   const d = describeOf(s, row.key, detail?.describe, row.describe)
   const loading = !!row.task && !detail && entry?.status !== 'error'
   const own = !!row.task && row.key === `task:${row.task}`
   return html`<div class="flow-desc">
+    ${start ? html`<${Asked} start=${start} events=${events} />` : null}
     <${About} about=${pointAbout(row, s, item)} />
     ${card ? html`<${ItemCard} card=${card} d=${d} dkey=${row.key} s=${s} c=${c} skip=${DESC_SKIP} cls="flow-card-brief" />` : null}
-    ${card?.goal || card?.story || (card?.acceptance ?? []).length ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
+    ${card?.goal || card?.story || (card?.acceptance ?? []).length || (start && !loading) ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
     ${own ? html`<${Sections} sections=${detail?.sections} />` : null}
   </div>`
 }
@@ -83,6 +100,19 @@ function StepsPane({ steps }) {
   if (!steps.length) return html`<p class="muted small">${f.none}</p>`
   return html`<ul class="flow-steps">${steps.map((st, k) => html`<li key=${k} class=${st.done ? 'is-done' : ''}>
     <span class="flow-step-mark mono">${st.done ? f.done : f.todo}</span> <span>${st.text}</span></li>`)}</ul>`
+}
+
+/** Related of a finished AI run (stage 2): the item or the task it ran on (its own key, so no link to itself), and the
+ *  task that item belongs to, a click into the same view */
+function RunRelated({ start, item, c }) {
+  const t = T().flow
+  const slug = item?.task ?? null
+  return html`<div class="flow-related">
+    <section><h3 class="label-caps">${String(start.key).startsWith('task:') ? t.read.task : t.read.item}</h3>
+      <ul class="entries"><li class="entry"><span>${short(item?.summary ?? start.title ?? start.key, 90)}</span></li></ul></section>
+    ${slug ? html`<section><h3 class="label-caps">${t.one.parent}</h3>
+      <ul class="entries"><li class="entry"><button type="button" class="btn-link flow-related-open" onClick=${() => c.openItem(`task:${slug}`)}>${slug}</button></li></ul></section>` : null}
+  </div>`
 }
 
 /** Related: the task an item belongs to and the other items of that task as they stand in the model, each a click
@@ -326,13 +356,15 @@ export function PointTabs({ x, s, c }) {
   const tab = pointTab(tabs, s.ui.flowTab)
   const steps = stepsOf(detail)
   const rel = relatedOf(x, s, detail)
-  const nRel = (rel.parent ? 1 : 0) + rel.rows.length + rel.paths.length
+  const run = x.group === 'read' ? x.start : null
+  const nRel = run ? 1 + (itemData?.item?.task ? 1 : 0) : (rel.parent ? 1 : 0) + rel.rows.length + rel.paths.length
   const n = { steps: steps.length ? `${steps.filter(st => st.done).length}/${steps.length}` : null, activity: feed ? String(activityCounts(feed).all) : null,
     related: nRel ? String(nRel) : null }
   const pane = tab === 'steps' ? html`<${StepsPane} steps=${steps} />`
     : tab === 'activity' ? html`<${ActivityPane} row=${row} entry=${act} history=${history} s=${s} c=${c} />`
-      : tab === 'related' ? html`<${RelatedPane} rel=${rel} c=${c} />`
-        : html`<${DescPane} row=${row} detail=${detail} entry=${entry} item=${itemData?.item ?? null} s=${s} c=${c} />`
+      : tab === 'related' ? (run ? html`<${RunRelated} start=${run} item=${itemData?.item ?? null} c=${c} />` : html`<${RelatedPane} rel=${rel} c=${c} />`)
+        : html`<${DescPane} row=${row} detail=${detail} entry=${entry} item=${itemData?.item ?? null} itemCard=${itemData?.card ?? null}
+          start=${run} events=${itemData?.events ?? null} s=${s} c=${c} />`
   return html`<section class="flow-ptabs" aria-label=${f.ptabs.label}>
     <div class="flow-ptabs-bar" role="tablist" aria-label=${f.ptabs.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
       ${tabs.map(id => html`<button type="button" key=${id} role="tab" id=${`flow-ptab-${id}`} data-tab=${id} aria-selected=${String(tab === id)}

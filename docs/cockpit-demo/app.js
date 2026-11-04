@@ -246,6 +246,8 @@ const store = createStore({
     // point of its own ({key, file, from}: a row that stands nowhere on the page), Instruct or Ask under the card and the
     // question asked there ({key, conv})
     flowLeftAt: null, flowSolo: null, flowLine: 'instruct', flowAsk: null,
+    // stage 2: a finished AI run of Finished, to read open in the middle ({id, i}), null for the list
+    flowReadAt: null,
     // round 3: the tab under the card of an open point (it stays from point to point, kept in this browser), the
     // filter of its Activity, and the plan the instruction line made of a sentence, waiting for Run
     flowTab: ['desc', 'steps', 'activity', 'related'].find(v => v === load('bridge-cockpit.flowTab', 'desc')) ?? 'desc',
@@ -1399,6 +1401,9 @@ const ctl = {
     flowPlan: null })),
   // stage 1: a row of the group open shown in the one point view (a title of the list, the walk bar), its place kept
   flowLeftOpen: (key, i = 0) => setUi(ui => ({ flowView: 'left', flowLeftAt: { id: key, i }, flowPlan: ui.flowLeftAt?.id === key ? ui.flowPlan : null })),
+  // stage 2: the finished AI runs as a list in the middle, one of them in the one point view (its place kept)
+  flowRead: () => setUi({ flowView: 'read', flowReadAt: null, flowPlan: null }),
+  flowReadOpen: (id, i = 0) => setUi(ui => ({ flowView: 'read', flowReadAt: { id, i }, flowPlan: ui.flowReadAt?.id === id ? ui.flowPlan : null })),
   // stage 1: a row alone in the one point view (a report of the reports card, `from` the point it was opened from)
   flowSolo: (key, from = null) => setUi({ flowView: 'solo', flowSolo: { key, file: null, from }, flowPlan: null }),
   // stage 1: the line under the card instructs or asks; a question about the point goes the files view's way (askFile:

@@ -20,16 +20,22 @@
 // what the last run cost, one plain line what it does, then the check of its own tab (views/check.js ReviewBody,
 // `compact`: the verdict filter and sort, ticked rows closed or kept at once, the table, and how it ran folded into
 // one line under them). It replaces the tab Tidy up where Work through is on (logic.js checkInFlow).
+// Stage 2 of the one point view: on top of the left column, under Running now, the row Finished, to read (ReadRow)
+// with how many finished AI runs wait to be read (logic.js flowParts `read`: a start whose item ended after it with
+// something to read, unread and younger than cockpit.flow.read_days); a click lists them in the middle (ReadList, view
+// `read`: Back to overview, its name and count, one line what it holds, a table of the title, what came of it in plain
+// words, when it ended and its area); a title opens the run in the one point view (c.flowReadOpen, To the list leads
+// back, the walk walks the list).
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
-import { activityWhen, centsText, checkOpen, formatDay, LEFT_VERBS, leftPlan, rowProject, short } from '../logic.js'
+import { activityWhen, centsText, checkOpen, formatDay, isoDate, LEFT_VERBS, leftPlan, rowProject, short } from '../logic.js'
 import { T, language } from '../text.js'
 import { CheckButton, ReviewBody } from './check.js'
 import { KindTag } from './day.js'
 import { ageDays, BatchBar } from './flowlist.js'
-import { Btn } from './parts.js'
+import { Btn, Dot } from './parts.js'
 
 /** The buttons of the groups of Not now, each with its count, the one open marked; the rows a GitHub list holds as
  *  one line that leads to that list (the group's `at`) */
@@ -63,6 +69,48 @@ export function NotNowNarrow({ left, open = null, c }) {
     <summary><span class="label-caps">${f.label}</span> <span class="mono">${left.total}</span></summary>
     <${GroupButtons} left=${left} open=${open} c=${c} />
   </details>`
+}
+
+/** Finished, to read on top of the left column (under Running now): its count, marked while its list or one of its
+ *  runs is open in the middle; none while nothing waits to be read. It stays on a narrow screen too */
+export function ReadRow({ read, on = false, c }) {
+  const f = T().flow.read
+  if (!(read ?? []).length) return null
+  return html`<div class="flow-read">
+    <button type="button" class=${`flow-notnow-item flow-read-row${on ? ' is-on' : ''}`} aria-current=${on ? 'true' : undefined}
+      onClick=${() => c.flowRead()}>
+      <${Dot} token="success" />
+      <span class="flow-side-name"><span class="flow-side-label">${f.label}</span></span>
+      <span class="flow-side-open mono muted">${read.length}</span>
+    </button>
+  </div>`
+}
+
+/** The finished AI runs as a list in the middle: what came of each in plain words, when it ended, its area when one has it; a title
+ *  opens the run in the one point view */
+export function ReadList({ read, c }) {
+  const t = T()
+  const f = t.flow
+  const lang = language()
+  const ended = x => (Number.isFinite(x.start.ended_ms) ? formatDay(isoDate(x.start.ended_ms), lang) : '')
+  // the column Area only when a run's point has one: an ended item without an area leaves it empty
+  const withArea = read.some(x => rowProject(x.row))
+  return html`<section class="flow-overview flow-leftlist flow-readlist" aria-labelledby="flow-read-h">
+    <header class="flow-main-head">
+      <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
+      <h2 id="flow-read-h" class="flow-main-title">${f.read.label} <span class="mono muted">${read.length}</span></h2>
+    </header>
+    <p class="muted small flow-left-sub">${f.read.sub}</p>
+    ${read.length ? html`<table class="flow-ov-table">
+      <thead><tr><th>${f.list.cols.point}</th><th>${f.read.cols.what}</th><th>${f.read.cols.when}</th>${withArea ? html`<th>${f.list.cols.area}</th>` : null}</tr></thead>
+      <tbody>${read.map((x, i) => html`<tr key=${x.id} class="flow-ov-row">
+        <td class="flow-ov-point"><button type="button" class="flow-ov-open" onClick=${() => c.flowReadOpen(x.id, i)}>${short(x.start.title ?? x.start.key, 120)}</button></td>
+        <td class="flow-ov-what small">${short(x.start.plain ?? x.start.result?.text ?? '', 160)}</td>
+        <td class="flow-ov-stage small">${ended(x)}</td>
+        ${withArea ? html`<td class="flow-ov-area small">${rowProject(x.row)}</td>` : null}
+      </tr>`)}</tbody>
+    </table>` : html`<p class="muted">${f.read.empty}</p>`}
+  </section>`
 }
 
 /** Check tasks above Not now: its name, the decisions the last check left (none run yet, or running), marked
