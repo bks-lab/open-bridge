@@ -209,11 +209,20 @@ Each doc moves to `docs/<tier>/<same name>` with `git mv`, so its history
 follows. Its own relative links and its frontmatter `related:` paths are
 rewritten for the new folder, and every link elsewhere that pointed at the old
 path (Markdown, YAML, plain text; repo-relative or relative to the linking file)
-is rewritten too. Code is never edited: a script or page that still names the
-old path is listed for you to look at. Records of the past are never edited
-either: the work log, closed tasks under `work/done/` and archives say what was
-true when they were written, so they keep the old path and are listed as kept. `docs/applications.md`, the one user doc
-the router knew by name, moves to `docs/user/` the same way.
+is rewritten too, in your own files, including `identity/agent/` and
+`work/memory/` where git ignores them. A CORE file is never edited: it comes
+from upstream, and a local edit would conflict with the next merge, so one that
+names the moved doc is listed (`core`); if that line is your own, move it to
+`identity/agent/INSTANCE.md` or a page in `docs/user/`. Code is never edited
+either: a script or page that still names the old path is listed for you to look
+at. Records of the past are never edited: the work log and every other `log.md`,
+closed tasks under `work/done/`, archives, `work/reports/`, deliverables, the
+inbox and any file or folder whose name starts with a date (a meeting's
+minutes and triage) say what was true when they were written, so they keep the old path and are listed as kept. The generated
+`overlays.lock.yaml` is never edited. A file your org overlay materializes is
+named (`overlay`): make the same change in the overlay's source, or its next
+sync reports a local edit. `docs/applications.md`, the one user doc the router
+knew by name, moves to `docs/user/` the same way.
 
 The script moves nothing it would have to guess about. An unknown `scope:` token
 (say `scope: usr`) is reported, and the router keeps that doc local in the
@@ -252,16 +261,20 @@ python3 scripts/migrate-kernel.py --write    # remove the key, follow the move
 python3 scripts/migrate-kernel.py --check    # exit 1 while anything is left
 ```
 
-The key goes with its indented block and the comment lines directly above it
-(a `# yaml-language-server` header stays); every
-other line of the registry stays as it was, and the card stops keeping it. An
-org fragment your overlay materialized is fixed locally too; the overlay itself
-needs the same change at its source. A link to the old index is
+The key goes with its indented block, and with the comment lines directly
+above it when they name it (`# Work-system tracking ...`); a comment that does not
+(your file's header, a note on the key before it, a `# yaml-language-server`
+line) stays. Every other line of the registry stays as it was, and the card stops
+keeping it, at whatever indent your budget file uses. A card in a layout the
+script cannot edit is named for you to fix by hand, and `--write` and `--check`
+exit 1 until it is gone. An org fragment your overlay materialized is fixed
+locally too and named (`overlay`): the overlay needs the same change at its
+source, or a fresh subscriber gets the key back. A link to the old index is
 rewritten in your own Markdown, YAML and text files, in whichever form it was
 written; a line that already names the new path describes the move and stays.
-CORE files come with the update, and records of the past (`work/log.md`,
-`work/done/`, archives, a task's or stream's `deliverables/`, the inbox), code and
-ignored folders are never edited, the same rules as `scripts/migrate-docs-tier.py`.
+CORE files come with the update, and records of the past, code and ignored
+folders are never edited, the same rules as `scripts/migrate-docs-tier.py`
+(which also reaches `identity/agent/` and `work/memory/` where git ignores them).
 A result that would change any other key is refused and named. Line endings stay
 as they were. Then commit.
 

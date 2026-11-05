@@ -113,7 +113,7 @@ Two lists sit beside `entries:`, for what a fork has to put right after an updat
 | List | Each item | What happens |
 |---|---|---|
 | `retired:` | `file` (a path or a glob), `key`, `reason`, `fix` | a top-level key nothing reads any more but a session still carries (`work_system` in every `ecosystem*.yaml`); `check-kernel.py` names each non-core file that still has it, and an instance card in `context-budget.user.yaml` that still keeps it; `scripts/migrate-kernel.py --write` removes both. A CORE file (the template) is upstream's to change |
-| `moved:` | `old`, `new` | a kernel path that moved (`docs/families.md` to `kernel/families.yaml`); `check-kernel.py` names an instance's own live file that still names the old path, `scripts/migrate-kernel.py --write` rewrites it. CORE files come with the update, and records of the past and code are never edited |
+| `moved:` | `old`, `new` | a kernel path that moved (`docs/families.md` to `kernel/families.yaml`); `check-kernel.py` names an instance's own live file that still names the old path, `scripts/migrate-kernel.py --write` rewrites it, in `identity/agent/` and `work/memory/` too where git ignores them. CORE files come with the update, records of the past and code are never edited, and a file an org overlay ships is named so its source gets the same change |
 
 ## What check-kernel.py holds
 
@@ -132,7 +132,10 @@ Two lists sit beside `entries:`, for what a fork has to put right after an updat
   own names a `moved:` path
 
 It runs in `scripts/check-all.py`, in CI, in the check net of the daily
-upstream update (`scripts/upstream-autoupdate.sh`), and in `bridge-audit`.
+upstream update (`scripts/upstream-autoupdate.sh`). That job keeps a merge
+that changed the checker or the manifest it reads and files what it finds, so a
+retirement that only edits `retired:` or `moved:` reaches a fork as an inbox
+item, never as a rollback.
 
 ## Debts: what is known to be wrong
 

@@ -21,7 +21,10 @@ between updates; the two links above never do.
 `kernel/families.yaml`, generated as YAML; Phase 0 and Phase 1 have caps; the
 `work_system` block in ecosystem.yaml, which nothing read, is gone from the
 template and the registry card. `scripts/migrate-kernel.py` removes it from a
-fork and follows the moved index in a fork's own files (docs/updating.md).
+fork and follows the moved index in a fork's own files (docs/updating.md). A follow-up
+keeps both migrations off CORE files, generated locks and dated records, reaches
+the instance files git ignores, names files an org overlay ships, and lets the
+daily job keep a merge that only changed the manifest.
 
 **The kernel, written down once; docs/ tiered by folder.** `kernel/manifest.yaml`
 names every file, command and listing a session reads before its first answer,

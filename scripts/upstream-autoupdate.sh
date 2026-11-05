@@ -264,6 +264,15 @@ run_checks() {
 }
 
 in_list() { printf '%s\n' "$2" | grep -qxF -- "$1"; }   # $1 a line of the list $2
+# The data files that carry a checker's rules, beside the script itself: a merge
+# that changed one changed the rule (the "rules" pile below), not the instance.
+checker_inputs() {
+  case "$1" in
+    check-kernel.py)    echo "kernel/manifest.yaml" ;;
+    measure-context.py) echo "context-budget.yaml docs/schemas/context-budget.schema.yaml" ;;
+    data-model.py)      echo "docs/data-model.yaml" ;;
+  esac
+}
 words() { printf '%s' "$1" | sed '/^$/d' | tr '\n' ' ' | sed 's/ $//'; }
 
 # A check's findings, normalised: digits folded (a count, a line number or a
@@ -450,9 +459,11 @@ if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
   #   rules  the checker is new with the merge, or the merge changed it. What it
   #          finds is instance content measured by a new rule; rolling back would
   #          repeat every morning and freeze the job, so the merge is kept and the
-  #          finding filed. A rule upstream tightened in a file other than the
-  #          checker itself (a schema, a budget) is not seen here and lands in
-  #          broke: rollback plus an item, the safe side.
+  #          finding filed. A checker's rules may live in a data file beside
+  #          it (checker_inputs: the kernel manifest's retired and moved lists,
+  #          the budgets, the data model); a merge that changed one counts as
+  #          a changed checker. A rule tightened anywhere else lands in broke:
+  #          rollback plus an item, the safe side.
   #   broke  green before and red after, or red on both sides with a finding the
   #          before-run did not have (normalised output, see findings_of): the
   #          merge broke it. Rolled back.
@@ -461,7 +472,7 @@ if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
   broke=""; rules=""; still=""
   while IFS= read -r c; do
     [ -n "$c" ] || continue
-    if ! in_list "$c" "$present_before" || ! git diff --quiet "$before_full" HEAD -- "scripts/${c%% *}"; then
+    if ! in_list "$c" "$present_before" || ! git diff --quiet "$before_full" HEAD -- "scripts/${c%% *}" $(checker_inputs "${c%% *}"); then
       rules="${rules}${c}"$'\n'
     elif ! in_list "$c" "$red_before" || has_new_findings "$c"; then
       broke="${broke}${c}"$'\n'

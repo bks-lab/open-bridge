@@ -165,6 +165,84 @@ def test_the_instances_own_card_stops_keeping_the_retired_key(mk, fork):
     assert mk.plan(fork) == []
 
 
+def test_a_card_at_any_indent_or_in_a_flow_mapping_is_edited_too(mk, fork):
+    # check-kernel.py reads the budget as YAML. The fix used to know only a
+    # two-space layout, so a four-space file stayed red after "nothing to do".
+    yaml = pytest.importorskip("yaml")
+    (fork / "ecosystem.acme.yaml").write_text("acme:\n  x: 1\n", encoding="utf-8")
+    (fork / "context-budget.user.yaml").write_text(
+        "schema_version: 1\nitems:\n"
+        "    ecosystem.yaml:\n        card:\n            keep:\n"
+        "                - org\n                - work_system\n"
+        "    ecosystem.acme.yaml: {card: {keep: [acme, work_system]}}\n", encoding="utf-8")
+    assert {r.file for r in mk.plan(fork)} >= {"context-budget.user.yaml"}
+    mk.apply(fork, mk.plan(fork))
+    items = yaml.safe_load((fork / "context-budget.user.yaml").read_text(encoding="utf-8"))["items"]
+    assert items["ecosystem.yaml"]["card"]["keep"] == ["org"]
+    assert items["ecosystem.acme.yaml"]["card"]["keep"] == ["acme"]
+    assert mk.plan(fork) == []
+
+
+def test_a_card_it_cannot_edit_is_reported_never_passed_over(mk, fork):
+    # A layout the line rules do not know must not end in "nothing to do"
+    # while check-kernel.py stays red: the fix says so and --check stays red.
+    pytest.importorskip("yaml")
+    odd = ("schema_version: 1\nitems:\n  ecosystem.yaml:\n    card:\n"
+           "      keep: [org,\n             work_system]\n")
+    (fork / "context-budget.user.yaml").write_text(odd, encoding="utf-8")
+    assert "context-budget.user.yaml" in {r.file for r in mk.plan(fork)}
+    wrote = _cli("--write", cwd=fork)
+    assert wrote.returncode == 1, wrote.stdout
+    assert "context-budget.user.yaml" in wrote.stdout and "by hand" in wrote.stdout, wrote.stdout
+    assert (fork / "context-budget.user.yaml").read_text(encoding="utf-8") == odd
+    assert _cli("--check", cwd=fork).returncode == 1
+
+
+def test_a_comment_above_the_key_that_does_not_name_it_stays(mk, fork):
+    # A file header or a note on something else sits directly above the key.
+    # Only a comment that names the key belongs to it.
+    text = "# My registry. Owner: me\n# Generated once, edit freely\nwork_system:\n  enabled: true\norg: x\n"
+    (fork / "ecosystem.yaml").write_text(text, encoding="utf-8")
+    mk.apply(fork, mk.plan(fork))
+    assert (fork / "ecosystem.yaml").read_text(encoding="utf-8") == (
+        "# My registry. Owner: me\n# Generated once, edit freely\norg: x\n")
+
+
+def test_an_ignored_instance_file_that_names_a_moved_path_is_followed(mk, fork):
+    # On a public-origin or local-only fork git ignores identity/agent/*.md,
+    # yet every session imports INSTANCE.md. It must not keep the old path in
+    # silence while check-kernel.py and --check report nothing.
+    subprocess.run(["git", "init", "-q", str(fork)], check=True)
+    (fork / ".gitignore").write_text("/identity/agent/*.md\n", encoding="utf-8")
+    agent = fork / "identity" / "agent"
+    agent.mkdir(parents=True)
+    (agent / "INSTANCE.md").write_text("Index: `docs/families.md`.\n", encoding="utf-8")
+    assert "identity/agent/INSTANCE.md" in mk.plan_moves(fork).files
+    mk.apply_moves(fork, mk.plan_moves(fork))
+    assert "`kernel/families.yaml`" in (agent / "INSTANCE.md").read_text(encoding="utf-8")
+
+
+LOCK = """schema_version: 1
+overlays:
+  acme:
+    url: git@example.invalid:acme/overlay.git
+    files:
+    - src: ecosystem.acme.yaml
+      dest: ecosystem.acme.yaml
+"""
+
+
+def test_a_file_an_overlay_ships_is_named_so_the_source_is_fixed_too(fork):
+    # The instance's copy can be fixed, but the overlay's source keeps the key:
+    # its next sync reports a local edit, a fresh subscriber gets it back.
+    (fork / "ecosystem.acme.yaml").write_text("acme:\n  x: 1\nwork_system:\n  enabled: true\n",
+                                              encoding="utf-8")
+    (fork / "overlays.lock.yaml").write_text(LOCK, encoding="utf-8")
+    dry = _cli(cwd=fork)
+    assert "overlay ecosystem.acme.yaml comes from overlay 'acme'" in dry.stdout, dry.stdout
+    assert "work_system" in (fork / "ecosystem.acme.yaml").read_text(encoding="utf-8")
+
+
 def _instance_files(root):
     (root / "bridge-config.yaml").write_text("identity: {}\n", encoding="utf-8")
     agent = root / "identity" / "agent"

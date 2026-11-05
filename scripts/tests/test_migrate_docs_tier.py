@@ -95,10 +95,66 @@ def test_write_moves_the_doc_and_rewrites_every_link(mdt, fork):
     assert "  - ../../ecosystem.yaml\n" in moved
     assert "  - ../guide.md\n" in moved
     # Inbound links, in each form a tree uses.
-    assert "Read [mine](user/mine.md#top)." in _read(fork, "docs/guide.md")
-    assert "`docs/user/mine.md`" in _read(fork, "AGENTS.md")
     assert "[mine](../../docs/user/mine.md)" in _read(fork, "identity/agent/IDENTITY.md")
     assert "- docs/user/mine.md" in _read(fork, "ecosystem.yaml")
+
+
+def test_a_core_file_is_never_rewritten_only_named(mdt, fork):
+    # A CORE file comes from upstream. Rewriting it on a fork makes the next
+    # upstream merge conflict, and a /bridge-promote of it would carry the
+    # instance's doc path upstream. Prose that only uses the same name as an
+    # example (docs/okf-export.md once did) must not change either.
+    _write(fork, "docs/okf-export.md", "An example: `docs/mine.md` would stay local.\n")
+    plan = mdt.plan(fork)
+    assert {"AGENTS.md", "docs/guide.md", "docs/okf-export.md"} <= set(plan.core_left)
+    changed = mdt.apply(fork, plan)
+    assert "`docs/mine.md`" in _read(fork, "AGENTS.md")
+    assert "Read [mine](mine.md#top)." in _read(fork, "docs/guide.md")
+    assert "`docs/mine.md` would stay" in _read(fork, "docs/okf-export.md")
+    assert not {"AGENTS.md", "docs/guide.md", "docs/okf-export.md"} & set(changed)
+
+
+def test_the_dry_run_names_the_core_files_it_leaves(fork, capsys):
+    mod = _load()
+    assert mod.main(["--repo-root", str(fork)]) == 0
+    out = capsys.readouterr().out
+    assert "core  AGENTS.md names a moved doc" in out, out
+
+
+def test_live_instance_files_git_ignores_follow_the_move(mdt, fork):
+    # A public-origin or local-only fork keeps identity/agent/*.md and
+    # work/memory/ out of git (the root .gitignore). Every session still reads
+    # them, so a link there must follow the move like a tracked one.
+    subprocess.run(["git", "init", "-q", str(fork)], check=True)
+    _write(fork, ".gitignore", "/identity/agent/*.md\n/work/memory/\n")
+    _write(fork, "identity/agent/INSTANCE.md", "Lore: `docs/mine.md`.\n")
+    _write(fork, "work/memory/fact.md", "See `docs/mine.md`.\n")
+    _write(fork, "build/out.md", "`docs/mine.md`\n")
+    _write(fork, ".gitignore", "/identity/agent/*.md\n/work/memory/\n/build/\n")
+    mdt.apply(fork, mdt.plan(fork))
+    assert "`docs/user/mine.md`" in _read(fork, "identity/agent/INSTANCE.md")
+    assert "`docs/user/mine.md`" in _read(fork, "work/memory/fact.md")
+    assert "`docs/mine.md`" in _read(fork, "build/out.md"), "other ignored files stay untouched"
+
+
+def test_an_overlay_file_is_named_and_the_lock_never_edited(fork):
+    # ecosystem.yaml here stands in for a file the org overlay materializes.
+    lock = ("overlays:\n  acme:\n    files:\n    - src: ecosystem.yaml\n"
+            "      dest: ecosystem.yaml\n    - src: tree/docs/mine.md\n      dest: docs/mine.md\n")
+    _write(fork, "overlays.lock.yaml", lock)
+    mod = _load()
+    assert mod.main(["--repo-root", str(fork), "--write"]) == 0
+    assert _read(fork, "overlays.lock.yaml") == lock, "a generated lock is never hand-edited"
+    assert "- docs/user/mine.md" in _read(fork, "ecosystem.yaml")
+
+
+def test_the_write_names_the_overlay_file_it_changed(fork, capsys):
+    _write(fork, "overlays.lock.yaml",
+           "overlays:\n  acme:\n    files:\n    - src: ecosystem.yaml\n      dest: ecosystem.yaml\n")
+    mod = _load()
+    assert mod.main(["--repo-root", str(fork), "--write"]) == 0
+    out = capsys.readouterr().out
+    assert "overlay ecosystem.yaml comes from overlay 'acme'" in out, out
 
 
 def test_related_entries_keep_their_own_convention(mdt, tmp_path):
@@ -135,13 +191,13 @@ def test_a_link_to_itself_and_other_link_forms_follow_the_move(mdt, tmp_path):
     _write(tmp_path, "docs/mine.md", (
         "---\nscope: user\n---\n# Mine\n\n[top](mine.md#mine), [titled](guide.md \"Guide\"),\n"
         "[ref][g]\n\n[g]: guide.md\n"))
-    _write(tmp_path, "README.md", "See [mine](/docs/mine.md) and [again](docs/mine.md).\n")
+    _write(tmp_path, "work/notes.md", "See [mine](/docs/mine.md) and [again](docs/mine.md).\n")
     mdt.apply(tmp_path, mdt.plan(tmp_path))
     moved = _read(tmp_path, "docs/user/mine.md")
     assert "[top](mine.md#mine)" in moved
     assert '[titled](../guide.md "Guide")' in moved
     assert "[g]: ../guide.md" in moved
-    readme = _read(tmp_path, "README.md")
+    readme = _read(tmp_path, "work/notes.md")
     assert "(/docs/user/mine.md)" in readme and "(docs/user/mine.md)" in readme
 
 
@@ -178,13 +234,24 @@ def test_records_of_the_past_are_left_as_written(mdt, fork):
     _write(fork, "work/done/2026-10/task/STATUS.md", "See [mine](../../../../docs/mine.md).\n")
     _write(fork, "work/archive/2026-10.md", "Moved `docs/mine.md`.\n")
     _write(fork, "work/memory/fact.md", "Lore: `docs/mine.md`.\n")
+    _write(fork, "work/reports/review.md", "Read `docs/mine.md`.\n")
+    _write(fork, "work/doc-system/log.md", "| filed | `docs/mine.md` |\n")
+    _write(fork, "work/streams/s/2026-11-01-minutes.md", "Agreed on `docs/mine.md`.\n")
+    _write(fork, "work/tasks/_meetings/2026-06-11-sync/triage.md", "Owner of `docs/mine.md`.\n")
     plan = mdt.plan(fork)
     mdt.apply(fork, plan)
     assert "`docs/mine.md`" in _read(fork, "work/log.md")
     assert "../../../../docs/mine.md" in _read(fork, "work/done/2026-10/task/STATUS.md")
     assert "`docs/mine.md`" in _read(fork, "work/archive/2026-10.md")
+    for rel in ("work/reports/review.md", "work/doc-system/log.md",
+                "work/streams/s/2026-11-01-minutes.md",
+                "work/tasks/_meetings/2026-06-11-sync/triage.md"):
+        assert "`docs/mine.md`" in _read(fork, rel), rel
     assert set(plan.history_left) == {"work/log.md", "work/done/2026-10/task/STATUS.md",
-                                      "work/archive/2026-10.md"}
+                                      "work/archive/2026-10.md", "work/reports/review.md",
+                                      "work/doc-system/log.md",
+                                      "work/streams/s/2026-11-01-minutes.md",
+                                      "work/tasks/_meetings/2026-06-11-sync/triage.md"}
     # Live knowledge is not history: it follows the move.
     assert "`docs/user/mine.md`" in _read(fork, "work/memory/fact.md")
 
