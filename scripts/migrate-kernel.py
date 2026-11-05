@@ -18,9 +18,10 @@ card showed it to every session at start. kernel/manifest.yaml lists such keys
 under `retired:`, scripts/check-kernel.py names each one a file still carries,
 and this script removes them (docs/kernel.md, docs/updating.md).
 
-Only a top-level key is removed, with its indented block and the comment lines
-directly above it. Every other byte of the file stays as it was, comments
-included. Stdlib only.
+Only a top-level key is removed, with its indented block, and the comment lines
+directly above it when they name the key; a comment above it that does not (a
+file header, a note on the key before it) stays. Every other byte of the file
+stays as it was, comments included. Stdlib only.
 
 Usage:
   python3 scripts/migrate-kernel.py            # dry run: name what would go
@@ -192,8 +193,16 @@ def apply_moves(root: Path, the_plan: MovePlan) -> list[str]:
     return changed
 
 
+def _squash(text: str) -> str:
+    """`work_system`, `Work-system` and `work system` alike, for naming a key."""
+    return re.sub(r"[\s_\-]", "", text).lower()
+
+
 def _block(lines: list[str], key: str) -> tuple[int, int] | None:
-    """[start, end) of a top-level key: its comment lines above, itself, its body."""
+    """[start, end) of a top-level key: itself, its body, and the comment lines
+    directly above it when that comment names the key. A comment that does not
+    name it belongs to something else (the file's header, the key before it)
+    and stays."""
     pattern = re.compile(rf"^{re.escape(key)}:")
     for i, line in enumerate(lines):
         if not pattern.match(line):
@@ -202,6 +211,8 @@ def _block(lines: list[str], key: str) -> tuple[int, int] | None:
         while (start > 0 and lines[start - 1].startswith("#")
                and not lines[start - 1].startswith("# yaml-language-server")):
             start -= 1
+        if not any(_squash(key) in _squash(lines[k]) for k in range(start, i)):
+            start = i
         end = i + 1
         while end < len(lines) and (not lines[end].strip() or lines[end][0].isspace()):
             end += 1
@@ -226,18 +237,35 @@ def _tier(root: Path, rel: str) -> str:
 
 def _card_keep_edits(lines: list[str], pattern: str, key: str) -> list[str] | None:
     """The user budget with `key` dropped from the card `keep:` of every item
-    whose name matches `pattern`; None when nothing would change."""
+    whose name matches `pattern`; None when nothing would change.
+
+    An item is a key one level under `items:`, at whatever indent the file
+    uses; its `keep:` may be a block list or a flow list, also inside a flow
+    `card: {keep: [...]}`."""
     out: list[str] = []
     item = None
+    in_items = False
+    item_indent = None
     in_keep = False
     changed = False
     for line in lines:
-        m = re.match(r"^  ([^\s#][^:]*):\s*$", line)
-        if m:
+        if re.match(r"^items:\s*(#.*)?$", line):
+            in_items, item_indent, item = True, None, None
+            out.append(line)
+            continue
+        if in_items and line.strip() and not line.lstrip().startswith("#"):
+            indent = len(line) - len(line.lstrip(" "))
+            if indent == 0:
+                in_items, item = False, None
+            elif item_indent is None:
+                item_indent = indent
+        m = (re.match(r"^ +([^\s#\-][^:]*):(\s.*)?$", line)
+             if in_items and item_indent is not None else None)
+        if m and len(line) - len(line.lstrip(" ")) == item_indent:
             item = m.group(1).strip().strip("\"'")
             in_keep = False
-        mine = item is not None and fnmatch.fnmatchcase(item, pattern)
-        flow = re.match(r"^(\s+keep:\s*\[)(.*)(\].*)$", line)
+        mine = in_items and item is not None and fnmatch.fnmatchcase(item, pattern)
+        flow = re.match(r"^(.*\bkeep:\s*\[)([^\]]*)(\].*)$", line)
         if mine and flow:
             values = [v.strip() for v in flow.group(2).split(",") if v.strip()]
             if key in values:
@@ -279,11 +307,31 @@ def plan(root: Path) -> list[Retired]:
                 continue
             if _block(_io_read(path).split("\n"), item.key):
                 found.append(Retired(rel, item.key, item.reason, item.fix))
-        if budget.is_file() and _card_keep_edits(
-                _io_read(budget).split("\n"), item.file, item.key) is not None:
+        if budget.is_file() and _card_keeps(_io_read(budget), item.file, item.key):
             found.append(Retired(USER_BUDGET, item.key, f"the card of {item.file} keeps it",
                                  item.fix, pattern=item.file))
     return found
+
+
+def _card_keeps(text: str, pattern: str, key: str) -> bool:
+    """Whether a card for `pattern` in the user budget still keeps `key`.
+
+    Read as YAML, the way check-kernel.py reads it, so the check and this fix
+    see the same cards whatever the layout; without PyYAML the line rules
+    decide."""
+    try:
+        import yaml
+    except ImportError:
+        return _card_keep_edits(text.split("\n"), pattern, key) is not None
+    try:
+        items = (yaml.safe_load(text) or {}).get("items") or {}
+    except (yaml.YAMLError, AttributeError):
+        return False
+    for name, spec in items.items():
+        keep = (((spec or {}).get("card") or {}).get("keep") or []) if isinstance(spec, dict) else []
+        if fnmatch.fnmatchcase(str(name), pattern) and key in keep:
+            return True
+    return False
 
 
 REFUSED: list[str] = []   # files apply() left alone, with the reason
@@ -316,6 +364,7 @@ def _same_but(before: str, after: str, key: str | None, pattern: str = "") -> bo
 
 def apply(root: Path, the_plan: list[Retired]) -> list[str]:
     root = Path(root)
+    REFUSED.clear()
     changed = []
     for item in the_plan:
         path = root / item.file
@@ -323,13 +372,16 @@ def apply(root: Path, the_plan: list[Retired]) -> list[str]:
         lines = before.split("\n")
         if item.pattern:
             edited = _card_keep_edits(lines, item.pattern, item.key)
-            if edited is not None:
-                after = "\n".join(edited)
-                if not _same_but(before, after, item.key, item.pattern):
-                    REFUSED.append(f"{item.file}: the card edit would change more than {item.key}")
-                    continue
-                _io_write(path, after)
-                changed.append(item.file)
+            if edited is None:
+                REFUSED.append(f"{item.file}: the card of {item.pattern} keeps {item.key} in a "
+                               "layout this script cannot edit; remove it from `keep:` by hand")
+                continue
+            after = "\n".join(edited)
+            if not _same_but(before, after, item.key, item.pattern):
+                REFUSED.append(f"{item.file}: the card edit would change more than {item.key}")
+                continue
+            _io_write(path, after)
+            changed.append(item.file)
             continue
         span = _block(lines, item.key)
         if span is None:
@@ -370,6 +422,9 @@ def main(argv: list[str] | None = None) -> int:
     for rel in moves.files:
         print(f"  follow  {rel}: names a kernel path that moved "
               f"({', '.join(f'{o} -> {n}' for o, n in moves.moves)})")
+    mdt = _load("migrate_docs_tier_for_kernel", "migrate-docs-tier.py")
+    for note in mdt.overlay_notes(root, sorted({i.file for i in the_plan} | set(moves.files))):
+        print(note)
     if args.check:
         return 1
     if not args.write:
@@ -379,6 +434,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  wrote {rel}")
     for note in REFUSED:
         print(f"  left  {note}")
+    if REFUSED:
+        print("not done: edit what is listed under `left` by hand, then run --check")
+        return 1
     print("done: review with `git diff`, then commit")
     return 0
 

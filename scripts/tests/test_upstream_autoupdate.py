@@ -549,6 +549,28 @@ def test_a_checker_made_stricter_by_the_merge_is_reported_not_rolled_back(w, tmp
     assert "new or changed with the merge" in status and "check-edges.py" in status, status
 
 
+def test_a_rule_changed_only_in_the_checkers_data_keeps_the_merge(w, tmp_path):
+    # check-kernel.py reads its retired: and moved: lists from the kernel
+    # manifest. The next retirement may change only that file; rolling the
+    # merge back every morning would freeze the job and never file the item
+    # docs/kernel.md promises.
+    log = tmp_path / "inbox.log"
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX); w.commit(w.inst, "inbox")
+    w.promote("scripts/check-kernel.py",
+              "import pathlib, sys\n"
+              "m = pathlib.Path('kernel/manifest.yaml')\n"
+              "sys.exit(1 if m.exists() and 'retired' in m.read_text() else 0)\n",
+              "share the check")
+    w.write(w.up, "kernel/manifest.yaml", "retired:\n  - key: old_key\n")
+    w.commit(w.up, "retire a key, data only")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "auto-updated" in status, status
+    assert "new or changed with the merge" in status and "check-kernel.py" in status, status
+    assert (w.inst / "kernel/manifest.yaml").exists(), "the merge is kept"
+    assert "--key upstream-autoupdate-rules" in log.read_text()
+
+
 def test_the_budget_check_is_part_of_the_net(w, tmp_path):
     log = tmp_path / "inbox.log"
     w.write(w.inst, "scripts/measure-context.py", FAKE_CHECK)

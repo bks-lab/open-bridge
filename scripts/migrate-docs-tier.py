@@ -16,13 +16,18 @@ job files an inbox item for it. This script is the fix that message names:
   * its own relative links and its frontmatter `related:` paths are rewritten
     for the new location; URLs and in-page anchors stay as they are
   * every link elsewhere that resolved to the old path is rewritten to the new
-    one, in Markdown, YAML and plain-text files, in whichever form it used
-    (repo-relative `docs/x.md`, or relative to the file that links it)
+    one, in the instance's own Markdown, YAML and plain-text files, in
+    whichever form it used (repo-relative `docs/x.md`, or relative to the file
+    that links it). That includes `identity/agent/` and `work/memory/` where
+    git ignores them, since every session reads them
+  * a CORE file is never edited: it comes from upstream, and a local edit would
+    conflict with the next merge. One that names the moved doc is listed
   * code is never edited: a script or page that still names the old path is
     listed, for a person to look at
-  * records of the past are never edited either: the work log, closed tasks
-    (`work/done/`), archives, a task's or stream's deliverables and the inbox
-    say what was true when they were written
+  * records of the past are never edited either: the work log and every other
+    `log.md`, closed tasks (`work/done/`), archives, reports (`work/reports/`),
+    a task's or stream's deliverables, the inbox, and any file whose name
+    starts with a date say what was true when they were written
 
 Nothing is guessed. An unknown `scope:` token, a line that disagrees with a tier
 folder, or a target that already exists is reported and the file stays put.
@@ -71,6 +76,7 @@ class Plan:
     unplaceable: list[tuple[str, str]] = field(default_factory=list)
     mentions_left: list[str] = field(default_factory=list)
     history_left: list[str] = field(default_factory=list)
+    core_left: list[str] = field(default_factory=list)
     unresolved: list[str] = field(default_factory=list)
 
     @property
@@ -92,17 +98,68 @@ def _is_git(root: Path) -> bool:
                           capture_output=True, text=True).returncode == 0
 
 
+# Instance files a fork may keep out of git (the root .gitignore ignores them until
+# user-data.py arms a private origin) that are still live: the always-on files a
+# session imports and the memory it recalls. A link in them must follow a move
+# like a link in a tracked file, or every session keeps reading the old path.
+LIVE_IGNORED = ("identity/agent", "work/memory")
+# Generated files that name paths but are never edited by hand: the overlay and
+# workspace engines rewrite them on their next run.
+GENERATED = frozenset({"overlays.lock.yaml", "workspaces.lock.yaml"})
+OVERLAY_LOCK = "overlays.lock.yaml"
+
+
+def overlay_owned(root: Path) -> dict[str, str]:
+    """dest path -> overlay name, for every file an org overlay materializes.
+
+    A migration may still edit such a file (it is the instance's copy), but the
+    overlay's source keeps the old text: the next sync reports a local edit, or
+    brings the old text back to a fresh subscriber. The caller names them, so
+    the same change reaches the overlay.
+    """
+    owned: dict[str, str] = {}
+    try:
+        text = (Path(root) / OVERLAY_LOCK).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return owned
+    name = None
+    for line in text.splitlines():
+        m = re.match(r"^  ([^\s#][^:]*):\s*$", line)
+        if m:
+            name = m.group(1).strip().strip("\"'")
+            continue
+        d = re.match(r"^\s+dest:\s*['\"]?([^'\"#]+?)['\"]?\s*(#.*)?$", line)
+        if d and name:
+            owned[d.group(1).strip()] = name
+    return owned
+
+
+def overlay_notes(root: Path, changed: list[str]) -> list[str]:
+    owned = overlay_owned(root)
+    return [f"  overlay {rel} comes from overlay '{owned[rel]}': make the same change in "
+            "that overlay's source, or its next sync reports a local edit and a fresh "
+            "subscriber gets the old text back"
+            for rel in changed if rel in owned]
+
+
 def _files(root: Path) -> list[str]:
-    """Every file a link could live in: tracked plus untracked-not-ignored in git."""
+    """Every file a link could live in: tracked plus untracked-not-ignored in git,
+    plus the live instance files in LIVE_IGNORED even where git ignores them."""
     if _is_git(root):
         out = subprocess.run(["git", "-C", str(root), "ls-files", "-co", "--exclude-standard"],
                              capture_output=True, text=True, check=True).stdout
-        return sorted({line for line in out.splitlines() if line and (root / line).is_file()})
+        ignored = subprocess.run(["git", "-C", str(root), "ls-files", "-oi", "--exclude-standard",
+                                  "--", *LIVE_IGNORED],
+                                 capture_output=True, text=True, check=True).stdout
+        return sorted({line for line in (out + ignored).splitlines()
+                       if line and line not in GENERATED and (root / line).is_file()})
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
-            found.append(Path(dirpath, name).relative_to(root).as_posix())
+            rel = Path(dirpath, name).relative_to(root).as_posix()
+            if rel not in GENERATED:
+                found.append(rel)
     return sorted(found)
 
 
@@ -239,7 +296,10 @@ def _outbound(text: str, old: str, new: str, root: Path | None = None,
 
 # Records written at a moment, beside the log: what a task or stream delivered,
 # and the inbox items. They cite paths as evidence of what was true then.
-_RECORD_RE = re.compile(r"^work/(?:tasks|streams)/[^/]+/deliverables/|^work/inbox/")
+# Records beyond HISTORY: deliverables, the inbox, reports, every log, and any
+# file whose name starts with its date (a dated report, minutes, a day note).
+_RECORD_RE = re.compile(r"^work/(?:tasks|streams)/[^/]+/deliverables/|^work/inbox/|^work/reports/"
+                        r"|(?:^|/)log\.md$|(?:^|/)\d{4}-\d{2}-\d{2}[^/]*$")
 
 
 def _write(path: Path, text: str) -> None:
@@ -249,7 +309,17 @@ def _write(path: Path, text: str) -> None:
 
 
 def _is_history(rel: str) -> bool:
-    return rel == HISTORY[0] or rel.startswith(HISTORY[1:]) or bool(_RECORD_RE.match(rel))
+    return rel == HISTORY[0] or rel.startswith(HISTORY[1:]) or bool(_RECORD_RE.search(rel))
+
+
+def _tier(router, root: Path, rel: str) -> str:
+    """The tier the scope router gives `rel` in the tree at `root`."""
+    here = os.getcwd()
+    try:
+        os.chdir(root)
+        return router.classify_file(rel)
+    finally:
+        os.chdir(here)
 
 
 def _mentions(text: str, rel: str, source: str) -> bool:
@@ -307,13 +377,18 @@ def plan(root: Path) -> Plan:
             if rel in sources or Path(rel).suffix not in SCAN_SUFFIXES:
                 continue
             history = _is_history(rel)
-            if Path(rel).suffix in REWRITE_SUFFIXES and not history:
+            rewritable = Path(rel).suffix in REWRITE_SUFFIXES and not history
+            core = rewritable and _tier(router, root, rel) == "core"
+            if rewritable and not core:
                 continue
             text = _read(root, rel)
             if text is None:
                 continue
             if any(_mentions(text, rel, move.source) for move in result.moves):
-                (result.history_left if history else result.mentions_left).append(rel)
+                if core:
+                    result.core_left.append(rel)
+                else:
+                    (result.history_left if history else result.mentions_left).append(rel)
     return result
 
 
@@ -322,6 +397,7 @@ def apply(root: Path, the_plan: Plan) -> list[str]:
     root = Path(root)
     changed: list[str] = []
     git = _is_git(root)
+    router = _router() if the_plan.moves else None
     for move in the_plan.moves:
         src, dst = root / move.source, root / move.target
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -342,6 +418,8 @@ def apply(root: Path, the_plan: Plan) -> list[str]:
         for rel in _files(root):
             if rel == move.target or Path(rel).suffix not in REWRITE_SUFFIXES or _is_history(rel):
                 continue
+            if rel in the_plan.core_left or _tier(router, root, rel) == "core":
+                continue  # a CORE file comes from upstream; the plan names it
             text = _read(root, rel)
             if text is None or posixpath.basename(move.source) not in text:
                 continue
@@ -367,6 +445,10 @@ def _print_plan(the_plan: Plan) -> None:
         print(f"  check {note}")
     for rel in the_plan.history_left:
         print(f"  keep  {rel} names a moved doc; it is a record of the past and stays as written")
+    for rel in the_plan.core_left:
+        print(f"  core  {rel} names a moved doc; it is a CORE file, which comes from upstream "
+              "and is never edited here. If that line is your own, move it to "
+              "identity/agent/INSTANCE.md or a page in docs/user/")
     for rel in the_plan.mentions_left:
         print(f"  note  {rel} names a moved doc; it is code or a page, which this script never "
               "edits, so look at it")
@@ -395,6 +477,8 @@ def main(argv: list[str] | None = None) -> int:
     changed = apply(root, the_plan)
     for rel in changed:
         print(f"  wrote {rel}")
+    for note in overlay_notes(root, changed):
+        print(note)
     if changed:
         print("done: review with `git status` and `git diff --staged`, then commit "
               "(validate-bridge.py should now pass the docs surface)")
