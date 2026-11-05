@@ -237,18 +237,21 @@ def test_records_of_the_past_are_left_as_written(mdt, fork):
     _write(fork, "work/reports/review.md", "Read `docs/mine.md`.\n")
     _write(fork, "work/doc-system/log.md", "| filed | `docs/mine.md` |\n")
     _write(fork, "work/streams/s/2026-11-01-minutes.md", "Agreed on `docs/mine.md`.\n")
+    _write(fork, "work/tasks/_meetings/2026-06-11-sync/triage.md", "Owner of `docs/mine.md`.\n")
     plan = mdt.plan(fork)
     mdt.apply(fork, plan)
     assert "`docs/mine.md`" in _read(fork, "work/log.md")
     assert "../../../../docs/mine.md" in _read(fork, "work/done/2026-10/task/STATUS.md")
     assert "`docs/mine.md`" in _read(fork, "work/archive/2026-10.md")
     for rel in ("work/reports/review.md", "work/doc-system/log.md",
-                "work/streams/s/2026-11-01-minutes.md"):
+                "work/streams/s/2026-11-01-minutes.md",
+                "work/tasks/_meetings/2026-06-11-sync/triage.md"):
         assert "`docs/mine.md`" in _read(fork, rel), rel
     assert set(plan.history_left) == {"work/log.md", "work/done/2026-10/task/STATUS.md",
                                       "work/archive/2026-10.md", "work/reports/review.md",
                                       "work/doc-system/log.md",
-                                      "work/streams/s/2026-11-01-minutes.md"}
+                                      "work/streams/s/2026-11-01-minutes.md",
+                                      "work/tasks/_meetings/2026-06-11-sync/triage.md"}
     # Live knowledge is not history: it follows the move.
     assert "`docs/user/mine.md`" in _read(fork, "work/memory/fact.md")
 

@@ -27,7 +27,7 @@ job files an inbox item for it. This script is the fix that message names:
   * records of the past are never edited either: the work log and every other
     `log.md`, closed tasks (`work/done/`), archives, reports (`work/reports/`),
     a task's or stream's deliverables, the inbox, and any file whose name
-    starts with a date say what was true when they were written
+    or folder starts with a date say what was true when they were written
 
 Nothing is guessed. An unknown `scope:` token, a line that disagrees with a tier
 folder, or a target that already exists is reported and the file stays put.
@@ -297,9 +297,10 @@ def _outbound(text: str, old: str, new: str, root: Path | None = None,
 # Records written at a moment, beside the log: what a task or stream delivered,
 # and the inbox items. They cite paths as evidence of what was true then.
 # Records beyond HISTORY: deliverables, the inbox, reports, every log, and any
-# file whose name starts with its date (a dated report, minutes, a day note).
+# file or folder whose name starts with its date (a dated report, a meeting's
+# folder with its minutes and triage, a day note).
 _RECORD_RE = re.compile(r"^work/(?:tasks|streams)/[^/]+/deliverables/|^work/inbox/|^work/reports/"
-                        r"|(?:^|/)log\.md$|(?:^|/)\d{4}-\d{2}-\d{2}[^/]*$")
+                        r"|(?:^|/)log\.md$|(?:^|/)\d{4}-\d{2}-\d{2}[^/]*(?:/|$)")
 
 
 def _write(path: Path, text: str) -> None:

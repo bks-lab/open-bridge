@@ -217,8 +217,8 @@ names the moved doc is listed (`core`); if that line is your own, move it to
 either: a script or page that still names the old path is listed for you to look
 at. Records of the past are never edited: the work log and every other `log.md`,
 closed tasks under `work/done/`, archives, `work/reports/`, deliverables, the
-inbox and any file whose name starts with a date say what was true when they
-were written, so they keep the old path and are listed as kept. The generated
+inbox and any file or folder whose name starts with a date (a meeting's
+minutes and triage) say what was true when they were written, so they keep the old path and are listed as kept. The generated
 `overlays.lock.yaml` is never edited. A file your org overlay materializes is
 named (`overlay`): make the same change in the overlay's source, or its next
 sync reports a local edit. `docs/applications.md`, the one user doc the router
