@@ -9,6 +9,14 @@ part in parentheses arrives already formatted (" (x)" or "") from model.paren.
 from __future__ import annotations
 
 EN: dict = {
+    # the page of a browser without a session (server.py signin_page)
+    "signin": {"expired_head": "Your sign-in has expired",
+               "expired": "The Bridge is running and nothing is broken. This browser only needs a new link.",
+               "new_head": "Sign in to the cockpit",
+               "new": "This browser is not signed in yet and needs a link once.",
+               "how": "Type <code>/cockpit</code> in a session of your Bridge, or run "
+                      "<code>python3 scripts/bridge-cockpit.py url</code> in a terminal and open the link within a minute. "
+                      "Used at least once a month, the page then stays signed in."},
     "state": {"needs-you": "needs you", "waiting": "waiting", "working": "working", "shell": "terminal"},
     "urgency": {"now": "now", "today": "today", "later": "later"},
     "where": {"area": "in its area", "tab": "as a tab here", "workspace": "in its own workspace",
@@ -471,6 +479,13 @@ EN: dict = {
 }
 
 DE: dict = {
+    "signin": {"expired_head": "Deine Anmeldung ist abgelaufen",
+               "expired": "Die Bridge läuft, nichts ist kaputt. Dieser Browser braucht nur einen neuen Link.",
+               "new_head": "Beim Cockpit anmelden",
+               "new": "Dieser Browser ist noch nicht angemeldet und braucht einmal einen Link.",
+               "how": "Gib <code>/cockpit</code> in einer Sitzung deiner Bridge ein, oder führe "
+                      "<code>python3 scripts/bridge-cockpit.py url</code> im Terminal aus und öffne den Link innerhalb einer Minute. "
+                      "Wird die Seite mindestens einmal im Monat benutzt, bleibt sie danach angemeldet."},
     "state": {"needs-you": "braucht dich", "waiting": "wartet", "working": "arbeitet", "shell": "Terminal"},
     "urgency": {"now": "jetzt", "today": "heute", "later": "später"},
     "where": {"area": "im Bereich", "tab": "als Tab hier", "workspace": "im eigenen Workspace",

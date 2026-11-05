@@ -197,9 +197,14 @@ python3 scripts/bridge-cockpit.py new-token # a new key on the next start
 in `.bridge/cockpit/token`, mode 0600) and no command prints it. `url` (and
 `start`) print a login link instead: it carries a code made from the key that
 works once and only for a minute. Open it in a browser; it sets a cookie for
-three days, and until then the bare address `http://127.0.0.1:<port>/` opens
-the page in that browser, so a bookmark is enough. After three days the page
-asks for a fresh link (`url`, or `/cockpit`). `new-token` makes a new key on
+30 days, renewed once a day while you use the page, and until then the bare
+address `http://127.0.0.1:<port>/` opens the page in that browser, so a
+bookmark is enough. A browser left alone for 30 days gets a page that says the
+sign-in has expired, that nothing is broken, and how to get a fresh link (`url`,
+or `/cockpit`); a browser that was never signed in gets one saying so. Both are
+in the cockpit's language and wear the Bridge's colours (`/colors.css` and
+`/signin.css` answer without a session, nothing else does). Behind a sign-in
+gateway nothing is renewed: there the gateway's token decides. `new-token` makes a new key on
 the next start, which also ends every cookie, and every browser goes through
 `url` once more.
 
@@ -269,10 +274,11 @@ collected as a button with ↻ on it (a click collects every source fresh; while
 a fresh pass runs it waits), the warnings before it (connection lost, a stale
 model, a failed pass: at every width, below 1280 pixels only the time gives way
 and stays in the tooltip), a loading indicator, Tabs, Ask, History, Notes (the
-bell: what the cockpit reported lately, newest first), a dot for the relay, and
-Help (`?`) last: Explain first in it, then the topics of the look-up card and the
-tour. The colours (auto, light, dark) and the look-up card stand in Settings,
-Appearance. Under it sits the page bar. In front stand the
+bell: what the cockpit reported lately, newest first), a dot for the relay,
+the colour mode (sun, moon, or the half circle for auto: one click goes on to
+the next, the same choice as Settings, Appearance, Colours), and Help (`?`) last:
+Explain first in it, then the topics of the look-up card and the tour. The
+look-up card stands in Settings, Appearance. Under it sits the page bar. In front stand the
 tabs of every day: "Start" (a new visit opens on it, a reload stays where it
 was), "Today" (the briefing), "Files" (the records, a search first, see [The Files
 tab](#the-files-tab)), "Chat", then the profile's pages with the
@@ -3360,8 +3366,8 @@ nothing a stranger could trigger:
   server swaps the code for a cookie (`HttpOnly`, `SameSite=Strict`, named
   after the port, `bw_token_<port>`, so two Bridges on one computer keep their
   own) whose value is also derived from the key and dated, so the cookie is
-  not the key and the server stops taking it after three days; the address
-  bar keeps no code;
+  not the key and the server stops taking it after 30 days, a page in use
+  getting a fresh one at most once a day; the address bar keeps no code;
 - every request must name `127.0.0.1:<port>`, `localhost:<port>` or, with
   `cockpit.local_name`, `<local_name>.localhost:<port>` as its host, every click must come from the page itself (`Origin`, a second value
   derived from the key in a header, `Sec-Fetch-Site`), and the page allows no frames,
@@ -4560,7 +4566,7 @@ to copy.
 
 | You see | Why, and what to do |
 |---|---|
-| the page says to open it with the link from `bridge-cockpit.py url` | first visit in this browser, the cookie is gone or older than three days, or `new-token` made a new key: run `python3 scripts/bridge-cockpit.py url` and open that link within a minute, or `/cockpit` |
+| the page says to open it with the link from `bridge-cockpit.py url` | first visit in this browser, the cookie is gone or was not used for 30 days (the page then says the sign-in has expired), or `new-token` made a new key: run `python3 scripts/bridge-cockpit.py url` and open that link within a minute, or `/cockpit` |
 | the bare address does not answer | the server is not running: `python3 scripts/bridge-cockpit.py start`, or `autostart on` so it runs from login |
 | `/cockpit` is an unknown command | the session does not run in the Bridge root, or `skills/cockpit` is missing in this Bridge; `python3 scripts/bridge-cockpit.py open` works from any terminal |
 | `/cockpit` or `open` says the cockpit is off | `cockpit.enabled` is not `true` or the `cockpit:` block has an invalid value |

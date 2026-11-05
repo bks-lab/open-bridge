@@ -4153,6 +4153,14 @@ export function taskLane(it) {
   return 'now'
 }
 
+/** The colour mode after `mode` for the header button: auto, light, dark and round again; an unknown one starts
+ *  at light, the first a click away from auto */
+export function nextTheme(mode) {
+  const order = ['auto', 'light', 'dark']
+  const at = order.indexOf(mode)
+  return at < 0 ? 'light' : order[(at + 1) % order.length]
+}
+
 /** The theme a page address forces for this one load: `?theme=light` or `?theme=dark`, else null.
  *  The static demo on the website uses it; the choice is never saved. theme.js repeats this rule,
  *  because a classic script in <head> cannot import a module. */
