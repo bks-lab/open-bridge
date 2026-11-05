@@ -300,8 +300,9 @@ def test_unknown_subagent_scope_fails_closed(empty_cwd):
     # Fall back to the path: an unrecognised wrapper or theme tag routes like no tag.
     ("workflow/contexts/example.yaml", "name: example\nscope: privat\n", "user"),
     ("themes/example.yaml", "meta:\n  scope: privat\n", "user"),
-    # A doc falls back to the docs/ default, which is core. The document says so.
-    ("docs/example.md", "---\nscope: privat\n---\n# Example\n", "core"),
+    # A doc fails closed since 2026-11-05: until then a typo fell back to the
+    # docs/ default, core, and shipped the doc (test_docs_tier.py).
+    ("docs/example.md", "---\nscope: privat\n---\n# Example\n", "user"),
     # Skills fail closed.
     ("skills/example/SKILL.md",
      "---\nname: example\ndescription: x\nmetadata:\n  scope: privat\n---\n", "user"),

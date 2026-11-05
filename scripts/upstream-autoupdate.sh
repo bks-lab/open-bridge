@@ -218,9 +218,12 @@ print(a, len(u) - a)') \
 # ---- the local check net ----
 # The fast checks the pre-commit always-on gate runs (edges, standing orders,
 # card index, reachability, the context budget), plus the two validators every
-# commit on main meets in CI. Each is skipped when absent: a fork that has not
-# taken a checker is not failing it. Measured on a live instance: under 2 s for
-# all seven, so the job pays twice that (before and after the merge).
+# commit on main meets in CI, and the kernel manifest. Each is skipped when
+# absent: a fork that has not taken a checker is not failing it. Measured on a
+# live instance: under 2 s for the first seven, so the job pays twice that
+# (before and after the merge). A checker that arrives with the merge and is red
+# keeps the merge and files an inbox item: that is how a fork learns of a CORE
+# rule its own files break (docs/updating.md § Once: docs/ is tiered by folder).
 CHECKS=(
   "validate-bridge.py"
   "validate-skill-scope.py"
@@ -229,6 +232,7 @@ CHECKS=(
   "context-index.py --check"
   "check-reachability.py"
   "measure-context.py"
+  "check-kernel.py"
 )
 CHECKS_LOG=/tmp/ob-autoupdate-checks.log
 CHECKS_DIR=""

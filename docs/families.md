@@ -34,4 +34,4 @@ Paths are relative to the repository root. Read a folder when its subject comes 
 | `workflow/workloads/` | one declared run on one machine; deliberately no status: field, state comes from the live service manager | /workload · `docs/workloads.md` |
 | `workflow/workspaces/` | a named binding of repos + config overlays | /workspace · `docs/workspaces.md` |
 
-Own lifecycle: `rules/` `protocols/standing-orders/` `skills/` `trackers/` `themes/` `.claude/agents/` `mods/` `work/` `docs/`
+Own lifecycle: `rules/` `protocols/standing-orders/` `skills/` `trackers/` `themes/` `.claude/agents/` `mods/` `work/` `docs/` `kernel/`

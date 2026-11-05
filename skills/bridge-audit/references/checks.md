@@ -690,6 +690,24 @@ CLAUDE.md; run python3 scripts/migrate-entry-file.py --check / --write`.
 are their own projects), and a core checkout's `AGENTS.md` (no
 `bridge-config.yaml`, so the script skips the `AGENTS.md` comparison).
 
+## Check 18: Docs outside their tier
+
+`docs/` ships as core and is tiered by folder, the way `rules/` is: a doc of
+another tier lives in `docs/user/`, `docs/org/` or `docs/personal/`
+(`docs/kernel.md`). A doc left in `docs/` with a `scope: user` line is kept
+local by that one line only; a typo or a deleted line ships it.
+
+**Algorithm:** run `python3 scripts/migrate-docs-tier.py --check`. Exit 1 is one
+finding per `move` or `stay` line it prints. `validate-bridge.py` reports the
+same files on its docs surface, so Check 16 shows them too; this check names the
+fix. When the script is absent the tree predates the folder rule: skip.
+
+**Finding shape:** `P1: docs/<name>.md declares scope user but sits in docs/,
+which ships as core; run python3 scripts/migrate-docs-tier.py, then --write`.
+
+**Not a hit:** a doc in its tier folder, a doc with no `scope:` line or with
+`scope: core` (a CORE guide), and a `scope:` inside a code fence.
+
 ## --cross-repo mode
 
 **Prerequisites:** `bridge-config.yaml.upstreams[]` defines targets and `gh` is authenticated.
@@ -729,3 +747,4 @@ not marked fixable below: print the suggested fix, leave application to the user
 | 14 Skill learnings | No | The missing half is content: a routing block or a first entry |
 | 15 Question map | No | Rephrasing a row or finding a moved answer is content |
 | 17 Entry-file shadow | No | Carrying lines is a content move: `scripts/migrate-entry-file.py --write` after its dry run |
+| 18 Docs outside their tier | No | Moving a doc is a content move: `scripts/migrate-docs-tier.py --write` after its dry run |

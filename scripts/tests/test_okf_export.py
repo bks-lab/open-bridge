@@ -983,6 +983,29 @@ def test_discover_sources_core_scope_excludes_work_and_rules(okf_export, bridge_
     assert rels == {"docs/sample-doc.md", "examples/acme-demo/README.md"}
 
 
+def test_discover_sources_core_scope_leaves_the_docs_tier_folders_out(okf_export, bridge_root):
+    # docs/user/, docs/org/ and docs/personal/ hold an instance's own docs
+    # (docs/kernel.md); the core scope is the export's privacy boundary.
+    for rel in ("docs/user/mine.md", "docs/org/shared.md", "docs/personal/notes.md"):
+        target = bridge_root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("---\ntitle: x\n---\n# x\n", encoding="utf-8")
+    core = {p.relative_to(bridge_root).as_posix() for p in okf_export.discover_sources(bridge_root, "core")}
+    assert core == {"docs/sample-doc.md", "examples/acme-demo/README.md"}
+    user = {p.relative_to(bridge_root).as_posix() for p in okf_export.discover_sources(bridge_root, "user")}
+    assert "docs/user/mine.md" in user
+
+
+def test_discover_sources_core_scope_leaves_an_unmigrated_private_doc_out(okf_export, bridge_root):
+    # A fork that has not moved its docs yet: the router still keeps them local,
+    # and so must the core export.
+    (bridge_root / "docs" / "mine.md").write_text("---\nscope: user\n---\n# Mine\n", encoding="utf-8")
+    (bridge_root / "docs" / "odd.md").write_text("---\nscope: usr\n---\n# Odd\n", encoding="utf-8")
+    core = {p.relative_to(bridge_root).as_posix() for p in okf_export.discover_sources(bridge_root, "core")}
+    assert "docs/mine.md" not in core and "docs/odd.md" not in core
+    assert "docs/sample-doc.md" in core
+
+
 def test_discover_sources_unknown_scope_raises_value_error(okf_export, bridge_root):
     with pytest.raises(ValueError):
         okf_export.discover_sources(bridge_root, "bogus")

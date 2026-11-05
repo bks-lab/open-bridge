@@ -1,7 +1,7 @@
 ---
 summary: "Directory structure: where everything lives, what format, what it does — the cluster-wrapper layout in prose (mirrors AGENTS.md)."
 type: reference
-last_updated: 2026-10-24
+last_updated: 2026-11-05
 related:
   - AGENTS.md
   - docs/extension-model.md
@@ -43,6 +43,7 @@ ecosystem.yaml          USER     Repo registry, instance base (created at onboar
 bridge-deck.config.yaml USER     Daemon collectors for the pixel dashboard
 AGENTS.md               CORE     Canonical operating manual (all agents), a kernel: invariants only
 docs/families.md        CORE     Generated config-family index (scripts/data-model.py --write), imported by AGENTS.md
+kernel/manifest.yaml    CORE     What every session reads, where it lives, when, and which file links it (docs/kernel.md)
 GEMINI.md               CORE     Thin pointer to AGENTS.md
 CLAUDE.md               USER     Legacy entry, never shipped: when present Claude Code loads only it (scripts/migrate-entry-file.py)
 README.md               CORE     Pitch + architecture (for humans)
@@ -50,7 +51,7 @@ DESIGN.md               CORE     Default design, and the index to identity/desig
 
 identity/   infra/   workflow/   ← Cluster wrappers (see below)
 .claude/    skills/    rules/    themes/    trackers/    docs/    scripts/    bin/
-protocols/   work/    imports/    examples/   agents/   mods/
+protocols/   work/    imports/    examples/   agents/   mods/   kernel/
 ```
 
 ## Cluster wrappers — Default-to-folder
@@ -163,7 +164,9 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 |------|-------|---------|
 | `protocols/` | CORE · `standing-orders/user/` USER | `standing-orders/*.md` = shipped always-on rules (CORE) · `standing-orders/user/*.md` = an instance's own orders (USER, never promoted) |
 | `work/` | USER | Tasks + logs: `tasks/` (finite) · `streams/` (long-running) · `done/YYYY-MM/` · `inbox/` (items that need a person, [`docs/inbox.md`](inbox.md)) · `cockpit/settled/` (rows settled in the cockpit, shared through git, [`docs/bridge-cockpit.md`](bridge-cockpit.md)) · `templates/` (CORE seeds) · `_learning/` · `archive/` · `imports/` |
-| `docs/` | CORE | Human-readable documentation, onboarding guides |
+| `docs/` | **Tiered by folder** | Human-readable documentation, onboarding guides, read when named. `docs/*` = core (ships to all) · `docs/org/**` = org · `docs/personal/**` = personal · `docs/user/**` = user (local only). The folder *is* the tier, as in `rules/`; a `scope:` line must agree with it, and `validate-bridge.py` fails a doc that sits outside its tier (`scripts/migrate-docs-tier.py` moves it). Since 2026-11-05: [`docs/kernel.md`](kernel.md). |
+| `docs/user/` | USER | An instance's own documents: architecture notes, landscapes, anything about this Bridge that must never ship |
+| `kernel/manifest.yaml` | CORE | The kernel manifest: every file a session reads before its first answer, where it lives, when it is read, which file links it ([`docs/kernel.md`](kernel.md)). `kernel/` is enumerated: only the files it names ship, anything else there is USER and fails `check-kernel.py`. |
 | `rules/` | **Tiered by folder** | Always-on rules. `rules/*.md` = core (ship to all) · `rules/org/**` = org (ship to org overlay) · `rules/user/**` = user (local only). The folder *is* the promote tier. `validate-bridge.py` checks each rule declares a valid `scope:` (presence + allowed value) and fails a rule whose `scope:` disagrees with its folder (a hard gate in CI). Each bridge layers its own under `rules/org/`+`rules/user/`. See [`rules/knowledge-growth.md`](../rules/knowledge-growth.md). |
 | `themes/` | CORE (shipped) · any other theme USER unless it declares `meta.scope` | Vocabulary themes (`professional`, `professional-de`, `professional-fr`, `professional-zh-cn`) |
 | `trackers/` | CORE | Tracker-provider playbooks (`github.md`, `ado.md`, `gitlab.md`) |
@@ -243,7 +246,7 @@ Mandant files are PII — they are not pushed to the OSS upstream (blocked by th
 CORE paths (developed on `main`):
 - `README.md`, `AGENTS.md`, `DESIGN.md`
 - A root `CLAUDE.md` is not part of the layout; when present, Claude Code loads only it and AGENTS.md disappears (scripts/migrate-entry-file.py moves its lines).
-- `docs/`, `rules/*.md` (core), `themes/` (shipped), `trackers/`, `skills/` (scope: core), `scripts/` (allowlisted tooling), `bin/` (bootstrap), `examples/` (reference instance)
+- `docs/` (outside `docs/user/`, `docs/org/`, `docs/personal/`), `kernel/manifest.yaml`, `rules/*.md` (core), `themes/` (shipped), `trackers/`, `skills/` (scope: core), `scripts/` (allowlisted tooling), `bin/` (bootstrap), `examples/` (reference instance)
 - `.claude/agents/` (scope: core)
 - `mods/README.md`, `mods/.claude-plugin/marketplace.json` and the shipped mod folders (`mods/cockpit-relay/`)
 - Templates and schemas in every wrapper folder:
@@ -255,6 +258,7 @@ USER paths (`user/{name}` branch):
 - `bridge-config.yaml`, `bridge-deck.config.yaml`
 - every instance file under `identity/<family>/`, `infra/<family>/` and `workflow/<family>/` (every non-`_` file, e.g. `identity/mandants/<id>.yaml`, `infra/remotes/<name>.yaml`, `workflow/projects/<slug>.yaml`, plus the skill-written `infra/backups/_state.yaml`)
 - `protocols/standing-orders/user/*.md` (own always-on rules)
+- `docs/user/` (own documents; `docs/org/` and `docs/personal/` route to those overlays)
 - `work/`
 - personal user-scope features (`scope: user`, never upstream) live in `rules/user/` + `work/streams/<stream>/` — such as a job-application pipeline
 - `.claude/agents/<name>.md` (scope: org/user)

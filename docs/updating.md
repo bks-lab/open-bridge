@@ -1,14 +1,16 @@
 ---
 summary: "Keeping a Bridge current: the manual CORE merge, the unattended daily auto-update and its fail-closed guards, org overlay sync, and how a CORE fix you made flows back without leaving a permanent divergence."
 type: guide
-last_updated: 2026-11-02
+last_updated: 2026-11-05
 related:
   - install.md
   - org-overlays.md
+  - kernel.md
   - ../rules/core-fix-workflow.md
   - ../scripts/upstream-autoupdate.sh
   - ../scripts/install-upstream-autoupdate.sh
   - ../scripts/migrate-entry-file.py
+  - ../scripts/migrate-docs-tier.py
   - ../scripts/check-all.py
 ---
 
@@ -177,6 +179,49 @@ member under `.bridge/workspaces/`, an example under `examples/`) loads only
 that file. The same holds for a `CLAUDE.md` or `CLAUDE.local.md` in any parent
 folder of the repo; `bin/setup` warns about those. Start Claude Code at the repo
 root to get `AGENTS.md`.
+
+## Once: docs/ is tiered by folder
+
+Since 2026-11-05 `docs/` is tiered by folder, the way `rules/` is: `docs/` ships
+as core, and a doc of another tier lives in `docs/user/`, `docs/org/` or
+`docs/personal/`, where the folder decides. A fork that kept its own docs in
+`docs/` with a `scope: user` (or `org`, `personal`) line was protected by that
+one line only; a typo or a deleted line sent the doc to the public upstream.
+The whole model: [kernel.md](kernel.md), [extension-model.md § Scope model](extension-model.md#scope-model).
+
+**What you see after the merge.** Nothing, if every doc of yours already sits
+in a tier folder or you have none. Otherwise `python3 scripts/validate-bridge.py`
+fails each misplaced doc and names the fix, and the daily update job keeps the
+merge and files an inbox item for it (a checker that arrives with the merge and
+finds your files red never rolls the merge back). Your docs stay local the whole
+time: the router still honours their `scope:` line until they move.
+
+**The fix, dry run first:**
+
+```bash
+python3 scripts/migrate-docs-tier.py            # the plan, nothing changes
+python3 scripts/migrate-docs-tier.py --write    # move and rewrite the links
+python3 scripts/migrate-docs-tier.py --check    # exit 1 while anything is left
+```
+
+Each doc moves to `docs/<tier>/<same name>` with `git mv`, so its history
+follows. Its own relative links and its frontmatter `related:` paths are
+rewritten for the new folder, and every link elsewhere that pointed at the old
+path (Markdown, YAML, plain text; repo-relative or relative to the linking file)
+is rewritten too. Code is never edited: a script or page that still names the
+old path is listed for you to look at. Records of the past are never edited
+either: the work log, closed tasks under `work/done/` and archives say what was
+true when they were written, so they keep the old path and are listed as kept. `docs/applications.md`, the one user doc
+the router knew by name, moves to `docs/user/` the same way.
+
+The script moves nothing it would have to guess about. An unknown `scope:` token
+(say `scope: usr`) is reported, and the router keeps that doc local in the
+meantime; fix the line and run the script again. A doc in a tier folder whose
+line names another tier, or a target that already exists, is reported for you to
+settle by hand. Then commit, and `validate-bridge.py` passes the docs surface.
+
+A new document about your own instance goes straight to `docs/user/`; a
+document your org overlay shares goes to `docs/org/`.
 
 ## Unattended, once a day
 

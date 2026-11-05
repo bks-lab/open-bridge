@@ -17,6 +17,14 @@ between updates; the two links above never do.
 
 ## Recent themes
 
+**The kernel, written down once; docs/ tiered by folder.** `kernel/manifest.yaml`
+names every file, command and listing a session reads before its first answer,
+where it lives, when it is read and which file links it, and
+`scripts/check-kernel.py` holds it to the router, the meter and the data model
+(docs/kernel.md). `docs/` gained `user/`, `org/` and `personal/` tier folders like
+`rules/`; a doc of another tier left in `docs/` fails `validate-bridge.py`, and
+`scripts/migrate-docs-tier.py` moves it (docs/updating.md).
+
 **AGENTS.md as a stable kernel.** The config-family index is generated from
 docs/data-model.yaml into docs/families.md, which AGENTS.md imports; a new
 family is a data row, not an edit to the manual, and a guard keeps lists out

@@ -85,6 +85,7 @@ TOP_LEVEL = (
     "mods/",
     "work/",
     "docs/",
+    "kernel/",
 )
 
 # CORE scenarios: generic on purpose, because CORE cannot know a machine's name

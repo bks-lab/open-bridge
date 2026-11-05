@@ -367,6 +367,20 @@ jobs:
       - name: Run scope-router regression suite
         run: python3 -m pytest scripts/tests/test_scope_router.py -q
 
+      # The kernel (docs/kernel.md): kernel/manifest.yaml names every file a
+      # session reads before its first answer, where it lives, when it is read
+      # and which file links it, and check-kernel.py holds each promise to the
+      # router, the meter and the data model. docs/ is tiered by folder like
+      # rules/; the suites pin that rule, the scope tables that document it, and
+      # the one-time move a fork runs (scripts/migrate-docs-tier.py).
+      - name: Hold the kernel manifest to the tree
+        run: python3 scripts/check-kernel.py
+      - name: Run kernel, docs-tier and scope-docs suites
+        run: >-
+          python3 -m pytest -q scripts/tests/test_check_kernel.py
+          scripts/tests/test_docs_tier.py scripts/tests/test_migrate_docs_tier.py
+          scripts/tests/test_scope_docs.py
+
       # The archive plan. /archive used to take "the oldest bucket with content"
       # and then reset the WHOLE log, so a log holding twelve periods archived one
       # and lost eleven. These pin that one run names every closed period, that the

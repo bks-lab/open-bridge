@@ -16,13 +16,17 @@ discipline that keeps generic CORE separate from instance-specific content.
 | `AGENTS.md` | always (session start) | The kernel: invariants, gates and section pointers. **Meta-content, not detail, and no lists.** CORE only: an instance never edits it. | Sections and byte ceiling declared in the `kernel:` block of `docs/data-model.yaml`; link out |
 | `docs/families.md` | always (imported by `AGENTS.md`) | The config-family index: which folder to read when. Generated from `docs/data-model.yaml`, never edited by hand. | One `route:` per family in the model |
 | `identity/agent/INSTANCE.md` | always (imported by `AGENTS.md`, so sub-agents see it too) | An instance's own always-on text: its families, registries, routes and vocabulary. USER, never shipped by CORE or an overlay. | Capped in `context-budget.yaml`; link out like `AGENTS.md` |
+| `kernel/manifest.yaml` | read by `scripts/check-kernel.py` | Every file, command and listing a session reads before its first answer: where it lives, when it is read, which file links it, who sees it. CORE only. | One entry per piece; a new always-on file is an entry here and a cap in `context-budget.yaml` ([`docs/kernel.md`](../docs/kernel.md)) |
 | `rules/*.md` | on demand (linked from AGENTS.md or triggered) | Always-on gates + detailed workflows: session-start, operations, promote-safety, task-management. The *how*. | One concern per file |
-| `docs/*.md` | human reference | Narrative, decision matrices, examples, onboarding. The *why* + the long form, for people. | Frontmatter (`summary`/`type`/`last_updated`) |
+| `docs/*.md` | human reference | Narrative, decision matrices, examples, onboarding. The *why* + the long form, for people. CORE: it ships to every Bridge. | Frontmatter (`summary`/`type`/`last_updated`) |
+| `docs/user/*.md` | human reference | A document about **this** instance: its landscape, its architecture, its own decisions. USER, never shipped. `docs/org/` and `docs/personal/` hold the overlay tiers. The folder is the tier. | Same frontmatter; no `scope:` line needed, and one that disagrees with the folder fails `validate-bridge.py` |
 | memory | recall | Hard-won facts, gotchas, decisions-and-why. One fact = one file. | Index line short |
 
 **Decision:**
 - Gate or workflow the agent must follow → `rules/`.
-- Explanation a human reads to understand the system → `docs/`.
+- Explanation a human reads to understand the system → `docs/`; the same about
+  your own instance → `docs/user/` (an org overlay's → `docs/org/`). Never a
+  non-core `scope:` line on a doc left in `docs/`: the folder is the tier.
 - A lesson about **one skill** (a trap, convention or example of using it),
   needed by that skill's next run → its `LEARNINGS.md` (§ A lesson about one
   skill). Checked first: it is the narrower case of the next line.
