@@ -178,9 +178,10 @@ irregular plurals: [`rules/discovery.md`](rules/discovery.md) · examples under
 Every file's tier (**core** → open-bridge · **org** → your org overlay ·
 **personal** → your own overlay · **user** → local) is decided by **where it
 lives**, not a tag you can forget: whole folders (`work/`, `imports/` USER;
-`docs/`, `trackers/` CORE), the `_`-prefix inside the cluster wrappers
+`trackers/` CORE), tier subfolders (`user/`, `org/`, `personal/` in `rules/`
+and `docs/`), the `_`-prefix inside the cluster wrappers
 (`_template`/`_schema` CORE, every instance USER), and enumerated lists where a
-folder mixes both (`scripts/`, `agents/`, `mods/`, `themes/`). Frontmatter
+folder mixes both (`scripts/`, `agents/`, `mods/`, `themes/`, `kernel/`). Frontmatter
 re-tiers only the files the table lists. The one table of values, aliases,
 frontmatter precedence and path rules, tested against the router:
 [`docs/extension-model.md` § Scope model](docs/extension-model.md#scope-model).
@@ -310,6 +311,7 @@ Checklist and per-type table: [`rules/file-creation.md`](rules/file-creation.md)
 
 Navigation lives in a few strong documents, not per-directory maps: this file,
 [`docs/families.md`](docs/families.md) (which config folder answers what),
+[`docs/kernel.md`](docs/kernel.md) (what every session reads, and from where),
 [`docs/where-things-live.md`](docs/where-things-live.md) (which file answers a
 question), [`docs/structure.md`](docs/structure.md) and
 [`rules/knowledge-growth.md`](rules/knowledge-growth.md) (where new knowledge

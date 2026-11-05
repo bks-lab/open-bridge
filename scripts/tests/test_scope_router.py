@@ -932,15 +932,18 @@ def test_docs_route_by_their_frontmatter_scope(docs_repo, path, expected):
 
 
 def test_no_path_pattern_claims_a_doc():
-    """A doc's tier is its frontmatter, never a filename baked into this CORE file.
+    """A doc's tier is its tier FOLDER, never a filename baked into this CORE file.
 
-    USER_PATTERNS may still hold a doc back (a guard, it names a feature, not an
-    instance); only the org list, which ships a file outward, is held to this.
+    docs/user/, docs/org/ and docs/personal/ are folders and carry no instance's
+    names (docs/kernel.md, test_docs_tier.py). USER_PATTERNS may still hold a
+    single doc back (a guard, it names a feature, not an instance); only the org
+    list, which ships a file outward, is held to this.
     """
+    tier_folders = {r"^docs/org/", r"^docs/user/", r"^docs/personal/"}
     for patterns in (cc.ORG_PATTERNS,):
         for p in patterns:
-            assert not p.startswith("^docs/"), (
-                f"path pattern {p!r} names docs by filename; declare `scope:` in the doc"
+            assert p in tier_folders or not p.startswith("^docs/"), (
+                f"path pattern {p!r} names docs by filename; move the doc to its tier folder"
             )
 
 

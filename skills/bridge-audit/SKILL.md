@@ -22,7 +22,8 @@ Check 9 only runs with `--cross-repo` (it fetches sister-repo trunks);
 Check 10 (agent-identity health), Check 11 (gate-shaped memory),
 Check 12 (config-driven CORE skills), Check 13 (user-level skill
 shadowing), Check 14 (skill learnings pairing), Check 15 (question
-map), Check 16 (checkers) and Check 17 (entry-file shadow) always run.
+map), Check 16 (checkers), Check 17 (entry-file shadow) and Check 18
+(docs outside their tier) always run.
 
 Read the referenced file ONLY when triggered.
 
@@ -59,6 +60,7 @@ Read the referenced file ONLY when triggered.
 | 15 | Question map | `python3 scripts/check-where-things-live.py`: a row of `docs/where-things-live.md` or the instance's `work/where-things-live.md` that is a topic instead of a question, a link or `#section` that does not resolve, or a question asked twice | P2 |
 | 16 | Checkers | `python3 skills/bridge-audit/scripts/run-checkers.py --json`: every `scripts/check-*.py`, `scripts/validate-*.py` and `scripts/measure-context.py` the tree carries, run bare as CI runs them; each non-zero exit or timeout is one finding, the checker's last line as its detail | P1 for validators, the budget and secret checks, else P2 |
 | 17 | Entry-file shadow | A root `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` beside `AGENTS.md`: Claude Code then loads only that file. `python3 scripts/migrate-entry-file.py --check`, fix with `--write` (`docs/updating.md`) | P1 |
+| 18 | Docs outside their tier | A doc in `docs/` whose `scope:` line says user, org or personal, or the legacy `docs/applications.md`: `docs/` ships as core and the folder is the tier (`docs/kernel.md`). `python3 scripts/migrate-docs-tier.py --check`, fix with `--write` (`docs/updating.md`) | P1 |
 
 ## Decision Tree
 

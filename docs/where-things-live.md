@@ -1,7 +1,7 @@
 ---
 summary: "A question-to-location map: the question in the words somebody asks it on the left, the file that answers it on the right. CORE ships the CORE rows; an instance appends its own in work/where-things-live.md"
 type: reference
-last_updated: 2026-10-28
+last_updated: 2026-11-05
 related:
   - ../rules/knowledge-growth.md
   - structure.md
@@ -36,6 +36,8 @@ searches again.
 | Which folder does a new kind of config go in? | [`docs/structure.md`](structure.md#cluster-wrappers--default-to-folder) |
 | Which AI CLI handles each service, and how can a worker choose one? | [`docs/ai-services.md`](ai-services.md), `workflow/ai-services/` |
 | Does this file ship to open-bridge, or stay in my instance? | [`docs/structure.md`](structure.md#core--user-split), [`docs/extension-model.md`](extension-model.md) |
+| Where does a document about my own instance go? | `docs/user/` ([`rules/knowledge-growth.md`](../rules/knowledge-growth.md#the-tiers)); a fork that kept one in `docs/` moves it with [`scripts/migrate-docs-tier.py`](updating.md#once-docs-is-tiered-by-folder) |
+| What does every session read before its first answer, where does each piece live, and which file links it? | [`docs/kernel.md`](kernel.md), [`kernel/manifest.yaml`](../kernel/manifest.yaml) |
 | How does a skill find every file of one config type? | [`rules/discovery.md`](../rules/discovery.md#contract) |
 | Which field values and states may I set on a tracker board? | [`workflow/projects/_template.yaml`](../workflow/projects/_template.yaml), then the instance's `workflow/projects/<slug>.yaml` |
 | Where does a secret go, and how does a config file refer to it? | [`rules/secret-placement.md`](../rules/secret-placement.md), [`infra/secret-stores/_template.yaml`](../infra/secret-stores/_template.yaml) |

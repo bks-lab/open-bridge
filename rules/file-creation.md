@@ -84,7 +84,7 @@ Run this every time, in order:
 | `protocols/standing-orders/<name>.md` | `protocols/standing-orders/_template.md` | — | `protocols/standing-orders/task-sync.md` |
 | `skills/<name>/SKILL.md` | — | — | any existing skill, e.g. `skills/mandants/SKILL.md`; then § Writing skill steps below |
 | `skills/<name>/LEARNINGS.md` + its routing block | `docs/skill-learnings.md` § Templates | `scripts/check-skill-learnings.py` | the template itself |
-| Doc with frontmatter (`docs/*.md`, `<folder>/README.md`) | — | — | shape in AGENTS.md § Documentation Navigation |
+| Doc with frontmatter (`docs/*.md` for CORE, `docs/user/*.md` for your own instance, `<folder>/README.md`) | — | — | shape in AGENTS.md § Documentation Navigation; the folder is the tier ([`docs/kernel.md`](../docs/kernel.md)) |
 
 ## Common gotchas (real history)
 
@@ -167,7 +167,8 @@ low-level workarounds. Nothing in this repo has measured the effect yet.
 ## When you legitimately don't have a template
 
 A handful of file types don't have explicit `_template.yaml` files
-(ad-hoc docs in `docs/`, skill `SKILL.md` files). In those cases:
+(ad-hoc docs in `docs/`, or in `docs/user/` when they are about your own
+instance; skill `SKILL.md` files). In those cases:
 
 1. Find the 2–3 most similar existing files
 2. Skim them for the implicit structure

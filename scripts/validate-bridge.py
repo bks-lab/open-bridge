@@ -13,6 +13,11 @@ frontmatter value (core|org|user|private) — the field `/promote` and
 `/bridge-sync` route on. A rule with missing or invalid scope fails the
 check (this is what keeps generic CORE rules from leaking to open-bridge).
 
+And that every `docs/**/*.md` sits where its tier says: `docs/` ships as core,
+a doc of another tier lives in `docs/user/`, `docs/org/` or `docs/personal/`,
+and a `scope:` line, where one exists, agrees with the folder. A misplaced doc
+fails and names `scripts/migrate-docs-tier.py`, which moves it (docs/kernel.md).
+
 This is the bridge-internal config validator. For ecosystem.yaml
 cross-reference checks, run `validate-ecosystem.py` (separate concern).
 
@@ -543,6 +548,88 @@ def validate_md_scope_surface(surface: dict) -> tuple[int, int]:
     return (passed, failed)
 
 
+# ---------------------------------------------------------------------------
+# docs/ tier: the folder is the tier, the way it is for rules/
+# ---------------------------------------------------------------------------
+# docs/ ships wholesale as core. A doc of another tier lives in docs/user/,
+# docs/org/ or docs/personal/, where the router answers by folder; outside them
+# a `scope:` line is a backstop only. Unlike rules/, a doc needs no `scope:`
+# line at all: an undeclared doc is a CORE guide. What fails is a line that
+# disagrees with the folder, because then the router and the reader believe
+# different things about the same file, and an unknown token, because nobody
+# can tell what the author meant. The verdict comes from the router's own
+# doc_placement(), so this check, the router and the migration cannot drift.
+
+DOCS_SURFACE = "docs"
+DOCS_FIX = "python3 scripts/migrate-docs-tier.py --write"
+
+
+def _router():
+    spec = importlib.util.spec_from_file_location(
+        "categorize_commits_for_docs", Path(__file__).resolve().parent / "categorize-commits.py"
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load categorize-commits.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def docs_tier_problems(root: Path) -> list[tuple[str, str]]:
+    """(repo-relative path, problem) for every doc that sits outside its tier."""
+    docs = Path(root) / "docs"
+    if not docs.is_dir():
+        return []
+    router = _router()
+    problems: list[tuple[str, str]] = []
+    for path in sorted(docs.rglob("*.md")):
+        rel = path.relative_to(root).as_posix()
+        place = router.doc_placement(rel, root)
+        if place.legacy:
+            problems.append((rel, (
+                "a user doc the router knows by name, from before docs/user/ existed: "
+                f"move it to docs/user/ with `{DOCS_FIX}` (docs/updating.md)")))
+            continue
+        if place.stray:
+            problems.append((rel, (
+                f"its `scope: {place.token}` line sits outside a frontmatter block at the very "
+                "top of the file, so it is not frontmatter: put it in a `---` block at the top "
+                f"(the router keeps the doc at {place.declared} meanwhile)")))
+            continue
+        if place.token is None:
+            continue
+        if place.unknown and place.folder == "core":
+            problems.append((rel, (
+                f"unknown scope '{place.token}': the router keeps it local (user), but "
+                "say what it is: no line or `core` for a CORE guide, or move it to "
+                "docs/user/, docs/org/ or docs/personal/")))
+        elif place.unknown:
+            problems.append((rel, (
+                f"unknown scope '{place.token}': the folder keeps it at its tier "
+                f"({place.folder}), but say what it is: no line, or `{place.folder}`")))
+        elif place.declared != place.folder and place.folder == "core":
+            problems.append((rel, (
+                f"declares scope '{place.token}' but sits in docs/, which ships as core: "
+                f"move it to docs/{place.declared}/ with `{DOCS_FIX}` (docs/updating.md)")))
+        elif place.declared != place.folder:
+            problems.append((rel, (
+                f"in docs/{place.folder}/ but declares scope '{place.token}': folder and "
+                "frontmatter disagree, and the folder decides")))
+    return problems
+
+
+def validate_docs_tier() -> tuple[int, int]:
+    """Print the docs/ tier verdict. Returns (pass, fail)."""
+    docs = REPO_ROOT / "docs"
+    total = len(list(docs.rglob("*.md"))) if docs.is_dir() else 0
+    problems = docs_tier_problems(REPO_ROOT)
+    for rel, problem in problems:
+        print(f"  FAIL  {rel}: {problem}")
+    passed = total - len(problems)
+    print(f"  PASS  {passed} doc(s) where their tier says")
+    return (passed, len(problems))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate Bridge configs against schemas")
     parser.add_argument("--surface", help="Validate only this surface (e.g. persona, rules)")
@@ -556,11 +643,14 @@ def main() -> int:
 
     json_surfaces = SURFACES
     md_surfaces = MD_SCOPE_SURFACES
+    docs_surface = True
     if args.surface:
         json_surfaces = [s for s in SURFACES if s["name"] == args.surface]
         md_surfaces = [s for s in MD_SCOPE_SURFACES if s["name"] == args.surface]
-        if not json_surfaces and not md_surfaces:
-            known = [s["name"] for s in SURFACES] + [s["name"] for s in MD_SCOPE_SURFACES]
+        docs_surface = args.surface == DOCS_SURFACE
+        if not json_surfaces and not md_surfaces and not docs_surface:
+            known = ([s["name"] for s in SURFACES] + [s["name"] for s in MD_SCOPE_SURFACES]
+                     + [DOCS_SURFACE])
             sys.stderr.write(
                 f"ERROR: unknown surface '{args.surface}'. Known: {', '.join(known)}\n"
             )
@@ -605,6 +695,12 @@ def main() -> int:
     for s in md_surfaces:
         print(f"\n[{s['name']} — scope frontmatter]")
         p, f = validate_md_scope_surface(s)
+        total_pass += p
+        total_fail += f
+
+    if docs_surface:
+        print(f"\n[{DOCS_SURFACE}: the folder is the tier]")
+        p, f = validate_docs_tier()
         total_pass += p
         total_fail += f
 

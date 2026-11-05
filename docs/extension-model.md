@@ -1,7 +1,7 @@
 ---
 summary: "Extension model: how CORE platform and USER extensions relate, plus the canonical Routing Map (where each routing domain lives in C-prime)"
 type: guide
-last_updated: 2026-10-24
+last_updated: 2026-11-05
 related:
   - AGENTS.md
   - docs/structure.md
@@ -38,15 +38,27 @@ columns of `structure.md`, to that function.
 An instance may also tag a file with the `name` of one of its
 `bridge-config.yaml` `upstreams[]` entries; that name maps to the entry's
 `scope`. It never shadows a generic value. An unrecognised token is not the
-same everywhere: skills and sub-agents fail closed to `user`, while wrapper
-families, themes and docs treat it as undeclared and fall back to the path, so
-an unshipped wrapper file or theme routes `user` and a doc routes **`core`**.
-Check the spelling of a doc's tag before a promote.
+same everywhere: skills, sub-agents and docs fail closed to `user`, while
+wrapper families and themes treat it as undeclared and fall back to the path,
+so an unshipped wrapper file or theme routes `user` too. A doc fell back to
+`core` until 2026-11-05, so a typo shipped it; `validate-bridge.py` now names
+an unknown token in `docs/`.
+
+**docs/ is tiered by folder**, the way `rules/` is. `docs/` ships wholesale as
+core; a doc of another tier lives in `docs/user/`, `docs/org/` or
+`docs/personal/`, and there the folder decides whatever the file says. Outside
+those folders a `scope:` line is only a backstop: a declared other tier is
+still honoured, so an instance that has not moved its docs yet never leaks,
+but `validate-bridge.py` fails the file as misplaced and
+`scripts/migrate-docs-tier.py --write` moves it ([updating.md](updating.md#once-docs-is-tiered-by-folder)).
+`kernel/` is enumerated, like `mods/`: only the files it names ship (today
+`kernel/manifest.yaml`); anything else there stays `user` and fails
+`check-kernel.py` ([kernel.md](kernel.md)).
 
 **Frontmatter beats the path.** For these files a declared tier can win over
 the path rules below. Wrapper families and themes are read before every path
 rule. Docs are read after the personal and user path rules, so a tag never
-unlocks a path those hold back. Skills and sub-agents are read after the
+unlocks a path those hold back, and never inside a docs tier folder. Skills and sub-agents are read after the
 personal, user and org path rules: a skill journal or an undeclared logo stays
 `user` whatever `SKILL.md` declares, and a sub-agent matched by an
 `ORG_PATTERNS` entry stays `org`. Anywhere else the router ignores a tag and
@@ -56,7 +68,7 @@ the path decides.
 |---|---|---|
 | instance files directly in `identity/personas/`, `identity/mandants/`, `identity/accounts/`, `identity/contracts/`, `identity/designs/` (Markdown, `scope:` inside the `---` fence), `infra/channels/`, `infra/remotes/`, `infra/secret-stores/`, `infra/a2a-peers/`, `workflow/briefings/`, `workflow/contexts/`, `workflow/projects/` | top-level `scope:` | path rule, `user` |
 | `themes/<name>.yaml`, plus the logo it names in `branding.logo_ascii:` | `meta.scope` | shipped themes `core`, any other `user` |
-| `docs/**/*.md` | top-level `scope:`, which cannot unlock a `user` or `personal` path | `core` |
+| `docs/**/*.md` outside `docs/user/`, `docs/org/`, `docs/personal/` | top-level `scope:`, a backstop that `validate-bridge.py` fails unless it says `core` | undeclared `core`, unrecognised `user` |
 | files under `skills/<name>/`, except the user paths above | `metadata.scope` in that skill's `SKILL.md` | `user` (fail closed) |
 | `.claude/agents/<name>.md`, except org path matches | top-level `scope:` | unrecognised `user`, undeclared `core` |
 
@@ -70,18 +82,18 @@ checked with no frontmatter present.
 | Rule | Example paths | Tier |
 |---|---|---|
 | a schema's own `_tests/` suite, for the families in `WRAPPER_TESTS_CORE` | `infra/remotes/_tests/case.yaml`, `workflow/workloads/_tests/case.yaml` | `core` |
-| personal folders and the personal registry | `rules/personal/example.md`, `ecosystem.personal.yaml`, `ecosystem.local.yaml` | `personal` |
-| whole USER folders and files | `work/log.md`, `imports/example.pdf`, `rules/user/example.md`, `protocols/standing-orders/user/example.md`, `.claude/mods/example/hook.js`, `bridge-config.yaml`, `CLAUDE.md`, `ecosystem.yaml`, `overlays.lock.yaml`, `edges.yaml`, `.bridge-origin`, `.gitignore` | `user` |
+| personal folders and the personal registry | `rules/personal/example.md`, `docs/personal/example.md`, `ecosystem.personal.yaml`, `ecosystem.local.yaml` | `personal` |
+| whole USER folders and files | `work/log.md`, `imports/example.pdf`, `rules/user/example.md`, `docs/user/example.md`, `protocols/standing-orders/user/example.md`, `.claude/mods/example/hook.js`, `bridge-config.yaml`, `CLAUDE.md`, `ecosystem.yaml`, `overlays.lock.yaml`, `edges.yaml`, `.bridge-origin`, `.gitignore` | `user` |
 | cluster-wrapper instances of the listed families | `identity/personas/example.yaml`, `identity/agent/SOUL.md`, `infra/backups/_state.yaml`, `workflow/projects/example.yaml` | `user` |
 | enumerated folders, anything not on the shipped list | `agents/example/agent.yaml`, `mods/example/hook.js`, `themes/example.yaml`, `skills/bridge-greeting/assets/logos/example.txt` | `user` |
 | skill journals | `skills/example/LEARNINGS.md` | `user` |
-| org registries and org rules | `ecosystem.acme.yaml`, `rules/org/example.md` | `org` |
+| org registries, org rules and org docs | `ecosystem.acme.yaml`, `rules/org/example.md`, `docs/org/example.md` | `org` |
 | `scripts/` outside `SCRIPTS_CORE_ALLOWLIST` | `scripts/example-tool.sh` | `user` |
 | a skill folder without a readable `SKILL.md` | `skills/example/references/notes.md` | `user` |
 | any other wrapper family, deny by default | `workflow/meetings/example.yaml`, `identity/mail-footers/example.yaml` | `user` |
 | wrapper templates and schemas of a family registered in `docs/data-model.yaml` | `workflow/meetings/_template.yaml`, `identity/personas/_schema.yaml`, `identity/designs/_template.md` | `core` |
 | wrapper templates and schemas of a family that is NOT registered there | `workflow/made-up-family/_schema.yaml`, `infra/made-up-family/_template.yaml` | `user` |
-| folders that ship wholesale (`docs/`, `rules/*.md`, `protocols/`, `trackers/`, `themes/`, `examples/`, `.github/`, `bin/`, `.claude/agents/`), the shipped root files and hooks | `AGENTS.md`, `docs/example.md`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
+| folders that ship wholesale (`docs/` outside its tier folders, `rules/*.md`, `protocols/`, `trackers/`, `themes/`, `examples/`, `.github/`, `bin/`, `.claude/agents/`), the shipped root files and hooks, and `kernel/manifest.yaml` | `AGENTS.md`, `docs/example.md`, `kernel/manifest.yaml`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
 | **anything no rule above claims** (fail-closed: shipping is opt-in) | `some/brand-new/thing.yaml`, `.claude/hooks/some-instance-hook.sh`, `NOTES.md` | `user` |
 
 **Fail-closed default.** A path no rule claims is `user`, never `core`. Shipping

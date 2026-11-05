@@ -62,6 +62,7 @@ CHECKS: list[tuple[str, list[str]]] = [
     ("check-figure-counts.py", ["scripts/check-figure-counts.py"]),
     ("check-generated-output.py", ["scripts/check-generated-output.py"]),
     ("check-inline-scripts.py", ["scripts/check-inline-scripts.py"]),
+    ("check-kernel.py", ["scripts/check-kernel.py"]),
     ("check-object-grammar.py", ["scripts/check-object-grammar.py"]),
     ("check-reachability.py", ["scripts/check-reachability.py"]),
     ("check-reachability.py --surface subagent", ["scripts/check-reachability.py", "--surface", "subagent"]),

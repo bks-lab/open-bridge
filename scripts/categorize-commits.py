@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+from typing import NamedTuple
 
 # ---------------------------------------------------------------------------
 # Path → scope table. Documented in docs/extension-model.md § Scope model;
@@ -38,6 +39,10 @@ import sys
 USER_PATTERNS = [
     r"^work/",                                        # incl. the job-application pipeline stream
     r"^rules/user/",                                  # user-tier rules (applications, …) — folder = tier
+    r"^docs/user/",                                   # an instance's own docs: the folder is the tier (parallels rules/user/)
+    # Legacy carve-out from before docs/user/ existed (LEGACY_USER_DOCS). Kept so
+    # a fork that has it never ships it; validate-bridge.py reports it and
+    # migrate-docs-tier.py moves it to docs/user/. A new instance doc goes there.
     r"^docs/applications\.md$",                       # personal applications feature — user-tier
     r"^bridge-config\.yaml$",
     # A root CLAUDE.md is instance-local: upstream it would hide AGENTS.md for
@@ -157,9 +162,11 @@ ORG_PATTERNS = [
     r"^\.claude/agents/customer-a-",
     r"^workflow/contexts/customer-a\.yaml$",          # CORE example context stays org (doc-system is now frontmatter-driven — see classify_file)
     r"^identity/mandants/org\.yaml$",
-    # docs/ is NOT path-matched either: a doc declares its own top-level
-    # `scope:` in its frontmatter (see _DOCS_RE / classify_file). A filename
-    # here put one instance's private document names inside a CORE file.
+    r"^docs/org/",                                    # org-tier docs: the folder is the tier (parallels rules/org/)
+    # Single docs are NOT path-matched: a filename here put one instance's
+    # private document names inside a CORE file. A doc of another tier lives in
+    # its tier folder (docs/user/, docs/org/, docs/personal/); outside them a
+    # `scope:` line is only a backstop (see _DOCS_RE / classify_file).
 ]
 
 # Personal tier — the operator's own private overlay (a `role: org-overlay` upstream
@@ -168,6 +175,7 @@ ORG_PATTERNS = [
 # via a frontmatter `scope: personal` (see _CLUSTER_WRAPPER_RE / classify_file).
 PERSONAL_PATTERNS = [
     r"^rules/personal/",                              # personal-tier rules — folder = tier (parallels rules/org, rules/user)
+    r"^docs/personal/",                               # personal-tier docs: the folder is the tier (parallels rules/personal/)
     r"^ecosystem\.personal\.yaml$",                   # personal/freelance registry fragment
     r"^ecosystem\.local\.yaml$",                      # legacy name of ecosystem.personal.yaml (pre-rename) — was mis-classified CORE
 ]
@@ -827,6 +835,15 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_kernel_invariants.py",
     "scripts/tests/test_migrate_entry_file.py",
     "scripts/tests/test_setup_claude_version.py",
+    # Registered 2026-11-05 with kernel/manifest.yaml: the checker that holds
+    # the manifest to the tree, the one-time move of a fork's docs into
+    # docs/user/, docs/org/ or docs/personal/, and the tests for both and for
+    # the folder rule itself (docs/kernel.md, docs/updating.md).
+    "scripts/check-kernel.py",
+    "scripts/migrate-docs-tier.py",
+    "scripts/tests/test_check_kernel.py",
+    "scripts/tests/test_docs_tier.py",
+    "scripts/tests/test_migrate_docs_tier.py",
 })
 
 
@@ -882,18 +899,23 @@ ROOT_CORE = frozenset({
 })
 
 # Folders that ship wholesale. Reached only AFTER every user/org/personal rule
-# above, so the carve-outs (docs/applications.md, rules/user/, rules/org/,
-# protocols/standing-orders/user/, undeclared themes, a doc's own `scope:`)
-# have already answered. A folder is listed because the whole folder is CORE by
-# design (docs/structure.md), not because it happened to hold only CORE files.
+# above, so the carve-outs (docs/user/, docs/org/, docs/personal/, rules/user/,
+# rules/org/, protocols/standing-orders/user/, undeclared themes, a doc's own
+# `scope:`) have already answered. A folder is listed because the whole folder is
+# CORE by design (docs/structure.md), not because it happened to hold only CORE
+# files.
 #   - rules/ is top-level files only; a subfolder is a tier and an unknown one
 #     stays user.
+#   - kernel/ is enumerated, not a folder: only the files it names ship (today
+#     kernel/manifest.yaml). Any other file there stays user, fail closed, and
+#     check-kernel.py fails on it (docs/kernel.md).
 #   - agents/ ships its runtime, template, gateway and tests; every
 #     agents/<name>/ instance is user (USER_PATTERNS).
 #   - bin/ is the setup entry point; scripts/ is its own allowlist; skills/ and
 #     .claude/agents/ route by declared scope.
 CORE_PATTERNS_RE = re.compile(
     r"^(?:docs|protocols|trackers|themes|mods|examples|\.github|bin)/"
+    r"|^kernel/manifest\.yaml$"                  # kernel/ is ENUMERATED: only what it names ships
     r"|^\.(?:claude|agents)/skills/"             # discovery symlink: skills/ routes by its own scope
     r"|^\.claude/agents/"                         # sub-agents; a declared scope already answered above
     r"|^rules/[^/]+\.md$"
@@ -999,7 +1021,93 @@ def _unquote(path: str) -> str:
     return path
 
 
-_DOCS_RE = re.compile(r"^docs/.+\.md$")
+# docs/ is tiered by FOLDER, the way rules/ is: docs/user/, docs/org/ and
+# docs/personal/ are matched by the path lists above, and the folder is the
+# tier there whatever a file says. Everywhere else in docs/ a `scope:` line is
+# a backstop for an instance that has not moved its docs yet: a declared other
+# tier is honoured (validate-bridge.py reports the file as misplaced and
+# scripts/migrate-docs-tier.py moves it), an unrecognised token fails closed.
+_DOC_TIER_FOLDERS = ("user", "org", "personal")
+_DOCS_RE = re.compile(r"^docs/(?!(?:user|org|personal)/).+\.md$")
+# The one instance filename the router still names in docs/ (USER_PATTERNS),
+# from before docs/user/ existed. It stays user so nothing leaks; the validator
+# reports it and migrate-docs-tier.py moves it, after which the carve-out goes.
+LEGACY_USER_DOCS = frozenset({"docs/applications.md"})
+
+
+class DocPlacement(NamedTuple):
+    """Where a doc sits and what it declares; see doc_placement()."""
+    folder: str            # the tier its folder gives it: core, user, org, personal
+    token: str | None      # the raw `scope:` token, None when there is none
+    declared: str | None   # the tier it claims: its token's tier, `user` for a legacy path, else None
+    unknown: bool          # a token the router does not know (a typo, a stale alias)
+    legacy: bool = False   # a LEGACY_USER_DOCS path, user by name rather than by folder
+    stray: bool = False    # its `scope:` line sits outside a frontmatter block at the very top
+
+
+def doc_placement(path: str, root: "os.PathLike[str] | str | None" = None) -> DocPlacement:
+    """The folder tier of a doc and the tier its own `scope:` line declares.
+
+    `path` is repo-relative (`docs/...`); the frontmatter is read from `root`
+    (the cwd when None). validate-bridge.py and migrate-docs-tier.py both ask
+    this, so the checker, the fix and the router can never disagree.
+    """
+    rel = _unquote(path)
+    parts = rel.split("/")
+    folder = parts[1] if len(parts) >= 3 and parts[1] in _DOC_TIER_FOLDERS else "core"
+    source = os.path.join(os.fspath(root), rel) if root is not None else rel
+    token, stray = _doc_scope(source)
+    declared = _SCOPE_MAP.get(token) if token else None
+    if rel in LEGACY_USER_DOCS:
+        return DocPlacement(folder, token, "user", False, legacy=True)
+    if stray:
+        # Fails closed like an unknown token, and is reported as misplaced.
+        return DocPlacement(folder, token, declared or "user", False, stray=True)
+    return DocPlacement(folder, token, declared, token is not None and declared is None)
+
+
+# A doc's frontmatter is the `---` block at the very top of the file, nothing
+# else: a guide that SHOWS a frontmatter block in a code fence must not take
+# the example's scope as its own. The value is read whole, so a quoted or
+# capitalised `scope: "User"` is seen; the generic reader's `[a-z]+` misses it,
+# and a missed token used to mean core.
+_DOC_FRONT_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
+_DOC_SCOPE_RE = re.compile(r"^scope:[ \t]*(.*?)[ \t]*$", re.M)
+
+
+def _doc_scope_value(raw: str) -> str:
+    value = re.sub(r"\s+#.*$", "", raw).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value.lower()
+
+
+def _doc_scope(path: str) -> tuple[str | None, bool]:
+    """(normalised `scope:` value, stray) for a doc.
+
+    The answer comes from the frontmatter block at the very top. Without one, a
+    column-0 `scope:` line anywhere outside a code fence still counts (a header
+    line before the block, a bare line), and `stray` says so: the router keeps
+    such a doc local and the validator asks for the line to move to the top.
+    Quotes and a trailing comment are stripped and the value is lowercased; an
+    empty value comes back as "", which maps to nothing and so fails closed.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            head = f.read(_SCOPE_READ_CAP)
+    except (OSError, UnicodeDecodeError):
+        return None, False
+    m = _DOC_FRONT_RE.match(head)
+    if m:
+        sm = _DOC_SCOPE_RE.search(m.group(1))
+        return (_doc_scope_value(sm.group(1)) if sm else None), False
+    sm = _DOC_SCOPE_RE.search(_blank_code_fences(head))
+    return (_doc_scope_value(sm.group(1)), True) if sm else (None, False)
+
+
+def read_doc_scope(path: str) -> str | None:
+    """The normalised `scope:` value of a doc, None when it declares none."""
+    return _doc_scope(path)[0]
 
 
 def classify_file(path: str) -> str:
@@ -1032,14 +1140,15 @@ def classify_file(path: str) -> str:
     for p in USER_PATTERNS:
         if re.search(p, path):
             return "user"
-    # A doc's own top-level `scope:` WINS over the whole-folder CORE default.
-    # After the personal/user guards, so a declaration never unlocks a path
-    # those lists hold back.
-    # Undeclared (or unrecognised) falls through and stays core, as before.
+    # Outside its tier folders a doc's `scope:` line is a backstop (see
+    # _DOCS_RE): a declared other tier is honoured so an unmigrated instance
+    # never leaks, and an unrecognised token fails CLOSED. Before 2026-11-05 a
+    # typo fell through to core, so `scope: usr` shipped a private doc.
+    # Undeclared stays core: docs/ ships wholesale.
     if _DOCS_RE.search(path):
-        mapped = _SCOPE_MAP.get(read_frontmatter_scope(path) or "")
-        if mapped:
-            return mapped
+        token = read_doc_scope(path)
+        if token is not None:
+            return _SCOPE_MAP.get(token, "user")
     for p in ORG_PATTERNS:
         if re.search(p, path):
             return "org"
