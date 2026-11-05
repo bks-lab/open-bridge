@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, a page's search over every day before with Ask AI, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-11-04
+last_updated: 2026-11-05
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -72,6 +72,7 @@ their defaults:
 |---|---|---|
 | `enabled` | `false` | `bridge-cockpit.py` refuses to start until this is `true` |
 | `port` | `8797` | the page answers on `http://127.0.0.1:<port>/` |
+| `local_name` | none | one DNS label (a-z, 0-9, `-`): the page also answers on `http://<local_name>.localhost:<port>/`, and `open`, `url` and `status` use that address (below, A name of its own) |
 | `open_in` | `auto` | `auto`: a cmux browser tab inside cmux, else your default browser; `cmux`, `system`, or `none` (print a login link, good once within a minute; with `--json` only the port) |
 | `relay` | `false` | `true`: the control session takes questions from the page as prompts; needs the `cockpit-relay` mod (below), so it stays off unless asked for |
 | `profile` | `briefing.default` | which briefing profile the page shows |
@@ -174,7 +175,8 @@ an edit, start a new session or run `/reload-plugins`. More in
 In a Claude Code session in the Bridge root, type `/cockpit`. The skill
 runs `python3 scripts/bridge-cockpit.py open --json`: the server starts (or the
 running one is reused) and the page opens where `open_in` says. The note in
-the conversation names only where it opened and `http://127.0.0.1:<port>/`,
+the conversation names only where it opened and its address (`http://127.0.0.1:<port>/`,
+or the `local_name` one),
 never a link with a key or a login code. It then reads `status --json` once:
 `can_launch: false` means no terminal driver starts agent tabs (`workplace.driver`),
 so it says so and offers to set the driver; the header of the page shows "agent
@@ -237,6 +239,22 @@ computer restarts. `autostart on` (macOS) installs a LaunchAgent
 `serve` at login and again after a crash, never after `stop`; it keeps the
 PATH of the shell that switched it on, since the cockpit calls cmux, gh, git
 and claude. `autostart off` removes it. It is off unless you switch it on.
+
+Since the Setup page lists **Cockpit at login** on a Mac with the cockpit on, it shows
+whether the login item is there (the LaunchAgent file, not a config value), and Let AI
+do it runs `autostart on`.
+
+**A name of its own.** `cockpit.local_name: my-bridge` gives the page the address
+`http://my-bridge.localhost:<port>/`. Every name ending in `.localhost` means this
+computer (RFC 6761); macOS resolves it without a hosts file, and so do the common
+browsers. The server takes exactly that one name beside `127.0.0.1` and `localhost`,
+for the address header and for the origin of every click; any other `.localhost`
+name stays refused, as before. The port stays in the address: without it the
+server would need port 80, which only an administrator may open. A value that is
+no DNS label stops the start, as a bad port does. After setting it, `stop` and
+`open` (the running server keeps the names it started with); the cookie belongs
+to one name, so the new address asks for one login link, which `open` brings.
+Two Bridges on one computer take two names.
 
 **Try it without a Bridge.** A live demo with invented data runs on the
 website: https://bks-lab.github.io/open-bridge/cockpit-demo/. Nothing there
@@ -3344,8 +3362,8 @@ nothing a stranger could trigger:
   own) whose value is also derived from the key and dated, so the cookie is
   not the key and the server stops taking it after three days; the address
   bar keeps no code;
-- every request must name `127.0.0.1:<port>` or `localhost:<port>` as its
-  host, every click must come from the page itself (`Origin`, a second value
+- every request must name `127.0.0.1:<port>`, `localhost:<port>` or, with
+  `cockpit.local_name`, `<local_name>.localhost:<port>` as its host, every click must come from the page itself (`Origin`, a second value
   derived from the key in a header, `Sec-Fetch-Site`), and the page allows no frames,
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,

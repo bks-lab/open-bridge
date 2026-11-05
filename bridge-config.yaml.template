@@ -185,6 +185,7 @@ work:
 # cockpit:
 #   enabled: false         # bridge-cockpit.py refuses to start until this is true
 #   port: 8797             # http://127.0.0.1:<port>/ (8790 to 8799 are partly taken by other Bridge services, see the doc)
+#   local_name: my-bridge  # optional: also http://my-bridge.localhost:<port>/ (one DNS label)
 #   open_in: auto          # auto = a cmux browser tab when inside cmux, else the default browser | cmux | system | none (print the link)
 #   relay: false           # true: the control session takes questions from the page as prompts (needs mods/cockpit-relay)
 #   person_name: ""        # how the chat and Jev name you; empty: "the user"
