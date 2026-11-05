@@ -45,7 +45,7 @@ Declaring the shape is optional and per field:
 ```yaml
   card:
     kind: index
-    keep: [org, local_root, work_system]
+    keep: [org, local_root]
     sections: [base, customers, internal, partners, workspaces]
     label: [description, display_name, name]
 ```

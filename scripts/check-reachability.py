@@ -41,7 +41,7 @@ TWO SURFACES. `--surface session` (the default) is the main session.
 `@`-imports and the harness listings, and nothing from Phase 1. An eager
 standing order is resident in the session and invisible to every dispatch, so
 a family named only there passes the first and fails the second. CORE names
-its families in docs/families.md, generated from docs/data-model.yaml and
+its families in kernel/families.yaml, generated from docs/data-model.yaml and
 imported by AGENTS.md, so both surfaces carry them.
 
 PLAIN NAMES. Codex, Copilot and Gemini read AGENTS.md as plain text and resolve
@@ -236,7 +236,7 @@ def remedy(repo_root) -> str:
     if is_core_checkout(repo_root):
         return (
             "A CORE family gets a `route:` in docs/data-model.yaml, then "
-            "`python3 scripts/data-model.py --write` refreshes docs/families.md, "
+            "`python3 scripts/data-model.py --write` refreshes kernel/families.yaml, "
             "which AGENTS.md imports. A family only this instance has is named "
             "in identity/agent/INSTANCE.md, which AGENTS.md imports too, so "
             "sub-agents see it. Only CORE edits AGENTS.md: editing it "

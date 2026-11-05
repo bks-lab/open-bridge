@@ -52,7 +52,7 @@ still honoured, so an instance that has not moved its docs yet never leaks,
 but `validate-bridge.py` fails the file as misplaced and
 `scripts/migrate-docs-tier.py --write` moves it ([updating.md](updating.md#once-docs-is-tiered-by-folder)).
 `kernel/` is enumerated, like `mods/`: only the files it names ship (today
-`kernel/manifest.yaml`); anything else there stays `user` and fails
+`kernel/manifest.yaml` and `kernel/families.yaml`); anything else there stays `user` and fails
 `check-kernel.py` ([kernel.md](kernel.md)).
 
 **Frontmatter beats the path.** For these files a declared tier can win over
@@ -93,7 +93,7 @@ checked with no frontmatter present.
 | any other wrapper family, deny by default | `workflow/meetings/example.yaml`, `identity/mail-footers/example.yaml` | `user` |
 | wrapper templates and schemas of a family registered in `docs/data-model.yaml` | `workflow/meetings/_template.yaml`, `identity/personas/_schema.yaml`, `identity/designs/_template.md` | `core` |
 | wrapper templates and schemas of a family that is NOT registered there | `workflow/made-up-family/_schema.yaml`, `infra/made-up-family/_template.yaml` | `user` |
-| folders that ship wholesale (`docs/` outside its tier folders, `rules/*.md`, `protocols/`, `trackers/`, `themes/`, `examples/`, `.github/`, `bin/`, `.claude/agents/`), the shipped root files and hooks, and `kernel/manifest.yaml` | `AGENTS.md`, `docs/example.md`, `kernel/manifest.yaml`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
+| folders that ship wholesale (`docs/` outside its tier folders, `rules/*.md`, `protocols/`, `trackers/`, `themes/`, `examples/`, `.github/`, `bin/`, `.claude/agents/`), the shipped root files and hooks, and the files `kernel/` names | `AGENTS.md`, `docs/example.md`, `kernel/manifest.yaml`, `kernel/families.yaml`, `themes/professional.yaml`, `trackers/github.md`, `protocols/standing-orders/example.md`, `scripts/categorize-commits.py`, `.claude/agents/example.md`, `agents/_runtime/server.py` | `core` |
 | **anything no rule above claims** (fail-closed: shipping is opt-in) | `some/brand-new/thing.yaml`, `.claude/hooks/some-instance-hook.sh`, `NOTES.md` | `user` |
 
 **Fail-closed default.** A path no rule claims is `user`, never `core`. Shipping
@@ -440,4 +440,4 @@ Operating-manual summary (auto-loaded at session start): [`AGENTS.md` § Skills 
 - [`docs/personas.md`](personas.md) — persona schema + multi-persona patterns
 - [`docs/mandants.md`](mandants.md) — mandant schema + recipient groups
 - [`docs/calendar.md`](calendar.md) — calendar entries + scheduling
-- [`docs/structure.md`](structure.md): canonical CORE/USER table; family map in [`docs/families.md`](families.md)
+- [`docs/structure.md`](structure.md): canonical CORE/USER table; family map in [`kernel/families.yaml`](../kernel/families.yaml)

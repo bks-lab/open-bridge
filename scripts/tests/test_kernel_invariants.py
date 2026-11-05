@@ -2,7 +2,7 @@
 
 AGENTS.md lost its family table and its feature sections; their guardrails
 moved into `route:` text in docs/data-model.yaml (rendered into
-docs/families.md, which AGENTS.md imports) or stayed in the kernel prose.
+kernel/families.yaml, which AGENTS.md imports) or stayed in the kernel prose.
 Both files reach every session and every sub-agent, so each invariant must
 be findable in one of them. A short needle per invariant keeps a later trim
 from dropping one silently: delete the sentence and this goes red.
@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-ALWAYS_ON = ["AGENTS.md", "docs/families.md"]
+ALWAYS_ON = ["AGENTS.md", "kernel/families.yaml"]
 
 # invariant -> needles that must ALL appear (case-insensitive, whitespace and
-# markdown emphasis normalised) in AGENTS.md or docs/families.md
+# markdown emphasis normalised) in AGENTS.md or kernel/families.yaml
 INVARIANTS = {
     "remote means a machine, never git remote": ["never `git remote`"],
     "check infra/remotes/ before asking which PC": ["which PC?"],
@@ -61,12 +61,12 @@ def test_invariant_is_always_on(name):
     text = always_on()
     missing = [n for n in INVARIANTS[name] if normalise(n) not in text]
     assert not missing, (f"invariant '{name}' left the always-on surface "
-                         f"(AGENTS.md + docs/families.md): {missing}")
+                         f"(AGENTS.md + kernel/families.yaml): {missing}")
 
 
 def test_agents_md_imports_the_index():
     lines = [line.rstrip() for line in (ROOT / "AGENTS.md").read_text(encoding="utf-8").splitlines()]
-    assert "@docs/families.md" in lines
+    assert "@kernel/families.yaml" in lines
 
 
 def test_promote_pointer_is_one_line_in_the_rules_list():

@@ -14,7 +14,7 @@ discipline that keeps generic CORE separate from instance-specific content.
 | Tier | Loaded | Holds | Size discipline |
 |---|---|---|---|
 | `AGENTS.md` | always (session start) | The kernel: invariants, gates and section pointers. **Meta-content, not detail, and no lists.** CORE only: an instance never edits it. | Sections and byte ceiling declared in the `kernel:` block of `docs/data-model.yaml`; link out |
-| `docs/families.md` | always (imported by `AGENTS.md`) | The config-family index: which folder to read when. Generated from `docs/data-model.yaml`, never edited by hand. | One `route:` per family in the model |
+| `kernel/families.yaml` | always (imported by `AGENTS.md`) | The config-family index: which folder to read when. Generated from `docs/data-model.yaml`, never edited by hand. | One `route:` per family in the model |
 | `identity/agent/INSTANCE.md` | always (imported by `AGENTS.md`, so sub-agents see it too) | An instance's own always-on text: its families, registries, routes and vocabulary. USER, never shipped by CORE or an overlay. | Capped in `context-budget.yaml`; link out like `AGENTS.md` |
 | `kernel/manifest.yaml` | read by `scripts/check-kernel.py` | Every file, command and listing a session reads before its first answer: where it lives, when it is read, which file links it, who sees it. CORE only. | One entry per piece; a new always-on file is an entry here and a cap in `context-budget.yaml` ([`docs/kernel.md`](../docs/kernel.md)) |
 | `rules/*.md` | on demand (linked from AGENTS.md or triggered) | Always-on gates + detailed workflows: session-start, operations, promote-safety, task-management. The *how*. | One concern per file |
@@ -32,7 +32,7 @@ discipline that keeps generic CORE separate from instance-specific content.
   skill). Checked first: it is the narrower case of the next line.
 - Non-obvious fact / workaround / decision → memory.
 - Routing for a config family → a `route:` in `docs/data-model.yaml`
-  (rendered to `docs/families.md`). Any other pointer needed every session → in
+  (rendered to `kernel/families.yaml`). Any other pointer needed every session → in
   CORE, one `AGENTS.md` sentence only if it is a new invariant, linking to the
   `rules/` or `docs/` detail; in an instance, a line in
   `identity/agent/INSTANCE.md`, never `AGENTS.md`, because a downstream edit to
@@ -45,7 +45,7 @@ discipline that keeps generic CORE separate from instance-specific content.
 
 **The kernel rule.** `AGENTS.md` gets no new section and no list. A new config
 family is a row with a `route:` in `docs/data-model.yaml` (it then appears in
-`docs/families.md`); feature mechanics go to `docs/<feature>.md`; only a new
+`kernel/families.yaml`); feature mechanics go to `docs/<feature>.md`; only a new
 invariant earns an `AGENTS.md` sentence. `scripts/data-model.py` fails CI on an
 undeclared section, a family table row or a file past the byte ceiling.
 

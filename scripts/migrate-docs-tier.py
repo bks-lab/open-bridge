@@ -21,7 +21,8 @@ job files an inbox item for it. This script is the fix that message names:
   * code is never edited: a script or page that still names the old path is
     listed, for a person to look at
   * records of the past are never edited either: the work log, closed tasks
-    (`work/done/`) and archives say what was true when they were written
+    (`work/done/`), archives, a task's or stream's deliverables and the inbox
+    say what was true when they were written
 
 Nothing is guessed. An unknown `scope:` token, a line that disagrees with a tier
 folder, or a target that already exists is reported and the file stays put.
@@ -236,8 +237,19 @@ def _outbound(text: str, old: str, new: str, root: Path | None = None,
     return "\n".join(out)
 
 
+# Records written at a moment, beside the log: what a task or stream delivered,
+# and the inbox items. They cite paths as evidence of what was true then.
+_RECORD_RE = re.compile(r"^work/(?:tasks|streams)/[^/]+/deliverables/|^work/inbox/")
+
+
+def _write(path: Path, text: str) -> None:
+    """Write back with the line endings the text already has (CRLF stays CRLF)."""
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+
+
 def _is_history(rel: str) -> bool:
-    return rel == HISTORY[0] or rel.startswith(HISTORY[1:])
+    return rel == HISTORY[0] or rel.startswith(HISTORY[1:]) or bool(_RECORD_RE.match(rel))
 
 
 def _mentions(text: str, rel: str, source: str) -> bool:
@@ -247,7 +259,8 @@ def _mentions(text: str, rel: str, source: str) -> bool:
 
 def _read(root: Path, rel: str) -> str | None:
     try:
-        return (root / rel).read_text(encoding="utf-8")
+        with open(root / rel, encoding="utf-8", newline="") as f:   # keep CRLF as it is
+            return f.read()
     except (OSError, UnicodeDecodeError):
         return None
 
@@ -324,7 +337,7 @@ def apply(root: Path, the_plan: Plan) -> list[str]:
         if text is not None:
             rewritten = _outbound(text, move.source, move.target, root, [])
             if rewritten != text:
-                dst.write_text(rewritten, encoding="utf-8")
+                _write(dst, rewritten)
         changed.append(move.target)
         for rel in _files(root):
             if rel == move.target or Path(rel).suffix not in REWRITE_SUFFIXES or _is_history(rel):
@@ -334,7 +347,7 @@ def apply(root: Path, the_plan: Plan) -> list[str]:
                 continue
             rewritten = _inbound(text, rel, move.source, move.target)
             if rewritten != text:
-                (root / rel).write_text(rewritten, encoding="utf-8")
+                _write(root / rel, rewritten)
                 changed.append(rel)
         if tracked:
             subprocess.run(["git", "-C", str(root), "add", "--", move.target],

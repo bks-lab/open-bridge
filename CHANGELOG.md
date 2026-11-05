@@ -17,6 +17,12 @@ between updates; the two links above never do.
 
 ## Recent themes
 
+**The family index moved into kernel/; work_system retired.** AGENTS.md imports
+`kernel/families.yaml`, generated as YAML; Phase 0 and Phase 1 have caps; the
+`work_system` block in ecosystem.yaml, which nothing read, is gone from the
+template and the registry card. `scripts/migrate-kernel.py` removes it from a
+fork and follows the moved index in a fork's own files (docs/updating.md).
+
 **The kernel, written down once; docs/ tiered by folder.** `kernel/manifest.yaml`
 names every file, command and listing a session reads before its first answer,
 where it lives, when it is read and which file links it, and

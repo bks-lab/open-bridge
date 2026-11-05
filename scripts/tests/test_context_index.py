@@ -352,9 +352,11 @@ def test_auto_detection_keeps_a_mixed_map_whole():
 
     Also found against the shipped registry: `work_system` was detected as a
     section because one of its three children happens to be a map, so
-    `enabled: true` stopped being resident. That value decides whether Phase 1
-    runs at all. When children are mixed, auto-detection keeps the block —
-    the fail-open direction is to carry more, never less.
+    `enabled: true` stopped being resident. (`work_system` itself was retired
+    on 2026-11-05: nothing read it, the switch is `work.enabled` in
+    bridge-config.yaml; the rule below stands for any mixed map.) When children
+    are mixed, auto-detection keeps the block: the fail-open direction is to
+    carry more, never less.
     """
     text = (
         "work_system:\n"

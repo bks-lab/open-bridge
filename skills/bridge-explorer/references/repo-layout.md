@@ -19,7 +19,7 @@ live", "repo structure", "core vs user", "/repo-layout".
 ### 1. Read truth sources
 
 - `docs/structure.md` per-path table — authoritative path list (never invent);
-  `docs/families.md` lists the config families.
+  `kernel/families.yaml` lists the config families.
 - `docs/repo-layout/regions.yaml` — schema:
   ```yaml
   regions:

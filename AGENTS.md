@@ -26,13 +26,13 @@ files yourself before your first answer, if it exists.** They are part of this m
 @identity/agent/IDENTITY.md
 @identity/agent/SOUL.md
 @identity/agent/INSTANCE.md
-@docs/families.md
+@kernel/families.yaml
 
 `identity/agent/IDENTITY.md` (who this agent is) and `identity/agent/SOUL.md` (how it
 behaves) are seeded at onboarding. `identity/agent/INSTANCE.md` is the instance's own
 always-on file: USER, never shipped by CORE or an overlay, free to `@`-import more. It
 is the only place a fork adds always-on text, so nobody edits this file.
-`docs/families.md` is the config-family index (which folder to read when), generated
+`kernel/families.yaml` is the config-family index (which folder to read when), generated
 from `docs/data-model.yaml`. All four reach sub-agents.
 
 ## Required Reading
@@ -155,7 +155,7 @@ Config lives in **three semantic cluster-wrappers**, every config type in its ow
 
 `identity/` WHO am I, to WHOM do I send · `infra/` WHERE does what run, HOW
 reach · `workflow/` WHAT happens when. The family index is
-[`docs/families.md`](docs/families.md), generated from `docs/data-model.yaml` by
+[`kernel/families.yaml`](kernel/families.yaml), generated from `docs/data-model.yaml` by
 `scripts/data-model.py`; a family without a row fails CI. Read a folder when its
 subject comes up; its `_template.yaml` says what belongs in one. Entries
 reference each other (`bridge_refs:`, `*_ref:`, `related_*:`), the graph a session
@@ -310,7 +310,7 @@ Checklist and per-type table: [`rules/file-creation.md`](rules/file-creation.md)
 ### Documentation Navigation
 
 Navigation lives in a few strong documents, not per-directory maps: this file,
-[`docs/families.md`](docs/families.md) (which config folder answers what),
+[`kernel/families.yaml`](kernel/families.yaml) (which config folder answers what),
 [`docs/kernel.md`](docs/kernel.md) (what every session reads, and from where),
 [`docs/where-things-live.md`](docs/where-things-live.md) (which file answers a
 question), [`docs/structure.md`](docs/structure.md) and
@@ -435,7 +435,7 @@ the CORE set is in [`docs/commands.md`](docs/commands.md).
 
 ## Guardrails beside the families
 
-Each family's own guardrail travels with its row in `docs/families.md`. These cut
+Each family's own guardrail travels with its row in `kernel/families.yaml`. These cut
 across families:
 
 - Before a user-facing visual, read `DESIGN.md` (the default design and the index to

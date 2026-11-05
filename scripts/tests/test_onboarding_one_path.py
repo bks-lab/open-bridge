@@ -148,7 +148,7 @@ def test_push_guard_remediation_commits_the_marker_before_the_push():
 def model_families() -> list[str]:
     """Every cluster-wrapper family in docs/data-model.yaml.
 
-    Not a regex over docs/families.md: its own-lifecycle line names
+    Not a regex over kernel/families.yaml: its own-lifecycle line names
     top-level rows (protocols/standing-orders/ and others) that the feature
     tour has no heading for.
     """
@@ -200,16 +200,16 @@ def test_moved_guardrails_still_exist():
 
 
 def test_agents_md_names_the_index_for_other_agents():
-    """Claude Code imports docs/families.md; every other agent has to be told
+    """Claude Code imports kernel/families.yaml; every other agent has to be told
     in plain text, since none of them resolves an @ line."""
     text = read("AGENTS.md")
     lines = [line.rstrip() for line in text.splitlines()]
-    assert "@docs/families.md" in lines, "AGENTS.md lacks the column-0 import @docs/families.md"
+    assert "@kernel/families.yaml" in lines, "AGENTS.md lacks the column-0 import @kernel/families.yaml"
     prose = [line for line in lines if not line.startswith("@")]
-    assert any("`docs/families.md`" in line for line in prose), \
-        "AGENTS.md never names `docs/families.md` outside the import line"
+    assert any("`kernel/families.yaml`" in line for line in prose), \
+        "AGENTS.md never names `kernel/families.yaml` outside the import line"
     for rel in ["GEMINI.md", ".github/copilot-instructions.md"]:
-        assert "`docs/families.md`" in read(rel), f"{rel} does not name `docs/families.md`"
+        assert "`kernel/families.yaml`" in read(rel), f"{rel} does not name `kernel/families.yaml`"
 
 
 # --- AGENTS.md: NEW-USER is a pointer, Phase 0 stays mandatory --------------

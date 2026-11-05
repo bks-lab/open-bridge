@@ -6,6 +6,8 @@ related:
   - ../kernel/manifest.yaml
   - ../scripts/check-kernel.py
   - ../scripts/migrate-docs-tier.py
+  - ../scripts/migrate-kernel.py
+  - ../kernel/families.yaml
   - extension-model.md
   - context-index.md
   - data-model.md
@@ -47,10 +49,10 @@ subject, and that is what `docs/` is for.
 | Place | Tier | Holds |
 |---|---|---|
 | `AGENTS.md` at the root | core | The entry file. It stays at the root because every agent looks for it there. |
-| `kernel/` | core, enumerated | The manifest. Only the files the router names ship (today `kernel/manifest.yaml`); any other file there stays user and `check-kernel.py` fails on it. Never an instance file. |
+| `kernel/` | core, enumerated | The manifest and the family index `kernel/families.yaml`, which `AGENTS.md` imports. Only the files the router names ship; any other file there stays user and `check-kernel.py` fails on it. Never an instance file. |
 | `identity/agent/` | user | The instance's always-on slots `IDENTITY.md`, `SOUL.md`, `INSTANCE.md`, imported by `AGENTS.md`. |
 | `context-budget.yaml` / `context-budget.user.yaml` | core / user | The caps on everything always-on, CORE's and the instance's. |
-| `docs/` | core | Guides, read when named. Not kernel, with one known exception (below). |
+| `docs/` | core | Guides, read when named. Not kernel. |
 | `docs/user/`, `docs/org/`, `docs/personal/` | user, org, personal | Docs of those tiers. The folder is the tier. |
 
 **The CORE/USER rule behind this table.** A CORE folder holds no instance file.
@@ -106,6 +108,13 @@ One entry per file, glob, command or listing. The header of
 | `debt` | a known contradiction: `kind`, `reason`, `until` (below) |
 | `note` | one line on why, when the fields do not already say it |
 
+Two lists sit beside `entries:`, for what a fork has to put right after an update:
+
+| List | Each item | What happens |
+|---|---|---|
+| `retired:` | `file` (a path or a glob), `key`, `reason`, `fix` | a top-level key nothing reads any more but a session still carries (`work_system` in every `ecosystem*.yaml`); `check-kernel.py` names each non-core file that still has it, and an instance card in `context-budget.user.yaml` that still keeps it; `scripts/migrate-kernel.py --write` removes both. A CORE file (the template) is upstream's to change |
+| `moved:` | `old`, `new` | a kernel path that moved (`docs/families.md` to `kernel/families.yaml`); `check-kernel.py` names an instance's own live file that still names the old path, `scripts/migrate-kernel.py --write` rewrites it. CORE files come with the update, and records of the past and code are never edited |
+
 ## What check-kernel.py holds
 
 - **where:** a required file exists, an `expect: absent` file does not, the
@@ -119,6 +128,8 @@ One entry per file, glob, command or listing. The header of
   import, the path, glob prefix or command for the rest
 - **who:** imports and listings reach sub-agents, `start` and `command` reads
   never do
+- **leftovers:** no file carries a `retired:` key, and no instance file of its
+  own names a `moved:` path
 
 It runs in `scripts/check-all.py`, in CI, in the check net of the daily
 upstream update (`scripts/upstream-autoupdate.sh`), and in `bridge-audit`.
@@ -134,14 +145,20 @@ list; this page does not copy it, because a copy would drift.
 
 ## The road from here
 
-1. **Now:** the manifest describes the kernel as it is, and `docs/` is tiered by
-   folder. The family index `docs/families.md` is the one always-on file in a
-   folder read when named; it carries a `placement` debt.
-2. **Next:** the family index moves into `kernel/` as `kernel/families.yaml`
-   (an `@`-line imports a YAML file as well as Markdown, and the bytes are the
-   same), the family model follows it, the caps of `context-budget.yaml` fold
-   into the manifest, and the Phase 0 and Phase 1 files get caps of their own.
-3. **Then the instance side:** an instance's own families move from
+1. **Done (#633):** the manifest describes the kernel, and `docs/` is tiered by
+   folder.
+2. **Done (2026-11-05):** the family index lives in `kernel/` as
+   `kernel/families.yaml`. An `@`-line imports YAML as text, the same as
+   Markdown (checked with a fresh session); the file is about 440 bytes larger
+   than the Markdown table because every entry repeats its keys, the price of a
+   file readers and tests take as data. `rules/session-start.md` and
+   `rules/operations.md` have caps. `work_system` in `ecosystem.yaml` is
+   retired: nothing read it, the registry card showed it to every session, and
+   the template claimed it switched the work system on.
+3. **Next:** the family model (`docs/data-model.yaml`) follows the index into
+   `kernel/`, and the caps of `context-budget.yaml` fold into the manifest, so
+   one file says where, when, how and how much.
+4. **Then the instance side:** an instance's own families move from
    `work/data-model.yaml` to `identity/agent/`, and their always-on index is
    generated like CORE's, never kept by hand.
 
@@ -154,7 +171,9 @@ and files an inbox item for it. One command moves the docs and rewrites the
 links: [updating.md § Once: docs/ is tiered by folder](updating.md#once-docs-is-tiered-by-folder).
 `check-kernel.py` names any always-on item of yours that neither the manifest
 nor your `context-budget.user.yaml` declares; `python3 scripts/measure-context.py
---init` declares it there.
+--init` declares it there. It also names a retired key your `ecosystem.yaml`
+still carries and any file of yours that still links a moved kernel path; one
+command puts both right: [updating.md § Once: the family index moved to kernel/](updating.md#once-the-family-index-moved-to-kernel).
 
 ## Adding to the kernel
 

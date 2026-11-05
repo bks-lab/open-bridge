@@ -5,10 +5,6 @@
 org: northwind-advisory
 local_root: ~/Developer
 
-work_system:
-  enabled: true
-  path: work/
-
 projects:
   northwind:
     display_name: "Northwind Advisory (partner hat)"

@@ -20,7 +20,7 @@ The fix is always more expensive than the prevention.
 
 Run this every time, in order:
 
-1. **Locate the destination folder.** Use the family index [`docs/families.md`](../docs/families.md)
+1. **Locate the destination folder.** Use the family index [`kernel/families.yaml`](../kernel/families.yaml)
    (AGENTS.md § Layout — Cluster-Wrappers keeps the Default-to-Folder rule). Personas/Mandants/Accounts → `identity/`;
    Remotes/Channels/Backups → `infra/`; Calendars/Contexts/Projects → `workflow/`;
    Protocols, Skills, Trackers, Themes → top-level.

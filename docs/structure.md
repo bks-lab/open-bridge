@@ -11,7 +11,7 @@ related:
 
 Where everything lives, what format, what it does.
 
-> **Operating truth:** the canonical family list is [`docs/data-model.yaml`](data-model.yaml), rendered to [`docs/families.md`](families.md) (always-on, imported by `AGENTS.md`) and [`docs/data-model.md`](data-model.md) (reference). [`AGENTS.md`](../AGENTS.md) section "Layout — Cluster-Wrappers" keeps the Default-to-Folder and Discovery rules. This file mirrors them for human reading. Visualisation: [`docs/repo-layout/regions.yaml`](repo-layout/regions.yaml).
+> **Operating truth:** the canonical family list is [`docs/data-model.yaml`](data-model.yaml), rendered to [`kernel/families.yaml`](../kernel/families.yaml) (always-on, imported by `AGENTS.md`) and [`docs/data-model.md`](data-model.md) (reference). [`AGENTS.md`](../AGENTS.md) section "Layout — Cluster-Wrappers" keeps the Default-to-Folder and Discovery rules. This file mirrors them for human reading. Visualisation: [`docs/repo-layout/regions.yaml`](repo-layout/regions.yaml).
 
 ## Reading map — what to look at first
 
@@ -42,7 +42,7 @@ bridge-config.yaml      USER     Main config (identity, theme, integrations)
 ecosystem.yaml          USER     Repo registry, instance base (created at onboarding; tracked on a private origin, kept out of git otherwise, see § gitignore policy). Never promoted: an org overlay shares its own ecosystem.<org>.yaml
 bridge-deck.config.yaml USER     Daemon collectors for the pixel dashboard
 AGENTS.md               CORE     Canonical operating manual (all agents), a kernel: invariants only
-docs/families.md        CORE     Generated config-family index (scripts/data-model.py --write), imported by AGENTS.md
+kernel/families.yaml    CORE     Generated config-family index (scripts/data-model.py --write), imported by AGENTS.md
 kernel/manifest.yaml    CORE     What every session reads, where it lives, when, and which file links it (docs/kernel.md)
 GEMINI.md               CORE     Thin pointer to AGENTS.md
 CLAUDE.md               USER     Legacy entry, never shipped: when present Claude Code loads only it (scripts/migrate-entry-file.py)
@@ -246,7 +246,7 @@ Mandant files are PII — they are not pushed to the OSS upstream (blocked by th
 CORE paths (developed on `main`):
 - `README.md`, `AGENTS.md`, `DESIGN.md`
 - A root `CLAUDE.md` is not part of the layout; when present, Claude Code loads only it and AGENTS.md disappears (scripts/migrate-entry-file.py moves its lines).
-- `docs/` (outside `docs/user/`, `docs/org/`, `docs/personal/`), `kernel/manifest.yaml`, `rules/*.md` (core), `themes/` (shipped), `trackers/`, `skills/` (scope: core), `scripts/` (allowlisted tooling), `bin/` (bootstrap), `examples/` (reference instance)
+- `docs/` (outside `docs/user/`, `docs/org/`, `docs/personal/`), `kernel/manifest.yaml`, `kernel/families.yaml`, `rules/*.md` (core), `themes/` (shipped), `trackers/`, `skills/` (scope: core), `scripts/` (allowlisted tooling), `bin/` (bootstrap), `examples/` (reference instance)
 - `.claude/agents/` (scope: core)
 - `mods/README.md`, `mods/.claude-plugin/marketplace.json` and the shipped mod folders (`mods/cockpit-relay/`)
 - Templates and schemas in every wrapper folder:

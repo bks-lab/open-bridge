@@ -747,7 +747,7 @@ def test_the_finding_points_at_the_index_and_instance_md(tmp_path):
     assert "docs/data-model.yaml" in finding
     assert "`route:`" in finding
     assert "`python3 scripts/data-model.py --write`" in finding
-    assert "docs/families.md" in finding
+    assert "kernel/families.yaml" in finding
     assert "identity/agent/INSTANCE.md" in finding
     assert "conflicts on every merge" in finding
 

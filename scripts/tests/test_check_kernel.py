@@ -106,6 +106,8 @@ def _ctx(root, entries=None, **over):
         tier_of=lambda p: TIERS.get(p, "user"),
         kernel_files=["kernel/manifest.yaml"],
         core_checkout=True,
+        retired=[],
+        moved=[],
     )
     base.update(over)
     return ck.Context(**base)
@@ -171,6 +173,16 @@ def test_a_missing_required_file_is_named(tmp_path):
 
 def test_an_absent_optional_file_is_fine(tmp_path):
     assert _problems(_ctx(_tree(tmp_path))) == []
+
+
+def test_a_file_expected_absent_says_what_to_do_with_it(tmp_path):
+    root = _tree(tmp_path)
+    _write(root, "docs/old.md", "# my own lines\n")
+    entries = _entries() + [{"path": "docs/old.md", "tier": "core", "role": "old place",
+                             "read": "named", "via": ["harness"], "reaches": [],
+                             "expect": "absent", "note": "Move your own lines to identity/agent/INSTANCE.md."}]
+    found = _problems(_ctx(root, entries, tier_of=lambda p: "core"))
+    assert any("docs/old.md" in p and "INSTANCE.md" in p for p in found), found
 
 
 def test_a_file_expected_absent_that_exists_is_named(tmp_path):
@@ -380,6 +392,61 @@ def test_exclude_on_a_path_entry_is_named(tmp_path):
     assert any("exclude" in p for p in _problems(_ctx(_tree(tmp_path), entries)))
 
 
+# ----------------------------------------------------- retired keys --
+
+RETIRED = [{"file": "ecosystem*.yaml", "key": "work_system",
+            "reason": "nothing reads it; the switch is work.enabled in bridge-config.yaml",
+            "fix": "python3 scripts/migrate-kernel.py --write"}]
+
+
+def test_a_retired_key_still_present_is_named_with_its_fix(tmp_path):
+    root = _tree(tmp_path)
+    _write(root, "ecosystem.yaml", "org: x\nwork_system:\n  enabled: true\nbase: {}\n")
+    found = _problems(_ctx(root, core_checkout=False, retired=RETIRED))
+    assert any("ecosystem.yaml" in p and "work_system" in p and "migrate-kernel.py" in p
+               for p in found), found
+
+
+def test_a_retired_key_in_an_org_fragment_or_on_the_own_card_is_named(tmp_path):
+    root = _tree(tmp_path)
+    _write(root, "ecosystem.acme.yaml", "acme: {}\nwork_system:\n  enabled: true\n")
+    _write(root, "ecosystem.example.yaml", "work_system:\n  enabled: true\n")
+    _write(root, "context-budget.user.yaml",
+           "items:\n  ecosystem.yaml:\n    card:\n      keep: [org, work_system]\n")
+    tier = lambda p: "core" if p == "ecosystem.example.yaml" else TIERS.get(p, "user")
+    found = _problems(_ctx(root, core_checkout=False, retired=RETIRED, tier_of=tier))
+    assert any("ecosystem.acme.yaml" in p and "work_system" in p for p in found), found
+    assert any("context-budget.user.yaml" in p and "work_system" in p for p in found), found
+    assert not any("ecosystem.example.yaml" in p for p in found), found
+
+
+def test_a_retired_key_that_is_gone_or_only_nested_is_fine(tmp_path):
+    root = _tree(tmp_path)
+    _write(root, "ecosystem.yaml", "org: x\nbase:\n  work_system: 1\n# work_system: old\n")
+    assert _problems(_ctx(root, core_checkout=False, retired=RETIRED)) == []
+    (root / "ecosystem.yaml").unlink()
+    assert _problems(_ctx(root, core_checkout=False, retired=RETIRED)) == []
+
+
+@pytest.mark.parametrize("broken", [{"file": "x.yaml"}, {"file": "x.yaml", "key": "k", "reason": "r"},
+                                    {"key": "k", "reason": "r", "fix": "f"}])
+def test_a_retired_entry_needs_file_key_reason_and_fix(tmp_path, broken):
+    found = _problems(_ctx(_tree(tmp_path), retired=[broken]))
+    assert any("retired" in p for p in found), found
+
+
+def test_an_own_file_that_still_names_a_moved_kernel_path_is_named(tmp_path):
+    root = _tree(tmp_path)
+    _write(root, "identity/agent/INSTANCE.md", "# I\n\nSee `docs/old.md`.\n")
+    _write(root, "work/log.md", "| x | docs/old.md |\n")
+    moved = [{"old": "docs/old.md", "new": "kernel/new.yaml"}]
+    ctx = _ctx(root, core_checkout=False, moved=moved)   # the real router decides the tier
+    found = _problems(ctx)
+    assert any("identity/agent/INSTANCE.md" in p and "kernel/new.yaml" in p and "migrate-kernel.py" in p
+               for p in found), found
+    assert not any("work/log.md" in p for p in found), found
+
+
 # --------------------------------------------------------------- debts --
 
 def test_a_debt_whose_contradiction_is_gone_is_stale(tmp_path):
@@ -409,6 +476,8 @@ def test_the_live_manifest_is_true():
     assert report.problems == [], "\n".join(report.problems)
 
 
-def test_the_live_manifest_lists_the_families_index_as_a_debt_until_it_moves():
+def test_the_family_index_lives_in_kernel_and_carries_no_placement_debt():
     report = ck.evaluate(ck.gather(REPO))
-    assert any("docs/families.md" in d for d in report.debts) or not (REPO / "docs" / "families.md").exists()
+    assert (REPO / "kernel" / "families.yaml").is_file()
+    assert not (REPO / "docs" / "families.md").exists()
+    assert not any("placement" in d for d in report.debts), report.debts
