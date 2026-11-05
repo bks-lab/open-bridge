@@ -282,6 +282,15 @@ skills.
 
 **Activate:** asked in the wizard (Phase D, D1e) whenever task management is on; otherwise `cockpit.enabled: true` in `bridge-config.yaml` (or `/bridge-onboard --add cockpit`), then `/cockpit`. The first visit opens with a short tour of the page (skippable, `cockpit.tour: false` switches the offer off), and "Explain this page" lays notes over any page. While something still keeps the cockpit from working well (task management off, no terminal driver, no inbox runner, only the built-in or a template-copied briefing profile, GitHub on without a signed-in `gh`), the welcome offers its **Setup** area of Settings first; that area also lists the features of this catalogue that are off, each with its Activate: step, and runs that step only in the agent tab "Let AI do it" opens (`cockpit.setup: false` leaves it out). Guide: `docs/bridge-cockpit.md`.
 
+### Cockpit at login (macOS)
+**What:** A login item for this Bridge's cockpit: macOS starts it at login and again after a crash, never after `stop`. The Setup page reads whether the item is there, not a config value.
+
+**When you need it:** The cockpit should simply be there, without `/cockpit` after every restart.
+
+**Activate:** `python3 scripts/bridge-cockpit.py autostart on` (off: `autostart off`, state: `autostart status`). It keeps the PATH of the shell that switched it on. Guide: `docs/bridge-cockpit.md`, Always there.
+
+**Offer only when** the cockpit is on and the computer is a Mac.
+
 ### Cockpit relay (Claude Code mod, early access)
 **What:** Lets the cockpit hand a question to the Claude Code session that steers the others ("To the control session" on the page). It only heartbeats and submits signed questions; no card, no command. Claude Code only (function hooks).
 

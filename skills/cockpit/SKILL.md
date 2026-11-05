@@ -19,8 +19,9 @@ python3 scripts/bridge-cockpit.py open --json
 
 It starts the server in the background (or reuses the running one) and opens the page itself: a
 browser tab in the control workspace when the terminal driver can, else the default browser. The
-answer is `{"opened": ..., "port": ..., "reused": ...}`: report in one line where it `opened` and
-the address `http://127.0.0.1:<port>/`, nothing else. Never run `url` or `start` just to show a link:
+answer is `{"opened": ..., "port": ..., "address": ..., "reused": ...}`: report in one line where it
+`opened` and its `address` (`http://127.0.0.1:<port>/`, or `http://<name>.localhost:<port>/` under
+`cockpit.local_name`), nothing else. Never run `url` or `start` just to show a link:
 their link carries a login code, and a login code does not belong in the conversation. Arguments after `/cockpit` pass through:
 `--via auto|cmux|system|none` picks where it opens, `status` and `stop` run that command instead of
 `open`. `/cockpit url` is never run here: tell the user to type `python3 scripts/bridge-cockpit.py

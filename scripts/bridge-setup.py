@@ -15,7 +15,8 @@ steps (Let AI do it, Advise, Close, Later); the catalogue's rows add later and n
 
 What it never does: switch a feature on or write bridge-config.yaml. Each row names the step that does
 (`/bridge-onboard --add <feature>` or the config key), and the agent tab Let AI do it opens runs it, where
-the person confirms. Checks read only this Bridge's files (discovery.mode confined holds), with two probes
+the person confirms. Checks read only this Bridge's files (discovery.mode confined holds; the one file read
+outside is the cockpit's own LaunchAgent, whether it exists), with two probes
 on a short time limit: the terminal driver through the Bridge's own scripts/workplace.py, and the gh CLI
 only while integrations.github.enabled is true. The one write is `act`: a feature put off for 30 days
 (`deferred`, `remind_after`) or silenced, in work/onboarding-state.yaml in the schema of
@@ -52,6 +53,7 @@ if str(CODE / "scripts") not in sys.path:
     sys.path.insert(0, str(CODE / "scripts"))
 
 from lib import briefing_view as bv  # noqa: E402  (path set above)
+from lib.bridge_cockpit import autostart  # noqa: E402
 
 CATALOG = CODE / "skills" / "bridge-onboard" / "references" / "features.yaml"
 TEMPLATE = CODE / "workflow" / "briefings" / "_template.yaml"
@@ -115,7 +117,9 @@ def _inside(root: Path, rel: str) -> Path | None:
 
 def holds(test: dict, root: Path, cfg: dict) -> bool:
     """One test of the catalogue: a config path that is set (a block with `enabled` counts by that), files of a
-    glob inside the Bridge (a path with a `_` part left out; a pattern ending in / counts folders), or one path that exists."""
+    glob inside the Bridge (a path with a `_` part left out; a pattern ending in / counts folders), one path that exists,
+    the cockpit's login item (`login_item: cockpit`, its LaunchAgent file, the one read outside the Bridge), or the
+    operating system (`platform: darwin`)."""
     if not isinstance(test, dict) or len(test) != 1:
         return False
     kind, arg = next(iter(test.items()))
@@ -133,6 +137,10 @@ def holds(test: dict, root: Path, cfg: dict) -> bool:
     if kind == "exists":
         path = _inside(root, str(arg))
         return path is not None and path.exists()
+    if kind == "login_item":
+        return arg == "cockpit" and sys.platform == "darwin" and autostart.installed(root)
+    if kind == "platform":
+        return isinstance(arg, str) and sys.platform == arg
     return False
 
 

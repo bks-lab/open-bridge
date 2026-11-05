@@ -9,7 +9,7 @@ those places: `bridge-cockpit.py url` prints a login code made from it
 (login_code, good once and for CODE_AGE_S), /?code= turns that into an HttpOnly
 SameSite=Strict cookie whose value is derived from the key and dated (good for
 COOKIE_AGE_S), so the bare address works from then on in that browser. Every request must
-name 127.0.0.1:<port> or localhost:<port> as Host (DNS rebinding); every POST also carries
+name 127.0.0.1:<port>, localhost:<port> or, under cockpit.local_name, <name>.localhost:<port> as Host (DNS rebinding); every POST also carries
 a second derived value (csrf, handed out by /api/bootstrap) in X-Bridge-Token, a matching
 Origin and a JSON body of at most 64 KB. No CORS headers, no access log, static files only from
 scripts/web/ with a fixed set of extensions.
@@ -849,7 +849,8 @@ class App:
 
     def server_json(self) -> dict:
         now = int(self.clock())
-        return {"v": 1, "pid": os.getpid(), "port": self.port, "started_ms": self.started_ms,
+        return {"v": 1, "pid": os.getpid(), "port": self.port, "local_name": getattr(self.cfg, "local_name", None),
+                "started_ms": self.started_ms,
                 "root": str(self.root), "instance": self.instance, "version": VERSION, "clients": self.connected_count(),
                 "relay_online": bool(self.relay_state(with_records=False)["online"]), "updated_ms": now}
 
@@ -1020,10 +1021,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ checks
 
+    def local_names(self) -> tuple:
+        """127.0.0.1, localhost and, under cockpit.local_name, that one name on .localhost: nothing else"""
+        name = getattr(self.app.cfg, "local_name", None)
+        return ("127.0.0.1", "localhost") + ((f"{name}.localhost",) if name else ())
+
     def local_host(self) -> bool:
         host = self.headers.get("Host", "")
         port = self.app.port
-        return host in (f"127.0.0.1:{port}", f"localhost:{port}")
+        return host in tuple(f"{n}:{port}" for n in self.local_names())
 
     def host_ok(self) -> bool:
         gate = self.app.sign_in
@@ -1033,7 +1039,7 @@ class Handler(BaseHTTPRequestHandler):
         port = self.app.port
         if self.app.sign_in:
             return origin == f"https://{self.app.sign_in.settings.host}"
-        return origin in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+        return origin in tuple(f"http://{n}:{port}" for n in self.local_names())
 
     def fetch_site_ok(self) -> bool:
         site = self.headers.get("Sec-Fetch-Site")

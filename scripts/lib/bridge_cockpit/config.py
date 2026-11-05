@@ -92,6 +92,8 @@ class WebConfig:
     voice: bool
     target: str
     control: str | None
+    # cockpit.local_name: the page also answers under <local_name>.localhost:<port> (docs/bridge-cockpit.md)
+    local_name: str | None = None
     # the names of workplace.workspaces, in their order: the areas an inbox item can be given (detail page)
     areas: tuple = ()
     # (name, aliases, repo globs) of the workspaces that carry repos: (owner/repo globs): an issue or PR without an
@@ -411,10 +413,11 @@ def launch_model_of(value: Any, jev_model: str | None = None) -> dict:
 # The keys of the cockpit: block and what each takes. The loader below keeps its fallbacks; check_block only
 # says when one applied, so a typo shows in `status` and on the settings page instead of nowhere.
 # (kind, detail): bool, text, choice (the allowed values), int and number (the minimum the loader clamps to),
-# block (the keys of a nested mapping); port is checked by the loader itself (a bad one is an error),
+# block (the keys of a nested mapping); port and local_name are checked by the loader itself (a bad one is an error),
 # launch_model, ticker and session_guide by their own modules' rules, key by key.
 BLOCK = {
-    "enabled": ("bool", "enabled"), "port": ("port", "port"), "open_in": ("choice", "open_in", OPEN_IN),
+    "enabled": ("bool", "enabled"), "port": ("port", "port"), "local_name": ("port", "local_name"),
+    "open_in": ("choice", "open_in", OPEN_IN),
     "relay": ("bool", "relay"), "person_name": ("text", "person_name"), "profile": ("text", "profile"),
     "tabs_seconds": ("int", "tabs_seconds", 5), "full_minutes": ("number", "full_minutes", 1),
     "snapshot_minutes": ("number", "snapshot_minutes", 0), "idle_minutes": ("number", "idle_minutes", 0),
@@ -431,6 +434,8 @@ BLOCK = {
     "served": ("served",),
 }
 USAGE_KEYS = ("remotes", "remote_file", "host", "clicks")   # read by usage.remote_hosts, clicks by the loader
+# cockpit.local_name: the page also answers under <label>.localhost (RFC 6761: always this computer)
+LOCAL_NAME_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 HOST_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 BLOCK_KEYS = tuple(BLOCK)
 
@@ -768,6 +773,10 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     else:
         port = DEFAULT_PORT
 
+    local_name = w.get("local_name")
+    if local_name is not None and not (isinstance(local_name, str) and LOCAL_NAME_RE.fullmatch(local_name)):
+        raise WebConfigError(f"{where}.local_name must be one DNS label (a-z, 0-9 and -, at most 63, no dot), "
+                             f"got {local_name!r}")
     open_in = w.get("open_in") if w.get("open_in") in OPEN_IN else "auto"
     relay = w.get("relay") is True      # off unless asked for: it needs the cockpit-relay mod in the control session
     profile = w.get("profile") if isinstance(w.get("profile"), str) and w.get("profile") else None
@@ -818,7 +827,7 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
     fallback = "flow" if "flow" in work_views and flow["enabled"] else work_views[0]
     transcripts, meetings = history_paths_of(raw)
 
-    cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, open_in=open_in, relay=relay,
+    cfg = WebConfig(root=root, enabled=w.get("enabled") is True, port=port, local_name=local_name, open_in=open_in, relay=relay,
                     profile=profile, tabs_seconds=tabs_seconds, language=language, full_minutes=full_minutes,
                     voice=voice, target=target, control=control, areas=areas, area_repos=area_repos, area_aliases=area_aliases, area_tags=area_tags, area_default=area_default, jev_enabled=ts.get("enabled") is True,
                     jev_key_ref=jev_key_ref, person_name=text_or_none(w.get("person_name"), 60),

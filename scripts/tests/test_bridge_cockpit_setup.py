@@ -120,7 +120,7 @@ def test_every_entry_says_how_it_is_on_how_it_is_switched_on_and_where_its_state
         assert re.fullmatch(r"[a-z][a-z0-9_]{0,39}", e["state_key"]), e
         assert isinstance(e["enabled_when"], list) and e["enabled_when"], e
         for test in e["enabled_when"] + (e["offer_only_when"] if isinstance(e.get("offer_only_when"), list) else []):
-            assert isinstance(test, dict) and len(test) == 1 and next(iter(test)) in ("config", "files", "exists"), e
+            assert isinstance(test, dict) and len(test) == 1 and next(iter(test)) in ("config", "files", "exists", "login_item", "platform"), e
         assert e.get("offer_only_when", []) == "never" or isinstance(e.get("offer_only_when", []), list), e
         if e.get("doc"):
             assert (ROOT / e["doc"]).is_file(), e["doc"]
@@ -635,3 +635,33 @@ def test_a_broken_service_file_is_one_finding(tmp_path):
     (de / "workflow" / "ai-services").mkdir(parents=True)
     (de / "workflow" / "ai-services" / "triage.yaml").write_text("provider: [", encoding="utf-8")
     assert checks(de)[0]["title"] == bv.LABELS_DE["setup_ai_config_invalid"].format(service="triage")
+
+
+# ---------------------------------------------------------------- the cockpit at login: a row read from the login item
+
+def test_the_cockpit_at_login_is_offered_on_macos_and_counts_as_on_once_its_login_item_is_there(tmp_path, monkeypatch):
+    from lib.bridge_cockpit import autostart
+    monkeypatch.setattr(autostart, "LAUNCH_AGENTS", tmp_path / "agents")
+    monkeypatch.setattr(bs.sys, "platform", "darwin")
+    root = bridge(tmp_path)
+    rows = {r["id"]: r for r in available(root)}
+    assert "python3 scripts/bridge-cockpit.py autostart on" in rows["cockpit-autostart"]["detail"]
+    (tmp_path / "agents").mkdir()
+    autostart.plist_path(root).write_text("<plist/>", encoding="utf-8")
+    assert "cockpit-autostart" not in ids(available(root))
+    assert "cockpit-autostart" in ids(bs.check_part(root, "on", probes=Probes(), today=TODAY))
+
+
+def test_the_cockpit_at_login_is_never_offered_elsewhere_or_with_the_cockpit_off(tmp_path, monkeypatch):
+    from lib.bridge_cockpit import autostart
+    monkeypatch.setattr(autostart, "LAUNCH_AGENTS", tmp_path / "agents")
+    monkeypatch.setattr(bs.sys, "platform", "linux")
+    assert "cockpit-autostart" not in ids(available(bridge(tmp_path / "a")))
+    monkeypatch.setattr(bs.sys, "platform", "darwin")
+    assert "cockpit-autostart" not in ids(available(bridge(tmp_path / "b", {**GOOD, "cockpit": {"enabled": False}})))
+
+
+def test_a_login_item_or_platform_test_with_a_wrong_argument_holds_nothing(tmp_path):
+    root = bridge(tmp_path)
+    assert bs.holds({"login_item": "other"}, root, GOOD) is False
+    assert bs.holds({"platform": 3}, root, GOOD) is False

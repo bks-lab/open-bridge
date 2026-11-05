@@ -16,6 +16,8 @@
 #       - {config: integrations.github.enabled}      # a bridge-config.yaml path that is true / not empty
 #       - {files: "infra/remotes/*.yaml"}            # a glob inside the Bridge, `_` paths left out; `dir/` for folders
 #       - {exists: infra/backups/topology.yaml}      # one path inside the Bridge
+#       - {login_item: cockpit}                    # the cockpit's LaunchAgent file exists (macOS)
+#       - {platform: darwin}                       # the operating system, as Python's sys.platform names it
 #     activate: "/bridge-onboard --add github-projects"   # the catalogue's Activate: step, verbatim in spirit
 #     state_key: github_projects     # its key under suggestions: in work/onboarding-state.yaml
 #     offer_only_when:               # optional: ALL must hold before it is offered (same tests as enabled_when),
@@ -207,6 +209,16 @@ features:
     enabled_when: [{config: cockpit.enabled}]
     activate: "/bridge-onboard --add cockpit"
     state_key: cockpit
+    doc: docs/bridge-cockpit.md
+  - id: cockpit-autostart
+    catalog: "Cockpit at login (macOS)"
+    group: visualization
+    title: "Cockpit at login"
+    when: "The cockpit should always be there: started at login and again after a crash."
+    enabled_when: [{login_item: cockpit}]
+    activate: "python3 scripts/bridge-cockpit.py autostart on"
+    state_key: cockpit_autostart
+    offer_only_when: [{config: cockpit.enabled}, {platform: darwin}]
     doc: docs/bridge-cockpit.md
   - id: cockpit-relay
     catalog: "Cockpit relay (Claude Code mod, early access)"

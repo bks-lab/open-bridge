@@ -584,6 +584,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/tabs.py",
     "scripts/lib/bridge_cockpit/asks.py",                 # what a waiting tab asks, read off its screen
     "scripts/tests/test_bridge_cockpit_asks.py",
+    "scripts/lib/bridge_cockpit/autostart.py",            # the cockpit's login item: label and LaunchAgent path
+    "scripts/tests/test_bridge_cockpit_local_name.py",
     "scripts/tests/test_bridge_cockpit_idle.py",        # a finished tab is done, not waiting
     "scripts/lib/bridge_cockpit/actions.py",
     "scripts/lib/bridge_cockpit/actions_base.py",
