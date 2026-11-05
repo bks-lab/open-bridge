@@ -53,8 +53,14 @@ If no path argument, scan **all** of these sources (deduplicate by filename):
    Resolve paths relative to `doc_sensor.onedrive_root` (the PARA tree root).
    This catches `2_AREAS/Import_Audio/` after the PARA migration.
 3. **Optional fallback search** (only if above two yield nothing):
-   `~/Desktop/`, `~/Downloads/`, `~/Library/Application Support/com.apple.voicememos/`,
-   sibling Bridge instances' `work/tasks/*/transcripts/`, `work/streams/*/transcripts/`.
+   `~/Desktop/`, `~/Downloads/`, and the Voice Memos store
+   `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/` (macOS;
+   unreadable from a launchd-started shell even with Full Disk Access, so this source
+   only works from an interactive session). Another Bridge instance's
+   `work/tasks/*/transcripts/` and `work/streams/*/transcripts/` are searched **only**
+   when a workspace in `workflow/workspaces/` declares that instance as a member under
+   `repos:`; an instance no workspace names is never read
+   ([`rules/multi-instance-isolation.md`](../../../rules/multi-instance-isolation.md) Gate 1).
 
 Match patterns: `*.mp3`, `*.m4a`, `*.wav`, `*.webm`, `*.txt`, `*.md`, `*.vtt`, `*.srt`.
 

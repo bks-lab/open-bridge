@@ -282,7 +282,7 @@ class APromiseToReportAFailureNeedsAFloor(MachineGuard):
     HOHL = "RC=$?\necho done\nexit 0\n"
 
     def repo(self, *, script=HOHL, notify="[failure, missing]",
-             write_script=True, outside=False):
+             write_script=True, outside=False, retired=False):
         root = self.tmpdir()
         make_repo(root, declarations=())
         target = root / "scripts" / "report.sh"
@@ -304,7 +304,9 @@ class APromiseToReportAFailureNeedsAFloor(MachineGuard):
             "response:\n"
             "  evidence: log-trace\n"
             f"  notify_on: {notify}\n"
-            "  notify_via: example-notify\n",
+            "  notify_via: example-notify\n"
+            + ('retired: {at: "2026-10-30", reason: "switched off on purpose"}\n'
+               if retired else ""),
             encoding="utf-8")
         return root
 
@@ -343,6 +345,24 @@ class APromiseToReportAFailureNeedsAFloor(MachineGuard):
     def test_comments_and_blank_lines_after_it_are_skipped(self):
         self.assertTrue(model.ends_in_bare_exit_zero("exit 0\n\n# end\n\n"))
 
+    def test_a_script_that_fails_earlier_with_its_own_code_is_not_the_case(self):
+        """Every failure path leaves before the last line with its own code, and
+        the final `exit 0` is reached only on success. That script CAN say it
+        failed, so "returns zero however the run went" would be false. Found on
+        a real update job whose failure paths exit 65, 75 and 1."""
+        script = ('[ -d src ] || { echo missing; exit 65; }\n'
+                  'fetch || exit 75\n'
+                  'build || exit 1\n'
+                  'echo ok\n'
+                  'exit 0\n')
+        self.assertFalse(model.ends_in_bare_exit_zero(script))
+
+    def test_a_non_zero_exit_that_is_only_a_comment_does_not_count(self):
+        self.assertTrue(model.ends_in_bare_exit_zero("# exit 1 would be right here\necho\nexit 0\n"))
+
+    def test_an_exit_carrying_a_variable_earlier_counts_as_a_way_to_fail(self):
+        self.assertFalse(model.ends_in_bare_exit_zero('run || exit "$?"\necho ok\nexit 0\n'))
+
     def test_an_empty_file_is_not_the_case(self):
         self.assertFalse(model.ends_in_bare_exit_zero(""))
 
@@ -367,6 +387,15 @@ class APromiseToReportAFailureNeedsAFloor(MachineGuard):
         self.assertEqual(rc, 0, f"a sound script was refused:\n{out}")
 
     # -- the four silences ---------------------------------------------------
+    def test_a_retired_run_is_not_judged(self):
+        """A retired declaration describes a run that is switched off on
+        purpose. Its script never runs, so a promise about its failures has
+        nobody left to break; flagging it as `high invalid` sends somebody to
+        repair a job that no longer exists."""
+        rc, out = self.pruefe(self.repo(retired=True))
+        self.assertNotIn("asks to be told about a failure", out,
+                         f"a retired run was judged:\n{out}")
+
     def test_without_a_failure_promise_nothing_is_hollow(self):
         rc, out = self.pruefe(self.repo(notify="[missing]"))
         self.assertEqual(rc, 0, f"nothing was promised and it was still refused:\n{out}")

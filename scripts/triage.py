@@ -50,7 +50,7 @@ EFFORTS = ("small", "medium", "large")
 TOPICS = ("decision", "reply", "research", "bug", "build", "docs", "ops", "review", "admin", "money", "meeting",
           "application", "idea")
 GIST_MAX = 90
-# outbound or irreversible: never the AI's to do, whatever it answers (rules/, CLAUDE.md). The words cover
+# outbound or irreversible: never the AI's to do, whatever it answers (rules/, AGENTS.md). The words cover
 # English and German task texts; a fork that writes in another language adds its verbs here. A safety net
 # over free text, so it errs towards "yours".
 OUTBOUND = re.compile(r"\b(send|senden|versend\w*|abschick\w*|e-?mail an|mail an|publish\w*|veröffentlich\w*|post(en)?\b|"
@@ -139,10 +139,12 @@ def inbox_evidence(root: Path) -> list:
 GITHUB_REF = re.compile(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)$")
 
 
-def tracker_items(root: Path, view: Path | None, run) -> list:
+def tracker_items(root: Path, view: Path | None, run, skip: frozenset | set = frozenset()) -> list:
     """The rows of the cockpit's view that come from a tracker (a `ref`, no task, no inbox item): a board card, an
     issue, an application, a date. The evidence is the row itself, the issue's state and the start of its text
-    (one GraphQL call for all), and a local STATUS.md the row links to. A missing or broken view is none."""
+    (one GraphQL call for all), and a local STATUS.md the row links to. A missing or broken view is none.
+    A row whose every source section is in `skip` (`work.review.skip_sections`) is not judged and so keeps the
+    bucket the briefing gave it."""
     try:
         data = json.loads(Path(view).read_text(encoding="utf-8")) if view else {}
         v = data.get("view", data) if isinstance(data, dict) else {}
@@ -151,6 +153,8 @@ def tracker_items(root: Path, view: Path | None, run) -> list:
         return []
     seen, picked = set(), []
     for r in rows:
+        if skip and r.get("sources") and all(src in skip for src in r["sources"]):
+            continue
         if r.get("ref") and not r.get("task") and not r.get("inbox_id") and r.get("key") and r["key"] not in seen:
             seen.add(r["key"])
             picked.append(r)
@@ -345,7 +349,7 @@ def triage(root: Path, *, fresh: bool = False, run=None, now: dt.datetime | None
     language = t._language(cfg)
     words = why_words(cfg)
     model = t.service_model(root, "triage", t.tier_model(cfg, "mechanical"))
-    items = _task_items(root, run) + inbox_evidence(root) + tracker_items(root, view, run)
+    items = _task_items(root, run) + inbox_evidence(root) + tracker_items(root, view, run, set(rcfg["skip_sections"]))
     settings = json.dumps([language, model, rcfg["stale_days"], PROMPT_VERSION,
                            t.ai.load(root, "triage"), rcfg["command"]], sort_keys=True)
     for it in items:

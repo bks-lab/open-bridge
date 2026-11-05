@@ -4,8 +4,8 @@
 
 Detect the active project in this order (first match wins):
 
-### Phase 1: CLAUDE.md Dashboard Section
-Read `CLAUDE.md` in CWD. Look for `## Dashboard` section with YAML:
+### Phase 1: Dashboard Section in AGENTS.md / CLAUDE.md
+Read `AGENTS.md` or `CLAUDE.md` in CWD (the first with a `## Dashboard` section). Look for `## Dashboard` section with YAML:
 ```yaml
 ## Dashboard
 github_project: 18

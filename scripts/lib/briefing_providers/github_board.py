@@ -48,11 +48,11 @@ LEAN_QUERY = """query($login: String!, $number: Int!, $q: String!, $after: Strin
       id
       fieldValueByName(name: $status) { ... on ProjectV2ItemFieldSingleSelectValue { name } }PRIORITY_FIELD
       content { __typename
-        ... on Issue { number title url updatedAt repository { nameWithOwner }
+        ... on Issue { number title url createdAt updatedAt repository { nameWithOwner } author { login }
                        assignees(first: 5) { nodes { login } } labels(first: 5) { nodes { name } } }
-        ... on PullRequest { number title url updatedAt repository { nameWithOwner }
+        ... on PullRequest { number title url createdAt updatedAt repository { nameWithOwner } author { login }
                              assignees(first: 5) { nodes { login } } labels(first: 5) { nodes { name } } }
-        ... on DraftIssue { title updatedAt assignees(first: 5) { nodes { login } } } }
+        ... on DraftIssue { title createdAt updatedAt creator { login } assignees(first: 5) { nodes { login } } } }
     } } } } } }"""
 PRIORITY_FIELD = """
       priority: fieldValueByName(name: $priority) { ... on ProjectV2ItemFieldSingleSelectValue { name } }"""
@@ -126,8 +126,10 @@ def _lean_cards(board: dict, wanted: str, limit: int, ctx) -> dict:
             card = {"id": node.get("id"), "status": (node.get("fieldValueByName") or {}).get("name") or "",
                     "priority": (node.get("priority") or {}).get("name") or None,
                     "title": content.get("title"), "assignees": people, "labels": labels,
+                    # who opened it; a draft card has no author, GitHub names its creator instead
+                    "author": (content.get("author") or content.get("creator") or {}).get("login"),
                     "content": {"type": content.get("__typename"), "title": content.get("title"),
-                                "updatedAt": content.get("updatedAt")}}
+                                "createdAt": content.get("createdAt"), "updatedAt": content.get("updatedAt")}}
             if content.get("number") is not None:
                 card["content"].update(number=content["number"], url=content.get("url"),
                                        repository=(content.get("repository") or {}).get("nameWithOwner"))
@@ -259,6 +261,10 @@ def collect(section: dict, ctx) -> list:
                         "type": str(item.get("type") or "issue").lower(),
                         "project": board["name"], "tracker": "github-board",
                         "priority": raw.get("priority") if isinstance(raw.get("priority"), str) else None,
+                        # who opened it (the lean query; a board listed the old way does not say)
+                        "author": raw.get("author") if isinstance(raw.get("author"), str) else None,
+                        # and when: the page's "Oldest first" (the lean query; else the dates call below)
+                        "created_at": (raw.get("content") or {}).get("createdAt") or raw.get("createdAt"),
                         "board": {"slug": board["slug"], "name": board["name"], "number": board["number"],
                                   "org": board["org"],
                                   **({"config": board["registry"]["_file"]}
@@ -303,7 +309,7 @@ def _ask_halving(wanted: list, items: list, ctx) -> None:
 
 def _ask_dates(wanted: list, items: list, ctx) -> bool:
     parts = [f'i{i}: repository(owner: "{m[1]}", name: "{m[2]}") {{ issueOrPullRequest(number: {m[3]}) '
-             f'{{ ... on Issue {{ updatedAt }} ... on PullRequest {{ updatedAt }} }} }}' for i, m in wanted]
+             f'{{ ... on Issue {{ createdAt updatedAt }} ... on PullRequest {{ createdAt updatedAt }} }} }}' for i, m in wanted]
     try:
         data = load_json(ctx.run(["gh", "api", "graphql", "-f", "query={ " + " ".join(parts) + " }"],
                                  timeout=ctx.timeout), "board dates").get("data") or {}
@@ -313,4 +319,6 @@ def _ask_dates(wanted: list, items: list, ctx) -> bool:
         node = (data.get(f"i{i}") or {}).get("issueOrPullRequest") or {}
         if node.get("updatedAt"):
             items[i]["changed_at"] = node["updatedAt"]
+        if node.get("createdAt") and not items[i].get("created_at"):
+            items[i]["created_at"] = node["createdAt"]
     return True

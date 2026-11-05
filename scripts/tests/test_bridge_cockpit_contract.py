@@ -211,6 +211,25 @@ def s_waits(w: World) -> None:
     w.act("task_running", slug="demo-task")
 
 
+def s_shelve(w: World) -> None:
+    """The Work through page's "Drop because" on a task: a reason that looks like flags, and a day"""
+    w.act("shelve", key="task:other-task", reason="--until 2030-01-01; not needed")
+    w.act("shelve", key="task:demo-task", reason="after the release", until=TOMORROW)
+
+
+def s_merge(w: World) -> None:
+    """Merge on the Work through page, and its undo: task.py merge with the heading, task.py unmerge with --as"""
+    from lib.bridge_cockpit.actions_work import merge_marks
+    for slug, state in (("other-task", "review"), ("filed-task", "backlog")):
+        folder = w.root / "work" / "tasks" / slug
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "STATUS.md").write_text(f"---\nstatus: {state}\n---\n", encoding="utf-8")
+    res = w.act("flow_merge", keep="task:demo-task", keys=["task:other-task", "task:filed-task"])
+    keep = w.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    keep.write_text(keep.read_text(encoding="utf-8") + "\n".join(merge_marks("other-task")) + "\n", encoding="utf-8")
+    w.act("task_unmerge", **res["undo"][0]["undo"]["args"])
+
+
 def s_to_task(w: World) -> None:
     w.runner.handlers["task.new"] = lambda argv: ok(json.dumps({"slug": "tidy-labels", "status": "backlog"}))
     w.act("to_task", key=f"inbox:{YES_ID}")
@@ -218,6 +237,7 @@ def s_to_task(w: World) -> None:
 
 def s_inbox_edits(w: World) -> None:
     w.act("urgency", key=f"inbox:{YES_ID}", value="now")
+    w.act("area", key=f"inbox:{YES_ID}")          # no areas configured here: taking it back still runs inbox.py
     w.act("note", key=f"inbox:{YES_ID}", text="--yes; a note that looks like a flag")
     w.act("drop", key=f"inbox:{YES_ID}", reason="family")
     w.act("inbox_unmute", id="20261017-1800-mini-daily-health-ab12")
@@ -227,6 +247,7 @@ def s_inbox_edits(w: World) -> None:
 def s_task_edits(w: World) -> None:
     w.act("priority", key="task:other-task", value="P0")
     w.act("note", key="task:other-task", text="ask the vendor")
+    w.act("task_set_next", key="task:other-task", text="Call the vendor; -x")
     w.act("task_close", keys=["task:demo-task"], reason="superseded", text="moved into #12")
     w.act("task_close", keys=["task:other-task"], reason="done")
 
@@ -263,6 +284,7 @@ def s_tabs(w: World) -> None:
     w.act("tab_no", tab_ref="surface:7")
     w.act("tab_jump", tab_ref="surface:7")
     w.act("tab_send", tab_ref="surface:7", text="--please continue")
+    w.act("tab_keys", tab_ref="surface:7", steps=[{"text": "ls"}, {"key": "enter"}])
     w.act("tab_go_on", tab_ref="surface:13")
     # a reply that names the question it answers, the tab and the state: the screen is read fresh first
     screens = {"surface:7": " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n", "surface:13": "⏺ Shall I go on?\n"}
@@ -282,6 +304,27 @@ def s_tabs(w: World) -> None:
     w.app.driver_caps(fresh=True)
     w.act("tab_rename", tab_ref="surface:11", title="--scratch")
     w.act("workspace_rename", ws_ref="workspace:2", title="-research")
+    w.act("tab_move", tab_ref="surface:11", ws_ref="workspace:2")
+
+
+def s_make(w: World) -> None:
+    """A new tab, a new workspace and a workspace closed: a dash, a quote and a model at the start of every shape"""
+    caps = [*DRIVER_CAPS, "new_tab", "new_workspace", "close_workspace"]
+    w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": caps})
+    w.app.driver_caps(fresh=True)
+    w.runner.handlers["workplace.new-tab"] = lambda argv: ok({"ok": True, "report": [], "ref": "surface:40"})
+    w.runner.handlers["workplace.new-workspace"] = lambda argv: ok(
+        {"ok": True, "report": [], "ws_ref": "workspace:50", "ref": "surface:51"})
+    folder = w.root / "project"
+    folder.mkdir()
+    w.act("tab_new", ws_ref="workspace:2", kind="agent", text="--why is it red? it's 'quoted'", title="--scratch",
+          model="haiku", effort="xhigh")
+    w.act("tab_new", ws_ref="workspace:2", kind="agent")
+    w.act("tab_new", ws_ref="workspace:2", kind="shell", title="Shell")
+    w.act("workspace_new", title="-research", kind="agent", color="Teal", cwd=str(folder), text="-x", model="opus")
+    w.act("workspace_new", title="Plain", kind="none")
+    w.act("workspace_new", title="Shell", kind="shell", color="Blue")
+    w.act("workspace_close", ws_ref="workspace:3", tabs=["surface:12", "surface:13"])
 
 
 def s_rows(w: World) -> None:
@@ -301,9 +344,17 @@ def s_reads(w: World) -> None:
     assert w.app.inbox_noise() is not None
     w.runner.handlers["workplace.screen"] = lambda argv: ok({"text": "> done"})
     assert w.request("GET", "/api/tab/screen?ref=surface:7", headers=w.cookie)[0] == 200
+    assert w.request("GET", "/api/tab-history?ref=surface:7", headers=w.cookie)[0] == 200
     w.runner.handlers["briefing.detail"] = lambda argv: ok({"ok": True, "ref": "example/repo#12"})
     for query in ("ref=example/repo%2312", "ref=example/repo%2312&fresh=1"):
         assert w.request("GET", f"/api/github?{query}", headers=w.cookie)[0] == 200
+
+
+def s_log_range(w: World) -> None:
+    """The log page's time range: the own commits of the rail's commits section over the range (logrange.py)."""
+    w.runner.handlers["work-find.--rows"] = lambda argv: ok({"ok": True, "first": "2026-10-01", "total": 0, "rows": []})
+    w.runner.handlers["briefing.commits"] = lambda argv: ok({"ok": True, "section": "commits", "repos": [], "skipped": []})
+    assert w.request("GET", "/api/logrange?from=2026-10-01&to=2026-10-09&commits=commits", headers=w.cookie)[0] == 200
 
 
 def s_workspaces(w: World) -> None:
@@ -343,6 +394,32 @@ def s_organize(w: World) -> None:
     w.act("organize_apply", proposal=prop["id"], items=[i["id"] for i in prop["items"]])
 
 
+def s_describe(w: World) -> None:
+    """Describe writes a task's brief through task.py brief and an inbox item's through inbox.py describe."""
+    brief = {"goal": "The demo is ready to try", "story": None, "acceptance": ["It opens", "Two people tried it"]}
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": "", "structured_output": brief,
+                                                     "total_cost_usd": 0.001, "modelUsage": {"claude-haiku-5-5": {}}})
+    w.act("describe_run", key="task:demo-task")
+    w.act("describe_run", key=f"inbox:{YES_ID}")
+
+
+def s_checkin(w: World) -> None:
+    """The look before a check-in reads the state of a ref the point names through inbox.py probe (read only)"""
+    events = w.root / "work" / "inbox" / YES_ID / "events"
+    (events / "20261002T090000Z-02-web-defer.yaml").write_text(
+        f"verb: defer\nby: web\nat: '2026-10-02T09:00:00+00:00'\nuntil: '{tbc.TODAY}'\nwaits_on: lena\ncheck: true\n",
+        encoding="utf-8")
+    (events / "20261005T100000Z-03-web-note.yaml").write_text(
+        "verb: note\nby: web\nat: '2026-10-05T10:00:00+00:00'\ntext: see https://github.com/example/repo/pull/41\n",
+        encoding="utf-8")
+    w.runner.handlers["inbox.probe"] = lambda argv: ok({"result": True})
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": "", "total_cost_usd": 0.0001,
+                                                     "modelUsage": {"claude-haiku-5-5": {}},
+                                                     "structured_output": {"found": False, "text": "", "where": []}})
+    w.app.collector.rebuild()
+    w.app.checkin.pass_once()
+
+
 @dataclass
 class Scenario:
     drive: Callable[[World], None]
@@ -352,6 +429,8 @@ class Scenario:
 
 EFFORT_CFG = tbc.LAUNCH_CFG.format(more="    effort: true\n")
 WORKSPACES_CFG = "cockpit:\n  enabled: true\n  language: en\n  chat_layout: workspaces\n"
+FLOW_CFG = "cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n"
+CHECKIN_CFG = FLOW_CFG + "    checkin:\n      enabled: true\n"
 
 SCENARIOS = {
     "passes": Scenario(s_passes, {"briefing.collect", "workplace.tasks", "workplace.teams", "workplace.status",
@@ -363,19 +442,26 @@ SCENARIOS = {
     "resume": Scenario(s_resume, {"workplace.launch"}),
     "filed": Scenario(s_filed, {"inbox.add", "workplace.launch"}),
     "waits": Scenario(s_waits, {"inbox.defer", "task.wait"}),
+    "shelve": Scenario(s_shelve, {"task.shelve"}),
     "to_task": Scenario(s_to_task, {"task.new"}),
-    "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
-    "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.close"}),
+    "merge": Scenario(s_merge, {"task.merge", "task.unmerge"}, config=FLOW_CFG),
+    "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.area", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
+    "task_edits": Scenario(s_task_edits, {"task.priority", "task.note", "task.next", "task.close"}),
     "settle": Scenario(s_settle, {"inbox.close", "inbox.drop", "task.close", "task.log"}),
     "reopen": Scenario(s_reopen, {"task.reopen", "inbox.reopen"}),
     "review": Scenario(s_review, {"task.review"}),
-    "tabs": Scenario(s_tabs, {"workplace.key", "workplace.focus", "workplace.send", "workplace.adopt",
+    "tabs": Scenario(s_tabs, {"workplace.key", "workplace.keys", "workplace.focus", "workplace.send", "workplace.adopt",
                               "workplace.close", "workplace.control", "workplace.screen", "workplace.rename",
                               "workplace.rename-workspace"}),
+    "make": Scenario(s_make, {"workplace.new-tab", "workplace.new-workspace", "workplace.close-workspace"},
+                     config=EFFORT_CFG),
     "rows": Scenario(s_rows, {"briefing.act"}),
     "reads": Scenario(s_reads, {"inbox.list", "inbox.stats", "inbox.mute", "workplace.screen", "briefing.detail"}),
+    "log_range": Scenario(s_log_range, {"briefing.commits"}),
     "returns": Scenario(s_returns, {"task.note", "inbox.note"}),
     "workspaces": Scenario(s_workspaces, {"workplace.workspaces"}, config=WORKSPACES_CFG),
+    "describe": Scenario(s_describe, {"task.brief", "inbox.describe"}),
+    "checkin": Scenario(s_checkin, {"inbox.probe"}, config=CHECKIN_CFG),
     "organize": Scenario(s_organize, {"workplace.workspaces", "workplace.move-tab", "workplace.rename",
                                       "workplace.rename-workspace", "workplace.workspace-color",
                                       "workplace.workspace-description"}, config=WORKSPACES_CFG),
@@ -454,7 +540,7 @@ def test_a_missing_required_flag_or_a_value_outside_the_choices_fails(tmp_path):
 
 # ---------------------------------------------------------------- real output of collect and caps
 
-DRIVER_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "focus", "key", "screen", "close",
+DRIVER_CAPS = ["tabs", "sessions", "open", "launch", "send", "rename", "focus", "key", "keys", "screen", "close",
                "rename_workspace", "move_tab", "set_color", "set_description"]
 DRIVER = f"""import json, sys
 verb = json.loads(sys.stdin.read() or "{{}}").get("verb")
@@ -470,16 +556,21 @@ READS = {
     "view": {"headline", "since", "buckets", "agenda", "status", "clear", "hygiene", "workplace"},
     "bucket": {"id", "title", "items"},
     "row": {"title", "why", "sources", "inbox_id", "gate", "task", "url", "urgency", "has_action", "inbox_state",
-            "inbox_key", "mark", "due", "new", "changed"},
+            "inbox_key", "mark", "due", "new", "changed", "created", "area",
+            # where the row comes from (origin.py): the inbox item's `from` and kind, the section it came from
+            "origin_raw", "inbox_kind", "origin_provider", "origin_section_kind"},
     "page": {"id", "title", "sections"},
     "page_section": {"id", "kind", "title", "status", "reason", "alarm", "empty", "items", "total", "weight", "bad",
                      "as_of"},
     "page_item": {"id", "title", "detail", "when", "tone", "url", "task", "ask", "actionable", "mark", "inbox",
-                  "priority", "state", "lines"},
+                  "priority", "state", "lines", "origin_raw"},
 }
 # keys the fixture uses that only other kinds of rows carry: a GitHub row (ref), a command section with its
-# own view (view), the rows of a command or accounts section (tags, account, row_id, actions)
-ONLY_ELSEWHERE = {"row": {"ref"}, "page_section": {"view"}, "page_item": {"tags", "account", "row_id", "actions"}}
+# own view or drawn only with a finding (view, hide_ok), a section in a page's rail (place), the rows of a command or
+# accounts section (tags, account, row_id, actions), a log row's glyph, and a page placed under another by view.pages
+# (under, and its parent's subs)
+ONLY_ELSEWHERE = {"row": {"ref"}, "page": {"under", "subs"}, "page_section": {"view", "hide_ok", "place"},
+                  "page_item": {"tags", "account", "row_id", "actions", "glyph"}}
 
 
 def levels(data: dict) -> dict[str, set[str]]:
@@ -599,6 +690,7 @@ def test_the_undo_of_a_task_closed_in_review_parses_with_task_py(tmp_path):
 STATE_FIELDS = {
     "sessions.sessions[].tab.ws_ref": (str, type(None)),
     "tabs.tabs[].ask": (dict, type(None)),
+    "tabs.tabs[].behind": (dict, type(None)),       # the open task and inbox item behind a tab (returns.py)
     "tabs.tabs[].state_source": (str, type(None)),   # hook | glyph where the driver says, else None
     "agents.keep_hours": (int, float),                # A2A conversations untouched this long leave (0: never)
     "quick.convs[].about": (dict, type(None)),        # the row or item a chat is about; None for a free one
@@ -700,3 +792,42 @@ def test_state_a_handed_chat_carries_its_handoff_record(tmp_path):
         assert {k: type(handed[k]) for k in HANDED_FIELDS} == HANDED_FIELDS and handed["status"] in HANDED_STATUSES
     assert isinstance(tab["inbox_id"], str) and tab["to"] == "tab"
     assert isinstance(control["relay_id"], str) and control["to"] == "control"
+
+
+# ---------------------------------------------------------------- one card for every item
+
+def _cards_of(model: dict) -> list[tuple[str, object]]:
+    rows = [r for sec in model["sections"] for r in sec["rows"]] + model["hidden"] + model["task_rows"]
+    items = [it for pg in model["pages"] for sec in pg["sections"] for it in sec["items"]]
+    return [(r["key"], r.get("card")) for r in rows] + [(it["key"], it.get("card")) for it in items]
+
+
+def test_every_row_and_page_item_carries_a_card_of_the_one_shape(tmp_path):
+    """card.py: every row of the model and every page item reaches the page with `card`, exactly CARD_FIELDS"""
+    from lib.bridge_cockpit.card_fields import CARD_FIELDS
+    w = World(tmp_path)
+    try:
+        cards = _cards_of(w.app.collector.model)
+        out = w.app.collector.resolve("task:demo-task")["out"]
+        task = out["card"]
+        detail = json.loads(w.request("GET", "/api/task?slug=demo-task", headers=w.cookie)[2])["card"]
+        item = json.loads(w.request("GET", f"/api/inbox?id={YES_ID}", headers=w.cookie)[2])["card"]
+    finally:
+        w.close()
+    assert cards and {key for key, _ in cards} >= {"task:demo-task", f"inbox:{YES_ID}"}
+    for key, card in cards + [("detail", detail), ("item", item)]:
+        assert isinstance(card, dict) and tuple(card) == CARD_FIELDS, key
+    # the row's title (the task list's H1) and the detail's H1: the fixture's task list names it differently
+    assert task["kind"] == detail["kind"] == "task" and task["title"] == out["title"] and detail["title"] == "Demo task"
+    assert (item["kind"], item["subkind"], item["owner"]) == ("inbox", "decision", "bridge_then_me")
+
+
+def test_a_real_pass_gives_every_row_a_card(real):
+    from lib.bridge_cockpit.card_fields import CARD_FIELDS
+    app, item = real
+    app.tabs.poll()
+    app.collector.request("both")
+    app.collector.drain()
+    cards = _cards_of(app.collector.model)
+    assert (f"inbox:{item}") in {key for key, _ in cards}
+    assert all(isinstance(c, dict) and tuple(c) == CARD_FIELDS for _, c in cards), cards

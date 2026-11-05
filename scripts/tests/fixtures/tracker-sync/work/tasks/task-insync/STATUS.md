@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../templates/_schema.status.yaml
 ---
 slug: task-insync
 type: task

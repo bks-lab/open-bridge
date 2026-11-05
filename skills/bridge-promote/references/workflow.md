@@ -8,7 +8,7 @@ matching each file's `scope:` to an `upstreams[].scope` field (never by `role:`)
 - your personal overlay — the `scope: personal` upstream, if configured
 - stays local on `user/{name}` — for `scope: user` / `private`
 
-Architecture: see CLAUDE.md § Tier Model.
+Architecture: see docs/org-overlays.md (tier model). A root `CLAUDE.md` classifies `user` and never promotes.
 
 ## Trigger
 

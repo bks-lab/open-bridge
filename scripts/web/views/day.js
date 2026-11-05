@@ -5,10 +5,11 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
-  pageItemActs, workPageOf, workViews, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups,
-  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue,
+  pageItemActs, workPageOf, workViews, flowOn, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { ItemCardLine, titleOf } from './card.js'
 import { CheckButton } from './check.js'
 import { AlarmBanner } from './header.js'
 import { PinStar, ReturnChip } from './home.js'
@@ -19,28 +20,51 @@ import { Btn, Chip, Dot, Empty, MarkChip, PrioChip, StateLine, VerdictChip, useR
 
 // ---------------------------------------------------------------- left column: the day
 
-const KIND_MARK = { task: '▣', stream: '↻', inbox: '◆', issue: '#', other: '•' }
+export const KIND_MARK = { task: '▣', stream: '↻', done_task: '✓', done_stream: '↻✓', done: '✓', inbox: '◆', issue: '#', other: '•' }
 
 /** What a row is (rowKind), first on every row and in every head, in one shape that stands apart from the state
- *  chips: the state changes, the kind does not. A report about a task names it; `link` makes that name open the
- *  task (not inside a row's own button, where a second button cannot stand) */
-export function KindTag({ row, s, c, link = false }) {
+ *  chips: the state changes, the kind does not. A report or an issue about a task or stream names it, the word Task
+ *  or Stream written out (never colour alone); `link` makes that name open it (not inside a row's own button, where
+ *  a second button cannot stand); `bare` leaves the task it names out (the head of the one point view says it below) */
+export function KindTag({ row, s, c, link = false, bare = false }) {
   const t = T()
-  const k = rowKind(row)
+  const k = rowKind(row, s)
   const title = k.task ? (indexRows(s?.model).get(`task:${k.task}`)?.title ?? k.task) : null
-  const about = k.kind === 'inbox' && k.task
-    ? html`<span class="kind-about"> · ${t.kindAbout} ${link && c
+  // an issue or item that names its task, unless the task's title only repeats the row's own
+  const about = !bare && (k.kind === 'inbox' || k.kind === 'issue') && k.task && title !== row?.title
+    ? html`<span class="kind-about"> · ${t.kindAbout} <span class=${`kind-about-what kind-${k.taskKind ?? 'task'}`}><span aria-hidden="true">${KIND_MARK[k.taskKind ?? 'task']}</span> ${t.kind[k.taskKind ?? 'task']}:</span> ${link && c
       ? html`<button type="button" class="btn-link" onClick=${() => c.select(`task:${k.task}`)}>${short(title, 48)}</button>`
       : short(title, 48)}</span>` : null
-  const detail = k.kind === 'issue' ? html` <span class="mono">${k.ref}</span>` : k.kind === 'other' && k.source ? html` · ${k.source}` : null
+  const detail = k.kind === 'issue' ? html` <span class="mono">${k.ref}</span>` : null
   return html`<span class=${`kind kind-${k.kind}`} title=${t.kindTitle[k.kind]}>
     <span class="kind-mark" aria-hidden="true">${KIND_MARK[k.kind]}</span><span>${t.kind[k.kind]}${detail}</span></span>${about}`
 }
 
+// the dot of an origin chip, from the existing tokens (no colour of its own): a cue beside the word, never instead
+const ORIGIN_TONE = { github: 'tk-info', tracker: 'tk-info', calendar: 'tk-accent', bot: 'tk-secondary', session: 'tk-accent',
+  skill: 'tk-secondary', work: 'tk-on-surface-muted', person: 'tk-muted', bridge: 'tk-muted', other: 'tk-muted' }
+
+/** Where a row comes from (originOf: the server classified it, origin.py): a word for the category and a short
+ *  detail, the text as written in the tooltip, a spoken "Source:" in front. A row with no origin (no source written
+ *  down, an older server) still gets one: "Other source · unknown", so no work row goes without a source tag.
+ *  `origin` given wins over the row's own; a ref the kind tag shows already is not repeated */
+export function OriginTag({ row = null, origin }) {
+  const t = T()
+  const given = origin !== undefined ? (origin && ORIGIN_CATEGORIES.includes(origin.category) ? origin : null) : originOf(row)
+  const unknown = !given || (given.category === 'other' && !given.detail)
+  const o = unknown ? { category: 'other', word_key: null, detail: t.originUnknown, raw: given?.raw ?? null,
+    ref: given?.ref ?? null, via_cockpit: !!given?.via_cockpit } : given
+  const word = o.category === 'work' ? (t.origin.work[o.word_key] ?? t.origin.work.task)
+    : o.category === 'tracker' ? (o.word_key || t.origin.tracker) : t.origin[o.category]
+  const title = [o.raw || (unknown ? t.originNone : t.originTitle[o.category]), o.via_cockpit ? t.originViaCockpit : null].filter(Boolean).join(' · ')
+  const ref = o.ref && o.ref !== row?.ref ? o.ref : null
+  return html`<span class=${`chip origin ${ORIGIN_TONE[o.category]}`} title=${title}><span class="sr-only">${t.originSpoken} </span><span class="origin-word">${word}</span>${o.detail ? html`<span class="origin-detail">${o.detail}</span>` : null}${ref ? html`<span class="mono origin-ref">${ref}</span>` : null}</span>`
+}
+
 export function RowMeta({ row, s }) {
   const t = T()
-  const parts = [html`<${KindTag} row=${row} s=${s} />`]
-  if (row.tab) parts.push(html`<${Chip} token=${stateToken(row.tab.state)}>${t.state[row.tab.state] ?? row.tab.state}<//>`)
+  const parts = [html`<${KindTag} row=${row} s=${s} />`, html`<${OriginTag} row=${row} />`]
+  if (row.tab) parts.push(html`<${Chip} token=${stateToken(tabStateKey(row.tab))}>${t.state[tabStateKey(row.tab)] ?? row.tab.state}<//>`)
   if (row.starting) parts.push(html`<${Chip} token="info">${t.startingTab}<//>`)
   const liveSessions = row.task && !row.inbox_id ? (s?.sessions?.sessions ?? []).filter(x => x.task === row.task).length : 0
   if (liveSessions) parts.push(html`<span class="chip chip-task">${t.sessionsOnTask(liveSessions)}</span>`)
@@ -161,6 +185,7 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
         </details>`) : null}
     ${one ? group(t.grp.ask, html`${one.bucket === 'waiting' ? item(t.action.follow_up, () => done(() => c.ask('follow_up', { key: one.key }))) : null}
       ${item(t.askChat, () => done(() => c.ask('row', { key: one.key })))}`) : null}`
+  const person = !!personOf(s)      // what is no verb of theirs stands out of the panel (access.py)
   const settlePart = () => html`${group(t.grp.close, html`${item(t.settleDone, () => settle('done'), { token: 'success', ref: first })}
       ${item(t.settleNot, discard, { token: 'on-surface-muted' })}
       ${streams ? html`<span class="settle-hint muted small">${t.streamHint}</span>` : null}
@@ -168,10 +193,10 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
     ${group(t.grp.later, html`${item(t.laterTomorrow, () => later(r => c.laterDays(r, 1, x)))}
       ${item(t.laterMonday, () => later(r => c.laterMonday(r, x)))}
       ${item(t.laterWeek, () => later(r => c.laterDays(r, 7, x)))}
-      ${item(t.settleRuns, () => done(() => c.askRunsOn(rows, x)))}
-      ${one && one.task && one.bucket === 'waiting' && !one.inbox_id
+      ${person ? null : item(t.settleRuns, () => done(() => c.askRunsOn(rows, x)))}
+      ${!person && one && one.task && one.bucket === 'waiting' && !one.inbox_id
         ? item(t.settleAgain, () => done(() => c.act('task_running', { slug: one.task }))) : null}
-      ${one && one.inbox_id && one.runs ? item(t.settleReopen, () => done(() => c.act('inbox_reopen', { id: one.inbox_id }))) : null}
+      ${!person && one && one.inbox_id && one.runs ? item(t.settleReopen, () => done(() => c.act('inbox_reopen', { id: one.inbox_id }))) : null}
       <span class="field-row panel-day">
         <input class="input input-date mono" type="text" inputmode="numeric" aria-label=${t.dateLabel} placeholder=${t.datePlaceholder}
           value=${day} aria-invalid=${dayErr ? 'true' : undefined} onInput=${e => { setDay(e.currentTarget.value); setDayErr('') }}
@@ -180,7 +205,7 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
       </span>
       ${dayErr ? html`<span class="field-err small" role="alert">${dayErr}</span>` : null}`)}
     ${group(t.grp.keep, html`${item(t.btnSaveNote, () => done(() => rows.forEach(r => c.act('note', { key: r.key, text: x }))), { off: !x })}
-      ${one?.inbox_id ? item(t.settleToTask, () => done(() => c.act('to_task', { key: one.key }))) : null}`)}
+      ${!person && one?.inbox_id ? item(t.settleToTask, () => done(() => c.act('to_task', { key: one.key }))) : null}`)}
     ${rows.some(r => !r.task && !r.inbox_id) ? html`<span class="settle-hint muted small">${t.settleHint}</span>` : null}`
   const still = html`<span class="fixed-origin" ref=${origin} aria-hidden="true"></span>`
   if (asking) {
@@ -191,7 +216,7 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
     </span>`
   }
   return html`${still}<span class="settle-menu row-panel" role="menu" ref=${me} style=${style}>
-    ${rows.length > 1 ? html`<ul class="settle-list">${rows.map(r => html`<li key=${r.key}>${r.title}</li>`)}</ul>` : null}
+    ${rows.length > 1 ? html`<ul class="settle-list">${rows.map(r => html`<li key=${r.key}><${KindTag} row=${r} s=${s} /> <${OriginTag} row=${r} /> ${r.title}</li>`)}</ul>` : null}
     <label class="start-note">
       <span class="label-caps">${part === 'start' ? t.panelTextStart : t.panelTextSettle}</span>
       <textarea rows="2" ref=${field} value=${text} placeholder=${part !== 'start' ? t.panelSettleHint : needsWords ? t.startNeedsHint : t.panelStartHint}
@@ -212,6 +237,10 @@ function modelWord(s, t) {
 /** The start door of the panel: the row's one start button, its word by the row (startMode), and the ▾ beside it.
  *  Waiting and yours-alone rows open the panel at the sentence, since an agent there needs to be told what to do */
 export function StartMenu({ row, s, c, size = 'xs' }) {
+  return personOf(s) ? null : html`<${StartDoor} row=${row} s=${s} c=${c} size=${size} />`
+}
+
+function StartDoor({ row, s, c, size }) {
   const t = T()
   const mode = startMode(row)
   const [open, setOpen] = useState(false)
@@ -247,9 +276,12 @@ export function StartMany({ rows, s, c, size = 'xs' }) {
 }
 
 /** The close door of the panel: "Close ▾" on one row, "Close n ▾" on a selection, with done or discard, not now
- *  and a note. `seed` fills the sentence (the check hands its reason for a close) */
+ *  and a note. `seed` fills the sentence; without one, a single row the check would close (or found resolved)
+ *  brings the check's reason */
 export function SettleMenu({ rows, s, c, size = 'xs', seed }) {
   const t = T()
+  const rv = rows.length === 1 ? rows[0].review : null
+  const sentence = seed ?? (rv && (rv.verdict === 'close' || rv.resolved) ? (rv.reason ?? '').slice(0, 400) : undefined)
   const [open, setOpen] = useState(false)
   const box = usePopover(open, setOpen)
   const ok = rows.filter(r => (r.settle ?? []).length)
@@ -258,7 +290,7 @@ export function SettleMenu({ rows, s, c, size = 'xs', seed }) {
   const word = ok.length > 1 ? t.settleMany(ok.length) : t.settle
   return html`<span class="settle" ref=${box}>
     <${Btn} size=${size} variant="ghost" busy=${busy} pressed=${open} onClick=${() => setOpen(!open)} label=${word}>${word} ▾<//>
-    ${open ? html`<${RowPanel} rows=${ok} s=${s} c=${c} part="settle" close=${() => setOpen(false)} anchor=${box} seed=${seed} />` : null}
+    ${open ? html`<${RowPanel} rows=${ok} s=${s} c=${c} part="settle" close=${() => setOpen(false)} anchor=${box} seed=${sentence} />` : null}
   </span>`
 }
 
@@ -302,8 +334,8 @@ function RowItem({ row, s, c }) {
       : html`<span class="row-pick-gap" aria-hidden="true"></span>`}
     <button type="button" class="row-main" aria-current=${selected ? 'true' : undefined}
       onClick=${() => c.select(row.key)} onFocus=${() => c.focusRow(row.key)}>
-      <span class="row-title">${short(row.title, 110)}</span>
-      ${gistOf(row, s) ? html`<span class="row-gist">${gistOf(row, s)}</span>` : null}
+      <span class="row-title">${short(titleOf(row), 110)}</span>
+      ${gistOf(row, s) ? html`<span class="row-gist">${gistOf(row, s)}</span>` : html`<${ItemCardLine} card=${row.card} cls="row-gist" />`}
       <${RowMeta} row=${row} s=${s} />
       <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
     </button>
@@ -311,7 +343,12 @@ function RowItem({ row, s, c }) {
   </li>`
 }
 
-function Section({ section, s, c, byKey, budget = 0 }) {
+export function Section({ section, s, c, byKey, budget = 0 }) {
+  // a person's day holds what is theirs: an empty heading would only name what stays closed to them (access.py)
+  return personOf(s) && !section.total ? null : html`<${SectionBody} section=${section} s=${s} c=${c} byKey=${byKey} budget=${budget} />`
+}
+
+function SectionBody({ section, s, c, byKey, budget }) {
   const t = T()
   const expanded = !!s.ui.expanded[section.id]
   const rows = sectionRows(section, expanded, byKey, budget)
@@ -349,7 +386,7 @@ function TabMini({ tab, s, c }) {
   const age = duration(s.now - (tab.since_ms || s.now))
   return html`<li class="tabmini">
     <span class="tabmini-main">
-      <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
+      <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
       <span class="tabmini-name" title=${tab.last}>${tab.workspace} / ${tab.name}</span>
       <span class="tabmini-age mono">${age}</span>
       ${tab.long ? html`<span class="chip chip-warn-outline">${t.tabLong}</span>` : null}
@@ -383,10 +420,11 @@ function WaitingTabs({ s, c }) {
 
 function SelectionBar({ s, c }) {
   const t = T()
-  const n = s.ui.picked.length
-  if (!n) return null
+  // the picks the page shows (under a filter the model holds only those): the count and the acts agree
   const byKey = indexRows(s.model)
   const rows = s.ui.picked.map(k => byKey.get(k)).filter(Boolean)
+  const n = rows.length
+  if (!n) return null
   return html`<div class="selbar" role="region" aria-label=${t.picked(n)}>
     <strong>${t.picked(n)}</strong>
     <span class="selbar-acts">
@@ -405,6 +443,7 @@ function HiddenList({ s, c }) {
     <summary>${t.hiddenTitle(list.length)}</summary>
     <ul>
       ${list.map(r => html`<li key=${r.key} class="hidden-row">
+        <${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} />
         <button type="button" class="btn-link hidden-title" onClick=${() => c.select(r.key)}>${short(r.title, 70)}</button>
         <span class="muted">${r.settled_as ? t.settledAs[r.settled_as] : t.hiddenUntil(formatDay(r.hidden_until, language()))}</span>
         <${Btn} size="xs" variant="ghost" busy=${!!s.ui.busy[r.key]} onClick=${() => c.act('unhide', { key: r.key })}>${t.btnShowAgain}<//>
@@ -413,10 +452,10 @@ function HiddenList({ s, c }) {
   </details>`
 }
 
-/** The views of the work tab as one row of chips: what is due, by source, by Jev */
+/** The views of the work tab as one row of chips: what is due, by source, by Jev, the files, Work through */
 export function WorkSwitch({ s, c }) {
   const t = T()
-  const views = workViews(workPageOf(s.model?.pages), s.jev)
+  const views = workViews(workPageOf(s.model?.pages), s.jev, flowOn(s), s.work?.views ?? null)
   const keys = useRoving()
   if (views.length < 2) return null
   const view = workViewNow(s)
@@ -442,24 +481,52 @@ function useDayHeight(c, on) {
   return ref
 }
 
+/** Without a model yet: a failed pass or a lost connection is said, not an endless skeleton; else the skeleton of a
+ *  page that loads. Due's day column and Work through (views/flow.js) say it alike */
+export function NoModel({ s, cls = 'col col-day' }) {
+  const t = T()
+  const warnings = pageWarnings(s, t).filter(w => w.kind !== 'driver')   // not a reason to hold back the day
+  if (warnings.length) {
+    return html`<div class=${cls}><div class="panel panel-pad">${warnings.map(w => html`<p key=${w.word}>
+      <${StateLine} token=${w.token} strong word=${w.word} /></p>`)}</div></div>`
+  }
+  return html`<div class=${cls} aria-busy="true"><div class="panel panel-pad"><${Skeleton} lines=${7} /></div></div>`
+}
+
+/** A person files a new task here, in the backlog of their area (access.py holds it there); with several the area first */
+function PersonNewTask({ s, c }) {
+  const t = T().person
+  const areas = s.boot?.config?.areas ?? []
+  const [title, setTitle] = useState('')
+  const [area, setArea] = useState(areas[0] ?? '')
+  const send = e => {
+    e.preventDefault()
+    const text = title.trim()
+    if (!text || !area) return
+    setTitle('')
+    c.act('task_new', { title: text, area })
+  }
+  if (!areas.length) return null
+  return html`<form class="person-new" onSubmit=${send}>
+    ${areas.length > 1 ? html`<select aria-label=${t.newArea} value=${area} onChange=${e => setArea(e.target.value)}>
+      ${areas.map(a => html`<option key=${a} value=${a}>${a}</option>`)}</select>` : null}
+    <input type="text" maxlength="200" aria-label=${t.newTitle} placeholder=${t.newTitle} value=${title}
+      onInput=${e => setTitle(e.target.value)} />
+    <${Btn} size="sm" variant="primary" disabled=${!title.trim()} onClick=${send}>${t.newAdd}<//>
+  </form>`
+}
+
 export function DayColumn({ s, c, byKey }) {
   const t = T()
   const m = s.model
   const colRef = useDayHeight(c, !!m)
-  if (!m) {
-    // without a model a failed pass or a lost connection is said, not an endless skeleton
-    const warnings = pageWarnings(s, t).filter(w => w.kind !== 'driver')   // not a reason to hold back the day
-    if (warnings.length) {
-      return html`<div class="col col-day"><div class="panel panel-pad">${warnings.map(w => html`<p key=${w.word}>
-        <${StateLine} token=${w.token} strong word=${w.word} /></p>`)}</div></div>`
-    }
-    return html`<div class="col col-day" aria-busy="true"><div class="panel panel-pad"><${Skeleton} lines=${7} /></div></div>`
-  }
+  if (!m) return html`<${NoModel} s=${s} />`
   const total = (m.sections ?? []).reduce((a, x) => a + (x.total ?? 0), 0)
   const budgets = rowBudgets(m.sections, s.ui.expanded ?? {}, s.ui.dayHeight ?? 0)
   return html`<div class="col col-day" ref=${colRef}>
     <div class=${`panel day-panel${s.ui.picked.length ? ' is-picking' : ''}`}>
       <${WorkSwitch} s=${s} c=${c} />
+      ${personOf(s) ? html`<${PersonNewTask} s=${s} c=${c} />` : null}
       <${SelectionBar} s=${s} c=${c} />
       <${AlarmBanner} s=${s} c=${c} />
       <div class="day-counts muted"><span class="day-asof">${t.sourceAsOf(m.collected_at)}</span></div>

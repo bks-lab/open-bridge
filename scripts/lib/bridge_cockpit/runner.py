@@ -2,9 +2,12 @@
 """Subprocess runner of the cockpit: one program allowlist, timeouts, a clean env.
 
 Every script call of the server goes through `Runner.run`. Before a process starts,
-`check` refuses any argv that is not one of the seven Bridge scripts of SCRIPT_PATHS (run
+`check` refuses any argv that is not one of the Bridge scripts of SCRIPT_PATHS (run
 with this interpreter) or one of the exact shapes below it lets through: an A2A ask, a quick
-question, codex read-only, the Haiku judge, organize, and ps for one pid. The cmux CLI is
+question, codex read-only, the Haiku judge, organize, describe, the themes of Work through, the summary of
+a point's activity and the instruction line, Prio's read-in with Haiku, the files tab's question to its records, the two git logs the activity reads, and ps for one
+pid. No call adds to the
+clean env. The cmux CLI is
 never called directly; tabs go through workplace.py and its terminal driver. Tests inject a
 fake runner that overrides `_spawn` and so still passes through the same check.
 """
@@ -17,19 +20,47 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from . import activity
 from . import agents
+from . import checkin
+from . import describe
+from . import instruct
+from . import issue_check
+from . import prio
 from . import organize
+from . import themes
 from ..model_route import haiku_argv_ok
+from ..work_find import HISTORY_ANSWER_SCHEMA, HISTORY_TERMS_SCHEMA, history_argv_ok
+from ..work_find import ask_argv_ok as files_argv_ok
 from .quick import argv_ok, resolve_claude
-from ..ai_services import codex_argv_ok, resolve, select, CLAUDE_MODELS
+from ..ai_services import codex_argv_ok, person_codex_argv_ok, resolve, select, CLAUDE_MODELS
 
 CMUX_APP = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-SCRIPT_PATHS = ("scripts/briefing.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
-                "scripts/bridge-resources.py", "scripts/triage.py", "skills/cmux/scripts/cmux_layout.py")
+SCRIPT_PATHS = ("scripts/briefing.py", "scripts/workspace.py", "scripts/inbox.py", "scripts/workplace.py", "scripts/task.py",
+                "scripts/bridge-resources.py", "scripts/triage.py", "scripts/work-find.py", "scripts/work-sync.py",
+                "skills/cmux/scripts/cmux_layout.py", "skills/github-projects-manager/scripts/issue_transition.py")
+
+
+ACTING = threading.local()      # who a verb runs for on this thread (access.py), unset for the owner
+
+
+@contextmanager
+def acting(person: str | None):
+    """Scripts started inside this block write `person` as who did it"""
+    ACTING.person = person
+    try:
+        yield
+    finally:
+        ACTING.person = None
+
+
+def acting_as() -> str | None:
+    return getattr(ACTING, "person", None)
 
 
 class RunnerRefused(Exception):
@@ -60,7 +91,7 @@ def resolve_cmux(env: dict | None = None) -> str | None:
 
 class Runner:
     def __init__(self, root: Path | str, cmux: str | None = "auto", claude: str | None = "auto", codex: str | None = "auto",
-                 code: Path | str | None = None):
+                 code: Path | str | None = None, git: str | None = "auto"):
         self.root = Path(root).resolve()
         # where the helper scripts come from: the checkout this cockpit runs from, which is the Bridge itself
         # unless a cockpit from another checkout (a branch beside it) is pointed at the live data with --root
@@ -68,13 +99,23 @@ class Runner:
         self.python = sys.executable
         self.cmux = resolve_cmux() if cmux == "auto" else cmux
         self.claude = resolve_claude() if claude == "auto" else claude
+        self.person_claude: str | None = self.claude   # a person's question; a served cockpit sets it alone (server.py)
+        self.person_codex: str | None = None           # the same with cockpit.served.ask.codex
         self.codex = resolve("codex") if codex == "auto" else codex
+        # the activity of a point reads two git logs of a task's folder (activity.py); without git it reads file times
+        self.git = shutil.which("git") if git == "auto" else git
         self.scripts = frozenset(str(self.code / p) for p in SCRIPT_PATHS)
+        # the scripts of cockpit.a2a_sources (absolute), let through in agents.argv_ok's shapes; set by the app
+        self.a2a_sources: frozenset = frozenset()
         self._live: dict[int, tuple[subprocess.Popen, bool]] = {}    # pid: (process, ends with the cockpit)
         self._live_lock = threading.Lock()
 
     def script(self, rel: str) -> str:
         return str(self.code / rel)
+
+    def source_script(self, rel: str) -> str:
+        """A script of cockpit.a2a_sources: a skill of this Bridge, so under root, not the code checkout."""
+        return str(self.root / rel)
 
     def check(self, argv: list[str]) -> None:
         if not isinstance(argv, list) or len(argv) < 2 or not all(isinstance(a, str) for a in argv):
@@ -84,8 +125,9 @@ class Runner:
         if argv[0] == self.python and argv[1] in self.scripts:
             return
         # a quick question: claude -p with a known model and the three read tools only (quick.py)
-        # a message to an A2A agent: a2a.py ask or get in exactly their shapes (agents.py)
-        if agents.argv_ok(argv, self.python, self.script(agents.SCRIPT)):
+        # a message to an A2A agent: a2a.py ask or get in exactly their shapes, a source script also
+        # peers and card (agents.py)
+        if agents.argv_ok(argv, self.python, self.script(agents.SCRIPT), self.a2a_sources):
             return
         if self.claude and argv[0] == self.claude:
             chat_model = select(self.root, "briefing-chat", provider="claude").model
@@ -99,6 +141,34 @@ class Runner:
         # organize with AI: one call with the snapshot of this Bridge's workspaces, no tools (organize.py)
         if organize.argv_ok(argv, self.claude):
             return
+        # describe: one call with one item as data and a fixed answer schema, no tools (describe.py)
+        if describe.argv_ok(argv, self.claude):
+            return
+        # Check with AI on an issue card: one call with the issue as data, a fixed schema, no tools (issue_check.py)
+        if issue_check.argv_ok(argv, self.claude):
+            return
+        # the look before a check-in: one call with what the Bridge holds of the point, a fixed schema (checkin.py)
+        if checkin.argv_ok(argv, self.claude):
+            return
+        # the themes of the Work through page: one call with the open points as data, a fixed schema (themes.py)
+        if themes.argv_ok(argv, self.claude):
+            return
+        # the summary of a point's activity and the instruction line: one call each with data and a fixed schema
+        if activity.summary_argv_ok(argv, self.claude) or instruct.argv_ok(argv, self.claude):
+            return
+        # Prio's read-in with Haiku: one call with the points as data and a fixed schema (prio.py)
+        if prio.argv_ok(argv, self.claude):
+            return
+        # the files tab's question to its records: one call with the records as data and a fixed schema (work_find.py)
+        if files_argv_ok(argv, self.claude, CLAUDE_MODELS.values()):
+            return
+        # the history's question: the terms of the question, then the answer from its entries, one schema each
+        if any(history_argv_ok(argv, self.claude, CLAUDE_MODELS.values(), schema)
+               for schema in (HISTORY_TERMS_SCHEMA, HISTORY_ANSWER_SCHEMA)):
+            return
+        # what git knows of a task's documents and status changes: two exact log shapes (activity.py)
+        if activity.git_argv_ok(argv, self.git, str(self.root)):
+            return
         # the Sessions page reads one variable of a Claude process's environment (sessions.py)
         if len(argv) == 6 and argv[:5] == ["/bin/ps", "eww", "-o", "command=", "-p"] and argv[5].isdigit():
             return
@@ -108,7 +178,12 @@ class Runner:
         env = dict(os.environ)
         env.pop("BRIDGE_TAB_SLUG", None)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
-        env["BRIDGE_ACTOR"] = "web"
+        person = acting_as()
+        env["BRIDGE_ACTOR"] = person or "web"
+        if person:
+            env["BRIDGE_PERSON"] = person     # task.py names them on its log row
+        else:
+            env.pop("BRIDGE_PERSON", None)
         return env
 
     def run(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None] | None = None) -> RunResult:
@@ -154,11 +229,38 @@ class Runner:
                 except OSError:
                     proc.kill()
 
-    def _spawn_lines(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None]) -> RunResult:
+    def run_person(self, argv: list[str], timeout_s: float, cwd: Path, key: str | None = None,
+                   config_dir: Path | None = None) -> RunResult:
+        """A person's question (person_ask.py), in their folder. With a key on that key and on nothing else: a
+        configuration folder of its own holds no login, and every other way to sign in is taken out. Without one on
+        the login of the user this service runs as."""
+        if not self.person_claude or not argv_ok(argv, self.person_claude, set(CLAUDE_MODELS.values())):
+            raise RunnerRefused("not a person's question")
+        env = self.env()
+        if key is None:
+            env.pop("ANTHROPIC_API_KEY", None)
+            return self._spawn_lines(list(argv), timeout_s, lambda line: None, cwd=cwd, env=env)
+        for name in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
+                     "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"):
+            env.pop(name, None)
+        env.update(ANTHROPIC_API_KEY=key, CLAUDE_CONFIG_DIR=str(config_dir))
+        return self._spawn_lines(list(argv), timeout_s, lambda line: None, cwd=cwd, env=env)
+
+    def run_person_codex(self, argv: list[str], timeout_s: float, cwd: Path, home: Path) -> RunResult:
+        """A person's question on Codex, in their folder and on the login in their own Codex home. It gets a clean
+        environment: nothing of the service's reaches the run, and what it reads is held by the wall of person_codex_argv"""
+        if not self.person_codex or not person_codex_argv_ok(argv, self.person_codex):
+            raise RunnerRefused("not a person's question")
+        env = {"PATH": f"{Path(self.person_codex).parent}:/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(home),
+               "CODEX_HOME": str(home), "LANG": "en_US.UTF-8"}
+        return self._spawn_lines(list(argv), timeout_s, lambda line: None, cwd=cwd, env=env)
+
+    def _spawn_lines(self, argv: list[str], timeout_s: float, on_line: Callable[[str], None],
+                     cwd: Path | None = None, env: dict | None = None) -> RunResult:
         start = time.monotonic()
         try:
-            proc = subprocess.Popen(argv, cwd=str(self.root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, env=self.env(), start_new_session=True, shell=False)
+            proc = subprocess.Popen(argv, cwd=str(cwd or self.root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, env=env or self.env(), start_new_session=True, shell=False)
         except OSError as error:
             return RunResult(False, -1, "", str(error), int((time.monotonic() - start) * 1000))
         self._track(proc, argv)
@@ -201,7 +303,8 @@ class Runner:
         start = time.monotonic()
         try:
             proc = subprocess.Popen(argv, cwd=str(self.root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, env=self.env(), start_new_session=True, shell=False)
+                                    stderr=subprocess.PIPE, env=self.env(), start_new_session=True,
+                                    shell=False)
         except OSError as error:
             return RunResult(False, -1, "", str(error), int((time.monotonic() - start) * 1000))
         self._track(proc, argv)

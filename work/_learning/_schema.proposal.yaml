@@ -46,7 +46,7 @@ properties:
     additionalProperties: false
     properties:
       type:
-        enum: [postmortem, audit-recurring, trigger-correction, manual, curator-suggestion, archive-distill, capability-gap]
+        enum: [postmortem, audit-recurring, trigger-correction, manual, curator-suggestion, archive-distill, capability-gap, cockpit-usage]
         description: |
           postmortem: from task-close-postmortem skill
           audit-recurring: from /bridge-audit Phase-3 trend detection
@@ -61,6 +61,10 @@ properties:
             silently (rules/learning-autonomy.md).
           capability-gap: from capability-broker's capture step, a request
             the Bridge could not serve (skills/capability-broker/).
+          cockpit-usage: from scripts/cockpit-usage.py, a candidate counted in
+            the cockpit's click origin log (a page, area or control not used,
+            a page left at once, back and forth), or a sentence typed into
+            "What bothers you here?" of its explain window.
       task_slug:
         type: string
         pattern: "^[a-z][a-z0-9-]*$"

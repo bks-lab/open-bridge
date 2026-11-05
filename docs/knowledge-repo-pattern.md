@@ -52,7 +52,7 @@ Three repo types, one decision rule. Keep them distinct.
 ```
 <knowledge-repo>/
 ├── index.md                  # Top-level navigation
-├── CLAUDE.md                 # Conventions for AI assistants (optional)
+├── AGENTS.md                 # Conventions for AI assistants (optional; Claude Code reads it too)
 ├── <area-1>/                 # e.g. customers/, internal/, leads/
 │   ├── index.md              # Area inventory
 │   ├── _MOC.md               # Area "what's important" (5+ items)

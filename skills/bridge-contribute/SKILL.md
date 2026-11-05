@@ -37,7 +37,7 @@ User wants to...
 ├── Contribute a specific file/dir           → references/workflow.md ({path})
 ├── Adapt/generalize content first           → references/workflow.md § Adapt mode
 ├── Promote whole commits by scope           → use the bridge-promote skill (/promote)
-└── Questions about scope routing            → CLAUDE.md § tier model
+└── Questions about scope routing            → docs/org-overlays.md (tier model)
 ```
 
 ## Safety (MANDATORY — the reason this skill exists)

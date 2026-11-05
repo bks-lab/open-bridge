@@ -47,5 +47,5 @@ User wants to...
 ├── Add a new mandant                  → Read references/mandants.md (§ Add)
 ├── Show mandant with upcoming entries → Read references/mandants.md (§ Show)
 ├── Add a person to a mandant          → Read references/mandants.md (§ Add-Person)
-└── Questions about calendar/mandants  → Answer from CLAUDE.md § Calendar + Mandants
+└── Questions about calendar/mandants  → Answer from docs/calendar.md + docs/mandants.md
 ```

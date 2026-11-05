@@ -12,7 +12,10 @@ without a fetched recommendation starts with the default, so a slow or hanging A
 """
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 import threading
 
 import yaml
@@ -271,3 +274,17 @@ class LaunchModel:
                 "default_model": s["default_model"], "default_effort": s["default_effort"],
                 "router": self.router(s), "settings": s, "defaults": base,
                 "overridden": sorted(k for k in s if s[k] != base.get(k))}
+
+
+def can_launch(root: Path, timeout: float = 15) -> bool | None:
+    """Whether the terminal driver starts agent tabs, asked from the driver (`workplace.py caps`) like the server
+    does; None when it did not answer. A cockpit switched on without a driver failed on its first start (18.10.).
+    `bridge-cockpit.py status` and the Setup page (scripts/bridge-setup.py) both ask it here."""
+    root = Path(root)
+    try:
+        run = subprocess.run([sys.executable, str(root / "scripts" / "workplace.py"), "--root", str(root), "caps", "--json"],
+                             capture_output=True, text=True, timeout=timeout)
+        caps = json.loads(run.stdout).get("caps") if run.returncode == 0 and run.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+        return None
+    return "launch" in caps if isinstance(caps, list) else None

@@ -152,7 +152,7 @@ User wants to...
 ├── Set or change the instance purpose → Read references/workflow.md § Phase A step 5 (--purpose)
 ├── Browse what Bridge can do          → Read references/feature-catalog.md (--features)
 ├── Wire an upstream after the fact    → This file § Optional: --upstream mode
-└── Questions about setup              → Answer from references/workflow.md + CLAUDE.md § Session Start
+└── Questions about setup              → Answer from references/workflow.md + rules/session-start.md
 ```
 
 ## Reference Files

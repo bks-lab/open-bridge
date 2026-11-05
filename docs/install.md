@@ -101,7 +101,9 @@ native Windows). It arms the same guard and repairs the discovery symlinks.
 ## Which agent tools work
 
 - **Claude Code** is tested and the most complete: slash commands, hooks and
-  sub-agents live under `.claude/`.
+  sub-agents live under `.claude/`. It needs version 2.1.281 or newer, the
+  first that loads `AGENTS.md` on every backend (2.1.277 on the Anthropic
+  API); `bin/setup` warns below that.
 - **Codex and Copilot CLI** work through `AGENTS.md` plus the skill symlinks
   `.agents/skills` and `.github/skills`, both pointing at the one `skills/`
   tree.

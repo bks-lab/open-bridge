@@ -335,6 +335,30 @@ def test_github_board_asks_only_what_a_row_needs_page_by_page(tmp_path):
     assert len([c for c in run.calls if c[:3] == ["gh", "api", "graphql"]]) == 2    # two pages, no date call
 
 
+def test_github_board_a_draft_card_names_who_made_it(tmp_path):
+    """A draft card has no author, GitHub names its creator: the row says who opened it like any other (round 6d)."""
+    root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
+    (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
+        {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
+    issue = lean_card(1, "Todo")
+    issue["content"]["author"] = {"login": "hubot"}
+    draft = {"id": "PVTI_d", "fieldValueByName": {"name": "Todo"},
+             "content": {"__typename": "DraftIssue", "title": "Idea", "creator": {"login": "octo"},
+                         "assignees": {"nodes": []}}}
+    asked = []
+
+    def graphql(argv):
+        asked.append(next(a for a in argv if a.startswith("query=")))
+        return lean_page([issue, draft])
+    run = FakeRun({("gh", "api", "graphql"): graphql})
+    section = {"kind": "tracker", "provider": "github-board", "query": {}}
+    sec = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]
+    assert sec["status"] == "ok", sec.get("reason")
+    assert "creator { login }" in asked[0]
+    by = {i.get("type"): i.get("author") for i in sec["items"]}
+    assert by == {"issue": "hubot", "draft": "octo"}
+
+
 def _registry(root, board=None, state_map=None):
     """A registry for the Tool board (example-org #3), with a `board:` block when given."""
     path = root / "workflow" / "projects" / "tool.yaml"
@@ -541,7 +565,8 @@ def test_github_board_rows_get_the_date_their_issue_last_changed(tmp_path):
     root = bridge(tmp_path, config={"integrations": {"github": {"assignee_me": "octo"}}})
     (root / "ecosystem.yaml").write_text(yaml.safe_dump({"github_projects": [
         {"org": "example-org", "number": 3, "name": "Tool board"}]}), encoding="utf-8")
-    dates = json.dumps({"data": {"i0": {"issueOrPullRequest": {"updatedAt": "2026-10-03T14:00:00Z"}}}})
+    dates = json.dumps({"data": {"i0": {"issueOrPullRequest": {"updatedAt": "2026-10-03T14:00:00Z",
+                                                               "createdAt": "2026-05-01T09:00:00Z"}}}})
     # gh 2.x lists cards without any date (live 2026-10-09); the fixture's dates stand for an older gh.
     listing = json.loads((FIX / "github-board" / "item-list.json").read_text())
     for raw in listing["items"]:
@@ -552,6 +577,7 @@ def test_github_board_rows_get_the_date_their_issue_last_changed(tmp_path):
     section = {"kind": "tracker", "provider": "github-board", "query": {"assigned_to_me": True}}
     item = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, run))["sections"][0]["items"][0]
     assert item["changed_at"] == "2026-10-03T14:00:00Z"
+    assert item["created_at"] == "2026-05-01T09:00:00Z", "the same call says when it was opened"
     query = next(c for c in run.calls if c[:3] == ["gh", "api", "graphql"] and "issueOrPullRequest" in c[-1])[-1]
     assert 'repository(owner: "example-org", name: "tool")' in query and "issueOrPullRequest(number: 5)" in query
 
@@ -1745,8 +1771,8 @@ def test_event_steps_are_checked():
 
 def test_to_inbox_items_name_the_briefing_as_their_closer(tmp_path):
     # The briefing closes these items itself when the row is gone, so it is their closer. Without
-    # one an item filed by a run looks hand-made: `add` warns it has no way out, and a watcher that
-    # investigates reporter findings before announcing them passes it on raw.
+    # one an item filed by a run looks hand-made: `add` would file it as `closer: person`, and a
+    # watcher that investigates reporter findings before announcing them passes it on raw.
     root = bridge(tmp_path)
     section = {"kind": "tracker", "id": "gh", "provider": "github",
                "query": {"assignee": "@me", "kinds": ["issues"]},
@@ -1755,3 +1781,31 @@ def test_to_inbox_items_name_the_briefing_as_their_closer(tmp_path):
     box = inbox.Inbox(root / "work" / "inbox", actor="t", clock=lambda: NOW)
     bf.file_to_inbox(box, profile, bf.collect(root, profile, ctx(root, FakeRun(gh_answers()))))
     assert box.open_items()[0].closer == "reporter"
+
+
+# ---------------------------------------------------------------- one matter, one line (29.10.)
+
+def test_a_github_search_row_names_the_task_that_syncs_it_so_the_view_can_fold_it(tmp_path):
+    # the `github` provider linked nothing by default, so its row of a task's issue stood beside the task's inbox line
+    root = bridge(tmp_path)
+    task(root, "fix-emoji", sync={"github": {"repo": "example-org/tool", "issues": [12]}})
+    section = {"kind": "tracker", "provider": "github",
+               "query": {"assignee": "@me", "owners": ["example-org"], "kinds": ["issues", "prs"]}}
+    result = bf.collect(root, {"id": "p", "sections": [section]}, ctx(root, FakeRun(gh_answers())))
+    items = {i["id"]: i for i in result["sections"][0]["items"]}
+    assert items["example-org/tool#12"]["about_task"] == "fix-emoji"
+    assert items["example-org/tool#12"]["task"] == "fix-emoji"
+    assert bf.links_local({"provider": "github"}) and bf.links_local({"provider": "github-board"})
+    assert not bf.links_local({"provider": "jira"}) and not bf.links_local({"provider": "github", "link": False})
+
+
+def test_an_inbox_section_marks_an_item_that_waits_for_a_condition(tmp_path):
+    root = bridge(tmp_path)
+    box = inbox.Inbox(root / "work" / "inbox", actor="t", clock=lambda: NOW)
+    waits = box.add(source="t", kind="result", summary="Quota raised", waits_for={"path_exists": str(tmp_path / "no")})
+    plain = box.add(source="t", kind="decision", summary="Merge it?")
+    box.approve(plain, when={"path_exists": str(tmp_path / "no")})          # a conditional yes is no wait for
+    sec = bf.collect(root, {"id": "p", "sections": [{"kind": "inbox"}]}, ctx(root))["sections"][0]
+    by = {i["id"]: i for i in sec["items"]}
+    assert by[waits]["state"] == "waiting" and by[waits]["waits_for"] is True
+    assert by[plain]["state"] == "waiting" and not by[plain].get("waits_for")

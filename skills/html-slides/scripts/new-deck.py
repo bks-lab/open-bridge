@@ -31,8 +31,12 @@ the same bytes. Every splice is read back and
 compared before the file is written.
 
 Preset choice: --preset when given; else `design` when a DESIGN.md is given
-(--design) or found walking up from the output path; else the style preset
-marked `default: true`. On --refresh the preset is read back from the deck.
+(--design, a path or a design id) or found walking up from the output path;
+else the style preset marked `default: true`. On --refresh the preset is read
+back from the deck. A walk that ends at the Bridge's own DESIGN.md asks the
+Bridge which design applies (the theme's branding.design, else that file), so a
+deck inside the Bridge wears the instance's design while a deck written into
+another repository keeps that repository's (html-canvas bridge_design.py).
 
 Fonts: embedded by default (style presets depend on their typefaces);
 --no-embed-fonts leaves the region empty and the deck on its fallback stacks.
@@ -175,9 +179,17 @@ def font_face():
 
 # --- presets and DESIGN.md -----------------------------------------------------------------
 
+def bridge_design():
+    return module("html_canvas_bridge_design", CANVAS_SCRIPTS / "bridge_design.py")
+
+
 def find_design(start: Path) -> Path | None:
-    """The nearest DESIGN.md, never above the project root (html-canvas design-to-css.py)."""
-    return design_to_css().find_design(start)
+    """The nearest DESIGN.md, never above the project root; at the Bridge's own root, the
+    design the Bridge resolves (html-canvas bridge_design.py)."""
+    try:
+        return bridge_design().resolve(target=start, fallback=False)
+    except ValueError as e:
+        raise DeckError(str(e))
 
 
 def load_preset(slug: str) -> dict:
@@ -517,7 +529,10 @@ def title_slide(title: str) -> str:
 def choose_preset(slug: str | None, design_arg: str | None, anchor: Path) -> tuple[str, dict, Path | None]:
     design = None
     if design_arg:
-        design = Path(design_arg)
+        try:
+            design = bridge_design().resolve(design_arg)
+        except ValueError as e:
+            raise DeckError(str(e))
         if not design.is_file():
             raise DeckError("--design: %s not found" % design)
     else:
@@ -623,7 +638,8 @@ def main() -> int:
     ap.add_argument("--slides", help="HTML fragment of <section class=\"slide ...\"> elements")
     ap.add_argument("--preset", help="preset slug (default: design when a DESIGN.md is found, "
                                      "else the preset marked default)")
-    ap.add_argument("--design", help="DESIGN.md to use (default: the nearest one above the output)")
+    ap.add_argument("--design", help="DESIGN.md or design id to use (default: the nearest one above the "
+                                    "output, inside the Bridge the design it resolves)")
     ap.add_argument("--lang", choices=("en", "de"), default="en", help="<html lang> (default en)")
     ap.add_argument("--with-stage", action="store_true", help="add the live stage (assets/slide-stage.*)")
     ap.add_argument("--with", dest="with_modules", action="append", default=[], metavar="NAME",

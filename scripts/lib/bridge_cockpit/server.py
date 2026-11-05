@@ -9,7 +9,7 @@ those places: `bridge-cockpit.py url` prints a login code made from it
 (login_code, good once and for CODE_AGE_S), /?code= turns that into an HttpOnly
 SameSite=Strict cookie whose value is derived from the key and dated (good for
 COOKIE_AGE_S), so the bare address works from then on in that browser. Every request must
-name 127.0.0.1:<port> or localhost:<port> as Host (DNS rebinding); every POST also carries
+name 127.0.0.1:<port>, localhost:<port> or, under cockpit.local_name, <name>.localhost:<port> as Host (DNS rebinding); every POST also carries
 a second derived value (csrf, handed out by /api/bootstrap) in X-Bridge-Token, a matching
 Origin and a JSON body of at most 64 KB. No CORS headers, no access log, static files only from
 scripts/web/ with a fixed set of extensions.
@@ -17,47 +17,70 @@ scripts/web/ with a fixed set of extensions.
 from __future__ import annotations
 
 import collections
+import dataclasses
+import datetime as dt
 import hashlib
 import hmac
+import importlib.util
 import json
 import os
 import queue
 import re
 import secrets
 import shutil
+import stat
 import sys
 import threading
 import time
 import traceback
 import urllib.parse
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
 from . import VERSION
+from . import activity as act
+from . import card as cd
 from . import details
+from .. import work_find
 from . import model as m
+from . import person_ask as pa
+from . import signin as si
 from .actions import ActionError, Actions
+from .actions_base import SPEC, note_go
 from .collector import Collector
+from .logrange import LogRange, Refused, Stale as LogStale, check as check_logrange, check_days as check_range
 from .daybook import DayBook
 from .returns import Launches
+from .work_sync import WorkSync
 from .launch import LaunchError, LaunchModel
 from .ticker import Ticker
+from .workspaces import Workspaces
 from .graph import Graph
-from .config import WebConfig, load_web_config
+from .config import WORK_VIEWS, WebConfig, flow_defaults, load_web_config
 from .relay import Relay, default_key_dir, load_key
 from .agents import Agents
 from .bridges import Bridges
 from .triage import Triage
+from .checkin import Looker
+from .describe import Describer
+from .themes import Themes
+from .activity import Activity
+from .instruct import Instruct
 from .history import History
 from .quick import Quick
 from .review import Review
 from .sessions import Sessions
+from .tab_history import QUERY_MAX as HISTORY_QUERY_MAX, TabHistory, paging as history_paging
 from .guide import Guide
+from . import prio
 from .usage import Usage
+from .quick import resolve_claude
 from .runner import Runner, RunnerRefused
-from .design import stylesheet
-from .store import WebStore, append_log, atomic_write_json
+from .design import resolved, stylesheet
+from . import access as ac
+from .store import WebStore, append_clicks, append_log, atomic_write_json
 try:                       # Jev is an optional integration: without its file it is simply off
     from . import jev
 except ImportError:
@@ -88,12 +111,33 @@ SCREEN_LINES = 400          # the tab view reads this much of a tab's scrollback
 SCREEN_TIMEOUT = 4
 GITHUB_REF_RE = re.compile(r"^[\w.-]{1,100}/[\w.-]{1,100}#\d{1,9}\Z")
 GITHUB_DETAIL_TIMEOUT = 40
+# what the boards of one issue say now (skills/github-projects-manager/scripts/issue_transition.py plan)
+ISSUE_PLAN_TIMEOUT = 40
+FIND_TIMEOUT = 30      # the search over work/ (scripts/work-find.py); rg answers in well under a second
 SCREEN_MAX = 120_000
 SCREEN_CACHE_MS = 1000      # several pages on one tab share one read of its screen within this window
 SCREEN_HASH_RE = re.compile(r"^[0-9a-f]{1,64}\Z")
+# a page or view the files view measures (/api/seen). A page id comes from a profile as free text, or is one of
+# the cockpit's own @ pages: any word up to 64 characters, never a path, a space or a control character. A view
+# is one of the cockpit's own ids
+SEEN_PAGE_RE = re.compile(r"^[^\s/\\\x00-\x1f\x7f]{1,64}\Z")
+SEEN_RE = re.compile(r"^@?[a-z0-9][a-z0-9_-]{0,63}\Z")
+COST_REF_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")     # a cost center or persona id, or all / none
+
+
+def cost_ledger():
+    """scripts/cost-ledger.py of this checkout, loaded once (its name has a dash, so not an import)."""
+    name = "bridge_cost_ledger"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[2] / "cost-ledger.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules[name]
 CAPS_TTL_S = 300
 CAPS_RETRY_S = 15      # a failed read is tried again this soon, the last good answer standing meanwhile
 CAPS_TIMEOUT = 20
+WORK_SYNC_TIMEOUT_S = 180
 TAB_REF_RE = re.compile(r"^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}\Z")   # the terminal driver's name for a tab
 ERROR_STATUS = {"unauthorized": 401, "forbidden_origin": 403, "bad_host": 403, "bad_fetch_site": 403, "not_found": 404,
                 "method_not_allowed": 405, "unsupported_media_type": 415, "payload_too_large": 413,
@@ -106,14 +150,22 @@ UNAUTHORIZED_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf
                      "</body></html>")
 
 
+NOT_OPEN_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Bridge Cockpit</title></head>"
+                 "<body><p>This sign-in is not open here. Ask the person who runs this cockpit to add your address.</p>"
+                 "<p>Diese Anmeldung ist hier nicht freigegeben. Bitte die Person, die dieses Cockpit betreibt, deine "
+                 "Adresse einzutragen.</p></body></html>")
+
+
 def instance_id(root: Path) -> str:
     return hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:12]
 
 
 class SSEClient:
-    def __init__(self):
+    def __init__(self, viewer: str | None = None, cut: Callable[[str, Any], Any] | None = None):
         self.queue: queue.Queue = queue.Queue(maxsize=SSE_QUEUE)
         self.closed = False
+        self.viewer = viewer             # a person's page (access.py): `cut` decides what of an event reaches it
+        self.cut = cut
         self.id = secrets.token_hex(8)   # sent in `hello`; the page names itself with it on /api/presence
         self.visible = True              # a page in a background browser tab says so and stops counting
 
@@ -123,8 +175,8 @@ class SSEHub:
         self.lock = threading.Lock()
         self.clients: set[SSEClient] = set()
 
-    def add(self) -> SSEClient:
-        client = SSEClient()
+    def add(self, viewer: str | None = None, cut: Callable[[str, Any], Any] | None = None) -> SSEClient:
+        client = SSEClient(viewer, cut)
         with self.lock:
             self.clients.add(client)
         return client
@@ -137,15 +189,27 @@ class SSEHub:
         with self.lock:
             return sum(1 for c in self.clients if c.visible or not visible_only)
 
-    def set_visible(self, client_id: str, visible: bool) -> bool | None:
-        """Flags one page as shown or hidden; True when it just came back, None when no such page is open."""
+    def set_visible(self, client_id: str, visible: bool, viewer: str | None = None) -> bool | None:
+        """Flags one page as shown or hidden; True when it just came back, None when no such page is open.
+        A person reaches their own pages only."""
         with self.lock:
-            client = next((c for c in self.clients if c.id == client_id), None)
+            client = next((c for c in self.clients if c.id == client_id and (viewer is None or c.viewer == viewer)), None)
             if client is None:
                 return None
             back = visible and not client.visible
             client.visible = visible
             return back
+
+    def to_viewer(self, viewer: str, event: str, payload: Any) -> None:
+        """One event for the pages of one person and nobody else, the owner's pages included"""
+        data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        with self.lock:
+            clients = [c for c in self.clients if c.viewer == viewer]
+        for client in clients:
+            try:
+                client.queue.put_nowait((event, data))
+            except queue.Full:
+                client.closed = True
 
     def publish(self, event: str, payload: Any) -> None:
         data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -153,9 +217,16 @@ class SSEHub:
             clients = list(self.clients)
         for client in clients:
             try:
-                client.queue.put_nowait((event, data))
+                if client.viewer is None:
+                    client.queue.put_nowait((event, data))
+                    continue
+                cut = client.cut(event, payload) if client.cut else None   # a page of a person: nothing unless it says so
+                if cut is not None:
+                    client.queue.put_nowait((event, json.dumps(cut, ensure_ascii=False, separators=(",", ":"))))
             except queue.Full:
                 client.closed = True  # it reconnects and receives `state`
+            except Exception:         # a cut that breaks sends nothing, and the owner's pages still get the event
+                continue
 
 
 class App:
@@ -168,7 +239,7 @@ class App:
         self._caps_lock = threading.Lock()
         self._caps: tuple[float, list[str], bool] | None = None    # (when, verbs, read ok)
         self._caps_flight: threading.Event | None = None
-        self._colors: tuple[tuple[int, int], bytes, str] | None = None     # (DESIGN.md stamp, css, tag)
+        self._colors: tuple[tuple, bytes, str] | None = None     # (design file stamp, css, tag)
         self._colors_lock = threading.Lock()
         self._screen_lock = threading.Lock()
         self._screens: dict[str, tuple[float, str, str]] = {}   # ref -> (read at ms, text, hash), each under its ref's lock
@@ -180,6 +251,11 @@ class App:
         self.clock = clock
         self.token = token
         self.csrf = derived(token, "csrf")      # what the page sends back in X-Bridge-Token, never the key
+        self.version = VERSION
+        self.person_ask = pa.PersonAsk(self)    # a person's question: their files, their key, read only
+        self.access = ac.Access(self)           # what a person named under members: gets, the owner is not touched
+        # behind a sign-in gateway: a signed token says who a request is, there is no owner and no cookie (signin.py)
+        self.sign_in = si.SignIn(cfg.served_access, clock) if cfg.served and cfg.served_access else None
         self._codes_lock = threading.Lock()
         self._codes_used: dict[str, int] = {}   # nonce of a redeemed login code -> its second, until it expires
         self.tx = T(cfg.language, cfg.control)
@@ -188,25 +264,36 @@ class App:
         self.port = 0
         self.hub = SSEHub()
         self.notes: collections.deque = collections.deque(maxlen=20)
-        self.store = WebStore(self.state_dir, clock)
+        # hidden and settled rows also go to work/cockpit/settled/, tracked, so every machine keeps them (settled.py)
+        self.store = WebStore(self.state_dir, clock, settled_dir=self.root / "work" / "cockpit" / "settled")
         self.daybook = DayBook(self.state_dir, clock)     # the start page's day by day (daybook.py)
         self.launches = Launches(self.state_dir, clock)   # every start handed to a tab, for the return channel (returns.py)
         self.graph = Graph(self.root)                       # the inner room's knowledge graph (graph.py)
+        self.work_sync = self.make_work_sync() if cfg.served else None
         self.asks_enabled = True   # the tab poll reads what the waiting tabs ask (tabs.py, asks.py); tests switch it off
         self.tabs = TabPoller(self)
         self.review = Review(self)
         self.sessions = Sessions(self)
+        self.tab_history = TabHistory(self)             # a tab's whole conversation, searchable (tab_history.py)
         self.usage = Usage(root=self.root)
         self.quick = Quick(self, claude=self.runner.claude)
+        self.runner.a2a_sources = frozenset(self.runner.source_script(s["script"]) for s in cfg.a2a_sources)
         self.agents = Agents(self)
         self.bridges = Bridges(self.root)
         self.triage = Triage(self)
+        self.describe = Describer(self)                # each item's brief, written and kept (describe.py)
+        self.checkin = Looker(self)                    # the look before a check-in, by itself (checkin.py)
+        self.themes = Themes(self)                     # the themes of the Work through page (themes.py)
+        self.activity = Activity(self)                 # a point's Activity tab: feed, documents, summary (activity.py)
+        self.instruct = Instruct(self)                 # the instruction line of Work through (instruct.py)
         self.history = History(self.state_dir, self.clock)
         self.collector = Collector(self)
+        self.logrange = LogRange(self)
         self.relay = Relay(self.state_dir, cfg, clock, self.tx, key=load_key(key_dir or default_key_dir()))
         self.actions = Actions(self)
         self.launch_model = LaunchModel(self)         # the model an agent starts with (launch.py)
         self.ticker = Ticker(self)                     # the news ticker of the start page (ticker.py)
+        self.workspaces = Workspaces(self)             # the switches of the settings page (workspaces.py)
         self.guide = Guide(self)                       # the decision guide of waiting tabs (guide.py)
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
@@ -235,12 +322,23 @@ class App:
         """Every open page, a background one included (it still wants the waiting count in its title)."""
         return self.hub.count()
 
-    def note(self, text: str, tone: str = "info") -> None:
+    def note(self, text: str, tone: str = "info", go: dict | None = None) -> dict | None:
+        """A note for every page, with where it leads when it names a place (actions_base.note_go); returns that
+        place as sent, None for none. A target the scrub would change is dropped, never sent changed. It carries
+        its date beside the time (at_ms): the history lists the notes under their day, and a server that runs past
+        midnight keeps yesterday's."""
         if not text:
-            return
-        entry = {"at": m.clock_time(self.clock()), "text": self.scrub(text), "tone": tone}
+            return None
+        now = self.clock()
+        entry = {"at": m.clock_time(now), "at_ms": int(now), "text": self.scrub(text), "tone": tone}
+        target = note_go(go)
+        if target and all(self.scrub(v) == v for v in target.values()):
+            entry["go"] = target
+        else:
+            target = None
         self.notes.append(entry)
         self.broadcast("note", entry)
+        return target
 
     @property
     def cookie_name(self) -> str:
@@ -271,10 +369,47 @@ class App:
             self._codes_used[nonce] = ts
         return True
 
-    def session_value(self, now_s: int | None = None) -> str:
-        """The cookie: its second of issue and a MAC over it with the key, so it ends after COOKIE_AGE_S."""
+    def redeem_person(self, code: str) -> str | None:
+        """Whom a login code of a person logs in, None for anything else. Spent and aged like the owner's."""
+        fields = (code or "").split(".")
+        if len(fields) != 4 or not ac.PERSON_RE.match(fields[0]) or not fields[2].isdigit() or len(fields[2]) > 12:
+            return None
+        person, nonce, stamp, given = fields
+        if not hmac.compare_digest(given.encode("utf-8"), mac(self.token, f"person-code|{person}|{nonce}|{stamp}").encode("utf-8")):
+            return None
+        ts, now = int(stamp), self.now_s()
+        if not (-CLOCK_SKEW_S <= now - ts <= CODE_AGE_S) or ts < self.started_ms // 1000 - CLOCK_SKEW_S:
+            return None
+        with self._codes_lock:
+            if nonce in self._codes_used:
+                return None
+            self._codes_used[nonce] = ts
+        return person
+
+    def session_value(self, now_s: int | None = None, person: str | None = None) -> str:
+        """The cookie: its second of issue and a MAC over it with the key, so it ends after COOKIE_AGE_S. A person's
+        names them in the MAC as well, under its own word: it is no owner's cookie and no other person's."""
         ts = self.now_s() if now_s is None else now_s
+        if person is not None:
+            return f"{person}.{ts}.{mac(self.token, f'person|{person}|{ts}')}"
         return f"{ts}.{mac(self.token, f'session|{ts}')}"
+
+    def session_person(self, value: str) -> str | None:
+        """Whom a person's cookie names, None for anything else"""
+        fields = (value or "").split(".")
+        if len(fields) != 3 or not ac.PERSON_RE.match(fields[0]) or not fields[1].isdigit() or len(fields[1]) > 12:
+            return None
+        person, stamp, given = fields
+        if not hmac.compare_digest(given.encode("utf-8"), mac(self.token, f"person|{person}|{stamp}").encode("utf-8")):
+            return None
+        return person if -CLOCK_SKEW_S <= self.now_s() - int(stamp) <= COOKIE_AGE_S else None
+
+    def person_client(self, person: str) -> SSEClient:
+        """A live page of a person: every event goes through access.py on its way there"""
+        return self.hub.add(person, lambda event, payload: self.access.event(person, event, payload))
+
+    def csrf_of(self, person: str | None) -> str:
+        return self.csrf if person is None else derived(self.token, f"csrf|{person}")
 
     def session_ok(self, value: str) -> bool:
         _, ts = parse_signed(self.token, "session", value, parts=2)
@@ -303,23 +438,38 @@ class App:
         return self.tabs.state(self.collector.view)
 
     def colors_css(self) -> tuple[bytes, str]:
-        """The stylesheet from DESIGN.md and its tag, kept until DESIGN.md changes (mtime, size)"""
+        """The stylesheet from the design the Bridge resolves (design.py) and its tag, kept until that file
+        changes (path, mtime, size): a theme pointing at another design, or an edit to the file itself"""
+        path, error = resolved(self.root)
         try:
-            st = (self.root / "DESIGN.md").stat()
-            stamp = (st.st_mtime_ns, st.st_size)
+            st = path.stat()
+            stamp = (str(path), error, st.st_mtime_ns, st.st_size)
         except OSError:
-            stamp = (0, 0)
+            stamp = (str(path), error, 0, 0)
         with self._colors_lock:
             if self._colors is None or self._colors[0] != stamp:
                 body = stylesheet(self.root).encode("utf-8")
-                self._colors = (stamp, body, static_etag(stamp[0], len(body) + stamp[1]))
+                # the path and the error are in the tag too: either changes the body without touching the file
+                which = zlib.crc32(f"{stamp[0]}|{stamp[1]}".encode("utf-8"))
+                self._colors = (stamp, body, static_etag(stamp[2] ^ which, len(body) + stamp[3]))
             return self._colors[1], self._colors[2]
+
+    def make_work_sync(self) -> WorkSync:
+        def run(paths: list[str], person: str) -> int:
+            argv = [self.runner.python, self.runner.script("scripts/work-sync.py"), "--root", str(self.root),
+                    "--actor", person]
+            for path in paths:
+                argv += ["--path", path]
+            return self.runner.run(argv, WORK_SYNC_TIMEOUT_S).code
+        return WorkSync(self.root, self.state_dir, run, self.log_error)
 
     def driver_caps(self, fresh: bool = False) -> list[str]:
         """The verbs the terminal driver serves (workplace.py caps): what the page may offer for a tab.
         Asked once and then every few minutes. A read that fails keeps the last good answer and is tried
         again after CAPS_RETRY_S (one hiccup used to switch Yes, No and jump off for five minutes); only a
         driver never read successfully serves nothing. Callers at the same moment share one read."""
+        if self.cfg.served:
+            return []
         with self._caps_lock:
             hit = self._caps
             if not fresh and hit is not None and time.monotonic() - hit[0] < (CAPS_TTL_S if hit[2] else CAPS_RETRY_S):
@@ -391,10 +541,45 @@ class App:
                 "notes": list(self.notes), "relay": self.relay_state(), "cmux": self.cmux_state(),
                 "driver": {"caps": self.driver_caps()}, "home": self.store.home(),
                 "sessions": self.sessions_state(), "quick": self.quick.state(), "quick_live": self.quick.live_state(), "agents": self.agents.state(), "triage": self.triage.state(), "jev": jev.status(self) if jev else dict(JEV_OFF),
+                # Prio's second ranker: whether Haiku can read in, its runs left today, the fallback (prio.py)
+                "prio": prio.state(self),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
-                "tour": self.tour_state(),
+                "workspaces": self.workspaces.state(),
+                "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(),
+                # the model calls of the Activity tab and the instruction line: the runs left today (activity.py)
+                "flow_ai": self.activity.flow_ai(),
                 "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
                           "bridges": self.bridges.state()}}
+
+    def work_state(self) -> dict:
+        """The work tab as the config sets it: the view it opens on (cockpit.work_view) and whether the start
+        page's focus leads on into the files view (cockpit.focus_to_files), which tasks are files (cockpit.files_scope),
+        the Work through page (cockpit.flow: on or off, its reasons to drop, its return delay) and the views its
+        switch offers (cockpit.work_views). With Work through on also who the person is (cockpit.person_name):
+        a task whose next step names them waits on nobody else. The files tab's question to its records
+        (cockpit.files_search): on or off, the words of its block list and the questions left today"""
+        flow = dict(getattr(self.cfg, "flow", None) or flow_defaults())
+        person = getattr(self.cfg, "person_name", None) if flow.get("enabled") is True else None
+        return {"view": getattr(self.cfg, "work_view", "due"), "focus_to_files": bool(getattr(self.cfg, "focus_to_files", False)),
+                "files_scope": getattr(self.cfg, "files_scope", "active"), "flow": flow,
+                "views": list(getattr(self.cfg, "work_views", None) or WORK_VIEWS),
+                "files_search": {"enabled": bool(act.block(self, "files").get("enabled")),
+                                 "block": list(act.block(self, "files").get("block") or []),
+                                 "left": self.activity.budget_left("files")},
+                **({"person": person} if person else {})}
+
+    def records_held(self, res: dict) -> dict:
+        """The records of the files tab, each with `held`: the words of the block list that keep it from a question
+        (actions_work.record_check, the check the question makes). Only with the question on and a block list, so
+        a Bridge without either reads nothing more than the records"""
+        cfg = act.block(self, "files")
+        words = list(cfg.get("block") or [])
+        if not cfg.get("enabled") or not words:
+            return res
+        from .actions_work import record_check
+        themes = self.themes.load()
+        return {**res, "records": [{**r, "held": record_check(self, words, themes, r["path"], r["slug"], r["kind"])["held"]}
+                                   for r in res.get("records") or []]}
 
     def tour_state(self) -> dict:
         """The first-run tour: whether a first visit offers it (cockpit.tour) and how it ended, if it did"""
@@ -403,26 +588,89 @@ class App:
     def task_open(self, slug: str) -> bool:
         return bool(slug) and (self.root / "work" / "tasks" / slug / "STATUS.md").is_file()
 
+    def open_slugs(self) -> set:
+        """The open tasks and streams by slug: what a workflow run can belong to (sessions.run_task)"""
+        out = set()
+        for kind in ("tasks", "streams"):
+            try:
+                out |= {p.parent.name for p in (self.root / "work" / kind).glob("*/STATUS.md") if details.SLUG_RE.match(p.parent.name)}
+            except OSError:
+                pass
+        return out
+
     def link_tab_sessions(self) -> bool:
         """A session in a task tab (BRIDGE_TAB_SLUG names an open task) is linked to that task by itself;
-        True when a link is new. A team tab names its task too; an inbox tab names no task."""
+        True when a link is new. A team tab names its task too; an inbox tab names no task. A pair refused on
+        the page ("Not this task") stays unlinked."""
         changed = False
+        refused = self.store.session_refused()
         for x in self.sessions.state():
             slug = x.get("tab_slug") or ""
-            if x.get("sid") and self.task_open(slug):
+            if x.get("sid") and self.task_open(slug) and slug not in (refused.get(x["sid"]) or {}):
                 changed = self.store.link_session(x["sid"], slug, x.get("name") or "", x.get("cwd") or "", "tab") or changed
         return changed
 
+    def infer_on(self) -> bool:
+        """Whether a live session's task is recognised from its transcript: Work through on, and its switch"""
+        flow = getattr(self.cfg, "flow", None) or {}
+        return flow.get("enabled") is True and flow.get("infer_sessions", True) is True
+
+    def open_links(self) -> dict:
+        """The kept session links whose task is open: a link to a task that closed (done, merged) is kept, so a
+        resume or a reopen finds it, but it counts as no task and blocks no recognition (sessions.infer)"""
+        return {sid: v for sid, v in self.store.session_links().items()
+                if isinstance(v, dict) and isinstance(v.get("task"), str) and self.task_open(v["task"])}
+
+    def session_tasks(self) -> dict:
+        """The task each live session works on, {sid: {task, how, since_ms}}: a link by hand, else a tab's link
+        (every start from the cockpit), else the open task it is seen working on (sessions.infer) unless the pair
+        was refused; a link counts only while its task is open (open_links). A link's since is when it was made,
+        never before the session started"""
+        links, refused = self.open_links(), self.store.session_refused()
+        seen = self.sessions.seen_state() if self.infer_on() else {}
+        slugs = self.open_slugs() if seen else set()
+        out = {}
+        for x in self.sessions.state():
+            sid = x.get("sid") or ""
+            link, saw = links.get(sid), seen.get(sid)
+            started = x.get("started_ms") if isinstance(x.get("started_ms"), int) else 0
+            if link and isinstance(link.get("task"), str):
+                at = link.get("at_ms") if isinstance(link.get("at_ms"), (int, float)) else 0
+                out[sid] = {"task": link["task"], "how": "tab" if link.get("how") == "tab" else "hand",
+                            "since_ms": int(max(at, started)) or None}
+            elif saw and saw["task"] in slugs and saw["task"] not in (refused.get(sid) or {}):
+                out[sid] = {"task": saw["task"], "how": "seen", "since_ms": saw.get("since_ms")}
+        return out
+
+    def tab_tasks(self) -> dict:
+        """{tab ref: task} of the live sessions that work on one (session_tasks), the newest session of a tab
+        deciding, as the page reads it (views/rooms.js taskOfTab); the control tab is left to the caller"""
+        tasks = self.session_tasks()
+        out: dict[str, tuple] = {}
+        for x in self.sessions.state():
+            ref = (x.get("tab") or {}).get("ref")
+            task = (tasks.get(x.get("sid") or "") or {}).get("task")
+            started = x.get("started_ms") if isinstance(x.get("started_ms"), (int, float)) else 0
+            if isinstance(ref, str) and ref and task and (ref not in out or started > out[ref][0]):
+                out[ref] = (started, task)
+        return {ref: task for ref, (_, task) in out.items()}
+
     def sessions_state(self) -> dict:
-        """The live sessions, each with the task it is linked to, and every kept link: the page shows a
-        task's sessions, the live ones with their tab, the ended ones to go on in"""
+        """The live sessions, each with the task it works on (session_tasks: task, task_how, task_since_ms), and
+        every kept link: the page shows a task's sessions, the live ones with their tab, the ended ones to go on in"""
         links = self.store.session_links()
+        tasks = self.session_tasks()
         # copies: the scan's own list is what the next scan compares with
-        live = [{**x, "task": (links.get(x.get("sid") or "") or {}).get("task")} for x in self.sessions.state()]
+        live = [{**x, "task": (tasks.get(x.get("sid") or "") or {}).get("task"),
+                 "task_how": (tasks.get(x.get("sid") or "") or {}).get("how"),
+                 "task_since_ms": (tasks.get(x.get("sid") or "") or {}).get("since_ms")} for x in self.sessions.state()]
         sids = {x.get("sid") for x in live}
         kept = [{"sid": sid, **v, "live": sid in sids} for sid, v in links.items() if self.task_open(v.get("task", ""))]
         kept.sort(key=lambda v: -v.get("at_ms", 0))
-        return {"at_ms": self.tabs.at_ms, "sessions": live, "links": kept}
+        # the workflow runs bound to an open task (sessions.run_task), each with whether it was checked
+        seen, slugs = self.store.runs_seen(), self.open_slugs()
+        runs = [{**r, "seen": r["id"] in seen} for r in self.sessions.run_state() if r["task"] in slugs]
+        return {"at_ms": self.tabs.at_ms, "sessions": live, "links": kept, "runs": self.scrub_tree(runs)}
 
     def on_tabs(self, alerts: list[dict]) -> None:
         state = self.tabs_state()
@@ -444,7 +692,14 @@ class App:
         try:
             relay = frozenset(h["session"] for h in self.relay.heartbeats(self.clock()))
             changed = self.sessions.refresh(self.tabs.tab_list(), self.clock(), self.tabs.control_ref(), relay)
-            if self.link_tab_sessions() or changed:
+            linked = self.link_tab_sessions()
+            slugs, links = self.open_slugs(), self.store.session_links()
+            ran = self.sessions.refresh_runs(self.clock(), slugs, links, self.root)
+            # the task a live session is seen working on, read from its transcript only while Work through is on; a
+            # link to a task that closed no longer keeps a session from being read
+            seen = (self.sessions.infer(slugs, self.store.session_refused(), self.open_links(), self.root) if self.infer_on()
+                    else self.sessions.clear_seen())
+            if linked or changed or ran or seen:
                 self.broadcast("sessions", self.sessions_state())
         except Exception as exc:  # noqa: BLE001 - the sessions page is an extra, never a reason for the tabs to stop
             self.log_error(f"sessions: {exc!r}")
@@ -470,6 +725,95 @@ class App:
     def on_client_connect(self) -> None:
         self.tabs.schedule(0)
         self.collector.on_connect()
+
+    def describe_items(self) -> dict:
+        """The describe view of every item with something to say, by key (`task:<slug>`, `inbox:<id>`;
+        describe.py Describer.views): who wrote its brief, whether it is stale, a proposal waiting, a run going on.
+        A failure here never stops the page: the cards are built without it."""
+        try:
+            return self.describe.views()
+        except Exception as exc:  # noqa: BLE001 - a damaged describe store degrades to no describe view
+            self.log_error(f"describe items: {exc!r}")
+            return {}
+
+    def card_sources(self) -> dict:
+        """What every card is built with besides its item (card.py): the triage items and the brief proposals,
+        by key. A failure here never stops the page: the cards are built without them."""
+        return {"triage": self.card_triage(), "describe": self.describe_items(), "looks": self.checkin_looks()}
+
+    def checkin_looks(self) -> dict:
+        """The looks before a check-in by key (checkin.py), {} on any failure: the card asks as before"""
+        try:
+            return self.checkin.found_by_key()
+        except Exception:  # noqa: BLE001 - a broken store never stops the page
+            return {}
+
+    def workers_view(self) -> dict | None:
+        """The worker view the Resources section keeps (scripts/bridge-resources.py workers), None without one"""
+        try:
+            data = json.loads((self.root / ".bridge" / "resources" / "workers-view.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) and isinstance(data.get("runs"), list) else None
+
+    def ack_closed_findings(self) -> None:
+        """A job's inbox item closed (its own, worker:<host>:<id>, or a question handed over about it) marks the
+        job's finding seen, with the close note: the person or the tab that closed it looked. Read from the
+        inbox folder itself, again only when an item changed: its folder or its events/ folder, where inbox.py
+        writes a close (a file added there leaves the item folder's own time as it was); a failure here never
+        stops a pass"""
+        folder = self.root / "work" / "inbox"
+
+        def events_ns(path: str) -> int:
+            try:
+                return os.stat(os.path.join(path, "events")).st_mtime_ns
+            except OSError:
+                return 0
+        try:
+            sign = tuple(sorted((e.name, e.stat().st_mtime_ns, events_ns(e.path)) for e in os.scandir(folder) if e.is_dir()))
+        except OSError:
+            return
+        view = self.workers_view()
+        if sign == getattr(self, "_acks_inbox_sign", None) or view is None:
+            return
+        try:
+            from .describe import _module
+            inbox = _module("_cockpit_inbox", "inbox.py").Inbox(folder, actor="web")
+            items = []
+            for it in inbox.items():
+                closes = [e for e in it.events if e.verb in ("close", "executed")]
+                if it.state == "done" and closes:
+                    items.append({"id": it.id, "key": it.key, "summary": it.summary, "detail": it.detail,
+                                  "closed_at": closes[-1].at, "note": closes[-1].data.get("text") or ""})
+            now = dt.datetime.fromtimestamp(self.clock() / 1000, dt.timezone.utc)
+            found = m.closed_acks(items, view, self.store.acks_read(), now)
+        except Exception as exc:  # noqa: BLE001 - an unreadable inbox leaves the findings as they are
+            self.log_error(f"acks from the inbox: {exc!r}")
+            return
+        self._acks_inbox_sign = sign
+        for key, fp, note, item_id in found:
+            self.store.ack(key, fp, note, item_id)
+        if found:
+            self.collector.rebuild()
+            self.broadcast("acks", {"keys": sorted({k for k, *_ in found})})
+
+    def card_triage(self) -> dict:
+        try:
+            return self.triage.state().get("items") or {}
+        except Exception as exc:  # noqa: BLE001 - a damaged triage file degrades to no gist
+            self.log_error(f"card sources: {exc!r}")
+            return {}
+
+    def card_ctx(self, key: str) -> "cd.Ctx":
+        """The card context of a detail endpoint: the same text table and triage as the model's cards, and the
+        describe view of this one key (a detail draws one card, so it never reads every item's view)"""
+        try:
+            view = self.describe.view(key)
+        except Exception as exc:  # noqa: BLE001 - a damaged describe store degrades to no describe view
+            self.log_error(f"describe items: {exc!r}")
+            view = None
+        return cd.Ctx(tx=self.tx.get("card"), triage=self.card_triage(), describe={key: view} if view else {},
+                      tasks={t["slug"]: t for t in self.collector.tasks})
 
     def inbox_listing(self) -> list | None:
         at, cached = self.inbox_cache
@@ -505,7 +849,8 @@ class App:
 
     def server_json(self) -> dict:
         now = int(self.clock())
-        return {"v": 1, "pid": os.getpid(), "port": self.port, "started_ms": self.started_ms,
+        return {"v": 1, "pid": os.getpid(), "port": self.port, "local_name": getattr(self.cfg, "local_name", None),
+                "started_ms": self.started_ms,
                 "root": str(self.root), "instance": self.instance, "version": VERSION, "clients": self.connected_count(),
                 "relay_online": bool(self.relay_state(with_records=False)["online"]), "updated_ms": now}
 
@@ -547,24 +892,45 @@ class App:
     def start(self) -> None:
         self.collector.load_stale()
         self.collector.request("both")
-        self.tabs.schedule(0)
+        if not self.cfg.served:
+            self.tabs.schedule(0)
         if self.cfg.triage_daily:
             self.triage.start_daily()  # what each task and inbox item is, once a day by itself (cockpit.triage_daily)
         self.start_layout_backup()     # the cmux layout, every snapshot_minutes, only on change
+        self.describe.start_auto()     # each item's brief kept by itself, only with cockpit.describe.auto on
+        self.checkin.start_auto()      # the look before a check-in, only with cockpit.flow.checkin on
         self.history.backfill(self.root, self.state_dir / "audit.log")   # closes from before the history
-        for target, name in ((self.collector.worker, "collect"), (self.tabs.loop, "tabs"), (self.watcher.loop, "watch"),
-                             (self.ticker.loop, "ticker-loop")):
+        loops = [(self.collector.worker, "collect"), (self.watcher.loop, "watch"), (self.ticker.loop, "ticker-loop")]
+        loops += [(self.work_sync.loop, "work-sync")] if self.work_sync else [(self.tabs.loop, "tabs")]
+        for target, name in loops:
             thread = threading.Thread(target=target, name=f"bridge-cockpit-{name}", daemon=True)
             thread.start()
             self.threads.append(thread)
 
     def stop(self) -> None:
         self.stopping = True
+        if self.work_sync:
+            self.work_sync.stop()
         self.collector.shutdown()
         self.tabs.shutdown()
         self.watcher.shutdown()
         # what still runs for the page (a quick answer, a triage, a review) ends with it (review C9)
         self.runner.terminate_all()
+
+
+def served_config(cfg: WebConfig) -> WebConfig:
+    """The cockpit of an always-on machine: it serves people, it does not run the owner's day."""
+    return dataclasses.replace(cfg, served=True, relay=False, triage_daily=False, snapshot_minutes=0)
+
+
+def served_runner(root: Path | str, code: Path | str | None = None, ask: Any = None) -> Runner:
+    """No model and no terminal: a question to a model and a tab stay on the owner's own machine. With
+    cockpit.served.ask a person's question has the CLI, on its own road alone (Runner.run_person)."""
+    runner = Runner(root, cmux=None, claude=None, codex=None, code=code)
+    runner.person_claude = (ask.claude or resolve_claude()) if ask else None
+    if ask and ask.codex:
+        runner.person_codex = ask.codex.get("path") or resolve("codex")
+    return runner
 
 
 USAGE_RANGES = (7, 30, 90)
@@ -599,6 +965,7 @@ def etag_matches(header: str | None, etag: str) -> bool:
 
 
 class Handler(BaseHTTPRequestHandler):
+    person: str | None = None     # set by cookie_ok on every request: a person named under members:, None for the owner
     server_version = "bridge-cockpit"
     sys_version = ""
     protocol_version = "HTTP/1.1"
@@ -654,32 +1021,70 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ checks
 
-    def host_ok(self) -> bool:
+    def local_names(self) -> tuple:
+        """127.0.0.1, localhost and, under cockpit.local_name, that one name on .localhost: nothing else"""
+        name = getattr(self.app.cfg, "local_name", None)
+        return ("127.0.0.1", "localhost") + ((f"{name}.localhost",) if name else ())
+
+    def local_host(self) -> bool:
         host = self.headers.get("Host", "")
         port = self.app.port
-        return host in (f"127.0.0.1:{port}", f"localhost:{port}")
+        return host in tuple(f"{n}:{port}" for n in self.local_names())
+
+    def host_ok(self) -> bool:
+        gate = self.app.sign_in
+        return self.local_host() or bool(gate and self.headers.get("Host", "") == gate.settings.host)
 
     def origin_ok(self, origin: str | None) -> bool:
         port = self.app.port
-        return origin in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+        if self.app.sign_in:
+            return origin == f"https://{self.app.sign_in.settings.host}"
+        return origin in tuple(f"http://{n}:{port}" for n in self.local_names())
 
     def fetch_site_ok(self) -> bool:
         site = self.headers.get("Sec-Fetch-Site")
-        return site is None or site in ("same-origin", "none")
+        if site is None or site in ("same-origin", "none"):
+            return True
+        # the sign-in gateway answers on a domain of its own and sends the browser back: that one step, a plain
+        # navigation to the page, comes from elsewhere. It changes nothing, and the token still decides
+        return (bool(self.app.sign_in) and self.command == "GET" and urllib.parse.urlsplit(self.path).path == "/"
+                and self.headers.get("Sec-Fetch-Mode") == "navigate" and self.headers.get("Sec-Fetch-Dest") == "document")
 
     def csrf_ok(self, value: str | None) -> bool:
-        return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.csrf.encode("utf-8"))
+        return bool(value) and hmac.compare_digest(value.encode("utf-8"), self.app.csrf_of(self.person).encode("utf-8"))
+
+    def signed_in(self, path: str) -> bool:
+        """Behind the gateway: the public name and a good token naming a person, or a refusal. Only the token counts,
+        never a cookie, a login code or the address header. This sets self.person; there is no owner here."""
+        gate = self.app.sign_in
+        self.person = None
+        if self.headers.get("Host", "") == gate.settings.host:
+            self.person = self.app.access.person_of(gate.address(self.headers.get("Cf-Access-Jwt-Assertion")))
+        if self.person is not None:
+            return True
+        if path.startswith("/api/"):
+            self.send_error_json("not_signed_in", "this sign-in is not open here", status=403)
+        else:
+            self.send_bytes(403, NOT_OPEN_PAGE.encode("utf-8"), "text/html; charset=utf-8", html=True)
+        return False
 
     def cookie_ok(self) -> bool:
         """Any cookie of our name holding a valid session value. Parsed by hand: SimpleCookie drops every cookie
         after one it cannot parse, and another app on 127.0.0.1 (any port) may have set such one."""
+        if self.app.sign_in:
+            return self.person is not None      # signed_in ran first
         name = self.app.cookie_name
+        self.person = None
+        found = None
         for header in self.headers.get_all("Cookie") or []:
             for part in header.split(";"):
                 key, sep, value = part.strip().partition("=")
-                if sep and key.strip() == name and self.app.session_ok(value.strip().strip('"')):
-                    return True
-        return False
+                if sep and key.strip() == name:
+                    if self.app.session_ok(value.strip().strip('"')):
+                        return True
+                    found = found or self.app.session_person(value.strip().strip('"'))
+        self.person = found       # a person's cookie: every answer below goes through access.py
+        return found is not None
 
     def precheck(self) -> bool:
         if not self.host_ok():
@@ -726,20 +1131,24 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlsplit(self.path)
         path, query = parsed.path, urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
         app = self.app
+        if app.sign_in and not (path == "/api/health" and self.local_host()) and not self.signed_in(path):
+            return
         if path == "/api/health":
             self.send_json(200, {"ok": True, "version": VERSION, "instance": app.instance})
             return
         if path in PUBLIC_ICONS:
             self.get_static(path)
             return
-        if path == "/" and "code" in query:
+        if path == "/" and "code" in query and not app.sign_in:
             given = query["code"][0] if query["code"] else ""
-            if self.app.redeem(given):
+            owner = self.app.redeem(given)
+            person = None if owner else self.app.redeem_person(given)
+            if owner or person:
                 # keep the page's own switches (mock mode, language) so `url` plus &mock=1 still works
                 keep = [(k, query[k][0]) for k in VIEW_PARAMS if query.get(k) and VIEW_VALUE_RE.match(query[k][0])]
                 location = "/" + (f"?{urllib.parse.urlencode(keep)}" if keep else "")
                 self.send_bytes(303, b"", "text/plain; charset=utf-8", extra={
-                    "Location": location, "Set-Cookie": f"{app.cookie_name}={app.session_value()}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_AGE_S}"})
+                    "Location": location, "Set-Cookie": f"{app.cookie_name}={app.session_value(person=person)}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_AGE_S}"})
             else:
                 self.send_unauthorized(path)
             return
@@ -749,12 +1158,53 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             self.get_api(path, query)
         elif path == "/colors.css":
-            # the Bridge's own colours and fonts, from its DESIGN.md (design.py): every fork shows its brand
+            # the Bridge's own colours and fonts, from the design it resolves (design.py): every fork shows its brand
             self.get_colors()
         else:
             self.get_static(path)
 
+    def get_api_person(self, person: str, path: str, query: dict) -> None:
+        """All a person can ask for: what access.py lists, cut there. Nothing falls through to the owner's routes."""
+        app, access = self.app, self.app.access
+        one = lambda name: (query.get(name) or [""])[0]  # noqa: E731
+        if path not in ac.PERSON_GET or not access.scope(person):
+            self.send_error_json("not_yours", "this is not open to you", status=403)
+        elif path == "/api/bootstrap":
+            self.send_json(200, access.bootstrap(person))
+        elif path == "/api/state":
+            self.send_json(200, access.state(person))
+        elif path == "/api/events":
+            origin = self.headers.get("Origin")
+            if origin is not None and not self.origin_ok(origin):
+                self.send_error_json("forbidden_origin", "wrong origin")
+                return
+            self.events(person)
+        elif path == "/api/task":
+            slug, rel, folder = one("slug"), one("file") or None, one("path") or None
+            if not details.SLUG_RE.match(slug) or (folder is not None and (len(folder) > 200 or folder.split("/")[-1] != slug)) \
+                    or not access.record_open(person, slug, folder):
+                self.send_error_json("not_yours", "this is not open to you", status=403)
+            elif rel is not None:
+                result = details.task_file(app.root, slug, rel, folder) if len(rel) <= 300 and details.FILE_RE.match(rel) else None
+                self.send_json(200, access.clean(app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such file")
+            else:
+                result = details.task_detail(app.root, slug, app.inbox_listing(), folder, app.cfg.origin_map,
+                                             ctx=app.card_ctx(f"task:{slug}"))
+                self.send_json(200, access.task(person, app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such task")
+        elif path == "/api/records":
+            self.send_json(200, app.scrub_tree(access.records(person)))
+        else:   # /api/inbox, the one left of PERSON_GET
+            item_id = one("id")
+            if not details.INBOX_ID_RE.match(item_id) or f"inbox:{item_id}" not in access.visible(person):
+                self.send_error_json("not_yours", "this is not open to you", status=403)
+                return
+            result = details.inbox_detail(app.root, item_id, app.inbox_listing(), app.cfg.origin_map, ctx=app.card_ctx(f"inbox:{item_id}"))
+            self.send_json(200, access.inbox(app.scrub_tree(result))) if result else self.send_error_json("not_found", "no such inbox item")
+
     def get_api(self, path: str, query: dict) -> None:
+        if self.person is not None:
+            self.get_api_person(self.person, path, query)
+            return
         app = self.app
         one = lambda name: (query.get(name) or [""])[0]  # noqa: E731
         if path == "/api/bootstrap":
@@ -765,7 +1215,10 @@ class Handler(BaseHTTPRequestHandler):
                                  "config_warnings": list(getattr(cfg, "config_warnings", ())),
                                  "config": {"port": app.port, "relay": cfg.relay, "tabs_seconds": cfg.tabs_seconds,
                                             "full_minutes": cfg.full_minutes, "voice": cfg.voice, "target": cfg.target,
-                                            "control": cfg.control, "profile": cfg.profile}})
+                                            "control": cfg.control, "profile": cfg.profile,
+                                            "areas": list(cfg.areas),
+                                            "area_aliases": dict(getattr(cfg, "area_aliases", ())),
+                                            "area_tags": {k: list(v) for k, v in getattr(cfg, "area_tags", ())}, "clicks": bool(getattr(cfg, "usage_clicks", True))}})
         elif path == "/api/state":
             self.send_json(200, app.state_payload())
         elif path == "/api/events":
@@ -783,6 +1236,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/history":
             # what the dashboard closed, dropped, settled or hid, newest first, each with its undo
             self.send_json(200, {"ok": True, "entries": app.history.state()})
+        elif path == "/api/chats/archive":
+            # the questions archived in the last days, for "all" under the questions (round 6d), read only
+            days = int(one("days")) if one("days").isdigit() else 7
+            self.send_json(200, {"ok": True, "convs": app.quick.archived(days)})
         elif path == "/api/agents":
             # the A2A peers with what their cards say (fetched in the background) and the conversations;
             # fresh=1 is the page's "check again": every card is fetched, also one inside its CARD_TTL
@@ -791,13 +1248,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/workers":
             # the full worker view the Resources section keeps (scripts/bridge-resources.py workers), read only
             # a Bridge without one (no workers declared) is no error: view null, and the page shows no Worker tab
-            path_ = app.root / ".bridge" / "resources" / "workers-view.json"
-            try:
-                data = json.loads(path_.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                data = None
-            ok = isinstance(data, dict) and isinstance(data.get("runs"), list)
-            self.send_json(200, {"ok": True, "view": data if ok else None})
+            # a job filed by Analyse in a tab names its item, so its row shows that tab (actions_pages.py), and a job
+            # whose finding was marked seen carries `acked` (model.workers_with_acks)
+            data = app.workers_view()
+            if data:
+                app.actions.worker_items(data["runs"])
+            self.send_json(200, {"ok": True, "view": m.workers_with_acks(data, app.store.acks()) if data else None})
         elif path == "/api/ticker":
             # the news ticker as the page gets it in the state payload and the `ticker` event (ticker.py)
             self.send_json(200, {"ok": True, "ticker": app.ticker.state()})
@@ -812,6 +1268,24 @@ class Handler(BaseHTTPRequestHandler):
                 data = None
             ok = isinstance(data, dict) and isinstance(data.get("accounts"), list)
             self.send_json(200, {"ok": True, "view": data if ok else None})
+        elif path == "/api/costs/statement":
+            # the cost card's button: a month's cost statement for the picked project or persona, from the closed
+            # month or the kept view (scripts/cost-ledger.py statement), read only; nothing is written
+            month, center, persona = one("month"), one("center") or "all", one("persona") or "all"
+            lang = one("lang") if one("lang") in ("en", "de") else "en"
+            if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                self.send_error_json("invalid_argument", "month must be YYYY-MM", "month", status=400)
+                return
+            if not (COST_REF_RE.match(center) and COST_REF_RE.match(persona)):
+                self.send_error_json("invalid_argument", "center and persona must be ids", "center", status=400)
+                return
+            ledger = cost_ledger()
+            try:
+                st = ledger.statement(app.root, month, center, persona, lang)
+            except ledger.LedgerError as error:
+                self.send_error_json("no_costs", str(error), "month", status=404)
+                return
+            self.send_json(200, {"ok": True, "statement": st})
         elif path == "/api/usage":
             # the tokens of the last 7, 30 or 90 days, counted from the Claude Code transcripts of this machine,
             # the kept history and the other machines (usage.py), read only; any other range becomes the nearest
@@ -835,29 +1309,135 @@ class Handler(BaseHTTPRequestHandler):
             # read only: the last lines of the tab's terminal, for the tab view (a CLI chat in the page),
             # through the terminal driver like everything else done to a tab. A page that names the hash
             # it holds (since) gets unchanged and no text while the screen stays the same
-            text, digest, err = app.tab_screen(ref)
+            # fast: right after a key, past the second a read is kept for
+            text, digest, err = app.tab_screen(ref, fresh=one("fast") == "1")
             if text is None:
                 self.send_error_json("unreadable", app.scrub(err)[:200])
                 return
             head = {"ok": True, "ref": ref, "name": tab.get("name"), "state": tab.get("state"),
                     "workspace": tab.get("workspace"), "hash": digest, "at_ms": int(app.clock())}
             self.send_json(200, {**head, "unchanged": True} if since == digest else {**head, "text": text})
+        elif path == "/api/tab-history":
+            # read only: the whole conversation of a tab, searchable (tab_history.py): from the transcript of the
+            # session the tab runs, else from the terminal's scrollback through the driver. q is a plain
+            # case-insensitive substring; the newest limit turns come, before pages back to older ones
+            ref, q = one("ref"), one("q")
+            if not TAB_REF_RE.match(ref):
+                self.send_error_json("invalid_argument", "not a tab ref", "ref")
+                return
+            if len(q) > HISTORY_QUERY_MAX:
+                self.send_error_json("invalid_argument", "the search is too long", "q")
+                return
+            try:
+                limit, before = history_paging(one("limit"), one("before"))
+            except ValueError as exc:
+                self.send_error_json("invalid_argument", "not a number", str(exc))
+                return
+            tab = app.tabs.find(ref)
+            if not tab:
+                self.send_error_json("not_found", "no such tab")
+                return
+            result, err = app.tab_history.read(ref, q, limit, before)
+            if result is None:
+                self.send_error_json("unreadable", app.scrub(err)[:200])
+                return
+            self.send_json(200, {"ok": True, "ref": ref, "name": tab.get("name"), **result, "at_ms": int(app.clock())})
         elif path == "/api/task":
             slug = one("slug")
             if not details.SLUG_RE.match(slug):
                 self.send_error_json("invalid_argument", "not a task slug", "slug")
                 return
-            result = details.task_detail(app.root, slug, app.inbox_listing())
+            # path: one folder of the slug (a closed copy the search found), else the open one first
+            folder = one("path") or None
+            if folder is not None and (len(folder) > 200 or folder.split("/")[-1] != slug):
+                self.send_error_json("invalid_argument", "not a folder of this task", "path")
+                return
+            # file: one file of the folder, as the listing names it (the files view reads it in place)
+            rel = one("file") or None
+            if rel is not None and (len(rel) > 300 or not details.FILE_RE.match(rel)):
+                self.send_error_json("invalid_argument", "not a file of this task", "file")
+                return
+            result = details.task_file(app.root, slug, rel, folder) if rel is not None \
+                else details.task_detail(app.root, slug, app.inbox_listing(), folder, app.cfg.origin_map,
+                                         ctx=app.card_ctx(f"task:{slug}"))
             if result is None:
-                self.send_error_json("not_found", "no such task")
+                self.send_error_json("not_found", "no such file" if rel is not None else "no such task")
             else:
                 self.send_json(200, app.scrub_tree(result))
+        elif path == "/api/find":
+            # the files view's search over every task, stream, closed task, the log and its archive
+            # (scripts/work-find.py, logic in lib/work_find.py), read only: the words go as one argv word after --
+            try:
+                q, _ = work_find.check_query(one("q"))
+            except ValueError as exc:
+                self.send_error_json("invalid_argument", str(exc), "q")
+                return
+            argv = [app.runner.python, app.runner.script("scripts/work-find.py"), "--root", str(app.root), "--json", "--", q]
+            run = app.run(argv, FIND_TIMEOUT)
+            try:
+                data = json.loads(run.out.strip().splitlines()[-1]) if run.ok else None
+            except (ValueError, IndexError):
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("groups"), list):
+                self.send_json(200, app.scrub_tree(data))
+            else:
+                self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
+        elif path == "/api/timeline":
+            # when it was done or discussed: the log and its archive, the meetings, the closed tasks and the raw
+            # transcripts (scripts/work-find.py --history, logic in lib/work_find.py), read only, the words one argv
+            # word after --; the transcripts only where the config names a folder that is there; from and to (days,
+            # the log page's range) narrow it before the list is cut
+            try:
+                q, _ = work_find.check_query(one("q"))
+                days = check_range(one)
+            except Refused as exc:
+                self.send_error_json("invalid_argument", str(exc), exc.field)
+                return
+            except ValueError as exc:
+                self.send_error_json("invalid_argument", str(exc), "q")
+                return
+            argv = [app.runner.python, app.runner.script("scripts/work-find.py"), "--root", str(app.root), "--history",
+                    "--json", "--meetings", app.cfg.meetings]
+            transcripts = work_find.transcript_root(app.cfg.transcripts)
+            argv += (["--transcripts", str(transcripts)] if transcripts else [])
+            argv += (["--since", days["since"]] if days["since"] else []) + (["--until", days["until"]] if days["until"] else [])
+            argv += ["--", q]
+            run = app.run(argv, FIND_TIMEOUT)
+            try:
+                data = json.loads(run.out.strip().splitlines()[-1]) if run.ok else None
+            except (ValueError, IndexError):
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("entries"), list):
+                self.send_json(200, app.scrub_tree(data))
+            else:
+                self.send_error_json("unreadable", app.scrub((run.err or run.out or "the search did not answer").strip())[-200:])
+        elif path == "/api/logrange":
+            # the log page's time range (logrange.py): the rows of the log and its archive for any range of days with
+            # the own commits of the page's commits section, or the meetings, closed tasks and transcripts one entry
+            # each; read only, through work-find.py and briefing.py, the whole log kept until a file of it changes
+            try:
+                params = check_logrange(one)
+            except Refused as exc:
+                self.send_error_json("invalid_argument", str(exc), exc.field)
+                return
+            try:
+                self.send_json(200, app.logrange.view(params))
+            except LogStale as exc:
+                self.send_error_json("stale_row", str(exc))
+            except ValueError as exc:
+                self.send_error_json("unreadable", app.scrub(str(exc))[-200:])
+        elif path == "/api/records":
+            # the start of the files tab: every task, stream and closed task as a record (lib/work_find.py records),
+            # read in place, read only; with the question on and a block list, each with the words that hold it
+            # back (actions_work.record_check), so the page counts what a question would send as the server does
+            self.send_json(200, app.scrub_tree(app.records_held(work_find.records(app.root))))
         elif path == "/api/inbox":
             item_id = one("id")
             if not details.INBOX_ID_RE.match(item_id):
                 self.send_error_json("invalid_argument", "not an inbox id", "id")
                 return
-            result = details.inbox_detail(app.root, item_id, app.inbox_listing())
+            result = details.inbox_detail(app.root, item_id, app.inbox_listing(), app.cfg.origin_map,
+                                          ctx=app.card_ctx(f"inbox:{item_id}"))
             if result is None:
                 self.send_error_json("not_found", "no such inbox item")
             else:
@@ -880,11 +1460,39 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, app.scrub_tree(data))
             else:
                 self.send_error_json("unreadable", app.scrub(str((data or {}).get("error") or "GitHub did not answer"))[:200])
+        elif path == "/api/issue":
+            # the boards of one GitHub issue and what a click would set there (issue_transition.py plan), read only
+            ref = one("ref")
+            if not GITHUB_REF_RE.match(ref):
+                self.send_error_json("invalid_argument", "not an owner/repo#number", "ref", status=400)
+                return
+            run = app.run([app.runner.python, app.runner.script("skills/github-projects-manager/scripts/issue_transition.py"),
+                           "--root", str(app.root), "plan", ref], ISSUE_PLAN_TIMEOUT)
+            try:
+                data = json.loads((run.out or "").strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                data = {"ok": False, "detail": (run.err or "no answer").strip()[-200:]}
+            if run.ok and isinstance(data, dict) and data.get("ok"):
+                # the last Check with AI comes along while the issue is unchanged, so the card shows it again (issue_check.py)
+                from . import issue_check
+                self.send_json(200, app.scrub_tree({**data, "check": issue_check.kept(app.state_dir, ref, data.get("updated"))}))
+            else:
+                why = (data or {}).get("detail") or (data or {}).get("error") or "GitHub did not answer"
+                self.send_error_json("unreadable", app.scrub(str(why))[:200])
         elif path == "/api/relay":
             self.send_json(200, app.relay_state())
         elif path == "/api/graph":
             # the knowledge graph of the config entries, tasks and the files they name (graph.py), read only
             self.send_json(200, {"ok": True, **app.scrub_tree(app.graph.view())})
+        elif path == "/api/flow/activity":
+            # the Activity tab of one point (activity.py), read only, kept 20 s unless fresh=1
+            try:
+                self.send_json(200, app.activity.view(one("key"), fresh=one("fresh") == "1"))
+            except ActionError as error:
+                self.send_error_json(error.code, error.message, error.field, status=error.status)
+        elif path == "/api/flow/doc":
+            # one document of a task's deliverables/, its bytes with a policy for its type (activity.doc_headers)
+            self.get_flow_doc(one("slug"), one("path"))
         elif path == "/api/graph/node":
             found = app.graph.node(one("id"))
             if found is None:
@@ -893,6 +1501,48 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"ok": True, **app.scrub_tree(found)})
         else:
             self.send_error_json("not_found", "unknown endpoint")
+
+    def get_flow_doc(self, slug: str, rel: str) -> None:
+        """A document opened from the Activity tab in a tab of its own: streamed, never through a link, and only a
+        regular file as it is when opened (a file swapped after the check is refused, a pipe never waited on)"""
+        app = self.app
+        if not act.flow_on(app):
+            self.send_error_json("flow_off", act.TEXT[act._lang(app)]["off"], status=409)
+            return
+        try:
+            target = act.doc_path(app.root, slug, rel)
+        except ActionError as error:
+            self.send_error_json(error.code, error.message, error.field, status=error.status)
+            return
+        fh = None
+        if target is not None:
+            try:
+                fh = os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb")
+            except OSError:
+                fh = None
+        if fh is None:
+            self.send_error_json("not_found", "no such document")
+            return
+        with fh:
+            st = os.fstat(fh.fileno())
+            if not stat.S_ISREG(st.st_mode):
+                self.send_error_json("not_found", "no such document")
+                return
+            headers = act.doc_headers(target.name)
+            self.send_response(200)
+            self.send_header("Content-Type", headers.pop("Content-Type"))
+            self.send_header("Content-Length", str(st.st_size))
+            self.security_headers()
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.end_headers()
+            left = st.st_size
+            while left > 0:
+                chunk = fh.read(min(64 * 1024, left))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                left -= len(chunk)
 
     def get_static(self, path: str) -> None:
         if path == "/":
@@ -933,7 +1583,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_bytes(200, target.read_bytes(), CONTENT_TYPES[ext], static=True, extra={"ETag": etag})
 
     def get_colors(self) -> None:
-        """colors.css, built once per state of DESIGN.md and revalidated like a static file (review C32)"""
+        """colors.css, built once per state of the resolved design file and revalidated like a static file (review C32)"""
         body, etag = self.app.colors_css()
         if etag_matches(self.headers.get("If-None-Match"), etag):
             self.send_response(304)
@@ -943,9 +1593,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_bytes(200, body, "text/css; charset=utf-8", static=True, extra={"ETag": etag})
 
-    def events(self) -> None:
+    def events(self, person: str | None = None) -> None:
         app = self.app
-        client = app.hub.add()
+        client = app.person_client(person) if person else app.hub.add()
         try:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -961,7 +1611,8 @@ class Handler(BaseHTTPRequestHandler):
             self.write_event("hello", json.dumps({"version": VERSION, "started_ms": app.started_ms,
                                                   "language": app.cfg.language, "client": client.id},
                                                  separators=(",", ":")))
-            self.write_event("state", json.dumps(app.state_payload(), ensure_ascii=False, separators=(",", ":")))
+            state = app.access.state(person) if person else app.state_payload()
+            self.write_event("state", json.dumps(state, ensure_ascii=False, separators=(",", ":")))
             app.on_client_connect()
             idle = 0.0
             while not client.closed and not app.stopping:
@@ -992,11 +1643,17 @@ class Handler(BaseHTTPRequestHandler):
         if not self.precheck():
             return
         path = urllib.parse.urlsplit(self.path).path
+        if self.app.sign_in and not self.signed_in("/api/"):
+            return
         if not self.cookie_ok() or not self.csrf_ok(self.headers.get("X-Bridge-Token")):
             self.send_unauthorized("/api/")
             return
         if not self.origin_ok(self.headers.get("Origin")):
             self.send_error_json("forbidden_origin", "wrong or missing Origin")
+            return
+        person = self.person
+        if person is not None and (path not in ac.PERSON_POST or not self.app.access.scope(person)):
+            self.send_error_json("not_yours", "this is not open to you", status=403)
             return
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype != "application/json":
@@ -1006,8 +1663,20 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
             length = -1
-        if length > MAX_BODY:
-            self.send_error_json("payload_too_large", "the body is larger than 64 KB")
+        cap = MAX_BODY
+        if path == "/api/flow/attach":
+            # the one path with a larger body (a document as base64), answered before any of it is read when off
+            words = act.TEXT[act._lang(self.app)]
+            if not act.flow_on(self.app):
+                self.send_error_json("flow_off", words["off"], status=409)
+                return
+            attach = act.block(self.app, "attach")
+            if not attach.get("enabled"):
+                self.send_error_json("attach_off", words["attach_off"], status=409)
+                return
+            cap = act.attach_body_cap(attach["max_mb"])
+        if length > cap:
+            self.send_error_json("payload_too_large", f"the body is larger than {cap // 1024} KB")
             self.close_connection = True
             return
         if length < 0:
@@ -1024,14 +1693,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         app = self.app
         try:
-            if path == "/api/action":
-                self.send_json(200, app.actions.execute(body.get("verb"), body.get("args")))
+            if person is not None and path == "/api/ask":
+                status, payload = app.person_ask.ask(person, body)
+                self.send_json(status, payload)
+            elif path == "/api/action":
+                done = app.actions.execute(body.get("verb"), body.get("args"), viewer=person)
+                self.send_json(200, {"ok": bool(done.get("ok"))} if person else done)
             elif path == "/api/ask":
                 for name in body:
-                    if name not in ("kind", "args", "via", "model", "conv", "place"):
+                    if name not in ("kind", "args", "via", "model", "conv", "place", "origin", "keys"):
                         raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
                 status, payload = app.actions.ask(body.get("kind"), body.get("args"), via=body.get("via", "control"),
-                                                  model=body.get("model"), conv=body.get("conv"), place=body.get("place"))
+                                                  model=body.get("model"), conv=body.get("conv"), place=body.get("place"),
+                                                  origin=body.get("origin"), keys=body.get("keys"))
                 self.send_json(status, payload)
             elif path == "/api/reload":
                 for name in body:
@@ -1054,12 +1728,42 @@ class Handler(BaseHTTPRequestHandler):
                 visible = body.get("visible")
                 if not isinstance(visible, bool):
                     raise ActionError(400, "invalid_argument", "visible must be true or false", "visible")
-                back = app.hub.set_visible(str(body.get("client") or "")[:40], visible)
+                back = app.hub.set_visible(str(body.get("client") or "")[:40], visible, viewer=person)
                 if back is None:
                     raise ActionError(404, "not_found", "no such page is connected", "client")
                 if back:
                     app.on_client_connect()   # a page that comes back sees fresh tabs at once
                 self.send_json(200, {"ok": True})
+            elif path == "/api/seen":
+                # the files view's measure: which page or view was opened, one audit line, nothing else changes
+                for name in body:
+                    if name not in ("page", "view"):
+                        raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
+                page, view = body.get("page"), body.get("view")
+                if not isinstance(page, str) or not SEEN_PAGE_RE.match(page):
+                    raise ActionError(400, "invalid_argument", "page must be a page id", "page")
+                if view is not None and (not isinstance(view, str) or not SEEN_RE.match(view)):
+                    raise ActionError(400, "invalid_argument", "view must be a view id", "view")
+                app.actions.audit_line("page_view", page, view=view or "-")
+                self.send_json(200, {"ok": True})
+            elif path == "/api/clicks":
+                # the click origin log: which control from which place, a batch of names and counts into usage.jsonl
+                # beside audit.log, never a title or a text (store.clean_clicks); cockpit.usage.clicks: false, nothing
+                for name in body:
+                    if name != "events":
+                        raise ActionError(400, "invalid_argument", "unknown field", str(name)[:40])
+                if not getattr(app.cfg, "usage_clicks", True):
+                    self.send_json(200, {"ok": True, "kept": 0, "off": True})
+                    return
+                try:
+                    pages = {p.get("id") for p in (app.collector.model or {}).get("pages") or [] if isinstance(p, dict)}
+                    kept = append_clicks(app.state_dir / "usage.jsonl", body.get("events"), app.clock(), verbs=SPEC, pages=pages)
+                except ValueError as error:
+                    raise ActionError(400, "invalid_argument", str(error), "events") from None
+                self.send_json(200, {"ok": True, "kept": kept})
+            elif path == "/api/flow/attach":
+                # a document attached to a point's task (verb flow_attach, under the write lock)
+                self.send_json(200, app.actions.execute("flow_attach", body))
             elif path == "/api/triage/run":
                 app.triage.handle_post(self, body)
             elif path.startswith("/api/jev/") and jev is None:
@@ -1120,10 +1824,13 @@ def derived(token: str, purpose: str) -> str:
     return mac(token, f"derived|{purpose}")
 
 
-def login_code(token: str, now_ms: float, nonce: str | None = None) -> str:
-    """A one-time login code `<nonce>.<second>.<mac>`: what `url` prints instead of the key."""
+def login_code(token: str, now_ms: float, nonce: str | None = None, person: str | None = None) -> str:
+    """A one-time login code `<nonce>.<second>.<mac>`: what `url` prints instead of the key. For a person named under
+    members: of a workspace `<person>.<nonce>.<second>.<mac>` (`url --person`)."""
     nonce = nonce or secrets.token_hex(8)
     ts = int(now_ms // 1000)
+    if person is not None:
+        return f"{person}.{nonce}.{ts}.{mac(token, f'person-code|{person}|{nonce}|{ts}')}"
     return f"{nonce}.{ts}.{mac(token, f'code|{nonce}|{ts}')}"
 
 

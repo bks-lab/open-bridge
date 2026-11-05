@@ -1,0 +1,276 @@
+// SPDX-License-Identifier: MIT
+// The cockpit, Not now of Work through (views/flow.js, round 4): every open row that is no point now stands in one of
+// its groups (logic.js flowParts leftOut, FLOW_LEFT_OUT): Later (round 6 B, one group for what is put off, hidden until
+// a day or due later than the lead time, what waits on others and what rests, each row with its reason in the column
+// Why), Ideas and backlog, Streams, Watching (the issues and pull requests, by repository), and the watched rows a
+// GitHub list holds (`github`, round 6). NotNowBlock is its part at the foot of the left column, on every side and in
+// every mode: one button per group with its count, the one open marked, the GitHub rows as one quiet line "n on
+// GitHub" that opens that page at its list (c.openSection) with every row, its filter bar reset (round 6c), since
+// they stand there; on a narrow screen NotNowNarrow
+// folds it under the select. A click on a group shows it as a list in the middle (LeftList, view `left`): Back to
+// overview, its name, count and what it holds, the batch bar with the group's verbs (logic.js LEFT_VERBS and leftPlan:
+// Back on, Later, Done, Drop or Let AI do it, Merge where two or more ticked rows are open tasks), then a table: a box,
+// the title (stage 1 of the one point view: it opens the row in the middle in the same view as every point,
+// views/flowpoint.js, c.flowLeftOpen; To the list leads back here, the walk bar walks this group), its kind, when (in
+// Later: why), its area, and in Later Back on in one click where the row can come back.
+// The watched rows stand under a head per repository. No instruction line and no walk bar here.
+// Round 6 c: above Not now the row Check tasks (CheckRow), a block of its own, with how many decisions the last task
+// check left (logic.js checkOpen: close and stale, never waiting or unclear), on every width; a click shows the check
+// in the middle (CheckList, view `check`): Back to overview, its name and a run button that says it asks the AI and
+// what the last run cost, one plain line what it does, then the check of its own tab (views/check.js ReviewBody,
+// `compact`: the verdict filter and sort, ticked rows closed or kept at once, the table, and how it ran folded into
+// one line under them). It replaces the tab Tidy up where Work through is on (logic.js checkInFlow).
+// Stage 2 of the one point view: on top of the left column, under Running now, the row Finished, to read (ReadRow)
+// with how many finished AI runs wait to be read (logic.js flowParts `read`: a start whose item ended after it with
+// something to read, unread and younger than cockpit.flow.read_days); a click lists them in the middle (ReadList, view
+// `read`: Back to overview, its name and count, one line what it holds, a table of the title, what came of it in plain
+// words, when it ended and its area); a title opens the run in the one point view (c.flowReadOpen, To the list leads
+// back, the walk walks the list).
+// For the mouse: no text names a key.
+// The rules every component keeps stand at the head of components.js.
+
+import { html } from '../vendor/htm-preact-3.1.1.module.js'
+import { activityWhen, centsText, checkOpen, formatDay, isoDate, LEFT_VERBS, leftPlan, nextWho, pointName, pointStand, pointStep, pointViewOn, rowProject, short,
+  whoKind } from '../logic.js'
+import { T, language } from '../text.js'
+import { CheckButton, ReviewBody } from './check.js'
+import { KindTag } from './day.js'
+import { ageDays, BatchBar } from './flowlist.js'
+import { Btn, Dot, WhoChip } from './parts.js'
+
+/** The buttons of the groups of Not now, each with its count, the one open marked; the rows a GitHub list holds as
+ *  one line that leads to that list (the group's `at`) */
+function GroupButtons({ left, open, c }) {
+  const f = T().flow.notnow
+  return html`<ul class="flow-side-list">${left.groups.map(g => g.at ? html`<li key=${g.reason}>
+    <button type="button" class="flow-notnow-line" title=${f.onPageTitle(g.at.title)}
+      onClick=${() => c.openSection(g.at.page, g.at.section, null)}>${f.onPage(g.rows.length, g.at.title)}</button></li>` : html`<li key=${g.reason}>
+    <button type="button" class=${`flow-notnow-item${open === g.reason ? ' is-on' : ''}`} aria-current=${open === g.reason ? 'true' : undefined}
+      onClick=${() => c.flowLeft(g.reason)}>
+      <span class="flow-side-name"><span class="flow-side-label">${f.group[g.reason]}</span></span>
+      <span class="flow-side-open mono muted">${g.rows.length}</span>
+    </button></li>`)}</ul>`
+}
+
+/** Not now at the foot of the left column: its count, a button per group that holds a row */
+export function NotNowBlock({ left, open = null, c }) {
+  const f = T().flow.notnow
+  if (!left?.total) return null
+  return html`<section class="flow-notnow flow-side-body" aria-labelledby="flow-notnow-h">
+    <h3 id="flow-notnow-h" class="flow-side-group label-caps">${f.label} <span class="mono">${left.total}</span></h3>
+    <${GroupButtons} left=${left} open=${open} c=${c} />
+  </section>`
+}
+
+/** Not now on a narrow screen: folded under the select */
+export function NotNowNarrow({ left, open = null, c }) {
+  const f = T().flow.notnow
+  if (!left?.total) return null
+  return html`<details class="flow-notnow-narrow">
+    <summary><span class="label-caps">${f.label}</span> <span class="mono">${left.total}</span></summary>
+    <${GroupButtons} left=${left} open=${open} c=${c} />
+  </details>`
+}
+
+/** Finished, to read on top of the left column (under Running now): its count, marked while its list or one of its
+ *  runs is open in the middle; none while nothing waits to be read. It stays on a narrow screen too */
+export function ReadRow({ read, on = false, c }) {
+  const f = T().flow.read
+  if (!(read ?? []).length) return null
+  return html`<div class="flow-read">
+    <button type="button" class=${`flow-notnow-item flow-read-row${on ? ' is-on' : ''}`} aria-current=${on ? 'true' : undefined}
+      onClick=${() => c.flowRead()}>
+      <${Dot} token="success" />
+      <span class="flow-side-name"><span class="flow-side-label">${f.label}</span></span>
+      <span class="flow-side-open mono muted">${read.length}</span>
+    </button>
+  </div>`
+}
+
+/** The finished AI runs as a list in the middle: what came of each in plain words, when it ended, its area when one has it; a title
+ *  opens the run in the one point view */
+export function ReadList({ read, c }) {
+  const t = T()
+  const f = t.flow
+  const lang = language()
+  const ended = x => (Number.isFinite(x.start.ended_ms) ? formatDay(isoDate(x.start.ended_ms), lang) : '')
+  // the column Area only when a run's point has one: an ended item without an area leaves it empty
+  const withArea = read.some(x => rowProject(x.row))
+  return html`<section class="flow-overview flow-leftlist flow-readlist" aria-labelledby="flow-read-h">
+    <header class="flow-main-head">
+      <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
+      <h2 id="flow-read-h" class="flow-main-title">${f.read.label} <span class="mono muted">${read.length}</span></h2>
+    </header>
+    <p class="muted small flow-left-sub">${f.read.sub}</p>
+    ${read.length ? html`<table class="flow-ov-table">
+      <thead><tr><th>${f.list.cols.point}</th><th>${f.read.cols.what}</th><th>${f.read.cols.when}</th>${withArea ? html`<th>${f.list.cols.area}</th>` : null}</tr></thead>
+      <tbody>${read.map((x, i) => html`<tr key=${x.id} class="flow-ov-row">
+        <td class="flow-ov-point"><button type="button" class="flow-ov-open" onClick=${() => c.flowReadOpen(x.id, i)}>${short((x.row?.key ? pointName(x.row) : null) || x.start.title || x.start.key, 120)}</button></td>
+        <td class="flow-ov-what small">${short(x.start.plain ?? x.start.result?.text ?? '', 160)}</td>
+        <td class="flow-ov-stage small">${ended(x)}</td>
+        ${withArea ? html`<td class="flow-ov-area small">${rowProject(x.row)}</td>` : null}
+      </tr>`)}</tbody>
+    </table>` : html`<p class="muted">${f.read.empty}</p>`}
+  </section>`
+}
+
+/** Check tasks above Not now: its name, the decisions the last check left (none run yet, or running), marked
+ *  while the check is open in the middle; the plain line what it does as its tooltip */
+export function CheckRow({ s, c, on = false }) {
+  const f = T().flow.check
+  const rv = s.model?.review ?? {}
+  const count = rv.running ? f.running : rv.last ? f.count(checkOpen(s.model)) : f.none
+  return html`<div class="flow-check">
+    <button type="button" class=${`flow-notnow-item flow-check-row${on ? ' is-on' : ''}`} aria-current=${on ? 'true' : undefined}
+      title=${f.intro} onClick=${() => c.flowCheck()}>
+      <span class="flow-side-name"><span class="flow-side-label">${T().reviewTab}</span></span>
+      <span class="flow-side-open mono muted">${count}</span>
+    </button>
+  </div>`
+}
+
+/** The task check in the middle: Back to overview, its name and run button (what it costs), the plain line, the
+ *  check itself with the verdicts first */
+export function CheckList({ s, c }) {
+  const t = T()
+  const f = t.flow.check
+  const last = s.model?.review?.last
+  const label = last?.cost_known ? f.again(t.reviewCost(centsText(last.cost_ct, language()), true)) : f.first
+  return html`<section class="flow-checklist" aria-labelledby="flow-check-h">
+    <header class="flow-main-head">
+      <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${t.flow.point.back}<//>
+      <h2 id="flow-check-h" class="flow-main-title">${t.reviewTab}</h2>
+      <${CheckButton} s=${s} c=${c} variant="primary" label=${label} />
+    </header>
+    <${ReviewBody} s=${s} c=${c} compact intro=${html`<p class="flow-check-intro">${f.intro}</p>`} />
+  </section>`
+}
+
+/** When a row of Not now comes or is due: the day it comes back (Later, or an idea put off) and its due, else its age */
+function whenOf(e, reason, s, lang) {
+  const f = T().flow
+  if (reason === 'later' || e.until) {
+    return [e.until ? f.notnow.from(formatDay(e.until, lang)) : null, e.due ? f.notnow.due(activityWhen(e.due, lang)) : null].filter(Boolean).join(' · ')
+  }
+  const age = ageDays(e.row, s.now || Date.now())
+  return age == null ? '' : f.list.age(age)
+}
+
+// the day a row of Later rests since: when its task last moved, else the day its inbox id names
+const restDay = row => (/^\d{4}-\d{2}-\d{2}/.test(String(row.updated ?? '')) ? String(row.updated).slice(0, 10)
+  : /^\d{8}/.test(String(row.inbox_id ?? '')) ? `${row.inbox_id.slice(0, 4)}-${row.inbox_id.slice(4, 6)}-${row.inbox_id.slice(6, 8)}` : null)
+
+/** Why a row of Later is no point now (round 6 B, its entry's kind): until when it is put off, hidden or not due yet,
+ *  on whom it waits (its blocker, the person its next step names, else others; an item with your yes on an agent),
+ *  what blocks it or since when it rests */
+function laterWhy(e, lang, s = null) {
+  const f = T().flow.notnow
+  const w = f.why
+  const row = e.row
+  const by = String(row.blocked_by ?? row.card?.state?.blocked_by ?? '').trim()
+  if (e.kind === 'waiting') {
+    if (row.inbox_state === 'approved') return w.approved
+    // a next step that is the owner's own waits on nobody named: others; a person by the name the page gives them
+    const next = String(row.card?.next?.who ?? '').trim()
+    const who = by || (whoKind(next, s) === 'person' ? nextWho(next, s, lang) : '')
+    return who ? w.waits(who) : w.others
+  }
+  if (e.kind === 'resting') {
+    if (by) return w.blocked(by)
+    if (row.bucket === 'drop') return w.park
+    const day = restDay(row)
+    return day ? w.resting(formatDay(day, lang)) : w.rests
+  }
+  const until = e.until ? formatDay(e.until, lang) : null
+  // stage 4: a row in progress with someone says with whom and the day it asks again
+  if (e.kind === 'checkin') return f.with(e.who ? String(e.who)[0].toUpperCase() + String(e.who).slice(1) : null, until)
+  if (e.kind === 'watch') return e.repo ?? ''
+  if (e.why === 'ahead') return w.ahead(activityWhen(e.due, lang), until)
+  return [e.why === 'hidden' ? w.hidden(until) : w.deferred(until), e.due ? f.due(activityWhen(e.due, lang)) : null].filter(Boolean).join(' · ')
+}
+
+/** A row's title as the way to the row in the one point view, in the middle (stage 1): its place `i` in the group
+ *  is its place in the walk */
+function OpenRow({ row, i, c }) {
+  return html`<button type="button" class="flow-ov-open" onClick=${() => c.flowLeftOpen(row.key, i)}>${short(pointName(row), 120)}</button>`
+}
+
+/** One group of Not now as a list in the middle, with its batch bar */
+export function LeftList({ group, s, c }) {
+  const t = T()
+  const f = t.flow
+  const lang = language()
+  const reason = group.reason
+  const keys = new Set(group.rows.map(e => e.row.key))
+  const picked = new Set((s.ui.flowLeftPicked ?? []).filter(k => keys.has(k)))
+  const pickable = group.rows.map(e => ({ id: e.row.key, row: e.row, e }))
+  const chosen = group.rows.filter(e => picked.has(e.row.key))
+  // the watched rows under a head per repository, the others in one run
+  const heads = reason === 'watch' ? [...new Set(group.rows.map(e => e.repo ?? null))] : [undefined]
+  const runOn = async (list, plan) => {
+    if (plan?.early?.length) c.flowEarly(Object.fromEntries(list.filter(e => plan.early.includes(e.row.key)).map(e => [e.row.key, e.until])))
+    if (plan?.calls?.length) await c.flowBatch(plan.calls, 'left')
+  }
+  const run = plan => runOn(chosen, plan)
+  // in Later each row that can come back has Back on in one click too, as the hidden list of Due had it
+  const backOne = e => {
+    const plan = reason === 'later' ? leftPlan([e], 'back', s, '', lang) : null
+    return plan?.counts.back ? html`<${Btn} size="xs" variant="ghost" cls="flow-ov-back" onClick=${() => runOn([e], plan)}>${f.notnow.back}<//>` : null
+  }
+  const head0 = html`<header class="flow-main-head">
+      <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
+      <h2 id="flow-left-h" class="flow-main-title">${f.notnow.group[reason]} <span class="mono muted">${group.rows.length}</span></h2>
+    </header>
+    <p class="muted small flow-left-sub">${f.notnow.sub[reason]}</p>
+    <${BatchBar} pickable=${pickable} chosen=${chosen.map(e => e.row)} onPick=${(ks, on) => c.flowLeftPick(ks, on)} verbs=${LEFT_VERBS[reason] ?? []}
+      planOf=${(how, value) => leftPlan(chosen, how, s, value, lang)} onRun=${run} from="left" s=${s} c=${c} />`
+  if (pointViewOn(s)) {
+    // stage 4: a row says its name and where it stands, beside it its next step with who takes it and, while it runs
+    // elsewhere, the day it asks again; Later says why it waits, with Back on
+    const day = v => formatDay(String(v).slice(0, 10), lang)
+    return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">${head0}
+      ${group.rows.length ? html`<table class="flow-ov-table">
+        <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${f.list.pickAll}</span></th><th>${f.list.cols.point}</th>
+          <th>${reason === 'later' ? f.notnow.cols.why : f.list.cols.step}</th></tr></thead>
+        <tbody>${group.rows.map(e => {
+          const row = e.row
+          const stand = pointStand(row, s)
+          const step = pointStep(row, s)
+          const ask = e.until && (reason === 'running' || e.kind === 'checkin') ? f.simple.asksOn(day(e.until)) : null
+          return html`<tr key=${row.key} class=${`flow-ov-row${picked.has(row.key) ? ' is-picked' : ''}`}>
+            <td><input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(pointName(row), 60))} checked=${picked.has(row.key)}
+              onClick=${() => c.flowLeftPick([row.key], !picked.has(row.key))} /></td>
+            <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
+              <span class="flow-ov-stand muted small">${stand ? short(stand, 160) : reason === 'running'
+                ? html`<span class="flow-ov-why">${laterWhy(e, lang, s)}</span>` : null}</span></td>
+            ${reason === 'later' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang, s)}</span> ${backOne(e)}</td>`
+              : html`<td class="flow-ov-step small">${step ? html`<span>${short(step.what, 90)}</span> <${WhoChip} who=${step.who ?? e.who} s=${s} />`
+                : e.who ? html`<${WhoChip} who=${e.who} s=${s} />` : null}${ask ? html`<span class="flow-ov-when muted">${ask}</span>`
+                : reason === 'running' ? null : html`<span class="flow-ov-when muted">${whenOf(e, reason, s, lang)}</span>`}</td>`}
+          </tr>`
+        })}</tbody>
+      </table>` : html`<p class="muted">${f.notnow.empty}</p>`}
+    </section>`
+  }
+  return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">${head0}
+    ${group.rows.length ? html`<table class="flow-ov-table">
+      <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${f.list.pickAll}</span></th><th>${f.list.cols.point}</th><th>${reason === 'later' ? f.notnow.cols.why : f.notnow.cols.when}</th>
+        <th>${f.list.cols.area}</th>${reason === 'later' ? html`<th class="flow-ov-actcol"><span class="sr-only">${f.notnow.back}</span></th>` : null}</tr></thead>
+      <tbody>${heads.map(head => html`
+        ${head !== undefined ? html`<tr key=${`repo-${head}`} class="flow-ov-group"><th colspan=${reason === 'later' ? 5 : 4} scope="colgroup"><span class="label-caps">${head ?? f.notnow.otherRepo}</span></th></tr>` : null}
+        ${group.rows.filter(e => head === undefined || (e.repo ?? null) === head).map(e => {
+          const row = e.row
+          return html`<tr key=${row.key} class=${`flow-ov-row${picked.has(row.key) ? ' is-picked' : ''}`}>
+            <td><input type="checkbox" class="flow-ov-pick" aria-label=${f.list.pick(short(pointName(row) || row.key, 60))} checked=${picked.has(row.key)}
+              onClick=${() => c.flowLeftPick([row.key], !picked.has(row.key))} /></td>
+            <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
+              <span class="flow-ov-sub muted small"><${KindTag} row=${row} s=${s} /></span></td>
+            ${reason === 'later' ? html`<td class="flow-ov-stage flow-ov-why small">${laterWhy(e, lang, s)}</td>`
+              : html`<td class="flow-ov-stage small">${whenOf(e, reason, s, lang)}</td>`}
+            <td class="flow-ov-area small">${rowProject(row)}</td>
+            ${reason === 'later' ? html`<td class="flow-ov-act">${backOne(e)}</td>` : null}
+          </tr>`
+        })}`)}</tbody>
+    </table>` : html`<p class="muted">${f.notnow.empty}</p>`}
+  </section>`
+}

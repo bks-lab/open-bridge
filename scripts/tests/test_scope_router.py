@@ -7,8 +7,9 @@ ships to **bks-lab/open-bridge**, a PUBLIC MIT repo, so a wrong `core` is a leak
 and a wrong non-`core` silently cuts this instance off from upstream updates.
 Both directions are asserted here.
 
-The router is an ORDERED denylist that ends in `return "core"` — fail-OPEN. Every
-path family added after a rule was written therefore defaults to shipping. These
+The router is an ORDERED rule list that ends in `return "user"`, fail-CLOSED (it
+ended in `return "core"` until 2026-11): a path family added after a rule was
+written stays local until it is given a rule. These
 tests pin the families that were found misrouted on 2026-08-01, and — just as
 importantly — pin the paths that must NOT move, because the obvious
 generalisations of the fix would route real PII into the public repo.
@@ -138,6 +139,14 @@ def synth_repo(tmp_path, monkeypatch):
     # person's own morning profile stays theirs.
     write("workflow/briefings/team.yaml", "schema_version: 1\nscope: org\nid: team\n")
     write("workflow/briefings/morning.yaml", "schema_version: 1\nscope: user\nid: morning\n")
+
+    # identity/designs/: a brand is a Markdown file with front matter, so its
+    # `scope:` sits inside the `---` fence. An org brand reaches the overlay, a
+    # personal one the personal overlay, an undeclared one stays local.
+    write("identity/designs/team.md", "---\nversion: alpha\nscope: org\nname: team\n---\n# Team\n")
+    write("identity/designs/side.md", "---\nversion: alpha\nscope: personal\nname: side\n---\n# Side\n")
+    write("identity/designs/undeclared.md", "---\nversion: alpha\nname: undeclared\n---\n# Undeclared\n")
+    write("identity/designs/claims-core.md", "---\nversion: alpha\nscope: core\nname: claims-core\n---\n# X\n")
 
     cc._LOGO_BY_THEME_CACHE = None
     monkeypatch.chdir(tmp_path)
@@ -519,6 +528,7 @@ def test_whole_folder_user_surfaces(path: str):
     "themes/professional.yaml",
     "themes/professional-de.yaml",
     "themes/professional-fr.yaml",
+    "themes/professional-zh-cn.yaml",
     "themes/_schema.yaml",
     "skills/bridge-greeting/assets/logos/bridge.txt",
 ])
@@ -559,12 +569,24 @@ def test_non_ascii_path_is_not_anchored_away():
 # change to fail-closed updates this test on purpose rather than by accident.
 # ---------------------------------------------------------------------------
 def test_unknown_path_default_is_pinned():
-    got = tier("some/brand-new/unregistered-thing.yaml")
-    assert got in {"core", "user"}, f"unexpected default {got!r}"
-    if got == "core":
-        pytest.xfail(
-            "router still fails OPEN: an unregistered path ships to the public repo by default"
-        )
+    """Fail-closed: a path no rule knows stays local, never ships to the public repo."""
+    assert tier("some/brand-new/unregistered-thing.yaml") == "user"
+
+
+def test_unknown_hook_is_user():
+    assert tier(".claude/hooks/some-instance-hook.sh") == "user"
+
+
+@pytest.mark.parametrize("name", ["_schema.yaml", "_template.yaml"])
+def test_scaffold_of_unregistered_family_is_user(name):
+    # A family docs/data-model.yaml does not list is not a CORE family, so its
+    # scaffold files are not CORE either.
+    assert tier(f"workflow/made-up-family/{name}") == "user"
+
+
+@pytest.mark.parametrize("name", ["_schema.yaml", "_template.yaml"])
+def test_scaffold_of_registered_family_stays_core(name):
+    assert tier(f"infra/channels/{name}") == "core"
 
 
 # ---------------------------------------------------------------------------
@@ -587,6 +609,11 @@ UPSTREAM_NON_CORE_BY_DESIGN = frozenset({
     # Per-tier INVERTED; see test_inverted_root_files_never_ship.
     ".gitignore",
     ".bridge-origin",
+    # CORE shipped a root CLAUDE.md until 2026-10-30. It now classifies `user`
+    # on purpose (a root CLAUDE.md shadows AGENTS.md), and an upstream ref
+    # from before the deletion still lists it. scripts/migrate-entry-file.py
+    # retires a fork's copy.
+    "CLAUDE.md",
 })
 
 #: Same, by prefix. `work/` is whole-folder USER (AGENTS.md § Scope): upstream
@@ -785,6 +812,26 @@ def test_briefing_profiles_route_by_their_declaration(synth_repo):
     assert tier("workflow/briefings/_schema.yaml") == "core"
 
 
+def test_designs_route_by_their_declaration(synth_repo):
+    """A brand travels by its own `scope:`; the template ships, an undeclared brand stays local."""
+    assert tier("identity/designs/team.md") == "org", (
+        "a design declaring `scope: org` must export to the org overlay, or no member "
+        "Bridge ever wears the organisation's brand"
+    )
+    assert tier("identity/designs/side.md") == "personal"
+    assert tier("identity/designs/undeclared.md") == "user"
+    assert tier("identity/designs/missing.md") == "user"
+    assert tier("identity/designs/_template.md") == "core", (
+        "the template is a Markdown file; a fallback that only exempts `_template.yaml` "
+        "classes it `user` and it never reaches a fork"
+    )
+    assert tier("identity/designs/_schema.yaml") == "core"
+    assert tier("identity/designs/claims-core.md") == "user", (
+        "an instance design declaring `scope: core` would be cherry-picked to the public "
+        "upstream; the only design that ships is the root DESIGN.md and the template"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Claude Code mods. `mods/` is a CORE top-level folder holding the mods that
 # ship with open-bridge, published through mods/.claude-plugin/marketplace.json.
@@ -885,15 +932,18 @@ def test_docs_route_by_their_frontmatter_scope(docs_repo, path, expected):
 
 
 def test_no_path_pattern_claims_a_doc():
-    """A doc's tier is its frontmatter, never a filename baked into this CORE file.
+    """A doc's tier is its tier FOLDER, never a filename baked into this CORE file.
 
-    USER_PATTERNS may still hold a doc back (a guard, it names a feature, not an
-    instance); only the org list, which ships a file outward, is held to this.
+    docs/user/, docs/org/ and docs/personal/ are folders and carry no instance's
+    names (docs/kernel.md, test_docs_tier.py). USER_PATTERNS may still hold a
+    single doc back (a guard, it names a feature, not an instance); only the org
+    list, which ships a file outward, is held to this.
     """
+    tier_folders = {r"^docs/org/", r"^docs/user/", r"^docs/personal/"}
     for patterns in (cc.ORG_PATTERNS,):
         for p in patterns:
-            assert not p.startswith("^docs/"), (
-                f"path pattern {p!r} names docs by filename; declare `scope:` in the doc"
+            assert p in tier_folders or not p.startswith("^docs/"), (
+                f"path pattern {p!r} names docs by filename; move the doc to its tier folder"
             )
 
 

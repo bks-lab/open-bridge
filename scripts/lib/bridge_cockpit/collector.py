@@ -24,9 +24,13 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
+from dataclasses import replace
+
+from . import card as cd
 from . import model as m
+from . import origin as og
 from .daybook import week_done
-from .details import INBOX_ID_RE
+from .details import INBOX_ID_RE, inbox_facts
 from .watch import task_snapshot
 from . import returns as ret
 
@@ -46,6 +50,7 @@ ITEM_CAP = 50
 DRAWN_CAP = 300
 ADOPT_CAP = 4
 START_HOLD_MS = 15000
+RECHECK_S = (15, 1800)  # the shortest and longest wait a step may ask for before its section is read again
 
 
 def make_link(url: str | None, root: Path) -> dict | None:
@@ -65,41 +70,102 @@ def make_link(url: str | None, root: Path) -> dict | None:
 
 
 def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | None, starting: set,
-             page_id: str = "", section_id: str = "") -> dict:
+             page_id: str = "", section_id: str = "", known: og.Known | None = None,
+             card_ctx: cd.Ctx | None = None) -> dict:
     # a task row, or a row an agent was started on (its inbox item): either way the tab shows on the row
     tab = m.tab_for({"task": it.get("task"), "inbox_id": None if it.get("task") else it.get("inbox")}, tabs) \
         if it.get("task") or it.get("inbox") else None
-    return {"index": index, "key": m.item_key(page_id, section_id, it), "actionable": it.get("actionable") is True, "title": it["title"], "detail": it["detail"], "when": it["when"], "tone": it["tone"],
+    out = {"index": index, "key": m.item_key(page_id, section_id, it), "actionable": it.get("actionable") is True, "title": it["title"], "detail": it["detail"], "when": it["when"], "tone": it["tone"],
             "link": make_link(it.get("url"), root), "task": it.get("task"), "ask": it["ask"], "mark": it["mark"],
             "priority": it.get("priority"), "state": it.get("state"), "lines": it.get("lines", []),
-            "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"),
+            "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"), "glyph": it.get("glyph"),
             "tags": it.get("tags"), "account": it.get("account"), "inbox": it.get("inbox"),
             "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"), "gh": it.get("gh"),
             "cal": it.get("cal"), "due_at": it.get("due_at"),
-            "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view)}
+            "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view),
+            **page_origin(it, section_id, known), **about_of(it, root, known)}
+    # the one card of the item (card.py), from what the row carries and the section it stands in
+    out["card"] = cd.card_of(out, card_ctx)
+    return out
+
+
+def about_of(it: dict, root: Path, known: og.Known | None) -> dict:
+    """The task or stream a row is about, so its file opens from the row: the row's own `about_task`, else its group
+    where that names a task, stream or closed one of this Bridge (a log row's context). A closed one also names its
+    folder under work/done/, the newest closing, which is the copy the files view opens"""
+    known = known or og.Known()
+    group = it.get("group")
+    slug = it.get("about_task") or (group if not it.get("task") and not it.get("inbox") and isinstance(group, str)
+                                    and og.work_kind(group, known) else None)
+    kind = og.work_kind(slug, known)
+    if not slug or not kind:
+        return {"about_task": it.get("about_task"), "about_path": None}
+    path = None
+    if kind.startswith("done"):
+        hits = sorted(Path(root).glob(f"work/done/*/{slug}/STATUS.md"), reverse=True)
+        path = hits[0].parent.relative_to(root).as_posix() if hits else None
+    return {"about_task": slug, "about_path": path, "work_kind": kind}
+
+
+def page_origin(it: dict, section_id: str, known: og.Known | None) -> dict:
+    """Where a page item comes from and what it is (origin.py): an inbox item by its `from`, a task by its origin,
+    anything else by its section; the work kind of the task it is, or the task or stream it is about"""
+    known = known or og.Known()
+    inbox = it.get("inbox") if it.get("origin_section_kind") == "inbox" else None
+    # an inbox item reads its key as Due does (a cockpit filing names its section there); its own id is no ref
+    row = {"key": f"item:{section_id}", "inbox_id": inbox, "inbox_key": it.get("inbox_key") if inbox else None,
+           "task": it.get("task") if not inbox else None, "ref": None if inbox else it.get("row_id") or it.get("id"),
+           "url": it.get("url"),
+           "sources": [section_id], "origin_raw": it.get("origin_raw"), "origin_provider": it.get("origin_provider"),
+           "origin_section_kind": it.get("origin_section_kind")}
+    slug = it.get("task") or it.get("about_task") or (it.get("gh") or {}).get("task")
+    return {"origin": og.classify_row(row, known), "work_kind": og.work_kind(slug, known),
+            "about_kind": it.get("about_kind") or ("stream" if (it.get("gh") or {}).get("stream") else None)}
 
 
 def tab_summary(tab: dict | None, view: dict | None) -> dict | None:
     if not tab:
         return None
-    return {"ref": tab["ref"], "state": tab["state"], "live": m.is_live(tab), "waiting": m.is_waiting(tab, view)}
+    return {"ref": tab["ref"], "state": tab["state"], "live": m.is_live(tab), "waiting": m.is_waiting(tab, view),
+            "idle": tab.get("idle") is True}
 
 
 def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control_ref: str | None, hidden: dict,
                 dismissed: dict | None = None,
                 runs: dict, teams: list[dict], tasks: list[dict], settled: set, starting: set, now: float,
                 seq: int, stale: bool, profile: str | None, tx: dict,
-                review: dict | None = None) -> tuple[dict, dict]:
-    """The page model (contract section 3.3) and an index row_key -> internal row for the verbs."""
+                review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
+                describe: dict | None = None, files: list[dict] | None = None,
+                carry_deferred: bool = False, pairs: dict | None = None, acks: dict | None = None,
+                looks: dict | None = None) -> tuple[dict, dict]:
+    """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
+    triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py).
+    `carry_deferred` (Work through on) adds `deferred`: the inbox items a page lists that are put off past the
+    briefing's window, as rows (deferred_rows). `pairs` (model.page_twins of the view) is worked out here when the
+    caller has none: a row of Due and the page items of the same thing take one decision (model.decision_twins),
+    and a row names the GitHub list it stands in (`on_board`, model.board_places). `acks` (store.acks) are the
+    findings marked seen: such a page row stays, grey, and counts toward no badge and no alarm (model.ack_item).
+    `looks` (checkin.py found_by_key): what the Bridge found before a check-in, by key, put on the row's check-in
+    as `found` while it is for that check-in's day."""
     today = m.iso_date(now)
-    dismissed = dismissed or {}
-    hidden = {**hidden, **{k: "9999-12-31" for k in dismissed}}     # out until "show again"
+    pairs = m.page_twins(view) if pairs is None else pairs
+    twins = m.decision_twins(pairs)
+    places = m.board_places(pairs)
+    # Later, Done or Not doing under ref:<id> (Work through) holds for item:<page>/<section>/<id> (the GitHub page)
+    # and the other way round
+    dismissed = m.with_twins(dismissed or {}, twins)
+    settled = set(m.with_twins(dict.fromkeys(settled), twins))
+    hidden = {**m.with_twins(hidden, twins), **{k: "9999-12-31" for k in dismissed}}     # out until "show again"
     lay = m.layout(view, settled, hidden, today, tabs)
     numbers = lay["numbers"]
     index: dict[str, dict] = {}
     others = [t for t in tabs if t["ref"] != control_ref]
 
     kinds = {t["slug"]: t.get("kind") for t in tasks}
+    # the names this Bridge declares, once per pass (origin.py): its tasks and streams as listed win over the tree
+    known = og.known_from_root(root, origin_map, view.get("section_info") or {})
+    known = og.replace(known, work={**known.work, **{slug: "stream" if kind == "streams" else "task"
+                                                     for slug, kind in kinds.items() if kind in ("tasks", "streams")}})
 
     def closable(slug: Any) -> bool:
         """A finite task can close, a stream never; a task workplace.py does not list is looked up on disk."""
@@ -116,6 +182,28 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
 
     review = review or {"running": None, "error": None, "last": None, "tasks": {}}
     verdicts = review["tasks"]
+    # what every card is built with (card.py): the text table, the triage and describe entries, the tasks as
+    # listed, the work kinds of this Bridge and the inbox items as read from disk (kept until they change)
+    card_ctx = cd.Ctx(tx=tx.get("card") if isinstance(tx, dict) else None, triage=triage or {},
+                      describe=describe or {}, tasks={t["slug"]: t for t in tasks}, work=dict(known.work),
+                      inbox=lambda item_id: inbox_facts(root, item_id))
+
+    looks = looks or {}
+
+    def checkin_of(row: dict, is_task_row: bool) -> dict | None:
+        got = None
+        if row.get("inbox_id"):
+            got = (card_ctx.inbox(row["inbox_id"]) or {}).get("checkin")
+            got = dict(got) if isinstance(got, dict) else None
+        elif is_task_row:
+            t = card_ctx.tasks.get(row.get("task")) or {}
+            day = t.get("next_check")
+            got = {"who": t.get("next_who"), "until": str(day)[:10], "since": t.get("updated")} if day else None
+        # what the Bridge found when it looked, only for the check-in in force (checkin.py)
+        look = looks.get(row.get("key")) if got else None
+        if isinstance(look, dict) and look.get("until") == got.get("until") and isinstance(look.get("found"), dict):
+            got["found"] = look["found"]
+        return got
 
     def row_out(row: dict, section: str) -> dict:
         tab = m.tab_for(row, tabs)
@@ -157,7 +245,36 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "stream": is_task_row and is_stream(row.get("task")),
             "settle": list(m.SETTLE_OUTCOMES),
             "review": verdicts.get(row.get("task")) if is_task_row else None,
+            # the files view (logic.js queueOf): doing or review, and the next step with where it comes from
+            "status": row.get("status") if is_task_row else None, "next": row.get("next") if is_task_row else None,
+            # who or what filed the row and what it is (origin.py, docs/bridge-cockpit.md "Where a row comes from"):
+            # the task or stream it is, or is about, by its folder; `stream` and `closable` keep their meaning
+            "origin": og.classify_row(row, known),
+            "work_kind": og.work_kind(row.get("task") or row.get("about_task"), known),
+            "about_kind": row.get("about_kind"),
+            "inbox_kind": row.get("inbox_kind"),
+            # the asks filed about this line ("ask about this row") that the briefing folded into it: their own
+            # titles, so the detail lists them and each opens its item; they close with the line (actions_work)
+            "also_inbox": [{"id": x, "title": (card_ctx.inbox(x) or {}).get("summary") or x}
+                           for x in row.get("also_inbox") or [] if INBOX_ID_RE.match(x)],
+            # the GitHub list the row also stands in ({page, section}, model.board_places): Work through folds such
+            # rows of Not now into one line that leads there
+            "on_board": places.get(row["key"]),
+            # what a person sees an inbox row as (ask, report, idea); "waits for you" counts the asks
+            "art": m.art_of_kind(row.get("inbox_kind")) if row.get("inbox_id") else None,
+            # Work through: when a task last moved (its STATUS.md), and the day a deferred item comes back, read
+            # from its own events as the card reads them (details.inbox_facts, kept until the item changes)
+            "updated": row.get("updated") if is_task_row else None,
+            "until": ((card_ctx.inbox(row["inbox_id"]) or {}).get("until")
+                      if row.get("inbox_id") and row.get("inbox_state") == "deferred" else None),
+            # stage 4 of the one point view, In progress with a check-in: who has it, the day it asks how it stands and
+            # since when (an inbox item's defer with `check`, a task's next.who and next.check), None without one
+            "checkin": checkin_of(row, is_task_row),
         }
+        # the one card of the row (card.py), from the row as it goes out (and when its item was filed)
+        out["card"] = cd.card_of({**out, "created": row.get("created")}, card_ctx)
+        # beside it what the card cannot hold of the describe view: stale, a proposal, a run (card.describe_state)
+        out["describe"] = cd.describe_state(row["key"], card_ctx)
         index[row["key"]] = {"row": row, "section": section, "tab": tab, "out": out, "hidden": False}
         return out
 
@@ -186,42 +303,61 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     page_titles = {it["task"]: it["title"] for it in reversed(page_items) if it.get("title")}
     # and every task the last check judged, so its overview row has the same actions
     review_tasks = [(slug, v["title"]) for slug, v in verdicts.items()]
+    # a task the list of every task names (cockpit.files_scope all) carries its status and fields from there too
+    listed = files if files is not None else tasks
     for slug, title in [(t["slug"], page_titles.get(t["slug"]) or t.get("title") or t["label"]) for t in tasks] + page_tasks + review_tasks:
         key = f"task:{slug}"
         if key not in index and key not in settled:
-            task_rows.append(row_out(m.task_row_for(slug, title, tasks, tx), "work"))
+            task_rows.append(row_out(m.task_row_for(slug, title, listed, tx), "work"))
+    deferred_out = deferred_rows(view, index, settled, root, row_out, today) if carry_deferred else None
 
     pages = []
     alarms = []
     for pg in view.get("pages", []):
         secs = []
         for s in pg["sections"]:
-            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups") else ITEM_CAP    # drawn views filter every row
-            shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"]) for i, it in enumerate(s["items"][:cap])]
+            # drawn views and the GitHub list (board) filter and search every row
+            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board", "log") else ITEM_CAP
+            sec_ctx = replace(card_ctx, section_kind=s.get("kind"))
+            shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known, sec_ctx)
+                     for i, it in enumerate(s["items"][:cap])]
             items = [i for i in shown if not (i["actionable"] and (i["key"] in settled or (hidden.get(i["key"]) or "") > today))]
-            # a row put off or settled leaves the table, and its count and finding go with it, so the tab badge,
-            # the section head and the alarm never count a row the page does not show
+            # a row put off or settled leaves the table, and its count, finding and weight go with it, so the tab
+            # badge, the section head and the alarm never count a row the page does not show (a row weighs unless
+            # it is dim, briefing_view._page_section; a section that does not count stays at 0)
             gone = [i for i in shown if i not in items]
-            bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad"))
-            sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "weight", "as_of")}
+            # a finding marked seen stays on the page, grey, and counts like a row put off (model.ack_item)
+            marked = [i for i in items if m.ack_item(i, acks or {})]
+            bad = max(0, s["bad"] - sum(1 for i in gone if i.get("tone") == "bad")
+                      - sum(1 for i in marked if i["acked"]["tone"] == "bad"))
+            weight = max(0, s["weight"] - sum(1 for i in gone if i.get("tone") != "dim") - len(marked))
+            sec = {k: s[k] for k in ("id", "kind", "title", "status", "reason", "alarm", "empty", "as_of")}
             sec["left_out"] = s.get("left_out") is True    # a section asked again on its own has no such key
             for extra in ("stale", "boards", "metrics", "cal_figures"):
                 if s.get(extra):
                     sec[extra] = s[extra]
             secs.append(sec | {"count": max(0, s["count"] - len(gone)), "total": max(0, s["total"] - len(gone)), "bad": bad,
-                               "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
+                               "weight": weight, "items": items, "view": s.get("view"), "hide_empty": s.get("hide_empty") is True,
+                               "hide_ok": s.get("hide_ok") is True,
+                               "steps": s.get("steps"), "place": s.get("place"),
                                "more": max(0, len(s["items"]) - cap)})
             if bad > 0:
                 alarms.append({"page_id": pg["id"], "page_title": pg["title"], "section_title": s["title"],
                                "count": int(bad)})
         pages.append({"id": pg["id"], "title": pg["title"], "badge": m.page_badge({"sections": secs}), "sections": secs,
-                      "group": pg.get("group", "main"), "overview": pg.get("overview") is True, "cards": m.parse_cards(pg.get("cards")),
+                      "group": pg.get("group", "main"), "overview": pg.get("overview") is True, "search": pg.get("search") is True,
+                      "cards": m.parse_cards(pg.get("cards")),
+                      "under": pg.get("under"), "subs": list(pg.get("subs") or []),
                       "jev": isinstance(pg.get("jev"), dict)})
 
     waiting_tabs = [t for t in others if m.is_waiting(t, view)]
     long_tabs = [t for t in others if m.long_state(t, seen, now)]
     attention = {t["ref"] for t in waiting_tabs} | {t["ref"] for t in long_tabs}
     totals = {s["id"]: s["total"] for s in sections}
+    # what waits for you: the rows of Now that ask (briefing_view.asks_you). An idea or a report filed for today
+    # still stands in Now, so the section's own total can be the larger number
+    asks = sum(1 for r in next((x["all"] for x in lay["sections"] if x["id"] == "now"), []) if m.asks_you(r))
+    files_out = None if files is None else files_of(files, index)
     model = {
         "seq": seq, "stale": stale,
         "profile": view.get("profile") or profile or "", "title": view.get("title") or "",
@@ -233,9 +369,10 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         "extras": view.get("extras") or {"clear": [], "hygiene": [], "workplace": None},
         "counts": {"waiting_tabs": len(waiting_tabs), "long_tabs": len(long_tabs),
                    "working_tabs": len([t for t in others if t["state"] == "working"]),
-                   "now": totals["now"], "give": totals["give"], "work": totals["work"],
+                   "now": asks, "give": totals["give"], "work": totals["work"],
                    "track": totals["track"], "later": totals["later"],
-                   "hidden": len(hidden_out)},
+                   "hidden": len(hidden_out),
+                   "flow_open": flow_open(sections, hidden_out, files_out, task_rows, deferred_out)},
         "sections": sections, "numbers": numbers, "hidden": hidden_out, "approvable": approvable,
         "task_rows": task_rows,
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
@@ -243,11 +380,85 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         "pages": pages, "alarms": alarms,
         "teams": [{"id": t["id"], "label": t["label"], "for_types": t["for_types"],
                    "roles": [{"id": r["id"], "name": r["name"], "mode": r["mode"]} for r in t["roles"]]} for t in teams],
-        # the one coloured number of the page bar (14.10.): what waits for you, the same count as the station
-        # "waits for you" and the lead line of the start page; the approvals stand in their own section
-        "briefing_badge": totals["now"],
+        # the one coloured number of the page bar (14.10.): the asks of Now, the rows only; the approvals stand in their
+        # own section. With Work through on the page counts its points that need you instead (flow.js flowWaiting,
+        # 28.10.), tabs that ask among them, and so does the start page's head line
+        "briefing_badge": asks,
+        # every task and stream as a file (cockpit.files_scope all), None while the files view walks the active ones
+        "files": files_out,
     }
+    if deferred_out is not None:
+        model["deferred"] = deferred_out
     return model, index
+
+
+def deferred_rows(view: dict, index: dict, settled: set, root: Path, row_out, today: str) -> list[dict]:
+    """The inbox items a page lists (an inbox section: the idea shelf, what runs on) that are put off past the
+    briefing's window, so no section carries them: a row each (bucket plan, inbox_state deferred, the day it comes
+    back as `until`), in the index like any other, so the verbs reach it. Read from the item's own events as the
+    card reads them (details.inbox_facts): an item taken back on, closed, or no longer put off is left out"""
+    have = {e["row"].get("inbox_id") for e in index.values() if isinstance(e, dict) and isinstance(e.get("row"), dict)}
+    out, seen = [], set()
+    for pg in view.get("pages", []):
+        for sec in pg.get("sections", []):
+            if sec.get("kind") != "inbox":
+                continue
+            for it in sec.get("items", []):
+                iid = it.get("inbox")
+                key = f"inbox:{iid}"
+                if not isinstance(iid, str) or iid in have or iid in seen or key in index or key in settled:
+                    continue
+                facts = inbox_facts(root, iid) or {}
+                if not facts.get("deferred") or facts["deferred"] <= today:
+                    continue
+                seen.add(iid)
+                row = m._base_row(bucket="plan", title=facts.get("summary") or it.get("title") or iid, inbox_id=iid,
+                                  gate=facts.get("gate") or None, task=facts.get("task") or None, inbox_state="deferred",
+                                  inbox_kind=facts.get("kind") or None, area=facts.get("area") or None,
+                                  due=facts.get("due") or None, created=facts.get("created") or None, sources=["inbox"])
+                row["key"] = key
+                out.append(row_out(row, "later"))
+    return out
+
+
+def flow_open(sections: list[dict], hidden: list[dict], files: list[dict] | None, task_rows: list[dict] | None = None,
+              deferred: list[dict] | None = None) -> int:
+    """How many things are open, each once (Work through's universe, flow.js flowUniverse): every row of the
+    sections, every hidden row not decided here (no settled_as: put off, it is still open), every file of the
+    files view (files_scope all) under its task's key, every task a page names whose folder is open (a task or a
+    stream under work/tasks or work/streams: closable or stream) and every item put off past the window (deferred)"""
+    keys = {r["key"] for s in sections for r in s["rows"]}
+    keys |= {r["key"] for r in hidden if r.get("settled_as") is None}
+    keys |= {f"task:{f['slug']}" for f in files or []}
+    keys |= {r["key"] for r in task_rows or [] if r.get("closable") or r.get("stream")}
+    keys |= {r["key"] for r in deferred or []}
+    return len(keys)
+
+
+ACTIVE = ("doing", "review")     # the tasks every consumer but the files view reads (workplace.py ACTIVE)
+FILE_STATES = (*ACTIVE, "backlog")
+
+
+def files_of(tasks: list[dict], index: dict) -> list[dict]:
+    """Every task and stream as a file of the files view (cockpit.files_scope all), flat and small, in the order
+    workplace.py lists them: only what its shelf and its reason chip read (files.js fileShelves, fileReason), the
+    bucket of the row that stands for it (None for one with no row, a backlog task) and whether it is put off
+    (deferred, until the day it comes back, None for one put away until shown again). The cover reads the rest
+    from the task's detail, so headline, next and progress stay out of a list that goes out with every poll. A
+    closed task never comes in."""
+    out = []
+    for t in tasks:
+        if t.get("status") not in FILE_STATES:
+            continue
+        entry = index.get(f"task:{t['slug']}") or {}
+        row = entry.get("out") or {}
+        deferred = entry.get("hidden") is True
+        out.append({"slug": t["slug"], "kind": "stream" if t.get("kind") == "streams" else "task",
+                    "status": t["status"], "area_names": [a for a in t.get("area_names") or [] if a],
+                    "priority": t.get("priority"), "title": t.get("title") or t.get("label") or t["slug"],
+                    "updated": t.get("updated"), "blocked_by": t.get("blocked_by"), "bucket": row.get("bucket"),
+                    "deferred": deferred, "deferred_until": row.get("hidden_until") if deferred else None})
+    return out
 
 
 class Collector:
@@ -269,9 +480,13 @@ class Collector:
         self.ask_triage = False
         self.view: dict | None = None
         self.tasks: list[dict] = []
+        # every task and stream but the closed ones (cockpit.files_scope all), else None: model.files
+        self.all_tasks: list[dict] | None = None
         self.teams: list[dict] = []
         self.model: dict | None = None
         self.index: dict[str, dict] = {}
+        # the keys of one thing in Due and on a page (model.decision_twins), from the view of the last rebuild
+        self.twin_map: dict[str, tuple[str, ...]] = {}
         self.seq = 0
         self.sent: str | None = None           # the last model sent, without its seq and pages
         self.sent_pages: dict | None = None    # and its pages, each as sent, by id
@@ -280,6 +495,8 @@ class Collector:
         self.starting: dict[str, float] = {}
         # when the last full pass started, successful or not: tick waits full_minutes from it
         self.full_attempt_ms = 0.0
+        # [due ms, section]: a step asked to read its section again at these times (recheck), each once
+        self.rechecks: list[list] = []
         # the task list: a delta reads it only when an action asked or the task tree changed since the last read
         self.pending_tasks = False
         self.tasks_seen: dict[str, int] | None = None
@@ -380,6 +597,8 @@ class Collector:
         if app.cfg.profile:
             argv.append(app.cfg.profile)
         argv += ["--json", "--no-save", "--max-items", "500", *PASS_FLAGS[kind]]
+        if getattr(app.cfg, "setup", True):
+            argv.append("--setup")      # the Setup page (scripts/bridge-setup.py), on every pass: a pass that leaves it out keeps it
         if fresh:
             argv.append("--fresh")
         if self.ask_triage:
@@ -388,14 +607,18 @@ class Collector:
 
     def refresh_tasks(self) -> None:
         seen = task_snapshot(self.app.root)     # before the read: a change during it is read next time
-        run = self.app.run(self.app.workplace("tasks", "--json"), LIST_TIMEOUT)
+        # cockpit.files_scope all: one read of every task (the backlog too) for model.files, and every other
+        # consumer (rows, WIP, focus) keeps the doing and review ones it always had
+        every = getattr(self.app.cfg, "files_scope", "active") == "all"
+        run = self.app.run(self.app.workplace("tasks", *(["--all"] if every else []), "--json"), LIST_TIMEOUT)
         if run.ok:
             try:
                 tasks = m.parse_tasks(run.out)
             except (ValueError, TypeError):
                 return
             with self.lock:
-                self.tasks = tasks
+                self.tasks = [t for t in tasks if t["status"] in ACTIVE] if every else tasks
+                self.all_tasks = tasks if every else None
                 self.tasks_seen = seen
 
     def refresh_teams(self) -> None:
@@ -454,6 +677,7 @@ class Collector:
             # What this run left out stays at the state of the previous one. Add the tasks only afterwards:
             # otherwise a task whose inbox row comes from the previous run would appear twice.
             merged = m.with_tasks(m.merge_view(before, fresh_view) if before else fresh_view, self.tasks, app.tx)
+            merged = m.with_repo_areas(merged, getattr(app.cfg, "area_repos", ()))
             self.view = merged
             self.stale = False
             self.last_error = None
@@ -466,6 +690,7 @@ class Collector:
         self.rebuild()
         if kind == "full":
             self.sweep_filed(fresh_view)
+        app.ack_closed_findings()
 
     def sweep_filed(self, view: dict) -> None:
         """Close the inbox items Get it done filed for page rows (`briefing:<profile>:<section>:<id>`, from the
@@ -557,11 +782,16 @@ class Collector:
                 return
             self.seq += 1
             tabs = app.tabs.tab_list()
+            pairs = m.page_twins(self.view)
+            self.twin_map = m.decision_twins(pairs)
             model, index = build_model(
                 self.view, root=app.root, tabs=tabs, seen=app.tabs.seen_copy(), control_ref=app.tabs.control_ref(),
                 hidden=app.store.hidden(), dismissed=app.store.dismissed(), runs=app.store.team_runs(), teams=self.teams, tasks=self.tasks,
                 settled=set(self.settled), starting=self.starting_items(), now=app.clock(), seq=self.seq,
-                stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open))
+                stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
+                origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks,
+                carry_deferred=(getattr(app.cfg, "flow", None) or {}).get("enabled") is True, pairs=pairs,
+                acks=app.store.acks(), **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)
@@ -571,12 +801,12 @@ class Collector:
                 model["days"], model["week"] = {"quota": {}, "counts": {}}, {"count": 0, "since": None, "items": []}
             # the return channel: where each start handed to a tab stands (returns.py)
             try:
-                seen = app.tabs.seen_copy()
-                rich = [{**t, "filed_by": (m.filed_by(t, self.view) or {}).get("key"),
+                seen, asks = app.tabs.seen_copy(), app.tabs.asks_now()
+                rich = [{**t, "filed_by": (m.filed_by(t, self.view) or {}).get("key"), "ask": asks.get(t["ref"]),
                          "since_ms": int(seen.get(t["ref"], {}).get("since_ms", 0)),
                          "is_control": t["ref"] == app.tabs.control_ref()} for t in tabs]
                 rows = {k: (v.get("out") or v) for k, v in index.items() if isinstance(v, dict)}
-                model["returns"] = ret.build(app.launches.all(), rich, rows, app.root, app.clock())
+                model["returns"] = ret.build(app.launches.all(), rich, rows, app.root, app.clock(), app.cfg.language)
                 # an end not yet written to the item's log: written once, after the lock
                 to_log = [r for r in model["returns"] if r["stage"] in ("result", "lost") and ret.log_line(r, app.cfg.language)
                           and app.launches.mark(r["key"], r["stage"])]
@@ -637,12 +867,23 @@ class Collector:
                     if s["id"] == section_id:
                         tabs = self.app.tabs.tab_list()
                         starting = self.starting_items()
-                        items = [info_out(it, i, self.app.root, tabs, view, starting, page_id, section_id) for i, it in enumerate(s["items"])]
-                        out = {**self.app.store.hidden(), **{k: "9999-12-31" for k in self.app.store.dismissed()}}
+                        known = og.known_from_root(self.app.root)
+                        items = [info_out(it, i, self.app.root, tabs, view, starting, page_id, section_id, known)
+                                 for i, it in enumerate(s["items"])]
+                        # a decision on the same thing in Due holds here too (model.decision_twins)
+                        out = m.with_twins({**self.app.store.hidden(), **{k: "9999-12-31" for k in self.app.store.dismissed()}},
+                                           self.twin_map)
+                        settled = m.with_twins(dict(self.settled), self.twin_map)
                         today = m.iso_date(self.app.clock())
-                        items = [i for i in items if not (i["actionable"] and (i["key"] in self.settled or (out.get(i["key"]) or "") > today))]
+                        items = [i for i in items if not (i["actionable"] and (i["key"] in settled or (out.get(i["key"]) or "") > today))]
                         return items, s.get("total", len(items))
         return None
+
+    def twins(self, key: str) -> tuple[str, ...]:
+        """`key` and the keys of the same thing in Due and on the pages (model.decision_twins), `key` first: one
+        decision holds for all of them, so Show again takes it back under each"""
+        with self.lock:
+            return self.twin_map.get(key) or (key,)
 
     def view_profile(self) -> str | None:
         with self.lock:
@@ -680,9 +921,32 @@ class Collector:
         if expired:
             self.rebuild()
 
+    def forget(self, section: str) -> None:
+        """Void the section's cached answer and queue a full pass, so the next pass asks it again."""
+        for cached in (self.app.root / ".bridge" / "briefing-cache").glob(f"*/{section}.json"):
+            cached.unlink(missing_ok=True)
+        self.request("full")
+
+    def recheck(self, section: str, delays: object) -> None:
+        """Read `section` again after each of `delays` seconds (a reboot answers at once and switches later):
+        whole numbers from 15 s to 30 min, eight at most, anything else dropped."""
+        if not isinstance(delays, list):
+            return
+        now = self.app.clock()
+        due = [now + d * 1000 for d in delays if type(d) is int and RECHECK_S[0] <= d <= RECHECK_S[1]][:8]
+        with self.lock:
+            self.rechecks += [[t, section] for t in due]
+
     def tick(self, clients: int) -> None:
-        """Every WORK_SCAN_S: end launch holds; while a page is open, one full pass every full_minutes."""
+        """Every WORK_SCAN_S: end launch holds, run the rechecks that are due; while a page is open, one
+        full pass every full_minutes."""
         self.expire_starting()
+        now = self.app.clock()
+        with self.lock:
+            due = sorted({sec for t, sec in self.rechecks if t <= now})
+            self.rechecks = [r for r in self.rechecks if r[0] > now]
+        for section in due:
+            self.forget(section)
         with self.lock:
             view = self.view
         if clients <= 0 or view is None or not self.is_idle():

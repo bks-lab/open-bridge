@@ -14,7 +14,7 @@ other Bridge users pull.
 
 The CORE/USER split in this repo is path-based: files under `work/`,
 `contexts/`, `infra/remotes/`, `infra/channels/`, etc. never
-reach CORE. But the allowlist paths (`CLAUDE.md`, `docs/`, `trackers/`,
+reach CORE. But the allowlist paths (`AGENTS.md`, `docs/`, `trackers/`,
 `skills/`, `rules/`, …) can still carry
 **content** that leaks user identity, customer names, product codenames,
 or private infrastructure — especially inside "Example" blocks, render

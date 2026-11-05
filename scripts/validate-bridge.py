@@ -13,6 +13,11 @@ frontmatter value (core|org|user|private) — the field `/promote` and
 `/bridge-sync` route on. A rule with missing or invalid scope fails the
 check (this is what keeps generic CORE rules from leaking to open-bridge).
 
+And that every `docs/**/*.md` sits where its tier says: `docs/` ships as core,
+a doc of another tier lives in `docs/user/`, `docs/org/` or `docs/personal/`,
+and a `scope:` line, where one exists, agrees with the folder. A misplaced doc
+fails and names `scripts/migrate-docs-tier.py`, which moves it (docs/kernel.md).
+
 This is the bridge-internal config validator. For ecosystem.yaml
 cross-reference checks, run `validate-ecosystem.py` (separate concern).
 
@@ -38,6 +43,7 @@ import importlib.util
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -159,6 +165,18 @@ SURFACES = [
         "exclude_prefixes": ["_"],
     },
     {
+        # One brand per Markdown file (DESIGN.md format). The schema holds the
+        # front matter, so `frontmatter` hands the validator that block alone:
+        # the prose below it is not YAML.
+        "name": "design",
+        "schema": "identity/designs/_schema.yaml",
+        "instances": "identity/designs/*.md",
+        "exclude_prefixes": ["_"],
+        "frontmatter": True,
+        # `design_ref: default` opts out to the root DESIGN.md, so no design may be called that
+        "reserved_stems": ["default"],
+    },
+    {
         "name": "calendar",
         "schema": "workflow/calendars/_schema.yaml",
         "instances": "workflow/calendars/*.yaml",
@@ -176,6 +194,12 @@ SURFACES = [
         "name": "workload",
         "schema": "workflow/workloads/_schema.yaml",
         "instances": "workflow/workloads/*.yaml",
+        "exclude_prefixes": ["_"],
+    },
+    {
+        "name": "cost-center",
+        "schema": "workflow/cost-centers/_schema.yaml",
+        "instances": "workflow/cost-centers/*.yaml",
         "exclude_prefixes": ["_"],
     },
     {
@@ -218,6 +242,23 @@ def discover_instances(surface: dict) -> list[Path]:
     ]
 
 
+def _front_matter_file(path: Path, folder: Path) -> Path:
+    """The block between the first two `---` lines of a Markdown file, as `<stem>.yaml` in `folder`.
+
+    A file without front matter becomes an empty document, which the schema
+    then refuses for its required keys rather than this function guessing.
+    """
+    text = path.read_text(encoding="utf-8")
+    block = ""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            block = text[3:end].lstrip("\n")
+    out = folder / f"{path.stem}.yaml"
+    out.write_text(block or "{}\n", encoding="utf-8")
+    return out
+
+
 def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
     """Validate one surface. Returns (pass_count, fail_count)."""
     schema_path = REPO_ROOT / surface["schema"]
@@ -230,21 +271,41 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
         print(f"  ({surface['name']}: no instances found)")
         return (0, 0)
 
+    reserved = [p for p in instances if p.stem in surface.get("reserved_stems", [])]
+    for p in reserved:
+        print(f"  FAIL  {p.relative_to(REPO_ROOT)}: the name '{p.stem}' is reserved, rename the file")
+    instances = [p for p in instances if p not in reserved]
+    if not instances:
+        return (0, len(reserved))
+
+    files = [str(p) for p in instances]
+    tmp = None
+    if surface.get("frontmatter"):
+        tmp = tempfile.TemporaryDirectory(prefix="validate-bridge-")
+        files = [str(_front_matter_file(p, Path(tmp.name))) for p in instances]
+
     cmd = [
         validator,
         "--schemafile",
         str(schema_path),
         "--default-filetype",
         "yaml",
-        *(str(p) for p in instances),
+        *files,
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
+    if tmp is not None:
+        # name the Markdown file in every message, not its temporary front-matter copy
+        for copy, inst in zip(files, instances):
+            name = str(inst.relative_to(REPO_ROOT))
+            result.stdout = result.stdout.replace(copy, name)
+            result.stderr = result.stderr.replace(copy, name)
+        tmp.cleanup()
 
     if result.returncode == 0:
         for inst in instances:
             print(f"  PASS  {inst.relative_to(REPO_ROOT)}")
-        return (len(instances), 0)
+        return (len(instances), len(reserved))
 
     # check-jsonschema prints failures to stdout; surface them
     sys.stdout.write(result.stdout)
@@ -255,7 +316,7 @@ def validate_surface(surface: dict, *, validator: str) -> tuple[int, int]:
     failed_files = sum(1 for line in result.stdout.splitlines() if "errors were encountered" in line.lower() or "validation failed" in line.lower())
     failed = max(failed_files, 1)
     passed = max(len(instances) - failed, 0)
-    return (passed, failed)
+    return (passed, failed + len(reserved))
 
 
 # Markdown surfaces whose `scope:` frontmatter is required + tier-validated.
@@ -487,6 +548,88 @@ def validate_md_scope_surface(surface: dict) -> tuple[int, int]:
     return (passed, failed)
 
 
+# ---------------------------------------------------------------------------
+# docs/ tier: the folder is the tier, the way it is for rules/
+# ---------------------------------------------------------------------------
+# docs/ ships wholesale as core. A doc of another tier lives in docs/user/,
+# docs/org/ or docs/personal/, where the router answers by folder; outside them
+# a `scope:` line is a backstop only. Unlike rules/, a doc needs no `scope:`
+# line at all: an undeclared doc is a CORE guide. What fails is a line that
+# disagrees with the folder, because then the router and the reader believe
+# different things about the same file, and an unknown token, because nobody
+# can tell what the author meant. The verdict comes from the router's own
+# doc_placement(), so this check, the router and the migration cannot drift.
+
+DOCS_SURFACE = "docs"
+DOCS_FIX = "python3 scripts/migrate-docs-tier.py --write"
+
+
+def _router():
+    spec = importlib.util.spec_from_file_location(
+        "categorize_commits_for_docs", Path(__file__).resolve().parent / "categorize-commits.py"
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load categorize-commits.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def docs_tier_problems(root: Path) -> list[tuple[str, str]]:
+    """(repo-relative path, problem) for every doc that sits outside its tier."""
+    docs = Path(root) / "docs"
+    if not docs.is_dir():
+        return []
+    router = _router()
+    problems: list[tuple[str, str]] = []
+    for path in sorted(docs.rglob("*.md")):
+        rel = path.relative_to(root).as_posix()
+        place = router.doc_placement(rel, root)
+        if place.legacy:
+            problems.append((rel, (
+                "a user doc the router knows by name, from before docs/user/ existed: "
+                f"move it to docs/user/ with `{DOCS_FIX}` (docs/updating.md)")))
+            continue
+        if place.stray:
+            problems.append((rel, (
+                f"its `scope: {place.token}` line sits outside a frontmatter block at the very "
+                "top of the file, so it is not frontmatter: put it in a `---` block at the top "
+                f"(the router keeps the doc at {place.declared} meanwhile)")))
+            continue
+        if place.token is None:
+            continue
+        if place.unknown and place.folder == "core":
+            problems.append((rel, (
+                f"unknown scope '{place.token}': the router keeps it local (user), but "
+                "say what it is: no line or `core` for a CORE guide, or move it to "
+                "docs/user/, docs/org/ or docs/personal/")))
+        elif place.unknown:
+            problems.append((rel, (
+                f"unknown scope '{place.token}': the folder keeps it at its tier "
+                f"({place.folder}), but say what it is: no line, or `{place.folder}`")))
+        elif place.declared != place.folder and place.folder == "core":
+            problems.append((rel, (
+                f"declares scope '{place.token}' but sits in docs/, which ships as core: "
+                f"move it to docs/{place.declared}/ with `{DOCS_FIX}` (docs/updating.md)")))
+        elif place.declared != place.folder:
+            problems.append((rel, (
+                f"in docs/{place.folder}/ but declares scope '{place.token}': folder and "
+                "frontmatter disagree, and the folder decides")))
+    return problems
+
+
+def validate_docs_tier() -> tuple[int, int]:
+    """Print the docs/ tier verdict. Returns (pass, fail)."""
+    docs = REPO_ROOT / "docs"
+    total = len(list(docs.rglob("*.md"))) if docs.is_dir() else 0
+    problems = docs_tier_problems(REPO_ROOT)
+    for rel, problem in problems:
+        print(f"  FAIL  {rel}: {problem}")
+    passed = total - len(problems)
+    print(f"  PASS  {passed} doc(s) where their tier says")
+    return (passed, len(problems))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate Bridge configs against schemas")
     parser.add_argument("--surface", help="Validate only this surface (e.g. persona, rules)")
@@ -500,11 +643,14 @@ def main() -> int:
 
     json_surfaces = SURFACES
     md_surfaces = MD_SCOPE_SURFACES
+    docs_surface = True
     if args.surface:
         json_surfaces = [s for s in SURFACES if s["name"] == args.surface]
         md_surfaces = [s for s in MD_SCOPE_SURFACES if s["name"] == args.surface]
-        if not json_surfaces and not md_surfaces:
-            known = [s["name"] for s in SURFACES] + [s["name"] for s in MD_SCOPE_SURFACES]
+        docs_surface = args.surface == DOCS_SURFACE
+        if not json_surfaces and not md_surfaces and not docs_surface:
+            known = ([s["name"] for s in SURFACES] + [s["name"] for s in MD_SCOPE_SURFACES]
+                     + [DOCS_SURFACE])
             sys.stderr.write(
                 f"ERROR: unknown surface '{args.surface}'. Known: {', '.join(known)}\n"
             )
@@ -549,6 +695,12 @@ def main() -> int:
     for s in md_surfaces:
         print(f"\n[{s['name']} — scope frontmatter]")
         p, f = validate_md_scope_surface(s)
+        total_pass += p
+        total_fail += f
+
+    if docs_surface:
+        print(f"\n[{DOCS_SURFACE}: the folder is the tier]")
+        p, f = validate_docs_tier()
         total_pass += p
         total_fail += f
 

@@ -22,12 +22,15 @@ works with a terminal multiplexer, with another one, or with none at all.
     python3 scripts/workplace.py move-tab TAB_REF WS_REF [--index N]   # move one tab into another workspace
     python3 scripts/workplace.py workspace-color WS_REF (COLOR | --clear)   # a palette colour (COLORS)
     python3 scripts/workplace.py workspace-description WS_REF (--clear | -- TEXT)   # one line, 120 characters
+    python3 scripts/workplace.py new-tab WS_REF [--kind agent|shell] [--title=T] [--text=S] [--json]   # a chat or a shell
+    python3 scripts/workplace.py new-workspace --title=T [--kind agent|shell|none] [--color C] [--cwd=DIR] [--json]
+    python3 scripts/workplace.py close-workspace WS_REF [--json]   # closes the workspace and what runs in it
 
 CONFIG lives in bridge-config.yaml under `workplace:`:
 
     workplace:
       driver: none                       # or {command: ["python3", "path/to/driver.py"]}
-      workspaces:                        # first match wins: slugs, then contexts, then default
+      workspaces:                        # first match wins: a task's area:, slugs, contexts, default
         - {name: Bigcorp, contexts: [bigcorp], color: "#1565C0"}
         - {name: Platform, slugs: ["platform-*"]}
         - {name: Misc, default: true}
@@ -57,6 +60,8 @@ uses for owner approval:
     {"verb": "caps"}                                  -> {"caps": ["tabs", "sessions", ...]}
     {"verb": "focus", "tab": ref}                     -> {"report": [...]}
     {"verb": "key", "tab": ref, "key": "enter" | "escape" | "y" | "n" | "1".."9"} -> {"report": [...]}
+    {"verb": "keys", "tab": ref, "keys": [{"text": "..."} | {"key": <TERM_KEYS>} | {"paste": "..."}]} -> {"report": [...]}
+                                              a keyboard, in order: the live terminal of the cockpit
     {"verb": "screen", "tab": ref, "lines": n}        -> {"text": "..."}
     {"verb": "close", "tab": ref}                     -> {"report": [...]}
     {"verb": "workspaces"}                            -> {"workspaces": [{"ref", "title", "cwd", ...}]}  (read only)
@@ -66,6 +71,13 @@ uses for owner approval:
     {"verb": "set_color", "workspace": ws_ref, "color": "<COLORS name>" | null} -> {"report": [...]}
     {"verb": "set_description", "workspace": ws_ref, "text": "..." | null}   -> {"report": [...]}
                                               null clears it
+    {"verb": "new_tab", "workspace": ws_ref, "title": "..." | null, "command": "..." | null}
+                                           -> {"report": [...], "ref": "<the new tab>"}
+                                              no command: a plain shell; nothing takes the focus
+    {"verb": "new_workspace", "title": "...", "color": "<COLORS name>" | null, "cwd": "..." | null,
+     "command": "..." | null}              -> {"report": [...], "ws_ref": "<the workspace>", "ref": "<its first tab>"}
+    {"verb": "close_workspace", "workspace": ws_ref}  -> {"report": [...]}
+                                              a ref answered with an ERROR line is still answered: the tab exists
 
 A workspace in the `workspaces` answer may carry `color` (the hex the terminal reports) and
 `color_name`, the COLORS name of that hex (null for any other colour). Colours are compared by name.
@@ -74,7 +86,7 @@ A refusal is an `ERROR ...` line in the report (or a non-zero exit with {"error"
 names and configured workspace names are the workplace's own (managed_names): `rename` and
 `rename-workspace` refuse to take them, or to rename a configured workspace.
 
-A driver never closes a tab or a workspace on its own, only on `close`, which a person asked for. A driver that fails or answers
+A driver never closes a tab or a workspace on its own, only on `close` and `close_workspace`, which a person asked for. A driver that fails or answers
 nonsense is reported, never raised, and never read as "no tab is open":
 `open --yes` refuses and `status` says the driver failed. Model: docs/workplace.md.
 The contract lives in scripts/tests/test_workplace.py.
@@ -90,6 +102,8 @@ import re
 import shlex
 import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
 
 import yaml
@@ -103,6 +117,7 @@ PRIORITY_BONUS = {"P0": 3, "P1": 2, "P2": 1}
 ROW_CAP = 10            # a slug named in every log row must not drown the rest
 LABEL_MAX = 30
 DRIVER_TIMEOUT_SEC = 120
+SCREEN_MAX_LINES = 5000     # the most a screen read asks a driver for: a shell tab's whole scrollback (the cockpit's tab history)
 # A router answers within seconds; a hanging one must not hold a dashboard click past its own
 # timeout (the click would report a failure while tabs still open, and a second click doubles them).
 ROUTER_TIMEOUT_SEC = 45
@@ -134,22 +149,36 @@ INBOX_OVERTAKEN = (
     " If the item is already done, overtaken, or answered by facts you can check yourself, note the finding "
     "with its sources and close it without asking: python3 scripts/inbox.py close {id} --note '<what settled "
     "it>'. The person undoes that with python3 scripts/inbox.py reopen {id}.")
-INBOX_REPORT_PROMPT = (
+# Closing the item of a background job (key worker:<host>:<id>, or a question about one) marks the job's
+# finding seen in the cockpit: grey until it changes (bridge_cockpit/server.py ack_closed_findings).
+INBOX_JOB_SEEN = (
+    " If the item is about a background job, closing it marks that job's finding seen in the cockpit: grey "
+    "until the job fails anew. So say in the close note what you found and why the finding needs nothing more.")
+INBOX_REPORT_HEAD = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
     "names, if any. Then print at most eight lines: what it is, what would settle it, and whether you "
     "could do that without asking. Note what you found on the item with python3 scripts/inbox.py note {id} "
-    "'<finding>'." + INBOX_OVERTAKEN + " Otherwise change nothing; wait, and on 'go on' take the next step. "
-    "Never close a tab or a workspace.")
-INBOX_GO_PROMPT = (
+    "'<finding>'.")
+INBOX_REPORT_END = " Otherwise change nothing; wait, and on 'go on' take the next step. Never close a tab or a workspace."
+INBOX_REPORT_PROMPT = INBOX_REPORT_HEAD + INBOX_OVERTAKEN + INBOX_REPORT_END
+INBOX_GO_HEAD = (
     "You are the tab for inbox item {id}. Read it with python3 scripts/inbox.py show {id} and the task it "
     "names, if any. " + GO_TAIL + " Whenever you stop to ask or to show a draft, first put the question or "
     "the draft on the item with python3 scripts/inbox.py note {id} '<text>': the cockpit sees the item, not "
-    "this chat. When it is settled, close the item with python3 scripts/inbox.py close "
-    "{id} --note '<what settled it>'." + INBOX_OVERTAKEN + " Local follow-ups that only write down what is "
-    "already decided (a plan, STATUS.md, the log) make yourself and name them in the close note. Ask only for "
-    "a decision that is still the person's, for anything that leaves this machine, or for what cannot be "
-    "undone. The click that started you releases the close even when the item says gate: only-you or "
+    "this chat; begin a question with 'Question:'.")
+INBOX_ASK_ONLY = (
+    " Ask only for a decision that is still the person's, for anything that leaves this machine, or for what "
+    "cannot be undone.")
+INBOX_GO_PROMPT = (
+    INBOX_GO_HEAD + " When it is settled, close the item with python3 scripts/inbox.py close "
+    "{id} --note '<what settled it>'." + INBOX_OVERTAKEN + INBOX_JOB_SEEN + " Local follow-ups that only write "
+    "down what is already decided (a plan, STATUS.md, the log) make yourself and name them in the close note." +
+    INBOX_ASK_ONLY + " The click that started you releases the close even when the item says gate: only-you or "
     "closer: person, as long as you decide nothing new. Never close a tab or a workspace.")
+# With the person's order (a start note) the base prompt keeps no word about closing: INBOX_ORDER_TAIL says how
+# the tab ends instead, so the two never disagree (28.10.: the overtaken rule closed an item the order asked about)
+INBOX_REPORT_ORDERED = INBOX_REPORT_HEAD + " Change nothing; wait, and on 'go on' take the next step. Never close a tab or a workspace."
+INBOX_GO_ORDERED = INBOX_GO_HEAD + INBOX_ASK_ONLY + " Never close a tab or a workspace."
 CONTEXT_PROMPT = (
     "You are the tab that finds the missing context for {what}. Read it first ({read}). Then search for "
     "what a person picking it up would need and cannot see there: its rows in work/log.md (grep), related "
@@ -252,7 +281,25 @@ def tab_label(task: dict, cfg: dict) -> str:
     return text[:LABEL_MAX].rsplit(" ", 1)[0].rstrip(",:;") + "…"
 
 
-def collect_tasks(root: Path) -> list:
+# the checklist of a body: done and open boxes, and whether the template's first step still stands
+# (lib/bridge_cockpit/card.py, the one reading the cockpit's detail uses too)
+from lib.bridge_cockpit.card import placeholder_steps, progress  # noqa: E402,F401
+
+
+def _plain(value):
+    """YAML as JSON: a date becomes its ISO text, mappings and lists keep their shape."""
+    if isinstance(value, dict):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_plain(v) for v in value]
+    if isinstance(value, (dt.date, dt.datetime)):
+        return value.isoformat()
+    return value
+
+
+def collect_tasks(root: Path, include_all: bool = False) -> list:
+    """The tasks and streams in doing or review; `include_all` adds the backlog (never the closed ones)."""
+    wanted = (*ACTIVE, "backlog") if include_all else ACTIVE
     tasks = []
     for kind in ("tasks", "streams"):
         for status in sorted((root / "work" / kind).glob("*/STATUS.md")):
@@ -260,19 +307,32 @@ def collect_tasks(root: Path) -> list:
                 continue
             text = status.read_text(encoding="utf-8")
             fm = frontmatter(text)
-            if fm.get("status") not in ACTIVE:
+            if fm.get("status") not in wanted:
                 continue
             tasks.append({
                 "slug": fm.get("slug") or status.parent.name, "kind": kind, "status": fm.get("status"),
-                "context": fm.get("context"), "priority": fm.get("priority"), "type": fm.get("type"),
-                "blocked_by": fm.get("blocked_by"), "updated": _date(fm.get("last_updated")),
+                "context": fm.get("context"), "area": fm.get("area"), "priority": fm.get("priority"), "type": fm.get("type"),
+                "blocked_by": fm.get("blocked_by"), "updated": _date(fm.get("last_updated")), "next": fm.get("next"),
                 "status_path": str(status.relative_to(root)), "heading": heading(text),
+                "origin": fm.get("origin") if isinstance(fm.get("origin"), str) else None,
+                # what a card is written from: the brief as a mapping (the gate is card_fields.validate_brief,
+                # run where the card is built), the one-line headline and the checklist of the body
+                "brief": _plain(fm["brief"]) if isinstance(fm.get("brief"), dict) else None,
+                "headline": fm.get("headline") if isinstance(fm.get("headline"), str) else None,
+                "progress": progress(text), "placeholder": placeholder_steps(text),
             })
     return tasks
 
 
 def workspace_for(task: dict, cfg: dict) -> dict:
     spaces = cfg.get("workspaces") or []
+    # an `area:` in the STATUS.md head names the workspace outright, by name or alias, whatever its case;
+    # one that names no workspace is ignored and the rules decide
+    want = str(task.get("area") or "").strip().casefold()
+    if want:
+        for ws in spaces:
+            if want in [str(n).casefold() for n in [ws.get("name"), *(ws.get("aliases") or [])] if n]:
+                return ws
     for ws in spaces:
         if any(fnmatch.fnmatch(task["slug"], p) for p in ws.get("slugs") or []):
             return ws
@@ -349,6 +409,24 @@ def agent_defaults(agent: dict) -> tuple[str | None, str | None]:
     return (model if model in CLAUDE_MODELS else None), (effort if effort in EFFORTS else None)
 
 
+def chat_command(root: Path, cfg: dict, text: str | None, model: str | None = None, effort: str | None = None,
+                 cwd: str | None = None) -> str:
+    """The command of a free chat tab: agent.new as a launch builds it (the model and effort of the call, else
+    the config's), with no task prompt. The prompt is the person's sentence quoted for the shell, or nothing: the
+    slot goes with its blank. A template without the slot cannot carry a sentence (ValueError). The tab carries its
+    own BRIDGE_TAB_SLUG like any agent tab, so it is no control session and takes no question of the cockpit."""
+    agent = {**DEFAULT_AGENT, **(cfg.get("agent") or {})}
+    default_model, default_effort = agent_defaults(agent)
+    if text and "{prompt}" not in agent["new"]:
+        raise ValueError("refused: agent.new has no {prompt} slot, so the sentence would be lost")
+    slug = f"chat-{uuid.uuid4().hex[:8]}"
+    template = agent["new"] if text else re.sub(r"\s*\{prompt\}", "", agent["new"])
+    # a sentence that starts with a dash would be read as an option: `--` ends the options
+    prompt = ("-- " if text.startswith("-") else "") + shlex.quote(text) if text else ""
+    run, _ = agent_run(template, model or default_model, effort or default_effort, slug=shlex.quote(slug), prompt=prompt)
+    return f"cd -- {shlex.quote(cwd or str(root))} && export {TAB_ENV}={shlex.quote(slug)} && {run}"
+
+
 def tab_command(tab: dict, root: Path, cwd: str, cfg: dict) -> str:
     agent = {**DEFAULT_AGENT, **(cfg.get("agent") or {})}
     model, effort = agent_defaults(agent)
@@ -385,6 +463,14 @@ def team_tab_names(task_label: str, slug: str, team: dict, role: dict) -> tuple[
     return f"{task_label} · {team['label']} {role['name']}", f"{slug}--{team['id']}-{role['id']}"
 
 
+# With the person's sentence a tab never closes the item on its own (28.10.: a chat handed on with "I want to
+# analyse it more closely" was closed after 31 s as overtaken): the result goes onto the item, a close is asked for.
+# The head of the question is the one returns.py reads as a question (QUESTION_HEADS).
+INBOX_ORDER_TAIL = (
+    " The person gave you an order for this start, so do not close the item on your own, not even when it looks "
+    "done or overtaken: put your result on the item with python3 scripts/inbox.py note {id} 'Result: <what you "
+    "found>', and ask before closing, since a proposal to close is a question: python3 scripts/inbox.py note {id} "
+    "'Question: <what you propose>'. Close it only once the person said so." + INBOX_JOB_SEEN)
 START_NOTE_HEAD = ("The person gave you a sentence for this start: it is the newest note that begins with "
                    "'Start note:' on this item ({where}). Read it before anything else; it comes before everything else "
                    "below when the two disagree. ")
@@ -393,9 +479,13 @@ START_NOTE_HEAD = ("The person gave you a sentence for this start: it is the new
 def launch_prompt(kind: str, mode: str, item: str, status_path: str = "", start_note: bool = False) -> str:
     """ASCII-only prompt for one launched tab (cmux re-encodes non-ASCII; the agent reads details itself).
     start_note: the person wrote a sentence for this start onto the item (task.py / inbox.py note, UTF-8);
-    the prompt only points at it, so the words reach the agent unchanged."""
+    the prompt only points at it, so the words reach the agent unchanged, and an inbox tab then asks before it closes:
+    its prompt drops every rule to close on its own (INBOX_GO_ORDERED, INBOX_REPORT_ORDERED)."""
     if start_note:
         where = status_path if kind == "task" else f"python3 scripts/inbox.py show {item}"
+        if kind == "inbox" and mode != "context":
+            base = (INBOX_GO_ORDERED if mode == "go" else INBOX_REPORT_ORDERED).format(id=item)
+            return START_NOTE_HEAD.format(where=where) + base + INBOX_ORDER_TAIL.format(id=item)
         return START_NOTE_HEAD.format(where=where) + launch_prompt(kind, mode, item, status_path)
     if mode == "context":
         if kind == "task":
@@ -447,7 +537,8 @@ def _inbox_module():
 
 
 def _open_inbox_item(root: Path, name: str) -> tuple | None:
-    """(full id, linked task or None) of an open inbox item, or None when there is none (closed, dropped, unknown)."""
+    """(full id, linked task or None, area or None) of an open inbox item, or None when there is none (closed,
+    dropped, unknown)."""
     box_dir = root / "work" / "inbox"
     if not box_dir.is_dir():
         return None
@@ -457,7 +548,7 @@ def _open_inbox_item(root: Path, name: str) -> tuple | None:
         item = box.get(box.resolve(name))
     except (KeyError, ValueError, OSError, yaml.YAMLError):
         return None
-    return (item.id, item.task) if item.state in mod.ACTIVE_STATES else None
+    return (item.id, item.task, item.area) if item.state in mod.ACTIVE_STATES else None
 
 
 INBOX_INDEX_CACHE = Path(".bridge") / "cache" / "workplace-inbox-index.json"
@@ -573,7 +664,7 @@ def _task_area(root: Path, slug: str, cfg: dict) -> dict:
     task_dir = _task_dir(root, slug)
     status = task_dir / "STATUS.md" if task_dir else None
     fm = frontmatter(status.read_text(encoding="utf-8")) if status and status.is_file() else {}
-    return workspace_for({"slug": slug, "context": fm.get("context")}, cfg)
+    return workspace_for({"slug": slug, "context": fm.get("context"), "area": fm.get("area")}, cfg)
 
 
 SESSION_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -628,14 +719,14 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             if not item:
                 out.append({"item": name, "kind": "unknown", "error": f"no active task and no open inbox item {name!r}"})
                 continue
-            full, linked = item
+            full, linked, placed = item
             short = inbox_slug(full)
             kind, slug, label = "inbox", f"inbox-{short}", f"Inbox {short}"
             name = env_slug = full
-            # an item follows its task; an unlinked one goes to the default workspace (its
-            # summary words are no area: "platform broke" must not match a platform-* pattern)
+            # an item follows its task; an unlinked one goes to the area it was given (place), else to the
+            # default workspace (its summary words are no area: "platform broke" must not match platform-*)
             area = (_task_area(root, linked, cfg) if linked and _task_dir(root, linked)
-                    else workspace_for({"slug": "", "context": None}, cfg))
+                    else workspace_for({"slug": "", "context": None, "area": placed}, cfg))
             prompt = launch_prompt("inbox", mode, full, start_note=start_note)
         base, n = label, 1
         while label in used:
@@ -700,23 +791,13 @@ def route(root: Path, cfg: dict, entries: list) -> list:
     configured rules stand and nothing gets its own workspace.
     """
     out = [{**e, "own": False} for e in entries]
-    command = (cfg.get("router") or {}).get("command")
     spaces = {ws["name"]: ws for ws in cfg.get("workspaces") or [] if ws.get("name")}
     todo = [e for e in out if "command" in e]
-    if not command or not spaces or not todo:
+    if not spaces or not todo or not (cfg.get("router") or {}).get("command"):
         return out
-    prompt = ROUTER_PROMPT.format(
-        areas="\n".join(f"- {n}: {ws.get('description') or ''}".rstrip(": ") for n, ws in spaces.items()),
-        items="\n".join(f"- {e['item']}: {_describe(root, e['item'])}" for e in todo))
-    argv = shlex.split(command) if isinstance(command, str) else [str(c) for c in command]
-    try:
-        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=ROUTER_TIMEOUT_SEC)
-        text = run.stdout if run.returncode == 0 else ""
-        start, end = text.find("["), text.rfind("]")
-        answer = json.loads(text[start:end + 1]) if 0 <= start < end else []
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        answer = []
-    picks = {str(a.get("item")): a for a in answer if isinstance(a, dict)}
+    picks = _ask_router(cfg, ROUTER_PROMPT.format(
+        areas=_area_lines(spaces), items="\n".join(f"- {e['item']}: {_describe(root, e['item'])}" for e in todo)),
+        cwd=root)
     for e in todo:
         pick = picks.get(e["item"]) or {}
         ws = spaces.get(str(pick.get("workspace") or ""))
@@ -725,6 +806,124 @@ def route(root: Path, cfg: dict, entries: list) -> list:
         e.update({"workspace": ws["name"], "aliases": list(ws.get("aliases") or []),
                   "own": pick.get("own") is True, "why": str(pick.get("why") or "")[:80] or "no reason given"})
     return out
+
+
+def _area_lines(spaces: dict) -> str:
+    return "\n".join(f"- {n}: {ws.get('description') or ''}".rstrip(": ") for n, ws in spaces.items())
+
+
+def _ask_router(cfg: dict, prompt: str, cwd: Path | None = None) -> dict:
+    """The configured router's answer, by item id: {item: {"workspace", "why", ...}}. Empty when there is no
+    router, or it fails, times out or answers no JSON array; the caller then keeps what it had."""
+    command = (cfg.get("router") or {}).get("command")
+    if not command:
+        return {}
+    argv = shlex.split(command) if isinstance(command, str) else [str(c) for c in command]
+    try:
+        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=ROUTER_TIMEOUT_SEC,
+                             cwd=str(cwd) if cwd else None)
+        text = run.stdout if run.returncode == 0 else ""
+        start, end = text.find("["), text.rfind("]")
+        answer = json.loads(text[start:end + 1]) if 0 <= start < end else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        answer = []
+    return {str(a.get("item")): a for a in answer if isinstance(a, dict)}
+
+
+# ---------------------------------------------------------------- placing inbox items in an area
+
+PLACE_PROMPT = """Give each inbox item the one area it belongs to.
+
+Areas:
+{areas}
+
+Items:
+{items}
+
+Answer with a JSON array only, one object per item:
+[{{"item": "<item id>", "workspace": "<a name from the list>", "why": "<at most eight words>"}}]
+Pick the area whose description fits the item's subject; when none fits, pick the one for everything else."""
+
+
+def _placeable(root: Path) -> tuple:
+    """(the inbox module, the box, the open items that have neither a task nor an area)"""
+    mod = _inbox_module()
+    box = mod.Inbox(root / "work" / "inbox", actor="router")
+    return mod, box, [i for i in box.items() if i.state in mod.ACTIVE_STATES and not i.task and not i.area]
+
+
+def unplaced(root: Path) -> list:
+    """The ids of every open inbox item with neither a task nor an area."""
+    return [i.id for i in _placeable(root)[2]]
+
+
+def place(root: Path, cfg: dict, items: list, write: bool = True) -> list:
+    """Ask the router once where the given inbox items belong and write each answer as an `area` event by
+    `router` ([{item, area, why}]). Items with a task or an area already, closed ones and unknown ids are
+    left out; an answer naming no configured workspace is dropped, so a failing router writes nothing."""
+    spaces = {ws["name"]: ws for ws in cfg.get("workspaces") or [] if ws.get("name")}
+    if not spaces or not (cfg.get("router") or {}).get("command"):
+        return []
+    mod, box, open_items = _placeable(root)
+    wanted = {box_id for box_id in (_resolve(box, name) for name in items) if box_id}
+    todo = [i for i in open_items if i.id in wanted]
+    if not todo:
+        return []
+    picks = _ask_router(cfg, PLACE_PROMPT.format(
+        areas=_area_lines(spaces), items="\n".join(f"- {i.id}: {i.summary}" for i in todo)), cwd=root)
+    placed = []
+    for i in todo:
+        pick = picks.get(i.id) or {}
+        ws = spaces.get(str(pick.get("workspace") or ""))
+        if not ws:
+            continue
+        why = str(pick.get("why") or "")[:80] or None
+        if write:
+            # the router took its time: a person may have set an area meanwhile, or the item closed
+            try:
+                now = box.get(i.id)
+                if now.task or now.area or now.state not in mod.ACTIVE_STATES:
+                    continue
+                box.set_area(i.id, ws["name"], by="router", why=why)
+            except (KeyError, ValueError, OSError):
+                continue
+        placed.append({"item": i.id, "area": ws["name"], "why": why})
+    return placed
+
+
+PLACE_LOCK = Path(".bridge") / "cache" / "inbox-place.lock"
+PLACE_SETTLE_SEC = 2.0
+
+
+def place_pending(root: Path, cfg: dict, settle: float = PLACE_SETTLE_SEC) -> list:
+    """What `inbox.py add` starts for a new item: wait a moment so a burst of items arrives, then place every
+    open item that has neither a task nor an area, one placer at a time. A second placer that finds the lock
+    taken leaves: the one holding it looks again before it lets go, and asks about each item once."""
+    time.sleep(settle)
+    lock_path = root / PLACE_LOCK
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import fcntl
+    except ImportError:                       # no flock (Windows): one placer per item, as without a lock
+        fcntl = None
+    with open(lock_path, "a") as lock:
+        if fcntl is not None:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return []
+        placed, asked = [], set()
+        while todo := [i for i in unplaced(root) if i not in asked]:
+            asked.update(todo)
+            placed += place(root, cfg, todo)
+        return placed
+
+
+def _resolve(box, name: str) -> str | None:
+    try:
+        return box.resolve(name.strip())
+    except (KeyError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------- the plan
@@ -780,12 +979,29 @@ def propose(tasks: list, cfg: dict, mentions: dict, sessions: dict, open_tabs: d
             "stale": sorted(stale, key=lambda t: -t["age"])}
 
 
-def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
-    """Every active task, flat: label, area (its workspace), priority, score, blocked_by, stale.
-    The whole list, for any UI or script that drives workplace.py; propose decides which of them get a
-    tab today."""
+def _next_what(value) -> str | None:
+    """The words of a task's `next:`: the string itself, or the `what` of a mapping; None when it names none."""
+    if isinstance(value, dict):
+        value = value.get("what")
+    text = str(value).strip() if isinstance(value, (str, int, float)) else ""
+    return text or None
+
+
+def _next_part(value, key: str) -> str | None:
+    """The `who`, `due` or `check` of a `next:` mapping, as text; None for a plain `next:` or one without it."""
+    part = value.get(key) if isinstance(value, dict) else None
+    if not isinstance(part, (str, int, float, dt.date)) or isinstance(part, bool):
+        return None
+    return str(_plain(part)).strip() or None
+
+
+def task_rows(root: Path, cfg: dict, today: dt.date, include_all: bool = False) -> list:
+    """Every active task, flat: label, area (its workspace), priority, score, blocked_by, stale, plus what a
+    card is written from (brief, headline, next_who, next_due, progress, placeholder). The whole list, for any UI or
+    script that drives workplace.py; propose decides which of them get a tab today. `include_all` adds
+    the backlog."""
     limits = {**DEFAULT_LIMITS, **(cfg.get("limits") or {})}
-    tasks = collect_tasks(root)
+    tasks = collect_tasks(root, include_all=include_all)
     log_path = root / "work" / "log.md"
     log = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
     mentions = log_mentions(log, [t["slug"] for t in tasks], today, limits["activity_days"])
@@ -797,9 +1013,18 @@ def task_rows(root: Path, cfg: dict, today: dt.date) -> list:
                      "area": area["name"],
                      "area_aliases": list(area.get("aliases") or []),
                      "priority": t.get("priority"), "type": t.get("type"), "status": t.get("status"),
+                     "next": _next_what(t.get("next")),
+                     "updated": t["updated"].isoformat() if t.get("updated") else None,
                      "score": score, "age": age,
                      "blocked_by": t.get("blocked_by"), "stale": age > limits["stale_days"],
-                     "kind": t["kind"]})
+                     "kind": t["kind"],
+                     # how it began (STATUS.md origin, free text): the cockpit says where it comes from
+                     "origin": (t.get("origin") or "")[:300] or None,
+                     "headline": t.get("headline"), "brief": t.get("brief"), "progress": t.get("progress"),
+                     "placeholder": t.get("placeholder") is True,
+                     "next_who": _next_part(t.get("next"), "who"), "next_due": _next_part(t.get("next"), "due"),
+                     # the check-in day of a step in progress with someone (STATUS.md next.check, the cockpit's In progress)
+                     "next_check": _next_part(t.get("next"), "check")})
     rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     return sorted(rows, key=lambda r: (rank.get(r["priority"] or "", 4), -r["score"], r["slug"]))
 
@@ -949,6 +1174,21 @@ def check_description(text: str) -> str:
     return out
 
 
+FIRST_MAX = 2000
+FIRST_BAD = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")      # a line break and a tab stay, any other control code goes
+
+
+def check_first_words(text: str) -> str:
+    """The person's first sentence for a new agent tab: trimmed, 1 to FIRST_MAX characters, no control code but a
+    line break or a tab. Refused, never cut. The reason never quotes the text."""
+    if FIRST_BAD.search(text or ""):
+        raise ValueError("refused: a control code in the sentence")
+    out = (text or "").strip()
+    if not 1 <= len(out) <= FIRST_MAX:
+        raise ValueError(f"refused: a sentence has 1 to {FIRST_MAX} characters")
+    return out
+
+
 def check_title(title: str) -> str:
     """A tab or workspace title as typed: trimmed, 1 to TITLE_MAX characters, no control character
     (no newline, no tab). Refused, never cut. Raises ValueError with the reason."""
@@ -970,6 +1210,31 @@ def _ws_fold(name) -> str:
 # the verbs every driver serves; the others it names in its answer to `caps`
 BASE_CAPS = ("tabs", "sessions", "open", "launch", "send", "rename")
 KEYS = ("enter", "escape", "y", "n", *(str(i) for i in range(1, 10)))
+# what a live terminal sends beside text: the keys of a keyboard that are no text, the same list as the cockpit's
+# (actions_base.py TERM_KEYS)
+TERM_KEYS = ("enter", "escape", "tab", "shift+tab", "backspace", "delete", "up", "down", "left", "right", "home", "end",
+             "pageup", "pagedown", *(f"ctrl+{c}" for c in "abcdefghijklmnopqrstuvwxyz"))
+TERM_STEPS_MAX, TERM_TEXT_MAX, TERM_PASTE_MAX = 64, 4000, 32000
+LIVE_REF_RE = re.compile(r"[a-z]+:\d+|%\d+")       # surface:91, %3: a driver's own name for a tab, never a person's
+TERM_NO_TEXT = re.compile(r"[\x00-\x1f\x7f]")       # typed text: no control code, a key has its own step
+TERM_NO_PASTE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")      # a paste keeps its tabs and lines
+
+
+def check_steps(steps) -> list:
+    """The steps of a live terminal, or ValueError: a key of TERM_KEYS, text without a control code, a paste. The
+    same rule as the cockpit's (actions_base.py check_term_steps): nothing else reaches a driver through this door."""
+    if not isinstance(steps, list) or not 1 <= len(steps) <= TERM_STEPS_MAX:
+        raise ValueError(f"keys takes a list of 1 to {TERM_STEPS_MAX} steps")
+    for step in steps:
+        kind, value = next(iter(step.items())) if isinstance(step, dict) and len(step) == 1 else (None, None)
+        if kind == "key" and value in TERM_KEYS:
+            continue
+        if kind == "text" and isinstance(value, str) and 0 < len(value) <= TERM_TEXT_MAX and not TERM_NO_TEXT.search(value):
+            continue
+        if kind == "paste" and isinstance(value, str) and 0 < len(value) <= TERM_PASTE_MAX and not TERM_NO_PASTE.search(value):
+            continue
+        raise ValueError("a step is one key of the list, text without control codes, or a paste")
+    return steps
 
 
 class NoneDriver:
@@ -977,6 +1242,7 @@ class NoneDriver:
 
     name = "none"
     error = ""
+    refs: dict = {}
 
     def tabs_or_none(self):
         return self.tabs()
@@ -1024,6 +1290,15 @@ class NoneDriver:
     def set_description(self, workspace: str, text: str | None) -> list:
         return [f"No driver configured: describe {workspace} yourself."]
 
+    def new_tab(self, workspace: str, title: str | None, command: str | None) -> list:
+        return [f"No driver configured: open a tab in {workspace} yourself."]
+
+    def new_workspace(self, title: str, color: str | None, cwd: str | None, command: str | None) -> list:
+        return [f"No driver configured: open a workspace {title!r} yourself."]
+
+    def close_workspace(self, workspace: str) -> list:
+        return [f"No driver configured: close {workspace} yourself."]
+
     def control(self, ctl: dict, command: str, root) -> list:
         return [f"No driver configured: start {command!r} in a terminal named {ctl.get('name')!r} yourself."]
 
@@ -1035,6 +1310,9 @@ class NoneDriver:
 
     def key(self, tab: str, key: str) -> list:
         return [f"No driver configured: press {key} in {tab} yourself."]
+
+    def keys(self, tab: str, steps: list) -> list:
+        return [f"No driver configured: type in {tab} yourself."]
 
     def screen(self, tab: str, lines: int) -> str | None:
         return None
@@ -1054,6 +1332,7 @@ class CommandDriver:
         self.name = Path(self.argv[-1]).stem if self.argv else "command"
         self.error = ""
         self.failed = False
+        self.refs: dict = {}          # the new refs the last verb answered: ref (a tab), ws_ref (a workspace)
 
     def _call(self, payload: dict) -> dict | None:
         try:
@@ -1099,6 +1378,7 @@ class CommandDriver:
 
     def _report(self, payload: dict) -> list:
         data = self._call(payload)
+        self.refs = {k: data[k] for k in ("ref", "ws_ref") if isinstance((data or {}).get(k), str)}
         if data is None:
             self.failed = True
             # an ERROR line, like a refused step: a caller must not count anything as started
@@ -1138,6 +1418,15 @@ class CommandDriver:
     def set_description(self, workspace: str, text: str | None) -> list:
         return self._report({"verb": "set_description", "workspace": workspace, "text": text})
 
+    def new_tab(self, workspace: str, title: str | None, command: str | None) -> list:
+        return self._report({"verb": "new_tab", "workspace": workspace, "title": title, "command": command})
+
+    def new_workspace(self, title: str, color: str | None, cwd: str | None, command: str | None) -> list:
+        return self._report({"verb": "new_workspace", "title": title, "color": color, "cwd": cwd, "command": command})
+
+    def close_workspace(self, workspace: str) -> list:
+        return self._report({"verb": "close_workspace", "workspace": workspace})
+
     def control(self, ctl: dict, command: str, root) -> list:
         return self._report({"verb": "control", "control": ctl, "command": command, "root": str(root)})
 
@@ -1158,6 +1447,13 @@ class CommandDriver:
             self.failed = True
             return [f"ERROR key {key!r} is not one of {', '.join(KEYS)}"]
         return self._report({"verb": "key", "tab": tab, "key": key})
+
+    def keys(self, tab: str, steps: list) -> list:
+        try:
+            return self._report({"verb": "keys", "tab": tab, "keys": check_steps(steps)})
+        except ValueError as exc:
+            self.failed = True
+            return [f"ERROR {exc}"]
 
     def screen(self, tab: str, lines: int) -> str | None:
         data = self._call({"verb": "screen", "tab": tab, "lines": int(lines)})
@@ -1248,6 +1544,15 @@ def main(argv=None) -> int:
     ap.add_argument("--root", type=Path, default=ROOT)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("propose").add_argument("--json", action="store_true")
+    pl = sub.add_parser("place", help="give inbox items without a task or an area their area (the router, one call)")
+    which = pl.add_mutually_exclusive_group(required=True)
+    which.add_argument("--items", help="inbox ids, comma separated")
+    which.add_argument("--unplaced", action="store_true", help="every open item with neither a task nor an area")
+    which.add_argument("--pending", action="store_true",
+                       help="as --unplaced, after a short wait and one placer at a time (inbox.py add starts it)")
+    pl.add_argument("--dry-run", action="store_true", help="show the answer, write nothing")
+    pl.add_argument("--quiet", action="store_true", help="print nothing (inbox.py add starts it this way)")
+    pl.add_argument("--json", action="store_true")
     op = sub.add_parser("open")
     op.add_argument("--only", help="only these workspaces, comma separated")
     op.add_argument("--yes", action="store_true", help="hand the plan to the driver (default: dry run)")
@@ -1279,8 +1584,9 @@ def main(argv=None) -> int:
     sub.add_parser("teams", help="the team recipes: ordered role tabs on one task").add_argument(
         "--json", action="store_true")
     sub.add_parser("status").add_argument("--json", action="store_true")
-    sub.add_parser("tasks", help="every active task with area, priority and flags").add_argument(
-        "--json", action="store_true")
+    tk = sub.add_parser("tasks", help="every active task with area, priority and flags")
+    tk.add_argument("--json", action="store_true")
+    tk.add_argument("--all", action="store_true", help="the backlog too")
     sd = sub.add_parser("send")
     sd.add_argument("tab")
     sd.add_argument("text", nargs="+")
@@ -1309,6 +1615,32 @@ def main(argv=None) -> int:
     wd.add_argument("ws_ref")
     wd.add_argument("--clear", action="store_true", help="take the description off")
     wd.add_argument("text", nargs="*")
+    nt = sub.add_parser("new-tab", help="one new tab in a workspace, by its live ref only: new-tab WS_REF "
+                                        "[--kind agent|shell] [--title=T] [--text=S]; the free texts go glued to "
+                                        "their flag, so a dash at the start is no flag")
+    nt.add_argument("ws_ref")
+    nt.add_argument("--kind", choices=("agent", "shell"), default="agent", help="agent (default): a chat; shell: no command")
+    nt.add_argument("--title", help="its name, as rename takes it")
+    nt.add_argument("--text", help="the person's first sentence, the agent's whole prompt (an agent only)")
+    nt.add_argument("--model", choices=tuple(CLAUDE_MODELS), help="the model the agent starts with")
+    nt.add_argument("--effort", choices=EFFORTS, help="the agent's effort level")
+    nt.add_argument("--json", action="store_true", help="the answer as JSON: ok, report and the new ref")
+    nw = sub.add_parser("new-workspace", help="one new workspace with its first tab: new-workspace --title=T "
+                                               "[--kind agent|shell|none] [--color C] [--cwd=DIR] [--text=S]")
+    nw.add_argument("--title", required=True, help="its name, as rename-workspace takes it")
+    nw.add_argument("--kind", choices=("agent", "shell", "none"), default="agent",
+                    help="agent (default): a chat in its first tab; shell and none: a plain shell (a workspace "
+                         "cannot be empty)")
+    nw.add_argument("--color", help=f"a palette colour, one of {', '.join(COLORS)}")
+    nw.add_argument("--cwd", help="the folder it starts in: an absolute folder that exists (default: the Bridge)")
+    nw.add_argument("--text", help="the person's first sentence, the agent's whole prompt (an agent only)")
+    nw.add_argument("--model", choices=tuple(CLAUDE_MODELS), help="the model the agent starts with")
+    nw.add_argument("--effort", choices=EFFORTS, help="the agent's effort level")
+    nw.add_argument("--json", action="store_true", help="the answer as JSON: ok, report and the new refs")
+    cw = sub.add_parser("close-workspace", help="close one workspace and what runs in it, by its live ref only "
+                                                "(only when you ask): close-workspace WS_REF")
+    cw.add_argument("ws_ref")
+    cw.add_argument("--json", action="store_true", help="the answer as JSON: ok and report")
     sub.add_parser("caps", help="the verbs the configured driver serves").add_argument("--json", action="store_true")
     sub.add_parser("workspaces", help="the workspaces as the terminal shows them (read only)").add_argument(
         "--json", action="store_true")
@@ -1317,6 +1649,9 @@ def main(argv=None) -> int:
     ky = sub.add_parser("key", help="one key into a tab: " + ", ".join(KEYS))
     ky.add_argument("tab")
     ky.add_argument("key")
+    ks = sub.add_parser("keys", help="what a live terminal typed, a JSON list of {text}, {key} and {paste} steps")
+    ks.add_argument("tab")
+    ks.add_argument("steps")
     sc = sub.add_parser("screen", help="the last lines a tab shows (read only)")
     sc.add_argument("tab")
     sc.add_argument("--lines", type=int, default=40)
@@ -1324,6 +1659,20 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     cfg = load_cfg(args.root)
+    if args.cmd == "place":
+        if args.pending:
+            placed = place_pending(args.root, cfg)
+            items = placed
+        else:
+            items = unplaced(args.root) if args.unplaced else [x for x in args.items.split(",") if x.strip()]
+            placed = place(args.root, cfg, items, write=not args.dry_run)
+        if args.json:
+            print(json.dumps(placed, ensure_ascii=False, indent=1))
+        elif not args.quiet:
+            for p in placed:
+                print(f"{p['item']}  -> {p['area']}" + (f"  ({p['why']})" if p["why"] else ""))
+            print(f"{len(placed)} of {len(items)} placed" + (" (dry run, nothing written)" if args.dry_run else ""))
+        return 0
     try:
         driver = driver_from(cfg.get("driver"))
     except ValueError as exc:
@@ -1368,7 +1717,7 @@ def main(argv=None) -> int:
         print("\n".join(driver.control(ctl, command, args.root)))
         return 1 if getattr(driver, "failed", False) else 0
     if args.cmd == "tasks":
-        rows = task_rows(args.root, cfg, today)
+        rows = task_rows(args.root, cfg, today, include_all=args.all)
         if args.json:
             print(json.dumps(rows, ensure_ascii=False, indent=1))
         else:
@@ -1475,9 +1824,14 @@ def main(argv=None) -> int:
         return rename_cli(args, cfg, driver)
     if args.cmd in ("move-tab", "workspace-color", "workspace-description"):
         return layout_cli(args, cfg, driver)
-    tasks = collect_tasks(args.root)
+    if args.cmd in MAKE_CAPS:
+        return make_cli(args, cfg, driver)
+    # a live ref needs no list of the tabs: the terminal of the cockpit types and reads many times a second, and the
+    # driver answers for a ref that is gone
+    direct = args.cmd in ("keys", "screen") and LIVE_REF_RE.fullmatch(args.tab)
+    tasks = [] if direct else collect_tasks(args.root)
     index = slug_index(tasks, cfg)
-    tabs = driver.tabs()
+    tabs = [] if direct else driver.tabs()
     try:
         tab = find_tab(tabs, args.tab, index) if tabs else {"name": args.tab, "ref": args.tab}
     except LookupError as exc:
@@ -1492,7 +1846,7 @@ def main(argv=None) -> int:
         return 1 if getattr(driver, "failed", False) else 0
     ref = tab.get("ref") or tab["name"]
     if args.cmd == "screen":
-        text = driver.screen(ref, max(1, min(args.lines, 500)))
+        text = driver.screen(ref, max(1, min(args.lines, SCREEN_MAX_LINES)))
         if text is None:
             print(getattr(driver, "error", "") or "the driver cannot read this tab", file=sys.stderr)
             return 1
@@ -1502,6 +1856,13 @@ def main(argv=None) -> int:
         lines = getattr(driver, args.cmd)(ref)
     elif args.cmd == "key":
         lines = driver.key(ref, args.key)
+    elif args.cmd == "keys":
+        try:
+            steps = json.loads(args.steps)
+        except ValueError:
+            print("keys takes a JSON list", file=sys.stderr)
+            return 2
+        lines = driver.keys(ref, steps)
     else:
         lines = driver.send(ref, " ".join(args.text))
     print("\n".join(lines))
@@ -1556,6 +1917,14 @@ def rename_cli(args, cfg: dict, driver) -> int:
     return 1 if getattr(driver, "failed", False) else 0
 
 
+def workspace_titles(tabs: list, driver) -> dict:
+    """ws_ref -> title of every workspace live now: those the tabs name, and those the driver lists (an empty one too)"""
+    listed = driver.workspaces() if "workspaces" in driver.caps() else None
+    titles = {t.get("ws_ref"): t.get("workspace") for t in tabs if t.get("ws_ref")}
+    titles.update({w.get("ref"): w.get("title") for w in listed or [] if w.get("ref")})
+    return titles
+
+
 LAYOUT_CAPS = {"move-tab": "move_tab", "workspace-color": "set_color", "workspace-description": "set_description"}
 
 
@@ -1589,9 +1958,7 @@ def layout_cli(args, cfg: dict, driver) -> int:
     if tabs is None:
         print(getattr(driver, "error", "") or f"driver {driver.name} gave no tab list", file=sys.stderr)
         return 1
-    listed = driver.workspaces() if "workspaces" in driver.caps() else None
-    titles = {t.get("ws_ref"): t.get("workspace") for t in tabs if t.get("ws_ref")}
-    titles.update({w.get("ref"): w.get("title") for w in listed or [] if w.get("ref")})
+    titles = workspace_titles(tabs, driver)
     if args.ws_ref not in titles:
         return refuse(f"no open workspace with the ref {args.ws_ref!r}")
     if args.cmd == "move-tab":
@@ -1609,6 +1976,76 @@ def layout_cli(args, cfg: dict, driver) -> int:
                  else driver.set_description(args.ws_ref, text))
     print("\n".join(lines))
     return 1 if getattr(driver, "failed", False) else 0
+
+
+MAKE_CAPS = {"new-tab": "new_tab", "new-workspace": "new_workspace", "close-workspace": "close_workspace"}
+
+
+def make_cli(args, cfg: dict, driver) -> int:
+    """`new-tab`, `new-workspace` and `close-workspace`: a live ref only (never a name, never a part of one), the
+    driver's verb announced in its caps, the same title rules as the two renames, the person's sentence checked and
+    quoted for the shell. Everything is checked before the driver is asked to make or close anything. A refusal is
+    exit 2 with its reason on stderr (never the sentence); a driver that failed or refused (an ERROR line) is exit 1.
+    The new refs come with `--json`, also when the driver reports an ERROR line for a tab that exists."""
+    def refuse(why: str) -> int:
+        print(why, file=sys.stderr)
+        return 2
+    verb = MAKE_CAPS[args.cmd]
+    if verb not in driver.caps():
+        return refuse(f"refused: driver {driver.name} cannot {verb.replace('_', ' ')}")
+    title = text = color = cwd = None
+    if args.cmd != "close-workspace":
+        try:
+            title = check_title(args.title) if args.title is not None else None
+            text = check_first_words(args.text) if args.text is not None else None
+        except ValueError as exc:
+            return refuse(str(exc))
+        if text and args.kind != "agent":
+            return refuse("refused: this kind takes no sentence, only an agent does")
+    if args.cmd == "new-workspace":
+        if args.color is not None:
+            color = palette_name(args.color)
+            if color is None:
+                return refuse(f"refused: not a palette colour, one of {', '.join(COLORS)}")
+            if "set_color" not in driver.caps():
+                return refuse(f"refused: driver {driver.name} cannot set color")
+        if args.cwd is not None and not (Path(args.cwd).is_absolute() and Path(args.cwd).is_dir()):
+            return refuse("refused: cwd is not a folder that exists (give an absolute path)")
+        cwd = args.cwd or str(args.root)
+    tabs = driver.tabs_or_none()
+    if tabs is None:
+        print(getattr(driver, "error", "") or f"driver {driver.name} gave no tab list", file=sys.stderr)
+        return 1
+    titles = workspace_titles(tabs, driver)
+    if args.cmd != "new-workspace" and args.ws_ref not in titles:
+        return refuse(f"no open workspace with the ref {args.ws_ref!r}")
+    managed = managed_names(args.root, cfg) if title else {}
+    if args.cmd == "new-tab" and title:
+        want = title.casefold()
+        if want in managed["tab_names"]:
+            return refuse("refused: a task, inbox or team tab is known by this name")
+        if any(str(t.get("name") or "").strip().casefold() == want for t in tabs):
+            return refuse("refused: name in use")
+    if args.cmd == "new-workspace":
+        if _ws_fold(title) in {_ws_fold(n) for n in managed["workspace_names"]}:
+            return refuse("refused: a configured workspace has this name (workplace.workspaces)")
+        if _ws_fold(title) in {_ws_fold(t) for t in titles.values() if t}:
+            return refuse("refused: name in use")
+    if args.cmd == "close-workspace":
+        lines = driver.close_workspace(args.ws_ref)
+    else:
+        try:
+            command = chat_command(args.root, cfg, text, args.model, args.effort, cwd) if args.kind == "agent" else None
+        except ValueError as exc:
+            return refuse(str(exc))
+        lines = (driver.new_tab(args.ws_ref, title, command) if args.cmd == "new-tab"
+                 else driver.new_workspace(title, color, cwd, command))
+    failed = getattr(driver, "failed", False)
+    if args.json:
+        print(json.dumps({"ok": not failed, "report": lines, **getattr(driver, "refs", {})}, ensure_ascii=False))
+    else:
+        print("\n".join(lines))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

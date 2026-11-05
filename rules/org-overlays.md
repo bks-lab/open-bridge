@@ -132,10 +132,10 @@ cache is pruned and lets an edit write through into the shared cache (see
 
 `remove` hash-verifies each lock-recorded file and deletes **only** the clean
 managed ones; it prompts on any locally-modified file and never touches an
-unmanaged one. It then drops the cache, the `materialize` block, the lock entry,
-and the ecosystem `@import`. `--keep-files` ends the subscription but leaves the
-files. Removal must be as clean as the add — no orphaned files, no dangling
-config.
+unmanaged one. It then drops the cache, the `materialize` block and the lock
+entry. It writes no entry file, so it has no import to drop. `--keep-files`
+ends the subscription but leaves the files. Removal must be as clean as the
+add — no orphaned files, no dangling config.
 
 ## Gate 11 — opt-in, structurally
 

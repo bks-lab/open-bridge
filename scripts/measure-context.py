@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Measure the always-on context a session loads, and hold it to a declared cap.
 
-Every session loads a fixed body of text before the first answer: the
-`@`-imports named in CLAUDE.md, the standing orders carrying `scope: always`,
-and the Phase 1 reads. Nothing measured it, so it only ever grew, and it grew
+Every session loads a fixed body of text before the first answer: the entry
+file Claude Code loads (AGENTS.md, or CLAUDE.md while a fork still has one)
+with its `@`-imports, the standing orders carrying `scope: always`, and the
+Phase 1 reads. Nothing measured it, so it only ever grew, and it grew
 where nobody looks: roughly half arrives through tool reads rather than
 imports, so it never appears in a client's context listing at all.
 
@@ -50,15 +51,29 @@ from lib.standing_orders import (  # noqa: E402  (path setup must precede this i
     collect_orders,
     eager_paths,
 )
-from lib.context_index import render_card  # noqa: E402
+from lib.context_index import registry_files, render_card  # noqa: E402
 
 CORE_BUDGET = "context-budget.yaml"
 USER_BUDGET = "context-budget.user.yaml"
-ENTRY = "CLAUDE.md"
+# The entry chain mirrors Claude Code's DEFAULT option for AGENTS.md support
+# (`instructionFiles: claude-md-or-agents-md`, set in `/config`, not in a
+# settings file, so a project can neither pin nor detect it). Under it a
+# CLAUDE.md beside AGENTS.md is the only file loaded, and AGENTS.md reaches the
+# session only through an import. Probed with 2.1.314: a root CLAUDE.local.md
+# and a .claude/CLAUDE.md shadow AGENTS.md the same way, and each present one
+# loads, in this order. Non-default options are not modelled.
+AGENTS_ENTRY = "AGENTS.md"
+SHADOW_FILES = ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md")
+ENTRY_CANDIDATES = SHADOW_FILES + (AGENTS_ENTRY,)
+MIGRATION_SCRIPT = "scripts/migrate-entry-file.py"
 ORDERS_DIR = Path("protocols") / "standing-orders"
 
-# Only a line that STARTS with `@` is an import. An address in prose is not.
+# Only a line that STARTS with `@` is an import. An address in prose is not,
+# and neither is a line inside a ``` or ~~~ fence (an example of an import).
+# The fence rule is migrate-entry-file.py's: either marker opens one, and only
+# the same marker closes it.
 IMPORT_RE = re.compile(r"^@(\S+)\s*$")
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 # Some always-on payload is not a file. Phase 1 loads the standing-order index
 # and a slice of bridge-config.yaml, both computed at the moment of use so they
@@ -115,12 +130,18 @@ DEFAULT_MODEL = "claude-opus-5"
 # `error` is a harness item whose lookup raised (a renamed or broken
 # `memory-location.py`, say). Reported as "no index", that read as green; it is
 # a meter that cannot see its subject, so it fails.
-FAILING = {"over", "undeclared", "missing", "contradiction", "error"}
+#
+# `shadowed` is AGENTS.md while a root CLAUDE.md (or CLAUDE.local.md, or
+# .claude/CLAUDE.md) exists and imports it from none of them. Claude Code then
+# loads only those files and none of the manual; `/init` writes exactly such a
+# file. Measuring AGENTS.md anyway would report a manual no session reads.
+FAILING = {"over", "undeclared", "missing", "contradiction", "error", "shadowed"}
 
 # The failing states that are not about SIZE, so `enforce: advisory` cannot
 # excuse them: advisory covers a number driven by ongoing work, and these are
-# a false claim about what loads and a lookup that broke.
-STRUCTURAL = {"contradiction", "error"}
+# a false claim about what loads, a lookup that broke, and a manual that does
+# not load at all.
+STRUCTURAL = {"contradiction", "error", "shadowed"}
 
 # An item may declare `enforce: advisory` to be measured and reported without
 # failing the build. It exists for the one class the cap cannot honestly govern:
@@ -171,16 +192,77 @@ def load_budget(repo_root: Path) -> dict:
 
 # ---------------------------------------------------------- what is loaded --
 
-def discover_imports(repo_root: Path, entry: str = ENTRY, max_depth: int = 4) -> list[str]:
+def resolve_entries(repo_root: Path) -> list[str]:
+    """The entry files Claude Code loads at the repo root, in load order.
+
+    Every shadow file present, when there is one; AGENTS.md otherwise; nothing
+    on a tree that has neither.
+
+    A shadow file that IS AGENTS.md (a symlink, one manual for both tools)
+    stands for AGENTS.md in the chain, so the manual is counted once.
+    """
+    root = Path(repo_root)
+    shadows = []
+    for rel in SHADOW_FILES:
+        if not (root / rel).is_file():
+            continue
+        name = AGENTS_ENTRY if is_agents_alias(root, rel) else rel
+        if name not in shadows:
+            shadows.append(name)
+    if shadows and shadows != [AGENTS_ENTRY]:
+        return shadows
+    return [AGENTS_ENTRY] if (root / AGENTS_ENTRY).is_file() else []
+
+
+def is_agents_alias(repo_root: Path, rel: str) -> bool:
+    """`rel` is the same file as AGENTS.md (a symlink or a hard link)."""
+    root = Path(repo_root)
+    if rel == AGENTS_ENTRY:
+        return False
+    try:
+        return (root / rel).is_file() and (root / rel).samefile(root / AGENTS_ENTRY)
+    except OSError:
+        return False
+
+
+def resolve_entry(repo_root: Path) -> str | None:
+    """The first entry file Claude Code loads, or None."""
+    entries = resolve_entries(repo_root)
+    return entries[0] if entries else None
+
+
+def _import_key(importer: str, target: str) -> str | None:
+    """Repo-relative key of `target` as named in `importer`, or None.
+
+    File-relative, as Claude Code resolves it. A root-level importer resolves
+    exactly as before, so existing budget keys stay valid. `~/` and absolute
+    targets live outside the tree, and so does anything that climbs out of it.
+    """
+    if target.startswith(("~", "/")):
+        return None
+    key = os.path.normpath(os.path.join(os.path.dirname(importer), target))
+    key = key.replace(os.sep, "/")
+    if key == ".." or key.startswith("../"):
+        return None
+    return key
+
+
+def discover_imports(
+    repo_root: Path, entry: str | None = None, max_depth: int = 4
+) -> list[str]:
     """The `@`-imports actually loaded, followed recursively, first-seen order.
+
+    With no `entry`, the walk starts from every file of the resolved entry
+    chain. The entry files themselves are never reported as imports.
 
     An import that does not resolve is RETURNED rather than dropped. Dropping
     it would remove it from the measured set silently, which is the exact
     failure this script exists to prevent.
     """
     root = Path(repo_root)
+    entries = [entry] if entry else resolve_entries(root)
     found: list[str] = []
-    seen: set[str] = set()
+    seen: set[str] = set(entries)
 
     def walk(rel: str, depth: int) -> None:
         if depth > max_depth:
@@ -188,19 +270,48 @@ def discover_imports(repo_root: Path, entry: str = ENTRY, max_depth: int = 4) ->
         path = root / rel
         if not path.is_file():
             return
+        fence = None
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            marker = FENCE_RE.match(line)
+            if fence:
+                if marker and marker.group(1) == fence:
+                    fence = None
+                continue
+            if marker:
+                fence = marker.group(1)
+                continue
             match = IMPORT_RE.match(line)
             if not match:
                 continue
-            target = match.group(1)
-            if target in seen:
+            key = _import_key(rel, match.group(1))
+            if key is None or key in seen:
                 continue
-            seen.add(target)
-            found.append(target)
-            walk(target, depth + 1)
+            seen.add(key)
+            found.append(key)
+            walk(key, depth + 1)
 
-    walk(entry, 0)
+    for start in entries:
+        walk(start, 0)
     return found
+
+
+def agents_md_shadowed(repo_root: Path, imports: list[str] | None = None) -> bool:
+    """AGENTS.md exists, a shadow file is loaded instead, and none imports it."""
+    root = Path(repo_root)
+    if not (root / AGENTS_ENTRY).is_file():
+        return False
+    # A shadow that IS AGENTS.md (a symlink, one manual for both tools) stands
+    # for AGENTS.md in the chain and loads the whole manual.
+    entries = resolve_entries(root)
+    if not entries or AGENTS_ENTRY in entries:
+        return False
+    imports = discover_imports(root) if imports is None else imports
+    return AGENTS_ENTRY not in imports
+
+
+def discover_registries(repo_root: Path) -> list[str]:
+    """The registries Phase 1 indexes, by the predicate `--registries` uses."""
+    return registry_files(Path(repo_root))
 
 
 def discover_standing_orders(repo_root: Path) -> list[str]:
@@ -285,8 +396,9 @@ def run_command_item(repo_root: Path, key: str):
             f"error: budget item {key!r} is outside the command allowlist.\n"
             f"       Only {CMD_ALLOWED_PREFIX!r} is accepted."
         )
-    # The meter enters through CLAUDE.md, so it measures a Claude Code session,
-    # and a command that behaves differently inside one has to see one. The
+    # The meter enters through the entry file Claude Code loads (AGENTS.md, or
+    # CLAUDE.md while a fork still has one), so it measures a Claude Code
+    # session, and a command that behaves differently inside one has to see one. The
     # case that needs it: `memory-location.py index` prints the whole memory
     # index outside Claude Code and one line inside, because there the harness
     # already loaded the file. Run from CI or a terminal, the command row
@@ -690,9 +802,15 @@ def read_harness_item(key: str, found: dict[str, Path]):
 
 
 def item_state(
-    row: dict, policy, exists: bool, contradiction: bool = False, error: bool = False
+    row: dict,
+    policy,
+    exists: bool,
+    contradiction: bool = False,
+    error: bool = False,
+    shadowed: bool = False,
 ) -> str:
-    """ok | over | uncapped | undeclared | absent | missing | contradiction | error.
+    """ok | over | uncapped | undeclared | absent | missing | contradiction |
+    error | shadowed.
 
     A row carrying `truncated_from` is a harness item cut at the harness's load
     limit: its tail never reaches the session, so it is `over` whatever the
@@ -700,6 +818,8 @@ def item_state(
     """
     if error:
         return "error"
+    if shadowed:
+        return "shadowed"
     if contradiction:
         return "contradiction"
     if policy is None:
@@ -727,10 +847,18 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
     model = str(calibration.get("model", DEFAULT_MODEL))
 
     discovered: dict[str, str] = {}
-    if (root / ENTRY).is_file():
-        discovered[ENTRY] = "import"
-    for rel in discover_imports(root):
+    for rel in resolve_entries(root):
+        discovered[rel] = "import"
+    imports = discover_imports(root)
+    for rel in imports:
         discovered.setdefault(rel, "import")
+    shadowed = agents_md_shadowed(root, imports)
+    if shadowed:
+        # Reported even when undeclared: the finding is the shadow.
+        discovered.setdefault(AGENTS_ENTRY, "import")
+    registries = set(discover_registries(root))
+    for rel in sorted(registries):
+        discovered.setdefault(rel, "phase1")  # an import wins
     for rel in discover_standing_orders(root):
         discovered.setdefault(rel, "standing-order")
     for rel in discover_listings(root):
@@ -778,27 +906,15 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
             text = run_command_item(root, path)
             exists = text is not None
             source = (policy or {}).get("source") or "command"
+        elif is_agents_alias(root, path):
+            # Counted under AGENTS.md: measuring the link again would charge
+            # the manual twice and hold it to the legacy entry's cap.
+            text, exists = None, False
         else:
-            target = root / path
-            exists = target.is_file()
-            text = (
-                target.read_text(encoding="utf-8", errors="replace")
-                if exists
-                else None
+            text, body_bytes, contradiction = _file_surface(
+                root, path, policy, discovered.get(path) == "import", path in registries
             )
-            # A declared card is what the session actually loads, so it is what
-            # the gate has to measure. Measuring the file instead would report
-            # red for content no session pays for, and the obvious response to
-            # that red — raise the cap — would quietly undo the feature.
-            #
-            # Unless the file is ALSO `@`-imported. Then the import loads it
-            # whole and the card is a claim nothing honours: measure the full
-            # text and fail, whatever its size.
-            if exists and (policy or {}).get("card") and discovered.get(path) == "import":
-                contradiction = True
-            elif exists and (policy or {}).get("card"):
-                body_bytes = len(text.encode("utf-8"))
-                text = render_card(text, policy["card"], path)
+            exists = text is not None
 
         row = {
             "path": path,
@@ -822,7 +938,18 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
             row["tokens"], row["method"] = count_tokens(
                 text, method, bytes_per_token, model
             )
-        row["state"] = item_state(row, policy, exists, contradiction, error is not None)
+        row["state"] = item_state(
+            row,
+            policy,
+            exists,
+            contradiction,
+            error is not None,
+            shadowed=shadowed and path == AGENTS_ENTRY,
+        )
+        if is_agents_alias(root, path):
+            row["alias_of"] = AGENTS_ENTRY
+            if row["state"] == "missing":
+                row["state"] = "absent"
         if error is not None:
             row["error"] = error
         # Advisory excuses a size, never a structural failure.
@@ -834,7 +961,41 @@ def collect_rows(repo_root: Path, budget: dict, method: str) -> list[dict]:
     return rows
 
 
-def always_on_parts(repo_root: Path, budget: dict) -> dict[str, str]:
+def _file_surface(root: Path, path: str, policy, imported: bool, registry: bool):
+    """(text the session loads, body bytes when indexed, contradiction) for a file.
+
+    One definition for the gate and the surface, so they cannot disagree.
+
+    A registry Phase 1 indexes loads as `context-index.py --registries` prints
+    it: the declared card, else the card derived from its shape. One branch,
+    so the row and the CLI render it once and identically.
+
+    Any other file with a declared card loads as that card. Measuring the file
+    instead would report red for content no session pays for, and the obvious
+    response to that red (raise the cap) would quietly undo the feature.
+
+    Unless the file is ALSO `@`-imported. Then the import loads it whole and
+    the card is a claim nothing honours: the full text counts, and the row
+    fails as `contradiction` whatever its size.
+    """
+    target = root / path
+    if not target.is_file():
+        return None, None, False
+    text = target.read_text(encoding="utf-8", errors="replace")
+    card = (policy or {}).get("card")
+    if imported:
+        return text, None, bool(card)
+    if registry or card:
+        return render_card(text, card, path), len(text.encode("utf-8")), False
+    return text, None, False
+
+
+SURFACES = ("session", "subagent")
+
+
+def always_on_parts(
+    repo_root: Path, budget: dict, surface: str = "session"
+) -> dict[str, str]:
     """Everything a session loads before it answers, KEYED BY WHERE IT CAME FROM.
 
     Same discovery as `collect_rows`, on purpose. A second definition of
@@ -845,12 +1006,30 @@ def always_on_parts(repo_root: Path, budget: dict) -> dict[str, str]:
     thing, and so a mutation battery can remove one contributor at a time. A
     battery over the concatenation only proves that a substring test is a
     substring test.
+
+    `surface="subagent"` is what a dispatched sub-agent gets: the entry chain,
+    its `@`-imports and the harness listings. It runs no Phase 1, so standing
+    orders, registry cards, commands and the main session's harness items never
+    reach it. On both surfaces an import counts when it is actually imported,
+    not when the budget declares `source: import`: a declaration loads nothing.
     """
+    if surface not in SURFACES:
+        raise ValueError(f"surface must be one of {SURFACES}, not {surface!r}")
     root = Path(repo_root)
     parts: dict[str, str] = {}
     harness = discover_harness(root)
+    registries = set(discover_registries(root))
+    imported = set(resolve_entries(root)) | set(discover_imports(root))
     for row in collect_rows(root, budget, "bytes"):
         path = row["path"]
+        if row["state"] == "shadowed" or row.get("alias_of"):
+            continue  # no session loads it, or it is loaded as AGENTS.md
+        if row["source"] == "import" and path not in imported:
+            continue  # declared an import, but nothing imports it: not loaded
+        if surface == "subagent" and not (
+            path.startswith(LISTING_PREFIX) or path in imported
+        ):
+            continue  # Phase 1, standing orders, commands, harness items
         if path.startswith(HARNESS_PREFIX):
             text = read_harness_item(path, harness)
         elif path.startswith(LISTING_PREFIX):
@@ -858,21 +1037,17 @@ def always_on_parts(repo_root: Path, budget: dict) -> dict[str, str]:
         elif path.startswith(CMD_PREFIX):
             text = run_command_item(root, path)
         else:
-            target = root / path
-            text = (
-                target.read_text(encoding="utf-8", errors="replace")
-                if target.is_file()
-                else None
+            # The CARD is what a session loads for a declared source or a
+            # registry, so it is what the surface has to be. Handing over the
+            # file body would put ~25 KB of never-read registry into the
+            # reachability contract and let a family claim a route through text
+            # nobody sees, the second definition of always-on this function
+            # exists to prevent. A contradiction loads whole, so it enters the
+            # surface whole.
+            policy = (budget.get("items") or {}).get(path)
+            text, _, _ = _file_surface(
+                root, path, policy, path in imported, path in registries
             )
-            # The CARD is what a session loads for a declared source, so it is
-            # what the surface has to be. Handing over the file body would put
-            # ~25 KB of never-read registry into the reachability contract and
-            # let a family claim a route through text nobody sees — the second
-            # definition of always-on this function exists to prevent.
-            # A contradiction loads whole, so it enters the surface whole.
-            policy = (budget.get("items") or {}).get(path) or {}
-            if text and policy.get("card") and row["state"] != "contradiction":
-                text = render_card(text, policy["card"], path)
         if text:
             parts[path] = text
     return parts
@@ -1022,6 +1197,36 @@ def render_report(
                 f"- `{row['path']}` ({_cell(row['truncated_from'])} bytes on disk, "
                 f"{_cell(row['bytes'])} loaded)"
             )
+
+    shadowed = [r for r in rows if r["state"] == "shadowed"]
+    if shadowed:
+        present = [
+            r["path"] for r in rows
+            if r["path"] in SHADOW_FILES and r["state"] not in ("absent", "missing")
+        ] or ["CLAUDE.md"]
+        names = ", ".join(present)
+        verb = (f"{names} exists and does not import AGENTS.md" if len(present) == 1
+                else f"{names} exist and none of them imports AGENTS.md")
+        out += [
+            "",
+            f"{verb}, so Claude Code loads only {names} and none of the manual. "
+            f"Run python3 {MIGRATION_SCRIPT}, or delete "
+            f"{'it' if len(present) == 1 else 'them'}.",
+        ]
+
+    legacy = [
+        r["path"]
+        for r in rows
+        if r["path"] in SHADOW_FILES
+        and r["source"] == "import"
+        and r["state"] not in ("absent", "missing")
+    ]
+    if legacy:
+        out += [
+            "",
+            f"legacy entry {', '.join(legacy)} present: python3 "
+            f"{MIGRATION_SCRIPT} moves its lines and removes it (docs/updating.md).",
+        ]
 
     errored = [r for r in rows if r["state"] == "error"]
     if errored:

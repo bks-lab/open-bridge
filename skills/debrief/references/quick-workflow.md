@@ -165,7 +165,7 @@ Path depends on meeting type:
 - Internal meeting → `wiki/<your-org>/protocols/weekly-meetings/YYYY-MM-DD-{title}.md`
 - Workshop → deep processing with goals/tasks document
 
-**IMPORTANT:** Read the wiki CLAUDE.md before writing a protocol (`~/Developer/org/wiki/CLAUDE.md`).
+**IMPORTANT:** Read the wiki AGENTS.md or CLAUDE.md before writing a protocol (`~/Developer/org/wiki/AGENTS.md` or `CLAUDE.md`).
 
 #### GitHub issues — when action items detected
 
@@ -227,5 +227,5 @@ Move recording + transcript:
 - **HTMLs, PDFs mentioned in the transcript:** Do not auto-process, only reference
 - **Full filenames in the log:** No abbreviations, no `...`
 - **Always get OK before deleting:** Do not delete original files after archiving without confirmation
-- **Wiki protocols:** ALWAYS read `wiki/CLAUDE.md` first for P1-P5 principles and naming
+- **Wiki protocols:** ALWAYS read the wiki AGENTS.md or CLAUDE.md first for P1-P5 principles and naming
 - **Issues:** ALWAYS via the `/github-projects-manager` skill, not manually

@@ -33,7 +33,7 @@ the `PROMPT=` heredoc in each `stages/<stage>.sh`, and the standard is the match
   `--resume` / `--continue` / `--session-id`. Nothing carries a conversation across
   stages: state travels **only through files** (the plan, the git diff, the reject note,
   the verdict). So the reviewer judges the *artefacts*, never the implementer's reasoning.
-  The one shared context is the target repo's own `CLAUDE.md`/settings via
+  The one shared context is the target repo's own `AGENTS.md` or `CLAUDE.md`/settings via
   `--setting-sources project` — static, identical for every stage, never a stage's
   transient reasoning. Pinned by `test_the_fence_starts_a_fresh_session_every_stage`.
 - **The fence is the same for all three model stages** (`bp_claude`): `-p`,

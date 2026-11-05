@@ -255,13 +255,15 @@ in the current export — never rewritten in the source repo:
 `--scope` controls which sources are walked — this is the export's privacy
 boundary, not a cosmetic filter:
 
-- **`user`** (default) — everything: `work/` (tasks, streams, done,
+- **`user`** (default): everything: `work/` (tasks, streams, done,
   deliverables) plus `docs/`, `rules/`, `examples/`, and the instance's
   auto-memory facts. Intended for a private, full-instance export — the
   bundle will contain whatever PII the source tree contains, so treat the
   output directory exactly as sensitively as `work/`.
-- **`core`** — `docs/**/*.md` and `examples/**/*.md` only. `work/`,
-  `rules/`, and memory are excluded entirely. This is the shape a public
+- **`core`**: `docs/**/*.md` and `examples/**/*.md` only, without the docs
+  tier folders `docs/user/`, `docs/org/` and `docs/personal/`, which hold an
+  instance's own documents ([kernel.md](kernel.md)). `work/`, `rules/`, and
+  memory are excluded entirely. This is the shape a public
   demo export may take. **Run `scripts/no-scrub-leak.py` over the output
   directory before publishing a `core`-scope bundle** — the exporter itself
   does not scan for leaked content, it only restricts which source trees it

@@ -197,6 +197,13 @@ properties:
       calendar_tags:
         type: string
         description: "Space-separated calendar tags shown for this instance ('' = all)"
+      design:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9._-]*$"
+        description: >-
+          Id → identity/designs/<id>.md, the instance's default design (step 5
+          of scripts/designs.py resolve; the cockpit wears it). Unset, the root
+          DESIGN.md applies. Travels with an org theme like the logo does.
 
 # Notes (advisory hints — not enforced by tooling):
 # - Themes that inherit via meta.extends should override only the keys

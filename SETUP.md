@@ -116,7 +116,9 @@ git push -u origin main
 `pre-push` guard ([rules/push-guard.md](rules/push-guard.md)), and repairs the
 skill discovery symlinks. It also checks for PyYAML again and prints how to
 install it when it is missing. The push then runs through the armed guard,
-which finds the marker and lets it through to the private origin.
+which finds the marker and lets it through to the private origin. It also
+warns when Claude Code is older than 2.1.281, which would not load `AGENTS.md`;
+pass that warning on and suggest `claude update`.
 
 ## Step 4: show the user all three proofs
 
@@ -140,7 +142,9 @@ exist when it began.
 The new session greets the user by itself and offers the setup lanes, one of
 which is a short live demo for a user who wants to look around first
 ([rules/session-start.md](rules/session-start.md)). If it does not, run
-`/bridge-onboard`. No slash commands in your tool? Read
+`/bridge-onboard`. If a Claude Code session does not greet at all, check
+`claude --version`: below 2.1.281 it starts without the manual. No slash
+commands in your tool? Read
 [skills/bridge-onboard/SKILL.md](skills/bridge-onboard/SKILL.md), then
 [skills/bridge-onboard/references/workflow.md](skills/bridge-onboard/references/workflow.md),
 and run the phases with the user inline.

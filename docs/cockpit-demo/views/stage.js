@@ -4,18 +4,20 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  duration, indexRows, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
-  countInProject, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
-  MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel,
+  duration, indexRows, jobCounts, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
+  asksYou, countInProject, startWaiting, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
+  MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey,
+  itemRow, workPageOf, statusSplit,
 } from '../logic.js'
 import { flash } from '../motion.js'
 import { T, language } from '../text.js'
 import { ChatThread, Thinking, useQuickLive } from './chat.js'
-import { KindTag, RowBar } from './day.js'
+import { KindTag, OriginTag, RowBar } from './day.js'
+import { tendLines } from './detail.js'
 import {
   DayBars, PinStar, ReturnCard, ReturnChip, jumpToTab, openWhole, pageParts, pageTitleOf, pct, returnsOf, shownTiles,
 } from './home.js'
-import { AGENTS_PAGE, ASK_MAX, SESSIONS_PAGE, WORKERS_PAGE, briefingTitle } from './nav.js'
+import { ASK_MAX, SESSIONS_PAGE, WORKERS_PAGE, briefingTitle, sessionsName } from './nav.js'
 import { Btn, Dot, Icon, StateLine } from './parts.js'
 import { TickerBand, TickerStatusList } from './ticker.js'
 
@@ -69,12 +71,14 @@ export function stationOf(x, s, c, chosen, project) {
   if (x.id === 'c:workers') {
     const st = s.workers?.data?.stats
     if (!st) return { id: x.id, label: t.workersTab, value: '·', sub: '', tone: null, onClick: () => c.setPage(WORKERS_PAGE) }
-    return { id: x.id, label: t.workersTab, value: String(st.in_service ?? 0), sub: h.workersFindings(st.with_findings ?? 0),
-      tone: st.with_findings ? 'warning' : 'success', onClick: () => c.setPage(WORKERS_PAGE) }
+    // red only for an outage, upkeep stays calm (logic.js jobCounts)
+    const j = jobCounts(s.workers.data)
+    return { id: x.id, label: t.workersTab, value: String(st.in_service ?? 0), sub: t.overviewWorkers(j.ok, j.all, j.failing, j.upkeep),
+      tone: j.failing ? 'danger' : j.upkeep ? null : 'success', onClick: () => c.setPage(WORKERS_PAGE) }
   }
   if (x.id === 'c:waiting') {
     const nowRows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows ?? []
-    const n = scope ? countInProject(nowRows, scope) : counts.now ?? 0
+    const n = startWaiting(s, scope) ?? (scope ? countInProject(nowRows.filter(asksYou), scope) : counts.now ?? 0)
     return { id: x.id, label: h.waitingNow, value: String(n), sub: trend(x.id, n), tone: n ? 'warning' : null, onClick: () => c.setPage('briefing') }
   }
   if (x.id === 'c:tabs') {
@@ -139,11 +143,13 @@ export function FeedLine({ e, s, c }) {
   const row = e.key ? byKey.get(e.key) : null
   const tone = { new: 'info', urgent: 'warning', gone: 'success', tabAsks: 'warning', answer: 'success', lost: 'danger', alarm: 'danger' }[e.kind] ?? 'muted'
   const go = e.ref ? () => jumpToTab(s, c, e.ref) : e.page ? () => c.setPage(e.page) : row ? el => openWhole(c, row, el) : null
+  // a work row's event names what the row is and where it comes from, after the event word
+  const tags = row ? html` <span class="entry-tags"><${KindTag} row=${row} s=${s} /><${OriginTag} row=${row} /></span>` : null
   const clock = new Date(e.at).toLocaleTimeString(language() === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' })
   return html`<li class=${`feed-line tk-${tone}`}>
     <span class="feed-time mono">${clock}</span><span class="stage-dot" aria-hidden="true"></span>
-    ${go ? html`<button type="button" class="feed-text" onClick=${ev => go(ev.currentTarget)}><b>${h.feed[e.kind] ?? e.kind}</b> ${short(e.title, 70)}</button>`
-      : html`<span class="feed-text"><b>${h.feed[e.kind] ?? e.kind}</b> ${short(e.title, 70)}</span>`}
+    ${go ? html`<button type="button" class="feed-text" onClick=${ev => go(ev.currentTarget)}><b>${h.feed[e.kind] ?? e.kind}</b>${tags} ${short(e.title, 70)}</button>`
+      : html`<span class="feed-text"><b>${h.feed[e.kind] ?? e.kind}</b>${tags} ${short(e.title, 70)}</span>`}
   </li>`
 }
 
@@ -153,11 +159,13 @@ function freshKeys(s, ms = 15 * 60000) {
   return new Set((s.feed ?? []).filter(e => e.kind === 'new' && now - e.at < ms).map(e => e.key))
 }
 
-function StageCard({ s, c, tabs, onWeigh }) {
+function StageCard({ s, c, tabs: allTabs, onWeigh, project = null }) {
   const t = T()
   const h = t.home
-  const pick = focusPick(tabs, s.model)
-  const nowRows = (s.model?.sections ?? []).find(x => x.id === 'now')?.rows ?? []
+  // the area picked in the bar holds here too: its rows and its tabs only
+  const tabs = allTabs.filter(x => x.is_control || inProject(x, project))
+  const nowRows = ((s.model?.sections ?? []).find(x => x.id === 'now')?.rows ?? []).filter(r => inProject(r, project))
+  const pick = focusPick(tabs, { ...s.model, sections: (s.model?.sections ?? []).map(x => (x.id === 'now' ? { ...x, rows: nowRows } : x)) })
   const rest = nowRows.filter(r => r.key !== pick?.row?.key).slice(0, pick ? 3 : 4)
   const lang = language()
   const stamp = new Date(s.now || Date.now()).toLocaleString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -170,7 +178,7 @@ function StageCard({ s, c, tabs, onWeigh }) {
     <span class=${`stage-dot tk-${dot(r)}`} aria-hidden="true"></span>
     <button type="button" class="stage-row-main" onClick=${e => openWhole(c, r, e.currentTarget, queue)} title=${h.openRow(short(r.title, 60))}>
       <span class="stage-row-title">${fresh.has(r.key) ? html`<span class="new-tag">${h.isNew}</span>` : null}${r.priority ? html`<em class=${`tk-${dot(r)}`}>${r.priority} </em>` : null}${short(r.title, lead ? 120 : 80)}</span>
-      <span class="stage-row-sub"><${KindTag} row=${r} s=${s} />${sub(r) ? html` ${sub(r)}` : null}</span>
+      <span class="stage-row-sub"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} />${sub(r) ? html` ${sub(r)}` : null}</span>
       <${ReturnChip} s=${s} rowKey=${r.key} />
     </button>
     ${lead ? html`<span class="stage-pill">${h.focusTitle}</span>` : null}
@@ -184,7 +192,7 @@ function StageCard({ s, c, tabs, onWeigh }) {
     ${pick?.kind === 'tab' ? html`<div class="stage-row is-lead">
       <span class="stage-dot tk-warning dot-pulse" aria-hidden="true"></span>
       <button type="button" class="stage-row-main" onClick=${() => jumpToTab(s, c, pick.tab.ref)} title=${h.openTab(pick.tab.name)}>
-        <span class="stage-row-title">${pick.tab.name}</span><span class="stage-row-sub">${pick.tab.workspace} · ${t.state[pick.tab.state] ?? pick.tab.state}</span>
+        <span class="stage-row-title">${pick.tab.name}</span><span class="stage-row-sub">${pick.tab.workspace} · ${t.state[tabStateKey(pick.tab)] ?? pick.tab.state}</span>
       </button>
       <span class="stage-pill">${h.focusTitle}</span>
       <div class="stage-row-acts"><${Btn} size="xs" variant="primary" onClick=${() => jumpToTab(s, c, pick.tab.ref)}>${h.toTab}<//>
@@ -245,14 +253,14 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
       ${pace ? html`<${InspectRow} tone=${pace.over ? 'warning' : 'info'} title=${h.projected(pct(pace.projected, lang))} sub=${x.it.when ? h.reset(x.it.when) : ''} />` : null}
       ${foot(h.details, () => c.openInfo(x.it, x.page, x.section))}`
   } else if (x.id === 'c:waiting') {
-    const rows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows ?? []
-    // the morning round from the start page: the first row carries its buttons, and once it is settled
+    const rows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows?.filter(asksYou) ?? []
+    // the asks of Now, as the station counts them; the morning round from the start page: the first row carries its buttons, and once it is settled
     // the next one moves up and carries them; a row whose task already has a tab leads to that tab
     const acts = r => html`<${RowBar} row=${r} s=${s} c=${c} tab=${tabOfTask(tabs, r.task)} />`
     const queue = homeRowQueue(rows.slice(0, 8))
     body = html`${head(h.waitingNow, String(rows.length))}
       ${rows.slice(0, 8).map((r, i) => html`<${InspectRow} key=${r.key} tone=${r.urgency === 'now' ? 'danger' : r.urgency === 'today' ? 'warning' : 'info'}
-        title=${short(r.title, i ? 90 : 140)} sub=${r.area || r.mark?.label || ''} onClick=${e => openWhole(c, r, e.currentTarget, queue)}>${i === 0 ? acts(r) : null}<//>`)}
+        title=${short(r.title, i ? 90 : 140)} sub=${html`<${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} />${r.area || r.mark?.label ? html` ${r.area || r.mark?.label}` : null}`} onClick=${e => openWhole(c, r, e.currentTarget, queue)}>${i === 0 ? acts(r) : null}<//>`)}
       ${!rows.length ? html`<p class="stage-row-sub">${h.focusEmpty}</p>` : null}
       ${foot(h.openPage(briefingTitle(s)), () => c.setPage('briefing'))}`
   } else if (x.id === 'c:returns') {
@@ -267,20 +275,20 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
         title=${y.tab?.name ?? y.name ?? y.project} sub=${[y.project, y.status, (y.agents?.running_count ?? 0) ? h.agentsLine(y.agents.running_count) : null].filter(Boolean).join(' · ')}
         side=${duration(s.now - (y.since_ms || s.now))} onClick=${() => c.setPage(SESSIONS_PAGE)} />`)}
       ${(s.agents?.peers ?? []).map(pe => html`<${InspectRow} key=${pe.id} tone=${pe.reach === 'ok' ? 'success' : 'muted'} title=${pe.id}
-        sub=${pe.summary ? short(pe.summary, 80) : ''} onClick=${() => c.setPage(AGENTS_PAGE)} />`)}
-      ${foot(h.openPage(t.sessionsTab), () => c.setPage(SESSIONS_PAGE))}`
+        sub=${pe.summary ? short(pe.summary, 80) : ''} onClick=${() => c.openAgent(pe.id)} />`)}
+      ${foot(h.openPage(sessionsName(s)), () => c.setPage(SESSIONS_PAGE))}`
   } else if (x.id === 'c:workers') {
     const runs = (s.workers?.data?.runs ?? []).filter(r => !['ok', 'dim'].includes(workerTone(r)))
     body = html`${head(t.workersTab, st.value)}
-      ${s.workers?.data?.stats ? html`<p class="stage-row-sub">${h.workersFindings(s.workers.data.stats.with_findings ?? 0)}</p>` : null}
-      ${runs.slice(0, 8).map(r => html`<${InspectRow} key=${r.id} tone=${workerTone(r) === 'bad' ? 'danger' : 'warning'} title=${r.title}
+      ${s.workers?.data?.stats ? html`<p class="stage-row-sub">${st.sub}</p>` : null}
+      ${runs.slice(0, 8).map(r => html`<${InspectRow} key=${r.id} tone=${workerTone(r) === 'bad' ? 'danger' : 'muted'} title=${r.title}
         sub=${short(r.findings?.[0]?.detail ?? r.state ?? '', 90)} side=${r.host} onClick=${() => c.setPage(WORKERS_PAGE)} />`)}
       ${foot(h.openPage(t.workersTab), () => c.setPage(WORKERS_PAGE))}`
   } else if (x.id === 'c:tabs') {
     const list = homeContinue(tabs, null)
     body = html`${head(t.tabsTitle, String(list.length))}
-      ${list.slice(0, 8).map(tb => html`<${InspectRow} key=${tb.ref} tone=${stateToken(tb.state)} title=${tb.name}
-        sub=${`${tb.workspace || '·'} · ${t.state[tb.state] ?? tb.state}`} side=${duration(s.now - (tb.since_ms || s.now))}
+      ${list.slice(0, 8).map(tb => html`<${InspectRow} key=${tb.ref} tone=${stateToken(tabStateKey(tb))} title=${tb.name}
+        sub=${`${tb.workspace || '·'} · ${t.state[tabStateKey(tb)] ?? tb.state}`} side=${duration(s.now - (tb.since_ms || s.now))}
         onClick=${() => c.openTabView(tb.ref)}><${Btn} size="xs" variant="primary" onClick=${() => jumpToTab(s, c, tb.ref)}>${h.toTab}<//><//>`)}
       ${foot(t.tabsTitle, () => c.setDrawer('tabs'))}`
   } else if (x.id === 'c:next') {
@@ -296,17 +304,21 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
   } else if (x.id === 'c:done') {
     const week = s.model?.week ?? { count: 0, items: [] }
     body = html`${head(h.doneTitle, String(week.count))}
-      ${week.items.map(i => html`<${InspectRow} key=${i.slug} tone="success" title=${i.title} sub=${i.slug}
+      ${week.items.map(i => html`<${InspectRow} key=${i.slug} tone="success" title=${i.title}
+        sub=${html`<${KindTag} row=${{ key: `task:${i.slug}`, task: i.slug, work_kind: i.work_kind ?? 'done' }} s=${s} /> ${i.slug}`}
         side=${i.closed.slice(5).split('-').reverse().join('.')} />`)}`
   } else if (x.page) {
     const p = x.page
     const secs = (p.sections ?? []).filter(sec => (sec.items ?? []).length)
+    // the work page's items are work rows: they carry their kind and their source like every other work row
+    const work = p.group === 'work' || p.id === workPageOf(s.model?.pages)?.id
     body = html`${head(p.title, String(p.badge?.n ?? 0))}
       <div class="inspect-parts">${(p.sections ?? []).filter(sec => (sec.total ?? sec.count ?? 0) > 0).map(sec => html`<span key=${sec.id} class="chip">
         ${sec.title} <span class="mono">${sec.total ?? sec.count}</span></span>`)}</div>
       ${secs.flatMap(sec => sec.items.slice(0, 4).map(it => ({ it, sec }))).slice(0, 8).map(({ it, sec }) => html`<${InspectRow}
         key=${`${sec.id}/${it.index}`} tone=${it.tone === 'bad' ? 'danger' : it.tone === 'warn' ? 'warning' : 'info'}
-        title=${short(it.title, 90)} sub=${[sec.title, it.when].filter(Boolean).join(' · ')} onClick=${() => c.openInfo(it, p.id, sec.id)} />`)}
+        title=${short(it.title, 90)} sub=${work ? html`<${KindTag} row=${itemRow(it)} s=${s} /><${OriginTag} row=${itemRow(it)} /> ${[sec.title, it.when].filter(Boolean).join(' · ')}`
+          : [sec.title, it.when].filter(Boolean).join(' · ')} onClick=${() => c.openInfo(it, p.id, sec.id)} />`)}
       ${foot(h.openPage(p.title), () => c.setPage(p.id))}`
   }
   return html`<section class="stage-card inspect" aria-labelledby="stage-card-title">${body}</section>`
@@ -422,6 +434,7 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
   const relay = s.relay ?? {}
   const loading = !!s.loading?.pass
   const workers = s.workers?.data?.stats
+  const jobs = jobCounts(s.workers?.data)
   const agents = (s.sessions?.sessions ?? []).reduce((n, x) => n + (x.agents?.running_count ?? 0) + (x.workflows?.length ?? 0), 0)
   const conv = (s.quick?.convs ?? []).find(x => x.id === s.ui.coreConv) ?? null
   const live = useQuickLive(conv?.id)
@@ -435,6 +448,12 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
     if (await onAsk(v, conv?.id)) setText('')
   }
   const brief = s.ui.coreBrief
+  // what the day's cards on the start page say about the briefing itself: a source that failed, was skipped or found
+  // something, the small fixes and the workplace, so the cards can be switched off without losing them
+  const ex = s.model?.extras ?? {}
+  const sources = statusSplit(s.model?.status).loud.filter(x => x.tone === 'danger' || x.tone === 'warning')
+  const tend = tendLines(ex, t) ?? []
+  const wpPage = (s.model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'workplace'))
   return html`<section class="stage-card inspect core-panel" aria-labelledby="stage-card-title">
     <header class="stage-card-head">
       <h2 id="stage-card-title">Bridge</h2>
@@ -459,10 +478,16 @@ function CoreInspector({ s, c, onClose, onAsk, onWeigh }) {
       <${Btn} size="xs" variant="ghost" busy=${loading} onClick=${c.reload}>${t.reload}<//><//>
     ${(s.model?.alarms ?? []).map(a => html`<${InspectRow} key=${a.page_id + a.section_title} tone="danger" title=${h.alarm(a.count, a.section_title)}
       sub=${a.page_title} onClick=${() => c.setPage(a.page_id)} />`)}
-    ${workers ? html`<${InspectRow} tone=${workers.with_findings ? 'warning' : 'success'} title=${h.workersLine(workers.in_service ?? 0)}
-      sub=${h.workersFindings(workers.with_findings ?? 0)} onClick=${() => c.setPage(WORKERS_PAGE)} />` : null}
+    ${sources.map(x => html`<${InspectRow} key=${`src:${x.title}`} tone=${x.tone} title=${x.title}
+      sub=${x.state === 'error' ? (x.reason || t.tone.bad) : x.state === 'skipped' ? (x.reason ?? '') : String(x.count)} />`)}
+    ${workers ? html`<${InspectRow} tone=${jobs.failing ? 'danger' : jobs.upkeep ? 'muted' : 'success'} title=${h.workersLine(workers.in_service ?? 0)}
+      sub=${t.overviewWorkers(jobs.ok, jobs.all, jobs.failing, jobs.upkeep)} onClick=${() => c.setPage(WORKERS_PAGE)} />` : null}
     <${InspectRow} tone=${agents ? 'info' : 'muted'} title=${h.agentsLine(agents)} sub=${h.sessionsLine((s.sessions?.sessions ?? []).length)}
       onClick=${() => c.setPage(SESSIONS_PAGE)} />
+    ${ex.workplace ? html`<${InspectRow} tone="info" title=${t.workplaceTitle} sub=${ex.workplace.replace(/\s*\S+\?$/, '')}
+      onClick=${wpPage ? () => c.setPage(wpPage.id) : undefined} />` : null}
+    ${tend.length ? html`<h3 class="label-caps core-sub">${t.hygieneTitle}</h3>
+      ${tend.map((x, i) => html`<${InspectRow} key=${`tend:${i}`} tone="warning" title=${x} />`)}` : null}
     ${!brief && (conv || busy) ? html`<h3 class="label-caps core-sub">${h.askTitle}</h3>
       <div class="core-brief">${conv ? html`<${ChatThread} s=${s} c=${c} conv=${conv} />` : html`<p class="muted small">${h.briefWaiting}</p>`}
         ${live?.doing ? html`<p class="muted small">${live.doing}</p>` : null}</div>` : null}
@@ -478,7 +503,7 @@ const DUST = stageDust(70, 41)
 
 /** The stage: the core with its rings, the chosen tiles as stations on curved links with packets running
  *  in, the terminal line top left, the card on the right */
-export function BridgeStage({ s, c, catalog, chosen, project }) {
+export function BridgeStage({ s, c, catalog, chosen, project, areas = null }) {
   const t = T()
   const h = t.home
   const lang = language()
@@ -579,10 +604,7 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
             <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
         </div>` : null}
       </div>
-      <${TickerBand} s=${s} c=${c} only="news" />
-      <div class="stage-tools">
-        <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//>
-      </div>
+      ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
     </div>
     <div class="stage-body">
       <div class="stage-bridge-box">
@@ -627,7 +649,7 @@ export function BridgeStage({ s, c, catalog, chosen, project }) {
       <div class="stage-side">
         ${sel === '@core' ? html`<${CoreInspector} s=${s} c=${c} onClose=${() => setSel(null)} onAsk=${coreAsk} onWeigh=${() => runMode('k:brief')} />`
           : selIdx >= 0 ? html`<${StageInspector} x=${tiles[selIdx]} st=${stations[selIdx]} s=${s} c=${c} tabs=${tabs} onClose=${() => setSel(null)} />`
-          : html`<${StageCard} s=${s} c=${c} tabs=${tabs} onWeigh=${() => runMode('k:brief')} />`}
+          : html`<${StageCard} s=${s} c=${c} tabs=${tabs} project=${project} onWeigh=${() => runMode('k:brief')} />`}
       </div>
     </div>
   </section>`

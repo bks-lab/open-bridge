@@ -6,7 +6,7 @@
 #   check-jsonschema --schemafile work/templates/_schema.status.yaml \
 #                    work/tasks/<slug>/STATUS.md
 #
-# Three-axis routing (see CLAUDE.md § Task Sync Routing):
+# Three-axis routing (see AGENTS.md § Task Sync Routing):
 #   context: → workflow/contexts/<slug>.yaml   (WHERE we document)
 #   mandant: → identity/mandants/<slug>.yaml   (WHO we address)
 #   sync.github.project → workflow/projects/<slug>.yaml (WHICH board)
@@ -21,8 +21,30 @@ priority: P2                # P0 | P1 | P2 | P3
 created: YYYY-MM-DD         # Real date — fill via `date +%Y-%m-%d`; NEVER leave YYYY-MM-DD.
 last_updated: YYYY-MM-DD    # Same — `date +%Y-%m-%d`; equals `created` for a fresh task.
 
-# Why this task exists — one line, a real reason (never blank). Onboarding fills it.
-origin: "<one-line reason this task exists>"
+# Where this task came from, one line, as written by whoever started it: an inbox item, a
+# meeting, a mail, a person ("inbox 20261020-1332 (claude): ...", "weekly sync 17.08").
+# The cockpit names its source from it. Never blank; onboarding fills it.
+origin: "<where this task came from>"
+
+# Optional: the brief, what a card shows about this task. One shape with the `describe` event of
+# an inbox item (_schema.status.yaml $defs/Brief, card_fields.py validate_brief). name (what the
+# cockpit calls it where the H1 is a slug or long) at most 60 characters, stand (where it stands, one
+# sentence) at most 140, goal at most 140 characters, story parts at most 80, at most 5 acceptance criteria of 120 (testable outcomes,
+# not steps; a stream has none), no dash as punctuation. by is the model id as modelUsage reports
+# it, never an alias; basis the sha256 prefix of this file without the block; edited turns true
+# once a person changed it.
+# brief:
+#   name: "Invoices without a resend"
+#   stand: "The format is agreed; the test run with the customer is next."
+#   goal: "Invoices reach the customer without a manual resend"
+#   story: {as: "an accountant", want: "every invoice delivered once", so_that: "nobody chases a resend"}
+#   acceptance:
+#     - "A rejected invoice shows up in the inbox within an hour"
+#     - "No invoice is delivered twice"
+#   by: claude-haiku-4-5-20251001
+#   at: YYYY-MM-DD
+#   basis: 0123456789abcdef
+#   edited: false
 
 # Optional — blocked is a FLAG, not a status: a blocked task stays doing/review
 # and carries the reason here (presence = blocked).
@@ -31,6 +53,9 @@ origin: "<one-line reason this task exists>"
 # Optional: the next step and who takes it (bridge | me | a person). The briefing's
 # triage view sorts the task by it; without one it lands under housekeeping.
 # next: {what: "<next step>", who: me, due: YYYY-MM-DD, estimate_min: 30}
+# With someone else and a check-in day (the cockpit's In progress, task.py next --who --check): until
+# that day the task runs elsewhere, on it the cockpit asks how it stands.
+# next: {what: "<next step>", who: "<a person>", check: YYYY-MM-DD}
 # Optional: the model (haiku | sonnet | opus) and effort (low | medium | high | xhigh) an agent tab for this
 # task starts with from the cockpit; set by hand, it beats Auto (docs/bridge-cockpit.md, cockpit.launch_model).
 # model: opus

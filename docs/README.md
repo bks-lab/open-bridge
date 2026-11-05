@@ -1,7 +1,7 @@
 ---
 summary: "The capability index of BKS open-bridge: every doc and site page, listed once, grouped by who is reading."
 type: readme
-last_updated: 2026-09-24
+last_updated: 2026-11-05
 ---
 
 # BKS open-bridge documentation
@@ -86,6 +86,7 @@ on the left, the file that answers it on the right.
 You change CORE, run the upstream flow, or maintain the project.
 
 - [`extension-model.md`](extension-model.md): how CORE extends and USER customises, with the schemas.
+- [`kernel.md`](kernel.md): the kernel, everything a session reads before its first answer: where each piece lives and at which tier, when it is read, which file links it. Also why `docs/` is tiered by folder.
 - [`skill-distribution-architecture.md`](skill-distribution-architecture.md): decision record for where skills live across the tier model.
 - [`repo-layout.md`](repo-layout.md): repo-layout visualisations (the primary view is generated on demand).
 - [`releasing.md`](releasing.md): how releases work: a conventional-commit PR title becomes a tag and a GitHub release.

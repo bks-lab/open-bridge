@@ -549,11 +549,12 @@ Themes change user-facing vocabulary only — never tools or goals.
   [1] professional      Lead, Specialists, Tasks         (en, default)
   [2] professional-de   Leitung, Spezialisten, Aufgaben  (de)
   [3] professional-fr   Responsable, Spécialistes, Tâches (fr)
-  [4] custom            Skip — copy themes/_template.yaml later
+  [4] professional-zh-cn 负责人、专家模块、任务 (zh-CN)
+  [5] custom            Skip — copy themes/_template.yaml later
 ```
 
 Auto-pick from Phase A language: German → `professional-de`,
-French → `professional-fr`, else → `professional`. One-question confirm.
+French → `professional-fr`, Chinese → `professional-zh-cn`, else → `professional`. One-question confirm.
 
 ### D3 — Agents (Sub-agents)
 
@@ -590,8 +591,11 @@ A fresh clone ships **no live** `identity/agent/SOUL.md` (the
 orchestrator's character + cross-cutting voice/posture/defaults) or
 `identity/agent/IDENTITY.md` (name, role, backstory) — only the CORE
 companions: `_template.*`, the soul deck, and the schemas. This step
-seeds both files on the `user/{name}` branch and adds their `@`-imports
-to `CLAUDE.md` so they load every session.
+seeds both files on the `user/{name}` branch and edits no other file:
+`AGENTS.md` § Loaded with this file already imports both paths, so they
+load from the next session on (other agents read them because AGENTS.md
+tells them to). On a public or unknown origin both files are gitignored
+and stay local until the private-home step; say so in one line.
 
 **Frame it honestly, don't oversell.** A soul is not authored in one
 sitting. The strongest souls *accrete* — the example instance's SOUL.md
@@ -605,7 +609,7 @@ not try to capture who the agent "really is" on day one.
 > **[y] Shape it now (~1 min)** / **[s] Take defaults**
 
 On `[s]`: seed both files from the templates unchanged (neutral
-defaults — they are functional as-is) and add the `@`-imports. Mention
+defaults — they are functional as-is). Mention
 the growth path (see "Living soul" below) and move on.
 
 On `[y]`: run the two sub-steps below.
@@ -679,6 +683,7 @@ deck — grows via feedback (see README § Living soul)."*
    stance line in their own words — again, a first-class contribution path.
 
 Write `identity/agent/IDENTITY.md` on `user/{name}` (scope: user).
+Never write an `@`-import anywhere, and never create a `CLAUDE.md`: a `CLAUDE.md` at the root would make Claude Code skip `AGENTS.md`.
 
 #### Living soul — wire the growth, don't replace it
 

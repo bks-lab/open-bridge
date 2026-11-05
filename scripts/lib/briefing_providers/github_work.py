@@ -4,15 +4,16 @@ cards of the registered boards (the `github-board` provider), merged by their id
 
 Two sections showed the same card twice and disagreed (an issue `open` in one, `In Progress` in the
 other, live 2026-10-17). Here the board's status wins, the search adds what only it knows (asked to
-review, your own pull request), and each row names the board it sits on and the pull requests that
-close it. briefing.py adds the Bridge task that syncs the issue and the inbox item an agent was
+review, your own pull request), and each row names the board it sits on, who opened it, the pull requests
+that close it and, for a pull request, its draft flag, review and checks (`pr_status`). briefing.py adds the Bridge task that syncs the issue and the inbox item an agent was
 started on (`link`), and the steps a person can start on the row (`tracker_steps`).
 
 query keys (all optional):
   everything the github provider takes: assignee, owners, repos, kinds, labels,
                 review_requested, authored, others_prs, limit
   boards        [slug, ...]  only these boards (the others start switched off)
-  cards         mine (default) | all   board cards: only yours, or every open card
+  cards         mine (default) | all   board cards: only yours, or every open card; a card that is not
+                yours (`others`) stands on the page only, never among the rows of Work
                 A person switches each board on a dashboard (off, mine, all); that choice is kept
                 in .bridge/github-boards.json, beside the profile, never in it, and wins over both.
                 The same file may hold the person's default for boards not switched yet, which wins
@@ -141,8 +142,14 @@ def collect(section: dict, ctx) -> list:
     for card in carded:
         if me and me in (card.get("assignees") or []):
             card["assigned_to_me"] = True
+        card["by_me"] = bool(me and card.get("author") == me)
     me_only = {b["slug"] for b in boards if mode_of[b["slug"]] == "mine"}
     carded = [c for c in carded if c["board"]["slug"] not in me_only or c.get("assigned_to_me")]
+    # a card of a board on `all` that is neither assigned to you nor opened by you is a teammate's: it stands on the
+    # page (its filters by board and person), never among the rows of Work (briefing_view skips `others`), so
+    # cards: all does not flood Due and Work through; merge clears it when the search found the card for you
+    for card in carded:
+        card["others"] = not (card.get("assigned_to_me") or card.get("by_me"))
     # one entry per registered board, in the registry's order, each with its mode: a dashboard draws them as
     # the switches, a board switched off included (without counts: it was not asked)
     by_slug = {b.get("slug"): b for b in counted}
@@ -197,9 +204,11 @@ def merge(searched: list, carded: list) -> list:
                         "group": hit.get("project") or rid.split("#")[0]}
             continue
         row["assigned_to_me"] = bool(row.get("assigned_to_me") or hit.get("assigned_to_me"))
-        for key in ("labels", "assignee", "assignees", "changed_at", "url"):
+        row["others"] = False                      # the search brought it: asked of you, by you or for you
+        for key in ("labels", "assignee", "assignees", "changed_at", "created_at", "url", "author"):
             if not row.get(key) and hit.get(key):
                 row[key] = hit[key]
+        row["by_me"] = bool(row.get("by_me") or hit.get("by_me"))
         if hit.get("category") == "qa":            # asked to review it: the reading that needs you
             row["category"] = "qa"
             row["state"] = "review"
@@ -224,9 +233,12 @@ def fold(rows: list) -> list:
 
 def _links(rows: list, ctx) -> None:
     """Which open pull requests close each issue, and which issues each pull request closes: one
-    GraphQL call for all rows, split in halves when one row cannot be answered (as the board dates)."""
-    wanted = [(i, ISSUE_ID.match(str(r.get("id")))) for i, r in enumerate(rows[:LINK_LIMIT])]
-    wanted = [(i, m) for i, m in wanted if m]
+    GraphQL call for all rows, split in halves when one row cannot be answered (as the board dates).
+    The same call asks a pull request's draft flag, review decision and the checks of its last commit.
+    At most LINK_LIMIT rows: yours before a teammate's card (`others`), pull requests first among them."""
+    order = sorted(range(len(rows)), key=lambda i: (rows[i].get("others") is True, rows[i].get("type") != "pr", i))
+    wanted = [(i, ISSUE_ID.match(str(rows[i].get("id")))) for i in order]
+    wanted = [(i, m) for i, m in wanted if m][:LINK_LIMIT]
     _ask_halving(wanted, rows, ctx)
 
 
@@ -243,7 +255,8 @@ def _ask(wanted: list, rows: list, ctx) -> bool:
              f'... on Issue {{ closedByPullRequestsReferences(first: 3, includeClosedPrs: false) '
              f'{{ nodes {{ number url isDraft repository {{ nameWithOwner }} }} }} }} '
              f'... on PullRequest {{ closingIssuesReferences(first: 3) '
-             f'{{ nodes {{ number repository {{ nameWithOwner }} }} }} }} }} }}' for i, m in wanted]
+             f'{{ nodes {{ number repository {{ nameWithOwner }} }} }} isDraft reviewDecision '
+             f'commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state }} }} }} }} }} }} }}' for i, m in wanted]
     try:
         data = load_json(ctx.run(["gh", "api", "graphql", "-f", "query={ " + " ".join(parts) + " }"],
                                  timeout=ctx.timeout), "linked pull requests").get("data") or {}
@@ -260,4 +273,10 @@ def _ask(wanted: list, rows: list, ctx) -> bool:
         if issues:
             rows[i]["closes"] = [f"{(x.get('repository') or {}).get('nameWithOwner')}#{x.get('number')}"
                                  for x in issues if isinstance(x, dict) and x.get("number")]
+        if "isDraft" in node or "reviewDecision" in node:          # only a pull request answers these
+            last = (((node.get("commits") or {}).get("nodes") or [{}])[-1] or {}).get("commit") or {}
+            rollup = last.get("statusCheckRollup") or {}
+            rows[i]["pr_status"] = {"draft": node.get("isDraft") is True,
+                                    "review": str(node.get("reviewDecision") or "").lower() or None,
+                                    "checks": str(rollup.get("state") or "").lower() or None}
     return True

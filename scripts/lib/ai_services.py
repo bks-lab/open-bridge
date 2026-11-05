@@ -3,6 +3,8 @@
 
 The configuration chooses a provider and models, never commands or permissions.
 Web chat and batch workers share Codex's invocation and event decoding.
+SERVICES is the one list of service ids the code selects and the providers each can run; a configured
+provider a service cannot run is a gap (gaps), reported by the cockpit, never a silent switch-off.
 """
 from __future__ import annotations
 
@@ -11,6 +13,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -22,6 +25,27 @@ CODEX_FLAGS = ["exec", "--sandbox", "read-only", "--ignore-user-config", "--igno
                "-c", 'approval_policy="never"', "--json", "--disable", "hooks", "--disable", "apps",
                "--disable", "multi_agent", "--disable", "remote_plugin",
                "--disable", "skill_mcp_dependency_install", "-c", 'web_search="disabled"']
+
+#: Every AI service id the code selects, the providers its code can run, and where that code lives. The one
+#: list: the cockpit's Setup page, `bridge-cockpit.py status`, `ai-run.py --list` and docs/ai-services.md read
+#: it, and scripts/tests/test_ai_services.py fails when the code selects an id missing here. A worker's own id
+#: (ai-run.py --service) runs on every provider and is not listed. Adapting a service to a provider adds it here.
+SERVICES = {
+    "briefing-chat": {"providers": ("claude", "codex"), "code": "scripts/lib/bridge_cockpit/quick.py"},
+    "task-review": {"providers": ("claude", "codex"), "code": "scripts/task.py"},
+    "triage": {"providers": ("claude", "codex"), "code": "scripts/triage.py"},
+    "cockpit-activity": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/activity.py"},
+    "cockpit-checkin": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/checkin.py"},
+    "cockpit-describe": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/describe.py"},
+    "cockpit-files": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/actions_work.py"},
+    "cockpit-instruct": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/instruct.py"},
+    "cockpit-issue-check": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/issue_check.py"},
+    "cockpit-organize": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/organize.py"},
+    "cockpit-prio": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/prio.py"},
+    "cockpit-themes": {"providers": ("claude",), "code": "scripts/lib/bridge_cockpit/themes.py"},
+}
+GAP = "provider_unsupported"
+INVALID = "config_invalid"
 
 
 @dataclass(frozen=True)
@@ -70,6 +94,42 @@ def select(root: Path, service: str, default_model: str | None = "haiku", *, pro
     return Selection(chosen, model, bool(data))
 
 
+def supports(service: str, provider: str) -> bool:
+    """Whether the service's code can run on the provider; an id SERVICES does not list (a worker's) runs on all"""
+    entry = SERVICES.get(service)
+    return provider in (entry["providers"] if entry else PROVIDERS)
+
+
+def gap(root: Path, service: str, use: dict | None = None) -> dict | None:
+    """Why the service stays off for its file: a provider its code cannot run ({service, ready: False, reason:
+    provider_unsupported, provider, supported}) or a file load refuses ({..., reason: config_invalid, error}).
+    `use` is how the caller runs it, {enabled, pinned}: switched off, or pinned to a model of the caller's own (the
+    file is never read then), it is no gap. None also when the service runs, and when there is no file."""
+    if use is not None and (not use.get("enabled", True) or use.get("pinned")):
+        return None
+    try:
+        data = load(root, service)
+    except ValueError as exc:
+        return {"service": service, "ready": False, "reason": INVALID, "error": str(exc)[:200]}
+    provider = data.get("provider")
+    if not data or supports(service, provider):
+        return None
+    return {"service": service, "ready": False, "reason": GAP, "provider": provider,
+            "supported": list(SERVICES[service]["providers"])}
+
+
+def gaps(root: Path, uses: dict | None = None) -> list[dict]:
+    """Every gap of this Bridge, in the order of SERVICES; `uses` maps a service to its `use` (gap)"""
+    return [g for g in (gap(root, s, (uses or {}).get(s)) for s in SERVICES) if g]
+
+
+def services_table() -> str:
+    """SERVICES as the Markdown table docs/ai-services.md shows (ai-run.py --list prints it)"""
+    rows = ["| Service | Providers | Code |", "|---|---|---|"]
+    rows += [f"| `{sid}` | {', '.join(e['providers'])} | `{e['code']}` |" for sid, e in SERVICES.items()]
+    return "\n".join(rows) + "\n"
+
+
 def resolve(provider: str) -> str | None:
     if provider not in PROVIDERS:
         raise ValueError("unknown AI provider")
@@ -106,6 +166,62 @@ def codex_argv_ok(argv: list[str], binary: str | None) -> bool:
         session, tail = tail[1], []
     try:
         return not tail and argv == codex_argv(binary, argv[-1], model, session)
+    except ValueError:
+        return False
+
+
+#: What the sandbox lets a person's run read: the working folder and what a shell needs, nothing else. "read-only"
+#: alone reads the whole disk, keys included; this profile was proved with planted files on macOS against the home
+#: folder, temp folders and external disks, by `cat`, `ls` and `grep` and through a real run and its resume.
+PERSON_CODEX_WALL = ('{":minimal"="read",":workspace_roots"={"."="read"},"/private/tmp"="none","/tmp"="none",'
+                     '"/private/var/folders"="none","/Volumes"="none"}')
+PERSON_CODEX_FLAGS = ["exec", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--json",
+                      "-c", 'approval_policy="never"', "-c", 'web_search="disabled"', "-c", "project_doc_max_bytes=0",
+                      "-c", 'cli_auth_credentials_store="file"', "-c", 'shell_environment_policy.inherit="core"',
+                      "-c", 'default_permissions="room"', "-c", f"permissions.room.filesystem={PERSON_CODEX_WALL}",
+                      "-c", "permissions.room.network.enabled=false",
+                      "--disable", "hooks", "--disable", "apps", "--disable", "multi_agent",
+                      "--disable", "remote_plugin", "--disable", "skill_mcp_dependency_install"]
+
+
+def person_codex_argv(binary: str, room: Path | str, prompt: str, system: str, model: str | None = None,
+                      session: str | None = None, images: Any = ()) -> list[str]:
+    """A person's question: in their folder, behind the wall above. Nothing of the request but the words reaches it"""
+    if not str(room).startswith("/"):
+        raise ValueError("a person's folder is an absolute path")
+    if model is not None and not MODEL_RE.fullmatch(model):
+        raise ValueError("invalid Codex model")
+    if session is not None and not SESSION_RE.fullmatch(session):
+        raise ValueError("invalid Codex session")
+    argv = [binary, *PERSON_CODEX_FLAGS, "-C", str(room), "-c", f"developer_instructions={json.dumps(system, ensure_ascii=False)}"]
+    for image in images:      # only a picture inside the person's folder comes along
+        if not str(image).startswith(f"{room}/") or ".." in str(image).split("/"):
+            raise ValueError("an image must lie inside the person's folder")
+        argv += ["--image", str(image)]
+    if model:
+        argv += ["--model", model]
+    if session:
+        argv += ["resume", session]
+    return argv + ["--", prompt]
+
+
+def person_codex_argv_ok(argv: list[str], binary: str | None) -> bool:
+    """The one shape a person's run may have: rebuilt from its parts, so no flag slips in between them"""
+    at = len(PERSON_CODEX_FLAGS) + 1
+    if not binary or len(argv) < at + 6 or argv[0] != binary or argv[-2] != "--" or argv[at] != "-C" or argv[at + 2] != "-c":
+        return False
+    name, _, value = argv[at + 3].partition("=")
+    tail, model, session, images = argv[at + 4:-2], None, None, []
+    while tail[:1] == ["--image"] and len(tail) >= 2:
+        images, tail = [*images, tail[1]], tail[2:]
+    if tail[:1] == ["--model"] and len(tail) >= 2:
+        model, tail = tail[1], tail[2:]
+    if tail[:1] == ["resume"] and len(tail) == 2:
+        session, tail = tail[1], []
+    try:
+        system = json.loads(value)
+        return (name == "developer_instructions" and not tail and isinstance(system, str)
+                and argv == person_codex_argv(binary, argv[at + 1], argv[-1], system, model, session, images))
     except ValueError:
         return False
 

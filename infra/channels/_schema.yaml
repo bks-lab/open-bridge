@@ -65,7 +65,7 @@ properties:
       Free-form — new types appear as new channels are added.
 
   status:
-    enum: [pending, experimental, active, paused, disabled, deployed-pending-bootstrap, legacy]
+    enum: [pending, experimental, active, paused, parked, disabled, deployed-pending-bootstrap, legacy]
     description: |
       Reality status — see rules/deploy-reconciliation.md.
       Flip to `active` only after the verify probe passes on the remote.
@@ -77,6 +77,14 @@ properties:
       compatibility, slated for `disabled` once the replacement is fully
       verified. Distinct from `paused` (intentional stop) and `active`
       (current path).
+
+      `parked` = intentionally stopped AND fenced off from automated repair: a
+      watchdog must never restart it, and bringing it back depends on the
+      preconditions recorded on the owning remote's service entry (the same
+      vocabulary the remote files use, where `repair: never` plus a reason and
+      a since-date on the service entry describe the same state). Distinct from
+      `paused`, which is an intentional stop that a routine restart may lift,
+      and from `disabled` (retired, not expected back).
 
   created:
     type: string
@@ -311,6 +319,23 @@ properties:
     type: object
     additionalProperties: true
     description: "Live-state pusher for HTTP-static dashboards (interval, endpoint, scripts)"
+
+  observability:
+    type: object
+    additionalProperties: true
+    description: |
+      Telemetry export for this channel's runtime: which sink it writes to,
+      under which stream/dataset names, whether it records user content in a
+      separate stream, and where its status is visible at runtime. Endpoint
+      and credential live in the sink's own inventory file and are referenced
+      here (`<file>#<dotted.path>`), never duplicated, so that one rotation does
+      not have to touch two files.
+
+      Two conventions worth keeping whatever the sink: user or conversation
+      content belongs in its OWN stream, never mixed into the operational one
+      (a read credential can usually be scoped to a stream, not to a field);
+      and every additional plaintext copy of that content is listed too, since
+      a retention rule that does not know about them is not a retention rule.
 
   # When a domain block stabilizes (≥3 channels use the same shape),
   # tighten its inner properties (additionalProperties: false).

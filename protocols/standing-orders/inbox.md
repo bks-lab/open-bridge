@@ -4,6 +4,7 @@ scope: always
 enforcement: advisory
 applies_to: []   # empty = every dispatched sub-agent
 load: eager   # fires without its own vocabulary: an open thing is left in a log sentence unasked, or not at all
+fires_unprompted: true   # --check refuses on-trigger for this order
 ---
 # Inbox
 

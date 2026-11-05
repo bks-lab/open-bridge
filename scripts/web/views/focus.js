@@ -8,10 +8,10 @@
 import { html } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, focusIndex, homeListParts, homeQueue, previewText, projectTone, short, stateToken, untilText,
-  upcomingEvents, greetingText, dayLabel, workPageId, rowProject,
+  upcomingEvents, greetingText, dayLabel, workPageId, rowProject, tabStateKey
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { RowBar } from './day.js'
+import { KindTag, OriginTag, RowBar } from './day.js'
 import { jumpToTab, openWhole, returnsOf, PinStar, ReturnChip } from './home.js'
 import { Btn, Dot, Icon, PrioChip, StateLine, WalkBar } from './parts.js'
 import { StagePrompt } from './stage.js'
@@ -37,67 +37,88 @@ function screenLines(text, n = 4) {
   return String(text ?? '').split('\n').map(previewText).filter(Boolean).slice(-n)
 }
 
-/** The one next step, large: its kind, its title, where it belongs, what it is about, and the way to act */
-function Hero({ x, n, tabOf, s, c }) {
+/** The one next step, large: its kind, its title, where it belongs, what it is about, and the way to act.
+ *  The files view (dossier.js) shows its next step in it: `title` in place of the entry's own, `kindWord` in
+ *  place of its kind, `sub` a line under the title (where the step comes from and since when). The Work through
+ *  page (flow.js) shows the card as content only: no foot (`foot` false: the verbs stand in its right column), none of
+ *  the facts its fields say (`facts` false: no kind tag, source, area, return chip, priority, reasons, nor the state of
+ *  its tab and since when, which the field Who works on it says), more of the tab's screen (`screen` lines), and what
+ *  the tab asks as `children`; its title opens nothing there (`openable` false): the details stand beside the card, no
+ *  drawer with a walk of its own. The one point view (views/flowpoint.js) adds what stands at the end of the head
+ *  (`headEnd`: the kind and Pin) and what stands right under the title (`lead`: the next step) */
+export function Hero({ x, n, tabOf, s, c, title = null, kindWord = null, sub = null, acts = null, openable = true, foot = true, facts = true,
+  screen = 4, headEnd = null, lead = null, children = null }) {
   const t = T()
   const f = t.home.focus
   const kind = kindOf(x, nowKeys(s))
-  const project = projectOf(x)
+  const project = facts ? projectOf(x) : null
   const tab = x.kind === 'tab' ? x.tab : tabOf(x.id)
   const tone = x.kind === 'tab' || tab?.state === 'needs-you' ? 'warning' : x.row.priority === 'P0' ? 'danger' : 'accent'
-  const lines = tab ? screenLines(tab.last) : []
-  const why = x.kind === 'row' ? x.row.why ?? [] : []
+  const lines = tab ? screenLines(tab.last, screen) : []
+  const why = x.kind === 'row' && facts ? x.row.why ?? [] : []
+  const prio = facts && x.kind === 'row' && x.row.priority && title == null
   const open = el => (x.kind === 'tab' ? jumpToTab(s, c, x.tab.ref) : openWhole(c, x.row, el))
   return html`<article class=${`fx-hero tk-${tone}${n > 1 ? ' has-more' : ''}${n > 2 ? ' has-many' : ''}`} aria-labelledby="fx-title">
     <header class="fx-hero-top">
-      <span class="fx-kind"><${Dot} token=${tone === 'accent' ? 'info' : tone} pulse=${kind === 'tab'} />${f.kind[kind]}</span>
+      <span class="fx-kind"><${Dot} token=${tone === 'accent' ? 'info' : tone} pulse=${kind === 'tab'} />${kindWord ?? f.kind[kind]}</span>
+      ${headEnd}
     </header>
     <h2 id="fx-title" class="fx-title">
-      <button type="button" onClick=${e => open(e.currentTarget)}>${x.kind === 'row' && x.row.priority ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${x.kind === 'tab' ? x.tab.name : x.row.title}</button>
+      ${openable ? html`<button type="button" onClick=${e => open(e.currentTarget)}>${prio ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}</button>`
+        : html`${prio ? html`<${PrioChip} priority=${x.row.priority} /> ` : null}${title ?? (x.kind === 'tab' ? x.tab.name : x.row.title)}`}
     </h2>
-    <div class="fx-meta">
+    ${sub ? html`<p class="fx-sub muted small">${sub}</p>` : null}
+    ${lead}
+    ${facts ? html`<div class="fx-meta">
+      ${x.kind === 'tab' ? null : html`<${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} />`}
       ${project ? html`<span class=${`fx-proj tk-${projectTone(project)}`}>${project}</span>` : null}
-      ${tab ? html`<${StateLine} token=${stateToken(tab.state)} strong word=${x.kind === 'tab' ? t.state[tab.state] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tab.state] ?? tab.state}`} />
+      ${tab ? html`<${StateLine} token=${stateToken(tabStateKey(tab))} strong word=${x.kind === 'tab' ? t.state[tabStateKey(tab)] ?? tab.state : `${t.home.list.tab} ${tab.name}: ${t.state[tabStateKey(tab)] ?? tab.state}`} />
         <span class="mono muted">${duration(s.now - (tab.since_ms || s.now))}</span>` : null}
       ${x.kind === 'row' ? html`<${ReturnChip} s=${s} rowKey=${x.row.key} />` : null}
-    </div>
+    </div>` : null}
     ${lines.length ? html`<pre class="fx-screen mono">${lines.join('\n')}</pre>` : null}
     ${why.length ? html`<ul class="fx-why">${why.slice(0, 4).map(w => html`<li key=${w}>${w}</li>`)}</ul>` : null}
-    <footer class="fx-acts">
-      <div class="fx-do">
+    ${children}
+    ${foot ? html`<footer class="fx-acts">
+      ${acts ?? html`<div class="fx-do">
         ${x.kind === 'tab' ? html`<${Btn} variant="primary" onClick=${() => jumpToTab(s, c, x.tab.ref)}>${t.home.toTab}<//>
           <${Btn} variant="secondary" onClick=${() => c.openTabView(x.tab.ref)}>${t.home.view}<//>`
           : html`<${RowBar} row=${x.row} s=${s} c=${c} tab=${tab} pin=${false} size="sm" /><${PinStar} rowKey=${x.row.key} s=${s} c=${c} />`}
-      </div>
-    </footer>
+      </div>`}
+    </footer>` : null}
   </article>`
 }
 
-/** Nothing waits: a calm card, the way to the tasks */
-function Calm({ s, c }) {
+/** Nothing waits: a calm card, the way to the tasks, or with cockpit.focus_to_files into the files view of the
+ *  work tab. The files view gives its own words and no way on (`action` false), since it stands there already */
+export function Calm({ s, c, title = null, sub = null, action = true }) {
   const f = T().home.focus
   const workPage = workPageId(s.model)
+  const files = !!s.work?.focus_to_files
   return html`<article class="fx-hero fx-calm tk-success">
     <span class="fx-calm-ring" aria-hidden="true"><${Icon} name="spark" size=${28} /></span>
-    <h2 class="fx-title">${f.nothing}</h2>
-    <p class="muted">${f.nothingSub}</p>
-    <div class="fx-acts"><${Btn} variant="secondary" onClick=${() => c.setPage(workPage)}>${f.toWork}<//></div>
+    <h2 class="fx-title">${title ?? f.nothing}</h2>
+    <p class="muted">${sub ?? (files ? f.nothingSubFiles : f.nothingSub)}</p>
+    ${action ? html`<div class="fx-acts">${files ? html`<${Btn} variant="primary" icon="forward" onClick=${() => c.openFiles()}>${f.toFiles}<//>`
+      : html`<${Btn} variant="secondary" onClick=${() => c.setPage(workPage)}>${f.toWork}<//>`}</div>` : null}
   </article>`
 }
 
-/** The queue after the step in front, a small card each; a click brings it to the front */
-function After({ queue, i, onPick, s }) {
+/** The queue after the step in front, a small card each, at most six; a click brings it to the front.
+ *  `title` names the strip (the files view calls it Next), `kindWord` the word over a card */
+export function After({ queue, i, onPick, s, title = null, kindWord = null }) {
   const f = T().home.focus
   const now = nowKeys(s)
   const rest = queue.map((x, k) => ({ x, k })).filter(({ k }) => k !== i).slice(0, AFTER_MAX)
   if (!rest.length) return null
   return html`<section class="fx-after" aria-labelledby="fx-after">
-    <h2 id="fx-after" class="label-caps">${f.after} <span class="sec-count mono">${queue.length - 1}</span></h2>
+    <h2 id="fx-after" class="label-caps">${title ?? f.after} <span class="sec-count mono">${queue.length - 1}</span></h2>
     <ol class="fx-after-list">${rest.map(({ x, k }) => html`<li key=${x.id}>
       <button type="button" class=${`fx-card tk-${x.kind === 'tab' ? 'warning' : x.row.priority === 'P0' ? 'danger' : 'info'}`} onClick=${() => onPick(k)}>
         <span class="fx-card-n mono">${k + 1}</span>
-        <span class="fx-card-kind">${f.kind[kindOf(x, now)]}</span>
+        <span class="fx-card-kind">${kindWord ? kindWord(x) : f.kind[kindOf(x, now)]}</span>
         <span class="fx-card-title">${short(x.kind === 'tab' ? x.tab.name : x.row.title, 70)}</span>
+        ${x.kind === 'tab' ? null : html`<span class="fx-card-tags"><${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} /></span>`}
         ${projectOf(x) ? html`<span class=${`fx-proj tk-${projectTone(projectOf(x))}`}>${projectOf(x)}</span>` : null}
       </button></li>`)}</ol>
   </section>`
@@ -144,19 +165,23 @@ function Crew({ s, c }) {
 const focusParts = s => homeListParts(s.tabs?.tabs ?? [], s.model, { pins: s.home?.pins ?? [] })
 export const focusQueue = s => homeQueue(focusParts(s))
 
-/** The bar under the step in front, the one the lists have: back, where you stand, Next */
-function FocusWalk({ queue, i, s, c }) {
+/** The bar under the step in front, the one the lists have: back, where you stand, Next. `walk` moves
+ *  (c.focusWalk on the start page, c.dossierWalk in the files view); `done` stands in place of the end line */
+export function FocusWalk({ queue, i, s, c, walk = null, done = null }) {
   const t = T()
-  if (queue.length < 2) return null
+  // one step has no bar to walk; the way on (cockpit.focus_to_files) still stands under it
+  if (queue.length < 2) return done ? html`<p class="fx-onward">${done}</p>` : null
+  const go = walk ?? c.focusWalk
   const entry = k => {
     const x = queue[k]
-    return { key: x.id, title: short(x.kind === 'tab' ? x.tab.name : x.row.title, 90), sub: x.kind === 'tab' ? x.tab.workspace : '',
-      onOpen: () => c.focusWalk(x.id, k) }
+    return { key: x.id, title: short(x.kind === 'tab' ? x.tab.name : x.row.title, 90),
+      sub: x.kind === 'tab' ? x.tab.workspace : html`<span class="entry-tags"><${KindTag} row=${x.row} s=${s} /><${OriginTag} row=${x.row} /></span>`,
+      onOpen: () => go(x.id, k) }
   }
   const later = [i + 2, i + 3].filter(k => k < queue.length).map(entry)
   return html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[i + 1, queue.length]}
-    onPrev=${i > 0 ? () => c.focusWalk(queue[i - 1].id, i - 1) : null} next=${i + 1 < queue.length ? entry(i + 1) : null}
-    later=${later} done=${t.nextDone} />`
+    onPrev=${i > 0 ? () => go(queue[i - 1].id, i - 1) : null} next=${i + 1 < queue.length ? entry(i + 1) : null}
+    later=${later} done=${done ?? t.nextDone} />`
 }
 
 export function HomeFocusView({ s, c }) {
@@ -169,6 +194,9 @@ export function HomeFocusView({ s, c }) {
   // in front is settled, the next one moves up into its place (logic.js focusIndex)
   const i = focusIndex(queue, s.ui.focusAt)
   const day = dayLabel(now, language())
+  // with cockpit.focus_to_files the end of the walk leads on into the files view of the work tab (n does too, app.js)
+  const onward = s.work?.focus_to_files
+    ? html`<button type="button" class="btn-link" onClick=${() => c.openFiles()}>${h.focus.toFiles}</button>` : null
   return html`<div class="col col-page home fx">
     <header class="fx-head">
       <p class="home-eyebrow">${day}</p>
@@ -178,7 +206,7 @@ export function HomeFocusView({ s, c }) {
       <div class="fx-work">
         <p class="fx-label label-caps">${h.focus.now}</p>
         ${queue.length ? html`<${Hero} key=${queue[i].id} x=${queue[i]} n=${queue.length} tabOf=${parts.tabOf} s=${s} c=${c} />
-          <${FocusWalk} queue=${queue} i=${i} s=${s} c=${c} />` : html`<${Calm} s=${s} c=${c} />`}
+          <${FocusWalk} queue=${queue} i=${i} s=${s} c=${c} done=${onward} />` : html`<${Calm} s=${s} c=${c} />`}
         <${After} queue=${queue} i=${i} onPick=${k => c.focusWalk(queue[k].id, k)} s=${s} />
       </div>
       <aside class="fx-side">

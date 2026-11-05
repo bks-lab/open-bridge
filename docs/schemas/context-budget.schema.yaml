@@ -81,7 +81,10 @@ properties:
           description: >-
             True when the item legitimately does not exist in every clone
             (instance data). Absent-and-optional passes; absent-and-required
-            fails, because a declared file that vanished is a finding.
+            fails, because a declared file that vanished is a finding. Also for
+            import slots CORE names but does not ship
+            (identity/agent/IDENTITY.md, identity/agent/SOUL.md): Claude Code
+            skips an import whose file is missing.
         source:
           enum: [import, standing-order, phase1, listing, harness]
           description: >-
@@ -106,12 +109,19 @@ properties:
             the source, so the shape and the ceiling it has to respect are one
             decision in one place. `scripts/context-index.py` renders it and
             `measure-context.py` measures what it renders. Omit the block and
-            the file stays always-on in full, which is the fail-open default.
+            the file stays always-on in full, which is the fail-open default,
+            except for a registry Phase 1 indexes (`ecosystem.yaml`,
+            `ecosystem.<name>.yaml`): it loads as the card derived from its
+            shape, exactly as `context-index.py --registries` prints it.
             A card on a file that is ALSO `@`-imported is the state
             `contradiction`: the import loads the whole file, so the full text
             is measured and the build fails at any size, `enforce: advisory`
             included: advisory excuses a size, not a false claim about what
-            loads.
+            loads. The state `shadowed` is the same kind of false claim from
+            the other side: AGENTS.md is declared, but a root CLAUDE.md,
+            CLAUDE.local.md or .claude/CLAUDE.md exists and imports it from
+            none of them, so Claude Code loads none of it. It fails under
+            advisory too, and no session surface carries it.
           properties:
             kind:
               const: index

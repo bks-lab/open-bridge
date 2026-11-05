@@ -129,6 +129,28 @@ def test_a_document_that_is_absent_is_skipped_not_fatal(tmp_path):
     assert dr.check_routes(tmp_path, ["AGENTS.md"]) == []
 
 
+def test_a_link_in_a_nested_doc_resolves_against_its_folder(tmp_path):
+    """`.github/copilot-instructions.md` links `../AGENTS.md`, which is only
+    valid relative to its own folder, the way every markdown renderer reads it."""
+    (tmp_path / "AGENTS.md").write_text("x", encoding="utf-8")
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github" / "x.md").write_text("[a](../AGENTS.md)", encoding="utf-8")
+    assert dr.check_routes(tmp_path, [".github/x.md"]) == []
+
+    (tmp_path / ".github" / "x.md").write_text("[b](AGENTS.md)", encoding="utf-8")
+    violations = dr.check_routes(tmp_path, [".github/x.md"])
+    assert any(".github/x.md" in v and "AGENTS.md" in v for v in violations), violations
+
+
+def test_claude_md_is_not_a_routed_doc():
+    """CORE ships no root CLAUDE.md; a fork's legacy one is USER."""
+    assert "CLAUDE.md" not in dr.ROUTED_DOCS
+
+
+def test_copilot_instructions_is_a_routed_doc():
+    assert ".github/copilot-instructions.md" in dr.ROUTED_DOCS
+
+
 # ---------------------------------------------------------------- the gate --
 
 def test_the_gate_exits_zero_when_every_route_resolves(tmp_path):

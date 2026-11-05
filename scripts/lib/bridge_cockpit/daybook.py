@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from .model import iso_date
+from .origin import was_stream
 from .store import atomic_write_json, read_json
 
 KEEP_DAYS = 15
@@ -135,7 +136,9 @@ def week_done(root: Path, today: dt.date) -> dict:
             if not m or not monday.isoformat() <= m.group(1) <= today.isoformat():
                 continue
             t = TITLE_RE.search(text)
+            # a closed task or an ended stream (task.py keeps was_stream): the page names which
+            stream = was_stream(text)       # the same reader as origin.py, past a leading comment line
             items.append({"slug": status.parent.name, "title": (t.group(1).strip() if t else status.parent.name)[:160],
-                          "closed": m.group(1)})
+                          "closed": m.group(1), "work_kind": "done_stream" if stream else "done_task"})
     items.sort(key=lambda x: (x["closed"], x["slug"]), reverse=True)
     return {"count": len(items), "since": monday.isoformat(), "items": items[:20]}

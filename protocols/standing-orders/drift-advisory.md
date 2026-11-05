@@ -20,11 +20,12 @@ When the user makes a change that touches one of these high-coupling files:
 
 | File class | Why coupled | What to remind |
 |---|---|---|
-| `LICENSE` | Mirrored in README badge + footer + CLAUDE.md license claim + memory | "License-file changed — also update README badge, footer, CLAUDE.md, and memory entries (`bridge-audit --check license` will list them)." |
-| `README.md` skill tree / `AGENTS.md` skill table | Must match `skills/` directory | "Touched skill list — run `bridge-audit --check skill-tree` to verify it still matches `skills/`." |
-| `protocols/*.md` (add or remove a protocol) | Numeric "N protocols" mentions in README/CLAUDE | "Protocol added/removed — search for any `\d+ protocols` claims and update or remove the count." |
+| `LICENSE` | Mirrored in README badge + footer + AGENTS.md license claim + memory | "License-file changed — also update README badge, footer, AGENTS.md, and memory entries (`bridge-audit --check license` will list them)." |
+| `README.md` skill tree | Must match `skills/` directory | "Touched skill list — run `bridge-audit --check skill-tree` to verify it still matches `skills/`." |
+| `protocols/*.md` (add or remove a protocol) | Numeric "N protocols" mentions in README/AGENTS | "Protocol added/removed — search for any `\d+ protocols` claims and update or remove the count." |
 | Renamed: any file mentioned in `skills/bridge-audit/data/renames.yaml` `old:` | The whole repo grepped against the registry | "Renames registry catches stale references — run `bridge-audit --check renames` after rename." |
-| `CLAUDE.md`, `README.md`, `AGENTS.md` | Each lives in the upstream `open-bridge` repo + downstream forks | "Touched a tri-repo doc — at the next sprint sync, run `/bridge-sync` to propagate." |
+| `README.md`, `AGENTS.md` | Each lives in the upstream `open-bridge` repo + downstream forks | "Touched a tri-repo doc — at the next sprint sync, run `/bridge-sync` to propagate." |
+| a root `CLAUDE.md` appears | Claude Code then loads only it, never `AGENTS.md` | "Root CLAUDE.md hides AGENTS.md: run scripts/migrate-entry-file.py" |
 | `rules/operations.md`, `rules/promote-safety.md` | Cross-referenced from many places (`docs/extension-model.md`, `docs/structure.md`, etc.) | "Touched a routing rule — `bridge-audit --check routing-sot` checks for SoT-conflicts." |
 | `workflow/projects/<slug>.yaml` | Read by `github-projects-manager` + `briefing` Stream B (state_map). Field-value changes affect every `gh project item-edit` from now on. | "Touched a project-registry entry — verify with `check-jsonschema --schemafile workflow/projects/_schema.yaml`, then cross-check against the live board: `gh project field-list <N> --owner <org>`." |
 | `workflow/contexts/<slug>.yaml` `sync.defaults` block | Defines doc-routing defaults for every task with `context: <slug>`. Changes cascade into the Phase 3 `task-sync` standing-order. | "Touched a context's sync defaults — review `work/tasks/*/STATUS.md` + `work/streams/*/STATUS.md` files referencing this context for explicit `sync:` overrides that may now be redundant." |

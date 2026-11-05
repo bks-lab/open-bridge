@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the header and the page bar.
+// The cockpit, the header, the page bar and the bar of a folder (a page with sub pages, `under:` in the profile).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { agentLoad, aiWaiting, attentionTabs, canTab, etaSeconds, pageWarnings, sessionCounts, short, railShown, workPageOf } from '../logic.js'
+import { personOf, agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
-  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, morePages,
-  pageOrder, reviewHomeOf,
+  AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
+  folderOf, folderPlaces, litTab, morePages, pageOrder, reviewHomeOf, tabBadgeOf,
 } from './nav.js'
+import { AgentMark, agentBadge } from './agents.js'
 import { usePopover } from './pages.js'
-import { Btn, Dot, Spinner, StateLine, useRoving, useTween } from './parts.js'
+import { Btn, Dot, Icon, Spinner, StateLine, useRoving, useTween } from './parts.js'
+import { WorkspacePicker } from './workspaces.js'
 
 // ---------------------------------------------------------------- header and page bar
 
@@ -35,17 +37,30 @@ function Warnings({ s }) {
     <${StateLine} token=${w.token} strong=${w.token === 'danger'} word=${w.word} /></span>`)
 }
 
-export function AsOf({ s }) {
+/** When the data was collected, as the button that collects it again (↻ on it; there is no reload button of its
+ *  own), the warnings before it. `brief`: the mark alone, for a narrow header whose line below shows the time and
+ *  the warnings. While a fresh pass runs it waits, so a second click starts no second pass */
+export function AsOf({ s, c, brief = false }) {
   const t = T()
   const m = s.model
-  if (!m) {
-    return html`<span class="hdr-asof"><${Warnings} s=${s} />
-      <span class="muted asof-text">${s.conn === 'open' ? t.loading : t.connWait}</span></span>`
-  }
-  return html`<span class="hdr-asof" title=${m.is_full ? '' : t.noTracker}>
-    <${Warnings} s=${s} />
-    <span class="muted asof-text">${t.sourceAsOf(m.collected_at)}${m.is_full ? '' : ` ${t.noTracker}`}</span>
+  const words = m ? `${t.sourceAsOf(m.collected_at)}${m.is_full ? '' : ` ${t.noTracker}`}` : s.conn === 'open' ? t.loading : t.connWait
+  const busy = !!s.loading?.pass && !!s.loading?.fresh
+  // the tooltip names the key r only while the shortcuts are on (app.js keydown): off, the key does nothing
+  const reload = s.ui?.shortcuts ? `${t.reloadTitle} (r)` : t.reloadTitle
+  // a person (access.py) reads the time, a new pass is not theirs to start
+  if (personOf(s)) return html`<span class="hdr-asof">${brief ? null : html`<${Warnings} s=${s} /><span class="muted asof-text">${words}</span>`}</span>`
+  return html`<span class="hdr-asof">
+    ${brief ? null : html`<${Warnings} s=${s} />`}
+    <button type="button" class="asof-btn" title=${`${words} · ${reload}`} aria-label=${`${words}, ${t.reloadTitle}`}
+      disabled=${busy} aria-busy=${busy ? 'true' : undefined} onClick=${() => c?.reload?.()}>
+      ${brief ? null : html`<span class="muted asof-text">${words}</span>`}<${Icon} name="reload" size=${14} /></button>
   </span>`
+}
+
+/** A control session runs but does not listen to the relay (it is on, not online): the questions of the page cannot reach it */
+export function relayDeaf(s) {
+  const r = s.relay ?? {}
+  return !!r.enabled && r.reason !== 'disabled' && !r.online && (s.sessions?.sessions ?? []).some(x => x.tab?.is_control && !x.relay)
 }
 
 export function RelayBadge({ s, c }) {
@@ -56,14 +71,16 @@ export function RelayBadge({ s, c }) {
   let token = 'on-surface-muted'
   let word = t.relay.offline
   let title = r.reason ? t.relayReason[r.reason] : null
-  // a control session runs but does not listen: say so, and the click shows it on the sessions page
-  const deaf = !r.online && (s.sessions?.sessions ?? []).some(x => x.tab?.is_control && !x.relay)
+  // a control session runs but does not listen: say so, and the click shows it where the control session is told
+  // about: the Chat where Running now lists the sessions (round 6: it leaves the control session out), else the
+  // Sessions page
+  const deaf = relayDeaf(s)
   if (!r.enabled || r.reason === 'disabled') word = t.relay.disabled
   else if (r.online && r.session?.busy) { token = 'warning'; word = t.relay.busy }
   else if (r.online) { token = 'success'; word = t.relay.online }
   else if (deaf) { token = 'warning'; word = t.relay.deaf; title = t.sessionControlNoRelay }
   return deaf
-    ? html`<button type="button" class="hdr-relay btn-link" title=${title} onClick=${() => c.setPage(SESSIONS_PAGE)}><${StateLine} token=${token} word=${word} /></button>`
+    ? html`<button type="button" class="hdr-relay btn-link" title=${title} onClick=${() => c.setPage(sessionsInFlow(s) ? CHAT_PAGE : SESSIONS_PAGE)}><${StateLine} token=${token} word=${word} /></button>`
     : html`<span class="hdr-relay" title=${title ?? word}><${StateLine} token=${token} word=${word} /></span>`
 }
 
@@ -82,9 +99,22 @@ export function StartControl({ s, c, size = 'xs', short: brief = false }) {
     onClick=${() => c.act('start_control', {})}>${brief ? t.btnStartControlShort : t.btnStartControl}<//>`
 }
 
+/** What the head of the Chat says of the control session (round 6, from the Sessions page): why the relay has
+ *  nobody to ask, with the button that starts one (canStartControl), and that a control session runs but does not
+ *  listen (relayDeaf); nothing while the relay is ready or off */
+export function ControlNotice({ s, c }) {
+  const t = T()
+  const start = canStartControl(s)
+  const deaf = relayDeaf(s)
+  if (!start && !deaf) return null
+  return html`${start ? html`<p class="banner chat-control"><${StateLine} token="warning" word=${t.relayReason[s.relay.reason]} />
+      <${StartControl} s=${s} c=${c} size="sm" /></p>` : null}
+    ${deaf ? html`<p class="banner chat-control"><${StateLine} token="warning" word=${t.sessionControlNoRelay} /></p>` : null}`
+}
+
 /** What works in this Bridge's tabs right now: busy sessions, subagents active in the last 2 minutes and
  *  workflows that are not paused (logic.js agentLoad). Sessions elsewhere on this machine only in the
- *  tooltip. A click opens the Sessions page */
+ *  tooltip. A click opens the Sessions page, which is Running now where Work through lists them (app.js setPage) */
 export function AgentsChip({ s, c }) {
   const t = T()
   const { total, elsewhere } = agentLoad(s.sessions?.sessions, s.tabs?.tabs)
@@ -111,10 +141,57 @@ function CommandBox({ c }) {
   </form>`
 }
 
+/** A quick chat that makes the chat tab spin: a file's suggested next step is not one (its file shows it, no list does) */
+export const chatRunning = x => !!x.running && x.place !== 'suggest'
+
+/** What the Chat tab signals: 'quick' while a quick chat answers, else as cmux what the agents signal (the
+ *  agents are an area inside the Chat there, agents.js agentBadge); null for nothing. Classic: the Agents tab wears theirs */
+export function chatTabSignal(s) {
+  if ((s.quick?.convs ?? []).some(chatRunning)) return 'quick'
+  return chatAsWorkspaces(s) ? agentBadge(s) : null
+}
+
+/** The mark of chatTabSignal on the Chat tab */
+export function ChatTabMark({ kind }) {
+  return kind === 'quick' ? html`<${Spinner} />` : html`<${AgentMark} kind=${kind} />`
+}
+
+// the topics of the look-up card (views/settings.js LookupCard), in its order
+const LOOKUP_TOPICS = ['rows', 'act', 'keys', 'trust']
+
+/** Help, "?", the last part of the header (decision 6, menue.md): a menu with Explain first (the notes over the page;
+ *  the key ? with the shortcuts on), then the topics of the look-up card under Settings, Appearance (c.openLookup
+ *  opens it on that topic; Keyboard only while the shortcuts are on), then the tour. A pick closes the menu */
+function HelpMenu({ s, c }) {
+  const t = T()
+  const [open, setOpen] = useState(false)
+  const box = usePopover(open, setOpen)
+  const pick = fn => () => { setOpen(false); fn() }
+  const explain = s.ui.shortcuts ? `${t.hints.buttonTitle} (?)` : t.hints.buttonTitle
+  return html`<span class="settle hdr-help" ref=${box}>
+    <button type="button" class="btn btn-ghost btn-sm" aria-haspopup="menu" aria-expanded=${String(open)}
+      aria-label=${t.helpTitle} title=${t.helpTitle} onClick=${() => setOpen(!open)}><${Icon} name="help" /></button>
+    ${open ? html`<span class="settle-menu help-menu" role="menu" aria-label=${t.helpTitle}>
+      <button type="button" role="menuitem" class="settle-item" title=${explain} onClick=${pick(() => c.setHints(true))}>
+        <${Icon} name="bulb" size=${14} /><span>${t.hints.button}</span></button>
+      <span class="settle-hint label-caps muted" role="presentation">${t.settings.lookupTitle}</span>
+      ${LOOKUP_TOPICS.filter(id => id !== 'keys' || s.ui.shortcuts).map(id => html`<button key=${id} type="button" role="menuitem" class="settle-item"
+        onClick=${pick(() => c.openLookup(id))}><span>${t.help.tabs[id]}</span></button>`)}
+      ${personOf(s) ? null : html`<button type="button" role="menuitem" class="settle-item" onClick=${pick(() => c.tourStart())}><span>${t.tour.again}</span></button>`}
+    </span>` : null}
+  </span>`
+}
+
+/** The header as the menu has it (decision 6, menue.md): the as-of time (the reload button), Tabs, Ask, History,
+ *  Notes (the bell, the notes' own list; the history keeps them by day too) beside the state of what runs, and Help
+ *  last, with Explain as its first item. The colours and the look-up card stand in Settings, Appearance */
 export function Header({ s, c }) {
   const t = T()
-  const themeIcon = s.ui.theme === 'dark' ? 'moon' : s.ui.theme === 'light' ? 'sun' : 'auto'
-  const waiting = attentionTabs(s.tabs?.tabs).length
+  // the Tabs button counts the tabs that want you; a finished (idle) one waits on nobody
+  const waiting = tabsButtonCount(s.tabs?.tabs)
+  // on the Chat, Ask opens no window over the chat that is open already: the cursor goes into its field (round 6d C4)
+  const onChat = s.ui.page === CHAT_PAGE && !s.ui.tabView
+  const person = !!personOf(s)   // their page has no tabs, questions, history or running agents (access.py)
   return html`<header class="hdr">
     <div class="hdr-id">
       <span class="eyebrow">${t.appName}</span>
@@ -125,30 +202,24 @@ export function Header({ s, c }) {
           <span class="hdr-demo-long">${s.boot.scratch.kind === 'copy' ? t.scratchBadge : t.stateBadge}</span>
           <span class="hdr-demo-short">${s.boot.scratch.kind === 'copy' ? t.scratchBadgeShort : t.stateBadgeShort}</span></span>` : null}</div>
     </div>
+    <${WorkspacePicker} s=${s} c=${c} />
     <span class="hdr-headline" aria-hidden="true"></span>
     <div class="hdr-right">
       <${LoadingIndicator} s=${s} />
-      ${s.layout === 'narrow' ? null : html`<${AsOf} s=${s} />`}
+      <${AsOf} s=${s} c=${c} brief=${s.layout === 'narrow'} />
       ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}
-      ${s.layout === 'medium' || (s.layout === 'wide' && !railShown(s.ui.page, s.rooms?.layout, s.ui.railHidden)) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
+      ${!person && (s.layout === 'medium' || (s.layout === 'wide' && !railOn(s))) ? html`<${Btn} variant=${waiting ? 'primary' : 'secondary'} size="sm" icon="tabs"
         onClick=${() => c.setDrawer(s.ui.drawer === 'tabs' ? null : 'tabs')} pressed=${s.ui.drawer === 'tabs'} cls="hdr-tabs">${t.tabsButton(waiting)}<//>` : null}
-      <${Btn} variant="ghost" size="sm" icon="reload" title=${t.reloadTitle} label=${t.reloadTitle}
-        busy=${!!s.loading?.pass && s.loading?.fresh} onClick=${c.reload} cls="hdr-reload"><span class="hide-narrow">${t.reload}</span><//>
-      <${Btn} variant=${(s.quick?.convs ?? []).some(x => x.running) ? 'primary' : 'secondary'}
-        size="sm" icon="send" onClick=${() => c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>
-      <${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
-        pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()} cls="hdr-history"><span class="hide-narrow">${t.historyButton}</span><//>
-      ${s.layout === 'narrow' ? null : html`<${AgentsChip} s=${s} c=${c} />`}
-      ${s.layout === 'narrow' ? null : html`<${RelayBadge} s=${s} c=${c} />`}
-      ${s.layout === 'narrow' ? null : html`<${StartControl} s=${s} c=${c} short />`}
-      <${Btn} variant="ghost" size="sm" icon=${themeIcon} label=${`${t.themeLabel}: ${t.theme[s.ui.theme]}`}
-        title=${`${t.themeLabel}: ${t.theme[s.ui.theme]}`} onClick=${c.cycleTheme} />
+      ${person ? null : html`<${Btn} variant=${(s.quick?.convs ?? []).some(chatRunning) ? 'primary' : 'secondary'}
+        size="sm" icon="send" onClick=${() => onChat ? c.askHere() : c.openAsk()} title=${t.claudeOpenTitle} label=${t.askTitle} cls="hdr-ask">${t.askTitle}<//>`}
+      ${person ? null : html`<${Btn} variant="ghost" size="sm" icon="history" title=${t.historyTitle} label=${t.historyTitle}
+        pressed=${s.ui.drawer === 'history'} onClick=${() => s.ui.drawer === 'history' ? c.setDrawer(null) : c.openHistory()} cls="hdr-history"><span class="hide-narrow">${t.historyButton}</span><//>`}
       <${Btn} variant="ghost" size="sm" icon="bell" label=${t.notesTitle} title=${t.notesTitle}
         onClick=${() => c.setDrawer(s.ui.drawer === 'notes' ? null : 'notes')} pressed=${s.ui.drawer === 'notes'} cls="hdr-notes" />
-      <${Btn} variant="ghost" size="sm" icon="bulb" label=${t.hints.buttonTitle} title=${t.hints.buttonTitle}
-        pressed=${!!s.ui.hints} onClick=${() => c.setHints(!s.ui.hints)} cls="hdr-explain"><span class="hide-narrow">${t.hints.button}</span><//>
-      <${Btn} variant="ghost" size="sm" icon="help" label=${t.helpTitle} title=${`${t.helpTitle} (?)`}
-        onClick=${() => c.setDrawer('help')} cls="hdr-help" />
+      ${s.layout === 'narrow' || person ? null : html`<${AgentsChip} s=${s} c=${c} />`}
+      ${s.layout === 'narrow' || person ? null : html`<${RelayBadge} s=${s} c=${c} />`}
+      ${s.layout === 'narrow' || person ? null : html`<${StartControl} s=${s} c=${c} short />`}
+      <${HelpMenu} s=${s} c=${c} />
     </div>
   </header>`
 }
@@ -195,6 +266,8 @@ export function PageBar({ s, c }) {
   })
   const order = pageOrder(s)
   const more = morePages(s)
+  // a sub page has no tab: the tab of the page it stands under stays lit while it is open
+  const lit = litTab(s)
   const [open, setOpen] = useState(false)
   const moreBox = usePopover(open, setOpen)
   // every tab stands in the bar while the bar is wide enough; only when they overflow do the pages
@@ -202,7 +275,7 @@ export function PageBar({ s, c }) {
   // A resize unfolds and measures again
   const navRef = useRef(null)
   const [foldN, setFoldN] = useState(0)
-  const foldable = order.filter(id => more.has(id) && id !== s.ui.page)
+  const foldable = order.filter(id => more.has(id) && id !== lit)
   const folded = new Set(foldable.slice(Math.max(0, foldable.length - foldN)))
   const fold = folded.size > 0
   useLayoutEffect(() => {
@@ -214,52 +287,73 @@ export function PageBar({ s, c }) {
     window.addEventListener('resize', again)
     return () => window.removeEventListener('resize', again)
   }, [])
-  const made = new Map()   // id -> { label, badge, keyHint }, drawn below in tab order
-  const tab = (id, label, badge) => {
+  const made = new Map()   // id -> { label, badge, flag, keyHint }, drawn below in tab order
+  // the tooltip names the tab's Alt key only while the shortcuts are on (app.js); `flag` is the colour the badge
+  // carries for a reason (a finding, a warning), which More wears for the tabs folded behind it
+  const tab = (id, label, badge, flag = null) => {
     const i = order.indexOf(id)
-    made.set(id, { label, badge, keyHint: i >= 0 && i < 9 ? `${label} (Alt ${i + 1})` : undefined })
+    made.set(id, { label, badge, flag, keyHint: s.ui.shortcuts && i >= 0 && i < 9 ? `${label} (Alt ${i + 1})` : undefined })
     return null
   }
-  const button = id => { const x = made.get(id); return html`<button key=${id} type="button" role="tab" class=${`ptab${s.ui.page === id ? ' is-active' : ''}`}
-    aria-selected=${String(s.ui.page === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
-    <span>${x.label}</span>${x.badge}</button>` }
-  const n = s.model?.briefing_badge ?? 0
+  // a folder's tab carries a ▾ beside it that lists its places; the tab itself always opens the folder's overview
+  const button = id => {
+    const x = made.get(id)
+    const tabBtn = html`<button key=${id} type="button" role="tab" class=${`ptab${lit === id ? ' is-active' : ''}`}
+      aria-selected=${String(lit === id)} onClick=${() => c.setPage(id)} title=${x.keyHint}>
+      <span>${x.label}</span>${x.badge}</button>`
+    const places = folderPlaces(s, id)
+    return places.length ? html`<${FolderTab} key=${id} label=${x.label} places=${places} s=${s} c=${c}>${tabBtn}<//>` : tabBtn
+  }
+  // what waits for you: Today and Work through carry the same number, no counter of their own; with Work through on
+  // it is the number its points that need you make, the start page's head line (flow.js flowWaiting)
+  const n = flowWaiting(s) ?? s.model?.briefing_badge ?? 0
   const aiLeft = aiWaiting(s.model?.returns, s.tabs?.tabs, s.now || Date.now())   // what the AI left for you (sessions page)
   const toClose = s.model?.review?.last?.to_close ?? 0
-  // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip
+  // the Sessions tab shows the number the Sessions station shows, the running agents stand in its tooltip. Where
+  // Work through lists the live sessions in Running now (round 6) the tab goes, its AI badge with it: what the AI left
+  // stands there as points already (a start that asks or finished), Running now counts what runs
   const sess = sessionCounts(s.sessions?.sessions)
+  const sessTab = !sessionsInFlow(s)
+  const agentsInChat = chatAsWorkspaces(s)
+  // the background jobs: an outage is red, upkeep no colour at all
+  const jobs = jobCounts(s.workers?.data)
   return html`<nav class="pagebar" aria-label=${t.pagesLabel} ref=${navRef}>
     <div class="pagebar-tabs" role="tablist" ref=${tabsRef} onKeyDown=${keys.onKeyDown}>
       ${box ? html`<${TabMarker} box=${box} />` : null}
       ${tab(START_PAGE, t.startTab, null)}
       ${tab('briefing', briefingTitle(s), n > 0 ? html`<span class="pbadge" title=${t.badgeWaiting(n, s.model?.counts?.give ?? 0)}><${Dot} token="warning" /><span class="mono">${n}</span></span>` : null)}
-      ${tab(SESSIONS_PAGE, t.sessionsTab, aiLeft > 0
+      ${tab(FILES_PAGE, t.filesTab, null)}
+      ${sessTab ? tab(SESSIONS_PAGE, t.sessionsTab, aiLeft > 0
         ? html`<span class="pbadge is-quiet" title=${t.aiWaitingTitle(aiLeft)}><span>${t.aiBadge}</span> <span class="mono">${aiLeft}</span></span>`
         : sess.sessions > 0
-        ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null)}
-      ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, s.workers?.data?.stats?.with_findings
-        ? html`<span class="pbadge" title=${t.home.workersFindings(s.workers.data.stats.with_findings)}><${Dot} token="warning" /><span class="mono">${s.workers.data.stats.with_findings}</span></span>` : null)}
-      ${tab(CHAT_PAGE, t.chatTab, (s.quick?.convs ?? []).some(x => x.running) ? html`<${Spinner} />` : null)}
-      ${(s.agents?.peers ?? []).length ? tab(AGENTS_PAGE, t.agentsTab, (s.agents?.convs ?? []).some(x => x.running) ? html`<${Spinner} />`
-        : (s.agents?.convs ?? []).some(x => x.turns?.[x.turns.length - 1]?.waiting) ? html`<${Dot} token="warning" />` : null) : null}
-      ${reviewHomeOf(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`
+        ? html`<span class="pbadge is-quiet" title=${sess.agents ? t.home.agentsLine(sess.agents) : undefined}><span class="mono">${sess.sessions}</span></span>` : null) : null}
+      ${s.workers?.status === 'none' ? null : tab(WORKERS_PAGE, t.workersTab, jobs.failing
+        ? html`<span class="pbadge" title=${t.overviewWorkers(jobs.ok, jobs.all, jobs.failing, jobs.upkeep)}><${Dot} token="danger" /><span class="mono">${jobs.failing}</span></span>` : null,
+        jobs.failing ? 'danger' : null)}
+      ${tab(CHAT_PAGE, t.chatTab, html`<${ChatTabMark} kind=${chatTabSignal(s)} />`)}
+      ${(s.agents?.peers ?? []).length && !agentsInChat ? tab(AGENTS_PAGE, t.agentsTab, html`<${AgentMark} kind=${agentBadge(s)} />`, agentBadge(s) === 'waiting' ? 'warning' : null) : null}
+      ${reviewHomeOf(s) || checkInFlow(s) ? null : tab(CHECK_PAGE, t.reviewTab, s.model?.review?.running ? html`<${Spinner} />`
         : toClose > 0 ? html`<span class="pbadge"><span class="mono">${toClose}</span></span>` : null)}
-      ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`) : null}
-      ${pages.map(p => tab(p.id, p.title, html`<${PageBadge} badge=${p.badge} title=${badgeTitle(p)} />`))}
-      ${tab(SETTINGS_PAGE, t.settings.title, null)}
+      ${s.jev?.enabled && !workPageOf(s.model?.pages)?.jev ? tab(JEV_PAGE, 'Jev', s.jev.ready ? null : html`<${Dot} token="warning" />`, s.jev.ready ? null : 'warning') : null}
+      ${pages.map(p => { const b = tabBadgeOf(s, p); return tab(p.id, p.title, html`<${PageBadge} badge=${b} title=${badgeTitle(p)} />`, b?.kind === 'bad' ? 'danger' : null) })}
+      ${(() => { const b = settingsBadgeOf(s.model)   // a finding of the setup checks shows without opening Settings
+        return tab(SETTINGS_PAGE, t.settings.title, b ? html`<${PageBadge} badge=${b} title=${t.settings.section.setup.title} />` : null,
+          b?.kind === 'bad' ? 'danger' : b?.warn ? 'warning' : null) })()}
       ${order.filter(id => made.has(id) && !folded.has(id)).map(button)}
       ${fold ? html`<${MoreTab} items=${order.filter(id => folded.has(id) && made.has(id)).map(id => ({ id, ...made.get(id) }))}
-        s=${s} c=${c} open=${open} setOpen=${setOpen} box=${moreBox} />` : null}
+        s=${s} c=${c} lit=${lit} open=${open} setOpen=${setOpen} box=${moreBox} />` : null}
     </div>
   </nav>`
 }
 
 /** The last tab of the bar: opens the pages that stand behind it. While one of them is open the tab
- *  carries its name; a page behind it with a finding shows a dot */
-function MoreTab({ items, s, c, open, setOpen, box }) {
+ *  carries its name; else the strongest colour a tab behind it carries for a reason, a finding red, a warning
+ *  amber, as a dot. A grey count, a green ok or a running agent is no reason */
+function MoreTab({ items, s, c, lit, open, setOpen, box }) {
   const t = T()
-  const current = items.find(x => x.id === s.ui.page)
-  const flagged = items.some(x => x.badge && x.id !== s.ui.page)
+  const current = items.find(x => x.id === lit)
+  const flags = items.filter(x => x.id !== lit).map(x => x.flag)
+  const flag = flags.includes('danger') ? 'danger' : flags.includes('warning') ? 'warning' : null
   const pick = id => { setOpen(false); c.setPage(id) }
   // the bar scrolls sideways and would clip a menu inside it, so the menu stands fixed under the tab
   const [at, setAt] = useState(null)
@@ -267,13 +361,57 @@ function MoreTab({ items, s, c, open, setOpen, box }) {
   return html`<span class="ptab-more" ref=${box}>
     <button type="button" role="tab" class=${`ptab${current ? ' is-active' : ''}`} aria-selected=${String(!!current)}
       aria-haspopup="menu" aria-expanded=${String(open)} onClick=${toggle}>
-      <span>${current ? current.label : t.morePages}</span>${current ? current.badge : flagged ? html`<${Dot} token="warning" />` : null}
+      <span>${current ? current.label : t.morePages}</span>${current ? current.badge : flag ? html`<${Dot} token=${flag} />` : null}
       <span aria-hidden="true">▾</span></button>
     ${open ? html`<span class="settle-menu more-menu" role="menu" style=${at ? { top: `${at.top}px`, left: `${at.left}px` } : undefined}>
-      ${items.map(x => html`<button key=${x.id} type="button" role="menuitem" class=${`settle-item${x.id === s.ui.page ? ' is-on' : ''}`}
+      ${items.map(x => html`<button key=${x.id} type="button" role="menuitem" class=${`settle-item${x.id === lit ? ' is-on' : ''}`}
         title=${x.keyHint} onClick=${() => pick(x.id)}><span>${x.label}</span>${x.badge}</button>`)}
     </span>` : null}
   </span>`
+}
+
+/** A place's name and its mark, as the folder bar and the menu at the folder's tab draw it */
+function FolderPlace({ x }) {
+  return html`<${Dot} token=${x.tone} /><span class="folder-name">${x.label}</span>${x.note ? html`<span class="folder-note">${x.note}</span>` : null}`
+}
+
+/** The tab of a folder with its ▾: a menu of the folder's places and their marks, so a sub page is found from the top.
+ *  The bar scrolls sideways and would clip a menu inside it, so the menu stands fixed under the ▾ (as More's) */
+function FolderTab({ label, places, s, c, children }) {
+  const t = T()
+  const [open, setOpen] = useState(false)
+  const box = usePopover(open, setOpen)
+  const [at, setAt] = useState(null)
+  const toggle = e => {
+    const r = e.currentTarget.getBoundingClientRect?.()
+    if (r) setAt({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left - 120, window.innerWidth - 268)) })
+    setOpen(!open)
+  }
+  const pick = id => { setOpen(false); c.setPage(id) }
+  return html`<span class="ptab-folder" ref=${box}>
+    ${children}
+    <button type="button" class="ptab-caret" aria-haspopup="menu" aria-expanded=${String(open)} aria-label=${t.folderMenu(label)}
+      title=${t.folderMenu(label)} onClick=${toggle}><span aria-hidden="true">▾</span></button>
+    ${open ? html`<span class="settle-menu more-menu folder-menu" role="menu" aria-label=${t.folderMenu(label)}
+      style=${at ? { top: `${at.top}px`, left: `${at.left}px` } : undefined}>
+      ${places.map(x => html`<button key=${x.id} type="button" role="menuitem" class=${`settle-item${x.id === s.ui.page ? ' is-on' : ''}`}
+        title=${x.title} onClick=${() => pick(x.id)}><${FolderPlace} x=${x} /></button>`)}
+    </span>` : null}
+  </span>`
+}
+
+/** The bar of a folder under the page tabs, on the folder page and on each of its sub pages: the overview and every
+ *  sub page with its mark, the open one current. It is the way between them; a sub page needs no way back of its own */
+export function FolderBar({ s, c }) {
+  const t = T()
+  const folder = folderOf(s)
+  const places = folder ? folderPlaces(s, folder) : []
+  if (!places.length) return null
+  const title = (s.model?.pages ?? []).find(p => p.id === folder)?.title ?? ''
+  return html`<nav class="folderbar fbar-chips" aria-label=${t.folderLabel(title)}>
+    ${places.map(x => html`<button key=${x.id} type="button" class=${`fchip folder-chip${x.id === s.ui.page ? ' is-on' : ''}`}
+      aria-current=${x.id === s.ui.page ? 'page' : undefined} title=${x.title} onClick=${() => c.setPage(x.id)}><${FolderPlace} x=${x} /></button>`)}
+  </nav>`
 }
 
 export function AlarmBanner({ s, c }) {

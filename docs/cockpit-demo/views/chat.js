@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the chat: the quick chat window and its page.
+// The cockpit, the chat: the quick chat window and its page, on whose head the control session's notice stands (round 6,
+// views/header.js ControlNotice, from the Sessions page). Round 6d: a question reads by its title (logic.js askList),
+// a handed one carries its marker and what it came back with, and Open the tab opens the tab in the cockpit. One field
+// with two fixed buttons, Ask and Let AI do it, no guessed route (C4); an empty chat says how long questions stay (C1).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { short, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, listedChats, reminderArgs, routeOf } from '../logic.js'
+import { personOf, short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, keepHoursOf, listedChats, reminderArgs } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
+import { ControlNotice } from './header.js'
 import { LaunchPick } from './launch.js'
-import { ASK_MAX } from './nav.js'
+import { ASK_MAX, openTabRoom } from './nav.js'
 import { useFocusOnOpen } from './overlays.js'
 import { Btn, Dot, StateLine, useClock } from './parts.js'
 import { Prose } from './prose.js'
@@ -66,8 +70,8 @@ export function Thinking({ label }) {
 
 /** The message box of a chat or a tab: Enter sends, Shift+Enter breaks the line */
 /** A text box with its send button. `alt` adds a second way to send ({ label, title, onSend, ready, busy }):
- *  Enter takes the first, Cmd or Ctrl Enter the second */
-export function SendBox({ id, label, value, setValue, onSend, max, placeholder, busy, disabled, sendLabel, autofocus = true, alt = null }) {
+ *  Enter takes the first, Cmd or Ctrl Enter the second; `u` and `alt.u` name the buttons for the click log */
+export function SendBox({ id, label, value, setValue, onSend, max, placeholder, busy, disabled, sendLabel, autofocus = true, alt = null, u }) {
   const t = T()
   return html`<div class="field-row tabview-send">
     <label class="sr-only" for=${id}>${label}</label>
@@ -79,8 +83,8 @@ export function SendBox({ id, label, value, setValue, onSend, max, placeholder, 
         if (alt && (e.metaKey || e.ctrlKey)) { if (alt.ready) alt.onSend() } else onSend()
       }}></textarea>
     <span class="send-btns">
-      <${Btn} size="sm" variant=${alt ? 'secondary' : 'primary'} icon="send" busy=${busy} disabled=${!value.trim() || disabled} onClick=${onSend}>${sendLabel ?? t.btnSend}<//>
-      ${alt ? html`<${Btn} size="sm" variant="primary" icon="tabs" busy=${alt.busy} disabled=${!alt.ready} title=${alt.title} onClick=${alt.onSend}>${alt.label}<//>` : null}
+      <${Btn} size="sm" variant=${alt ? 'secondary' : 'primary'} icon="send" u=${u} busy=${busy} disabled=${!value.trim() || disabled} onClick=${onSend}>${sendLabel ?? t.btnSend}<//>
+      ${alt ? html`<${Btn} size="sm" variant="primary" icon="tabs" u=${alt.u} busy=${alt.busy} disabled=${!alt.ready} title=${alt.title} onClick=${alt.onSend}>${alt.label}<//>` : null}
     </span>
   </div>`
 }
@@ -99,12 +103,16 @@ function ReminderCard({ s, c, reminder }) {
   </div>`
 }
 
-/** The turns of one chat; the turn being answered shows its text while it is written and what it reads */
+/** The turns of one chat; the turn being answered shows its text while it is written and what it reads. A handed
+ *  question that came back shows what its tab said under the last turn (logic.js askOutcome) */
 export function ChatThread({ s, c, conv }) {
   const t = T()
   const lang = language()
   const live = useQuickLive(conv?.id)
-  return conv.turns.map((x, i) => {
+  const outcome = askOutcome(conv)
+  const back = outcome?.text ? html`<div class="qoutcome" key="outcome"><${StateLine} token=${outcome.asks ? 'warning' : outcome.closed ? 'success' : 'info'}
+    word=${outcome.asks ? t.handoff.asksYou : outcome.closed ? t.handoff.done : t.asks.mark.inTab} /><${Prose} cls="qa" text=${outcome.text} /></div>` : null
+  return [...conv.turns.map((x, i) => {
     const open = !x.a && !x.error && i === conv.turns.length - 1 && conv.running
     const done = x.a ? chatReminders(x.a) : null
     return html`<div class="qturn row-in" key=${i} style=${{ '--i': 0 }}>
@@ -116,43 +124,41 @@ export function ChatThread({ s, c, conv }) {
         : live?.text ? t.quickWriting : t.quickThinking(t.quickModel[x.model_asked] ?? x.model_asked)} />` : null}
       ${x.a ? html`<div class="qmeta mono small muted">${x.model ?? x.model_asked}${x.cost_usd != null ? ` · ${costText(x.cost_usd, lang)}` : ''}</div>` : null}
     </div>`
-  })
+  }), back]
 }
 
 /** The status line of a chat handed on (logic.js handoffStatus) with the one step it offers: try again, open
- *  the tab it arrived in, or type it into the waiting control tab */
+ *  the tab it arrived in (in the cockpit, and in the terminal beside it), or type it into the waiting control
+ *  tab; once the item answered, what it said; once its tab is gone with no word, a new start and its item */
 function HandoffLine({ s, c, st, onRetry, relayId }) {
   const t = T()
-  const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : t.handoff[st.word]
-  const action = st.action === 'retry' && onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.retry}</button>`
-    : st.action === 'jump' && canTab(s, 'focus') ? html`<button type="button" class="btn-link small" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.jump}</button>`
+  const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : ['result', 'asks'].includes(st.word) ? t.handoff[st.word](short(st.text, 200))
+    : t.handoff[st.word]
+  const action = st.word === 'gone' ? html`${onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.restart}</button>` : null}
+      ${st.item ? html`<button type="button" class="btn-link small muted" onClick=${() => c.openItem(`inbox:${st.item}`, null)}>${t.handoff.openItem}</button>` : null}`
+    : st.action === 'retry' && onRetry ? html`<button type="button" class="btn-link small" onClick=${onRetry}>${t.handoff.retry}</button>`
+    : st.action === 'jump' ? html`<button type="button" class="btn-link small" onClick=${() => openTabRoom(s, c, st.ref)}>${t.handoff.jump}</button>
+      ${canTab(s, 'focus') ? html`<button type="button" class="btn-link small muted" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.inTerminal}</button>` : null}`
     : st.action === 'ask_via_tab' && relayId ? html`<button type="button" class="btn-link small" onClick=${() => c.act('ask_via_tab', { relay_id: relayId })}>${t.handoff.askViaTab}</button>`
     : null
   return html`<p class="handoff-status small" role="status" data-status=${st.word}><${StateLine} token=${st.tone} word=${word} />${action ? ' ' : null}${action}</p>`
 }
 
-/** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat). One input:
- *  the chip under the field says where Enter goes (logic.js routeOf: a read-only answer here, or an agent tab),
- *  a click on it switches until the field is empty again. Cmd Enter starts a tab at once. Once handed on, the
- *  chip gives way to the status line: where it went and how that went. No countdown, no timer */
+/** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat). One field with
+ *  two fixed buttons (round 6d C4): Ask answers here and only reads, Let AI do it hands it to an agent tab; Enter
+ *  asks. Under the field the status line: where a handed chat went and how that went. No countdown, no timer */
 export function ChatFoot({ s, c, conv, autofocus }) {
   const t = T()
   const lang = language()
-  const [text, setTextRaw] = useState('')
-  // the route picked by hand on the chip ('quick' or 'tab'), held until the field is empty: never a flip of
-  // the guess, which typing on may turn around (a trailing question mark) and so invert the choice
-  const [pinned, setPinned] = useState(null)
-  const setText = v => { setTextRaw(v); if (!v.trim()) setPinned(null) }
+  const [text, setText] = useState('')
   const model = s.ui.quickModel ?? s.quick?.default ?? 'haiku'
   const last = conv?.turns?.[conv.turns.length - 1]
   const total = conv ? conv.turns.reduce((n, x) => n + (x.cost_usd ?? 0), 0) : 0
   const costKnown = !conv || conv.turns.every(x => !x.a || x.cost_usd != null)
   const asked = last?.model_asked
-  const guess = routeOf(text)
-  const route = pinned ? { ...guess, to: pinned, by: 'flipped' } : guess
   // where the last handoff went: the chat's own record, or for a new problem the page's record of its start
   const handed = conv ? conv.handed ?? null : (s.ui.sent ?? []).at(-1) ?? null
-  const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs)
+  const status = handoffStatus(handed, s.relay?.records, s.tabs?.tabs, s.now || Date.now())
   const starting = status?.word === 'starting'
   const answered = !!(conv && last?.a && !conv.running)
   // the second way: a real Claude session in a cmux tab, which may act. A new problem opens one at once;
@@ -166,13 +172,13 @@ export function ChatFoot({ s, c, conv, autofocus }) {
     return r
   }
   const send = async () => {
-    if (!text.trim() || conv?.running) return
-    const v = route.text
-    const done = route.to === 'tab' ? await toTab(v, route.by) : v ? await c.ask('free', { text: v }) : false
-    if (done) setText('')
+    const v = text.trim()
+    if (!v || conv?.running) return
+    if (await c.ask('free', { text: v })) setText('')
   }
+  // picked by hand on its button: the audit keeps `forced`, the one way to a tab from here
   const solve = async () => {
-    if (await toTab(routeOf(text).text, 'forced')) setText('')
+    if (await toTab(text.trim(), 'forced')) setText('')
   }
   // only a tab start is tried again from here: a chat never goes to the control session with one click
   const retry = handed?.to === 'tab' ? () => conv ? c.act('quick_handoff', { conv: conv.id, to: 'tab' }) : toTab(handed.text, handed.routed ?? 'default') : null
@@ -184,16 +190,27 @@ export function ChatFoot({ s, c, conv, autofocus }) {
       <span class="muted small quick-total">${costKnown ? t.quickTotal(costText(total, lang)) : t.quickCostUnknown}${asked && asked !== model ? ` · ${t.quickSwitch(t.quickModel[model])}` : ''}</span>
     </div>` : null}
     <${SendBox} id="quick-input" label=${t.askLabel} value=${text} setValue=${setText} onSend=${send} max=${ASK_MAX} autofocus=${autofocus}
-      placeholder=${conv ? t.quickReply : t.route.placeholder} busy=${route.to === 'tab' ? solveBusy : !!s.ui.busy['ask:free']}
-      disabled=${!!conv?.running || (route.to === 'tab' && starting)} sendLabel=${route.to === 'tab' ? t.chatSolve : t.chatAsk}
-      alt=${{ label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
-    ${text.trim() ? html`<p class="route-line small"><button type="button" class=${`chip route-chip is-${route.to}`} title=${t.route.flip}
-        aria-label=${`${route.to === 'tab' ? t.route.toTab : t.route.toQuick}. ${t.route.flip}`} data-route=${route.to}
-        onClick=${() => setPinned(route.to === 'tab' ? 'quick' : 'tab')}>${route.to === 'tab' ? t.route.toTab : t.route.toQuick}</button></p>`
-      : status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
-    <${LaunchPick} s=${s} c=${c} />
-    <p class="muted small chat-hint">${t.chatSolveHint}</p>
+      placeholder=${t.chatPlaceholder} busy=${!!s.ui.busy['ask:free']}
+      disabled=${!!conv?.running} sendLabel=${t.chatAsk} u="chat-ask"
+      alt=${{ u: 'chat-ai', label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
+    ${status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
+    <${LaunchPick} s=${s} c=${c} label=${t.launch.forSolve} />
   </footer>`
+}
+
+/** What an empty chat says: what a question is, and how long it stays in the list (the server's
+ *  cockpit.chat_keep_hours, round 6d C1) */
+export function ChatIntro({ q }) {
+  const t = T()
+  return html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p><p class="muted small quick-kept">${t.asks.kept(keepHoursOf(q))}</p></div>`
+}
+
+/** The marker of a handed question beside its title: in its tab, done, or asks you (logic.js askMark) */
+export function AskMark({ mark, archived = false }) {
+  const t = T()
+  const word = archived ? 'archived' : mark?.word
+  if (!word) return null
+  return html` <span class=${`ask-mark chip-tk tk-${archived ? 'muted' : mark.tone}`} data-mark=${word} title=${mark?.text ?? undefined}>${t.asks.mark[word]}</span>`
 }
 
 function ModelPick({ s, c }) {
@@ -220,12 +237,12 @@ export function useStickToEnd(conv, live) {
 export function QuickChat({ s, c }) {
   const t = T()
   const q = s.quick ?? {}
-  const convs = listedChats(q.convs, q.keep_hours, s.now)
+  const asks = askList(listedChats(q.convs, q.keep_hours, s.now), s, language())
   const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const dialog = useFocusOnOpen(true)
   return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.closeTabView() }}>
-    <div class="dialog tabview quickchat" role="dialog" aria-modal="true" aria-labelledby="quick-title" ref=${dialog}>
+    <div class="dialog tabview quickchat term" role="dialog" aria-modal="true" aria-labelledby="quick-title" ref=${dialog}>
       <header class="tabview-head">
         <h2 class="sec-title tabview-title" id="quick-title">${t.askTitle}</h2>
         <${ModelPick} s=${s} c=${c} />
@@ -234,14 +251,14 @@ export function QuickChat({ s, c }) {
         ${s.tabs?.control?.ref ? html`<button type="button" class="btn-link small" onClick=${c.openClaude}>${t.quickToControl}</button>` : null}
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${c.closeTabView} />
       </header>
-      ${convs.length ? html`<nav class="quick-convs" aria-label=${t.quickChats}>
-        <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.quickNew}</button>
-        ${convs.slice(0, 8).map(x => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
-          title=${x.turns[0]?.q} onClick=${() => c.pickQuick(x.id)}>${x.running ? html`<${Dot} token="info" pulse /> ` : null}${short(x.turns[0]?.q ?? '', 34)}</button>`)}
+      ${asks.length ? html`<nav class="quick-convs" aria-label=${t.quickChats}>
+        <button type="button" class=${`chip quick-conv${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.rooms.newAsk}</button>
+        ${asks.slice(0, 8).map(({ conv: x, title, mark }) => html`<button type="button" key=${x.id} class=${`chip quick-conv${x.id === conv?.id ? ' is-on' : ''}`}
+          title=${x.turns[0]?.q} onClick=${() => c.pickQuick(x.id)}>${x.running ? html`<${Dot} token="info" pulse /> ` : null}<span class="quick-conv-title">${title}</span><${AskMark} mark=${mark} /></button>`)}
       </nav>` : null}
       <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
         ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
-        ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
+        ${!conv ? html`<${ChatIntro} q=${q} />` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
       </div>
       <${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus />
     </div>
@@ -250,30 +267,82 @@ export function QuickChat({ s, c }) {
 
 /** The Chat tab: every kept chat on the left (first question, when, model, cost), the open one on the
  *  right with its box ready; a chat goes on where it stopped, also after a restart of the dashboard */
+/** The Chat of a person without a key (person_ask.py): their question stays off and says so */
+function ChatOff() {
+  const t = T()
+  return html`<div class="col col-page chatpage term">
+    <header class="page-head"><h2 class="detail-title">${t.chatTab}</h2></header>
+    <p class="muted page-note">${t.chatArea.personOff}</p></div>`
+}
+
+/** The Chat of a person: one plain field and their own chats. The server reads only their files (person_ask.py),
+ *  so nothing here hands work on, picks a model or sends what the page shows */
+function ChatPerson({ s, c }) {
+  const t = T(), w = t.chatArea, ask = s.personAsk
+  const [text, setText] = useState('')
+  const [fresh, setFresh] = useState(false)
+  const conv = fresh ? null : ask.convs[0] ?? null
+  const running = ask.convs.some(x => x.running)
+  const body = useStickToEnd(conv, null)
+  const send = async e => {
+    e.preventDefault()
+    const words = text.trim()
+    if (!words || running || !ask.left) return
+    if (await c.personAsk(words, conv?.id)) { setText(''); setFresh(false) }
+  }
+  return html`<div class="col col-page chatpage term">
+    <header class="page-head"><h2 class="detail-title">${t.chatTab}</h2></header>
+    <p class="muted page-note">${w.personNote}</p>
+    <div class="person-chat" ref=${body}>
+      ${conv ? conv.turns.map((x, i) => html`<div class="qturn" key=${i}>
+        <div class="qq">${x.q}</div>
+        ${x.a ? html`<${Prose} cls="qa" text=${x.a} />` : x.error ? html`<p class="muted">${w.personFailed}</p>`
+          : html`<${StateLine} token="info" word=${w.personWait} />`}
+      </div>`) : html`<p class="muted">${w.personEmpty}</p>`}
+    </div>
+    <form class="person-ask" onSubmit=${send}>
+      <textarea class="input" rows="3" maxlength=${4000} aria-label=${w.personBox} placeholder=${w.personBox}
+        value=${text} onInput=${e => setText(e.currentTarget.value)} />
+      <div class="person-ask-row">
+        <${Btn} variant="primary" onClick=${send} disabled=${running || !ask.left || !text.trim()}>${w.personAsk}<//>
+        ${conv ? html`<${Btn} onClick=${() => setFresh(true)}>${w.personNew}<//>` : null}
+        <span class="muted small">${w.personLeft(ask.left)}</span>
+      </div>
+    </form>
+  </div>`
+}
+
 export function ChatPage({ s, c }) {
+  if (personOf(s)) return s.personAsk?.available ? html`<${ChatPerson} s=${s} c=${c} />` : html`<${ChatOff} />`
+  return html`<${ChatOn} s=${s} c=${c} />`
+}
+
+function ChatOn({ s, c }) {
   const t = T()
   const lang = language()
   const q = s.quick ?? {}
   const convs = listedChats(q.convs, q.keep_hours, s.now)
+  const asks = new Map(askList(convs, s, lang).map(x => [x.conv.id, x]))
   const conv = (q.convs ?? []).find(x => x.id === s.ui.quickConv) ?? null
   const body = useStickToEnd(conv, useQuickLive(conv?.id))
   const [forgetArmed, setForgetArmed] = useState(null)
   useEffect(() => { document.getElementById('quick-input')?.focus() }, [conv?.id])
-  return html`<div class="col col-page chatpage">
+  return html`<div class="col col-page chatpage term">
     <header class="page-head"><h2 class="detail-title">${t.chatTab}</h2><${ModelPick} s=${s} c=${c} />
       ${conv && !conv.running ? html`<button type="button" class=${`chip quick-conv agent-forget${forgetArmed === conv.id ? ' is-armed' : ''}`}
         title=${t.quickForgetHint} onBlur=${() => setForgetArmed(null)}
         onClick=${() => forgetArmed === conv.id ? c.quickForget(conv.id) : setForgetArmed(conv.id)}>${forgetArmed === conv.id ? t.quickForgetSure : t.quickForget}</button>` : null}</header>
+    <${ControlNotice} s=${s} c=${c} />
     <div class="chat-grid">
       <nav class="panel chat-list" aria-label=${t.quickChats}>
-        <button type="button" class=${`chat-item chat-new${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.quickNew}</button>
+        <button type="button" class=${`chat-item chat-new${!conv ? ' is-on' : ''}`} onClick=${c.newQuick}>+ ${t.rooms.newAsk}</button>
         ${convs.length ? convs.map(x => {
           const costKnown = x.turns.every(y => !y.a || y.cost_usd != null)
           const cost = costKnown ? x.turns.reduce((n, y) => n + (y.cost_usd ?? 0), 0) : null
           const lastTurn = x.turns[x.turns.length - 1]
           return html`<button type="button" key=${x.id} class=${`chat-item${x.id === conv?.id ? ' is-on' : ''}`} onClick=${() => c.pickQuick(x.id)}
             aria-current=${x.id === conv?.id ? 'true' : undefined}>
-            <span class="chat-item-q">${x.running ? html`<${Dot} token="info" pulse /> ` : null}${short(x.turns[0]?.q ?? '', 70)}</span>
+            <span class="chat-item-q">${x.running ? html`<${Dot} token="info" pulse /> ` : null}${asks.get(x.id)?.title}<${AskMark} mark=${asks.get(x.id)?.mark} /></span>
             <span class="chat-item-meta mono small muted">${[chatStamp(x.last_ms ?? x.started_ms, s.now, lang), t.quickTurns(x.turns.length),
               t.quickModel[lastTurn?.model_asked] ?? lastTurn?.model_asked, !costKnown ? t.quickCostUnknown : cost ? costText(cost, lang) : null].filter(Boolean).join(' · ')}</span>
           </button>`
@@ -282,7 +351,7 @@ export function ChatPage({ s, c }) {
       <section class="panel chat-main" aria-label=${t.askTitle}>
         <div class="tabview-body quick-body" ref=${body} tabindex="-1" role="log" aria-label=${t.quickHistory}>
           ${q.config_error || !q.available ? html`<p><${StateLine} token="warning" word=${q.config_error ?? t.quickUnavailable} /></p>` : null}
-          ${!conv ? html`<div class="quick-empty"><p class="muted">${t.quickIntro}</p></div>` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
+          ${!conv ? html`<${ChatIntro} q=${q} />` : html`<${ChatThread} s=${s} c=${c} conv=${conv} />`}
         </div>
         <${ChatFoot} key=${conv?.id ?? 'new'} s=${s} c=${c} conv=${conv} autofocus=${false} />
       </section>

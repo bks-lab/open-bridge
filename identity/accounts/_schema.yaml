@@ -99,6 +99,6 @@ properties:
 #     vault://<mount>/<path>/<field>             (HashiCorp Vault KV)
 #     file://<absolute-path>                     (a 0600 file in a declared store)
 #   Format + folder/group conventions: rules/secret-placement.md.
-#   (See also CLAUDE.md § Cloud Accounts & Secrets.)
+#   (See also docs/cloud-accounts.md.)
 # - Complex accounts get a companion `<id>.README.md` (decision matrix,
 #   rotation howto, bootstrap recipes).

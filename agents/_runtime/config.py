@@ -218,7 +218,8 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
 
     # working_dir = cwd = read-confinement for the file tools. A public agent is
     # confined to its grounding dir; a private/trusted agent gets the full instance
-    # repo root (CLAUDE.md, @-imports, .claude/skills) — see § Trust profile.
+    # repo root (the AGENTS.md chain with its IDENTITY/SOUL imports, .claude/skills)
+    # — see § Trust profile.
     if trust == "private":
         working_dir = str(PROJECT_ROOT)
     else:

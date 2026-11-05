@@ -100,7 +100,7 @@ The skill is also directly user-invokable (`/postmortem the last hour`,
    section; counts from `ls`)
 3. Append entry to `work/log.md` with timestamp, type, context, summary
 
-Per CLAUDE.md § Task Management "Task lifecycle (3-step enforcement)".
+Per AGENTS.md § Task Management (lifecycle, three steps).
 
 #### 3d. Recap
 
@@ -239,4 +239,4 @@ live in `dual_doku.post_actions` per-context.
   **write** direction read on status-change push) alongside `state_map` (the
   board → normalized **read** direction). `status` is remote-authoritative on pull.
 - `protocols/standing-orders/work-board-reconciliation.md` — folder↔board axis check
-- `protocols/standing-orders/document-work.md` — log.md format + 30-min rule
+- `protocols/standing-orders/document-work.md`: log.md format + task threshold

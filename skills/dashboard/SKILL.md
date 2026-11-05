@@ -34,7 +34,7 @@ User wants to...
 ## Workflow
 
 1. **Detect project** — Read `references/data-sources.md` for the 4-phase
-   auto-detection algorithm (CLAUDE.md section → git remote → CWD → --all)
+   auto-detection algorithm (AGENTS.md/CLAUDE.md section → git remote → CWD → --all)
 2. **Fetch data** — Read `references/data-sources.md` § Data Fetching for the
    5 parallel data sources (tasks, commits, sparklines, health, issues)
 3. **Render terminal** — Read `references/terminal-rendering.md` for layout rules

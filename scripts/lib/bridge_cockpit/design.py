@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""The cockpit's colours, read from the Bridge's own DESIGN.md (served as /colors.css).
+"""The cockpit's colours, read from the Bridge's own design (served as /colors.css).
 
-DESIGN.md is the one place a fork sets its brand (AGENTS.md, Design System), so the page takes
-its palette from there at run time instead of a fixed copy: every Bridge shows its own colours,
-and no colour file of the cockpit diverges between forks.
+The cockpit is the instance's own page, so it wears the instance default that scripts/designs.py
+resolves: the active theme's `branding.design` (a file under identity/designs/), else the root
+DESIGN.md (AGENTS.md § Guardrails beside the families). The page takes its palette from there
+at run time instead of a fixed copy: every Bridge shows its own colours, and no colour file of the
+cockpit diverges.
 
 The front matter may name the cockpit's tokens directly (`colors:` and `colorsDark:`, same keys),
 or only the smaller open-bridge set (`colors:` with `dark-*` keys for the dark pair). A token the
@@ -13,10 +15,17 @@ answers at all (no DESIGN.md) to the plain neutrals in BASE_DEFAULTS.
 """
 from __future__ import annotations
 
+import functools
+import importlib.util
 import re
+import sys
+import threading
 from pathlib import Path
 
 import yaml
+
+# the resolver ships beside this package: scripts/designs.py
+RESOLVER = Path(__file__).resolve().parents[2] / "designs.py"
 
 # every colour token the page uses, light and dark, with the keys that stand in when one is missing
 CHAIN = {
@@ -118,7 +127,8 @@ def _block(selector: str, values: dict, scheme: str | None = None, indent: str =
 
 def colors_css(design: dict) -> str:
     """The stylesheet: light colours on :root, dark ones under .dark and under prefers-color-scheme when the page
-    set no .light, and the inner room's always-dark colours."""
+    set no .light, the inner room's always-dark colours, and the dark set again under .term: the Chat is a
+    terminal in both modes, so whatever stands inside it takes the dark tokens."""
     pal = palette(design)
     light = {**pal["light"], **DERIVED["light"]}
     dark = {**pal["dark"], **DERIVED["dark"]}
@@ -126,7 +136,8 @@ def colors_css(design: dict) -> str:
     nested = _block("  :root:not(.light)", dark, "dark", "    ").replace("\n}\n", "\n  }\n")
     return ("/* generated from DESIGN.md by scripts/lib/bridge_cockpit/design.py: edit DESIGN.md, not this */\n"
             + _block(":root", light, "light") + _block(":root.dark", dark, "dark")
-            + "@media (prefers-color-scheme: dark) {\n" + nested + "}\n" + _block(":root", void))
+            + "@media (prefers-color-scheme: dark) {\n" + nested + "}\n" + _block(":root", void)
+            + _block(".term", dark, "dark"))
 
 
 SERIF_WORDS = ("serif", "playfair", "georgia", "garamond", "times")
@@ -157,6 +168,73 @@ def fonts_css(design: dict) -> str:
     return f":root {{\n  --font-display: {_stack(display)};\n  --font-ui: {_stack(ui)};\n}}\n"
 
 
+@functools.lru_cache(maxsize=1)
+def _resolver():
+    """scripts/designs.py, loaded once: /colors.css asks on every request."""
+    spec = importlib.util.spec_from_file_location("bridge_designs", RESOLVER)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_RESOLVED: dict[str, tuple[tuple, tuple[Path, str | None]]] = {}
+_RESOLVED_LOCK = threading.Lock()
+
+
+def _stat(path: Path):
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _inputs(root: Path) -> tuple:
+    """Everything a resolution reads: bridge-config.yaml, every theme, the design family (its folder's
+    mtime moves when a design is added or removed) and whether DESIGN.md exists. Stats only, no parsing."""
+    themes = sorted((root / "themes").glob("*.yaml"))
+    return (_stat(root / "bridge-config.yaml"), tuple((p.name, _stat(p)) for p in themes),
+            _stat(root / "identity" / "designs"), (root / "DESIGN.md").is_file())
+
+
+def resolved(root: Path) -> tuple[Path, str | None]:
+    """The design file the cockpit wears, and the reason when it had to fall back to DESIGN.md.
+
+    Only the instance default applies (steps 5 and 6 of scripts/designs.py): the cockpit belongs to no
+    context and no persona. A theme naming an unknown design still gets a page, with the error said
+    in the stylesheet and on stderr, never swallowed. Kept until a file the resolution reads changes,
+    since /colors.css asks on every request."""
+    root = Path(root)
+    inputs = _inputs(root)
+    with _RESOLVED_LOCK:
+        hit = _RESOLVED.get(str(root))
+        if hit and hit[0] == inputs:
+            return hit[1]
+    answer = _resolve(root)
+    with _RESOLVED_LOCK:
+        _RESOLVED[str(root)] = (inputs, answer)
+    return answer
+
+
+def _resolve(root: Path) -> tuple[Path, str | None]:
+    default = Path(root) / "DESIGN.md"
+    if not RESOLVER.is_file():
+        return default, None
+    designs = _resolver()
+    try:
+        return designs.resolve(Path(root)).path or default, None
+    except designs.DesignError as err:
+        print(f"cockpit: {err}; showing DESIGN.md", file=sys.stderr)
+        return default, str(err)
+
+
+def design_file(root: Path) -> Path:
+    return resolved(root)[0]
+
+
 def stylesheet(root: Path) -> str:
-    design = front_matter(Path(root) / "DESIGN.md")
-    return colors_css(design) + fonts_css(design)
+    path, error = resolved(root)
+    design = front_matter(path)
+    note = f"/* design error: {error.replace('*/', '* /')}; showing DESIGN.md */\n" if error else ""
+    return note + colors_css(design) + fonts_css(design)

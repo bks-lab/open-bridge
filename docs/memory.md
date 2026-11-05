@@ -214,7 +214,7 @@ Every index entry is exactly:
 - **Write when:** a mistake cost time, a non-obvious workaround was found, the
   user corrected you, a new tool/endpoint/pattern appeared, or a decision was
   made (record the *why*).
-- **Don't write when:** it is already in `CLAUDE.md`/`AGENTS.md`, it is general
+- **Don't write when:** it is already in `AGENTS.md` or a file it imports (IDENTITY.md, SOUL.md), it is general
   knowledge, or it is one-off session-specific state (current branch, current bug).
 - Before saving, check whether an existing file already covers the fact — update
   it instead of duplicating. **Delete** memories that turn out to be wrong or

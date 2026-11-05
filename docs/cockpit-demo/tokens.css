@@ -50,10 +50,7 @@
   --motion: 200ms ease-out;
 
   /* layout */
-  /* Safari on macOS in full screen draws its toolbar about 28px lower than the viewport it reports, so the
-     top of the page lies under it; app.js sets .safari-fullscreen and the frame moves down by this much */
-  --chrome-gap: 0px;
-  --header-h: calc(56px + var(--chrome-gap));
+  --header-h: 56px;
   --pagebar-h: 44px;
   --col-left: clamp(380px, 28vw, 600px);   /* grows with the screen, so the rows to work on keep their titles */
   --col-right: 400px;

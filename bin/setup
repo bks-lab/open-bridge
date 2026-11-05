@@ -10,6 +10,10 @@
 # All three ship as committed symlinks to `../skills`; this script repairs any
 # that a checkout materialized as a plain file (e.g. native Windows git).
 #
+# It also arms the git hooks, checks PyYAML, and warns (never fails) when
+# Claude Code is too old to load AGENTS.md or a CLAUDE.md in a parent folder
+# would make Claude Code load that file instead of AGENTS.md.
+#
 # macOS / Linux / WSL: works out of the box.
 # Native Windows: see `bin/setup.ps1` instead (handles symlink quirks).
 
@@ -98,6 +102,45 @@ if command -v python3 >/dev/null 2>&1; then
         rc=1
     fi
 fi
+
+# Claude Code loads AGENTS.md as this repo's entry file from 2.1.277 on
+# (2.1.281 on Bedrock, Vertex, Foundry and gateways). This repo ships no
+# CLAUDE.md, so an older Claude Code starts with no instructions at all.
+# Warn only: Claude Code is one of several supported tools.
+CLAUDE_MIN="2.1.281"
+version_lt() {  # true when $1 < $2, field by field as numbers
+    local IFS=.
+    local -a a=($1) b=($2)
+    local i
+    for i in 0 1 2; do
+        if (( 10#${a[i]:-0} < 10#${b[i]:-0} )); then return 0; fi
+        if (( 10#${a[i]:-0} > 10#${b[i]:-0} )); then return 1; fi
+    done
+    return 1
+}
+if command -v claude >/dev/null 2>&1; then
+    cv=$(claude --version 2>/dev/null | head -n 1 | sed -n 's/^[^0-9]*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' || true)
+    if [ -z "$cv" ]; then
+        echo "WARN Could not read the Claude Code version; it needs $CLAUDE_MIN or newer to load AGENTS.md"
+    elif version_lt "$cv" "$CLAUDE_MIN"; then
+        echo "WARN Claude Code $cv is older than $CLAUDE_MIN and will not load AGENTS.md here. Update: claude update"
+    else
+        echo "OK  Claude Code $cv supports AGENTS.md (default option)"
+    fi
+fi
+
+# A CLAUDE.md or CLAUDE.local.md in any parent folder makes Claude Code load
+# that file and skip AGENTS.md, on every version. Warn only.
+dir=$(cd .. && pwd)
+while :; do
+    for f in CLAUDE.md CLAUDE.local.md; do
+        if [ -f "${dir%/}/$f" ]; then
+            echo "WARN ${dir%/}/$f sits in a parent folder: Claude Code will not load AGENTS.md here"
+        fi
+    done
+    if [ "$dir" = "/" ]; then break; fi
+    dir=$(dirname "$dir")
+done
 
 # Optional: the tool-agnostic gh wrapper (scripts/bin/gh) reminds you to log remote
 # issue/PR/board ops. Not auto-written into your shell profile — opt in by adding it

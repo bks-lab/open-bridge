@@ -217,4 +217,4 @@ Two ways to dry-run without closing a real task:
 - `work/_learning/README.md` (the aggregation layer this writes into)
 - `skills/bridge-learn/SKILL.md` (Phase 2 — reviews proposals)
 - `bridge-config.yaml.learning.postmortem` (config block)
-- CLAUDE.md § Auto Memory (the parallel system this does NOT touch)
+- docs/memory.md (the parallel system this does NOT touch)

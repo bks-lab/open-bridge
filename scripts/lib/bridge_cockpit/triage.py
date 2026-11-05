@@ -24,6 +24,27 @@ DAILY_SEC = 24 * 3600
 CHECK_EVERY_SEC = 15 * 60
 ITEM_FIELDS = ("kind", "title", "gist", "topic", "verdict", "reason", "doer", "effort", "why", "verdict_from", "model")
 NUMBER_FIELDS = ("level", "jev")       # how complex for an AI: Haiku's level, Jev's score (launch.py picks the model)
+DAY_MS = 24 * 3600 * 1000
+
+
+def _is_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def jev_ranks(orders: Any, now_ms: float, max_age_days: float) -> dict:
+    """{key: (rank, at_ms)} from Jev's last order of each page (jev.py rank, jev-pages.json): the newest order
+    that holds a row wins, and an order older than max_age_days counts for nothing, so a rank never mixes
+    old and new judgments. Anything malformed is skipped."""
+    out: dict = {}
+    for order in (orders.values() if isinstance(orders, dict) else ()):
+        at = order.get("at_ms") if isinstance(order, dict) else None
+        if not (_is_int(at) or isinstance(at, float)) or now_ms - at > max_age_days * DAY_MS:
+            continue
+        for x in order.get("items") or ():
+            if isinstance(x, dict) and isinstance(x.get("key"), str) and _is_int(x.get("rank")):
+                if x["key"] not in out or out[x["key"]][1] < at:
+                    out[x["key"]] = (x["rank"], at)
+    return out
 
 
 def _cents(usd: Any) -> float:
@@ -73,12 +94,24 @@ class Triage:
                 items[x["key"]] = {k: x.get(k) if isinstance(x.get(k), str) else None for k in ITEM_FIELDS}
                 items[x["key"]].update({k: x[k] if isinstance(x.get(k), (int, float)) and not isinstance(x.get(k), bool)
                                         else None for k in NUMBER_FIELDS})
+        # the order of the Work through area: Jev's rank while it is fresh (cockpit.flow.rank_max_age_days)
+        ranks = self.ranks()
+        for key, item in items.items():
+            item["next_rank"], item["rank_at"] = ranks.get(key, (None, None))
         out["items"] = items
         out["last"] = {"at": last.get("at"), "count": len(items), "cost_ct": _cents(last.get("cost_usd")),
                        "cost_known": bool(last.get("cost_known", True)), "calls": last.get("calls"),
                        "model": str(last.get("model") or "").replace("claude-", "") or None,
                        "duration_sec": last.get("duration_sec")}
         return out
+
+    def ranks(self) -> dict:
+        from .jev import _pages_state
+        app = self.app
+        st = _pages_state(app)
+        with st.lock:
+            orders = dict(st.orders)
+        return jev_ranks(orders, app.clock(), app.cfg.flow["rank_max_age_days"])
 
     def argv(self, fresh: bool) -> list[str]:
         app = self.app

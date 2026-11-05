@@ -4,12 +4,17 @@
 
     python3 scripts/task.py priority <slug> {P0,P1,P2,P3}
     python3 scripts/task.py note <slug> <text>
-    python3 scripts/task.py close <slug> [--reason TEXT] [--declined] [--json]
+    python3 scripts/task.py close <slug> [--reason TEXT] [--declined | --merged-into KEEP] [--json]
     python3 scripts/task.py reopen <slug> [--as doing|backlog] [--note TEXT] [--json]
+    python3 scripts/task.py merge <keep> --from <slug> [--heading TEXT] [--json]
+    python3 scripts/task.py unmerge <keep> --from <slug> [--as doing|backlog|review] [--json]
     python3 scripts/task.py review [slug ...] [--all] [--fresh] [--keep SLUG ...] [--json]
     python3 scripts/task.py wait <slug> --until YYYY-MM-DD [--on TEXT] | --clear [--json]
-    python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--json]
+    python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--situation TEXT]
+        [--origin TEXT] [--json]
     python3 scripts/task.py log [--] <context> <text>
+    python3 scripts/task.py next <slug> [--] <text> | --clear [--json]
+    python3 scripts/task.py brief <slug> --brief-json JSON [--basis HEX] [--edited] | --mark-edited [--json]
 
 Rewrites only the ``priority:`` line inside the YAML frontmatter of
 work/tasks/<slug>/STATUS.md or work/streams/<slug>/STATUS.md (the key is added
@@ -30,6 +35,32 @@ gets ``status: done``, ``closed:``, ``outcome: declined`` with ``--declined``, l
 directory moves to work/done/YYYY-MM/<slug>/ (a plain move, no git), the board is
 regenerated and one row goes into today's block of work/log.md. A stream, an
 unknown slug or a task already under work/done/ is refused without writing.
+``--merged-into KEEP`` closes it as merged into another task instead (``outcome: merged``,
+``merged_into: KEEP``, the note "Merged into KEEP", its ``blocked_by`` kept for an undo); it excludes
+``--declined``.
+
+``merge`` makes one task of two about the same thing: the task ``--from`` names is closed as merged into
+``<keep>``, and ``<keep>`` gets one section with what it said (its headline, its goal, every line of its
+notes and every open step, as text) and the paths of its STATUS.md and of up to 20 of its documents at their
+new place under work/done/ (the folder moves whole, nothing is copied), the same paths in ``related:``
+tagged ``# merged-from: <slug>``, and a dated note; both files as they were before and after go to
+``.bridge/task-merges.json``. Everything is checked before the first write, and when the close fails the
+section and the related lines come out again. ``unmerge`` takes it back: a file still as the merge left it
+comes back byte for byte, one changed since loses what the merge added (the section, the tagged related
+lines, the merge's note) and the merged task opens again (``--as``); the undo writes no note of its own.
+
+``next`` sets the task's next step, ``next: {what: <text>}`` as the schema has it (a step written
+before, also as a block mapping, goes whole), with ``last_updated:`` and a dated "Next step: <text>" note,
+so the step carries the day it was taken over; ``--clear`` takes it away. The cockpit's files view writes
+it only when the person takes over a suggested step.
+
+``brief`` writes the task's brief (lib/bridge_cockpit/card_fields.py: goal, story, acceptance, by, at) as
+the nested ``brief:`` block of the frontmatter, written or replaced as a whole where it stands (appended
+before the closing ``---`` when there is none), with ``basis`` (brief_basis of the file as written) and
+``edited`` (false, ``--edited`` for a person's write). A brief the gate finds anything wrong with is refused,
+and so is one whose ``--basis`` (the text it was written against) no longer matches the file. Every other byte
+stays, ``last_updated`` too: a brief is no activity on the task. ``--mark-edited`` only turns ``edited:``
+true in a block a person changed by hand (the cockpit's describe pass finds those), nothing else.
 
 ``log`` writes one row into today's block of work/log.md, for a decision on a row that has no task or
 inbox item of its own (a GitHub issue, a deadline): the cockpit keeps the person's sentence there.
@@ -39,6 +70,7 @@ be done: the newest work/done/*/<slug>/ moves back to work/tasks/<slug>/, ``stat
 becomes doing (or ``--as backlog``), ``closed:`` and ``outcome:`` go, a dated
 "Reopened" note joins the notes (the close note stays, so the history reads), the
 board is regenerated and one log row is written. A slug that is open is refused.
+``merged_into`` goes as well.
 
 ``review`` recommends per task in doing or review (``--backlog`` adds backlog,
 named slugs are reviewed whatever their status): close, continue, waiting, stale
@@ -77,6 +109,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 from lib import ai_services as ai
+from lib.bridge_cockpit.card_fields import brief_basis, validate_brief
 PRIORITIES = ("P0", "P1", "P2", "P3")      # work/templates/_schema.status.yaml: priority.enum
 
 
@@ -164,6 +197,18 @@ def regenerate_board(root: Path) -> None:
     mod.main([])
 
 
+def stale_links(root: Path, old: str) -> list[str]:
+    """Files under work/ whose Markdown links still point at `old`. Reported, never rewritten here."""
+    try:
+        spec = importlib.util.spec_from_file_location("check_edges", ROOT / "scripts" / "check-edges.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.dont_write_bytecode = True
+        spec.loader.exec_module(mod)
+        return mod.links_into(root, old)
+    except Exception:  # noqa: BLE001 - a missing hint must never fail a close
+        return []
+
+
 def remove_fields(text: str, keys) -> str:
     """Drop `key:` lines of the frontmatter, with their indented continuation lines."""
     lines = text.splitlines(keepends=True)
@@ -212,6 +257,8 @@ def append_log_row(root: Path, now: dt.datetime, context: str, what: str) -> Non
     b = _briefing()
     log = root / "work" / "log.md"
     text = log.read_text(encoding="utf-8") if log.is_file() else ""
+    person = os.environ.get("BRIDGE_PERSON")    # a person named under members: clicked it in the cockpit, not the owner
+    what = f"{what} ({person})" if person else what
     row = f"| {now:%Y-%m-%d %H:%M} | {LOG_GLYPH} | {context} | {what.replace('|', '/')} |"
     new = b.log_row(text, now, row, row, b._new_day_block(root, now, b._weekday(now)))
     log.write_text(new if text else new.lstrip("\n"), encoding="utf-8")
@@ -219,14 +266,23 @@ def append_log_row(root: Path, now: dt.datetime, context: str, what: str) -> Non
 
 # ---------------------------------------------------------------- close
 
+MERGE_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,79}")   # _schema.status.yaml merged_into.pattern
+
+
 def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bool = False,
-               stream: bool = False, now: dt.datetime | None = None) -> dict:
+               stream: bool = False, merged_into: str | None = None, now: dt.datetime | None = None) -> dict:
     """The 3-step close of docs/work-system.md: fields and note, move to work/done/YYYY-MM/, board, log row.
     stream also ends a stream: a stream never completes on its own, but a person may end one (the customer left,
-    the chance passed). It closes like a task and keeps was_stream, so reopen puts it back under work/streams/."""
+    the chance passed). It closes like a task and keeps was_stream, so reopen puts it back under work/streams/.
+    merged_into closes it as merged into that task (outcome: merged), never together with declined."""
     now = now or dt.datetime.now()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
         raise ValueError(f"not a task slug: {slug!r}")
+    if merged_into is not None:
+        if declined:
+            raise ValueError("a task closes as merged or as declined, not both")
+        if not MERGE_SLUG_RE.fullmatch(merged_into):
+            raise ValueError(f"not a task slug: {merged_into!r}")
     work = root / "work"
     src = work / "tasks" / slug
     was_stream = False
@@ -248,12 +304,19 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
     fields = [("status", "done", None), ("closed", f'"{today}"', "status")]
     if declined:
         fields.append(("outcome", "declined", "closed"))
+    if merged_into:
+        fields += [("outcome", "merged", "closed"), ("merged_into", merged_into, "outcome")]
     if was_stream:
         fields.append(("was_stream", "true", "closed"))
-    # a normal close drops an old "outcome: declined", which would otherwise survive and mislabel the task
-    text = remove_fields(set_fields(text, fields), ("blocked_by", "blocked_since") + (() if declined else ("outcome",)))
+    # a normal close drops an old "outcome: declined", which would otherwise survive and mislabel the task; a task
+    # closed as merged keeps its blocker, so an undo of the merge opens it as it was (unmerge_task)
+    text = remove_fields(text, ("merged_into",))
+    text = remove_fields(set_fields(text, fields), (() if merged_into else ("blocked_by", "blocked_since"))
+                         + (() if declined or merged_into else ("outcome",)))
     word = "Declined" if declined else "Closed"
     said = ("Stream ended, declined" if declined else "Stream ended") if was_stream else word
+    if merged_into:
+        said = f"Merged into {merged_into}"
     text = add_note(text, f"{said}: {reason}" if reason else said, today)
     # Move first, then write at the destination: a move that fails leaves the task untouched in place.
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -275,12 +338,21 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
     except Exception as exc:  # noqa: BLE001 - the task is closed; a stale board is a warning
         warnings.append(f"work/board.md not regenerated: {exc}")
     try:
-        append_log_row(root, now, slug, f"{word.lower()}" + (f": {reason}" if reason else ""))
+        append_log_row(root, now, slug, (f"merged into {merged_into}" if merged_into else word.lower())
+                       + (f": {reason}" if reason else ""))
     except Exception as exc:  # noqa: BLE001 - the task is closed; a missing row is a warning
         warnings.append(f"work/log.md row not written: {exc}")
-    return {"slug": slug, "moved_to": f"work/done/{now:%Y-%m}/{slug}", "closed": today,
-            "outcome": "declined" if declined else None, "reason": reason or None, "stream": was_stream,
-            "warnings": warnings}
+    old = src.relative_to(root).as_posix()
+    stale = stale_links(root, old)
+    if stale:
+        warnings.append(f"{len(stale)} file(s) still link to {old}: {', '.join(stale)}; "
+                        f"python3 scripts/check-edges.py --fix rewrites them")
+    out = {"slug": slug, "moved_to": f"work/done/{now:%Y-%m}/{slug}", "closed": today,
+           "outcome": "declined" if declined else "merged" if merged_into else None, "reason": reason or None,
+           "stream": was_stream, "stale_links": stale, "warnings": warnings}
+    if merged_into:
+        out["merged_into"] = merged_into
+    return out
 
 
 # ---------------------------------------------------------------- runs on
@@ -314,6 +386,208 @@ def wait_task(root: Path, slug: str, *, until: str | None = None, on: str | None
     return {"slug": slug, "quiet_until": None if clear else until, "on": None if clear or kept else on}
 
 
+# ---------------------------------------------------------------- next step
+
+#: who takes a next step: one line, as short as a name (bridge, me, a person)
+WHO_MAX = 60
+
+
+def set_next(root: Path, slug: str, text: str | None = None, *, clear: bool = False, today: str | None = None,
+             who: str | None = None, check: str | None = None, clear_check: bool = False) -> dict:
+    """The task's next step as ``next: {what}``, dated by last_updated and a note; clear takes it away.
+
+    `who` and `check` (stage 4 of the cockpit's one point view, In progress with a check-in): who takes the step and
+    the day the cockpit asks how it stands (``next.check``), the step itself kept (or `text` in its place), its
+    due and estimate too; `clear_check` takes the day back. A note says it, as for every next step."""
+    today = today or dt.date.today().isoformat()
+    path = find_status(root, slug)
+    old = path.read_bytes().decode("utf-8")
+    if who is not None or check is not None or clear_check:
+        return _set_next_owner(root, path, old, slug, text, who, check, clear_check, today)
+    new = remove_fields(old, ("next",))
+    if clear:
+        new = add_note(new, "Next step cleared", today)
+        what = None
+    else:
+        if text is None or "\n" in text or "\r" in text:
+            raise ValueError("the next step is one line of text (or --clear)")
+        what = " ".join(text.split())
+        if not what or len(what) > 300:
+            raise ValueError("the next step must be 1 to 300 characters")
+        line = "{what: " + json.dumps(what, ensure_ascii=False) + "}"
+        new = add_note(set_fields(new, [("next", line, "status")]), f"Next step: {what}", today)
+    path.write_bytes(new.encode("utf-8"))
+    with contextlib.redirect_stdout(sys.stderr):
+        regenerate_board(root)
+    return {"slug": slug, "next": what}
+
+
+def _set_next_owner(root: Path, path: Path, old: str, slug: str, text: str | None, who: str | None, check: str | None,
+                    clear_check: bool, today: str) -> dict:
+    """set_next with who and the check-in day: the next step kept whole (what, due, estimate), who and check set"""
+    fm, _ = _front_and_body(old)
+    nxt = dict(fm.get("next")) if isinstance(fm.get("next"), dict) else ({"what": fm["next"]} if isinstance(fm.get("next"), str) else {})
+    if text is not None:
+        if "\n" in text or "\r" in text or not " ".join(text.split()) or len(" ".join(text.split())) > 300:
+            raise ValueError("the next step must be one line of 1 to 300 characters")
+        nxt["what"] = " ".join(text.split())
+    if not str(nxt.get("what") or "").strip():
+        raise ValueError(f"{slug} has no next step to give someone: name the step too")
+    if who is not None:
+        raw = str(who)
+        who = " ".join(raw.split())
+        if not who or "\n" in raw or "\r" in raw or len(who) > WHO_MAX:
+            raise ValueError(f"who takes the step: one line of 1 to {WHO_MAX} characters")
+        nxt["who"] = who
+    if check is not None:
+        dt.date.fromisoformat(check)      # YYYY-MM-DD or a ValueError
+        nxt["check"] = check
+    if clear_check:
+        nxt.pop("check", None)
+    order = [k for k in ("what", "who", "due", "estimate_min", "check") if k in nxt] + [k for k in nxt if k not in
+                                                                                      ("what", "who", "due", "estimate_min", "check")]
+    parts = []
+    for k in order:
+        v = nxt[k]
+        v = v.isoformat() if isinstance(v, (dt.date, dt.datetime)) else v
+        parts.append(f"{k}: {v}" if isinstance(v, int) and not isinstance(v, bool) or (k in ("due", "check") and isinstance(v, str)
+                                                                                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v))
+                     else f"{k}: {json.dumps(str(v), ensure_ascii=False)}")
+    line = "{" + ", ".join(parts) + "}"
+    words = (f"In progress with {nxt['who']}, check-in {nxt['check']}" if nxt.get("check")
+             else f"Next step with {nxt.get('who') or 'me'}, no check-in")
+    new = add_note(set_fields(remove_fields(old, ("next",)), [("next", line, "status")]), words, today)
+    path.write_bytes(new.encode("utf-8"))
+    with contextlib.redirect_stdout(sys.stderr):
+        regenerate_board(root)
+    return {"slug": slug, "next": nxt.get("what"), "who": nxt.get("who"), "check": nxt.get("check")}
+
+
+# ---------------------------------------------------------------- brief
+
+BRIEF_ORDER = ("name", "stand", "goal", "story", "acceptance", "by", "at", "basis", "edited")
+
+
+def brief_block(brief: dict, nl: str = "\n") -> str:
+    """The brief as the frontmatter block it is written as: texts JSON-quoted (a basis of digits stays text)."""
+    q = lambda v: json.dumps(v, ensure_ascii=False)  # noqa: E731
+    out = ["brief:"]
+    for key in BRIEF_ORDER:
+        if key not in brief:
+            continue
+        value = brief[key]
+        if key == "story":
+            out.append("  story: {" + ", ".join(f"{k}: {q(value[k])}" for k in ("as", "want", "so_that")) + "}")
+        elif key == "acceptance":
+            out += ["  acceptance:" + ("" if value else " []")] + [f"    - {q(x)}" for x in value]
+        elif key == "edited":
+            out.append(f"  edited: {'true' if value else 'false'}")
+        else:
+            out.append(f"  {key}: {q(value)}")
+    return nl.join(out) + nl
+
+
+def _replace_file(path: Path, text: str) -> None:
+    """The new text in a file beside `path`, which then takes its place: a reader never sees half of it"""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_bytes(text.encode("utf-8"))
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, path.stat().st_mode & 0o7777)
+        os.replace(tmp, path)
+    finally:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+
+
+def _front_bounds(lines: list) -> tuple:
+    start = 0
+    while start < len(lines) and (not lines[start].strip() or lines[start].startswith("#")):
+        start += 1
+    if start >= len(lines) or lines[start].rstrip("\r\n") != "---":
+        raise ValueError("STATUS.md has no frontmatter")
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].rstrip("\r\n") == "---"), None)
+    if end is None:
+        raise ValueError("STATUS.md frontmatter is not closed")
+    return start, end
+
+
+def _brief_span(lines: list, start: int, end: int) -> tuple | None:
+    """(first, past) of the brief block in the frontmatter, as card_fields.strip_brief takes it out: the
+    `brief:` line and the indented and blank lines after it, less the blank lines at its end"""
+    first = next((i for i in range(start + 1, end) if re.match(r"brief\s*:", lines[i])), None)
+    if first is None:
+        return None
+    past, i = first + 1, first + 1
+    while i < end and (lines[i][:1] in (" ", "\t") or not lines[i].strip()):
+        i += 1
+        if lines[i - 1].strip():
+            past = i
+    return first, past
+
+
+def write_brief(root: Path, slug: str, brief: dict, *, basis: str | None = None, edited: bool = False,
+                today: str | None = None) -> dict:
+    """Write or replace the task's brief block; see the module doc. Returns {slug, basis, brief}."""
+    today = today or dt.date.today().isoformat()
+    path = find_status(root, slug)
+    old = path.read_bytes().decode("utf-8")
+    if basis is not None and brief_basis(old) != basis:
+        raise ValueError("STATUS.md changed since the brief was written against it")
+    if not isinstance(brief, dict):
+        raise ValueError("brief: not a mapping")
+    given = {k: v for k, v in brief.items() if k not in ("basis", "edited")}
+    clean, errors = validate_brief({"at": today, **given, "basis": "0" * 16, "edited": bool(edited)})
+    if errors or clean is None:
+        raise ValueError("brief: " + "; ".join(errors or ["empty"]))
+    lines = old.splitlines(keepends=True)
+    start, end = _front_bounds(lines)
+    nl = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    span = _brief_span(lines, start, end)
+    first, past = span if span else (end, end)
+
+    def render(b: dict) -> str:
+        return "".join(lines[:first]) + brief_block(b, nl) + "".join(lines[past:])
+
+    clean["basis"] = brief_basis(render(clean))     # the basis leaves the block out, so it is the same after
+    new = render(clean)
+    _replace_file(path, new)
+    return {"slug": slug, "basis": clean["basis"], "brief": clean}
+
+
+def mark_brief_edited(root: Path, slug: str) -> dict:
+    """`edited: true` in the brief block a person changed by hand; every other byte of it stays."""
+    path = find_status(root, slug)
+    old = path.read_bytes().decode("utf-8")
+    lines = old.splitlines(keepends=True)
+    start, end = _front_bounds(lines)
+    span = _brief_span(lines, start, end)
+    if span is None:
+        raise ValueError(f"{slug} has no brief to mark")
+    first, past = span
+    nl = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    flag = next((i for i in range(first + 1, past) if re.match(r"\s+edited\s*:", lines[i])), None)
+    if flag is not None:
+        indent = re.match(r"\s+", lines[flag]).group(0)
+        lines[flag] = f"{indent}edited: true" + (lines[flag][len(lines[flag].rstrip("\r\n")):] or nl)
+    elif past > first + 1:
+        indent = re.match(r"[ \t]+", lines[first + 1]).group(0)
+        lines.insert(past, f"{indent}edited: true{nl}")
+    else:
+        # a flow mapping on one line: written again as a block, its texts as they were
+        data = (yaml_load("".join(lines[first:past])) or {}).get("brief")
+        if not isinstance(data, dict):
+            raise ValueError(f"{slug}: the brief block is not a mapping")
+        lines[first:past] = [brief_block({**data, "edited": True}, nl)]
+    _replace_file(path, "".join(lines))
+    return {"slug": slug, "edited": True}
+
+
+def yaml_load(text: str):
+    import yaml
+    return yaml.safe_load(text)
+
+
 # ---------------------------------------------------------------- new, also from an inbox item
 
 NEW_STATUSES = ("backlog", "doing")
@@ -335,10 +609,12 @@ def _new_slug(text: str) -> str:
 
 
 def new_task(root: Path, slug: str | None = None, *, headline: str | None = None, status: str = "backlog",
-             from_inbox: str | None = None, task_type: str = "admin", now: dt.datetime | None = None) -> dict:
+             from_inbox: str | None = None, task_type: str = "admin", area: str | None = None,
+             situation: str | None = None, origin: str | None = None, now: dt.datetime | None = None) -> dict:
     """A new work/tasks/<slug>/STATUS.md (the template's required fields, a short body). From an inbox item the
     headline and the situation come from the item, the origin names it, and the item closes with a pointer to
-    the task: an inbox item that turned out to be work for more than one sitting becomes a task."""
+    the task: an inbox item that turned out to be work for more than one sitting becomes a task. `situation` and
+    `origin` given win (the cockpit's task of a finished AI run: its result, the run)."""
     now = now or dt.datetime.now()
     today = now.date().isoformat()
     if status not in NEW_STATUSES:
@@ -356,13 +632,15 @@ def new_task(root: Path, slug: str | None = None, *, headline: str | None = None
     slug = slug or _new_slug(headline)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
         raise ValueError(f"not a task slug: {slug!r}")
+    if area is not None and not re.fullmatch(r"\w[\w .-]*", area):
+        raise ValueError(f"not an area: {area!r}")
     work = root / "work"
     if any(p.is_dir() for p in (work / "tasks" / slug, work / "streams" / slug)) or any((work / "done").glob(f"*/{slug}")):
         raise ValueError(f"a task {slug!r} exists already")
-    origin = (f"inbox {item.id} ({str(item.created or '')[:10]}, {item.source}): {item.summary}" if item
-              else f"Ad-hoc {today}")
-    situation = (item.detail or item.summary) if item else headline
-    fm = [f"slug: {slug}", f"type: {task_type}", f"status: {status}", "priority: P2", f'created: "{today}"',
+    origin = " ".join((origin or "").split()) or (f"inbox {item.id} ({str(item.created or '')[:10]}, {item.source}): {item.summary}"
+                                                  if item else f"Ad-hoc {today}")
+    situation = (situation or "").strip() or ((item.detail or item.summary) if item else headline)
+    fm = [f"slug: {slug}", f"type: {task_type}", f"status: {status}", *([f"area: {area}"] if area else []), "priority: P2", f'created: "{today}"',
           f'last_updated: "{today}"', f"headline: {json.dumps(headline, ensure_ascii=False)}",
           f"origin: {json.dumps(origin, ensure_ascii=False)}", "sync:", "  bridge_only: true"]
     body = (f"# {headline}\n\n## Situation\n\n{situation}\n\n## Status\n\nNew{' (from the inbox)' if item else ''}.\n\n"
@@ -395,9 +673,10 @@ REOPEN_STATUSES = ("doing", "backlog", "review")   # review too: an undo restore
 
 
 def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | None = None,
-                now: dt.datetime | None = None) -> dict:
+                now: dt.datetime | None = None, noted: bool = True) -> dict:
     """The inverse of close_task: back to work/tasks/ (an ended stream back to work/streams/), status set, close
-    fields gone, note, board, log row."""
+    fields gone, note, board, log row. noted False writes no note into STATUS.md (the undo of a merge: an undo
+    leaves no trace in the task, the log row still says it)"""
     now = now or dt.datetime.now()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
         raise ValueError(f"not a task slug: {slug!r}")
@@ -415,8 +694,9 @@ def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | Non
     dest = work / ("streams" if re.search(r"^was_stream:\s*true\s*$", text, re.M) else "tasks") / slug
     today = now.date().isoformat()
     note = " ".join((note or "").split())
-    text = remove_fields(set_fields(text, [("status", status, None)]), ("closed", "outcome", "was_stream"))
-    text = add_note(text, f"Reopened: {note}" if note else "Reopened", today)
+    text = remove_fields(set_fields(text, [("status", status, None)]), ("closed", "outcome", "was_stream", "merged_into"))
+    if noted:
+        text = add_note(text, f"Reopened: {note}" if note else "Reopened", today)
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         os.rename(src, dest)
@@ -439,8 +719,516 @@ def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | Non
         append_log_row(root, now, slug, "reopened" + (f": {note}" if note else ""))
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"work/log.md row not written: {exc}")
+    ideas = _close_shelve_ideas(root, slug, warnings)
     return {"slug": slug, "moved_from": str(src.relative_to(root)), "moved_to": str(dest.relative_to(root)),
-            "status": status, "note": note or None, "warnings": warnings}
+            "status": status, "note": note or None, "closed_ideas": ideas, "warnings": warnings}
+
+
+SHELVE_DAYS = 90            # how long a shelved idea stays quiet when --until is not given
+
+
+def _headline_of(text: str, slug: str) -> str:
+    """The task's one-line name: headline:, then title:, then the first heading of the body, then the slug."""
+    m = re.match(r"(?:[^\S\n]*#[^\n]*\n|\s*\n)*---[^\S\n]*\n(.*?)\n---[^\S\n]*(?:\n|$)(.*)", text.lstrip("\ufeff"), re.S)
+    front, body = (m.group(1), m.group(2)) if m else ("", text)
+    try:
+        fm = yaml_load(front) if front else None
+    except Exception:  # noqa: BLE001 - a broken frontmatter must not stop a shelve; fall through to the heading
+        fm = None
+    for key in ("headline", "title"):
+        value = " ".join(str(fm.get(key) or "").split()) if isinstance(fm, dict) else ""
+        if value:
+            return value
+    heading = re.search(r"^#\s+(.+?)\s*$", body, re.M)
+    return " ".join(heading.group(1).split()) if heading else slug
+
+
+def shelve_task(root: Path, slug: str, *, until: str | None = None, reason: str | None = None,
+                now: dt.datetime | None = None) -> dict:
+    """Park a finite task nobody works on without losing it, in one command instead of three: an idea in the
+    inbox (key shelve:<slug>, deferred until a day so nothing announces it), then the task closes as declined.
+    The order leaves no half state: every check runs before anything is written, the idea comes first, and when
+    the close still fails the idea closes again, so a task is never gone without its idea. reopen_task closes
+    the idea when the task comes back."""
+    now = now or dt.datetime.now()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slug):
+        raise ValueError(f"not a task slug: {slug!r}")
+    work = root / "work"
+    path = work / "tasks" / slug / "STATUS.md"
+    if not path.is_file():
+        if (work / "streams" / slug / "STATUS.md").is_file():
+            raise ValueError(f"{slug} is a stream: streams are not finite and are not shelved")
+        if any((work / "done").glob(f"*/{slug}/STATUS.md")):
+            raise ValueError(f"{slug} is already closed (work/done/)")
+        raise ValueError(f"no task {slug!r} under {work / 'tasks'}")
+    until = until or (now.date() + dt.timedelta(days=SHELVE_DAYS)).isoformat()
+    dt.date.fromisoformat(until)
+    month = f"{now:%Y-%m}"
+    if (work / "done" / month / slug).exists():
+        raise ValueError(f"work/done/{month}/{slug} exists already")
+    headline = _headline_of(path.read_bytes().decode("utf-8"), slug)
+    reason = " ".join((reason or "").split())
+    where = f"work/done/{month}/{slug}/STATUS.md"
+    detail = (f"Shelved on {now.date().isoformat()}" + (f" ({reason})" if reason else "") + f". The task lives in {where}. "
+              f"To bring it back: python3 scripts/task.py reopen {slug}")
+    box = _module("inbox", ROOT / "scripts" / "inbox.py").Inbox(work / "inbox", actor="task")
+    item_id = box.add(source="task", kind="idea", summary=headline, gate="only-you", urgency="later", detail=detail,
+                      key=f"shelve:{slug}")
+    created = box.last_new == item_id
+    muted = None
+    if box.get(item_id).state not in ("open", "deferred"):
+        # add() hands back the last idea under this key when a person dropped or rejected it. A new shelve is a
+        # new decision, so that idea comes back; only a mute rule the person wrote keeps it dropped.
+        muted = box.muted_by("task", "idea", f"shelve:{slug}")
+        if muted is None:
+            box.event(item_id, "reopen", text=f"{slug} shelved again")
+            created = True
+    try:
+        box.event(item_id, "defer", until=until)
+        out = close_task(root, slug, reason=f"shelved: {reason}" if reason else "shelved", declined=True, now=now)
+    except Exception:
+        if created:                                  # the idea alone would announce a task that is still open
+            try:
+                box.close(item_id, note=f"shelve of {slug} failed; the task stays open")
+            except Exception:  # noqa: BLE001 - the original failure is the one to report
+                pass
+        raise
+    try:
+        (work / "inbox.md").write_text(box.render(), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 - the task is shelved; a stale view is a warning
+        out["warnings"].append(f"work/inbox.md not rendered: {exc}")
+    if muted is not None:
+        out["warnings"].append(f"the idea {item_id} stays dropped: mute rule {muted.get('id')} holds for it "
+                               f"(inbox.py unmute takes the rule back)")
+    out.update({"inbox": item_id, "until": until, "headline": headline})
+    return out
+
+
+def _close_shelve_ideas(root: Path, slug: str, warnings: list) -> list:
+    """The open or deferred idea a shelve filed for this task is done once the task is back."""
+    inbox_dir = root / "work" / "inbox"
+    if not inbox_dir.is_dir():
+        return []
+    closed = []
+    try:
+        box = _module("inbox", ROOT / "scripts" / "inbox.py").Inbox(inbox_dir, actor="task")
+        for item in box.items():
+            if item.key == f"shelve:{slug}" and item.state in ("open", "deferred"):
+                box.close(item.id, note=f"the task {slug} was reopened")
+                closed.append(item.id)
+        if closed:
+            (root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 - the task is open again; a lingering idea is a warning
+        warnings.append(f"shelve idea for {slug} not closed: {exc}")
+    return closed
+
+
+# ---------------------------------------------------------------- merge: two tasks about the same thing
+
+MERGE_DOCS_MAX = 20          # the documents of a merged task linked in the one it went into
+MERGE_HEADING = "Merged from {slug}"
+PLAIN_PATH_RE = re.compile(r"[A-Za-z0-9._/-]+")
+STEP_OPEN_RE = re.compile(r"^\s*[-*+] \[ \]")
+LIST_ITEM_RE = re.compile(r"^\s*[-*+] ")
+# the notes a merge, its undo and a reopen after it write: bookkeeping of a merge, not what the task says, so a
+# later merge leaves them out of its section (a reopen of its own, "Reopened" or "Reopened: <why>", stays)
+MERGE_NOTE_RE = re.compile(r"^\s*[-*+] \d{4}-\d{2}-\d{2}: (?:Merged into \S+|Merged in \S+(?:: .*)?|Merge of \S+ taken back"
+                           r"|Reopened: merge into \S+ taken back)\s*$")
+# what a merge kept of both files, so its undo puts them back byte for byte: {"<keep><<slug>": {...}}
+MERGE_RECORD = Path(".bridge") / "task-merges.json"
+
+
+def _marks(slug: str) -> tuple[str, str]:
+    """The two lines a merged block stands between in the kept task's STATUS.md (the cockpit's undo looks for the
+    same two: lib/bridge_cockpit/actions_work.py merge_marks)"""
+    return f"<!-- merged-from: {slug} -->", f"<!-- /merged-from: {slug} -->"
+
+
+def _related_tag(slug: str) -> str:
+    return f"# merged-from: {slug}"
+
+
+def _finite_open(work: Path, slug: str) -> Path:
+    """The STATUS.md of an open finite task; a stream, a closed task or none at all is refused"""
+    if not MERGE_SLUG_RE.fullmatch(slug):
+        raise ValueError(f"not a task slug: {slug!r}")
+    path = work / "tasks" / slug / "STATUS.md"
+    if path.is_file():
+        return path
+    if (work / "streams" / slug / "STATUS.md").is_file():
+        raise ValueError(f"{slug} is a stream: only finite tasks merge")
+    if any((work / "done").glob(f"*/{slug}/STATUS.md")):
+        raise ValueError(f"{slug} is already closed (work/done/)")
+    raise ValueError(f"no task {slug!r} under {work / 'tasks'}")
+
+
+def _front_and_body(text: str) -> tuple[dict, str]:
+    """The frontmatter as a mapping (empty when it does not parse) and the body after it"""
+    m = re.match(r"(?:[^\S\n]*#[^\n]*\n|\s*\n)*---[^\S\n]*\n(.*?)\n---[^\S\n]*(?:\n|$)(.*)", text.lstrip("﻿"), re.S)
+    if not m:
+        return {}, text
+    try:
+        fm = yaml_load(m.group(1))
+    except Exception:  # noqa: BLE001 - a broken frontmatter gives no goal; the body still counts
+        fm = None
+    return (fm if isinstance(fm, dict) else {}), m.group(2)
+
+
+def _merged_parts(text: str, slug: str) -> dict:
+    """What a merged task brings along as text: its headline, its goal when it says more, every line of its notes
+    but the bookkeeping of earlier merges (MERGE_NOTE_RE), and every open step, each as written"""
+    fm, body = _front_and_body(text)
+    headline = _headline_of(text, slug)
+    brief = fm.get("brief") if isinstance(fm.get("brief"), dict) else {}
+    goal = " ".join(str(brief.get("goal") or "").split())
+    lines = body.splitlines()
+    start = next((i for i, ln in enumerate(lines) if NOTES.match(ln.rstrip())), None)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines)) if start is not None else None
+    notes = [ln.rstrip() if LIST_ITEM_RE.match(ln) else f"- {ln.strip()}"
+             for ln in (lines[start + 1:end] if start is not None else []) if ln.strip() and not MERGE_NOTE_RE.match(ln)]
+    inside = set(range(start, end)) if start is not None else set()
+    steps = [ln.rstrip() for i, ln in enumerate(lines) if i not in inside and STEP_OPEN_RE.match(ln)]
+    return {"headline": headline, "goal": goal if goal and goal != " ".join(headline.split()) else "",
+            "notes": notes, "steps": steps}
+
+
+def _merged_docs(folder: Path) -> list[str]:
+    """Up to MERGE_DOCS_MAX files of a task's deliverables/, relative and sorted: no dotfile, no link"""
+    deliv = folder / "deliverables"
+    if deliv.is_symlink() or not deliv.is_dir():
+        return []
+    found = []
+    for base, dirs, files in os.walk(deliv, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and not os.path.islink(os.path.join(base, d)))
+        for name in files:
+            path = Path(base) / name
+            if name.startswith(".") or path.is_symlink() or not path.is_file():
+                continue
+            found.append(path.relative_to(deliv).as_posix())
+    return sorted(found)[:MERGE_DOCS_MAX]
+
+
+def _yaml_item(path: str) -> str:
+    """A path as a YAML list item: plain where it can be, else quoted"""
+    return path if PLAIN_PATH_RE.fullmatch(path) else json.dumps(path, ensure_ascii=False)
+
+
+def _front_range(lines: list) -> tuple[int, int]:
+    start = 0
+    while start < len(lines) and (not lines[start].strip() or lines[start].startswith("#")):
+        start += 1
+    if start >= len(lines) or lines[start].rstrip("\r\n") != "---":
+        raise ValueError("STATUS.md has no frontmatter")
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].rstrip("\r\n") == "---"), None)
+    if end is None:
+        raise ValueError("STATUS.md frontmatter is not closed")
+    return start, end
+
+
+def _related_block(lines: list, start: int, end: int) -> tuple[int | None, int, str]:
+    """(line of `related:`, the line after its block, what follows the key on its line) in the frontmatter. The
+    block runs on over indented and blank lines and over items written at the key's own indent (`- path`, the
+    style PyYAML writes)"""
+    at = next((i for i in range(start + 1, end) if re.match(r"related:(\s|$)", lines[i])), None)
+    if at is None:
+        return None, end, ""
+    after = at + 1
+    while after < end and (lines[after][:1] in (" ", "\t") or not lines[after].strip()
+                           or re.match(r"-(\s|$)", lines[after])):
+        after += 1
+    rest = re.sub(r"\s+#.*$", "", lines[at].rstrip("\r\n")[len("related:"):]).strip()
+    return at, after, rest
+
+
+def _related_items(text: str) -> tuple[bool, object]:
+    """(readable, the `related:` value) of the frontmatter: (False, None) when it does not parse or PyYAML is
+    missing, so nothing can be checked; a missing key reads as None"""
+    try:
+        lines = text.splitlines(keepends=True)
+        start, end = _front_range(lines)
+        front = yaml_load("".join(lines[start + 1:end]))
+    except Exception:  # noqa: BLE001 - unreadable: nothing to check against
+        return False, None
+    return True, front.get("related") if isinstance(front, dict) else None
+
+
+RELATED_KEPT = "related: is not a block list, the paths stand only in the merged section"
+
+
+def _add_related(text: str, paths: list, slug: str) -> tuple[str, int, str | None]:
+    """The paths as items of `related:`, each tagged with the slug: a new block list when there is none, after
+    the last line of a block list (an item that goes on over a second line stays whole). A flow list or a scalar
+    stays as it is (a warning), and so does a list the edit would not leave reading as its items plus the paths"""
+    lines = text.splitlines(keepends=True)
+    start, end = _front_range(lines)
+    nl = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    at, after, rest = _related_block(lines, start, end)
+    if at is not None and rest:
+        return text, 0, RELATED_KEPT
+    indent, pos = "  ", end
+    if at is not None:
+        items = [i for i in range(at + 1, after) if lines[i].lstrip().startswith("- ") or lines[i].strip() == "-"]
+        if items:
+            indent = lines[items[-1]][:len(lines[items[-1]]) - len(lines[items[-1]].lstrip())]
+        filled = [i for i in range(at + 1, after) if lines[i].strip()]
+        pos = (filled[-1] + 1) if filled else at + 1
+    new = [f"{indent}- {_yaml_item(p)}  {_related_tag(slug)}{nl}" for p in paths]
+    if at is None:
+        new = [f"related:{nl}"] + new
+    lines[pos:pos] = new
+    out = "".join(lines)
+    ok, old = _related_items(text)
+    if ok:
+        readable, got = _related_items(out)
+        if old is not None and not isinstance(old, list) or not readable or got != (old or []) + list(paths):
+            return text, 0, RELATED_KEPT
+    return out, len(paths), None
+
+
+def _drop_related(text: str, slug: str) -> tuple[str, int]:
+    """The related items a merge of slug added, and `related:` itself when no item is left; an edit that would not
+    leave the list reading as its items less the tagged ones leaves the text as it was"""
+    lines = text.splitlines(keepends=True)
+    start, end = _front_range(lines)
+    at, after, rest = _related_block(lines, start, end)
+    if at is None or rest:
+        return text, 0
+    tag = _related_tag(slug)
+    is_item = lambda i: lines[i].lstrip().startswith("- ") or lines[i].strip() == "-"     # noqa: E731
+    gone = [i for i in range(at + 1, after) if is_item(i) and lines[i].rstrip().endswith(tag)]
+    left = [i for i in range(at + 1, after) if is_item(i) and i not in gone]
+    drop = set(gone) | ({at} if not left else set())
+    out = "".join(ln for i, ln in enumerate(lines) if i not in drop)
+    ok, old = _related_items(text)
+    if ok and gone:
+        try:
+            tagged = yaml_load("".join(lines[i].lstrip() for i in gone))
+        except Exception:  # noqa: BLE001 - the tagged lines do not read: the list is not as a merge left it
+            tagged = None
+        readable, got = _related_items(out)
+        want = [x for x in old if x not in tagged] if isinstance(old, list) and isinstance(tagged, list) else None
+        if want is None or not readable or (got if left else got or []) != want:
+            return text, 0
+    return out, len(gone)
+
+
+def _insert_block(text: str, block: list) -> str:
+    """The merged block before the `## Notes` of the body when there is one, else at the end"""
+    lines = text.splitlines(keepends=True)
+    nl = "\r\n" if lines and lines[0].endswith("\r\n") else "\n"
+    _start, end = _front_range(lines)
+    at = next((i for i in range(end + 1, len(lines)) if NOTES.match(lines[i].rstrip("\r\n"))), None)
+    if at is None:
+        return text.rstrip("\r\n") + nl + nl + nl.join(block) + nl
+    head = [] if at == 0 or not lines[at - 1].strip() else [nl]
+    lines[at:at] = head + [ln + nl for ln in block] + [nl]
+    return "".join(lines)
+
+
+def _remove_block(text: str, slug: str) -> str | None:
+    """The text without the merged block of slug (its markers inclusive, one blank line after it); None when the
+    block is not there as a merge left it (a marker gone or out of order)"""
+    lines = text.splitlines(keepends=True)
+    first, last = _marks(slug)
+    a = next((i for i, ln in enumerate(lines) if ln.strip() == first), None)
+    b = next((i for i, ln in enumerate(lines) if ln.strip() == last), None)
+    if a is None or b is None or b < a:
+        return None
+    stop = b + 1
+    if stop < len(lines) and not lines[stop].strip():
+        stop += 1
+    elif stop >= len(lines) and a > 0 and not lines[a - 1].strip():
+        a -= 1                       # a block at the end took a blank line before it
+    return "".join(lines[:a] + lines[stop:])
+
+
+def _drop_note(text: str, pattern: str) -> str:
+    """The text without its newest notes line that matches `pattern` (after the `- YYYY-MM-DD: ` of the line)"""
+    lines = text.splitlines(keepends=True)
+    rx = re.compile(r"^\s*[-*+] \d{4}-\d{2}-\d{2}: " + pattern + r"\s*$")
+    hit = next((i for i in range(len(lines) - 1, -1, -1) if rx.match(lines[i].rstrip("\r\n"))), None)
+    return text if hit is None else "".join(lines[:hit] + lines[hit + 1:])
+
+
+def _record_key(keep: str, slug: str) -> str:
+    return f"{keep}<{slug}"
+
+
+def _load_records(root: Path) -> dict:
+    try:
+        data = json.loads((root / MERGE_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_records(root: Path, data: dict) -> None:
+    path = root / MERGE_RECORD
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("{}", encoding="utf-8")
+    _replace_file(path, json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
+
+
+def _same(text: str, kept) -> bool:
+    """Whether a file still says what a merge left in it: equal but for a brief written meanwhile (a brief is no
+    change of what the task says; the restore puts the brief back that the text before carried)"""
+    from lib.bridge_cockpit.card_fields import strip_brief
+    return isinstance(kept, str) and strip_brief(text) == strip_brief(kept)
+
+
+def merge_task(root: Path, keep: str, slug: str, *, heading: str | None = None,
+               now: dt.datetime | None = None) -> dict:
+    """slug closes as merged into keep: keep gets one section with what slug said and where its files went, its
+    related: lists those paths, both get a note; checked before the first write, taken out again when the close
+    fails. Both files as they were before and after go to MERGE_RECORD, so unmerge_task puts them back byte for
+    byte. One merged task per call."""
+    now = now or dt.datetime.now()
+    work = root / "work"
+    if keep == slug:
+        raise ValueError("a task does not merge into itself")
+    keep_path = _finite_open(work, keep)
+    src_path = _finite_open(work, slug)
+    month = f"{now:%Y-%m}"
+    if (work / "done" / month / slug).exists():
+        raise ValueError(f"work/done/{month}/{slug} exists already")
+    before = keep_path.read_bytes()
+    keep_text = before.decode("utf-8")
+    first, _last = _marks(slug)
+    if first in keep_text:
+        raise ValueError(f"{keep} holds a merged section of {slug} already")
+    src_before = src_path.read_bytes().decode("utf-8")
+    parts = _merged_parts(src_before, slug)
+    docs = _merged_docs(src_path.parent)
+    moved = f"work/done/{month}/{slug}"
+    paths = [f"{moved}/STATUS.md"] + [f"{moved}/deliverables/{d}" for d in docs]
+    title = " ".join((heading or MERGE_HEADING).replace("{slug}", slug).split()) or MERGE_HEADING.format(slug=slug)
+    chunks = [[parts["headline"]], [parts["goal"]] if parts["goal"] else [], parts["notes"], parts["steps"],
+              [f"- {p}" for p in paths]]
+    block = [first, f"## {title}", ""]
+    for chunk in (c for c in chunks if c):
+        block += chunk + [""]
+    block[-1] = _marks(slug)[1]
+    today = now.date().isoformat()
+    text = _insert_block(keep_text, block)
+    text, related, warning = _add_related(text, paths, slug)
+    text = add_note(text, f"Merged in {slug}: {parts['headline']}", today)
+    _replace_file(keep_path, text)
+    try:
+        out = close_task(root, slug, merged_into=keep, now=now)
+    except BaseException:
+        _replace_file(keep_path, before.decode("utf-8"))     # nothing half merged: the section goes again
+        raise
+    warnings = ([warning] if warning else []) + list(out["warnings"])
+    try:
+        records = _load_records(root)
+        records[_record_key(keep, slug)] = {
+            "at": now.isoformat(timespec="seconds"), "keep_before": keep_text, "keep_after": text,
+            "slug_path": out["moved_to"], "slug_before": src_before,
+            "slug_after": (root / out["moved_to"] / "STATUS.md").read_bytes().decode("utf-8")}
+        _save_records(root, records)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"{MERGE_RECORD.as_posix()} not written, an undo edits the files instead of restoring them: {exc}")
+    try:
+        append_log_row(root, now, keep, f"merged in {slug}")
+    except Exception as exc:  # noqa: BLE001 - the merge stands; a missing row is a warning
+        warnings.append(f"work/log.md row not written: {exc}")
+    return {"keep": keep, "slug": slug, "moved_to": out["moved_to"], "notes": len(parts["notes"]),
+            "steps": len(parts["steps"]), "docs": len(docs), "related": related, "warnings": warnings}
+
+
+def _move_back(root: Path, src: Path, dest: Path, text: str) -> None:
+    """A closed folder back to its open place with the text of its STATUS.md, as close_task moves it there"""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.rename(src, dest)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        shutil.move(str(src), str(dest))
+    try:
+        _replace_file(dest / "STATUS.md", text)
+    except OSError:
+        os.rename(dest, src)
+        raise
+
+
+def unmerge_task(root: Path, keep: str, slug: str, *, status: str = "doing", now: dt.datetime | None = None) -> dict:
+    """The inverse of merge_task. Each of the two files a merge left as it was (a brief written meanwhile aside)
+    comes back byte for byte as it was before the merge (MERGE_RECORD); a file changed since is edited instead:
+    the section, the tagged related lines and the merge's note leave keep, slug opens again as status without the
+    note of its close. The undo writes no note of its own, only its log row. Refused when slug is not closed as
+    merged into keep or the section is not there."""
+    now = now or dt.datetime.now()
+    work = root / "work"
+    if status not in REOPEN_STATUSES:
+        raise ValueError(f"reopen as one of {', '.join(REOPEN_STATUSES)}")
+    keep_path = _finite_open(work, keep)
+    if not MERGE_SLUG_RE.fullmatch(slug):
+        raise ValueError(f"not a task slug: {slug!r}")
+    closed = sorted((work / "done").glob(f"*/{slug}/STATUS.md"))
+    gone_text = closed[-1].read_bytes().decode("utf-8") if closed else ""
+    fm = _front_and_body(gone_text)[0] if closed else {}
+    if fm.get("outcome") != "merged" or fm.get("merged_into") != keep:
+        raise ValueError(f"{slug} is not closed as merged into {keep}")
+    before = keep_path.read_bytes().decode("utf-8")
+    cut = _remove_block(before, slug)
+    if cut is None:
+        raise ValueError(f"the merged section of {slug} in {keep} was changed by hand")
+    records = _load_records(root)
+    rec = records.get(_record_key(keep, slug)) or {}
+    src = closed[-1].parent
+    keep_exact = _same(before, rec.get("keep_after"))
+    slug_exact = (_same(gone_text, rec.get("slug_after")) and isinstance(rec.get("slug_before"), str)
+                  and src.relative_to(root).as_posix() == rec.get("slug_path"))
+    if keep_exact:
+        text, related = rec["keep_before"], len(re.findall(re.escape(_related_tag(slug)), before))
+    else:
+        text, related = _drop_related(cut, slug)
+        text = _drop_note(text, rf"Merged in {re.escape(slug)}(?:: .*)?")
+    _replace_file(keep_path, text)
+    try:
+        if slug_exact:
+            dest = work / "tasks" / slug
+            if dest.exists():
+                raise ValueError(f"{slug} is open already (work/tasks/)")
+            _move_back(root, src, dest, rec["slug_before"])
+            back = rec["slug_before"]
+            warnings = []
+            try:
+                with contextlib.redirect_stdout(sys.stderr):
+                    regenerate_board(root)
+            except Exception as exc:  # noqa: BLE001 - the task is open again; a stale board is a warning
+                warnings.append(f"work/board.md not regenerated: {exc}")
+            try:
+                append_log_row(root, now, slug, f"reopened: merge into {keep} taken back")
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"work/log.md row not written: {exc}")
+            out = {"moved_to": dest.relative_to(root).as_posix(), "warnings": warnings}
+        else:
+            _replace_file(closed[-1], _drop_note(gone_text, rf"Merged into {re.escape(keep)}(?:: .*)?"))
+            try:
+                out = reopen_task(root, slug, status=status, note=f"merge into {keep} taken back", now=now, noted=False)
+            except BaseException:
+                _replace_file(closed[-1], gone_text)
+                raise
+            back = (root / out["moved_to"] / "STATUS.md").read_bytes().decode("utf-8")
+    except BaseException:
+        _replace_file(keep_path, before)
+        raise
+    records.pop(_record_key(keep, slug), None)
+    warnings = list(out["warnings"])
+    try:
+        _save_records(root, records)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"{MERGE_RECORD.as_posix()} not written: {exc}")
+    try:
+        append_log_row(root, now, keep, f"merge of {slug} taken back")
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"work/log.md row not written: {exc}")
+    state = _front_and_body(back)[0].get("status")
+    return {"keep": keep, "slug": slug, "moved_to": out["moved_to"], "status": state if isinstance(state, str) else status,
+            "restored": keep_exact and slug_exact, "removed": {"block": True, "related": related}, "warnings": warnings}
 
 
 # ---------------------------------------------------------------- review
@@ -464,7 +1252,7 @@ REVIEW_BUDGET_SEC = 190
 TIER_ONE_MAX_SEC = 150
 # What one call of the directed model costs when no run has measured it (a small Sonnet call, 2026-10).
 DIRECTED_CALL_USD = 0.021
-PROMPT_VERSION = 3          # raise when the prompt changes: cached verdicts of an older prompt are asked again
+PROMPT_VERSION = 4          # raise when the prompt changes: cached verdicts of an older prompt are asked again
 _clock = time.monotonic
 LANGUAGE_NAMES = {"de": "German", "en": "English", "fr": "French", "es": "Spanish", "it": "Italian",
                   "nl": "Dutch", "pt": "Portuguese", "pl": "Polish"}
@@ -480,6 +1268,7 @@ Verdicts:
 - unclear: the evidence supports none of the above.
 A blocker that names an issue or PR which is now closed or merged is no longer pending: decide whether the work is done.
 A task may start with a `signals:` line, computed from GitHub: own_refs_closed (every issue and PR the task tracks is closed as completed or merged) and blocker_resolved (everything its blocker names is closed or merged). When own_refs_closed holds, the verdict is close, with confidence medium unless the steps clearly describe new work that remains AFTER that reference closed (steps written before it closed, or steps that only read, review, confirm or wrap up that reference, do not count); the reason names the closed reference with its date and, briefly, which steps still look open, so the person can confirm. blocker_resolved alone means the task is no longer waiting: decide from the steps and the log whether it is done or should continue.
+A task may list `acceptance:` criteria, the outcomes that make it done: when the evidence shows each of them met, that supports close; when one is plainly not met yet, it does not. Name the criteria the evidence meets in the reason.
 Confidence: high when one piece of evidence decides it, medium when it is likely, low when you guess.
 
 Answer with a JSON array only, one object per task:
@@ -532,9 +1321,13 @@ def _review_cfg(cfg: dict) -> dict:
             return int(rv.get(key, default))
         except (TypeError, ValueError):
             return default
+    skip = rv.get("skip_sections")
+    skip = [skip] if isinstance(skip, str) else skip if isinstance(skip, list) else []
     return {"command": rv.get("command") or DEFAULT_REVIEW_COMMAND,
             "max_age_days": number("max_age_days", DEFAULT_MAX_AGE_DAYS),
-            "stale_days": number("stale_days", DEFAULT_STALE_DAYS)}
+            "stale_days": number("stale_days", DEFAULT_STALE_DAYS),
+            # briefing section ids whose rows the triage leaves out (triage.py); empty = every row is judged
+            "skip_sections": [str(x) for x in skip if x]}
 
 
 def _plain(value):
@@ -702,6 +1495,9 @@ def gather(root: Path, slugs, run, backlog: bool = False, now_day: dt.date | Non
             "last_commit": (commit.stdout.strip() or None) if getattr(commit, "returncode", 1) == 0 else None,
             "inbox": [f"{i.kind}: {b._clip(str(i.summary), 100)} ({i.state})" for i in inbox
                       if getattr(i, "task", None) == slug],
+            # what makes the task done, as its brief says (card_fields.py): evidence for a close verdict
+            "acceptance": (validate_brief(fm["brief"])[0] or {}).get("acceptance") or None
+            if isinstance(fm.get("brief"), dict) else None,
         })
         refs = _refs_of(fm, [fm.get("blocked_by"), fm.get("headline"), title, ev["next"], *steps])
         tasks.append({"slug": slug, "title": title, "evidence": ev, "refs": refs,
@@ -731,7 +1527,8 @@ def _task_block(t: dict) -> str:
     for key in ("headline", "origin", "blocked_by", "blocked_since", "next", "last_commit"):
         if ev.get(key):
             out.append(f"{key}: {ev[key]}")
-    for key, label in (("steps", "open steps"), ("log", "log"), ("notes", "notes"), ("inbox", "open inbox")):
+    for key, label in (("acceptance", "acceptance"), ("steps", "open steps"), ("log", "log"), ("notes", "notes"),
+                       ("inbox", "open inbox")):
         if ev.get(key):
             out.append(f"{label}: " + " | ".join(ev[key]))
     if not ev.get("log") and not ev.get("last_commit"):
@@ -1032,6 +1829,8 @@ def main(argv=None) -> int:
     cl.add_argument("slug")
     cl.add_argument("--reason", default="")
     cl.add_argument("--declined", action="store_true", help="closed without completion (outcome: declined)")
+    cl.add_argument("--merged-into", dest="merged_into", metavar="KEEP",
+                    help="closed as merged into this task (outcome: merged, merged_into)")
     cl.add_argument("--stream", action="store_true", help="also end a stream (reopen puts it back under work/streams/)")
     cl.add_argument("--json", action="store_true")
     ro = sub.add_parser("reopen", help="the inverse of close: back to work/tasks/, status, note, board, log row")
@@ -1039,6 +1838,23 @@ def main(argv=None) -> int:
     ro.add_argument("--as", dest="as_status", choices=REOPEN_STATUSES, default="doing")
     ro.add_argument("--note", default="")
     ro.add_argument("--json", action="store_true")
+    mg = sub.add_parser("merge", help="close a task as merged into another, its notes, open steps and documents "
+                                      "linked in a section of the one that stays")
+    mg.add_argument("keep")
+    mg.add_argument("--from", dest="from_slug", required=True, metavar="SLUG")
+    mg.add_argument("--heading", default=None, help=f'the section\'s heading, "{{slug}}" replaced (default "{MERGE_HEADING}")')
+    mg.add_argument("--json", action="store_true")
+    um = sub.add_parser("unmerge", help="take a merge back: the section goes, the merged task opens again")
+    um.add_argument("keep")
+    um.add_argument("--from", dest="from_slug", required=True, metavar="SLUG")
+    um.add_argument("--as", dest="as_status", choices=REOPEN_STATUSES, default="doing")
+    um.add_argument("--json", action="store_true")
+    sh = sub.add_parser("shelve", help="park a finite task nobody works on: an idea in the inbox, deferred, "
+                                       "and the task closed as declined")
+    sh.add_argument("slug")
+    sh.add_argument("--until", help=f"YYYY-MM-DD, the day the idea may surface again (default: today + {SHELVE_DAYS} days)")
+    sh.add_argument("--reason", default="")
+    sh.add_argument("--json", action="store_true")
     wt = sub.add_parser("wait", help="runs on: waits on a person or a run until a day, nobody asks before")
     wt.add_argument("slug")
     wt.add_argument("--until", help="YYYY-MM-DD, the day to look again")
@@ -1049,13 +1865,33 @@ def main(argv=None) -> int:
                                     "inbox item of its own (an issue, a deadline)")
     lg.add_argument("context")
     lg.add_argument("text")
+    nx = sub.add_parser("next", help="set the task's next step (next: {what}) with a dated note, or --clear it")
+    nx.add_argument("slug")
+    nx.add_argument("text", nargs="?")
+    nx.add_argument("--clear", action="store_true")
+    nx.add_argument("--who", help="who takes the step (bridge, me, a person); the step is kept")
+    nx.add_argument("--check", help="YYYY-MM-DD: the day the cockpit asks how the step stands (next.check)")
+    nx.add_argument("--clear-check", dest="clear_check", action="store_true", help="take the check-in day back")
+    nx.add_argument("--json", action="store_true")
     nw = sub.add_parser("new", help="a new task in work/tasks/, also from an inbox item (which then closes)")
     nw.add_argument("slug", nargs="?")
     nw.add_argument("--headline")
+    nw.add_argument("--area", help="the area of workplace.workspaces the task belongs to")
     nw.add_argument("--from-inbox", dest="from_inbox")
     nw.add_argument("--status", choices=NEW_STATUSES, default="backlog")
     nw.add_argument("--type", dest="task_type", default="admin")
+    nw.add_argument("--situation", help="the text of ## Situation (default: the item's detail, else the headline)")
+    nw.add_argument("--origin", help="the origin: line (default: the inbox item, else Ad-hoc <day>)")
     nw.add_argument("--json", action="store_true")
+    br = sub.add_parser("brief", help="write or replace the task's brief block (goal, story, acceptance), "
+                                      "or --mark-edited after a person changed it")
+    br.add_argument("slug")
+    br.add_argument("--brief-json", dest="brief_json", help='{"goal": "...", "acceptance": [...], "by": "<model id>"}')
+    br.add_argument("--basis", help="the brief_basis it was written against; refused when the file moved on")
+    br.add_argument("--edited", action="store_true", help="a person wrote it (edited: true)")
+    br.add_argument("--mark-edited", dest="mark_edited", action="store_true",
+                    help="only set edited: true in the block as it stands")
+    br.add_argument("--json", action="store_true")
     rv = sub.add_parser("review", help="recommend close/continue/waiting/stale/unclear per open task")
     rv.add_argument("slugs", nargs="*")
     rv.add_argument("--all", action="store_true", help="every task in doing or review (the default without slugs)")
@@ -1071,7 +1907,8 @@ def main(argv=None) -> int:
     today = dt.date.today().isoformat()
     try:
         if args.cmd == "close":
-            out = close_task(root, args.slug, reason=args.reason, declined=args.declined, stream=args.stream)
+            out = close_task(root, args.slug, reason=args.reason, declined=args.declined, stream=args.stream,
+                             merged_into=args.merged_into)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"closed {out['slug']} -> {out['moved_to']}")
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)
@@ -1082,10 +1919,47 @@ def main(argv=None) -> int:
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)
             return 0
+        if args.cmd in ("merge", "unmerge"):
+            out = (merge_task(root, args.keep, args.from_slug, heading=args.heading) if args.cmd == "merge"
+                   else unmerge_task(root, args.keep, args.from_slug, status=args.as_status))
+            print(json.dumps(out, ensure_ascii=False) if args.json else
+                  f"{args.cmd}d {out['slug']} {'into' if args.cmd == 'merge' else 'from'} {out['keep']}")
+            for warning in out["warnings"]:
+                print(f"task: warning: {warning}", file=sys.stderr)
+            return 0
+        if args.cmd == "shelve":
+            out = shelve_task(root, args.slug, until=args.until, reason=args.reason)
+            print(json.dumps(out, ensure_ascii=False) if args.json else
+                  f"shelved {out['slug']} -> {out['moved_to']} (idea {out['inbox']}, until {out['until']})")
+            for warning in out["warnings"]:
+                print(f"task: warning: {warning}", file=sys.stderr)
+            return 0
         if args.cmd == "wait":
             out = wait_task(root, args.slug, until=args.until, on=args.on, clear=args.clear)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']} running again" if args.clear else f"{out['slug']} runs on until {out['quiet_until']}"))
+            return 0
+        if args.cmd == "next":
+            if args.clear and args.text is not None:
+                raise ValueError("a step or --clear, not both")
+            if args.clear and (args.who is not None or args.check or args.clear_check):
+                raise ValueError("--clear takes the whole step away: no --who, --check or --clear-check beside it")
+            out = set_next(root, args.slug, args.text, clear=args.clear, who=args.who, check=args.check, clear_check=args.clear_check)
+            print(json.dumps(out, ensure_ascii=False) if args.json else
+                  (f"{out['slug']}: next step cleared" if args.clear else f"{out['slug']}: next {out['next']}"))
+            return 0
+        if args.cmd == "brief":
+            if args.mark_edited == bool(args.brief_json) or (args.mark_edited and (args.basis or args.edited)):
+                raise ValueError("give --brief-json or --mark-edited, not both and not neither")
+            if args.mark_edited:
+                out = mark_brief_edited(root, args.slug)
+            else:
+                try:
+                    data = json.loads(args.brief_json)
+                except ValueError:
+                    raise ValueError("brief: --brief-json is no JSON") from None
+                out = write_brief(root, args.slug, data, basis=args.basis, edited=args.edited, today=today)
+            print(json.dumps(out, ensure_ascii=False) if args.json else f"{out['slug']}: brief written")
             return 0
         if args.cmd == "log":
             what = " ".join(args.text.split())
@@ -1095,7 +1969,7 @@ def main(argv=None) -> int:
             return 0
         if args.cmd == "new":
             out = new_task(root, args.slug, headline=args.headline, status=args.status, from_inbox=args.from_inbox,
-                           task_type=args.task_type)
+                           task_type=args.task_type, area=args.area, situation=args.situation, origin=args.origin)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"new task {out['slug']} ({out['status']})")
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)

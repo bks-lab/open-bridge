@@ -25,7 +25,7 @@ from .store import atomic_write_json, read_json
 
 MAX_ENTRIES = 500
 KINDS = ("task", "inbox", "other")
-UNDO_VERBS = ("task_reopen", "inbox_reopen", "unhide", "to_task_undo")
+UNDO_VERBS = ("task_reopen", "inbox_reopen", "unhide", "to_task_undo", "task_unmerge")
 REOPEN_AS = ("doing", "backlog", "review")     # task.py REOPEN_STATUSES: what a closed task can come back as
 AUDIT_RE = re.compile(r"^(\S+) (settle|task_close|done|drop) (\S+) exits=\S+ ok=true$")
 
@@ -42,9 +42,14 @@ def undo_for(kind: str, key: str, ident: str | None, status: str | None = None) 
     return None
 
 
-def item(key: str, title: str, kind: str, did: str, ident: str | None = None, status: str | None = None) -> dict:
-    return {"key": key, "title": str(title)[:200], "kind": kind, "did": did, "ident": ident,
-            "undo": undo_for(kind, key, ident, status), "undone_ms": None}
+def item(key: str, title: str, kind: str, did: str, ident: str | None = None, status: str | None = None,
+         work_kind: str | None = None) -> dict:
+    """One line of the history; a task's carries whether it was a task or a stream, so the page names it"""
+    out = {"key": key, "title": str(title)[:200], "kind": kind, "did": did, "ident": ident,
+           "undo": undo_for(kind, key, ident, status), "undone_ms": None}
+    if kind == "task" and work_kind in ("task", "stream"):
+        out["work_kind"] = work_kind
+    return out
 
 
 class History:
@@ -63,11 +68,19 @@ class History:
         except OSError:
             pass
 
-    def add(self, verb: str, items: list[dict], at_ms: float | None = None, backfilled: bool = False) -> str | None:
+    def add(self, verb: str, items: list[dict], at_ms: float | None = None, backfilled: bool = False,
+            by: str | None = None, person: str | None = None) -> str | None:
+        """One entry; `by` says who decided when it was not the person's own click (a suggestion, a batch, the
+        instruction line), kept on the entry for the Activity tab, acted on nowhere; `person` who clicked, where it
+        was not the owner (access.py)"""
         if not items:
             return None
         entry = {"id": "h" + uuid.uuid4().hex[:10], "at_ms": int(self.clock() if at_ms is None else at_ms),
                  "verb": verb, "items": items, "backfilled": backfilled}
+        if isinstance(by, str) and by:
+            entry["by"] = by
+        if isinstance(person, str) and person:
+            entry["person"] = person
         with self.lock:
             self.entries.append(entry)
             self.entries.sort(key=lambda e: e["at_ms"])
@@ -90,6 +103,18 @@ class History:
         with self.lock:
             it["undone_ms"] = int(self.clock())
             self._save()
+
+    def mark_where(self, match: dict) -> dict | None:
+        """The newest item not yet taken back whose fields are `match`; returns it, marked (an item without an
+        undo of its own that goes with one that has it: the kept task's side of a merge)"""
+        with self.lock:
+            for entry in reversed(self.entries):
+                for it in entry["items"]:
+                    if not it.get("undone_ms") and all(it.get(k) == v for k, v in match.items()):
+                        it["undone_ms"] = int(self.clock())
+                        self._save()
+                        return it
+        return None
 
     def mark_undone(self, verb: str, ident: str) -> dict | None:
         """The newest item not yet taken back whose undo is `verb` on `ident`; returns it, marked."""
@@ -144,15 +169,21 @@ def _closed_item(root: Path, key: str) -> dict | None:
             return None
         title = ident
         outcome = "done"
+        fm = {}
         try:
             text = found[-1].read_text(encoding="utf-8")
             fm = yaml.safe_load(text.split("---", 2)[1]) if text.lstrip().startswith(("---", "#")) and "---" in text else {}
             heading = re.search(r"^# (.+)$", text.split("---", 2)[2] if text.count("---") >= 2 else "", re.M)
             title = str((fm or {}).get("title") or (heading.group(1).strip() if heading else "") or ident)
-            outcome = "declined" if (fm or {}).get("outcome") == "declined" else "done"
+            outcome = {"declined": "declined", "merged": "merged"}.get((fm or {}).get("outcome"), "done")
         except (OSError, yaml.YAMLError, IndexError):
             pass
-        out = item(key, title, "task", "done" if live else outcome, ident)
+        stream = (live.parent.parent.name == "streams") if live else (fm or {}).get("was_stream") is True \
+            if isinstance(fm, dict) else False
+        out = item(key, title, "task", "done" if live else outcome, ident, work_kind="stream" if stream else "task")
+        into = (fm or {}).get("merged_into") if isinstance(fm, dict) else None
+        if not live and outcome == "merged" and isinstance(into, str):
+            out["into"] = into      # the task it went into, as a merge of the cockpit records it
         if live:                    # opened again since: already taken back, when the file last changed
             out["undone_ms"] = int(live.stat().st_mtime * 1000)
         return out

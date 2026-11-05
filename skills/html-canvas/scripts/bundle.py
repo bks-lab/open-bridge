@@ -138,23 +138,23 @@ FONT_FACE_RE = re.compile(r"@font-face\s*\{[^}]*\}", re.I | re.S)
 B64_RE = re.compile(r"base64,[A-Za-z0-9+/=]+")
 
 
-def find_design(start: Path) -> Path | None:
-    """The nearest DESIGN.md at or above `start`, never above the project root.
+def bridge_design():
+    """bridge_design.py, loaded by path (standard library only)."""
+    spec = importlib.util.spec_from_file_location("bridge_design", Path(__file__).resolve().parent / "bridge_design.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
-    Same rule as design-to-css.find_design: the walk stops at the first folder
-    holding .git or bridge-config.yaml, and without one only `start` counts.
+
+def find_design(start: Path) -> Path | None:
+    """The DESIGN.md for a page at `start`, or None (bridge_design.py).
+
+    The nearest DESIGN.md at or above `start`, never above the project root
+    (the first folder holding .git or bridge-config.yaml). When that walk ends
+    at the Bridge's own DESIGN.md, the Bridge says which design applies (the
+    theme's, else that file). A page outside every project has none.
     """
-    start = Path(start).resolve()
-    if not start.is_dir():
-        start = start.parent
-    chain = [start, *start.parents]
-    root = next((d for d in chain if any((d / m).exists() for m in (".git", "bridge-config.yaml"))), None)
-    for d in chain if root else [start]:
-        if (d / "DESIGN.md").is_file():
-            return d / "DESIGN.md"
-        if d == root:
-            break
-    return None
+    return bridge_design().resolve(target=start, fallback=False)
 
 
 @dataclass
@@ -685,7 +685,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--pages", action="store_true", help="bundle linked local HTML pages as payloads")
     ap.add_argument("--allow-remote", action="store_true", help="keep remote resource URLs instead of refusing")
     ap.add_argument("--manifest", help="write the sha256 list here instead of stderr")
-    ap.add_argument("--design", help="DESIGN.md naming the fonts to embed (default: nearest above the entry)")
+    ap.add_argument("--design", help="DESIGN.md or design id naming the fonts to embed "
+                                    "(default: nearest above the entry, or the Bridge's design)")
     ap.add_argument("--font-dir", action="append", default=[], metavar="DIR",
                     help="extra font directory for embed-fonts.py, searched first")
     args = ap.parse_args(argv)
@@ -694,8 +695,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not entry.is_file():
         print(f"bundle: ERROR input file does not exist: {entry}", file=sys.stderr)
         return 1
-    result = bundle(entry, args.pages, args.allow_remote, Path(args.design) if args.design else None,
-                    [Path(d) for d in args.font_dir])
+    try:
+        design = bridge_design().resolve(args.design) if args.design else None
+        result = bundle(entry, args.pages, args.allow_remote, design, [Path(d) for d in args.font_dir])
+    except ValueError as e:
+        print(f"bundle: ERROR {e}", file=sys.stderr)
+        return 1
     for note in result.notes:
         print(f"bundle: {note}", file=sys.stderr)
     for warning in result.warnings:

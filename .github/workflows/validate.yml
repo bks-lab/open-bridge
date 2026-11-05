@@ -159,8 +159,11 @@ jobs:
       # the frontend suites are node:test without npm dependencies.
       - name: Run bridge-cockpit server tests
         run: python3 -m pytest scripts/tests/test_ai_services.py scripts/tests/test_bridge_cockpit*.py scripts/tests/test_cockpit_costs_contract.py scripts/tests/test_task.py scripts/tests/test_task_review.py scripts/tests/test_triage.py scripts/tests/test_bridge_resources.py scripts/tests/test_cloud_inventory.py -q -rs
+      # The heap cap and the per-test timeout end a runaway view (a render loop, an unbounded list) in seconds
+      # instead of filling the runner; the suites peak near 80 MB of heap and finish in seconds
+      # (scripts/tests/cockpit_render.mjs § the runaway guard).
       - name: Run bridge-cockpit frontend tests
-        run: node --test scripts/tests/bridge_cockpit_*.test.mjs   # every frontend suite, the glob keeps a new one from being left out
+        run: node --max-old-space-size=512 --test --test-timeout=30000 scripts/tests/bridge_cockpit_*.test.mjs   # every frontend suite, the glob keeps a new one from being left out
 
       # The mail-draft engine (skills/mail-draft). Hermetic: osascript is
       # replaced in every client test, so nothing reaches a mail client. The
@@ -190,6 +193,9 @@ jobs:
 
       - name: Data model contract (every family once, renderings generated)
         run: bash scripts/tests/test-data-model.sh
+
+      - name: AGENTS.md keeps its invariants, imports and pointers
+        run: python3 -m pytest -q scripts/tests/test_kernel_invariants.py scripts/tests/test_entry_file.py scripts/tests/test_onboarding_one_path.py
 
       - name: Run edge-guard test suite
         run: bash scripts/tests/test-edges.sh
@@ -250,6 +256,14 @@ jobs:
       - name: Every config family is reachable, and the scenarios walk
         run: python3 scripts/check-reachability.py
 
+      # A sub-agent loads the entry file, its @-imports and the listings, and
+      # no Phase 1: no standing order, no registry card. A family named only in
+      # an eager order is resident in the session and invisible to every
+      # dispatch. CORE names its families in kernel/families.yaml, which AGENTS.md
+      # imports, so this passes by construction once the index is imported.
+      - name: Every config family is reachable from a sub-agent too
+        run: python3 scripts/check-reachability.py --surface subagent
+
       # And the check has to be able to fail. Hide each pointer in turn and
       # demand a finding: a needle that matches nothing softens nothing.
       - name: Prove every reachability needle bites
@@ -257,8 +271,10 @@ jobs:
 
       # One picture of the data model, held to the tree: every config family
       # is described exactly once in docs/data-model.yaml, and the tables in
-      # docs/data-model.md and the ring on the landing page are generated from
-      # it. The landing page said "the agent reads every ring" for weeks after
+      # docs/data-model.md, the ring on the landing page and kernel/families.yaml
+      # (imported by AGENTS.md) are generated from it; it also checks every
+      # route/skill/guide field and guards the AGENTS.md kernel sections.
+      # The landing page said "the agent reads every ring" for weeks after
       # that stopped being true, because nothing compared it with anything.
       - name: The data model covers every family, and its renderings match it
         run: python3 scripts/data-model.py
@@ -350,6 +366,20 @@ jobs:
       # silence. Both were red when they were written.
       - name: Run scope-router regression suite
         run: python3 -m pytest scripts/tests/test_scope_router.py -q
+
+      # The kernel (docs/kernel.md): kernel/manifest.yaml names every file a
+      # session reads before its first answer, where it lives, when it is read
+      # and which file links it, and check-kernel.py holds each promise to the
+      # router, the meter and the data model. docs/ is tiered by folder like
+      # rules/; the suites pin that rule, the scope tables that document it, and
+      # the one-time move a fork runs (scripts/migrate-docs-tier.py).
+      - name: Hold the kernel manifest to the tree
+        run: python3 scripts/check-kernel.py
+      - name: Run kernel, docs-tier and scope-docs suites
+        run: >-
+          python3 -m pytest -q scripts/tests/test_check_kernel.py
+          scripts/tests/test_docs_tier.py scripts/tests/test_migrate_docs_tier.py
+          scripts/tests/test_scope_docs.py
 
       # The archive plan. /archive used to take "the oldest bucket with content"
       # and then reset the WHOLE log, so a log holding twelve periods archived one
@@ -457,6 +487,11 @@ jobs:
       # Bridge with a local wiki directory, no clone, no network.
       - name: Run briefing meeting-obligations suite
         run: python3 -m pytest skills/briefing/tests/test_meeting_obligations.py -q -rs
+
+      # The greeting's usage panel. Hermetic: one bash function against a cache
+      # file in a temp directory, no network.
+      - name: Run bridge-greeting suite
+        run: python3 -m pytest skills/bridge-greeting/tests -q -rs
 
   # The cockpit demo (docs/cockpit-demo/) in a real browser: every page of the
   # page bar opens, in en and de, without a console error. Its own job, so the

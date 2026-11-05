@@ -227,6 +227,17 @@ properties:
     type: string
     description: "Multi-line signature block for emails / documents (text only, no images)"
 
+  design_ref:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9._-]*$"
+    description: >-
+      Id → identity/designs/<id>.md, the design of everything that goes out
+      under this identity, mail included (step 4 of scripts/designs.py
+      resolve). Optional; a context's design_ref wins over it.
+      `default` is reserved: it opts out and stops at the root DESIGN.md, even when
+      the theme names a design. `null` is the same as no key, never an opt-out,
+      so a YAML default cannot switch a design off by accident.
+
 # JSON Schema does not natively express conditional rules, but these are
 # advisory hints for reviewers and future allOf/if-then rules:
 #

@@ -76,7 +76,8 @@ Everything in the `core` tier:
     No `hreflang`: it names one URL per language, and here both share one.
     `scripts/check-site-basics.py` holds the two tags.
 - **Per-language UI string tables** inside a CORE program that has its own
-  user-facing words (today: the cockpit, `scripts/web/text.js`,
+  user-facing words (today: the cockpit, `scripts/web/text.js` with the parts it
+  takes in, `text-areas.js`, `text-card.js`, `text-files.js` and `text-flow.js`,
   `scripts/web/jev/page.js` and `scripts/lib/bridge_cockpit/text.py`, the
   `WORDS` table of the cockpit's invented demo data in `scripts/web/mock.js`, plus
   their generated copy in `docs/cockpit-demo/` (the website demo); the
@@ -151,8 +152,8 @@ languages live in the same CORE file under the same keys.
 open-bridge *is* the English upstream — there is nothing to translate when
 you author here. A downstream fork that contributes CORE upward must
 arrive in English (translate before it lands; open-bridge itself never
-translates incoming CORE). `CLAUDE.md` and `README.md` are the only
-diverged CORE files between tiers — merge them via
+translates incoming CORE). `README.md` and the destination-override `.gitignore`
+are the only diverged CORE files between tiers (no entry file) — merge them via
 `git format-patch | git am --3way`, not a blind checkout.
 
 ## 8. See also

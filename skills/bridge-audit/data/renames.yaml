@@ -160,3 +160,21 @@ vocabulary_renames:
       - "work/"
       - "CHANGELOG.md"
       - "skills/bridge-audit/data/renames.yaml"
+
+  - id: families-index-to-kernel
+    old: "docs/families.md"
+    new: "kernel/families.yaml"
+    reason: "The family index every session imports moved into kernel/ as YAML (docs/kernel.md, 2026-11-05)."
+    since: 2026-11-05
+    exceptions:
+      - "work/log.md"
+      - "work/done/"
+      - "work/archive/"
+      - "work/inbox/"
+      - "CHANGELOG.md"
+      - "kernel/manifest.yaml"
+      - "context-budget.yaml"
+      - "docs/kernel.md"
+      - "docs/updating.md"
+      - "skills/bridge-audit/data/renames.yaml"
+      - "scripts/tests/"

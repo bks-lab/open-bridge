@@ -6,7 +6,7 @@ tabs and sessions, workers, machines, tokens).
     python3 scripts/bridge-cockpit.py serve [--port N] [--ignore-disabled]   # foreground
     python3 scripts/bridge-cockpit.py start [--port N] [--json]              # in the background, reused
     python3 scripts/bridge-cockpit.py open [--via auto|cmux|system|none] [--json]   # start, then open the page
-    python3 scripts/bridge-cockpit.py url                                    # a login link, good once for a minute
+    python3 scripts/bridge-cockpit.py url [--person NAME]                    # a login link, good once for a minute
     python3 scripts/bridge-cockpit.py status [--json]
     python3 scripts/bridge-cockpit.py stop
     python3 scripts/bridge-cockpit.py autostart on|off|status                # macOS: run from login on, always there
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import errno
-import hashlib
 import http.client
 import json
 import os
@@ -66,7 +65,8 @@ except ImportError:
     os.execv(_exe, [_exe, str(Path(__file__).resolve()), *sys.argv[1:]])
 
 from lib.bridge_cockpit import VERSION  # noqa: E402  (path set above)
-from lib.bridge_cockpit.config import WebConfigError, load_web_config  # noqa: E402
+from lib.bridge_cockpit.config import WebConfigError, ai_gaps, load_web_config  # noqa: E402
+from lib.bridge_cockpit.launch import can_launch  # noqa: E402  (also read by scripts/bridge-setup.py)
 from lib.bridge_cockpit.server import default_state_dir  # noqa: E402
 from lib.bridge_cockpit.store import read_json  # noqa: E402
 
@@ -136,14 +136,16 @@ def read_key(state_dir: Path) -> str:
     return value
 
 
-def link(info: dict, state_dir: Path) -> str:
-    """A login link: a code made from the key, good once and for a minute, never the key itself."""
+def link(info: dict, state_dir: Path, person: str | None = None) -> str:
+    """A login link: a code made from the key, good once and for a minute, never the key itself. With a person it
+    logs that person in, who sees only the workspaces naming them under members: (access.py)."""
     from lib.bridge_cockpit.server import login_code
-    return f"http://127.0.0.1:{info['port']}/?code={login_code(read_key(state_dir), time.time() * 1000)}"
+    return f"{plain(info['port'], info.get('local_name'))}?code={login_code(read_key(state_dir), time.time() * 1000, person=person)}"
 
 
-def plain(port: int) -> str:
-    return f"http://127.0.0.1:{port}/"
+def plain(port: int, local_name: str | None = None) -> str:
+    """The page's address: under cockpit.local_name the server's own name on .localhost, else 127.0.0.1"""
+    return f"http://{local_name}.localhost:{port}/" if local_name else f"http://127.0.0.1:{port}/"
 
 
 def start_line(port: int) -> str:
@@ -175,10 +177,13 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
     cfg, code = check_config(root, args.ignore_disabled)
     if cfg is None:
         return code
-    from lib.bridge_cockpit.server import make_server
+    from lib.bridge_cockpit.server import make_server, served_config, served_runner
     port = cfg.port if args.port is None else args.port
+    served = getattr(args, "served", False)
     try:
-        server = make_server(root, port=port, state_dir=state_dir, cfg=cfg, background=False, code_root=DEFAULT_ROOT)
+        server = make_server(root, port=port, state_dir=state_dir, cfg=served_config(cfg) if served else cfg,
+                             runner=served_runner(root, code=DEFAULT_ROOT, ask=cfg.served_ask) if served else None, background=False,
+                             code_root=DEFAULT_ROOT)
     except OSError as error:
         if error.errno in (errno.EADDRINUSE, errno.EACCES):
             if running_info(root, state_dir):
@@ -296,17 +301,18 @@ def cmd_open(args, root: Path, state_dir: Path) -> int:
         except (OSError, subprocess.TimeoutExpired):
             ok = False
     if not ok:
-        print(f"bridge-cockpit: could not open the page. {plain(info['port'])} "
+        print(f"bridge-cockpit: could not open the page. {plain(info['port'], info.get('local_name'))} "
               "(a login link: python3 scripts/bridge-cockpit.py url)", file=sys.stderr)
         if args.json:
             print(json.dumps({"opened": "none", "port": info["port"], "reused": info["reused"], "error": "open failed"}))
         return 5
     if args.json:
-        print(json.dumps({"opened": via, "port": info["port"], "reused": info["reused"]}))
+        print(json.dumps({"opened": via, "port": info["port"], "address": plain(info["port"], info.get("local_name")),
+                          "reused": info["reused"]}))
     elif via == "none":
         print(url)
     else:
-        print(f"opened ({via}): {plain(info['port'])}")
+        print(f"opened ({via}): {plain(info['port'], info.get('local_name'))}")
     return 0
 
 
@@ -315,7 +321,13 @@ def cmd_url(args, root: Path, state_dir: Path) -> int:
     if not info:
         print("bridge-cockpit: not running", file=sys.stderr)
         return 1
-    print(link(info, state_dir))
+    person = getattr(args, "person", None)
+    if person is not None:
+        from lib.bridge_cockpit.access import PERSON_RE
+        if not PERSON_RE.match(person):
+            print("bridge-cockpit: not a person's name", file=sys.stderr)
+            return 2
+    print(link(info, state_dir, person))
     return 0
 
 
@@ -323,6 +335,7 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
     info = running_info(root, state_dir)
     out = {"running": bool(info), "pid": info.get("pid") if info else None, "port": info.get("port") if info else None,
            "started_ms": info.get("started_ms") if info else None, "version": info.get("version") if info else None,
+           "address": plain(info["port"], info.get("local_name")) if info else None,
            "clients": info.get("clients", 0) if info else 0, "relay_online": bool(info.get("relay_online")) if info else False}
     # what the check of the cockpit: block found, read from the file now (the running server may be older)
     try:
@@ -331,10 +344,13 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
         warnings = [str(error)]
     out["config_warnings"] = warnings
     out["can_launch"] = can_launch(root)
+    # a service that is on but stays off for its workflow/ai-services file: a provider its code cannot run, or a
+    # file that cannot be used (docs/ai-services.md)
+    out["provider_gaps"] = ai_gaps(root)
     if args.json:
         print(json.dumps(out))
     elif info:
-        print(f"running: pid {out['pid']}, {plain(out['port'])}, {out['clients']} page(s) open, "
+        print(f"running: pid {out['pid']}, {out['address']}, {out['clients']} page(s) open, "
               f"relay {'online' if out['relay_online'] else 'offline'}")
     else:
         print("not running")
@@ -344,19 +360,14 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
         if out["can_launch"] is False:
             print("warning: agent tabs cannot start: no terminal driver serves launch "
                   "(workplace.driver in bridge-config.yaml, docs/workplace.md)")
+        for g in out["provider_gaps"]:
+            if g["reason"] == "config_invalid":
+                print(f"warning: {g['service']}: workflow/ai-services/{g['service']}.yaml is invalid ({g['error']}): "
+                      "it stays off (docs/ai-services.md)")
+            else:
+                print(f"warning: {g['service']} cannot run on {g['provider']}, only on {', '.join(g['supported'])}: "
+                      "it stays off (docs/ai-services.md, A service your provider cannot run)")
     return 0 if info else 1
-
-
-def can_launch(root: Path) -> bool | None:
-    """Whether the terminal driver starts agent tabs, asked from the driver (`workplace.py caps`) like the server
-    does; None when it did not answer. A cockpit switched on without a driver failed on its first start (18.10.)."""
-    try:
-        run = subprocess.run([sys.executable, str(root / "scripts" / "workplace.py"), "--root", str(root), "caps", "--json"],
-                             capture_output=True, text=True, timeout=15)
-        caps = json.loads(run.stdout).get("caps") if run.returncode == 0 and run.stdout.strip() else None
-    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
-        return None
-    return "launch" in caps if isinstance(caps, list) else None
 
 
 def is_our_server(pid: int) -> bool:
@@ -407,14 +418,12 @@ def cmd_stop(args, root: Path, state_dir: Path) -> int:
 
 # ---------------------------------------------------------------- autostart (macOS login item) and the key
 
-LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
-
-
 def launch_agent(root: Path, state_dir: Path, python: str, path_env: str) -> tuple[str, dict]:
     """The login item of one Bridge: starts `serve` at login and again after a crash, never after `stop`
     (KeepAlive only on an unsuccessful exit). PATH is the one of the shell that switched it on, since the
     cockpit calls cmux, gh, git and claude, and launchd starts with almost none."""
-    label = "ai.open-bridge.cockpit." + hashlib.sha256(str(Path(root)).encode("utf-8")).hexdigest()[:10]
+    from lib.bridge_cockpit import autostart
+    label = autostart.label(root)
     log = str(Path(state_dir) / "stdout.log")    # beside server.log, see start()
     return label, {
         "Label": label,
@@ -439,7 +448,8 @@ def cmd_autostart(args, root: Path, state_dir: Path) -> int:
               file=sys.stderr)
         return 2
     label, plist = launch_agent(root, state_dir, sys.executable, os.environ.get("PATH", "/usr/bin:/bin"))
-    path = LAUNCH_AGENTS / f"{label}.plist"
+    from lib.bridge_cockpit import autostart
+    path = autostart.plist_path(root)
     domain = f"gui/{os.getuid()}"
     loaded = _launchctl("print", f"{domain}/{label}").returncode == 0
     if args.action == "status":
@@ -456,7 +466,7 @@ def cmd_autostart(args, root: Path, state_dir: Path) -> int:
     if cfg is None:
         return code
     state_dir.mkdir(parents=True, exist_ok=True)
-    LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     if loaded:
         _launchctl("bootout", f"{domain}/{label}")
     with open(path, "wb") as fh:
@@ -465,7 +475,7 @@ def cmd_autostart(args, root: Path, state_dir: Path) -> int:
     if done.returncode != 0:
         print(f"bridge-cockpit: launchctl bootstrap failed: {done.stderr.strip()}", file=sys.stderr)
         return 4
-    print(f"autostart on: the cockpit runs from login, {plain(cfg.port)}")
+    print(f"autostart on: the cockpit runs from login, {plain(cfg.port, cfg.local_name)}")
     return 0
 
 
@@ -484,6 +494,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("serve", help="run the server in the foreground")
     p.add_argument("--port", type=int, default=None, help="port (0 = any free one; default cockpit.port)")
     p.add_argument("--ignore-disabled", action="store_true", help="start even when cockpit.enabled is not true")
+    p.add_argument("--served", action="store_true",
+                   help="for an always-on machine: no model, no terminal, no daily triage, a person's entries are pushed")
     p = sub.add_parser("start", help="start in the background or reuse the running server")
     p.add_argument("--port", type=int, default=None)
     p.add_argument("--ignore-disabled", action="store_true")
@@ -491,7 +503,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("open", help="start, then open the page")
     p.add_argument("--via", choices=["auto", "cmux", "system", "none"], default=None)
     p.add_argument("--json", action="store_true")
-    sub.add_parser("url", help="print a login link (a one-time code, good for a minute)")
+    p = sub.add_parser("url", help="print a login link (a one-time code, good for a minute)")
+    p.add_argument("--person", default=None, help="log in this person from members: of a workspace, not the owner")
     p = sub.add_parser("status", help="is it running")
     p.add_argument("--json", action="store_true")
     sub.add_parser("stop", help="stop the server")

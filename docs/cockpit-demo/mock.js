@@ -18,12 +18,31 @@ const WORDS = {
   de: {
     // Today: rows, reasons, headline
     'Review the demo report': 'Den Demo-Bericht prüfen',
+    // the finished AI runs (stage 2 of the one point view)
+    'Check the free space on the backup disk': 'Den freien Platz auf der Sicherungsplatte prüfen',
+    'Find out why the nightly export stopped': 'Herausfinden, warum der nächtliche Export stehen blieb',
+    'Remind the team of the release freeze': 'Das Team an den Release-Stopp erinnern',
+    'Check whether the old export is still used': 'Prüfen, ob der alte Export noch gebraucht wird',
+    'Its check found the problem gone, and the item closed itself. Nothing to do.': 'Seine Prüfung fand das Problem nicht mehr, und der Eintrag hat sich selbst geschlossen. Nichts zu tun.',
+    'the export runs again, its schedule entry was missing': 'der Export läuft wieder, sein Eintrag im Zeitplan fehlte',
+    "The item's action ran. (sent the reminder)": 'Die Aktion des Eintrags ist gelaufen. (Erinnerung verschickt)',
+    'nobody uses the old export any more': 'den alten Export braucht niemand mehr',
+    // the run's own words and the sentences they started with (the prefix Start note: is the server's marker and stays)
+    'Result: the export runs again, its schedule entry was missing': 'Ergebnis: der Export läuft wieder, sein Eintrag im Zeitplan fehlte',
+    'Result: nobody uses the old export any more': 'Ergebnis: den alten Export braucht niemand mehr',
+    'sent the reminder': 'Erinnerung verschickt',
+    'Invented example detail of a finished run.': 'Erfundenes Beispiel für das Detail eines fertigen Laufs.',
+    'Start note: Find out what fills the backup disk': 'Start note: Herausfinden, was die Sicherungsplatte füllt',
+    'Start note: Find out why the nightly export stopped': 'Start note: Herausfinden, warum der nächtliche Export stehen blieb',
+    'Start note: Remind the team of the release freeze': 'Start note: Das Team an den Release-Stopp erinnern',
+    'Start note: Check whether the old export is still used': 'Start note: Prüfen, ob der alte Export noch gebraucht wird',
     'Prepare the alpha release notes': 'Die Notizen zur Alpha-Version vorbereiten',
     'Tidy the issue labels on the demo board': 'Die Issue-Labels auf dem Demo-Board aufräumen',
     'Update the setup docs after the config change': 'Die Einrichtungs-Doku nach der Config-Änderung nachziehen',
     'Sweep old log files in the scratch folder': 'Alte Logdateien im Scratch-Ordner wegräumen',
     'Write the onboarding guide for the demo project': 'Die Einstiegsanleitung für das Demo-Projekt schreiben',
     'Tidy the old setup notes': 'Die alten Einrichtungsnotizen aufräumen',
+    'Result: the vendor takes the current format, nothing to change': 'Ergebnis: Der Anbieter nimmt das jetzige Format, nichts zu ändern',
     'Settle the invoice format with the vendor': 'Das Rechnungsformat mit dem Anbieter klären',
     'Fix the flaky test in example/repo#12': 'Den wackligen Test in example/repo#12 reparieren',
     'Refresh the docs index': 'Den Doku-Index auffrischen',
@@ -32,6 +51,8 @@ const WORDS = {
     'Idea: dark mode for the weekly report': 'Idee: dunkles Design für den Wochenbericht',
     'Renew the test certificate': 'Das Testzertifikat erneuern',
     'due tomorrow': 'fällig morgen',
+    '+1 question': '+1 Frage',
+    'Check: is the report ready to send?': 'Prüfen: Kann der Bericht raus?',
     'only you': 'nur du',
     'tab asks for permission': 'Tab fragt nach Erlaubnis',
     'needs your yes': 'braucht dein Ja',
@@ -73,6 +94,17 @@ const WORDS = {
     'opus · busy · 25 turns · $42.10': 'opus · arbeitet · 25 Züge · $42.10', 'sonnet · idle · 9 turns · $6.80': 'sonnet · ruht · 9 Züge · $6.80',
     'sonnet · waiting · 4 turns · $1.95': 'sonnet · wartet · 4 Züge · $1.95',
     'Demo dashboard': 'Demo-Dashboard', 'Docs refresh': 'Doku auffrischen', 'Release notes': 'Release-Notizen',
+    // the daily log page and its time range (logPage, logDemo)
+    'Daily log': 'Tageslog', 'Log today': 'Log heute', 'no line yet': 'noch keine Zeile', 'Repos, 7 days': 'Repos, 7 Tage', 'no commit': 'kein Commit',
+    'Guide chapter on the vendor export written': 'Kapitel zum Lieferanten-Export geschrieben', 'Examples collected for the guide': 'Beispiele für die Anleitung gesammelt',
+    'Screenshots of the setup taken': 'Bildschirmfotos der Einrichtung gemacht', 'Docs index checked and the links repaired': 'Doku-Index geprüft, Links repariert',
+    'Two pages of the docs merged': 'Zwei Doku-Seiten zusammengelegt', 'Folder layout of the docs drafted': 'Ordneraufbau der Doku entworfen',
+    'Release notes drafted': 'Release Notes entworfen', 'Tag pushed after the review': 'Tag nach dem Review gesetzt',
+    'Changelog linked to the pull requests': 'Changelog mit den Pull Requests verknüpft', 'Invoice export renamed': 'Rechnungsexport umbenannt',
+    'Gateway retry moved to the night run': 'Gateway-Retry in den Nachtlauf verschoben', 'Gateway retry planned with the vendor': 'Gateway-Retry mit dem Lieferanten geplant',
+    'Disk cleaned on the build machine': 'Platte der Build-Maschine aufgeräumt', 'Backup checked, the copy is fresh': 'Sicherung geprüft, die Kopie ist frisch',
+    'Night run watched, all green': 'Nachtlauf beobachtet, alles grün', 'Weekly digest sent': 'Wochenbrief verschickt', 'Topics of the digest collected': 'Themen des Wochenbriefs gesammelt',
+    'Weekly round': 'Wochenrunde',
     'Dates': 'Termine', 'Calendar': 'Kalender', 'no dates': 'keine Termine', 'Mail': 'Mail', 'mail account token expired': 'Token des Mailkontos abgelaufen',
     // agent tabs and sessions
     'Allow edit of RELEASE_NOTES.md?': 'Bearbeiten von RELEASE_NOTES.md erlauben?',
@@ -159,6 +191,111 @@ const WORDS = {
     'Check the open demo reviews': 'Die offenen Demo-Reviews prüfen',
     'Sort the demo inbox': 'Den Demo-Posteingang sortieren',
     'Example answer from the mock: the steps are clear, an agent can take it from here.': 'Beispielantwort aus der Demo: die Schritte sind klar, ein Agent kann übernehmen.',
+    // the briefs of the cards (views/card.js): goal, story parts, criteria, proposals
+    'A new team member sets up the demo project in under an hour': 'Ein neues Teammitglied richtet das Demo-Projekt in unter einer Stunde ein',
+    'a new team member': 'neues Teammitglied', 'a written guide for the demo setup': 'eine schriftliche Anleitung für das Demo-Setup',
+    'I am ready to work on the first day': 'ich am ersten Tag loslegen kann',
+    'Every setup step is written down with its command': 'Jeder Einrichtungsschritt steht mit seinem Befehl da',
+    'Two colleagues followed the guide without asking': 'Zwei Kollegen sind der Anleitung ohne Rückfrage gefolgt',
+    'The guide is linked from the README': 'Die Anleitung ist im README verlinkt',
+    'Readers find every docs page from one index': 'Lesende finden jede Doku-Seite über einen Index',
+    'Every page of the docs folder is listed once': 'Jede Seite des Doku-Ordners steht genau einmal da',
+    'No link of the index is broken': 'Kein Link des Index ist kaputt',
+    'Readers find every page from one index, grouped by topic': 'Lesende finden jede Seite über einen Index, nach Thema gruppiert',
+    'a reader of the docs': 'Leser der Doku', 'one index of every page': 'einen Index aller Seiten', 'I never search the folder': 'ich nie den Ordner durchsuchen muss',
+    'The index groups the pages by topic': 'Der Index gruppiert die Seiten nach Thema',
+    'The alpha release notes name every change since the last tag': 'Die Notizen zur Alpha nennen jede Änderung seit dem letzten Tag',
+    'Each change links its pull request': 'Jede Änderung verlinkt ihren Pull Request',
+    'The notes are reviewed before the tag is pushed': 'Die Notizen sind geprüft, bevor der Tag gepusht wird',
+    'The report of the demo check is ready to read.': 'Der Bericht der Demo-Prüfung liegt zum Lesen bereit.',
+    'The work is done and written down in STATUS.md': 'Die Arbeit ist erledigt und in STATUS.md festgehalten',
+    'Someone else checked the result': 'Jemand anderes hat das Ergebnis geprüft',
+    'First step': 'Erster Schritt',
+    // Work through: the themes, the titles and the reasons of the suggestions
+    'Release work': 'Release-Arbeit',
+    'Docs and guides': 'Doku und Anleitungen',
+    'Board hygiene': 'Board-Pflege',
+    'Release notes from the merged changes': 'Release Notes aus den gemergten Änderungen',
+    'Board: Add a config switch for the report': 'Board: Einen Config-Schalter für den Bericht einbauen',
+    'Only you can say if the switch is wanted': 'Nur du kannst sagen, ob der Schalter gewollt ist',
+    'the linked issue is closed': 'das verknüpfte Issue ist geschlossen',
+    'Polish the wording of the release checklist': 'Den Wortlaut der Release-Checkliste glätten',
+    'The wording waits for the release date': 'Der Wortlaut wartet auf das Release-Datum',
+    'The fixtures are gone from the repository': 'Die Fixtures sind aus dem Repository verschwunden',
+    'Accounts for two new members are ready': 'Zugänge für zwei neue Mitglieder sind bereit',
+    'The board was tidied last week': 'Das Board wurde letzte Woche aufgeräumt',
+    // Work through, round 3: the activity of the demo task, its summary, the mail note of an instruction
+    'Started: find three good sources for the team page': 'Gestartet: drei gute Quellen für die Teamseite finden',
+    'Outline agreed with the team, screenshots come next': 'Gliederung mit dem Team abgestimmt, als Nächstes die Screenshots',
+    'Outline written, examples collected': 'Gliederung geschrieben, Beispiele gesammelt',
+    'example/repo#15 Add a config switch for the report': 'example/repo#15 Einen Config-Schalter für den Bericht einbauen',
+    'example/repo#18 Docs: setup guide outline': 'example/repo#18 Doku: Gliederung der Einrichtungsanleitung',
+    'Finished: three sources found, the result note is filed': 'Fertig: drei Quellen gefunden, die Ergebnisnotiz ist abgelegt',
+    'The new config key needs a line in the setup guide': 'Der neue Config-Schlüssel braucht eine Zeile in der Einrichtungsanleitung',
+    'Started: update the setup docs': 'Gestartet: die Einrichtungs-Doku nachziehen',
+    'Docs and guides': 'Doku und Anleitungen',
+    'Since last week the outline was agreed with the team and the first two chapters stand as a draft. An agent found three sources, and the screenshots come next.':
+      'Seit letzter Woche ist die Gliederung mit dem Team abgestimmt, und die ersten zwei Kapitel stehen als Entwurf. Ein Agent hat drei Quellen gefunden, als Nächstes kommen die Screenshots.',
+    'A file of the demo, invented: nothing here is real.': 'Eine Datei der Demo, erfunden: nichts hier ist echt.',
+    'No verb in the sentence: done, later, drop, a mail or a reply.': 'Kein Verb im Satz: erledigt, später, weg, eine Mail oder eine Antwort.',
+    'Write a mail draft with the mail-draft skill, a draft only, never send it': 'Schreibe einen Mail-Entwurf mit dem Skill mail-draft, nur als Entwurf, niemals senden',
+    'No verb in this part:': 'Kein Verb in diesem Teil:', 'Started from the cockpit': 'Aus dem Cockpit gestartet',
+    // Work through, round 3 after review: the notes the demo gives its verbs, the briefs and steps of its tasks
+    'Mock: the note is kept': 'Demo: Notiz gespeichert', 'Mock: decided': 'Demo: entschieden', 'Mock: put off': 'Demo: verschoben',
+    'Mock: shelved': 'Demo: zurückgestellt', 'Mock: an agent starts on it': 'Demo: ein Agent fängt damit an', 'Mock: back in the list': 'Demo: wieder in der Liste',
+    'Onboard the new team members': 'Die neuen Teammitglieder einarbeiten',
+    'Issue example-org/demo-project#12 links the finished guide': 'Issue example-org/demo-project#12 verlinkt die fertige Anleitung',
+    ' links the finished guide': ' verlinkt die fertige Anleitung',
+    'The open points of the review (§3) are answered': 'Die offenen Punkte des Reviews (§3) sind beantwortet',
+    'The open points of the review (': 'Die offenen Punkte des Reviews (', ') are answered': ') sind beantwortet',
+    'Done, with its result written down in STATUS.md': 'Erledigt, mit dem Ergebnis in STATUS.md festgehalten',
+    'Outline the chapters': 'Die Kapitel gliedern', 'Collect examples from the setup': 'Beispiele aus der Einrichtung sammeln',
+    'Write the first two chapters': 'Die ersten zwei Kapitel schreiben', 'Take the screenshots': 'Die Screenshots machen',
+    'Let a new colleague try the guide': 'Eine neue Kollegin die Anleitung ausprobieren lassen',
+    'List the merged changes since the last tag': 'Die gemergten Änderungen seit dem letzten Tag auflisten',
+    'Link each change to its pull request': 'Jede Änderung mit ihrem Pull Request verlinken',
+    'Answer the open points of the review': 'Die offenen Punkte des Reviews beantworten', 'Push the tag': 'Den Tag pushen',
+    'List every page of the docs folder': 'Jede Seite des Doku-Ordners auflisten', 'Group the pages by topic': 'Die Seiten nach Thema gruppieren',
+    'Check every link of the index': 'Jeden Link des Index prüfen',
+    'Read what is still open': 'Lesen, was noch offen ist', 'Do the work': 'Die Arbeit erledigen', 'Write the result into STATUS.md': 'Das Ergebnis in STATUS.md schreiben',
+    'Outline the guide in chapters, screenshots come next.': 'Die Anleitung in Kapitel gliedern, als Nächstes die Screenshots.',
+    // Work through, round 4: what runs, what is not now, two tasks to merge, a question due later
+    'Reword the release checklist': 'Die Release-Checkliste umformulieren',
+    'Rebuild the search index of the docs site': 'Den Suchindex der Doku-Seite neu bauen',
+    'Restart the three test tunnels on Sunday evening': 'Am Sonntagabend die drei Testtunnel neu starten',
+    'Check the quote for the new laptops': 'Das Angebot für die neuen Laptops prüfen',
+    'Idea: badges for the docs pages': 'Idee: Abzeichen für die Doku-Seiten',
+    'Idea: a workshop on the release process': 'Idee: ein Workshop zum Release-Ablauf',
+    'Review the pull request for the export fix': 'Den Pull Request für die Export-Korrektur prüfen',
+    'Document the new config switch': 'Den neuen Config-Schalter dokumentieren',
+    'Order new business cards': 'Neue Visitenkarten bestellen',
+    'Send the weekly digest': 'Den Wochenüberblick verschicken',
+    'Audit the licenses of the example dependencies': 'Die Lizenzen der Beispiel-Abhängigkeiten prüfen',
+    // stage 4 of the one point view: the names and stands of the briefs, the steps
+    'Two of five setup steps are written down; the review of the demo report comes next.':
+      'Zwei von fünf Einrichtungsschritten sind aufgeschrieben; als Nächstes kommt die Prüfung des Demo-Berichts.',
+    'Lena checks the links of the new index page; one of three criteria is met.': 'Lena prüft die Links der neuen Indexseite; eines von drei Kriterien ist erfüllt.',
+    'The notes list every change; the agent tab asks before it tags the release.': 'Die Notizen nennen jede Änderung; der Agenten-Tab fragt, bevor er die Version markiert.',
+    'Rebuild the search index of the docs site': 'Den Suchindex der Doku-Seite neu aufbauen',
+    'The new index builds; the search box still asks the old one.': 'Der neue Index baut; das Suchfeld fragt noch den alten.',
+    'Switch the search box to the new index': 'Das Suchfeld auf den neuen Index umstellen',
+    'The search box of the docs site finds every page by its words': 'Das Suchfeld der Doku-Seite findet jede Seite über ihre Wörter',
+    'Update the setup docs after the port change': 'Die Einrichtungsdoku nach dem Portwechsel anpassen',
+    'Three sections still name the old port; the Bridge has the change ready for your yes.': 'Drei Abschnitte nennen noch den alten Port; die Bridge hat die Änderung für dein Ja bereit.',
+    'Send the reworded checklist back': 'Die umformulierte Checkliste zurückschicken',
+    'Alex rewords the checklist; the first draft came on Monday.': 'Alex formuliert die Checkliste um; der erste Entwurf kam am Montag.',
+    "Kim compares the quote with last year's order.": 'Kim vergleicht das Angebot mit der Bestellung vom letzten Jahr.',
+    'Polish the wording of the release checklist': 'Den Wortlaut der Release-Checkliste glätten',
+    'Check the quote for the new laptops': 'Das Angebot für die neuen Laptops prüfen',
+    'Compare both wordings and keep the clearer one': 'Beide Fassungen vergleichen und die klarere behalten',
+    'Two wordings of the checklist exist; the Bridge can compare them.': 'Es gibt zwei Fassungen der Checkliste; die Bridge kann sie vergleichen.',
+    // an item's next step as card.py words it (text.py next), shown on its step line
+    'decide': 'entscheiden', 'give your yes': 'dein Ja geben', 'read': 'lesen', 'check the result': 'Ergebnis prüfen',
+    'The report waits for a read': 'Der Bericht wartet aufs Lesen',
+    // what the Bridge found before the check-in (checkin.py)
+    'Alex wrote in a note that the reworded checklist is ready for a read, and the pull request example/tools#4 is merged.':
+      'Alex hat in einer Notiz geschrieben, dass die umformulierte Checkliste zum Lesen bereit ist, und der Pull Request example/tools#4 ist gemergt.',
+    'the state of example/repo#9': 'den Stand von example/repo#9',
   },
 }
 
@@ -179,11 +316,21 @@ function row(over) {
     has_action: false, inbox_state: null, inbox_key: null, mark: null, is_new: false, is_changed: false,
     tab: null, actions: [{ id: 'ask', primary: false, dim: false }], selectable: false, starting: false,
     adopt_candidates: [], team: null, team_suggestions: [], closable: false, settle: ['done', 'not_doing'], review: null,
+    status: null, next: null,
+    // round 4: when a task last moved (STATUS.md last_updated), the day an item put off comes back
+    updated: null, until: null,
+    // round 6: the GitHub list the row also stands in (collector.py on_board)
+    on_board: null,
+    // the asks filed about the row that the briefing folded into it (collector.py also_inbox)
+    also_inbox: [],
     ...over,
   }
 }
 
 const A = (id, primary = false, dim = false) => ({ id, primary, dim })
+
+/** Where a row comes from, in the shape the server sends (lib/bridge_cockpit/origin.py classify_row) */
+const O = (category, detail = null, raw = null, extra = {}) => ({ category, word_key: null, detail, raw, ref: null, via_cockpit: false, ...extra })
 
 // the model an agent tab starts with: what bridge-config.yaml would say, and the state block the server builds from it
 const LAUNCH_CONFIG = {
@@ -358,7 +505,7 @@ function hhmm(ms) {
 const GLYPH_TABS = new Set(['surface:9', 'surface:11'])
 // what the terminal driver serves (workplace.py caps): everything, renaming workspaces included
 const DRIVER_CAPS = ['tabs', 'sessions', 'open', 'launch', 'send', 'rename', 'control', 'focus', 'key', 'screen', 'close',
-  'workspaces', 'rename_workspace', 'move_tab', 'set_color', 'set_description']
+  'workspaces', 'rename_workspace', 'move_tab', 'set_color', 'set_description', 'keys']
 // the portable workspace colours (workplace.py COLORS): a workspace reports its hex and the name of it
 const PALETTE = { Red: '#C0392B', Crimson: '#922B21', Orange: '#A04000', Amber: '#7D6608', Olive: '#4A5C18', Green: '#196F3D',
   Teal: '#006B6B', Aqua: '#0E6B8C', Blue: '#1565C0', Navy: '#1A5276', Indigo: '#283593', Purple: '#6A1B9A', Magenta: '#AD1457',
@@ -375,31 +522,175 @@ function organizeProposal(now) {
   ] }
 }
 
+// the briefs of the demo (card_fields.py shape) and how describe sees them: who wrote them, outdated or not, a proposal
+const MOCK_BRIEFS = {
+  'task:demo-task': { brief: { goal: 'A new team member sets up the demo project in under an hour',
+    stand: 'Two of five setup steps are written down; the review of the demo report comes next.',
+    story: { as: 'a new team member', want: 'a written guide for the demo setup', so_that: 'I am ready to work on the first day' },
+    acceptance: ['Every setup step is written down with its command', 'Two colleagues followed the guide without asking',
+      'Issue example-org/demo-project#12 links the finished guide'], by: 'claude-haiku-5-5', at: '2026-10-08', edited: false },
+  written: 'ai', stale: false, progress: { done: 2, total: 5 },
+  // the parts card.py sends where a criterion names a reference (brief_refs.py): here an issue, as a link
+  refs: { goal: null, story: null, acceptance: [null, null, [{ text: 'Issue ' },
+    { text: 'example-org/demo-project#12', ref: { kind: 'web', href: 'https://example.org/demo-project/issues/12' } },
+    { text: ' links the finished guide' }]] } },
+  // its next step taken by a colleague, as STATUS.md names her (next.who: lena)
+  'task:docs-refresh': { who: 'lena', brief: { goal: 'Readers find every docs page from one index',
+    stand: 'Lena checks the links of the new index page; one of three criteria is met.',
+    acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken'], by: 'claude-haiku-5-5', at: '2026-10-02', edited: true },
+  written: 'human', stale: false, progress: { done: 1, total: 3 },
+  proposal: { id: 'd0a1b2c3d4e', by: 'claude-haiku-5-5', brief: { goal: 'Readers find every page from one index, grouped by topic',
+    story: { as: 'a reader of the docs', want: 'one index of every page', so_that: 'I never search the folder' },
+    acceptance: ['Every page of the docs folder is listed once', 'No link of the index is broken', 'The index groups the pages by topic'] } } },
+  'task:alpha-release': { brief: { goal: 'The alpha release notes name every change since the last tag',
+    stand: 'The notes list every change; the agent tab asks before it tags the release.',
+    acceptance: ['Each change links its pull request', 'The open points of the review (§3) are answered'], by: 'claude-haiku-5-5', at: '2026-09-28', edited: false },
+  written: 'ai', stale: true, progress: { done: 3, total: 4 },
+  // a reference nobody can reach from the card: which review? The card says so, and the brief is tried once more
+  refs: { goal: null, story: null, acceptance: [null, [{ text: 'The open points of the review (' }, { text: '§3', unresolved: true },
+    { text: ') are answered' }]] }, extraGaps: ['unresolved_ref'] },
+  // the owner's step by her name in STATUS.md (next.who: mara): the who chip says you, as the band does
+  'task:old-cleanup': { next: 'First step', who: 'mara', progress: { done: 0, total: 2 } },
+  // stage 4: an H1 that is a slug, and an item whose title is long and technical, each named by its brief; a step the
+  // Bridge takes; a step with someone until its check-in day (buildState sets the days)
+  'task:search-index': { who: 'bridge', next: 'Switch the search box to the new index',
+    brief: { name: 'Rebuild the search index of the docs site', stand: 'The new index builds; the search box still asks the old one.',
+      goal: 'The search box of the docs site finds every page by its words', by: 'claude-haiku-5-5', at: '2026-10-06', edited: false },
+    written: 'ai', stale: false, progress: { done: 2, total: 3 } },
+  'inbox:20261009-0915-update-docs-e5f6': { brief: { name: 'Update the setup docs after the port change',
+    stand: 'Three sections still name the old port; the Bridge has the change ready for your yes.', by: 'claude-haiku-5-5', at: '2026-10-09' } },
+  'task:release-wording': { who: 'bridge', next: 'Compare both wordings and keep the clearer one',
+    brief: { stand: 'Two wordings of the checklist exist; the Bridge can compare them.', by: 'claude-haiku-5-5', at: '2026-10-07' } },
+  'task:release-polish': { who: 'alex', next: 'Send the reworded checklist back',
+    brief: { stand: 'Alex rewords the checklist; the first draft came on Monday.', by: 'claude-haiku-5-5', at: '2026-10-05' } },
+  'inbox:20261008-1600-quote-check-3e4f': { brief: { stand: 'Kim compares the quote with last year\'s order.', by: 'claude-haiku-5-5', at: '2026-10-08' } },
+  'inbox:20261009-0940-filed-board-c2d3': { gaps: ['no_goal', 'task_closed', 'no_content'], closedTask: 'release-notes-2026-09' },
+  'inbox:20261009-0900-review-demo-a1b2': { summary: 'The report of the demo check is ready to read.' },
+}
+
+const GATE_OWNER = { 'only-you': 'me', 'your-yes': 'bridge_then_me', free: 'bridge' }
+// what a person sees an inbox row as (lib/inbox_verbs.py ART_OF_KIND); an unknown kind is an ask
+const ART_OF_KIND = { decision: 'ask', question: 'ask', draft: 'ask', finding: 'report', result: 'report', idea: 'idea' }
+
+/** A row's card and describe view, in the shape card.py and describe.py send them: invented from the row and its brief */
+function mockCard(r, m = {}, now = Date.now()) {
+  m = m ?? {}
+  const inbox = !!r.inbox_id
+  const task = !!r.task && !inbox
+  const kind = inbox ? 'inbox' : task ? (r.work_kind === 'stream' || r.stream ? 'stream' : 'task') : 'info'
+  const b = m.brief ?? null
+  const what = m.next ?? r.next?.what ?? null
+  const next = task ? (what ? { what, who: m.who ?? (r.next?.from === 'status' || m.next ? 'me' : null), due: null, from: r.next?.from ?? 'status', since: r.next?.since ?? null,
+    check: m.check ?? null } : null)
+    : inbox ? { what: r.inbox_kind === 'decision' ? 'decide' : r.gate === 'your-yes' ? 'give your yes' : r.inbox_kind === 'result' ? 'check the result' : 'read',
+      who: r.gate === 'free' ? 'bridge' : 'me', due: r.due ?? null, from: 'item', since: null } : null
+  const gaps = m.gaps ?? (task ? [!b?.goal && 'no_goal', !next && 'no_next', m.next === 'First step' && 'placeholder_next',
+    ...(m.extraGaps ?? [])].filter(Boolean)
+    : inbox ? ['no_goal'] : [])
+  const closed = m.closedTask ?? null
+  const links = task ? [{ kind: 'task', key: r.task, label: r.title, closed: false }]
+    : inbox ? [{ kind: 'inbox', key: r.inbox_id, label: r.title }, ...(r.task || closed ? [{ kind: 'task', key: closed ?? r.task, label: closed ?? r.task, closed: !!closed }] : [])]
+      : r.link?.kind === 'web' ? [{ kind: 'web', href: r.link.href, label: r.ref ?? r.title }] : []
+  const card = {
+    kind, subkind: inbox ? r.inbox_kind ?? null : kind === 'info' && r.ref ? 'tracker' : null, title: r.title,
+    // stage 4: what the brief calls it and where it stands (card_fields.py name, stand)
+    name: b?.name ?? null, stand: b?.stand ?? null,
+    summary: m.summary ?? null, goal: b?.goal ?? null, story: b?.story ?? null, acceptance: b?.acceptance ?? null,
+    brief_refs: m.refs ?? null, next,
+    state: { word: inbox ? r.inbox_state ?? 'open' : task ? r.status ?? 'doing' : r.status ?? null, blocked_by: null, since: null },
+    owner: inbox ? GATE_OWNER[r.gate] ?? null : null, priority: r.priority ?? null, due: r.due ?? null, area: r.area ?? null,
+    updated: null, source: r.origin ?? null, links, progress: m.progress ?? null,
+    written: b ? (m.written === 'human' ? 'human' : 'ai') : m.summary ? 'item' : 'title', gaps,
+  }
+  const describe = b?.goal || m.proposal ? { written: m.written ?? null, stale: !!m.stale, stale_why: m.stale ? 'basis' : null,
+    running: false, last_error: null, warnings: (m.extraGaps ?? []).includes('unresolved_ref') ? ['Unresolved reference: §3'] : [],
+    model_mismatch: false, proposal: m.proposal ? { ...m.proposal, at_ms: now - 40 * MIN } : null, by: b?.by ?? null, at: b?.at ?? null } : null
+  return { card, describe }
+}
+
+/** What the demo's describe writes for a row without a brief: invented, in the shape the model answers with */
+function mockBrief(r) {
+  return { goal: 'Done, with its result written down in STATUS.md', acceptance: r.stream ? [] : ['The work is done and written down in STATUS.md', 'Someone else checked the result'],
+    by: 'claude-haiku-5-5', edited: false }
+}
+
+/** The open rows as the server counts them (collector.py counts.flow_open): the keys of the sections, of the hidden rows
+ *  not settled here, of every file, of every open task a page names (task_rows, closable or a stream) and of every item
+ *  put off past the window (deferred), each once. Its own loop, so the page's universe (flow.js) is checked against it */
+function openCount(sections, hidden, files, taskRows = [], deferred = []) {
+  const keys = new Set()
+  for (const sec of sections) for (const r of sec.rows) keys.add(r.key)
+  for (const r of hidden) if (r.settled_as == null) keys.add(r.key)
+  for (const f of files ?? []) keys.add(`task:${f.slug}`)
+  for (const r of taskRows) if (r.closable || r.stream) keys.add(r.key)
+  for (const r of deferred) keys.add(r.key)
+  return keys.size
+}
+
+// the log page's time range (/api/logrange): six invented weeks of log rows, the own commits of four invented
+// repositories and the history beside the log, the same every time for the same day (a seeded sequence)
+const LOG_TOPICS = [
+  ['demo-task', '🔧', ['Guide chapter on the vendor export written', 'Examples collected for the guide', 'Screenshots of the setup taken']],
+  ['docs-refresh', '📝', ['Docs index checked and the links repaired', 'Two pages of the docs merged', 'Folder layout of the docs drafted']],
+  ['alpha-release', '🚀', ['Release notes drafted', 'Tag pushed after the review', 'Changelog linked to the pull requests']],
+  ['billing', '✅', ['Invoice export renamed', 'Gateway retry moved to the night run', 'Gateway retry planned with the vendor']],
+  ['ops', '🔍', ['Disk cleaned on the build machine', 'Backup checked, the copy is fresh', 'Night run watched, all green']],
+  ['weekly-digest', '💬', ['Weekly digest sent', 'Topics of the digest collected']]]
+const LOG_REPOS = [['example/app', 'main', 5], ['example/tools', 'dev', 2], ['example/docs', 'main', 3], ['example/site', 'main', 1]]
+const LOG_DAYS = 42
+
+/** The daily log page (views/logpage.js with its time range): today's rows of the invented log under their hours, the
+ *  own commits of the last seven days as tiles beside them; the range reads the rest from /api/logrange */
+function logPage(now, item) {
+  const demo = logDemo(now)
+  const today = demo.rows.filter(r => r.date === demo.today)
+  const week = Math.floor(now / 1000) - 6 * 86400
+  const tiles = demo.repos.map(r => ({ r, n: r.ts.filter(t => new Date(t * 1000).toDateString() === new Date(now).toDateString()).length,
+    week: r.ts.filter(t => t >= week).length })).filter(x => x.week)
+  return {
+    id: 'log', title: 'Daily log', badge: { kind: 'none' }, search: true, sections: [
+      { id: 'activity', kind: 'activity', view: 'log', title: 'Log today', status: 'ok', reason: '', alarm: false, empty: 'no line yet',
+        count: today.length, total: today.length, weight: 0, bad: 0, as_of: hhmm(now), more: 0,
+        items: today.map((r, i) => item(i, { title: r.title, when: r.time, at: `${r.date}T${r.time}`, glyph: r.glyph, group: r.group, detail: r.group, about_task: r.about_task })) },
+      { id: 'commits', kind: 'commits', place: 'rail', title: 'Repos, 7 days', status: 'ok', reason: '', alarm: false, empty: 'no commit',
+        count: tiles.length, total: tiles.length, weight: 0, bad: 0, as_of: hhmm(now), more: 0,
+        items: tiles.map((x, i) => item(i, { title: x.r.repo, when: `${x.n} today`, detail: `▁▂▅█ ${x.r.branch}`, tone: x.n ? null : 'dim',
+          link: { kind: 'web', href: x.r.url } })) },
+    ],
+  }
+}
+
 export function buildState(now = Date.now(), opts = {}) {
   const empty = !!opts.empty
   const rows = {
     review: row({
       key: 'inbox:20261009-0900-review-demo-a1b2', bucket: 'do', section: 'now', title: 'Review the demo report',
-      why: ['due tomorrow', 'only you'], sources: ['inbox'], inbox_id: '20261009-0900-review-demo-a1b2', gate: 'only-you',
+      origin: O('skill', 'briefing/morning', 'briefing/morning'), work_kind: 'task', inbox_kind: 'decision',
+      why: ['due tomorrow', 'only you', '+1 question'], sources: ['inbox'], inbox_id: '20261009-0900-review-demo-a1b2', gate: 'only-you',
+      also_inbox: [{ id: '20261009-1100-check-review-b2c3', title: 'Check: is the report ready to send?' }],
       task: 'demo-task', urgency: 'today', area: 'Demo', area_names: ['Demo'], task_type: 'feature', due: isoIn(1, now),
       inbox_state: 'open', inbox_key: 'demo-review', mark: { label: 'Demo', color: 'blue' }, is_new: true,
       actions: [A('done', true), A('advise')], selectable: true,
     }),
     release: row({
       key: 'task:alpha-release', bucket: 'do', section: 'now', title: 'Prepare the alpha release notes',
-      why: ['tab asks for permission'], sources: ['tasks'], task: 'alpha-release', priority: 'P0', urgency: 'now',
+      origin: O('bridge', null, 'Ad-hoc 2026-10-02'), work_kind: 'task',
+      why: ['tab asks for permission'], sources: ['tasks'], task: 'alpha-release', priority: 'P0', urgency: 'now', status: 'doing',
       area: 'Ops', area_names: ['Ops'], task_type: 'ops', mark: { label: 'Ops', color: 'red' },
       tab: { ref: 'surface:7', state: 'needs-you', live: true, waiting: true },
       actions: [A('to_tab', true)], team: { team_id: 'build', started: 1, next_role: { id: 'review', name: 'Review' }, ready: false, waiting_for: 'Implement' },
     }),
     labels: row({
       key: 'inbox:20261009-0910-tidy-labels-c3d4', bucket: 'delegate', section: 'give', title: 'Tidy the issue labels on the demo board',
+      origin: O('bot', 'issue-radar', 'homebox/issue-radar', { ref: 'example/repo#3' }), inbox_kind: 'finding',
       why: ['needs your yes'], sources: ['inbox'], inbox_id: '20261009-0910-tidy-labels-c3d4', gate: 'your-yes', has_action: true,
       priority: 'P2', area: 'Demo', area_names: ['Demo'], inbox_state: 'open', inbox_key: 'tidy-labels',
       actions: [A('do', true), A('advise')], selectable: true,
     }),
     docs: row({
-      key: 'inbox:20261009-0915-update-docs-e5f6', bucket: 'delegate', section: 'give', title: 'Update the setup docs after the config change',
+      key: 'inbox:20261009-0915-update-docs-e5f6', bucket: 'delegate', section: 'give',
+      title: 'config: docs/setup.md still names port 8790 after the switch to cockpit.port in scripts/web/config.yaml (3 sections)',
+      origin: O('session', 'claude', 'claude'), inbox_kind: 'decision',
       why: ['needs your yes', `due ${isoIn(-3, now).slice(8)}.${isoIn(-3, now).slice(5, 7)}`, 'changed since 08:40'], due: isoIn(-3, now),
       sources: ['inbox'], inbox_id: '20261009-0915-update-docs-e5f6', gate: 'your-yes',
       has_action: true, area: 'Docs', area_names: ['Docs'], inbox_state: 'open', inbox_key: 'update-docs',
@@ -407,13 +698,16 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     sweep: row({
       key: 'inbox:20261009-0920-sweep-logs-0a0b', bucket: 'plan', section: 'give', title: 'Sweep old log files in the scratch folder',
+      origin: O('bot', 'nightly-sweep', 'homebox/nightly-sweep'), inbox_kind: 'result',
       why: ['may run alone'], sources: ['inbox'], inbox_id: '20261009-0920-sweep-logs-0a0b', gate: 'free', has_action: true,
       area: 'Ops', area_names: ['Ops'], inbox_state: 'approved', inbox_key: 'sweep-logs',
       actions: [A('approved', false, true)],
     }),
     demo: row({
       key: 'task:demo-task', bucket: 'tasks', section: 'work', title: 'Write the onboarding guide for the demo project',
-      why: ['1 in the inbox'], sources: ['tasks'], task: 'demo-task', priority: 'P1', area: 'Demo', area_names: ['Demo'],
+      origin: O('bridge', null, 'Ad-hoc 2026-10-01'), work_kind: 'task',
+      why: ['1 in the inbox'], sources: ['tasks'], task: 'demo-task', priority: 'P1', area: 'Demo', area_names: ['Demo'], status: 'doing',
+      next: { what: 'Review the demo report', from: 'inbox', since: isoIn(-2, now), key: 'inbox:20261009-0900-review-demo-a1b2' },
       task_type: 'feature', actions: [A('do', true), A('advise')], selectable: true, closable: true,
       adopt_candidates: [{ ref: 'surface:9', name: 'notes', workspace: 'Demo' }], team_suggestions: ['build', 'research'],
       link: { kind: 'file', path: 'work/tasks/demo-task/STATUS.md' },
@@ -424,6 +718,7 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     quiet: row({
       key: 'task:quiet-docs', bucket: 'tasks', section: 'work', title: 'Tidy the old setup notes',
+      origin: O('skill', 'debrief', 'debrief 2026-09-02 weekly'), work_kind: 'task',
       sources: ['tasks'], task: 'quiet-docs', priority: 'P3', area: 'Docs', area_names: ['Docs'], closable: true,
       actions: [A('do', true), A('advise')],
       review: { verdict: 'stale', reason: 'No log row, commit or note for 34 days and nothing blocks it.', confidence: 'high',
@@ -432,6 +727,7 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     waits: row({
       key: 'task:vendor-reply', bucket: 'tasks', section: 'work', title: 'Settle the invoice format with the vendor',
+      origin: O('bridge', null, null), work_kind: 'task',
       sources: ['tasks'], task: 'vendor-reply', priority: 'P2', area: 'Demo', area_names: ['Demo'], closable: true,
       actions: [A('do', true), A('advise')],
       review: { verdict: 'waiting', reason: 'The vendor has not answered the question from 02.10 yet (example/repo#9 open).',
@@ -441,49 +737,193 @@ export function buildState(now = Date.now(), opts = {}) {
     }),
     flaky: row({
       key: 'ref:example/repo#12', bucket: 'plan', section: 'track', title: 'Fix the flaky test in example/repo#12',
+      origin: O('github', 'example/repo', null, { ref: 'example/repo#12' }), work_kind: null,
       why: ['assigned to you', 'quiet for 3 days'], sources: ['github'], ref: 'example/repo#12', priority: 'P2',
       url: 'https://example.org/repo/issues/12', link: { kind: 'web', href: 'https://example.org/repo/issues/12' },
-      mark: { label: 'Demo', color: 'blue' }, actions: [A('ask')],
+      mark: { label: 'Demo', color: 'blue' }, actions: [A('ask')], on_board: { page: 'trackers', section: 'mine' },
     }),
     index: row({
       key: 'task:docs-refresh', bucket: 'tasks', section: 'work', title: 'Refresh the docs index', sources: ['tasks'],
-      task: 'docs-refresh', priority: 'P2', area: 'Docs', area_names: ['Docs'], task_type: 'docs',
+      origin: O('work', 'team-onboarding', 'inbox 20261001-0900-index-b2c3 (2026-10-01, team-onboarding): Refresh the docs index', { word_key: 'stream' }), work_kind: 'task',
+      task: 'docs-refresh', priority: 'P2', area: 'Docs', area_names: ['Docs'], task_type: 'docs', status: 'doing',
+      next: { what: 'Check the links of the new index page', from: 'status', since: isoIn(-3, now), key: null },
       tab: { ref: 'surface:8', state: 'working', live: true, waiting: false }, actions: [A('to_tab', true)],
+    }),
+    // a task in progress that no tab drives: Work through says when it last moved and offers to go on with it
+    polish: row({
+      key: 'task:release-polish', bucket: 'tasks', section: 'work', title: 'Polish the wording of the release checklist', sources: ['tasks'],
+      origin: O('bridge', null, 'Ad-hoc 2026-10-03'), work_kind: 'task', task: 'release-polish', priority: 'P2', area: 'Ops', area_names: ['Ops'],
+      status: 'doing', updated: isoIn(-4, now), actions: [A('do', true), A('advise')], selectable: true, closable: true,
     }),
     cleanup: row({
       key: 'task:old-cleanup', bucket: 'tasks', section: 'work', title: 'Clean up the old example fixtures', sources: ['tasks'],
-      task: 'old-cleanup', priority: 'P3', area: 'Ops', area_names: ['Ops'], actions: [A('do', true), A('advise')], selectable: true,
+      origin: O('session', 'codex', 'inbox 20260930-1000-fixtures-d4e5 (2026-09-30, codex): Clean up the old example fixtures'), work_kind: 'task',
+      task: 'old-cleanup', priority: 'P3', area: 'Ops', area_names: ['Ops'], status: 'review', actions: [A('do', true), A('advise')], selectable: true,
     }),
     vendor: row({
       key: 'inbox:20261008-1400-vendor-reply-9f9f', bucket: 'waiting', section: 'later', title: 'Waiting for the reply on the license question',
+      origin: O('person', 'alex', 'alex'), inbox_kind: 'question',
       why: ['asked 2 days ago'], sources: ['inbox'], inbox_id: '20261008-1400-vendor-reply-9f9f', gate: 'only-you', area: 'Demo',
       area_names: ['Demo'], inbox_state: 'open', inbox_key: 'license-reply', actions: [A('follow_up')],
     }),
     idea: row({
       key: 'task:report-dark-mode', bucket: 'resting', section: 'later', title: 'Idea: dark mode for the weekly report',
+      origin: O('other', 'team-notes', 'team-notes'), work_kind: 'task',
       why: ['quiet for 12 days'], sources: ['tasks'], task: 'report-dark-mode', priority: 'P3', area: 'Docs', area_names: ['Docs'],
       actions: [A('do', true), A('advise')], selectable: true,
+    }),
+    // a stream, a report about it from its own tab, a GitLab issue, a row the cockpit filed from a board row
+    onboarding: row({
+      key: 'task:team-onboarding', bucket: 'tasks', section: 'work', title: 'Onboard the new team members', sources: ['tasks'],
+      task: 'team-onboarding', priority: 'P2', area: 'Demo', area_names: ['Demo'], status: 'doing', stream: true, work_kind: 'stream',
+      origin: O('bridge', null, 'Ad-hoc 2026-09-15'), actions: [A('do', true), A('advise')], selectable: true,
+    }),
+    onboardingNote: row({
+      key: 'inbox:20261009-0930-onboarding-note-b1c2', bucket: 'plan', section: 'later', title: 'Accounts for two new members are ready',
+      sources: ['inbox'], inbox_id: '20261009-0930-onboarding-note-b1c2', gate: 'free', task: 'team-onboarding', area: 'Demo',
+      area_names: ['Demo'], inbox_state: 'open', inbox_key: 'tab-team-onboarding-accounts', work_kind: 'stream', inbox_kind: 'result',
+      origin: O('session', 'team-onboarding', 'tab:team-onboarding'), actions: [A('done', true)],
+    }),
+    gitlab: row({
+      key: 'item:grp/app#3', bucket: 'plan', section: 'track', title: 'Update the deploy notes', sources: ['gitlab'], ref: 'grp/app#3',
+      url: 'https://example.org/grp/app/-/issues/3', link: { kind: 'web', href: 'https://example.org/grp/app/-/issues/3' },
+      origin: O('tracker', 'grp/app', null, { word_key: 'GitLab', ref: 'grp/app#3' }), actions: [A('ask')],
+    }),
+    // Work through, round 4: two tasks on the same thing to merge, a task a live tab works on (recognised from its
+    // session), a question due on Sunday evening (Not now, Later, until two days before), an item put off with its day,
+    // an idea in the inbox, a pull request in Now (a point), an issue and a pull request watched
+    reword: row({
+      key: 'task:release-wording', bucket: 'tasks', section: 'work', title: 'Reword the release checklist', sources: ['tasks'],
+      origin: O('bridge', null, 'Ad-hoc 2026-10-05'), work_kind: 'task', task: 'release-wording', priority: 'P2', area: 'Ops', area_names: ['Ops'],
+      status: 'review', updated: isoIn(-2, now), actions: [A('do', true), A('advise')], selectable: true, closable: true,
+    }),
+    search: row({
+      key: 'task:search-index', bucket: 'tasks', section: 'work', title: 'search-index', sources: ['tasks'],
+      origin: O('bridge', null, 'Ad-hoc 2026-10-06'), work_kind: 'task', task: 'search-index', priority: 'P2', area: 'Docs', area_names: ['Docs'],
+      status: 'doing', updated: isoIn(0, now), actions: [A('do', true), A('advise')], selectable: true, closable: true,
+    }),
+    tunnels: row({
+      key: 'inbox:20261009-1010-restart-tunnels-7c1d', bucket: 'plan', section: 'give', title: 'Restart the three test tunnels on Sunday evening',
+      origin: O('person', 'sam', 'sam'), inbox_kind: 'question', why: ['due on Sunday'], sources: ['inbox'], inbox_id: '20261009-1010-restart-tunnels-7c1d',
+      gate: 'only-you', area: 'Ops', area_names: ['Ops'], urgency: 'later', due: `${isoIn(5, now)}T19:00`, inbox_state: 'open', inbox_key: 'restart-tunnels',
+      actions: [A('done', true), A('advise')], selectable: true,
+    }),
+    deferred: row({
+      key: 'inbox:20261008-1600-quote-check-3e4f', bucket: 'plan', section: 'later', title: 'Check the quote for the new laptops',
+      origin: O('person', 'kim', 'kim'), inbox_kind: 'decision', sources: ['inbox'], inbox_id: '20261008-1600-quote-check-3e4f', gate: 'only-you',
+      area: 'Ops', area_names: ['Ops'], inbox_state: 'deferred', until: isoIn(3, now), inbox_key: 'quote-check', actions: [A('done', true)],
+    }),
+    badges: row({
+      key: 'inbox:20261009-0950-idea-badges-5a6b', bucket: 'plan', section: 'later', title: 'Idea: badges for the docs pages',
+      origin: O('person', 'lee', 'lee'), inbox_kind: 'idea', sources: ['inbox'], inbox_id: '20261009-0950-idea-badges-5a6b', gate: 'free',
+      area: 'Docs', area_names: ['Docs'], inbox_state: 'open', inbox_key: 'idea-badges', actions: [A('done', true)],
+    }),
+    exportPr: row({
+      key: 'ref:example/tools#21', bucket: 'do', section: 'now', title: 'Review the pull request for the export fix', sources: ['github'],
+      origin: O('github', 'example/tools', null, { ref: 'example/tools#21' }), ref: 'example/tools#21', urgency: 'today', priority: 'P1',
+      url: 'https://example.org/tools/pull/21', link: { kind: 'web', href: 'https://example.org/tools/pull/21' }, actions: [A('ask')],
+    }),
+    checklistPr: row({
+      key: 'ref:example/tools#4', bucket: 'plan', section: 'track', title: 'Release checklist', sources: ['github'],
+      origin: O('github', 'example/tools', null, { ref: 'example/tools#4' }), ref: 'example/tools#4',
+      url: 'https://example.org/tools/pull/4', link: { kind: 'web', href: 'https://example.org/tools/pull/4' }, actions: [A('ask')],
+      on_board: { page: 'trackers', section: 'mine' },
+    }),
+    switchDocs: row({
+      key: 'ref:example/repo#18', bucket: 'plan', section: 'track', title: 'Document the new config switch', sources: ['github'],
+      origin: O('github', 'example/repo', null, { ref: 'example/repo#18' }), ref: 'example/repo#18',
+      url: 'https://example.org/repo/issues/18', link: { kind: 'web', href: 'https://example.org/repo/issues/18' }, actions: [A('ask')],
+    }),
+    filed: row({
+      key: 'inbox:20261009-0940-filed-board-c2d3', bucket: 'plan', section: 'later', title: 'Board: Add a config switch for the report',
+      sources: ['inbox'], inbox_id: '20261009-0940-filed-board-c2d3', gate: 'free', inbox_state: 'open', inbox_kind: 'decision',
+      inbox_key: 'briefing:morning:mine:example/repo#15',
+      origin: O('github', 'example/repo', 'bridge-cockpit', { ref: 'example/repo#15', via_cockpit: true }), actions: [A('done', true)],
     }),
   }
   const sec = (id, list, compact) => ({ id, total: list.length, rows: list, compact: compact.map(r => r.key) })
   const sections = empty ? [sec('now', [], []), sec('give', [], []), sec('work', [], []), sec('track', [], []), sec('later', [], [])] : [
-    sec('now', [rows.review, rows.release], [rows.review, rows.release]),
-    sec('give', [rows.labels, rows.docs, rows.sweep], [rows.labels, rows.docs, rows.sweep]),
-    sec('work', [rows.demo, rows.index, rows.cleanup], [rows.demo, rows.index]),
-    sec('track', [rows.flaky], []),
-    sec('later', [rows.vendor, rows.idea], []),
+    sec('now', [rows.review, rows.release, rows.exportPr], [rows.review, rows.release]),
+    sec('give', [rows.labels, rows.docs, rows.sweep, rows.tunnels], [rows.labels, rows.docs, rows.sweep]),
+    sec('work', [rows.demo, rows.index, rows.polish, rows.cleanup, rows.onboarding, rows.reword, rows.search], [rows.demo, rows.index]),
+    sec('track', [rows.flaky, rows.gitlab, rows.checklistPr, rows.switchDocs], []),
+    sec('later', [rows.vendor, rows.idea, rows.onboardingNote, rows.filed, rows.deferred, rows.badges], []),
   ]
   const numbers = {}
   let n = 0
   for (const s of sections) for (const r of s.rows) { n += 1; r.number = n; numbers[r.key] = n }
+  // every row carries its card (card.py) and, where describe has something to say, its describe view (describe.py
+  // state_for): one brief written by AI, one a person edited with a proposal waiting, one outdated, one with gaps
+  for (const r of Object.values(rows)) Object.assign(r, mockCard(r, MOCK_BRIEFS[r.key], now))
+  for (const r of Object.values(rows)) r.art = r.inbox_id ? ART_OF_KIND[r.inbox_kind] ?? 'ask' : null
+  // stage 4, In progress with someone (collector.checkin_of): the checklist with Alex since a week, its check-in day
+  // came yesterday; the laptop quote with Kim until Monday, so it runs elsewhere until then
+  // the Bridge looked before the check-in (checkin.py): what it found and where, what it could not read
+  const noted = localIso(now - 2 * DAY - 2 * 3600000)
+  rows.polish.checkin = { who: 'alex', until: isoIn(-1, now), since: isoIn(-8, now),
+    found: { text: 'Alex wrote in a note that the reworded checklist is ready for a read, and the pull request example/tools#4 is merged.',
+      where: [`note ${noted}`, 'example/tools#4'], unread: ['the state of example/repo#9'], nothing: false, since: isoIn(-8, now),
+      at_ms: now - 50 * MIN, model: 'haiku' } }
+  rows.polish.card.next = { ...rows.polish.card.next, check: isoIn(-1, now) }
+  rows.deferred.checkin = { who: 'kim', until: isoIn(3, now), since: isoIn(-1, now) }
+  // what waits for you, as the server counts it (collector.py): the rows of Now that ask
+  const forYou = sections[0].rows.filter(r => !r.inbox_id || r.art === 'ask').length
+  // the open rows Work through places once each (collector.py counts.flow_open), counted here by their keys
   const hidden = empty ? [] : [row({
     key: 'title:Renew the test certificate', bucket: 'plan', section: 'later', title: 'Renew the test certificate', sources: ['calendar'],
+    origin: O('calendar', 'Calendar'), work_kind: null,
     hidden_until: isoIn(5, now), actions: [A('ask')],
+  }),
+  // a task put off until a day (its file is deferred), and a row settled here: not open any more, so Work through neither
+  // shows nor counts it
+  row({
+    key: 'task:license-audit', bucket: 'tasks', section: 'work', title: 'Audit the licenses of the example dependencies', sources: ['tasks'],
+    origin: O('bridge', null, null), work_kind: 'task', task: 'license-audit', status: 'doing', priority: 'P2', area: 'Ops', area_names: ['Ops'],
+    hidden_until: isoIn(12, now), updated: isoIn(-6, now), actions: [A('do', true)],
+  }),
+  row({
+    key: 'title:Order new business cards', bucket: 'plan', section: 'later', title: 'Order new business cards', sources: ['calendar'],
+    origin: O('calendar', 'Calendar'), work_kind: null, hidden_until: null, settled_as: 'done', actions: [A('ask')],
   })]
+  for (const r of hidden) Object.assign(r, mockCard(r, null, now))
+  // an idea put off for months on the idea shelf of the work page: past the briefing's window, so no section holds it;
+  // Work through carries it (collector.deferred_rows) under Ideas with the day it comes back
+  const deferred = empty ? [] : [row({
+    key: 'inbox:20260915-1000-idea-workshop-7a8b', bucket: 'plan', section: 'later', title: 'Idea: a workshop on the release process',
+    origin: O('person', 'lee', 'lee'), inbox_kind: 'idea', sources: ['inbox'], inbox_id: '20260915-1000-idea-workshop-7a8b', gate: 'free',
+    area: 'Ops', area_names: ['Ops'], inbox_state: 'deferred', until: isoIn(90, now), inbox_key: 'idea-workshop', actions: [A('done', true)],
+  })]
+  for (const r of deferred) Object.assign(r, mockCard(r, null, now), { art: 'idea' })
+  // the tasks a page names that no section carries (collector task_rows): open, so Work through holds them too
+  const taskRows = empty ? [] : [rows.quiet, rows.waits]
+
+  // every task and stream as a file (collector.files_of, cockpit.files_scope all): the ones a row stands for with
+  // that row's bucket, a deferred one, and the backlog the queue never shows; only the keys the page reads
+  const fileOfRow = (r, extra = {}) => ({ slug: r.task, kind: r.stream || r.work_kind === 'stream' ? 'stream' : 'task',
+    status: r.status ?? 'doing', area_names: r.area_names ?? [], priority: r.priority ?? null, title: r.title,
+    updated: isoIn(-3, now), blocked_by: null, bucket: r.bucket ?? null, deferred: false, deferred_until: null, ...extra })
+  const backlog = (slug, title, area, priority, days) => ({ slug, kind: 'task', status: 'backlog', area_names: [area],
+    priority, title, updated: isoIn(-days, now), blocked_by: null, bucket: null, deferred: false, deferred_until: null })
+  const files = empty ? [] : [
+    fileOfRow(rows.release, { updated: isoIn(0, now) }), fileOfRow(rows.demo, { updated: isoIn(-1, now) }),
+    fileOfRow(rows.quiet, { updated: isoIn(-34, now) }), fileOfRow(rows.waits, { bucket: 'waiting', updated: isoIn(-8, now) }),
+    fileOfRow(rows.index), fileOfRow(rows.cleanup, { updated: isoIn(-5, now) }), fileOfRow(rows.onboarding, { updated: isoIn(-2, now) }),
+    fileOfRow(rows.idea, { blocked_by: 'a decision on the report layout', updated: isoIn(-12, now) }),
+    fileOfRow({ task: 'license-audit', title: 'Audit the licenses of the example dependencies', area: 'Ops', area_names: ['Ops'], priority: 'P2',
+      bucket: 'tasks' }, { deferred: true, deferred_until: isoIn(12, now), updated: isoIn(-6, now) }),
+    backlog('docs-search', 'Add a search to the docs site', 'Docs', 'P2', 9),
+    backlog('metrics-export', 'Export the weekly metrics as CSV', 'Ops', 'P3', 21),
+    backlog('customer-faq', 'Collect the questions of the first customers into an FAQ', 'Demo', 'P1', 4),
+    backlog('mobile-layout', 'Check the report on a phone', 'Docs', 'P3', 40),
+    // round 4: the two tasks to merge, the task a live tab works on, and a stream only the files list
+    fileOfRow(rows.polish, { updated: isoIn(-4, now) }), fileOfRow(rows.reword, { updated: isoIn(-2, now) }), fileOfRow(rows.search, { updated: isoIn(0, now) }),
+    { slug: 'weekly-digest', kind: 'stream', status: 'doing', area_names: ['Ops'], priority: 'P3', title: 'Send the weekly digest', updated: isoIn(-7, now),
+      blocked_by: null, bucket: null, deferred: false, deferred_until: null },
+  ]
 
   const item = (index, over) => ({
     index, title: '', detail: '', when: '', tone: null, link: null, task: null, ask: false, mark: null,
-    priority: null, state: null, lines: [], meter: null, starting: false, tab: null, ...over,
+    priority: null, state: null, lines: [], meter: null, starting: false, tab: null, origin: null, work_kind: null, about_kind: null, ...over,
   })
   const pages = empty ? [] : [
     {
@@ -511,16 +951,17 @@ export function buildState(now = Date.now(), opts = {}) {
           items: [
             item(0, { title: 'example/repo#12 Flaky test in the parser suite', detail: 'In Progress · PR #14', when: 'Tue', tone: 'warn', link: { kind: 'web', href: 'https://example.org/repo/issues/12' }, ask: true, mark: { label: 'Demo', color: 'blue' }, priority: 'P2',
               group: 'Demo board', flags: ['mine', 'in_progress', 'untasked'], who: 'demo-user',
-              gh: { title: 'Flaky test in the parser suite', repo: 'example/repo', number: 12, type: 'issue', state: 'in_progress', status: 'In Progress', priority: 'P2', labels: ['bug', 'ci'], people: ['demo-user'], prs: [{ n: 14, draft: true }], task: null, stream: false, untasked: true, changed: new Date(now - 2 * DAY).toISOString(), quiet: null, note: null },
+              gh: { title: 'Flaky test in the parser suite', repo: 'example/repo', number: 12, type: 'issue', state: 'in_progress', status: 'In Progress', priority: 'P2', labels: ['bug', 'ci'], people: ['demo-user'], author: 'teammate', board: 'Demo board', prs: [{ n: 14, draft: true }], task: null, stream: false, untasked: true, created: new Date(now - 41 * DAY).toISOString(), changed: new Date(now - 2 * DAY).toISOString(), quiet: null, note: null },
               row_id: 'example/repo#12', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'review', label: 'Review the PR' }, { id: 'adopt', label: 'Make it a task' }, { id: 'sync', label: 'Sync status' }] }),
             item(1, { title: 'example/repo#15 Add a config switch for the report', detail: 'Backlog', when: 'Mon', link: { kind: 'web', href: 'https://example.org/repo/issues/15' }, ask: true, priority: 'P3', actionable: true,
               group: 'Demo board', flags: ['mine', 'quiet'], who: 'demo-user',
-              gh: { title: 'Add a config switch for the report', repo: 'example/repo', number: 15, type: 'issue', state: 'new', status: 'Backlog', priority: 'P3', labels: ['enhancement'], people: ['demo-user'], prs: [], task: 'demo-task', stream: false, changed: new Date(now - 18 * DAY).toISOString(), quiet: 18, note: null },
+              gh: { title: 'Add a config switch for the report', repo: 'example/repo', number: 15, type: 'issue', state: 'new', status: 'Backlog', priority: 'P3', labels: ['enhancement'], people: ['demo-user'], author: 'demo-user', by_me: true, board: 'Demo board', prs: [], task: 'demo-task', stream: false, created: new Date(now - 120 * DAY).toISOString(), changed: new Date(now - 18 * DAY).toISOString(), quiet: 18, note: null },
               row_id: 'example/repo#15', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }, { id: 'sync', label: 'Sync status' }] }),
             item(2, { title: 'example/tools#4 Release checklist', detail: 'In Review', when: '08:10', link: { kind: 'web', href: 'https://example.org/tools/issues/4' }, ask: true, mark: { label: 'Ops', color: 'red' },
               group: 'example/tools', inbox: 'demo-inbox-4', tab: { ref: 'surface:9', state: 'working', live: true, waiting: false },
               flags: ['review'], who: 'teammate',
-              gh: { title: 'Release checklist', repo: 'example/tools', number: 4, type: 'pr', state: 'review', status: 'In Review', labels: [], people: ['teammate'], prs: [], task: null, stream: false, changed: new Date(now - 3 * 3600000).toISOString(), quiet: null, note: null },
+              gh: { title: 'Release checklist', repo: 'example/tools', number: 4, type: 'pr', state: 'review', status: 'In Review', labels: [], people: ['teammate'], author: 'teammate', board: null,
+                pr: { draft: false, review: 'review_required', checks: 'success' }, prs: [], task: null, stream: false, changed: new Date(now - 3 * 3600000).toISOString(), quiet: null, note: null },
               row_id: 'example/tools#4', actions: [{ id: 'analyze', label: 'Analyse' }, { id: 'implement', label: 'Implement' }, { id: 'remind', label: 'Remind' }] }),
           ] },
         { id: 'tasks', kind: 'tasks', title: 'Bridge tasks', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 2, total: 2,
@@ -550,7 +991,8 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     {
-      id: 'dates', title: 'Dates', badge: { kind: 'none' }, sections: [
+      // search: true (profile): a field above the dates that filters them, every day before and the AI (/api/timeline)
+      id: 'dates', title: 'Dates', badge: { kind: 'none' }, search: true, sections: [
         // the dates lie ahead of the moment the demo opens, so the start page always has a next one
         // the agenda view (views/dates.js): every event carries its facts (`cal`), the section its figures
         { id: 'calendar', kind: 'calendar', view: 'agenda', title: 'Calendar', status: 'ok', reason: '', alarm: false, empty: 'no dates', count: 8, total: 8,
@@ -582,7 +1024,37 @@ export function buildState(now = Date.now(), opts = {}) {
           weight: 0, bad: 0, as_of: null, more: 0, items: [] },
       ],
     },
+    logPage(now, item),
   ]
+
+  // the work page (group work, the By source view of the work tab) with jev:, so Jev orders its rows once a day: the
+  // order Prio of Work through reads (round 4). Only with ?work_page=1: a work page also moves the day onto the start
+  // page and adds By source and By Jev to the work tab, which the demo otherwise shows without
+  if (!empty && opts.workPage === true) {
+    const inboxItem = (r, i) => item(i, { title: r.title, detail: r.area ?? '', inbox: r.inbox_id, priority: r.priority, ask: true })
+    const taskItem = (r, i) => item(i, { title: r.title, detail: r.area ?? '', task: r.task, priority: r.priority, state: r.status })
+    pages.push({ id: 'work', title: 'Work', group: 'work', badge: { kind: 'none' }, jev: { skip_sections: [], private: [] }, sections: [
+      { id: 'inbox', kind: 'inbox', title: 'Inbox', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 4, total: 4, weight: 4, bad: 0,
+        as_of: hhmm(now - 2 * MIN), more: 0, items: [rows.review, rows.labels, rows.docs, rows.tunnels].map(inboxItem) },
+      { id: 'ideas', kind: 'inbox', title: 'Ideas', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 2, total: 2, weight: 0, bad: 0,
+        as_of: null, more: 0, items: [rows.badges, ...deferred].map(inboxItem) },
+      { id: 'tasks', kind: 'tasks', title: 'Tasks', status: 'ok', reason: '', alarm: false, empty: 'nothing', count: 4, total: 4, weight: 4, bad: 0,
+        as_of: null, more: 0, items: [rows.polish, rows.cleanup, rows.reword, rows.quiet].map(taskItem) },
+    ] })
+  }
+
+  // where each page item comes from and what it is, as the collector adds them (collector.page_origin)
+  const SECTION_ORIGIN = { command: sec => O('bot', sec.title), tracker: (sec, it) => O('github', it.gh?.repo ?? null),
+    tasks: () => O('bridge'), calendar: sec => O('calendar', sec.title) }
+  for (const pg of pages) {
+    for (const sec of pg.sections) {
+      for (const it of sec.items) {
+        if (!it.origin && SECTION_ORIGIN[sec.kind]) it.origin = SECTION_ORIGIN[sec.kind](sec, it)
+        if (it.work_kind == null && (it.task || it.gh?.task)) it.work_kind = it.gh?.stream ? 'stream' : 'task'
+        if (it.about_kind == null && it.gh?.task) it.about_kind = it.gh.stream ? 'stream' : 'task'
+      }
+    }
+  }
 
   // what the waiting tabs ask, as the tab poll reads it off their screens (asks.py): a dialog with three
   // options, a yes or no question, a summary with a draft typed in the tab; every other tab asks nothing.
@@ -616,7 +1088,36 @@ export function buildState(now = Date.now(), opts = {}) {
       slug: null, item: null, team: null, role: null, live: true, waiting: false, is_control: false, filed_by: null, since_ms: now - 6 * MIN, long: null },
     { ref: 'surface:11', ws_ref: 'workspace:4', name: 'zsh', workspace: 'Docs', state: 'shell', last: '', slug: null, item: null,
       team: null, role: null, live: false, waiting: false, is_control: false, filed_by: null, since_ms: now - 140 * MIN, long: null },
+    // round 4: a tab typed into by hand whose session works on a task: the cockpit recognises it (sessions.py, task_how seen)
+    { ref: 'surface:14', ws_ref: 'workspace:4', name: 'docs search', workspace: 'Docs', state: 'working', last: 'Rebuilding the index (310 of 512 pages)',
+      slug: null, item: null, team: null, role: null, live: true, waiting: false, is_control: false, filed_by: null, since_ms: now - 22 * MIN, long: null },
   ].map(t => ({ ...t, ask: asks[t.ref] ?? null, state_source: GLYPH_TABS.has(t.ref) ? 'glyph' : 'hook' }))
+
+  // the return channel (returns.py build): a start at work, one whose tab asks, one that left its answer, one lost;
+  // the Work through page draws the first in its lane and the others as cards. Inbox items without a task, but the
+  // one that asks, so the files of the tasks keep the results the files suite counts
+  const start = (r, mode, mins, stage, extra = {}) => ({ key: r.key, item: r.inbox_id ?? r.task, title: r.title, mode, at_ms: now - mins * MIN,
+    stage, in_briefing: true, tab: null, result: null, ...extra })
+  const tabRef = ref => { const t = tabs.find(x => x.ref === ref); return t ? { ref, state: t.state, since_ms: t.since_ms, last: t.last } : null }
+  const returns = empty ? [] : [
+    start(rows.docs, 'go', 6, 'working', { tab: tabRef('surface:9') }),
+    start(rows.release, 'go', 40, 'asks', { tab: tabRef('surface:7') }),
+    start(rows.labels, 'go', 80, 'result', { tab: tabRef('surface:10'),
+      result: { kind: 'filed', text: 'Draft written to the inbox as a result. Anything else?', key: rows.labels.key, at_ms: null } }),
+    start(rows.filed, 'go', 130, 'lost'),
+    // a start whose tab went still without a question (idle: its agent ended, the shell is left), and one whose
+    // task got its result line ("Result: ...", a note on the task since the start)
+    { key: 'task:quiet-docs', item: 'quiet-docs', title: 'Tidy the old setup notes', mode: 'go', at_ms: now - 150 * MIN,
+      stage: 'idle', in_briefing: true, result: null, tab: tabRef('surface:11') },
+    { key: 'task:vendor-reply', item: 'vendor-reply', title: 'Settle the invoice format with the vendor', mode: 'go', at_ms: now - 90 * MIN,
+      stage: 'result', in_briefing: true, tab: null,
+      result: { kind: 'note', text: 'Result: the vendor takes the current format, nothing to change', key: null, at_ms: null } },
+    // stage 2 of the one point view: finished AI runs, their item ended after them (returns.py build, stage done, with
+    // its plain sentence): closed by its own check, closed with the agent's note, its action ran, a task closed
+    ...DONE_RUNS.map(d => ({ key: d.key, item: d.key.split(':')[1], title: d.title, mode: d.mode, at_ms: now - d.hours * 60 * MIN, stage: 'done',
+      in_briefing: false, tab: null, conv: null, ended_ms: now - d.ended * 60 * MIN, read_ms: null, plain: d.plain,
+      result: { kind: d.kind, text: d.text, key: null, at_ms: now - d.ended * 60 * MIN, by: d.by } })),
+  ]
 
   const relayOnline = !opts.offline
   return localize({
@@ -630,10 +1131,15 @@ export function buildState(now = Date.now(), opts = {}) {
       agenda: empty ? [] : [{ when: hhmm(now + 70 * MIN), title: 'Team call' }, { when: hhmm(now + 250 * MIN), title: 'Review of the demo project' }],
       status: [{ title: 'Systems', count: empty ? 0 : 1, probe: true, state: 'ok' }, { title: 'Inbox', count: empty ? 0 : 6, probe: false, state: 'ok' }],
       extras: { clear: ['Services: all running'], hygiene: empty ? [] : ['2 tasks without a log row for 7 days'], workplace: empty ? null : 'Tabs: 3 suggested' },
-      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: sections[0].total, give: sections[1].total, work: sections[2].total, track: sections[3].total, later: sections[4].total, hidden: hidden.length },
-      sections, numbers, hidden,
+      counts: { waiting_tabs: empty ? 0 : 2, long_tabs: empty ? 0 : 1, working_tabs: empty ? 0 : 2, now: forYou, give: sections[1].total, work: sections[2].total, track: sections[3].total, later: sections[4].total, hidden: hidden.length,
+        flow_open: openCount(sections, hidden, files, taskRows, deferred) },
+      sections, numbers, hidden, deferred,
       approvable: empty ? [] : [rows.labels.key, rows.docs.key],
-      task_rows: empty ? [] : [rows.quiet, rows.waits],
+      task_rows: taskRows,
+      // the tasks closed this week (daybook.week_done): a closed task and an ended stream
+      week: empty ? { count: 0, since: null, items: [] } : { count: 2, since: isoIn(-4, now), items: [
+        { slug: 'release-checklist', title: 'Write the release checklist', closed: isoIn(-1, now), work_kind: 'done_task' },
+        { slug: 'pilot-customer', title: 'Pilot with the first customer', closed: isoIn(-2, now), work_kind: 'done_stream' }] },
       review: empty ? { running: null, error: null, last: null, keys: [] } : {
         running: null, error: null, keys: [rows.demo.key, rows.quiet.key, rows.waits.key],
         last: { reviewed_at: new Date(now - 20 * MIN).toISOString().slice(0, 19), reviewed: 3, to_close: 1, cost_ct: 2.22,
@@ -642,12 +1148,14 @@ export function buildState(now = Date.now(), opts = {}) {
       },
       pages,
       alarms: empty ? [] : [{ page_id: 'systems', page_title: 'Systems', section_title: 'Checks', count: 1 }],
+      files,
       teams: [
         { id: 'build', label: 'Build', for_types: ['feature'], roles: [{ id: 'implement', name: 'Implement', mode: 'go' }, { id: 'review', name: 'Review', mode: 'report' }] },
         { id: 'research', label: 'Research', for_types: ['research'], roles: [{ id: 'evidence', name: 'Evidence', mode: 'report' }, { id: 'counter', name: 'Counter', mode: 'report' }, { id: 'summary', name: 'Summary', mode: 'report' }] },
       ],
-      // what the server sends: the Now section's total, the same number as counts.now
-      briefing_badge: sections[0].total,
+      // what the server sends: the asks of Now, the same number as counts.now
+      briefing_badge: forYou,
+      returns,
     },
     // the terminal's workspace list (the chat as cmux); two workspaces share a title and are told apart by ref
     tabs: { at_ms: now - 8000, error: null, control: { name: 'Control', ref: 'surface:3' }, tabs, workspaces: empty ? [] : [
@@ -660,16 +1168,48 @@ export function buildState(now = Date.now(), opts = {}) {
     driver: { caps: DRIVER_CAPS },
     quick: { available: true, default: 'haiku', models: ['haiku', 'sonnet', 'opus'], keep_hours: 24, convs: empty ? [] : [aboutConv(now), ...handedConvs(now)] },
     jev: createMockJev ? { enabled: true, ready: true, reason: null } : { enabled: false, ready: false, reason: 'off' },
+    // Prio's second ranker (prio.py state): switched on in the demo (off by default in a Bridge), six runs a day
+    prio: { haiku: { enabled: true, ready: true, model: 'haiku', budget_left: 6 }, fallback: 'none' },
     agents: empty ? { peers: [], convs: [] } : agentsState(now),
     triage: empty ? { running: null, error: null, last: null, items: {} } : triageState(now),
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
     guide: guideState(tabs, now),
+    workspaces: { rev: 0, enabled: true, off: [], inactive: [], gone: [], items: [
+      { key: 'Acme', area: 'Acme', id: 'acme', title: 'Acme', parent: null, children: ['acme-billing'], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
+      { key: 'Billing', area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
+      { key: 'Home', area: 'Home', id: null, title: 'Home', parent: null, children: [], archived: false, level: null, style: null, mail: null, persona: null, on: true, held_by: null, active: true, active_held_by: null, fixed: false },
+    ] },
     // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
+    // the Chat as cmux (cockpit.chat_layout: workspaces): ?chat=workspaces
+    ...(opts.chat === 'workspaces' ? { rooms: { layout: 'workspaces', root: '/demo', control: null, bridges: [] } } : {}),
+    // the work tab as the config sets it (cockpit.work_view, cockpit.focus_to_files): ?work=files and ?focus_to_files=1
+    // and which tasks are files (cockpit.files_scope): the queue alone as the default config, ?files_scope=all for every one
+    work: { view: ['due', 'source', 'jev', 'files', 'flow'].includes(opts.work) ? opts.work : 'due', focus_to_files: opts.focusToFiles === true,
+      files_scope: opts.filesScope === 'all' ? 'all' : 'active',
+      // the Work through page (cockpit.flow): on in the demo, ?flow=0 shows the cockpit without it
+      // the views the work tab offers (cockpit.work_views): all of them, ?views=files,flow narrows
+      views: Array.isArray(opts.views) && opts.views.length ? opts.views : ['due', 'source', 'jev', 'files', 'flow'],
+      // the files tab's question to its records (cockpit.files_search): on in the demo, the Health area kept private
+      files_search: { enabled: true, block: ['Health'], left: 20 },
+      // who the cockpit belongs to (cockpit.person_name, sent with Work through on): a next step naming her is hers
+      ...(opts.flow !== false ? { person: 'Mara' } : {}),
+      flow: { enabled: opts.flow !== false, drop_reasons: ['resolves_itself', 'not_needed', 'someone_else', 'not_worth_it'], return_after_s: 20,
+        // round 4: a point comes up two days before its due; a session's task is recognised from what it did
+        ahead_days: 2, infer_sessions: true,
+        themes: { enabled: opts.flow !== false, max_themes: 8, budget_per_day: 6, model: null },
+        // round 3: the summary of a point's Activity, the instruction line, a document attached (all off by default)
+        summary: { enabled: opts.flow !== false, budget_per_day: 10, model: null },
+        instruct: { enabled: opts.flow !== false, budget_per_day: 30, model: null },
+        attach: { enabled: opts.flow !== false, max_mb: 10 } } },
+    // what the day's budgets of Work through still hold (server.py state_payload flow_ai)
+    flow_ai: { summary_left: 10, instruct_left: 30, instruct_running: false },
+    // the themes of Work through (themes.py state), invented: three themes across the areas, a point moved by hand
+    themes: empty || opts.flow === false ? { enabled: false } : themesState(now),
     loading: { pass: null, fresh: false, started_ms: 0, eta_ms: 0, queued: null, last_error: null },
     notes: [
-      { at: hhmm(now - 9 * MIN), text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
+      { at: hhmm(now - 9 * MIN), at_ms: now - 9 * MIN, text: 'Yes given, runs on the next pass: Sweep old log files', tone: 'ok' },
     ],
     relay: {
       enabled: true, online: relayOnline, reason: relayOnline ? null : 'no_heartbeat',
@@ -683,7 +1223,9 @@ export function buildState(now = Date.now(), opts = {}) {
       ],
     },
     cmux: { ok: true, error: null },
-    sessions: { at_ms: now - 8000, sessions: empty ? [] : [
+    // the sessions linked to a task by hand (sessions.py links): one live in its tab, one ended that goes on in a new one
+    sessions: { at_ms: now - 8000, links: empty ? [] : [{ sid: '2f7a0c55-0000-4000-8000-000000000003', task: 'demo-task', name: 'demo-bridge-research' },
+      { sid: '5e2d7f31-0000-4000-8000-000000000009', task: 'demo-task', name: 'demo-task outline' }], sessions: empty ? [] : [
       { id: '7a16c7b2', pid: 101, name: 'demo-bridge-fc', project: 'demo-bridge', cwd: '/demo/bridge', here: true, status: 'busy',
         since_ms: now - 4 * MIN, started_ms: now - 95 * MIN, kind: 'interactive', version: '2.1.0', remote: true,
         tab: { ref: 'surface:3', ws_ref: 'workspace:1', name: 'Control', workspace: 'Control', state: 'working', is_control: true },
@@ -710,30 +1252,81 @@ export function buildState(now = Date.now(), opts = {}) {
           { id: 'e8a4c11', type: 'general-purpose', description: 'Summarise the meeting notes', since_ms: now - 3 * MIN, background: true },
           { id: 'f19b7d3', type: 'Explore', description: 'Find the action items', since_ms: now - 70000, background: false }] },
         workflows: [{ name: 'demo-check', status: 'running', agents: null, since_ms: now - 5 * MIN }] },
+      // round 4: the task a session works on, by its own task tab (waiting at its prompt) or recognised from what it did
+      { id: '2f7a0c55', sid: '2f7a0c55-0000-4000-8000-000000000003', pid: 106, name: 'demo-bridge-research', project: 'demo-bridge', cwd: '/demo/bridge',
+        here: true, status: 'idle', since_ms: now - 11 * MIN, started_ms: now - 40 * MIN, kind: 'interactive', version: '2.1.0', remote: false,
+        tab: { ref: 'surface:12', ws_ref: 'workspace:3', name: 'demo-task research', workspace: 'Demo', state: 'waiting', is_control: false },
+        task: 'demo-task', task_how: 'tab', task_since_ms: now - 40 * MIN, agents: { running_count: 0, done_recent: 2, running: [] }, workflows: [] },
+      { id: '6b1d9e20', sid: '6b1d9e20-0000-4000-8000-000000000004', pid: 107, name: 'demo-bridge-search', project: 'demo-bridge', cwd: '/demo/bridge',
+        here: true, status: 'busy', since_ms: now - MIN, started_ms: now - 35 * MIN, kind: 'interactive', version: '2.1.0', remote: false,
+        tab: { ref: 'surface:14', ws_ref: 'workspace:4', name: 'docs search', workspace: 'Docs', state: 'working', is_control: false },
+        task: 'search-index', task_how: 'seen', task_since_ms: now - 18 * MIN, agents: { running_count: 0, done_recent: 0, running: [] }, workflows: [] },
       { id: '3c9a1e44', pid: 103, name: 'other-repo-2a', project: 'other-repo', cwd: '/demo/other-repo', here: false, status: 'busy',
         since_ms: now - 9 * MIN, started_ms: now - 20 * MIN, kind: 'interactive', version: '2.1.0', remote: false,
         tab: null, agents: { running_count: 1, done_recent: 0, running: [
           { id: 'c03f9aa', type: 'general-purpose', description: 'Run the migration tests', since_ms: now - 6 * MIN, background: true }] },
         workflows: [] },
+    ],
+    // the workflow runs the server bound to an open task (sessions.py run_task): one whose result waits, one checked
+    runs: empty ? [] : [
+      { id: 'wf_3fa1c2d4-a01', task: 'alpha-release', name: 'release-check', status: 'completed', seen: false, agents: 5,
+        since_ms: now - 50 * MIN, ended_ms: now - 35 * MIN, at_ms: now - 35 * MIN, sid: '7a16c7b2-0000-4000-8000-000000000001',
+        how: ['named'], summary: 'Check the release candidate against the checklist',
+        answer: 'Two items open: the changelog misses the fix for the export, and the upgrade note names the old flag.' },
+      { id: 'wf_9b0e7f12-c33', task: 'docs-refresh', name: 'docs-outline', status: 'completed', seen: true, agents: 3,
+        since_ms: now - 26 * 60 * MIN, ended_ms: now - 25 * 60 * MIN, at_ms: now - 25 * 60 * MIN,
+        sid: 'd8db96ad-0000-4000-8000-000000000002', how: ['session'], summary: 'Outline the new getting-started page', answer: null },
     ] },
   }, WORDS[opts.lang])
 }
 
+// the finished AI runs of the demo (stage 2 of the one point view), invented: each kind of end once
+const DONE_RUNS = [
+  { key: 'inbox:20261008-0700-backup-disk-c1d2', title: 'Check the free space on the backup disk', mode: 'go', hours: 26, ended: 20,
+    kind: 'close', by: 'check', text: 'closes_when holds', ask: 'Find out what fills the backup disk',
+    plain: 'Its check found the problem gone, and the item closed itself. Nothing to do.' },
+  { key: 'inbox:20261008-1500-nightly-export-d3e4', title: 'Find out why the nightly export stopped', mode: 'report', hours: 18, ended: 15,
+    kind: 'note', by: 'tab', text: 'Result: the export runs again, its schedule entry was missing',
+    plain: 'the export runs again, its schedule entry was missing' },
+  { key: 'inbox:20261009-0600-freeze-reminder-e5f6', title: 'Remind the team of the release freeze', mode: 'go', hours: 6, ended: 5,
+    kind: 'executed', by: 'bridge', text: 'sent the reminder', plain: "The item's action ran. (sent the reminder)" },
+  { key: 'task:old-export-check', title: 'Check whether the old export is still used', mode: 'go', hours: 30, ended: 28,
+    kind: 'note', by: 'tab', text: 'Result: nobody uses the old export any more', plain: 'nobody uses the old export any more' },
+]
+
 function inboxDetail(id, state) {
-  const r = [...(state.model?.sections ?? []).flatMap(s => s.rows)].find(x => x.inbox_id === id)
+  const rows = (state.model?.sections ?? []).flatMap(s => s.rows)
+  const r = rows.find(x => x.inbox_id === id)
+  // an item a finished AI run ran on: closed, its start sentence and its end among its events
+  const run = DONE_RUNS.find(d => d.key === `inbox:${id}`)
+  if (!r && run) {
+    return { ok: true, id, item: { summary: run.title, detail: 'Invented example detail of a finished run.', kind: 'todo', gate: 'free', urgency: 'later',
+      state: 'done', task: null, due: null, key: id.split('-').slice(2, -1).join('-'), from: 'demo-check', created: '2026-10-08T07:00:00',
+      action_display: null, has_closes_when: run.by === 'check', closer: run.by === 'check' ? null : 'person', closes_when: run.by === 'check' ? { path_exists: 'demo.flag' } : null },
+    events: [{ verb: 'add', by: 'demo-check', at: '2026-10-08T07:00:00' },
+      { verb: 'note', by: 'web', at: '2026-10-08T07:05:00', text: `Start note: ${run.ask ?? run.title}` },
+      { verb: run.kind === 'note' ? 'close' : run.kind, by: run.by, at: '2026-10-08T16:00:00', text: run.text }],
+    origin: O('other', 'demo-check', 'demo-check'), card: null, describe: null }
+  }
+  // an ask folded into a row has no row of its own: its title comes from the row that carries it
+  const asked = rows.flatMap(x => x.also_inbox ?? []).find(a => a.id === id)
   const hasAction = !!r?.has_action
   return {
     ok: true, id,
     item: {
-      summary: r?.title ?? 'Example item', detail: 'Invented example detail.\nThe item came from a demo check and carries no real data.',
+      summary: r?.title ?? asked?.title ?? 'Example item', detail: 'Invented example detail.\nThe item came from a demo check and carries no real data.',
       kind: hasAction ? 'approval' : 'todo', gate: r?.gate ?? 'only-you', urgency: r?.urgency ?? null, state: r?.inbox_state ?? 'open',
-      task: r?.task ?? null, due: r?.due ?? null, key: r?.inbox_key ?? 'example', from: 'demo-check', created: '2026-10-09T09:00:00',
+      task: r?.task ?? null, due: r?.due ?? null, key: r?.inbox_key ?? 'example', from: r?.origin?.raw ?? 'demo-check', created: '2026-10-09T09:00:00',
       action_display: hasAction ? 'python3 scripts/example-tool.py --apply demo' : null, has_closes_when: hasAction,
     },
     events: [
-      { verb: 'add', by: 'demo-check', at: '2026-10-09T09:00:00' },
+      { verb: 'add', by: r?.origin?.raw ?? 'demo-check', at: '2026-10-09T09:00:00' },
       { verb: 'note', by: 'web', at: '2026-10-09T09:05:00', note: 'looked at it, fine' },
     ],
+    // who filed it, as the server names it (details.py inbox_detail, origin.py)
+    origin: r?.origin ?? O('other', 'demo-check', 'demo-check'),
+    // its card and describe view (card.py, describe.py), as its row carries them
+    card: r?.card ?? null, describe: r?.describe ?? null,
   }
 }
 
@@ -757,27 +1350,221 @@ function githubDetail(ref) {
   }
 }
 
-function taskDetail(slug, state) {
+// a closed task the search finds in work/done/ (the queue never holds one): invented, like everything here
+const DONE_FILE = { slug: 'release-notes-2026-09', title: 'Release notes for September', month: '2026-09',
+  lines: ['Release notes for September went out on the 30th.', 'The vendor export timed out twice, fixed with a retry.'] }
+
+// the records of the files tab's start (/api/records, work_find.py records): every task and stream of the demo, the
+// closed one above and a closed one in an area the demo's block list keeps private (cockpit.files_search.block)
+function mockRecords(state) {
+  const out = new Map()
+  const put = (slug, kind, title, status, area, updated, priority = null) => {
+    if (slug && !out.has(slug)) {
+      out.set(slug, { slug, kind, path: `work/${kind === 'stream' ? 'streams' : 'tasks'}/${slug}`, title, status, priority, area, updated,
+        work_kind: kind })
+    }
+  }
+  for (const f of state?.model?.files ?? []) put(f.slug, f.kind, f.title, f.status, f.area_names?.[0] ?? null, f.updated, f.priority)
+  for (const r of (state?.model?.sections ?? []).flatMap(x => x.rows ?? []).filter(x => x.task && !x.inbox_id)) {
+    put(r.task, r.stream || r.work_kind === 'stream' ? 'stream' : 'task', r.title, r.status ?? 'doing', r.area ?? null, null, r.priority ?? null)
+  }
+  const done = (slug, title, area, month, day) => ({ slug, kind: 'done', path: `work/done/${month}/${slug}`, title, status: 'done',
+    priority: null, area, updated: `${month}-${day}`, work_kind: 'done_task' })
+  const records = [...out.values(), done(DONE_FILE.slug, DONE_FILE.title, 'Docs', DONE_FILE.month, '30'),
+    done('health-check-booking', 'Book the yearly check-up', 'Health', '2026-09', '12')]
+  records.sort((a, b) => String(b.updated ?? '').localeCompare(String(a.updated ?? '')))
+  return { ok: true, total: records.length, truncated: false, records }
+}
+
+// every day before (work-find.py --history through /api/timeline): invented lines of the log, a meeting, a closed task
+// and a transcript, those that hold every word, newest first; the same shape the server answers with
+const DEMO_HISTORY = [
+  { date: '2026-10-08', time: '16:20', kind: 'did', source: 'demo-task', path: 'work/log.md', line: 12,
+    text: 'Guide chapter on the vendor export written, the retry explained', folder: null },
+  { date: '2026-10-06', time: '10:00', kind: 'discussed', source: 'Weekly round', path: 'work/archive/days/2026-10/06_insights.md', line: 7,
+    text: 'The vendor export retry stays at three tries, the guide names it', folder: null },
+  { date: '2026-10-02', time: '14:05', kind: 'transcript', source: 'vendor-sync', path: '2026-10-02_1405_vendor-sync.md', line: 40,
+    text: 'A: the export ran into the timeout again, we retry at night now', folder: null },
+  { date: DONE_FILE.month + '-30', time: null, kind: 'closed', source: DONE_FILE.slug, path: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}/STATUS.md`,
+    line: 6, text: DONE_FILE.lines[1], folder: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}` },
+]
+
+function seeded(seed) {
+  let x = seed >>> 0 || 1
+  return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296 }
+}
+
+function logDemo(nowMs) {
+  const today = new Date(nowMs)
+  const day0 = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const rand = seeded(day0.getFullYear() * 400 + day0.getMonth() * 31 + day0.getDate())
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const rows = [], repos = LOG_REPOS.map(([repo, branch]) => ({ repo, branch, url: `https://example.org/${repo}/commits/${branch}`, ts: [] })), events = []
+  for (let back = LOG_DAYS - 1; back >= 0; back--) {
+    const d = new Date(day0.getFullYear(), day0.getMonth(), day0.getDate() - back)
+    const weekend = d.getDay() === 0 || d.getDay() === 6
+    const n = weekend ? Math.floor(rand() * 3) : 4 + Math.floor(rand() * 11)
+    for (let i = 0; i < n; i++) {
+      const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8 + Math.floor(rand() * 11), Math.floor(rand() * 60))
+      if (at.getTime() > nowMs) continue
+      const [group, glyph, titles] = LOG_TOPICS[Math.floor(rand() * LOG_TOPICS.length)]
+      rows.push({ date: iso(d), time: hhmm(at.getTime()), glyph, group, title: titles[Math.floor(rand() * titles.length)],
+        task: null, about_task: group === 'demo-task' || group === 'docs-refresh' ? group : null, about_path: null })
+    }
+    for (const [k, [, , busy]] of LOG_REPOS.entries()) {
+      const c = weekend ? 0 : Math.floor(rand() * (busy + 1))
+      for (let i = 0; i < c; i++) {
+        const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9 + Math.floor(rand() * 9), Math.floor(rand() * 60)).getTime()
+        if (at <= nowMs) repos[k].ts.push(Math.floor(at / 1000))
+      }
+    }
+    if (d.getDay() === 1) events.push({ date: iso(d), time: '10:00', kind: 'discussed', source: 'Weekly round', text: 'Gateway retry and the release notes discussed', path: `work/archive/days/${iso(d).slice(0, 7)}/${iso(d).slice(8)}_insights.md`, folder: null })
+    if (d.getDay() === 2 || d.getDay() === 4) events.push({ date: iso(d), time: '14:00', kind: 'transcript', source: 'vendor-sync', text: 'A: the vendor export ran into the timeout again', path: `${iso(d)}_1400_vendor-sync.md`, folder: null })
+    if (back % 5 === 2) events.push({ date: iso(d), time: null, kind: 'closed', source: 'docs-cleanup', text: 'Docs cleanup closed, the index is fresh', path: `work/done/${iso(d).slice(0, 7)}/docs-cleanup/STATUS.md`, folder: `work/done/${iso(d).slice(0, 7)}/docs-cleanup` })
+  }
+  rows.sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
+  for (const r of repos) r.ts.sort((a, b) => a - b)
+  events.sort((a, b) => `${b.date} ${b.time ?? ''}`.localeCompare(`${a.date} ${a.time ?? ''}`))
+  return { rows, repos: repos.filter(r => r.ts.length), events, first: rows.length ? rows[rows.length - 1].date : iso(day0), today: iso(day0) }
+}
+
+function logRangeOf(params, nowMs) {
+  const demo = logDemo(nowMs)
+  if (params.get('sources') === 'other') {
+    // as work_find.history_events: one entry each, with words those with a line that holds every one
+    const words = String(params.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+    const from = params.get('from') || '0000', to = params.get('to') || demo.today
+    const events = demo.events.filter(e => e.date >= from && e.date <= to && words.every(w => e.text.toLowerCase().includes(w)))
+      .map(({ text, ...e }) => e)
+    return { ok: true, from: params.get('from'), to, transcripts: true, events }
+  }
+  // as logrange.py answers: the rows compact (day, time, group, glyph by index), the text by id, the words found here
+  const rev = `${demo.today.replace(/-/g, '')}0000`
+  if (params.get('rev') && params.get('rev') !== rev) return { stale: true }
+  if (params.get('ids')) {
+    return { ok: true, rev, texts: Object.fromEntries(params.get('ids').split(',').map(Number).filter(i => demo.rows[i]).map(i => [String(i), demo.rows[i].title])) }
+  }
+  const from = params.get('from') || demo.first, to = params.get('to') || demo.today
+  const ids = demo.rows.flatMap((r, i) => (r.date >= from && r.date <= to ? [i] : []))
+  if (params.get('q')) {
+    const words = String(params.get('q')).toLowerCase().split(/\s+/).filter(Boolean)
+    return { ok: true, rev, q: params.get('q'), hits: ids.filter(i => words.every(w => `${demo.rows[i].group} ${demo.rows[i].title}`.toLowerCase().includes(w))) }
+  }
+  const days = [], groups = [], glyphs = []
+  const at = (list, key, entry = key) => { let i = list.findIndex(x => (x?.name ?? x) === key); if (i < 0) { i = list.length; list.push(entry) } return i }
+  const rows = ids.map(i => { const r = demo.rows[i]; return [at(days, r.date), r.time, at(groups, r.group, { name: r.group, task: null, about_task: r.about_task,
+    about_path: null, kind: r.about_task ? 'task' : null }), at(glyphs, r.glyph)] })
+  return { ok: true, from, to, first: demo.first, today: demo.today, rev, offset: ids[0] ?? 0, total: rows.length, days, groups, glyphs, rows,
+    repos: params.get('commits') ? demo.repos : null, repos_from: params.get('commits') ? demo.first : null, skipped: [] }
+}
+
+function timelineOf(q, params, nowMs) {
+  // as work_find.history over the demo's log: every row and every line of the history beside it that holds every word,
+  // in the range asked, newest first; its units the way the log page's chart counts them
+  const words = [...new Set(String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8)
+  const demo = logDemo(nowMs)
+  const from = params?.get('from') || '0000', to = params?.get('to') || demo.today
+  const holds = text => words.length && words.every(w => text.toLowerCase().includes(w))
+  const rows = demo.rows.filter(r => r.date >= from && r.date <= to && holds(`${r.group} ${r.title}`))
+    .map((r, i) => ({ date: r.date, time: r.time, kind: 'did', source: r.group, path: 'work/log.md', line: i + 1, text: r.title, folder: null }))
+  const other = demo.events.filter(e => e.date >= from && e.date <= to && holds(e.text))
+    .map(e => ({ date: e.date, time: e.time, kind: e.kind, source: e.source, path: e.path, line: 1, text: e.text, folder: e.folder }))
+  const entries = [...rows, ...other].sort((a, b) => `${b.date} ${b.time ?? ''}`.localeCompare(`${a.date} ${a.time ?? ''}`))
+    .map(e => ({ ...e, count: 1, more: 0 }))
+  const kinds = {}
+  for (const e of entries) kinds[e.kind] = (kinds[e.kind] ?? 0) + 1
+  return { ok: true, query: String(q ?? '').trim(), words, total: entries.length, truncated: entries.length > 200, units: entries.length,
+    units_by_kind: kinds, transcripts: true, entries: entries.slice(0, 200) }
+}
+
+// the search (work-find.py through /api/find): every word in the slug, title or a line of an invented file, the
+// files whose slug or title holds every word first, then the rest; the same shape the server answers with
+function findFiles(q, state) {
+  const words = [...new Set(String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8)
+  const rows = (state?.model?.sections ?? []).flatMap(x => x.rows ?? []).filter(r => r.task && !r.inbox_id)
+  const seen = new Set()
+  const files = rows.filter(r => !seen.has(r.task) && seen.add(r.task)).map(r => ({ slug: r.task, kind: r.stream ? 'stream' : 'task', title: r.title,
+    path: `work/${r.stream ? 'streams' : 'tasks'}/${r.task}`, lines: [`headline: ${r.title}`, ...(r.next?.what ? [`next: ${r.next.what}`] : [])] }))
+  files.push({ ...DONE_FILE, kind: 'done', path: `work/done/${DONE_FILE.month}/${DONE_FILE.slug}` })
+  const groups = []
+  for (const f of files) {
+    const name = `${f.slug} ${f.title}`.toLowerCase()
+    const hits = f.lines.map((text, i) => ({ path: `${f.path}/STATUS.md`, line: i + 2, text }))
+      .filter(h => words.some(w => h.text.toLowerCase().includes(w)))
+    const all = `${name} ${hits.map(h => h.text).join(' ')}`.toLowerCase()
+    if (!words.length || !words.every(w => all.includes(w))) continue
+    groups.push({ slug: f.slug, kind: f.kind, work_kind: f.kind === 'done' ? 'done_task' : f.kind, path: f.path, title: f.title, rank: words.every(w => name.includes(w)) ? 0 : 1,
+      count: hits.length, hits })
+  }
+  groups.sort((a, b) => a.rank - b.rank || (a.kind === 'done') - (b.kind === 'done') || b.count - a.count)
+  return { ok: true, query: String(q ?? '').trim(), words, engine: 'python', total: groups.length, truncated: false, groups }
+}
+
+// the checklist of each demo task (its Steps), and the paths its STATUS.md names; any other task a short one of its own
+const DEMO_STEPS = {
+  'demo-task': [[true, 'Outline the chapters'], [true, 'Collect examples from the setup'], [false, 'Write the first two chapters'],
+    [false, 'Take the screenshots'], [false, 'Let a new colleague try the guide']],
+  'alpha-release': [[true, 'List the merged changes since the last tag'], [true, 'Link each change to its pull request'],
+    [true, 'Answer the open points of the review'], [false, 'Push the tag']],
+  'docs-refresh': [[true, 'List every page of the docs folder'], [false, 'Group the pages by topic'], [false, 'Check every link of the index']],
+}
+const DEMO_STEPS_ANY = [[true, 'Read what is still open'], [false, 'Do the work'], [false, 'Write the result into STATUS.md']]
+const DEMO_RELATED = { 'demo-task': ['docs/demo-guide.md', 'work/tasks/docs-refresh/STATUS.md'],
+  'alpha-release': ['CHANGELOG.md', 'work/tasks/release-polish/STATUS.md'], 'docs-refresh': ['docs/index.md'] }
+
+/** A task's file as details.py task_detail sends it; `words` the demo's own language, for the lines composed here */
+function taskDetail(slug, state, words = null) {
   // the front of the task the row stands for (review C12): a P0 row opens as that P0, not as one fixed page
   const rows = [...(state?.model?.sections ?? []).flatMap(s => s.rows ?? []),
     ...(state?.model?.pages ?? []).flatMap(p => (p.sections ?? []).flatMap(s => s.items ?? []))]
   // the task's own row, not an inbox item that names the task
-  const row = rows.find(r => r?.task === slug && !r.inbox_id && !r.inbox) ?? rows.find(r => r?.task === slug) ?? {}
+  const listed = (state?.model?.files ?? []).find(f => f.slug === slug)
+  const row = rows.find(r => r?.task === slug && !r.inbox_id && !r.inbox) ?? rows.find(r => r?.task === slug)
+    ?? (listed ? { title: listed.title, priority: listed.priority, state: listed.status, stream: listed.kind === 'stream' } : {})
+  const done = slug === DONE_FILE.slug
+  // what the server sends (details.py task_detail): the four kinds by the folder, the origin as origin.py names it,
+  // and the open inbox items that name the task, each with who filed it
+  const workKind = done ? 'done_task' : row.work_kind ?? (row.stream ? 'stream' : 'task')
+  const folder = done ? `work/done/${DONE_FILE.month}` : workKind === 'stream' ? 'work/streams' : 'work/tasks'
+  const raw = row.origin?.raw ?? 'team call on 2026-09-30'
+  const inbox = (state?.model?.sections ?? []).flatMap(x => x.rows ?? []).filter(r => r.inbox_id && r.task === slug)
+    .map(r => ({ id: r.inbox_id, summary: r.title, state: r.inbox_state ?? 'open', urgency: r.urgency ?? null, gate: r.gate ?? null,
+      from: r.origin?.raw ?? null, kind: r.inbox_kind ?? null, origin: r.origin ?? null }))
   return {
-    ok: true, slug, kind: 'task', path: `work/tasks/${slug}/STATUS.md`,
-    front: { type: row.task_type ?? 'feature', status: row.state ?? 'doing', priority: row.priority ?? 'P1', created: '2026-10-01',
-      last_updated: '2026-10-08', headline: row.title ?? 'Onboarding guide for the demo project', origin: 'team call on 2026-09-30',
+    ok: true, slug, kind: done ? 'done' : workKind === 'stream' ? 'stream' : 'task', work_kind: workKind,
+    origin: row.origin ?? O('other', raw, raw), inbox, path: `${folder}/${slug}/STATUS.md`,
+    front: { type: row.task_type ?? 'feature', status: done ? 'done' : row.state ?? 'doing', priority: row.priority ?? 'P1', created: '2026-10-01',
+      last_updated: '2026-10-08', headline: done ? DONE_FILE.title : row.title ?? 'Onboarding guide for the demo project', origin: raw,
       blocked_by: null },
     sections: [
       { heading: 'Goal', text: 'A new team member sets up the demo project in under an hour, with every step written down.', truncated: false },
       { heading: 'Next', text: '- Draft the first two chapters\n- Collect screenshots from the example setup', truncated: false },
       { heading: 'Log', text: '2026-10-08: outline written, examples collected\n2026-10-03: task opened', truncated: false },
+      // the checklist the Steps tab of Work through reads
+      { heading: 'Steps', text: (DEMO_STEPS[slug] ?? DEMO_STEPS_ANY).map(([done, step]) => `- [${done ? 'x' : ' '}] ${localize(step, words)}`).join('\n'), truncated: false },
     ],
+    // the paths STATUS.md names under related (details.py)
+    related: DEMO_RELATED[slug] ?? [],
     log: [
       { at: '2026-10-08 16:20', glyph: 'n', context: slug, text: 'Outline written, examples collected' },
       { at: '2026-10-03 11:05', glyph: 'n', context: slug, text: 'Task opened after the team call' },
     ],
+    // the files of its folder besides STATUS.md (details.py folder_files)
+    files: MOCK_FILES.map(f => ({ path: f.path, size: f.text.length })),
+    // its card (card.py: the H1 as title, as the row says it) and describe view (describe.py)
+    card: row.card ?? null, describe: row.describe ?? null,
   }
+}
+
+// the files of a task folder, read in place in the files view (/api/task?file=)
+const MOCK_FILES = [
+  { path: 'notes.md', text: '# Notes\n\nThe outline is agreed. **Open:** who reviews the second chapter.\n\n- Draft chapter one\n- Collect screenshots' },
+  { path: 'research/options.yaml', text: 'options:\n  - name: one page\n    effort: small\n  - name: a guide in chapters\n    effort: medium\n' },
+]
+
+function taskFile(slug, file) {
+  const f = MOCK_FILES.find(x => x.path === file)
+  return f ? { ok: true, slug, file, text: f.text, cut: false } : null
 }
 
 // the tokens of 7, 30 or 90 days (usage.py view(days=n)): invented counts per day and source, today a little loud;
@@ -851,6 +1638,9 @@ function costsView(now) {
   return { schema: 1, kind: 'cloud-costs', host: 'my-server', at: new Date(now - 3 * 3600000).toISOString(), currency: 'EUR', days: N, today,
     fx: { date: isoIn(-1, now), source: 'ecb', rates: { USD: 1.08 } },
     source: 'ssh:my-server:~/.bridge/resources/costs.json', read_at: new Date(now - 2 * MIN).toISOString(), stale: false,
+    // two invented projects across accounts (workflow/cost-centers/); the web hosting belongs to none
+    cost_centers: [{ id: 'customer-a', title: 'Customer A', persona_ref: 'my-company', persona_title: 'My Company', budget_month: 120 },
+      { id: 'internal', title: 'Internal', persona_ref: 'me', persona_title: 'Freelance' }],
     accounts: [
       usage('azure-example', 'Example Azure', 'azure', 1.2, [['Functions', 0.55], ['Storage', 0.3], ['Key Vault', 0.15]], 50),
       usage('anthropic-example', 'Example Anthropic', 'anthropic', 2.6, [['Claude API, input', 0.4], ['Claude API, output', 0.6]], 60),
@@ -861,7 +1651,8 @@ function costsView(now) {
           hint: 'Create an admin key at platform.openai.com > Settings > Organization > Admin keys, then store it with this command.' },
         login_command: "ssh -t my-server 'bash /srv/bridge/skills/secrets/secrets.sh store keychain://openai-admin/example --root /srv/bridge --from prompt'" },
       contract,
-    ] }
+    ].map(a => ({ ...a, cost_center: { 'azure-example': 'customer-a', 'anthropic-example': 'customer-a', 'aws-example': 'internal',
+      'openai-example': 'internal' }[a.id] ?? null })) }
 }
 
 // the knowledge graph (graph.py view()): a small invented Bridge, its config entries, tasks and the files they name
@@ -934,7 +1725,8 @@ function historyEntries(now) {
 
 // the other Bridges and A2A agents (agents.py state()): what their cards say and one conversation
 /** Chats handed on, one per status the chat's status line shows (logic.js handoffStatus): a tab start with each
- *  launch outcome, and the control session waiting, arrived and offline (their relay records below) */
+ *  launch outcome (handed a minute ago, so no tab yet is no loss), one whose tab is gone with nothing back, and the
+ *  control session waiting, arrived and offline (their relay records below) */
 export const HANDED_EXAMPLES = [
   ['Tidy the demo board labels', { to: 'tab', status: 'starting' }],
   ['Add a changelog entry for the demo release', { to: 'tab', status: 'started' }],
@@ -944,21 +1736,41 @@ export const HANDED_EXAMPLES = [
   ['Move the notes into the docs folder', { to: 'tab', status: 'partly' }],
   ['Set up the demo test run', { to: 'tab', status: 'manual' }],
   ['Write the release summary', { to: 'tab', status: 'nothing' }],
+  // an hour ago, and no tab carries it any more: the status line says the tab ended, with a new start
+  ['Check the demo backup report', { to: 'tab', status: 'started', lost: true }],
   ['Plan the next demo sprint', { to: 'control', status: 'queued', relay_id: '20261009T113000-0a0b0c01' }],
   ['Check the open demo reviews', { to: 'control', status: 'queued', relay_id: '20261009T113100-0a0b0c02' }],
   ['Sort the demo inbox', { to: 'control', status: 'offline', relay_id: '20261009T113200-0a0b0c03' }],
+  // two that came back from their item (round 6d, quick.py handoff_outcome): a result that closed it, and a
+  // question. The outcome stands under the question and in its status line
+  ['Look into the failed nightly demo job', { to: 'tab', status: 'started',
+    outcome: { text: 'Result: Nothing to do, the next run went through.', closed: true, at_ms: null, asks: false } }],
+  ['Clean up the old demo labels', { to: 'tab', status: 'started',
+    outcome: { text: 'Question: Close the item, or keep it for the next sprint?', closed: false, at_ms: null, asks: true } }],
 ]
 
 export function handedConvs(now) {
-  return HANDED_EXAMPLES.map(([q, handed], i) => {
+  return HANDED_EXAMPLES.map(([q, { lost, ...handed }], i) => {
     const at = now - (60 - i * 4) * MIN
+    // a tab start without its outcome is a minute old (logic.js handoffStatus counts a start without a tab as starting
+    // that long); a lost one keeps its hour
     const inbox = handed.to === 'tab' && handed.status !== 'starting' ? `20261009-11${String(i).padStart(2, '0')}-demo-chat-a1b${i}` : null
     return { id: `qd${String(i + 1).padStart(9, '0')}`, kind: 'free', started_ms: at, session: null, total_usd: 0.002, running: false,
       last_ms: at + MIN, turns: [{ q, a: 'Example answer from the mock: the steps are clear, an agent can take it from here.', model_asked: 'haiku',
         model: 'haiku-5-5', cost_usd: 0.002, at_ms: at, error: null }],
       // a chat handed to a tab is about the item it became: it leaves with that item (quick.py sweep_settled)
       about: inbox ? { kind: 'handoff', inbox } : null,
-      handed: { at_ms: at + MIN, ...handed, ...(inbox ? { inbox_id: inbox } : {}) } }
+      handed: { at_ms: handed.to === 'tab' && !handed.outcome && !lost ? now - MIN : at + MIN, ...handed, ...(inbox ? { inbox_id: inbox } : {}) } }
+  })
+}
+
+/** The questions archived in the last days (/api/chats/archive): read once "all" is asked for under the questions */
+function archivedConvs(now) {
+  return [['Which demo labels overlap?', 2, 'expired'], ['What did the last demo release change?', 4, 'settled']].map(([q, days, why], i) => {
+    const at = now - days * 24 * 60 * MIN
+    return { id: `qe${String(i + 1).padStart(9, '0')}`, kind: 'free', started_ms: at, session: null, total_usd: 0.001, running: false, last_ms: at,
+      about: null, archived: { why, at_ms: at + 25 * 60 * MIN },
+      turns: [{ q, a: 'Example answer from the mock, kept in the archive.', model_asked: 'haiku', model: 'haiku-5-5', cost_usd: 0.001, at_ms: at, error: null }] }
   })
 }
 
@@ -998,6 +1810,12 @@ function agentsState(now) {
         card: null, card_url: 'https://example.org/partner/.well-known/agent-card.json',
         card_error: 'unreachable: [Errno 8] nodename nor servname provided, or not known', card_at_ms: now - 4 * MIN,
         last_error: 'peer refused the call (403): token missing, wrong, or bound to another identity', last_ms: now - 30 * MIN },
+      // a peer from cockpit.a2a_sources: a skill's script reaches it through a broker and keeps the credentials
+      { id: 'relay-bridge', reach: 'ok', last_error: null, summary: 'A colleague\'s Bridge, reached through a broker', owner: 'colleague',
+        network: null, needs_token: true, via: 'broker', usage: { allowed: [], human_gate: null },
+        card: card('Relay Bridge', 'Answers team and IT questions after its owner releases each answer.', [
+          { id: 'ask', name: 'Questions', description: 'Team and IT questions, answered after release.', tags: ['peer'], examples: [] }]),
+        card_url: null, card_error: null, card_at_ms: now - 3 * MIN, last_ms: null },
     ],
     keep_hours: 24,
     convs: [
@@ -1013,16 +1831,38 @@ function agentsState(now) {
 }
 
 // the triage (triage.py state()): one line per task and inbox row of the demo, the last run 20 minutes ago
+/** The themes of Work through as themes.py states them: invented names across the areas, the theme of each point (one
+ *  a person moved), a suggestion with why for the points the triage says nothing about */
+export const MOCK_THEMES = [{ id: 't1a2b3c', name: 'Release work', by: 'ai' }, { id: 't4d5e6f', name: 'Docs and guides', by: 'ai' },
+  { id: 't7a8b9c', name: 'Board hygiene', by: 'person' }]
+function themesState(now) {
+  const [release, docs, board] = MOCK_THEMES.map(t => t.id)
+  return { enabled: true, max_themes: 8, themes: MOCK_THEMES.map(t => ({ ...t })), budget_left: 5, running: false, last_error: null,
+    at_ms: now - 6 * MIN, by_person: ['inbox:20261009-0910-tidy-labels-c3d4'],
+    assign: { 'task:alpha-release': release, 'task:release-polish': release, 'task:old-cleanup': release,
+      'inbox:20261009-0900-review-demo-a1b2': docs, 'task:demo-task': docs, 'task:docs-refresh': docs, 'inbox:20261009-0915-update-docs-e5f6': docs,
+      'inbox:20261009-0910-tidy-labels-c3d4': board, 'inbox:20261009-0940-filed-board-c2d3': board },
+    suggest: {
+      'task:release-polish': { verb: 'later', reason: 'The wording waits for the release date', until: isoIn(4, now), drop: null, at_ms: now - 6 * MIN },
+      'task:old-cleanup': { verb: 'done', reason: 'The fixtures are gone from the repository', until: null, drop: null, at_ms: now - 6 * MIN },
+      'inbox:20261009-0910-tidy-labels-c3d4': { verb: 'drop', reason: 'The board was tidied last week', until: null, drop: 'not_needed', at_ms: now - 6 * MIN },
+      'inbox:20261009-0940-filed-board-c2d3': { verb: 'you', reason: 'Only you can say if the switch is wanted', until: null, drop: null, at_ms: now - 6 * MIN },
+    } }
+}
+
 function triageState(now, running = null) {
-  // effort is for the AI only: a row the person does carries none (triage.py)
+  // effort is for the AI only: a row the person does carries none (triage.py). next_rank is Jev's fresh rank of
+  // the row (the order of the Work through page's tasks), rank_at when it was given
   const x = (kind, title, gist, verdict, doer, effort, extra = {}) => ({ kind, title, gist, verdict, reason: null, doer, effort, why: null,
-    verdict_from: 'haiku', model: 'haiku-5-5', level: effort === 'small' ? 1 : 2, jev: null, ...extra })
+    verdict_from: 'haiku', model: 'haiku-5-5', level: effort === 'small' ? 1 : 2, jev: null, next_rank: null, rank_at: null, ...extra })
   const items = {
     'task:demo-task': x('task', 'Write the onboarding guide for the demo project', 'A setup guide for new team members', 'continue', 'either', 'medium',
       { topic: 'docs' }),
-    'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small', { topic: 'docs' }),
-    'inbox:20261009-0915-update-docs-e5f6': x('inbox', 'Update the setup docs after the config change', 'Update the setup docs after the config change',
-      'keep', 'ai', 'small', { topic: 'docs' }),
+    'task:docs-refresh': x('task', 'Refresh the docs index', 'Rebuild the index after the folder change', 'continue', 'ai', 'small',
+      { topic: 'docs', next_rank: 1, rank_at: now - 3 * 3600000 }),
+    // a gist that only repeats the title (the day list leaves it out)
+    'inbox:20261009-0915-update-docs-e5f6': x('inbox', 'config: docs/setup.md still names port 8790 after the switch to cockpit.port in scripts/web/config.yaml (3 sections)',
+      'config: docs/setup.md still names port 8790 after the switch to cockpit.port in scripts/web/config.yaml (3 sections)', 'keep', 'ai', 'small', { topic: 'docs' }),
     'task:alpha-release': x('task', 'Prepare the alpha release notes', 'Release notes from the merged changes', 'continue', 'you', null,
       { why: 'the wording for the announcement' }),
     'inbox:demo-inbox-4': x('inbox', 'Release checklist', 'A review asked on the checklist PR', 'unclear', 'you', null, { reason: 'no answer from the team yet' }),
@@ -1033,22 +1873,105 @@ function triageState(now, running = null) {
     last: { at: localIso(now - 20 * MIN), count: Object.keys(items).length, cost_ct: 0.42, cost_known: true, calls: 2, model: 'haiku-5-5', duration_sec: 18.5 } }
 }
 
-// a Jev order of a work page (jev.py rank()): the page's task and inbox rows, by an invented priority
-function jevOrder(page, now) {
+// an order of a work page (jev.py rank()) by Jev or Haiku: the rows Prio's read-in sent (every point of the view), else
+// the page's task and inbox rows, by an invented priority; Haiku adds its half sentence of why
+function jevOrder(page, now, ranker = 'jev', rows = null) {
   const keys = []
-  for (const sec of page.sections ?? []) for (const it of sec.items ?? []) {
+  if (Array.isArray(rows)) for (const r of rows) { if (r?.key && !keys.some(k => k.key === r.key)) keys.push({ key: r.key, title: r.title }) }
+  else for (const sec of page.sections ?? []) for (const it of sec.items ?? []) {
     const key = it.inbox ? `inbox:${it.inbox}` : it.task ? `task:${it.task}` : null
     if (key && !keys.some(k => k.key === key)) keys.push({ key, title: it.title })
   }
+  // urgency and importance in a cycle of four, so the first four rows stand in the four squares (now, plan, hand, drop)
   const items = keys.map((k, i) => {
-    const u = Math.max(0.2, 0.9 - i * 0.2), im = i < 2 ? 0.8 : 0.4, ef = i % 2 ? 0.3 : 0.6, me = i === 0 ? 0.7 : 0.3
+    const u = [0.9, 0.3, 0.8, 0.2][i % 4], im = [0.8, 0.9, 0.3, 0.2][i % 4], ef = i % 2 ? 0.3 : 0.6, me = i === 0 ? 0.7 : 0.3
     const priority = Math.round((0.42 * u + 0.38 * im + 0.12 * (1 - ef)) * 1000) / 1000
     return { key: k.key, rank: i + 1, title: k.title, urgency: u, impact: im, effort: ef, only_me: me, first: i ? 0.1 : 0.6, priority, confidence: 0.8,
-      quadrant: u >= 0.5 && im >= 0.5 ? 'now' : im >= 0.5 ? 'plan' : u >= 0.5 ? 'hand' : 'drop', who: me >= 0.5 ? 'me' : 'delegate' }
+      quadrant: u >= 0.5 && im >= 0.5 ? 'now' : im >= 0.5 ? 'plan' : u >= 0.5 ? 'hand' : 'drop', who: me >= 0.5 ? 'me' : 'delegate',
+      reason: ranker === 'haiku' ? 'an invented reason of the demo' : null }
   })
-  return { at_ms: now, day: isoIn(0, now), took_ms: 2400, calls: 1, sent: items.length, skipped: { private: 0, section: 0, triage: 0, over: 0 },
-    first: items[0]?.key ?? null, items, usage: { input_tokens: 1840, output_tokens: 220 }, price: null }
+  return { at_ms: now, day: isoIn(0, now), took_ms: 2400, calls: ranker === 'jev' ? 1 : 0, sent: items.length,
+    skipped: { private: 0, section: 0, same: 0, over: 0 }, first: items[0]?.key ?? null, items, ranker,
+    model: ranker === 'haiku' ? 'haiku' : 'jev-1.14.0', fallback: null,
+    usage: ranker === 'jev' ? { input_tokens: 1840, output_tokens: 220 } : { input_tokens: null, output_tokens: null }, price: null }
 }
+
+// ---------------------------------------------------------------- Work through, round 3: the Activity of a point
+
+/** A row of the feed as activity.py sends it */
+const feedRow = (ms, over) => ({ id: '', at: localIso(ms), at_ms: ms, kind: 'note', filters: ['notes'], text: '', change: null, undone_ms: null,
+  by: null, links: [], doc: null, agent: null, ...over })
+
+/** The invented rows of a point, newest first: every kind and filter on the demo task (an inbox item that names it
+ *  reads it too), a short feed for the item about the setup docs, the creation alone for any other row */
+function feedRows(row, now) {
+  const ago = (min, over) => feedRow(now - min * MIN, over)
+  const day = (days, over) => ({ ...feedRow(dayAt(-days, 12), over), at: isoIn(-days, now) })
+  const doc = (path, state, extra = {}) => ({ path, state, changes: 1, attached: false, bytes: 4120, ...extra })
+  if (row.task === 'demo-task') {
+    return [
+      ago(120, { id: 'theme:1', kind: 'theme', filters: ['state'], change: { field: 'theme', old: null, new: 'Docs and guides' }, by: { kind: 'themes', name: null } }),
+      ago(160, { id: 'doc:1', kind: 'doc', filters: ['docs'], text: 'guide-draft.md', by: { kind: 'agent', name: 'demo-task research' },
+        doc: doc('deliverables/guide-draft.md', 'new'), links: [{ kind: 'doc', slug: 'demo-task', path: 'deliverables/guide-draft.md' }] }),
+      ago(240, { id: 'agent:1', kind: 'agent', filters: ['agents', 'state'], text: 'Started: find three good sources for the team page',
+        change: { field: 'driver', old: null, new: 'demo-task research' }, by: { kind: 'suggestion', name: null },
+        agent: { mode: 'go', stage: 'working', result: null }, links: [{ kind: 'tab', ref: 'surface:12' }] }),
+      ago(19 * 60, { id: 'decision:1', kind: 'decision', filters: ['state'], change: { field: 'decision', old: null, new: 'later', until: isoIn(0, now) },
+        undone_ms: now - 18 * 60 * MIN, by: { kind: 'batch', name: null } }),
+      ago(21 * 60, { id: 'code:1', kind: 'code', filters: ['code'], text: 'example/repo#15 Add a config switch for the report', by: { kind: 'bridge', name: null },
+        links: [{ kind: 'web', href: 'https://example.org/repo/issues/15' }] }),
+      ago(25 * 60, { id: 'note:1', kind: 'note', filters: ['notes'], text: 'Outline agreed with the team, screenshots come next' }),
+      ago(44 * 60, { id: 'doc:2', kind: 'doc', filters: ['docs'], by: { kind: 'git', name: null },
+        doc: doc('deliverables/outline.md', 'changed', { changes: 3, bytes: 2310 }), links: [{ kind: 'doc', slug: 'demo-task', path: 'deliverables/outline.md' }] }),
+      day(2, { id: 'log:1', kind: 'log', filters: ['notes'], text: 'Outline written, examples collected', by: { kind: 'bridge', name: null } }),
+      ago(3 * 1440 + 60, { id: 'code:2', kind: 'code', filters: ['code'], text: 'example/repo#18 Docs: setup guide outline', by: { kind: 'git', name: null },
+        links: [{ kind: 'web', href: 'https://example.org/repo/pull/18' }] }),
+      ago(3 * 1440 + 120, { id: 'session:1', kind: 'session', filters: ['agents', 'state'], text: 'demo-task review',
+        change: { field: 'driver', old: null, new: 'demo-task review' }, by: { kind: 'you', name: null } }),
+      ago(4 * 1440, { id: 'agent:2', kind: 'agent', filters: ['agents', 'state'], text: 'Finished: three sources found, the result note is filed',
+        by: { kind: 'agent', name: 'demo-task research' }, agent: { mode: 'go', stage: 'result', result: 'Three sources found' } }),
+      ago(5 * 1440, { id: 'doc:3', kind: 'doc', filters: ['docs'], by: { kind: 'you', name: null },
+        doc: doc('deliverables/screenshots.pdf', 'new', { attached: true, bytes: 48213 }), links: [{ kind: 'doc', slug: 'demo-task', path: 'deliverables/screenshots.pdf' }] }),
+      ago(6 * 1440, { id: 'status:1', kind: 'status', filters: ['state'], change: { field: 'status', old: 'backlog', new: 'doing' }, by: { kind: 'git', name: null } }),
+      day(7, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'backlog' },
+        by: { kind: 'you', name: null } }),
+    ]
+  }
+  if (row.inbox_id === '20261009-0915-update-docs-e5f6') {
+    return [
+      ago(35, { id: 'agent:1', kind: 'agent', filters: ['agents', 'state'], text: 'Started: update the setup docs', change: { field: 'driver', old: null, new: null },
+        by: { kind: 'you', name: null }, agent: { mode: 'go', stage: 'working', result: null } }),
+      ago(26 * 60, { id: 'note:1', kind: 'note', filters: ['notes'], text: 'The new config key needs a line in the setup guide' }),
+      day(3, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'open' } }),
+    ]
+  }
+  // a finished AI run's item (stage 2): the person's start note and the end that closed it, as activity.py reads its events
+  const run = DONE_RUNS.find(d => d.key === row.key)
+  if (run) {
+    const done = run.kind === 'dropped' ? 'dropped' : 'done'
+    const by = run.by === 'web' ? { kind: 'you', name: null } : { kind: 'bridge', name: run.by }
+    return [
+      ago(run.ended * 60, { id: 'status:1', kind: 'status', filters: ['state'], text: run.text, change: { field: 'status', old: 'open', new: done }, by }),
+      ago(run.hours * 60 - 1, { id: 'note:1', kind: 'note', filters: ['notes'], text: `Start note: ${run.ask ?? run.title}`, by: { kind: 'you', name: null } }),
+      day(5, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: 'open' } }),
+    ]
+  }
+  return [day(5, { id: 'created:1', kind: 'created', filters: ['state'], change: { field: 'status', old: null, new: row.status ?? 'open' } })]
+}
+
+/** The counts of a feed's filters, a row in all and in each of its own (activity.py counts) */
+function feedCounts(rows) {
+  const counts = { all: rows.length, notes: 0, docs: 0, state: 0, agents: 0, code: 0 }
+  for (const r of rows) for (const f of r.filters) counts[f] += 1
+  return counts
+}
+
+// the notes the demo gives the verbs Work through sends, in words both languages carry (WORDS); any other verb names itself
+const MOCK_NOTES = { note: 'Mock: the note is kept', settle: 'Mock: decided', later: 'Mock: put off', shelve: 'Mock: shelved',
+  do_it: 'Mock: an agent starts on it', task_reopen: 'Mock: back in the list', inbox_reopen: 'Mock: back in the list' }
+
+// the sentence a mail of an instruction becomes: a start that drafts only (text.py instruct.mail_note)
+const MAIL_NOTE = 'Write a mail draft with the mail-draft skill, a draft only, never send it'
 
 /** A transport with the same interface as the real one, backed by the example state */
 export function createMockTransport(opts = {}) {
@@ -1064,6 +1987,9 @@ export function createMockTransport(opts = {}) {
   const jev = createMockJev ? createMockJev() : null   // the Jev tab's mock: the server's once-per-day rule, invented tokens
   const history = opts.empty ? [] : historyEntries(now())
   const orders = {}                                       // the kept Jev order per work page, as jev.py keeps it
+  const added = {}                                        // Work through: notes and documents added per row key, newest first
+  const summaries = {}                                    // the summary kept per key with the ids of the rows it read
+  const blobs = new Map()                                 // the documents of the demo as Blob addresses, one per path
   const words = WORDS[opts.lang]
   const emit = (name, payload) => { if (handlers[name]) handlers[name](localize(payload, words)) }
   const note = (text, tone = 'info') => emit('note', { at: hhmm(now()), text, tone })
@@ -1081,7 +2007,18 @@ export function createMockTransport(opts = {}) {
     })
     history.unshift({ id: `h${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, at_ms: now(), verb, items, backfilled: false })
   }
-  const removeRows = keys => {
+  const gone = new Map()                                   // the rows a decision took out, by key, for its undo
+  const removeRows = (keys, verb) => {
+    for (const sec of state.model.sections) {
+      sec.rows.forEach((r, at) => { if (keys.includes(r.key)) gone.set(r.key, { section: sec.id, at, row: r, compact: sec.compact.includes(r.key),
+        approvable: state.model.approvable.includes(r.key), task: state.model.task_rows.find(x => x.key === r.key) ?? null }) })
+    }
+    // a file put off stays a file, deferred; one closed or dropped leaves the list
+    if (state.model.files) {
+      const put = ['later', 'hide'].includes(verb)
+      state.model.files = state.model.files.flatMap(f => (!keys.includes(`task:${f.slug}`) ? [f]
+        : put ? [{ ...f, deferred: true, deferred_until: isoIn(3, now()) }] : []))
+    }
     for (const s of state.model.sections) {
       s.rows = s.rows.filter(r => !keys.includes(r.key))
       s.compact = s.compact.filter(k => !keys.includes(k))
@@ -1089,13 +2026,311 @@ export function createMockTransport(opts = {}) {
     }
     state.model.approvable = state.model.approvable.filter(k => !keys.includes(k))
     state.model.task_rows = state.model.task_rows.filter(r => !keys.includes(r.key))
+    // an item put off past the window (model.deferred) leaves its list the same way
+    for (const [at, r] of (state.model.deferred ?? []).entries()) {
+      if (keys.includes(r.key)) gone.set(r.key, { section: 'deferred', at, row: r, compact: false, approvable: false, task: null })
+    }
+    if (state.model.deferred) state.model.deferred = state.model.deferred.filter(r => !keys.includes(r.key))
     state.model.review = { ...state.model.review, keys: state.model.review.keys.filter(k => !keys.includes(k)) }
     seq += 1
     state.model = { ...state.model, seq }
     wait(() => emit('view', state.model), 300)
   }
 
+  // an undo: the row a decision took out comes back to its section, at its place, the page hears the new view
+  const restoreRow = key => {
+    const was = gone.get(key)
+    if (!was) return
+    gone.delete(key)
+    if (was.section === 'deferred') {
+      if (!(state.model.deferred ?? []).some(r => r.key === key)) state.model.deferred = [...(state.model.deferred ?? []), was.row]
+      seq += 1
+      state.model = { ...state.model, seq }
+      wait(() => emit('view', state.model), 120)
+      return
+    }
+    const sec = state.model.sections.find(x => x.id === was.section)
+    if (!sec || sec.rows.some(r => r.key === key)) return
+    sec.rows.splice(Math.min(was.at, sec.rows.length), 0, was.row)
+    if (was.compact) sec.compact.push(key)
+    sec.total = sec.rows.length
+    if (was.approvable) state.model.approvable.push(key)
+    if (was.task) state.model.task_rows.push(was.task)
+    if (state.model.files && key.startsWith('task:')) state.model.files = state.model.files.map(f => (`task:${f.slug}` === key ? { ...f, deferred: false, deferred_until: null } : f))
+    seq += 1
+    state.model = { ...state.model, seq }
+    wait(() => emit('view', state.model), 120)
+  }
+
+  // Work through, round 4 (actions_work.py flow_merge, task_unmerge; actions_chats.py session_unlink, session_link; the
+  // verbs Back on of Not now sends): what each does to the demo's state, the answer as the server words it
+  const merged = new Map()     // the files a merge took out, by slug, for its undo
+  const refused = {}           // session_refused: sid -> {slug: at_ms}
+  const publish = () => { seq += 1; state.model = { ...state.model, seq }; wait(() => emit('view', state.model), 120) }
+  const fileByKey = key => (state.model.files ?? []).find(f => `task:${f.slug}` === key) ?? null
+  const openTask = key => {
+    const r = rowOf(key)
+    if (r) return r
+    const f = fileByKey(key)
+    return f ? { key, task: f.slug, title: f.title, status: f.status, stream: f.kind === 'stream', work_kind: f.kind, inbox_id: null } : null
+  }
+  const decision = (key, change) => {
+    added[key] = [feedRow(now(), { id: `decision:m${Object.values(added).flat().length + 1}`, kind: 'decision', filters: ['state'], change,
+      by: { kind: 'you', name: null } }), ...(added[key] ?? [])]
+  }
+  const round4 = (verb, args, result) => {
+    if (verb === 'flow_merge') {
+      const off = flowOff()
+      if (off) return off
+      const keys = Array.isArray(args.keys) ? args.keys : []
+      const bad = field => ({ ...fail(400, 'invalid_argument', `bad ${field}`), error: { code: 'invalid_argument', message: `bad ${field}`, field } })
+      if (!keys.length || keys.length > 9 || keys.includes(args.keep) || new Set(keys).size !== keys.length) return bad('keys')
+      for (const k of [args.keep, ...keys]) {
+        const r = openTask(k)
+        if (!r) return fail(409, 'stale_row', 'no such row')
+        if (!String(k).startsWith('task:') || r.inbox_id || r.stream || r.work_kind === 'stream' || r.status === 'done') return fail(409, 'merge_not_task', 'only open tasks merge')
+      }
+      const keep = openTask(args.keep)
+      const slugs = keys.map(k => k.slice(5))
+      const items = []
+      for (const k of keys) {
+        const r = openTask(k)
+        const slug = k.slice(5)
+        const file = fileByKey(k)
+        if (file) merged.set(slug, file)
+        items.push({ key: k, title: r.title, kind: 'task', did: 'merged', ident: slug, into: keep.task, work_kind: 'task', undone_ms: null,
+          undo: { verb: 'task_unmerge', args: { keep: keep.task, slug, as: r.status ?? 'doing' } } },
+        { key: args.keep, title: keep.title, kind: 'task', did: 'merged_in', ident: keep.task, from: slug, undo: null, undone_ms: null })
+        decision(k, { field: 'decision', old: null, new: 'merged', into: keep.task })
+        decision(args.keep, { field: 'decision', old: null, new: 'merged_in', from: slug })
+      }
+      history.unshift({ id: `h${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, at_ms: now(), verb: 'flow_merge', items, backfilled: false })
+      removeRows(keys, 'merge')
+      const names = keys.map(k => openTask(k)?.title ?? merged.get(k.slice(5))?.title ?? k).join(', ')
+      return ok({ ...result, note: `${items.filter(x => x.did === 'merged').map(x => x.title).join(', ') || names} merged into ${keep.title}`, settled: keys,
+        merge: { keep: keep.task, merged: slugs, failed: [] }, undo: items.filter(x => x.undo).map(x => ({ title: x.title, kind: 'task', undo: x.undo })) })
+    }
+    if (verb === 'task_unmerge') {
+      const all = history.flatMap(e => e.items)
+      const hit = all.find(it => !it.undone_ms && it.undo?.verb === 'task_unmerge' && it.undo.args.keep === args.keep && it.undo.args.slug === args.slug)
+      if (!hit) return fail(409, 'not_applicable', 'no such merge to take back')
+      hit.undone_ms = now()
+      const into = all.find(it => !it.undone_ms && it.did === 'merged_in' && it.ident === args.keep && it.from === args.slug)
+      if (into) into.undone_ms = now()
+      const file = merged.get(args.slug)
+      if (file && state.model.files && !fileByKey(`task:${args.slug}`)) state.model.files = [...state.model.files, file]
+      merged.delete(args.slug)
+      restoreRow(`task:${args.slug}`)
+      publish()
+      return ok({ ...result, note: `Merge of ${hit.title} taken back`, unmerge: { keep: args.keep, slug: args.slug } })
+    }
+    if (verb === 'session_unlink' || verb === 'session_link') {
+      const list = state.sessions?.sessions ?? []
+      const x = list.find(v => v.sid === args.session)
+      if (!x) return fail(409, 'stale_row', 'no such session')
+      if (verb === 'session_link') {
+        if (refused[x.sid]) delete refused[x.sid][args.slug]
+        Object.assign(x, { task: args.slug, task_how: 'hand', task_since_ms: now() })
+      } else {
+        if (!x.task) return fail(409, 'stale_row', 'the session has no task')
+        refused[x.sid] = { ...(refused[x.sid] ?? {}), [x.task]: now() }
+        result.session = { sid: x.sid, refused: x.task }
+        result.note = x.task_how === 'seen' ? `The session no longer counts as work on ${x.task}` : `Mock: session_unlink ${x.task}`
+        Object.assign(x, { task: null, task_how: null, task_since_ms: null })
+      }
+      state.sessions = { ...state.sessions, sessions: [...list] }
+      wait(() => emit('sessions', state.sessions), 60)
+      return null
+    }
+    // stage 4 (actions_work.py work_on, task_next, checkin_stuck): In progress with someone until a check-in day, a
+    // task's step to someone, a check-in that hangs back to the owner; the sentence a note in Activity
+    const anyRow = key => rowOf(key) ?? (state.model.task_rows ?? []).find(r => r.key === key) ?? null
+    const note = (key, text) => {
+      if (!String(text ?? '').trim()) return
+      added[key] = [feedRow(now(), { id: `note:w${Object.values(added).flat().length + 1}`, kind: 'note', filters: ['notes'],
+        text: String(text).trim(), by: { kind: 'you', name: null } }), ...(added[key] ?? [])]
+    }
+    const stepTo = (r, who, check) => {
+      if (r.card?.next) r.card = { ...r.card, next: { ...r.card.next, who, check } }
+    }
+    if (verb === 'work_on') {
+      const r = anyRow(args.key)
+      if (!r) return fail(409, 'stale_row', 'no such row')
+      const was = { who: r.card?.next?.who ?? null, state: r.inbox_state ?? null }
+      r.checkin = { who: args.who, until: args.until, since: isoIn(0, now()) }
+      if (r.inbox_id) Object.assign(r, { inbox_state: 'deferred', until: args.until })
+      stepTo(r, args.who, args.until)
+      note(r.key, args.text)
+      publish()
+      const undo = r.inbox_id ? { verb: 'inbox_reopen', args: { id: r.inbox_id } } : r.task ? { verb: 'task_next', args: { slug: r.task, who: was.who ?? 'me', clear_check: true } }
+        : { verb: 'unhide', args: { key: r.key } }
+      return ok({ ...result, note: `Mock: with ${args.who} until ${args.until}`, undo: [{ title: r.title, kind: r.inbox_id ? 'inbox' : 'task', undo }] })
+    }
+    if (verb === 'task_next') {
+      const r = anyRow(`task:${args.slug}`)
+      if (!r) return fail(409, 'stale_row', 'no such task')
+      const check = args.clear_check ? null : args.check ?? r.card?.next?.check ?? null
+      stepTo(r, args.who ?? r.card?.next?.who ?? 'me', check)
+      r.checkin = check ? { who: args.who ?? r.checkin?.who ?? null, until: check, since: r.checkin?.since ?? isoIn(0, now()) } : null
+      publish()
+      return ok({ ...result, note: '' })
+    }
+    if (verb === 'checkin_stuck') {
+      const r = anyRow(args.key)
+      if (!r) return fail(409, 'stale_row', 'no such row')
+      r.checkin = null
+      if (r.inbox_id) Object.assign(r, { inbox_state: 'open', until: null })
+      stepTo(r, 'me', null)
+      note(r.key, args.text)
+      publish()
+      return ok({ ...result, note: 'Mock: back to you' })
+    }
+    if (verb === 'unhide') {
+      const at = (state.model.hidden ?? []).findIndex(r => r.key === args.key)
+      if (at < 0) return null
+      const [r] = state.model.hidden.splice(at, 1)
+      const sec = state.model.sections.find(x => x.id === (r.section ?? 'later')) ?? state.model.sections.at(-1)
+      sec.rows = [...sec.rows, { ...r, hidden_until: null }]
+      sec.total = sec.rows.length
+      publish()
+      return null
+    }
+    if (verb === 'inbox_reopen') {
+      const r = rowOf(`inbox:${args.id}`)
+      // an answer ends a check-in (details._checkin)
+      if (r?.inbox_state === 'deferred') { Object.assign(r, { inbox_state: 'open', until: null, checkin: null }); publish() }
+      return null
+    }
+    if (verb === 'task_running' || verb === 'task_keep') {
+      const keys = verb === 'task_running' ? [`task:${args.slug}`] : args.keys ?? []
+      for (const k of keys) {
+        const r = rowOf(k)
+        if (!r) continue
+        if (verb === 'task_running') Object.assign(r, { blocked_by: null, bucket: r.bucket === 'waiting' ? 'tasks' : r.bucket })
+        else if (['resting', 'drop'].includes(r.bucket)) r.bucket = 'tasks'
+      }
+      publish()
+      return null
+    }
+    return null
+  }
+
+  // Work through, round 3: the row of a key, the feed of a point (an inbox item that names a task reads the task's), the
+  // refusals of flow_off and of a key no longer in the list
+  const flowOff = () => (state.work?.flow?.enabled ? null : fail(409, 'flow_off', 'Work through is off'))
+  // a finished AI run (stage 2) stands for its item, which left the sections: activity.py reads it from its folder
+  const runRow = key => { const d = DONE_RUNS.find(x => x.key === key); return d ? { key, title: d.title, ...(key.startsWith('inbox:') ? { inbox_id: key.slice(6) } : { task: key.slice(5) }) } : null }
+  const rowOf = key => state.model.sections.flatMap(x => x.rows).find(r => r.key === key) ?? runRow(key)
+  // the starts of the return channel on a row, as activity.py lists them, where the invented feed has none of its own
+  const startRows = row => (state.model.returns ?? []).filter(r => r.key === row.key).map((r, k) => {
+    const tab = state.tabs.tabs.find(t => t.ref === r.tab?.ref) ?? null
+    return feedRow(r.at_ms ?? now(), { id: `agent:r${k + 1}`, kind: 'agent', filters: ['agents', 'state'], text: 'Started from the cockpit',
+      change: { field: 'driver', old: null, new: tab?.name ?? null }, by: { kind: 'you', name: null },
+      agent: { mode: r.mode ?? 'go', stage: r.stage ?? 'started', result: r.result?.text ?? null }, links: tab ? [{ kind: 'tab', ref: tab.ref }] : [] })
+  })
+  const feedOf = row => {
+    const own = row.task ? `task:${row.task}` : row.key
+    const base = feedRows(row, now())
+    const rows = [...(added[row.key] ?? []), ...(own !== row.key ? added[own] ?? [] : []), ...base,
+      ...(base.some(r => r.kind === 'agent') ? [] : startRows(row))]
+      .sort((a, b) => (b.at_ms ?? 0) - (a.at_ms ?? 0))
+    const hash = rows.map(r => r.id).join(',')
+    const kept = summaries[row.key] ?? null
+    const fl = state.work.flow
+    return { ok: true, key: row.key, at_ms: now(), rows, more: false, counts: feedCounts(rows),
+      facts: { created: rows.at(-1)?.at.slice(0, 10) ?? null, moved: rows[0]?.at ?? null,
+        jev: row.task === 'demo-task' ? { quadrant: 'plan', rank: 2, urgency: 0.67, impact: 1.0, effort: 0.33, only_me: 0.8, at_ms: now() - 60 * MIN } : null },
+      summary: kept ? { ...kept.summary, stale: kept.hash !== hash } : null,
+      can: { note: true, attach: !!fl.attach?.enabled && !!row.task, summary: !!fl.summary?.enabled && rows.length > 0 }, hash }
+  }
+  // a document attached (activity.py attach): the name made safe and flat, the size and the data checked, a name taken
+  // gets -2 up to -99; the row comes into the feed at once
+  const attach = args => {
+    const off = flowOff()
+    if (off) return off
+    if (!state.work.flow.attach?.enabled) return fail(409, 'attach_off', 'attaching is off')
+    const row = rowOf(args.key)
+    if (!row) return fail(409, 'stale_row', 'no such row')
+    if (!row.task) return fail(409, 'attach_no_task', 'no open task on this row')
+    const data = String(args.data ?? '')
+    const bad = field => ({ ...fail(400, 'invalid_argument', `bad ${field}`), error: { code: 'invalid_argument', message: `bad ${field}`, field } })
+    if (!data || data.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return bad('data')
+    const bytes = (data.length / 4) * 3 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0)
+    if (bytes > state.work.flow.attach.max_mb * 1048576) return fail(413, 'attach_too_big', 'too big')
+    // as activity.py safe_name: Python's \w is every letter and digit of any script, so \p{L} and \p{N} here; control
+    // and format characters out; runs of blanks, then of underscores, as one
+    let name = String(args.name ?? '').split(/[\\/]/).pop().normalize('NFC').replace(/[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}]/gu, '')
+      .replace(/[^\p{L}\p{N}_ .()+,=@-]/gu, '_').replace(/ {2,}/g, ' ').replace(/_{2,}/g, '_').replace(/^[. _-]+/, '').replace(/[. ]+$/, '')
+    if (name.length > 120) { const dot = name.lastIndexOf('.'); const ext = dot > 0 && name.length - dot <= 16 ? name.slice(dot) : ''; name = name.slice(0, 120 - ext.length) + ext }
+    if (!name) return bad('name')
+    const slug = row.task
+    const own = `task:${slug}`
+    const taken = new Set([...(added[own] ?? []), ...feedRows({ task: slug, key: own }, now())].filter(r => r.doc).map(r => r.doc.path.toLowerCase()))
+    const dot = name.lastIndexOf('.')
+    const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
+    let pick = name
+    for (let n = 2; taken.has(`deliverables/${pick}`.toLowerCase()); n += 1) {
+      if (n > 99) return fail(409, 'attach_exists', 'that name is taken')
+      pick = `${stem}-${n}${ext}`
+    }
+    const path = `deliverables/${pick}`
+    const r = feedRow(now(), { id: `doc:a${Object.values(added).flat().length + 1}`, kind: 'doc', filters: ['docs'], by: { kind: 'you', name: null },
+      doc: { path, state: 'new', changes: 1, attached: true, bytes }, links: [{ kind: 'doc', slug, path }] })
+    added[own] = [r, ...(added[own] ?? [])]
+    // the page says the attachment itself (app.js flowAttach): no note of the demo's beside it
+    return ok({ ok: true, verb: 'flow_attach', note: '', steps: [], settled: [], reload: 'none', attach: { path, name: pick, bytes, row: r } })
+  }
+  // a sentence of the instruction line as a plan (instruct.py), by a fixed word match, part by part (the parts between
+  // commas): done, later, drop, a mail or a question to someone (always a start that drafts only), a start, a reply
+  // (only with the point open and its tab at its prompt; after "reply:" the rest of the sentence is its words). A part
+  // with none of them stays unclear, as the model says what it could not plan; nothing runs
+  const instruct = args => {
+    const rows = (args.keys ?? []).map(rowOf).filter(Boolean)
+    if (!rows.length) return fail(409, 'stale_row', 'no such row')
+    const text = String(args.text ?? '').trim()
+    const steps = []
+    const unclear = []
+    const step = (op, rs, extra = {}) => steps.push({ n: steps.length + 1, op, keys: rs.map(r => r.key), titles: rs.map(r => r.title), skipped: [], ...extra })
+    const monday = (() => { const d = new Date(now()); d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7)); return isoIn(Math.round((d.getTime() - now()) / DAY), now()) })()
+    // typed words go only to a tab that waits at its prompt (instruct.py takes_words); one that asks a choice is answered
+    // on the card (asks), one at work takes nothing (not_offered)
+    const reply = said => {
+      const tab = args.point ? state.tabs.tabs.find(t => t.slug === rows[0].task && t.state !== 'shell') : null
+      if (tab?.state === 'waiting' && !tab.is_control) step('reply', rows.slice(0, 1), { tab_ref: tab.ref, text: said })
+      else step('reply', [], { tab_ref: null, text: said, skipped: rows.map(r => ({ key: r.key, title: r.title,
+        why: !tab ? 'no_tab' : tab.state === 'needs-you' ? 'asks' : 'not_offered' })) })
+    }
+    const told = /(?:^|[\s,;])(?:reply|answer|antworte|antwort)\s*:\s*(.*)$/iu.exec(text)
+    const head = told ? text.slice(0, told.index) : text
+    for (const part of head.split(/[,;]/).map(x => x.trim().replace(/^(?:and|und|then|dann)\s+/iu, '')).filter(Boolean)) {
+      const low = ` ${part.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `
+      const has = (...w) => w.some(x => low.includes(` ${x} `))
+      const before = steps.length
+      if (has('done', 'erledigt', 'fertig')) step('done', rows)
+      if (has('later', 'später', 'monday', 'montag')) step('later', rows, { until: monday })
+      if (has('drop', 'weg', 'not needed', 'nicht mehr nötig')) step('drop', rows, { reason: 'not_needed' })
+      if (has('mail', 'e mail', 'email', 'ask', 'frag', 'frage')) step('do', rows, { mail: true, note: `${localize(MAIL_NOTE, words)}: ${part}` })
+      else if (has('let ai', 'bridge macht', 'agent')) step('do', rows, { note: part })
+      if (has('reply', 'antwort', 'antworte', 'go on', 'weiter')) reply(part)
+      if (steps.length === before) unclear.push(part)
+    }
+    if (told) reply(told[1].trim() || text)
+    return { id: `p${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, text, point: !!args.point, n: rows.length, steps,
+      unclear: !steps.length ? 'No verb in the sentence: done, later, drop, a mail or a reply.' : unclear.length ? `${localize('No verb in this part:', words)} ${unclear.join('; ')}` : null,
+      model: 'haiku', at_ms: now() }
+  }
+
   return {
+    // the address of a file the page links: a document of a task opens as a Blob of invented text, the rest as it is
+    href(p) {
+      if (!String(p).startsWith('/api/flow/doc?') || typeof Blob !== 'function' || typeof URL?.createObjectURL !== 'function') return p
+      if (!blobs.has(p)) {
+        const file = new URLSearchParams(p.split('?')[1]).get('path') ?? ''
+        const text = `${file}\n\n${localize('A file of the demo, invented: nothing here is real.', words)}\n`
+        blobs.set(p, URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })))
+      }
+      return blobs.get(p)
+    },
     async get(path) {
       const [pathname, query = ''] = path.split('?')
       const url = { pathname, searchParams: new URLSearchParams(query) }
@@ -1103,11 +2338,42 @@ export function createMockTransport(opts = {}) {
         if (opts.auth === false) return fail(401, 'unauthorized', 'no cookie')
         // the check of the cockpit: block finds nothing in the invented config (config_warnings, #402)
         return ok({ ok: true, csrf: 'mock', language: opts.lang || 'en', version: '0.1.0', config_warnings: [],
-          config: { port: 8797, relay: true, tabs_seconds: 10, full_minutes: 10, voice: false, target: 'area', control: 'Control', profile: 'morning' } })
+          config: { port: 8797, relay: true, tabs_seconds: 10, full_minutes: 10, voice: false, target: 'area', control: 'Control', profile: 'morning',
+            // the areas an inbox item can be given (workplace.workspaces), as the rows of the demo name them
+            areas: ['Demo', 'Docs', 'Ops'] } })
       }
       if (url.pathname === '/api/state') return ok(state)
       if (url.pathname === '/api/inbox') return ok(inboxDetail(url.searchParams.get('id'), state))
-      if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug'), state))
+      if (url.pathname === '/api/task' && url.searchParams.get('file')) {
+        const found = taskFile(url.searchParams.get('slug'), url.searchParams.get('file'))
+        return found ? ok(found) : fail(404, 'not_found', 'no such file')
+      }
+      if (url.pathname === '/api/task') return ok(taskDetail(url.searchParams.get('slug'), state, words))
+      if (url.pathname === '/api/flow/activity') {
+        const off = flowOff()
+        if (off) return off
+        const row = rowOf(url.searchParams.get('key'))
+        if (!row) return fail(409, 'stale_row', 'no such row')
+        const { hash, ...feed } = feedOf(row)
+        return ok(feed)
+      }
+      if (url.pathname === '/api/records') return ok(mockRecords(state))
+      if (url.pathname === '/api/logrange') {
+        const day = /^\d{4}-\d{2}-\d{2}$/
+        for (const k of ['from', 'to']) if (url.searchParams.get(k) && !day.test(url.searchParams.get(k))) return fail(400, 'invalid_argument', 'not a day (YYYY-MM-DD)')
+        const got = logRangeOf(url.searchParams, now())
+        return got.stale ? fail(409, 'stale_row', 'the log changed since this answer') : ok(got)
+      }
+      if (url.pathname === '/api/timeline') {
+        const q = String(url.searchParams.get('q') ?? '')
+        if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
+        return ok(timelineOf(q, url.searchParams, now()))
+      }
+      if (url.pathname === '/api/find') {
+        const q = String(url.searchParams.get('q') ?? '')
+        if (q.trim().length < 2 || q.length > 200) return fail(400, 'invalid_argument', 'the query must be 2 to 200 characters')
+        return ok(findFiles(q, state))
+      }
       if (url.pathname === '/api/inbox/noise') {
         // invented sources and one invented rule, in the shape of `inbox.py stats --json` and `mute list --json`
         const src = (source, filed, dropped, reasons, muted = 0) => ({ source, filed, dropped, muted, done: filed - dropped - muted - 1, open: 1,
@@ -1117,6 +2383,11 @@ export function createMockTransport(opts = {}) {
           mutes: mockMutes } })
       }
       if (url.pathname === '/api/github') return ok(githubDetail(url.searchParams.get('ref')))
+      if (url.pathname === '/api/issue') {
+        return ok({ ok: true, ref: url.searchParams.get('ref'), type: 'issue', state: 'OPEN', unmatched: [],
+          boards: [{ slug: 'demo', title: 'Demo board', owner: 'demo', number: 3, status: 'In Progress', review_state: 'In Review',
+            done_state: 'Done', in_review: false, in_done: false, rules: ['done_requires_review'] }], check: null })
+      }
       if (url.pathname === '/api/relay') return ok(state.relay)
       if (url.pathname === '/api/workers') {
         // invented runs in the shape of `workload view --json`; nothing here is a real machine
@@ -1141,12 +2412,29 @@ export function createMockTransport(opts = {}) {
           ],
           elsewhere: { inventory_stale: [], intentionally_absent: ['backup-sync'], undeclared: { named: [], counted: 12 } } } })
       }
+      if (url.pathname === '/api/tab-history') {
+        const q = (url.searchParams.get('q') ?? '').toLowerCase()
+        const earlier = Array.from({ length: 90 }, (_, k) => [{ role: 'user', text: `Question ${k + 1}: what does step ${k + 1} of the guide need?` },
+          { role: 'tool', text: `Read: docs/guide/step-${k + 1}.md` }, { role: 'agent', text: `Step ${k + 1} needs **one** change in the guide.\n\nThe rest of it stands as it is.` }][k % 3])
+        const all = [...earlier, { role: 'user', text: 'Go on with the task' }, { role: 'agent', text: 'Reading the task folder and the last log rows.' }, { role: 'tool', text: 'Bash: node --test scripts/tests' }]
+          .map((x, i) => ({ ...x, i, at_ms: 0 }))
+        const matching = all.filter(x => !q || x.text.toLowerCase().includes(q))
+        const before = Number(url.searchParams.get('before') ?? Infinity)
+        const turns = matching.filter(x => x.i < before).slice(-30)
+        return ok({ source: 'session', sid: 'demo', turns, total: all.length, matched: matching.length, truncated: turns[0]?.i > matching[0]?.i })
+      }
       if (url.pathname === '/api/tab/screen') {
         const tab = state.tabs.tabs.find(x => x.ref === url.searchParams.get('ref'))
         if (!tab) return fail(404, 'not_found', 'no such tab')
         const text = ['❯ ' + (tab.last || 'Go on with the task'), '', '⏺ Reading the task folder and the last log rows.',
-          '  ⎿  Read work/tasks/demo-task/STATUS.md (48 lines)', '', '⏺ ' + (tab.state === 'needs-you' ? 'Allow edit of README.md?' : 'Working on the next step.'),
-          '', '─'.repeat(40), '> '].join('\n')
+          '  ⎿  Read work/tasks/demo-task/STATUS.md (48 lines)', '', '⏺ Update(docs/guide/README.md)',
+          '  ⎿  Updated docs/guide/README.md with 2 additions and 1 removal', '       41    ## Getting started', '       42 -  Run the setup first.',
+          '       42 +  Run ./bin/setup first, then open the page.', '       43 +  The guide: https://example.org/guide', '',
+          '⏺ Bash(node --test scripts/tests)', '  ⎿  ✓ 214 passed', '     ✗ 1 failed: guide links', '',
+          '⏺ ' + (tab.state === 'needs-you' ? 'Allow edit of README.md?' : 'Working on the next step.'), '',
+          ...(tab.state === 'running' ? ['✻ Thinking… (12s · esc to interrupt)', ''] : []),
+          ...(state.termLog?.[tab.ref] ?? []), '─'.repeat(200), `❯${state.termTyped?.[tab.ref] ? ` ${state.termTyped[tab.ref]}` : ''}`, '─'.repeat(200),
+          '  ⏵⏵ auto mode on (shift+tab to cycle)'].join('\n')
         // like the server: a hash of the text, and unchanged without the text when the page names it (since)
         let h = 0x811c9dc5
         for (const ch of text) h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0
@@ -1155,6 +2443,7 @@ export function createMockTransport(opts = {}) {
         return ok(url.searchParams.get('since') === hash ? { ...head, unchanged: true } : { ...head, text })
       }
       if (url.pathname === '/api/history') return ok({ ok: true, entries: history })
+      if (url.pathname === '/api/chats/archive') return ok({ ok: true, convs: archivedConvs(now()) })
       if (url.pathname === '/api/agents') return ok({ ok: true, ...state.agents })
       if (url.pathname === '/api/ticker') return ok({ ok: true, ticker: state.ticker })
       if (url.pathname === '/api/usage') {
@@ -1162,6 +2451,12 @@ export function createMockTransport(opts = {}) {
         return ok({ ok: true, usage: usageView(now(), [7, 30, 90].includes(n) ? n : 7) })
       }
       if (url.pathname === '/api/costs') return ok({ ok: true, view: costsView(now()) })
+      if (url.pathname === '/api/costs/statement') {
+        const month = url.searchParams.get('month') || ''
+        const md = `# Cost statement: Customer A\n\n**Period:** ${month}\n\n| Item | Amount |\n|---|---:|\n| Example Azure | €36.00 |\n| Example Anthropic | €78.00 |\n| Subtotal | €114.00 |\n\nProvisional: the month is not closed.\n`
+        return ok({ ok: true, statement: { month, source: 'live', closed: false, title: 'Customer A', paid: 114, used: 114, credits: 0,
+          currency: 'EUR', markdown: md, csv: 'item;amount_eur\nExample Azure;36.00\nExample Anthropic;78.00\nsubtotal;114.00\n' } })
+      }
       if (url.pathname === '/api/graph') return ok({ ok: true, ...graphView() })
       if (url.pathname === '/api/graph/node') {
         const found = graphNode(url.searchParams.get('id'))
@@ -1180,8 +2475,13 @@ export function createMockTransport(opts = {}) {
     },
     async post(path, body) {
       await new Promise(r => wait(r, 250))
+      if (path === '/api/flow/attach') return attach(body ?? {})
       // the demo has no server poll to slow down: a page reporting its visibility is simply acknowledged
       if (path === '/api/presence') return { status: 200, ok: true, data: { ok: true }, error: null }
+      // nor an audit log: a page view is simply acknowledged
+      if (path === '/api/seen') return { status: 200, ok: true, data: { ok: true }, error: null }
+      // nor a click origin log: a batch of clicks is counted and dropped
+      if (path === '/api/clicks') return { status: 200, ok: true, data: { ok: true, kept: (body?.events ?? []).length }, error: null }
       if (path === '/api/reload') {
         const loading = { pass: 'quick', fresh: !!body?.fresh, started_ms: now(), eta_ms: 3000, queued: 'full', last_error: null }
         state.loading = loading
@@ -1205,7 +2505,9 @@ export function createMockTransport(opts = {}) {
         let conv = state.quick.convs.find(c => c.id === body.conv)
         if (!conv) {
           conv = { id: `q${Math.random().toString(16).slice(2, 12).padEnd(10, '0')}`, kind: body.kind, started_ms: now(), session: null, total_usd: 0, turns: [], running: false,
-            ...(body.place ? { place: body.place } : {}) }
+            ...(body.place ? { place: body.place } : {}),
+            // a job row's question names its row, as actions_chats.py ask does for kind worker
+            about: body.kind === 'worker' ? { kind: 'worker', key: `worker:${body.args?.host}:${body.args?.id}` } : null }
           // a new conversation of the core takes the place of the last
           state.quick = { ...state.quick, convs: [conv, ...state.quick.convs.filter(c => !body.place || c.place !== body.place || c.running)] }
         }
@@ -1248,14 +2550,21 @@ export function createMockTransport(opts = {}) {
         wait(() => { state.triage = opts.empty ? { ...state.triage, running: null } : triageState(now()); emit('triage', state.triage) }, 3000)
         return { status: 202, ok: true, data: { ok: true, triage: state.triage }, error: null }
       }
-      if (path.startsWith('/api/jev/') && !jev) return fail(404, 'jev_off', 'Jev is off')
+      // Jev off refuses what would call Jev; the kept order and a read-in with Haiku work without it (jev.py _asks_jev)
+      const ranker = body?.ranker ?? 'jev'
+      if (path.startsWith('/api/jev/') && !jev && (path !== '/api/jev/rank' || (ranker === 'jev' && (body?.force || body?.daily)))) return fail(404, 'jev_off', 'Jev is off')
       if (path === '/api/jev/rank') {
         const page = state.model.pages.find(p => p.id === body?.page && p.jev)
         if (!page) return fail(404, 'not_found', 'no page with jev: under that id')
         const day = isoIn(0, now())
-        if (body.force || (body.daily && orders[page.id]?.day !== day)) {
+        if (ranker === 'haiku' && body.force && !state.prio?.haiku?.enabled) return fail(409, 'prio_off', 'Reading in with Haiku is switched off')
+        if (ranker === 'haiku' && body.force && !(state.prio?.haiku?.budget_left > 0)) return fail(429, 'prio_budget', 'Today\'s read-ins with Haiku are used up')
+        if (body.force || (body.daily && ranker === 'jev' && orders[page.id]?.day !== day)) {
           await new Promise(res => wait(res, 1200))
-          orders[page.id] = jevOrder(page, now())
+          orders[page.id] = jevOrder(page, now(), ranker, body.rows)
+          if (ranker === 'haiku') {
+            state.prio = { ...state.prio, haiku: { ...state.prio.haiku, budget_left: state.prio.haiku.budget_left - 1 } }
+          }
         }
         return ok({ ok: true, page: page.id, order: orders[page.id] ?? null, today: { day, ratings: 0, input_tokens: 0, output_tokens: 0, unknown: 0 } })
       }
@@ -1269,9 +2578,126 @@ export function createMockTransport(opts = {}) {
         const verb = body?.verb
         const args = body?.args ?? {}
         const keys = args.keys ?? (args.key ? [args.key] : [])
-        const result = { ok: true, verb, note: `Mock: ${verb} ${keys.join(', ') || args.tab_ref || ''}`.trim(), steps: [], settled: [],
+        const result = { ok: true, verb, note: MOCK_NOTES[verb] ?? `Mock: ${verb} ${keys.join(', ') || args.tab_ref || ''}`.trim(), steps: [], settled: [],
           reload: 'none', jump: null, relay: null, confirm: null }
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
+        // "What bothers you here?": the window says itself that it was noted, the demo keeps no proposal
+        if (verb === 'explain_note') return ok({ ...result, note: '' })
+        // a finished AI run (stage 2 of the one point view): read takes it off its list (and back on), a task of it
+        // opens as a new backlog task, analyse further starts a new run (Running now, as a start does)
+        if (verb === 'return_read' || verb === 'return_unread') {
+          const at = verb === 'return_read' ? now() : null
+          state.model = { ...state.model, seq: (state.model.seq ?? 0) + 1,
+            returns: (state.model.returns ?? []).map(r => (r.key === args.key ? { ...r, read_ms: at } : r)) }
+          emit('view', state.model)
+          return ok({ ...result, note: verb === 'return_read' ? 'Mock: read' : 'Mock: to read again',
+            undo: verb === 'return_read' ? [{ title: 'run', kind: 'return', undo: { verb: 'return_unread', args: { key: args.key } } }] : [] })
+        }
+        if (verb === 'return_task') {
+          const slug = String(args.title ?? 'new-task').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'new-task'
+          if (args.close) {
+            state.model = { ...state.model, seq: (state.model.seq ?? 0) + 1,
+              returns: (state.model.returns ?? []).map(r => (r.key === args.key ? { ...r, read_ms: now() } : r)) }
+            emit('view', state.model)
+          }
+          return ok({ ...result, note: `Mock: now the task ${slug}`, task: slug })
+        }
+
+        // stage 3: the fields of the one point view change the row in place (actions_work.py area, urgency, priority)
+        if (['area', 'urgency', 'priority'].includes(verb)) {
+          const row = state.model.sections.flatMap(x => x.rows).find(r => r.key === args.key)
+          if (!row) return fail(409, 'stale_row', 'no such row')
+          Object.assign(row, verb === 'area' ? { area: args.value ?? null, area_names: args.value ? [args.value] : [] } : { [verb]: args.value })
+          publish()
+          return ok({ ...result, note: `Mock: ${verb} ${args.value ?? 'none'}` })
+        }
+        // Check with AI on an issue card: the demo finds it done from a merged pull request
+        if (verb === 'issue_check') {
+          await new Promise(r => wait(r, 700))
+          return ok({ ...result, note: 'Mock: the AI finds it done.', issue_check: { verdict: 'done', reason: 'The fix is merged and the test runs on CI.',
+            evidence: ['example/repo#14 merged'], missing: [], comment: 'The parser fix is merged in #14 and its test runs on CI.',
+            model: 'claude-haiku-5-5', cost_usd: 0.004, at: new Date(now()).toISOString().slice(0, 19) } })
+        }
+        // the files tab's question to its records: the demo names the first record it was sent
+        if (verb === 'files_ask') {
+          const fs = state.work.files_search
+          if (!fs?.enabled) return fail(409, 'files_ask_off', 'asking the records is off')
+          const recs = mockRecords(state).records.filter(r => (args.paths ?? []).includes(r.path))
+          if (!recs.length) return fail(409, 'files_ask_held', 'no record left to send')
+          if (!fs.left) return fail(429, 'files_ask_budget', 'no questions left today')
+          await new Promise(r => wait(r, 800))
+          state.work = { ...state.work, files_search: { ...fs, left: fs.left - 1 } }
+          return ok({ ...result, note: '', ask: { answer: `Start with ${recs[0].title}: it changed last and names the next step.`,
+            files: [{ n: 1, why: 'it changed last', slug: recs[0].slug, path: recs[0].path, title: recs[0].title }], sent: recs.length,
+            held: { n: 0, words: [] }, model: 'haiku', left: fs.left - 1, at_ms: now() } })
+        }
+        // a page's question to the history: the demo names the lines that hold a word of the question
+        if (verb === 'timeline_ask') {
+          const fs = state.work.files_search
+          if (!fs?.enabled) return fail(409, 'timeline_ask_off', 'asking the history is off')
+          if (!fs.left) return fail(429, 'timeline_ask_budget', 'no questions left today')
+          await new Promise(r => wait(r, 800))
+          state.work = { ...state.work, files_search: { ...fs, left: fs.left - 1 } }
+          const terms = String(args.text ?? '').toLowerCase().split(/\s+/).filter(w => w.length >= 4)
+          const found = DEMO_HISTORY.filter(e => terms.some(w => e.text.toLowerCase().includes(w)))
+          return ok({ ...result, note: '', timeline: { answer: found.length
+            ? `It came up on ${found.length} days, first on ${found[found.length - 1].date} and last on ${found[0].date}.` : null,
+          entries: found.slice(0, 3).map((e, i) => ({ ...e, n: i + 1, why: 'it names it' })), terms, sent: found.length,
+          held: { n: 0, words: [] }, model: 'haiku', left: fs.left - 1, at_ms: now() } })
+        }
+        // Work through, round 3: an attachment, the summary of a point's Activity, the plan of an instruction
+        if (['flow_attach', 'flow_activity_summary', 'flow_instruct'].includes(verb)) {
+          const off = flowOff()
+          if (off) return off
+          if (verb === 'flow_attach') return attach(args)
+          const ai = state.flow_ai
+          if (verb === 'flow_activity_summary') {
+            if (!state.work.flow.summary?.enabled) return fail(409, 'summary_off', 'the summary is off')
+            const row = rowOf(args.key)
+            if (!row) return fail(409, 'stale_row', 'no such row')
+            const { hash, rows } = feedOf(row)
+            if (!rows.length) return fail(409, 'summary_empty', 'nothing to summarise')
+            const kept = summaries[row.key]
+            if (kept && kept.hash === hash) return ok({ ...result, note: '', summary: { ...kept.summary, stale: false, cached: true }, flow_ai: ai })
+            if (!ai.summary_left) return fail(429, 'summary_budget', 'no summaries left today')
+            await new Promise(r => wait(r, 900))
+            const summary = { text: 'Since last week the outline was agreed with the team and the first two chapters stand as a draft. An agent found three sources, and the screenshots come next.',
+              since: isoIn(-7, now()), at_ms: now(), model: 'haiku' }
+            summaries[row.key] = { hash, summary }
+            state.flow_ai = { ...ai, summary_left: ai.summary_left - 1 }
+            return ok({ ...result, note: '', summary: { ...summary, stale: false, cached: false }, flow_ai: state.flow_ai })
+          }
+          if (!state.work.flow.instruct?.enabled) return fail(409, 'instruct_off', 'the instruction line is off')
+          if (!ai.instruct_left) return fail(429, 'instruct_budget', 'no instructions left today')
+          const plan = instruct(args)
+          if (plan.ok === false || plan.error) return plan
+          await new Promise(r => wait(r, 700))
+          state.flow_ai = { ...ai, instruct_left: ai.instruct_left - 1 }
+          return ok({ ...result, note: '', plan, flow_ai: state.flow_ai })
+        }
+        // Work through, round 4: a merge of open tasks and its undo, Not now's Back on, a session's task taken back
+        const r4 = round4(verb, args, result)
+        if (r4) return r4
+        // a note on a row: it comes into the row's Activity at once (task.py note, an inbox note event)
+        if (verb === 'note' && args.key && String(args.text ?? '').trim()) {
+          added[args.key] = [feedRow(now(), { id: `note:a${Object.values(added).flat().length + 1}`, kind: 'note', filters: ['notes'],
+            text: String(args.text).trim(), by: { kind: 'you', name: null } }), ...(added[args.key] ?? [])]
+        }
+        // the live terminal of the demo: what is typed stands in the prompt, Enter says nothing runs here
+        if (verb === 'tab_keys') {
+          const ref = args.tab_ref
+          state.termTyped = state.termTyped ?? {}
+          state.termLog = state.termLog ?? {}
+          for (const step of args.steps) {
+            const typed = state.termTyped[ref] ?? ''
+            if (step.text || step.paste) state.termTyped[ref] = typed + (step.text ?? step.paste)
+            else if (step.key === 'backspace') state.termTyped[ref] = typed.slice(0, -1)
+            else if (step.key === 'enter') {
+              state.termLog[ref] = [...(state.termLog[ref] ?? []), `❯ ${typed}`, '', '⏺ This is the demo: nothing runs here, in a Bridge this goes to the tab.', '']
+              state.termTyped[ref] = ''
+            } else if (step.key === 'ctrl+c' || step.key === 'escape') state.termTyped[ref] = ''
+          }
+        }
         // an answer to a tab: refused like the server when the question it names is no longer on screen
         // (the third option of the dialog stands for that here) or a draft is typed in the tab
         if (['tab_send', 'tab_option', 'tab_yes', 'tab_no', 'tab_go_on'].includes(verb)) {
@@ -1312,6 +2738,21 @@ export function createMockTransport(opts = {}) {
           emit('quick', JSON.parse(JSON.stringify(state.quick)))
         }
         // a name of its own for a tab or a workspace, refused like the server (actions.py v_tab_rename)
+        if (verb === 'tab_new') {
+          const ws = (state.tabs.workspaces ?? []).find(w => w.ref === args.ws_ref)
+          if (!ws) return fail(409, 'stale_workspace', 'no such workspace')
+          const ref = `surface:${100 + state.tabs.tabs.length}`
+          state.tabs.tabs.push({ ...state.tabs.tabs.find(x => x.ws_ref === ws.ref), ref, name: args.title || args.text?.slice(0, 40) || 'New chat', state: args.kind === 'shell' ? 'shell' : 'waiting', slug: null, ask: null })
+          return ok({ ok: true, ref })
+        }
+        if (verb === 'tab_move') {
+          const tab = state.tabs.tabs.find(x => x.ref === args.tab_ref)
+          const to = (state.tabs.workspaces ?? []).find(w => w.ref === args.ws_ref)
+          if (!tab || !to) return fail(409, 'stale_tab', 'no such tab or workspace')
+          tab.ws_ref = to.ref
+          tab.workspace = to.title
+          return ok({ ok: true })
+        }
         if (verb === 'tab_rename' || verb === 'workspace_rename') {
           const title = String(args.title ?? '').trim()
           const all = state.tabs.tabs
@@ -1364,25 +2805,121 @@ export function createMockTransport(opts = {}) {
           Object.assign(result, { applied: picked.map(i => i.id), skipped: [], failed: [] })
           result.note = `Mock: ${picked.length} applied`
         }
-        if (['drop', 'done', 'later', 'hide', 'task_close', 'settle'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
+        if (['drop', 'done', 'later', 'hide', 'task_close', 'settle', 'shelve'].includes(verb) || (verb === 'approve_all' && args.confirm)) {
           result.settled = keys
           remember(verb, keys)
-          removeRows(keys)
+          removeRows(keys, verb)
+        }
+        if (verb.startsWith('flow_theme')) {
+          // the themes of Work through (themes.py): a run gives each new point the theme of its area's nearest
+          // invented theme, a move or a new theme by hand wins, a name by hand stays
+          const th = { ...state.themes, themes: state.themes.themes.map(t => ({ ...t })), assign: { ...state.themes.assign } }
+          const byArea = { Ops: MOCK_THEMES[0].id, Docs: MOCK_THEMES[1].id, Demo: MOCK_THEMES[1].id }
+          const rows = state.model.sections.flatMap(x => x.rows)
+          if (verb === 'flow_themes_run') {
+            if (!th.budget_left) return fail(429, 'themes_budget', 'no runs left today')
+            for (const k of args.keys ?? []) {
+              if (args.mode === 'regroup' && th.by_person.includes(k)) continue
+              if (args.mode === 'assign' && th.assign[k]) continue
+              const r = rows.find(x => x.key === k)
+              th.assign[k] = byArea[r?.area] ?? MOCK_THEMES[2].id
+            }
+            th.budget_left -= 1
+            th.at_ms = now()
+            // the page's own run stays quiet, the click says what it did
+            result.note = args.mode === 'regroup' ? `Mock: themes ordered: ${(args.keys ?? []).length} points` : ''
+          } else if (verb === 'flow_theme_move') {
+            result.note = ''
+            th.assign[args.key] = args.theme
+            th.by_person = [...new Set([...th.by_person, args.key])]
+          } else if (verb === 'flow_theme_new') {
+            const id = `t${Math.random().toString(16).slice(2, 8).padEnd(6, '0')}`
+            th.themes.push({ id, name: args.name, by: 'person' })
+            th.assign[args.key] = id
+            th.by_person = [...new Set([...th.by_person, args.key])]
+          } else if (verb === 'flow_theme_rename') {
+            th.themes = th.themes.map(t => (t.id === args.theme ? { ...t, name: args.name, by: 'person' } : t))
+          }
+          state.themes = th
+          result.themes = th
+          emit('themes', th)
+        }
+        if (verb === 'do_it' && args.note) {
+          // a start with a sentence (the Work through page): it runs in the return channel at once, as the server records it
+          const rows = state.model.sections.flatMap(x => x.rows)
+          const started = keys.map(k => rows.find(r => r.key === k)).filter(Boolean)
+            .map(r => ({ key: r.key, item: r.inbox_id ?? r.task, title: r.title, mode: 'go', at_ms: now(), stage: 'started', in_briefing: true, tab: null, result: null }))
+          seq += 1
+          state.model = { ...state.model, seq, returns: [...started, ...(state.model.returns ?? []).filter(x => !keys.includes(x.key))] }
+          wait(() => emit('view', state.model), 200)
+        }
+        // what a decision on rows can be taken back by, one undo per row as the server's history hands them out
+        if (['settle', 'later', 'shelve'].includes(verb)) {
+          result.undo = keys.map(k => (k.startsWith('task:') ? { title: k, kind: 'task', undo: { verb: 'task_reopen', args: { slug: k.slice(5) } } }
+            : { title: k, kind: 'inbox', undo: { verb: 'inbox_reopen', args: { id: k.slice(6) } } }))
         }
         if (['task_reopen', 'inbox_reopen', 'unhide'].includes(verb)) {
           // the undo of the history drawer: the newest item that hands out exactly this undo is taken back
           const hit = history.flatMap(e => e.items).find(it => !it.undone_ms && it.undo?.verb === verb
             && Object.entries(args).every(([k, v]) => k === 'as' || k === 'note' || it.undo.args[k] === v))
           if (hit) hit.undone_ms = now()
+          // and the row the decision took out of the list is back where it stood
+          restoreRow(verb === 'task_reopen' ? `task:${args.slug}` : verb === 'inbox_reopen' ? `inbox:${args.id}` : args.key)
         }
         if (verb === 'drop' && (args.reason === 'family' || args.reason === 'source')) {
           result.muted = `20261010-1200-mock-${mockMutes.length}`
           mockMutes.push({ id: result.muted, source: 'homebox/health', scope: args.reason,
             ...(args.reason === 'source' ? { until: '2026-11-09' } : { key_prefix: 'health:crash:' }) })
         }
+        if (verb === 'describe_run' || verb === 'describe_apply' || verb === 'describe_discard') {
+          // describe (describe.py): an invented brief after a pause like the model's, a proposal once a person
+          // edited it, a proposal taken over or dropped; the row's card and view change, the page hears both
+          const rows = [...state.model.sections.flatMap(x => x.rows), ...(state.model.task_rows ?? [])].filter(r => r.key === args.key)
+          if (!rows.length) return fail(409, 'stale_row', 'the row is no longer there')
+          const r = rows[0]
+          const view = r.describe ?? { written: null, stale: false, running: false, last_error: null, warnings: [], model_mismatch: false, proposal: null, by: null, at: null }
+          const prop = view.proposal
+          if (verb !== 'describe_run' && (!prop || prop.id !== args.proposal)) return fail(409, 'stale_proposal', 'This proposal is no longer current.', { describe: view })
+          const day = isoIn(0, now())
+          const setBrief = (brief, written) => {
+            const card = { ...r.card, goal: brief.goal ?? null, story: brief.story ?? null, acceptance: brief.acceptance ?? null,
+              brief_refs: null, written, gaps: (r.card?.gaps ?? []).filter(g => g !== 'no_goal' && g !== 'unresolved_ref') }
+            return { card, describe: { ...view, written, stale: false, stale_why: null, warnings: [], proposal: null,
+              by: brief.by ?? 'claude-haiku-5-5', at: day } }
+          }
+          let next
+          if (verb === 'describe_run') {
+            await new Promise(res => wait(res, 1500))
+            const brief = mockBrief(r)
+            next = view.written === 'human'
+              ? { describe: { ...view, proposal: { id: `d${String(now()).slice(-10)}`, by: brief.by, at_ms: now(), brief } } }
+              : setBrief(brief, 'ai')
+            result.outcome = view.written === 'human' ? 'proposal' : 'written'
+            // a brief prepared ahead (the Work through page) stays quiet, as actions_work.py describe_run keeps it
+            result.note = args.ahead ? '' : view.written === 'human' ? 'Mock: a proposal waits beside your text' : `Mock: described ${r.title}`
+          } else if (verb === 'describe_apply') {
+            next = setBrief({ ...prop.brief, ...(args.brief ?? {}), by: prop.by }, 'human')
+            result.note = `Mock: applied for ${r.title}`
+          } else {
+            next = { describe: { ...view, proposal: null } }
+            result.note = 'Mock: proposal discarded'
+          }
+          for (const x of rows) Object.assign(x, next)
+          result.describe = rows[0].describe
+          seq += 1
+          state.model = { ...state.model, seq }
+          wait(() => { emit('describe', { key: args.key, ...rows[0].describe }); emit('view', state.model) }, 60)
+        }
+        if (verb === 'run_seen') {
+          // a workflow run's result checked: it no longer waits in its task's file (the server's sessions event)
+          state.sessions = { ...state.sessions, runs: (state.sessions?.runs ?? []).map(r => (r.id === args.id ? { ...r, seen: true } : r)) }
+          result.note = 'Mock: result checked'
+          wait(() => emit('sessions', state.sessions), 80)
+        }
         if (verb === 'inbox_unmute') mockMutes.splice(0, mockMutes.length, ...mockMutes.filter(r => r.id !== args.id))
         if (verb === 'snapshot_list') result.note = 'Mock: 3 snapshots, latest 09:00'
         if (verb === 'row_action') result.note = `Mock: the step ${args.action} would start an agent tab on this row`
+        if (verb === 'worker_advise') result.note = `Mock: ${args.id} on ${args.host} would be analysed in an advising tab`
         if (verb === 'launch_settings' || verb === 'launch_settings_reset') {
           const next = verb === 'launch_settings' ? { ...state.launch.settings, ...(args.settings ?? {}) } : LAUNCH_CONFIG
           state.launch = launchState(next, !!createMockJev)
@@ -1454,6 +2991,31 @@ export function createMockTransport(opts = {}) {
           result.note = verb === 'guide_settings' ? 'Mock: setting saved' : 'Mock: settings from the config again'
         }
         if (verb.startsWith('guide_')) result.guide = state.guide
+        if (verb === 'workspace_switch') {
+          const off = state.workspaces.off.filter(a => a !== args.area)
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, off: args.on ? off : [...off, args.area],
+            items: state.workspaces.items.map(i => (i.area === args.area ? { ...i, on: !!args.on } : i)) }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: setting saved'
+        }
+        if (verb === 'workspaces_enabled') {
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, enabled: !!args.on }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: setting saved'
+        }
+        if (verb === 'workspace_active') {
+          const inactive = state.workspaces.inactive.filter(k => k !== args.key)
+          const rest = args.on ? inactive : [...inactive, args.key]
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, inactive: rest, off: [...new Set([...state.workspaces.off.filter(k => k !== args.key), ...rest])] }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: setting saved'
+        }
+        if (verb === 'workspace_plan') result.plan = { key: args.key, tasks: 2, records: 4, tabs: 0, children: [], fixed: false, blockers: [] }
+        if (verb === 'workspace_delete') {
+          state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, gone: [...state.workspaces.gone, args.key], items: state.workspaces.items.filter(i => i.key !== args.key) }
+          result.workspaces = state.workspaces
+          result.note = 'Mock: deleted'
+        }
         if (verb === 'tour_done' || verb === 'tour_reset') {
           state.tour = { ...state.tour, done: verb === 'tour_done' ? { how: args.how, v: args.v, at: isoIn(0, now()) } : null }
           result.tour = state.tour

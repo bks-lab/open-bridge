@@ -1,7 +1,7 @@
 ---
 summary: "Briefing profiles: each person describes the briefing they want in workflow/briefings/<id>.yaml (sections, trackers, queries, inbox rules, and a view: how it is shown); scripts/briefing.py executes it and the agent advises on the result. Section kinds, provider query keys, selection, views (sources, triage, brevity, plan), change marks, inbox rules, org profiles."
 type: guide
-last_updated: 2026-10-09
+last_updated: 2026-10-29
 related:
   - bridge-cockpit.md
   - ../workflow/briefings/_schema.yaml
@@ -51,7 +51,10 @@ python3 scripts/briefing.py collect --skip tracker --skip calendar   # the quick
 python3 scripts/briefing.py collect --only tracker --only calendar   # only these kinds, the rest listed as skipped
 python3 scripts/briefing.py collect --json --max-items 500   # every row, for a dashboard that pages itself
 python3 scripts/briefing.py collect --fresh       # ask every source now, whatever cache_minutes allows
+python3 scripts/briefing.py collect --json --setup  # also the cockpit's Setup page (scripts/bridge-setup.py)
 python3 scripts/briefing.py owed [<id>]           # streams the profile does not cover, and how to run them
+python3 scripts/briefing.py commits [<id>] --since 2026-10-01 --until 2026-10-31 [--section <id>]
+                                                  # own commits of a commits section over a range, as times (JSON)
 python3 scripts/briefing.py validate              # every profile; exit 1 on a problem
 ```
 
@@ -168,6 +171,13 @@ value, and any value read through the engine is scrubbed from error lines.
 The sections say where the data comes from. The `view:` block says how the
 reader sees it, and every person picks their own:
 
+A printed briefing (`briefing.py render`) honours what was decided in the
+cockpit: a row marked done or put off there (`work/cockpit/settled/`) stays away
+and counts in the housekeeping line. `max_items` caps the whole view, but every
+bucket keeps a few rows, so a long plan cannot hide what waits on others. A
+task's row is named by its H1 alone; its next step stands apart, in the row's
+why as "next: <step>" (the cockpit shows it as the point's step line). `who:` means the reader for `me`, `for:` and `cockpit.person_name`.
+
 | `style` | What the reader gets |
 |---|---|
 | `sources` | One block per section, in profile order. The default: a profile without `view:` looks as it always did. |
@@ -179,7 +189,7 @@ reader sees it, and every person picks their own:
 ```yaml
 view:
   style: triage            # sources | triage | brevity | plan | report
-  headline: true           # one bottom line on top: yours today, free until, next hard date
+  headline: true           # one bottom line on top: asks for you today (and the other Do rows apart), free until, next hard date
   dayline: true            # the workday as one line: · free, █ busy, ▲ now (not in brevity)
   report: {top: 3, per_bucket: 5}   # style report: rows in bold first, rows per bucket
   overview: inline         # inline | file: Boards and Activity below the buckets, or in a file
@@ -235,6 +245,8 @@ which agent renders it:
 | inbox item otherwise | plan |
 | inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
+| inbox item waiting for a condition (`waits_for`, [inbox.md](inbox.md)) | waiting, worded "Waiting for: …" (label `waiting_for`) |
+| inbox item filed by "ask about this row" (key `ask:<inbox id>` or `ask:<owner/repo#n>`) | part of the row it asks about; a line that took in asks says so among its reasons ("+1 question", label `also_asked`), and the cockpit lists them in the line's detail and closes them with it |
 | task with `next: {who: bridge}` | delegate |
 | task with `next: {who: me}` (or the profile's `for`) | do if `next.due` is within the lookahead, else plan |
 | task with `next.who` naming anyone else | waiting, with days since `last_updated` |
@@ -256,20 +268,37 @@ ADO number) stays apart per section. A section's `max:` still caps how many rows
 it contributes. A section can force its rows into one bucket (`bucket: delegate`),
 which wins over the derived bucket, or keep them out of the view (`bucket: none`).
 Advice that repeats a row (`blocked`, `waiting`, `due`) is folded into that row
-and stands alone only when no such row is shown. Housekeeping (failed sources,
+and stands alone only when no such row is shown.
+
+**One matter, one line.** When a task has an inbox line in a shown bucket, that
+line wins: a tracker or command row about the same task (its `task`, or
+`about_task`, which a GitHub row gets from the task whose `sync.github` names
+it) becomes part of it, adding its source, its link, its date and its reasons
+instead of a line of its own. The task's own row (its next step, or what blocks
+it) joins as a reason too, but only while the inbox line stands in a bucket at
+least as urgent as that row, so a next step due today never hides behind an item
+put off for later. Two inbox items of one task stay two lines, since each is a
+lever of its own; of several, the most urgent takes the folded rows. A command
+row is folded only when it names its task (`task` or `about_task` on the item).
+
+**The headline count.** "N asks for you today" counts the asks among the Do rows
+(every row that is no inbox item, and of the inbox only an ask). When Do holds
+more, reports and ideas filed for today, they are counted apart ("· 3 reports",
+label `do_reports`), so the number never stands unexplained above a longer list. Housekeeping (failed sources,
 muted rows) shows in every style, `brevity` included; `plan` shows every row
 somewhere (laid out, meanwhile, waiting, drop, later), so it has no "+N more". The next step of a task is a frontmatter field
 in its STATUS.md: `next: {what: "Draft the request", who: bridge, due: 2026-10-07,
 estimate_min: 20}` (`who`: `bridge`, `me`, or a person).
 
 **Labels.** Every word the reader sees has a label name, so a profile can speak
-the person's language: `yours_today`, `free_until`, `free_rest`, `busy_until`,
+the person's language: `yours_today`, `do_reports` and `also_asked` (each with a `_one` singular for a count of
+one; a profile that sets only the plural gets it for one too), `free_until`, `free_rest`, `busy_until`,
 `next_date`, `since`, `today`, `tomorrow`, `due`, `back_on`, `only_you`,
-`collides`, `waiting_days`, `with`, `task`, `nudge`, `new`, `housekeeping`,
+`collides`, `waiting_days`, `waiting_for`, `with`, `task`, `next_step`, `nudge`, `new`, `housekeeping`,
 `no_next`, `muted`, `hidden`, `error`, `workplace`, `more`, `end`, `why`,
 `meanwhile`, `later`, `shutdown`, `activity_title`, `commits`, `boards_title`,
 `st_new`, `st_ready`, `st_in_progress`, `st_review`, `st_blocked`, `agenda_title`,
-`clashes`, `clash_row`, `parallel`, `info_tag`, `all_clear`, `owed`, `overview_file`, `untasked`, and for `report` `report_title`, `lage`, `first_title`, `bucket_more` and the table columns `col_when`, `col_what`, `col_note`, `col_board`, `col_repo`, `col_branch`, `col_days`, `col_commits`. Placeholders in braces stay as they are: a label may use only the placeholders
+`clashes`, `clash_row`, `parallel`, `info_tag`, `all_clear`, `owed`, `overview_file`, `untasked`, the Setup page's `page_setup`, `section_setup_checks`, `section_setup_available` and `section_setup_on` (the `setup_*` words of its rows come from `scripts/bridge-setup.py` in the Bridge's language and are not renamed by a profile), and for `report` `report_title`, `lage`, `first_title`, `bucket_more` and the table columns `col_when`, `col_what`, `col_note`, `col_board`, `col_repo`, `col_branch`, `col_days`, `col_commits`. Placeholders in braces stay as they are: a label may use only the placeholders
 its default has (`validate` names them), and one that would not format falls
 back to the default wording instead of breaking the briefing.
 
@@ -346,7 +375,8 @@ it (`prs`, one GraphQL call for all rows). A pull request that closes an issue
 in the list stands in that issue's row instead of one of its own, unless you
 were asked to review it.
 
-`link` (default true for `github-work`) adds what this Bridge knows about a row:
+`link` (default true for the GitHub providers `github`, `github-board` and
+`github-work`; `link: false` turns it off) adds what this Bridge knows about a row:
 the task whose `sync.github` names it (a task in `work/tasks/` becomes the row's
 `task`, so a dashboard opens or jumps to its tab; a stream is only named, as
 `linked_task`) and the newest active inbox item whose key ends in the row id
@@ -367,7 +397,8 @@ open instead of closing and coming back as new. Such a row offers Analyse, Make
 it a task, and Implement when no pull request closes it, a dashboard marks it
 with a **no task** chip, and the text briefing says how many there are
 (`2 assigned issues without a task`, the `untasked` label in the bucketed
-styles). A rule `{when: {untasked: true}}` files them; a profile
+styles). That count is information, never an order to create tasks: an assigned
+issue is itself the task, and the tracker is where it stays. A rule `{when: {untasked: true}}` files them; a profile
 whose rows a radar already files needs no such rule, since both items would
 attach to the one row.
 
@@ -415,7 +446,9 @@ type `draft`, with its title, status and assignees but no number and no link,
 and never its text. It offers only Analyse and Make it a task, each told that
 there is no issue and that the card's text stays where it is; a section's own
 step reaches it only when its `types` name `draft`. `default_steps: false` turns
-the built-in steps off; a section adds its own:
+the built-in steps off; a section adds its own. `cards: all` brings every open card of the boards; a card that is
+not yours (`others`: neither assigned to you nor opened by you, nor found by your search) is a row of the page and its
+filters only, never a row of the briefing's buckets, so the work view keeps to yours as with `cards: mine`:
 
 ```yaml
 - kind: tracker
@@ -501,11 +534,18 @@ view:
       title: Dates
       group: more            # cockpit: after the daily tabs, folded behind More when the bar is too narrow
       overview: true         # cockpit: opens it with a tile per section, each a jump to it
+      search: true           # cockpit: a search over its rows, every day before and Ask AI (bridge-cockpit.md)
       sections: [calendar, deadlines]
     - id: github
       title: GitHub
       sections:
         - {id: github-work, view: board}   # one row per issue or PR, under its board, with steps
+    - id: day
+      title: Daily log
+      search: true
+      sections:
+        - {id: activity, view: log}        # cockpit: the log by hour with a time range, its contexts as topic chips beside it
+        - {id: commits, place: rail}       # cockpit: in the column beside the log, as repository tiles
     - id: work
       title: Work
       jev:                   # cockpit with Jev on: orders the rows on a click, never by itself
@@ -525,7 +565,7 @@ columns, **when** (a date, today as its time), **title**, **detail** and a
 | `tracker` | `due`, else `changed_at` | PR, state, project (when the id does not name it and the view is not `board`), priority, note, the pull requests that close it, its task | |
 | `command` | `due` | `raw_state` or `state` (every row is a finding: yellow, `blocked` red) | |
 | `commits` | today's commits | sparkline and branch, busiest first | none today |
-| `activity` | `changed_at` | project | an earlier day |
+| `activity` | `changed_at` (and `at`, the minute) | project | an earlier day |
 | `inbox` | `due`, else `changed_at` | kind, gate (`urgency: now` yellow) | |
 | `tasks` | `due`, else `changed_at` | priority, project, `blocked_by` (blocked: yellow) | |
 | any other | `due`, else `changed_at` | state, project | |
@@ -550,6 +590,14 @@ per group in the order the rows first name them (a `github-work` row's group is
 its board, else its repository). `view: groups` lists short rows under each
 group instead.
 
+`view: log` draws a section (an `activity` section, whose rows carry the glyph
+of their activity type as `glyph` and the minute they were written as `at`) as a
+log under its hours, its contexts as topic chips that filter it; on an `activity`
+section the cockpit adds a time range over the whole log and its archive. `place: rail` (`main` is the default) sets a section
+in a narrow column beside the page's main one, its rows as compact tiles. A page
+with either takes the cockpit's log layout ([bridge-cockpit.md](bridge-cockpit.md),
+"A page's log layout").
+
 `view: agenda` on a calendar section draws it as a calendar: by day, as a week
 grid (Monday to Sunday) or as a month, with figures on top. Every calendar row
 carries its facts as `cal` (`start`, `end`, `day`, `minutes`, `all_day`,
@@ -569,7 +617,9 @@ the filter chips (a label with two to sixteen values gets a row of them), and
 On such a row the cockpit offers its status menu (active, paused, disabled,
 written into the file by `scripts/bridge-resources.py set-status`), and a group
 whose head row (`icon: account`) carries the same id opens all its rows as one
-filterable list.
+filterable list. A tile shows the row's `when` as a line of its own under the
+title when it has one (a `commits` row: "16 today"), and its `url` as the open
+link when the row has no web link of its own and the url is http(s).
 
 A `command` row may also offer steps of its own: `actions: [{id, label}]` (up to
 eight; `id` lowercase letters, digits, `_` and `-`, the label as the cockpit
@@ -580,8 +630,15 @@ shows it) next to its `id`. Its section then names how a step runs:
 runs the step only when that row still offers it, then prints the command's JSON.
 When that JSON carries `undo: "restore:..."`, the token goes back to the same
 command unchecked by act (the row may be gone by then), so the command itself
-must check it. The cockpit shows the steps as a two-click menu on the row
+must check it. A step whose effect only shows later (a machine rebooting) may carry
+`recheck: [seconds, ...]`: the cockpit then reads that section again after each wait
+(whole seconds from 15 to 1800, eight at most) and stops after the last, so the row
+moves on without a standing poll. The cockpit shows the steps as a two-click menu on the row
 and keeps every step in its history, with "take back" where an undo came back.
+A page entry with `steps: buttons` sets every step out as a button of its own, on the row,
+on a tile and in the detail: the first click arms it ("Switch off: sure?"), the second runs it,
+and an armed button falls back after a few seconds. For a handful of steps that should be in
+sight, such as the power switches of a machine; the default `menu` keeps a long list short.
 Example: the rows of a job-application tracker (followed up, turned down, ...).
 
 Each row also says where it leads. **url** is a web address, or a file of this
@@ -602,11 +659,21 @@ A page entry overrides that per section: `when` and `link` name an item field,
 an empty section that reads as good news, set `empty:` too, for example
 `empty: "all green"`); `badge: false`
 keeps a section out of the number on its tab; `hide_empty: true` leaves a section off its tab
-while it has no rows (an empty section without it shows as one quiet line);
+while it has no rows (an empty section without it shows as one quiet line); `hide_ok: true`
+draws a section only while one of its rows is bad or its source fails, and it still counts
+toward its tab and its alarm (a cloud section the account tiles read, say);
 `actionable: true|false` says whether the dashboard offers Get it done, Advise and Close
 on every row of the section. Without it, a row is actionable when it is a finding (red or
 yellow) or a tracker row; a row that already has an inbox item or a task keeps that path.
 Every row also carries `id`, its source id, which keys the item the dashboard files for it.
+A page with `under: <page id>` is a sub page of that page: no tab of its own; in the cockpit
+its parent becomes a folder with a bar of its places under the tabs (the overview, then each
+sub page in the order `view.pages` lists them) and a ▾ at its tab with the same places, and
+`overview: true` on the sub page gives it a head card of one line per section, and no token or noise card unless
+its own `cards:` names one (they stand on the folder's overview). It names another page of `view.pages`,
+not itself, one level deep, and neither side has `group: work` or `group: day`; `validate`
+says which rule an entry breaks. The cockpit's own Background jobs page is placed the same
+way by an entry of `id` and `under` only: `{id: "@workers", under: ops}`.
 `view.page_skip: [<section id>, ...]` keeps sections off every page, the rest page
 included, while they still run: a section that only feeds a file another page reads. Each section
 also says what it adds to its tab's badge (`weight`: rows not dimmed, for
@@ -619,6 +686,21 @@ tabs unless a page names them. Tab names come from the labels `page_status`,
 `page_dates`, `page_trackers`, `page_today`, `page_more`; `validate` names a page
 section the profile does not have. Two page ids are taken: `briefing` (the
 briefing page itself) and `more` (the page for the rest).
+
+**The Setup page.** `collect --setup` (the cockpit passes it, the terminal briefing never does)
+appends three `command` sections of `scripts/bridge-setup.py`: `setup-checks` (what still keeps the
+cockpit from working well, findings only), `setup-available` (the onboarding catalogue's features
+that are off, with the steps `later` and `silence` through `actions_argv`) and `setup-on` (what is
+on, dim). All three are `bucket: none`, so they never reach the briefing's buckets. `pages` gives
+them a page of their own, id `setup` (label `page_setup`, `bridge-setup` when a profile page has
+that id) in the group `settings`, never the rest page; a dashboard shows that group in its
+settings (the cockpit: Settings, Setup) instead of a tab, and a profile cannot set the group:
+`setup-available` with `actionable: true` and `badge: false`, `setup-on` with `actionable: false`
+and `badge: false`. A profile may name any of the three in `view.pages` and place it on a page of
+its own; a page of its own with the id `setup` that names one of them takes the ones it does not name. The three ids are
+reserved: `validate` refuses a profile section that takes one. `act <profile> setup-available <id>
+<step>` works whether or not the run collected the page. Model and safety: [`bridge-cockpit.md`](bridge-cockpit.md)
+§ The Setup page.
 
 A dashboard can load in two runs: first a run of its own with
 `--skip tracker --skip command` (the kinds that wait on a service; a few

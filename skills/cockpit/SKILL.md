@@ -19,8 +19,9 @@ python3 scripts/bridge-cockpit.py open --json
 
 It starts the server in the background (or reuses the running one) and opens the page itself: a
 browser tab in the control workspace when the terminal driver can, else the default browser. The
-answer is `{"opened": ..., "port": ..., "reused": ...}`: report in one line where it `opened` and
-the address `http://127.0.0.1:<port>/`, nothing else. Never run `url` or `start` just to show a link:
+answer is `{"opened": ..., "port": ..., "address": ..., "reused": ...}`: report in one line where it
+`opened` and its `address` (`http://127.0.0.1:<port>/`, or `http://<name>.localhost:<port>/` under
+`cockpit.local_name`), nothing else. Never run `url` or `start` just to show a link:
 their link carries a login code, and a login code does not belong in the conversation. Arguments after `/cockpit` pass through:
 `--via auto|cmux|system|none` picks where it opens, `status` and `stop` run that command instead of
 `open`. `/cockpit url` is never run here: tell the user to type `python3 scripts/bridge-cockpit.py
@@ -33,7 +34,12 @@ After opening, run `python3 scripts/bridge-cockpit.py status --json` once. When 
 say so in one line and offer to set `workplace.driver` in `bridge-config.yaml` for the terminal this
 machine has (cmux: `skills/cmux/scripts/cmux_driver.py`, tmux: `skills/tmux/scripts/tmux_driver.py`,
 detected as in `bridge-onboard` D1d), written only on a yes, then `stop` and `open` again. `null`
-means the driver did not answer: say nothing.
+means the driver did not answer: say nothing. When `provider_gaps` is not empty, a service that is on
+stays off: for `provider_unsupported` say so in one line and offer to adapt the service and propose the
+fork PR, for `config_invalid` name the file and its `error` (`docs/ai-services.md`, A service your provider cannot run).
+
+On a first open, add one line: **Settings, Setup** (the first area of Settings, whose tab carries a count while something is wrong) lists what still keeps the cockpit
+from working well and what can be switched on, and the first visit's welcome offers it before the tour.
 
 ## When it refuses
 

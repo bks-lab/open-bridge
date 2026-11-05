@@ -105,7 +105,7 @@ exists** — don't teach it, wire into it. Walk the `SPEC.md` §9 checklist:
 
 - **Context loaded?** The agent needs the right context: CLAUDE.md / project rules / a
   curated knowledge folder (Karpathy's `raw → wiki → outputs` idea — the context the agent
-  stands on). On a Bridge, CLAUDE.md + SOUL.md + rules already are the "constitution";
+  stands on). On a Bridge, AGENTS.md + SOUL.md + rules already are the "constitution";
   confirm the relevant ones load.
 - **Reusable?** If you'll do this repeatedly, make it a skill (skill-creator).
 - **Guardrails for the new build:** bucket risky ops into **always-do** (`/permissions`

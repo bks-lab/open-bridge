@@ -6,7 +6,7 @@ Fictional data; one person, three hats, one home server. Try it in 2 minutes.
 
 You are inside `examples/portfolio/`, a self-contained sandbox. Nothing here is
 real work. While working in this folder (or below it), THIS file takes
-precedence over the repo-root `CLAUDE.md` / `AGENTS.md`. Specifically, SKIP:
+precedence over the repo-root `AGENTS.md`. Specifically, SKIP:
 
 - the Phase-0 session-start state detection (branch / user-branch / config routing)
 - the onboarding wizard: never suggest or trigger `/bridge-onboard` here

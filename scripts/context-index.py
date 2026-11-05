@@ -5,6 +5,7 @@
     python3 scripts/context-index.py ecosystem.yaml
     python3 scripts/context-index.py ecosystem.yaml --get customers.example
     python3 scripts/context-index.py ecosystem.yaml --list
+    python3 scripts/context-index.py --registries
 
 The card that stays resident, and the body that arrives when somebody names
 it. Same split skills have always had; this is the half a registry never got.
@@ -101,6 +102,11 @@ def main(argv=None) -> int:
         action="store_true",
         help="verify every declared card against its source; non-zero on findings",
     )
+    parser.add_argument(
+        "--registries",
+        action="store_true",
+        help="print the card of ecosystem.yaml and of every ecosystem.<name>.yaml at the repo root",
+    )
     parser.add_argument("--repo-root", default=str(HERE.parent))
     args = parser.parse_args(argv)
 
@@ -122,8 +128,21 @@ def main(argv=None) -> int:
     if args.check:
         return _check(ci, root, args.path)
 
+    if args.registries:
+        # One card per registry, the form Phase 1 runs. `--get` and `--list`
+        # stay per file: the card already names the file each body lives in.
+        if args.path or args.get or args.list:
+            parser.error("--registries takes no path, --get or --list")
+        cards = []
+        for rel in ci.registry_files(root):
+            text = (root / rel).read_text(encoding="utf-8")
+            cards.append(ci.render_card(text, ci.card_for(root, rel), rel))
+        if cards:
+            sys.stdout.write("\n".join(cards))
+        return 0
+
     if not args.path:
-        parser.error("a path is required unless --check is given")
+        parser.error("a path is required unless --check or --registries is given")
     target = root / args.path
 
     # A registry is instance data, and absent is the normal state of a fresh

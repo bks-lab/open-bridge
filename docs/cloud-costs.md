@@ -1,7 +1,7 @@
 ---
 summary: "Cloud costs per day for the cockpit's overview page: which accounts and contracts opt in (costs: block), what scripts/cloud-costs.py measures per provider, which login or permission each provider needs, how a missing login becomes a question with the command to run, how to declare the daily workload, and how the cockpit reads the file."
 type: guide
-last_updated: 2026-10-19
+last_updated: 2026-10-29
 related:
   - cloud-accounts.md
   - bridge-cockpit.md
@@ -48,21 +48,72 @@ Its monthly amount (`pricing.monthly_fee`, else `pricing.base_per_year / 12`,
 gross before net) is spread evenly over the days (`monthly * 12 / 365` per day).
 Use this for anything that bills a flat plan and has no daily cost API.
 
+### One entry per project
+
+An account that carries several projects (an OpenAI organization with one
+project per customer, an Azure subscription with one resource group per
+service) can answer as one entry per project instead of one for the account:
+
+```yaml
+costs:
+  enabled: true
+  key_ref: "keychain://openai-admin/me"
+  split: project                        # one entry per project: <id>/<project id>
+  parts: {proj_abc: "Customer A"}       # optional: a name when the key may not list projects
+  budgets: {proj_abc: 30}               # optional: a budget per project, in `currency`
+```
+
+| Provider | `split:` | A part is |
+|---|---|---|
+| `openai` | `project` | a project, named from `/v1/organization/projects` with the same admin key; costs outside any project land in `<id>/none` |
+| `azure` | `resource_group` or `tag:<name>` | a resource group or a tag value (`(none)` when untagged); the groups stay per service |
+| `elastic` | `index_size` | a share of the bill by what each project stores in the cluster (below) |
+
+One Elastic deployment often carries several projects (indices per tenant) on
+one bill. `split: index_size` shares each day's amount out by today's index
+sizes, read with a cluster key that may only see sizes (index privilege
+`monitor`, no `read`):
+
+```yaml
+costs:
+  split: index_size
+  cluster_url: https://my-deployment.es.example.cloud.es.io
+  size_key_ref: "azure-keyvault://<vault>/<secret>"
+  shares:                              # first match wins; a leading .ds- is dropped
+    - {match: "*customer-a*", part: "Customer A"}
+    - {match: ".*", part: "Shared (system)"}
+    - {match: "*", part: "Internal"}
+```
+
+An index that matches no rule lands in `other`. Today's sizes stand for every
+day of the window, an approximation each entry names as `split_basis`
+(`{by, bytes, share}`).
+
+Each entry carries `parent` (the account id) and `part`, and is named
+`<display_name>: <part name>`. Parts that `parts:` gives the same name are one
+entry, `parts:` then listing them and the id ending in the name's slug: two
+resource groups of one service (pre and prod) read as one project. A budget
+in `budgets:` is keyed by part or by that name; the account's own
+`budget_month` applies only while it is not split. A failure stays one entry
+for the whole account.
+
 ## What each provider needs
 
 Logins come first: Azure, AWS and Google are read through their own CLIs on the
 machine that runs the collector, with the login those CLIs already hold. No
-service principals, no keys for them. OpenAI and Anthropic have no CLI login, so
-they need an admin key, stored once with the secrets skill and named by
+service principals, no keys for them. OpenAI, Anthropic and Elastic Cloud have no CLI
+login, so they need an admin key, stored once with the secrets skill and named by
 reference.
 
 | Provider | How it is read | What it needs |
 |---|---|---|
 | `azure` | `az rest` against the Cost Management query API, daily `ActualCost` per service, resource group or tag, every declared subscription summed | `az login` on that machine, and the **Cost Management Reader** role on each subscription |
-| `aws` | `aws ce get-cost-and-usage`, daily `UnblendedCost` per service | a login for the aws CLI (`aws login`, optionally `--profile`) with **ce:GetCostAndUsage**. Each request costs about 0.01 USD, so once a day is the rhythm |
+| `aws` | `aws ce get-cost-and-usage`, daily `UnblendedCost` per service and record type: usage per service in the groups, credits and refunds apart (see below) | a login for the aws CLI (`aws login`, optionally `--profile`) with **ce:GetCostAndUsage**. Each request costs about 0.01 USD, so once a day is the rhythm |
 | `gcp` | `bq query` over the Cloud Billing export, cost plus credits per day and service | a **Cloud Billing export to BigQuery** (`costs.bigquery_table`), `gcloud auth login --update-adc`, read access to that dataset |
 | `openai` | `GET /v1/organization/costs`, daily per line item | an **admin key** (`sk-admin-...`) from platform.openai.com > Settings > Organization > Admin keys, as `costs.key_ref` |
 | `anthropic` | `GET /v1/organizations/cost_report`, daily per description (amounts come in cents and are converted) | an **Admin API key** (`sk-ant-admin...`) from console.anthropic.com > Settings > Admin keys, as `costs.key_ref` |
+| `twilio` | `twilio api:core:usage:records:daily:list`: the day is `totalprice` (one short query that must answer), the groups the deepest priced usage categories from the full listing (so `calls` and `calls-inbound` are not counted twice), the unexplained rest `other`. The full listing pages through every category of every day and fails now and then; then the total stays, as `other` | a login for the twilio CLI (`twilio login`, optionally `costs.profile`). A run takes a minute to three |
+| `elastic` | Elastic Cloud `GET /api/v2/billing/organizations/<org>/charts?bucketing_strategy=daily`, one group per deployment, amounts in ECU read as USD | an **Elastic Cloud API key** (cloud.elastic.co > Organization > API keys, a role that may read billing; not a cluster key) as `costs.key_ref`; `costs.organization_id` optional, otherwise the key's first organization |
 | `cloudflare` | no daily cost API | declare the plan as a contract with `costs.enabled`; the account entry says so instead of staying silent |
 
 The key is read through the secrets skill, so `key_ref` may point into any
@@ -96,6 +147,91 @@ account that needs a person (key `cloud-costs-login-<id>`, gate `only-you`) and
 closes it after the next run that reads the account again.
 
 One failing account never stops the others.
+
+## One project across accounts
+
+A project rarely lives in one account: a customer's voice line costs at the
+telephony provider, its model at the AI provider, its logs at the search
+cluster. A cost center gathers them, one file per project in
+`workflow/cost-centers/<id>.yaml` (template and schema beside it):
+
+```yaml
+schema_version: 1
+scope: user
+id: customer-a
+title: "Customer A"
+sources: [openai-example/proj_abc, twilio-example, azure-example/customer-a]
+```
+
+`sources` name entries of the cost file, exactly or as patterns, and an
+account id names all its parts. The first file by name that names an entry
+wins, so an entry counts for one project. `bridge-resources.py costs` writes
+`cost_center` on every entry of the view and the declared `cost_centers`
+beside them; the cost card then shows a **Project** row of chips (All, each
+project, and "no project" while an entry belongs to none) that narrows the
+bars, the day, the rows and the totals alike. `persona_ref` and `mandant_ref`
+say whose costs these are and who would receive an invoice.
+
+### Whose costs, and a budget per project
+
+`persona_ref` on a cost center says whose costs these are. As soon as two
+personas own projects, the card shows a **Whose** row of chips above the
+projects, and picking one narrows both. A `budget_month` (in `currency`,
+default EUR, converted with the report's rates) gives a picked project one
+budget bar over all its entries: the month so far, the forecast, the budget.
+
+### Closing a month and a cost statement
+
+`scripts/cost-ledger.py close` freezes a month from the same reports the
+cockpit reads, per cost center, into `.bridge/ledger/costs/YYYY-MM.json`
+(`--dir` elsewhere): what was paid, what was used before credits, the credits,
+every entry with its groups, and what no center names as `unassigned`. It
+refuses a month that is not whole and settled in every report (a day missing,
+a provisional day, an account that failed), and it never overwrites a closed
+month unless `--replace`, which keeps the old file beside it.
+
+    cost-ledger.py close --month 2026-10 --source ~/.bridge/resources/costs.json --source ssh:my-server:~/.bridge/resources/costs.json
+
+Close between the 2nd and the 4th of the next month: the providers have settled
+the last day, and a 35-day window still reaches back to the 1st. As a workload,
+monthly on the 3rd (`schedule.rrule: "FREQ=MONTHLY;BYMONTHDAY=3"`), with the
+command above.
+An older month lies outside the reports' window: run the collectors once with
+`--days` reaching back to its 1st, then close it.
+
+`cost-ledger.py statement` turns a month into the lines of an invoice
+attachment, as Markdown or CSV on stdout. It covers one center (`--center`),
+the centers of one persona (`--persona`), the entries of no center
+(`--center none`) or everything (the default). A closed month comes from the
+ledger; a month that is not closed comes from the cockpit's kept view and says
+it is provisional. The cost card makes the same statement on its **Make cost
+statement** button, for the month, persona and project picked there, to read,
+copy, or save as `.md` or `.csv` (`GET /api/costs/statement`, read only).
+
+Without a `billing:` block a statement lists the costs and their sum. For one
+center, the block decides how they are billed:
+
+| `billing:` key | Meaning |
+|---|---|
+| `mode` | `pass-through` (default once the block exists, costs one to one), `markup` (`markup_pct` on top), `flat` (`flat_amount`; the costs follow as information), `none` (costs only) |
+| `basis` | `paid` (default, after credits) or `used` (before credits) |
+| `vat_pct` | the VAT on the net amount, default 0 |
+
+    cost-ledger.py statement --month 2026-10 --center customer-a --lang de > statement.md
+
+It is the base of an invoice, not one: number, address and legal lines stay
+with whatever writes the invoice. Whether passed-on costs carry VAT is a
+question for whoever does your tax.
+
+## Credits
+
+A provider that pays for usage with credits (AWS promotional credits) would
+show a month at zero while the service runs. The amount stays what is paid, and
+the usage behind it is kept: a day with credits carries `credits` (negative)
+and `used` (before the credits), the account `credits_month` and `used_month`,
+and its groups are usage per service before the credits. The cockpit says
+"used X, credits Y" on such an account, so the usage is visible before the
+credits run out.
 
 ## Currency
 

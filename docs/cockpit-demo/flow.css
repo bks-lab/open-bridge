@@ -1,0 +1,472 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * The cockpit's Work through page (views/flow.js) and its five verbs (views/verbbar.js). Loaded right after
+ * files.css; the card in front is the hero of the start page focus (style.css .fx-hero), the walk bar the files
+ * view's (files.css .dz-foot). Colors only through the DESIGN.md tokens (var(--token)), the same rules as style.css.
+ */
+
+/* the page: laid out as cmux lays out a workspace. Left the themes or areas (its workspace sidebar, a table of
+   contents: the one entered marked, no points); in the middle its overview or the point open, its tabs under the card, the instruction line and the
+   files view's walk bar at the foot; right what you can do and the fields. Three columns side by side down to 1180px,
+   then the right column under the middle, narrow one column with the left column as a select on top */
+/* --flow-col-max: the most a side column may be tall and still stand whole in the page column that scrolls (the main
+   grid's height less its padding), with room below the grid for the line of what is left out and the page's bottom
+   padding: a sticky column taller than that is pushed up under the scroller's edge once the middle scrolls */
+.flow { --flow-col-max: calc(100dvh - var(--header-h) - var(--pagebar-h) - 32px - 104px);
+  display: flex; flex-direction: column; gap: var(--space-md); width: 100%; min-width: 0; padding-bottom: var(--space-xl); }
+.flow-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; }
+.flow-head p { margin: 0; }
+.flow-nodriver { margin: 0; }
+.flow-grid { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr) minmax(260px, 340px); gap: var(--space-md); align-items: start; min-width: 0; }
+/* round 6 B: no point open, no right column; the overview, a list of Not now and Prio's grid take its width */
+.flow-grid.no-aside { grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); }
+.flow-main-hint { margin: 0; }
+
+/* the left column, level one: one entry per theme or area, its colour, its name, what needs you and what is open */
+.flow-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; max-height: var(--flow-col-max); overflow-y: auto;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+/* the column scrolls in itself once Running now and Not now make it long: no part of it shrinks to make room */
+.flow-side > * { flex-shrink: 0; }
+.flow-side > .seg { align-self: stretch; }
+.flow-side > .seg .seg-btn { flex: 1 1 0; }
+.flow-side-select { display: none; }
+.flow-side-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.flow-side-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 9px; border: 1px solid transparent; border-radius: var(--radius-md);
+  background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
+  transition: background var(--motion), border-color var(--motion);
+}
+.flow-side-item:hover { background: var(--surface-raised); }
+.flow-side-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+/* All has no colour of its own: its name stands where the others' start, after the place of a dot */
+.flow-side-item.is-all .flow-side-name { padding-left: 18px; }
+/* the points of a side as a list under its name (views/flowside.js SidePoints): a click opens one in the middle, the
+   one open marked as a picked row of the work tab is */
+.flow-side-pts { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 8px; padding: 0 0 0 18px; list-style: none; }
+.flow-side-pt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; padding: 4px 8px; text-align: left;
+  font: inherit; color: var(--on-surface); background: none; border: 0; border-radius: var(--radius-md); cursor: pointer; }
+.flow-side-pt:hover { background: var(--surface-raised); }
+.flow-side-pt:focus-visible { outline: 2px solid var(--secondary); outline-offset: -2px; }
+.flow-side-pt.is-current, .flow-side-pt.is-current:hover { background: var(--accent-subtle); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.flow-side-pt-name { font-size: var(--text-sm); line-height: 1.35; overflow-wrap: anywhere; }
+.flow-side-pt-stand { line-height: 1.3; }
+.flow-side-dot { flex: none; width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--ws-color, var(--tk, var(--border-strong))); }
+.flow-side-name { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 1 1 auto; min-width: 0; font-weight: 600; }
+.flow-side-label { max-width: 100%; overflow-wrap: anywhere; }
+.flow-side-you { padding: 0 7px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--warning) 12%, var(--surface)); color: var(--warning); font-size: var(--text-label); font-weight: 600; }
+.flow-side-open { flex: none; font-size: var(--text-label); }
+.flow-side-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.flow-side-foot p { margin: 0; }
+.flow-side-rename, .flow-theme-pick { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.flow-theme-pick .input, .flow-side-rename .input { width: 100%; }
+
+/* the head of a part of the left column (Not now) */
+.flow-side-group { margin: 8px 0 2px; padding: 0 6px; color: var(--on-surface-muted); }
+.flow-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); cursor: pointer; }
+
+/* the middle: its head (the name, or the way back to the overview), the overview or the point and the walk bar */
+.flow-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-main-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 32px; }
+.flow-main-title { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-h4); color: var(--ink); }
+.flow-main-theme { font-size: var(--text-sm); }
+.flow-picked-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+/* the point open: the card, its tabs under it (their panes read at most 820px wide), the dock at the foot */
+.flow-point { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.flow-card .fx-screen { max-height: 260px; overflow: auto; }
+
+/* the tabs under the card, as an issue tracker keeps them: one bar, the chosen tab underlined, a count beside a word */
+.flow-ptabs { display: flex; flex-direction: column; min-width: 0; margin-top: 18px; }
+.flow-ptabs-bar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+.flow-ptabs-bar::-webkit-scrollbar { display: none; }
+.flow-ptab {
+  flex: none; margin-bottom: -1px; padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent;
+  color: var(--on-surface-muted); font: inherit; font-size: var(--text-sm); font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: color var(--motion), border-color var(--motion);
+}
+.flow-ptab:hover { color: var(--on-surface); }
+.flow-ptab.is-on { border-bottom-color: var(--ink); color: var(--ink); }
+.flow-ptab-n { margin-left: 2px; color: var(--on-surface-muted); font-size: var(--text-label); font-weight: 500; }
+.flow-ptabs-pane { display: flex; flex-direction: column; gap: 10px; min-width: 0; max-width: 820px; padding: 14px 2px 18px; font-size: var(--text-sm); line-height: 1.6; overflow-wrap: anywhere; }
+.flow-ptabs-pane p, .flow-ptabs-pane ul, .flow-ptabs-pane ol { margin: 0; }
+.flow-card-brief { border: 0; padding: 0; background: transparent; }
+.flow-steps { display: flex; flex-direction: column; gap: 4px; padding: 0; list-style: none; }
+.flow-steps li.is-done { color: var(--on-surface-muted); }
+.flow-step-mark { display: inline-block; min-width: 56px; color: var(--on-surface-muted); font-size: var(--text-label); }
+.flow-related { display: flex; flex-direction: column; gap: 12px; }
+.flow-related h3 { margin: 0 0 4px; color: var(--on-surface-muted); }
+
+/* Activity: the summary on a click, the filters with their counts, a row each (when, kind, what, who), the foot */
+.flow-act { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-act-sum { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 12px; border-radius: var(--radius-md); background: var(--surface-raised); }
+.flow-act-sum-text { color: var(--on-surface); }
+.flow-act-sum-acts { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.flow-act-stale { padding: 0 6px; border: 1px solid var(--warning); border-radius: var(--radius-full); color: var(--warning); font-size: var(--text-label); font-weight: 600; }
+.flow-act-filters { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.flow-act-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.flow-act-row { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.flow-act-time { padding-top: 1px; color: var(--on-surface-muted); font-size: var(--text-label); white-space: nowrap; }
+.flow-act-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.flow-act-kind { color: var(--on-surface-muted); font-size: var(--text-label); }
+.flow-act-what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; color: var(--on-surface); }
+.flow-act-who { color: var(--on-surface-muted); font-size: var(--text-label); }
+.flow-act-links { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
+/* every link of a row reads as a link: a document, a page, the ref of a code row, the way to a tab */
+.flow-act-links a, .flow-act-links .btn-link, .flow-act-ref { color: var(--info); text-decoration: underline; text-underline-offset: 2px; }
+.flow-act-row.is-undone .flow-chg-new { text-decoration: line-through; color: var(--on-surface-muted); }
+.flow-act-undone { color: var(--warning); font-size: var(--text-label); font-weight: 600; }
+.flow-chg-old { color: var(--on-surface-muted); }
+.flow-act-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.flow-act-noteform { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; }
+.flow-act-note { flex: 1 1 auto; min-width: 0; }
+.flow-act-foot > p { flex-basis: 100%; }
+
+/* the foot of the middle: the instruction line over the walk bar, sticky at the bottom with it; narrow, the walk bar
+   leaves out the next title rather than cut it to a few letters */
+.flow-dock { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+@container (max-width: 680px) { .flow-dock .dz-walk-next { visibility: hidden; } }
+/* a middle as narrow as beside the detail column: Next wraps onto a line of its own, never cut off */
+@container (max-width: 480px) { .flow-dock .dz-walk { flex-wrap: wrap; padding: 10px 12px; gap: 8px; } .flow-dock .dz-walk-next { display: none; } }
+/* the page's own bottom padding would leave a strip under it where the rows scroll by: it sticks to the very edge */
+@media (min-width: 701px) {
+  .flow-dock { position: sticky; bottom: calc(-1 * var(--space-xl)); z-index: 3; box-shadow: 0 -14px 24px -18px color-mix(in srgb, var(--ink) 30%, transparent); }
+}
+.flow-dock:empty { display: none; }
+.flow-dock > .flow-walk { position: static; margin: 0; border-radius: 0 0 var(--radius-lg) var(--radius-lg); box-shadow: none; }
+.flow-dock > .flow-walk:only-child { border-top: 0; border-radius: var(--radius-lg); }
+.flow-instruct { display: flex; flex-direction: column; gap: 6px; padding: 10px 16px; min-width: 0; }
+.flow-instruct-scope { margin: 0; }
+.flow-instruct-row { display: flex; align-items: flex-end; gap: 8px; }
+.flow-instruct-text { flex: 1 1 auto; min-width: 0; min-height: 0; resize: none; overflow-y: hidden; max-height: 160px; }
+/* one row while empty: the example in it stays on that row */
+.flow-instruct-text::placeholder { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.flow-instruct p { margin: 0; }
+/* an open plan scrolls in itself, so the dock never covers the card's screen */
+.flow-instruct-plan { display: flex; flex-direction: column; gap: 6px; max-height: 38vh; overflow-y: auto; padding: 10px 12px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface-raised); font-size: var(--text-sm); }
+.flow-instruct-steps { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-left: 20px; }
+.flow-instruct-op { font-weight: 600; color: var(--ink); }
+.flow-instruct-note { display: block; }
+/* a point that drops out of a step: struck through in it, why beside it; a step with nothing left to run muted */
+.flow-instruct-pt del { color: var(--on-surface-muted); }
+.flow-instruct-step.is-out .flow-instruct-op { color: var(--on-surface-muted); }
+.flow-instruct-said { font-style: italic; }
+
+/* the right column: what you can do (the suggestion, the verbs under each other) and the fields, only while a point
+   or an entry is open. It stands whole inside the scroller (--flow-col-max): What you can do on top, never scrolled
+   away, the fields scroll in themselves */
+.flow-aside { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; min-width: 0; max-height: var(--flow-col-max); overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-aside > .flow-can { flex: none; max-height: calc(var(--flow-col-max) - 140px); overflow-y: auto; }
+.flow-aside > .flow-fields { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.flow-aside-part { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; min-width: 0; }
+.flow-aside-part + .flow-aside-part { border-top: 1px solid var(--border); }
+.flow-aside-part > .label-caps { margin: 0; color: var(--on-surface-muted); }
+/* the suggestion reads as one sentence that wraps: its label, the verb as a chip, the half sentence of why */
+.flow-can-sug { margin: 0; padding: 8px 10px; border-left: 3px solid var(--info); border-radius: var(--radius-md);
+  background: var(--surface-raised); font-size: var(--text-sm); line-height: 1.7; }
+.flow-can-sug > .label-caps { display: inline; margin-right: 6px; color: var(--on-surface-muted); }
+.flow-can-sug .flow-sug { display: inline; }
+.flow-can-sug .flow-sug-verb { display: inline-block; margin-right: 6px; line-height: 1.4; }
+.flow-can .fx-do { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.verbbar.is-stack .verbbar-row { flex-direction: column; align-items: stretch; gap: 6px; }
+.flow-can .btn { justify-content: flex-start; width: 100%; text-align: left; }
+.flow-can .verbbar-panel { padding: 10px 12px; }
+.flow-can .verbbar-panel .btn { width: auto; }
+.flow-can .verbbar-panel .verbbar-acts { flex-wrap: wrap; }
+/* Details under the verbs: the row's drawer or detail column, a quiet link (round 6 B) */
+.flow-can-more { margin: 0; font-size: var(--text-sm); }
+.flow-meta { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.flow-meta .meta-item { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.flow-meta dt { margin: 0; color: var(--on-surface-muted); font-family: inherit; font-size: var(--text-sm); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.flow-meta dd { margin: 0; min-width: 0; }
+.flow-meter { display: inline-flex; align-items: center; gap: 8px; }
+.flow-meter .meter-track { flex: none; width: 72px; height: 6px; }
+/* the source: its chip kept inside the column (its words wrap, a long detail ends in an ellipsis), then its links */
+.flow-source { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; max-width: 100%; }
+.flow-source .origin { min-width: 0; max-width: 100%; }
+.flow-source .origin > span { min-width: 0; }
+.flow-source .origin > .origin-word { flex: none; }
+.flow-source a, .flow-source-file { color: var(--info); text-decoration: underline; text-underline-offset: 2px; }
+.flow-theme-pick.is-compact .field-row { margin: 0; }
+.flow-theme-pick > .label-caps, .flow-side-rename > .label-caps { margin: 0; }
+
+/* the overview: the sticky batch bar, then a table of the points grouped, a box, the title, stage, area, suggestion */
+.flow-overview, .flow-checklist { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-ov-top { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: 8px; background: var(--surface); padding-bottom: 2px; }
+.flow-ov-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-ov-sum { flex: 1 1 120px; min-width: 0; }
+.flow-ov-verbs { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.flow-list-confirm, .flow-list-done { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface); }
+.flow-list-confirm > span { flex: 1 1 260px; color: var(--ink); }
+.flow-ov-table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); font-size: var(--text-sm); }
+.flow-ov-table th, .flow-ov-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.flow-ov-table thead th { color: var(--on-surface-muted); font-size: var(--text-label); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.flow-ov-pickcol, .flow-ov-row > td:first-child { width: 1%; }
+.flow-ov-group th { padding-top: 12px; border-bottom: 0; color: var(--on-surface-muted); }
+.flow-ov-grouphead { display: inline-flex; align-items: center; gap: 12px; }
+.flow-ov-grouppick { margin: 0; }
+.flow-ov-row.is-picked { background: var(--surface-raised); }
+.flow-ov-point { min-width: 0; }
+.flow-ov-open { display: block; padding: 0; border: 0; background: transparent; color: var(--on-surface); font: inherit; font-weight: 600; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.flow-ov-open:hover { text-decoration: underline; }
+.flow-ov-sub { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+/* an agent at work on the row: a small marker only, Running now stands in the left column */
+.flow-ov-running { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; color: var(--on-surface-muted); }
+/* a long ref in the kind chip wraps inside the column instead of pushing the table under the right column */
+.flow-ov-sub .kind { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+/* the stage keeps its words whole: the column grows to fit them */
+.flow-ov-stage { white-space: nowrap; }
+.flow-ov-stage .dot { margin-right: 4px; }
+.flow-ov-area { white-space: nowrap; }
+/* in Later the column Why wraps, so Back on beside it keeps its room */
+.flow-ov-stage.flow-ov-why { white-space: normal; min-width: 12em; }
+.flow-ov-act { width: 1%; white-space: nowrap; }
+.flow-sug { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.flow-sug-verb { flex: none; padding: 1px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-full); font-weight: 600; font-size: var(--text-label); }
+.flow-sug-done .flow-sug-verb { border-color: var(--success); color: var(--success); }
+.flow-sug-drop .flow-sug-verb { border-color: var(--danger); color: var(--danger); }
+.flow-sug-later .flow-sug-verb { border-color: var(--info); color: var(--info); }
+.flow-sug-do .flow-sug-verb { border-color: var(--accent); color: var(--accent); }
+.flow-sug-you .flow-sug-verb { border-color: var(--warning); color: var(--warning); }
+.flow-sug-why { min-width: 0; color: var(--on-surface-muted); }
+
+/* round 4, Running now: on top of the left column one row like a group of Not now (round 5), on top of the overview
+   and in its own view a strip with To tab and View; Not now at the foot of the left column, a button per group, the
+   one open marked; on a narrow screen both fold under the select, a compact line per entry (dot, title, tab, stage) */
+.flow-run, .flow-notnow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.flow-notnow { padding-top: 8px; border-top: 1px solid var(--border); }
+/* round 6 c: Check tasks under Not now, on every width (no .flow-side-body), the check's plain line in the middle */
+.flow-check { padding-top: 8px; border-top: 1px solid var(--border); }
+.flow-check-intro { margin: 0 0 8px; }
+.review-how summary { cursor: pointer; }
+.review-how .flow-wrap { margin-top: 8px; }
+.flow-run .flow-side-group, .flow-notnow .flow-side-group { margin-top: 0; }
+.flow-run-list, .flow-runstrip-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.flow-run-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px; border: 1px solid transparent; border-radius: var(--radius-md); }
+.flow-run-item > .dot { margin-top: 5px; }
+.flow-run-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+.flow-run-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.flow-run-open { padding: 0; border: 0; background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); font-weight: 600;
+  text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.flow-run-open:hover { text-decoration: underline; }
+.flow-run-meta { font-size: var(--text-label); overflow-wrap: anywhere; }
+.flow-notnow-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 1px solid transparent; border-radius: var(--radius-md);
+  background: transparent; color: var(--on-surface); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
+}
+.flow-notnow-item:hover { background: var(--surface-raised); }
+.flow-notnow-item.is-on { border-color: var(--border-strong); background: var(--surface-raised); }
+/* the rows a GitHub list holds: one quiet line, no group, it leads to the list where they stand */
+.flow-notnow-line {
+  width: 100%; padding: 7px 9px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--on-surface-muted);
+  font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; overflow-wrap: anywhere;
+}
+.flow-notnow-line:hover { background: var(--surface-raised); color: var(--on-surface); text-decoration: underline; }
+.flow-run-cat .flow-side-name { flex-direction: row; }
+/* the strip as the view of its own: its head is the page's, so no frame of its own */
+.flow-runstrip.is-bare { padding: 0; border: 0; background: transparent; }
+.flow-runstrip.is-bare > .flow-runstrip-why { margin: 0 0 4px; }
+/* the live sessions under the entries (round 6): the Sessions page's cards, the entry's title a link under its title */
+.flow-sessions { margin-top: 10px; }
+.flow-sessions .flow-run-open { justify-self: start; text-align: left; }
+.flow-sessions .sess-head > .flow-ov-pick { margin: 0; }
+.flow-run-narrow, .flow-notnow-narrow { display: none; }
+.flow-run-narrow > summary, .flow-notnow-narrow > summary { cursor: pointer; padding: 6px 4px; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.flow-run-narrow > summary > .label-caps, .flow-notnow-narrow > summary > .label-caps { display: inline; margin: 0 4px 0 0; }
+.flow-runstrip { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.flow-runstrip > h3 { margin: 0; color: var(--on-surface-muted); }
+.flow-runstrip-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 4px 0; }
+.flow-runstrip-row.is-picked { background: var(--surface-raised); }
+/* the box of an entry with a task of its own (only for a merge), a blank of its width where there is none */
+.flow-runstrip-pick { flex: 0 0 16px; width: 16px; margin: 0; }
+.flow-runstrip > h3 .flow-runstrip-why { margin-left: 8px; font-weight: 400; letter-spacing: normal; text-transform: none; }
+.flow-runstrip-row + .flow-runstrip-row { border-top: 1px solid var(--border); }
+.flow-runstrip-text { display: flex; flex-direction: column; gap: 1px; flex: 1 1 240px; min-width: 0; }
+.flow-runstrip-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.flow-left-sub { margin: 0; }
+
+/* round 4, Merge: under the batch bar which task stays, a radio each */
+.flow-merge-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+/* the radio keeps its line beside the title, the facts go under the title, not under the radio */
+.flow-merge-list .flow-check { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; column-gap: 8px; }
+.flow-merge-list .flow-check > .muted { grid-column: 2; }
+.flow-merge-title { font-weight: 600; overflow-wrap: anywhere; }
+.flow-merge > p, .flow-merge-only { margin: 0; }
+
+/* round 4, Prio: Jev's squares as a 2x2 grid, urgent left, important on top, the axes named beside them; the points
+   not rated under it, full width */
+.flow-prio { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow-prio-from { margin: 0; }
+.flow-prio-grid { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.flow-prio-axis { align-self: end; text-align: center; }
+.flow-prio-axis-y { align-self: center; writing-mode: vertical-rl; transform: rotate(180deg); }
+.flow-prio-sq {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; min-height: 150px; padding: 12px 14px;
+  border: 1px solid var(--border); border-top: 3px solid var(--tk, var(--border-strong)); border-radius: var(--radius-lg); background: var(--surface);
+  color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; transition: background var(--motion), border-color var(--motion);
+}
+.flow-prio-sq:hover { background: var(--surface-raised); }
+.flow-prio-head { display: flex; align-items: center; gap: 8px; width: 100%; }
+.flow-prio-name { flex: 1 1 auto; min-width: 0; font-weight: 700; color: var(--ink); }
+.flow-prio-n { flex: none; padding: 0 8px; border-radius: var(--radius-full); background: var(--surface-raised); font-size: var(--text-label); font-weight: 600; }
+.flow-prio-titles { display: flex; flex-direction: column; gap: 2px; margin: 0; padding-left: 16px; font-size: var(--text-sm); }
+.flow-prio-titles li { overflow-wrap: anywhere; }
+.flow-prio-hint { margin-top: auto; color: var(--on-surface-muted); }
+/* how many points of a square the ranker gave to you alone; the two read-in buttons at Prio's foot */
+.flow-prio-me { color: var(--on-surface); }
+.flow-prio-reads { display: flex; flex-wrap: wrap; gap: 6px; }
+.flow-prio-none .flow-prio-sq { width: 100%; min-height: 0; }
+
+/* the detail column beside the page (Details on a row that is no inbox item or task, views/flowside.js) halves the
+   page's width: the right column goes under the middle, as below 1180px (a narrow screen shows one pane at a time) */
+.main.with-detail:not(.layout-narrow) .flow-grid { grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); }
+.main.with-detail:not(.layout-narrow) .flow-grid > .flow-aside { grid-column: 2; position: static; max-height: none; overflow: visible; }
+.main.with-detail:not(.layout-narrow) .flow-aside > .flow-can, .main.with-detail:not(.layout-narrow) .flow-aside > .flow-fields { max-height: none; overflow: visible; }
+
+/* below 1180px the right column moves under the middle; narrow, one column and the left column a select on top */
+@media (max-width: 1180px) {
+  .flow-grid, .flow-grid.no-aside { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
+  .flow-grid > .flow-aside { grid-column: 2; position: static; max-height: none; overflow: visible; }
+  .flow-aside > .flow-can, .flow-aside > .flow-fields { max-height: none; overflow: visible; }
+}
+@media (max-width: 960px) {
+  .flow-grid, .flow-grid.no-aside { grid-template-columns: minmax(0, 1fr); }
+  .flow-grid > .flow-aside { grid-column: auto; }
+  .flow-side { position: static; max-height: none; padding: 8px; }
+  .flow-side > .flow-side-body { display: none; }
+  .flow-side-select { display: block; }
+  .flow-side-select .input { width: 100%; }
+  .flow-run-narrow, .flow-notnow-narrow { display: block; }
+  .flow-runstrip { display: none; }
+  .flow-prio-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .flow-prio-axis { display: none; }
+  .flow-ov-table thead { display: none; }
+  .flow-ov-table, .flow-ov-table tbody { display: block; }
+  .flow-ov-group { display: block; }
+  .flow-ov-group th { display: block; }
+  .flow-ov-row { display: grid; grid-template-columns: 28px auto minmax(0, 1fr); align-items: baseline; border-bottom: 1px solid var(--border); }
+  .flow-ov-row > td { width: auto; border-bottom: 0; padding: 4px 8px; }
+  .flow-ov-row > td.flow-ov-point { grid-column: 2 / -1; }
+  .flow-ov-row > td.flow-ov-stage { grid-column: 2; }
+  .flow-ov-row > td.flow-ov-act { grid-column: 2 / -1; padding-bottom: 8px; }
+}
+
+/* the card in front */
+.flow-ask { margin: 0; font-size: var(--text-h4); color: var(--ink); }
+.flow-answer { margin: 0; color: var(--on-surface); }
+.flow-reports { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+/* each report: its box beside it, All above them (views/flow.js ReportsCard) */
+.flow-reports > li { display: flex; align-items: flex-start; gap: 8px; border-top: 1px solid var(--border); }
+.flow-reports > li > .flow-ov-pick { margin: 9px 0 0; flex: none; }
+.flow-reports details { flex: 1; min-width: 0; padding: 6px 0; }
+.flow-reports-all { align-self: flex-start; }
+.flow-reports-hint { margin: 6px 0 0; }
+.flow-reports summary { cursor: pointer; color: var(--on-surface); }
+.flow-reports details[open] { display: flex; flex-direction: column; gap: 6px; }
+/* a tab that asks: one row of its answers, the guide's steps folded under one button */
+.flow-askblock { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
+.flow-askblock > .reply, .flow-askblock > .guide { align-self: stretch; }
+
+/* the calm card's ideas */
+.flow-rest { display: flex; flex-direction: column; gap: 8px; }
+.flow-rest > h2 { margin: 0; color: var(--on-surface-muted); }
+.flow-rest ul { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.flow-rest li { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); }
+.flow-rest-title { font-weight: 600; color: var(--on-surface); }
+
+/* the five verbs: one row of buttons, the suggested one primary, a small panel under it for a start, a day, a reason */
+.verbbar { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.verbbar-row, .verbbar-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* a tab's close and its jump, apart under the verbs, so they are no click by mistake (views/verbbar.js tail) */
+.verbbar-tail { padding-top: 8px; border-top: 1px solid var(--border); }
+/* an issue on a board: where it stands, above its review and done (views/flowside.js IssueWays) */
+.flow-issue-on { margin: 0; }
+/* what Check with AI found: its verdict, evidence and what is still open */
+.flow-issue-check { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.flow-issue-check p, .flow-issue-check ul { margin: 0; }
+.flow-issue-check ul { padding-left: 18px; }
+.verbbar-panel {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); background: var(--surface);
+}
+.verbbar-panel .field-row { margin-top: 0; }
+.verbbar-advice { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface); }
+.verbbar-advice p { margin: 0; }
+.verbbar-answer { color: var(--on-surface); font-size: var(--text-sm); }
+.verbbar-manual { display: flex; flex-direction: column; gap: 6px; }
+.verbbar-manual p, .verbbar-manual pre { margin: 0; }
+.verbbar-manual pre { padding: 10px 12px; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-muted); }
+.verbbar-err { color: var(--danger); }
+
+
+/* stage 1 of the one point view (views/flowpoint.js): the end of a card's head (the kind of row, Pin), the next step as
+   the file card's tinted box under the title, what it is about and the description as filed over the brief, the
+   sections of STATUS.md folded, the drawer's facts folded at the foot of the fields, the basic verbs over what the
+   kind adds with why one is off, the switch Instruct or Ask and the answer under the line */
+.flow-card-head { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.flow-card-head .btn { min-height: 0; }
+.flow-pin.btn[aria-pressed='true'] { color: var(--warning); }
+.flow-about { display: flex; flex-direction: column; gap: 10px; }
+.flow-about-gist, .flow-about-text { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--surface-raised); }
+.flow-about .label-caps { color: var(--on-surface-muted); }
+.flow-about-head { color: var(--ink); font-weight: 600; }
+.flow-about .flow-side-you { display: inline-block; }
+.flow-sections > summary, .flow-section > summary { cursor: pointer; color: var(--on-surface); }
+.flow-sections { display: flex; flex-direction: column; gap: 6px; }
+.flow-section { margin-left: 16px; }
+.flow-section > p { margin: 4px 0 6px; }
+.flow-facts-toggle { align-self: flex-start; margin-top: 8px; font-size: var(--text-sm); }
+.flow-facts { margin-top: 4px; }
+.flow-fact-code { font-size: var(--text-mono-label); overflow-wrap: anywhere; }
+.flow-readonly { margin: 0; }
+.verbbar-off p { margin: 0; }
+.verbbar.is-fixed .verbbar-kind { padding-top: 8px; border-top: 1px solid var(--border); }
+.flow-instruct.is-switch .flow-line-mode { display: flex; }
+.flow-ask-answer { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md);
+  background: var(--surface-raised); }
+.flow-ask-answer p { margin: 0; }
+.flow-report-open { margin-left: 4px; font-size: var(--text-sm); }
+/* stage 2: Finished, to read under Running now (views/flowleft.js ReadRow; it stays on a narrow screen), a finished
+   run's own words folded under its plain sentence */
+.flow-read-row .flow-side-name { flex-direction: row; }
+/* in Finished, to read the title keeps a readable width and the plain sentence wraps beside it */
+.flow-readlist .flow-ov-point { min-width: 12em; }
+.flow-ov-what { min-width: 14em; color: var(--on-surface); }
+.flow-raw > summary { cursor: pointer; }
+.flow-raw > p { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+/* stage 4, simpler: a point says its name, where it stands and its next step (views/flowpoint.js StepLine), who as a chip */
+.flow-step { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 4px 0 0; }
+.flow-step .label-caps { color: var(--on-surface-muted); }
+.flow-step-what { font-weight: 600; color: var(--on-surface); }
+.flow-who { font-weight: 600; }
+.flow-who-me { background: color-mix(in srgb, var(--warning) 12%, var(--surface)); color: var(--warning); border-color: transparent; }
+.flow-who-bridge { background: color-mix(in srgb, var(--info) 12%, var(--surface)); color: var(--info); border-color: transparent; }
+.flow-who-person { color: var(--on-surface); }
+/* the right column: the strong button, the four states in a quiet 2x2, More as a menu (views/flowsimple.js) */
+.flow-simple { display: flex; flex-direction: column; gap: 8px; }
+.flow-simple .verbbar-strong { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; padding-block: 6px; line-height: 1.35; }
+.verbbar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.verbbar-grid .verbbar-state { justify-content: center; }
+.flow-more { position: relative; }
+.flow-more-toggle, .flow-order-toggle { font-weight: 600; }
+.flow-more-menu { display: flex; flex-direction: column; margin-top: 6px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface); }
+.flow-more-item { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--on-surface);
+  font: inherit; font-size: var(--text-sm); text-align: left; text-decoration: none; cursor: pointer; }
+.flow-more-item:hover, .flow-more-item:focus-visible { background: var(--surface-raised); }
+.flow-work .flow-work-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* the overview and the lists: the stand under the name, the step beside it (views/flowlist.js, views/flowleft.js) */
+.flow-ov-stand { display: block; margin-top: 2px; }
+.flow-ov-step { min-width: 12em; }
+.flow-ov-when { display: block; margin-top: 2px; }
+.flow-ov-hint { margin: 0 0 8px; }
+.flow-ov-bar.is-ticked { position: sticky; top: 0; z-index: 2; }
+/* a check-in whose day came: its answers on the card (views/flowpoint.js CheckinCard) */
+.flow-checkin-acts { margin-top: 12px; }
+.flow-looked { margin-top: 10px; padding: 8px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); }
+.flow-looked p { margin: 0; }
+/* Description: what else is stored, folded under one line */
+.flow-stored { margin-top: 8px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; }
+.flow-stored > summary { cursor: pointer; font-weight: 600; }

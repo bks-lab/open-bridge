@@ -160,8 +160,15 @@ def repo_root_default() -> Path:
 
 
 def parse_frontmatter(path: Path) -> dict:
-    """Return the YAML frontmatter (between the first two `---`) as a dict."""
-    text = path.read_text(encoding="utf-8")
+    """Return the YAML frontmatter (between the first two `---`) as a dict.
+
+    Comment and blank lines above the opening `---` are skipped: the shipped
+    template starts with a `# yaml-language-server:` line."""
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    start = 0
+    while start < len(lines) and (not lines[start].strip() or lines[start].startswith("#")):
+        start += 1
+    text = "".join(lines[start:])
     if not text.startswith("---"):
         return {}
     parts = text.split("\n---", 1)
@@ -534,7 +541,7 @@ def ecosystem_files(root: Path) -> list[Path]:
 
     The registry may be split across `ecosystem.yaml` (instance base) plus
     overlay-materialized / tier-scoped fragments (`ecosystem.<tier>.yaml`) —
-    the same set CLAUDE.md `@`-imports. `ecosystem.example.yaml` is the CORE
+    the same set Phase 1 indexes (context-index.py --registries). `ecosystem.example.yaml` is the CORE
     template shipped for fresh clones and is deliberately excluded: its demo
     entries are not real boards.
     """

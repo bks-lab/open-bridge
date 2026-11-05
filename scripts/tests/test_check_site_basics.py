@@ -103,7 +103,7 @@ def build(tmp: pathlib.Path, **override: str) -> pathlib.Path:
     files = {
         "docs/index.html": page("index.html"),
         "docs/demo.html": page("demo.html"),
-        "docs/cockpit.html": page("cockpit.html", canonical=False),
+        "docs/cockpit.html": page("cockpit.html"),
         "docs/404.html": NOT_FOUND,
         "docs/sitemap.xml": sitemap("index.html", "demo.html", "cockpit.html"),
         "docs/robots.txt": f"User-agent: *\nSitemap: {SITE}sitemap.xml\n",
@@ -150,11 +150,9 @@ def test_canonical_must_match_page_url(tmp_path):
     assert any("demo.html" in p and "canonical" in p for p in problems(root))
 
 
-def test_cockpit_pages_are_exempt_from_canonical_only(tmp_path):
-    root = build(tmp_path, **{"docs/sitemap.xml": sitemap("index.html", "demo.html")})
-    found = problems(root)
-    assert any("cockpit.html" in p and "sitemap" in p for p in found)
-    assert not any("cockpit.html" in p and "canonical" in p for p in found)
+def test_cockpit_page_needs_a_canonical_too(tmp_path):
+    root = build(tmp_path, **{"docs/cockpit.html": page("cockpit.html", canonical=False)})
+    assert any("cockpit.html" in p and "canonical" in p for p in problems(root))
 
 
 # ---- sitemap ------------------------------------------------------------------
@@ -275,6 +273,21 @@ def test_nested_id_is_not_a_root_id(tmp_path):
     assert problems(root) == []
 
 
+def test_closed_task_copies_are_not_scanned(tmp_path):
+    # work/done/ keeps frozen copies of files as they were when a task closed.
+    # An old $id or a second copy of a live schema there is history, not drift.
+    root = build(tmp_path, **{
+        "work/done/2026-10/t/over/_schema.yaml": f'$id: "{SITE}schemas/thing.yaml"\n',
+        "work/done/2026-09/u/infra/things/_schema.yaml": '$id: "urn:open-bridge:schema:thing"\n',
+    })
+    assert problems(root) == []
+
+
+def test_live_work_templates_are_still_scanned(tmp_path):
+    root = build(tmp_path, **{"work/templates/_schema.status.yaml": f'$id: "{SITE}schemas/status.yaml"\n'})
+    assert any("work/templates/_schema.status.yaml" in p for p in problems(root))
+
+
 # ---- review follow-ups ------------------------------------------------------
 
 def test_later_root_override_of_a_site_token_is_reported(tmp_path):
@@ -305,3 +318,22 @@ def test_404_base_must_match_the_site_path(tmp_path):
 
 def test_site_path_is_derived_from_site():
     assert csb.site_path() == "/open-bridge/"
+
+
+# ---- footer holder vs LICENSE ---------------------------------------------------
+
+LICENSE = "MIT License\n\nCopyright (c) 2026 Example Corp and Contributors\n"
+
+
+def footer_page(holder: str) -> str:
+    return page("demo.html").replace("</body>", f"<footer>© 2026 {holder}. Licenses cover copyright.</footer></body>")
+
+
+def test_footer_holder_matching_license_passes(tmp_path):
+    root = build(tmp_path, **{"LICENSE": LICENSE, "docs/demo.html": footer_page("Example Corp and Contributors")})
+    assert problems(root) == []
+
+
+def test_footer_holder_differing_from_license_is_reported(tmp_path):
+    root = build(tmp_path, **{"LICENSE": LICENSE, "docs/demo.html": footer_page("Example and Contributors")})
+    assert any("demo.html" in p and "footer holder" in p for p in problems(root))

@@ -101,9 +101,13 @@ embeds the typefaces as base64 from `assets/fonts/` (Inter, Playfair Display,
 JetBrains Mono, so a page matches a deck without `--font-dir`) and any `--font-dir`.
 Never a font CDN. The send bundle always embeds.
 
-Every script finds DESIGN.md the same way: the nearest one at or above the page,
-never above the project root (the first folder with `.git` or `bridge-config.yaml`);
-without such a folder only the page's own folder counts. `--design` names it outright.
+Every script finds its design the same way (this skill's `bridge_design.py`): `--design`
+names it outright (a path, or an id under `identity/designs/`); else the nearest
+DESIGN.md at or above the page, never above the project root (the first folder with
+`.git` or `bridge-config.yaml`; without one only the page's own folder counts). When
+that walk ends at the Bridge's own DESIGN.md, the Bridge resolves the design
+(`scripts/designs.py`: `--context`, `--persona` on `new-page.py` and `design-to-css.py`,
+then the theme's `branding.design`, then the root DESIGN.md).
 
 ## Definition of done
 

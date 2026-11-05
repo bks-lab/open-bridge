@@ -113,10 +113,29 @@ key or a token scoped to this one private repository). Two reasons:
 deploy key writes the whole repository. If your git host can restrict a
 credential to paths or to a branch, use that as the second lock.
 
+### A cockpit on this machine
+
+`python3 scripts/bridge-cockpit.py serve --served` runs the cockpit for the people named in a workspace's `members:`
+on this machine: no model, no terminal driver, no daily triage, no relay, still bound to 127.0.0.1. Run it with the
+Python that has PyYAML, under whatever keeps your services alive.
+
+A puller may reset this clone, so a person's entry must not stay uncommitted. After each of their actions the
+cockpit compares `work/` before and after, keeps the changed paths in `work-sync.jsonl` beside its state and has
+`scripts/work-sync.py` commit exactly those and push them. Only `work/tasks/`, `work/done/`, `work/inbox/` and
+`work/log.md` are accepted. Files another session left open stay out. Without a network the commit waits locally,
+so the puller must rebase and push such commits as it does for the inbox, extended to the same paths.
+
+Two machines now append to `work/log.md`. The root `.gitattributes` ships `work/log.md merge=union` for that reason;
+keep the line if your instance carries its own `.gitattributes`, or every rebase over a log row conflicts.
+
 The [push guard](../rules/push-guard.md) is unchanged. The machine pushes to your
 private origin. A `user/*` branch still never reaches a public upstream, and the
 pre-push hook on the machine's clone (`git config core.hooksPath scripts/hooks`)
 enforces that there too. Arm it when you clone.
+
+To reach it from outside, put a sign-in gateway in front and set `cockpit.served.access`: the cockpit then takes a person
+only from the gateway's signed token and has no owner login at all ([`docs/bridge-cockpit.md`](bridge-cockpit.md#2-open-it),
+"Behind a sign-in gateway"). Never open a tunnel to a served cockpit without that block. Questions to a model stay off until `cockpit.served.ask` is set (`docs/bridge-cockpit.md`, "A person's question"). Install `poppler` for the words of PDFs.
 
 ## 6. A first probe: declare, run, inspect, retire
 

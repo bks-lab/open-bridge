@@ -502,3 +502,14 @@ def test_check_ignores_what_was_ignored_on_purpose(bridge):
     out = _run(repo, "check", env=env)
     assert out.returncode == 0, out.stdout
 
+
+
+def test_designs_are_covered_like_the_agent_files():
+    """A design is Markdown: the shipped block ignores it, the template still ships, arm re-allows it."""
+    assert UD.covered("identity/designs/brand.md")
+    assert UD.is_instance_path("identity/designs/brand.md")
+    assert not UD.covered("identity/designs/_template.md")
+    assert not UD.covered("identity/designs/_schema.yaml")
+    assert "/identity/designs/*.md" in UD.shipped_patterns()
+    assert "!/identity/designs/_*.md" in UD.shipped_patterns()
+    assert "!/designs/*.md" in UD.NEGATIONS["identity/.gitignore"]

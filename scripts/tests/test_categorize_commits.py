@@ -182,6 +182,21 @@ def test_ecosystem_base_is_user(cc, in_tmp_repo):
     assert cc.classify_file("ecosystem.acme.yaml") == "org"
 
 
+def test_root_claude_md_is_user(cc, in_tmp_repo):
+    # A root CLAUDE.md (or CLAUDE.local.md, or .claude/CLAUDE.md) shadows
+    # AGENTS.md in Claude Code, so it must never promote. The entry file itself
+    # and the other tools' wrappers stay core; an example's own demo brief is
+    # unaffected.
+    for path in ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md"):
+        _write(in_tmp_repo, path, scope=None, body="@AGENTS.md\n")
+        assert cc.classify_file(path) == "user", path
+    for path in ("AGENTS.md", "GEMINI.md"):
+        _write(in_tmp_repo, path, scope=None, body="# entry\n")
+        assert cc.classify_file(path) == "core", path
+    _write(in_tmp_repo, "examples/agency/CLAUDE.md", scope=None, body="# demo\n")
+    assert cc.classify_file("examples/agency/CLAUDE.md") == "core"
+
+
 # --- unchanged core / skill routing -----------------------------------------
 
 def test_generic_doc_is_core(cc, in_tmp_repo):

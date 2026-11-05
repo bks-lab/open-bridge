@@ -258,7 +258,7 @@ page](https://github.com/bks-lab/open-bridge/releases).
 
 BKS open-bridge drives an AI agent over your repos, infra, and cloud, so the
 guardrails matter as much as the features. They live in the agent's
-instructions (`AGENTS.md` / `CLAUDE.md`) as plain text, so you can read and
+instructions (`AGENTS.md`) as plain text, so you can read and
 change every one of them:
 
 - **Propose, then confirm.** The agent proposes; you decide. Every persistent change to its own configuration goes through a human gate, and it pauses before writing into your productive folders.

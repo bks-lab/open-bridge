@@ -13,7 +13,7 @@ from rotting into conflicts.
 ## The reflex: a CORE fix does not *live* on your user branch
 
 When you find a bug or improvement in a CORE file (`skills/**`, `rules/*.md`,
-`scripts/**`, `docs/**`, templates/schemas, `CLAUDE.md`/`AGENTS.md`,
+`scripts/**`, `docs/**`, templates/schemas, `AGENTS.md`,
 `.claude/agents/**`, `protocols/standing-orders/*.md`), pick one of two paths —
 never "edit on `user/*` and forget":
 
@@ -25,7 +25,9 @@ never "edit on `user/*` and forget":
    *dissolves*. Zero lasting conflict.
 
 This is the intended flow: your improvement helps everyone AND leaves your branch
-clean. Small generic fixes (a typo, a bug, a new check) belong here.
+clean. Small generic fixes (a typo, a bug, a new check) belong here. So does a
+service adapted to a provider it could not run, as
+[`docs/ai-services.md`](../docs/ai-services.md) § A service your provider cannot run describes.
 
 ### Path B — feature branch off the core branch
 For a larger change you want to iterate on:

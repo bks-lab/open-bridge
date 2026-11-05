@@ -35,6 +35,9 @@ the guide is [always-on-machine.md](always-on-machine.md).
 
 ## Hard Rules
 
+- **In a Bridge, remote means a machine, never `git remote`.** Check
+  `infra/remotes/` before asking which PC. Capability `arm` marks the always-on
+  machine ([always-on-machine.md](always-on-machine.md)).
 - **Tailscale first**, LAN as fallback — LAN fails on VPN or foreign networks
 - **No destructive operation** (shutdown, reboot, format) without per-action `[y]`
 - **Never store credentials** in `infra/remotes/*.yaml` — KeyVault / 1Password URIs only

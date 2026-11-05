@@ -19,11 +19,14 @@ ACTIVE_INBOX_STATES = ("open", "approved", "waiting", "deferred")
 ROW_KEY_RE = re.compile(r"^(inbox|task|ref|title|item):(?!(?:.*/)?\.\.(?:/|\Z)).{1,240}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
+RUN_ID_RE = re.compile(r"wf_[A-Za-z0-9-]{1,64}")   # a workflow run (sessions.py read_run)
 SESSION_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 # a tab is the terminal driver's own name for it (surface:3 in cmux, %3 in tmux), passed as one argv word
 TAB_REF_RE = re.compile(r"^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}\Z")
 # a workspace the same way (workspace:2 in cmux, $2 in tmux)
 WS_REF_RE = re.compile(r"^[A-Za-z0-9$%@][A-Za-z0-9:%_.@$/-]{0,63}\Z")
+# a background job and the machine it runs on as the workers view names them (workers-view.json `id`, `host`)
+WORKER_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 TITLE_MAX = 80
 TEAM_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}\Z")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
@@ -39,10 +42,24 @@ DROP_REASONS = ("once", "duplicate", "family", "source")
 # typed on handing on may take of it, so some of the conversation always comes along
 HANDOFF_MAX = 3500
 HANDOFF_ORDER_MAX = 3000
+# the finding of a job a question on its row quotes (actions_chats.py ask kind worker): one line, a log excerpt cut
+WORKER_DETAIL_MAX = 300
 # what the page shows right now, sent along with a free quick question (quick.py): refused above this, never cut
 CONTEXT_MAX = 6000
+# where a free quick question may stand outside the chat lists, the newest replacing the last: the start page's core,
+# the files view's suggested next step
+QUICK_PLACES = ("core", "suggest")
+# a task's next step as STATUS.md keeps it (task.py next): one line
+STEP_MAX = 300
+# how many tasks one Merge closes into the one that stays
+MERGE_MAX = 9
+# why a task is shelved (the Work through page's "Drop because"): one short line
+REASON_MAX = 200
 # how the chat's route chip came to its choice (logic.js routeOf, views/chat.js)
 ROUTE_BY = ("prefix", "words", "default", "flipped", "forced")
+# who decided a do_it, later, shelve or settle the Work through page sends: a suggestion taken over, a batch, a line
+# of the instruction line; absent, the person's own click. Kept in the history and the starts, acted on nowhere
+BY_CHOICES = ("suggestion", "batch", "instruction")
 
 SHORT_TIMEOUT = 30
 LAUNCH_TIMEOUT = 150
@@ -55,23 +72,28 @@ LIST_TIMEOUT = 20
 SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # note: the person's sentence for this start; it goes on the item first (a live tab gets it typed in instead)
     "do_it": {"keys": ("keys", True), "target": ("target", False), "model": ("launch_model", False), "effort": ("launch_effort", False),
-              "note": ("text", False)},
+              "note": ("text", False), "by": ("by", False)},
     "advise": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False),
                         "note": ("text", False)},
     # text: the person's sentence, kept where the row lives (WorkVerbs.write_note)
-    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False)},
+    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False), "by": ("by", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
+    # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
+    # until: the day the idea may surface again, else task.py's own default
+    "shelve": {"key": ("key", True), "reason": ("reason", True), "until": ("date", False), "by": ("by", False)},
     "unhide": {"key": ("key", True)},
     "drop": {"key": ("key", True), "reason": ("drop_reason", False)},
     "inbox_unmute": {"id": ("inbox_id", True)},
     "done": {"key": ("key", True)},
     "urgency": {"key": ("key", True), "value": ("urgency", True)},
+    "area": {"key": ("key", True), "value": ("text", False)},
     "priority": {"key": ("key", True), "value": ("priority", True)},
     # stream: the page asked, and a stream among the keys ends (task.py close --stream)
     "task_close": {"keys": ("keys", True), "reason": ("close_reason", True), "text": ("text", False), "stream": ("bool", False)},
-    "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False), "stream": ("bool", False)},
+    "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False), "stream": ("bool", False),
+               "by": ("by", False)},
     "quick_handoff": {"conv": ("conv", True), "to": ("handoff", True), "text": ("long_text", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "quick_forget": {"conv": ("conv", True)},
     # `routed`: how the chat's route chip chose the tab (audit only, never acted on)
@@ -81,6 +103,12 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "task_review": {"keys": ("keys", False), "escalate": ("bool", False), "fresh": ("bool", False)},
     "task_keep": {"keys": ("keys", True)},
     "note": {"key": ("key", True), "text": ("text", True)},
+    "tab_move": {"tab_ref": ("tab_ref", True), "ws_ref": ("ws_ref", True)},
+    # a GitHub issue to its board's review or done state (skills/github-projects-manager/scripts/issue_transition.py)
+    "issue_review": {"key": ("key", True), "text": ("text", True)},     # the reason is the review comment (K3)
+    "issue_done": {"key": ("key", True), "text": ("text", False)},
+    # Check with AI: is the issue done, from its own evidence (issue_check.py); writes nothing to GitHub
+    "issue_check": {"key": ("key", True)},
     "approve_all": {"keys": ("keys", True), "confirm": ("bool", False)},
     "team_role": {"key": ("key", True), "team": ("team", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "adopt": {"key": ("key", True), "tab_ref": ("tab_ref", True)},
@@ -90,20 +118,75 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "tab_no": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
     "tab_option": {"tab_ref": ("tab_ref", True), "n": ("digit", True), "seen": ("ask_hash", True), "name": ("tab_name", False)},
     "tab_jump": {"tab_ref": ("tab_ref", True)},
+    "tab_keys": {"tab_ref": ("tab_ref", True), "steps": ("term_steps", True)},
     "tab_send": {"tab_ref": ("tab_ref", True), "text": ("text", True), "seen": ("ask_hash", False),
                  "expect": ("tab_state", False), "name": ("tab_name", False)},
     "tab_go_on": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
     "tab_close": {"tab_ref": ("tab_ref", True)},
+    # the task and the inbox item behind a tab end as Done does (settle), then the tab closes (actions_tabs.py)
+    "tab_done": {"tab_ref": ("tab_ref", True), "by": ("by", False)},
     # a name of a tab or a workspace; task tabs and configured workspaces keep theirs (workplace.py managed_names)
     "tab_rename": {"tab_ref": ("tab_ref", True), "title": ("title", True)},
     "workspace_rename": {"ws_ref": ("ws_ref", True), "title": ("title", True)},
+    # a new tab in a workspace by its live ref, a new workspace with its first tab, a workspace closed (actions_tabs.py).
+    # text: the person's first sentence, the whole prompt of an agent (never of a shell); tabs: the refs the page saw in
+    # the workspace it closes
+    "tab_new": {"ws_ref": ("ws_ref", True), "kind": ("tab_kind", True), "text": ("text", False), "title": ("title", False),
+                "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "workspace_new": {"title": ("title", True), "kind": ("workspace_kind", True), "color": ("palette_color", False),
+                      "cwd": ("cwd", False), "text": ("text", False), "model": ("launch_model", False),
+                      "effort": ("launch_effort", False)},
+    "workspace_close": {"ws_ref": ("ws_ref", True), "tabs": ("tab_refs", True)},
     # organize with AI: a proposal of one model call (read only), then the ticked items of it (organize.py)
     "organize_propose": {},
     "organize_apply": {"proposal": ("organize_id", True), "items": ("organize_items", True)},
+    # describe (describe.py): one item's brief now (a proposal when a person wrote it), a proposal taken over as it
+    # is or as the person changed it (edited: true), a proposal dropped. `ahead`: the Work through page prepares a
+    # card before it stands in front, so the run keeps within describe.budget_per_hour as the pass does
+    "describe_run": {"key": ("key", True), "ahead": ("bool", False)},
+    "describe_apply": {"key": ("key", True), "proposal": ("describe_id", True), "brief": ("brief", False)},
+    "describe_discard": {"key": ("key", True), "proposal": ("describe_id", True)},
+    # the themes of the Work through page (themes.py): one run over the open points (assign: those without a theme,
+    # regroup: a click orders them all anew), a point moved by hand to a theme or to a new one, a theme renamed
+    "flow_themes_run": {"mode": ("themes_mode", True), "keys": ("keys", True)},
+    # the files tab's question to its records (cockpit.files_search): one model call over the folders the page shows,
+    # none the block list names (actions_work.py v_files_ask)
+    "files_ask": {"text": ("instruct_text", True), "paths": ("record_paths", True)},
+    # the history's question (cockpit.files_search too): when it was done or discussed, two model calls over the lines
+    # the question's terms find, none the block list names (actions_work.py v_timeline_ask)
+    # since, until: the log page's range of days; the question then reads only the lines of those days
+    "timeline_ask": {"text": ("instruct_text", True), "since": ("day", False), "until": ("day", False)},
+    "flow_theme_move": {"key": ("key", True), "theme": ("theme_id", True)},
+    "flow_theme_new": {"key": ("key", True), "name": ("theme_name", True)},
+    "flow_theme_rename": {"theme": ("theme_id", True), "name": ("theme_name", True)},
+    # the Activity tab and the instruction line of Work through: a summary of a point's activity (activity.py), one
+    # sentence turned into steps over the points in scope, never run here (instruct.py; point: the scope is the open
+    # point), and a document attached to the task's deliverables/ (POST /api/flow/attach runs this verb)
+    "flow_activity_summary": {"key": ("key", True)},
+    "flow_instruct": {"text": ("instruct_text", True), "keys": ("keys", True), "point": ("bool", False)},
+    "flow_attach": {"key": ("key", True), "name": ("attach_name", True), "data": ("attach_data", True)},
+    # Merge of Work through: the tasks of keys close as merged into the task of keep (task.py merge), one by one;
+    # task_unmerge is the undo of one of them (task.py unmerge), handed out by flow_merge, without the flow gate
+    "flow_merge": {"keep": ("key", True), "keys": ("keys", True)},
+    "task_unmerge": {"keep": ("slug", True), "slug": ("slug", True), "as": ("restore_as", False)},
     "snapshot": {},
     "home_tiles": {"ids": ("tile_ids", True), "seen": ("tile_ids", False)},
     "pin": {"key": ("key", True), "on": ("bool", True)},
     "return_forget": {"key": ("key", True)},
+    # a finished AI run (stage 2 of the one point view): read (and its undo), analysed further with a sentence, made a
+    # task (title, area, its result as the situation, the run then read; and its undo)
+    "return_read": {"key": ("key", True)},
+    "return_unread": {"key": ("key", True)},
+    "return_analyse": {"key": ("key", True), "note": ("text", True), "model": ("launch_model", False), "effort": ("launch_effort", False)},
+    "return_task": {"key": ("key", True), "title": ("line", True), "area": ("line", False), "describe": ("bool", False),
+                    "close": ("bool", False)},
+    "return_task_undo": {"key": ("key", True), "slug": ("slug", True), "read": ("bool", False)},
+    # the files view: a workflow run's result checked, so it no longer waits in its task's file
+    "run_seen": {"id": ("run_id", True)},
+    # a finding marked seen (a job, worker:<host>:<id>, or a page row): grey and counted nowhere until it changes,
+    # and taken back ("show again"); note: what settled it, shown beside it
+    "finding_ack": {"key": ("finding_key", True), "note": ("text", False)},
+    "finding_unack": {"key": ("finding_key", True)},
     "start_control": {},
     "snapshot_list": {},
     "ask_via_tab": {"relay_id": ("relay_id", True)},
@@ -114,10 +197,23 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "row_action": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                    "action": ("row_step", True)},
     "row_undo": {"section": ("page_id", True), "row": ("row_ref", True), "action": ("undo_token", True)},
+    # a background job of the workers view filed under worker:<host>:<id> and started as an advising tab
+    "worker_advise": {"host": ("worker_ref", True), "id": ("worker_ref", True)},
     "inbox_reopen": {"id": ("inbox_id", True), "note": ("text", False)},
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
     "task_running": {"slug": ("slug", True)},
+    # stage 4 of the one point view: In progress with someone until a check-in day, its undo and Stuck on the check-in
+    "work_on": {"key": ("key", True), "who": ("line", True), "until": ("date", True), "text": ("text", False)},
+    "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False)},
+    "checkin_stuck": {"key": ("key", True), "text": ("text", False)},
+    # the files view takes over a suggested next step: next: {what} with a dated note (task.py next)
+    "task_set_next": {"key": ("key", True), "text": ("line", True)},
     # taking a to_task back: the task it made closes as declined, the inbox item opens again
+    # a new task of an area, in the backlog (task.py new): a person's page files it, access.py holds it to their areas
+    "task_new": {"title": ("line", True), "area": ("line", True)},
+    # what a person sets for themselves (access.py): kept per person, no setting of the Bridge
+    "person_settings": {"theme": ("line", False), "language": ("line", False)},
+    "ask_engine": {"person": ("line", True), "engine": ("line", True)},
     "to_task_undo": {"id": ("inbox_id", True), "slug": ("slug", True)},
     "to_task": {"key": ("key", True), "status": ("reopen_as", False)},
     "session_link": {"session": ("session_id", True), "slug": ("slug", True)},
@@ -134,9 +230,19 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "guide_read": {"tab_ref": ("tab_ref", True)},
     "guide_settings": {"enabled": ("bool", False), "auto": ("bool", False)},
     "guide_settings_reset": {},
+    # the Workspaces area of the settings page (workspaces.py): a switch beside the config, the rest through the engine
+    "workspace_switch": {"area": ("title", True), "on": ("bool", True)},
+    "workspace_active": {"key": ("title", True), "on": ("bool", True)},
+    "workspaces_enabled": {"on": ("bool", True)},
+    "workspace_plan": {"key": ("title", True)},
+    "workspace_delete": {"key": ("title", True)},
     # the first-run tour: finished or skipped (v: the page's tour version), and taken back to offer it again
     "tour_done": {"how": ("tour_how", True), "v": ("index", True)},
     "tour_reset": {},
+    # "What bothers you here?" of the explain window: a sentence and the place it was opened on, kept as a proposal
+    # for /bridge-learn (scripts/cockpit-usage.py write_note); the place as the click origin log names it
+    "explain_note": {"text": ("text", True), "page": ("click_page", True), "view": ("click_name", False),
+                     "area": ("click_name", False)},
     "account_status": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                        "status": ("account_status", True)},
     "github_board": {"section": ("page_id", True), "slug": ("page_id", True), "mode": ("board_mode", True)},
@@ -151,21 +257,39 @@ ROW_STEP_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}\Z")
 UNDO_TOKEN_RE = re.compile(r"^restore:[A-Za-z0-9._~-]{1,120}\Z")
 ROW_REF_RE = re.compile(r"^[A-Za-z0-9][^\x00-\x1f]{0,199}\Z")
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
+# a finding that can be marked seen: a background job (worker:<host>:<id>, model.worker_key) or a page row
+FINDING_KEY_RE = re.compile(r"^(?:worker:[A-Za-z0-9][A-Za-z0-9._-]{0,79}:[A-Za-z0-9][A-Za-z0-9._-]{0,119}"
+                            r"|item:(?!(?:.*/)?\.\.(?:/|\Z))[^\x00-\x1f]{1,240})\Z")
 ASK_HASH_RE = re.compile(r"^[0-9a-f]{16}\Z")   # the hash of a tab's question (asks.py)
 TAB_STATES = ("needs-you", "waiting", "working")
 TOUR_HOW = ("finished", "skipped")   # how the first-run tour ended (store.py tour)
 TILE_ID_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9:._@/-]{0,79}\Z")   # a tile or shelf of the start page
-READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose"})
+# where a note leads (the toast's `go`): one small closed union, each kind with the one field it needs and its
+# own pattern; the conversations as agents.py and quick.py name them. Never a path: a place the page opens itself.
+GO_PAGE_RE = re.compile(r"^@?[a-z0-9][a-z0-9_-]{0,63}\Z")
+GO_FIELDS = {
+    "tab": ("ref", TAB_REF_RE),
+    "row": ("key", ROW_KEY_RE),
+    "item": ("key", re.compile(r"^(?:inbox|task):")),   # and a row key: only an inbox item or a task has the item drawer
+    "page": ("id", GO_PAGE_RE),
+    "conv": ("id", re.compile(r"^g[0-9a-f]{10}\Z")),
+    "ask": ("id", re.compile(r"^q[0-9a-f]{10}\Z")),
+    "claude": None,
+}
+READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose", "workspace_plan"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
-LOCAL_VERBS = frozenset({"pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
-                         "launch_settings_reset", "session_link", "guide_read", "guide_settings", "guide_settings_reset",
-                         "tour_done", "tour_reset"})
+LOCAL_VERBS = frozenset({"person_settings", "ask_engine", "pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
+                         "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
+                         "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
+                         "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys",
+                         "tab_new", "workspace_new", "workspace_close", "workspace_switch", "workspace_active", "workspaces_enabled"})
 # the layout snapshot writes nothing of the Bridge: one at a time on a lock of its own, never the write lock
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
-NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_jump": "focus", "tab_close": "close",
-             "tab_rename": "rename", "workspace_rename": "rename_workspace"}
+NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_keys": "keys", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
+             "tab_rename": "rename", "workspace_rename": "rename_workspace", "tab_move": "move_tab", "tab_new": "new_tab",
+             "workspace_new": "new_workspace", "workspace_close": "close_workspace"}
 
 
 class ActionError(Exception):
@@ -179,6 +303,27 @@ def bad_arg(field: str, message: str) -> ActionError:
     return ActionError(400, "invalid_argument", message, field)
 
 
+def note_go(go: Any) -> dict | None:
+    """A note's target as the page takes it ({kind: tab, ref} ...), only the field of its kind; any other shape None"""
+    if not isinstance(go, dict) or not isinstance(go.get("kind"), str) or go["kind"] not in GO_FIELDS:
+        return None
+    kind = go["kind"]
+    spec = GO_FIELDS[kind]
+    if spec is None:
+        return {"kind": kind}
+    field, pattern = spec
+    value = go.get(field)
+    if not isinstance(value, str) or not pattern.match(value) or (kind == "item" and not ROW_KEY_RE.match(value)):
+        return None
+    return {"kind": kind, field: value}
+
+
+def row_go(row: dict) -> dict | None:
+    """Where a note about a row leads: an inbox item or a task to its item drawer, any other row to the row"""
+    key = row.get("key") if isinstance(row, dict) else None
+    return note_go({"kind": "item" if str(key).startswith(("inbox:", "task:")) else "row", "key": key})
+
+
 def check_text(value: Any, field: str, max_len: int) -> str:
     if not isinstance(value, str):
         raise bad_arg(field, "must be a string")
@@ -190,6 +335,31 @@ def check_text(value: Any, field: str, max_len: int) -> str:
     return text
 
 
+# the live terminal of the page: what it may send beside text, the same list as workplace.py TERM_KEYS
+TERM_KEYS = ("enter", "escape", "tab", "shift+tab", "backspace", "delete", "up", "down", "left", "right", "home", "end",
+             "pageup", "pagedown", *(f"ctrl+{c}" for c in "abcdefghijklmnopqrstuvwxyz"))
+TERM_STEPS_MAX, TERM_TEXT_MAX, TERM_PASTE_MAX = 64, 4000, 32000
+TERM_NO_TEXT = re.compile(r"[\x00-\x1f\x7f]")
+TERM_NO_PASTE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def check_term_steps(value: Any, field: str) -> list:
+    """A keyboard in order: a key of the list, text without a control code (a key has its own step), a paste. A
+    step of anything else is refused whole, so no escape sequence reaches a terminal through this door."""
+    if not isinstance(value, list) or not 1 <= len(value) <= TERM_STEPS_MAX:
+        raise bad_arg(field, f"a list of 1 to {TERM_STEPS_MAX} steps")
+    for step in value:
+        kind, item = next(iter(step.items())) if isinstance(step, dict) and len(step) == 1 else (None, None)
+        if kind == "key" and item in TERM_KEYS:
+            continue
+        if kind == "text" and isinstance(item, str) and 0 < len(item) <= TERM_TEXT_MAX and not TERM_NO_TEXT.search(item):
+            continue
+        if kind == "paste" and isinstance(item, str) and 0 < len(item) <= TERM_PASTE_MAX and not TERM_NO_PASTE.search(item):
+            continue
+        raise bad_arg(field, "a step is one key of the list, text without control codes, or a paste")
+    return value
+
+
 def check_date(value: Any, field: str, today: dt.date) -> str:
     if not isinstance(value, str) or not DATE_RE.match(value):
         raise bad_arg(field, "must be YYYY-MM-DD")
@@ -199,6 +369,17 @@ def check_date(value: Any, field: str, today: dt.date) -> str:
         raise bad_arg(field, "not a calendar date") from None
     if not today < day <= today + dt.timedelta(days=366):
         raise bad_arg(field, "must be after today and within 366 days")
+    return value
+
+
+def check_day(value: Any, field: str) -> str:
+    """Any real day as YYYY-MM-DD, past or coming (a range to read in, not a day to wait for)"""
+    if not isinstance(value, str) or not DATE_RE.match(value):
+        raise bad_arg(field, "must be YYYY-MM-DD")
+    try:
+        dt.date.fromisoformat(value)
+    except ValueError:
+        raise bad_arg(field, "not a calendar date") from None
     return value
 
 
@@ -229,6 +410,9 @@ class Ctx:
         self.audit_extra: dict = {}    # counts a verb adds to its audit line (never a text)
         self.pick: dict = {}           # the model and effort the start of this action asks for (launch.py)
         self.locked = False            # this action holds the write lock
+        self.go: dict | None = None    # where the note leads (note_go), the first note that names a place
+        self.person: str | None = None  # a person named under members: who clicked, None for the owner
+        self.by: str | None = None     # who decided (BY_CHOICES), None for the person's own click
 
     @contextlib.contextmanager
     def unlocked(self):
@@ -244,14 +428,16 @@ class Ctx:
             self.actions.write_lock.acquire()
 
     def call(self, name: str, subject: str, argv: list[str], timeout: float):
-        run = self.actions.app.run(argv, timeout)
+        app = self.actions.app
+        run = app.run(argv, timeout)
         self.steps.append({"call": name, "subject": subject, "ok": run.ok, "exit": run.code, "took_ms": run.took_ms,
                            "err": self.actions.app.scrub(run.err or "")[-300:]})
         return run
 
-    def note(self, text: str, bad: bool = False) -> None:
+    def note(self, text: str, bad: bool = False, go: dict | None = None) -> None:
         if text:
             self.notes.append(text)
+            self.go = self.go or note_go(go)
         self.failed = self.failed or bad
 
     def delta(self) -> None:

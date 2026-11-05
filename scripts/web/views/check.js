@@ -5,12 +5,12 @@
 import { html, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   formatClock, formatDay, indexRows, isoDate, short, VERDICT_ORDER, centsText, confidenceDots, reviewRows,
-  verdictCounts, verdictToken, checkFlow, runProgress, verdictSegments,
+  verdictCounts, verdictToken, checkFlow, runProgress, verdictSegments, personOf,
 } from '../logic.js'
 import { flash, flowAlpha, flowPoints, nowSec } from '../motion.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
-import { SettleMenu, StartMany } from './day.js'
+import { KindTag, OriginTag, SettleMenu, StartMany } from './day.js'
 import { Btn, CountNum, Dot, Empty, PrioChip, StateLine, useClock, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- task check
@@ -95,13 +95,17 @@ function VerdictBar({ counts, c }) {
   })}</div>`
 }
 
-/** "Check tasks"; while a check runs it says so with the seconds, the server allows one at a time */
-export function CheckButton({ s, c, size = 'sm', variant = 'secondary' }) {
+/** "Check tasks", or the caller's `label`; while a check runs it says so with the seconds, the server allows one at a time */
+export function CheckButton(props) {
+  return personOf(props.s) ? null : html`<${CheckDoor} ...${props} />`
+}
+
+function CheckDoor({ s, c, size = 'sm', variant = 'secondary', label = null }) {
   const t = T()
   const running = s.model?.review?.running
   const sec = running ? Math.max(0, Math.round((s.now - running.started_ms) / 1000)) : 0
   return html`<${Btn} size=${size} variant=${variant} disabled=${!!running} busy=${!!s.ui.busy.task_review}
-    onClick=${() => c.review()}>${running ? t.reviewing(sec) : t.btnReviewAll}<//>`
+    onClick=${() => c.review()}>${running ? t.reviewing(sec) : label ?? t.btnReviewAll}<//>`
 }
 
 function reviewStripText(s) {
@@ -129,14 +133,16 @@ export function ReviewStrip({ s, c }) {
 }
 
 /** In a task's detail: the recommendation with its reason and evidence, and what to do about it */
-export function ReviewBlock({ row, s, c }) {
+export function ReviewBlock({ row, s, c, bare = false }) {
+  if (personOf(s)) return null       // a check asks a model (access.py)
   const t = T()
   const rv = row.review
   const running = !!s.model?.review?.running
   const busy = !!s.ui.busy[row.key]
   const closer = s.model?.review?.last?.escalate_ct
-  return html`<div class="sub-block review-block">
-    <h4 class="sub-title">${t.reviewTitle}</h4>
+  // `bare` without its heading, where the place names it (the field Task check of the one point view, stage 3)
+  return html`<div class=${bare ? 'review-block is-bare' : 'sub-block review-block'}>
+    ${bare ? null : html`<h4 class="sub-title">${t.reviewTitle}</h4>`}
     ${rv ? html`<div class="review-rec">
         <div class="review-head">
           <${StateLine} token=${verdictToken(rv.verdict)} strong word=${t.verdictName[rv.verdict] ?? rv.verdict} />
@@ -151,7 +157,6 @@ export function ReviewBlock({ row, s, c }) {
       </div>`
       : html`<p class="muted small">${t.reviewNone}</p>`}
     <div class="btn-row">
-      <${SettleMenu} rows=${[row]} s=${s} c=${c} seed=${rv && (rv.verdict === 'close' || rv.resolved) ? (rv.reason ?? '').slice(0, 400) : ''} />
       ${rv && rv.verdict !== 'continue' && !rv.kept ? html`<${Btn} size="xs" variant="secondary" busy=${busy} disabled=${running}
         onClick=${() => c.keep([row.key])}>${t.btnKeep}<//>` : null}
       <${Btn} size="xs" variant="secondary" disabled=${running} busy=${busy} onClick=${() => c.review([row.key], false, !!rv)}>
@@ -175,8 +180,10 @@ export function ReviewPage({ s, c }) {
 }
 
 /** The check itself: its run, the verdict filter and sort, what is picked, the table. Its own tab, or the
- *  tasks label of the page where inbox and tasks stand together (then with the run button on top) */
-export function ReviewBody({ s, c, inline = false }) {
+ *  tasks label of the page where inbox and tasks stand together (then with the run button on top), or the middle of
+ *  Work through (views/flowleft.js CheckList: its own `intro`, the plain line in place of the model's, and `compact`:
+ *  the verdicts first, how it ran folded into one line under the table) */
+export function ReviewBody({ s, c, inline = false, intro = null, compact = false }) {
   const t = T()
   const byKey = indexRows(s.model)
   const rv = s.model?.review ?? {}
@@ -194,9 +201,10 @@ export function ReviewBody({ s, c, inline = false }) {
   return html`
     <div class="panel panel-pad review-top">
       ${inline ? html`<header class="psec-head"><h2 class="sec-title">${t.reviewTitle}</h2><${CheckButton} s=${s} c=${c} size="xs" /></header>` : null}
-      <p class="muted small">${t.reviewIntro}</p>
-      <${CheckFlow} s=${s} />
-      ${rv.last ? html`<p class="small">${reviewStripText(s)}${rv.last.mismatch ? html` · <${StateLine} token="warning" word=${t.reviewMismatch} />` : null}</p>` : null}
+      ${intro ?? html`<p class="muted small">${t.reviewIntro}</p>`}
+      ${compact ? null : html`<${CheckFlow} s=${s} />`}
+      ${rv.last && !compact ? html`<p class="small">${reviewStripText(s)}${rv.last.mismatch ? html` · <${StateLine} token="warning" word=${t.reviewMismatch} />` : null}</p>` : null}
+      ${compact && rv.running ? html`<${CheckFlow} s=${s} />` : null}
       ${rv.error ? html`<p><${StateLine} token="danger" strong word=${t.reviewFailedLine(rv.error)} /></p>` : null}
       ${all.length ? html`<${VerdictBar} counts=${counts} c=${c} /><div class="review-bar" role="group" aria-label=${t.rvCol.verdict}>
           ${filters.map(([id, label]) => html`<button key=${id} type="button" aria-pressed=${String(filter === id)}
@@ -228,7 +236,7 @@ export function ReviewBody({ s, c, inline = false }) {
             <td class="c-pick"><input type="checkbox" checked=${picked.includes(r.key)} aria-label=${t.rvPick(short(r.title, 40))}
               onChange=${() => c.toggleRvPick(r.key)} /></td>
             <td class="c-task"><button type="button" class="btn-link info-open" title=${t.openDetail} onClick=${e => c.peek(r.key, e.currentTarget, rows.map(x => ({ how: 'peek', key: x.key, title: x.title })))}>${short(r.title, 80)}</button>
-              <span class="row-meta"><${PrioChip} priority=${r.priority} />${r.area ? html`<span class="meta-area">${r.area}</span>` : null}</span></td>
+              <span class="row-meta"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} /><${PrioChip} priority=${r.priority} />${r.area ? html`<span class="meta-area">${r.area}</span>` : null}</span></td>
             <td class="c-verdict"><${StateLine} token=${verdictToken(r.review.verdict)} strong=${r.review.verdict === 'close'} word=${t.verdictName[r.review.verdict]} />
               <span class="muted small conf" title=${t.confidence[r.review.confidence] ?? ''}>${confidenceDots(r.review.confidence)}</span>
               ${r.review.kept ? html`<span class="chip">${t.keptMark}</span>` : null}
@@ -239,5 +247,9 @@ export function ReviewBody({ s, c, inline = false }) {
           </tr>`)}</tbody>
         </table>
       </div>`}
-    </section>`
+    </section>
+    ${compact && rv.last ? html`<details class="panel panel-pad review-how">
+      <summary class="small"><span class="label-caps">${t.flow.check.how}</span> ${reviewStripText(s)}${rv.last.mismatch ? html` · <${StateLine} token="warning" word=${t.reviewMismatch} />` : null}</summary>
+      <${CheckFlow} s=${s} />
+    </details>` : null}`
 }

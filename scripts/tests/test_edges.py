@@ -673,3 +673,280 @@ def test_fix_stays_idempotent_with_an_exception_present(tmp_path):
     edges.fix_moved(tmp_path)
     changed, _ = edges.fix_moved(tmp_path)
     assert changed == 0
+
+
+# ------------------------------------------------------- markdown links --
+#
+# The YAML fields are a third of the graph at most. The rest is prose: a
+# STATUS.md linking a deliverable, a memory file linking the task it came
+# from. Closing one stream moved it from `work/streams/` to
+# `work/done/YYYY-MM/` and left about 14 such links dead, fixed by hand. The
+# links are RELATIVE to the file they sit in, so a move breaks them twice: the
+# links pointing INTO the moved folder, and the moved files' own links pointing
+# OUT, because their depth changed.
+
+MONTH = "2026-10"
+
+
+def _moved_stream(tmp_path):
+    return _tree(tmp_path, {
+        f"work/done/{MONTH}/river/STATUS.md": (
+            "# River\n\nSee [the task](../../tasks/alpha/STATUS.md).\n"
+        ),
+        f"work/done/{MONTH}/river/notes.md": "notes\n",
+        "work/tasks/alpha/STATUS.md": (
+            "# Alpha\n\nFrom [river](../../streams/river/STATUS.md#history).\n"
+        ),
+        "work/memory/fact.md": "Source: [notes](../streams/river/notes.md)\n",
+    })
+
+
+def test_a_relative_markdown_link_in_work_is_an_edge(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "[b](../beta/STATUS.md)\n",
+        "work/tasks/beta/STATUS.md": "# Beta\n",
+    })
+    found = edges.iter_md_links(tmp_path)
+
+    assert [(f, t) for f, _, t in found] == [
+        ("work/tasks/alpha/STATUS.md", "work/tasks/beta/STATUS.md")]
+    assert edges.check(tmp_path) == []
+
+
+def test_links_into_a_moved_stream_are_reported_as_moved(tmp_path):
+    _moved_stream(tmp_path)
+    findings = edges.check(tmp_path)
+
+    joined = "\n".join(findings)
+    assert "work/tasks/alpha/STATUS.md" in joined
+    assert "work/memory/fact.md" in joined
+    assert all("moved" in f for f in findings)
+
+
+def test_the_moved_files_own_outward_link_is_reported_too(tmp_path):
+    _moved_stream(tmp_path)
+    joined = "\n".join(edges.check(tmp_path))
+
+    assert f"work/done/{MONTH}/river/STATUS.md" in joined
+
+
+def test_fix_rewrites_every_moved_link_relative_to_its_own_file(tmp_path):
+    _moved_stream(tmp_path)
+    edges.fix_moved(tmp_path)
+
+    alpha = (tmp_path / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")
+    fact = (tmp_path / "work/memory/fact.md").read_text(encoding="utf-8")
+    river = (tmp_path / f"work/done/{MONTH}/river/STATUS.md").read_text(encoding="utf-8")
+    assert f"(../../done/{MONTH}/river/STATUS.md#history)" in alpha
+    assert f"(../done/{MONTH}/river/notes.md)" in fact
+    assert "(../../../tasks/alpha/STATUS.md)" in river
+    assert edges.check(tmp_path) == []
+
+
+def test_urls_anchors_mail_and_code_are_not_links_to_check(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": (
+            "[web](https://example.org/x.md) [top](#status) "
+            "[mail](mailto:a@example.org) [abs](/etc/hosts)\n"
+            "```\n[in code](../nowhere/STATUS.md)\n```\n"
+            "`[inline](../nowhere/x.md)`\n"
+        ),
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_a_dead_markdown_link_is_reported_and_left_alone_by_fix(tmp_path):
+    _tree(tmp_path, {"work/tasks/alpha/STATUS.md": "[gone](../ghost/STATUS.md)\n"})
+    findings = edges.check(tmp_path)
+
+    assert len(findings) == 1 and "dead" in findings[0]
+    edges.fix_moved(tmp_path)
+    assert "(../ghost/STATUS.md)" in (
+        tmp_path / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")
+
+
+def test_templates_are_not_checked(tmp_path):
+    _tree(tmp_path, {"work/templates/STATUS.md": "[x](../tasks/<slug>/STATUS.md)\n"})
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_links_to_a_path_name_lists_the_files_that_still_point_there(tmp_path):
+    _moved_stream(tmp_path)
+    stale = edges.links_into(tmp_path, "work/streams/river")
+
+    assert stale == ["work/memory/fact.md", "work/tasks/alpha/STATUS.md"]
+
+
+def test_a_dead_link_in_closed_or_archived_work_is_history_not_a_finding(tmp_path):
+    # A closed task often holds a snapshot of docs it worked on, with the
+    # snapshot's own relative links. Measured on one instance: 238 of 369 dead
+    # prose links sat in such copies. Reporting them buries the ones that matter.
+    _tree(tmp_path, {
+        f"work/done/{MONTH}/old/copy/README.md": "[gone](docs/never.md)\n",
+        "work/archive/weeks/w1.md": "[gone](../nowhere.md)\n",
+    })
+    assert edges.check(tmp_path) == []
+
+
+def test_a_moved_link_in_closed_work_is_still_reported(tmp_path):
+    _moved_stream(tmp_path)
+    joined = "\n".join(edges.check(tmp_path))
+
+    assert f"work/done/{MONTH}/river/STATUS.md" in joined
+
+
+# The first live run of the prose check, on one instance, flagged three
+# "dead" links that were no links at all: a style rule saying "write every
+# reference as [Text](URL)" twice, and a format example inside a code span
+# that opened on the line above. Deleting them as dead would have damaged
+# the rule text.
+
+def test_a_bare_word_target_is_a_placeholder_not_a_link(tmp_path):
+    _tree(tmp_path, {
+        "work/memory/style.md": (
+            "Write every reference as [Text](URL), never a bare id.\n"
+            "links: markdown   # as [label](path)\n"
+        ),
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_a_target_with_a_slash_is_still_a_link_without_an_extension(tmp_path):
+    _tree(tmp_path, {"work/tasks/alpha/STATUS.md": "[dir](../beta)\n"})
+    assert [t for _, _, t in edges.iter_md_links(tmp_path)] == ["work/tasks/beta"]
+
+
+def test_a_code_span_that_opens_on_the_line_above_hides_its_example(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": (
+            "1. Write the `Gold\n"
+            "   Summary` (every claim with `[ref +mm:ss](transcript.md#c-NNN)`)\n"
+        ),
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_a_blank_line_ends_an_unclosed_code_span(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "a stray `tick\n\n[gone](../ghost/STATUS.md)\n",
+    })
+    assert [t for _, _, t in edges.iter_md_links(tmp_path)] == [
+        "work/tasks/ghost/STATUS.md"]
+
+
+def test_a_double_backtick_span_may_hold_a_single_backtick(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "`` a ` b [x](../ghost/STATUS.md) ``\n",
+    })
+    assert edges.iter_md_links(tmp_path) == []
+
+
+def test_an_unmatched_backtick_is_literal_and_hides_nothing(tmp_path):
+    _tree(tmp_path, {
+        "work/tasks/alpha/STATUS.md": "a stray `tick\nthen [gone](../ghost/STATUS.md)\n",
+    })
+    assert [t for _, _, t in edges.iter_md_links(tmp_path)] == [
+        "work/tasks/ghost/STATUS.md"]
+
+
+# ------------------------------------------------------- design references --
+# `design_ref:` and a theme's `branding.design:` name a design by id, not by
+# path, so the path pattern above never sees them. They are edges all the same:
+# an id that names no file under identity/designs/ makes scripts/designs.py
+# refuse to resolve, and that should be red here before a generator meets it.
+
+
+def test_a_design_ref_is_an_edge_to_the_design_file(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "id: client\ndesign_ref: brand\n",
+        "identity/personas/p.yaml": "id: p\ndesign_ref: brand\n",
+        "themes/house.yaml": "meta: {name: house}\nbranding:\n  design: brand\n",
+        "identity/designs/brand.md": "---\nname: brand\n---\n",
+    })
+    found = edges.all_edges(tmp_path)
+    assert ("workflow/contexts/client.yaml", "design_ref", "identity/designs/brand.md") in found
+    assert ("identity/personas/p.yaml", "design_ref", "identity/designs/brand.md") in found
+    assert ("themes/house.yaml", "branding.design", "identity/designs/brand.md") in found
+    assert edges.check(tmp_path) == []
+
+
+def test_a_design_ref_to_a_missing_id_is_dead(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "id: client\ndesign_ref: nobody\n",
+        "themes/house.yaml": "meta: {name: house}\nbranding: {design: ghost}\n",
+    })
+    findings = edges.check(tmp_path)
+    assert any("workflow/contexts/client.yaml :: design_ref" in f and "dead" in f for f in findings), findings
+    assert any("themes/house.yaml :: branding.design" in f and "dead" in f for f in findings), findings
+
+
+def test_a_template_design_ref_is_not_an_edge(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/_template.yaml": "design_ref: example-org\n",
+        "themes/_template.yaml": "branding: {design: example-org}\n",
+    })
+    assert edges.check(tmp_path) == []
+
+
+def test_a_design_ref_that_is_no_id_is_dead(tmp_path):
+    """designs.py refuses `_template` and a path; the edge check must agree."""
+    _tree(tmp_path, {
+        "workflow/contexts/a.yaml": "design_ref: _template\n",
+        "workflow/contexts/b.yaml": "design_ref: ../../DESIGN\n",
+        "identity/designs/_template.md": "---\nname: t\n---\n",
+        "DESIGN.md": "---\nname: root\n---\n",
+    })
+    findings = edges.check(tmp_path)
+    assert any("contexts/a.yaml :: design_ref" in f for f in findings), findings
+    assert any("contexts/b.yaml :: design_ref" in f for f in findings), findings
+
+
+def test_only_the_top_level_design_ref_of_a_context_or_persona_counts(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/a.yaml": "integrations:\n  site:\n    design_ref: whatever\n",
+        "infra/remotes/r.yaml": "design_ref: whatever\n",
+    })
+    assert edges.iter_design_refs(tmp_path) == []
+
+
+def _scoped_design(scope: str) -> str:
+    return f"---\nscope: {scope}\nname: brand\ndescription: d\ncolors: {{primary: '#000000'}}\n---\n"
+
+
+def test_an_org_context_may_not_name_a_user_design(tmp_path):
+    """The org overlay would carry the context and not the design, and every member's generators fail."""
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "scope: org\nid: client\ndesign_ref: brand\n",
+        "identity/designs/brand.md": _scoped_design("user"),
+    })
+    findings = edges.check(tmp_path)
+    assert any("workflow/contexts/client.yaml :: design_ref" in f and "org" in f and "user" in f
+               for f in findings), findings
+
+
+def test_a_design_as_wide_as_its_referrer_is_fine(tmp_path):
+    _tree(tmp_path, {
+        "workflow/contexts/client.yaml": "scope: org\nid: client\ndesign_ref: brand\n",
+        "identity/personas/me.yaml": "scope: user\nid: me\ndesign_ref: brand\n",
+        "identity/designs/brand.md": _scoped_design("org"),
+    })
+    assert edges.check(tmp_path) == []
+
+
+def test_a_shipped_theme_may_not_name_a_design(tmp_path):
+    _tree(tmp_path, {
+        "themes/professional.yaml": "meta: {name: professional}\nbranding: {design: brand}\n",
+        "identity/designs/brand.md": _scoped_design("org"),
+    })
+    findings = edges.check(tmp_path)
+    assert any("themes/professional.yaml :: branding.design" in f and "core" in f for f in findings), findings
+
+
+def test_design_ref_default_is_an_opt_out_not_an_edge(tmp_path):
+    """`default` names the root DESIGN.md: never dead, and no scope to be wide enough."""
+    _tree(tmp_path, {
+        "workflow/contexts/side.yaml": "scope: org\nid: side\ndesign_ref: default\n",
+        "identity/personas/me.yaml": "id: me\ndesign_ref: default\n",
+        "DESIGN.md": "---\nname: root\n---\n",
+    })
+    assert edges.check(tmp_path) == []

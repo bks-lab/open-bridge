@@ -154,7 +154,7 @@ Template:
 - Imperative present ("add", "tighten", "remove", "rename")
 - ≤72 chars total including prefix
 - No period at end
-- No "Claude", "AI", "Co-Authored-By" — per CLAUDE.md global rules
+- No "Claude", "AI", "Co-Authored-By" — per your global agent instructions
 
 **Body rules:**
 - Quote 1-2 lines from proposal "Motivation" if user-verbatim

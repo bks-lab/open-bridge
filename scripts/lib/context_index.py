@@ -39,6 +39,31 @@ DEFAULT_LABEL_CHARS = 120
 CLI = "python3 scripts/context-index.py"
 ALSO_PRESENT = "Also present, fetch by name: "
 
+REGISTRY_BASE = "ecosystem.yaml"
+# Byte-identical to scripts/overlay.py FRAGMENT_NAME_RE (held by a test): every
+# fragment the overlay may write is one Phase 1 indexes, and nothing else is.
+REGISTRY_FRAGMENT = re.compile(r"^ecosystem\.[a-z][a-z0-9-]*\.yaml$")
+REGISTRY_EXCLUDE = frozenset({"ecosystem.example.yaml"})
+
+
+def registry_files(repo_root) -> list[str]:
+    """Every registry Phase 1 indexes: the base first, then each fragment by name.
+
+    One predicate for the CLI (`--registries`) and the meter alike. The glob
+    lives here rather than in the Phase 1 command line because zsh aborts on an
+    unmatched glob and the CLI takes one path per call.
+    """
+    root = Path(repo_root)
+    found = [REGISTRY_BASE] if (root / REGISTRY_BASE).is_file() else []
+    found += sorted(
+        path.name
+        for path in root.glob("ecosystem.*.yaml")
+        if path.is_file()
+        and REGISTRY_FRAGMENT.match(path.name)
+        and path.name not in REGISTRY_EXCLUDE
+    )
+    return found
+
 # A top-level key: column zero, not a comment, not a document marker, and NOT
 # a list item. `- name: public` at column zero is legal YAML and was read as a
 # key called `- name` until a sweep over 120 real files said otherwise. The

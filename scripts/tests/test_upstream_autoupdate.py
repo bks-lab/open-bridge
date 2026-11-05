@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -170,6 +171,27 @@ def test_one_held_file_holds_the_whole_run(w):
     assert not (w.inst / ".git" / "MERGE_HEAD").exists()
 
 
+def test_a_held_claude_md_points_at_the_migration(w):
+    # Upstream removed its root CLAUDE.md; a fork that edited it meets a
+    # modify/delete conflict, and the skip reason names the one-command way out.
+    w.write(w.up, "CLAUDE.md", "@AGENTS.md\n"); w.commit(w.up, "entry file")
+    run(w.inst, "git", "pull", "-q", "--no-rebase", "--no-edit", "upstream", "main")
+    w.write(w.inst, "CLAUDE.md", "@AGENTS.md\n@identity/agent/SOUL.md\n"); w.commit(w.inst, "onboarding import")
+    run(w.up, "git", "rm", "-q", "CLAUDE.md"); w.commit(w.up, "AGENTS.md is the entry")
+    before = w.head()
+    p, status = w.autoupdate()
+    assert "SKIPPED" in status and "CLAUDE.md" in status, status
+    assert "(CLAUDE.md: run scripts/migrate-entry-file.py, docs/updating.md)" in status, status
+    assert w.head() == before
+
+
+def test_a_held_file_other_than_claude_md_gets_no_migration_hint(w):
+    w.write(w.inst, "core.txt", "a\nLOCAL\nc\n"); w.commit(w.inst, "local only")
+    w.write(w.up, "core.txt", "a\nUP\nc\n"); w.commit(w.up, "upstream edit")
+    p, status = w.autoupdate()
+    assert "SKIPPED" in status and "migrate-entry-file" not in status, status
+
+
 def test_dirty_log_does_not_block(w):
     w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
     w.write(w.inst, "work/log.md", "# log\n| row in progress |\n")
@@ -290,6 +312,18 @@ def test_generic_notifier_gets_the_message_on_stdin(w, tmp_path):
     p, status = _autoupdate_env(w, AUTOUPDATE_NOTIFY_CMD=str(hook))
     assert "auto-updated" in status, status
     assert "auto-updated" in out.read_text()
+
+
+def test_stdout_lines_carry_a_timestamp(w):
+    """launchd appends stdout to a log with no date; each line states its own."""
+    p, _ = _autoupdate_env(w)
+    lines = [l for l in p.stdout.splitlines() if "autoupdate:" in l]
+    assert lines, p.stdout + p.stderr
+    for l in lines:
+        assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} autoupdate: ", l), l
+    w.write(w.up, "other.txt", "x\ny\n"); w.commit(w.up, "upstream change")
+    p, _ = _autoupdate_env(w)
+    assert re.search(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} autoupdate: merged ", p.stdout, re.M), p.stdout
 
 
 def test_a_failing_notifier_does_not_fail_the_run(w):
@@ -513,6 +547,28 @@ def test_a_checker_made_stricter_by_the_merge_is_reported_not_rolled_back(w, tmp
     assert p.returncode == 0, p.stdout + p.stderr
     assert "auto-updated" in status, status
     assert "new or changed with the merge" in status and "check-edges.py" in status, status
+
+
+def test_a_rule_changed_only_in_the_checkers_data_keeps_the_merge(w, tmp_path):
+    # check-kernel.py reads its retired: and moved: lists from the kernel
+    # manifest. The next retirement may change only that file; rolling the
+    # merge back every morning would freeze the job and never file the item
+    # docs/kernel.md promises.
+    log = tmp_path / "inbox.log"
+    w.write(w.inst, "scripts/inbox.py", FAKE_INBOX); w.commit(w.inst, "inbox")
+    w.promote("scripts/check-kernel.py",
+              "import pathlib, sys\n"
+              "m = pathlib.Path('kernel/manifest.yaml')\n"
+              "sys.exit(1 if m.exists() and 'retired' in m.read_text() else 0)\n",
+              "share the check")
+    w.write(w.up, "kernel/manifest.yaml", "retired:\n  - key: old_key\n")
+    w.commit(w.up, "retire a key, data only")
+    p, status = _autoupdate_env(w, FAKE_INBOX_LOG=str(log))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "auto-updated" in status, status
+    assert "new or changed with the merge" in status and "check-kernel.py" in status, status
+    assert (w.inst / "kernel/manifest.yaml").exists(), "the merge is kept"
+    assert "--key upstream-autoupdate-rules" in log.read_text()
 
 
 def test_the_budget_check_is_part_of_the_net(w, tmp_path):

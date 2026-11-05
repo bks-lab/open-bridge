@@ -24,6 +24,10 @@ sample.
   instance's own org, never a sibling instance's customers or names.
 - A sibling instance's pre-existing tasks/categorization are **theirs** — read
   them only in their own repo, never re-create or mirror them here.
+- The one declared exception: a workspace (`workflow/workspaces/<id>.yaml`) that
+  lists a sibling instance under `repos:` binds the two on purpose, and a skill may
+  read that instance's work material for the workspace's work (e.g. `/debrief`
+  finding a transcript there). No workspace naming it, no read.
 - Adding a feature here that *touched* another instance's data while developing
   is the classic leak: scrub it back out before committing. The fix is always
   "only my own content stays; the foreign content goes back to its instance."

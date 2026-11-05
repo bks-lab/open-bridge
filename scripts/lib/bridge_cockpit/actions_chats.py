@@ -10,10 +10,10 @@ from typing import Any
 
 from . import model as m
 from .history import item as history_item
-from .quick import CONV_RE
+from .quick import CONV_RE, ORIGINS as QUICK_ORIGINS
 from .relay import KINDS as ASK_KINDS
-from .actions_base import (CONTEXT_MAX, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, SHORT_TIMEOUT, ActionError, Ctx,
-                           bad_arg, check_key, check_text)
+from .actions_base import (CONTEXT_MAX, CONTROL_RE, HANDOFF_MAX, HANDOFF_ORDER_MAX, INBOX_ID_RE, QUICK_PLACES, SHORT_TIMEOUT,
+                           SLUG_RE, WORKER_DETAIL_MAX, WORKER_REF_RE, ActionError, Ctx, bad_arg, check_key, check_text)
 
 
 class ChatVerbs:
@@ -24,7 +24,9 @@ class ChatVerbs:
         (the workplace's agent model, Sonnet or more, never the quick model), "control" gives it to the
         control session through the relay. The chat carries how that went (quick.py `handed`): claimed as
         `starting` once every check passed, then the launch outcome or the relay's queued / offline, and
-        `failed` whatever goes wrong on the way, so a second click is refused only while one is starting."""
+        `failed` whatever goes wrong on the way, so a second click is refused only while one is starting.
+        What the person adds is the order: at the end of the item's detail, and on the item as its start note,
+        which the tab reads first and which keeps it from closing the item without asking (workplace.py)."""
         app = self.app
         order = (text or "").strip()
         if len(order) > HANDOFF_ORDER_MAX:
@@ -51,24 +53,48 @@ class ChatVerbs:
                     ctx.note(self.tx["handoff_offline"], bad=True)
                 done = {"status": "queued" if online else "offline", "relay_id": record.get("id")}
                 return
-            first = app.quick.first_question(conv)
-            new_id = self.inbox_add(ctx, conv, first, text)
+            first, task, key = self.handoff_names(conv)
+            new_id = self.inbox_add(ctx, conv, first, text, key=key, task=task)
             if new_id is None:
                 return
             done = {"status": "failed", "inbox_id": new_id}
             # a chat that is about nothing yet is now about this item: it leaves when the item ends
             app.quick.set_about(conv, {"kind": "handoff", "inbox": new_id})
-            got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first}], "go", app.cfg.target)
+            # the order as the start note; a note that cannot be written leaves the order in the detail alone
+            noted = bool(order) and self.write_note(ctx, {"inbox_id": new_id}, f"Start note: {order}")
+            got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first, "conv": conv}], "go",
+                              app.cfg.target, start_note=noted)
             done = {"status": got, "inbox_id": new_id}
-            if got == "busy" and order:
-                # the tab of this chat is already on its way: the new words reach the item as a note, not that tab
-                ctx.call("inbox.note", new_id, self.inbox("note", new_id, "--", order[:2000]), SHORT_TIMEOUT)
+            if got in ("busy", "running") and noted:
+                # the tab of this chat is already on its way or at work: the order reached the item as its start note,
+                # never that tab, and is written only once (a second, plain note would read back as the tab's result)
                 ctx.note(self.tx["handoff_order_late"], bad=True)
         finally:
             handed = app.quick.set_handed(conv, **done)
             if handed is not None:
                 ctx.extra["handed"] = handed
             ctx.audit_extra["handed"] = done["status"]
+
+    def handoff_names(self, conv: str) -> tuple[str, str | None, str | None]:
+        """(title, task, key) of the item a chat becomes when it is handed on. A chat about nothing is titled by its
+        first question, as always. A chat asked on a briefing row (`about` kind row or follow_up) began with the whole
+        prompt ("Briefing item: «…» («…»). Take a look …"), which made a poor title and named no task, so the
+        briefing showed it beside the row it was about (29.10.). It is titled "Check: <row title>" instead (the prompt
+        stays in the detail), carries the row's task and is keyed `ask:<the row's inbox item or ref>`, which the
+        briefing folds into that row (briefing_view.py `_fold`). The row is read from the model while it is there."""
+        app = self.app
+        first = app.quick.first_question(conv)
+        about = app.quick.about_of(conv)
+        if not about or about.get("kind") not in ("row", "follow_up") or not isinstance(about.get("key"), str):
+            return first, None, None
+        found = app.collector.resolve(about["key"]) or self.page_entry(about["key"])
+        row = found.get("row") if isinstance(found, dict) else None
+        if not isinstance(row, dict) or not row.get("title"):
+            return first, None, None
+        task = next((t for t in (row.get("task"), row.get("about_task")) if isinstance(t, str) and SLUG_RE.match(t)), None)
+        target = about.get("inbox") or row.get("inbox_id") or row.get("ref")
+        key = f"ask:{target}" if isinstance(target, str) and target else None
+        return self.tx["ask_item"].format(title=m.short(str(row["title"]), 160)), task, key
 
     def v_chat_tab(self, ctx: Ctx, text: str, routed: str | None = None) -> None:
         """A problem from the chat that needs a session able to act: filed as a decision and started at
@@ -94,11 +120,11 @@ class ChatVerbs:
         title = m.short(text, 60)
         if until:
             key = f"inbox:{new_id}"
-            self.app.store.hide(key, until)
+            self.app.store.hide(key, until, text)
             ctx.history.append(history_item(key, text, "other", f"hidden until {until}"))
             ctx.note(self.tx["remind_until"].format(until=until, title=title))
         else:
-            ctx.note(self.tx["remind_now"].format(title=title))
+            ctx.note(self.tx["remind_now"].format(title=title), go={"kind": "item", "key": f"inbox:{new_id}"})
         ctx.delta()
 
     def v_a2a_ask(self, ctx: Ctx, peer: str, text: str, conv: str | None = None, mode: str | None = None) -> None:
@@ -143,13 +169,24 @@ class ChatVerbs:
             raise ActionError(409, "stale_row", "no such session here", "session")
         name = (live or old).get("name") or session[:8]
         self.app.store.link_session(session, slug, name, (live or old).get("cwd") or "", "hand")
-        ctx.note(self.tx["session_linked"].format(name=m.short(name, 40), slug=slug))
+        self.app.store.unrefuse_session(session, slug)        # linked by hand: no longer "Not this task"
+        ctx.note(self.tx["session_linked"].format(name=m.short(name, 40), slug=slug), go={"kind": "item", "key": f"task:{slug}"})
         self.app.broadcast("sessions", self.app.sessions_state())
 
     def v_session_unlink(self, ctx: Ctx, session: str) -> None:
-        if not self.app.store.unlink_session(session):
+        """"Not this task": the session's link goes, and its task, linked or seen (server.session_tasks), is refused
+        for that session for good, so neither its transcript nor its tab takes it for that task again. No undo: a
+        link on the Sessions page links it again."""
+        now = self.app.session_tasks().get(session) or {}
+        link = self.app.store.session_links().get(session) or {}
+        if not link and now.get("how") != "seen":
             raise ActionError(409, "stale_row", "the session is not linked", "session")
-        ctx.note(self.tx["session_unlinked"])
+        slug = now.get("task") or link.get("task")
+        self.app.store.unlink_session(session)
+        if isinstance(slug, str) and slug:
+            self.app.store.refuse_session(session, slug)
+        ctx.extra["session"] = {"sid": session, "refused": slug}
+        ctx.note(self.tx["session_not_this"].format(slug=slug) if now.get("how") == "seen" else self.tx["session_unlinked"])
         self.app.broadcast("sessions", self.app.sessions_state())
 
     def v_session_resume(self, ctx: Ctx, session: str) -> None:
@@ -184,16 +221,25 @@ class ChatVerbs:
         return self.filed_page_item(f"briefing:{profile}{same}" if profile else "", same)
 
     def ask(self, kind: Any, args: Any, via: Any = "control", model: Any = None, conv: Any = None,
-            place: Any = None) -> tuple[int, dict]:
+            place: Any = None, origin: Any = None, keys: Any = None) -> tuple[int, dict]:
         """A question to Claude. `via` "quick" (what the page sends) asks a short read-only session of its
         own (quick.py, Haiku unless the page names a model) and answers with the conversation id; "control"
         hands it to the control session through the relay. `place` "core": a free quick question of the start
-        page's core, kept out of the chat lists, and a new one replaces the last."""
+        page's core, kept out of the chat lists, and a new one replaces the last; "suggest": the same for the files
+        view's suggested next step. A free quick question may name the file it is asked in (`task`): an open
+        task or stream becomes what the chat is about, so it leaves once the task closes; a closed one is never
+        named, or the settle sweep would take the chat into the archive at once."""
         app, tx = self.app, self.tx
         if via not in ("quick", "control"):
             raise bad_arg("via", "quick or control")
-        if place is not None and (place != "core" or via != "quick" or kind != "free"):
-            raise bad_arg("place", "only core, for a free quick question")
+        # where the page asks from (a card of Work through names its verb, quick.system_text) and whether its
+        # shortcuts are on (only then does the answer name a key); both optional, a new conversation keeps them
+        if origin is not None and origin not in QUICK_ORIGINS:
+            raise bad_arg("origin", "only flow")
+        if keys is not None and not isinstance(keys, bool):
+            raise bad_arg("keys", "must be true or false")
+        if place is not None and (place not in QUICK_PLACES or via != "quick" or kind != "free"):
+            raise bad_arg("place", "only core or suggest, for a free quick question")
         if via == "control" and not app.cfg.relay:
             return 409, {"ok": False, "error": {"code": "relay_disabled", "message": "no control session: the relay is off",
                                                  "field": "via"}}
@@ -212,9 +258,9 @@ class ChatVerbs:
         if not isinstance(args, dict):
             raise bad_arg("args", "must be an object")
         allowed = {"row": {"key"}, "follow_up": {"key"}, "info": {"page", "section", "index"}, "free": {"text"},
-                   "overview": set(), "plan_day": set(), "evening": set()}[kind]
+                   "worker": {"host", "id"}, "overview": set(), "plan_day": set(), "evening": set()}[kind]
         # may come along, never required: what the page shows right now, for a free quick question only
-        optional = {"free": {"context"}}.get(kind, set())
+        optional = {"free": {"context", "task"}}.get(kind, set())
         for name in args:
             if name not in allowed and name not in optional:
                 raise bad_arg(str(name)[:40], "unknown argument")
@@ -233,12 +279,21 @@ class ChatVerbs:
             context = context.strip() or None
         model = app.collector.model
         about = None                     # the row and the item a quick chat is about: it leaves when that ends
+        task = args.get("task")
+        if task is not None:
+            if via != "quick":
+                raise bad_arg("task", "only for a free quick question")
+            if not isinstance(task, str) or not SLUG_RE.match(task):
+                raise bad_arg("task", "not a task slug")
+            if any((app.root / "work" / where / task / "STATUS.md").is_file() for where in ("tasks", "streams")):
+                about = {"kind": "free", "key": f"task:{task}", "task": task}
         if kind in ("row", "follow_up"):
             row = self.entry(check_key(args["key"], "key"))["row"]
             prompt = m.ask_about(row, tx) if kind == "row" else m.follow_up(row, tx)
             item = m.launch_item(row)
-            if item:
-                about = {"kind": kind, "key": row["key"], **({"inbox": item} if INBOX_ID_RE.match(item) else {"task": item})}
+            # the row it was asked on, also without an item behind it: a handoff names that row (handoff_names)
+            about = {"kind": kind, "key": row["key"],
+                     **(({"inbox": item} if INBOX_ID_RE.match(item) else {"task": item}) if item else {})}
         elif kind == "info":
             page, section, index = args["page"], args["section"], args["index"]
             if not isinstance(page, str) or not isinstance(section, str) or not isinstance(index, int) or isinstance(index, bool):
@@ -250,6 +305,23 @@ class ChatVerbs:
             prompt = m.ask_info(re.sub(r"\s*\(.*?\)", "", sec["title"]), info, tx)
             about = {"kind": "info", "key": m.item_key(page, sec["id"], info),
                      "inbox": self.info_inbox(sec, info) if via == "quick" else None}
+        elif kind == "worker":
+            # a background job's row: the question is built from the kept workers view, never from the page's words
+            host, ident = args["host"], args["id"]
+            if not all(isinstance(x, str) and WORKER_REF_RE.match(x) for x in (host, ident)):
+                raise bad_arg("id", "not a job or machine name")
+            run = self.worker_run(host, ident)
+            if run is None:
+                raise ActionError(409, "stale_row", "the workers view holds no such job", "id")
+            found = run.get("findings") if isinstance(run.get("findings"), list) else []
+            top = next((f for f in found if isinstance(f, dict) and f.get("severity") != "info"), (found or [{}])[0])
+            # the finding as the job wrote it (often a log line, in English), one short line after the question
+            detail = CONTROL_RE.sub(" ", str((top.get("detail") if isinstance(top, dict) else "") or ""))
+            detail = m.short(" ".join(detail.split()), WORKER_DETAIL_MAX)
+            prompt = tx["ask_worker"].format(id=ident, host=host, state=self.worker_state(run)) \
+                + (tx["ask_worker_detail"].format(detail=detail) if detail else "")
+            key = f"worker:{host}:{ident}"
+            about = {"kind": "worker", "key": key, "inbox": self.filed_page_item(key, None) if via == "quick" else None}
         elif kind == "free":
             prompt = check_text(args["text"], "text", 4000)
         else:
@@ -268,7 +340,8 @@ class ChatVerbs:
                 prompt = m.evening(tabs, app.tabs.seen_copy(), app.clock(), tx)
         if via == "quick":
             try:
-                conv_id = app.quick.start(prompt, qmodel, conv, kind, place, context=context, about=about)
+                conv_id = app.quick.start(prompt, qmodel, conv, kind, place, context=context, about=about,
+                                          origin=origin, keys=bool(keys))
             except KeyError:
                 raise ActionError(409, "stale_row", "the conversation is gone", "conv")
             except RuntimeError as exc:
@@ -279,7 +352,7 @@ class ChatVerbs:
         ctx = Ctx(self, "ask")
         record, online = self.ask_relay(ctx, kind, prompt)
         self.audit_line("ask", kind, via="control", id=record.get("id") or "-", chars=len(prompt), online=online)
-        app.note(" · ".join(ctx.notes), "info" if online else "warn")
+        app.note(" · ".join(ctx.notes), "info" if online else "warn", {"kind": "claude"})
         if online:
             return 202, {"ok": True, "record": record}
         control = app.tabs.control_tab()

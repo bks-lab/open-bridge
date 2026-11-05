@@ -38,11 +38,13 @@ const VENDOR_BYTES = 13194
 const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
   ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
-const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'motion.js', 'text.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'flow.js', 'point.js', 'motion.js', 'text.js', 'text-areas.js', 'text-card.js', 'text-files.js', 'text-flow.js', 'text-chat.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+// the page's styles: style.css and the parts index.html loads right after it, in this order
+const STYLE_FILES = ['style.css', 'areas.css', 'files.css', 'flow.css', 'term.css']
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
-for (const name of ['logic', 'text', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
+for (const name of ['logic', 'areas', 'files', 'flow', 'point', 'text', 'text-areas', 'text-card', 'text-files', 'text-flow', 'text-chat', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
@@ -135,7 +137,7 @@ test('text tables: one word per thing, the retired words appear nowhere', () => 
   assert.equal(de.home.briefTitle, 'Einschätzung'); assert.equal(en.home.briefTitle, 'Assessment')
   assert.equal(de.home.startTitle, 'Schnellzugriff'); assert.equal(en.home.startTitle, 'Quick access')
   assert.equal(de.workersTab, 'Hintergrundjobs'); assert.equal(en.workersTab, 'Background jobs')
-  assert.equal(de.reviewTab, 'Aufräumen'); assert.equal(en.reviewTab, 'Tidy up')
+  assert.equal(de.reviewTab, 'Aufgaben prüfen'); assert.equal(en.reviewTab, 'Check tasks')
   const flat = t => leaves(t).map(([, v]) => v).join('\n')
   for (const old of ['Erledigen lassen', 'Rückkanal', 'Kern-Klick', 'den Kern', 'Lagebild', 'Startpunkte', 'Arbeitsvorrat',
     'Kann ich abgeben', 'Wartet auf deine Freigabe', 'zum Tab', 'Worker']) assert.ok(!flat(de).includes(old), old)
@@ -148,6 +150,18 @@ test('text tables: an error text for every error code of the API', () => {
     'unsupported_media_type', 'payload_too_large', 'unknown_verb', 'invalid_argument', 'invalid_json', 'stale_row',
     'stale_tab', 'not_applicable', 'relay_offline', 'cmux_unavailable', 'cli_unavailable', 'internal']
   for (const t of Object.values(text.TABLES)) for (const c of codes) assert.ok(t.errors[c], c)
+})
+
+test('text tables: the two refusals of a merge (round 4) worded in both languages, no dash', () => {
+  for (const [lang, t] of Object.entries(text.TABLES)) {
+    for (const code of ['merge_not_task', 'merge_changed']) {
+      assert.ok(t.errors[code], `${lang} ${code}`)
+      assert.doesNotMatch(t.errors[code], /[\u2013\u2014]|--/, `${lang} ${code}`)
+      assert.equal(logic.errorText({ code, message: 'x' }, t), t.errors[code], `${lang} ${code}`)
+    }
+  }
+  assert.match(text.TABLES.en.errors.merge_not_task, /no streams and no inbox items/)
+  assert.match(text.TABLES.de.errors.merge_changed, /von Hand geändert/)
 })
 
 test('setControl: the control workspace name from the config fills every text, nothing hard-coded', () => {
@@ -334,7 +348,7 @@ test('planBusy: row actions refuse when busy, a bulk keeps its own key and names
 
 test('act() wires planBusy into withBusy and tells what it left out', () => {
   const app = read('app.js')
-  const body = app.match(/async function act\(verb, args = \{\}\) \{[\s\S]*?\n\}/)[0]
+  const body = app.match(/async function act\(verb, args = \{\}, opts = \{\}\) \{[\s\S]*?\n\}/)[0]
   assert.match(body, /planBusy\(verb, args, store\.get\(\)\.ui\.busy\)/)
   assert.match(body, /\.skipped\.length[\s\S]{0,120}busySkipped/)
   assert.match(body, /\.refused\)[\s\S]{0,80}return null/)
@@ -443,10 +457,12 @@ test('vendor bundle: pinned size and sha256, exports what the page imports', () 
 })
 
 test('every relative import names an export that exists', () => {
+  // `export * from` passes on every name of that file (logic.js passes on areas.js and files.js)
   const exportsOf = file => {
     const src = read(file)
     return new Set([...[...src.matchAll(/export (?:async )?(?:function|const|let|class) ([A-Za-z_$][\w$]*)/g)].map(m => m[1]),
-      ...[...src.matchAll(/^export \{([^}]*)\}/gm)].flatMap(m => m[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop()).filter(Boolean))])
+      ...[...src.matchAll(/^export \{([^}]*)\}/gm)].flatMap(m => m[1].split(',').map(x => x.trim().split(/\s+as\s+/).pop()).filter(Boolean)),
+      ...[...src.matchAll(/^export \* from '(\.\.?\/[\w./-]+\.js)'/gm)].flatMap(m => [...exportsOf(path.posix.join(path.posix.dirname(file), m[1]))])])
   }
   for (const file of AUTHORED_JS) {
     for (const m of read(file).matchAll(/(?:import|export) \{([^}]*)\} from '(\.\.?\/[\w./-]+\.js)'/g)) {
@@ -500,7 +516,7 @@ test('authored files carry the SPDX header and no em or en dash', () => {
     '.js': '// SPDX-License-Identifier: MIT', '.css': '/* SPDX-License-Identifier: MIT */',
     '.html': '<!-- SPDX-License-Identifier: MIT -->', '.md': '',
   }
-  for (const rel of [...AUTHORED_JS, 'tokens.css', 'style.css', 'index.html', 'vendor/README.md']) {
+  for (const rel of [...AUTHORED_JS, 'tokens.css', ...STYLE_FILES, 'index.html', 'vendor/README.md']) {
     const src = read(rel)
     const h = header[path.extname(rel)]
     if (h) assert.ok(src.split('\n').slice(0, 3).includes(h), `${rel}: SPDX header`)
@@ -509,10 +525,11 @@ test('authored files carry the SPDX header and no em or en dash', () => {
   assert.match(read('vendor/README.md'), /72284e8e9079c87817145df1110f74e8a2aa040b2fc384922e18dfcb46fc1fd7/)
 })
 
-test('tokens.css and style.css carry no colour of their own: colors.css comes from DESIGN.md (design.py)', () => {
-  assert.doesNotMatch(read('tokens.css'), /#[0-9A-Fa-f]{3,8}\b/)
-  assert.doesNotMatch(read('style.css'), /#[0-9A-Fa-f]{3,8}\b/)
+test('tokens.css and the style files carry no colour of their own: colors.css comes from DESIGN.md (design.py)', () => {
+  for (const rel of ['tokens.css', ...STYLE_FILES]) assert.doesNotMatch(read(rel), /#[0-9A-Fa-f]{3,8}\b/, rel)
   assert.match(read('index.html'), /<link rel="stylesheet" href="colors.css">/)
+  // the parts follow style.css directly, so their rules stand in the cascade where they stood inside it
+  assert.match(read('index.html'), new RegExp(STYLE_FILES.map(f => `<link rel="stylesheet" href="${f}">`).join('\\n')))
 })
 
 // ---------------------------------------------------------------- review findings
@@ -561,6 +578,17 @@ test('FE-1: the page shows the connection as lost once it is not open for 3 s, a
   assert.equal(logic.connLost('connecting', 6000, 10000), true)
 })
 
+test('a screen reader span never stretches the document: .sr-only pins itself to the corner of its containing block', () => {
+  // without top and left it stands where it would flow; inside the page column that has no positioned ancestor, so
+  // the spans of a long list (the origin chips of the GitHub rows) reached past the window and the document scrolled
+  // with the column: a jump to a section (ctl.openSection) moved the whole page and left a blank band under it
+  const css = read('style.css')
+  const rule = css.slice(css.indexOf('.sr-only {'), css.indexOf('}', css.indexOf('.sr-only {')))
+  assert.match(rule, /position: absolute/)
+  assert.match(rule, /top: 0/)
+  assert.match(rule, /left: 0/)
+})
+
 test('FE-1 / FE-3: warnings name a lost connection, a stale model and a failed pass, at every width', () => {
   const t = text.TABLES.en
   const base = { conn: 'open', connMs: 0, now: 10000, model: { stale: false }, loading: { pass: null, last_error: null } }
@@ -576,6 +604,14 @@ test('FE-1 / FE-3: warnings name a lost connection, a stale model and a failed p
   for (const cls of ['hdr-asof', 'hdr-warn', 'mobile-status', 'hdr-relay']) {
     assert.doesNotMatch(narrow, new RegExp(`\\.${cls}[^{]*\\{[^}]*display:\\s*none`), `${cls} hidden below 900 px`)
   }
+  // from 900 to 1279 px the header keeps its warnings and gives way with the as-of time alone
+  const at = css.indexOf('@media (max-width: 1279px)')
+  const medium = css.slice(at, css.indexOf('@media', at + 1))
+  assert.ok(at >= 0 && medium.includes('.hdr-asof'), 'the medium block names the as-of')
+  for (const cls of ['hdr-asof', 'hdr-warn']) {
+    assert.doesNotMatch(medium, new RegExp(`\\.${cls}\\s*(,[^{]*)?\\{[^}]*display:\\s*none`), `${cls} hidden from 900 to 1279 px`)
+  }
+  assert.match(medium, /\.hdr \.hdr-asof \.asof-text\s*\{[^}]*display:\s*none/)
   const src = readComponents()
   assert.match(src, /pageWarnings\(/)
   // below 900 px the warnings and the relay state have their own line under the header
@@ -592,6 +628,9 @@ test('FE-2: single-key shortcuts do nothing while a drawer or a confirmation is 
   }
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'g', false), true)
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 't', true), true)
+  // g a (to the areas of the start page) works over a drawer as g t does; a alone still does not
+  assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'a', true), true)
+  assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: 'tabs' }, 'a', false), false)
   assert.equal(logic.modalKeyAllowed({ confirm: null, drawer: null }, 'c', false), true)
   assert.match(read('app.js'), /modalKeyAllowed\(/)
 })
@@ -683,6 +722,15 @@ test('the check page survives a model update: fixPage keeps every page of the ta
   for (const page of ["'briefing'", 'SESSIONS_PAGE', 'WORKERS_PAGE', 'CHAT_PAGE', 'CHECK_PAGE']) assert.ok(order.includes(page), page)
   assert.match(readComponents(), /export const CHECK_PAGE = '@check'/)
   assert.match(read('app.js'), /const ids = pageOrder\(s\)/)
+})
+
+test('round 6 b: setPage and fixPage lead a page through flowPageFor with the state, Running now opens in the middle', () => {
+  // one place for every way to the Sessions tab (a link, a note, the tour, the areas, a stored page): setPage
+  const set = read('app.js').match(/  setPage\(id\) \{[\s\S]*?\n  \},/)[0]
+  assert.match(set, /flowPageFor\(id, s\)/)
+  assert.match(set, /flowTo\.flowView/)
+  const fix = read('app.js').match(/function fixPage\(\) \{[\s\S]*?\n\}/)[0]
+  assert.match(fix, /flowPageFor\(s\.ui\.page, s\)/)
 })
 
 // ---------------------------------------------------------------- motion.js and the drawings
@@ -790,6 +838,77 @@ test('tab view: a terminal reads as chat lines, blank runs collapse', () => {
   assert.deepEqual(logic.screenLines(''), [])
 })
 
+test('tab view: a bare prompt is what you type next, and only an indented line goes on with what you typed', () => {
+  const lines = logic.screenLines('> fix it\n  second line\n\nanswer without a mark\n────\n❯\n────')
+  assert.deepEqual(lines.map(l => l.kind), ['user', 'user', 'gap', 'plain', 'frame', 'user', 'frame'])
+  // a shell: what a command prints is no part of what you typed, only a wrapped line is, and that one is indented
+  assert.deepEqual(logic.screenLines('❯ echo hi\nhi\n❯ sleep 3\n^C').map(l => l.kind), ['user', 'plain', 'user', 'plain'])
+})
+
+test('tab view: a line carries its tone: diff, a tool at work, the hints, a rule', () => {
+  const tone = text => logic.screenLines(text)[0].tone ?? null
+  assert.equal(tone('     12 +  const a = 1'), 'add')
+  assert.equal(tone('     12 -  const a = 0'), 'del')
+  assert.equal(tone('✻ Thinking… (12s · esc to interrupt)'), 'work')
+  assert.equal(tone('  ⏵⏵ auto mode on (shift+tab to cycle)'), 'hint')
+  assert.equal(tone('────────────────'), 'rule')
+  assert.equal(tone('- a list, no diff'), null)
+  assert.equal(tone('1 + 1 = 2 has no indent, so no diff'), null)
+})
+
+test('tab view: a line in pieces, its mark, paths, links and the two result marks, nothing lost', () => {
+  const kinds = text => logic.termParts(text).map(p => [p.c ?? '', p.t])
+  assert.deepEqual(kinds('⏺ Read scripts/web/style.css:1058 ok'),
+    [['mark', '⏺'], ['', ' Read '], ['path', 'scripts/web/style.css:1058'], ['', ' ok']])
+  assert.deepEqual(kinds('  ⎿  see https://example.com/a?b=1, then'),
+    [['', '  '], ['mark', '⎿'], ['', '  see '], ['url', 'https://example.com/a?b=1'], ['', ', then']])
+  assert.deepEqual(kinds('✓ done ✗ failed'), [['ok', '✓'], ['', ' done '], ['bad', '✗'], ['', ' failed']])
+  assert.deepEqual(kinds('in ~/Developer/bks und ./run.sh'), [['', 'in '], ['path', '~/Developer/bks'], ['', ' und '], ['path', './run.sh']])
+  // the words a sentence holds stay words: no slash, no extension, a slash command
+  for (const plain of ['Ja/Nein und und/oder', 'z.B. so', 'siehe /briefing workflow', '']) assert.equal(logic.termParts(plain).map(p => p.t).join(''), plain)
+  assert.deepEqual(logic.termParts('Ja/Nein z.B. /briefing').filter(p => p.c), [])
+  // whatever the pieces, they read as the line
+  const line = '  ❯ 1. ✔ a/b.txt https://x.y/z ✘'
+  assert.equal(logic.termParts(line).map(p => p.t).join(''), line)
+})
+
+test('the terminal: a key press as what it sends, the Mac and the browser keep theirs', () => {
+  const key = (k, mods = {}) => logic.termKey({ key: k, ...mods })
+  for (const [press, sends] of [['Enter', 'enter'], ['Escape', 'escape'], ['Tab', 'tab'], ['Backspace', 'backspace'], ['Delete', 'delete'],
+    ['ArrowUp', 'up'], ['ArrowDown', 'down'], ['ArrowLeft', 'left'], ['ArrowRight', 'right'], ['Home', 'home'], ['End', 'end'], ['PageUp', 'pageup'], ['PageDown', 'pagedown']]) {
+    assert.deepEqual(key(press), { key: sends }, press)
+  }
+  assert.deepEqual(key('Tab', { shiftKey: true }), { key: 'shift+tab' })
+  assert.deepEqual(key('c', { ctrlKey: true }), { key: 'ctrl+c' })
+  assert.deepEqual(key('Z', { ctrlKey: true, shiftKey: true }), { key: 'ctrl+z' })
+  // text comes through the input event, so a dead key and an Option character arrive as what they make
+  for (const plain of ['a', 'ä', ' ', '@', 'Dead', 'Shift', 'F5']) assert.equal(key(plain), null, plain)
+  assert.equal(key('@', { altKey: true }), null)
+  // Cmd stays the Mac's: copy, paste, a new browser tab
+  for (const k of ['c', 'v', 't', 'Enter', 'ArrowLeft']) assert.equal(key(k, { metaKey: true }), null, k)
+  assert.equal(key('Enter', { isComposing: true }), null, 'Enter ends a composition first')
+})
+
+test('the terminal: keys wait in order, text runs together, a held key does not grow a batch without end', () => {
+  let q = []
+  for (const step of [{ text: 'gi' }, { text: 't' }, { key: 'tab' }, { text: 'x' }]) q = logic.termQueue(q, step)
+  assert.deepEqual(q, [{ text: 'git' }, { key: 'tab' }, { text: 'x' }])
+  assert.deepEqual(logic.termQueue([{ paste: 'a' }], { text: 'b' }), [{ paste: 'a' }, { text: 'b' }])
+  assert.deepEqual(logic.termQueue([{ text: 'x'.repeat(4000) }], { text: 'y' }), [{ text: 'x'.repeat(4000) }, { text: 'y' }])
+})
+
+test('the terminal: what you typed shows at once, until the screen has it', () => {
+  assert.equal(logic.termEcho('', { text: 'gi' }), 'gi')
+  assert.equal(logic.termEcho('gi', { text: 't' }), 'git')
+  assert.equal(logic.termEcho('git', { key: 'backspace' }), 'gi')
+  assert.equal(logic.termEcho('git', { paste: ' x' }), 'git x')
+  for (const k of ['enter', 'ctrl+c', 'up', 'tab', 'escape']) assert.equal(logic.termEcho('git', { key: k }), '', k)
+})
+
+test('the terminal: a paste loses its control codes and keeps its lines', () => {
+  assert.equal(logic.termPaste('a\u001b[2J\tb\nc\u0000'), 'a[2J\tb\nc')
+})
+
 test('workers: tones, strip marks, facets that count without themselves, groups in view order', () => {
   const runs = [
     { id: 'a', title: 'Mail', kind: 'interval', sphere: 'work', state: 'in_sync', host: 'm', system: 'mail', findings: [] },
@@ -802,12 +921,69 @@ test('workers: tones, strip marks, facets that count without themselves, groups 
   assert.deepEqual(logic.stripMark({ verdict: 'failed' }), ['✗', 'bad'])
   assert.deepEqual(logic.stripMark({ verdict: 'odd' }), ['?', 'warn'])
   assert.deepEqual(logic.filterWorkers(runs, { attention: true }).map(r => r.id), ['b'])
+  // an outage is the engine's high (jobCounts' failing): the red tile of Background jobs opens on those only
+  assert.deepEqual(logic.filterWorkers([...runs, { id: 'd', state: 'drifted', severity: 'medium', findings: [] }], { outage: true }).map(r => r.id), ['b'])
   assert.deepEqual(logic.filterWorkers(runs, { q: 'pil' }).map(r => r.id), ['b'])
   const f = logic.workerFacets(runs, { kind: 'interval' })
   assert.deepEqual(f.kind, { interval: 2, daemon: 1 })      // the facet itself is not applied to its own counts
   assert.deepEqual(f.sphere, { work: 1, privat: 1 })
   assert.deepEqual(logic.groupBySystem(runs, [{ id: 'board', title: 'Board' }, { id: 'mail', title: 'Mail' }]).map(g => [g.title, g.runs.length]),
     [['Board', 1], ['Mail', 2]])
+})
+
+test('background jobs: an outage is what the engine files high, upkeep what it files medium; only the outage is loud', () => {
+  const run = (id, severity, extra = {}) => ({ id, findings: severity ? [{ severity }] : [], ...extra })
+  const view = { stats: { in_service: 6 }, runs: [run('a', 'high'), run('b', 'medium'), run('c', 'medium'), run('d', 'info'), run('e', null),
+    run('f', 'high', { retired: true }), run('g', 'info', { severity: 'high' })] }
+  // the run's own severity (its worst finding) wins; without one, its findings say it; a retired run never counts
+  assert.deepEqual(logic.jobCounts(view), { all: 6, failing: 2, upkeep: 2, ok: 2 })
+  assert.deepEqual(logic.jobCounts(null), { all: 0, failing: 0, upkeep: 0, ok: 0 })
+  assert.equal(logic.jobSeverity({ severity: 'none', findings: [] }), null)
+  assert.equal(logic.jobSeverity({ findings: [{ severity: 'info' }, { severity: 'medium' }] }), 'medium')
+  // stopped and a failed last run are an outage, red like a missing run, never the orange of upkeep
+  assert.equal(logic.workerTone({ state: 'stopped' }), 'bad')
+  assert.equal(logic.workerTone({ state: 'last_run_failed' }), 'bad')
+  assert.equal(logic.workerTone({ state: 'drifted' }), 'warn')
+})
+
+test('a job finding marked seen is grey and counts toward no tile, badge, alarm or attention filter', () => {
+  const failed = { id: 'chat-bot', host: 'mini', state: 'last_run_failed', severity: 'high', findings: [{ severity: 'high', state: 'last_run_failed' }] }
+  const seen = { ...failed, acked: { day: '2026-10-28', note: 'a planned restart' } }
+  assert.equal(logic.jobSeverity(seen), 'info')
+  assert.equal(logic.workerTone(seen), 'dim')
+  assert.deepEqual(logic.jobCounts({ runs: [seen] }), { all: 1, failing: 0, upkeep: 0, ok: 1 })
+  assert.deepEqual(logic.jobCounts({ runs: [failed] }), { all: 1, failing: 1, upkeep: 0, ok: 0 })
+  assert.deepEqual(logic.filterWorkers([seen], { outage: true }), [])
+  assert.deepEqual(logic.filterWorkers([seen], { attention: true }), [])
+})
+
+test('a sub page tile: red with its findings, orange with what needs a look, green only where an alarm reports nothing', () => {
+  const sec = (id, items, extra = {}) => ({ id, title: id, status: 'ok', items, count: items.length, total: items.length,
+    bad: items.filter(x => x.tone === 'bad').length, ...extra })
+  const machines = sec('Machines', [{ title: 'box' }, { title: 'printer', tone: 'dim' }, { title: 'watch', tone: 'dim' }])
+  // devices nothing measures live: the size of the first section and how its rows stand, never green
+  const plain = logic.subPageTile({ sections: [machines] })
+  assert.deepEqual([plain.tone, plain.big, plain.lead, plain.counts, plain.note], ['neutral', 3, 'Machines', { ok: 1, problems: 0, off: 2 }, null])
+  // an alarm section that reports nothing is a live all clear
+  const quiet = sec('Findings', [], { alarm: true })
+  assert.equal(logic.subPageTile({ sections: [machines, quiet] }).tone, 'success')
+  // a finding anywhere on the page counts, in a section drawn only with a finding (hide_ok) too, and it never leads
+  const cloud = sec('Cloud', [{ title: 'fn-a', tone: 'bad' }, { title: 'fn-b' }], { hide_ok: true })
+  const red = logic.subPageTile({ sections: [cloud, machines, quiet] })
+  assert.deepEqual([red.tone, red.big, red.note, red.lead], ['danger', 1, 'fn-a', 'Machines'])
+  const warn = logic.subPageTile({ sections: [machines, sec('Disk', [{ title: 'disk at 85 %', tone: 'warn' }])] })
+  assert.deepEqual([warn.tone, warn.big, warn.note, warn.warnIn], ['warning', 1, 'disk at 85 %', null])
+  // several warnings say how many and where, not the title of the first log line
+  const logs = sec('Logs (24 h)', [1, 2, 3, 4].map(n => ({ title: `host-${n} Journal`, tone: 'warn' })), { view: 'groups' })
+  const many = logic.subPageTile({ sections: [machines, sec('Findings', [], { alarm: true }), logs] })
+  assert.deepEqual([many.tone, many.big, many.note, many.warnIn], ['warning', 4, null, ['Logs (24 h)']])
+  assert.equal(text.TABLES.en.subPageWarn(4, ['Logs (24 h)']), '4 warnings in Logs (24 h)')
+  assert.equal(text.TABLES.de.subPageWarn(4, ['Logs (24 h)']), '4 Warnungen in Logs (24 h)')
+  assert.match(read('views/nav.js'), /tile\.warnIn \? t\.subPageWarn\(tile\.big, tile\.warnIn\)/)
+  // a source that could not be read says why, in red
+  const broken = logic.subPageTile({ sections: [sec('Remotes', [], { status: 'error', reason: 'ssh failed' }), quiet] })
+  assert.deepEqual([broken.tone, broken.error, broken.note], ['danger', true, 'ssh failed'])
+  assert.equal(logic.subPageTile(null).tone, 'neutral')
 })
 
 test('logic: drawn sections filter by search, state, group and tags; a tag facet counts without its own choice', () => {
@@ -908,7 +1084,7 @@ test('jev is optional: the page loads without scripts/web/jev/, no tab, no call,
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     const pages = { model: { pages: [{ id: 'x' }] } }
     // the daily tabs first, then what stands behind More (Sessions, Workers, Agents, Check, Jev, pages with group more)
-    assert.deepEqual(comp.pageOrder({ ...pages, jev: { enabled: false } }), ['@start', 'briefing', '@chat', 'x', '@sessions', '@workers', '@check', '@settings'])
+    assert.deepEqual(comp.pageOrder({ ...pages, jev: { enabled: false } }), ['@start', 'briefing', '@files', '@chat', 'x', '@sessions', '@workers', '@check', '@settings'])
     assert.ok(!comp.pageOrder({ ...pages }).includes('@jev'))                       // no jev state at all: off
     assert.ok(comp.pageOrder({ ...pages, jev: { enabled: true, ready: false } }).includes('@jev'))
     // the demo mode runs without the Jev files too, and shows Jev as off
@@ -922,10 +1098,12 @@ test('jev is optional: the page loads without scripts/web/jev/, no tab, no call,
   assert.match(comp, /useJevPage\(!!\(s\.jev\?\.enabled && s\.jev\?\.ready\)\)/)    // loaded only when on and ready
   assert.match(comp, /\$\{s\.jev\?\.enabled && !workPageOf\(s\.model\?\.pages\)\?\.jev \? tab\(JEV_PAGE/)   // the tab only when on, and not folded into the work tab
   assert.doesNotMatch(read('index.html'), /jev/)
-  // the page asks /api/jev only through jevRun (the Jev page), jevRank (the order of a work page) and jevWork
-  // (the Jev view of the work tab, the order of its work page)
+  // the page asks /api/jev only through jevRun (the Jev page), jevRank (the order of a work page), jevWork
+  // (the Jev view of the work tab, the order of its work page), and Prio's flowPrioOrder (the kept or daily order)
+  // and flowPrioRead (a read-in with Jev or Haiku)
   const app = read('app.js')
-  assert.equal((app.match(/\/api\/jev/g) ?? []).length, 3)
+  assert.equal((app.match(/\/api\/jev/g) ?? []).length, 5)
+  assert.match(app, /async flowPrioRead\(page, ranker\) \{[\s\S]{0,600}api\.post\('\/api\/jev\/rank', \{ page, force: true, ranker, rows/)
   assert.match(app, /jevWork: async[^\n]*\n\s*const res = await api\.post\('\/api\/jev\/rank', \{ page, force: !!force, daily: !force \}\)/)
   assert.match(app, /jevRun: \([^)]*\) => api\.post\('\/api\/jev\/run'/)
   assert.match(app, /const res = await api\.post\('\/api\/jev\/rank'/)
@@ -945,8 +1123,11 @@ test('agents: the Agents tab only where the Bridge knows a peer, and a message o
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     assert.ok(!comp.pageOrder({ agents: { peers: [] } }).includes('@agents'))
     assert.ok(!comp.pageOrder({}).includes('@agents'))
-    assert.deepEqual(comp.pageOrder({ agents: { peers: [{ id: 'a' }] } }).slice(3, 6), ['@sessions', '@workers', '@agents'])
+    assert.deepEqual(comp.pageOrder({ agents: { peers: [{ id: 'a' }] } }).slice(4, 7), ['@sessions', '@workers', '@agents'])
     assert.ok(comp.morePages({ agents: { peers: [{ id: 'a' }] } }).has('@agents'))
+    // the Chat as cmux carries the agents as its A2A area: no tab of their own there (bridge_cockpit_chat_a2a.test.mjs)
+    assert.ok(!comp.pageOrder({ agents: { peers: [{ id: 'a' }] }, rooms: { layout: 'workspaces' } }).includes('@agents'))
+    assert.ok(comp.pageOrder({ agents: { peers: [{ id: 'a' }] }, rooms: { layout: 'classic' } }).includes('@agents'))
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -971,19 +1152,24 @@ test('agents: a draft never travels to another agent, held answers show on the c
   const src = readComponents()
   const page = src.match(/function AgentsPage\(\{ s, c(?:, embedded = false)? \}\) \{[\s\S]*?\n\}/)[0]
   assert.match(page, /useEffect\(\(\) => \{[^}]*setText\(''\)[^}]*\}, \[peer\?\.id\]\)/)
-  assert.match(page, /held=\$\{convs\.filter\(x => x\.peer === p\.id && !x\.running && x\.turns\.at\(-1\)\?\.waiting\)\.length\}/)
+  // the page's list and the Chat's A2A list count the held answers the same way
+  assert.match(page, /held=\$\{heldOf\(convs, p\.id\)\}/)
+  assert.match(src, /const heldOf = \(convs, id\) => convs\.filter\(x => x\.peer === id && !x\.running && x\.turns\.at\(-1\)\?\.waiting\)\.length/)
 })
 
-test('history: a close offers undo at once and later; a task comes back open or as still to be done', () => {
+test('history: a close offers undo at once and later; a task comes back as it was or as still to be done', () => {
   const app = read('app.js')
   const comp = readComponents()
   assert.match(app, /if \(r\.undo\?\.length && r\.ok\) \{\s*pushNote\(\{[^}]*action: 'undo', undo: r\.undo \}/)
   // the toast restores the status the task had before the close (#384); older entries fall back to doing
   assert.match(app, /undo: async \(u, as = u\.args\?\.as \?\? 'doing'\) =>/)
   // the server's own note of the same text is often first: the undo must still reach the toast
-  assert.match(app, /const twin = note\.action && s\.toasts\.find\(t => t\.text === note\.text && !t\.action\)/)
+  // (what the twin gives is logic.js giveTwin, tested in bridge_cockpit_toast_go.test.mjs)
+  assert.match(app, /const twin = giveTwin\(s\.toasts, note\)/)
+  // the history restores that status too, never a forced doing (the clicks: bridge_cockpit_render.test.mjs)
   const buttons = comp.match(/function UndoButtons\([\s\S]*?\n\}/)[0]
-  assert.match(buttons, /c\.undo\(u, 'doing'\)/)
+  assert.doesNotMatch(buttons, /c\.undo\(u, 'doing'\)/)
+  assert.match(buttons, /c\.undo\(u\)/)
   assert.match(buttons, /c\.undo\(u, 'backlog'\)/)
   assert.match(comp, /s\.ui\.drawer === 'history' \? html`<\$\{HistoryDrawer\}/)
 })
@@ -1094,7 +1280,7 @@ test('the page bar keeps the daily tabs in front and the rest behind More, in th
     fs.writeFileSync(path.join(dir, 'web', 'package.json'), '{"type":"module"}')
     const comp = await import(pathToFileURL(path.join(dir, 'web', 'components.js')).href)
     const s = { model: { pages: [{ id: 'inbox' }, { id: 'llm', group: 'more' }, { id: 'tasks', group: 'main' }, { id: 'today', group: 'day' }] } }
-    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'inbox', 'tasks', '@sessions', '@workers', '@check', 'llm', '@settings'])
+    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@files', '@chat', 'inbox', 'tasks', '@sessions', '@workers', '@check', 'llm', '@settings'])
     assert.deepEqual([...comp.morePages(s)], ['@sessions', '@workers', '@check', 'llm', '@settings'])
     // a page of group day has no tab: its sections stand under the day list of Today
     assert.ok(!comp.pageOrder(s).includes('today'))
@@ -1121,14 +1307,14 @@ test('the chat decides per message: ask (read only) or solve it in a real Claude
   assert.match(box, /e\.metaKey \|\| e\.ctrlKey/)                                   // Cmd or Ctrl Enter takes the second way
   for (const lang of ['en', 'de']) {
     const t = text.TABLES[lang]
-    for (const k of ['chatAsk', 'chatSolve', 'chatSolveTitle', 'chatSolveHint']) assert.ok(t[k], `${lang} ${k}`)
+    for (const k of ['chatAsk', 'chatSolve', 'chatSolveTitle']) assert.ok(t[k], `${lang} ${k}`)
   }
 })
 
 test('every card and row of a page opens its details: tables, resource tiles, gauges, grouped rows', () => {
   const comp = readComponents()
   const app = read('app.js')
-  assert.match(app, /openInfo\(it, page, section\) \{/)
+  assert.match(app, /openInfo\(it, page, section(, \{ beside = false, walk = null \} = \{\})?\) \{/)
   assert.match(comp, /s\.ui\.drawer === 'info' && s\.ui\.info \? html`<\$\{InfoDrawer\}/)
   for (const name of ['InfoRow', 'ResTile', 'GaugeTile', 'GroupsView']) {
     const body = comp.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))[0]
@@ -1197,9 +1383,7 @@ test('the briefing headline counts what the Briefing tab counts, the header does
   const comp = readComponents()
   const header = comp.match(/function Header\([\s\S]*?\n\}/)[0]
   assert.doesNotMatch(header, /m\?\.headline/)
-  const ov = comp.match(/function Overview\([\s\S]*?\n\}/)[0]
-  assert.match(ov, /t\.forYouNow\(m\.briefing_badge/)
-  assert.match(ov, /m\.headline_rest/)
+  // (the middle's headline, the server's count and its rest, is a render test: "Work under an area filter")
 })
 
 test('the agent tab column stands only where work is handed to the AI: the work tab and the chat', async () => {
@@ -1217,7 +1401,17 @@ test('a slim tab card offers one next step: answer, go on, close, else go to the
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const all = () => true
   assert.deepEqual(logic.tabNextStep({ state: 'needs-you' }, all), ['yes', 'no'])
-  assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, all), ['go_on'])
+  // round 6d: a tab that neither works nor asks offers its close beside going on (or going to it at its shell)
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, all), ['go_on', 'close'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { text: 'Go on?' } }, all), ['go_on'])
+  assert.deepEqual(logic.tabNextStep({ state: 'shell' }, all), ['jump', 'close'])
+  // every waiting tab has its last words read off the screen: only a question, options or a draft ask (the quiet
+  // rule of model.py is_idle), the last words of a tab that finished ask nothing (28.10.: no close anywhere live)
+  const said = { text: 'Done, the report is filed.', options: [], yes_no: false, draft: false }
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: said }, all), ['go_on', 'close'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, yes_no: true } }, all), ['go_on'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, draft: true } }, all), ['go_on'])
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, options: [{ n: 1, label: 'Yes' }] } }, all), ['go_on'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', filed_by: 'x' }, all), ['close'])
   assert.deepEqual(logic.tabNextStep({ state: 'working' }, all), ['jump'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', is_control: true }, all), ['jump'])
@@ -1344,7 +1538,7 @@ test('a page of group work folds into the work tab, and with it the Jev tab', as
     const pages = [{ id: 'work', title: 'Work', group: 'work', jev: true }, { id: 'ops' }]
     const s = { model: { pages }, jev: { enabled: true, ready: true } }
     // no tab for the work page and none for Jev: both are views of the one work tab
-    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@chat', 'ops', '@sessions', '@workers', '@check', '@settings'])
+    assert.deepEqual(comp.pageOrder(s), ['@start', 'briefing', '@files', '@chat', 'ops', '@sessions', '@workers', '@check', '@settings'])
     // without a work page the Jev tab stays where it was
     assert.ok(comp.pageOrder({ model: { pages: [{ id: 'ops' }] }, jev: { enabled: true } }).includes('@jev'))
   } finally {
@@ -1357,6 +1551,7 @@ test('the work tab opens on what is due and switches to by source and by Jev', (
   assert.equal(logic.workPageOf([{ id: 'ops' }, work]), work)
   assert.equal(logic.workPageOf([{ id: 'ops' }]), null)
   const ready = { enabled: true, ready: true }
+  // the files are a tab of their own beside it (round 6c)
   assert.deepEqual(logic.workViews(work, ready), ['due', 'area', 'jev'])
   assert.deepEqual(logic.workViews(work, { enabled: false }), ['due', 'area'])
   assert.deepEqual(logic.workViews({ ...work, jev: false }, ready), ['due', 'area'])
@@ -1368,21 +1563,24 @@ test('the work tab opens on what is due and switches to by source and by Jev', (
   assert.equal(logic.workViewOf(undefined, work, ready), 'due')
 })
 
-test('with a work tab the day view stands on Start, the middle of Due only points there', () => {
+test('with a work tab the day stands in the middle of Due, and on Start in the bridge and tiles views', () => {
   const comp = readComponents()
   // one component holds the day: dates, status, clear and hygiene, the workplace, the pages of group day
   const day = comp.slice(comp.indexOf('function DayView('), comp.indexOf('function StatusList('))
   assert.match(day, /m\.agenda/)
   assert.match(day, /<\$\{StatusList\} rows=\$\{m\.status\}/)
   assert.match(day, /p\.group === 'day'/)
-  // Start shows it where a work page exists, as a shelf of its own, in both start page styles
+  // Start shows it where a work page exists and the shelf is chosen, as a shelf of its own, in both start page styles;
+  // the pages of group day follow the work page alone, they have no other place without Due
   const home = comp.slice(comp.indexOf('function HomePage('), comp.indexOf('function HomePage(') + 9000)
   assert.equal((home.match(/\$\{daily\}/g) ?? []).length, 2)
-  assert.match(home, /const daily = workPageOf\(s\.model\?\.pages\) \? html`<\$\{HomeShelf\} id="home-day" title=\$\{h\.dayTitle\}/)
+  assert.match(home, /const withDay = !!workPageOf\(s\.model\?\.pages\)/)
+  assert.match(home, /const daily = withDay && on\.has\('s:day'\) \? html`<\$\{HomeShelf\} id="home-day" title=\$\{h\.dayTitle\}/)
+  assert.match(home, /const diary = withDay \? html`<\$\{DayPages\}/)
   // there it looks like the other shelves: one card per block; on the stage above the project chips, which do not filter it
   const cards = day.slice(day.indexOf('if (cards)'), day.indexOf('const [agenda, status'))
   assert.match(cards, /class=\$\{`hcard day-card day-\$\{b\.id\}`\}/)
-  assert.match(home, /\$\{daily\}\s*\$\{chips\}/)
+  // (the order day, areas, chips is a render test in bridge_cockpit_render.test.mjs)
   // what happened today is long and read last: on Start a shelf of its own at the end, not one of the day cards
   assert.doesNotMatch(cards, /DayPages/)
   assert.match(day.slice(day.indexOf('const [agenda, status')), /<\$\{DayPages\} s=\$\{s\} c=\$\{c\} \/>/)
@@ -1390,13 +1588,7 @@ test('with a work tab the day view stands on Start, the middle of Due only point
   // the shelf does not repeat the title of the card on the stage
   assert.notEqual(text.TABLES.de.home.dayTitle, text.TABLES.de.overviewTitle)
   assert.ok(text.TABLES.en.home.dayTitle)
-  // the middle of Due keeps only the headline and a way to Start there; without a work page it stays whole
-  const ov = comp.slice(comp.indexOf('function Overview('), comp.indexOf('function DayView('))
-  assert.match(ov, /if \(workPageOf\(m\.pages\)\)/)
-  assert.match(ov, /c\.setPage\(START_PAGE\)/)
-  assert.match(ov, /<\$\{DayView\} s=\$\{s\} c=\$\{c\} \/>/)
-  // its words exist in both languages
-  assert.equal((read('text.js').match(/^  dayOnStart(Open)?: '/gm) ?? []).length, 4)
+  // (that the middle of Due shows the day, with or without a work page, is a render test)
 })
 
 test('the words of the Jev order exist in both languages', () => {
@@ -1479,38 +1671,6 @@ test('the tmux driver counts as a driver: no cmux banner, Start control offered,
   }
 })
 
-test('the start page: greeting by hour, project chips from tabs and rows, cards filtered by project', async () => {
-  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
-  assert.deepEqual([3, 7, 13, 19, 23].map(logic.greetingPart), ['night', 'early', 'day', 'evening', 'night'])
-  const tabs = [
-    { ref: 'c', name: 'Bridge', workspace: 'Bridge', state: 'waiting', is_control: true },
-    { ref: 'a', name: 'Metrics', workspace: 'ACME', state: 'working', since_ms: 5 },
-    { ref: 'b', name: 'Log', workspace: 'ACME', state: 'needs-you', since_ms: 9 },
-    { ref: 'd', name: 'orbit', workspace: 'ORBIT', state: 'waiting', since_ms: 1 },
-    { ref: 'e', name: 'zsh', workspace: '', state: 'shell' },
-  ]
-  const rows = [
-    { key: 'r1', area: 'Bridge', area_names: ['Bridge', 'open-bridge'] },
-    { key: 'r2', area: null, area_names: [], mark: { label: 'acme' } },
-    { key: 'r3', area: 'Privat', area_names: ['Privat'] },
-  ]
-  // most frequent first, names merged without regard to case, the control tab and empty names left out
-  assert.deepEqual(logic.homeProjects(tabs, rows), ['ACME', 'Bridge', 'ORBIT', 'Privat'])
-  assert.equal(logic.inProject(rows[1], 'ACME'), true)
-  assert.equal(logic.inProject(rows[0], 'open-bridge'), true)
-  assert.equal(logic.inProject(rows[0], 'ACME'), false)
-  assert.equal(logic.inProject(rows[0], null), true)          // no chip chosen: everything
-  // continue: no control tab, no bare shell; needs-you before waiting before working
-  assert.deepEqual(logic.homeContinue(tabs, null).map(t => t.ref), ['b', 'd', 'a'])
-  assert.deepEqual(logic.homeContinue(tabs, 'acme').map(t => t.ref), ['b', 'a'])
-  // a project name always gets the same tone, and only tokens DESIGN.md has
-  assert.equal(logic.projectTone('ACME'), logic.projectTone('acme'))
-  assert.ok(['secondary', 'accent', 'success', 'warning', 'info'].includes(logic.projectTone('ORBIT')))
-  // the tab of a task row, by its slug
-  assert.equal(logic.tabOfTask([{ ref: 'x', slug: 'foo' }], 'foo').ref, 'x')
-  assert.equal(logic.tabOfTask([{ ref: 'x', slug: 'foo' }], null), null)
-})
-
 test('the start page reckons a quota per day and where it ends at the reset', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   // a week with 19 % used after 24.5 % of it: 11.1 a day against a budget of 14.3, 77.6 at the reset
@@ -1541,13 +1701,14 @@ test('the start page offers every tile to choose, and without a choice only a le
   assert.equal(logic.tileSlug('Week, all Modelle: Ä'), 'week-all-modelle-a')
   const ids = logic.homeCatalog(model).map(x => x.id)
   assert.deepEqual(ids, ['q:quota:session-5-h', 'q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done',
-    'p:dates', 'p:work', 'p:ops', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
-    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief'])
+    'p:dates', 'p:work', 'p:ops', 's:day', 's:areas', 's:focus', 's:returns', 's:pinned', 's:continue', 's:waiting', 's:tasks', 's:starts',
+    'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:scan', 'k:brief',
+    'd:waiting', 'd:guide', 'd:tabs', 'd:day'])
   // a Bridge without a worker view offers no Workers station: it would lead to a tab that is not there
   assert.equal(logic.homeCatalog(model, { workers: false }).some(x => x.id === 'c:workers'), false)
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
   assert.deepEqual(logic.homeChosen(model, null),
-    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:focus', 's:returns', 's:pinned', 's:continue',
+    ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:day', 's:areas', 's:focus', 's:returns', 's:continue',
       's:waiting', 's:tasks', 's:starts', 'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'k:scan'])
   // a choice keeps its order, an empty one too; what the chooser had offered is never added back
   const all = ids
@@ -1645,6 +1806,26 @@ test('the return channel takes the tab state live and keeps what the server know
   assert.equal(logic.stageTone('lost'), 'danger')
 })
 
+test('a quiet tab the server calls idle shows as quiet, never as asking', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const r = { key: 'task:a', item: 'a', at_ms: 1000, stage: 'idle', tab: { ref: 'surface:1' } }
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:1', state: 'waiting' }], 2000), 'idle')
+  // the tab turned to a dialog since: it asks, whatever the server said a moment ago
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:1', state: 'needs-you' }], 2000), 'asks')
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:1', state: 'working' }], 2000), 'working')
+  // an older server without idle: a still tab asks, as before
+  assert.equal(logic.liveStage({ ...r, stage: 'working' }, [{ ref: 'surface:1', state: 'waiting' }], 2000), 'asks')
+  assert.equal(logic.stageTone('idle'), 'muted')
+  // a quiet start is one to check, not a question
+  const g = logic.aiGroups([r], [{ ref: 'surface:1', state: 'waiting' }], 2000)
+  assert.deepEqual([g.check.length, g.asks.length], [1, 0])
+  const { HOME } = await import(pathToFileURL(path.join(WEB, 'text-areas.js')).href)
+  assert.deepEqual([HOME.en.returnStage.idle, HOME.de.returnStage.idle], ['quiet', 'still'])
+  // the steps of a start light the asks step for idle and name it quiet there
+  const home = fs.readFileSync(path.join(WEB, 'views', 'home.js'), 'utf8')
+  assert.match(home.match(/function ReturnSteps\([\s\S]*?\n\}/)[0], /'idle'/)
+})
+
 test('the live feed reads what happened between two states of the page', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const row = (key, title, extra = {}) => ({ key, title, ...extra })
@@ -1669,6 +1850,45 @@ test('the live feed reads what happened between two states of the page', async (
   feed = logic.addFeed(feed, [{ kind: 'new', key: 'inbox:c', title: 'C', at: 2000 }], 50)
   assert.equal(feed.filter(e => e.kind === 'new' && e.key === 'inbox:c').length, 1)
   assert.equal(logic.addFeed([], Array.from({ length: 80 }, (_, i) => ({ kind: 'new', key: `k${i}`, title: 't', at: i })), 50).length, 50)
+})
+
+test('the live feed keeps a row that leaves and comes back, and a thing that happens again later', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const now = rows => ({ sections: [{ id: 'now', rows }] })
+  const disk = { key: 'inbox:disk', title: 'Disk' }
+  const min = 60000
+  let feed = []
+  const step = (prev, next, at) => { feed = logic.addFeed(feed, logic.feedEvents(prev, next, [], [], at), 50) }
+  step(now([]), now([disk]), 8 * 60 * min)
+  step(now([disk]), now([]), 16 * 60 * min)
+  step(now([]), now([disk]), 16 * 60 * min + 4 * min)
+  // the newest word about the row is that it is back, not that it left
+  assert.deepEqual(feed.map(e => e.kind), ['new', 'gone', 'new'])
+  // the same event twice within a few minutes still counts once
+  assert.equal(logic.addFeed(feed, [{ kind: 'new', key: 'inbox:disk', title: 'Disk', at: 16 * 60 * min + 5 * min }], 50).length, 3)
+  // a tab that asks again an hour later, and a finding that comes back, are news again
+  const ask = at => ({ kind: 'tabAsks', ref: 's1', title: 'ORBIT', at })
+  assert.equal(logic.addFeed([ask(0)], [ask(60 * min)], 50).length, 2)
+  const alarm = at => ({ kind: 'alarm', page: 'ops', title: 'Probes', at })
+  assert.equal(logic.addFeed([alarm(0)], [alarm(2 * 60 * min)], 50).length, 2)
+  // a finding of the same name on another page is another thing
+  assert.equal(logic.addFeed([alarm(0)], [{ ...alarm(min), page: 'lab' }], 50).length, 2)
+  // an answer is one event: its later step from result to done says nothing new
+  const ret = stage => ({ sections: [], returns: [{ key: 'task:x', title: 'X', stage }] })
+  assert.deepEqual(logic.feedEvents(ret('result'), ret('done'), [], [], 1).map(e => e.kind), [])
+  assert.deepEqual(logic.feedEvents(ret('working'), ret('done'), [], [], 1).map(e => e.kind), ['answer'])
+})
+
+test('the start page reads the background jobs again after each briefing pass', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  assert.equal(logic.workersDue({ collected_ms: 1 }, { collected_ms: 2 }, { status: 'ok' }), true)
+  assert.equal(logic.workersDue({ collected_ms: 2 }, { collected_ms: 2 }, { status: 'ok' }), false)
+  assert.equal(logic.workersDue(null, { collected_ms: 2 }, { status: 'ok' }), false)
+  // a Bridge without workers asks nothing, and a read under way is not started twice
+  assert.equal(logic.workersDue({ collected_ms: 1 }, { collected_ms: 2 }, { status: 'none' }), false)
+  assert.equal(logic.workersDue({ collected_ms: 1 }, { collected_ms: 2 }, { status: 'loading' }), false)
+  const app = fs.readFileSync(path.join(WEB, 'app.js'), 'utf8')
+  assert.match(app.match(/\n  view\(model\) \{[\s\S]*?\n  \},/)[0], /workersDue\([\s\S]*loadWorkers\(\)/)
 })
 
 test('the inner room lays the net out, projects it and wanders through it', async () => {
@@ -1879,14 +2099,14 @@ test('the Sessions tab and the Sessions station show the same number from sessio
   assert.ok(uses.length >= 2, `sessionCounts used ${uses.length} times, expected tab and station`)
 })
 
-test('the Workers tab marks findings like a page with findings, never as a bare number beside the station count', () => {
+test('the Workers tab marks an outage like a page with findings, never as a bare number beside the station count', () => {
   const src = readComponents()
   // the bare grey number of findings beside "Workers" read as the count of workers (5 on Start, 2 on the tab)
   assert.doesNotMatch(src, /pbadge is-quiet"><span class="mono">\$\{s\.workers\.data\.stats\.with_findings\}/)
-  assert.match(src, /tab\(WORKERS_PAGE[^\n]*\n[^\n]*workersFindings/)
+  assert.match(src, /tab\(WORKERS_PAGE[^\n]*\n[^\n]*overviewWorkers/)
 })
 
-test('demo: the coloured Today number, the waits-for-you count and the Now section agree', async () => {
+test('demo: the coloured Today number and the waits-for-you count agree, and count the asks of Now', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-count-'))
   try {
     fs.cpSync(WEB, path.join(dir, 'web'), { recursive: true })
@@ -1895,7 +2115,9 @@ test('demo: the coloured Today number, the waits-for-you count and the Now secti
     const m = mock.buildState().model
     const now = m.sections.find(x => x.id === 'now')
     assert.equal(m.briefing_badge, m.counts.now)
-    assert.equal(m.counts.now, now.total)
+    // every inbox row carries its art, and the count is the rows of Now that ask (an idea or a report does not)
+    for (const r of m.sections.flatMap(x => x.rows)) if (r.inbox_id) assert.ok(['ask', 'report', 'idea'].includes(r.art), r.key)
+    assert.equal(m.counts.now, now.rows.filter(r => !r.inbox_id || r.art === 'ask').length)
     for (const id of ['give', 'work', 'later']) assert.equal(m.counts[id], m.sections.find(x => x.id === id).total, id)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
@@ -1925,7 +2147,7 @@ test('start: one block beside the bridge, Today is a station of the ring that br
   assert.match(src, /const spots = stageSpots\(ring\.length\)/)
   // the station Today clears the selection, the block shows Today when nothing is looked at
   assert.match(src, /st\.id === '@today' \? setSel\(null\)/)
-  assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} onWeigh=\$\{\(\) => runMode\('k:brief'\)\} \/>`\}\n      <\/div>\n    <\/div>/)
+  assert.match(src, /: html`<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} project=\$\{project\} onWeigh=\$\{\(\) => runMode\('k:brief'\)\} \/>`\}\n      <\/div>\n    <\/div>/)
   assert.doesNotMatch(read('style.css'), /stage-today|has-today/)
 })
 
@@ -1956,7 +2178,7 @@ test('start: the row under the bridge runs now, no focus span, speech sits in th
   const card = src.match(/function StageCard\([\s\S]*?\n\}/)[0]
   assert.match(card, /onWeigh/)
   assert.match(card, /h\.weighDay/)
-  assert.match(stage, /<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} onWeigh=/)
+  assert.match(stage, /<\$\{StageCard\} s=\$\{s\} c=\$\{c\} tabs=\$\{tabs\} project=\$\{project\} onWeigh=/)
   assert.doesNotMatch(src + css + read('app.js'), /focusUntil|clockLeft|c\.setFocus\(|setFocus\(until|in-focus|is-clock|core-mode-pin/)
   assert.equal(logic.clockLeft, undefined)
   const prompt = src.match(/function StagePrompt\([\s\S]*?\n\}/)[0]
@@ -2005,7 +2227,31 @@ test('a tab whose start is settled (its item closed, its task done) offers to cl
   assert.deepEqual(logic.tabNextStep({ state: 'waiting' }, k => k !== 'close', true), ['go_on'])
 })
 
-test('the starts handed to the AI fall into: done and to check, needs you, working, no word', async () => {
+test('a tab closes only while it neither works nor asks, never the control tab, and says what stands behind it', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const s = { driver: { caps: ['close'] }, tabs: { tabs: [] }, model: { returns: [] }, now: 1 }
+  const offer = tab => logic.tabCloseOffer({ ref: 'surface:1', ...tab }, s)
+  for (const state of ['working', 'needs-you']) assert.equal(offer({ state }), null, state)
+  assert.equal(offer({ state: 'waiting', ask: { text: 'Shall I?' } }), null)
+  assert.equal(offer({ state: 'waiting', is_control: true }), null)
+  assert.equal(logic.tabCloseOffer({ ref: 'surface:1', state: 'waiting' }, { ...s, driver: { caps: ['focus'] } }), null)
+  // nothing behind it and nothing came back from it: only Close tab, at once (round 6d fix: unseen means a result
+  // came back that nobody looked at, not merely that nothing is settled)
+  assert.deepEqual(offer({ state: 'waiting' }), { done: false, unseen: false, keys: [] })
+  const back = { ...s, model: { returns: [{ key: 'inbox:x', item: 'x', stage: 'result', tab: { ref: 'surface:1' }, result: { text: 'Done.' }, at_ms: 0 }] } }
+  assert.equal(logic.tabCloseOffer({ ref: 'surface:1', state: 'waiting' }, back).unseen, true)
+  assert.equal(offer({ state: 'waiting', filed_by: 'ref:issue-1' }).unseen, true)
+  assert.deepEqual(offer({ state: 'shell', settled: 'item' }), { done: false, unseen: false, keys: [] })
+  // what the server says stands behind it, never a guess from its name
+  assert.deepEqual(offer({ state: 'waiting', name: 'inbox-some-item', behind: { task: 'a-task', item: '20261028-0736-x-a1b2' } }),
+    { done: true, unseen: false, keys: ['task:a-task', 'inbox:20261028-0736-x-a1b2'] })
+  assert.deepEqual(offer({ state: 'waiting', name: 'a-task' }).keys, [])
+  // a start of it that settled counts as seen
+  const settled = { ...s, tabs: { tabs: [{ ref: 'surface:1', state: 'waiting' }] }, model: { returns: [{ key: 'inbox:x', item: 'x', stage: 'done', tab: { ref: 'surface:1' }, at_ms: 0 }] } }
+  assert.equal(logic.tabCloseOffer({ ref: 'surface:1', state: 'waiting' }, settled).unseen, false)
+})
+
+test('the starts handed to the AI fall into: to check, done, needs you, working, no word', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const now = 10 * 60000
   const returns = [
@@ -2022,13 +2268,15 @@ test('the starts handed to the AI fall into: done and to check, needs you, worki
     { ref: 'surface:4', state: 'working' },
   ]
   const g = logic.aiGroups(returns, tabs, now)
-  assert.deepEqual(g.check.map(r => r.key), ['inbox:a', 'inbox:b'])
+  // a settled start has nothing left to check: it is done, an answer is the one to check
+  assert.deepEqual(g.check.map(r => r.key), ['inbox:b'])
+  assert.deepEqual(g.done.map(r => r.key), ['inbox:a'])
   assert.deepEqual(g.asks.map(r => r.key), ['task:c'])
   assert.deepEqual(g.working.map(r => r.key), ['task:d', 'task:e'])
   assert.deepEqual(g.lost.map(r => r.key), ['task:f'])
   // the tab of a settled start is the one to close; a result that is not closed yet is not
   assert.deepEqual([...logic.settledRefs(returns, tabs, now)], ['surface:1'])
-  // what waits on you there: the checks whose tab is still open, plus the questions
+  // what waits on you there: the checks and the settled starts whose tab is still open, plus the questions
   assert.equal(logic.aiWaiting(returns, tabs, now), 2)
   assert.equal(logic.aiWaiting([], [], now), 0)
   // a tab settled on its own (its item or task closed, no start of the cockpit) counts once as well
@@ -2043,7 +2291,7 @@ test('the sessions page leads with what the AI did, grouped by what it wants of 
   assert.match(page, /<\$\{AiReturns\}/)
   const ai = src.match(/function AiReturns\([\s\S]*?\n\}/)[0]
   assert.match(ai, /aiGroups\(/)
-  for (const g of ['check', 'asks', 'working', 'lost']) assert.match(ai, new RegExp(`'${g}'`))
+  for (const g of ['check', 'done', 'asks', 'working', 'lost']) assert.match(ai, new RegExp(`'${g}'`))
   // a tab settled on its own (no start of the cockpit names it) stands under done as well
   assert.match(ai, /settled && /)
   assert.match(ai, /<\$\{TabCard\}/)
@@ -2093,7 +2341,8 @@ test('launch: start args stay exactly as before while off; on, the choice goes a
     for (const verb of logic.START_VERBS) assert.equal(logic.withLaunch(verb, args, launch, { launchModel: 'opus' }, {}), args, verb)
   }
   assert.equal(logic.withLaunch('drop', { key: 'task:a' }, LAUNCH, {}, {}).model, undefined)
-  assert.deepEqual(logic.START_VERBS, ['do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff'])
+  assert.deepEqual(logic.START_VERBS, ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff',
+    'return_analyse'])
   // Auto without a recommendation: the server decides
   assert.deepEqual(logic.withLaunch('do_it', args, LAUNCH, {}, {}), { ...args, model: 'auto', effort: 'auto' })
   // Auto with one cached: its concrete model and effort, so the server need not route again
@@ -2114,7 +2363,7 @@ test('launch: start args stay exactly as before while off; on, the choice goes a
   // Auto read only (manual off) still sends Auto
   assert.deepEqual(logic.withLaunch('do_it', args, { ...LAUNCH, manual: false, effort: false }, { launchModel: 'opus' }, {}), { ...args, model: 'auto' })
   // the controller sends every action through withLaunch, with the routes it cached
-  const act = read('app.js').match(/async function act\(verb, args = \{\}\) \{[\s\S]*?\n\}/)[0]
+  const act = read('app.js').match(/async function act\(verb, args = \{\}, opts = \{\}\) \{[\s\S]*?\n\}/)[0]
   assert.match(act, /api\.action\(verb, withLaunch\(verb, p\.args, st\.launch, st\.ui, st\.launchRoutes\)\)/)
 })
 
@@ -2148,7 +2397,7 @@ test('launch: the route cache fetches once per key and again when the title chan
 test('launch: the picker stands in every start block and only there through one shared component', () => {
   const comp = readComponents()
   const pick = read('views/launch.js')
-  assert.match(pick, /export function LaunchPick\(\{ s, c, items = \[\] \}\)/)
+  assert.match(pick, /export function LaunchPick\(\{ s, c, items = \[\], label = null \}\)/)
   assert.match(pick, /const opts = launchOptions\(s\.launch\)/)
   assert.match(pick, /if \(!opts\) return null/)
   // one central choice, kept in this browser
@@ -2207,8 +2456,8 @@ test('settings: a page of its own behind More, always there, with the launch gro
   }
   const page = read('views/settings.js')
   assert.match(page, /export function SettingsPage\(\{ s, c \}\)/)
-  assert.match(page, /const SECTIONS = \['start', 'look', 'launch', 'ticker', 'guide', 'boards'\]/)          // the areas; a later one joins the list
-  assert.match(page, /const AREAS = \{ start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings \}/)
+  assert.match(page, /const SECTIONS = \['setup', 'start', 'look', 'workspaces', 'launch', 'ticker', 'guide', 'boards'\]/)          // the areas; a later one joins the list
+  assert.match(page, /const AREAS = \{ setup: SetupArea, start: StartArea, look: LookArea, workspaces: WorkspaceSettings, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings \}/)
   // the ticker's group draws with the page's own parts, no copies of them
   for (const part of ['Switch', 'Card', 'Row']) assert.match(page, new RegExp(`^export function ${part}\\(`, 'm'), part)
   const tickerView = read('views/ticker.js')
@@ -2361,6 +2610,26 @@ test('ticker: a quiet store says nothing; the kinds are the seven of the contrac
   assert.deepEqual(logic.tickerStatus(quietStore(), NOW, logic.TICKER_KINDS), [])
 })
 
+test('ticker: without Due the sources, the pass, the load and the triage lead to the day status on Start (round 6 B)', () => {
+  const off = over => quietStore({ work: { flow: { enabled: true }, views: ['files', 'flow'] }, ...over })
+  const model = extra => ({ ...quietStore().model, ...extra })
+  const start = { kind: 'page', id: '@start', at: '.day-status' }
+  for (const [s, key] of [
+    [off({ model: model({ status: [{ title: 'Mail', state: 'error', reason: 'token expired' }] }) }), 'sourceFailed'],
+    [off({ model: model({ status: [{ title: 'Mail', state: 'error', reason: 'took longer than the time limit' }] }) }), 'sourceSlow'],
+    [off({ model: model({ status: [{ title: 'Mail', status: 'skipped', reason: 'no such command' }] }) }), 'sourceCannotRun'],
+    [off({ loading: { pass: null, last_error: { message: 'boom' } } }), 'loadFailed'],
+    [off({ ticker: { ...quietStore().ticker, perf: { passes: [{ took_ms: 70000 }], outliers: [] } } }), 'passSlow'],
+    [off({ triage: { running: true, error: null } }), 'triageRuns'],
+    [off({ triage: { running: null, error: 'boom' } }), 'triageFailed'],
+  ]) assert.deepEqual(statusOf(s, key)[0]?.target, start, key)
+  // what waits on you still opens the work tab, and with Due on offer the status keeps it too
+  assert.deepEqual(statusOf(off({ model: model({ counts: { now: 2 } }) }), 'waitsForYou')[0].target, { kind: 'page', id: 'briefing' })
+  assert.deepEqual(statusOf(quietStore({ triage: { running: null, error: 'boom' } }), 'triageFailed')[0].target, { kind: 'page', id: 'briefing' })
+  // the way there opens the page, then brings the part it names into view
+  assert.match(read('views/home.js'), /case 'page': \{[\s\S]*?target\.at[\s\S]*?scrollIntoView/)
+})
+
 test('ticker: each status rule names its kind, tone and where a click leads', () => {
   const mk = over => quietStore(over)
   const model = extra => ({ ...quietStore().model, ...extra })
@@ -2441,6 +2710,12 @@ test('ticker: each status rule names its kind, tone and where a click leads', ()
   check(mk({ triage: { running: null, error: 'boom' } }), 'triageFailed', 'failing', 'bad')
   // 19 and 20 the agents
   check(mk({ agents: { peers: [{ id: 'peer-a', name: 'Peer A', reach: 'unreachable' }], convs: [] } }), 'peerDown', 'offline', 'warn', { kind: 'page', id: '@agents' })
+  // the target stays @agents in either layout: it is a known page wherever a peer is, and the controller's
+  // setPage opens the Chat's A2A area for it in the workspaces layout
+  for (const rooms of [null, { layout: 'workspaces' }]) {
+    const down = mk({ rooms, agents: { peers: [{ id: 'peer-a', reach: 'unreachable' }], convs: [] } })
+    assert.equal(logic.tickerPage(down, '@agents', []), '@agents')
+  }
   assert.equal(statusOf(mk({ agents: { peers: [{ id: 'peer-a', reach: 'ok' }], convs: [] } }), 'peerDown').length, 0)
   check(mk({ agents: { peers: [], convs: [{ id: 'c1', peer: 'peer-a', running: true, started_ms: NOW - 200000, turns: [{ q: 'x', at_ms: NOW - 200000 }] }] } }),
     'convSlow', 'slow', 'warn', { kind: 'conv', id: 'c1' })
@@ -2451,6 +2726,9 @@ test('ticker: each status rule names its kind, tone and where a click leads', ()
   check(runs([{ id: 'j', title: 'j', state: 'absent', strip: [] }]), 'jobFailed', 'failing', 'bad', { kind: 'workers' })
   check(runs([{ id: 'j', title: 'j', state: 'in_sync', strip: [{ verdict: 'ok' }, { verdict: 'failed' }] }]), 'jobFailed', 'failing', 'bad')
   check(runs([{ id: 'j', title: 'j', state: 'drifted', strip: [] }]), 'jobWarn', 'failing', 'warn')
+  // an outage the engine files high is news in red; upkeep it files medium is no news at all
+  check(runs([{ id: 'j', title: 'j', state: 'stopped', severity: 'high', strip: [] }]), 'jobFailed', 'failing', 'bad')
+  assert.equal(statusOf(runs([{ id: 'j', title: 'j', state: 'drifted', severity: 'medium', strip: [] }]), 'jobWarn').length, 0)
   assert.equal(statusOf(runs([{ id: 'j', title: 'j', state: 'in_sync', strip: [{ verdict: 'ok' }] }]), 'jobFailed').length, 0)
   // 22 machines, clouds and LLM sources that are down
   const items = list => mk({ model: model({ pages: [{ id: 'sys', sections: [{ id: 'res', items: list }] }] }) })
@@ -2470,6 +2748,16 @@ test('ticker: each status rule names its kind, tone and where a click leads', ()
     { text: 'nomark', tone: 'warn' }, { text: 'new', tone: 'warn', ms: NOW - 14 * 60000 }] }), 'note')
   assert.deepEqual(aged.map(n => n.vars[0]), ['new'])
   assert.equal(notes[0].cat, 'notes'); assert.equal(notes[2].tone, 'bad'); assert.equal(notes[0].target, null)
+  // a note about a tab the status already names (it waits, it is long in one state) says it once, through the tab
+  const tabNote = { text: 'Tab „ORBIT“ waits', tone: 'warn', ms: fresh, go: { kind: 'tab', ref: 's1' } }
+  const twice = mk({ tabs: { tabs: [{ ref: 's1', name: 'ORBIT', state: 'needs-you', waiting: true }], error: null }, notes: [tabNote] })
+  assert.deepEqual(logic.tickerStatus(twice, NOW, logic.TICKER_KINDS).filter(x => x.key === 'tabWaits' || x.key === 'note').map(x => x.key), ['tabWaits'])
+  const other = mk({ tabs: { tabs: [{ ref: 's2', name: 'Other', state: 'needs-you', waiting: true }], error: null }, notes: [tabNote] })
+  assert.equal(statusOf(other, 'note').length, 1)
+  // a tab that only works does not stand in for its warning, nor does a waiting tab whose kind is switched off
+  const works = mk({ tabs: { tabs: [{ ref: 's1', name: 'ORBIT', state: 'working' }], error: null }, notes: [tabNote] })
+  assert.equal(statusOf(works, 'note').length, 1)
+  assert.deepEqual(logic.tickerStatus(twice, NOW, ['notes']).map(x => x.key), ['note'])
   // the kinds filter leaves out whole categories
   const loud = mk({ conn: 'down', model: model({ counts: { now: 2 } }) })
   assert.deepEqual(logic.tickerStatus(loud, NOW, ['offline']).map(x => x.key), ['connDown'])
@@ -2493,8 +2781,9 @@ test('ticker: a page target opens pages the controller routes itself, Today only
   assert.equal(logic.tickerPage(s, '@sessions', order), '@sessions')
   assert.equal(logic.tickerPage(s, 'gone', order), 'briefing')
   assert.equal(logic.tickerPage({ model: null }, 'gone', []), 'briefing')
-  const tk = read('views/ticker.js')
-  assert.match(tk, /case 'page': return c\.setPage\(tickerPage\(s, target\.id, pageOrder\(s\)\)\)/)
+  // the band leads through goTo, which toasts and notes share (views/home.js)
+  const tk = read('views/home.js')
+  assert.match(tk, /case 'page': \{\s*const done = c\.setPage\(tickerPage\(s, target\.id, pageOrder\(s\)\)\)/)
   assert.match(tk, /case 'item': return c\.openItem\(target\.key, null\)/)
 })
 
@@ -2663,9 +2952,8 @@ test('ticker: wired into both start page layouts, the store, the events; links o
   assert.match(stage, /import \{ TickerBand, TickerStatusList \} from '\.\/ticker\.js'/)
   const term = stage.slice(stage.indexOf('<div class="stage-term">'), stage.indexOf('<div class="stage-body">'))
   assert.ok(term.length > 0, 'stage-term stands before stage-body')
-  assert.match(term, /<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>/)
   assert.match(term, /<div class="stage-greet">[\s\S]*?<\$\{StagePrompt\}/)
-  assert.match(term, /<div class="stage-tools">/)
+  assert.doesNotMatch(stage, /stage-tools|openSettings\('start'\)/)
   assert.doesNotMatch(stage.slice(stage.indexOf('<div class="stage-body">')), /TickerBand/)
   // the status stands still in the live section of the side card, above the live feed
   assert.match(stage, /<div class="feed">\n\s+<h3 class="label-caps feed-head">[^\n]*<\/h3>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{\(s\.feed/)
@@ -2677,8 +2965,8 @@ test('ticker: wired into both start page layouts, the store, the events; links o
     assert.ok(q.length < text.TABLES[lang].home.liveEmpty.length / 2, lang)
     assert.doesNotMatch(q, /^(Quiet|Ruhig)/, lang)
   }
-  // the tiles view: the news under the greeting, the status under the news
-  assert.match(home, /<\/header>\n\s+<\$\{TickerBand\} s=\$\{s\} c=\$\{c\} only="news" \/>\n\s+<\$\{TickerStatusList\} s=\$\{s\} c=\$\{c\} \/>\n\s+\$\{chips\}/)
+  // the tiles view: the news under the greeting only when switched on for the start page, the status under it
+  // (where the news band shows on the start page, and only when switched on there, is a render test)
   assert.doesNotMatch(home, /home bridge-home`\}>\n\s+<\$\{TickerBand\}/)
   const tk = read('views/ticker.js')
   assert.match(tk, /export function TickerBand\(\{ s, c, only \}\)/)
@@ -2718,7 +3006,9 @@ test('ticker: wired into both start page layouts, the store, the events; links o
     const t = text.TABLES[lang].ticker
     for (const k of ['label', 'edit', 'editing', 'refresh', 'refreshing', 'fresh', 'newsLabel', 'statusLabel', 'less']) assert.ok(t[k], `${lang} ${k}`)
     assert.match(t.more(3), /3/)
-    assert.match(t.settings.explain.enabled, lang === 'de' ? /Begrüßung/ : /greeting/)
+    // the band is off the start page unless switched on there, as one line under the head (kept per browser)
+    assert.match(t.settings.explain.onStart, lang === 'de' ? /Startseite/ : /start page/)
+    assert.ok(t.settings.label.onStart, lang)
     for (const k of logic.TICKER_KINDS) assert.ok(t.settings.kind[k], `${lang} kind ${k}`)
     for (const k of ['enabled', 'speed', 'max_items', 'per_feed', 'refresh_minutes', 'feeds', 'status', 'kinds', 'interests', 'max_picks', 'shorten']) {
       assert.ok(t.settings.label[k], `${lang} label ${k}`); assert.ok(t.settings.explain[k], `${lang} explain ${k}`)
@@ -2776,7 +3066,9 @@ test('ticker: the demo saves and resets its settings, refreshes and edits with i
 
 // Every route the server answers, read from its source: what the page may ask, the mock answers too.
 // /api/events is the event stream (the transport's events()), /api/health is for scripts, never the page.
-const MOCK_ROUTE_ALLOW = new Set(['GET /api/events', 'GET /api/health'])
+// /api/flow/doc streams a document's bytes into a tab of its own: the page never fetches it, it links it (api.docHref,
+// in the demo a Blob of invented text through transport.href).
+const MOCK_ROUTE_ALLOW = new Set(['GET /api/events', 'GET /api/health', 'GET /api/flow/doc'])
 
 // Reads the routes out of the handler source. A route the class misses would be skipped in silence,
 // so every `path == "/api/` and every jev route literal must come out as a route, or the reader throws.
@@ -2829,13 +3121,14 @@ test('mock parity: every server route has a well-formed mock answer, unless it i
     const inbox = st.model.sections.flatMap(s => s.rows).find(r => r.inbox_id)
     const query = {
       '/api/page': `page=${page.id}&section=${page.sections[0].id}`, '/api/tab/screen': `ref=${encodeURIComponent(st.tabs.tabs[0].ref)}`,
-      '/api/task': 'slug=demo-task', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
-      '/api/graph/node': `id=${encodeURIComponent(node)}`,
+      '/api/task': 'slug=demo-task', '/api/find': 'q=demo', '/api/timeline': 'q=demo', '/api/inbox': `id=${inbox.inbox_id}`, '/api/github': `ref=${encodeURIComponent('example/repo#12')}`,
+      '/api/graph/node': `id=${encodeURIComponent(node)}`, '/api/flow/activity': 'key=task:demo-task',
     }
     const body = {
       '/api/action': { verb: 'snapshot_list', args: {} }, '/api/ask': { kind: 'free', args: { text: 'hi' }, via: 'quick' },
       '/api/route': { keys: ['task:demo-task'] }, '/api/reload': {}, '/api/triage/run': { fresh: false },
       '/api/jev/run': {}, '/api/jev/rank': { page: jevPage?.id ?? '', force: true },
+      '/api/flow/attach': { key: 'task:demo-task', name: 'notes.txt', data: 'aGk=' },
     }
     for (const route of routes) {
       if (MOCK_ROUTE_ALLOW.has(route)) continue
@@ -2897,17 +3190,18 @@ test('ticker names a token source as the usage page does, not by its raw id', ()
   assert.doesNotMatch(logic.tickerText({ key: 'outlier', vars: ['subagent', 2] }, text.TABLES.de), /von subagent/)
 })
 
-test('settings: Customise opens a drawer beside the start page, every choice there is explained', () => {
-  assert.match(read('components.js'), /s\.ui\.drawer === 'customize' \? html`<\$\{CustomizeDrawer\}/)
-  assert.match(read('views/stage.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
-  assert.match(read('views/home.js'), /onClick=\$\{\(\) => c\.setDrawer\('customize'\)\}/)
-  assert.doesNotMatch(read('views/home.js'), /HomeChooser/)
-  assert.match(read('app.js'), /openSettings\(id\) \{/)
-  const ids = logic.homeCatalog({ pages: [] }).filter(x => ['shelf', 'option', 'core'].includes(x.kind)).map(x => x.id)
+test('a page of group day opens where its sections stand: Due when the work tab offers it, else the start page', () => {
+  assert.equal(logic.dayPagesOnWork(['due', 'flow']), true)
+  assert.equal(logic.dayPagesOnWork(['flow']), false)
+  assert.equal(logic.dayPagesOnWork([]), false)
+})
+
+test('settings: every choice of the start page is explained in both languages', () => {
+  const ids = logic.homeCatalog({ pages: [] }).filter(x => ['shelf', 'option', 'core', 'desk'].includes(x.kind)).map(x => x.id)
   for (const lang of ['en', 'de']) {
     const w = text.TABLES[lang].settings
     for (const id of ['start', 'look', 'launch']) assert.ok(w.section[id].title && w.section[id].sub, `${lang} ${id}`)
-    for (const id of ids.filter(x => !['o:classic', 'o:list', 'o:focusview'].includes(x))) assert.ok(w.explainOption[id], `${lang} ${id}`)
+    for (const id of ids.filter(x => !['o:stage', 'o:classic', 'o:list', 'o:focusview'].includes(x))) assert.ok(w.explainOption[id], `${lang} ${id}`)
     for (const k of ['quota', 'count', 'page']) assert.ok(w.kind[k], `${lang} ${k}`)
   }
 })
@@ -2984,6 +3278,128 @@ test('github rows: the board priority shows as a chip and sorts P1 before P2 bef
   assert.match(gh, /<\$\{PrioChip\} priority=\$\{g\.priority\} \/>/)
   assert.match(gh, /ghSortRows\(/)
   for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].gh.sort.priority, lang)
+})
+
+test('github rows: Oldest first puts the row opened longest ago on top, to work through and close old ones', () => {
+  const row = (n, created, changed) => ({ index: n, gh: { state: 'ready', created, changed } })
+  const rows = [row(1, '2026-05-01T08:00', '2026-10-01T08:00'), row(2, null, '2026-10-02T08:00'),
+    row(3, '2025-12-01T08:00', '2026-10-03T08:00'), row(4, '2026-05-01T08:00', '2026-10-04T08:00'),
+    row(5, '2026-08-01T08:00', null)]
+  // opened longest ago first; opened the same day: the one quiet the longest first; a row that does not say last
+  assert.deepEqual(logic.ghSortRows(rows, 'oldest').map(r => r.index), [3, 1, 4, 5, 2])
+  // the other orders do not look at it
+  assert.deepEqual(logic.ghSortRows(rows, 'recent').map(r => r.index), [4, 3, 2, 1, 5])
+  const gh = read('views/github.js')
+  assert.match(gh, /\['state', 'priority', 'recent', 'oldest'\] : \['state', 'recent', 'oldest'\]/)
+  // the row names when it was opened beside when it last changed
+  assert.match(gh, /t\.gh\.openedAgo\(ago\(g\.created\)\)/)
+  assert.match(gh, /t\.gh\.changedAgo\(ago\(g\.changed\)\)/)
+  // the order picked is kept per viewer, as the folded boards are, and one no longer offered falls back
+  assert.match(gh, /const SORT_KEY = 'cockpit\.github\.sort'/)
+  assert.match(gh, /sorts\.includes\(by\) \? by : 'state'/)
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang].gh
+    assert.ok(t.sort.oldest, lang)
+    assert.ok(t.openedAgo('x').includes('x') && t.changedAgo('x').includes('x'), lang)
+  }
+  assert.equal(text.TABLES.de.gh.sort.oldest, 'Älteste zuerst')
+})
+
+// ---------------------------------------------------------------- the GitHub page's filter bar (round 6c)
+
+/** Rows in the shape the server sends (model.parse_gh): two boards, a row the search alone found, a draft card */
+function ghRows() {
+  const row = (index, gh, flags = []) => ({ index, flags, gh: { type: 'issue', people: [], labels: [], also_on: [], ...gh } })
+  return [
+    row(1, { repo: 'example/app', board: 'Demo board', status: 'In Progress', people: ['demo-user'], author: 'teammate' }, ['mine']),
+    row(2, { repo: 'example/app', board: 'Demo board', status: 'Todo', people: ['teammate'], author: 'demo-user', by_me: true }),
+    row(3, { repo: 'example/tools', board: 'Docs board', status: 'Todo', people: [], type: 'pr', also_on: ['Demo board'] }),
+    row(4, { repo: 'example/tools', board: null, status: 'open', people: ['other-dev'], type: 'pr', author: 'other-dev' }, ['ask_review']),
+    row(5, { repo: null, board: 'Docs board', status: 'Todo', people: [], type: 'draft' }),
+  ]
+}
+
+test('github filter bar: each row has its values per dimension, you as Me, nobody and no board as their own value', () => {
+  const rows = ghRows()
+  const me = logic.ghMyLogin(rows)
+  assert.equal(me, 'demo-user', 'the author of a row you opened')
+  assert.equal(logic.ghMyLogin([rows[0]]), 'demo-user', 'else the only assignee of a row assigned to you')
+  assert.equal(logic.ghMyLogin([rows[2]]), null)
+  const v = (i, d) => logic.ghValues(rows[i], d, me)
+  assert.deepEqual(logic.GH_DIMS, ['board', 'assignee', 'author', 'repo', 'type', 'status'], 'Person is split in two (round 6d)')
+  // Assigned to: you as Me, your own login not twice, nobody as its own value; Opened by: you as Me, the author
+  assert.deepEqual(v(0, 'assignee'), [logic.GH_ME], 'assigned to you')
+  assert.deepEqual(v(0, 'author'), ['teammate'], 'opened by a teammate')
+  assert.deepEqual(v(1, 'assignee'), ['teammate'])
+  assert.deepEqual(v(1, 'author'), [logic.GH_ME], 'you opened it')
+  assert.deepEqual(v(2, 'assignee'), [logic.GH_NONE], 'nobody assigned')
+  assert.deepEqual(v(2, 'author'), [], 'no author known: no value, never nobody')
+  assert.deepEqual(logic.ghValues({ flags: ['my_pr'], gh: { type: 'pr', people: [], author: 'someone' } }, 'author'), [logic.GH_ME],
+    'a pull request of yours, your login unknown')
+  assert.deepEqual(logic.ghValues({ flags: ['mine'], gh: { people: [] } }, 'assignee'), [logic.GH_ME], 'yours even when the people are missing')
+  assert.deepEqual(v(2, 'board'), ['Docs board', 'Demo board'], 'a card on two boards stands on both')
+  assert.deepEqual(v(3, 'board'), [logic.GH_NONE])
+  assert.deepEqual(v(3, 'status'), [], 'a row on no board has no board column')
+  assert.deepEqual(v(4, 'repo'), [], 'a draft card has no repository')
+  assert.deepEqual(v(3, 'type'), ['pr'])
+  // an older server sends no board: the group stands in for it unless it is the repository
+  assert.deepEqual(logic.ghValues({ group: 'Demo board', gh: { repo: 'example/app', status: 'Todo' } }, 'board'), ['Demo board'])
+  assert.deepEqual(logic.ghValues({ group: 'example/app', gh: { repo: 'example/app', status: 'open' } }, 'board'), [logic.GH_NONE])
+})
+
+test('github filter bar: the choices combine, a figure filters too, and each option counts beside the other choices', () => {
+  const rows = ghRows()
+  const me = logic.ghMyLogin(rows)
+  const shown = f => rows.filter(it => logic.ghPasses(it, f, me)).map(it => it.index)
+  assert.deepEqual(shown(null), [1, 2, 3, 4, 5])
+  assert.deepEqual(shown({ board: 'Demo board' }), [1, 2, 3])
+  assert.deepEqual(shown({ board: 'Demo board', type: 'pr' }), [3])
+  assert.deepEqual(shown({ assignee: logic.GH_ME }), [1])
+  assert.deepEqual(shown({ author: logic.GH_ME }), [2])
+  assert.deepEqual(shown({ assignee: logic.GH_NONE }), [3, 5])
+  assert.deepEqual(shown({ assignee: 'teammate' }), [2], 'everything assigned to one person')
+  assert.deepEqual(shown({ author: 'teammate' }), [1])
+  assert.deepEqual(shown({ assignee: 'teammate', author: logic.GH_ME }), [2], 'the two combine')
+  assert.deepEqual(shown({ assignee: 'teammate', author: 'teammate' }), [])
+  assert.deepEqual(shown({ board: logic.GH_NONE }), [4])
+  assert.deepEqual(shown({ status: 'Todo', repo: 'example/tools' }), [3])
+  assert.deepEqual(shown({ flag: 'ask_review' }), [4])
+  assert.deepEqual(shown({ flag: 'open', board: 'Docs board' }), [3, 5], 'the figure open is every row')
+  assert.equal(logic.ghFiltered(null), false)
+  assert.equal(logic.ghFiltered({ board: null, assignee: null, author: null }), false)
+  assert.equal(logic.ghFiltered({ author: 'teammate' }), true)
+  assert.equal(logic.ghFiltered({ type: 'pr' }), true)
+  const facets = logic.ghFacets(rows, { type: 'issue' }, me, { board: ['Docs board', 'Demo board'] })
+  // the boards in the registry's order, no board last; the counts as if Board were open, beside Kind issue
+  assert.deepEqual(facets.board.map(o => [o.value, o.n]), [['Demo board', 2]])
+  // Me first, nobody last, the others by count
+  assert.deepEqual(logic.ghFacets(rows, null, me).assignee.map(o => [o.value, o.n]),
+    [[logic.GH_ME, 1], ['other-dev', 1], ['teammate', 1], [logic.GH_NONE, 2]])
+  assert.deepEqual(logic.ghFacets(rows, null, me).author.map(o => [o.value, o.n]),
+    [[logic.GH_ME, 1], ['other-dev', 1], ['teammate', 1]], 'no nobody among the authors')
+  // each counts beside the other: opened by you, then who of those is assigned
+  assert.deepEqual(logic.ghFacets(rows, { author: logic.GH_ME }, me).assignee.map(o => [o.value, o.n]), [['teammate', 1]])
+  assert.deepEqual(logic.ghFacets(rows, null, me, { board: ['Docs board', 'Demo board'] }).board.map(o => o.value),
+    ['Docs board', 'Demo board', logic.GH_NONE])
+  // a value chosen earlier that no row has any more stays listed with 0, so the choice can be seen and taken back
+  assert.deepEqual(logic.ghFacets(rows, { repo: 'example/gone' }, me).repo.find(o => o.value === 'example/gone'), { value: 'example/gone', n: 0 })
+})
+
+test('github filter bar: the kept choice is read back clean, per section, a broken one is no choice', () => {
+  assert.deepEqual(logic.ghFilterKept({ 'github/boards': { board: 'Demo board', person: 5, flag: 'quiet', evil: 'x' }, bad: 'x', '': {} }),
+    { 'github/boards': { board: 'Demo board', flag: 'quiet' } })
+  assert.deepEqual(logic.ghFilterKept(null), {})
+  assert.deepEqual(logic.ghFilterKept({ 'a/b': {} }), {}, 'nothing chosen is not kept')
+  // a Person kept before round 6d becomes Assigned to (Me, a login, nobody: the same rows assigned); a broken one goes
+  assert.deepEqual(logic.ghFilterKept({ 'a/b': { person: 'teammate', board: 'Demo board' }, 'c/d': { person: logic.GH_ME },
+    'e/f': { person: logic.GH_NONE }, 'g/h': { person: 7 }, 'i/j': { person: 'teammate', assignee: 'other-dev' } }),
+  { 'a/b': { board: 'Demo board', assignee: 'teammate' }, 'c/d': { assignee: logic.GH_ME }, 'e/f': { assignee: logic.GH_NONE },
+    'i/j': { assignee: 'other-dev' } })
+  assert.deepEqual(logic.ghFilterKept({ 'a/b': { author: 'teammate', assignee: logic.GH_NONE } }), { 'a/b': { assignee: logic.GH_NONE, author: 'teammate' } })
+  const app = read('app.js')
+  assert.match(app, /ghFilter: loadGhFilter\(\)/)
+  assert.match(app, /save\('bridge-cockpit\.ghFilter', /)
+  assert.match(app, /save\('bridge-cockpit\.ghGroup', /)
 })
 
 // ---------------------------------------------------------------- the chat as cmux: roomsOf
@@ -3187,9 +3603,10 @@ test('header and rooms take counts only from sessionCounts or agentLoad', () => 
 
 test('rooms: every quick chat in the sidebar can be removed, by a button beside the row, never inside it', () => {
   const rooms = read('views/rooms.js')
-  assert.match(rooms, /class="room-chat-row"/)
+  assert.match(rooms, /class=\$\{`room-chat-row/)
   assert.match(rooms, /class="room-x"[^`]*onClick=\$\{\(\) => c\.quickForget\(x\.id\)\}/)
-  assert.match(rooms, /x\.running \? null : html`<button type="button" class="room-x"/)   // one still answering stays
+  // one still answering stays, and an archived one (round 6d) is gone already
+  assert.match(rooms, /x\.running \|\| archived \? null : html`<button type="button" class="room-x"/)
   assert.match(read('style.css'), /\.room-chat-row:hover \.room-x/)
 })
 
@@ -3207,6 +3624,16 @@ test('listedChats: the picture of the day and chats past keep_hours stay out of 
   assert.match(read('views/chat.js'), /listedChats\(q\.convs, q\.keep_hours, s\.now\)/)       // the Chat tab lists the same
 })
 
+test('listedChats: a handed question counts from its handoff or what came back, as the server keeps it (quick.py _since)', () => {
+  const now = Date.UTC(2026, 9, 18, 20)
+  const h = 3600000
+  const convs = [
+    { id: 'back', started_ms: now - 40 * h, last_ms: now - 30 * h, handed: { at_ms: now - 29 * h, outcome: { text: 'Done', at_ms: now - h } } },
+    { id: 'handed', started_ms: now - 40 * h, last_ms: now - 30 * h, handed: { at_ms: now - 2 * h } },
+    { id: 'old', started_ms: now - 40 * h, last_ms: now - 30 * h, handed: { at_ms: now - 29 * h } }]
+  assert.deepEqual(logic.listedChats(convs, 24, now).map(x => x.id), ['back', 'handed'])
+})
+
 test('agents list hides conversations past keep_hours like chats', () => {
   const now = Date.UTC(2026, 9, 18, 20)
   const h = 3600000
@@ -3222,7 +3649,8 @@ test('agents list hides conversations past keep_hours like chats', () => {
   // the agents state the page loads keeps keep_hours, like the pushed event
   assert.match(read('logic.js'), /convs: res\.data\.convs \?\? \[\],\s*\.\.\.\(res\.data\.keep_hours != null \? \{ keep_hours: res\.data\.keep_hours \} : \{\}\)/)
   // picking an agent opens its latest conversation the list shows, never one already past keep_hours
-  assert.match(read('app.js'), /pickAgent: peer => \{\s*const a = store\.get\(\)\.agents \?\? \{\}\s*const latest = listedChats\(a\.convs, a\.keep_hours, Date\.now\(\)\)\.filter\(x => x\.peer === peer\)/)
+  // (the action stands in views/nav.js chatAreaActions; bridge_cockpit_chat_a2a.test.mjs drives it)
+  assert.match(read('views/nav.js'), /pickAgent: peer => \{\s*const s = get\(\)\s*const latest = listedChats\(s\.agents\?\.convs, s\.agents\?\.keep_hours, now\(\)\)\.filter\(x => x\.peer === peer\)/)
 })
 
 test('rooms: a quick chat shows a speech bubble, not a question mark; the core asks with place core', () => {
@@ -3237,7 +3665,7 @@ test('rooms: a quick chat shows a speech bubble, not a question mark; the core a
 test('rooms: the pane never jumps on its own, the header knows the rail is gone, the copy command is quoted', () => {
   const rooms = read('views/rooms.js')
   assert.doesNotMatch(rooms, /x\.state === 'waiting'\)\)/)                 // no auto pick of a waiting tab
-  assert.match(read('views/header.js'), /railShown\(s\.ui\.page, s\.rooms\?\.layout, s\.ui\.railHidden\)/)
+  assert.match(read('views/header.js'), /railOn\(s\)/)
   assert.equal(logic.shellQuote("/u/it's here"), "'/u/it'\\''s here'")
   assert.match(rooms, /cd \$\{shellQuote\(b\.path\)\} && claude/)
 })
@@ -3308,10 +3736,10 @@ test('errorText: a missing quick-question CLI is named as such, not as cmux, in 
   text.setLanguage('en')
 })
 
-test('style.css: every class selector is used by the page, or built from an allowed prefix', () => {
+test('the style files: every class selector is used by the page, or built from an allowed prefix', () => {
   // a rule nobody draws is dead weight that the next reader has to keep working; the leftovers of the
   // retired briefing-ui mod (ask box, its records, the skill list) were such rules
-  const css = fs.readFileSync(path.join(WEB, 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const css = STYLE_FILES.map(read).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')
   const classes = new Set()
   for (const m of css.matchAll(/([^{}]+)\{/g)) {
     const selector = m[1].trim()
@@ -3335,10 +3763,16 @@ test('style.css: every class selector is used by the page, or built from an allo
   const DYNAMIC = {
     'btn-': null, 'day-': null, 'fdot-': null, 'g-': null, 'hist-': null, 'is-': null, 'lane-': null,
     'layout-': null, 'mc-': null, 'md-h': null, 'rdot-': null, 'rt-': null, 'sm-': null, 'st-': null, 'tk-': null,
-    'tl-': null, 'sr-': ['0', '1', '2', '3'], 'view-thumb-': null, 'vs-': null,
+    'sr-': ['0', '1', '2', '3'], 'view-thumb-': null, 'vs-': null,
     'ticker-': ['slow', 'normal', 'fast'],
     'tri-': ['ai', 'either'],
-    'kind-': ['task', 'stream', 'inbox', 'issue', 'other'],
+    'kind-': ['task', 'stream', 'done_task', 'done_stream', 'inbox', 'issue', 'other'],
+    // a line of a tab's screen: its kind, its tone, a piece of it (logic.js screenLines, termParts; views/tabs.js)
+    'term-': ['user', 'claude', 'tool', 'frame', 'plain', 'gap', 'rule', 'work', 'hint', 'add', 'del', 'mark', 'path', 'url', 'ok', 'bad'],
+    // a suggestion of the list of Work through, by its verb (views/flowlist.js)
+    'flow-sug-': ['done', 'drop', 'later', 'do', 'you'],
+    // who takes a next step, as a chip by its kind (views/parts.js WhoChip, logic.js whoKind; stage 4)
+    'flow-who-': ['me', 'bridge', 'person'],
   }
   for (const p of Object.keys(DYNAMIC)) assert.ok(src.includes(`${p}\${`), `allowed prefix ${p} is built nowhere any more`)
   const built = c => Object.entries(DYNAMIC).some(([p, ok]) => c.startsWith(p) && (ok === null || ok.includes(c.slice(p.length))))
@@ -3771,6 +4205,25 @@ test('api.tabScreen names the hash the page holds, and asks plainly without one'
   assert.deepEqual(got, ['/api/tab/screen?ref=surface%3A7', '/api/tab/screen?ref=surface%3A7&since=0123abcd'])
 })
 
+test('api: the activity of a point, fresh on demand; an attachment posted with the token; a document linked, never fetched', async () => {
+  const got = []
+  const posted = []
+  const a = api.createApi({ get: async p => { got.push(p); return { ok: true } }, post: async (p, b, csrf) => { posted.push([p, b, csrf]); return { ok: true } },
+    events: () => ({}) })
+  a.setCsrf('tok')
+  await a.activity('task:demo-task')
+  await a.activity('inbox:20261009-0900-a b', true)
+  assert.deepEqual(got, ['/api/flow/activity?key=task%3Ademo-task', '/api/flow/activity?key=inbox%3A20261009-0900-a%20b&fresh=1'])
+  await a.attach('task:demo-task', 'Offer v2.pdf', 'aGk=')
+  assert.deepEqual(posted, [['/api/flow/attach', { key: 'task:demo-task', name: 'Offer v2.pdf', data: 'aGk=' }, 'tok']])
+  // the link of a document: the path itself on the real server, whatever the transport makes of it in the demo
+  const href = '/api/flow/doc?slug=demo-task&path=deliverables%2FOffer%20v2.pdf'
+  assert.equal(a.docHref('demo-task', 'deliverables/Offer v2.pdf'), href)
+  const b = api.createApi({ get: async () => ({}), post: async () => ({}), events: () => ({}), href: p => `blob:${p.length}` })
+  assert.equal(b.docHref('demo-task', 'deliverables/Offer v2.pdf'), `blob:${href.length}`)
+  assert.equal(got.length, 2, 'linking fetched nothing')
+})
+
 test('the demo answers the tab screen like the server: a hash, and unchanged without text to it', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-screen-'))
   try {
@@ -4026,45 +4479,117 @@ test('apply is disabled until one item is ticked', () => {
   assert.equal(t.canApply({ 'ws_color:workspace:2': true }, null), false)
 })
 
+// ---------------------------------------------------------------- the chat: one field, two fixed buttons (round 6d C4), handoff status (package 5)
 
-// ---------------------------------------------------------------- the chat: route chip, situation, handoff status (package 5)
-
-const routeTo = t => logic.routeOf(t).to
-
-test('routeOf sends a trailing question mark and question words to the quick chat', () => {
-  for (const q of ['Is the build green?', 'what waits for me', 'Wie viele Agenten laufen gerade', 'Gibt es offene Reviews',
-    'Warum hängt der Test', 'Fix the build?', 'which tabs wait']) {
-    assert.deepEqual([q, routeTo(q)], [q, 'quick'])
-  }
-  assert.equal(logic.routeOf('what waits for me').by, 'words')
-  assert.equal(logic.routeOf('Fix the build?').by, 'words')
-})
-
-test('routeOf sends German and English imperatives to an agent tab', () => {
-  for (const q of ['Fix the flaky test in the demo repo', 'Create a task for the release', 'Set up the new board',
-    'Mach den Release fertig', 'Bitte erstelle eine Aufgabe für das Review', 'Leg eine Aufgabe für den Bericht an',
-    'Räum die alten Tabs auf', 'Ändere den Titel', 'Benenn den Tab um', 'Richte das Board ein', 'please refactor the parser']) {
-    assert.deepEqual([q, routeTo(q)], [q, 'tab'])
-    assert.equal(logic.routeOf(q).by, 'words')
-  }
-})
-
-test('routeOf sends unclear text to the quick chat', () => {
-  for (const q of ['the release notes', 'Bericht von gestern', 'hello', '   ']) {
-    assert.deepEqual([q, logic.routeOf(q).to, logic.routeOf(q).by], [q, 'quick', 'default'])
-  }
-})
-
-test('routeOf honours ? and ! prefixes and strips them', () => {
-  assert.deepEqual(logic.routeOf('? fix the build'), { to: 'quick', by: 'prefix', text: 'fix the build' })
-  assert.deepEqual(logic.routeOf('!what is open'), { to: 'tab', by: 'prefix', text: 'what is open' })
-  assert.deepEqual(logic.routeOf('  Mach den Release  '), { to: 'tab', by: 'words', text: 'Mach den Release' })
-  // the word lists are language data, the same keys in both languages
+test('6d C4: the chat no longer guesses a route: no routeOf, no route word lists, no hint under the field', () => {
+  assert.equal(logic.routeOf, undefined)
   for (const lang of ['en', 'de']) {
-    const r = text.TABLES[lang].route
-    assert.ok(Array.isArray(r.orderWords) && r.orderWords.length >= 10, lang)
-    assert.ok(Array.isArray(r.questionWords) && r.questionWords.length >= 10, lang)
+    const t = text.TABLES[lang]
+    assert.equal(t.route, undefined, lang)
+    assert.equal(t.chatSolveHint, undefined, lang)
+    assert.ok(t.chatPlaceholder && !/Cmd|Ctrl|Enter/.test(t.chatPlaceholder), lang)
   }
+  assert.equal(text.TABLES.de.chatPlaceholder, 'Frage oder Auftrag')
+  assert.equal(text.TABLES.de.chatAsk, 'Fragen')
+  assert.equal(text.TABLES.de.chatSolve, 'AI machen lassen')
+})
+
+// ---------------------------------------------------------------- the questions kept a week (round 6d C1)
+
+test('6d C1: the questions say how long they stay, in days from a day on, else in hours, and nothing when kept for good', () => {
+  const de = text.TABLES.de.asks.kept
+  const en = text.TABLES.en.asks.kept
+  assert.equal(de(168), 'Fragen bleiben 7 Tage in der Liste, danach stehen sie im Archiv.')
+  assert.equal(en(24), 'Questions stay in the list for 1 day, then they stand in the archive.')
+  assert.equal(en(36), 'Questions stay in the list for 36 hours, then they stand in the archive.')
+  assert.equal(de(1), 'Fragen bleiben 1 Stunde in der Liste, danach stehen sie im Archiv.')
+  assert.equal(de(0), 'Fragen bleiben in der Liste, bis du sie entfernst.')
+  assert.equal(logic.keepHoursOf({ keep_hours: 168 }), 168)
+  assert.equal(logic.keepHoursOf({}), 24, 'the server default (config.py chat_keep_hours)')
+  assert.equal(logic.keepHoursOf(null), 24)
+})
+
+// ---------------------------------------------------------------- the Chat opens where you were (round 6d C3)
+
+test('6d C3: the room kept in this browser is read back only in its known shapes', () => {
+  assert.deepEqual(logic.roomKept('{"kind":"tab","id":"surface:12"}'), { kind: 'tab', id: 'surface:12', kept: true })
+  assert.deepEqual(logic.roomKept('{"kind":"chat"}'), { kind: 'chat', kept: true })
+  assert.deepEqual(logic.roomKept('{"kind":"ws","id":"workspace:2"}'), { kind: 'ws', id: 'workspace:2', kept: true })
+  for (const bad of [null, '', 'surface:12', '{"kind":"tab"}', '{"kind":"door","id":"x"}', '[1]', '{"kind":"tab","id":5}',
+    JSON.stringify({ kind: 'tab', id: 'x'.repeat(300) })]) {
+    assert.equal(logic.roomKept(bad), null, String(bad))
+  }
+  // what is written is the room without its mark
+  assert.equal(logic.roomToKeep({ kind: 'tab', id: 'surface:12', kept: true }), '{"kind":"tab","id":"surface:12"}')
+  assert.equal(logic.roomToKeep({ kind: 'chat' }), '{"kind":"chat"}')
+  assert.equal(logic.roomToKeep(null), null)
+})
+
+test('6d C3: a kept room that is gone gives way to the chat, a room picked by hand keeps saying it is closed', () => {
+  const tabs = { tabs: [{ ref: 'surface:7', name: 'a', state: 'waiting' }] }
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:9', kept: true } }, tabs }), { kind: 'chat' })
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:7', kept: true } }, tabs }), { kind: 'tab', id: 'surface:7', kept: true })
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:9' } }, tabs }), { kind: 'tab', id: 'surface:9' })
+  // before the first list of tabs nothing is known gone yet
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'tab', id: 'surface:9', kept: true } }, tabs: null }), { kind: 'tab', id: 'surface:9', kept: true })
+  assert.deepEqual(logic.roomShown({ ui: { room: null } }), { kind: 'chat' })
+  assert.deepEqual(logic.roomShown({ ui: { room: { kind: 'ws', id: 'workspace:9', kept: true } }, tabs: { ...tabs, workspaces: [] } }), { kind: 'chat' })
+})
+
+test('6d C3: with nothing kept the Chat picks once: an open or freshly answered question, else the first tab that wants you', () => {
+  const now = 1_000_000_000
+  const conv = (id, ago, a = 'An answer.') => ({ id, started_ms: now - ago, last_ms: now - ago, running: false, turns: [{ q: `q ${id}`, a, error: null }] })
+  const waiting = { tabs: [{ ref: 'surface:3', is_control: true, state: 'waiting' }, { ref: 'surface:7', name: 'x', state: 'needs-you', since_ms: now - 60000 }] }
+  const s = (convs, tabs = waiting) => ({ now, quick: { convs, keep_hours: 168 }, tabs, model: null, ui: { room: null, quickConv: null } })
+  assert.deepEqual(logic.chatLanding(s([conv('q0000000001', 5 * 60000)]), 'en'), { room: { kind: 'chat' }, conv: 'q0000000001' })
+  assert.deepEqual(logic.chatLanding(s([conv('q0000000002', 3 * 3600000, null)]), 'en'), { room: { kind: 'chat' }, conv: 'q0000000002' })
+  // answered long ago: the tab that wants you comes first
+  assert.deepEqual(logic.chatLanding(s([conv('q0000000003', 3 * 3600000)]), 'en'), { room: { kind: 'tab', id: 'surface:7' }, conv: null })
+  assert.equal(logic.chatLanding(s([], { tabs: [] }), 'en'), null)
+  // something kept or picked already: no landing
+  assert.equal(logic.chatLanding({ ...s([conv('q0000000001', 60000)]), ui: { room: { kind: 'chat' }, quickConv: null } }, 'en'), null)
+  assert.equal(logic.chatLanding({ ...s([conv('q0000000001', 60000)]), ui: { room: null, quickConv: 'q0000000001' } }, 'en'), null)
+})
+
+// ---------------------------------------------------------------- where a tab came from (round 6d C5)
+
+test('6d C5: a tab names what it came from: the question it was handed on from, a job, an inbox item or a task', () => {
+  const conv = { id: 'q00000000c5', started_ms: 1, last_ms: 2, running: false, turns: [{ q: 'Why did the bot fail?', a: 'It ran out.' }],
+    about: { kind: 'handoff', inbox: '20261028-0736-why-did-the-bot-c3d4' } }
+  const model = {
+    sections: [{ rows: [
+      { key: 'inbox:20261028-0736-why-did-the-bot-c3d4', title: 'Why did the bot fail?', inbox_key: 'q00000000c5' },
+      { key: 'inbox:20261028-0800-job-b6b6', title: 'Background job chat-bot on homebox: last run failed', inbox_key: 'worker:homebox:chat-bot' },
+      { key: 'inbox:20261028-0900-label-tidy-c1c1', title: 'Tidy the labels', inbox_key: null },
+    ] }],
+    task_rows: [{ key: 'task:demo-task', title: 'The demo task' }],
+    returns: [
+      { key: 'inbox:20261028-0736-why-did-the-bot-c3d4', item: '20261028-0736-why-did-the-bot-c3d4', title: 'Why did the bot fail?', conv: 'q00000000c5', tab: { ref: 'surface:21' } },
+      { key: 'inbox:20261028-0800-job-b6b6', item: '20261028-0800-job-b6b6', title: 'Background job chat-bot on homebox', tab: { ref: 'surface:22' } },
+      { key: 'task:other-task', item: 'other-task', title: 'Step text of the start', tab: { ref: 'surface:25' } },
+    ],
+  }
+  const s = { now: 3, model, quick: { convs: [conv] }, workers: { data: { runs: [{ host: 'homebox', id: 'chat-bot', title: 'Chat bot', state: 'last_run_failed' }] } } }
+  const of = tab => logic.tabOrigin(s, tab, 'en')
+  assert.deepEqual(of({ ref: 'surface:21', item: '20261028-0736-why-did-the-bot-c3d4' }),
+    { kind: 'ask', key: 'ask:q00000000c5', conv: 'q00000000c5', title: 'Why did the bot fail?' })
+  // the question is found by its handoff too, with no start on record
+  assert.equal(logic.tabOrigin({ ...s, model: { ...model, returns: [] } }, { ref: 'surface:29', item: '20261028-0736-why-did-the-bot-c3d4' }, 'en').kind, 'ask')
+  assert.deepEqual(of({ ref: 'surface:22', item: '20261028-0800-job-b6b6' }),
+    { kind: 'job', key: 'worker:homebox:chat-bot', title: 'Chat bot · homebox' })
+  assert.deepEqual(of({ ref: 'surface:23', item: '20261028-0900-label-tidy-c1c1' }),
+    { kind: 'item', key: 'inbox:20261028-0900-label-tidy-c1c1', title: 'Tidy the labels' })
+  assert.deepEqual(of({ ref: 'surface:24', slug: 'demo-task' }), { kind: 'task', key: 'task:demo-task', title: 'The demo task' })
+  // a start found by its tab alone: the task's own title before the step text of the start
+  assert.deepEqual(of({ ref: 'surface:25' }), { kind: 'task', key: 'task:other-task', title: 'other-task' })
+  assert.equal(of({ ref: 'surface:3', is_control: true, item: '20261028-0900-label-tidy-c1c1' }), null)
+  assert.equal(of({ ref: 'surface:26' }), null)
+  assert.equal(of(null), null)
+  // an item without a row keeps the title its start carried
+  assert.deepEqual(logic.tabOrigin({ ...s, model: { returns: [{ key: 'inbox:20261028-1000-gone-a1a1', item: '20261028-1000-gone-a1a1', title: 'Gone from the page', tab: null }] } },
+    { ref: 'surface:27', item: '20261028-1000-gone-a1a1' }, 'en'), { kind: 'item', key: 'inbox:20261028-1000-gone-a1a1', title: 'Gone from the page' })
+  for (const lang of ['en', 'de']) assert.equal(typeof text.TABLES[lang].rooms.from, 'function', lang)
+  assert.equal(text.TABLES.de.rooms.from('Tidy the labels'), 'aus: Tidy the labels')
 })
 
 const H = (over = {}) => ({ to: 'control', at_ms: 1000, status: 'queued', relay_id: 'r1', ...over })
@@ -4095,7 +4620,8 @@ test('handoffStatus maps queued, submitted, answered, offline, expired and stuck
 })
 
 test('handoffStatus maps every launch outcome', () => {
-  const st = status => logic.handoffStatus({ to: 'tab', at_ms: 1, status, inbox_id: 'i1' }, [], [])
+  // a minute after the start: no tab yet is no loss (a later moment without a tab is `gone`, below)
+  const st = status => logic.handoffStatus({ to: 'tab', at_ms: 1, status, inbox_id: 'i1' }, [], [], 60_000)
   assert.deepEqual(st('started'), { word: 'started', tone: 'info', action: null })
   assert.equal(st('running').word, 'running')
   assert.equal(st('busy').word, 'running')
@@ -4113,6 +4639,116 @@ test('handoffStatus finds the started tab by its inbox item', () => {
   }
   // a handoff still starting shows that, whatever tab carries the item
   assert.equal(logic.handoffStatus({ to: 'tab', at_ms: 1, status: 'starting', inbox_id: 'i1' }, [], tabs).word, 'starting')
+})
+
+test('handoffStatus reads what came back from the item: a result, a question, a close without a word', () => {
+  // 28.10.: the chat still said "arrived in the tab" after the tab had closed the item with its note
+  const tabs = [{ ref: 'surface:21', name: 'Fix the printer', item: 'i1' }]
+  const st = (outcome, t = []) => logic.handoffStatus({ to: 'tab', at_ms: 1, status: 'started', inbox_id: 'i1', outcome }, [], t)
+  assert.deepEqual(st({ text: 'Result: the bot runs', closed: true, at_ms: 5, asks: false }),
+    { word: 'result', tone: 'success', action: null, text: 'the bot runs', at_ms: 5 })
+  assert.deepEqual(st({ text: 'Question: close it?', closed: false, at_ms: 5, asks: true }, tabs),
+    { word: 'asks', tone: 'warning', action: 'jump', ref: 'surface:21', tab: 'Fix the printer', text: 'close it?', at_ms: 5 })
+  assert.equal(st({ text: 'Vendor wants 3.0', closed: false, at_ms: 5, asks: false }).tone, 'info')
+  assert.deepEqual(st({ text: '', closed: true, at_ms: 5, asks: false }), { word: 'closed', tone: 'success', action: null, text: '', at_ms: 5 })
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang].handoff
+    assert.match(t.result('x1'), /x1/)
+    assert.match(t.asks('x2'), /x2/)
+    assert.ok(t.closed)
+  }
+  assert.equal(text.TABLES.de.handoff.result('ok'), 'Ergebnis: ok')
+  assert.equal(text.TABLES.de.handoff.asks('ok?'), 'Fragt dich: ok?')
+})
+
+test('a start whose item note asks stays a question when its tab is gone, and works once its tab works again', () => {
+  const r = { key: 'inbox:i1', item: 'i1', at_ms: 1000, stage: 'asks', tab: null, result: { kind: 'note', text: 'Question: close it?', asks: true } }
+  assert.equal(logic.liveStage(r, [], 9e9), 'asks')
+  assert.equal(logic.liveStage(r, [{ ref: 'surface:3', item: 'i1', state: 'working' }], 9e9), 'working')
+})
+
+// round 6d: questions found again. A question gets a title from what it is about, a handed one its marker
+test('askTitle: by what it is about (job and state, row, task), else the first sentence cut at a word', () => {
+  const s = { model: { sections: [{ rows: [{ key: 'inbox:i7', title: 'Renew the test certificate' }, { key: 'task:alpha', title: 'Ship the alpha' }] }] },
+    workers: { data: { runs: [{ host: 'mini', id: 'chat-bot', title: 'chat-bot', state: 'last_run_failed' }] } } }
+  const conv = (about, q = 'Something else entirely') => ({ id: 'q0000000001', about, turns: [{ q }] })
+  assert.equal(logic.askTitle(conv({ kind: 'worker', key: 'worker:mini:chat-bot' }), s, 'de'), 'chat-bot · mini · letzter Lauf fehlgeschlagen')
+  assert.equal(logic.askTitle(conv({ kind: 'worker', key: 'worker:mini:gone' }), s, 'en'), 'gone · mini')
+  assert.equal(logic.askTitle(conv({ kind: 'row', key: 'inbox:i7', inbox: 'i7' }), s, 'en'), 'Renew the test certificate')
+  assert.equal(logic.askTitle(conv({ kind: 'handoff', inbox: 'i7' }), s, 'en'), 'Renew the test certificate')
+  assert.equal(logic.askTitle(conv({ kind: 'free', key: 'task:alpha', task: 'alpha' }), s, 'en'), 'Ship the alpha')
+  assert.equal(logic.askTitle(conv({ title: 'Named by the page' }), s, 'en'), 'Named by the page')
+  // the Stand of a failure is its day (spec 6d item 3: job, machine, state and day, never the copied trace)
+  const failed = { ...s, workers: { data: { runs: [{ host: 'mini', id: 'chat-bot', title: 'chat-bot', state: 'last_run_failed',
+    strip: [{ at: '2026-10-12T12:00:00Z', verdict: 'ok' }, { at: '2026-10-16T12:00:00Z', verdict: 'failed' }] }] } } }
+  assert.equal(logic.askTitle(conv({ kind: 'worker', key: 'worker:mini:chat-bot' }), failed, 'de'), 'chat-bot · mini · letzter Lauf fehlgeschlagen 16.10.')
+  // a question asked about a job before it carried what it is about: read from its own words, never the English trace
+  assert.equal(logic.askTitle(conv(null, 'Hintergrundjob chat-bot auf mini: letzter Lauf fehlgeschlagen. the last run of chat-bot ended with 75 Was ist zu tun und warum?'), failed, 'de'),
+    'chat-bot · mini · letzter Lauf fehlgeschlagen 16.10.')
+  assert.equal(logic.askTitle(conv(null, 'Background job other on box: last run failed. It ended with 75. What now?'), s, 'en'),
+    'other · box · last run failed')
+  // nothing known: the first sentence, or the title in guillemets a row's prompt carries, cut at a word
+  assert.equal(logic.askTitle(conv(null, 'Look at the backup. It ended with 75. What now?'), s, 'en'), 'Look at the backup.')
+  assert.equal(logic.askTitle(conv(null, 'Briefing item: «Renew the old demo certificate» («demo»). Look at it.'), s, 'en'), 'Renew the old demo certificate')
+  const long = logic.askTitle(conv(null, 'word '.repeat(40)), s, 'en')
+  assert.ok(long.length <= 60 && long.endsWith('…') && !/wor…$/.test(long), long)
+})
+
+test('askOutcome and askMark: handed questions are marked in tab, done (with the outcome) or asks you', () => {
+  // the one shape quick.py handoff_outcome writes on the handed record, also read by handoffStatus
+  assert.equal(logic.askOutcome({}), null)
+  assert.equal(logic.askOutcome({ handed: { outcome: { text: '', closed: false, at_ms: 1, asks: false } } }), null)
+  assert.deepEqual(logic.askOutcome({ handed: { outcome: { text: 'Result: Restarted the job', closed: true, at_ms: 5, asks: false } } }),
+    { text: 'Restarted the job', asks: false, closed: true, at_ms: 5 })
+  assert.deepEqual(logic.askOutcome({ handed: { outcome: { text: 'Frage: Which machine?', closed: false, at_ms: 6, asks: true } } }),
+    { text: 'Which machine?', asks: true, closed: false, at_ms: 6 })
+  assert.deepEqual(logic.askOutcome({ handed: { outcome: { text: '', closed: true, at_ms: 7, asks: false } } }),
+    { text: null, asks: false, closed: true, at_ms: 7 })
+  const tabs = [{ ref: 'surface:21', name: 'Look at it', item: 'i1', state: 'working' }]
+  const back = (text, closed = true, asks = false) => ({ outcome: { text, closed, at_ms: 5, asks } })
+  const handed = (over = {}) => ({ id: 'q0000000002', turns: [{ q: 'x', a: 'y' }], handed: { to: 'tab', status: 'started', inbox_id: 'i1', ...over } })
+  assert.deepEqual(logic.askMark(handed(), tabs), { word: 'inTab', tone: 'info', text: null, ref: 'surface:21' })
+  assert.deepEqual(logic.askMark(handed(back('Nothing to do')), []), { word: 'done', tone: 'success', text: 'Nothing to do', ref: null })
+  // a note while the item is open and its tab still works is no end yet
+  assert.equal(logic.askMark(handed(back('Vendor wants 3.0', false)), tabs).word, 'inTab')
+  assert.equal(logic.askMark(handed(), [{ ...tabs[0], state: 'needs-you' }]).word, 'asksYou')
+  assert.equal(logic.askMark(handed(back('Question: Which one?', false, true)), []).word, 'asksYou')
+  assert.equal(logic.askMark(handed({ status: 'failed' }), tabs), null)
+  assert.equal(logic.askMark({ id: 'q0000000003', turns: [{ q: 'x', a: 'y' }] }, tabs), null)
+})
+
+test('askList: open and handed questions first, then the answered ones; equal titles get their time', () => {
+  const now = new Date(2026, 9, 28, 9, 0).getTime()
+  const at = (h, m, day = 28) => new Date(2026, 9, day, h, m).getTime()
+  const q = (id, ms, over = {}) => ({ id, started_ms: ms, last_ms: ms, turns: [{ q: 'Job chat-bot failed. Why?', a: 'Because.' }], ...over })
+  const convs = [q('q1', at(7, 34)), q('q2', at(7, 35), { handed: { to: 'tab', status: 'started', inbox_id: 'i1' } }),
+    q('q3', at(8, 10), { turns: [{ q: 'Something new?', a: 'Yes.' }] }), q('q4', at(7, 0, 27), { running: true, turns: [{ q: 'Job chat-bot failed. Why?', a: null }] })]
+  const list = logic.askList(convs, { now, tabs: { tabs: [] } }, 'de')
+  assert.deepEqual(list.map(x => x.conv.id), ['q2', 'q4', 'q3', 'q1'])
+  assert.deepEqual(list.map(x => x.open), [true, true, false, false])
+  assert.equal(list[0].title, 'Job chat-bot failed. · heute 07:35')
+  assert.equal(list[1].title, 'Job chat-bot failed. · gestern 07:00')
+  assert.equal(list[2].title, 'Something new?')
+  assert.equal(list[3].title, 'Job chat-bot failed. · heute 07:34')
+  assert.equal(list[0].mark.word, 'inTab')
+  assert.equal(logic.askStamp(at(7, 34, 20), now, 'de'), '20.10. 07:34')
+  assert.equal(logic.askStamp(at(7, 34), now, 'en'), 'today 07:34')
+})
+
+test('handoffStatus: a tab that waits on you before anything came back says so, and every word keeps the jump', () => {
+  const tabs = [{ ref: 'surface:21', name: 'Look at it', item: 'i1', state: 'needs-you' }]
+  const handed = { to: 'tab', at_ms: 1, status: 'started', inbox_id: 'i1' }
+  assert.deepEqual(logic.handoffStatus(handed, [], tabs), { word: 'asksYou', tone: 'warning', action: 'jump', ref: 'surface:21', tab: 'Look at it' })
+  const done = logic.handoffStatus({ ...handed, outcome: { text: 'Result: Done.', closed: true, at_ms: 5, asks: false } }, [], [{ ...tabs[0], state: 'working' }])
+  assert.equal(done.word, 'result')
+  assert.equal(done.action, 'jump')
+})
+
+test('the last question opened is kept in this browser, so a reload and the header find it again', () => {
+  const app = read('app.js')
+  assert.match(app, /quickConv: lastAsk\(\)/)
+  assert.match(app.match(/function lastAsk\(\) \{[\s\S]*?\n\}/)[0], /load\('bridge-cockpit\.lastAsk'/)
+  assert.match(app, /save\('bridge-cockpit\.lastAsk', id\)/)
 })
 
 test('ChatFoot never offers a one click control handoff', () => {
@@ -4173,7 +4809,6 @@ test('one row bar everywhere: every view shows RowBar, none builds its own start
   assert.doesNotMatch(read('triage.js'), /function CloseAll/)
   assert.match(read('triage.js'), /<\$\{SettleMenu\} rows=\$\{closable\}/)
 })
-
 
 test('row panel: two doors, each with its own groups and its own meaning of the one sentence', () => {
   const day = read('views/day.js')
@@ -4270,11 +4905,42 @@ test('row panel: stands fixed in the window, so no column, card or table clips i
 test('rowKind: four kinds and a rest, read from the row alone', () => {
   assert.deepEqual(logic.rowKind({ key: 'task:a', task: 'a' }), { kind: 'task', task: 'a' })
   assert.deepEqual(logic.rowKind({ key: 'task:s', task: 's', stream: true }), { kind: 'stream', task: 's' })
-  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: null }), { kind: 'inbox', task: null })
-  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: 'a' }), { kind: 'inbox', task: 'a' })     // a report about a task
-  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#12', ref: 'o/r#12', sources: ['boards'] }), { kind: 'issue', ref: 'o/r#12' })
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: null }), { kind: 'inbox', task: null, taskKind: null })
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: 'a' }), { kind: 'inbox', task: 'a', taskKind: 'task' })     // a report about a task
+  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#12', ref: 'o/r#12', sources: ['boards'] }), { kind: 'issue', ref: 'o/r#12', task: null, taskKind: null })
   assert.deepEqual(logic.rowKind({ key: 'ref:2026-10/app', ref: '2026-10/app', sources: ['Bewerbungen'] }), { kind: 'other', source: 'Bewerbungen' })
   assert.deepEqual(logic.rowKind({ key: 'item:x' }), { kind: 'other', source: null })
+})
+
+test('rowKind: the work kind the server sends wins, a report and an issue name the stream they are about', () => {
+  // an inbox row about a stream: the server's work_kind, never the stream flag that only a task row carries
+  assert.deepEqual(logic.rowKind({ key: 'inbox:x', inbox_id: 'x', task: 's', work_kind: 'stream', stream: false }),
+    { kind: 'inbox', task: 's', taskKind: 'stream' })
+  assert.deepEqual(logic.rowKind({ key: 'task:s', task: 's', work_kind: 'stream' }), { kind: 'stream', task: 's' })
+  assert.deepEqual(logic.rowKind({ key: 'task:d', task: 'd', work_kind: 'done_task' }), { kind: 'done_task', task: 'd' })
+  assert.deepEqual(logic.rowKind({ key: 'task:e', task: 'e', work_kind: 'done_stream' }), { kind: 'done_stream', task: 'e' })
+  // an issue a stream syncs: an issue, about that stream (no longer called the task it belongs to)
+  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#3', ref: 'o/r#3', about_task: 's', about_kind: 'stream', work_kind: 'stream' }),
+    { kind: 'issue', ref: 'o/r#3', task: 's', taskKind: 'stream' })
+  assert.deepEqual(logic.rowKind({ key: 'ref:o/r#4', ref: 'o/r#4', task: 'a', work_kind: 'task' }),
+    { kind: 'issue', ref: 'o/r#4', task: 'a', taskKind: 'task' })
+})
+
+test('originOf and workKindOf: what the server classified, the task list as the fallback', () => {
+  const o = { category: 'bot', word_key: null, detail: 'radar', raw: 'host/radar', ref: null, via_cockpit: false }
+  assert.equal(logic.originOf({ origin: o }), o)
+  assert.equal(logic.originOf({ origin: null }), null)
+  assert.equal(logic.originOf({}), null)
+  assert.equal(logic.originOf({ origin: { category: 'made-up' } }), null)
+  assert.deepEqual(logic.ORIGIN_CATEGORIES, ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'work', 'person', 'bridge', 'other'])
+  const s = { model: { sections: [], hidden: [], task_rows: [{ key: 'task:s', task: 's', work_kind: 'stream' }] } }
+  assert.equal(logic.workKindOf({ work_kind: 'done_task' }, s), 'done_task')
+  assert.equal(logic.workKindOf({ task: 's' }, s), 'stream')                     // through indexRows
+  assert.equal(logic.workKindOf({ about_task: 's' }, s), 'stream')
+  assert.equal(logic.workKindOf({ task: 'x', stream: true }, s), 'stream')       // an older server: the flag
+  assert.equal(logic.workKindOf({ task: 'x' }, s), 'task')
+  assert.equal(logic.workKindOf({ title: 'nothing' }, s), null)
+  assert.equal(logic.workKindOf(null, null), null)
 })
 
 test('the kind stands first on every row, in the detail head and in the drawer head', () => {
@@ -4287,8 +4953,18 @@ test('the kind stands first on every row, in the detail head and in the drawer h
   assert.match(tag, /t\.kindAbout/)                              // a report names the task it is about
   assert.match(tag, /c\.select\(`task:\$\{k\.task\}`\)/)
   assert.match(read('views/detail.js'), /<\$\{KindTag\} row=\$\{row\} s=\$\{s\} c=\$\{c\} link \/>/)
-  assert.match(read('views/overlays.js'), /t\.kind\[/)
+  // the drawer head draws the whole kind tag now (it named only the word before), the about part with it
+  assert.match(read('views/overlays.js'), /<\$\{KindTag\} row=\$\{kindRow\} s=\$\{s\} \/>/)
   assert.match(read('views/stage.js'), /<\$\{KindTag\}/)
+  // the origin stands right after the kind, and every renderer of a work row draws both
+  assert.match(meta, /<\$\{KindTag\} row=\$\{row\} s=\$\{s\} \/>`, html`<\$\{OriginTag\} row=\$\{row\} \/>`\]/, 'kind, then origin')
+  for (const f of ['views/day.js', 'views/pages.js', 'views/github.js', 'jev/page.js', 'views/dossier.js', 'views/focus.js',
+    'views/detail.js', 'views/overlays.js', 'views/list.js', 'views/stage.js', 'views/home.js', 'views/check.js']) {
+    assert.match(read(f), /<\$\{OriginTag\}/, `${f} draws the origin`)
+    // a board row keeps its own task or stream chip (ghl-chip-task), the rest draw the kind tag
+    if (f !== 'views/github.js') assert.match(read(f), /<\$\{KindTag\}/, `${f} draws the kind`)
+  }
+  assert.match(read('views/check.js'), /<\$\{KindTag\}/, 'the check table names task or stream')
   for (const lang of [text.TABLES.en, text.TABLES.de]) {
     for (const k of ['task', 'stream', 'inbox', 'issue', 'other']) assert.ok(lang.kind?.[k], `kind.${k}`)
     assert.ok(lang.kindAbout && lang.kindTitle?.stream && lang.streamHint, 'about, titles, the stream hint')
@@ -4296,6 +4972,21 @@ test('the kind stands first on every row, in the detail head and in the drawer h
   }
   assert.equal(text.TABLES.de.kind.inbox, 'Meldung')
   assert.equal(text.TABLES.de.kind.stream, 'Stream')
+  for (const lang of [text.TABLES.en, text.TABLES.de]) {
+    for (const k of ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'person', 'bridge', 'other']) {
+      assert.ok(typeof lang.origin?.[k] === 'string' && lang.origin[k], `origin.${k}`)
+    }
+    for (const k of ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'work', 'person', 'bridge', 'other']) {
+      assert.ok(lang.originTitle?.[k], `originTitle.${k}`)
+    }
+    for (const k of ['task', 'stream', 'done_task', 'done_stream']) assert.ok(lang.origin.work?.[k], `origin.work.${k}`)
+    assert.ok(lang.originHelp && lang.originSpoken && lang.originViaCockpit && lang.meta.from, 'help, spoken prefix, via cockpit, detail row')
+    for (const k of ['done_task', 'done_stream']) assert.ok(lang.kind[k] && lang.kindTitle[k], `kind.${k}`)
+    assert.ok(lang.helpTopics.rows.some(([k]) => k === lang.originHelp), 'the help names where a row comes from')
+  }
+  // task or stream reads the same everywhere: the board chip says Stream too
+  assert.match(text.TABLES.de.gh.streamChip('x'), /^Stream /)
+  assert.equal(text.TABLES.de.origin.other, 'Andere Quelle')
   const panel = day.slice(day.indexOf('function RowPanel'), day.indexOf('export function StartMenu'))
   assert.match(panel, /t\.streamHint/)
 })
@@ -4356,7 +5047,7 @@ test('the check uses the panel: no own close dialog, no start button that only a
   assert.doesNotMatch(check, /<\$\{LaunchPick\}/)
   assert.match(check, /<\$\{StartMany\} rows=\$\{pickedRows\}/)
   assert.match(check, /<\$\{SettleMenu\} rows=\$\{pickedRows\}/)
-  assert.match(check, /<\$\{SettleMenu\} rows=\$\{\[row\]\}[^>]*seed=/, 'a close verdict hands its reason to the sentence')
+  assert.doesNotMatch(check, /<\$\{SettleMenu\} rows=\$\{\[row\]\}/, 'a task detail has one close door, in its actions (bridge_cockpit_settle.test.mjs)')
   assert.doesNotMatch(read('app.js'), /askClose/)
   assert.doesNotMatch(read('views/overlays.js'), /function CloseDialog/)
   const day = read('views/day.js')
@@ -4380,10 +5071,10 @@ test('keyboard shortcuts are off unless switched on in the settings, this browse
   assert.match(settings, /c\.setShortcuts\(v === 'on'\)/)
   assert.match(settings.slice(settings.indexOf('function LookArea')), /<\$\{KeysCard\}/)
   assert.match(read('views/header.js'), /s\.ui\.shortcuts \? html`<\$\{CommandBox\}/, 'the code box only with shortcuts on')
-  const help = read('views/overlays.js')
-  assert.match(help, /t\.keysOff/)
-  assert.match(help, /c\.openSettings\('look'\)/)
-  for (const lang of [text.TABLES.en, text.TABLES.de]) assert.ok(lang.keysOff && lang.keysOn && lang.settings.keysTitle && lang.settings.keysIntro, 'labels')
+  // the keys stand in the look-up card on the same page (the help left the header): off, it says the card above switches them on
+  assert.match(settings.slice(settings.indexOf('function LookupCard')), /t\.keysOff/)
+  assert.match(settings.slice(settings.indexOf('function LookArea')), /<\$\{LookupCard\}/)
+  for (const lang of [text.TABLES.en, text.TABLES.de]) assert.ok(lang.keysOff && lang.settings.keysTitle && lang.settings.keysIntro, 'labels')
 })
 
 // ---------------------------------------------------------------- the decision guide (guide.py, views/guide.js)
@@ -4460,6 +5151,47 @@ test('tourOffered: a tour that ended for an older version is offered again', () 
   assert.equal(logic.tourOffered(done('skipped'), 2), true)
 })
 
+test('setupPageOf: the page that holds the setup checks and how many of its rows are findings', () => {
+  const page = (id, sections) => ({ id, sections })
+  const checks = items => ({ id: 'setup-checks', items })
+  assert.equal(logic.setupPageOf(null), null)
+  assert.equal(logic.setupPageOf({ pages: [page('work', [{ id: 'inbox', items: [] }])] }), null)
+  assert.deepEqual(logic.setupPageOf({ pages: [page('setup', [checks([])])] }), { page: 'setup', findings: 0 })
+  const found = logic.setupPageOf({ pages: [page('ops', [checks([{ tone: 'warn' }, { tone: 'bad' }, { tone: 'dim' }, { tone: null }])])] })
+  assert.deepEqual(found, { page: 'ops', findings: 2 })       // a profile may place the section on a page of its own
+  assert.equal(logic.setupWanted({ pages: [page('setup', [checks([])])] }), false)
+  assert.equal(logic.setupWanted({ pages: [page('setup', [checks([{ tone: 'warn' }])])] }), true)
+})
+
+test('settingsBadgeOf: a finding of the setup checks in Settings shows on its tab, nothing else does', () => {
+  const sp = (badge, group = 'settings') => ({ pages: [{ id: 'setup', group, badge, sections: [] }] })
+  assert.equal(logic.settingsBadgeOf(null), null)
+  assert.equal(logic.settingsBadgeOf(sp({ kind: 'ok' })), null)
+  assert.equal(logic.settingsBadgeOf(sp({ kind: 'none' })), null)
+  assert.deepEqual(logic.settingsBadgeOf(sp({ kind: 'count', n: 2, warn: true })), { kind: 'count', n: 2, warn: true })
+  assert.deepEqual(logic.settingsBadgeOf(sp({ kind: 'bad', n: 1 })), { kind: 'bad', n: 1 })
+  // placed on a page of the profile's own, the checks count on that page's tab, not twice
+  assert.equal(logic.settingsBadgeOf(sp({ kind: 'bad', n: 1 }, 'main')), null)
+})
+
+test('settingsPageOf: a page of the settings group opens Settings at its area, any other page is its own', () => {
+  const model = { pages: [{ id: 'setup', group: 'settings', sections: [] }, { id: 'ops', group: 'main', sections: [] }] }
+  assert.equal(logic.settingsAreaOf(model, 'setup'), 'setup')
+  assert.equal(logic.settingsAreaOf(model, 'ops'), null)
+  assert.equal(logic.settingsAreaOf(model, '@start'), null)
+  // the start page offers no tile of it: it is no page of its own
+  assert.ok(!logic.homeCatalog(model).some(x => x.id === 'p:setup'))
+  assert.ok(logic.homeCatalog(model).some(x => x.id === 'p:ops'))
+})
+
+test('hintsFor: Settings at its Setup area explains the three lists', () => {
+  const ids = logic.hintsFor({ ui: { page: '@settings', settingsSection: 'setup' }, layout: 'wide' }).filter(h => h.group === 'page').map(h => h.id)
+  for (const id of ['setupChecks', 'setupAvailable', 'setupOn']) assert.ok(ids.includes(id), id)
+  const look = logic.hintsFor({ ui: { page: '@settings', settingsSection: 'look' }, layout: 'wide' }).map(h => h.id)
+  assert.ok(!look.includes('setupChecks'))
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].tour.setupFirst && text.TABLES[lang].tour.setupHint, lang)
+})
+
 test('tourIndex: the step is kept by id, so a narrow layout without the tab step does not move it', () => {
   const wide = { layout: 'wide', ui: { tour: { id: 'ask' } } }
   const narrow = { ...wide, layout: 'narrow' }
@@ -4477,8 +5209,15 @@ test('tourSteps: a welcome first and an end last, the tab column only where the 
   assert.ok(wide.every(x => !x.target || typeof x.target === 'string'))
   const narrow = logic.tourSteps({ layout: 'narrow' })
   assert.ok(!narrow.some(x => x.id === 'tabs'))
+  // Explain is the first item of Help (decision 6, menue.md): the tour shows Help, which stands at every width
+  assert.equal(wide.find(x => x.id === 'help')?.target, '.hdr-help')
+  assert.ok(!wide.some(x => x.id === 'explain' || x.target === '.hdr-explain'))
+  for (const lang of ['en', 'de']) assert.ok(text.TABLES[lang].tour.steps.help && !text.TABLES[lang].tour.steps.explain, lang)
   // a step that shows a page names one the page knows
-  assert.ok(wide.filter(x => x.page).every(x => ['@start', 'briefing', '@sessions', '@chat', '@settings'].includes(x.page)))
+  assert.ok(wide.filter(x => x.page).every(x => ['@start', 'briefing', '@files', '@sessions', '@chat', '@settings'].includes(x.page)))
+  // the files tab has its step where it stands in the bar (round 6c), none where cockpit.work_views leaves it out
+  assert.equal(wide[wide.findIndex(x => x.id === 'work') + 1]?.id, 'files')
+  assert.ok(!logic.tourSteps({ layout: 'wide', work: { views: ['flow'], flow: { enabled: true } } }).some(x => x.id === 'files'))
 })
 
 test('tourPlace: below the area when it fits, above when not, inside a large one, never off the screen', () => {
@@ -4502,7 +5241,7 @@ test('tourPlace: below the area when it fits, above when not, inside a large one
 
 // ---------------------------------------------------------------- the explain overlay (views/hints.js)
 
-const HINT_PAGES = ['@start', 'briefing', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'some-profile-page']
+const HINT_PAGES = ['@start', 'briefing', '@files', '@flow', '@chat', '@sessions', '@workers', '@agents', '@check', '@jev', '@settings', 'some-profile-page']
 const WORK_AREA = { ui: { page: 'briefing', workView: 'area' }, layout: 'wide', model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
 
 test('hintsFor: the page\'s own areas first, then the header, each once, each with its words in both languages', () => {
@@ -4515,7 +5254,9 @@ test('hintsFor: the page\'s own areas first, then the header, each once, each wi
     const groups = list.map(h => h.group)
     assert.ok(groups.indexOf('head') > 0 && groups.lastIndexOf('page') < groups.indexOf('head'), page)
     assert.ok(list.filter(h => h.group === 'page').length >= 3, `${page} explains itself`)
-    assert.equal(list.at(-1).id, 'help', page)       // the header's help comes last everywhere
+    assert.equal(list.at(-1).id, 'help', page)    // the header's Help comes last everywhere, Explain is its first item
+    assert.ok(list.some(h => h.id === 'notes' && h.target === '.hdr-notes'), `${page}: the bell`)
+    for (const gone of ['reload', 'explain']) assert.ok(!list.some(h => h.id === gone), `${page}: ${gone} left the header`)
   }
   const start = logic.hintsFor({ ui: { page: '@start' }, layout: 'wide' }).map(h => h.id)
   assert.equal(start[0], 'prompt')
@@ -4529,14 +5270,46 @@ test('hintsFor: the page\'s own areas first, then the header, each once, each wi
   for (const id of ['pageBadge', 'table', 'ghFigures', 'costBars', 'calDays']) assert.ok(prof.includes(id), id)
 })
 
+test('hints: the work switch explains the views it offers, no other (round 6 B)', () => {
+  const s = { ui: { page: 'briefing', workView: 'flow' }, layout: 'wide', work: { flow: { enabled: true }, views: ['files', 'due', 'flow'] },
+    model: { pages: [{ id: 'w', group: 'work', sections: [] }] } }
+  const sw = logic.hintsFor(s).find(h => h.id === 'workSwitch')
+  assert.deepEqual(sw.vars, [['due', 'flow']])
+  const de = logic.hintText(text.TABLES.de.hints.items.workSwitch, sw.vars).body
+  assert.equal(de, 'Dran: nach Datum. Abarbeiten: alles Offene genau einmal, Punkt für Punkt.')
+  // the files are a tab of their own (round 6c): the switch's words never name them
+  for (const gone of ['Akten', 'Nach Quelle', 'Nach Jev']) assert.ok(!de.includes(gone), gone)
+  const en = logic.hintText(text.TABLES.en.hints.items.workSwitch, sw.vars).body
+  assert.ok(en.startsWith('Due: ') && en.includes('Work through: ') && !/Files|By source|By Jev/.test(en), en)
+  // every view on offer names itself, in the order of the switch
+  const all = logic.hintsFor({ ...WORK_AREA, work: { flow: { enabled: true } } }).find(h => h.id === 'workSwitch')
+  assert.deepEqual(all.vars, [['due', 'area', 'flow']])
+  assert.match(logic.hintText(text.TABLES.de.hints.items.workSwitch, all.vars).body, /^Dran: .*Nach Quelle: .*Abarbeiten: /)
+  assert.ok(!logic.hintText(text.TABLES.de.hints.items.workSwitch).body.includes('Akten'), 'nor without a list')
+  // a hint whose words do not depend on the page stays as it is
+  assert.equal(logic.hintText(text.TABLES.en.hints.items.ask), text.TABLES.en.hints.items.ask)
+  // the overlay measures and draws the words of the page it explains
+  assert.match(read('views/hints.js'), /hintText\(words\[h\.id\], h\.vars\)/)
+})
+
+test('hints: the bar of Explain speaks of the mouse, it names no key (mouse first)', () => {
+  for (const lang of ['en', 'de']) {
+    const h = text.TABLES[lang].hints
+    for (const w of [h.bar, h.barOne]) assert.ok(!/Esc|Arrow|Pfeil|key|Taste/i.test(w), `${lang}: ${w}`)
+  }
+})
+
 test('hints: every explanation in the texts belongs to an area some page points at, in both languages alike', () => {
-  const used = new Set([...HINT_PAGES.map(page => ({ ui: { page }, layout: 'wide' })), WORK_AREA]
+  const used = new Set([...HINT_PAGES.map(page => ({ ui: { page }, layout: 'wide' })), WORK_AREA,
+    { ui: { page: '@settings', settingsSection: 'setup' }, layout: 'wide' }]
     .flatMap(s => logic.hintsFor(s).map(h => h.id)))
   for (const lang of ['en', 'de']) {
     const items = text.TABLES[lang].hints.items
     assert.deepEqual(Object.keys(items).filter(id => !used.has(id)), [], `${lang}: words no page uses`)
     for (const [id, w] of Object.entries(items)) {
-      assert.ok(w.body.length >= 30 && w.body.length <= 160, `${lang} ${id}: ${w.body.length} characters`)
+      // words that name what the page offers (the work switch): the fewest and the most it can name
+      const bodies = typeof w.body === 'function' ? [w.body(['due', 'flow']), w.body(['due', 'area', 'jev', 'flow'])] : [w.body]
+      for (const b of bodies) assert.ok(b.length >= 30 && b.length <= (bodies.length > 1 ? 200 : 160), `${lang} ${id}: ${b.length} characters`)
     }
   }
   assert.deepEqual(Object.keys(text.TABLES.en.hints.items).sort(), Object.keys(text.TABLES.de.hints.items).sort())
@@ -4708,20 +5481,22 @@ test('dayQueue: the Today list walks every row in section order, also the ones f
 })
 
 test('start page: three views to choose, the list shows each thing once', () => {
-  // the view is read from two options; the bridge is what nobody chose
-  assert.equal(logic.homeView(['c:waiting']), 'stage')
+  // the view is read from the options; the control view (areas) is what nobody chose
+  assert.equal(logic.homeView(['c:waiting']), 'areas')
+  assert.equal(logic.homeView(['o:stage']), 'stage')
   assert.equal(logic.homeView(['o:classic']), 'tiles')
   assert.equal(logic.homeView(['o:list']), 'list')
   assert.equal(logic.homeView(['o:list', 'o:classic']), 'list')
   // a pick sets one view and keeps everything else in its place
   assert.deepEqual(logic.homeViewSet(['c:waiting', 'o:classic', 's:tasks'], 'list'), ['c:waiting', 's:tasks', 'o:list'])
   assert.deepEqual(logic.homeViewSet(['c:waiting', 'o:list'], 'tiles'), ['c:waiting', 'o:classic'])
-  assert.deepEqual(logic.homeViewSet(['o:classic', 'o:list'], 'stage'), [])
+  assert.deepEqual(logic.homeViewSet(['o:classic', 'o:list'], 'stage'), ['o:stage'])
+  assert.deepEqual(logic.homeViewSet(['o:classic', 'o:stage'], 'areas'), [])
   assert.deepEqual(logic.homeViewSet(['o:list'], 'list'), ['o:list'])
   assert.equal(logic.homeView(['o:focusview']), 'focus')
   assert.equal(logic.homeView(['o:classic', 'o:focusview']), 'focus')
   assert.deepEqual(logic.homeViewSet(['o:list', 'c:next'], 'focus'), ['c:next', 'o:focusview'])
-  assert.deepEqual(logic.homeViewSet(['o:focusview'], 'stage'), [])
+  assert.deepEqual(logic.homeViewSet(['o:focusview'], 'stage'), ['o:stage'])
 
   const tabs = [
     { ref: 'ctl', name: 'control', is_control: true, state: 'needs-you' },
@@ -4908,4 +5683,264 @@ test('the demo opens a task with its own front, not one fixed page (review C12)'
   assert.equal(b.data.front.headline, tasks[1].title)
   assert.notEqual(a.data.front.headline, b.data.front.headline)
   for (const [res, r] of [[a, tasks[0]], [b, tasks[1]]]) if (r.priority) assert.equal(res.data.front.priority, r.priority)
+})
+
+test('the page view is measured on every page and view change, and once at boot after the first model', () => {
+  const app = read('app.js')
+  assert.match(app.match(/setPage\(id[^)]*\) \{[\s\S]*?\n  \},/)[0], /pageSeen\(id\)/)
+  assert.match(app, /setWorkView: v => \{[^\n]*pageSeen\('briefing'\)/)
+  // at boot the remembered view and the start view need the model and the home settings: measured once they came
+  const boot = app.match(/async function boot\(\) \{[\s\S]*?\n\}/)[0]
+  assert.doesNotMatch(boot, /pageSeen\(/)
+  const apply = app.match(/function applyState\(payload\) \{[\s\S]*?\n\}/)[0]
+  assert.match(apply, /if \(!bootSeen && payload\.model\) pageSeen\(store\.get\(\)\.ui\.page\)/)
+  // a page measured with the model at hand (fixPage moving the page) is the first one: no second line
+  assert.match(app.match(/function pageSeen\(page\) \{[\s\S]*?\n\}/)[0], /if \(s\.model\) bootSeen = true/)
+  assert.match(read('api.js'), /seen[\s\S]{0,80}\/api\/seen/)
+})
+
+test('cockpit.work_view names the view by its word: due, source, jev, files; anything else names none', () => {
+  assert.equal(logic.workViewId('due'), 'due')
+  assert.equal(logic.workViewId('source'), 'area')
+  assert.equal(logic.workViewId('jev'), 'jev')
+  assert.equal(logic.workViewId('files'), 'dossier')
+  for (const x of ['dossier', 'area', '', null, undefined, 3]) assert.equal(logic.workViewId(x), null, String(x))
+})
+
+test('the config sets the view the work tab opens on; a click on the switch holds until the config changes', () => {
+  // an older server sends no view: the remembered one, and nothing is kept as seen
+  assert.deepEqual(logic.workViewStart('area', null, undefined), { view: 'area', seen: null })
+  assert.deepEqual(logic.workViewStart(null, null, undefined), { view: 'due', seen: null })
+  // the default on a browser that never saw a config: the remembered view stays, so nobody sees a change
+  assert.deepEqual(logic.workViewStart('area', null, 'due'), { view: 'area', seen: 'due' })
+  assert.deepEqual(logic.workViewStart(null, null, 'due'), { view: 'due', seen: 'due' })
+  // the config switched to files: the tab opens on it, the remembered view gives way once
+  assert.deepEqual(logic.workViewStart('due', null, 'files'), { view: 'dossier', seen: 'files' })
+  assert.deepEqual(logic.workViewStart('area', 'due', 'files'), { view: 'dossier', seen: 'files' })
+  // seen before: a click on the switch since then holds
+  assert.deepEqual(logic.workViewStart('due', 'files', 'files'), { view: 'due', seen: 'files' })
+  assert.deepEqual(logic.workViewStart(null, 'files', 'files'), { view: 'dossier', seen: 'files' })
+  // switched back: the old default again
+  assert.deepEqual(logic.workViewStart('dossier', 'files', 'due'), { view: 'due', seen: 'due' })
+  // a word the page does not know counts as no config
+  assert.deepEqual(logic.workViewStart('area', 'due', 'tiles'), { view: 'area', seen: 'due' })
+})
+
+test('the first state sets the work view from the config once a visit, before the page view is measured', () => {
+  const app = read('app.js')
+  assert.match(app, /work: payload\.work \?\? s\.work/)
+  const fn = app.match(/function workDefault\(\) \{[\s\S]*?\n\}/)[0]
+  assert.match(fn, /workTab: load\('bridge-cockpit\.workTab', null\), workTabSeen: load\('bridge-cockpit\.workTabSeen', null\)/)
+  assert.match(fn, /workViewWrites\(stored, s\.work\?\.view\)/)
+  assert.match(fn, /save\(`bridge-cockpit\.\$\{k\}`, v\)/)
+  const apply = app.match(/function applyState\(payload\) \{[\s\S]*?\n\}/)[0]
+  assert.ok(apply.indexOf('workDefault()') > 0 && apply.indexOf('workDefault()') < apply.indexOf('pageSeen('), 'set before the measure')
+  // before fixPage: a remembered check that moved onto a page opens it in By source (openReview), and that
+  // view, the one shown, is the one measured; the config's view would otherwise replace it unmeasured
+  assert.ok(apply.indexOf('workDefault()') < apply.indexOf('fixPage()'), 'set before the check is reopened')
+})
+
+test('a visit keeps the two remembered words of the work view: the config wins once, a click holds after it', () => {
+  // a browser's storage across visits, the way workDefault reads and writes it
+  const visit = (stored, configured) => {
+    const { view, writes } = logic.workViewWrites(stored, configured)
+    Object.assign(stored, writes)
+    return { view, writes }
+  }
+  const stored = {}
+  // the default config on a fresh browser: the old default, only the seen word is kept
+  assert.deepEqual(visit(stored, 'due'), { view: 'due', writes: { workTabSeen: 'due', workTab: 'due' } })
+  // a click on By source, then a visit with the config unchanged: the click holds, nothing written
+  stored.workTab = 'area'
+  assert.deepEqual(visit(stored, 'due'), { view: 'area', writes: {} })
+  // the config switched to files: the files view once, both words kept
+  assert.deepEqual(visit(stored, 'files'), { view: 'dossier', writes: { workTabSeen: 'files', workTab: 'dossier' } })
+  // a click on Due after it holds on the next visit, the config the same
+  stored.workTab = 'due'
+  assert.deepEqual(visit(stored, 'files'), { view: 'due', writes: {} })
+  assert.deepEqual(stored, { workTab: 'due', workTabSeen: 'files' })
+  // an older server without the config: the remembered view, nothing written
+  assert.deepEqual(visit(stored, undefined), { view: 'due', writes: {} })
+  // the app reads and writes through it
+  const fn = read('app.js').match(/function workDefault\(\) \{[\s\S]*?\n\}/)[0]
+  assert.match(fn, /workViewWrites\(/)
+})
+
+test('n and p walk the focus; past the last step n leads into the files view only with cockpit.focus_to_files', () => {
+  const q = [{ id: 'a' }, { id: 'b' }]
+  assert.deepEqual(logic.focusStep(q, null, 'n', false), { to: 1 })
+  assert.deepEqual(logic.focusStep(q, { id: 'b', i: 1 }, 'p', false), { to: 0 })
+  assert.equal(logic.focusStep(q, { id: 'b', i: 1 }, 'n', false), null)
+  assert.deepEqual(logic.focusStep(q, { id: 'b', i: 1 }, 'n', true), { files: true })
+  assert.equal(logic.focusStep(q, null, 'p', true), null, 'p before the first step goes nowhere')
+  // one step only: n goes on into the files view at once
+  assert.deepEqual(logic.focusStep([{ id: 'a' }], null, 'n', true), { files: true })
+  // the step held by its id moved: n goes on from where it stands now
+  assert.deepEqual(logic.focusStep(q, { id: 'a', i: 1 }, 'n', true), { to: 1 })
+})
+
+test('with cockpit.focus_to_files, n on the last step of the focus leads on into the files view', () => {
+  const app = read('app.js')
+  const body = app.match(/\/\/ n \/ p on the start page in the focus view[\s\S]*?\n  \}/)[0]
+  assert.match(body, /focusStep\(queue, s\.ui\.focusAt, key, !!s\.work\?\.focus_to_files\)/)
+  assert.match(body, /step\?\.files \? ctl\.openFiles\(\)/)
+  // into the files tab, walking (the search of the command box opens it on its search); the work tab's view stays
+  const open = app.match(/openFiles\(q = null\) \{[\s\S]*?\n  \},/)[0]
+  assert.match(open, /\{ dossierOpen: null, filesWalk: true \}/)
+  assert.match(open, /ctl\.setPage\(FILES_PAGE\)/)
+  assert.doesNotMatch(open, /save\('bridge-cockpit\.workTab'/)
+})
+
+test('the demo takes the two work switches from its address: ?work=files and ?focus_to_files=1', () => {
+  assert.match(read('app.js'), /work: params\.get\('work'\), focusToFiles: params\.get\('focus_to_files'\) === '1'/)
+})
+
+test('the describe view reaches the page live: the describe event and an action answer, cleared by the next model for its rows', () => {
+  assert.match(read('api.js'), /const EVENTS = \[[^\]]*'describe'[^\]]*\]/)
+  const app = read('app.js')
+  assert.match(app, /describe: \{\},/)
+  assert.match(app, /describe\(ev\) \{/)
+  assert.match(app, /r\.describe && p\.args\.key/)
+  // a new model drops the live views of the keys it has rows of, never those of items without a row (logic.js)
+  assert.match(app, /model, describe: liveDescribeAfter\(s\.describe, model\), more: freshMore\(s\.more, model\)/)
+  // the card reads the live view before what the row carries (views/card.js describeOf)
+  assert.match(read('views/card.js'), /s\?\.describe\?\.\[key\]/)
+})
+
+test('6d fix: a handed question whose tab is gone and that brought nothing back says so, with a way to start again', () => {
+  // live 28.10.: at 08:46 the chat still said "Started, the tab is opening" for a handoff at 07:36, its chip "in its tab",
+  // while Work said "Tab gone" for the same item. Past the start's grace (returns.py GRACE_MS) with no tab, both say it
+  const at = 1_000_000
+  const handed = { to: 'tab', at_ms: at, status: 'started', inbox_id: 'i1' }
+  const late = at + 4 * 60_000
+  assert.equal(logic.handoffStatus(handed, [], [], at + 60_000).word, 'started', 'within the grace it is still starting')
+  for (const status of ['started', 'running', 'busy']) {
+    assert.deepEqual(logic.handoffStatus({ ...handed, status }, [], [], late), { word: 'gone', tone: 'warning', action: 'retry', item: 'i1' })
+  }
+  // a tab that carries it, or what came back, wins
+  assert.equal(logic.handoffStatus(handed, [], [{ ref: 'surface:2', name: 'x', item: 'i1' }], late).word, 'inTab')
+  assert.equal(logic.handoffStatus({ ...handed, outcome: { text: 'Result: ok', closed: false, at_ms: at, asks: false } }, [], [], late).word, 'result')
+  const conv = { id: 'q0000000009', turns: [{ q: 'x', a: 'y' }], handed }
+  assert.equal(logic.askMark(conv, [], at + 60_000).word, 'inTab')
+  assert.deepEqual(logic.askMark(conv, [], late), { word: 'gone', tone: 'warning', text: null, ref: null })
+  assert.equal(logic.askList([conv], { now: late, tabs: { tabs: [] } }, 'en')[0].mark.word, 'gone')
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    assert.ok(t.handoff.gone && t.handoff.restart && t.handoff.openItem && t.asks.mark.gone, lang)
+  }
+  assert.equal(text.TABLES.de.asks.mark.gone, 'Tab beendet')
+})
+
+test('6d fix: no keyboard hints in the question fields and on the button that starts a tab', () => {
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const said of [t.quickReply, t.chatPlaceholder, t.chatSolveTitle]) {
+      assert.doesNotMatch(said, /Cmd|Ctrl|Enter|[?!] (asks|fragt|starts|startet|hands|gibt)/, `${lang}: ${said}`)
+    }
+  }
+})
+
+test('6d fix: no key named in the notes and hints a mouse reads, and one name for a new question', () => {
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    for (const said of [t.hints.items.prompt.body, t.panelStartHint, t.inner.hint, t.inner.hintTour, t.inner.search]) {
+      assert.doesNotMatch(said, /Cmd|Ctrl|Enter|Esc|Space|Leertaste|\(\/\)/, `${lang}: ${said}`)
+    }
+  }
+  // the Chat page and the questions window call a new one the same, and an open question's field reads as C4 says
+  const chat = read('views/chat.js')
+  assert.doesNotMatch(chat, /t\.quickNew/)
+  assert.doesNotMatch(chat, /t\.quickReply/)
+  assert.doesNotMatch(read('views/rooms.js'), /t\.quickNew/)
+  assert.equal(text.TABLES.de.rooms.allAsks, 'Auch frühere Fragen')
+  // the model picker under the Chat's field says which button it is for: Ask has its own picker on top
+  assert.match(chat, /<\$\{LaunchPick\} s=\$\{s\} c=\$\{c\} label=\$\{t\.launch\.forSolve\} \/>/)
+  assert.equal(text.TABLES.de.launch.forSolve, 'Modell für AI machen lassen')
+  assert.match(read('views/launch.js'), /export function LaunchPick\(\{ s, c, items = \[\], label = null \}\)/)
+})
+
+// ---------------------------------------------------------------- the click origin log (round 6d, item 10)
+
+/** A stand-in for an element as the click log reads it: tag, classes, role, data-u, a parent and the selectors it
+ *  matches (this file has no DOM) */
+function el({ tag = 'div', cls = '', role = null, u = null, parent = null, sels = [], text = '' } = {}) {
+  return { nodeType: 1, tagName: tag.toUpperCase(), className: cls, parentNode: parent, textContent: text,
+    getAttribute: name => (name === 'role' ? role : name === 'data-u' ? u : name === 'class' ? cls : null),
+    matches: sel => sels.includes(sel) }
+}
+
+test('usage: a control is named by data-u or its own classes, never by its words', () => {
+  const list = el({ sels: ['.chat-list'] })
+  const row = el({ tag: 'button', cls: 'btn btn-ghost btn-xs chat-row is-on', parent: list, text: 'Telegram bot exit 75' })
+  const label = el({ tag: 'span', cls: 'btn-label', parent: row, text: 'Telegram bot exit 75' })
+  assert.equal(logic.usageControl(label), 'chat-row')                      // the button it stands in, its own class
+  assert.equal(logic.usageControl(el({ tag: 'button', cls: 'btn chat-row', u: 'chat-sort' })), 'chat-sort')
+  assert.equal(logic.usageControl(el({ tag: 'button', cls: 'btn row-12 tab-3f9a' })), 'button')   // no class with a digit
+  assert.equal(logic.usageControl(el({ cls: 'seg', role: 'tab' })), 'seg')
+  assert.equal(logic.usageControl(el({ tag: 'a', cls: 'A Title With Words' })), 'a')            // nothing that is not a name
+  assert.equal(logic.usageControl(el({ cls: 'chat-list', parent: el() })), null)               // no control: no click
+  assert.equal(logic.usageControl(null), null)
+})
+
+test('usage: the area is the innermost area of the explain overlay the click stands in', () => {
+  const s = { ui: { page: '@chat' }, layout: 'wide' }
+  const list = el({ sels: ['.chat-list'] })
+  const row = el({ tag: 'button', cls: 'chat-row', parent: list })
+  assert.equal(logic.usageArea(s, row), 'chatList')
+  assert.equal(logic.usageArea(s, el({ tag: 'button', parent: el({ sels: ['.hdr-ask'] }) })), 'ask')   // the header too
+  assert.equal(logic.usageArea(s, el({ tag: 'button', parent: el({ role: 'dialog' }) })), 'dialog')
+  assert.equal(logic.usageArea(s, el({ tag: 'button' })), '-')
+  assert.deepEqual(logic.usagePlace(s), { page: '@chat', view: '-' })
+  assert.deepEqual(logic.usagePlace({ ui: { page: 'briefing', workView: 'flow' }, work: { flow: { enabled: true } } }),
+    { page: 'briefing', view: 'flow' })
+})
+
+test('usage: clicks are counted, sent in small batches, and a verb keeps the place of the click before it', () => {
+  const sent = []
+  let now = 1000
+  const log = logic.createUsageLog({ send: events => sent.push(events), now: () => now, max: 3 })
+  const at = { page: '@chat', view: '-', area: 'chatList', control: 'chat-row' }
+  log.click({ ...at, title: 'Telegram bot exit 75' })
+  log.click(at)
+  now += 500
+  log.verb('advise')                          // half a second after the click: from there
+  now += 10_000
+  log.verb('flow_themes_run')                 // no click before it: no use of a control, not counted
+  assert.equal(sent.length, 0)
+  log.flush()
+  assert.deepEqual(sent, [[{ kind: 'click', ...at, verb: '-', n: 2 }, { kind: 'verb', ...at, verb: 'advise', n: 1 }]])
+  assert.ok(!JSON.stringify(sent).includes('Telegram'), 'a title passed by mistake is not sent')
+  log.flush()
+  assert.equal(sent.length, 1, 'nothing to send, nothing sent')
+  for (const area of ['a', 'b', 'c']) log.click({ ...at, area })
+  assert.equal(sent.length, 2, 'the batch goes once it holds max events')
+  assert.equal(sent[1].length, 3)
+  log.click({ page: '@chat' })                // a click outside any control is no use
+  log.flush()
+  assert.equal(sent.length, 2)
+})
+
+test('usage: the page sends clicks only where the server says so, and the explain window holds the field', () => {
+  // asserted as booleans: a whole file as `actual` would print it entire on a failure
+  assert.ok(/config\?\.clicks === true/.test(read('app.js')), 'app.js sends clicks only when the server says so')
+  assert.ok(/'\/api\/clicks'/.test(read('api.js')), 'api.js posts to /api/clicks')
+  assert.ok(/explainNote/.test(read('views/hints.js')), 'the explain window saves its note')
+  for (const lang of ['en', 'de']) {
+    const h = text.TABLES[lang].hints
+    for (const w of [h.noteOpen, h.notePlaceholder, h.notePick, h.noteSaved]) {
+      assert.ok(w && !/Esc|Enter|key|Taste/i.test(w), `${lang}: ${w}`)
+    }
+  }
+  assert.equal(text.TABLES.de.hints.noteOpen, 'Was stört hier?')
+})
+
+test('every top-level key of the server state reaches the page store (prio was left out once, so Haiku never showed)', () => {
+  const server = fs.readFileSync(path.join(ROOT, 'scripts', 'lib', 'bridge_cockpit', 'server.py'), 'utf8')
+  const body = server.match(/def state_payload\(self\) -> dict:[\s\S]*?\n\n/)[0]
+  // the keys of the nested objects (server, driver, rooms) and ok are not store slices of their own
+  const nested = new Set(['ok', 'version', 'started_ms', 'person', 'caps', 'layout', 'root', 'control', 'bridges'])
+  const keys = [...body.matchAll(/"(\w+)":/g)].map(m => m[1]).filter(k => !nested.has(k))
+  assert.ok(keys.includes('prio') && keys.includes('jev') && keys.length > 15, keys.join(','))
+  const apply = read('app.js').match(/function applyState\(payload\) \{[\s\S]*?\n\}/)[0]
+  for (const k of keys) assert.match(apply, new RegExp(`payload\\.${k}\\b`), `applyState drops ${k}`)
 })

@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, the settings: one page with an area per subject (the start page, how it looks, the model an
-// agent tab starts with), and the drawer "Customise" opens beside the start page with the same editors.
+// agent tab starts with). Everything the start page can show is chosen here, in its area Start page; the colours
+// and the look-up card of what the help said (the signs of a row, acting, the keys, costs) stand under Appearance.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, homeView, homeViewSet,
-  jevModelValid, launchPatch, moveAmong,
+  DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, homeView, homeViewSet,
+  jevModelValid, launchPatch, moveAmong, personOf,
 } from '../logic.js'
-import { T } from '../text.js'
+import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { catalogLabel } from './home.js'
-import { Drawer } from './overlays.js'
 import { Btn, Chip, Empty, Icon, StateLine, useRoving } from './parts.js'
 import { GuideSettings } from './guide.js'
 import { TickerSettings } from './ticker.js'
+import { WorkspaceSettings } from './workspaces.js'
 import { BoardSettings } from './github.js'
+import { PageSection } from './pages.js'
 
-const SECTIONS = ['start', 'look', 'launch', 'ticker', 'guide', 'boards']
+const SECTIONS = ['setup', 'start', 'look', 'workspaces', 'launch', 'ticker', 'guide', 'boards']
 const STATION_KINDS = ['quota', 'count', 'page']
 
 // ---------------------------------------------------------------- the parts every area uses
@@ -68,9 +70,9 @@ function ViewCard({ home }) {
   const keys = useRoving()
   return html`<${Card} title=${w.viewTitle} intro=${w.viewIntro}>
     <div class="view-pick" role="radiogroup" aria-label=${w.viewTitle} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
-      ${['stage', 'tiles', 'list', 'focus'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
+      ${['areas', 'stage', 'tiles', 'list', 'focus'].map(v => html`<button type="button" key=${v} role="radio" aria-checked=${String(view === v)}
         class=${`view-opt${view === v ? ' is-on' : ''}`} onClick=${() => view !== v && home.pick(v)}>
-        <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'stage'
+        <span class=${`view-thumb view-thumb-${v}`} aria-hidden="true">${v === 'areas' ? html`<u></u><i></i><i></i><i></i><u></u>` : v === 'stage'
           ? html`<b></b><i></i><i></i><i></i><i></i><i></i><i></i>`
           : v === 'tiles' ? html`<em></em><i></i><i></i><i></i><i></i>`
           : v === 'list' ? html`<em></em><u></u><i></i><i></i><i></i><i></i>` : html`<em></em><b></b><u></u><i></i><i></i><i></i>`}</span>
@@ -123,7 +125,7 @@ function StationsCard({ home }) {
     </li>`
   }
   const count = tiles ? null : html`<span class=${`set-count num${shown.length > room ? ' is-over' : ''}`}>${w.stationsCount(Math.min(shown.length, room), room)}</span>`
-  const title = { stage: w.stationsTitle, tiles: w.stationsTitleTiles, list: w.stationsTitleList }[home.view]
+  const title = { stage: w.stationsTitle, tiles: w.stationsTitleTiles, list: w.stationsTitleList }[home.view] ?? w.stationsTitleTiles
   return html`<${Card} title=${title} intro=${home.view === 'list' ? w.stationsIntroList : w.stationsIntro} head=${count}>
     <h4 class="label-caps st-group">${w.stationsShown}</h4>
     ${shown.length ? html`<ol class="st-list">${shown.map(row)}</ol>` : html`<${Empty}>${w.stationsNone}<//>`}
@@ -152,7 +154,9 @@ function SwitchRows({ home, ids, note }) {
 function ShelvesCard({ home }) {
   const w = T().settings
   const list = home.view === 'list'
-  const note = id => (id === 's:focus' && home.view === 'stage' ? w.onlyTiles : id === 's:starts' && list ? w.notList : null)
+  // the overview shows the areas and nothing else of the shelves
+  const note = id => (home.view === 'areas' ? (id === 's:areas' ? null : w.notDesk)
+    : id === 's:focus' && home.view === 'stage' ? w.onlyTiles : id === 's:starts' && list ? w.notList : null)
   return html`<${Card} title=${w.shelvesTitle} intro=${list ? w.shelvesIntroList : w.shelvesIntro}>
     <${SwitchRows} home=${home} ids=${home.catalog.filter(x => x.kind === 'shelf').map(x => x.id)} note=${note} />
   <//>`
@@ -167,14 +171,43 @@ function CoreCard({ home }) {
   <//>`
 }
 
+/** The parts the overview shows under its table: a switch each, off until chosen, saved with the rest of
+ *  the start page (home_tiles); the chosen ones in their order, with arrows to move one */
+function DeskCard({ home }) {
+  const w = T().settings
+  const h = T().home
+  const isPart = id => id.startsWith('d:')
+  const shown = home.chosen.filter(isPart)
+  const rest = DESK_PARTS.map(x => `d:${x}`).filter(id => !shown.includes(id))
+  const name = id => h.deskPart[id.slice(2)]
+  const row = (id, i, on) => html`<${Row} key=${id} label=${name(id)} explain=${w.explainOption[id]}>
+    ${on ? html`<span class="st-move">
+      <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${w.up(name(id))} title=${w.up(name(id))}
+        onClick=${() => home.save(moveAmong(home.chosen, isPart, id, -1))}><${Icon} name="chevronUp" size=${14} /></button>
+      <button type="button" class="icon-btn" disabled=${i === shown.length - 1} aria-label=${w.down(name(id))} title=${w.down(name(id))}
+        onClick=${() => home.save(moveAmong(home.chosen, isPart, id, 1))}><${Icon} name="chevronDown" size=${14} /></button>
+    </span>` : null}
+    <${Switch} on=${on} label=${name(id)} onChange=${v => home.flip(id, v)} />
+  <//>`
+  return html`<${Card} title=${w.deskTitle} intro=${home.view === 'areas' ? w.deskIntro : `${w.deskIntro} ${w.deskOnly}`}>
+    ${shown.map((id, i) => row(id, i, true))}${rest.map((id, i) => row(id, i, false))}
+  <//>`
+}
+
+/** The start page in one place: the view, the overview's parts, the tiles and shelves of the other views,
+ *  what a click on the bridge's core does, and the options that change how things show */
 function StartArea({ s, c }) {
+  const w = T().settings
   const home = useHome(s, c)
   // the focus view shows what needs you and nothing to choose: no stations, no sections
-  if (home.view === 'focus') return html`<${ViewCard} home=${home} />`
+  const others = home.view !== 'focus'
   return html`<${ViewCard} home=${home} />
-    <${StationsCard} home=${home} />
-    <${ShelvesCard} home=${home} />
-    <${CoreCard} home=${home} />`
+    <${DeskCard} home=${home} />
+    ${others ? html`<h3 class="label-caps set-group">${w.otherViews}</h3>
+      <${StationsCard} home=${home} />
+      <${ShelvesCard} home=${home} />
+      <${CoreCard} home=${home} />` : null}
+    <${DetailsCard} s=${s} c=${c} />`
 }
 
 // ---------------------------------------------------------------- how it looks
@@ -206,8 +239,31 @@ function DetailsCard({ s, c }) {
   <//>`
 }
 
+const LOOKUP_TOPICS = ['rows', 'act', 'keys', 'trust']
+
+/** To look up, one topic at a time: what the marks of a row say, how acting works, the keys (only while they are on:
+ *  mouse first, so off the card says only that they are off, the card above switches them on), what costs tokens and
+ *  what stays local. Help in the header opens it on a topic. What each part of a page is for is Explain's, in Help */
+function LookupCard({ s }) {
+  const t = T()
+  const w = t.settings
+  // the topic the header's Help picked (app.js openLookup), each pick anew; a click on the card's own switch after it
+  const [topic, setTopic] = useState(s.ui.lookupTopic ?? 'rows')
+  useEffect(() => { if (s.ui.lookupTopic) setTopic(s.ui.lookupTopic) }, [s.ui.lookupTopic, s.ui.lookupAt])
+  const body = topic === 'keys'
+    ? s.ui.shortcuts ? html`<p class="muted small">${t.commandHint}</p>
+      <dl class="keys">${t.keys.map(([k, v], i) => html`<div key=${i}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>`
+      : html`<p class="muted small">${t.keysOff}</p>`
+    : html`<dl class="help-text">${t.helpTopics[topic].map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
+      ? html`<ul class="plain help-list">${v.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : v}</dd></div>`)}</dl>`
+  return html`<${Card} title=${w.lookupTitle} intro=${w.lookupIntro}>
+    <${Segmented} label=${t.help.tabsLabel} current=${topic} values=${LOOKUP_TOPICS.map(id => [id, t.help.tabs[id]])} onPick=${setTopic} />
+    <div class="lookup-pane">${body}</div>
+  <//>`
+}
+
 function LookArea({ s, c }) {
-  return html`<${ThemeCard} s=${s} c=${c} /><${KeysCard} s=${s} c=${c} /><${DetailsCard} s=${s} c=${c} /><${TourCard} s=${s} c=${c} />`
+  return html`<${ThemeCard} s=${s} c=${c} /><${KeysCard} s=${s} c=${c} /><${LookupCard} s=${s} /><${TourCard} s=${s} c=${c} />`
 }
 
 /** The first-run tour: start it now, and offer it again on the next visit once it ended */
@@ -397,7 +453,7 @@ function HaikuTable({ map, models, efforts, busy, save }) {
   </div>`
 }
 
-// ---------------------------------------------------------------- the page and the drawer
+// ---------------------------------------------------------------- the page
 
 /** What the server's check of the cockpit: block found (/api/bootstrap config_warnings): one line per key it
  *  does not know or could not use, each with the value used instead; nothing when the block is clean */
@@ -412,14 +468,60 @@ export function ConfigWarnings({ s }) {
   </div>`
 }
 
+// ---------------------------------------------------------------- setup
+
+/** The Setup page's sections (briefing.py collect --setup, docs/bridge-cockpit.md, The Setup page): what still keeps
+ *  the cockpit from working well, what can be switched on, what is on. Drawn as every page draws a section, so a row
+ *  keeps its steps (Let AI do it, Advise, Close, Later, its own steps and their undo) and its key */
+function SetupArea({ s, c }) {
+  const pages = (s.model?.pages ?? []).filter(p => p.group === 'settings')
+  return html`<div class="set-setup">${pages.flatMap(p => (p.sections ?? []).map(sec =>
+    html`<${PageSection} key=${`${p.id}/${sec.id}`} page=${p} section=${sec} s=${s} c=${c} />`))}</div>`
+}
+
+/** The areas this Bridge offers: Setup only while the view carries its page (cockpit.setup) */
+function sectionsOf(s) {
+  return (s.model?.pages ?? []).some(p => p.group === 'settings') ? SECTIONS : SECTIONS.filter(id => id !== 'setup')
+}
+
 // the news ticker on the start page: its own group from views/ticker.js
-const AREAS = { start: StartArea, look: LookArea, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings }
-const AREA_ICONS = { start: 'home', look: 'sun', launch: 'spark', ticker: 'bell', guide: 'chat', boards: 'sliders' }
+const AREAS = { setup: SetupArea, start: StartArea, look: LookArea, workspaces: WorkspaceSettings, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings }
+const AREA_ICONS = { setup: 'bulb', start: 'home', look: 'sun', workspaces: 'sliders', launch: 'spark', ticker: 'bell', guide: 'chat', boards: 'sliders' }
 
 /** The page: the areas as a list on the left (a row of buttons on a narrow screen), the one chosen beside it */
+/** What a person sets for themselves (access.py): the colours and the language, kept on the server for them, whatever
+ *  device they come from. No setting of the Bridge stands here */
+function PersonSettings({ s, c }) {
+  const t = T()
+  const kept = personOf(s).settings ?? {}
+  return html`<div class="col col-page settings-page">
+    <header class="page-head settings-head"><h2 class="detail-title">${t.settings.title}</h2></header>
+    <${Card} title=${t.settings.themeTitle}>
+      <${Segmented} label=${t.settings.themeTitle} current=${s.ui.theme} values=${['auto', 'light', 'dark'].map(v => [v, t.theme[v]])}
+        onPick=${v => { c.setTheme(v); c.act('person_settings', { theme: v }) }} />
+    <//>
+    <${Card} title=${t.person.language}>
+      <${Segmented} label=${t.person.language} current=${kept.language ?? language()} values=${[['de', 'Deutsch'], ['en', 'English']]}
+        onPick=${v => Promise.resolve(c.act('person_settings', { language: v })).then(() => window.location.reload())} />
+    <//>
+    ${s.personAsk?.manage?.length ? html`<${Card} title=${t.person.chatTitle}>
+      ${s.personAsk.manage.map(row => html`<div class="person-engine" key=${row.person}>
+        <strong>${row.person}</strong>
+        <${Segmented} label=${`${t.person.chatTitle}: ${row.person}`} current=${row.engine}
+          values=${[...row.options, 'off'].map(v => [v, t.person.engine[v]])}
+          onPick=${v => c.act('ask_engine', { person: row.person, engine: v })} />
+        ${row.engine === 'codex' && !row.signed_in ? html`<span class="muted small">${t.person.chatLogin}</span>` : null}
+      </div>`)}
+    <//>` : null}
+  </div>`
+}
+
 export function SettingsPage({ s, c }) {
+  if (personOf(s)) return html`<${PersonSettings} s=${s} c=${c} />`
   const w = T().settings
-  const at = SECTIONS.includes(s.ui.settingsSection) ? s.ui.settingsSection : SECTIONS[0]
+  const sections = sectionsOf(s)
+  // a stored choice the Bridge no longer offers (Setup without its page) falls back to the start page's area
+  const at = sections.includes(s.ui.settingsSection) ? s.ui.settingsSection : 'start'
   const Area = AREAS[at]
   return html`<div class="col col-page settings-page">
     <header class="page-head settings-head">
@@ -429,7 +531,7 @@ export function SettingsPage({ s, c }) {
     <${ConfigWarnings} s=${s} />
     <div class="settings-layout">
       <nav class="settings-nav" aria-label=${w.sectionsLabel}>
-        ${SECTIONS.map(id => html`<button type="button" key=${id} class=${`settings-nav-item${at === id ? ' is-on' : ''}`}
+        ${sections.map(id => html`<button type="button" key=${id} class=${`settings-nav-item${at === id ? ' is-on' : ''}`}
           aria-current=${at === id ? 'page' : undefined} onClick=${() => c.setSettingsSection(id)}>
           <${Icon} name=${AREA_ICONS[id]} size=${18} />
           <span class="settings-nav-text"><b>${w.section[id].title}</b><small>${w.section[id].sub}</small></span>
@@ -440,18 +542,3 @@ export function SettingsPage({ s, c }) {
   </div>`
 }
 
-/** "Customise" beside the start page: the same editors in a drawer that leaves the page in view, so every
- *  change shows on it at once */
-export function CustomizeDrawer({ s, c }) {
-  const w = T().settings
-  return html`<${Drawer} id="customize" title=${w.customizeTitle} onClose=${() => c.setDrawer(null)} cls="drawer-wide" clear>
-    <p class="muted small customize-lead">${w.customizeLead}</p>
-    <div class="customize-body">
-      <${StartArea} s=${s} c=${c} />
-      <${DetailsCard} s=${s} c=${c} />
-    </div>
-    <footer class="customize-foot">
-      <${Btn} variant="ghost" size="sm" onClick=${() => c.openSettings('start')}>${w.allSettings}<//>
-    </footer>
-  <//>`
-}

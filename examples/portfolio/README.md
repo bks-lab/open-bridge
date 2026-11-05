@@ -112,7 +112,7 @@ push: this clone points at the public repo.
 
 ```
 examples/portfolio/
-├── CLAUDE.md / AGENTS.md       ← demo brief (overrides the repo root in here)
+├── CLAUDE.md / AGENTS.md       ← demo brief (Claude Code loads only this file here; agents that also read the repo-root AGENTS.md: this file wins)
 ├── bridge-config.yaml          ← user config
 ├── ecosystem.yaml              ← the three hats and their repos
 ├── .claude/agents/             ← one sub-agent: paperwork-clerk

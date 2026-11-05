@@ -34,6 +34,27 @@ about what to do with them, so this one separates:
               path belongs to a neighbour checkout and is not ours to judge
     dead      nothing anywhere
 
+PROSE LINKS ARE EDGES TOO. A STATUS.md linking a deliverable, a memory file
+linking the task it came from: relative Markdown links under `work/`. Ending
+one stream moved it to `work/done/YYYY-MM/` and left about 14 of them dead,
+fixed by hand, because nothing here read prose. They are relative to the FILE,
+not the repo, so a move breaks them from both sides: links into the moved
+folder, and the moved files' own links out of it, whose depth changed. Both
+resolve to a repo path first and then go through the same classification.
+
+DESIGNS ARE NAMED BY ID. `design_ref:` in a context or a persona and
+`branding.design:` in a theme name a design under identity/designs/ by its id,
+not by path, so the path pattern never sees them. They are read separately and
+checked as an edge to `identity/designs/<id>.md`: resolving or dead, never
+moved, since `--fix` would write a path where an id belongs. Only the top-level
+key counts, as scripts/designs.py reads it, and a value that is no id
+(`_template`, `../../DESIGN`) is dead there and here. A design must also
+travel at least as far as whatever names it: an org context naming a user
+design reaches every member Bridge without the design, and every generator
+there refuses to resolve.
+`design_ref: default` is no edge: it opts a context or persona out to the root
+DESIGN.md, and `default` itself is never a design id.
+
 TEMPLATES ARE NOT EDGES. `_template.yaml` describes a file nobody has written
 and `*.example.yaml` describes the tree a future instance will have. Their
 paths are correct as written and reporting them would be three false alarms in
@@ -45,10 +66,15 @@ Contract: `scripts/tests/test_edges.py`.
 from __future__ import annotations
 
 import argparse
+import functools
+import importlib.util
+import os
+import posixpath
 import re
 import sys
 from collections import Counter
 from pathlib import Path
+from urllib.parse import unquote
 
 try:
     import yaml
@@ -70,6 +96,34 @@ SCAN_GLOBS = (
     "workflow/*/*.yaml",
     "trackers/*.yaml",
 )
+
+# Prose that links work items to each other. Templates link to `<slug>`
+# placeholders, which are correct as written.
+MD_SCAN_GLOBS = ("work/**/*.md",)
+MD_SKIP_PREFIXES = ("work/templates/",)
+
+# An inline Markdown link. The target ends at whitespace or `)`, so an optional
+# title is not part of it.
+MD_LINK = re.compile(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+# Closed and archived work keeps snapshots: a copy of docs a task worked on,
+# with that copy's own relative links. A dead link there is history. A MOVED
+# one is still reported, because `--fix` repairs it without a judgement call.
+MD_HISTORY_PREFIXES = ("work/done/", "work/archive/")
+BACKTICKS = re.compile(r"`+")
+FENCE = re.compile(r"^\s*(```|~~~)")
+
+# Id references to a design (scripts/designs.py): the top-level `design_ref` of a
+# context or a persona, and a theme's `branding.design`. Same id rule as designs.py.
+DESIGN_KEY = "design_ref"
+DESIGN_DIR = "identity/designs/"
+DESIGN_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+DESIGN_REFERRERS = ("workflow/contexts/*.yaml", "identity/personas/*.yaml")
+# `design_ref: default` opts a context or persona out to the root DESIGN.md: no edge, no tier to check
+DESIGN_OPT_OUT = "default"
+THEME_GLOB = "themes/*.yaml"
+# Where a file of each tier travels. A design must reach everywhere its referrer does.
+REACH = {"core": {"core", "org", "personal", "user"}, "org": {"org", "user"},
+         "personal": {"personal", "user"}, "user": {"user"}}
 
 # Where a work item can live. The KIND model in AGENTS.md: a finite task, a
 # long-runner, or closed under a month.
@@ -159,6 +213,186 @@ def iter_edges(repo_root) -> list[tuple[str, str, str]]:
     return found
 
 
+def _md_path(raw: str):
+    """The path part of a link target, or None when it is not repo-relative."""
+    if raw.startswith(("#", "/", "~", "mailto:")) or "://" in raw:
+        return None
+    if "<" in raw or "{" in raw or "…" in raw:
+        return None
+    path = raw.split("#", 1)[0]
+    if path and "/" not in path and "." not in path:
+        return None                        # `[Text](URL)`: a placeholder, not a file
+    return unquote(path) if path else None
+
+
+def _prose_lines(text: str):
+    """(line number, line) outside fenced code, with code spans blanked.
+
+    An example inside backticks shows a path; it does not claim one exists.
+    Spans pair up per paragraph, as Markdown pairs them: one may open on a line
+    and close on the next, it closes on a run of the same length (so a
+    double-backtick span can hold a single one), and a run nothing closes is a
+    literal backtick that hides nothing.
+    """
+    paragraph: list[tuple[int, str]] = []
+    fenced = False
+    for number, line in enumerate(text.split("\n"), start=1):
+        if FENCE.match(line):
+            yield from _blank_spans(paragraph)
+            paragraph, fenced = [], not fenced
+            continue
+        if fenced:
+            continue
+        if not line.strip():
+            yield from _blank_spans(paragraph)
+            paragraph = []
+            continue
+        paragraph.append((number, line))
+    yield from _blank_spans(paragraph)
+
+
+def _blank_spans(paragraph: list[tuple[int, str]]):
+    if not paragraph:
+        return
+    joined = "\n".join(line for _, line in paragraph)
+    chars = list(joined)
+    runs = list(BACKTICKS.finditer(joined))
+    i = 0
+    while i < len(runs):
+        opener = runs[i]
+        closer = next((j for j in range(i + 1, len(runs))
+                       if len(runs[j].group()) == len(opener.group())), None)
+        if closer is None:
+            i += 1                         # nothing closes it: a literal backtick
+            continue
+        for k in range(opener.start(), runs[closer].end()):
+            if chars[k] != "\n":
+                chars[k] = " "
+        i = closer + 1
+    for (number, _), line in zip(paragraph, "".join(chars).split("\n")):
+        yield number, line
+
+
+def _md_links_in(rel: str, line: str):
+    """(raw, repo path) for every repo-relative link on one line of `rel`."""
+    base = posixpath.dirname(rel)
+    for match in MD_LINK.finditer(line):
+        raw = match.group(1)
+        path = _md_path(raw)
+        if path is None:
+            continue
+        target = posixpath.normpath(posixpath.join(base, path))
+        if target == ".." or target.startswith("../"):
+            continue                       # leaves the repo: a neighbour's tree
+        yield raw, target
+
+
+def iter_md_links(repo_root) -> list[tuple[str, str, str]]:
+    """Every relative Markdown link under `work/`, as (file, `#L<line>`, target).
+
+    The key is a line number, which no YAML key path can look like, so a
+    caller can tell a prose edge from a declared one.
+    """
+    root = Path(repo_root)
+    found: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for pattern in MD_SCAN_GLOBS:
+        for path in sorted(root.glob(pattern)):
+            rel = path.relative_to(root).as_posix()
+            if rel in seen or rel.startswith(MD_SKIP_PREFIXES) or not path.is_file():
+                continue
+            seen.add(rel)
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            for number, line in _prose_lines(text):
+                for _raw, target in _md_links_in(rel, line):
+                    found.append((rel, f"#L{number}", target))
+    return found
+
+
+def _design_target(value) -> str:
+    return f"{DESIGN_DIR}{str(value).strip()}.md"
+
+
+def iter_design_refs(repo_root) -> list[tuple[str, str, str]]:
+    """Every reference to a design by id, as (file, key path, identity/designs/<id>.md)."""
+    if yaml is None:  # pragma: no cover
+        return []
+    root = Path(repo_root)
+    found: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for pattern in (*DESIGN_REFERRERS, THEME_GLOB):
+        for path in sorted(root.glob(pattern)):
+            rel = str(path.relative_to(root))
+            if rel in seen or _skip(rel):
+                continue
+            seen.add(rel)
+            try:
+                doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except (yaml.YAMLError, UnicodeDecodeError):
+                continue
+            if not isinstance(doc, dict):
+                continue
+            if pattern == THEME_GLOB:
+                branding = doc.get("branding")
+                key, value = "branding.design", branding.get("design") if isinstance(branding, dict) else None
+            else:
+                key, value = DESIGN_KEY, doc.get(DESIGN_KEY)
+                if value is not None and str(value).strip() == DESIGN_OPT_OUT:
+                    continue
+            if value is not None and not isinstance(value, (dict, list)):
+                found.append((rel, key, _design_target(value)))
+    return found
+
+
+def _router():
+    spec = importlib.util.spec_from_file_location("categorize_commits_for_edges", HERE / "categorize-commits.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def design_tier_findings(repo_root) -> list[str]:
+    """A design narrower than the file naming it: the referrer travels, the design stays behind."""
+    refs = [r for r in iter_design_refs(repo_root) if classify(repo_root, r[2])[0] == "ok"]
+    if not refs:
+        return []
+    router = _router()
+    findings = []
+    # the router reads front matter relative to the working directory
+    here = os.getcwd()
+    os.chdir(Path(repo_root))
+    try:
+        for rel, key, target in refs:
+            source, design = router.classify_file(rel), router.classify_file(target)
+            if not REACH.get(source, set()) <= REACH.get(design, set()):
+                findings.append(
+                    f"{rel} :: {key} -> {target}: the referrer is {source}, the design only "
+                    f"{design}, so wherever the referrer travels the design is missing; widen "
+                    f"the design's scope or narrow the referrer")
+    finally:
+        os.chdir(here)
+    return findings
+
+
+def all_edges(repo_root) -> list[tuple[str, str, str]]:
+    _files_by_name.cache_clear()           # one walk per run, never a stale one
+    return iter_edges(repo_root) + iter_design_refs(repo_root) + iter_md_links(repo_root)
+
+
+def links_into(repo_root, old: str) -> list[str]:
+    """Files whose Markdown links still point at `old` or below it.
+
+    For the moment right after a move: `old` is where the folder used to be.
+    """
+    old = old.rstrip("/")
+    return sorted({rel for rel, _key, target in iter_md_links(repo_root)
+                   if target == old or target.startswith(old + "/")})
+
+
 def _work_slug(target: str):
     """(slug, tail) for a `work/...` path, or None when it is not one."""
     parts = target.split("/")
@@ -193,18 +427,31 @@ def _tail_match(root: Path, target: str):
     fourteen is a coin toss.
     """
     name = target.rsplit("/", 1)[-1]
-    for path in root.rglob(name):
-        # `.bridge/workspaces/` holds CLONES of other repositories. A hit there
-        # resolves in somebody else's tree, which is the one thing this module
-        # refuses to judge — and calling it a move would rewrite a reference
-        # that is correct as written into a path that exists only while that
-        # workspace happens to be checked out.
-        if not path.is_file() or {".git", ".bridge"} & set(path.parts):
-            continue
-        rel = path.relative_to(root).as_posix()
+    for rel in _files_by_name(str(root)).get(name, ()):
         if rel != target and rel.endswith("/" + target):
             return rel
     return None
+
+
+@functools.lru_cache(maxsize=8)
+def _files_by_name(root: str) -> dict[str, list[str]]:
+    """Every file of the tree, by basename, walked once.
+
+    Prose links made a tree walk per unresolved target cost a minute on a live
+    instance. `.bridge/workspaces/` holds CLONES of other repositories: a hit
+    there resolves in somebody else's tree, which is the one thing this module
+    refuses to judge, and calling it a move would rewrite a reference that is
+    correct as written into a path that exists only while that workspace
+    happens to be checked out.
+    """
+    index: dict[str, list[str]] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in (".git", ".bridge"))
+        rel_dir = os.path.relpath(dirpath, root)
+        for name in sorted(filenames):
+            rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+            index.setdefault(name, []).append(rel.replace(os.sep, "/"))
+    return index
 
 
 def classify(repo_root, target: str) -> tuple[str, str | None]:
@@ -216,6 +463,13 @@ def classify(repo_root, target: str) -> tuple[str, str | None]:
     # past the escape hatch it was meant to take and came out `dead`.
     if target.startswith("/") or target.startswith("~"):
         return "external", None
+    # A design named by id resolves or it does not: no other folder holds one,
+    # and no neighbour checkout could. A value that is no id never resolves.
+    if target.startswith(DESIGN_DIR) and target.endswith(".md"):
+        design_id = target[len(DESIGN_DIR):-3]
+        ok = (DESIGN_ID.match(design_id) and design_id != DESIGN_OPT_OUT
+              and (root / target).is_file())
+        return ("ok", None) if ok else ("dead", None)
     if (root / target).exists():
         return "ok", None
 
@@ -248,7 +502,7 @@ def check(repo_root) -> list[str]:
     exceptions = load_exceptions(repo_root)
     used = set()
     findings = []
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         state, live = classify(repo_root, target)
         excuse = _excused(exceptions, rel, key)
         if excuse is not None and state in ("dead", "moved"):
@@ -265,9 +519,12 @@ def check(repo_root) -> list[str]:
                 f"{rel} :: {key} -> {target} moved; it now lives at {live} "
                 f"(`--fix` rewrites this one)"
             )
+        elif state == "dead" and key.startswith("#L") and rel.startswith(MD_HISTORY_PREFIXES):
+            continue
         elif state == "dead":
             findings.append(f"{rel} :: {key} -> {target} is dead, nothing at that path")
 
+    findings.extend(design_tier_findings(repo_root))
     for entry in exceptions:
         if id(entry) not in used:
             findings.append(
@@ -281,10 +538,12 @@ def check(repo_root) -> list[str]:
 def stats(repo_root) -> Counter:
     exceptions = load_exceptions(repo_root)
     counter: Counter = Counter()
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         state = classify(repo_root, target)[0]
         if state in ("dead", "moved") and _excused(exceptions, rel, key):
             state = "declared"
+        elif state == "dead" and key.startswith("#L") and rel.startswith(MD_HISTORY_PREFIXES):
+            state = "history"
         counter[state] += 1
     return counter
 
@@ -296,7 +555,7 @@ def neighbours(repo_root, node: str):
     the half that answers "what breaks if I move this".
     """
     outgoing, incoming = [], []
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         if rel == node:
             outgoing.append((key, target, classify(repo_root, target)[0]))
         if target == node:
@@ -333,6 +592,26 @@ def _scalar_line(text: str, dotted: str):
     return node.start_mark.line if isinstance(node, yaml.ScalarNode) else None
 
 
+def _fix_md_link(root: Path, rel: str, key: str, target: str, live: str) -> bool:
+    """Rewrite the one link on line `key` that resolves to `target`."""
+    path = root / rel
+    lines = path.read_text(encoding="utf-8").split("\n")
+    index = int(key[2:]) - 1
+    if index >= len(lines):
+        return False
+    line = lines[index]
+    for raw, resolved in _md_links_in(rel, line):
+        if resolved != target:
+            continue
+        new = posixpath.relpath(live, posixpath.dirname(rel) or ".")
+        if "#" in raw:
+            new += "#" + raw.split("#", 1)[1]
+        lines[index] = line.replace(f"]({raw}", f"]({new}", 1)
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return True
+    return False
+
+
 def fix_moved(repo_root):
     """Rewrite references whose target moved bucket. Returns (changed, skipped).
 
@@ -360,7 +639,7 @@ def fix_moved(repo_root):
     root = Path(repo_root)
     exceptions = load_exceptions(repo_root)
     changed, skipped = 0, []
-    for rel, key, target in iter_edges(repo_root):
+    for rel, key, target in all_edges(repo_root):
         state, live = classify(repo_root, target)
         if state != "moved" or not live:
             continue
@@ -370,6 +649,9 @@ def fix_moved(repo_root):
                 f"{rel} :: {key} -> {target} left alone: excepted in "
                 f"{EXCEPTION_FILE} ({str(excuse.get('reason') or '').strip().splitlines()[0]})"
             )
+            continue
+        if key.startswith("#L"):
+            changed += _fix_md_link(root, rel, key, target, live)
             continue
         # ONE occurrence, at the key that was actually classified. The gate above
         # decided per EDGE; a whole-file replace then acted per FILE, so an
@@ -407,7 +689,7 @@ def main(argv=None) -> int:
         counter = stats(root)
         total = sum(counter.values())
         print(f"check-edges: {total} declared edge(s)")
-        for state in ("ok", "moved", "dead", "external", "declared"):
+        for state in ("ok", "moved", "dead", "external", "declared", "history"):
             if counter[state]:
                 print(f"  {counter[state]:>4}  {state}")
         return 0
@@ -441,7 +723,7 @@ def main(argv=None) -> int:
     if findings:
         print(f"check-edges: {len(findings)} finding(s)", file=sys.stderr)
         return 1
-    print(f"check-edges: {len(iter_edges(root))} declared edge(s), all resolve")
+    print(f"check-edges: {len(all_edges(root))} declared edge(s), all resolve")
     return 0
 
 

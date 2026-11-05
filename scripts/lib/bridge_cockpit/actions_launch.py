@@ -41,8 +41,15 @@ class LaunchSteps:
         self.settle(ctx, row, self.tx["approved_note"])
         return True
 
+    def clear_twins(self, key: str) -> None:
+        """Before a decision is written under `key`: what the keys of the same thing hold goes (collector.twins), so
+        one thing never holds two decisions with different dates and a later Show again finds no older one"""
+        for twin in self.app.collector.twins(key)[1:]:
+            self.app.store.unhide(twin)
+
     def hide_until(self, ctx: Ctx, row: dict, until: str) -> None:
-        self.app.store.hide(row["key"], until)
+        self.clear_twins(row["key"])
+        self.app.store.hide(row["key"], until, str(row["title"]))
         ctx.history.append(history_item(row["key"], row["title"], "other", f"hidden until {until}"))
         ctx.note(self.tx["hidden_note"].format(until=until, title=m.short(row["title"], 60)))
 
@@ -153,7 +160,9 @@ class LaunchSteps:
         # the return channel follows every start that ran (returns.py)
         if launched and getattr(app, "launches", None) is not None:
             app.launches.record([{"key": r["key"], "item": m.launch_item(r), "title": r.get("title"), "mode": mode,
-                                  **(chosen or {})} for r in launched if r.get("key") and m.launch_item(r)])
+                                  **(chosen or {}), **({"by": ctx.by} if ctx.by else {}),
+                                  **({"conv": r["conv"]} if r.get("conv") else {})}
+                                 for r in launched if r.get("key") and m.launch_item(r)])
             # and the item's own log says so, for every other reader (returns.py)
             line = ret.start_line(mode, app.cfg.language)
             for r in launched:
@@ -173,7 +182,7 @@ class LaunchSteps:
             if tab and "focus" in app.driver_caps():
                 self.jump_to(ctx, tab)
                 ctx.jump = {"ref": tab["ref"]}
-            ctx.note(tx["already_open"].format(label=m.short(running[0]["label"], 40)))
+            ctx.note(tx["already_open"].format(label=m.short(running[0]["label"], 40)), go={"kind": "tab", "ref": running[0]["ref"]})
             ctx.tabs_after(0)
         if launched:
             ctx.tabs_after(5)
@@ -213,7 +222,8 @@ class LaunchSteps:
         if new_id is None:
             return None
         until = (self.today() + dt.timedelta(days=30)).isoformat()
-        self.app.store.hide(row["key"], until)
+        self.clear_twins(row["key"])
+        self.app.store.hide(row["key"], until, str(row["title"]))
         # the row is back with "show again", from the toast or the history; the inbox item stays
         ctx.history.append(history_item(row["key"], row["title"], "other", f"filed, hidden until {until}"))
         ctx.settled.append(row["key"])
@@ -260,11 +270,12 @@ class LaunchSteps:
         return None
 
     def inbox_add(self, ctx: Ctx, row_key: str, summary: str, detail: str, key: str | None = None,
-                  closer: str = "person") -> str | None:
-        """File a free decision item for a person, under `web:<row key>` unless a key is given; its id, or None
-        with a note."""
+                  closer: str = "person", task: str | None = None) -> str | None:
+        """File a free decision item for a person, under `web:<row key>` unless a key is given, of `task` when one is
+        given; its id, or None with a note."""
         argv = self.inbox("add", "--from", "bridge-cockpit", "--kind", "decision", "--gate", "free", "--closer", closer,
-                          f"--key={key or 'web:' + row_key}", f"--summary={m.short(summary, 200)}", f"--detail={detail}")
+                          f"--key={key or 'web:' + row_key}", f"--summary={m.short(summary, 200)}", f"--detail={detail}",
+                          *([f"--task={task}"] if task else []))
         run = ctx.call("inbox.add", row_key, argv, SHORT_TIMEOUT)
         new_id = (run.out or "").strip().splitlines()[-1:] if run.ok else []
         if not run.ok or not new_id or not INBOX_ID_RE.match(new_id[0]):

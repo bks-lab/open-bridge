@@ -654,17 +654,6 @@ def test_closer_is_stored_and_validated(box):
         box.add(source="m", kind="finding", summary="s2", closer="somebody")
 
 
-def test_a_finding_without_a_way_to_close_warns(box, capsys):
-    box.add(source="m", kind="finding", summary="nobody will ever close me")
-    assert "no way to close" in capsys.readouterr().err
-
-
-def test_a_finding_with_a_probe_or_a_closer_does_not_warn(box, capsys):
-    box.add(source="m", kind="finding", summary="a", closes_when={"after": "2026-10-09"})
-    box.add(source="m", kind="finding", summary="b", closer="reporter")
-    assert "no way to close" not in capsys.readouterr().err
-
-
 # ---------------------------------------------------------------- reopen: a close by mistake
 
 def test_reopen_brings_a_closed_or_dropped_item_back_as_a_new_event(box):
@@ -689,14 +678,14 @@ def test_runs_on_is_a_defer_that_names_what_it_waits_on(box):
     # stored as waits_on, never a bare `on` key (a boolean to YAML 1.1 readers)
     stored = "\n".join(f.read_text(encoding="utf-8") for f in (box.root / item_id / "events").glob("*defer*"))
     assert "waits_on: an answer from the vendor" in stored and "'on'" not in stored
-    assert item.state == "deferred" and item.deferral == {"until": "2099-01-01", "on": "an answer from the vendor"}
+    assert item.state == "deferred" and item.deferral == {"until": "2099-01-01", "on": "an answer from the vendor", "check": False}
     assert item.as_dict()["waiting_on"] == "an answer from the vendor" and item.as_dict()["deferred_until"] == "2099-01-01"
     box.event(item_id, "defer", until="2099-02-01")            # a plain later: nothing it waits on
-    assert box.get(item_id).deferral == {"until": "2099-02-01", "on": None}
+    assert box.get(item_id).deferral == {"until": "2099-02-01", "on": None, "check": False}
     box.reopen(item_id)
     assert box.get(item_id).deferral is None and "waiting_on" not in box.get(item_id).as_dict()
     box.event(item_id, "defer", until="2099-03-01", on="an older event")   # the first events wrote `on`: still read
-    assert box.get(item_id).deferral == {"until": "2099-03-01", "on": "an older event"}
+    assert box.get(item_id).deferral == {"until": "2099-03-01", "on": "an older event", "check": False}
 
 
 def test_reopen_takes_back_a_defer(box):
@@ -843,3 +832,202 @@ def test_cli_add_without_the_flag_still_opens_a_new_item(tmp_path, capsys):
     inbox.main(["--root", str(tmp_path), "add", "--from", "m/bridge-notify", "--kind", "finding",
                 "--summary", "orbit (m)", "--key", "notify:k1", "--detail", DETAIL, "--closer", "bot"])
     assert capsys.readouterr().out.strip().splitlines()[-1] != item_id
+
+
+# ---------------------------------------------------------------- arts: what a person sees an item as
+
+def test_every_kind_has_an_art_and_the_arts_are_three():
+    assert {k: inbox.art_of_kind(k) for k in inbox.KINDS} == {
+        "decision": "ask", "question": "ask", "draft": "ask",
+        "finding": "report", "result": "report", "idea": "idea"}
+    assert inbox.ARTS == ("ask", "report", "idea")
+
+
+def test_an_unknown_kind_is_an_ask_so_a_person_sees_it():
+    assert inbox.art_of_kind("verdict") == "ask"
+    assert inbox.art_of_kind(None) == "ask"
+
+
+def test_art_of_reads_the_item_and_stores_nothing(box):
+    item_id = add(box, kind="idea", summary="maybe one day")
+    assert inbox.art_of(box.get(item_id)) == "idea"
+    assert inbox.art_of(box.get(item_id).as_dict()) == "idea"
+    stored = yaml.safe_load((box.root / item_id / "item.yaml").read_text(encoding="utf-8"))
+    assert "art" not in stored
+
+
+def test_list_json_carries_the_art_and_list_art_filters(tmp_path):
+    for kind, summary in (("decision", "merge it"), ("finding", "disk 91 %"), ("idea", "a dark mode")):
+        r = run_cli(tmp_path, "add", "--from", "cli", "--kind", kind, "--summary", summary, "--closer", "person")
+        assert r.returncode == 0, r.stderr
+    rows = json.loads(run_cli(tmp_path, "list", "--json").stdout)
+    assert {r["summary"]: r["art"] for r in rows} == {"merge it": "ask", "disk 91 %": "report", "a dark mode": "idea"}
+    asks = json.loads(run_cli(tmp_path, "list", "--json", "--art", "ask").stdout)
+    assert [r["summary"] for r in asks] == ["merge it"]
+    short = run_cli(tmp_path, "list", "--short", "--art", "idea").stdout
+    assert "a dark mode" in short and "merge it" not in short
+    assert run_cli(tmp_path, "list", "--art", "task").returncode != 0      # only the three arts
+
+
+# ---------------------------------------------------------------- no item without a way out
+
+def test_an_item_with_neither_probe_nor_closer_gets_closer_person(box, capsys):
+    for kind in ("finding", "question", "idea", "decision"):
+        item_id = box.add(source="m", kind=kind, summary=f"no way out {kind}")
+        assert box.get(item_id).closer == "person"
+        stored = yaml.safe_load((box.root / item_id / "item.yaml").read_text(encoding="utf-8"))
+        assert stored["closer"] == "person"            # written, so every reader sees the same
+    assert "no way to close" not in capsys.readouterr().err
+
+
+def test_a_probe_a_closer_or_an_action_keeps_its_own_way_out(box):
+    probed = box.add(source="m", kind="finding", summary="a", closes_when={"after": "2026-10-09"})
+    own = box.add(source="m", kind="finding", summary="b", closer="reporter")
+    acting = box.add(source="m", kind="decision", summary="c", action={"argv": ["true"]})
+    assert box.get(probed).closer is None
+    assert box.get(own).closer == "reporter"
+    assert box.get(acting).closer is None              # the run that executes it closes it
+
+
+def test_an_item_stored_without_closer_stays_without_one(box):
+    item_id = box.add(source="m", kind="finding", summary="old", closer="reporter")
+    path = box.root / item_id / "item.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del data["closer"]
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    assert box.get(item_id).closer is None             # nothing rewrites what was filed before
+    assert box.validate() == []
+
+
+# ---------------------------------------------------------------- waiting for a condition (waits_for)
+
+def test_an_item_that_waits_for_a_condition_asks_nobody_until_it_holds(box, tmp_path):
+    # 29.10.: a watcher filed "quota raised: switch over" as a fact while the probe said it had not happened yet
+    marker = tmp_path / "quota-raised"
+    item_id = add(box, kind="result", summary="Quota raised: switch over", waits_for={"path_exists": str(marker)})
+    assert box.get(item_id).state == "waiting"
+    assert box.get(item_id).waits_for == {"path_exists": str(marker)}
+    assert box.check() == [] and box.last_ready == []
+    assert box.get(item_id).state == "waiting"
+    marker.write_text("ok")
+    assert box.check() == [] and box.last_ready == [item_id]
+    item = box.get(item_id)
+    assert item.state == "open" and item.waits_for is None
+    assert item.events[-1].verb == "ready" and item.events[-1].by == "check"
+    assert box.check() == [] and box.last_ready == []          # recorded once
+
+
+def test_an_unknown_wait_probe_keeps_the_item_waiting(box):
+    item_id = add(box, waits_for={"no_such_probe": 1})
+    box.check()
+    assert box.get(item_id).state == "waiting"
+
+
+def test_wait_sets_a_condition_on_an_open_item_and_a_waiting_item_runs_nothing(box, tmp_path):
+    item_id = add(box, gate="free", action={"argv": ["true"]})
+    box.wait(item_id, {"path_exists": str(tmp_path / "never")})
+    assert box.get(item_id).state == "waiting"
+    assert box.runnable() == []                                 # a free action waits for the condition too
+    with pytest.raises(ValueError):
+        box.wait(item_id, "not a probe")
+    with pytest.raises(ValueError):
+        add(box, waits_for=["not", "a", "probe"])
+
+
+def test_a_waiting_item_still_closes_when_its_closes_when_holds(box, tmp_path):
+    done = tmp_path / "done"
+    done.write_text("x")
+    item_id = add(box, waits_for={"path_exists": str(tmp_path / "never")}, closes_when={"path_exists": str(done)})
+    assert box.check() == [item_id]
+    assert box.get(item_id).state == "done"
+
+
+def test_cli_add_waits_for_and_wait(tmp_path):
+    marker = tmp_path / "flag"
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "result", "--summary", "Quota raised",
+                "--waits-for-json", json.dumps({"path_exists": str(marker)}))
+    assert r.returncode == 0, r.stderr
+    first = r.stdout.strip()
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "decision", "--summary", "Switch over")
+    second = r.stdout.strip()
+    r = run_cli(tmp_path, "wait", second, "--for-json", json.dumps({"path_exists": str(marker)}))
+    assert r.returncode == 0, r.stderr
+    states = {i["id"]: (i["state"], i.get("waits_for")) for i in json.loads(run_cli(tmp_path, "list", "--json").stdout)}
+    assert states == {first: ("waiting", {"path_exists": str(marker)}), second: ("waiting", {"path_exists": str(marker)})}
+    marker.write_text("ok")
+    r = run_cli(tmp_path, "check")
+    assert r.returncode == 0 and sorted(r.stdout.split()) == sorted(["ready", first, "ready", second])
+    assert {i["state"] for i in json.loads(run_cli(tmp_path, "list", "--json").stdout)} == {"open"}
+    assert run_cli(tmp_path, "validate").returncode == 0
+
+
+# ---------------------------------------------------------------- in progress with a check-in (stage 4 of the cockpit)
+
+def test_a_defer_with_check_is_a_check_in_with_someone_not_a_plain_later(box):
+    item = add(box)
+    box.event(item, "defer", until="2026-10-11", waits_on="lena", check=True)
+    got = box.get(item)
+    assert got.state == "deferred"
+    assert got.deferral == {"until": "2026-10-11", "on": "lena", "check": True}
+    # a plain later is none
+    other = add(box, summary="another thing")
+    box.event(other, "defer", until="2026-10-11")
+    assert box.get(other).deferral == {"until": "2026-10-11", "on": None, "check": False}
+
+
+def test_cli_defer_check_writes_the_marker(tmp_path):
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "decision", "--summary", "Contract signed")
+    item_id = r.stdout.strip().split()[-1]
+    r = run_cli(tmp_path, "defer", item_id, "--until", "2026-10-11", "--on", "lena", "--check")
+    assert r.returncode == 0, r.stderr
+    events = sorted((tmp_path / "repo" / "work" / "inbox" / item_id / "events").glob("*-defer.yaml"))
+    ev = yaml.safe_load(events[-1].read_text(encoding="utf-8"))
+    assert ev["check"] is True and ev["waits_on"] == "lena" and ev["until"] == "2026-10-11"
+    assert run_cli(tmp_path, "defer", item_id, "--until", "2026-10-11", "--check").returncode == 2, "a check-in names who has it"
+
+
+# ---------------------------------------------------------------- a title a person reads (stage 4 of the cockpit)
+
+def test_title_lint_names_what_to_change_and_never_refuses():
+    lint = inbox.title_lint
+    assert lint("Pay the hosting invoice", "en") == []
+    long = "A finding about everything that happened on the server last night while the backups ran and failed twice"
+    assert any("80" in w for w in lint(long, "en"))
+    assert any("path" in w for w in lint("Check /var/log/syslog for errors", "en"))
+    assert any("file" in w for w in lint("Update notes.md with the new steps", "en"))
+    assert any("id" in w for w in lint("Look at 20261009-0900-a-q again", "en"))
+    assert any("English" in w for w in lint("Check the backup of the server", "de"))
+    assert lint("Die Sicherung des Servers prüfen", "de") == []
+
+
+def test_cli_add_warns_on_a_title_and_files_it_all_the_same(tmp_path):
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "finding", "--summary", "Check /var/log/syslog for errors")
+    assert r.returncode == 0
+    assert "title" in r.stderr and "path" in r.stderr
+    assert r.stdout.strip()
+
+
+def test_cli_probe_answers_one_probe_and_never_runs_a_command(tmp_path):
+    """the read-only probe the cockpit's check-in look reads a GitHub ref's state with (inbox.py probe)"""
+    r = run_cli(tmp_path, "probe", "--json", '{"path_exists": "work/inbox"}')
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"result": True}
+    r = run_cli(tmp_path, "probe", "--json", '{"path_exists": "nowhere"}')
+    assert json.loads(r.stdout) == {"result": False}
+    r = run_cli(tmp_path, "probe", "--json", '{"something": "else"}')
+    assert json.loads(r.stdout) == {"result": None}, "an unknown probe is unknown, never true"
+    for spec in ('{"command": ["touch", "x"]}', '{"any": [{"command": ["touch", "x"]}]}', "not json", "[1]"):
+        r = run_cli(tmp_path, "probe", "--json", spec)
+        assert r.returncode == 2 and not (tmp_path / "repo" / "x").exists(), spec
+
+
+def test_probe_once_reads_a_ref_through_the_gh_runner_and_refuses_commands():
+    calls = []
+
+    def fake_gh(args):
+        calls.append(args)
+        return json.dumps({"state": "CLOSED"})
+    assert inbox.probe_once({"gh_issue": "org/repo#12", "state": "closed"}, gh=fake_gh) is True
+    assert calls[0][:3] == ["issue", "view", "12"]
+    with pytest.raises(ValueError):
+        inbox.probe_once({"command": ["true"]}, gh=fake_gh)

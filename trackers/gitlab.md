@@ -2,115 +2,106 @@
 name: gitlab
 description: GitLab issues via the glab CLI
 requires: [glab]
-config_key: integrations.gitlab
+adapter: scripts/lib/briefing_providers/gitlab.py
 ---
 
 # Provider: GitLab
 
-Reads work items from GitLab Issues using the `glab` CLI for auth +
-transport (no PAT in config needed — `glab auth status` must be green).
+Reads work items from GitLab Issues through the `glab` CLI, which handles
+auth and transport with its own login (`glab auth status` must be green).
+No token goes into the profile or `bridge-config.yaml`.
+
+This file documents `scripts/lib/briefing_providers/gitlab.py`. When the
+two disagree, the adapter is right.
 
 ## When to use
 
-Enable this if your team tracks work in **GitLab Issues**. This is
-the provider for anyone hosting code on GitLab.com or a self-managed
-GitLab instance.
+Use this if your team tracks work in **GitLab Issues**, on GitLab.com or a
+self-managed instance. The CLI path was chosen because `glab` already
+carries the login, so the Bridge stores no credential.
 
-## Config schema
+## Profile section
 
-Add to `bridge-config.yaml`:
+Add a section to your briefing profile (`workflow/briefings/<id>.yaml`):
 
 ```yaml
-integrations:
-  gitlab:
-    enabled: true
-
-    # Repos (GitLab calls these "projects") to pull issues from,
-    # as OWNER/REPO or GROUP/NAMESPACE/REPO
-    repos:
-      - my-group/my-project
-      - my-group/other-project
-
-    # Optional — used to flag assigned_to_me
-    assignee_me: my-gitlab-username
-
-    # Optional — max items per repo (default 50)
-    limit: 50
+sections:
+  - kind: tracker
+    id: gitlab
+    title: "GitLab"
+    provider: gitlab
+    query:
+      repos:                    # required: GitLab projects as group/project
+        - my-group/my-project
+        - my-group/sub-group/other-project
+      assignee: "@me"           # default "@me"; or a username
+      state: opened             # opened (default) | closed
+      labels: [bug]             # optional: every label must be present
+      limit: 50                 # per repo, default 50
+    # state_map: {"opened": ready}   # optional: raw state → normalized
 ```
 
-All fields except `enabled` are optional. An enabled-but-empty config
-still works (the provider will emit zero items and briefing skips the
-section).
+`assigned_to_me` is true when your own GitLab login is among the
+assignees. Your login comes from `integrations.gitlab.assignee_me` in
+`bridge-config.yaml` when set, else from `glab api user`. Without either,
+an `assignee: "@me"` query counts as yours.
+
+**Without a profile** the built-in briefing still reads
+`integrations.gitlab` (`enabled`, `repos`, `limit`) from
+`bridge-config.yaml` and turns it into this section. That fallback exists
+for Bridges configured before profiles; new setups use the section.
 
 ## Collect
 
-When `/briefing` Stream B loads this file, Claude runs:
-
-### 1. For each configured repo — fetch open issues
+For each repo in `query.repos` the adapter runs one command:
 
 ```bash
-glab issue list --repo {repo} --assignee {assignee_me} \
-  --output json --per-page {limit}
+glab issue list --repo {repo} --assignee {assignee} \
+  --output json --per-page {limit} [--closed] [--label {label} ...]
 ```
 
-If `assignee_me` is not set, omit `--assignee` and fetch all open
-issues for the repo instead.
+`--closed` is added for `state: closed`, one `--label` per label. Run the
+same command by hand to see what the adapter sees.
 
-### 2. For each issue — fetch full detail if needed
-
-```bash
-glab issue view {id} --repo {repo} --output json
-```
-
-Only needed if the list output is missing a field the schema requires
-(labels and state are already present in list output for `glab`).
-
-### 3. Normalize each item
-
-Map each raw item to the shared schema in `trackers/README.md`:
+Each issue maps to the shared schema in `trackers/README.md`:
 
 | Normalized field | Source |
 |---|---|
-| `id` | `"#" + iid` |
+| `id` | `{repo}#{iid}`, e.g. `my-group/my-project#42` |
 | `title` | `title` |
 | `raw_state` | `state` (`opened` / `closed`) |
-| `state` | from state map below |
-| `type` | from labels (see type rules) |
+| `state` | see State mapping |
+| `type` | see Type mapping |
 | `assignee` | `assignees[0].username` |
-| `assigned_to_me` | `assignee_me` ∈ `assignees[*].username` |
+| `assigned_to_me` | your login ∈ `assignees[*].username` (see above) |
 | `url` | `web_url` |
 | `changed_at` | `updated_at` |
-| `project` | repo path |
+| `project` | the repo path |
 | `tracker` | `"gitlab"` |
 | `labels` | `labels[*]` |
-| `priority` | label starting with `priority:` or `P1`/`P2` |
-| `category` | see category rules below |
-
-### 4. Emit the combined list
+| `priority` | first label starting with `priority:`, or `P0` ... `P9` |
+| `category` | see Category rules |
 
 ## State mapping
 
-GitLab issues only have two raw states (`opened`, `closed`) — unlike
-GitHub's labeled project columns, there's no native "in progress" or
-"in review" state. Use labels to refine, falling back to the raw
-state:
+GitLab issues have only two raw states, so labels refine them. Label
+matching ignores case. First match wins, top to bottom:
 
 | raw_state / label | state |
 |---|---|
 | `closed` | `done` |
-| label `in-progress`, `doing` | `in_progress` |
-| label `in-review`, `review` | `review` |
 | label `blocked` | `blocked` |
+| label `in-review`, `review`, `in review` | `review` |
+| label `in-progress`, `doing`, `in progress` | `in_progress` |
 | `opened`, no matching label | `ready` |
 
-A user can override this mapping by adding `state_map:` under
-`integrations.gitlab` in bridge-config.yaml.
+A `state_map` on the section overrides this.
 
 ## Type mapping
 
-Derive `type` from labels, first match wins:
+Derived from labels (ignoring case), first match wins:
 
-| Label pattern | type |
+| Label | type |
 |---|---|
 | `bug`, `defect`, `incident` | `bug` |
 | `feature`, `enhancement` | `feature` |
@@ -124,32 +115,33 @@ Derive `type` from labels, first match wins:
 | Rule | category |
 |---|---|
 | `state == done` | `done` |
-| `state == review` AND `assigned_to_me == true` | `qa` |
-| any label in `["needs-qa", "needs-testing", "qa-queue"]` | `qa` |
+| `state == review` | `qa` |
+| any label in `needs-qa`, `needs-testing`, `qa-queue` | `qa` |
 | otherwise | `open` |
 
 ## Failure modes
 
-| Condition | Action |
-|---|---|
-| `glab` not installed (`command -v glab` fails) | Warning, skip provider |
-| `glab auth status` not green | Warning with hint to run `glab auth login`, skip |
-| Repo not accessible (404 / 403) | Warning for that repo only, continue with other repos |
-| Single command >10s | Timeout, skip that command, continue |
-| JSON parse error | Warning, skip that command's items |
-| Zero items across everything | Briefing omits the GitLab section |
+Each of these makes the section show `status: error` with the reason; the
+rest of the briefing runs:
 
-None of these abort `/briefing`.
+| Condition | Reason shown |
+|---|---|
+| `query.repos` missing or empty | `query.repos is required` |
+| `glab` not installed, not logged in, or the repo not reachable | the CLI's message |
+| Command slower than the timeout (default 30 s) | timeout |
+| Answer is not JSON, or not a list | `not JSON` / `unexpected answer` |
+
+Zero issues is not an error: the section completes with no rows.
 
 ## Example run
 
-With a config like `repos: [my-group/my-project]` and
-`assignee_me: alice`, a run produces normalized items in this shape:
+With `repos: [my-group/my-project]` and the default `assignee: "@me"`, a
+run produces items in this shape (illustrative):
 
 ```json
 [
   {
-    "id": "#42",
+    "id": "my-group/my-project#42",
     "title": "Example issue title",
     "state": "ready",
     "raw_state": "opened",
@@ -169,4 +161,7 @@ With a config like `repos: [my-group/my-project]` and
 
 ## Related
 
-- `trackers/README.md` — the shared contract this file implements
+- `trackers/README.md`: the shared schema and how a tracker is configured
+- `scripts/lib/briefing_providers/gitlab.py`: the adapter this file documents
+- `scripts/tests/test_briefing_providers.py`, `scripts/tests/fixtures/briefing/gitlab/`: its tests
+- `docs/briefings.md` § Tracker providers: the query keys of every provider

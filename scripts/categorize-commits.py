@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+from typing import NamedTuple
 
 # ---------------------------------------------------------------------------
 # Path → scope table. Documented in docs/extension-model.md § Scope model;
@@ -38,8 +39,19 @@ import sys
 USER_PATTERNS = [
     r"^work/",                                        # incl. the job-application pipeline stream
     r"^rules/user/",                                  # user-tier rules (applications, …) — folder = tier
+    r"^docs/user/",                                   # an instance's own docs: the folder is the tier (parallels rules/user/)
+    # Legacy carve-out from before docs/user/ existed (LEGACY_USER_DOCS). Kept so
+    # a fork that has it never ships it; validate-bridge.py reports it and
+    # migrate-docs-tier.py moves it to docs/user/. A new instance doc goes there.
     r"^docs/applications\.md$",                       # personal applications feature — user-tier
     r"^bridge-config\.yaml$",
+    # A root CLAUDE.md is instance-local: upstream it would hide AGENTS.md for
+    # every fork, since Claude Code then loads only it. Same for CLAUDE.local.md
+    # and .claude/CLAUDE.md. Uppercase on purpose: test_user_data.py collects
+    # only lowercase root patterns as must-be-gitignored, and these files must
+    # never be ignored (an ignored CLAUDE.md still loads and still shadows).
+    r"^CLAUDE(\.local)?\.md$",
+    r"^\.claude/CLAUDE\.md$",
     r"^ecosystem\.yaml$",                              # instance-base registry: org, local_root and paths of ONE machine.
                                                        # Was `org` until 2026-10-24; an overlay shares its own
                                                        # ecosystem.<org>.yaml, never a member's base file.
@@ -95,7 +107,7 @@ USER_PATTERNS = [
     r"^skills/[^/]+/LEARNINGS\.md$",
     r"^skills/[^/]+/references/provenance\.md$",
     # themes/ is whole-folder CORE, so an instance theme is a structural exception.
-    r"^themes/(?!_)(?!professional(?:-de|-fr)?\.yaml$)[^/]+\.yaml$",
+    r"^themes/(?!_)(?!professional(?:-de|-fr|-zh-cn)?\.yaml$)[^/]+\.yaml$",
     # workflow/checks/ — the whole surface is instance-local (decision 2026-08-01).
     # Unlike its sibling wrappers there is no CORE half to preserve: upstream has
     # never shipped a checks/ folder, and the only consumer is the `user`-scoped
@@ -150,9 +162,11 @@ ORG_PATTERNS = [
     r"^\.claude/agents/customer-a-",
     r"^workflow/contexts/customer-a\.yaml$",          # CORE example context stays org (doc-system is now frontmatter-driven — see classify_file)
     r"^identity/mandants/org\.yaml$",
-    # docs/ is NOT path-matched either: a doc declares its own top-level
-    # `scope:` in its frontmatter (see _DOCS_RE / classify_file). A filename
-    # here put one instance's private document names inside a CORE file.
+    r"^docs/org/",                                    # org-tier docs: the folder is the tier (parallels rules/org/)
+    # Single docs are NOT path-matched: a filename here put one instance's
+    # private document names inside a CORE file. A doc of another tier lives in
+    # its tier folder (docs/user/, docs/org/, docs/personal/); outside them a
+    # `scope:` line is only a backstop (see _DOCS_RE / classify_file).
 ]
 
 # Personal tier — the operator's own private overlay (a `role: org-overlay` upstream
@@ -161,6 +175,7 @@ ORG_PATTERNS = [
 # via a frontmatter `scope: personal` (see _CLUSTER_WRAPPER_RE / classify_file).
 PERSONAL_PATTERNS = [
     r"^rules/personal/",                              # personal-tier rules — folder = tier (parallels rules/org, rules/user)
+    r"^docs/personal/",                               # personal-tier docs: the folder is the tier (parallels rules/personal/)
     r"^ecosystem\.personal\.yaml$",                   # personal/freelance registry fragment
     r"^ecosystem\.local\.yaml$",                      # legacy name of ecosystem.personal.yaml (pre-rename) — was mis-classified CORE
 ]
@@ -178,8 +193,12 @@ PERSONAL_PATTERNS = [
 # Adding the wrapper moves exactly that one file; the 16 personal machines
 # declare `scope: user` and stay local, and an undeclared remote falls through
 # to the path rule (user), so the read fails closed.
+#
+# `identity/designs` holds one brand per Markdown file, its `scope:` inside the
+# `---` fence like a rule's. An org brand must reach the org overlay, or every
+# member Bridge keeps the upstream palette; an undeclared one stays `user`.
 _CLUSTER_WRAPPER_RE = re.compile(
-    r"^(?:identity/(?:personas|mandants|accounts|contracts)"
+    r"^(?:identity/(?:personas|mandants|accounts|contracts|designs)"
     r"|infra/(?:channels|remotes|secret-stores|a2a-peers)"
     r"|workflow/(?:briefings|contexts|projects))/"
     r"(?!_(?:schema|template))"
@@ -241,7 +260,8 @@ def _instance_scope_aliases() -> dict[str, str]:
 
 _SCOPE_MAP = {**_BASE_SCOPE_MAP, **_instance_scope_aliases()}
 
-# Everything else not matched above defaults to CORE.
+# Everything else not matched above defaults to USER (fail-closed): a path no
+# rule knows stays local until someone gives it a rule. Shipping is opt-in.
 
 # ---------------------------------------------------------------------------
 
@@ -261,6 +281,7 @@ _SCOPE_MAP = {**_BASE_SCOPE_MAP, **_instance_scope_aliases()}
 SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/bin/gh",
     "scripts/categorize-commits.py",
+    "scripts/check-all.py",
     "scripts/check-commands-doc.py",
     "scripts/check-figure-counts.py",
     "scripts/check-inline-scripts.py",
@@ -276,6 +297,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/hooks/pre-push",
     "scripts/inbox-approve.py",
     "scripts/inbox.py",
+    "scripts/work-sync.py",
     "scripts/lib/inbox_verbs.py",   # the verbs that end an item, shared with the cockpit
     "scripts/learning-ledger.py",
     "scripts/memory-location.py",
@@ -358,6 +380,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_overlay_export_exclusions.py",
     "scripts/tests/test_overlay_export_foreign.py",
     "scripts/tests/test_overlay_export_managed_prune.py",
+    "scripts/tests/test_overlay_prompts.py",
     "scripts/tests/test_precommit_env_guard.py",
     "scripts/tests/test_push_guard_content_net.py",
     "scripts/tests/test_validators_coverage.py",
@@ -430,7 +453,9 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/check-generated-output.py",
     "scripts/tests/test_generated_output_escapes.py",
     "scripts/tests/test_inbox.py",
+    "scripts/tests/test_work_sync.py",
     "scripts/tests/test_inbox_approve.py",
+    "scripts/tests/test_inbox_area.py",
     "scripts/tests/test_inbox_mute.py",
     # Registered with briefing profiles (workflow/briefings/): the engine, its
     # tracker adapters and the recorded answers they are tested against.
@@ -446,6 +471,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/briefing_view.py",
     "scripts/tests/test_briefing.py",
     "scripts/tests/test_briefing_providers.py",
+    "scripts/tests/test_briefing_truthful_rows.py",
     "scripts/tests/test_briefing_view.py",
     "scripts/tests/test_briefing_activity.py",
     "scripts/tests/test_briefing_pages.py",
@@ -475,6 +501,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # Registered 2026-10-24 with the CI wiring guard: validate.yml runs it,
     # so it ships with the workflow that names it.
     "scripts/tests/test_ci_wiring.py",
+    # Registered 2026-11-02 with scripts/check-all.py, the local runner it pins.
+    "scripts/tests/test_check_all.py",
     # Registered 2026-08-30 with the reachability contract. Same reason again:
     # validate.yml runs the suite, the check and its mutation battery.
     "scripts/check-reachability.py",
@@ -552,9 +580,13 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/guide.py",
     "scripts/lib/bridge_cockpit/net.py",                  # the one outbound fetcher: feeds and agent cards
     "scripts/lib/bridge_cockpit/collector.py",
+    "scripts/lib/bridge_cockpit/logrange.py",             # the log page's time range: /api/logrange
     "scripts/lib/bridge_cockpit/tabs.py",
     "scripts/lib/bridge_cockpit/asks.py",                 # what a waiting tab asks, read off its screen
     "scripts/tests/test_bridge_cockpit_asks.py",
+    "scripts/lib/bridge_cockpit/autostart.py",            # the cockpit's login item: label and LaunchAgent path
+    "scripts/tests/test_bridge_cockpit_local_name.py",
+    "scripts/tests/test_bridge_cockpit_idle.py",        # a finished tab is done, not waiting
     "scripts/lib/bridge_cockpit/actions.py",
     "scripts/lib/bridge_cockpit/actions_base.py",
     "scripts/lib/bridge_cockpit/actions_launch.py",
@@ -565,17 +597,33 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/relay.py",
     "scripts/lib/bridge_cockpit/watch.py",
     "scripts/lib/bridge_cockpit/store.py",
+    "scripts/lib/bridge_cockpit/settled.py",              # settled and hidden rows, shared through git
+    "scripts/tests/test_bridge_cockpit_settled.py",
     "scripts/lib/bridge_cockpit/details.py",
     "scripts/lib/bridge_cockpit/jev.py",          # optional integration, off unless integrations.typesafe.enabled
     "scripts/lib/bridge_cockpit/launch.py",       # the model an agent starts with, off unless cockpit.launch_model.enabled
     "scripts/lib/bridge_cockpit/review.py",
     "scripts/lib/bridge_cockpit/sessions.py",
+    "scripts/lib/bridge_cockpit/access.py",               # who sees what: a person on a workspace gets its areas
+    "scripts/lib/bridge_cockpit/work_sync.py",
+    "scripts/tests/test_bridge_cockpit_access.py",        # leak tests and the guards over routes, verbs, events, fields
+    "scripts/lib/bridge_cockpit/person_ask.py",           # a person's question: their files, a key of its own, read only
+    "scripts/lib/document_paths.py",                      # which folders and files sources.documents may name
+    "scripts/tests/test_bridge_cockpit_person_ask.py",    # the room, the key, the limit, the folders
+    "scripts/lib/bridge_cockpit/signin.py",               # who a served request is: the gateway's signed token, nothing else
+    "scripts/tests/test_bridge_cockpit_signin.py",        # forged, expired, foreign tokens and the owner's ways shut
+    "scripts/lib/bridge_cockpit/workspaces.py",           # the Workspaces area of the settings page: switches beside the config
+    "scripts/web/views/workspaces.js",
+    "scripts/lib/bridge_cockpit/tab_history.py",          # a tab's whole conversation, searchable: /api/tab-history
+    "scripts/tests/test_bridge_cockpit_tab_history.py",
+    "scripts/tests/test_bridge_cockpit_workspaces.py",    # a workspace's rules, what a child inherits, archive and delete
     "scripts/lib/bridge_cockpit/usage.py",
     "scripts/tests/test_bridge_cockpit_usage.py",
     "scripts/lib/bridge_cockpit/daybook.py",              # the start page's day by day
     "scripts/tests/test_bridge_cockpit_daybook.py",
     "scripts/lib/bridge_cockpit/returns.py",              # the return channel of starts handed to tabs
     "scripts/tests/test_bridge_cockpit_returns.py",
+    "scripts/tests/test_bridge_cockpit_repo_areas.py",
     "scripts/lib/bridge_cockpit/graph.py",                # the knowledge graph of the inner room
     "scripts/tests/test_bridge_cockpit_graph.py",
     "scripts/lib/bridge_cockpit/quick.py",
@@ -583,8 +631,42 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/bridges.py",
     "scripts/lib/bridge_cockpit/organize.py",             # organize with AI: one proposal, ticked items applied
     "scripts/lib/bridge_cockpit/triage.py",
+    "scripts/lib/bridge_cockpit/origin.py",               # where a work row comes from, and task or stream
+    "scripts/lib/bridge_cockpit/card_fields.py",          # the wire shape of a card and of a brief
+    "scripts/lib/bridge_cockpit/brief_refs.py",           # what a brief may point at, and the links of a card
+    "scripts/tests/test_bridge_cockpit_brief_refs.py",
+    "scripts/lib/bridge_cockpit/describe.py",             # each item's brief written and kept by a small model
+    "scripts/tests/test_bridge_cockpit_describe.py",
+    "scripts/tests/test_bridge_cockpit_issue.py",         # the issue card on a board: review and done, a click only
+    "scripts/lib/bridge_cockpit/issue_check.py",          # Check with AI on an issue card: done, from its evidence
+    "scripts/tests/test_bridge_cockpit_issue_check.py",
+    "scripts/tests/test_issue_transition.py",             # github-projects-manager's issue_transition.py
+    "scripts/lib/bridge_cockpit/themes.py",               # the themes of Work through, ordered by a small model
+    "scripts/tests/test_bridge_cockpit_themes.py",
+    "scripts/lib/bridge_cockpit/prio.py",                 # Prio's read-in rows and its second ranker, Haiku
+    "scripts/tests/test_bridge_cockpit_prio.py",
+    "scripts/lib/bridge_cockpit/activity.py",             # Work through: the Activity of a point, its documents, attach
+    "scripts/tests/test_bridge_cockpit_activity.py",
+    "scripts/lib/bridge_cockpit/checkin.py",              # Work through: the Bridge looks before a check-in
+    "scripts/tests/test_bridge_cockpit_checkin.py",
+    "scripts/lib/bridge_cockpit/instruct.py",             # Work through: the instruction line's sentence as checked steps
+    "scripts/tests/test_bridge_cockpit_instruct.py",
+    "scripts/tests/test_bridge_cockpit_sessions.py",      # Work through: the task a live session is seen working on
+    "scripts/tests/test_bridge_cockpit_merge.py",         # Work through: Merge and its undo (flow_merge, task_unmerge)
+    "scripts/tests/test_task_brief.py",
+    "scripts/tests/test_card_fields.py",
+    "scripts/tests/test_workplace_brief.py",
+    "scripts/tests/test_validate_status_brief.py",
+    "scripts/lib/bridge_cockpit/card.py",                 # one card for every item: card_of and its adapters
+    "scripts/tests/test_bridge_cockpit_card.py",
+    "scripts/tests/test_bridge_cockpit_origin.py",
+    "scripts/tests/test_bridge_cockpit_origin_flow.py",
     "scripts/triage.py",
     "scripts/tests/test_triage.py",
+    "scripts/work-find.py",                               # the search over work/ (files view, chat sessions)
+    "scripts/lib/work_find.py",
+    "scripts/tests/test_bridge_cockpit_find.py",
+    "scripts/tests/test_bridge_cockpit_files_all.py",
     "scripts/tests/test_bridge_cockpit_triage.py",
     "scripts/tests/test_bridge_cockpit_ticker.py",
     "scripts/tests/test_bridge_cockpit_guide.py",
@@ -600,8 +682,14 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_cloud_inventory.py",
     "scripts/cloud-costs.py",                 # what the cloud accounts cost per day, for the overview page
     "scripts/tests/test_cloud_costs.py",
+    "scripts/cost-ledger.py",                 # a closed month per cost center, and a cost statement from it
+    "scripts/tests/test_cost_ledger.py",
     "scripts/usage-export.py",                # tokens per Bridge, exported for a cockpit on another machine
     "scripts/tests/test_usage_export.py",
+    "scripts/cockpit-usage.py",               # the cockpit's clicks counted, candidates left as proposals for /bridge-learn
+    "scripts/tests/test_cockpit_usage.py",
+    "scripts/bridge-setup.py",                # the Setup page: what keeps the cockpit from working well, what can be switched on
+    "scripts/tests/test_bridge_cockpit_setup.py",
     "scripts/tests/test_cockpit_costs_contract.py",
     "scripts/lib/bridge_cockpit/server.py",
     "scripts/tests/test_bridge_cockpit.py",
@@ -618,11 +706,24 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/components.js",
     "scripts/web/views/agents.js",
     "scripts/web/views/chat.js",
+    "scripts/web/views/card.js",
     "scripts/web/views/check.js",
     "scripts/web/views/costs.js",
     "scripts/web/views/dates.js",
     "scripts/web/views/day.js",
     "scripts/web/views/detail.js",
+    "scripts/web/views/dossier.js",
+    "scripts/web/views/flow.js",
+    "scripts/web/views/verbbar.js",
+    "scripts/web/views/flowside.js",          # Work through: the themes, the right column's verbs and fields
+    "scripts/web/views/flowlist.js",          # Work through: the list with suggestions and the batch
+    "scripts/web/views/flowtabs.js",          # Work through: the tabs under the card, the Activity pane
+    "scripts/web/views/flowinstruct.js",      # Work through: the instruction line and its understood steps
+    "scripts/web/views/flowrun.js",           # Work through: Running now, in the left column and over the overview
+    "scripts/web/views/flowleft.js",          # Work through: Not now, its groups and their lists
+    "scripts/web/views/flowprio.js",          # Work through: Prio, the 2x2 grid of Jev's squares
+    "scripts/web/views/flowpoint.js",         # Work through: the one point view, its card, tabs, line and walk
+    "scripts/web/views/flowsimple.js",        # Work through, stage 4: the strong button, the four states, More and Order
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",
@@ -631,6 +732,8 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/list.js",
     "scripts/web/views/nav.js",
     "scripts/web/views/organize.js",
+    "scripts/web/views/fields.js",
+    "scripts/web/views/termtools.js",
     "scripts/web/views/overlays.js",
     "scripts/web/views/pages.js",
     "scripts/web/views/parts.js",
@@ -645,15 +748,31 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/prose.js",
     "scripts/web/views/reply.js",
     "scripts/web/views/tabs.js",
+    "scripts/web/views/timeline.js",          # a page's search: its rows, every day before, the AI
+    "scripts/web/views/logpage.js",           # a page's log layout: the log by hour, the rail beside it
+    "scripts/web/views/logrange.js",          # the log page's time range: presets, the bar chart, the zoom
     "scripts/web/inner.js",                   # the inner room behind the core: the knowledge graph in 3D
     "scripts/web/logic.js",
+    "scripts/web/areas.js",                   # the areas and the area filter, passed on by logic.js
+    "scripts/web/files.js",                   # the files view: queue, drawers, search, ask a file
+    "scripts/web/flow.js",                    # the Work through page: its queue, the return card, the five verbs
+    "scripts/web/point.js",                   # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",
     "scripts/web/text.js",
+    "scripts/web/text-areas.js",              # the start page's texts, taken in by text.js
+    "scripts/web/text-files.js",              # the files view's texts, taken in by text.js
+    "scripts/web/text-flow.js",               # the Work through page's texts, taken in by text.js
+    "scripts/web/text-chat.js",               # the chat's area switch texts, taken in by text.js
+    "scripts/web/text-card.js",               # the item card's texts, taken in by text.js
     "scripts/web/mock.js",
     "scripts/web/tokens.css",
     "scripts/web/style.css",
+    "scripts/web/areas.css",                  # the areas' rules, loaded right after style.css
+    "scripts/web/files.css",                  # the files view's rules, loaded right after style.css
+    "scripts/web/flow.css",                   # the Work through page's rules, loaded right after files.css
+    "scripts/web/term.css",                   # the Chat as a terminal, loaded last
     "scripts/web/favicon.ico",                # the cockpit's icon, for tabs, bookmarks and favourites
     "scripts/web/apple-touch-icon.png",
     "scripts/web/icon-192.png",
@@ -667,11 +786,31 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_jev.test.mjs",
     "scripts/tests/test_cockpit_demo_smoke.py",
     "scripts/tests/bridge_cockpit_render.test.mjs",
+    "scripts/tests/bridge_cockpit_fields.test.mjs",
     "scripts/tests/bridge_cockpit_config.test.mjs",
     "scripts/tests/cockpit_render.mjs",
     "scripts/tests/bridge_cockpit_aria.test.mjs",
     "scripts/tests/bridge_cockpit_draft_cards.test.mjs",
     "scripts/tests/bridge_cockpit_costs.test.mjs",
+    "scripts/tests/bridge_cockpit_areas.test.mjs",
+    "scripts/tests/bridge_cockpit_files.test.mjs",
+    "scripts/tests/bridge_cockpit_person.test.mjs",
+    "scripts/tests/bridge_cockpit_logrange.test.mjs",
+    "scripts/tests/bridge_cockpit_flow.test.mjs",
+    "scripts/tests/bridge_cockpit_prio.test.mjs",
+    "scripts/tests/bridge_cockpit_point.test.mjs",      # the one point view: where a row opens, the drawer's facts, the basic verbs
+    "scripts/tests/bridge_cockpit_read.test.mjs",       # finished AI runs: the group to read, the plain sentence, the run's verbs
+    "scripts/tests/bridge_cockpit_simple.test.mjs",     # stage 4: the name, the stand, the step, the bands, More, the check-in
+    "scripts/tests/bridge_cockpit_settle.test.mjs",
+    "scripts/tests/bridge_cockpit_card.test.mjs",
+    "scripts/tests/bridge_cockpit_files_count.test.mjs",
+    "scripts/tests/bridge_cockpit_chat_a2a.test.mjs",
+    "scripts/tests/bridge_cockpit_toast_go.test.mjs",   # a toast that names its place leads there
+    "scripts/tests/bridge_cockpit_start_counts.test.mjs",   # the start page counts what Work through holds
+    "scripts/tests/bridge_cockpit_gh_beside.test.mjs",      # a row of the GitHub list opens beside the list
+    "scripts/tests/bridge_cockpit_work_list.test.mjs",      # Work through lists its points on the left, under their theme
+    "scripts/tests/test_bridge_cockpit_note_go.py",
+    "scripts/tests/bridge_cockpit_files_all.test.mjs",
     # Registered with the scheduled archive. It runs DAILY and does only the
     # mechanical half; the judgement half is recorded as owed. lib/bridge-python.sh
     # is the one interpreter resolver the currency jobs share, so a fix lands once.
@@ -682,6 +821,35 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/build-cockpit-demo.py",
     "scripts/tests/test_bridge_cockpit_demo.py",
     "scripts/tests/test_bridge_cockpit_contract.py",
+    # Registered with identity/designs/: the resolver every generator asks which
+    # design applies (mail-draft, html-canvas, html-slides, the cockpit), and its
+    # contract.
+    "scripts/designs.py",
+    "scripts/tests/test_designs.py",
+    "scripts/tests/test_validate_bridge_designs.py",
+    # Registered 2026-10-30 with AGENTS.md as the only entry file: the
+    # migration for a fork's CLAUDE.md, and the tests that hold the entry
+    # file, the setup version warning and the dead CLAUDE.md links; then with
+    # the kernel rewrite, the invariants AGENTS.md plus kernel/families.yaml keep.
+    "scripts/migrate-entry-file.py",
+    "scripts/tests/test_claude_md_links.py",
+    "scripts/tests/test_entry_file.py",
+    "scripts/tests/test_kernel_invariants.py",
+    "scripts/tests/test_migrate_entry_file.py",
+    "scripts/tests/test_setup_claude_version.py",
+    # Registered 2026-11-05 with kernel/manifest.yaml: the checker that holds
+    # the manifest to the tree, the one-time move of a fork's docs into
+    # docs/user/, docs/org/ or docs/personal/, and the tests for both and for
+    # the folder rule itself (docs/kernel.md, docs/updating.md).
+    "scripts/check-kernel.py",
+    "scripts/migrate-docs-tier.py",
+    "scripts/tests/test_check_kernel.py",
+    "scripts/tests/test_docs_tier.py",
+    "scripts/tests/test_migrate_docs_tier.py",
+    # Registered 2026-11-05 with kernel/families.yaml and the manifest's
+    # `retired:` keys: the one-time removal of a retired key from a fork.
+    "scripts/migrate-kernel.py",
+    "scripts/tests/test_migrate_kernel.py",
 })
 
 
@@ -697,6 +865,19 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
 # Position (after PERSONAL/USER/ORG) means a careless addition here degrades to
 # a no-op instead of overriding a denylist.
 VERIFIED_CORE = frozenset({
+    # Agent-tool wiring that ships. Enumerated: .claude/hooks/ also holds
+    # instance-only hooks (a hook is code, and it names this machine's paths),
+    # so the folder is not core wholesale.
+    ".agents/skills",                 # the symlink itself (the tracked entry has no trailing path)
+    ".claude/skills",
+    ".claude/settings.json",
+    ".claude/hooks/README.md",
+    ".claude/hooks/consent-boundary-check.sh",
+    ".claude/hooks/session-start-phase0.sh",
+    ".claude/hooks/worklog-drift-check.sh",
+    ".codex/hooks.json",
+    ".vibe/hooks.toml",
+    "imports/.gitkeep",               # keeps the USER imports/ folder present on a clone
     "identity/agent/README.md",
     "identity/agent/_soul-deck.schema.yaml",
     "identity/agent/_soul-deck.yaml",
@@ -708,6 +889,45 @@ VERIFIED_CORE = frozenset({
     "workflow/contexts/_doc-system.template.yaml",
     "workflow/projects/README.md",
 })
+
+# Files directly at the repo root that ship. The root is a flat namespace an
+# instance also writes to (bridge-config.yaml, ecosystem.yaml, notes), so it is
+# an enumeration, never a shape: a new root file is user until listed here.
+# `.gitignore` and `.bridge-origin` are deliberately absent: they are inverted per
+# tier (USER_PATTERNS, test_inverted_root_files_never_ship).
+ROOT_CORE = frozenset({
+    ".gitattributes", ".pre-commit-config.yaml",
+    ".yamllint.yml", "ACKNOWLEDGMENTS.md", "AGENTS.md", "AUTHORS", "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "DESIGN.md", "GEMINI.md", "LICENSE",
+    "README.md", "ROADMAP.md", "SECURITY.md", "SETUP.md", "SUPPORT.md",
+    "TRADEMARK.md", "bridge-config.yaml.template", "context-budget.yaml",
+    "ecosystem.example.yaml", "pr-review-prompt.md",
+})
+
+# Folders that ship wholesale. Reached only AFTER every user/org/personal rule
+# above, so the carve-outs (docs/user/, docs/org/, docs/personal/, rules/user/,
+# rules/org/, protocols/standing-orders/user/, undeclared themes, a doc's own
+# `scope:`) have already answered. A folder is listed because the whole folder is
+# CORE by design (docs/structure.md), not because it happened to hold only CORE
+# files.
+#   - rules/ is top-level files only; a subfolder is a tier and an unknown one
+#     stays user.
+#   - kernel/ is enumerated, not a folder: only the files it names ship (today
+#     kernel/manifest.yaml, kernel/families.yaml). Any other file there stays user, fail closed, and
+#     check-kernel.py fails on it (docs/kernel.md).
+#   - agents/ ships its runtime, template, gateway and tests; every
+#     agents/<name>/ instance is user (USER_PATTERNS).
+#   - bin/ is the setup entry point; scripts/ is its own allowlist; skills/ and
+#     .claude/agents/ route by declared scope.
+CORE_PATTERNS_RE = re.compile(
+    r"^(?:docs|protocols|trackers|themes|mods|examples|\.github|bin)/"
+    r"|^kernel/(?:manifest|families)\.yaml$"     # kernel/ is ENUMERATED: only what it names ships
+    r"|^\.(?:claude|agents)/skills/"             # discovery symlink: skills/ routes by its own scope
+    r"|^\.claude/agents/"                         # sub-agents; a declared scope already answered above
+    r"|^rules/[^/]+\.md$"
+    r"|^agents/(?:_runtime/|_template/|_gateway/|tests/)"
+    r"|^agents/(?:__init__\.py|README\.md|pyproject\.toml|\.gitignore)$"
+)
 
 # The root repair. _CLUSTER_WRAPPER_RE enumerates the types that declare a scope; AGENTS.md § Layout
 # documents a GENERIC <wrapper>/<types>/ rule. Every type added since — checks,
@@ -722,8 +942,10 @@ VERIFIED_CORE = frozenset({
 # does not satisfy it, so it falls through to `user` — a second, independent net
 # under the USER_PATTERNS entry that already claims it. Structurally this fallback
 # can only ever return "user", so it cannot lift any README into core.
+# A family whose instances are Markdown (identity/designs/) ships `_template.md`,
+# so the two literals come in both extensions.
 CLUSTER_WRAPPER_FALLBACK = re.compile(
-    r"^(?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*/(?!_(?:schema|template)\.yaml$)"
+    r"^(?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*/(?!_(?:schema|template)\.(?:yaml|md)$)"
 )
 
 # `_tests/` beside a wrapper schema is that schema's own regression suite, so it
@@ -757,6 +979,35 @@ WRAPPER_TESTS_CORE = re.compile(r"^(?:infra/remotes|infra/object-stores|workflow
 # CI guard stayed red, which is the shape this list is meant to have.
 
 
+# Families CORE registers, read the way scripts/data-model.py reads its core
+# model (docs/data-model.yaml, `families:` rows with a `path:`), but with a line
+# scan: this module is dependency-free by design (no yaml import). Read from the
+# router's own tree, never the cwd, so the answer does not depend on where a
+# caller runs from. Cached: classify_file runs once per path.
+_FAMILY_SCAFFOLD_RE = re.compile(
+    r"^((?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*)/_(?:schema|template)\.(?:yaml|md)$"
+)
+_FAMILY_ROW_RE = re.compile(r"^\s*-\s+path:\s*[\"']?((?:identity|infra|workflow)/[a-z0-9][a-z0-9-]*)/[\"']?\s*$")
+_REGISTERED_FAMILIES: frozenset[str] | None = None
+
+
+def _registered_families() -> frozenset[str]:
+    global _REGISTERED_FAMILIES
+    if _REGISTERED_FAMILIES is None:
+        found: set[str] = set()
+        model = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "data-model.yaml")
+        try:
+            with open(model, encoding="utf-8") as fh:
+                for line in fh:
+                    m = _FAMILY_ROW_RE.match(line)
+                    if m:
+                        found.add(m.group(1))
+        except OSError:
+            pass                      # unreadable model: no family registered, scaffolds stay user
+        _REGISTERED_FAMILIES = frozenset(found)
+    return _REGISTERED_FAMILIES
+
+
 def _unquote(path: str) -> str:
     """Undo git's `core.quotePath` escaping, defensively.
 
@@ -776,7 +1027,93 @@ def _unquote(path: str) -> str:
     return path
 
 
-_DOCS_RE = re.compile(r"^docs/.+\.md$")
+# docs/ is tiered by FOLDER, the way rules/ is: docs/user/, docs/org/ and
+# docs/personal/ are matched by the path lists above, and the folder is the
+# tier there whatever a file says. Everywhere else in docs/ a `scope:` line is
+# a backstop for an instance that has not moved its docs yet: a declared other
+# tier is honoured (validate-bridge.py reports the file as misplaced and
+# scripts/migrate-docs-tier.py moves it), an unrecognised token fails closed.
+_DOC_TIER_FOLDERS = ("user", "org", "personal")
+_DOCS_RE = re.compile(r"^docs/(?!(?:user|org|personal)/).+\.md$")
+# The one instance filename the router still names in docs/ (USER_PATTERNS),
+# from before docs/user/ existed. It stays user so nothing leaks; the validator
+# reports it and migrate-docs-tier.py moves it, after which the carve-out goes.
+LEGACY_USER_DOCS = frozenset({"docs/applications.md"})
+
+
+class DocPlacement(NamedTuple):
+    """Where a doc sits and what it declares; see doc_placement()."""
+    folder: str            # the tier its folder gives it: core, user, org, personal
+    token: str | None      # the raw `scope:` token, None when there is none
+    declared: str | None   # the tier it claims: its token's tier, `user` for a legacy path, else None
+    unknown: bool          # a token the router does not know (a typo, a stale alias)
+    legacy: bool = False   # a LEGACY_USER_DOCS path, user by name rather than by folder
+    stray: bool = False    # its `scope:` line sits outside a frontmatter block at the very top
+
+
+def doc_placement(path: str, root: "os.PathLike[str] | str | None" = None) -> DocPlacement:
+    """The folder tier of a doc and the tier its own `scope:` line declares.
+
+    `path` is repo-relative (`docs/...`); the frontmatter is read from `root`
+    (the cwd when None). validate-bridge.py and migrate-docs-tier.py both ask
+    this, so the checker, the fix and the router can never disagree.
+    """
+    rel = _unquote(path)
+    parts = rel.split("/")
+    folder = parts[1] if len(parts) >= 3 and parts[1] in _DOC_TIER_FOLDERS else "core"
+    source = os.path.join(os.fspath(root), rel) if root is not None else rel
+    token, stray = _doc_scope(source)
+    declared = _SCOPE_MAP.get(token) if token else None
+    if rel in LEGACY_USER_DOCS:
+        return DocPlacement(folder, token, "user", False, legacy=True)
+    if stray:
+        # Fails closed like an unknown token, and is reported as misplaced.
+        return DocPlacement(folder, token, declared or "user", False, stray=True)
+    return DocPlacement(folder, token, declared, token is not None and declared is None)
+
+
+# A doc's frontmatter is the `---` block at the very top of the file, nothing
+# else: a guide that SHOWS a frontmatter block in a code fence must not take
+# the example's scope as its own. The value is read whole, so a quoted or
+# capitalised `scope: "User"` is seen; the generic reader's `[a-z]+` misses it,
+# and a missed token used to mean core.
+_DOC_FRONT_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
+_DOC_SCOPE_RE = re.compile(r"^scope:[ \t]*(.*?)[ \t]*$", re.M)
+
+
+def _doc_scope_value(raw: str) -> str:
+    value = re.sub(r"\s+#.*$", "", raw).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value.lower()
+
+
+def _doc_scope(path: str) -> tuple[str | None, bool]:
+    """(normalised `scope:` value, stray) for a doc.
+
+    The answer comes from the frontmatter block at the very top. Without one, a
+    column-0 `scope:` line anywhere outside a code fence still counts (a header
+    line before the block, a bare line), and `stray` says so: the router keeps
+    such a doc local and the validator asks for the line to move to the top.
+    Quotes and a trailing comment are stripped and the value is lowercased; an
+    empty value comes back as "", which maps to nothing and so fails closed.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            head = f.read(_SCOPE_READ_CAP)
+    except (OSError, UnicodeDecodeError):
+        return None, False
+    m = _DOC_FRONT_RE.match(head)
+    if m:
+        sm = _DOC_SCOPE_RE.search(m.group(1))
+        return (_doc_scope_value(sm.group(1)) if sm else None), False
+    sm = _DOC_SCOPE_RE.search(_blank_code_fences(head))
+    return (_doc_scope_value(sm.group(1)), True) if sm else (None, False)
+
+
+def read_doc_scope(path: str) -> str | None:
+    """The normalised `scope:` value of a doc, None when it declares none."""
+    return _doc_scope(path)[0]
 
 
 def classify_file(path: str) -> str:
@@ -792,6 +1129,10 @@ def classify_file(path: str) -> str:
     if _CLUSTER_WRAPPER_RE.search(path):
         token = read_frontmatter_scope(path)
         mapped = _SCOPE_MAP.get(token) if token else None
+        # A design never ships by declaration: the default that ships is the
+        # root DESIGN.md. An instance brand claiming `core` stays local.
+        if mapped == "core" and path.startswith("identity/designs/"):
+            return "user"
         if mapped:
             return mapped
     # A theme's own `meta.scope:` (and the logo it declares) WINS over the path
@@ -805,20 +1146,21 @@ def classify_file(path: str) -> str:
     for p in USER_PATTERNS:
         if re.search(p, path):
             return "user"
-    # A doc's own top-level `scope:` WINS over the whole-folder CORE default.
-    # After the personal/user guards, so a declaration never unlocks a path
-    # those lists hold back.
-    # Undeclared (or unrecognised) falls through and stays core, as before.
+    # Outside its tier folders a doc's `scope:` line is a backstop (see
+    # _DOCS_RE): a declared other tier is honoured so an unmigrated instance
+    # never leaks, and an unrecognised token fails CLOSED. Before 2026-11-05 a
+    # typo fell through to core, so `scope: usr` shipped a private doc.
+    # Undeclared stays core: docs/ ships wholesale.
     if _DOCS_RE.search(path):
-        mapped = _SCOPE_MAP.get(read_frontmatter_scope(path) or "")
-        if mapped:
-            return mapped
+        token = read_doc_scope(path)
+        if token is not None:
+            return _SCOPE_MAP.get(token, "user")
     for p in ORG_PATTERNS:
         if re.search(p, path):
             return "org"
     # scripts/ is allowlisted, not denylisted — see SCRIPTS_CORE_ALLOWLIST.
-    if path.startswith("scripts/") and path not in SCRIPTS_CORE_ALLOWLIST:
-        return "user"
+    if path.startswith("scripts/"):
+        return "core" if path in SCRIPTS_CORE_ALLOWLIST else "user"
     # Skill/agent files — frontmatter `scope:` overrides path inference.
     # For ANY file under skills/<name>/, read the scope from that skill's SKILL.md
     # (fixes the leak where skills/<name>/references/foo.md was treated as core
@@ -845,11 +1187,22 @@ def classify_file(path: str) -> str:
     # here and is now dead — the deny-by-default USER_PATTERNS entry claims the
     # whole directory earlier, and it missed IDENTITY-lore.md anyway. A branch
     # that can never fire is worse than no branch: the next reader believes it.
-    if path in VERIFIED_CORE:
+    if path in VERIFIED_CORE or path in ROOT_CORE or CORE_PATTERNS_RE.search(path):
         return "core"
     if CLUSTER_WRAPPER_FALLBACK.search(path):
         return "user"
-    return "core"
+    # `_schema`/`_template` of a family: CORE only when docs/data-model.yaml
+    # registers the family. An instance-only family (its row lives in
+    # work/data-model.yaml) keeps its scaffold local.
+    m = _FAMILY_SCAFFOLD_RE.match(path)
+    if m:
+        return "core" if m.group(1) in _registered_families() else "user"
+    # Fail-closed terminal default. A path nothing above claims is NOT assumed
+    # to ship to the public repo: it stays `user` until a rule (or VERIFIED_CORE
+    # for a true one-off) says otherwise. A new upstream file that lands here
+    # fails test_every_file_upstream_ships_stays_core, which is the prompt to
+    # add that rule.
+    return "user"
 
 
 # ---------------------------------------------------------------------------

@@ -5,21 +5,24 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
-  homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, countInProject, focusPick,
+  homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
-  rowProject,
+  rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
+  flowAreas, flowOn, startWaiting, withoutOff, pageFollowsArea, workspacesOn, personOf,
 } from '../logic.js'
 import { T, language } from '../text.js'
-import { RowBar, RowMeta } from './day.js'
-import { DayPages, DayView } from './detail.js'
+import { KindTag, OriginTag, RowBar, RowMeta, Section } from './day.js'
+import { GuideCard, guideTabs } from './guide.js'
+import { TabCard } from './tabs.js'
+import { DayPages, DayView, TabClose } from './detail.js'
 import { PageBadge } from './header.js'
 import {
   AGENTS_PAGE, ASK_MAX, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle,
-  pageOrder,
+  pageOrder, workViewNow,
 } from './nav.js'
 import { HomeFocusView } from './focus.js'
 import { HomeList } from './list.js'
-import { Btn, Dot, Empty, Icon, PrioChip, StateLine } from './parts.js'
+import { Btn, Chip, Dot, Empty, Icon, PrioChip, StateLine } from './parts.js'
 import { BridgeStage, leadOf, stationOf } from './stage.js'
 import { TickerBand, TickerStatusList } from './ticker.js'
 
@@ -48,13 +51,15 @@ export function returnsOf(s) {
   return (s.model?.returns ?? []).map(r => ({ ...r, live: liveStage(r, tabs, now) }))
 }
 
-/** The steps of a start, the one it stands on lit; a lost start shows where it broke off */
+/** The steps of a start, the one it stands on lit; a lost start shows where it broke off; a quiet tab (idle)
+ *  stands on the step of a question, named quiet */
 function ReturnSteps({ stage }) {
   const h = T().home
-  const at = RETURN_STAGES.indexOf(stage)
+  const step = x => (x === 'asks' && stage === 'idle' ? 'idle' : x)
+  const at = RETURN_STAGES.indexOf(stage === 'idle' ? 'asks' : stage)
   return html`<ol class=${`rsteps${stage === 'lost' ? ' is-lost' : ''}`} aria-label=${h.returnStage[stage] ?? stage}>
-    ${RETURN_STAGES.map((x, i) => html`<li key=${x} class=${i < at ? 'is-past' : i === at ? `is-now tk-${stageTone(x)}` : ''}>
-      <span class="rstep-dot" aria-hidden="true"></span><span class="rstep-label">${h.returnStage[x]}</span></li>`)}
+    ${RETURN_STAGES.map((x, i) => html`<li key=${x} class=${i < at ? 'is-past' : i === at ? `is-now tk-${stageTone(step(x))}` : ''}>
+      <span class="rstep-dot" aria-hidden="true"></span><span class="rstep-label">${h.returnStage[step(x)]}</span></li>`)}
   </ol>`
 }
 
@@ -66,7 +71,8 @@ export function ReturnCard({ r, s, c }) {
   const ago = duration((s.now || Date.now()) - r.at_ms)
   const tab = (s.tabs?.tabs ?? []).find(x => x.ref === r.tab?.ref) ?? null
   const row = indexRows(s.model).get(r.key)
-  // settled (its item closed, its task done) and its tab only waits: the tab can go
+  // settled (its item closed, its task done) and its tab only waits: the tab can go, its close leads; any other tab
+  // that neither works nor asks closes too (TabClose), less loudly
   const closable = r.live === 'done' && tab && !tab.is_control && tab.state === 'waiting' && canTab(s, 'close')
   return html`<article class=${`rcard tk-${stageTone(r.live)}`}>
     <header class="rcard-head">
@@ -76,14 +82,14 @@ export function ReturnCard({ r, s, c }) {
         onClick=${() => c.act('return_forget', { key: r.key })}><${Icon} name="close" size=${14} /></button>
     </header>
     <button type="button" class="rcard-title" onClick=${e => (row ? openWhole(c, row, e.currentTarget) : null)} disabled=${!row}>${r.title}</button>
+    ${row ? html`<p class="rcard-tags"><${KindTag} row=${row} s=${s} /><${OriginTag} row=${row} /></p>` : null}
     <${ReturnSteps} stage=${r.live} />
     ${r.result?.text ? html`<p class="rcard-answer"><span class="label-caps">${h.returnAnswer}</span> ${short(r.result.text, 280)}</p>`
       : r.tab?.last || tab?.last ? html`<p class="rcard-last mono">${short(previewText(tab?.last ?? r.tab.last), 160)}</p>` : null}
     ${r.live === 'lost' ? html`<p class="rcard-answer"><span class="label-caps">${h.returnStage.lost}</span> ${h.returnLostHint}</p>` : null}
     ${closable ? html`<p class="small"><${StateLine} token="success" word=${h.returnSettled} /></p>` : null}
     <div class="hcard-acts">
-      ${closable ? html`<${Btn} size="xs" variant="primary" busy=${!!s.ui.busy[tab.ref]}
-        onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>` : null}
+      ${tab ? html`<${TabClose} tab=${tab} s=${s} c=${c} strong=${closable} />` : null}
       ${r.result?.key ? html`<${Btn} size="xs" variant=${closable ? 'secondary' : 'primary'} onClick=${() => c.openItem(r.result.key, null)}>${h.returnOpenAnswer}<//>` : null}
       ${tab ? html`<${Btn} size="xs" variant=${r.result?.key || closable ? 'secondary' : 'primary'} onClick=${() => jumpToTab(s, c, tab.ref)}>${h.toTab}<//>
         <${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${h.view}<//>` : null}
@@ -104,6 +110,24 @@ export function ReturnChip({ s, rowKey }) {
   if (!r || r.live === 'done') return null
   return html`<span class=${`chip chip-tk tk-${stageTone(r.live)} rchip`}><${Dot} token=${stageTone(r.live)} pulse=${r.live === 'working'} />
     <span>${T().home.returnStage[r.live]}</span></span>`
+}
+
+/** A row's ask (a job of the workers page, a page row): the question it was asked last (logic.js rowConv) as
+ *  question open, answered or without an answer, or once handed on with the marker every question list shows
+ *  (logic.js askMark: in its tab, done, asks you, tab ended), with Open, and ask again beside it; a row never
+ *  asked has only ask */
+export function RowAsk({ s, c, rowKey, onAsk, variant = 'ghost', cls = 'act-quiet' }) {
+  const t = T()
+  const conv = rowConv(s.quick?.convs, rowKey)
+  if (!conv) return html`<${Btn} size="xs" variant=${variant} cls=${cls} onClick=${onAsk}>${t.btnAsk}<//>`
+  const mark = conv.running ? null : askMark(conv, s.tabs?.tabs, s.now || Date.now())
+  // never handed on: open while it is answered or has no answer yet, failed when its last turn ended with an error
+  const last = conv.turns?.at(-1)
+  const [token, word] = conv.running ? ['info', t.askRunning] : mark ? [mark.tone, t.asks.mark[mark.word]]
+    : last?.error ? ['danger', t.askFailed] : last && !last.a ? ['info', t.askRunning] : ['success', t.askAnswered]
+  return html`<${Chip} token=${token}>${word}<//>
+    <${Btn} size="xs" variant="secondary" onClick=${() => c.openAsk(conv.id)}>${t.askOpenConv}<//>
+    <${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${onAsk}>${t.btnAskAgain}<//>`
 }
 
 /** The return channel inside a task or an inbox item: the steps, what the tab said last or its answer, and
@@ -134,6 +158,33 @@ export function jumpToTab(s, c, ref) {
   return canTab(s, 'focus') ? c.act('tab_jump', { tab_ref: ref }) : c.openTabView(ref)
 }
 
+/** Where a target leads (a status item of the band, a toast or note with `go`, logic.js noteGo): only to names
+ *  the controller has; a page that exists nowhere and a row that is gone open Today */
+export function goTo(s, c, target, el) {
+  switch (target?.kind) {
+    case 'page': {
+      const done = c.setPage(tickerPage(s, target.id, pageOrder(s)))
+      // a part of the page named (the day's status on Start): brought into view once the page drew it
+      if (target.at) setTimeout(() => globalThis.document?.querySelector?.(target.at)?.scrollIntoView?.({ block: 'start' }), 80)
+      return done
+    }
+    case 'item': return c.openItem(target.key, null)
+    case 'tab': return jumpToTab(s, c, target.ref)
+    case 'drawer': return c.setDrawer(target.id)
+    case 'info': return c.openInfo(target.it, target.page, target.section)
+    case 'row': {
+      const row = indexRows(s.model).get(target.key)
+      return row ? openWhole(c, row, el) : c.setPage('briefing')
+    }
+    case 'review': return c.openReview()
+    case 'workers': return c.openWorkers(null)
+    case 'conv': return c.openAgentConv(target.id)
+    case 'ask': return c.openAsk(target.id)
+    case 'claude': return c.openClaude()
+    default: return null
+  }
+}
+
 /** A section of the start page: eyebrow title with its count, a link to the whole list, the cards */
 function HomeShelf({ id, title, count, more, onMore, empty, children }) {
   return html`<section class="home-shelf" aria-labelledby=${id}>
@@ -147,6 +198,7 @@ function HomeShelf({ id, title, count, more, onMore, empty, children }) {
 
 /** The star that pins a row to the start page, or takes it off */
 export function PinStar({ rowKey, s, c }) {
+  if (personOf(s)) return null       // the start page's pins are the owner's
   const h = T().home
   const on = (s.home?.pins ?? []).includes(rowKey)
   return html`<button type="button" class=${`pin-star${on ? ' is-on' : ''}`} aria-pressed=${String(on)}
@@ -180,7 +232,7 @@ function HomeTabCard({ tab, s, c, preview }) {
       disabled=${busy} onClick=${() => jumpToTab(s, c, tab.ref)}>
       <span class="hcard-ws">${tab.workspace || '·'}</span>
       ${screen ? html`<span class="hcard-screen mono">${screen}</span>` : null}
-      <span class="hcard-badge"><${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} /></span>
+      <span class="hcard-badge"><${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} /></span>
       <span class="hcard-age mono">${age}</span>
     </button>
     <div class="hcard-body">
@@ -345,7 +397,7 @@ function DoneTile({ s }) {
   return html`<button type="button" class="ktile tk-success" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>
     <span class="ktile-big num">${week.count}</span>
     <span class="ktile-label">${h.doneTitle}</span>
-    <span class="ktile-parts ktile-list">${(open ? week.items : week.items.slice(0, 3)).map(x => html`<span key=${x.slug}>${short(x.title, 48)}</span>`)}</span>
+    <span class="ktile-parts ktile-list">${(open ? week.items : week.items.slice(0, 3)).map(x => html`<span key=${x.slug}><${KindTag} row=${{ key: `task:${x.slug}`, task: x.slug, work_kind: x.work_kind ?? 'done' }} s=${s} /> ${short(x.title, 48)}</span>`)}</span>
   </button>`
 }
 
@@ -354,9 +406,10 @@ export function catalogLabel(x) {
   const h = T().home
   if (x.kind === 'quota' || x.kind === 'page') return x.label
   return { 'c:waiting': h.waitingNow, 'c:tabs': h.tabsWaiting, 'c:next': h.nextTitle, 'c:done': h.doneTitle,
-    's:focus': h.focusTitle, 's:pinned': h.pinnedTitle, 's:continue': h.continueTitle, 's:waiting': h.waitingTitle,
+    's:day': h.dayTitle, 's:areas': h.areasTitle, 's:focus': h.focusTitle, 's:pinned': h.pinnedTitle, 's:continue': h.continueTitle, 's:waiting': h.waitingTitle,
     's:tasks': h.tasksTitle, 's:starts': h.startTitle, 'o:today': h.optToday, 'o:preview': h.optPreview,
-    'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:list': h.optList, 'o:focusview': h.optFocusView, 'o:pulse': h.optPulse,
+    'o:trend': h.optTrend, 'o:title': h.optTitle, 'o:project': h.optProject, 'o:classic': h.optClassic, 'o:stage': h.optStage,
+    'd:waiting': h.deskPart.waiting, 'd:guide': h.deskPart.guide, 'd:tabs': h.deskPart.tabs, 'd:day': h.deskPart.day, 'o:list': h.optList, 'o:focusview': h.optFocusView, 'o:pulse': h.optPulse,
     'c:agents': h.agentsTitle, 'c:returns': h.returnsTitle, 's:returns': h.returnsTitle, 'c:workers': T().workersTab, 'k:scan': h.coreScan, 'k:brief': h.briefTitle }[x.id] ?? x.id
 }
 
@@ -376,7 +429,7 @@ function tileMaker(s, c, chosen, project, hud = false) {
     if (x.id === 'c:next') return html`<${NextTile} key=${x.id} s=${s} c=${c} />`
     if (x.id === 'c:done') return html`<${DoneTile} key=${x.id} s=${s} />`
     if (x.id === 'c:waiting') {
-      const n = scope ? countInProject(nowRows, scope) : counts.now ?? 0
+      const n = startWaiting(s, scope) ?? (scope ? countInProject(nowRows.filter(asksYou), scope) : counts.now ?? 0)
       return html`<${CountTile} key=${x.id} n=${n} label=${h.waitingNow} tone=${n ? 'warning' : null} scope=${scope}
         before=${scope ? null : before[x.id]} title=${h.openPage(briefingTitle(s))} onClick=${() => c.setPage('briefing')} />`
     }
@@ -412,10 +465,191 @@ function HomeOverview({ s, c, catalog, chosen, project }) {
   const shown = shownTiles(catalog, chosen)
   const tile = tileMaker(s, c, chosen, project)
   return html`<section class="home-shelf" aria-labelledby="home-overview">
-    <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-overview">${h.overviewTitle}</h2>
-      <${Btn} size="xs" variant="ghost" icon="sliders" onClick=${() => c.setDrawer('customize')}>${h.choose}<//></header>
+    <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-overview">${h.overviewTitle}</h2></header>
     ${shown.length ? html`<div class="kgrid">${shown.map(tile)}</div>` : html`<${Empty}>${h.chooseEmpty}<//>`}
   </section>`
+}
+
+// ---------------------------------------------------------------- the areas
+
+const AREA_FIGS = [['waiting', 'areaWaiting'], ['running', 'areaRunning'], ['review', 'areaReview'], ['overdue', 'areaOverdue'],
+  ['tasks', 'areaTasks']]
+
+/** The line "All": every area summed, the one without an area too */
+function areasAll(areas, name) {
+  const sum = k => areas.reduce((n, a) => n + (a[k] ?? 0), 0)
+  return { name, ...Object.fromEntries([...AREA_FIGS.map(([k]) => k), 'waitingTabs', 'waitingRows'].map(k => [k, sum(k)])) }
+}
+
+/** The areas of the start page and their line All: with Work through on what it shows under each area (flow.js
+ *  flowAreas, All counted once), else the start page's own count (homeAreas, All their sum) */
+function startAreas(s, allName) {
+  if (flowOn(s)) {
+    const flow = flowAreas(s)
+    return { ...flow, areas: withoutOff(s, flow.areas) }
+  }
+  const areas = homeAreas(s.tabs?.tabs ?? [], s.model?.sections, returnsOf(s), s.now || Date.now())
+  return { areas: withoutOff(s, areas), all: areasAll(areas, allName) }
+}
+
+/** One line of the areas: the name, then the numbers, each a jump to the page that holds those things
+ *  (areaJump, the area as its filter); a zero is damped and leads nowhere. The name picks the area for the
+ *  start page (pressed while it is the one shown), in the control view it opens Work for it. A line that
+ *  holds nothing but tasks is damped. `name` is null for "All" */
+function AreaRow({ area, name, on, desk, c, onPick }) {
+  const h = T().home
+  const quiet = !area.waiting && !area.running && !area.review && !area.overdue
+  // "No area" has no filter to set: its name and numbers lead to the page as a whole
+  const to = areaJump('name', area)
+  const pick = area.none ? () => c.goArea(null, to) : desk ? () => c.goArea(name, to) : onPick
+  return html`<tr role="row" class=${`home-area${on ? ' is-on' : ''}${quiet ? ' is-quiet' : ''}${area.none ? ' is-none' : ''}`}>
+    <th scope="row" role="rowheader"><button type="button" class="home-area-pick" aria-pressed=${desk || area.none ? undefined : String(on)} onClick=${pick}>
+      ${name && !area.none ? html`<span class=${`home-area-dot tk-${area.tone}`} aria-hidden="true"></span>` : null}<span class="home-area-name">${area.none ? h.noArea : area.name}</span>
+    </button></th>
+    ${AREA_FIGS.map(([k, label]) => html`<td key=${k} role="cell" class=${`home-area-fig${area[k] ? '' : ' is-zero'}`} data-label=${h[label]}>${area[k]
+      ? html`<button type="button" class="home-area-n num" aria-label=${h.areaJump(area[k], h[label], name)}
+          onClick=${() => c.goArea(area.none ? null : name, areaJump(k, area))}>${area[k]}</button>`
+      : html`<span class="home-area-n num">0</span>`}</td>`)}
+  </tr>`
+}
+
+/** The areas shelf (homeAreas) as a table: the column heads once, a line per area, "All" first when there
+ *  is more than one. On the start page a name shows that area only and a second click all again (the
+ *  lines stand in for the project chips); in the control view (`desk`) a name opens Work for that area.
+ *  Every number jumps (g a focuses the names, j and k walk them) */
+export function HomeAreas({ areas, all: whole = null, project, c, desk = false }) {
+  const h = T().home
+  const want = String(project ?? '').toLowerCase()
+  const all = whole ? { ...whole, name: h.all } : areasAll(areas, h.all)
+  return html`<section class="home-shelf home-areas" aria-labelledby="home-areas">
+    <header class="home-shelf-head"><h2 class="home-shelf-title" id="home-areas">${h.areasTitle}</h2></header>
+    ${areas.length ? html`<table class="home-area-table" id="home-areas-list" role="table">
+      <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">${h.areaName}</th>${AREA_FIGS.map(([k, label]) => html`<th scope="col" role="columnheader" key=${k}>${h[label]}</th>`)}</tr></thead>
+      <tbody role="rowgroup">
+        ${areas.length > 1 ? html`<${AreaRow} area=${all} name=${null} on=${!project} desk=${desk} c=${c} onPick=${() => c.setArea(null)} />` : null}
+        ${areas.map(a => {
+          const on = !desk && !a.none && a.name.toLowerCase() === want
+          return html`<${AreaRow} key=${a.none ? '@none' : a.name} area=${a} name=${a.name} on=${on} desk=${desk} c=${c} onPick=${() => c.setArea(on ? null : a.name)} />`
+        })}
+      </tbody>
+    </table>` : html`<${Empty}>${h.areasEmpty}<//>`}
+  </section>`
+}
+
+/** The decision guide on the overview: the reading of the next tab that wants you (GuideCard, the
+ *  guards of the chat's: the question's hash, the draft), Next and Previous through the others */
+function DeskGuide({ s, c }) {
+  const h = T().home
+  const tabs = guideTabs(s)
+  const [at, setAt] = useState(0)
+  if (!tabs.length) return null
+  const i = Math.min(at, tabs.length - 1)
+  return html`<section class="home-shelf desk-part desk-half" id="desk-guide" aria-labelledby="desk-guide-title">
+    <header class="home-shelf-head"><h2 class="home-shelf-title" id="desk-guide-title">${h.deskPart.guide}
+      ${tabs.length > 1 ? html` <span class="sec-count mono">${i + 1} / ${tabs.length}</span>` : null}</h2>
+      ${tabs.length > 1 ? html`<span class="btn-row">
+        <button type="button" class="btn-link small" disabled=${i === 0} onClick=${() => setAt(i - 1)}>${h.deskPrev}</button>
+        <button type="button" class="btn-link small" disabled=${i === tabs.length - 1} onClick=${() => setAt(i + 1)}>${h.deskNext}</button>
+      </span>` : null}</header>
+    <${GuideCard} key=${tabs[i].ref} tab=${tabs[i]} s=${s} c=${c} />
+  </section>`
+}
+
+/** The parts the overview shows under its table when chosen (Settings, Start page), in the chosen order:
+ *  the rows waiting on you (the section of Work), the decision guide, the agent tabs (the cards beside
+ *  Work), the day (the middle of Work). Each follows the area filter as Work does; one with nothing in it
+ *  stays away instead of drawing an empty card */
+function DeskParts({ s, c, chosen }) {
+  const h = T().home
+  const parts = chosen.filter(id => id.startsWith('d:'))
+  if (!parts.length) return null
+  // the state Work's filters make, the star aside: the parts show the area as Work would
+  const v = areaScope({ ...s, ui: { ...s.ui, page: 'briefing', pinnedOnly: false } })
+  const byKey = indexRows(v.model)
+  const now = (v.model?.sections ?? []).find(x => x.id === 'now')
+  const tabs = homeContinue(v.tabs?.tabs ?? [], null)
+  const part = {
+    'd:waiting': () => now?.total ? html`<div class="desk-part desk-sec" id="desk-waiting" key="w">
+      <${Section} section=${now} s=${v} c=${c} byKey=${byKey} /></div>` : null,
+    'd:guide': () => html`<${DeskGuide} key="g" s=${v} c=${c} />`,
+    'd:tabs': () => tabs.length ? html`<section class="home-shelf desk-part desk-half" id="desk-tabs" key="t" aria-labelledby="desk-tabs-title">
+      <header class="home-shelf-head"><h2 class="home-shelf-title" id="desk-tabs-title">${h.deskPart.tabs} <span class="sec-count mono">${tabs.length}</span></h2></header>
+      <div class="tabgrid">${tabs.map(tab => html`<${TabCard} key=${tab.ref} tab=${tab} s=${v} c=${c} byKey=${byKey} slim />`)}</div>
+    </section>` : null,
+    'd:day': () => v.model ? html`<section class="home-shelf desk-part" id="desk-day" key="d" aria-labelledby="desk-day-title">
+      <header class="home-shelf-head"><h2 class="home-shelf-title" id="desk-day-title">${h.deskPart.day}</h2></header>
+      <${DayView} s=${v} c=${c} pages=${false} />
+    </section>` : null,
+  }
+  return html`<div class="desk-parts">${parts.map(id => part[id]?.())}</div>`
+}
+
+/** The control view (the start page by default): one head line (the day, what waits on you, the signals),
+ *  the areas, and what comes next (the next date, the quota). Everything else has a page of its own */
+function HomeDesk({ s, c }) {
+  const h = T().home
+  const now = s.now || Date.now()
+  const on = new Set(homeChosen(s.model, s.home))
+  // the head's number is the line All's: every area and what has none, its jump the same as that number's
+  const { areas, all } = startAreas(s, h.all)
+  const waiting = all.waiting
+  const relayDown = s.relay?.enabled && !s.relay?.online
+  const next = nextEvent(s.model, now)
+  const quota = homeQuota(s.model)
+  return html`<div class="col col-page home desk">
+    <header class="desk-head">
+      <span class="desk-day">${dayLabel(new Date(now), language())}</span>
+      <button type="button" class=${`desk-waiting${waiting ? ' tk-warning' : ''}`} onClick=${() => c.goArea(null, areaJump('waiting', all))}>
+        ${waiting ? html`<${Dot} token="warning" />` : null}<span>${h.deskWaiting(waiting)}</span>
+        ${waiting ? html`<span class="muted">${h.deskSplit(all.waitingTabs, all.waitingRows)}</span>` : null}</button>
+      ${(s.model?.alarms ?? []).map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}
+        onClick=${() => c.setPage(a.page_id)}><${Dot} token="danger" /><span>${h.alarm(a.count, `${a.section_title} (${a.page_title})`)}</span></button>`)}
+      ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}>
+        <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
+    </header>
+    ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
+    ${on.has('s:areas') ? html`<${HomeAreas} areas=${areas} all=${all} project=${null} c=${c} desk />` : html`<p class="muted small">${h.areasOff}</p>`}
+    <${DeskParts} s=${s} c=${c} chosen=${[...on]} />
+    <p class="desk-next">
+      <span class="label-caps">${h.nextUp}</span>
+      ${next ? html`<button type="button" class="btn-link" title=${next.it.title} onClick=${() => c.openInfo(next.it, next.page, next.section)}>
+        ${short(next.it.title, 48)} · ${h.inTime(untilText(next.ms - now))}</button>` : null}
+      ${quota ? html`<button type="button" class="btn-link" onClick=${() => c.openInfo(quota.it, quota.page, quota.section)}>
+        ${quota.label} · ${Math.round(quota.it.meter.value)} %</button>` : null}
+      ${!next && !quota ? html`<span class="muted">${h.nothingNext}</span>` : null}
+    </p>
+  </div>`
+}
+
+/** The bar over Work, Chat and Sessions: the area they show (✕ shows every area again) and, on Work,
+ *  the star that shows only the pinned rows, not over Work through, which shows every open row whatever is pinned
+ *  (round 6 B). Nothing on the other pages, nothing when there is no choice */
+export function AreaBar({ s, c }) {
+  const h = T().home
+  const page = s.ui.page
+  // on the start page the bar names the area its views show; the overview has no filter (its names jump)
+  const chosen = homeChosen(s.model, s.home)
+  const start = page === START_PAGE && (homeView(chosen) !== 'areas' || chosen.some(id => id.startsWith('d:')))
+  const follows = pageFollowsArea((s.model?.pages ?? []).find(p => p.id === page))
+  if (!AREA_PAGES.has(page) && !start && !(follows && s.ui.area)) return null
+  // the star of Work acts in the files tab too (areas.js areaScope), so its chip stands there as well
+  const work = (page === 'briefing' && workViewNow(s) !== 'flow') || page === '@files'
+  const pins = s.home?.pins ?? []
+  if (!s.ui.area && !(work && (pins.length || s.ui.pinnedOnly))) return null
+  // Chat under an area without an agent tab says so and offers every area, rather than an empty page
+  // (only once the tabs came: not before the first answer, not over an error of the terminal)
+  const noTabs = page === '@chat' && s.ui.area && s.tabs?.at_ms > 0 && !s.tabs.error
+    && !(areaScope(s).tabs?.tabs ?? []).some(t => !t.is_control && t.state !== 'shell')
+  return html`<div class="area-bar" role="region" aria-label=${h.areasTitle}>
+    ${s.ui.area ? html`<span class="chip area-bar-chip"><span class=${`home-area-dot tk-${projectTone(s.ui.area)}`} aria-hidden="true"></span>
+      <span>${h.areaFilter(s.ui.area)}</span>
+      <button type="button" class="btn-link area-bar-x" title=${h.areaClear} aria-label=${h.areaClear} onClick=${() => c.setArea(null)}>✕</button></span>` : null}
+    ${work ? html`<button type="button" class=${`home-chip${s.ui.pinnedOnly ? ' is-on' : ''}`} aria-pressed=${String(!!s.ui.pinnedOnly)}
+      title=${h.pinnedOnlyTitle} onClick=${() => c.setPinnedOnly(!s.ui.pinnedOnly)}>★ ${h.pinnedOnly}</button>` : null}
+    ${work && s.ui.pinnedOnly && !pins.length ? html`<span class="muted small">${h.pinnedNone}</span>` : null}
+    ${noTabs ? html`<span class="muted small area-bar-empty">${h.areaNoTabs(s.ui.area)}</span>
+      <${Btn} size="xs" cls="area-bar-all" onClick=${() => c.setArea(null)}>${h.areaClear}<//>` : null}
+  </div>`
 }
 
 // ---------------------------------------------------------------- the start page itself
@@ -436,6 +670,7 @@ export function HomePage({ s, c }) {
   const view = homeView(homeChosen(s.model, s.home))
   if (view === 'list') return html`<${HomeList} s=${s} c=${c} />`
   if (view === 'focus') return html`<${HomeFocusView} s=${s} c=${c} />`
+  if (view === 'areas') return html`<${HomeDesk} s=${s} c=${c} />`
   return html`<${HomeBoard} s=${s} c=${c} />`
 }
 
@@ -447,38 +682,48 @@ function HomeBoard({ s, c }) {
   const rowsOf = id => (s.model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const waitingAll = rowsOf('now')
   const tasksAll = rowsOf('work').filter(r => r.task)
-  const projects = homeProjects(tabs, [...waitingAll, ...tasksAll])
-  const project = projects.find(p => p.toLowerCase() === String(s.ui.homeProject ?? '').toLowerCase()) ?? null
+  const projects = workspacesOn(s) ? withoutOff(s, homeProjects(tabs, [...waitingAll, ...tasksAll])) : []
+  const catalog = homeCatalog(s.model, { workers: s.workers?.status !== 'none' })
+  const chosen = homeChosen(s.model, s.home)
+  const on = new Set(chosen)
+  const { areas, all: areasWhole } = on.has('s:areas') ? startAreas(s, h.all) : { areas: [], all: null }
+  const named = areas.filter(a => !a.none)
+  // an area can come from a row the chips do not count (an overdue one elsewhere): picking it still holds
+  // one area filter for the whole cockpit (ui.area): the start page shows that area, Work, Chat and Sessions too
+  const project = [...projects, ...named.map(a => a.name), ...(s.boot?.config?.areas ?? [])]
+    .find(p => p.toLowerCase() === String(s.ui.area ?? '').trim().toLowerCase()) ?? null
   const cont = homeContinue(tabs, project)
-  const waiting = waitingAll.filter(r => inProject(r, project))
+  // the shelf is named waiting on you: the asks of Now, as the tile beside it counts them (an idea asks nothing)
+  const waiting = waitingAll.filter(r => asksYou(r) && inProject(r, project))
   const tasks = tasksAll.filter(r => inProject(r, project))
   const now = new Date(s.now || Date.now())
   const day = dayLabel(now, lang)
   const person = s.server?.person
   const workPage = workPageId(s.model)
   const relayDown = s.relay?.enabled && !s.relay?.online
-  const catalog = homeCatalog(s.model, { workers: s.workers?.status !== 'none' })
-  const chosen = homeChosen(s.model, s.home)
-  const on = new Set(chosen)
   const starts = pageOrder(s).filter(id => id !== START_PAGE && !on.has(`p:${id}`))
   const pageBadge = id => (s.model?.pages ?? []).find(p => p.id === id)?.badge
   const byKey = indexRows(s.model)
   const pinned = (s.home?.pins ?? []).map(k => byKey.get(k)).filter(Boolean).filter(r => inProject(r, project))
-  const chips = projects.length > 1 ? html`<div class="home-chips" role="toolbar" aria-label=${h.projectsLabel}>
-      <button type="button" class=${`home-chip${project ? '' : ' is-on'}`} aria-pressed=${String(!project)} onClick=${() => c.setHomeProject(null)}>${h.all}</button>
+  const areasShelf = on.has('s:areas') ? html`<${HomeAreas} areas=${areas} all=${areasWhole} project=${project} c=${c} />` : null
+  // when every chip has an area line, the lines pick the project and the chips would say it twice
+  const chips = projects.length > 1 && !(areasShelf && areasCoverProjects(projects, named)) ? html`<div class="home-chips" role="toolbar" aria-label=${h.projectsLabel}>
+      <button type="button" class=${`home-chip${project ? '' : ' is-on'}`} aria-pressed=${String(!project)} onClick=${() => c.setArea(null)}>${h.all}</button>
       ${projects.map(p => html`<button type="button" key=${p} class=${`home-chip${project === p ? ' is-on' : ''}`} aria-pressed=${String(project === p)}
-        onClick=${() => c.setHomeProject(project === p ? null : p)}><span class=${`home-chip-dot tk-${projectTone(p)}`} aria-hidden="true"></span>${p}</button>`)}
+        onClick=${() => c.setArea(project === p ? null : p)}><span class=${`home-chip-dot tk-${projectTone(p)}`} aria-hidden="true"></span>${p}</button>`)}
     </div>` : null
   const backs = returnsOf(s).filter(r => inProject(byKey.get(r.key) ?? {}, project) || !project)
   // the row cards in the order the shelves show them: a card opened here walks on through them
   const queue = homeRowQueue([...(on.has('s:pinned') ? pinned : []), ...(on.has('s:waiting') ? waiting.slice(0, 6) : []),
     ...(on.has('s:tasks') ? tasks.slice(0, 8) : [])])
-  // with a work tab the day lives here: dates, status, what happened today
-  const daily = workPageOf(s.model?.pages) ? html`<${HomeShelf} id="home-day" title=${h.dayTitle} empty="">
+  // with a work tab the day lives here: dates, status, what happened today; the cards of the day are a choice
+  // (the bridge's core shows status and small fixes too), the pages of group day have no other place
+  const withDay = !!workPageOf(s.model?.pages)
+  const daily = withDay && on.has('s:day') ? html`<${HomeShelf} id="home-day" title=${h.dayTitle} empty="">
       ${DayView({ s, c, cards: true })}
     <//>` : null
   // what happened today is long and read last, so it closes the page
-  const diary = daily ? html`<${DayPages} s=${s} c=${c} shelf />` : null
+  const diary = withDay ? html`<${DayPages} s=${s} c=${c} shelf />` : null
   const shelves = html`
     ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${h.returnsEmpty}>
       ${backs.slice(0, 8).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
@@ -509,9 +754,8 @@ function HomeBoard({ s, c }) {
   // the bridge stage of the films is the start page; the tiles of before stay a choice ("classic")
   if (homeView(chosen) === 'stage') {
     return html`<div class=${`col col-page home bridge-home`}>
-      <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />
+      <${BridgeStage} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} areas=${on.has('s:areas') ? areas : null} />
       ${daily}
-      ${chips}
       ${shelves}
       ${diary}
     </div>`
@@ -529,8 +773,9 @@ function HomeBoard({ s, c }) {
           <${Dot} token="warning" /><span>${h.controlOffline}</span></button>` : null}
       </div>` : null}
     </header>
-    <${TickerBand} s=${s} c=${c} only="news" />
+    ${s.ui.tickerOnStart ? html`<${TickerBand} s=${s} c=${c} only="news" />` : null}
     <${TickerStatusList} s=${s} c=${c} />
+    ${areasShelf}
     ${chips}
     ${on.has('s:focus') ? html`<${HomeFocus} s=${s} c=${c} tabs=${tabs} />` : null}
     <${HomeOverview} s=${s} c=${c} catalog=${catalog} chosen=${chosen} project=${project} />

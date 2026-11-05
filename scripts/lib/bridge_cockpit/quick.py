@@ -26,9 +26,13 @@ kept: not in `turns`, not in quick.json, not in a transcript.
 A chat may be about something: `about` names the briefing row it was asked on and the inbox item or task
 behind it, or the inbox item it was handed on as. Once that item has ended after the chat started (an inbox
 item closed, executed, dropped or rejected and not reopened, a task moved to work/done/) and the chat has
-been quiet for SETTLE_QUIET_MS, the sweep takes it into the archive (why `settled`). The sweep rides on the
-tab poll, reads the files at most every SETTLE_EVERY_MS unless a verb that ends an item asked for it
-(settle_soon), and never touches a chat that is answering, has no item, or changed while it read.
+been quiet for SETTLE_QUIET_MS, the sweep takes it into the archive (why `settled`); a chat handed to a tab
+stays cockpit.chat_keep_hours after the later of its handoff, what came back and the end, so what came back
+can be read (0 keeps it). The sweep rides on the tab poll, reads the files at most every
+SETTLE_EVERY_MS unless a verb that ends an item asked for it (settle_soon), and never touches a chat that is
+answering, has no item, or changed while it read. On the same read a chat handed to a tab gets what came back
+from its inbox item (`handed.outcome`, handoff_outcome): the newest note or close note since the handoff,
+whether the item is closed, when, and whether that note asks the person (returns.py QUESTION_HEADS).
 """
 from __future__ import annotations
 
@@ -54,6 +58,8 @@ LIVE_EVERY = 0.3
 LIVE_KEEP = 20000        # the most of a live text a page is sent in one piece
 SETTLE_EVERY_MS = 60_000     # the settle sweep reads the item files at most this often on plain polls
 SETTLE_QUIET_MS = 600_000    # a chat about an item that ended leaves only after this long untouched
+ARCHIVE_DAYS = 14           # the page reads the questions archived in at most this many days (/api/chats/archive)
+ARCHIVE_LIST = 60           # and at most this many of them, the newest
 OUTPUT = ["--output-format", "stream-json", "--verbose", "--include-partial-messages"]
 SESSION_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 CONV_RE = re.compile(r"^q[0-9a-f]{10}\Z")
@@ -61,13 +67,25 @@ SYSTEM = {code: TABLES[code]["quick_system"] for code in TABLES}   # the words l
 NOBODY = {code: TABLES[code]["quick_nobody"] for code in TABLES}   # the words live in text.py
 
 
-def system_text(lang: str, who: str | None, can_launch: bool = True, today: str | None = None) -> str:
+#: where a quick question may say it comes from (/api/ask `origin`): a card of Work through names its own verb
+ORIGINS = ("flow",)
+
+
+def system_text(lang: str, who: str | None, can_launch: bool = True, today: str | None = None,
+                origin: str | None = None, keys: bool = False) -> str:
     """The system text in the dashboard's language, naming the person from cockpit.person_name. It names the
     agent tab the chat hands work to, or says no terminal can start one yet (`can_launch`): a chat that only
-    knew it may read told the person the Bridge cannot act and handed them the steps (18.10.)."""
+    knew it may read told the person the Bridge cannot act and handed them the steps (18.10.). Asked from a card
+    of Work through (`origin` flow) it names the card's verb and no key; elsewhere the key only where the page has
+    its shortcuts on (`keys`), since the person who keeps them off works with the mouse (27.10.)."""
     lang = lang if lang in SYSTEM else "en"
     words = TABLES[lang]
-    launch = words["quick_launch_on" if can_launch else "quick_launch_off"].format(do_it=words["btn_do"])
+    if can_launch and origin == "flow":
+        launch = words["quick_launch_flow"].format(do_it=words["btn_flow_do"])
+    elif can_launch:
+        launch = words["quick_launch_on"].format(do_it=words["btn_do"], keys=words["quick_launch_keys"] if keys else "")
+    else:
+        launch = words["quick_launch_off"].format(do_it=words["btn_do"])
     # without a name the person is "the user", in the grammatical case each sentence needs
     return SYSTEM[lang].format(who=who or NOBODY[lang], who_subject=who or words["quick_nobody_subject"],
                                launch=launch, today=today or "unknown")
@@ -144,6 +162,29 @@ def parse_answer(out: str) -> dict | None:
     return {"text": data["result"].strip(), "session": data.get("session_id") if isinstance(data.get("session_id"), str) else None,
             "total_usd": float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None,
             "model": answered, "error": bool(data.get("is_error"))}
+
+
+def handoff_outcome(root: Path, handed: dict) -> dict | None:
+    """What came back from the inbox item a chat was handed on as, read from its events since the handoff:
+    {text, closed, at_ms, asks}, or None while nothing did (the person's start note is no outcome)"""
+    item, since = handed.get("inbox_id"), float(handed.get("at_ms") or 0)
+    if not isinstance(item, str) or not ret.INBOX_ID_RE.match(item):
+        return None
+    said = [a for a in ret.inbox_answers(root, item, since) if a["text"]]
+    ended = ret.ended_at(root, item)
+    closed = ended is not None and ended >= since
+    if not said and not closed:
+        return None
+    last = said[-1] if said else {"text": "", "at_ms": ended}
+    return {"text": last["text"], "closed": closed, "at_ms": int(ended if closed else last["at_ms"]),
+            "asks": not closed and last["text"].startswith(ret.QUESTION_HEADS)}
+
+
+def _since(c: dict) -> int:
+    """When a chat last moved: its last answer or question, its handoff, or what came back from it"""
+    handed = c.get("handed") if isinstance(c.get("handed"), dict) else {}
+    outcome = handed.get("outcome") if isinstance(handed.get("outcome"), dict) else {}
+    return int(max(c.get("last_ms") or c["started_ms"], handed.get("at_ms") or 0, outcome.get("at_ms") or 0))
 
 
 class Live:
@@ -264,7 +305,7 @@ class Quick:
         cutoff = now - hours * 3600 * 1000
         gone = False
         for c in list(self.convs.values()):
-            if c.get("running") or (c.get("last_ms") or c["started_ms"]) >= cutoff:
+            if c.get("running") or _since(c) >= cutoff:
                 continue
             if not self._archive(c, "expired", now):
                 self.expire_failed_ms = now   # the archive is down: keep them all, try again in an hour
@@ -293,7 +334,8 @@ class Quick:
                     "convs": json.loads(json.dumps(convs))}
 
     def start(self, prompt: str, model: str | None, conv: str | None = None, kind: str = "free",
-              place: str | None = None, context: str | None = None, about: dict | None = None) -> str:
+              place: str | None = None, context: str | None = None, about: dict | None = None,
+              origin: str | None = None, keys: bool = False) -> str:
         """Ask in a new conversation, or go on in `conv`; returns the conversation id at once. A new one with
         `place` "core" (the start page's core) takes the place of the last: it goes to the archive. `about`
         (a new one only) names the row and the item it is about, for the settle sweep."""
@@ -311,7 +353,9 @@ class Quick:
             else:
                 conv = "q" + uuid.uuid4().hex[:10]
                 c = {"id": conv, "kind": kind, "started_ms": now, "session": None, "total_usd": 0.0, "turns": [],
-                     "running": False, "last_ms": now, "about": dict(about) if about else None}
+                     "running": False, "last_ms": now, "about": dict(about) if about else None,
+                     # where it was asked (a card of Work through) and whether the page has its shortcuts on
+                     "origin": origin, "keys": bool(keys)}
                 if place:
                     c["place"] = place
                     for old in [x for x in self.convs.values() if x.get("place") == place and not x["running"]]:
@@ -372,15 +416,23 @@ class Quick:
 
     def set_about(self, conv: str, about: dict) -> bool:
         """Name what a chat is about when it names no item yet (a handed chat: the inbox item it became). A chat
-        from an info row nobody filed has an `about` without an item: that one takes the handed item too."""
+        from a job row or an info row nobody filed has an `about` without an item: it takes the handed item beside
+        its own kind and row key, so the row still finds its question (logic.js rowConv)."""
         with self.lock:
             c = self.convs.get(conv)
             old = c.get("about") if c is not None else None
             if c is None or isinstance(old, dict) and (old.get("inbox") or old.get("task")):
                 return False
-            c["about"] = dict(about)
+            c["about"] = {**old, "inbox": about.get("inbox")} if isinstance(old, dict) else dict(about)
             self.save()
         return True
+
+    def about_of(self, conv: str) -> dict | None:
+        """What a chat is about (`start`, `set_about`): a copy, or None for a chat about nothing or one that is gone."""
+        with self.lock:
+            c = self.convs.get(conv)
+            about = c.get("about") if c is not None else None
+            return dict(about) if isinstance(about, dict) else None
 
     def settle_soon(self) -> None:
         """An item ended or came back: the next tab poll sweeps without waiting for the minute."""
@@ -388,34 +440,56 @@ class Quick:
 
     def sweep_settled(self, now: float, force: bool = False) -> bool:
         """Chats about an item that has ended since the chat started go to the archive (why `settled`), once
-        they have been quiet for SETTLE_QUIET_MS. Reads files outside the lock and checks again under it that
-        nothing changed meanwhile. True when a chat left."""
+        they have been quiet for SETTLE_QUIET_MS, a chat handed to a tab only chat_keep_hours after the end.
+        A chat handed to a tab gets what came back from its item (handoff_outcome). Reads files outside the
+        lock and checks again under it that nothing changed meanwhile. True when a chat left or what came
+        back changed."""
         now = int(now)
         if not force and not self.settle_due and now - self.settle_at_ms < SETTLE_EVERY_MS:
             return False
         if now - self.expire_failed_ms < 3600 * 1000:
             return False                  # the archive refused lately: try again after the back-off
         self.settle_at_ms, self.settle_due = now, False
+        hours = getattr(getattr(self.app, "cfg", None), "chat_keep_hours", 24)
         with self.lock:
-            candidates = [(c["id"], c.get("last_ms") or c["started_ms"], c["started_ms"], dict(c["about"]))
+            candidates = [(c["id"], c.get("last_ms") or c["started_ms"], c["started_ms"], dict(c["about"]),
+                           _since(c), (c.get("handed") or {}).get("to") == "tab")
                           for c in self.convs.values()
                           if not c.get("running") and isinstance(c.get("about"), dict)
                           and (c["about"].get("inbox") or c["about"].get("task"))]
+            handoffs = [(c["id"], dict(c["handed"])) for c in self.convs.values()
+                        if isinstance(c.get("handed"), dict) and c["handed"].get("to") == "tab" and c["handed"].get("inbox_id")]
         root = self.app.root
+        came = [(cid, handed, got) for cid, handed in handoffs
+                if (got := handoff_outcome(root, handed)) is not None and got != handed.get("outcome")]
         settled = []
-        for cid, last, started, about in candidates:
-            if now - last < SETTLE_QUIET_MS:
-                continue
+        for cid, last, started, about, since, handed in candidates:
+            if handed and not hours:
+                continue                  # chat_keep_hours 0: a handed chat is kept
             inbox, task = about.get("inbox"), about.get("task")
             if inbox:
                 at = ret.ended_at(root, str(inbox))
                 ended = at is not None and at >= started
             else:
+                at = None
                 ended = ret.task_done(root, str(task))
-            if ended:
+            # a handed chat counts from the end too: its last answer came before the tab took the item on (28.10.)
+            quiet, mark = (max(SETTLE_QUIET_MS, hours * 3600 * 1000), max(since, at or 0)) if handed else (SETTLE_QUIET_MS, last)
+            if ended and now - mark >= quiet:
                 settled.append((cid, last, about))
+        told = False
+        if came:
+            with self.lock:
+                for cid, handed, got in came:
+                    c = self.convs.get(cid)
+                    # handed on again meanwhile: the next read is about that one
+                    if c is not None and isinstance(c.get("handed"), dict) and c["handed"].get("at_ms") == handed.get("at_ms"):
+                        c["handed"]["outcome"] = got
+                        told = True
+                if told:
+                    self.save()
         if not settled:
-            return False
+            return told
         gone = False
         with self.lock:
             for cid, last, about in settled:
@@ -430,7 +504,7 @@ class Quick:
                 gone = True
             if gone:
                 self.save()
-        return gone
+        return gone or told
 
     def forget(self, conv: str) -> None:
         """Take a chat off the list into the archive; one still answering stays until it is done."""
@@ -445,6 +519,26 @@ class Quick:
             del self.convs[conv]
             self.save()
         self.app.broadcast("quick", self.state())
+
+    def archived(self, days: int) -> list[dict]:
+        """The questions archived in the last `days` (1 to ARCHIVE_DAYS), newest first and at most ARCHIVE_LIST, each
+        with `archived` (why and when), for the page's "all" (round 6d). Read only. Left out: one the person took off
+        (removed), one that had a place of its own, and one back in the list."""
+        from .store import read_archive
+        if self.path is None:
+            return []
+        now = int(self.app.clock())
+        days = max(1, min(ARCHIVE_DAYS, days))
+        with self.lock:
+            live = set(self.convs)
+        rows = read_archive(self.path.parent, "quick", now - days * 86_400_000, now)
+        out: dict[str, dict] = {}
+        for row in rows:
+            c = row["conv"]
+            if row.get("why") in ("removed", "replaced") or c.get("place") or c.get("id") in live or not c.get("turns"):
+                continue
+            out[c["id"]] = {**c, "running": False, "archived": {"why": row.get("why"), "at_ms": row["at_ms"]}}
+        return sorted(out.values(), key=lambda c: c["archived"]["at_ms"], reverse=True)[:ARCHIVE_LIST]
 
     def _archive(self, c: dict, why: str, now: int) -> bool:
         """Called under the lock: True when the chat is kept in the archive (or there is no state dir)."""
@@ -501,8 +595,10 @@ class Quick:
     def _run(self, conv: str, model: str, prompt: str, session: str | None,
              provider: str = "claude", actual_model: str | None = None, context: str | None = None) -> None:
         app = self.app
+        c = self.convs.get(conv) or {}
         system = system_text(self.lang(), getattr(app.cfg, "person_name", None), self._can_launch(),
-                             time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000)))
+                             time.strftime("%Y-%m-%d", time.localtime(app.clock() / 1000)),
+                             origin=c.get("origin"), keys=bool(c.get("keys")))
         if context:
             # what the page shows, as data after the system text, fresh on every turn and kept nowhere
             system += "\n\n" + TABLES[self.lang()]["quick_situation"].format(text=app.scrub(context))

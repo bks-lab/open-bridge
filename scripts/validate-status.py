@@ -15,6 +15,9 @@ Usage:
   scripts/validate-status.py            # all STATUS.md under work/{tasks,streams,done}
   scripts/validate-status.py --staged   # only git-staged STATUS.md (pre-commit)
 
+An optional `brief:` block goes through card_fields.validate_brief, the gate
+every writer of a brief passes, with the same strictness as the status.
+
 Exit: 0 = every status enum valid; 1 = at least one invalid/absent status
 (CI blocks; the pre-commit hook prints the output but never blocks). Missing
 required keys are reported as warnings and do NOT change the exit code, so a
@@ -35,6 +38,10 @@ except ImportError:
     sys.exit(0)  # degrade gracefully: never block on a missing dep
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+from lib.bridge_cockpit.card_fields import validate_brief  # noqa: E402  (the schema's $defs/Brief, as code)
+
 SCHEMA = ROOT / "work/templates/_schema.status.yaml"
 FALLBACK_ENUM = ["backlog", "doing", "review", "done"]
 
@@ -139,6 +146,8 @@ def main():
             continue
         if fm.get("status") not in enum:
             sink.append(f"{rel}: status: {fm.get('status')!r} not in {enum}")
+        if fm.get("brief") is not None:  # optional; a shallow parse leaves a block's head as None
+            sink.extend(f"{rel}: brief: {e}" for e in validate_brief(fm["brief"])[1])
         for key in required:
             if key not in fm:
                 warnings.append(f"{rel}: missing required key '{key}'")

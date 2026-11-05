@@ -2,6 +2,7 @@
 """Provider selection is per consumer, never a global CLI replacement."""
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -121,3 +122,141 @@ def test_template_matches_schema():
     folder = ROOT / "workflow/ai-services"
     jsonschema.validate(yaml.safe_load((folder / "_template.yaml").read_text()),
                         yaml.safe_load((folder / "_schema.yaml").read_text()))
+
+
+# ---------------------------------------------------------------- the declared services and their providers
+
+# a service id the code selects: SERVICE = "x" / X_SERVICE = "x", or a literal passed to select, service_model, ask_service
+SELECTS = re.compile(r"""(?:\b[A-Z_]*SERVICE\s*=\s*|\b(?:select|service_model|ask_service)\(\s*[\w.]+\s*,\s*)"([a-z][a-z0-9-]*)\"""")
+
+
+def selected_ids() -> dict:
+    found = {}
+    for path in sorted((ROOT / "scripts").rglob("*.py")):
+        if "tests" in path.relative_to(ROOT).parts:
+            continue
+        for sid in SELECTS.findall(path.read_text(encoding="utf-8")):
+            found.setdefault(sid, path.relative_to(ROOT).as_posix())
+    return found
+
+
+def test_every_service_id_the_code_selects_is_declared_and_no_declared_one_is_stale():
+    found = selected_ids()
+    assert {"briefing-chat", "task-review", "triage", "cockpit-prio"} <= set(found)   # the scan reaches them
+    missing = sorted(set(found) - set(ai.SERVICES))
+    assert not missing, f"selected in code but missing from ai_services.SERVICES: {[(s, found[s]) for s in missing]}"
+    assert sorted(set(ai.SERVICES) - set(found)) == [], "declared in ai_services.SERVICES but selected nowhere"
+    for sid, entry in ai.SERVICES.items():
+        assert entry["providers"] and set(entry["providers"]) <= set(ai.PROVIDERS), sid
+        assert "claude" in entry["providers"], sid          # Claude stays the compatibility default
+        assert (ROOT / entry["code"]).is_file(), entry["code"]
+
+
+def test_what_each_service_supports():
+    assert ai.supports("briefing-chat", "codex") and ai.supports("task-review", "codex") and ai.supports("triage", "codex")
+    assert ai.supports("cockpit-prio", "claude") and not ai.supports("cockpit-prio", "codex")
+    assert ai.supports("night-worker", "codex")         # a worker's own id runs through ai-run.py on every provider
+
+
+def test_a_provider_the_service_cannot_run_is_a_gap_not_a_silence(tmp_path):
+    assert ai.gaps(tmp_path) == []
+    config(tmp_path, "briefing-chat", "codex")
+    config(tmp_path, "cockpit-describe", "claude")
+    config(tmp_path, "night-worker", "codex")
+    assert ai.gaps(tmp_path) == []
+    config(tmp_path, "cockpit-prio", "codex")
+    config(tmp_path, "cockpit-themes", "codex")
+    assert ai.gaps(tmp_path) == [
+        {"service": "cockpit-prio", "ready": False, "reason": "provider_unsupported", "provider": "codex",
+         "supported": ["claude"]},
+        {"service": "cockpit-themes", "ready": False, "reason": "provider_unsupported", "provider": "codex",
+         "supported": ["claude"]}]
+    assert ai.gap(tmp_path, "cockpit-prio")["reason"] == "provider_unsupported"
+    assert ai.gap(tmp_path, "briefing-chat") is None
+    # a file that is there but cannot be used switches the service off as well: said, not swallowed
+    (tmp_path / "workflow/ai-services/cockpit-themes.yaml").write_text("provider: [")
+    config(tmp_path, "briefing-chat", "gemini")
+    got = {g["service"]: g for g in ai.gaps(tmp_path)}
+    assert set(got) == {"briefing-chat", "cockpit-prio", "cockpit-themes"}
+    for sid in ("briefing-chat", "cockpit-themes"):
+        assert got[sid]["ready"] is False and got[sid]["reason"] == "config_invalid", got[sid]
+        assert sid in got[sid]["error"] and len(got[sid]["error"]) <= 200
+    assert "provider" not in got["cockpit-themes"]
+
+
+def test_how_the_caller_runs_a_service_decides_whether_it_is_a_gap(tmp_path):
+    # one rule for every caller: a service switched off is no gap, nor one whose model the caller pins (its file
+    # is never read then); without a word from the caller the service counts as on and unpinned
+    config(tmp_path, "cockpit-prio", "codex")
+    (tmp_path / "workflow/ai-services/cockpit-themes.yaml").write_text("provider: [")
+    assert ai.gap(tmp_path, "cockpit-prio", {"enabled": False, "pinned": False}) is None
+    assert ai.gap(tmp_path, "cockpit-prio", {"enabled": True, "pinned": True}) is None
+    assert ai.gap(tmp_path, "cockpit-themes", {"enabled": True, "pinned": True}) is None
+    assert ai.gap(tmp_path, "cockpit-prio", {"enabled": True, "pinned": False})["reason"] == "provider_unsupported"
+    uses = {"cockpit-prio": {"enabled": False, "pinned": False}, "cockpit-themes": {"enabled": True, "pinned": False}}
+    assert [g["service"] for g in ai.gaps(tmp_path, uses)] == ["cockpit-themes"]
+
+
+def test_the_docs_show_the_declared_list():
+    text = (ROOT / "docs/ai-services.md").read_text(encoding="utf-8")
+    begin, end = "<!-- ai-services:begin -->", "<!-- ai-services:end -->"
+    assert begin in text and end in text
+    shown = text.split(begin, 1)[1].split(end, 1)[0].strip()
+    assert shown == ai.services_table().strip(), "docs/ai-services.md: paste python3 scripts/ai-run.py --list"
+    p = subprocess.run([sys.executable, str(ROOT / "scripts/ai-run.py"), "--list"], capture_output=True, text=True)
+    assert p.returncode == 0 and p.stdout.strip() == ai.services_table().strip(), p.stderr
+    p = subprocess.run([sys.executable, str(ROOT / "scripts/ai-run.py"), "--list", "--json"], capture_output=True, text=True)
+    assert json.loads(p.stdout) == {k: {"providers": list(v["providers"]), "code": v["code"]} for k, v in ai.SERVICES.items()}
+
+
+def test_the_template_names_no_list_of_its_own():
+    text = (ROOT / "workflow/ai-services/_template.yaml").read_text(encoding="utf-8")
+    assert "cockpit-describe" not in text and "ai-run.py --list" in text
+
+
+def test_person_codex_holds_the_wall_on_every_road():
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", 'Say "hi"\nnow')
+    assert "--sandbox" not in argv and not any("bypass" in a for a in argv)
+    assert 'default_permissions="room"' in argv and "permissions.room.network.enabled=false" in argv
+    wall = next(a for a in argv if a.startswith("permissions.room.filesystem="))
+    for closed in ("/private/tmp", "/tmp", "/Volumes", "/private/var/folders"):
+        assert f'"{closed}"="none"' in wall
+    assert 'web_search="disabled"' in argv and "project_doc_max_bytes=0" in argv
+    assert ai.person_codex_argv_ok(argv, "/bin/codex")
+    again = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", "gpt-5", "01a195e8-4b2d-7102-bdfa-34101f7287e1")
+    assert ai.person_codex_argv_ok(again, "/bin/codex")
+    assert again.index("resume") > again.index("permissions.room.network.enabled=false")
+
+
+def test_person_codex_refuses_any_other_shape():
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer")
+    assert not ai.person_codex_argv_ok(["/other", *argv[1:]], "/bin/codex")
+    assert not ai.person_codex_argv_ok([*argv[:-2], "--add-dir", "/", *argv[-2:]], "/bin/codex")
+    assert not ai.person_codex_argv_ok([argv[0], *argv[2:]], "/bin/codex")
+    with pytest.raises(ValueError):
+        ai.person_codex_argv("/bin/codex", "room", "Hello", "Answer")
+
+
+def test_person_codex_carries_images_from_the_persons_folder():
+    imgs = ["/room/a.png", "/room/sub/b.jpg"]
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", "gpt-5", None, imgs)
+    pairs = [(argv[i], argv[i + 1]) for i, a in enumerate(argv) if a == "--image"]
+    assert pairs == [("--image", p) for p in imgs]
+    assert argv.index("--image") < argv.index("--model")
+    assert ai.person_codex_argv_ok(argv, "/bin/codex")
+    no_model = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", images=imgs[:1])
+    assert ai.person_codex_argv_ok(no_model, "/bin/codex")
+
+
+@pytest.mark.parametrize("image", ["/elsewhere/a.png", "/room/../etc/x.png", "/roomy/a.png", "a.png", "/room"])
+def test_person_codex_refuses_an_image_outside_the_persons_folder(image):
+    with pytest.raises(ValueError):
+        ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer", images=[image])
+
+
+def test_person_codex_ok_refuses_a_crafted_foreign_image():
+    argv = ai.person_codex_argv("/bin/codex", "/room", "Hello", "Answer")
+    at = argv.index("-C") + 4
+    for image in ("/etc/passwd", "relative.png", "/room/../etc/passwd"):
+        crafted = [*argv[:at], "--image", image, *argv[at:]]
+        assert not ai.person_codex_argv_ok(crafted, "/bin/codex")

@@ -13,7 +13,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { answerMark, canTab, centsText, duration, errorText, guideChoices, guideOf, replySend, short, stateToken } from '../logic.js'
+import { answerMark, canTab, centsText, duration, errorText, guideChoices, guideOf, replySend, short, stateToken, tabStateKey } from '../logic.js'
 import { T, language } from '../text.js'
 import { Thinking } from './chat.js'
 import { TAB_MSG_MAX } from './nav.js'
@@ -40,12 +40,12 @@ function About({ entry }) {
 }
 
 /** The ways into the session beside a reading: the terminal jumps to the tab, the tab's live screen opens
- *  here, and what Haiku read unfolds below */
-function Ways({ tab, s, c, entry, open, setOpen }) {
+ *  here, and what Haiku read unfolds below. `bare`: the host shows its own ways to the tab, only what was read */
+function Ways({ tab, s, c, entry, open, setOpen, bare = false }) {
   const g = T().guide
   return html`<span class="guide-ways">
-    ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" icon="external" onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${g.toTab}<//>` : null}
-    <${Btn} size="xs" variant="ghost" icon="tabs" onClick=${() => c.openTabView(tab.ref)}>${g.watch}<//>
+    ${!bare && canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" icon="external" onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${g.toTab}<//>` : null}
+    ${bare ? null : html`<${Btn} size="xs" variant="ghost" icon="tabs" onClick=${() => c.openTabView(tab.ref)}>${g.watch}<//>`}
     ${entry?.read ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => setOpen(!open)}>${open ? g.hideRead : g.showRead}<//>` : null}
   </span>`
 }
@@ -66,8 +66,10 @@ function ReadBlock({ read }) {
 }
 
 /** The reading of one waiting tab as a tree; nothing while the guide is off or the tab does not wait.
- *  `compact` (a narrow column) leaves out the words a step would send */
-export function GuideTree({ tab, s, c, compact = false }) {
+ *  `compact` (a narrow column) leaves out the words a step would send; `bare` (a card of the Work through
+ *  page, whose own To tab remembers the jump) leaves To tab and Watch to its host; `about` false (that card too, whose
+ *  title says it) leaves out what the session is about */
+export function GuideTree({ tab, s, c, compact = false, bare = false, about = true }) {
   const t = T()
   const g = t.guide
   const { status, entry } = guideOf(s, tab)
@@ -87,19 +89,20 @@ export function GuideTree({ tab, s, c, compact = false }) {
   const busy = !!s.ui?.busy?.[tab.ref]
   const read = html`<${Btn} size="xs" variant="ghost" icon="reload" busy=${busy} onClick=${() => c.guideRead(tab.ref)}>
     ${status === 'none' ? g.read : g.again}<//>`
-  const ways = html`<${Ways} tab=${tab} s=${s} c=${c} entry=${entry} open=${open} setOpen=${setOpen} />`
+  const ways = html`<${Ways} tab=${tab} s=${s} c=${c} entry=${entry} open=${open} setOpen=${setOpen} bare=${bare} />`
   const readOut = open ? html`<${ReadBlock} read=${entry?.read} />` : null
+  const head = about ? html`<${About} entry=${entry} />` : null
   if (status === 'none') {
     return html`<div class="guide is-empty" role="group" aria-label=${g.title}>
       <p class="muted small guide-empty"><${Icon} name="spark" size=${12} /> ${g.noneYet}</p>${read}${ways}</div>`
   }
   if (status === 'running') {
     return html`<div class="guide is-running" role="group" aria-label=${g.title} aria-busy="true">
-      <${About} entry=${entry} /><${Thinking} label=${g.reading} />${ways}${readOut}</div>`
+      ${head}<${Thinking} label=${g.reading} />${ways}${readOut}</div>`
   }
   if (status === 'error') {
     return html`<div class="guide is-error" role="group" aria-label=${g.title}>
-      <${About} entry=${entry} />
+      ${head}
       <p class="small"><${StateLine} token="danger" word=${g.failed(entry.error)} /></p>${read}${ways}${readOut}</div>`
   }
   const choices = status === 'fresh' ? guideChoices(tab, entry, s) : []
@@ -134,7 +137,7 @@ export function GuideTree({ tab, s, c, compact = false }) {
   const ago = duration((s.now || Date.now()) - (entry.at_ms ?? s.now ?? Date.now()))
   return html`<div class=${`guide${status === 'stale' ? ' is-stale' : ''}${compact ? ' is-compact' : ''}`} role="group" aria-label=${g.title}>
     <div class="guide-root">
-      <${About} entry=${entry} />
+      ${head}
       <span class="label-caps guide-cap"><${Icon} name="spark" size=${12} /> ${g.where}</span>
       <p class="guide-where">${entry.where}</p>
       ${entry.waits_for ? html`<p class="guide-waits small"><span class="muted">${g.waitsFor}</span> ${entry.waits_for}</p>` : null}
@@ -199,32 +202,43 @@ export function GuideLine({ tab, s }) {
     <span class="guide-line-where clamp2">${entry.where}</span></span></p>`
 }
 
-/** "Where you are needed" on top of the Sessions page: every tab that waits for you with its reading,
- *  the tabs that need you first; nothing while the guide is off or no tab waits. A tab whose result is
- *  filed stays out: it waits only to be checked, and "With AI" below offers that */
+/** The tabs the guide reads for you, the ones that need you first, the longest waiting first. A tab whose
+ *  result is filed stays out: it waits only to be checked, and "With AI" offers that */
+export function guideTabs(s) {
+  if (!s.guide?.enabled) return []
+  return (s.tabs?.tabs ?? []).filter(tab => !tab.filed_by && guideOf(s, tab).status !== 'off')
+    .sort((a, b) => (URGENCY[a.state] ?? 2) - (URGENCY[b.state] ?? 2) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
+}
+
+/** One tab with its reading: its state, name (a jump to it where the driver can), workspace, the tree */
+export function GuideCard({ tab, s, c }) {
+  const t = T()
+  const jump = canTab(s, 'focus')
+  return html`<article class="guide-card">
+    <header class="guide-card-head">
+      <${Dot} token=${stateToken(tabStateKey(tab))} />
+      ${jump ? html`<button type="button" class="btn-link guide-card-name" onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${short(tab.name, 60)}</button>`
+        : html`<span class="guide-card-name">${short(tab.name, 60)}</span>`}
+      <span class="muted small">${tab.workspace}</span>
+      <span class="muted small">${t.state[tabStateKey(tab)] ?? tab.state}</span>
+    </header>
+    <${GuideTree} tab=${tab} s=${s} c=${c} />
+  </article>`
+}
+
+/** "Where you are needed" on top of the Sessions page: every tab that waits for you with its reading
+ *  (guideTabs); nothing while the guide is off or no tab waits */
 export function GuideBoard({ s, c }) {
   const t = T()
-  if (!s.guide?.enabled) return null
-  const tabs = (s.tabs?.tabs ?? []).filter(tab => !tab.filed_by && guideOf(s, tab).status !== 'off')
-    .sort((a, b) => (URGENCY[a.state] ?? 2) - (URGENCY[b.state] ?? 2) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
+  const tabs = guideTabs(s)
   if (!tabs.length) return null
-  const jump = canTab(s, 'focus')
   return html`<section class="panel panel-pad psec guide-board" aria-labelledby="guide-board-title">
     <header class="psec-head">
       <h3 class="sec-title" id="guide-board-title">${t.guide.boardTitle} <span class="sec-count mono">${tabs.length}</span></h3>
       ${s.guide.auto ? null : html`<span class="muted small">${t.guide.manualHint}</span>`}
     </header>
     <p class="muted small guide-board-intro">${t.guide.boardIntro}</p>
-    <div class="guide-board-list">${tabs.map(tab => html`<article key=${tab.ref} class="guide-card">
-      <header class="guide-card-head">
-        <${Dot} token=${stateToken(tab.state)} />
-        ${jump ? html`<button type="button" class="btn-link guide-card-name" onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${short(tab.name, 60)}</button>`
-          : html`<span class="guide-card-name">${short(tab.name, 60)}</span>`}
-        <span class="muted small">${tab.workspace}</span>
-        <span class="muted small">${t.state[tab.state] ?? tab.state}</span>
-      </header>
-      <${GuideTree} tab=${tab} s=${s} c=${c} />
-    </article>`)}</div>
+    <div class="guide-board-list">${tabs.map(tab => html`<${GuideCard} key=${tab.ref} tab=${tab} s=${s} c=${c} />`)}</div>
   </section>`
 }
 

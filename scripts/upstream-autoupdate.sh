@@ -83,6 +83,7 @@ notify() {  # $1 = message
   fi
 }
 report() { mkdir -p work; { echo "# Upstream Auto-Update — $(date '+%F %T')"; echo; printf '%s\n' "$@"; } > "$REPORT"; }
+say() { printf '%s %s\n' "$(date '+%F %T')" "$*"; }  # stdout line with its own timestamp (launchd log has none)
 is_int() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
 
 INBOX_KEY="upstream-autoupdate-checks"
@@ -154,7 +155,7 @@ mirror_core_branch() {
 git fetch "$UPSTREAM_REMOTE" -q 2>/dev/null || true
 
 behind=$(git rev-list --count "HEAD..$UPSTREAM_REF" 2>/dev/null || echo x)
-is_int "$behind" || { report "- 🔴 cannot resolve \`$UPSTREAM_REF\` (fetch failed?)"; echo "autoupdate: no upstream ref"; exit 1; }
+is_int "$behind" || { report "- 🔴 cannot resolve \`$UPSTREAM_REF\` (fetch failed?)"; say "autoupdate: no upstream ref"; exit 1; }
 if [ "$behind" -eq 0 ]; then
   # The mirror still has to be asked, and this is the path where it matters most.
   # mirror_core_branch() used to be reachable ONLY after a successful auto-merge,
@@ -168,8 +169,8 @@ if [ "$behind" -eq 0 ]; then
   mirror_line=$(mirror_core_branch)
   inbox close --key "$STALE_KEY" --note "the branch carries $UPSTREAM_REF again"
   report "- ✓ up to date (0 behind \`$UPSTREAM_REF\`)" "$mirror_line"
-  echo "autoupdate: up to date"
-  echo "autoupdate: mirror — ${mirror_line#- }"
+  say "autoupdate: up to date"
+  say "autoupdate: mirror — ${mirror_line#- }"
   exit 0
 fi
 
@@ -217,9 +218,12 @@ print(a, len(u) - a)') \
 # ---- the local check net ----
 # The fast checks the pre-commit always-on gate runs (edges, standing orders,
 # card index, reachability, the context budget), plus the two validators every
-# commit on main meets in CI. Each is skipped when absent: a fork that has not
-# taken a checker is not failing it. Measured on a live instance: under 2 s for
-# all seven, so the job pays twice that (before and after the merge).
+# commit on main meets in CI, and the kernel manifest. Each is skipped when
+# absent: a fork that has not taken a checker is not failing it. Measured on a
+# live instance: under 2 s for the first seven, so the job pays twice that
+# (before and after the merge). A checker that arrives with the merge and is red
+# keeps the merge and files an inbox item: that is how a fork learns of a CORE
+# rule its own files break (docs/updating.md § Once: docs/ is tiered by folder).
 CHECKS=(
   "validate-bridge.py"
   "validate-skill-scope.py"
@@ -228,6 +232,7 @@ CHECKS=(
   "context-index.py --check"
   "check-reachability.py"
   "measure-context.py"
+  "check-kernel.py"
 )
 CHECKS_LOG=/tmp/ob-autoupdate-checks.log
 CHECKS_DIR=""
@@ -259,6 +264,15 @@ run_checks() {
 }
 
 in_list() { printf '%s\n' "$2" | grep -qxF -- "$1"; }   # $1 a line of the list $2
+# The data files that carry a checker's rules, beside the script itself: a merge
+# that changed one changed the rule (the "rules" pile below), not the instance.
+checker_inputs() {
+  case "$1" in
+    check-kernel.py)    echo "kernel/manifest.yaml" ;;
+    measure-context.py) echo "context-budget.yaml docs/schemas/context-budget.schema.yaml" ;;
+    data-model.py)      echo "docs/data-model.yaml" ;;
+  esac
+}
 words() { printf '%s' "$1" | sed '/^$/d' | tr '\n' ' ' | sed 's/ $//'; }
 
 # A check's findings, normalised: digits folded (a count, a line number or a
@@ -318,7 +332,13 @@ if [ -z "$reason" ]; then
     0) : ;;                                                    # provably clean
     1) resolve_plan          # sets take_theirs / held, or reason on any doubt
        [ -z "$reason" ] && [ -n "$held" ] \
-         && reason="conflict(s) a machine must not decide — $held" ;;
+         && reason="conflict(s) a machine must not decide — $held"
+       # Upstream removed its root CLAUDE.md: a fork that edited it is held here
+       # until scripts/migrate-entry-file.py carries its lines and removes it.
+       case "; $held" in
+         *"; CLAUDE.md ("*) [ -n "$reason" ] \
+           && reason="$reason (CLAUDE.md: run scripts/migrate-entry-file.py, docs/updating.md)" ;;
+       esac ;;
     *) reason="merge-tree could not verify safety (exit $mt_rc, failing closed)" ;;
   esac
 fi
@@ -371,7 +391,7 @@ if [ -n "$reason" ]; then
          "- $behind commit(s) behind \`$UPSTREAM_REF\` · sentinel conflict-risk: $risk" \
          ${promote_line:+"$promote_line"} ${adapt_line:+"$adapt_line"} ${stale_line:+"$stale_line"}
   notify "⚠ open-bridge auto-update SKIPPED: $reason ($behind behind). Manual merge needed."
-  echo "autoupdate: skipped — $reason"; exit 0
+  say "autoupdate: skipped — $reason"; exit 0
 fi
 
 # ---- SAFE → auto-merge (skip the local pre-commit hook for the headless merge) ----
@@ -439,9 +459,11 @@ if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
   #   rules  the checker is new with the merge, or the merge changed it. What it
   #          finds is instance content measured by a new rule; rolling back would
   #          repeat every morning and freeze the job, so the merge is kept and the
-  #          finding filed. A rule upstream tightened in a file other than the
-  #          checker itself (a schema, a budget) is not seen here and lands in
-  #          broke: rollback plus an item, the safe side.
+  #          finding filed. A checker's rules may live in a data file beside
+  #          it (checker_inputs: the kernel manifest's retired and moved lists,
+  #          the budgets, the data model); a merge that changed one counts as
+  #          a changed checker. A rule tightened anywhere else lands in broke:
+  #          rollback plus an item, the safe side.
   #   broke  green before and red after, or red on both sides with a finding the
   #          before-run did not have (normalised output, see findings_of): the
   #          merge broke it. Rolled back.
@@ -450,7 +472,7 @@ if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
   broke=""; rules=""; still=""
   while IFS= read -r c; do
     [ -n "$c" ] || continue
-    if ! in_list "$c" "$present_before" || ! git diff --quiet "$before_full" HEAD -- "scripts/${c%% *}"; then
+    if ! in_list "$c" "$present_before" || ! git diff --quiet "$before_full" HEAD -- "scripts/${c%% *}" $(checker_inputs "${c%% *}"); then
       rules="${rules}${c}"$'\n'
     elif ! in_list "$c" "$red_before" || has_new_findings "$c"; then
       broke="${broke}${c}"$'\n'
@@ -488,7 +510,7 @@ if [ "$merged" = 1 ] && [ -z "$checks_line" ]; then
       --detail "The daily auto-update merged $behind upstream commit(s), and these checks then failed, or gained findings, that the tree before the merge did not have: $b. The merge $undo. Merge $UPSTREAM_REF by hand, fix what the checks name, then commit. Output of the run: $CHECKS_LOG" \
       --key "$INBOX_KEY" --closes-when-json "$probe"
     notify "🔴 open-bridge auto-update: merge turned checks red ($b), $undo. Manual merge needed."
-    echo "autoupdate: checks red after merge ($b), $undo"; exit 1
+    say "autoupdate: checks red after merge ($b), $undo"; exit 1
   fi
   ran_after=$checks_ran
   n_red=$(printf '%s' "$red_after" | sed '/^$/d' | wc -l | tr -d ' ')
@@ -520,8 +542,8 @@ if [ "$merged" = 1 ]; then
   report "- ✅ auto-updated \`$before\` → \`$after\` ($behind commit(s) merged from \`$UPSTREAM_REF\`)" \
          ${resolved_line:+"$resolved_line"} ${kept_line:+"$kept_line"} "$checks_line" "$mirror_line"
   notify "✅ open-bridge auto-updated: $behind commit(s) merged ($before→$after)"
-  echo "autoupdate: merged $behind commit(s) ($before→$after)"
-  echo "autoupdate: mirror — ${mirror_line#- }"
+  say "autoupdate: merged $behind commit(s) ($before→$after)"
+  say "autoupdate: mirror — ${mirror_line#- }"
 else
   git merge --abort 2>/dev/null || true
   # The guards passed and git merge still refused (an untracked file in the way,
@@ -532,5 +554,5 @@ else
   report "- 🔴 auto-update merge FAILED and was aborted — $behind behind, manual merge needed" \
          ${stale_line:+"$stale_line"}
   notify "🔴 open-bridge auto-update merge FAILED (aborted). Manual merge needed."
-  echo "autoupdate: merge failed, aborted"; exit 1
+  say "autoupdate: merge failed, aborted"; exit 1
 fi

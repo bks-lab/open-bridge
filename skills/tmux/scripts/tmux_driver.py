@@ -16,8 +16,14 @@ the CORE JSON protocol: one request on stdin, one answer on stdout.
     {"verb": "rename", "tab": ref, "title": "..."}
     {"verb": "rename_workspace", "workspace": ws_ref, "title": "..."}
     {"verb": "move_tab", "tab": ref, "workspace": ws_ref}   (no index: tmux numbers windows itself)
+    {"verb": "new_tab", "workspace": ws_ref, "title": "..." | null, "command": "..." | null}
+                           -> {"report": [...], "ref": "%N"}
+    {"verb": "new_workspace", "title": "...", "cwd": "..." | null, "command": "..." | null}
+                           -> {"report": [...], "ws_ref": "$N", "ref": "%M"}   (tmux has no colour)
+    {"verb": "close_workspace", "workspace": ws_ref}
     {"verb": "control", "control": {...}, "command": "...", "root": "..."}
     {"verb": "caps"} | {"verb": "focus", "tab": ref} | {"verb": "key", "tab": ref, "key": k}
+    {"verb": "keys", "tab": ref, "keys": [{"text": t} | {"key": k} | {"paste": t}]}
     {"verb": "screen", "tab": ref, "lines": n} | {"verb": "close", "tab": ref}
 
 Mapping: a tmux SESSION is a workspace, a WINDOW is a tab (its name is the tab
@@ -33,11 +39,15 @@ Wire it in bridge-config.yaml:
 BRIDGE_TMUX_SOCKET names a private server (`tmux -L <name>`), so tests never
 touch the person's own tmux. BRIDGE_TMUX_BIN overrides the binary.
 
+`new_tab` adds a window to a session and `new_workspace` makes a session; neither is selected or
+attached. No `command` is a plain shell. Both answer the new refs. A session name is unique, so
+`new_workspace` refuses one that is in use (compared after the same sanitizer, in any case).
+
 Rules, the same as the cmux reference driver: it never closes a tab or a
-workspace on its own (only `close`, which a person asked for, and even that never
-removes the last pane of the server), never moves the last window out of a
-session (tmux would destroy the emptied session), a tab already open is reused,
-and a step tmux refuses is an ERROR line, never a success line.
+workspace on its own (only `close` and `close_workspace`, which a person asked for, and
+even those never remove the last pane or the last session of the server), never moves the
+last window out of a session (tmux would destroy the emptied session), a tab the plan has
+open already is reused, and a step tmux refuses is an ERROR line, never a success line.
 """
 from __future__ import annotations
 
@@ -54,11 +64,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 VERBS = ["tabs", "sessions", "open", "launch", "send", "rename", "control",
-         "caps", "focus", "key", "screen", "close", "rename_workspace", "move_tab"]
+         "caps", "focus", "key", "keys", "screen", "close", "rename_workspace", "move_tab",
+         "new_tab", "new_workspace", "close_workspace"]
 SHELLS = {"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "-zsh", "-bash", "-fish", "-sh", "login"}
 KEEP_SHELL = '; exec "${SHELL:-/bin/sh}" -l'
 KEYS = {"enter": ("Enter", False), "escape": ("Escape", False),
         **{k: (k, True) for k in ("y", "n", *map(str, range(1, 10)))}}
+# the keys of a live terminal, under tmux's names (workplace.py TERM_KEYS)
+TERM_KEYS = {"enter": "Enter", "escape": "Escape", "tab": "Tab", "shift+tab": "BTab", "backspace": "BSpace", "delete": "DC",
+             "up": "Up", "down": "Down", "left": "Left", "right": "Right", "home": "Home", "end": "End",
+             "pageup": "PPage", "pagedown": "NPage", **{f"ctrl+{c}": f"C-{c}" for c in "abcdefghijklmnopqrstuvwxyz"}}
 REF_RE = re.compile(r"%\d+")
 WS_REF_RE = re.compile(r"\$\d+")
 SEP = "\x1f"
@@ -67,6 +82,7 @@ SEND_CHUNK = 2000          # tmux carries a command in one IPC message (16 KB); 
 INLINE_MAX = 1000          # a longer launch command goes into a private launcher file
 LAUNCHER_DAYS = 7
 SCREEN_LINES = 40
+SCREEN_MAX_LINES = 5000    # a shell tab's whole scrollback, for the cockpit's tab history (workplace.py SCREEN_MAX_LINES)
 STATE_WINDOW = 15          # only the bottom of the screen decides the state, never old scrollback
 
 
@@ -403,8 +419,11 @@ def new_session(name: str, cwd: str, label: str | None, command: str | None) -> 
     return ref
 
 
-def new_window(session: str, cwd: str, label: str, command: str | None) -> str:
-    args = ["new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"={session}:", "-c", cwd, "-n", label]
+def new_window(session: str, cwd: str, label: str | None, command: str | None, by_id: bool = False) -> str:
+    """A detached window; `session` is a name, or a session id ($N) with by_id. Returns the pane id."""
+    args = ["new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"{session}:" if by_id else f"={session}:", "-c", cwd]
+    if label:
+        args += ["-n", label]
     if command:
         args.append(runnable(with_shell(command)))
     return tmux(*args).strip()
@@ -672,6 +691,52 @@ def move_tab(req: dict) -> list[str]:
     return [f"moved {ref} into {target}"]
 
 
+def _text(req: dict, key: str, what: str) -> str | None:
+    """A text the request may leave out: None for none or blank, else the text. Anything but text is an error."""
+    value = req.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{what} takes {key} as text")
+    return value.strip() or None
+
+
+def new_tab(req: dict) -> dict:
+    """One new window in the session named by its id, not selected: a plain shell, or `command`. Answers its pane id."""
+    sid = check_ws_ref(req.get("workspace"))
+    title, command = _text(req, "title", "new_tab"), _text(req, "command", "new_tab")
+    ref = new_window(sid, str(ROOT), title, command, by_id=True)
+    where = session_ids().get(sid, sid)
+    return {"report": [f"tab {title} ({ref}) in {where}" if title else f"tab {ref} in {where}"], "ref": ref}
+
+
+def new_workspace(req: dict) -> dict:
+    """One new detached session with its first window: a plain shell, or `command`. Answers the session id and the
+    pane id. A name in use is refused (tmux would refuse it too); tmux has no workspace colour."""
+    title = _text(req, "title", "new_workspace")
+    if not title:
+        raise ValueError("new_workspace needs a title")
+    if req.get("color") is not None:
+        raise DriverError("tmux has no workspace colour")
+    cwd, command = _text(req, "cwd", "new_workspace") or str(ROOT), _text(req, "command", "new_workspace")
+    name = session_name(title)
+    if any(session_name(n).casefold() == name.casefold() for n in session_ids().values()):
+        raise DriverError(f"the name {name!r} is in use by another session")
+    ref = new_session(name, cwd, None, command)
+    sid = tmux("display-message", "-p", "-t", ref, "#{session_id}").strip()
+    return {"report": [f"workspace {name} ({sid})"], "ws_ref": sid, "ref": ref}
+
+
+def close_workspace(req: dict) -> list[str]:
+    """Kills that one session, on a person's request. Never the last session of the server: that would end the
+    server and every tab with it."""
+    ref = check_ws_ref(req.get("workspace"))
+    if len(session_ids()) <= 1:
+        return [f"ERROR {ref} is the last workspace on this tmux server, closing it would end the server"]
+    tmux("kill-session", "-t", ref)
+    return [f"{ref} closed"]
+
+
 def key(req: dict) -> list[str]:
     k = str(req.get("key") or "").lower()
     if k not in KEYS:
@@ -682,13 +747,29 @@ def key(req: dict) -> list[str]:
     return [f"key {k} to {ref}"]
 
 
+def keys(req: dict) -> list[str]:
+    """A keyboard, in order: named keys by tmux's name, text and pastes as literal text."""
+    ref = check_ref(req["tab"])
+    steps = req.get("keys") or []
+    if any("key" in step and step["key"] not in TERM_KEYS for step in steps):
+        return ["ERROR a key that is not one of the terminal's"]
+    for step in steps:
+        if "key" in step:
+            tmux("send-keys", "-t", ref, TERM_KEYS[step["key"]])
+            continue
+        text = step.get("text", step.get("paste", ""))
+        for i in range(0, len(text), SEND_CHUNK):
+            tmux("send-keys", "-t", ref, "-l", text[i:i + SEND_CHUNK])
+    return [f"{len(steps)} steps to {ref}"]
+
+
 def screen(req: dict) -> dict:
     ref = check_ref(req["tab"])
     try:
         n = int(req.get("lines") or SCREEN_LINES)
     except (TypeError, ValueError):
         n = SCREEN_LINES
-    n = max(1, min(n, 2000))
+    n = max(1, min(n, SCREEN_MAX_LINES))
     lines = [ln.rstrip() for ln in capture(ref, n).splitlines()]
     while lines and not lines[-1]:
         lines.pop()
@@ -731,10 +812,14 @@ def handle(req: dict) -> dict:
     if verb == "screen":
         return screen(req)
     actions = {"open": open_plan, "launch": launch, "send": send, "rename": rename, "control": control,
-               "focus": focus, "key": key, "close": close, "rename_workspace": rename_workspace,
-               "move_tab": move_tab}
+               "focus": focus, "key": key, "keys": keys, "close": close, "rename_workspace": rename_workspace,
+               "move_tab": move_tab, "close_workspace": close_workspace}
     if verb in actions:
         return {"report": actions[verb](req)}
+    if verb == "new_tab":
+        return new_tab(req)
+    if verb == "new_workspace":
+        return new_workspace(req)
     raise ValueError(f"unknown verb {verb!r}")
 
 

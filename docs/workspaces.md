@@ -1,7 +1,7 @@
 ---
 summary: "Workspaces — two halves: a machine-global SHARED identity registry (~/.workspaces/workspaces.json, v2, multi-writer, written by the standalone workspace_registry.py) and a repo-local materialization engine (workspace.py) that binds config overlays[] + member repos[] with a lock, public-fork-safe code checkout, and delegation to the overlay engine."
 type: guide
-last_updated: 2026-07-10
+last_updated: 2026-10-31
 related:
   - docs/org-overlays.md
   - docs/multi-instance.md
@@ -43,6 +43,21 @@ scripts/workspace.py                 ← the workspace engine (this layer)
                          org-overlays.md § Git tracking of managed dests),
                          owns overlays.lock.yaml
 ```
+
+## Four things called "workspace"
+
+The word is used for four different things in CORE. Only the first is what this
+guide is about.
+
+| Where you meet it | What it is | Read |
+|---|---|---|
+| `workflow/workspaces/<id>.yaml` | The workspace definition: a named binding of config overlays and member repos, handled by `scripts/workspace.py` and `/workspace`. Code members are cloned under `.bridge/workspaces/<id>/`. | this guide |
+| `~/.workspaces/` | The machine-global shared registry of workspaces (`workspaces.json`), written by `scripts/workspace_registry.py` so several tools on one machine see the same list. It records identity and paths, not content. | [§ The shared identity registry](#the-shared-identity-registry-workspaces) |
+| a cmux workspace | A window group in the optional cmux terminal, holding tabs ("surfaces") and splits. `scripts/workplace.py` plans one per task. Unrelated to the files above, and a tab is not a workspace. | [`skills/cmux/SKILL.md`](../skills/cmux/SKILL.md) |
+| the `workspaces:` block in `ecosystem.yaml` | The older sense: a name list saying which registry repos belong together for multi-repo work (`workspaces.<name>.repos`). It does not clone or bind anything and is not read by the workspace engine. | [`ecosystem.example.yaml`](../ecosystem.example.yaml) |
+
+Rule of thumb: to check out repos or subscribe to overlays, you want the first
+row; the other three only name or group things.
 
 ## Quickstart
 
@@ -348,12 +363,17 @@ The engine CLI:
 ```
 workspace [--repo-root R] <subcommand> …
 
-create       <name> [--dir DIR] [--title T] [--description D]
-list
+create       <name> [--dir DIR] [--title T] [--description D] [--area A] [--parent P]
+list         [--json]
+show         <name> [--json]
 validate     [name]
 status       [name]
 subscribe    <name> <git-url> [--ref R] [--role code|config]   # alias: add-repo   (--role default: code)
 unsubscribe  <name> <member>                                   # alias: remove-repo
+archive      <name>
+restore      <name>
+delete       <name> [--dry-run] [--json]
+area-remove  <area>
 ```
 
 `subscribe` / `unsubscribe` are the **canonical** verb names; `add-repo` /
@@ -376,15 +396,58 @@ unsubscribe  <name> <member>                                   # alias: remove-r
 - **`unsubscribe`** (alias `remove-repo`) — remove a code member (delete clone, drop
   the lock entry, refresh the exclude block) or a config overlay (delegate
   `overlay.py remove`).
+- **`show`** — one workspace with its effective rules, see [Rules](#rules).
+- **`archive`** / **`restore`** — set a workspace aside and bring it back; the file
+  stays. A parent with a live child is not archived, a child of an archived parent
+  is not restored.
+- **`delete`** — remove the definition, its lock entry and its clones, with a copy
+  of all of it under `.bridge/trash/<id>-<time>/`. It refuses while a child stands,
+  an overlay is subscribed, or a clone holds uncommitted or unpushed work; tasks,
+  records, memory and the log are never touched. `--dry-run` says what would go
+  and what stops it.
+- **`area-remove`** — take an area out of `workplace.workspaces`, line by line so
+  every comment stays, the result proved against a parse of the whole file, a copy
+  of the entry under `.bridge/trash/`. It refuses the default area.
+
+### Rules
+
+A definition may carry what a session in the workspace holds to, as references
+into the families that own the values: `area` (the cockpit area), `refs`,
+`writing`, `boundary` and `sources` (the calendars of the workspace by name, its
+cost center). `boundary.level` is how far it goes: `view` filters the
+cockpit, `room` starts a session in a folder of its own, `wall` adds the operating
+system's sandbox.
+
+`parent` makes a workspace a child. It inherits `refs`, `writing`, `boundary` and
+`sources` key by key, and its `area` when it names none. It may only narrow: `validate` fails
+a looser `level`, a skill the parent's list lacks, a parent that is missing, or a
+third level. `show` and `list --json` give the merged result, with `inherited`
+naming what came from the parent.
+
+### Members
+
+`members:` names the people who may open a workspace in the cockpit, besides the
+owner: lowercase names, each once. A person sees and changes only the areas of the
+workspaces naming them. A child inherits the list and may only narrow it. Under a
+parent without a list a child names its own, and those people get the child alone,
+the parent stays closed to them. A workspace with members needs an area, and one that
+rests or is archived closes for them at once. What the cockpit shows a person:
+[`bridge-cockpit.md`](bridge-cockpit.md#4-safety-model).
+
+`sources.documents` lists what a person's question may read beside the files of the workspace: folders, or named files of the Bridge such as `folder/*.yaml` (`docs/bridge-cockpit.md`, "A person's question"). A child stays inside its parent's list.
+
+`logins:` says which signed-in address is which member, for a served cockpit behind a sign-in gateway
+(`cockpit.served.access`, [`docs/always-on-machine.md`](always-on-machine.md)): `logins: {pat: pat@example.org}`. A name
+here must be a member, an address on two people opens for neither, and a child that repeats a name wins over its parent.
 
 ### Branch gate
 
 The **mutating** verbs — `create`, `subscribe`, `unsubscribe` (and their aliases
-`add-repo` / `remove-repo`) — refuse to run unless the current branch is `user/*`
+`add-repo` / `remove-repo`), `archive`, `restore`, `delete`, `area-remove` — refuse to run unless the current branch is `user/*`
 (or detached / non-repo). This is the same
 gate `overlay.py` enforces and it honours the same env escape
 (`BRIDGE_OVERLAY_ALLOW_ANY_BRANCH=1`) so a shared test harness works. The
-**read-only** verbs (`list`, `validate`, `status`) run on any branch.
+**read-only** verbs (`list`, `show`, `validate`, `status`, `delete --dry-run`) run on any branch.
 
 ### Exit codes
 

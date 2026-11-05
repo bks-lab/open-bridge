@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const WEB = path.join(here, '..', 'web')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-costs-'))
-for (const name of ['logic', 'text']) {
+for (const name of ['logic', 'areas', 'files', 'flow', 'point', 'text', 'text-areas', 'text-card', 'text-files', 'text-flow', 'text-chat']) {
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
@@ -31,6 +31,13 @@ test('a page without cards keeps what overview alone drew: usage and noise at it
   const plan = logic.cardPlan({ overview: true, sections: [{ id: 'a' }], cards: null })
   assert.deepEqual(plan, { after: {}, end: ['usage', 'noise'] })
   assert.deepEqual(logic.cardPlan({ sections: [{ id: 'a' }] }), { after: {}, end: [] })
+})
+
+test('a sub page with overview and no cards draws none: the tokens and the noise stand on its folder overview', () => {
+  assert.deepEqual(logic.cardPlan({ overview: true, under: 'ops', sections: [{ id: 'a' }], cards: null }), { after: {}, end: [] })
+  // its own cards: still stand where it names them
+  assert.deepEqual(logic.cardPlan({ overview: true, under: 'ops', sections: [{ id: 'a' }], cards: [{ id: 'usage', after: 'a' }] }),
+    { after: { a: ['usage'] }, end: [] })
 })
 
 test('cards stand after their section in the listed order, each once; an unknown section sends a card to the end', () => {
@@ -305,4 +312,55 @@ test('the cost card names every machine whose report it merges', () => {
   assert.equal(logic.costSources({ host: 'my-server', source: 'ssh:my-server:/x' }), 'my-server')
   assert.equal(logic.costSources({ sources: [{ source: '/tmp/costs.json' }] }), '/tmp/costs.json')
   assert.equal(logic.costSources(null), '')
+})
+
+
+// ---------------------------------------------------------------- cost centers: one project across accounts
+
+test('the cost card filters by cost center: all, one project, or what no project names', () => {
+  const day = (d, a) => ({ day: d, amount: a, provisional: false, groups: {} })
+  const costs = { today: '2026-10-10', currency: 'EUR',
+    cost_centers: [{ id: 'shop', title: 'Shop' }, { id: 'team', title: 'Team' }],
+    accounts: [
+      { id: 'a', ok: true, cost_center: 'shop', month_to_date: 3, days: [day('2026-10-10', 3)] },
+      { id: 'b/p1', ok: true, cost_center: 'shop', month_to_date: 2, days: [day('2026-10-10', 2)] },
+      { id: 'c', ok: true, cost_center: null, month_to_date: 5, days: [day('2026-10-10', 5)] }] }
+  assert.deepEqual(logic.costCenterChoices(costs), ['all', 'shop', 'team', 'none'])
+  assert.equal(logic.costScope(costs, 'all'), costs)
+  assert.deepEqual(logic.costScope(costs, 'shop').accounts.map(a => a.id), ['a', 'b/p1'])
+  assert.deepEqual(logic.costScope(costs, 'none').accounts.map(a => a.id), ['c'])
+  assert.equal(logic.costTotals(logic.costScope(costs, 'shop'), 'month').month, 5)
+  // no cost centers declared: no choice to make
+  assert.deepEqual(logic.costCenterChoices({ ...costs, cost_centers: [] }), [])
+  // every entry has one: no "none" chip
+  assert.deepEqual(logic.costCenterChoices({ ...costs, accounts: costs.accounts.slice(0, 2) }), ['all', 'shop', 'team'])
+})
+
+test('a project with a budget gets one budget bar over its entries; personas narrow the projects', () => {
+  const day = (d, a) => ({ day: d, amount: a, provisional: false, groups: {} })
+  const costs = { today: '2026-10-10', currency: 'EUR',
+    cost_centers: [{ id: 'shop', title: 'Shop', persona_ref: 'co', persona_title: 'Company', budget_month: 4 },
+      { id: 'side', title: 'Side', persona_ref: 'me', persona_title: 'Freelance' }],
+    accounts: [
+      { id: 'a', ok: true, cost_center: 'shop', month_to_date: 3, forecast_month: 6, days: [day('2026-10-10', 3)] },
+      { id: 'b', ok: true, cost_center: 'shop', month_to_date: 2, forecast_month: 2, days: [day('2026-10-10', 2)] },
+      { id: 'c', ok: true, cost_center: 'side', month_to_date: 5, forecast_month: 5, days: [day('2026-10-10', 5)] }] }
+  const b = logic.costCenterBudget(costs, 'shop')
+  assert.deepEqual(b, { month_to_date: 5, forecast_month: 8, budget_month: 4 })
+  assert.equal(logic.budgetBar(b).tone, 'danger')
+  assert.equal(logic.costCenterBudget(costs, 'side'), null)
+  assert.equal(logic.costCenterBudget(costs, 'all'), null)
+  assert.deepEqual(logic.costPersonaChoices(costs), ['all', 'co', 'me'])
+  assert.deepEqual(logic.costCenterChoices(costs, 'me'), ['all', 'side'])
+  assert.deepEqual(logic.costScope(costs, 'all', 'co').accounts.map(a => a.id), ['a', 'b'])
+  // one persona only: no persona chips
+  assert.deepEqual(logic.costPersonaChoices({ ...costs, cost_centers: costs.cost_centers.slice(0, 1) }), [])
+})
+
+test('the months a cost statement can be made for: those the view holds days of, newest first', () => {
+  const day = d => ({ day: d, amount: 1, provisional: false, groups: {} })
+  const costs = { today: '2026-11-03', accounts: [{ id: 'a', ok: true, days: [day('2026-09-29'), day('2026-10-15'), day('2026-11-02')] },
+    { id: 'b', ok: false, days: [] }] }
+  assert.deepEqual(logic.costMonths(costs), ['2026-11', '2026-10', '2026-09'])
+  assert.deepEqual(logic.costMonths(null), [])
 })

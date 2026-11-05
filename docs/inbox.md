@@ -1,7 +1,7 @@
 ---
 summary: "The inbox: one place per Bridge where everything that needs a person waits until it is done. Item and event layout, derived states, gates, closing probes, who writes and reads, CLI reference."
 type: guide
-last_updated: 2026-10-17
+last_updated: 2026-10-26
 related:
   - scripts/inbox.py
   - scripts/tests/test_inbox.py
@@ -39,13 +39,14 @@ work/inbox.md                      GENERATED view (python3 scripts/inbox.py rend
 ```
 
 `item.yaml` carries `schema_version`, `created`, `from`, `kind`, `summary`,
-`urgency`, `gate` and optionally `task`, `due`, `detail`, `key`, `action`
-(`argv` and `label`, no shell) and `closes_when`. Schema:
+`urgency`, `gate` and optionally `task`, `area`, `due`, `detail`, `key`, `action`
+(`argv` and `label`, no shell), `closes_when` and `waits_for`. Schema:
 [`work/templates/_schema.inbox-item.yaml`](../work/templates/_schema.inbox-item.yaml),
 annotated example: [`work/templates/inbox-item.yaml`](../work/templates/inbox-item.yaml).
 
 Every change is a **new event file**, never an edit. Verbs: `seen`, `note`,
-`approve`, `reject`, `drop`, `defer`, `urgency`, `close`, `executed`, `failed`, `reopen`. Two machines
+`approve`, `reject`, `drop`, `defer`, `urgency`, `area`, `close`, `executed`, `failed`, `reopen`,
+`describe`, `wait`, `ready`. Two machines
 writing the same inbox through git therefore never touch the same file, and an
 item id ends in a random tail, so two machines filing the same thing in the same
 minute still create two folders. This is the property the task folders already have, and
@@ -57,13 +58,42 @@ waits on nobody: it ranks after every other kind and a briefing section can list
 ideas apart (`kinds: [idea]`) or leave them out (`skip_kinds: [idea]`). Urgency: `now`,
 `today`, `later`.
 
+**Area.** An item linked to a task belongs to that task's area. One without a task may
+carry an `area` of its own: the name of a workspace in `workplace.workspaces`
+([`workplace.md`](workplace.md)), given with `add --area`, changed with `inbox.py area`
+(the last `area` event wins, `--clear` takes it back). A name or alias in any case is stored
+as the workspace's name; `area` refuses one that names no workspace, `add` warns and files
+the item without it. The cockpit counts the item under that area instead of "No area", its
+detail page has a picker to put it right, and a tab started for it opens in that workspace.
+
+With `inbox.place_on_add: true` in `bridge-config.yaml`, an item filed through the CLI
+(`inbox.py add`) with neither a task nor an area is placed by the router: `add` starts
+`workplace.py place --pending` detached, so the filer never waits. That waits two seconds
+for a burst to arrive, takes a lock so only one placer runs, and asks the configured
+`workplace.router` once about every open item without a task or an area, each item once
+per run; the answer is written as an `area` event by `router` with its reason. An item a
+person gave an area meanwhile, or one that closed, is left as it is. Without a router, or
+when it fails or names no configured workspace, the item stays without an area. Code that
+files through the `Inbox` class (the briefing's own items, which mostly name a task) places
+nothing; `workplace.py place --unplaced` catches up on every open item that has none yet
+(`--dry-run` shows the answer and writes nothing).
+
+**Brief.** What an item is about, beyond its one-line summary: a `goal`, an optional user
+`story` and a few `acceptance` criteria, plus `by` (the model id), `at`, `basis` and `edited`.
+It is the same block a task carries as `brief:` in its STATUS.md
+(`work/templates/_schema.status.yaml`, `$defs/Brief`), written as a `describe` event with
+`inbox.py describe <id> --brief-json '{...}'`; the last one wins, `--clear` takes it back.
+A brief the gate (`scripts/lib/bridge_cockpit/card_fields.py`, `validate_brief`) finds
+anything wrong with is refused, and `validate` reports a hand-edited event that no longer
+passes it. `closes_when` stays the machine's probe and never becomes a criterion.
+
 ## States
 
 | State | Meaning |
 |---|---|
 | `open` | nobody has answered |
 | `approved` | a person said yes, `run` may execute the action |
-| `waiting` | a conditional yes is recorded, `run` executes when the condition holds |
+| `waiting` | a conditional yes is recorded, `run` executes when the condition holds; or the item waits for its `waits_for` condition and asks nobody yet |
 | `deferred` | pushed to a later day with `defer --until` |
 | `done` | closed (by a person or by `check`) or executed |
 | `dropped` | rejected or dropped |
@@ -73,6 +103,25 @@ ideas apart (`kinds: [idea]`) or leave them out (`skip_kinds: [idea]`). Urgency:
 A close by mistake is taken back with `reopen`, one more event: the item is `open`
 again and every yes before it is void, so an executed action does not run a second
 time without a new yes. A later close closes it again.
+
+## Arts
+
+A person sees an item as one of three arts, derived from its `kind` and never
+stored (`scripts/lib/inbox_verbs.py` `ART_OF_KIND`):
+
+| Art | Kinds | Means |
+|---|---|---|
+| `ask` | `decision`, `question`, `draft` | needs a person's yes, word or click |
+| `report` | `finding`, `result` | how something stands; a probe or its reporter ends it |
+| `idea` | `idea` | mentioned, nothing came of it yet |
+
+A kind the table does not know is an `ask`, so a person sees it rather than
+missing it. `list --json` carries the `art` of every row and `list --art <art>`
+shows one art only. The briefing's "N asks for you today" and the cockpit's "waits
+for you" count the asks: a row that is no inbox item (a task, a board item)
+counts as before, and of the inbox only an `ask` does. An idea or a report filed
+for today still shows in Do (Now in the cockpit); the briefing's headline counts
+those apart ("· 2 reports"), so its number explains itself.
 
 ## Gates
 
@@ -103,14 +152,41 @@ without one. A one-shot alarm does not carry it: that item waits for a person.
 A probe that cannot be evaluated (no network, a typo, a missing task) is
 **unknown, never true**. The item stays open rather than vanishing on an error.
 
+### Waiting for a condition (`waits_for`)
+
+Some items only ask once something has happened: "the quota was raised: switch
+over". Filed as an open item, it states the hoped-for outcome as a fact while the
+live source says otherwise, and a `closes_when` on that same condition would close
+it exactly when it becomes something to do. `waits_for` is a probe in the same
+language for that case:
+
+```bash
+python3 scripts/inbox.py add --from homebox/quota-watch --kind result \
+    --summary "Quota raised: switch the service over" --task model-switch \
+    --waits-for-json '{"command": ["scripts/quota-check.sh"]}'
+python3 scripts/inbox.py wait <id> --for-json '{"gh_pr": "contoso/portal#70", "state": "merged"}'
+```
+
+While the probe does not hold, the item is `waiting`: it asks nobody, `run`
+executes nothing of it (a `free` action included), and the briefing lists it under
+waiting as "Waiting for: <summary>". `check` evaluates it with the other probes;
+once it holds, `check` records a `ready` event (printed as `ready <id>`) and the
+item is `open`, asking the person like any other. A probe that cannot be evaluated
+is unknown, so the item keeps waiting. `wait` sets the condition on an item
+already filed (a `wait` event; the last one wins, `ready` ends it). Its
+`closes_when` still closes it while it waits, and `only-you` never runs a
+`command` probe here either.
+
 ## Every item needs a way out (`closer`)
 
 An item without a probe stays open until somebody remembers it. `closer` says who
 ends it instead: `reporter` (the job that filed it closes it by key once the
 condition is gone: `inbox.py close --key <key>`), `person`, or `bot` (a watcher
-that acts on it). `add` warns about a `finding` or `question` with neither
-`closes_when` nor `closer`. It warns rather than refuses, because filers run
-unattended and a refusal would lose the finding.
+that acts on it). `add` files an item with neither `closes_when`, `closer` nor an
+`action` as `closer: person`, written into `item.yaml`: nothing else would end
+it. It does not refuse, because filers run unattended and a refusal would lose
+the item. An item with an action keeps no closer, since the run that executes it
+closes it.
 
 `bot` is also a routing promise: the item goes to a watcher that **looks first**.
 It investigates before a person hears about it and ends in one of three ways:
@@ -170,20 +246,24 @@ python3 scripts/inbox.py add --from homebox/issue-radar --kind decision \
     --summary "PR #70 is green and waits for a merge" --task portal-relaunch \
     --action-json '{"argv": ["gh", "pr", "merge", "70", "-R", "contoso/portal"]}' \
     --closes-when-json '{"gh_pr": "contoso/portal#70", "state": "merged"}'
-python3 scripts/inbox.py list [--all] [--json] [--short]   # open items, most urgent first
+python3 scripts/inbox.py list [--all] [--json] [--short] [--art ask|report|idea]   # open items, most urgent first
 python3 scripts/inbox.py show <id>                         # item plus its events; an unambiguous id prefix works
 python3 scripts/inbox.py approve <id> [--when-json '{...}'] [--text "edited draft"]
 python3 scripts/inbox.py reject|close|drop <id> [--note "why"]
-python3 scripts/inbox.py drop <id> --reason once|duplicate|family|source   # family and source leave a mute rule
+python3 scripts/inbox.py drop <id> --reason once|duplicate|stale|family|source   # family and source leave a mute rule
 python3 scripts/inbox.py mute list [--json]                 # the mute rules in force
 python3 scripts/inbox.py unmute <rule-id>                   # lift one
 python3 scripts/inbox.py stats [--days 30] [--json]         # per source: filed, dropped by a person, muted
 python3 scripts/inbox.py reopen <id> [--note "why"]           # take a close, drop or reject back
 python3 scripts/inbox.py close --key <key> [--note "why"]     # every live item filed under that key
-python3 scripts/inbox.py defer <id> --until 2026-10-08
+python3 scripts/inbox.py defer <id> --until 2026-10-08 [--on lena] [--check]   # --check: a check-in with --on
 python3 scripts/inbox.py urgency <id> now|today|later       # re-rank; the latest urgency event wins
+python3 scripts/inbox.py area <id> <workspace> | --clear    # the area of an item without a task
+python3 scripts/inbox.py describe <id> --brief-json '{"goal": "..."}' | --clear   # what it is about
 python3 scripts/inbox.py note <id> "Sam will answer on Monday"
-python3 scripts/inbox.py check                             # close what the live source says is done
+python3 scripts/inbox.py wait <id> --for-json '{...}'           # asks nobody until the probe holds
+python3 scripts/inbox.py check                             # close what is done, open what waited and now holds
+python3 scripts/inbox.py probe --json '{"gh_issue": "org/repo#12", "state": "closed"}'   # one probe, read only
 python3 scripts/inbox.py run [--dry-run]                   # execute what a person released
 python3 scripts/inbox.py render                            # regenerate work/inbox.md
 python3 scripts/inbox.py validate                          # structure of items and events
@@ -191,8 +271,26 @@ python3 scripts/inbox.py sync [--no-push]
 ```
 
 `--by` (or `$BRIDGE_ACTOR`, default the host name) sets who an event is
-attributed to. `add` takes `--due`, `--detail`, `--key`, `--urgency` (default
-`today`) and `--gate` (default `your-yes`). Items are `from` a machine and job
+attributed to. `add` takes `--area`, `--due`, `--detail`, `--key`, `--waits-for-json`, `--urgency` (default
+`today`) and `--gate` (default `your-yes`).
+
+**A title that reads in a list.** `add` warns on stderr, never refuses, where a
+title (`--summary`) is hard to read in a list: longer than 80 characters, with a
+path, a file name or an id in it (a long hex or numbered token), or with English
+words in a Bridge whose language is German. Each warning is one line that says
+what to change (`title: 112 characters, at most 80: say what it is in a few
+words, the rest goes in --detail`); the item is filed as given. The cockpit
+names an item by its brief's `name` where describe wrote one
+([`bridge-cockpit.md`](bridge-cockpit.md#each-items-brief)), so a technical
+title is not lost, but a title that reads needs no brief to be understood.
+
+**A check-in.** `defer --until <day> --on <who> --check` puts an item off as "in
+progress with someone until that day": the event stores `check: true` beside
+`waits_on`. Until the day the cockpit lists it under Running elsewhere ("with
+<who> · asks on <day>"); on the day it comes back as a check-in that asks how it
+stands. An answer ends the check-in: `approve`, `reopen`, or any close. A plain
+`defer` (without `--check`) stays a later, as before. The cockpit's In progress
+verb (`work_on`) sends exactly this for an inbox item. Items are `from` a machine and job
 (`homebox/issue-radar`), not a person.
 
 ## Dropping with a reason, and muting a loud source
@@ -204,6 +302,7 @@ part of the `drop` event:
 |---|---|---|
 | `once` | not worth it this time | nothing; the key stays dropped as before |
 | `duplicate` | already known elsewhere | nothing |
+| `stale` | it went old without anybody acting on it (what a cleanup proposes) | nothing |
 | `family` | never this kind again | a rule: the source plus the key up to its last colon (`health:crash:1a20` mutes `health:crash:`), or the source plus the kind when the key has no family (such a rule leaves keys with a family alone) |
 | `source` | this source is too loud | a rule: everything of the source for 30 days (`MUTE_SOURCE_DAYS`) |
 
@@ -215,6 +314,11 @@ event: nothing is lost, it counts in `stats`, and `reopen` brings it back. An
 item filed with `--urgency now` is never muted, so a muted source cannot
 swallow an outage, and a muted key that comes back as `now`, or after its rule is gone, is reopened. A source mute ends by itself, a family mute stays until
 `unmute` lifts it.
+
+Sources that differ only in case (`Host-A/notify`, `host-a/notify`) are one
+source to the rules and to `stats`. Only the comparison folds the case: items and
+rules keep their source as written, and a `stats` row is named as the source was
+first written.
 
 `stats` counts, per source, the items filed in the last N days: how many a
 person dropped (with the reasons, `unknown` for a drop without one), how many
@@ -268,3 +372,35 @@ held answer as an inbox item (kind `draft`, gate `only-you`) so it shows up wher
 everything else waits, and the person's `approve --text` releases an edited
 version. That bridge is the script `scripts/inbox-approve.py`, written separately
 from this model.
+
+## Upgrading
+
+From the release that brought the arts (2026-10). Nothing to migrate: no item,
+event or mute rule is rewritten, and every call that worked before works
+unchanged. What an existing instance notices:
+
+1. **Default closer.** A new item filed with neither `closes_when`, `closer` nor
+   an `action` is stored with `closer: person`, and the old warning
+   `no way to close` is gone. Items filed before keep what they had. A filer that
+   relied on the warning to spot missing ways out reads the stored `closer`
+   instead; one that means another closer passes `--closer reporter` or `bot` as
+   before.
+2. **The count.** "N for you today" in the briefing headline and the cockpit's
+   "waits for you" (the coloured Today number, the station, the area lines) count
+   only the asks of the inbox. Ideas and reports still show in Do and Now, so the
+   number can be smaller than the rows there. The two lists on the cockpit's start
+   page that carry the label "waiting on you" (the station's panel and the shelf)
+   list the asks only, so their count matches the tile beside them. A profile that wants an idea or a
+   report counted files it as a `question` or `decision`.
+3. **New filter.** `list --art ask|report|idea` and an `art` field in every
+   `list --json` row. A consumer that reads `list --json` with a fixed set of
+   keys ignores the new one; nothing was renamed.
+4. **Case of a source.** `stats` merges sources that differ only in case, and a
+   mute rule holds for every spelling of its source. To see the spellings apart,
+   read `from` in `list --all --json`.
+5. **`stale`.** A new `drop --reason`. It leaves no rule; the cockpit's drop
+   dialog does not offer it.
+
+To check an instance after the update: `python3 scripts/inbox.py validate` is
+still clean, and `python3 scripts/inbox.py list --art ask --short` shows what now
+makes up the count.

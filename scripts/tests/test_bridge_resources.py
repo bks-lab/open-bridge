@@ -54,7 +54,10 @@ def test_machines_are_live_from_tailscale_and_an_always_on_one_offline_is_red(tm
     assert by["laptop"]["tone"] == "none" and "online" in by["laptop"]["raw_state"]
     assert by["printer"]["tone"] == "dim"                            # not in the tailnet: nothing live to say
     assert [r["title"] for r in rows][0] == "box"                    # always-on machines first
-    assert "tailscale not readable" in br.machine_rows(root, TX, None)[0]["raw_state"]
+    blind = br.machine_rows(root, TX, None)
+    assert "tailscale not readable" in blind[0]["raw_state"]
+    # without tailscale nothing says a machine is up: none of them may look in order
+    assert {r["tone"] for r in blind} == {"dim"} and not any(r["live"] for r in blind)
 
 
 def test_tailscale_peers_reads_hostnames_and_self(monkeypatch):
@@ -187,6 +190,18 @@ def test_the_full_worker_view_becomes_mosaic_rows_and_is_kept_whole(tmp_path):
     assert br.view_rows(tmp_path, TX, str(tmp_path / "nope.json"), NOW, 70)[0]["tone"] == "bad"
 
 
+def test_a_stopped_run_or_a_failed_last_run_is_an_outage_and_stands_first(tmp_path):
+    # the two states the engine files as high: red like a missing run, never the orange of an upkeep deviation
+    src = tmp_path / "v.json"
+    doc = {"schema": 1, "host": "box", "generated_at": "2026-10-10T13:30:00+00:00", "runs": [
+        {"id": "a", "title": "Drifted", "state": "drifted", "findings": [{"state": "drifted", "severity": "medium"}]},
+        {"id": "b", "title": "Stopped", "state": "stopped", "findings": [{"state": "stopped", "severity": "high"}]},
+        {"id": "c", "title": "Failed", "state": "last_run_failed", "findings": [{"state": "last_run_failed", "severity": "high"}]}]}
+    src.write_text(json.dumps(doc))
+    rows = br.view_rows(tmp_path, TX, str(src), NOW, 70)
+    assert [(r["title"], r["tone"]) for r in rows[1:]] == [("Stopped", "bad"), ("Failed", "bad"), ("Drifted", "warn")]
+
+
 def test_rows_carry_tags_to_filter_by_and_accounts_their_status(tmp_path):
     rows = br.account_rows(bridge(tmp_path), TX, TODAY)
     by = {r["title"]: r for r in rows}
@@ -301,6 +316,62 @@ def test_costs_rows_speak_german_numbers_in_german(tmp_path):
     by = {r["id"]: r for r in br.cost_rows(tmp_path, br.TX["de"], str(src), NOW, 36)}
     assert by["costs:azure-example"]["raw_state"] == "gestern 1,23 € · Oktober 12,30 € von 50 €"
     assert by["costs:azure-other"]["title"].startswith("Other Azure: Anmeldung nötig")
+
+
+def test_costs_rows_say_what_was_used_when_credits_paid_for_it(tmp_path):
+    doc = costs_doc()
+    doc["accounts"][1].update(month_to_date=0.0, used_month=1.3, credits_month=-1.3, budget_month=None)
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(doc))
+    row = {r["id"]: r for r in br.cost_rows(tmp_path, br.TX["de"], str(src), NOW, 36)}["costs:aws-example"]
+    assert row["raw_state"].endswith("Oktober 0,00 € · verbraucht 1,30 €, Gutschrift -1,30 €")
+
+
+def test_cost_centers_name_the_project_of_each_entry_across_accounts(tmp_path):
+    cc = tmp_path / "workflow" / "cost-centers"
+    cc.mkdir(parents=True)
+    (cc / "_template.yaml").write_text("id: tpl\ntitle: x\nsources: ['*']\n")
+    (cc / "shop.yaml").write_text("schema_version: 1\nscope: user\nid: shop\ntitle: Shop\npersona_ref: me-company\n"
+                                  "sources: [azure-example, openai-*]\n")
+    (cc / "team.yaml").write_text("schema_version: 1\nscope: user\nid: team\ntitle: Team\n"
+                                  "sources: [openai-example, aws-example/proj_*]\n")
+    doc = costs_doc()
+    doc["accounts"][1]["id"] = "aws-example/proj_a"
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(doc))
+    rows = {r["id"]: r for r in br.cost_rows(tmp_path, TX, str(src), NOW, 36)}
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    by = {a["id"]: a.get("cost_center") for a in view["accounts"]}
+    # an account id names its parts too; the first file (by name) that names an entry wins
+    assert by["azure-example"] == "shop" and by["openai-example"] == "shop" and by["aws-example/proj_a"] == "team"
+    assert by["acme-plan"] is None
+    assert view["cost_centers"] == [{"id": "shop", "title": "Shop", "persona_ref": "me-company"},
+                                    {"id": "team", "title": "Team", "persona_ref": None}]
+    assert rows["costs:azure-example"]["tags"] and "Shop" in json.dumps(rows["costs:azure-example"]["tags"])
+
+
+def test_cost_centers_carry_their_budget_in_eur_and_the_persona_name(tmp_path):
+    cc = tmp_path / "workflow" / "cost-centers"
+    cc.mkdir(parents=True)
+    (cc / "shop.yaml").write_text("schema_version: 1\nscope: user\nid: shop\ntitle: Shop\npersona_ref: me-co\n"
+                                  "budget_month: 54\ncurrency: USD\nsources: [azure-example]\n")
+    pers = tmp_path / "identity" / "personas"
+    pers.mkdir(parents=True)
+    (pers / "me-co.yaml").write_text("id: me-co\ndisplay_name: My Company\n")
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    br.cost_rows(tmp_path, TX, str(src), NOW, 36)
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    (c,) = view["cost_centers"]
+    assert c["budget_month"] == 50.0 and c["budget_currency"] == "USD" and c["persona_title"] == "My Company"
+
+
+def test_without_cost_centers_the_view_has_none(tmp_path):
+    src = tmp_path / "costs.json"
+    src.write_text(json.dumps(costs_doc()))
+    br.cost_rows(tmp_path, TX, str(src), NOW, 36)
+    view = json.loads((tmp_path / ".bridge" / "resources" / "costs-view.json").read_text())
+    assert view["cost_centers"] == [] and all(a.get("cost_center") is None for a in view["accounts"])
 
 
 def test_a_missing_login_asks_with_the_command_to_run(tmp_path):

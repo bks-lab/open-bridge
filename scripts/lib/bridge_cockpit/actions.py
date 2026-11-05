@@ -14,32 +14,46 @@ the verb table is contract section 4.2.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import re
 import sys
 import threading
 from typing import Any, Callable
 
 from .. import model_route as mr
+from .. import work_find as wf
 from . import model as m
+from . import activity as act
+from . import describe as dsc
+from . import instruct as ins
 from . import organize as og
+from . import themes as thm
+from .card_fields import validate_brief
 from .config import TARGETS
 from .agents import CONV_RE as AGENT_CONV_RE, MODES as AGENT_MODES, PEER_RE as AGENT_PEER_RE
 from .quick import CONV_RE
+from .runner import acting, acting_as
 from .relay import RELAY_ID_RE
 from .history import REOPEN_AS
-from .store import append_log
+from .store import CLICK_NAME_RE, CLICK_PAGE_RE, append_log
 # every shared name stays importable from here (ActionError, SPEC, the patterns): callers never changed
 from .actions_base import *  # noqa: F401,F403
-from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
+from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, BY_CHOICES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
-                           READ_ONLY_VERBS, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
-                           TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WS_REF_RE, ActionError,
-                           Ctx, bad_arg, check_date, check_key, check_text)
+                           READ_ONLY_VERBS, REASON_MAX, FINDING_KEY_RE, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
+                           STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WORKER_REF_RE, WS_REF_RE,
+                           ActionError, Ctx, bad_arg, check_date, check_day, check_key, check_term_steps, check_text)
 from .actions_chats import ChatVerbs
 from .actions_launch import LaunchSteps
 from .actions_pages import PageVerbs
 from .actions_tabs import TabVerbs
 from .actions_work import WorkVerbs
+
+#: the verbs of Work through's rounds 3 and 4, refused with flow_off before their arguments are checked
+FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach", "flow_merge"})
+#: a folder of one record, as work_find.known_folders names it (a question to the records names them so)
+RECORD_PATH_RE = re.compile(r"^work/(?:(?:tasks|streams)|done/[0-9]{4}-[0-9]{2}|streams/[a-z0-9][a-z0-9-]{0,79}/[0-9]{4}-[0-9]{2})"
+                            r"/[a-z0-9][a-z0-9-]{0,79}\Z")
 
 
 # The argument types of SPEC. Most are one pattern or one list of words with the message a refusal names;
@@ -52,14 +66,21 @@ PATTERN_KINDS: dict[str, tuple[re.Pattern, str]] = {
     "agent_conv": (AGENT_CONV_RE, "not a conversation id"),
     "slug": (SLUG_RE, "not a task slug"),
     "session_id": (SESSION_ID_RE, "not a session id"),
+    "run_id": (RUN_ID_RE, "not a workflow run id"),
+    "finding_key": (FINDING_KEY_RE, "not a finding key"),
     "inbox_id": (INBOX_ID_RE, "not an inbox id"),
     "page_id": (PAGE_ID_RE, "not a page or section id"),
     "row_step": (ROW_STEP_RE, "not a step"),
     "undo_token": (UNDO_TOKEN_RE, "not an undo token"),
     "row_ref": (ROW_REF_RE, "not a row id"),
+    "worker_ref": (WORKER_REF_RE, "not a job or machine name"),
     "relay_id": (RELAY_ID_RE, "not a relay id"),
     "ask_hash": (ASK_HASH_RE, "not a question hash"),
     "organize_id": (og.ID_RE, "not a proposal id"),
+    "describe_id": (dsc.PROPOSAL_RE, "not a proposal id"),
+    "theme_id": (thm.THEME_ID_RE, "not a theme id"),
+    "click_page": (CLICK_PAGE_RE, "not a page id"),
+    "click_name": (CLICK_NAME_RE, "not an area or view name"),
 }
 _LAUNCH_MODELS = ("auto", *mr.MODELS)
 _LAUNCH_EFFORTS = ("auto", "standard", *mr.EFFORTS)
@@ -81,7 +102,12 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "board_default": (BOARD_DEFAULTS, "off, mine, all or profile"),
     "route_by": (ROUTE_BY, f"must be one of {', '.join(ROUTE_BY)}"),
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
+    "tab_kind": (("agent", "shell"), "agent or shell"),
+    "workspace_kind": (("agent", "shell", "none"), "agent, shell or none"),
+    "palette_color": (tuple(og.COLORS), "not a palette colour"),
     "tour_how": (TOUR_HOW, "finished or skipped"),
+    "themes_mode": (thm.MODES, "assign or regroup"),
+    "by": (BY_CHOICES, "suggestion, batch or instruction"),
 }
 
 
@@ -92,6 +118,18 @@ def _keys(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str
     if len(set(keys)) != len(keys):
         raise bad_arg(name, "duplicate keys")
     return keys
+
+
+def _record_paths(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
+    """The folders of a question to the records: 1 to ASK_FILES_MAX, each work/tasks|streams/<slug> or
+    work/done/<month>/<slug>, each once"""
+    if not isinstance(value, list) or not 1 <= len(value) <= wf.ASK_FILES_MAX:
+        raise bad_arg(name, f"must be a list of 1 to {wf.ASK_FILES_MAX} folders")
+    if not all(isinstance(x, str) and RECORD_PATH_RE.match(x) for x in value):
+        raise bad_arg(name, "not a folder of a task")
+    if len(set(value)) != len(value):
+        raise bad_arg(name, "duplicate folders")
+    return list(value)
 
 
 def _settings(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
@@ -138,6 +176,20 @@ def _title(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
     return check_text(value, name, TITLE_MAX)
 
 
+def _line(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # one line of text (a next step): refused when it holds a line break or a tab, never cut
+    if isinstance(value, str) and re.search(r"[\n\r\t]", value):
+        raise bad_arg(name, "one line, no tabs")
+    return check_text(value, name, STEP_MAX)
+
+
+def _reason(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # why a task is shelved: one line, its blanks collapsed, refused when it does not fit, never cut
+    if isinstance(value, str) and re.search(r"[\n\r\t]", value):
+        raise bad_arg(name, "one line, no tabs")
+    return " ".join(check_text(value, name, REASON_MAX).split())
+
+
 def _tab_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
     # compared with the tab's name as it is, so never stripped
     if not isinstance(value, str) or not 1 <= len(value) <= 120 or "\x00" in value or CONTROL_RE.search(value):
@@ -151,6 +203,23 @@ def _digit(actions: "Actions", value: Any, name: str, today: dt.date) -> int:
     return value
 
 
+def _cwd(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # the folder a new workspace starts in: an absolute path that is a folder now; refused, never repaired
+    if (not isinstance(value, str) or not 1 <= len(value) <= 1024 or re.search(r"[\x00-\x1f\x7f]", value)
+            or not os.path.isabs(value) or not os.path.isdir(value)):
+        raise bad_arg(name, "must be an absolute path of a folder that exists")
+    return value
+
+
+def _tab_refs(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
+    # the tabs of a workspace as the page saw them: up to 100 refs, each once (none is a workspace without a tab)
+    if not isinstance(value, list) or len(value) > 100 or not all(isinstance(x, str) and TAB_REF_RE.fullmatch(x) for x in value):
+        raise bad_arg(name, "must be a list of up to 100 tab refs")
+    if len(set(value)) != len(value):
+        raise bad_arg(name, "duplicate refs")
+    return list(value)
+
+
 def _organize_items(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
     if (not isinstance(value, list) or not 1 <= len(value) <= og.MAX_ITEMS
             or not all(isinstance(x, str) and og.ITEM_ID_RE.match(x) for x in value)):
@@ -160,6 +229,40 @@ def _organize_items(actions: "Actions", value: Any, name: str, today: dt.date) -
     return list(value)
 
 
+def _theme_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # a theme's name: one line of words, refused when it does not fit, never cut
+    if isinstance(value, str) and re.search(r"[\n\r\t]", value):
+        raise bad_arg(name, "one line, no tabs")
+    text = " ".join(check_text(value, name, thm.NAME_MAX).split())
+    if not text:
+        raise bad_arg(name, "must not be empty")
+    return text
+
+
+def _attach_name(actions: "Actions", value: Any, name: str, today: dt.date) -> str:
+    # the name a document is kept under: made safe (activity.safe_name), refused when nothing is left of it
+    made = act.safe_name(value)
+    if not made:
+        raise bad_arg(name, "must be a file name")
+    return made
+
+
+def _attach_data(actions: "Actions", value: Any, name: str, today: dt.date) -> bytes:
+    # the document itself: strict base64 of 1 byte up to cockpit.flow.attach.max_mb (activity.decode_data)
+    return act.decode_data(value, act.block(actions.app, "attach")["max_mb"], name)
+
+
+def _brief(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
+    # what a person wrote for a brief: refused whole when the gate finds anything wrong, never cut
+    if not isinstance(value, dict):
+        raise bad_arg(name, "must be a brief: goal, story, acceptance")
+    text = {k: v for k, v in value.items() if k not in ("by", "at", "basis", "edited")}
+    clean, errors = validate_brief(text)
+    if errors or clean is None:
+        raise bad_arg(name, "; ".join(errors or ["goal: missing"])[:300])
+    return clean
+
+
 SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "keys": _keys,
     "key": lambda actions, value, name, today: check_key(value, name),
@@ -167,18 +270,33 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "ticker_settings": _settings,
     "tile_ids": _tile_ids,
     "date": lambda actions, value, name, today: check_date(value, name, today),
+    "day": lambda actions, value, name, today: check_day(value, name),
     "text": lambda actions, value, name, today: check_text(value, name, 2000),
+    "term_steps": lambda actions, value, name, today: check_term_steps(value, name),
     # what the chat box takes (ASK_MAX on the page): a chat handed to a tab is not cut
     "long_text": lambda actions, value, name, today: check_text(value, name, 4000),
     "bool": _bool,
     "team": _team,
     "index": _index,
     "title": _title,
+    "line": _line,
+    "reason": _reason,
     "tab_name": _tab_name,
     "digit": _digit,
+    "cwd": _cwd,
+    "tab_refs": _tab_refs,
     "organize_items": _organize_items,
+    "brief": _brief,
+    "theme_name": _theme_name,
+    # the sentence of the instruction line: line breaks folded into blanks, 1 to 600 characters (instruct.fold)
+    "instruct_text": lambda actions, value, name, today: ins.fold(value, name),
+    "attach_name": _attach_name,
+    "attach_data": _attach_data,
+    "record_paths": _record_paths,
 }
 ARG_KINDS = frozenset(PATTERN_KINDS) | frozenset(CHOICE_KINDS) | frozenset(SPECIAL_KINDS)
+# the verbs after which the Activity tab's kept feeds stand: they change nothing a feed reads
+KEEPS_FEEDS = READ_ONLY_VERBS | {"flow_instruct", "files_ask", "timeline_ask", "tab_keys"}
 
 
 class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
@@ -202,7 +320,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
 
     def inbox(self, *args: str) -> list[str]:
         app = self.app
-        return [sys.executable, app.runner.script("scripts/inbox.py"), "--root", str(app.root), "--by", "web", *args]
+        return [sys.executable, app.runner.script("scripts/inbox.py"), "--root", str(app.root), "--by", acting_as() or "web", *args]
 
     def task_cmd(self, *args: str) -> list[str]:
         app = self.app
@@ -235,7 +353,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             it = d["item"]
             row = m._base_row(title=it.get("summary") or iid, inbox_id=iid, gate=it.get("gate"), urgency=it.get("urgency"),
                               task=it.get("task") or None, has_action=bool(it.get("action_display")), inbox_state=state,
-                              inbox_key=it.get("key"), sources=["inbox"])
+                              inbox_key=it.get("key"), sources=["inbox"],
+                              origin_raw=it.get("from") or None, inbox_kind=it.get("kind") or None)
             row["key"] = key
             return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": False}, "hidden": False}
         if key.startswith("item:"):
@@ -247,7 +366,10 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             stream = (root / "work" / "streams" / slug / "STATUS.md").is_file()
             if not stream and not (root / "work" / "tasks" / slug / "STATUS.md").is_file():
                 return None
-            row = m.task_row(slug, slug)
+            # a task the files view lists without a row (a backlog task, files_scope all) keeps its own title
+            listed = next((t for t in (self.app.collector.all_tasks or self.app.collector.tasks or [])
+                           if t.get("slug") == slug), None)
+            row = m.task_row(slug, (listed or {}).get("title") or (listed or {}).get("label") or slug)
             return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": not stream, "stream": stream},
                     "hidden": False}
         return None
@@ -269,8 +391,10 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
                           page_item={"section": sec.get("title") or sec["id"], "detail": it.get("detail") or "",
                                      "inbox_key": inbox_key, "row": f":{sec['id']}:{it['id']}" if it.get("id") else None})
         row["key"] = key
-        hidden = (self.app.store.hidden().get(key) or "") > self.today().isoformat()
-        return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": False}, "hidden": hidden}
+        # put off or decided under this key or under the row of Due it is (collector.twins): Show again takes it back
+        hidden, dismissed, today = self.app.store.hidden(), self.app.store.dismissed(), self.today().isoformat()
+        gone = any((hidden.get(k) or "") > today or k in dismissed for k in self.app.collector.twins(key))
+        return {"row": row, "out": {"settle": list(m.SETTLE_OUTCOMES), "closable": False}, "hidden": gone}
 
     def entries(self, keys: list[str]) -> list[dict]:
         return [self.entry(k, "keys") for k in keys]
@@ -340,29 +464,67 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
 
     # ------------------------------------------------------------ entry point
 
-    def execute(self, verb: Any, args: Any) -> dict:
+    def execute(self, verb: Any, args: Any, viewer: str | None = None) -> dict:
+        if viewer is not None:          # a person: the verb is theirs before anything about it is said
+            self.app.access.verb_ok(verb)
+        # the verbs of Work through's round 3 answer flow_off while the page is off, before their arguments are read:
+        # a 400 for a bad argument would say the verb is there
+        if verb in FLOW_OFF_FIRST and not act.flow_on(self.app):
+            raise ActionError(409, "flow_off", act.TEXT[act._lang(self.app)]["off"])
         clean = self.validate(verb, args)
+        if viewer is not None:
+            self.app.access.check(viewer, verb, clean)
         if verb in CMUX_VERBS and not self.app.runner.cmux:
             raise ActionError(503, "cmux_unavailable", "the cmux CLI is not available")
         if verb in NEEDS_CAP and NEEDS_CAP[verb] not in self.app.driver_caps():
             raise ActionError(503, "driver_cannot", f"the terminal driver cannot {NEEDS_CAP[verb]} a tab")
         ctx = Ctx(self, verb)
+        ctx.person = viewer
         ctx.subject = ",".join(clean.get("keys", [])) or clean.get("key") or clean.get("tab_ref") or clean.get("ws_ref") \
             or clean.get("proposal") or clean.get("relay_id") or clean.get("slug") or clean.get("id") or ""
         handler = getattr(self, f"v_{verb}")
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
-        if verb in READ_ONLY_VERBS:
-            handler(ctx, **clean)
-        elif verb in LOCAL_VERBS:
-            self.recorded(ctx, handler, clean)
-        elif verb in LAYOUT_VERBS:
-            with self.layout_lock:
-                self.recorded(ctx, handler, clean)
-        else:
-            with self.write_lock:
-                ctx.locked = True
-                self.recorded(ctx, handler, clean)
+        ctx.by = clean.pop("by", None)
+        touched = self.touched(clean)
+        try:
+            with acting(viewer):    # the scripts of this call write the person's name, not the page's
+                if verb in READ_ONLY_VERBS:
+                    handler(ctx, **clean)
+                elif verb in LOCAL_VERBS:
+                    self.recorded(ctx, handler, clean)
+                elif verb in LAYOUT_VERBS:
+                    with self.layout_lock:
+                        self.recorded(ctx, handler, clean)
+                else:
+                    with self.write_lock:
+                        ctx.locked = True
+                        syncs = self.app.work_sync if viewer is not None else None
+                        before = syncs.snapshot() if syncs else None
+                        try:
+                            self.recorded(ctx, handler, clean)
+                        finally:
+                            if syncs:
+                                syncs.after(before, viewer)   # a refused step may already have written
+        finally:
+            # what a verb names is read anew by the Activity tab (activity.py keeps a feed CACHE_MS); a plan of the
+            # instruction line changes nothing
+            if verb not in KEEPS_FEEDS and touched and getattr(self.app, "activity", None) is not None:
+                self.app.activity.drop(touched)
         return self.finish(ctx)
+
+    @staticmethod
+    def touched(clean: dict) -> list[str]:
+        """The row keys a verb names: its keys and key, a task by its slug, an inbox item by its id"""
+        out = [k for k in clean.get("keys") or [] if isinstance(k, str)]
+        if isinstance(clean.get("key"), str):
+            out.append(clean["key"])
+        if isinstance(clean.get("slug"), str):
+            out.append(f"task:{clean['slug']}")
+        if isinstance(clean.get("keep"), str):          # a merge: the task that stays, by its key or its slug
+            out.append(clean["keep"] if ":" in clean["keep"] else f"task:{clean['keep']}")
+        if isinstance(clean.get("id"), str) and INBOX_ID_RE.match(clean["id"]):
+            out.append(f"inbox:{clean['id']}")
+        return out
 
     def refused_after(self, ctx: Ctx, error: ActionError) -> None:
         """A refusal that follows a step that wrote: the page still gets what to take back, and the model
@@ -384,7 +546,7 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             if ctx.steps or ctx.notes or ctx.settled:
                 self.audit(ctx)
             if ctx.history and getattr(self.app, "history", None) is not None:
-                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history)
+                ctx.extra["history"] = self.app.history.add(ctx.verb, ctx.history, by=ctx.by, person=ctx.person)
                 ctx.extra["undo"] = [{"title": x["title"], "kind": x["kind"], "undo": x["undo"]}
                                      for x in ctx.history if x.get("undo")]
             if refused is not None:
@@ -393,7 +555,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
     def audit(self, ctx: Ctx) -> None:
         exits = ",".join(str(s["exit"]) for s in ctx.steps) or "-"
         ok = all(s["ok"] for s in ctx.steps)
-        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **ctx.audit_extra)
+        self.audit_line(ctx.verb, ctx.subject, exits=exits, ok=ok, **({"by": ctx.by} if ctx.by else {}),
+                        **({"person": ctx.person} if ctx.person else {}), **ctx.audit_extra)
 
     def audit_line(self, verb: str, subject: str = "", **fields: Any) -> None:
         """One line in audit.log: time, verb, subject, then key=value. The one writer of that file, for
@@ -408,12 +571,15 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         app = self.app
         ok = all(s["ok"] for s in ctx.steps) and not ctx.failed
         note = app.scrub(" · ".join(n for n in ctx.notes if n))
+        go = ctx.go if note else None
         if note:
-            app.note(note, "ok" if ok else "bad")
-        app.collector.rebuild()
+            go = app.note(note, "ok" if ok else "bad", go)
+        # a key typed into a tab changes nothing of the model, and a keyboard is quick
+        if ctx.verb != "tab_keys":
+            app.collector.rebuild()
         if ctx.reload == "delta":
             app.collector.request("delta", tasks=True)     # a verb may have moved or edited a task
         if ctx.tabs_delay is not None:
             app.tabs.schedule(ctx.tabs_delay)
-        return {"ok": ok, "verb": ctx.verb, "note": note, "steps": ctx.steps, "settled": ctx.settled,
+        return {"ok": ok, "verb": ctx.verb, "note": note, "go": go, "steps": ctx.steps, "settled": ctx.settled,
                 "reload": ctx.reload, "jump": ctx.jump, "relay": ctx.relay, "confirm": ctx.confirm, **ctx.extra}

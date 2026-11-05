@@ -13,7 +13,7 @@ were prose an agent re-read every run, and a run could skip one.
     python3 scripts/briefing.py list                 # profiles this Bridge knows
     python3 scripts/briefing.py show [<id>]          # the resolved profile
     python3 scripts/briefing.py offer "<text>"       # profiles whose offer_on matches
-    python3 scripts/briefing.py collect [<id>] [--json] [--file] [--no-save]
+    python3 scripts/briefing.py collect [<id>] [--json] [--file] [--no-save] [--setup]
     python3 scripts/briefing.py render [<id>]        # collect + terminal text
     python3 scripts/briefing.py validate             # every profile, exit 1 on a problem
 
@@ -417,6 +417,33 @@ def builtin_profile(cfg: dict) -> dict:
             "_path": "(built-in)"}
 
 
+SETUP_SCRIPT = Path(__file__).resolve().parent / "bridge-setup.py"
+
+
+def setup_sections(root: Path, cfg: dict, view: dict | None = None) -> list:
+    """The cockpit's Setup page as three command sections of scripts/bridge-setup.py (`collect --setup`): what still
+    keeps the cockpit from working well, what can be switched on (steps later and not for me), and what is on.
+    Never in a briefing's buckets (bucket none); briefing_view.pages gives them a page of their own. Their titles
+    are the labels section_setup_*, in the Bridge's language unless the profile's view.labels say otherwise."""
+    words = _view()._labels(view if isinstance(view, dict) else {}, conversation_language(cfg))
+    base = ["python3", str(SETUP_SCRIPT), "--root", str(root)]
+
+    def one(sid: str, part: str, title: str, **extra) -> dict:
+        return {"kind": "command", "id": sid, "title": words[title], "bucket": "none",
+                "argv": [*base, "check", "--part", part, "--json"], **extra}
+    return [one("setup-checks", "checks", "section_setup_checks"),
+            one("setup-available", "available", "section_setup_available",
+                actions_argv=[*base, "act", "{id}", "{action}"]),
+            one("setup-on", "on", "section_setup_on")]
+
+
+def with_setup(profile: dict, root: Path, cfg: dict) -> dict:
+    """The profile with the Setup page's sections after its own (validate keeps their ids free)."""
+    own = {section_id(s) for s in profile.get("sections") or [] if isinstance(s, dict)}
+    return {**profile, "sections": [*(profile.get("sections") or []),
+                                    *(s for s in setup_sections(root, cfg, profile.get("view")) if s["id"] not in own)]}
+
+
 def select(root: Path, cfg: dict, pid: str | None = None) -> dict:
     profiles = load_profiles(root)
     by_id = {p.get("id"): p for p in profiles}
@@ -625,7 +652,7 @@ def profile_problems(data, stem: str) -> list:
     for key in ("schema_version", "scope", "id", "sections"):
         if key not in data:
             out.append(f"missing {key}")
-    for key in sorted(set(data) - PROFILE_KEYS - {"_path", "_language"}):
+    for key in sorted(set(data) - PROFILE_KEYS - {"_path", "_language", "_person"}):
         out.append(f"unknown key {key}")
     if data.get("schema_version") not in (None, 1):
         out.append("schema_version must be 1")
@@ -659,6 +686,8 @@ def profile_problems(data, stem: str) -> list:
         sid = section_id(s)
         if sid in seen:
             out.append(f"{where}: id {sid!r} used twice (give one section an `id:`)")
+        if sid in _view().SETUP_SECTIONS:
+            out.append(f"{where}: id {sid!r} is reserved for the cockpit's Setup page (briefing.py collect --setup)")
         seen.add(sid)
         for key in sorted(set(s) - SECTION_KEYS):
             out.append(f"{where}: unknown key {key}")
@@ -692,7 +721,7 @@ def profile_problems(data, stem: str) -> list:
                                 data.get("mutes") if isinstance(data.get("mutes"), list) else None)
         ids = {section_id(s) for s in sections or [] if isinstance(s, dict)}
         for n, sid in _view().page_section_ids(data.get("view") if isinstance(data.get("view"), dict) else {}):
-            if sid not in ids:
+            if sid not in ids and sid not in _view().SETUP_SECTIONS:   # the Setup page's come with --setup
                 out.append(f"view.pages {n}: no section {sid!r} in this profile")
         for n, m in enumerate(data.get("mutes") if isinstance(data.get("mutes"), list) else [], 1):
             if isinstance(m, dict) and isinstance(m.get("section"), str) and m["section"] not in ids:
@@ -755,7 +784,10 @@ def sec_inbox(section: dict, ctx: Context) -> list:
     for item in filter(wanted, () if runs_only else box.open_items()):
         items.append({"id": item.id, "title": item.summary, "state": item.state, "urgency": item.urgency,
                       "kind": item.kind, "gate": item.gate, "task": item.task, "due": item.due,
-                      "key": item.key, "changed_at": str(item.created or ""), "has_action": bool(item.action)})
+                      "key": item.key, "changed_at": str(item.created or ""), "has_action": bool(item.action),
+                      "area": item.area, "from": item.source,
+                      # waiting for its condition (inbox.py waits_for), not for a conditional yes: asks nobody yet
+                      **({"waits_for": True} if item.state == "waiting" and item.waits_for else {})})
     if runs_only:
         # "runs on" (inbox.py defer --on): every put-off item that names what it waits on, whatever its day
         for item in filter(wanted, box.items()):
@@ -765,7 +797,7 @@ def sec_inbox(section: dict, ctx: Context) -> list:
             items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(deferral["until"]),
                           "waiting_on": deferral["on"], "urgency": item.urgency, "kind": item.kind, "gate": item.gate,
                           "task": item.task, "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
-                          "has_action": bool(item.action)})
+                          "has_action": bool(item.action), "area": item.area, "from": item.source})
     elif ctx.lookahead is not None or section.get("deferred") == "all":
         # A view that looks ahead also shows what was put off and comes back within
         # its window: "decide tomorrow" must not vanish until tomorrow. `deferred: all`
@@ -783,8 +815,10 @@ def sec_inbox(section: dict, ctx: Context) -> list:
                 items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(until),
                               "urgency": item.urgency, "kind": item.kind, "gate": item.gate, "task": item.task,
                               "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
-                              "has_action": bool(item.action)})
-    items.sort(key=lambda i: (order.get(i["urgency"], 3), i["id"]))
+                              "has_action": bool(item.action), "area": item.area, "from": item.source,
+                              **({"waiting_on": item.deferral["on"]} if (item.deferral or {}).get("on") else {})})
+    # what has a date comes first within its urgency: a section's `max` cuts after this
+    items.sort(key=lambda i: (order.get(i["urgency"], 3), str(i.get("due") or "9999"), i["id"]))
     return items
 
 
@@ -1021,15 +1055,9 @@ def _ecosystem_repos(root: Path, cfg: dict | None = None) -> list:
     return out
 
 
-def sec_commits(section: dict, ctx: Context) -> list:
-    """Commits per repository per day over `days`, oldest first, with a sparkline.
-
-    Days are the local committer date, the same date `--since` filters on (an author
-    date in another zone, or a rebase, would land on the wrong day). A repository that
-    cannot be read is named under `skipped`; reaching the section's time limit fails the
-    section rather than hiding the repositories it did not get to."""
-    days = max(1, int(section.get("days", 7)))
-    first = ctx.now.date() - dt.timedelta(days=days - 1)
+def _commit_repos(section: dict, ctx: Context) -> list:
+    """(name, path) of every repository a commits section counts: its `repos` (a registry name or a path), else every
+    clone the ecosystem files register; a name two repositories share carries its parent folder. Only clones"""
     if section.get("repos"):
         known = {name: path for name, path in _ecosystem_repos(ctx.root, ctx.cfg)}
         repos = []
@@ -1044,19 +1072,64 @@ def sec_commits(section: dict, ctx: Context) -> list:
         repos = _ecosystem_repos(ctx.root, ctx.cfg)
     names = [n for n, _ in repos]
     repos = [(f"{p.parent.name}/{n}" if names.count(n) > 1 else n, p) for n, p in repos]
+    return [(n, p) for n, p in repos if (p / ".git").exists()]
+
+
+def _commit_filter(section: dict, ctx: Context, path: Path) -> list:
+    """The git log arguments of a commits section past its range: every branch (`all_branches`) and the authors,
+    `me` read as the repository's user.email. SourceError when git cannot answer"""
     authors = section.get("author") or []
     authors = [authors] if isinstance(authors, str) else list(authors)
-    items, skipped = [], []
-    for name, path in repos:
-        if not (path / ".git").exists():
-            continue
+    wanted = [ctx.run(["git", "-C", str(path), "config", "user.email"]).strip() if a == "me" else a for a in authors]
+    return (["--branches"] if section.get("all_branches") else []) + [f"--author={a}" for a in wanted if a]
+
+
+def _commits_url(ctx: Context, path: Path) -> str | None:
+    """The commit list on the web, of the branch as pushed; no web remote or no upstream, no link"""
+    try:
+        web = _web_url(ctx.run(["git", "-C", str(path), "remote", "get-url", "origin"]).strip())
+        pushed = ctx.run(["git", "-C", str(path), "rev-parse", "--abbrev-ref", "@{u}"]).strip() if web else ""
+    except SourceError:
+        return None
+    return f"{web}/commits/{pushed.split('/', 1)[1]}" if web and "/" in pushed else None
+
+
+def commit_times(section: dict, ctx: Context, since: str, until: str) -> dict:
+    """The commits a commits section counts, over a range of days (both included) instead of its `days`, as times:
+    {repos [{repo, branch, url, ts (epoch seconds, oldest first)}], skipped}, the busiest first. For a page that
+    charts a range (the cockpit's log page); a repository without a commit in it leaves no entry, one git cannot
+    read is named under `skipped`"""
+    out, skipped = [], []
+    for name, path in _commit_repos(section, ctx):
         try:
-            wanted = []
-            for a in authors:
-                wanted.append(ctx.run(["git", "-C", str(path), "config", "user.email"]).strip() if a == "me" else a)
+            argv = ["git", "-C", str(path), "log", "--since", f"{since} 00:00", "--until", f"{until} 23:59:59",
+                    "--format=%ct", "--date=local"] + _commit_filter(section, ctx, path)
+            ts = sorted(int(x) for x in ctx.run(argv).split() if x.isdigit())
+            if not ts:
+                continue
+            branch = ctx.run(["git", "-C", str(path), "rev-parse", "--abbrev-ref", "HEAD"]).strip()
+        except SourceError:
+            skipped.append(name)
+            continue
+        out.append({"repo": name, "branch": branch, "url": _commits_url(ctx, path), "ts": ts})
+    out.sort(key=lambda r: (-len(r["ts"]), r["repo"]))
+    return {"repos": out, "skipped": skipped}
+
+
+def sec_commits(section: dict, ctx: Context) -> list:
+    """Commits per repository per day over `days`, oldest first, with a sparkline.
+
+    Days are the local committer date, the same date `--since` filters on (an author
+    date in another zone, or a rebase, would land on the wrong day). A repository that
+    cannot be read is named under `skipped`; reaching the section's time limit fails the
+    section rather than hiding the repositories it did not get to."""
+    days = max(1, int(section.get("days", 7)))
+    first = ctx.now.date() - dt.timedelta(days=days - 1)
+    items, skipped = [], []
+    for name, path in _commit_repos(section, ctx):
+        try:
             argv = ["git", "-C", str(path), "log", "--since", f"{first.isoformat()} 00:00", "--format=%cd",
-                    "--date=short-local"] + (["--branches"] if section.get("all_branches") else []) + \
-                [f"--author={a}" for a in wanted if a]
+                    "--date=short-local"] + _commit_filter(section, ctx, path)
             dates = [line.strip() for line in ctx.run(argv).splitlines() if line.strip()]
             counts = [0] * days
             for d in dates:
@@ -1077,13 +1150,9 @@ def sec_commits(section: dict, ctx: Context) -> list:
         last = first + dt.timedelta(days=max(i for i, c in enumerate(counts) if c))
         item = {"id": name, "title": name, "branch": branch, "counts": counts, "total": sum(counts),
                 "state": "active", "changed_at": last.isoformat(), "path": str(path)}
-        try:   # the commit list on the web, of the branch as pushed; no web remote or no upstream, no link
-            web = _web_url(ctx.run(["git", "-C", str(path), "remote", "get-url", "origin"]).strip())
-            pushed = ctx.run(["git", "-C", str(path), "rev-parse", "--abbrev-ref", "@{u}"]).strip() if web else ""
-        except SourceError:
-            web, pushed = None, ""
-        if web and "/" in pushed:
-            item["url"] = f"{web}/commits/{pushed.split('/', 1)[1]}"
+        url = _commits_url(ctx, path)
+        if url:
+            item["url"] = url
         items.append(item)
     top = max((max(i["counts"]) for i in items), default=0)
     for i in items:   # one scale for all rows, so the busiest repository reads busiest
@@ -1372,7 +1441,7 @@ def sec_tracker(section: dict, ctx: Context) -> list:
             item.pop("_category_from_state", None)
             st = item.get("state")
             item["category"] = "done" if st in ("done", "removed") else "qa" if st == "review" else "open"
-    if section.get("link", section.get("provider") == "github-work") is True:
+    if links_local(section):
         link_local(items, ctx)
     words = None
     for item in items:
@@ -1384,6 +1453,17 @@ def sec_tracker(section: dict, ctx: Context) -> list:
             item["actions"] = [{"id": x["id"], "label": x["label"]} for x in steps]
     items.sort(key=lambda i: str(i.get("changed_at") or ""), reverse=True)
     return items
+
+
+#: the providers whose rows are GitHub issues and pull requests: a task's `sync.github` can name them
+GITHUB_PROVIDERS = ("github", "github-board", "github-work")
+
+
+def links_local(section: dict) -> bool:
+    """Whether a tracker section's rows learn what this Bridge knows about them (`link_local`): on by default for
+    the GitHub providers, so a row of an issue a task syncs names that task and the view folds it into the task's
+    inbox line instead of showing the same matter twice (29.10.); `link: false` turns it off."""
+    return section.get("link", section.get("provider") in GITHUB_PROVIDERS) is True
 
 
 GLOBAL_ROW = re.compile(r"^([\w.-]+/[\w.-]+)#(\d+)\Z")
@@ -1437,8 +1517,11 @@ def link_local(items: list, ctx: Context) -> None:
             row = rows.get(rid)
             if row is None or (row.get("linked_task") and (not live or row["linked_task"].get("status") != "done")):
                 continue          # the first task that names it, unless a live one comes after a done one
-            row["linked_task"] = {"slug": t["slug"], "status": t.get("status"), "path": t.get("path"),
-                                  "stream": not str(t.get("path") or "").startswith("work/tasks/")}
+            stream = str(t.get("path") or "").startswith("work/streams/")
+            row["linked_task"] = {"slug": t["slug"], "status": t.get("status"), "path": t.get("path"), "stream": stream}
+            if live:
+                # the task or stream the row belongs to, for the page's "about" (a stream is never the row's task)
+                row["about_task"], row["about_kind"] = t["slug"], "stream" if stream else "task"
             if finite:
                 row["task"] = t["slug"]
     for row in rows.values():
@@ -2126,6 +2209,25 @@ def render(result: dict) -> str:
     return "\n".join(out)
 
 
+def settled_record(root: Path, now: dt.datetime) -> dict:
+    """What the person decided in the cockpit (work/cockpit/settled/): the keys marked done or not doing and the
+    rows put off, with the day they show again. Read for the printed briefing, so a row closed there does not
+    come back here. Empty when the record cannot be read: a briefing never fails for it."""
+    empty: dict = {"dismissed": [], "hidden": {}}
+    folder = root / "work" / "cockpit" / "settled"
+    if not folder.is_dir():
+        return empty
+    lib = str(ROOT / "scripts" / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    try:
+        from bridge_cockpit.settled import SettledStore
+        _keys, hidden, dismissed = SettledStore(folder, lambda: 0).state(f"{now:%Y-%m-%d}")
+    except (ImportError, OSError, ValueError):
+        return empty
+    return {"dismissed": sorted(dismissed), "hidden": hidden}
+
+
 def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False) -> str:
     """The briefing as the profile's `view:` (or a one-off `style`) wants it shown."""
     view = _view()
@@ -2147,6 +2249,8 @@ def act(root: Path, cfg: dict, profile: dict, section_ref: str, row_id: str, act
     """Run one step of one row: the section must declare actions_argv, and the row, asked for again,
     must still offer the step. An undo token a step returned goes to the command unchecked here
     (the row may be gone by then); the command checks it. Returns (exit code, output or reason)."""
+    if section_ref in _view().SETUP_SECTIONS:      # the Setup page's steps, whether or not this run collected it
+        profile = with_setup(profile, root, cfg)
     section = next((s for s in profile.get("sections") or [] if section_id(s) == section_ref), None)
     if section and section.get("kind") == "calendar":
         return _act_calendar(root, cfg, section, row_id, action)
@@ -2396,6 +2500,8 @@ def main(argv=None) -> int:
                        help="show this run in another view than the profile's view.style")
         if name == "collect":
             p.add_argument("--json", action="store_true")
+            p.add_argument("--setup", action="store_true",
+                           help="add the cockpit's Setup page (scripts/bridge-setup.py); the cockpit passes it")
         else:
             p.add_argument("--color", choices=("auto", "always", "never"), default="auto")
     sub.add_parser("validate")
@@ -2404,6 +2510,12 @@ def main(argv=None) -> int:
     p_act.add_argument("section")
     p_act.add_argument("row")
     p_act.add_argument("action")
+    p_commits = sub.add_parser("commits", help="own commits of a range per repository, as times in JSON (the cockpit's "
+                                               "log page): the profile's commits section, by --section or its first")
+    p_commits.add_argument("id", nargs="?")
+    p_commits.add_argument("--section", default=None, help="the id of the commits section (default: the first)")
+    p_commits.add_argument("--since", required=True, type=dt.date.fromisoformat, help="the first day, YYYY-MM-DD")
+    p_commits.add_argument("--until", required=True, type=dt.date.fromisoformat, help="the last day, included")
     p_detail = sub.add_parser("detail", help="the detail of one GitHub issue or pull request (owner/repo#n), as JSON")
     p_detail.add_argument("ref")
     p_detail.add_argument("--fresh", action="store_true", help="ask GitHub now, whatever was kept")
@@ -2446,13 +2558,26 @@ def main(argv=None) -> int:
 
     try:
         # the profile carries the Bridge's language, so its default words come in it (briefing_view.labels_for)
-        profile = {**select(root, cfg, getattr(args, "id", None)), "_language": conversation_language(cfg)}
+        profile = {**select(root, cfg, getattr(args, "id", None)), "_language": conversation_language(cfg),
+                   # who a next step's `who:` means when it names the person (the cockpit's flow.js reads the same key)
+                   "_person": ((cfg.get("cockpit") or {}) if isinstance(cfg.get("cockpit"), dict) else {}).get("person_name")}
     except Ambiguous as exc:
         print(f"briefing: choose a profile: {', '.join(exc.ids)} (or set default: true in one)", file=sys.stderr)
         return 2
     except UnknownProfile as exc:
         print(f"briefing: {exc}", file=sys.stderr)
         return 2
+
+    if args.cmd == "commits":
+        found = [sec for sec in profile.get("sections") or [] if isinstance(sec, dict) and sec.get("kind") == "commits"
+                 and (args.section is None or section_id(sec) == args.section)]
+        if not found or args.until < args.since:
+            print("briefing: no such commits section" if not found else "briefing: --until lies before --since",
+                  file=sys.stderr)
+            return 2
+        data = commit_times(found[0], Context(root, cfg=cfg), args.since.isoformat(), args.until.isoformat())
+        print(json.dumps({"ok": True, "section": section_id(found[0]), **data}, ensure_ascii=False))
+        return 0
 
     if args.cmd == "act":
         code, text = act(root, cfg, profile, args.section, args.row, args.action)
@@ -2481,6 +2606,8 @@ def main(argv=None) -> int:
         # a dashboard that pages itself wants every row of a section, not the first `max:` of them:
         # a cut row would vanish from its page without a trace (an inbox item set to later, 14.10.)
         profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, "_whole": True}
+    if getattr(args, "setup", False):
+        profile = with_setup(profile, root, cfg)
     ctx = Context(root, cfg=cfg)
     ctx.fresh = bool(getattr(args, "fresh", False))
     previous = load_snapshot(root, profile["id"])
@@ -2496,14 +2623,17 @@ def main(argv=None) -> int:
         result["inbox"] = {"filed": filed, "closed": closed}
         result["housekeeping"] = housekeep(root, ctx.now, summary=_summary(result, profile, args.style),
                                            profile_id=profile["id"])
+    if args.cmd == "render":
+        result["settled"] = settled_record(root, ctx.now)     # never saved: save_snapshot keeps its own fields
     if args.cmd == "render" and _view().style_of(profile, args.style) != "sources":
         view_cfg = profile.get("view") if isinstance(profile.get("view"), dict) else {}
         if view_cfg.get("overview") == "file":
             # Long blocks are where a hand copy into the chat goes wrong: they live in a file.
             path = root / SNAPSHOTS / f"{profile['id']}.overview.txt"
-            path.parent.mkdir(parents=True, exist_ok=True)
             built = _view().build(result, profile, args.style)
-            path.write_text(_view().draw_overview(built), encoding="utf-8")
+            if not args.no_save:      # --no-save leaves every file of the morning's run as it is
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(_view().draw_overview(built), encoding="utf-8")
             note = built["labels"]["overview_file"].format(path=path.relative_to(root))
             result["housekeeping"] = list(result.get("housekeeping") or []) + [note]
     if not args.no_save:

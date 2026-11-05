@@ -3,9 +3,9 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { markToken, prioToken, rovingIndex, short, verdictToken } from '../logic.js'
+import { chipWho, markToken, prioToken, rovingIndex, short, verdictToken, whoKind } from '../logic.js'
 import { nowSec, reducedMotion, settled, springTo } from '../motion.js'
-import { T } from '../text.js'
+import { T, language } from '../text.js'
 
 // ---------------------------------------------------------------- motion (motion.js, from the explainer films)
 
@@ -193,6 +193,8 @@ const ICONS = {
   workflow: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 9v3a6 6 0 0 0 6 6h3',
   sort: 'M4 6h16M7 12h10M10 18h4',
   pencil: 'M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5zM15 5l4 4',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
+  file: 'M6 2h9l5 5v15H6zM14 2v6h6',
 }
 
 export function Icon({ name, size = 16 }) {
@@ -206,12 +208,23 @@ export function Dot({ token, pulse }) {
   return html`<span class=${`dot tk-${token}${pulse ? ' dot-pulse' : ''}`} aria-hidden="true"></span>`
 }
 
-export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, busy, title, pressed, children, label, icon, cls = '' }) {
-  return html`<button type="button" class=${`btn btn-${variant} btn-${size} ${cls}`} onClick=${onClick}
+/** A button; `u` names it for the click log (logic.js usageControl) where its classes cannot */
+export function Btn({ variant = 'secondary', size = 'sm', onClick, disabled, busy, title, pressed, children, label, icon, cls = '', u }) {
+  return html`<button type="button" class=${`btn btn-${variant} btn-${size} ${cls}`} data-u=${u} onClick=${onClick}
     disabled=${disabled || busy} aria-busy=${busy ? 'true' : undefined} title=${title} aria-label=${label}
     aria-pressed=${pressed === undefined ? undefined : String(!!pressed)}>
     ${icon ? html`<${Icon} name=${icon} />` : null}${children ? html`<span class="btn-label">${children}</span>` : null}
   </button>`
+}
+
+/** "Seen" on a finding (a job, worker:<host>:<id>, or a page row): grey until it changes; on a seen one its
+ *  "Show again". A button like the ones beside it (Analyse in a tab, Ask), never a bare word. Nothing where there
+ *  is no finding to mark (`loud` false and not seen) */
+export function SeenBtn({ k, acked, loud, c }) {
+  const t = T().findingSeen
+  if (!acked && !loud) return null
+  return acked ? html`<${Btn} size="xs" variant="secondary" u="seen-undo" onClick=${() => c.ackFinding(k, false)}>${t.undo}<//>`
+    : html`<${Btn} size="xs" variant="secondary" u="seen" title=${t.title} onClick=${() => c.ackFinding(k, true)}>${t.btn}<//>`
 }
 
 /** "Let AI do it" for a briefing section that cannot run on this machine: files the reason as a decision and
@@ -225,6 +238,15 @@ export function SkipFix({ s, c, title, reason }) {
 export function Chip({ token, children, title, cls = '' }) {
   return html`<span class=${`chip ${token ? `chip-tk tk-${token}` : ''} ${cls}`} title=${title}>
     ${token ? html`<${Dot} token=${token} />` : null}<span>${children}</span></span>`
+}
+
+/** Who takes a step as a small chip (stage 4 of the one point view): you (the owner by name too), the Bridge or a
+ *  person in words (logic.js chipWho), in the warning tone for you, the info tone for the Bridge, plain for anyone else; nothing without one */
+export function WhoChip({ who, s }) {
+  const word = chipWho(who, s, language())
+  if (!word) return null
+  const kind = whoKind(who, s)
+  return html`<span class=${`chip flow-who flow-who-${kind}`}>${word}</span>`
 }
 
 export function StateLine({ token, word, strong }) {
@@ -292,6 +314,43 @@ export function WalkBar({ label, shortcuts = false, pos = null, onPrev = null, n
         : html`<span class="next-up-text muted small">${done}</span>`}
     </div>
     ${later.length ? html`<ol class="next-up-later" start=${(pos?.[0] ?? 0) + 2}>${later.map(e => html`<li key=${e.key}>
-      <button type="button" class="btn-link" title=${e.look} onClick=${e.onOpen}>${e.title}</button></li>`)}</ol>` : null}
+      <button type="button" class="btn-link" title=${e.look} onClick=${e.onOpen}>${e.title}</button>${e.sub ? html` <span class="muted small next-up-sub">${e.sub}</span>` : null}</li>`)}</ol>` : null}
   </nav>`
+}
+
+// ---------------------------------------------------------------- the line icons of drawn rows (pages.js tiles)
+
+/** Symbols for drawn rows: a source names a family (a device type, a cloud service, a provider), the
+ *  page draws a plain line icon; anything unknown is a box */
+const RES_ICONS = {
+  laptop: 'M4 6h16v10H4zM2 19h20',
+  monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
+  server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+  router: 'M3 14h18v6H3zM7 17h.01M11 17h.01M8 14 5 8M16 14l3-6',
+  phone: 'M7 2h10v20H7zM11 18h2',
+  robot: 'M6 8h12v10H6zM12 4v4M9 12h.01M15 12h.01M9 15h6',
+  printer: 'M6 3h12v6H6zM4 9h16v8H4zM8 14h8v7H8z',
+  usb: 'M9 2h6v8H9zM7 10h10v12H7z',
+  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1-1.9 1.9-.1-.1a1.6 1.6 0 0 0-2.7 1.1V20h-2.6v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1-1.9-1.9.1-.1A1.6 1.6 0 0 0 4.6 15H4v-2.6h.2a1.6 1.6 0 0 0 1.1-2.7l-.1-.1 1.9-1.9.1.1a1.6 1.6 0 0 0 2.7-1.1V4h2.6v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1 1.9 1.9-.1.1a1.6 1.6 0 0 0 1.1 2.7h.2V15z',
+  bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8z',
+  globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
+  page: 'M6 2h9l5 5v15H6zM14 2v6h6',
+  tunnel: 'M3 20v-8a9 9 0 0 1 18 0v8M7 20v-8a5 5 0 0 1 10 0v8',
+  cloud: 'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z',
+  mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
+  box: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10',
+}
+
+const ICON_OF = {
+  macos: 'laptop', windows: 'monitor', linux: 'server', saas: 'cloud', router: 'router', 'kvm-over-ip': 'monitor',
+  'smart-device': 'phone', robot: 'robot', '3d-printer': 'printer', 'usb-toolkit': 'usb', worker: 'gear',
+  'function app': 'bolt', 'web app': 'globe', zone: 'globe', pages: 'page', tunnel: 'tunnel', account: 'cloud',
+  azure: 'cloud', cloudflare: 'cloud', aws: 'cloud', gcp: 'cloud', m365: 'cloud', tailscale: 'cloud', ionos: 'globe',
+  google: 'mail', icloud: 'mail', microsoft365: 'mail', exchange: 'mail', imap: 'mail',
+}
+
+export function ResIcon({ name, size = 18 }) {
+  const d = RES_ICONS[ICON_OF[name] ?? name] ?? RES_ICONS.box
+  return html`<svg class="res-icon" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
 }

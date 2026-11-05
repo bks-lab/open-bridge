@@ -196,7 +196,7 @@ Step 1: generate HTML
   - Write the file: {cwd}/.dashboard-view.html
 
 Step 2: update the Dynamic Profile URL
-  - Profile "Web Browser" must exist (setup in CLAUDE.md)
+  - Profile "Web Browser" must exist (setup in AGENTS.md or CLAUDE.md)
   - The URL is set via the profile parameter "Initial URL"
 
 Step 3: open the iTerm2 split pane
@@ -247,7 +247,7 @@ On a subsequent `/dashboard` invocation:
 ## Scope modes
 
 ### Global (default)
-- Shows all projects from the CLAUDE.md dashboard config
+- Shows all projects from the AGENTS.md / CLAUDE.md dashboard config
 - Title: `Acme-Lab Dashboard`
 
 ### Project-specific

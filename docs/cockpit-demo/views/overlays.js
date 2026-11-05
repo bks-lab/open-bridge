@@ -2,24 +2,26 @@
 // The cockpit, overlays: drawers, dialogs, toasts, the boot and auth panels.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
-  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, rowKind, hintsFor, nextInQueue,
+  toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, nextInQueue, itemRow,
+  workKindOf, noteGo, personOf, ghWalkAt,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
-import { PageItemActions, RowBar } from './day.js'
+import { INBOX_FACTS_SKIP, ItemCard, TASK_FACTS_SKIP, cardOf, describeKey, describeOf } from './card.js'
+import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { DetailFailed, Lines, NextUp, Segmented } from './detail.js'
 import { AsOf, RelayBadge } from './header.js'
-import { ReturnPanel } from './home.js'
+import { ReturnPanel, goTo } from './home.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, JEV_PAGE, SESSIONS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, onPageOf,
 } from './nav.js'
 import { MeterBar, RowSteps, StatusMenu } from './pages.js'
 import { GH_REF, GitHubDetail } from './github.js'
 import { CalendarFacts } from './dates.js'
-import { Btn, Dot, Empty, Icon, Spinner, StateLine, useRoving } from './parts.js'
+import { Btn, Dot, Empty, Icon, SeenBtn, Spinner, StateLine, WalkBar } from './parts.js'
 import { TaskSessions } from './sessions.js'
 import { TabsColumn } from './tabs.js'
 
@@ -27,21 +29,26 @@ import { TabsColumn } from './tabs.js'
 
 export function Toasts({ s, c }) {
   const t = T()
+  const more = s.toastsMore ?? 0
   return html`<div class="toasts" role="status" aria-live="polite" aria-atomic="false">
-    ${s.toasts.map(x => html`<div class="toast" key=${x.id}
+    ${s.toasts.map(x => {
+      const go = noteGo(x.go)
+      return html`<div class="toast" key=${x.id}
         onMouseEnter=${() => c.pauseToast(x.id, 'hover')} onMouseLeave=${() => c.resumeToast(x.id, 'hover')}
         onfocusin=${() => c.pauseToast(x.id, 'focus')} onfocusout=${() => c.resumeToast(x.id, 'focus')}>
       <${Dot} token=${noteToken(x.tone)} />
-      <span class="toast-text">${x.text}</span>
+      ${go ? html`<button type="button" class="toast-text toast-go" title=${t.noteGo}
+          onClick=${e => { c.dismissToast(x.id); goTo(s, c, go, e.currentTarget) }}>
+          <span>${x.text}</span><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<span class="toast-text">${x.text}</span>`}
       ${x.action === 'undo' && x.undo?.length ? html`<${Btn} size="xs" variant="primary"
-          onClick=${() => { c.dismissToast(x.id); x.undo.forEach(u => c.undo(u.undo)) }}>${T().undoToast}<//>` : null}
+          onClick=${() => { c.dismissToast(x.id); x.undo.forEach(u => c.undo(u.undo)) }}>${t.undoToast}<//>` : null}
       ${x.action === 'copy' && x.copy ? html`<${Btn} size="xs" variant="primary" onClick=${() => c.copy(x.copy)}>${t.copyCommand}<//>` : null}
-      ${x.action === 'agent' ? html`<${Btn} size="xs" variant="primary" onClick=${() => { c.dismissToast(x.id); c.openAgentConv(x.conv) }}>${t.btnTabView}<//>` : null}
-      ${x.action === 'claude' || x.action === 'ask' ? html`<${Btn} size="xs" variant="primary"
-          onClick=${() => { c.dismissToast(x.id); x.action === 'ask' ? c.openAsk(x.conv) : c.openClaude() }}>${t.btnTabView}<//>`
-        : html`<span class="mono muted small">${x.at}</span>`}
+      <span class="mono muted small">${x.at}</span>
       <button type="button" class="icon-btn" aria-label=${t.close} onClick=${() => c.dismissToast(x.id)}><${Icon} name="close" size=${14} /></button>
-    </div>`)}
+    </div>`
+    })}
+    ${more > 0 && s.toasts.length ? html`<button type="button" class="toast toast-more" onClick=${() => c.openNotes()}>${t.toastsMore(more)}</button>` : null}
   </div>`
 }
 
@@ -128,19 +135,22 @@ function stamp(value) {
   return String(value ?? '').replace('T', ' ').slice(0, 16)
 }
 
-/** The task an inbox item belongs to, in three lines, and the way into it */
+/** The task or stream an inbox item belongs to, in three lines, and the way into it; its kind tag and the
+ *  button say which of the two it is, never "task" on a stream */
 function ItemTaskCard({ slug, s, c, onOpen }) {
   const t = T()
   const d = useItemDetail('task', slug, s, c)
   const f = d?.data?.front ?? {}
+  const kindRow = { key: `task:${slug}`, task: slug, work_kind: d?.data?.work_kind ?? null }
+  const wk = workKindOf(kindRow, s) ?? 'task'
   return html`<div class="idrawer-task">
-    <div class="idrawer-task-head"><span class="label-caps">${t.item.task}</span><code class="muted">${slug}</code>
+    <div class="idrawer-task-head"><${KindTag} row=${kindRow} s=${s} /><code class="muted">${slug}</code>
       ${f.status ? html`<span class="chip">${t.taskState[f.status] ?? f.status}</span>` : null}</div>
     ${d?.data ? html`${f.headline ? html`<p class="idrawer-task-title">${f.headline}</p>` : null}
       ${f.next ? html`<p class="small"><span class="line-kind">${t.lineKind.next}</span>${f.next}</p>` : null}
       ${f.blocked_by ? html`<p class="small"><span class="line-kind">${t.lineKind.blocked}</span>${f.blocked_by}</p>` : null}`
       : html`<${DetailState} d=${d} onRetry=${() => c.loadTask(slug)} />`}
-    <${Btn} size="xs" variant="secondary" onClick=${onOpen}>${t.item.openTask}<//>
+    <${Btn} size="xs" variant="secondary" onClick=${onOpen}>${t.item.openKind[wk] ?? t.item.openKind.task}<//>
   </div>`
 }
 
@@ -159,7 +169,7 @@ function InboxBody({ id, cur, s, c }) {
     <section class="idrawer-sec"><h3 class="label-caps">${t.item.facts}</h3>
       <dl class="meta idrawer-facts">
         ${it.created ? html`<${Fact} label=${t.item.created}>${stamp(it.created)}<//>` : null}
-        ${it.from ? html`<${Fact} label=${t.item.from}>${it.from}<//>` : null}
+        ${it.from ? html`<${Fact} label=${t.item.from}><${OriginTag} origin=${d.data.origin ?? null} /> <span class="meta-from-raw">${it.from}</span><//>` : null}
         ${it.kind ? html`<${Fact} label=${t.item.kind}>${t.item.kindName[it.kind] ?? it.kind}<//>` : null}
         ${it.state ? html`<${Fact} label=${t.item.state}>${t.item.stateName[it.state] ?? it.state}<//>` : null}
         ${it.urgency ? html`<${Fact} label=${t.item.urgency}>${t.urgency[it.urgency] ?? it.urgency}<//>` : null}
@@ -185,7 +195,7 @@ function InboxBody({ id, cur, s, c }) {
 }
 
 /** STATUS.md in its sections: those that start within the first 4000 characters open, the rest folded */
-function TaskBody({ slug, cur, s, c }) {
+function TaskBody({ slug, cur, s, c, carded = false }) {
   const t = T()
   const d = useItemDetail('task', slug, s, c)
   const where = { page: cur.page, section: cur.section }
@@ -196,16 +206,18 @@ function TaskBody({ slug, cur, s, c }) {
   const sections = (d.data.sections ?? []).map(x => { const open = used < 4000; used += x.text.length; return { ...x, open } })
   const related = d.data.inbox ?? []
   return html`
-    ${f.next ? html`<section class="idrawer-sec"><h3 class="label-caps">${t.front.next}</h3><p class="idrawer-next"><${Linked} text=${String(f.next)} /></p></section>` : null}
+    ${f.next && !carded ? html`<section class="idrawer-sec"><h3 class="label-caps">${t.front.next}</h3><p class="idrawer-next"><${Linked} text=${String(f.next)} /></p></section>` : null}
     <section class="idrawer-sec"><h3 class="label-caps">${t.item.facts}</h3>
       <dl class="meta idrawer-facts">${facts.map(k => html`<${Fact} key=${k} label=${t.front[k]}>
         ${k === 'status' ? (t.taskState[f[k]] ?? f[k]) : String(f[k])}<//>`)}</dl>
-      ${f.origin ? html`<p class="small idrawer-origin"><span class="line-kind">${t.lineKind.origin}</span><${Linked} text=${String(f.origin)} /></p>` : null}
+      ${f.origin || d.data.origin ? html`<p class="small idrawer-origin"><span class="line-kind">${t.lineKind.origin}</span><${OriginTag} origin=${d.data.origin ?? null} />
+        ${f.origin ? html` <${Linked} text=${String(f.origin)} />` : null}</p>` : null}
     </section>
-    <section class="idrawer-sec"><h3 class="label-caps">${t.item.related}</h3>
+    <section class="idrawer-sec"><h3 class="label-caps">${t.item.related(d.data.work_kind ?? workKindOf({ task: slug }, s))}</h3>
       ${related.length ? html`<ul class="entries">${related.map(r => html`<li key=${r.id} class="entry">
         <button type="button" class="btn-link" onClick=${() => c.openItem(`inbox:${r.id}`, { inbox: r.id, task: slug, title: r.summary }, where, cur)}>
           ${short(r.summary ?? r.id, 90)}</button>
+        <span class="entry-tags"><${OriginTag} origin=${r.origin ?? null} /></span>
         <span class="btn-row">${r.urgency ? html`<span class="chip">${t.urgency[r.urgency] ?? r.urgency}</span>` : null}
           ${r.gate ? html`<span class="chip">${t.gate[r.gate] ?? r.gate}</span>` : null}</span></li>`)}</ul>`
         : html`<p class="muted small">${t.item.none}</p>`}
@@ -236,7 +248,15 @@ export function ItemDrawer({ s, c, byKey }) {
   const made = own ? null : actionRow(isInbox ? { inbox: id, title: it.title, task: it.task } : { task: id, title: it.title }, byKey)
   // a row built here knows from the item whether its yes is given already, so its start button says so
   const row = own ?? (made && isInbox && data?.item?.state ? { ...made, inbox_state: data.item.state } : made)
-  const title = (isInbox ? data?.item?.summary : data?.front?.headline) || it.title || id
+  // one title everywhere: the card's (the row's own, else the detail's), the same in the list and the files view;
+  // a task's headline is its summary, never its title
+  const card = cardOf(own, data)
+  const title = card?.title || (isInbox ? data?.item?.summary : null) || it.title || id
+  // what it is and where it comes from: the model's row, else what the item's own detail says (a stream opened
+  // only by its key is a stream here too, not "Task")
+  const kindRow = { ...(row ?? { key, inbox_id: isInbox ? id : null, task: isInbox ? (data?.item?.task ?? it.task ?? null) : id }),
+    ...(row?.work_kind || isInbox ? {} : { work_kind: data?.work_kind ?? it.work_kind ?? null }),
+    ...(row?.origin ? {} : { origin: data?.origin ?? it.origin ?? null }) }
   const slug = isInbox ? (data?.item?.task ?? it.task) : id
   // a close from inside the drawer ends the item: the drawer goes with it, or on to the next of its list
   const next = nextInQueue(s.ui.queue, key, e => e.key !== key)
@@ -250,7 +270,7 @@ export function ItemDrawer({ s, c, byKey }) {
     <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="idrawer-title" ref=${ref}>
       <header class="idrawer-head">
         <div class="idrawer-head-main">
-          <span class="eyebrow">${t.kind[rowKind(row ?? { inbox_id: isInbox ? id : null, task: isInbox ? null : id }).kind]}</span>
+          <span class="eyebrow idrawer-kinds"><${KindTag} row=${kindRow} s=${s} /><${OriginTag} row=${kindRow} /></span>
           <h2 class="idrawer-title" id="idrawer-title">${title}</h2>
         </div>
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.item.close} onClick=${c.closeItem} />
@@ -263,12 +283,14 @@ export function ItemDrawer({ s, c, byKey }) {
         ${own && !isInbox ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { c.closeItem(); c.peek(key) }}>${t.item.more}<//>` : null}
       </div>
       <div class="idrawer-body">
+        <${ItemCard} card=${card} d=${describeOf(s, key, own?.describe, data?.describe)} dkey=${key} s=${s} c=${cc}
+          skip=${isInbox ? INBOX_FACTS_SKIP : TASK_FACTS_SKIP} cls="idrawer-sec idrawer-card" />
         <${ReturnPanel} s=${s} c=${c} keys=${[key, slug ? `task:${slug}` : null]} />
         ${slug ? html`<section class="idrawer-sec"><${TaskSessions} row=${{ task: slug, key: `task:${slug}` }} s=${s} c=${c} /></section>` : null}
         ${tri ? html`<section class="idrawer-sec idrawer-tri"><h3 class="label-caps">${t.item.about}</h3>
           <${TriageGist} tri=${tri} keyRow=${row} c=${cc} s=${s} />
           ${tri.reason ? html`<p class="muted small">${tri.reason}</p>` : null}</section>` : null}
-        ${isInbox ? html`<${InboxBody} key=${id} id=${id} cur=${cur} s=${s} c=${c} />` : html`<${TaskBody} key=${id} slug=${id} cur=${cur} s=${s} c=${c} />`}
+        ${isInbox ? html`<${InboxBody} key=${id} id=${id} cur=${cur} s=${s} c=${c} />` : html`<${TaskBody} key=${id} slug=${id} cur=${cur} s=${s} c=${c} carded=${!!card?.next} />`}
       </div>
       <${NextUp} s=${s} c=${c} byKey=${byKey} current=${key} />
     </aside>
@@ -276,11 +298,13 @@ export function ItemDrawer({ s, c, byKey }) {
 }
 
 /** The detail of any page item that is not an inbox item or task: everything the row carries, its link,
- *  its own steps, its account status and "ask". It follows the item as the page holds it now */
-export function InfoDrawer({ s, c }) {
+ *  its own steps, its account status and "ask". It follows the item as the page holds it now. `beside`: a row of
+ *  the GitHub list, drawn as a column of the page beside its list (components.js), not over it: no scrim and no
+ *  focus held in it, so the next row is one click away on the left; its foot walks the list as it was shown */
+export function InfoDrawer({ s, c, beside = false }) {
   const t = T()
-  const ref = useFocusOnOpen(true)
-  const { it, page, section } = s.ui.info
+  const ref = useFocusOnOpen(!beside)
+  const { it, page, section, walk = null } = s.ui.info
   const pg = (s.model?.pages ?? []).find(x => x.id === page)
   const sec = pg?.sections?.find(x => x.id === section)
   const cur = sec?.items?.find(x => x.index === it.index && x.title === it.title) ?? it
@@ -299,11 +323,11 @@ export function InfoDrawer({ s, c }) {
   const others = dated
     ? upcomingEvents(s.model, s.now || Date.now()).filter(e => !(e.it.at === cur.at && e.it.title === cur.title)).slice(0, 15)
     : []
-  return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) close() }}>
-    <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="info-title" ref=${ref}>
+  const content = html`
       <header class="idrawer-head">
         <div class="idrawer-head-main">
           <span class="eyebrow">${[pg?.title, sec?.title].filter(Boolean).join(' · ')}</span>
+          <span class="idrawer-kinds"><${KindTag} row=${itemRow(cur)} s=${s} /><${OriginTag} row=${itemRow(cur)} /></span>
           <h2 class="idrawer-title" id="info-title">${cur.tone ? html`<${StateLine} token=${toneToken(cur.tone)} strong=${cur.tone === 'bad'} word=${cur.title} />` : cur.title}</h2>
         </div>
         <${Btn} variant="ghost" size="xs" icon="close" label=${t.item.close} onClick=${close} />
@@ -320,14 +344,18 @@ export function InfoDrawer({ s, c }) {
           // an event's or a GitHub row's steps start an agent tab and change nothing, so each is a button of its own
           ? cur.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="primary" busy=${!!s.ui.busy[rowActionKey({ page, section, index: cur.index })]}
               onClick=${() => c.act('row_action', { page, section, index: cur.index, action: a.id })}>${a.label}<//>`)
-          : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} />`) : null}
+          : html`<${RowSteps} it=${cur} page=${page} section=${section} s=${s} c=${c} as=${sec?.steps ?? 'menu'} />`) : null}
         ${cur.account?.status ? html`<${StatusMenu} it=${cur} page=${page} section=${section} c=${c} />` : null}
         <${PageItemActions} it=${cur} s=${s} c=${c} after=${close} />
+        <${SeenBtn} k=${cur.key} acked=${cur.acked} loud=${cur.tone === 'bad' || cur.tone === 'warn'} c=${c} />
         ${cur.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => { close(); c.ask('info', { page, section, index: cur.index }) }}>${t.btnAsk}<//>` : null}
       </div>
       <div class="idrawer-body">
+        <${ItemCard} card=${cur.card} d=${describeOf(s, describeKey(cur))} dkey=${describeKey(cur)} s=${s} c=${c}
+          skip=${['source', 'summary', 'state']} cls="idrawer-sec idrawer-card" />
         ${ghRef ? html`<${GitHubDetail} gref=${ghRef} c=${c} />` : null}
         ${onHost.length ? html`<section class="idrawer-sec"><${StateLine} token=${onHostBad ? 'warning' : 'success'} word=${t.workersOnHost(onHost.length, onHostBad)} /></section>` : null}
+        ${cur.acked ? html`<section class="idrawer-sec"><p class="muted">${t.findingSeen.on(cur.acked.day, cur.acked.note)}</p></section>` : null}
         ${cur.detail && !cur.cal ? html`<section class="idrawer-sec"><p class="info-detail-full"><${Linked} text=${detailText(cur.detail, t)} /></p></section>` : null}
         ${cur.meter ? html`<section class="idrawer-sec"><${MeterBar} meter=${cur.meter} scale=${0} tone=${cur.tone} /></section>` : null}
         ${cur.cal ? html`<${CalendarFacts} it=${cur} />` : null}
@@ -339,8 +367,21 @@ export function InfoDrawer({ s, c }) {
             <button type="button" class="btn-link" onClick=${() => c.openInfo(e.it, e.page, e.section)}>${e.it.title}</button>
             ${e.it.detail ? html`<span class="muted small">${detailText(e.it.detail, t)}</span>` : null}</li>`)}</ul></section>` : null}
         ${!ghRef && !cur.cal && !cur.detail && !cur.meter && !facts.length && !(cur.lines ?? []).length ? html`<p class="muted">${t.infoNothingMore}</p>` : null}
-      </div>
-    </aside>
+      </div>`
+  if (beside) {
+    const at = ghWalkAt(walk, cur) ?? ghWalkAt(walk, it)
+    const step = e => c.openInfo(e, page, section, { beside: true, walk })
+    const entry = (e, max) => ({ key: `${e.index}`, title: short(e.gh?.title || e.title, max), look: e.title, onOpen: () => step(e),
+      sub: e.gh?.number ? html`<span class="mono">${(e.gh.repo ?? '').split('/').pop()}#${e.gh.number}</span>` : null })
+    return html`<div class="col col-detail">
+      <div class="detail-scroll"><article class="panel idrawer idrawer-beside" aria-labelledby="info-title">${content}</article></div>
+      ${at && at.total > 1 ? html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[at.pos, at.total]}
+        onPrev=${at.prev ? () => step(at.prev) : null} next=${at.next[0] ? entry(at.next[0], 90) : null}
+        later=${at.next.slice(1, 4).map(e => entry(e, 80))} done=${t.nextDone} />` : null}
+    </div>`
+  }
+  return html`<div class="overlay" onClick=${e => { if (e.target === e.currentTarget) close() }}>
+    <aside class="drawer drawer-right idrawer" role="dialog" aria-modal="true" aria-labelledby="info-title" ref=${ref}>${content}</aside>
   </div>`
 }
 
@@ -351,111 +392,99 @@ export function TabsDrawer({ s, c, byKey }) {
       <${TabsColumn} s=${s} c=${c} byKey=${byKey} inDrawer /></aside></div>`
 }
 
-/** The undo buttons of one closed item: a task comes back open, or only as still to be done */
+/** The undo buttons of one closed item: a task comes back with the status it had before the close (its undo names
+ *  it; an older entry without one opens again), or only as still to be done, unless that is where it came from */
 function UndoButtons({ it, c, busy }) {
   const t = T()
   const u = it.undo
   if (!u) return null
-  if (u.verb === 'task_reopen') return html`<span class="btn-row">
-    <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u, 'doing')}>${t.undoReopen}<//>
-    <${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.undo(u, 'backlog')}>${t.undoBacklog}<//></span>`
-  return html`<span class="btn-row"><${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${u.verb === 'unhide' ? t.undoShow : u.verb === 'row_undo' ? t.undoStep : t.undoReopen}<//></span>`
+  if (u.verb === 'task_reopen') {
+    const was = ['doing', 'review', 'backlog'].includes(u.args?.as) ? u.args.as : 'doing'
+    return html`<span class="btn-row">
+    <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${{ doing: t.undoReopen, review: t.undoReview, backlog: t.undoBacklog }[was]}<//>
+    ${was === 'backlog' ? null : html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.undo(u, 'backlog')}>${t.undoBacklog}<//>`}</span>`
+  }
+  return html`<span class="btn-row"><${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.undo(u)}>${u.verb === 'unhide' ? t.undoShow : u.verb === 'row_undo' || u.verb === 'task_unmerge' ? t.undoStep : t.undoReopen}<//></span>`
 }
 
-/** What the dashboard closed, dropped, settled or hid, newest first and by day; each item can be taken back */
+/** The word of a history line: a task's line says Stream for a stream (the server keeps work_kind on it; an older
+ *  line asks the task list), never Task on a stream */
+function histWord(it, s) {
+  if (it.kind !== 'task') return it.kind
+  const wk = it.work_kind ?? workKindOf({ task: it.ident ?? String(it.key ?? '').replace(/^task:/, '') }, s)
+  return /stream/.test(wk ?? '') ? 'stream' : 'task'
+}
+
+/** The notes of one day in the history, newest first: what the cockpit reported, such as a finished job or a failed
+ *  step. An entry that names its place leads there; the drawer closes first, so an item drawer can open */
+function DayNotes({ notes, s, c }) {
+  const t = T()
+  return html`<details class="hist-notes" open>
+    <summary class="small muted">${t.histNotes(notes.length)}</summary>
+    <ol class="notes">${notes.map((n, i) => {
+      const go = noteGo(n.go)
+      return html`<li key=${i} class="note">
+      <span class="mono muted small">${n.at}</span>
+      ${go ? html`<button type="button" class="note-go" title=${t.noteGo}
+          onClick=${e => { c.setDrawer(null); goTo(s, c, go, e.currentTarget) }}>
+          <${StateLine} token=${noteToken(n.tone)} word=${n.text} /><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<${StateLine} token=${noteToken(n.tone)} word=${n.text} />`}
+    </li>`
+    })}</ol>
+  </details>`
+}
+
+/** The notes under the bell (decision 6, menue.md): what the cockpit reported lately, newest first. An entry that
+ *  names its place leads there; the drawer closes first, so an item drawer can open. The history keeps them by day */
+export function NotesDrawer({ s, c }) {
+  const t = T()
+  const notes = (s.notes ?? []).slice().reverse()
+  return html`<${Drawer} id="notes" title=${t.notesTitle} onClose=${() => c.setDrawer(null)}>
+    ${notes.length ? html`<ol class="notes">${notes.map((n, i) => {
+      const go = noteGo(n.go)
+      return html`<li key=${i} class="note">
+      <span class="mono muted small">${n.at}</span>
+      ${go ? html`<button type="button" class="note-go" title=${t.noteGo}
+          onClick=${e => { c.setDrawer(null); goTo(s, c, go, e.currentTarget) }}>
+          <${StateLine} token=${noteToken(n.tone)} word=${n.text} /><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<${StateLine} token=${noteToken(n.tone)} word=${n.text} />`}
+    </li>`
+    })}</ol>` : html`<${Empty}>${t.notesEmpty}<//>`}
+  <//>`
+}
+
+/** What the dashboard closed, dropped, settled or hid, newest first and by day; each item can be taken back. Each
+ *  day shows its notes above its closed items (the bell lists them too, NotesDrawer); a note keeps its day (`ms`, the
+ *  server's at_ms), one without a date counts as today's. What happened today and the mute rules stay elsewhere */
 export function HistoryDrawer({ s, c }) {
   const t = T()
   const lang = language()
   const entries = s.history ?? []
-  const days = []
-  for (const e of entries) {
-    const day = isoDate(e.at_ms)
-    let d = days.find(x => x.day === day)
-    if (!d) days.push(d = { day, entries: [] })
-    d.entries.push(e)
-  }
+  const today = isoDate(s.now || Date.now())
+  const byDay = new Map()
+  const dayOf = day => byDay.get(day) ?? byDay.set(day, { day, entries: [], notes: [] }).get(day)
+  for (const e of entries) dayOf(isoDate(e.at_ms)).entries.push(e)
+  for (const n of (s.notes ?? []).slice().reverse()) dayOf(n.ms > 0 ? isoDate(n.ms) : today).notes.push(n)
+  const days = [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
   const busyOf = u => !!s.ui.busy[u.verb]
   return html`<${Drawer} id="history" title=${t.historyTitle} onClose=${() => c.setDrawer(null)}>
     <p class="muted small">${t.historyIntro}</p>
     ${days.length ? days.map(d => html`<section class="hist-day" key=${d.day}>
-      <h3 class="label-caps">${formatDay(d.day, lang)}</h3>
-      <ol class="hist">${d.entries.flatMap(e => e.items.map((it, i) => html`<li key=${`${e.id}-${i}`} class=${`hist-item${it.undone_ms ? ' is-undone' : ''}`}>
+      <h3 class="label-caps">${d.day === today ? t.historyToday(formatDay(d.day, lang)) : formatDay(d.day, lang)}</h3>
+      ${d.notes.length ? html`<${DayNotes} notes=${d.notes} s=${s} c=${c} />` : null}
+      ${d.entries.length ? html`<ol class="hist">${d.entries.flatMap(e => e.items.map((it, i) => html`<li key=${`${e.id}-${i}`} class=${`hist-item${it.undone_ms ? ' is-undone' : ''}`}>
         <span class="mono muted small">${clockTime(e.at_ms)}</span>
         <div class="hist-main">
-          <span class="hist-what"><span class="chip">${t.histKind[it.kind] ?? it.kind}</span>
+          <span class="hist-what"><span class="chip">${t.histKind[histWord(it, s)] ?? it.kind}</span>
             <span class=${`hist-did hist-${it.did?.startsWith('hidden') ? 'hidden' : it.did}`}>${t.histDid(it.did)}</span>
             ${e.backfilled ? html`<span class="muted small">${t.histBackfilled}</span>` : null}</span>
           <span class="hist-title">${it.title}</span>
           ${it.undone_ms ? html`<span class="small"><${StateLine} token="success" word=${t.histUndone(clockTime(it.undone_ms))} /></span>`
             : html`<${UndoButtons} it=${it} c=${c} busy=${it.undo ? busyOf(it.undo) : false} />`}
         </div>
-      </li>`))}</ol>
+      </li>`))}</ol>` : null}
     </section>`) : html`<${Empty}>${t.historyEmpty}<//>`}
   <//>`
-}
-
-export function NotesDrawer({ s, c }) {
-  const t = T()
-  const notes = s.notes.slice().reverse()
-  return html`<${Drawer} id="notes" title=${t.notesTitle} onClose=${() => c.setDrawer(null)}>
-    ${notes.length ? html`<ol class="notes">${notes.map((n, i) => html`<li key=${i} class="note">
-      <span class="mono muted small">${n.at}</span>
-      <${StateLine} token=${noteToken(n.tone)} word=${n.text} />
-    </li>`)}</ol>` : html`<${Empty}>${t.notesEmpty}<//>`}
-  <//>`
-}
-
-/** Whether the page shows an area now; without a document to ask (a render elsewhere) every one counts */
-function onPage(target) {
-  if (typeof document === 'undefined' || !document.querySelector) return true
-  try {
-    // as the overlay counts it: a part in a hidden pane has no size and gets no note, so no line here either
-    const r = document.querySelector(target)?.getBoundingClientRect?.()
-    return !!r && r.width > 0 && r.height > 0
-  } catch { return false }
-}
-
-const HELP_TABS = ['page', 'rows', 'act', 'keys', 'trust']
-
-/** Help: one topic at a time, this page first. Its parts are the explain overlay's (logic.js hintsFor) as a
- *  list, so the notes and the help never say two different things */
-export function HelpDialog({ s, c }) {
-  const t = T()
-  const h = t.help
-  const ref = useFocusOnOpen(true)
-  const [tab, setTab] = useState('page')
-  const keys = useRoving()
-  const hints = hintsFor(s).filter(x => onPage(x.target))
-  const list = items => html`<dl class="help-cards">${items.map(x => html`<div key=${x.id}>
-    <dt>${t.hints.items[x.id].title}</dt><dd>${t.hints.items[x.id].body}</dd></div>`)}</dl>`
-  const topics = items => html`<dl class="help-text">${items.map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
-    ? html`<ul class="plain help-list">${v.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : v}</dd></div>`)}</dl>`
-  const own = hints.filter(x => x.group === 'page')
-  const body = tab === 'page' ? html`<p class="muted small">${h.pageLead}</p>
-      ${own.length ? list(own) : html`<p class="muted small">${h.pageNone}</p>`}
-      <h3 class="label-caps help-sub">${h.headTitle}</h3>
-      ${list(hints.filter(x => x.group === 'head'))}`
-    : tab === 'keys' ? (s.ui.shortcuts ? html`<dl class="keys">${t.keys.map(([k, v]) => html`<div key=${k}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>
-        <p class="muted small">${t.commandHint}</p>
-        <p class="muted small">${t.keysOn} <button type="button" class="btn-link" onClick=${() => c.openSettings('look')}>${t.settings.keysTitle}</button></p>`
-      : html`<p class="muted small">${t.keysOff} <button type="button" class="btn-link" onClick=${() => c.openSettings('look')}>${t.settings.keysTitle}</button></p>`)
-    : topics(t.helpTopics[tab])
-  return html`<div class="overlay overlay-center" onClick=${e => { if (e.target === e.currentTarget) c.setDrawer(null) }}>
-    <div class="dialog help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" ref=${ref}>
-      <header class="drawer-head help-head">
-        <h2 class="sec-title" id="help-title">${t.helpTitle}</h2>
-        <span class="btn-row help-tour">
-          <button type="button" class="btn btn-secondary btn-xs" title=${t.tour.helpLine} onClick=${() => c.tourStart()}><span class="btn-label">${t.tour.again}</span></button>
-          <button type="button" class="btn btn-ghost btn-xs" onClick=${() => c.setHints(true)}><${Icon} name="bulb" size=${14} /><span class="btn-label">${t.hints.helpButton}</span></button>
-        </span>
-        <${Btn} variant="ghost" size="xs" icon="close" label=${t.close} onClick=${() => c.setDrawer(null)} />
-      </header>
-      <div class="seg help-tabs" role="tablist" aria-label=${h.tabsLabel} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>${HELP_TABS.map(id => html`<button type="button" key=${id}
-        role="tab" id=${`help-tab-${id}`} aria-selected=${String(tab === id)} aria-controls="help-pane" data-autofocus=${tab === id ? '' : undefined}
-        class=${`seg-btn${tab === id ? ' is-on' : ''}`} onClick=${() => setTab(id)}>${h.tabs[id]}</button>`)}</div>
-      <div class="help-pane" id="help-pane" role="tabpanel" aria-labelledby=${`help-tab-${tab}`}>${body}</div>
-    </div>
-  </div>`
 }
 
 export function ConfirmDialog({ s, c }) {
@@ -568,16 +597,16 @@ export function MobileSwitch({ s, c }) {
   const onPage = onPageOf(s)
   const page = onPage ? (s.ui.page === START_PAGE ? { title: t.startTab } : s.ui.page === CHECK_PAGE ? { title: t.reviewTab } : s.ui.page === SESSIONS_PAGE ? { title: t.sessionsTab } : s.ui.page === WORKERS_PAGE ? { title: t.workersTab } : s.ui.page === CHAT_PAGE ? { title: t.chatTab } : s.ui.page === AGENTS_PAGE ? { title: t.agentsTab } : s.ui.page === JEV_PAGE ? { title: 'Jev' } : s.ui.page === 'briefing' ? { title: briefingTitle(s) } : (s.model?.pages ?? []).find(p => p.id === s.ui.page)) : null
   const waiting = attentionTabs(s.tabs?.tabs).length
-  const peek = onPage && s.ui.pageDetail && !!s.ui.selectedKey
+  const peek = onPage && ((s.ui.pageDetail && !!s.ui.selectedKey) || (!!s.ui.info?.beside && s.ui.info.on === s.ui.page))
+  const tabs = personOf(s) ? [] : [['tabs', waiting ? `${t.pane.tabs} (${waiting})` : t.pane.tabs]]    // none on a person's page
   const items = onPage
-    ? [['day', page?.title ?? t.pane.day], ...(peek ? [['detail', t.pane.detail]] : []),
-        ['tabs', waiting ? `${t.pane.tabs} (${waiting})` : t.pane.tabs]]
-    : [['day', t.pane.day], ['detail', t.pane.detail], ['tabs', waiting ? `${t.pane.tabs} (${waiting})` : t.pane.tabs]]
+    ? [['day', page?.title ?? t.pane.day], ...(peek ? [['detail', t.pane.detail]] : []), ...tabs]
+    : [['day', t.pane.day], ['detail', t.pane.detail], ...tabs]
   const current = onPage && !peek && s.ui.pane === 'detail' ? 'day' : s.ui.pane
   // On a phone the header has no room for them: the relay state and the warnings (lost connection,
   // stale model, failed pass) get their own line here, each a dot plus its written word.
   return html`<div class="mobile-switch">
-    <div class="mobile-status"><${RelayBadge} s=${s} /><${AsOf} s=${s} /></div>
-    <${Segmented} label=${t.pagesLabel} current=${current} values=${items} onPick=${v => c.setPane(v)} />
+    <div class="mobile-status"><${RelayBadge} s=${s} /><${AsOf} s=${s} c=${c} /></div>
+    ${items.length > 1 ? html`<${Segmented} label=${t.pagesLabel} current=${current} values=${items} onPick=${v => c.setPane(v)} />` : null}
   </div>`
 }

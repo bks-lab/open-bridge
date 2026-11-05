@@ -43,6 +43,8 @@
 /identity/agent/*.md
 !/identity/agent/README.md
 !/identity/agent/_*.md
+/identity/designs/*.md
+!/identity/designs/_*.md
 /work/memory/
 # <<< user-data <<<
 

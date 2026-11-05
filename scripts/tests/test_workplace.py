@@ -242,10 +242,45 @@ def test_tasks_list_every_active_task_with_area_priority_and_flags(repo):
     assert rows["payments-incident"]["area_aliases"] == []
 
 
+def test_tasks_carry_status_next_step_and_last_change(repo, tmp_path):
+    task(tmp_path, "with-next", next="Call the vendor")
+    d = tmp_path / "work" / "tasks" / "as-mapping"
+    d.mkdir(parents=True)
+    (d / "STATUS.md").write_text("---\nslug: as-mapping\nstatus: review\nlast_updated: 2026-10-02\n"
+                                 "next:\n  what: Merge the change\n  who: me\n---\n\n# As mapping\n", encoding="utf-8")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, CFG, TODAY)}
+    assert (rows["with-next"]["next"], rows["with-next"]["status"], rows["with-next"]["updated"]) == \
+        ("Call the vendor", "doing", "2026-10-03")
+    assert (rows["as-mapping"]["next"], rows["as-mapping"]["status"]) == ("Merge the change", "review")
+    assert rows["payments-incident"]["next"] is None
+
+
 def test_tasks_name_the_aliases_of_their_area(repo):
     cfg = {"workspaces": [{"name": "Bigcorp", "contexts": ["bigcorp"], "aliases": ["BC", "Big"]}]}
     rows = {t["slug"]: t for t in wp.task_rows(repo, cfg, TODAY)}
     assert rows["payments-incident"]["area_aliases"] == ["BC", "Big"]
+
+
+def test_an_area_in_the_status_head_wins_over_slugs_and_contexts(repo):
+    task(repo, "platform-bigcorp-bridge", context="bigcorp", area="Misc")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, CFG, TODAY)}
+    assert rows["platform-bigcorp-bridge"]["area"] == "Misc"
+
+
+def test_an_area_names_its_workspace_by_alias_and_whatever_its_case(repo):
+    cfg = {"workspaces": [{"name": "Bigcorp", "contexts": ["bigcorp"]},
+                          {"name": "Platform", "slugs": ["platform-*"], "aliases": ["PF"]}]}
+    task(repo, "bigcorp-by-alias", context="bigcorp", area="pf")
+    task(repo, "bigcorp-by-name", context="bigcorp", area="platform")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, cfg, TODAY)}
+    assert rows["bigcorp-by-alias"]["area"] == "Platform"
+    assert rows["bigcorp-by-name"]["area"] == "Platform"
+
+
+def test_an_unknown_area_falls_back_to_the_rules(repo):
+    task(repo, "bigcorp-typo", context="bigcorp", area="Nowhere")
+    rows = {t["slug"]: t for t in wp.task_rows(repo, CFG, TODAY)}
+    assert rows["bigcorp-typo"]["area"] == "Bigcorp"
 
 
 def test_tasks_json_is_sorted_by_priority_then_score(repo, capsys):
@@ -508,6 +543,34 @@ def test_launch_uses_the_configured_agent_template(lrepo):
     assert "codex -n payments-incident" in e["command"]
 
 
+def test_the_terminal_keys_and_their_text_rules_are_one_list_with_the_cockpit():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from lib.bridge_cockpit import actions_base as ab
+    assert set(wp.TERM_KEYS) == set(ab.TERM_KEYS)
+    assert {"enter", "escape", "tab", "shift+tab", "backspace", "up", "ctrl+c", "ctrl+z"} <= set(wp.TERM_KEYS)
+
+
+@pytest.mark.parametrize("steps", [[{"key": "f13"}], [{"text": "a\x03"}], [{"paste": "a\x1b"}], [{"shell": "ls"}], [], "ls"])
+def test_keys_never_reach_a_driver_outside_the_list(steps):
+    with pytest.raises(ValueError):
+        wp.check_steps(steps)
+
+
+def test_keys_by_a_live_ref_ask_no_list_of_the_tabs(lrepo, monkeypatch, capsys):
+    (lrepo / "bridge-config.yaml").write_text("workplace:\n  driver: {command: ['fake-driver']}\n")
+    seen = []
+
+    def fake_run(argv, input=None, **kw):
+        req = json.loads(input)
+        seen.append(req)
+        return type("R", (), {"returncode": 0, "stdout": json.dumps({"report": ["1 steps"]}), "stderr": ""})()
+
+    monkeypatch.setattr(wp.subprocess, "run", fake_run)
+    assert wp.main(["--root", str(lrepo), "keys", "surface:1", '[{"key": "enter"}]']) == 0
+    assert seen == [{"verb": "keys", "tab": "surface:1", "keys": [{"key": "enter"}]}]
+    assert wp.main(["--root", str(lrepo), "keys", "surface:1", "not json"]) == 2
+
+
 def test_launch_dry_run_prints_and_hands_nothing_to_the_driver(lrepo, capsys, monkeypatch):
     calls = []
     monkeypatch.setattr(wp.NoneDriver, "launch", lambda *a, **k: calls.append(a) or [])
@@ -570,6 +633,17 @@ def test_launch_entries_name_the_workspace_of_their_area(lrepo):
     out = wp.build_launch(lrepo, CFG, ["payments-incident", "platform-upgrade", INBOX_ID,
                                        "20261006-1600-linked-thing-bbbb"], "report")
     assert [e["workspace"] for e in out] == ["Bigcorp", "Platform", "Misc", "Bigcorp"]
+
+
+def test_a_launch_follows_the_area_of_the_status_head_for_the_task_and_its_inbox_item(lrepo):
+    task(lrepo, "bigcorp-but-misc", context="bigcorp", area="misc")
+    linked = lrepo / "work" / "inbox" / "20261006-1700-linked-misc-cccc"
+    linked.mkdir(parents=True)
+    (linked / "item.yaml").write_text(
+        "schema_version: 1\nkind: question\nsummary: x\ngate: free\ntask: bigcorp-but-misc\n"
+        "created: '2026-10-06T17:00:00+02:00'\nfrom: test\n", encoding="utf-8")
+    out = wp.build_launch(lrepo, CFG, ["bigcorp-but-misc", "20261006-1700-linked-misc-cccc"], "report")
+    assert [e["workspace"] for e in out] == ["Misc", "Misc"]
 
 
 def test_an_unlinked_inbox_item_goes_to_the_default_workspace_whatever_its_summary(lrepo):
@@ -892,6 +966,15 @@ def test_the_cli_runs_the_optional_verbs(repo, tmp_path, capsys):
     assert wp.main(["--root", str(repo), "screen", "%3", "--lines", "5", "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == {"text": "line %3 5"}
     assert wp.main(["--root", str(repo), "focus", "%3"]) == 0 and wp.main(["--root", str(repo), "close", "%3"]) == 0
+
+
+@pytest.mark.parametrize("asked, read", [(5, 5), (3000, 3000), (5000, 5000), (99999, 5000), (0, 1)])
+def test_screen_asks_the_driver_for_at_most_five_thousand_lines(repo, tmp_path, capsys, asked, read):
+    script = tmp_path / "driver.py"
+    script.write_text(FULL_DRIVER)
+    (repo / "bridge-config.yaml").write_text(f"workplace:\n  driver: {{command: ['{sys.executable}', '{script}']}}\n")
+    assert wp.main(["--root", str(repo), "screen", "%3", "--lines", str(asked), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"text": f"line %3 {read}"}
 
 
 def test_a_resume_reopens_one_task_session_in_its_own_folder(lrepo):
@@ -1333,8 +1416,349 @@ def test_a_start_note_is_read_first_and_the_prompt_stays_ascii(lrepo, kind, mode
     assert wp.launch_prompt(kind, mode, item, "work/tasks/x/STATUS.md", start_note=True).isascii()
 
 
+@pytest.mark.parametrize("mode", ["go", "report"])
+def test_an_inbox_start_with_an_order_never_closes_on_its_own(mode):
+    """28.10.: a handed chat said "I want to analyse it more closely" and its tab closed the item after 31 s with
+    "nothing to do". With the person's sentence the tab notes its result and asks before closing; a close it proposes
+    is a question, a note that begins with 'Question:'. Without one the overtaken rule stays as it was."""
+    plain = wp.launch_prompt("inbox", mode, INBOX_ID)
+    noted = wp.launch_prompt("inbox", mode, INBOX_ID, start_note=True)
+    assert "close it without asking" in plain and "do not close the item on your own" not in plain
+    assert "do not close the item on your own" in noted and "a proposal to close is a question" in noted
+    assert f"python3 scripts/inbox.py note {INBOX_ID} 'Question: " in noted
+    # with an order the base prompt says nothing that contradicts it: no close without asking, no close when settled
+    assert "close it without asking" not in noted and "When it is settled, close" not in noted
+    assert "releases the close" not in noted and f"inbox.py close {INBOX_ID}" not in noted
+    assert f"inbox.py show {INBOX_ID}" in noted and "Never close a tab or a workspace." in noted
+    assert noted.isascii()
+    # a task tab closes no inbox item: its start note prompt keeps its own words
+    assert "do not close the item" not in wp.launch_prompt("task", mode, "x", "work/tasks/x/STATUS.md", start_note=True)
+
+
+def test_the_go_prompt_marks_a_question_on_the_item():
+    """The cockpit tells a question from a result by its head (returns.py QUESTION_HEADS): the go prompt asks for it"""
+    assert "begin a question with 'Question:'" in wp.launch_prompt("inbox", "go", INBOX_ID)
+
+
 def test_launch_cli_takes_start_note(lrepo, capsys):
     # a dry run (no --yes) prints the plan with the command
     assert wp.main(["--root", str(lrepo), "launch", "--items", "payments-incident", "--mode", "go",
                     "--start-note", "--json"]) in (0, 1)
     assert "Start note:" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- a new tab, a new workspace, a workspace closed
+
+MAKE_TABS = [
+    {"name": "Payments Incident", "workspace": "Bigcorp", "ref": "surface:4", "ws_ref": "workspace:1", "state": "waiting"},
+    {"name": "Notes", "workspace": "Scratch", "ref": "surface:6", "ws_ref": "workspace:2", "state": "waiting"},
+    {"name": "user@host:~", "workspace": "Research", "ref": "surface:8", "ws_ref": "workspace:3", "state": "shell"},
+]
+MAKE_CAPS = ["tabs", "sessions", "workspaces", "set_color", "new_tab", "new_workspace", "close_workspace"]
+MAKE_ANSWERS = {
+    "new_tab": {"report": ["tab Chat (surface:60) in Scratch"], "ref": "surface:60"},
+    "new_workspace": {"report": ["workspace Fresh (workspace:50)"], "ws_ref": "workspace:50", "ref": "surface:61"},
+    "close_workspace": {"report": ["workspace:2 closed"]},
+}
+
+
+def _make_driver(repo, tmp_path, tabs=MAKE_TABS, caps=MAKE_CAPS, workspaces=None, answers=None, agent=None) -> Path:
+    """A driver that lists `tabs`, announces `caps`, records every request and answers the verbs that make and close"""
+    import yaml
+    tmp_path.mkdir(exist_ok=True)
+    log = tmp_path / "make-requests.jsonl"
+    script = tmp_path / "make_driver.py"
+    replies = {**MAKE_ANSWERS, **(answers or {})}
+    script.write_text(textwrap.dedent(f"""\
+        import json, sys
+        req = json.load(sys.stdin)
+        with open({str(log)!r}, "a") as f:
+            f.write(json.dumps(req) + "\\n")
+        v = req["verb"]
+        replies = {replies!r}
+        if v == "tabs":
+            print(json.dumps({{"tabs": {tabs!r}}}))
+        elif v == "sessions":
+            print(json.dumps({{"sessions": {{}}}}))
+        elif v == "caps":
+            print(json.dumps({{"caps": {caps!r}}}))
+        elif v == "workspaces":
+            print(json.dumps({{"workspaces": {workspaces or []!r}}}))
+        elif v in replies:
+            print(json.dumps(replies[v]))
+        else:
+            print(json.dumps({{"error": "unknown verb " + v}})); sys.exit(1)
+        """))
+    cfg = {"driver": {"command": [sys.executable, str(script)]}, "control": {"name": "Control"},
+           "workspaces": [{"name": "Bigcorp", "contexts": ["bigcorp"], "aliases": ["bc"]}, {"name": "Misc", "default": True}]}
+    if agent:
+        cfg["agent"] = agent
+    (repo / "bridge-config.yaml").write_text(yaml.safe_dump({"workplace": cfg}), encoding="utf-8")
+    return log
+
+
+def _chat(command: str) -> tuple[str, list[str]]:
+    """The slug of a free chat and the words of its command after `claude`"""
+    import shlex
+    m = re.fullmatch(r"cd -- (\S+) && export BRIDGE_TAB_SLUG=(chat-[0-9a-f]{8}) && (claude .*)", command, re.S)
+    assert m, command
+    return m.group(2), shlex.split(m.group(3))
+
+
+def test_command_driver_sends_the_payloads_that_make_and_close_and_keeps_the_answered_refs(tmp_path):
+    log = tmp_path / "req.jsonl"
+    script = tmp_path / "d.py"
+    script.write_text("import json, sys\nreq = json.load(sys.stdin)\nopen(%r, 'a').write(json.dumps(req) + '\\n')\n"
+                      "print(json.dumps(%r.get(req['verb'])))\n" % (str(log), MAKE_ANSWERS))
+    drv = wp.CommandDriver([sys.executable, str(script)])
+    assert drv.new_tab("workspace:2", "Chat", "cd -- /x && agent") == ["tab Chat (surface:60) in Scratch"]
+    assert drv.refs == {"ref": "surface:60"} and not drv.failed
+    assert drv.new_tab("workspace:2", None, None) and drv.refs == {"ref": "surface:60"}
+    assert drv.new_workspace("Fresh", "Teal", "/x", "agent") == ["workspace Fresh (workspace:50)"]
+    assert drv.refs == {"ws_ref": "workspace:50", "ref": "surface:61"}
+    assert drv.close_workspace("workspace:2") == ["workspace:2 closed"] and drv.refs == {} and not drv.failed
+    assert [json.loads(x) for x in log.read_text().splitlines()] == [
+        {"verb": "new_tab", "workspace": "workspace:2", "title": "Chat", "command": "cd -- /x && agent"},
+        {"verb": "new_tab", "workspace": "workspace:2", "title": None, "command": None},
+        {"verb": "new_workspace", "title": "Fresh", "color": "Teal", "cwd": "/x", "command": "agent"},
+        {"verb": "close_workspace", "workspace": "workspace:2"}]
+
+
+def test_command_driver_that_fails_answers_an_error_line_and_no_ref(tmp_path):
+    script = tmp_path / "d.py"
+    script.write_text("import sys\nsys.exit(3)\n")
+    drv = wp.CommandDriver([sys.executable, str(script)])
+    (line,) = drv.new_tab("workspace:2", "Chat", None)
+    assert line.startswith("ERROR") and drv.failed and drv.refs == {}
+
+
+def test_none_driver_cannot_make_or_close_and_says_do_it_yourself():
+    none = wp.NoneDriver()
+    for lines in (none.new_tab("workspace:2", "Chat", "cmd"), none.new_workspace("Fresh", None, None, None),
+                  none.close_workspace("workspace:2")):
+        (line,) = lines
+        assert "no driver" in line.lower() and "yourself" in line
+    assert none.refs == {} and none.caps() == []
+
+
+def test_cli_new_tab_shell_opens_a_plain_shell_and_answers_the_ref_as_json(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--kind", "shell", "--title=Scratch pad", "--json"]) == 0
+    assert _requests(log, "new_tab") == [{"verb": "new_tab", "workspace": "workspace:2", "title": "Scratch pad",
+                                          "command": None}]
+    assert json.loads(capsys.readouterr().out) == {"ok": True, "report": ["tab Chat (surface:60) in Scratch"],
+                                                   "ref": "surface:60"}
+    # without --json the report lines, nothing else
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--kind", "shell"]) == 0
+    assert capsys.readouterr().out == "tab Chat (surface:60) in Scratch\n"
+
+
+def test_cli_new_tab_agent_is_the_configured_agent_with_no_task_prompt(repo, tmp_path):
+    log = _make_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2"]) == 0          # agent is the default kind
+    (req,) = _requests(log, "new_tab")
+    slug, words = _chat(req["command"])
+    assert words == ["claude", "-n", slug]                       # a free chat: no sentence, no prompt slot
+    assert req["command"].startswith(f"cd -- {repo} && export BRIDGE_TAB_SLUG={slug} && ")
+    # the sentence is the prompt, nothing of a task around it
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--text=Why is the build red?"]) == 0
+    slug, words = _chat(_requests(log, "new_tab")[1]["command"])
+    assert words == ["claude", "-n", slug, "Why is the build red?"]
+
+
+def test_cli_new_tab_uses_the_agent_template_of_the_config_and_its_model_defaults(repo, tmp_path):
+    log = _make_driver(repo, tmp_path, agent={"new": "assistant --name {slug} --say {prompt}", "model": "haiku"})
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--text=Hello there"]) == 0
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2"]) == 0
+    first, second = (r["command"] for r in _requests(log, "new_tab"))
+    assert first.endswith("&& assistant --name %s --say 'Hello there'" % re.search(r"chat-[0-9a-f]{8}", first).group(0))
+    assert re.search(r"&& assistant --name chat-[0-9a-f]{8} --say$", second)       # the slot goes, nothing is left over
+    # the model is claude's flag: a template for another agent gets none (as in launch)
+    assert "--model" not in first
+
+
+def test_cli_new_tab_passes_model_and_effort_as_launch_does(repo, tmp_path):
+    log = _make_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--text=Hi", "--model", "opus", "--effort", "high"]) == 0
+    slug, words = _chat(_requests(log, "new_tab")[0]["command"])
+    assert words == ["claude", "-n", slug, "Hi", "--model", wp.CLAUDE_MODELS["opus"], "--effort", "high"]
+    # the config's own defaults apply when the call asks for none, like a launch
+    log2 = _make_driver(repo, tmp_path / "b", agent={**wp.DEFAULT_AGENT, "model": "sonnet", "effort": "low"})
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2"]) == 0
+    slug, words = _chat(_requests(log2, "new_tab")[0]["command"])
+    assert words == ["claude", "-n", slug, "--model", wp.CLAUDE_MODELS["sonnet"], "--effort", "low"]
+
+
+HOSTILE = "it's $(touch PWNED); `rm -rf ~` \"quoted\" \\ back\nsecond line & | > < \u00fcber \u20ac {slug} {0}"
+
+
+def test_the_persons_words_reach_the_agent_as_one_argument_through_a_real_shell(repo, tmp_path):
+    """shell quoting, tested by running the command: the sentence arrives byte for byte, and nothing in it runs"""
+    out = tmp_path / "argv.json"
+    agent = tmp_path / "agent.py"
+    agent.write_text("import json, sys\nopen(sys.argv[1], 'w').write(json.dumps(sys.argv[2:]))\n")
+    log = _make_driver(repo, tmp_path, agent={"new": f"{sys.executable} {agent} {out} {{slug}} {{prompt}}"})
+    hostile = HOSTILE.replace("PWNED", str(tmp_path / "pwned"))
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--text", hostile]) == 0
+    (req,) = _requests(log, "new_tab")
+    import subprocess
+    subprocess.run(req["command"], shell=True, check=True, timeout=30)
+    slug, sentence = json.loads(out.read_text(encoding="utf-8"))
+    assert sentence == hostile and re.fullmatch(r"chat-[0-9a-f]{8}", slug)
+    assert not (tmp_path / "pwned").exists()
+
+
+def test_an_agent_template_without_a_prompt_slot_refuses_a_sentence_rather_than_drop_it(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path, agent={"new": "assistant --name {slug}"})
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--text=Hello there"]) == 2
+    assert "no {prompt}" in capsys.readouterr().err and _requests(log, "new_tab") == []
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2"]) == 0                  # a free chat needs none
+
+
+def test_a_sentence_that_starts_with_a_dash_is_not_taken_for_a_flag(repo, tmp_path):
+    log = _make_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--text=-5 degrees: is that cold?"]) == 0
+    slug, words = _chat(_requests(log, "new_tab")[0]["command"])
+    assert words == ["claude", "-n", slug, "--", "-5 degrees: is that cold?"]
+
+
+@pytest.mark.parametrize("args, why", [
+    (["--kind", "shell", "--text=hello"], "takes no sentence"),
+    (["--text="], "a sentence has"),
+    (["--text=" + "x" * 2001], "a sentence has"),
+    (["--text=bell\x07"], "a control code"),
+    (["--title=", "--kind", "shell"], "a title has"),
+    (["--title=" + "x" * 81], "a title has"),
+    (["--title=two\nlines"], "control characters"),
+    (["--title=Payments Incident"], "known by this name"),
+    (["--title=payments-incident"], "known by this name"),
+    (["--title=notes"], "name in use"),
+    (["--title=user@host:~"], "name in use"),
+])
+def test_cli_new_tab_refuses_a_bad_sentence_or_title_before_the_driver_is_asked(repo, tmp_path, capsys, args, why):
+    log = _make_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", *args]) == 2
+    assert why in capsys.readouterr().err
+    assert _requests(log, "new_tab") == []
+
+
+def test_cli_new_tab_refusal_never_repeats_the_sentence(repo, tmp_path, capsys):
+    _make_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--kind", "shell", "--text=secret words"]) == 2
+    assert "secret" not in capsys.readouterr().err
+
+
+def test_cli_new_tab_takes_a_live_workspace_ref_only(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path, workspaces=[{"ref": "workspace:8", "title": "Empty"}])
+    for ref in ("Scratch", "scratch", "workspace:77", "workspace:"):
+        assert wp.main(["--root", str(repo), "new-tab", ref, "--kind", "shell"]) == 2, ref
+    assert "no open workspace" in capsys.readouterr().err and _requests(log, "new_tab") == []
+    # a workspace the driver lists is live even with no tab in it
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:8", "--kind", "shell"]) == 0
+    assert _requests(log, "new_tab")[0]["workspace"] == "workspace:8"
+
+
+def test_cli_new_tab_without_the_cap_or_a_driver_is_refused(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path, caps=["tabs", "sessions"])
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2"]) == 2
+    assert "cannot new tab" in capsys.readouterr().err and _requests(log, "new_tab") == []
+    (repo / "bridge-config.yaml").unlink()
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2"]) == 2
+
+
+def test_cli_new_tab_reports_a_driver_error_line_as_exit_one_and_still_answers_the_ref(repo, tmp_path, capsys):
+    _make_driver(repo, tmp_path, answers={"new_tab": {"report": ["ERROR tab Chat: command did not start"],
+                                                      "ref": "surface:60"}})
+    assert wp.main(["--root", str(repo), "new-tab", "workspace:2", "--kind", "shell", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out) == {"ok": False, "report": ["ERROR tab Chat: command did not start"],
+                                                   "ref": "surface:60"}
+
+
+def test_cli_new_workspace_makes_one_and_answers_both_refs(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    assert wp.main(["--root", str(repo), "new-workspace", "--title=Fresh", "--kind", "shell", "--color", "teal",
+                    f"--cwd={folder}", "--json"]) == 0
+    assert _requests(log, "new_workspace") == [{"verb": "new_workspace", "title": "Fresh", "color": "Teal",
+                                                "cwd": str(folder), "command": None}]
+    assert json.loads(capsys.readouterr().out) == {"ok": True, "report": ["workspace Fresh (workspace:50)"],
+                                                   "ws_ref": "workspace:50", "ref": "surface:61"}
+
+
+def test_cli_new_workspace_agent_starts_in_its_folder_and_none_starts_no_command(repo, tmp_path):
+    log = _make_driver(repo, tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    assert wp.main(["--root", str(repo), "new-workspace", "--title=Chat", f"--cwd={folder}", "--text=Hello",
+                    "--model", "sonnet"]) == 0
+    assert wp.main(["--root", str(repo), "new-workspace", "--title=Plain", "--kind", "none"]) == 0
+    assert wp.main(["--root", str(repo), "new-workspace", "--title=Agent"]) == 0
+    agent, plain, default = _requests(log, "new_workspace")
+    slug, words = _chat(agent["command"])
+    assert words == ["claude", "-n", slug, "Hello", "--model", wp.CLAUDE_MODELS["sonnet"]]
+    assert agent["command"].startswith(f"cd -- {folder} && ") and agent["cwd"] == str(folder)
+    assert plain["command"] is None and plain["cwd"] == str(repo) and plain["color"] is None
+    assert default["command"].startswith(f"cd -- {repo} && ")           # the Bridge folder, as a launch
+
+
+@pytest.mark.parametrize("args, why", [
+    (["--title=Fresh", "--kind", "none", "--text=hi"], "takes no sentence"),
+    (["--title=Fresh", "--kind", "shell", "--text=hi"], "takes no sentence"),
+    (["--title=Fresh", "--color", "Sky"], "not a palette colour"),
+    (["--title=Fresh", "--color", "#123456"], "not a palette colour"),
+    (["--title=Fresh", "--cwd=/no/such/folder/anywhere"], "not a folder"),
+    (["--title=Fresh", "--cwd=relative/path"], "not a folder"),
+    (["--title="], "a title has"),
+    (["--title=" + "x" * 81], "a title has"),
+    (["--title=bad\x07bell"], "control characters"),
+    (["--title=Bigcorp"], "configured workspace"),
+    (["--title=BC"], "configured workspace"),
+    (["--title=control"], "configured workspace"),
+    (["--title=scratch"], "name in use"),
+    (["--title=Research"], "name in use"),
+])
+def test_cli_new_workspace_refuses_before_the_driver_is_asked(repo, tmp_path, capsys, args, why):
+    log = _make_driver(repo, tmp_path)
+    assert wp.main(["--root", str(repo), "new-workspace", *args]) == 2
+    assert why in capsys.readouterr().err
+    assert _requests(log, "new_workspace") == []
+
+
+def test_cli_new_workspace_needs_a_title(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path)
+    with pytest.raises(SystemExit) as stop:
+        wp.main(["--root", str(repo), "new-workspace", "--kind", "shell"])
+    assert stop.value.code == 2 and "--title" in capsys.readouterr().err
+    assert _requests(log, "new_workspace") == []
+
+
+def test_cli_new_workspace_needs_the_cap_and_a_colour_needs_set_color(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path, caps=["tabs", "sessions", "workspaces", "new_workspace"])
+    assert wp.main(["--root", str(repo), "new-workspace", "--title=Fresh", "--color", "Teal"]) == 2
+    assert "cannot set color" in capsys.readouterr().err
+    assert wp.main(["--root", str(repo), "new-workspace", "--title=Fresh"]) == 0          # no colour asked: fine
+    _make_driver(repo, tmp_path / "b", caps=["tabs", "sessions"])
+    assert wp.main(["--root", str(repo), "new-workspace", "--title=Other"]) == 2
+    assert "cannot new workspace" in capsys.readouterr().err
+    assert len(_requests(log, "new_workspace")) == 1
+
+
+def test_cli_close_workspace_takes_a_live_ref_only(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path, workspaces=[{"ref": "workspace:8", "title": "Empty"}])
+    assert wp.main(["--root", str(repo), "close-workspace", "workspace:2", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"ok": True, "report": ["workspace:2 closed"]}
+    assert wp.main(["--root", str(repo), "close-workspace", "workspace:8"]) == 0
+    for ref in ("Scratch", "scratch", "workspace:77", "surface:6"):
+        assert wp.main(["--root", str(repo), "close-workspace", ref]) == 2, ref
+    assert [r["workspace"] for r in _requests(log, "close_workspace")] == ["workspace:2", "workspace:8"]
+    assert "no open workspace" in capsys.readouterr().err
+
+
+def test_cli_close_workspace_without_the_cap_is_refused_and_a_driver_refusal_is_exit_one(repo, tmp_path, capsys):
+    log = _make_driver(repo, tmp_path, caps=["tabs", "sessions"])
+    assert wp.main(["--root", str(repo), "close-workspace", "workspace:2"]) == 2
+    assert "cannot close workspace" in capsys.readouterr().err and _requests(log, "close_workspace") == []
+    _make_driver(repo, tmp_path / "b", answers={"close_workspace": {"report": ["ERROR workspace:2 is the last one"]}})
+    assert wp.main(["--root", str(repo), "close-workspace", "workspace:2"]) == 1
+    assert "ERROR workspace:2 is the last one" in capsys.readouterr().out

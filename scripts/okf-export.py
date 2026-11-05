@@ -612,6 +612,7 @@ def resolve_wikilinks(text: str, slug_to_relpath: dict) -> tuple[str, list[str]]
 # literal copy in the guard would drift silently the day someone adds a
 # pattern to only one of the two, and the walk would resume eating its own
 # output (issue #153). Add a pattern here and both behaviours follow.
+_DOC_TIER_PREFIXES = ("docs/user/", "docs/org/", "docs/personal/")
 _SCOPE_PATTERNS: dict[str, tuple[str, ...]] = {
     "core": (
         "docs/**/*.md",
@@ -779,7 +780,38 @@ def discover_sources(root: Path, scope: str) -> list[Path]:
     found: set[Path] = set()
     for pattern in patterns_for(scope):
         found.update(p for p in root.glob(pattern) if p.is_file())
+    if scope == "core":
+        # The core scope is the privacy boundary, so it keeps only what the
+        # scope router itself calls core: never docs/user/, docs/org/ or
+        # docs/personal/ (docs/kernel.md), and never a doc a fork has not moved
+        # yet whose `scope:` line keeps it local.
+        found = {p for p in found
+                 if not p.relative_to(root).as_posix().startswith(_DOC_TIER_PREFIXES)
+                 and not (p.relative_to(root).as_posix().startswith("docs/")
+                          and _router_tier(root, p.relative_to(root).as_posix()) != "core")}
     return sorted(found, key=lambda p: p.relative_to(root).as_posix())
+
+
+_ROUTER = None
+
+
+def _router_tier(root: Path, rel: str) -> str:
+    """The tier scripts/categorize-commits.py gives `rel` inside `root`."""
+    global _ROUTER
+    if _ROUTER is None:
+        spec = importlib.util.spec_from_file_location(
+            "categorize_commits_okf", Path(__file__).resolve().parent / "categorize-commits.py")
+        if spec is None or spec.loader is None:
+            raise RuntimeError("scripts/categorize-commits.py not found beside okf-export.py")
+        _ROUTER = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_ROUTER)
+    import os
+    here = os.getcwd()
+    try:
+        os.chdir(root)
+        return _ROUTER.classify_file(rel)
+    finally:
+        os.chdir(here)
 
 
 def concept_type_for(path: Path, root: Path) -> str:

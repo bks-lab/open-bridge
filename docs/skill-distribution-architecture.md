@@ -112,8 +112,8 @@ clone-as-framework anymore.
 
 **Rejected because:**
 
-- `CLAUDE.md` is framework-bound (declares the project to Claude), not
-  packageable inside a plugin
+- `AGENTS.md` (the entry file, with its fixed `@` imports) is framework-bound,
+  not packageable inside a plugin
 - `work/log.md`, `work/board.md` are per-user runtime state, not plugin content
 - Claude Code's plugin model doesn't support this
 
@@ -140,7 +140,7 @@ Plugin Marketplace (distributes the standalone tool-skills).
 ```
 open-bridge                         [framework only, no marketplace]
 ├── skills/                         ← CORE skills (Bridge-context-bound)
-├── rules/, protocols/, docs/, CLAUDE.md
+├── rules/, protocols/, docs/, AGENTS.md
 └── bin/setup                       ← symlinks .claude/skills/ → ../skills/
 
 <your-org>/<your-org>-bridge        [framework + marketplace]

@@ -25,6 +25,7 @@ import datetime as dt
 import http.client
 import json
 import re
+import urllib.parse
 import os
 import socket
 import stat
@@ -78,6 +79,7 @@ def collect_fixture(root: Path) -> dict:
                 {"id": "do", "title": "Do", "items": [
                     {"title": "Review the demo report", "inbox_id": ONLY_ID, "gate": "only-you", "urgency": "today",
                      "task": "demo-task", "sources": ["inbox"], "why": ["due 10.10", "only you"], "has_action": False,
+                     "created": "2026-10-09T09:00",
                      "inbox_state": "open", "inbox_key": "demo-review", "due": "2026-10-10",
                      "mark": {"label": "Demo", "color": "blue"}, "new": True}]},
                 {"id": "plan", "title": "Plan", "items": [
@@ -98,18 +100,18 @@ def collect_fixture(root: Path) -> dict:
             "status": [{"title": "Systems", "count": 0, "health": True}],
         },
         "pages": [
-            {"id": "systems", "title": "Systems", "sections": [
+            {"id": "systems", "title": "Systems", "subs": ["@workers", "tasks"], "sections": [
                 {"id": "checks", "kind": "command", "title": "Checks", "status": "ok", "alarm": True, "bad": 1,
                  "weight": 1, "total": 1, "items": [
                      {"id": "backup-stale", "title": "Backup older than 2 days", "detail": "drift", "tone": "bad",
-                      "url": "https://example.org/backup", "ask": True, "actionable": True}]},
+                      "url": "https://example.org/backup", "ask": True, "actionable": True, "glyph": "⚠"}]},
                 {"id": "upstream", "kind": "command", "title": "Upstreams (2)", "status": "ok", "weight": 1,
                  "items": [{"id": "upstream-drift", "title": "Upstream drift", "tone": "warn", "url": "file:///etc/passwd", "ask": True,
                            "actionable": True}]},
                 {"id": "accounts", "kind": "command", "title": "Accounts", "status": "ok", "weight": 1, "view": "tiles",
-                 "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
+                 "hide_ok": True, "place": "rail", "items": [{"title": "Azure X", "tags": {"Provider": "azure"}, "account": {"id": "azure-x", "status": "active"}},
                            {"title": "Not an account"}]}]},
-            {"id": "tasks", "title": "Tasks", "sections": [
+            {"id": "tasks", "title": "Tasks", "under": "systems", "sections": [
                 {"id": "tasks", "kind": "tasks", "title": "Tasks", "status": "ok", "items": [
                     {"title": "Demo task", "task": "demo-task", "priority": "P1", "state": "doing",
                      "url": f"file://{root}/work/tasks/demo-task/STATUS.md",
@@ -180,7 +182,7 @@ class FakeRunner(Runner):
     """Records argv, answers from handlers, still enforces the allowlist of the real runner."""
 
     def __init__(self, root: Path, cmux: str | None = "/fake/bin/cmux"):
-        super().__init__(root, cmux=cmux, claude="/fake/bin/claude", codex="/fake/bin/codex")
+        super().__init__(root, cmux=cmux, claude="/fake/bin/claude", codex="/fake/bin/codex", git="/fake/bin/git")
         self.calls: list[list[str]] = []
         self.root_path = Path(root)
         self.handlers = {
@@ -188,7 +190,7 @@ class FakeRunner(Runner):
             "workplace.tasks": lambda argv: ok(TASKS),
             "workplace.teams": lambda argv: ok(TEAMS),
             "workplace.status": lambda argv: ok(STATUS),
-            "workplace.caps": lambda argv: ok({"caps": ["tabs", "sessions", "open", "launch", "send", "rename",
+            "workplace.caps": lambda argv: ok({"caps": ["tabs", "sessions", "open", "launch", "send", "rename", "keys",
                                                          "control", "focus", "key", "screen", "close"]}),
             "workplace.launch": lambda argv: ok(self.launch_answer(argv)),
             "inbox.list": lambda argv: ok([{"id": YES_ID, "state": "open"}]),
@@ -203,6 +205,8 @@ class FakeRunner(Runner):
     def key(self, argv: list[str]) -> str:
         if argv[0] == self.claude:
             return "claude.p"
+        if argv[0] == self.git:
+            return "git.log"
         if argv[0] == self.codex:
             return "codex.exec"
         name = Path(argv[1]).stem
@@ -428,6 +432,14 @@ def test_result_belongs_to_exactly_one_tab():
     assert m.filed_by(tab("waiting", "alpha-beta"), v)
 
 
+def test_parse_pages_keeps_steps_buttons_and_drops_anything_else():
+    pages = m.parse_pages({"pages": [{"id": "lab", "title": "Lab", "sections": [
+        {"id": "pcs", "steps": "buttons", "items": []}, {"id": "vms", "steps": "huge", "items": []}, {"id": "logs", "items": []}]}]})
+    secs = {x["id"]: x for x in pages[0]["sections"]}
+    assert secs["pcs"]["steps"] == "buttons"
+    assert secs["vms"]["steps"] is None and secs["logs"]["steps"] is None
+
+
 def test_parse_pages():
     pages = m.parse_pages({"pages": [
         {"id": "briefing", "title": "X", "sections": [{"id": "a"}]},
@@ -441,12 +453,20 @@ def test_parse_pages():
     assert s["items"][0] == {"title": "T", "detail": "open", "when": "09:30", "tone": "warn", "url": "https://x.test",
                              "task": "alpha", "ask": True, "mark": None, "priority": None, "state": None, "lines": [], "meter": None,
                              "group": None, "icon": None, "tags": None, "account": None, "inbox": None,
-                             "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "cal": None, "due_at": None, "at": None, "id": None, "actionable": False}
+                             "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "cal": None, "due_at": None, "at": None, "id": None, "actionable": False,
+                             # where it comes from, raw (origin.py classifies it in the collector)
+                             "origin_raw": None, "origin_provider": None, "origin_section_kind": None, "inbox_key": None,
+                             "about_task": None, "about_kind": None, "glyph": None}
     assert s["as_of"] is None and s["empty"] == "nothing"
     assert s["boards"] is None and s["metrics"] is None and s["stale"] is None and s["cal_figures"] is None
     assert pages[0]["overview"] is False
     ops = m.parse_pages({"pages": [{"id": "ops", "title": "Betrieb", "overview": True, "sections": [{"id": "a"}]}]})
     assert ops[0]["overview"] is True
+    # `search: true` reaches the page, so the cockpit draws its search field; anything else is no search
+    found = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [{"id": "a"}]},
+                                     {"id": "odd", "title": "Odd", "search": "yes", "sections": [{"id": "a"}]}]})
+    assert [p["search"] for p in found] == [True, False]
+    assert pages[0]["search"] is False
     # an order by Jev: the server keeps the words of `jev:`, the page only learns that there is one
     work = m.parse_pages({"pages": [{"id": "w", "title": "Arbeit", "jev": {"skip_sections": ["b"], "private": ["p"]},
                                      "sections": [{"id": "a"}]}]})
@@ -467,6 +487,35 @@ def test_parse_pages_places_cards_by_the_profile():
     # not a list: no placement, the page keeps what `overview` alone draws
     assert m.parse_pages({"pages": [{"id": "ops", "title": "B", "cards": "costs", "sections": [{"id": "a"}]}]})[0]["cards"] is None
     assert m.parse_cards([]) == []
+
+
+def test_parse_pages_keeps_where_a_page_stands_and_what_a_section_hides():
+    # `under`: the page has no tab, a tile of its parent opens it; the parent's `subs` name its sub pages in their
+    # order (text only); a section's hide_ok: drawn only while one of its rows is a finding
+    pages = m.parse_pages({"pages": [
+        {"id": "ops", "title": "Betrieb", "subs": ["@workers", "inv", 3, ""], "sections": [{"id": "a", "hide_ok": True}]},
+        {"id": "inv", "title": "Inventar", "under": "ops", "sections": [{"id": "b", "hide_ok": "yes"}]},
+        {"id": "lab", "title": "Labor", "under": 7, "subs": "inv", "sections": [{"id": "c"}]}]})
+    assert pages[0]["subs"] == ["@workers", "inv"] and pages[0]["under"] is None
+    assert pages[1]["under"] == "ops" and pages[1]["subs"] == []
+    assert pages[2]["under"] is None and pages[2]["subs"] == []
+    assert [p["sections"][0]["hide_ok"] for p in pages] == [True, False, False]
+
+
+def test_parse_pages_keeps_the_log_layout_keys():
+    # every key of the log layout passes parse_pages one by one, else the page never learns it (the bug of `search`):
+    # a section's `view: log`, its `place: rail`, a log row's glyph; anything else is no log and the main column
+    pages = m.parse_pages({"pages": [{"id": "log", "title": "Log", "search": True, "sections": [
+        {"id": "a", "kind": "activity", "view": "log", "items": [{"title": "Shipped it", "when": "09:15", "glyph": "✅",
+                                                                  "at": "2026-10-08T09:15"}, {"title": "x", "glyph": 7}]},
+        {"id": "b", "kind": "commits", "place": "rail"}, {"id": "c", "view": "diary", "place": "left"}]}]})
+    secs = pages[0]["sections"]
+    assert [x["view"] for x in secs] == ["log", None, None]
+    assert [x["place"] for x in secs] == [None, "rail", None]
+    assert [i["glyph"] for i in secs[0]["items"]] == ["✅", None]
+    # the time range of the log page (views/logrange.js) needs the kinds (the work log, the commits) and each row's minute
+    assert [x["kind"] for x in secs[:2]] == ["activity", "commits"]
+    assert [i["at"] for i in secs[0]["items"]] == ["2026-10-08T09:15", None]
 
 
 def test_mark_and_as_of():
@@ -554,6 +603,17 @@ def test_with_tasks_keeps_a_task_row_with_inbox_count():
     assert out["buckets"][0]["rows"][1]["priority"] == "P0"
     resting = next(b for b in out["buckets"] if b["id"] == "resting")["rows"]
     assert resting[0]["why"] == ["quiet for 4 days"]
+
+
+def test_an_inbox_row_keeps_its_own_area_unless_its_task_has_one():
+    v = m.parse_view({"view": {"buckets": [{"id": "do", "items": [
+        {"title": "sink", "sources": ["inbox"], "inbox_id": "1", "area": "Home"},
+        {"title": "fix", "sources": ["inbox"], "inbox_id": "2", "area": "Home", "task": "alpha"},
+        {"title": "bare", "sources": ["inbox"], "inbox_id": "3"}]}]}, "sections": []}, True, NOW)
+    rows = {r["inbox_id"]: r for r in m.with_tasks(v, [tinfo("alpha")])["buckets"][0]["rows"]}
+    assert (rows["1"]["area"], rows["1"]["area_names"]) == ("Home", ["Home"])
+    assert rows["2"]["area"] == "Area"                     # the task's area wins
+    assert (rows["3"]["area"], rows["3"]["area_names"]) == (None, [])
 
 
 def test_with_tasks_does_not_add_a_listed_task_twice():
@@ -875,7 +935,7 @@ def test_model_shape(world):
     assert set(model["approvable"]) == {f"inbox:{YES_ID}", f"inbox:{YES2_ID}"}
     assert secs["give"]["total"] == 3
     demo = world.row("task:demo-task")
-    assert demo["tab"] == {"ref": "surface:7", "state": "needs-you", "live": True, "waiting": True}
+    assert demo["tab"] == {"ref": "surface:7", "state": "needs-you", "live": True, "waiting": True, "idle": False}
     assert [a["id"] for a in demo["actions"]] == ["to_tab"] and demo["selectable"] is False
     assert demo["team"]["team_id"] == "build" and demo["team"]["started"] == 1     # inferred from the live tab
     other = world.row("task:other-task")
@@ -898,6 +958,13 @@ def test_model_shape(world):
     assert pages["systems"]["group"] == "main"
     assert pages["systems"]["overview"] is False      # the browser gets the overview switch of every page
     assert pages["systems"]["jev"] is False           # and whether it can be ordered by Jev, never the words
+    # where a page stands: under another (no tab of its own), and which sub pages a page names, in their order
+    assert pages["tasks"]["under"] == "systems" and pages["systems"]["under"] is None
+    assert pages["systems"]["subs"] == ["@workers", "tasks"] and pages["tasks"]["subs"] == []
+    assert [x["hide_ok"] for x in pages["systems"]["sections"]] == [False, False, True]
+    # the log layout reaches the browser: where a section stands (the rail) and a log row's glyph
+    assert [x["place"] for x in pages["systems"]["sections"]] == [None, None, "rail"]
+    assert pages["systems"]["sections"][0]["items"][0]["glyph"] == "⚠"
     assert model["teams"][0]["roles"][1] == {"id": "review", "name": "Review", "mode": "report"}
     dumped = json.dumps(model)
     assert "file://" not in dumped and world.app.token not in dumped and "command" not in model
@@ -1274,6 +1341,9 @@ def test_a_page_item_put_off_or_settled_no_longer_counts(world):
     assert (sec["items"], sec["count"], sec["total"], sec["bad"]) == ([], 0, 0, 0)
     assert pg["badge"]["kind"] != "bad"
     assert not [a for a in world.app.collector.model["alarms"] if a["page_id"] == "systems"]
+    # its weight goes too: the grey number of the tab counts only the two sections that still show a row
+    assert sec["weight"] == 0
+    assert pg["badge"] == {"kind": "count", "n": 2, "warn": True}
 
 
 def test_advise_later_and_settle_work_on_a_page_item(world):
@@ -1397,9 +1467,61 @@ def test_runs_on_puts_off_an_item_with_what_it_waits_on_and_quiets_a_task(world)
     assert writes(world)[0] == K(world, "wait", "demo-task", "--until", TOMORROW, "--json")
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
     assert undo == {"verb": "task_running", "args": {"slug": "demo-task"}}
+    # the history names a task as a task (and a stream as a stream), not only as "task"
+    assert [it.get("work_kind") for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0] == "task"
     world.runner.calls.clear()
     world.act(undo["verb"], **undo["args"])                                # running again: the undo
     assert writes(world)[0] == K(world, "wait", "demo-task", "--clear", "--json")
+
+
+def test_shelve_parks_a_task_with_its_reason_and_reopen_takes_it_back(world):
+    # "Drop because" of the Work through page on a task: task.py shelve, an idea in the inbox and the task declined
+    world.runner.calls.clear()
+    res = world.act("shelve", key="task:other-task", reason="not needed any more")
+    assert writes(world) == [K(world, "shelve", "other-task", "--reason=not needed any more")]
+    assert res["ok"] is True and res["settled"] == ["task:other-task"]
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo["verb"] == "task_reopen" and undo["args"]["slug"] == "other-task"
+    assert res["undo"][0]["undo"] == undo
+
+
+def test_shelve_names_the_day_the_idea_comes_back_when_one_is_given(world):
+    world.runner.calls.clear()
+    world.act("shelve", key="task:other-task", reason="after the release", until=TOMORROW)
+    assert writes(world) == [K(world, "shelve", "other-task", "--reason=after the release", "--until", TOMORROW)]
+
+
+def test_shelve_is_for_a_task_only_and_needs_its_reason(world):
+    world.runner.calls.clear()
+    refused(world, "not_applicable", "shelve", key="task:quiet-task", reason="a stream never ends this way")
+    refused(world, "not_applicable", "shelve", key=f"inbox:{YES_ID}", reason="an inbox item is dropped")
+    refused(world, "invalid_argument", "shelve", key="task:other-task")
+    refused(world, "invalid_argument", "shelve", key="task:other-task", reason="   ")
+    refused(world, "invalid_argument", "shelve", key="task:other-task", reason="x" * 201)
+    refused(world, "invalid_argument", "shelve", key="task:other-task", reason="ok", until=TODAY)
+    assert writes(world) == []
+
+
+def test_a_shelve_reason_that_looks_like_flags_stays_one_word(world):
+    world.runner.calls.clear()
+    world.act("shelve", key="task:other-task", reason="--until 2030-01-01 --json; rm -rf /")
+    argv = writes(world)[0]
+    assert argv == K(world, "shelve", "other-task", "--reason=--until 2030-01-01 --json; rm -rf /")
+    assert "--until" not in argv and "--json" not in argv
+
+
+def test_a_failed_shelve_leaves_the_task_and_says_so(world):
+    world.runner.handlers["task.shelve"] = lambda argv: fail("task: no task 'other-task'")
+    res = world.act("shelve", key="task:other-task", reason="not needed")
+    assert res["ok"] is False and res["settled"] == [] and "other-task" not in json.dumps(world.app.history.state())
+
+
+def test_do_it_with_a_sentence_never_approves_a_yes_item(world):
+    # the Work through page starts every agent with a sentence, so a your-yes item is never released unseen (F3)
+    world.runner.calls.clear()
+    res = world.act("do_it", keys=[f"inbox:{YES_ID}"], note="Tidy them. At the end, write a note \"Result: ...\" on the item.")
+    assert world.runner.of("inbox.approve") == [] and res["settled"] == []
+    assert world.runner.of("workplace.launch")
 
 
 def test_an_inbox_item_becomes_a_task_and_leaves_the_list(world):
@@ -1433,7 +1555,8 @@ def test_hide_persists_in_state_json(world):
     world.act("hide", key="ref:example/repo#12", until="2026-10-12")
     data = json.loads((world.state / "state.json").read_text())
     assert data == {"v": 1, "hidden": {"ref:example/repo#12": "2026-10-12"}, "dismissed": {}, "team_runs": {},
-                    "home_tiles": None, "home_seen": None, "pins": [], "session_links": {}, "tour": None}
+                    "home_tiles": None, "home_seen": None, "pins": [], "session_links": {}, "tour": None,
+                    "runs_seen": {}, "session_refused": {}}
 
 
 def test_drop_on_an_inbox_item_drops_it_and_on_any_other_row_discards_it_for_good(world):
@@ -1527,6 +1650,16 @@ def test_urgency_priority_note(world):
     assert writes(world) == [K(world, "log", "--", "repo", "Fix the example issue (example/repo#12) · Sam looks at it")]
 
 
+def test_area_gives_an_inbox_item_a_configured_area_or_takes_it_back(world):
+    world.app.cfg = dataclasses.replace(world.app.cfg, areas=("Bridge", "Home"))
+    world.runner.calls.clear()
+    world.act("area", key=f"inbox:{YES_ID}", value="Bridge")
+    world.act("area", key=f"inbox:{YES_ID}")
+    assert writes(world) == [I(world, "area", YES_ID, "Bridge"), I(world, "area", YES_ID, "--clear")]
+    refused(world, "invalid_argument", "area", key=f"inbox:{YES_ID}", value="Mars")
+    refused(world, "not_applicable", "area", key="task:other-task", value="Bridge")   # a task's area is its own
+
+
 def test_task_close_closes_through_task_py_with_the_reason(world):
     world.runner.calls.clear()
     tx = world.app.tx
@@ -1561,6 +1694,73 @@ def test_settle_closes_or_drops_an_inbox_item_whatever_its_gate(world):
     world.runner.calls.clear()
     world.act("settle", keys=[f"inbox:{ONLY_ID}"], outcome="not_doing")
     assert writes(world) == [I(world, "drop", ONLY_ID, "--note", "dropped in the cockpit")]
+
+
+ASK_ID = "20261009-1100-check-review-b2c3"
+ASK2_ID = "20261009-1105-check-again-d4e5"
+
+
+def with_folded_asks(world, ended: tuple = ()):
+    """The line of ONLY_ID took in two asks filed about it ("ask about this row", briefing_view._fold); an id in
+    `ended` was closed meanwhile (an event says so)."""
+    for item_id, summary in ((ASK_ID, "Check: Review the demo report"), (ASK2_ID, "Check again: Review the demo report")):
+        folder = world.root / "work" / "inbox" / item_id
+        (folder / "events").mkdir(parents=True, exist_ok=True)
+        (folder / "item.yaml").write_text(f"schema_version: 1\nsummary: '{summary}'\ngate: only-you\n"
+                                          f"key: 'ask:{ONLY_ID}'\n", encoding="utf-8")
+        if item_id in ended:
+            (folder / "events" / "20261009T1130-close.yaml").write_text("verb: close\nat: '2026-10-09T11:30'\nby: me\n",
+                                                                       encoding="utf-8")
+
+    def collect(argv):
+        data = collect_fixture(world.root)
+        data["view"]["buckets"][0]["items"][0]["also_inbox"] = [ASK_ID, ASK2_ID, "../not-an-id"]
+        return ok(data)
+    world.runner.handlers["briefing.collect"] = collect
+    world.app.collector.request("both")
+    world.app.collector.drain()
+
+
+def test_a_line_carries_the_asks_it_took_in_with_their_titles(world):
+    with_folded_asks(world)
+    assert world.row(f"inbox:{ONLY_ID}")["also_inbox"] == [
+        {"id": ASK_ID, "title": "Check: Review the demo report"},
+        {"id": ASK2_ID, "title": "Check again: Review the demo report"}]
+    assert world.row(f"inbox:{YES_ID}")["also_inbox"] == []
+
+
+def test_the_asks_of_a_line_end_with_it_and_say_which_line(world):
+    with_folded_asks(world, ended=(ASK2_ID,))
+    note = world.app.tx["also_closed_note"].format(title="Review the demo report")
+    world.runner.calls.clear()
+    world.act("done", key=f"inbox:{ONLY_ID}")
+    # only the ask still open, never one closed meanwhile, never an id that fails validation
+    assert writes(world) == [I(world, "close", ONLY_ID, "--note", "marked done in the cockpit"),
+                             I(world, "close", ASK_ID, "--note", note)]
+
+
+def test_settling_a_line_ends_its_asks_the_same_way(world):
+    with_folded_asks(world)
+    note = world.app.tx["also_closed_note"].format(title="Review the demo report")
+    world.runner.calls.clear()
+    world.act("settle", keys=[f"inbox:{ONLY_ID}"], outcome="not_doing")
+    assert writes(world) == [I(world, "drop", ONLY_ID, "--note", "dropped in the cockpit"),
+                             I(world, "drop", ASK_ID, "--note", note), I(world, "drop", ASK2_ID, "--note", note)]
+
+
+def test_dropping_a_line_drops_its_asks(world):
+    with_folded_asks(world)
+    note = world.app.tx["also_closed_note"].format(title="Review the demo report")
+    world.runner.calls.clear()
+    world.act("drop", key=f"inbox:{ONLY_ID}")
+    assert writes(world)[1:] == [I(world, "drop", ASK_ID, "--note", note), I(world, "drop", ASK2_ID, "--note", note)]
+
+
+def test_putting_a_line_off_leaves_its_asks_alone(world):
+    with_folded_asks(world)
+    world.runner.calls.clear()
+    world.act("later", key=f"inbox:{ONLY_ID}", until=TOMORROW)
+    assert all(ASK_ID not in c and ASK2_ID not in c for c in writes(world))
 
 
 PAGE_ID = "20261005-1200-page-only-item-a1b2"
@@ -1643,6 +1843,29 @@ def test_a_row_step_runs_without_the_write_lock_and_only_once_at_a_time(world):
     assert len(world.runner.of("briefing.act")) == 1
 
 
+def test_a_row_step_that_asks_for_rechecks_reads_its_section_again_then_stops(world):
+    # a reboot answers at once and switches later: the step names when to look again, the cockpit voids the
+    # section's cache and runs a full pass at each, and nothing after the last (no standing poll)
+    world.runner.handlers["briefing.act"] = act_answer(did="Reboot to the other system", recheck=[75, 150, "x", -5, 99999])
+    world.act("row_action", page="tasks", section="apps", index=0, action="turned_down")
+    collector = world.app.collector
+    collector.drain()
+    cached = world.root / ".bridge" / "briefing-cache" / "demo" / "apps.json"
+    cached.parent.mkdir(parents=True, exist_ok=True)
+
+    def passes_after(seconds):
+        cached.write_text("{}", encoding="utf-8")
+        world.runner.calls.clear()
+        world.clock.advance(seconds)
+        collector.tick(1)
+        collector.drain()
+        return len(world.runner.of("briefing.collect")), cached.exists()
+    assert passes_after(74) == (0, True)
+    assert passes_after(2) == (1, False)
+    assert passes_after(75) == (1, False)
+    assert passes_after(400) == (0, True)
+
+
 def test_a_row_step_that_returns_a_tab_files_it_and_starts_it(world):
     # a calendar step ("Prepare weekly") runs nothing itself: briefing.py act hands back the prompt, the
     # cockpit files it as a decision under the event's key and starts an agent tab on it, as Do it does
@@ -1658,6 +1881,105 @@ def test_a_row_step_that_returns_a_tab_files_it_and_starts_it(world):
     assert "--key=event:prepare:2026-10-21T18:00 Weekly" in add and "--detail=/cycle prepare 2026-10-21" in add
     assert "--summary=Prepare weekly: Weekly (Wed 18:00)" in add
     assert launch_argv(world, new_id, "go") in calls
+
+
+WORKER_RUN = {"id": "chat-bot", "title": "Chat bot", "host": "homebox", "kind": "daemon", "when": "continuous",
+              "unit": "bridge.chat-bot", "runtime": "launchd", "log": "~/.bridge/workloads/chat-bot.out",
+              "program": "/opt/bridge/skills/chat/start.sh", "program_where": "in this repository",
+              "state": "last_run_failed", "retired": False,
+              "findings": [{"state": "last_run_failed", "severity": "high", "detail": "the last run ended with 75",
+                            "hint": "read the unit's log for that run"},
+                           {"state": "in_sync", "severity": "info", "detail": "matches its stamp", "hint": ""}],
+              "strip": [{"at": "2026-10-16T07:45:56Z", "rc": 75, "verdict": "failed"}], "day": {"marks": []}}
+
+
+def write_workers(world, runs):
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "workers-view.json").write_text(json.dumps({"schema": 1, "runs": runs}), encoding="utf-8")
+
+
+def test_analyse_in_a_tab_files_the_job_under_its_own_key_and_starts_an_advising_tab(world):
+    # the brief comes from the kept workers view, never from the page: the verb names only machine and job
+    write_workers(world, [WORKER_RUN])
+    new_id = "20261028-0736-background-job-chat-bot-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.calls.clear()
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    calls = writes(world)
+    add = next(c for c in calls if world.runner.key(c) == "inbox.add")
+    assert "--key=worker:homebox:chat-bot" in add
+    assert "--summary=Background job chat-bot on homebox: last run failed" in add
+    detail = next(a for a in add if a.startswith("--detail="))
+    for part in ("chat-bot", "homebox", "bridge.chat-bot", "continuous", "/opt/bridge/skills/chat/start.sh",
+                 "in this repository", "~/.bridge/workloads/chat-bot.out", "the last run ended with 75",
+                 "read the unit's log for that run", "matches its stamp", "2026-10-16T07:45:56Z",
+                 "workflow/workloads/chat-bot.yaml", "infra/remotes/homebox.yaml", "workload", "remote", "change nothing"):
+        assert part in detail, part
+    # the click is the order to analyse: it goes on the item as the start note, so the tab never closes the item as
+    # overtaken on its own (28.10.: a tab closed a job's item after 31 s with "nothing to do")
+    assert I(world, "note", new_id, "--", "Start note: " + text_mod.EN["worker_order"]) in calls
+    assert launch_argv(world, new_id, "report", "area", "--start-note") in calls
+    # the same key again: inbox.py hands back the same item, so the second click starts (or finds) that one, and its
+    # start note is there already
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": new_id, "state": "open", "key": "worker:homebox:chat-bot"}])
+    world.app.inbox_cache = (0.0, None)
+    world.clock.advance(20)
+    world.runner.calls.clear()
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    again = writes(world)
+    assert "--key=worker:homebox:chat-bot" in next(c for c in again if world.runner.key(c) == "inbox.add")
+    assert [world.runner.key(c) for c in again] == ["inbox.add", "workplace.launch"]
+    assert launch_argv(world, new_id, "report", "area", "--start-note") in again
+
+
+def test_analyse_in_a_tab_on_a_job_whose_item_was_dropped_opens_that_item_again(world):
+    # inbox.py keeps a dropped key dropped and hands back that item: the click is an order, so it is reopened first
+    write_workers(world, [WORKER_RUN])
+    old_id = "20261020-0900-background-job-chat-bot-e5f6"
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": old_id, "state": "dropped", "key": "worker:homebox:chat-bot"}])
+    world.app.inbox_cache = (0.0, None)
+    world.runner.handlers["inbox.add"] = lambda argv: ok(old_id + "\n")
+    world.runner.calls.clear()
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    keys = [world.runner.key(c) for c in writes(world)]
+    assert keys.index("inbox.reopen") < keys.index("workplace.launch"), keys
+    assert launch_argv(world, old_id, "report", "area", "--start-note") in writes(world)
+
+
+def test_the_brief_of_a_job_survives_a_view_of_another_shape(world):
+    # a hand edited or older workers-view.json: every field read is guarded, the brief says "not known" instead of a 500
+    odd = {**WORKER_RUN, "when": "daily at 06:05", "strip": {"at": "x"}, "day": ["no", "dict"], "findings": "none"}
+    write_workers(world, [odd, {**WORKER_RUN, "id": "pct", "when": "daily", "day": {"marks": [{"today": True, "at_pct": "soon"}]}}])
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261028-0736-background-job-chat-bot-a1b2\n")
+    for ident in ("chat-bot", "pct"):
+        world.runner.calls.clear()
+        world.act("worker_advise", host="homebox", id=ident)
+        detail = next(a for a in next(c for c in writes(world) if world.runner.key(c) == "inbox.add") if a.startswith("--detail="))
+        assert "not known" in detail, ident
+
+
+def test_analyse_in_a_tab_refuses_a_job_the_view_does_not_hold(world):
+    write_workers(world, [WORKER_RUN, {**WORKER_RUN, "id": "old-job", "retired": True}])
+    world.runner.calls.clear()
+    refused(world, "not_applicable", "worker_advise", host="homebox", id="other")
+    refused(world, "not_applicable", "worker_advise", host="laptop", id="chat-bot")      # the job runs elsewhere
+    refused(world, "not_applicable", "worker_advise", host="homebox", id="old-job")
+    refused(world, "invalid_argument", "worker_advise", host="homebox", id="../x")
+    assert writes(world) == []
+
+
+def test_the_workers_view_names_the_item_a_job_was_filed_as(world):
+    write_workers(world, [WORKER_RUN, {**WORKER_RUN, "id": "quiet"}])
+    world.runner.handlers["inbox.list"] = lambda argv: ok([
+        {"id": "20261028-0736-background-job-chat-bot-a1b2", "state": "done", "key": "worker:homebox:chat-bot"},
+        {"id": "20261028-0900-background-job-chat-bot-c3d4", "state": "open", "key": "worker:homebox:chat-bot"},
+        {"id": "20261028-0901-other-e5f6", "state": "open", "key": "worker:laptop:quiet"}])
+    world.app.inbox_cache = (0.0, None)
+    status, _, body = world.request("GET", "/api/workers", headers=world.cookie)
+    runs = {r["id"]: r for r in json.loads(body)["view"]["runs"]}
+    assert runs["chat-bot"]["advise"] == {"inbox": "20261028-0900-background-job-chat-bot-c3d4", "state": "open"}
+    assert "advise" not in runs["quiet"]        # filed for another machine
 
 
 def test_a_row_step_the_row_does_not_offer_or_a_row_without_steps_is_refused(world):
@@ -1684,6 +2006,22 @@ def test_settle_takes_a_foreign_row_out_for_good_and_show_again_brings_it_back(w
     assert "ref:example/repo#12" in world.app.store.dismissed()
     world.act("unhide", key="ref:example/repo#12")
     assert "ref:example/repo#12" not in world.app.store.dismissed()
+
+
+def test_a_settled_row_stays_settled_on_another_machine_and_show_again_reaches_it(world, tmp_path):
+    # state.json is per machine (.bridge/ is ignored); the decision also lands in work/cockpit/settled/, tracked
+    from lib.bridge_cockpit.store import WebStore
+    world.act("settle", keys=["ref:example/repo#12"], outcome="done")
+    world.act("hide", key="task:other-task", until=TOMORROW)
+    shared = world.root / "work" / "cockpit" / "settled"
+    assert len(list(shared.glob("*.yaml"))) == 2
+    world.app.store = WebStore(tmp_path / "another-machine", world.clock, settled_dir=shared)   # empty state.json
+    world.app.collector.rebuild()
+    hidden = {r["key"]: r for r in world.app.collector.model["hidden"]}
+    assert hidden["ref:example/repo#12"]["settled_as"] == "done" and hidden["task:other-task"]["hidden_until"] == TOMORROW
+    world.act("unhide", key="ref:example/repo#12")
+    assert "ref:example/repo#12" not in WebStore(tmp_path / "third", world.clock, settled_dir=shared).dismissed()
+    assert sum("unsettle" in p.name for p in shared.glob("*.yaml")) == 1
 
 
 def test_every_close_lands_in_the_history_with_its_undo(world):
@@ -1749,6 +2087,49 @@ def test_the_history_is_filled_once_from_the_older_audit_log(tmp_path):
     assert by["inbox:20261010-1741-item-a1b2"]["undo"]["verb"] == "inbox_reopen"
     assert all(e["backfilled"] for e in h.state())
     assert History(state, lambda: 0).backfill(root, state / "audit.log") == 0  # only once
+
+
+def test_a_history_entry_keeps_who_decided_and_a_click_of_the_person_keeps_none(tmp_path):
+    from lib.bridge_cockpit.history import History, item
+    h = History(tmp_path, lambda: 1_760_000_000_000)
+    h.add("later", [item("task:a", "A", "other", "hidden until 2026-10-10")], by="suggestion")
+    h.add("settle", [item("task:b", "B", "task", "done", "b")])
+    h.add("settle", [item("task:c", "C", "task", "done", "c")], by="")
+    by = {e["items"][0]["key"]: e.get("by") for e in History(tmp_path, lambda: 0).state()}
+    assert by == {"task:a": "suggestion", "task:b": None, "task:c": None}
+    assert all("by" not in e for e in h.state() if e["items"][0]["key"] != "task:a")
+
+
+def test_by_is_kept_in_the_history_the_starts_and_the_audit_line(world):
+    world.act("later", key="task:demo-task", until=TOMORROW, by="suggestion")
+    entry = world.app.history.state()[0]
+    assert entry["verb"] == "later" and entry["by"] == "suggestion"
+    other = world.root / "work" / "tasks" / "other-task"
+    other.mkdir()
+    (other / "STATUS.md").write_text("---\nstatus: doing\n---\n# Other\n", encoding="utf-8")
+    world.act("do_it", keys=["task:other-task"], note="Go on with it", by="instruction")
+    launch = next(x for x in world.app.launches.all() if x["key"] == "task:other-task")
+    assert launch["by"] == "instruction"
+    world.act("settle", keys=[f"inbox:{YES_ID}"], outcome="done", by="batch")
+    assert world.app.history.state()[0]["by"] == "batch"
+    lines = (world.state / "audit.log").read_text(encoding="utf-8").splitlines()
+    assert any(" later task:demo-task " in x and " by=suggestion" in x for x in lines)
+    assert any(" do_it task:other-task " in x and " by=instruction" in x for x in lines)
+    # a click of the person's own sends no by, and the entry carries none
+    world.act("hide", key="task:other-task", until=TOMORROW)
+    assert "by" not in world.app.history.state()[0]
+
+
+def test_by_is_one_of_three_words_and_only_on_the_decision_verbs(world):
+    with pytest.raises(ActionError) as e:
+        world.act("later", key="task:demo-task", until=TOMORROW, by="robot")
+    assert e.value.code == "invalid_argument" and e.value.field == "by"
+    with pytest.raises(ActionError) as e:
+        world.act("note", key="task:demo-task", text="x", by="batch")
+    assert e.value.field == "by"
+    with pytest.raises(ActionError) as e:
+        world.act("shelve", key="task:demo-task", reason="not needed", by="")
+    assert e.value.field == "by"
 
 
 def test_settle_asks_before_a_stream_ends_and_rows_say_whether_they_settle(world):
@@ -2068,7 +2449,8 @@ def test_tab_jump_send_go_on_close(world):
                              W(world, "send", "surface:7", "--", "please continue"),
                              W(world, "send", "surface:13", "--", "Keep going."),
                              W(world, "close", "surface:8")]
-    for verb, ref in (("tab_go_on", "surface:8"), ("tab_close", "surface:13"), ("tab_send", "surface:12")):
+    # round 6d: any tab that neither works nor asks closes, so the refused close is one at work
+    for verb, ref in (("tab_go_on", "surface:8"), ("tab_close", "surface:11"), ("tab_send", "surface:12")):
         with pytest.raises(ActionError) as err:
             world.act(verb, tab_ref=ref, **({"text": "x"} if verb == "tab_send" else {}))
         assert err.value.code == "not_applicable"
@@ -2115,7 +2497,8 @@ def test_audit_line_without_texts(world):
 
 
 AUDIT_CFG = ("cockpit:\n  enabled: true\n  language: en\n  relay: true\n  launch_model:\n    enabled: true\n"
-             "    auto: true\n    router: haiku\nworkplace:\n  control:\n    name: Control\n"
+             "    auto: true\n    router: haiku\n  flow:\n    enabled: true\n    attach:\n      enabled: true\n"
+             "workplace:\n  control:\n    name: Control\n"
              "integrations:\n  typesafe:\n    enabled: true\n")
 
 
@@ -2144,13 +2527,17 @@ def test_every_post_path_but_reload_leaves_exactly_one_audit_line_without_texts(
             ("/api/jev/run", {"force": True}, "jev_run"),
             ("/api/jev/rank", {"page": "work", "force": True}, "jev_rank"),
             ("/api/triage/run", {"fresh": True}, "triage"),
+            ("/api/seen", {"page": "briefing", "view": "dossier"}, "page_view"),
+            # a document attached to a task: the bytes counted, never its name
+            ("/api/flow/attach", {"key": "task:demo-task", "name": f"{marker}.txt", "data": "aGk="}, "flow_attach"),
         ]
         # every POST path the server knows is in the list above, so a new endpoint cannot skip its line;
-        # reload and presence change no record and send nothing on, and presence fires on every tab switch
+        # reload and presence change no record and send nothing on, and presence fires on every tab switch; clicks
+        # keeps its own log beside this one (usage.jsonl, test_cockpit_usage.py)
         known = set(re.findall(r'path == "(/api/[a-z/]+)"', inspect.getsource(server.Handler.post)))
         known |= {p for p in re.findall(r'"(/api/jev/[a-z]+)"', inspect.getsource(jev.handle_post))}
-        assert "/api/presence" in known
-        assert known - {"/api/reload", "/api/presence"} == {path for path, _, _ in cases}
+        assert "/api/presence" in known and "/api/clicks" in known
+        assert known - {"/api/reload", "/api/presence", "/api/clicks"} == {path for path, _, _ in cases}
         for path, body, verb in cases:
             before = log.read_text().splitlines() if log.exists() else []
             status, _, data = w.post(path, body)
@@ -2527,7 +2914,12 @@ def test_task_detail_names_its_next_step_and_open_inbox_items(world):
     status, _, body = world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)
     data = json.loads(body)
     assert status == 200 and data["front"]["next"] == "Call Ana"
-    assert data["inbox"] == [{"id": YES_ID, "summary": "Tidy labels", "state": "open", "urgency": "later", "gate": "your-yes"}]
+    # who filed each one and what it is (none in this listing), and the origin the page names (origin.py)
+    assert data["inbox"] == [{"id": YES_ID, "summary": "Tidy labels", "state": "open", "urgency": "later", "gate": "your-yes",
+                              "from": None, "kind": None,
+                              # no source written down: a neutral other, still named on the page
+                              "origin": {"category": "other", "word_key": None, "detail": None, "raw": None, "ref": None,
+                                         "via_cockpit": False}}]
     # an inbox item can outlive its task: a closed task is read from work/done/<month>/, the newest month first
     for month, word in (("2026-09", "older"), ("2026-10", "newer")):
         done = world.root / "work" / "done" / month / "gone-task"
@@ -2536,6 +2928,16 @@ def test_task_detail_names_its_next_step_and_open_inbox_items(world):
     data = json.loads(world.request("GET", "/api/task?slug=gone-task", headers=world.cookie)[2])
     assert data["kind"] == "done" and data["front"]["headline"] == "newer"
     assert data["path"] == "work/done/2026-10/gone-task/STATUS.md"
+    # one closed copy by its folder (the search finds every copy of a slug); a folder that is not one of its
+    # places is refused or not found, never read
+    q = "/api/task?slug=gone-task&path=" + urllib.parse.quote("work/done/2026-09/gone-task")
+    data = json.loads(world.request("GET", q, headers=world.cookie)[2])
+    assert data["kind"] == "done" and data["front"]["headline"] == "older"
+    assert data["path"] == "work/done/2026-09/gone-task/STATUS.md"
+    for bad in ("work/done/2026-09/demo-task", "work/done/../tasks/gone-task", "work/done/2026-11/gone-task", "/etc/gone-task",
+                "work/tasks/gone-task"):
+        status, _, _ = world.request("GET", "/api/task?slug=gone-task&path=" + urllib.parse.quote(bad), headers=world.cookie)
+        assert status in (400, 404), bad
 
 
 def test_split_front_skips_a_leading_schema_comment():
@@ -2782,6 +3184,18 @@ def test_a_tab_screen_the_driver_cannot_read_says_so(world):
     ("chat_tab", {"text": "x" * 4001}),
     ("chat_tab", {"text": "a\x1bb"}),
     ("chat_tab", {}),
+    ("shelve", {"key": "task:other-task"}),
+    ("shelve", {"key": "task:other-task", "reason": "a\x1bb"}),
+    ("shelve", {"key": "task:other-task", "reason": "x" * 201}),
+    ("shelve", {"key": "task:other-task", "reason": "ok", "until": "2026-13-01"}),
+    ("shelve", {"key": "task:--all", "reason": "ok"}),
+    ("tab_new", {"ws_ref": "workspace:2; ls", "kind": "agent"}),
+    ("tab_new", {"ws_ref": "workspace:2", "kind": "agent; rm"}),
+    ("tab_new", {"ws_ref": "workspace:2", "kind": "agent", "text": "a\x1bb"}),
+    ("workspace_new", {"title": "x", "kind": "agent", "cwd": "--bad"}),
+    ("workspace_new", {"title": "x", "kind": "agent", "color": "Teal; ls"}),
+    ("workspace_close", {"ws_ref": "workspace:3", "tabs": "surface:12"}),
+    ("workspace_close", {"ws_ref": "workspace:3", "tabs": ["surface:12 --all"]}),
 ])
 def test_argument_injection_is_rejected_before_any_call(world, verb, args):
     world.runner.calls.clear()
@@ -2829,6 +3243,29 @@ def test_ids_are_checked_again_before_an_argv(world):
     world.runner.calls.clear()
     status, _, body = world.post("/api/action", {"verb": "drop", "args": {"key": "inbox:20261009-0900---evil"}})
     assert status == 409 and writes(world) == []
+
+
+def test_waits_for_you_counts_only_the_asks_of_the_inbox(world):
+    # an idea or a report filed for today stands in Now, but it asks nothing of you: the number counts the asks
+    # (decision, question, draft), and a row that is no inbox item (a task, a board item) as before
+    data = collect_fixture(world.root)
+    data["view"]["buckets"][0]["items"] += [
+        {"title": "A dark mode one day", "inbox_id": "20261009-0930-dark-mode-0a0a", "gate": "only-you",
+         "urgency": "today", "inbox_kind": "idea", "sources": ["inbox"]},
+        {"title": "Disk at 91 %", "inbox_id": "20261009-0931-disk-0b0b", "gate": "your-yes", "urgency": "today",
+         "inbox_kind": "finding", "sources": ["inbox"]},
+        {"title": "Which date suits?", "inbox_id": "20261009-0932-date-0c0c", "gate": "only-you", "urgency": "today",
+         "inbox_kind": "question", "sources": ["inbox"]}]
+    world.runner.handlers["briefing.collect"] = lambda argv: ok(data)
+    world.app.collector.request("delta")
+    world.app.collector.drain()
+    model = world.app.collector.model
+    now = next(s for s in model["sections"] if s["id"] == "now")
+    assert now["total"] == 4                                      # every row still stands where it stood
+    arts = {r["title"]: r["art"] for r in now["rows"]}
+    assert arts == {"Review the demo report": "ask", "A dark mode one day": "idea", "Disk at 91 %": "report",
+                    "Which date suits?": "ask"}                   # an item without its kind is an ask
+    assert model["counts"]["now"] == 2 and model["briefing_badge"] == 2
 
 
 @pytest.mark.parametrize("path", ["/../bridge-config.yaml", "/%2e%2e/bridge-config.yaml", "/vendor/../../briefing.py",
@@ -2993,6 +3430,32 @@ def test_cli_status_says_whether_an_agent_tab_can_start(cli_world):
     assert "agent tabs cannot start" not in cli("status").stdout
     (root / "scripts" / "fixture.json").write_text(json.dumps({**fixture, "workplace.caps": {"caps": []}}))
     assert "agent tabs cannot start" in cli("status").stdout
+
+
+def test_cli_status_lists_a_service_on_a_provider_it_cannot_run(cli_world):
+    # a cockpit service that runs only on Claude, configured for codex, said nothing and stayed off: status names it
+    root, _, cli = cli_world
+    assert json.loads(cli("status", "--json").stdout)["provider_gaps"] == []
+    folder = root / "workflow" / "ai-services"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "cockpit-describe.yaml").write_text("schema_version: 1\nscope: user\nid: cockpit-describe\nprovider: codex\n")
+    gaps = json.loads(cli("status", "--json").stdout)["provider_gaps"]
+    assert gaps == [{"service": "cockpit-describe", "ready": False, "reason": "provider_unsupported", "provider": "codex",
+                     "supported": ["claude"]}]
+    assert "warning: cockpit-describe cannot run on codex" in cli("status").stdout
+    (folder / "triage.yaml").write_text("provider: [")
+    gaps = json.loads(cli("status", "--json").stdout)["provider_gaps"]
+    assert [(g["service"], g["reason"]) for g in gaps] == [("triage", "config_invalid"),
+                                                          ("cockpit-describe", "provider_unsupported")]
+    assert "warning: triage: workflow/ai-services/triage.yaml is invalid" in cli("status").stdout
+    # a block switched off or pinned to a Claude model is no gap: prio is off here, themes pinned
+    for sid in ("cockpit-prio", "cockpit-themes"):
+        (folder / f"{sid}.yaml").write_text(f"schema_version: 1\nscope: user\nid: {sid}\nprovider: codex\n")
+    cfg = root / "bridge-config.yaml"
+    cfg.write_text(cfg.read_text().replace("  language: en\n", "  language: en\n  flow:\n    themes:\n"
+                                           "      enabled: true\n      model: haiku\n", 1))
+    assert [g["service"] for g in json.loads(cli("status", "--json").stdout)["provider_gaps"]] == ["triage",
+                                                                                               "cockpit-describe"]
 
 
 def test_cli_disabled_config_and_occupied_port(cli_world, tmp_path):
@@ -3267,11 +3730,27 @@ def test_merge_keeps_clear_hygiene_and_since_of_sections_a_partial_run_left_out(
     delta = view(skipped=["github", "calendar"], since="since 08:40: 1 new", headline="partial",
                  extras={"clear": [], "hygiene": [], "workplace": "Tabs: 2"})
     out = m.merge_view(full, delta)
-    assert out["extras"] == {"clear": ["GitHub board: all clear"], "hygiene": ["Tracker x: error"], "workplace": "Tabs: 2"}
+    assert out["extras"] == {"clear": ["GitHub board: all clear"], "hygiene": ["Tracker x: error"], "tend": [], "workplace": "Tabs: 2"}
     assert out["since"] == "since 08:40: 3 new"
     again = m.merge_view(full, view(skipped=[], since="since 09:00: 0 new", headline="h",
                                     extras={"clear": [], "hygiene": [], "workplace": None}))
     assert again["extras"]["clear"] == [] and again["since"] == "since 09:00: 0 new"
+    # the facts of the housekeeping lines (`tend`) stay with their lines
+    tended = m.merge_view(view(skipped=[], extras={"clear": [], "hygiene": ["x"], "tend": [{"kind": "muted", "text": "x", "n": 2}],
+                                                   "workplace": None}),
+                          view(skipped=["github"], extras={"clear": [], "hygiene": [], "tend": [], "workplace": None}))
+    assert tended["extras"]["tend"] == [{"kind": "muted", "text": "x", "n": 2}]
+
+
+def test_the_page_model_carries_the_housekeeping_facts_beside_its_lines():
+    data = {"view": {"hygiene": ["2 muted", "odd", "x"], "tend": [{"kind": "muted", "text": "2 muted", "n": 2},
+                                                                {"kind": "no_next", "text": "odd", "n": "x", "names": ["a", 3]},
+                                                                {"kind": "untasked", "text": "x", "n": 3, "title": "GitHub", "reason": 4},
+                                                                "junk"]}}
+    tend = m.parse_view(data, True, NOW)["extras"]["tend"]
+    assert tend == [{"kind": "muted", "text": "2 muted", "n": 2, "names": [], "title": "", "reason": ""},
+                    {"kind": "no_next", "text": "odd", "n": None, "names": ["a", "3"], "title": "", "reason": ""},
+                    {"kind": "untasked", "text": "x", "n": 3, "names": [], "title": "GitHub", "reason": ""}]
 
 
 def test_server_texts_name_the_configured_control_workspace():
@@ -3525,9 +4004,35 @@ def test_the_quick_chat_points_to_the_agent_tab_and_never_sends_the_work_back():
     for lang in ("de", "en"):
         text = system_text(lang, None)
         assert TABLES[lang]["btn_do"] in text and "[[remind:" in text and "workplace.driver" not in text
+        assert "Cmd Enter" not in text      # a key only where the shortcuts are on
         off = system_text(lang, None, can_launch=False)
         assert TABLES[lang]["btn_do"] in off and "workplace.driver" in off
     assert "starts it" not in system_text("en", None)
+
+
+def test_the_advice_names_the_cards_verb_on_work_through_and_a_key_only_with_the_shortcuts_on(world):
+    # 27.10.: asked from a card of Work through, the advice said "below this chat (Cmd Enter)" while the card's
+    # button is "Let AI do it" and the shortcuts were off
+    from lib.bridge_cockpit.quick import system_text
+    from lib.bridge_cockpit.text import TABLES
+    for lang in ("de", "en"):
+        words = TABLES[lang]
+        flow = system_text(lang, None, origin="flow")
+        assert words["btn_flow_do"] in flow and "Cmd" not in flow and "Enter" not in flow
+        plain = system_text(lang, None)
+        assert words["btn_do"] in plain and "Cmd" not in plain and "Enter" not in plain
+        assert "Cmd Enter" in system_text(lang, None, keys=True)
+    assert TABLES["de"]["btn_flow_do"] == "Bridge macht" and TABLES["en"]["btn_flow_do"] == "Let AI do it"
+    # the page says where it asks from; the conversation keeps it for every turn
+    world.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "result": "Fine.", "is_error": False})
+    status, payload = world.app.actions.ask("row", {"key": "task:demo-task"}, via="quick", origin="flow")
+    assert status == 202
+    conv = world.app.quick.convs[payload["conv"]]
+    assert conv["origin"] == "flow" and conv["keys"] is False
+    for bad in ({"origin": "elsewhere"}, {"keys": "yes"}):
+        with pytest.raises(ActionError) as e:
+            world.app.actions.ask("row", {"key": "task:demo-task"}, via="quick", **bad)
+        assert e.value.code == "invalid_argument"
 
 
 def test_the_quick_chat_reads_why_a_section_is_empty_before_it_guesses():
@@ -3732,6 +4237,57 @@ def test_a_conversation_hands_on_to_an_agent_tab_or_the_control_session(world):
     assert writes(world)[1] == launch_argv(world, new_id, "go")
 
 
+def test_a_chat_about_a_row_hands_on_as_a_short_item_of_the_rows_task(world):
+    """29.10.: a chat asked on a row became an item titled with the whole prompt ("Briefing item: «…» («…»). Take a
+    look …") and without the row's task, so the briefing showed it beside the row it was about. Now its title is short,
+    the prompt stays in the detail, and the item carries the row's task and names the row in its key (ask:<item or
+    ref>), so the briefing folds it into that row"""
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("Merge it.", 0.002)
+    new_id = "20261010-1300-check-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    for key, title, task, about in ((f"inbox:{ONLY_ID}", "Review the demo report", "demo-task", ONLY_ID),
+                                    ("ref:example/repo#12", "Fix the example issue", None, "example/repo#12")):
+        conv = json.loads(world.post("/api/ask", {"kind": "row", "args": {"key": key}, "via": "quick"})[2])["conv"]
+        wait_quick(world)
+        world.clock.advance(20)
+        world.runner.calls.clear()
+        world.act("quick_handoff", conv=conv, to="tab")
+        add = writes(world)[0]
+        assert world.runner.key(add) == "inbox.add"
+        assert f"--summary=Check: {title}" in add
+        assert f"--key=ask:{about}" in add
+        assert (f"--task={task}" in add) if task else not any(a.startswith("--task") for a in add)
+        assert any(a.startswith("--detail=") and f"Briefing item: «{title}»" in a for a in add)
+    # a free chat is about no row: filed as before, its first question the title
+    conv = answered_conv(world)
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab")
+    add = writes(world)[0]
+    assert "--summary=what next?" in add and f"--key=web:{conv}" in add
+
+
+def test_the_order_of_a_handoff_goes_as_a_start_note_the_tab_reads_first(world):
+    """28.10.: "I want to analyse it more closely" stood only at the end of the item's detail and the tab closed the
+    item after 31 s without asking. Now the order is the start note on the item and the launch says so (--start-note:
+    read it first, ask before closing, workplace.py); the start knows the chat it came from"""
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab", text="I want to analyse it more closely")
+    calls = writes(world)
+    assert world.runner.key(calls[0]) == "inbox.add"
+    assert calls[1] == I(world, "note", new_id, "--", "Start note: I want to analyse it more closely")
+    assert calls[2] == launch_argv(world, new_id, "go", "area", "--start-note")
+    assert world.app.launches.all()[0]["conv"] == conv
+    # without an order the launch is the one it was, and no note is written
+    world.clock.advance(20)
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab")
+    assert [world.runner.key(x) for x in writes(world)] == ["inbox.add", "workplace.launch"]
+    assert writes(world)[1] == launch_argv(world, new_id, "go")
+
+
 def test_a_long_order_on_a_long_conversation_reaches_the_end_whole_within_the_cap(world, monkeypatch):
     from lib.bridge_cockpit.actions import HANDOFF_MAX, HANDOFF_ORDER_MAX
     from lib.bridge_cockpit.text import EN
@@ -3916,6 +4472,27 @@ def test_the_costs_view_is_served_from_the_kept_copy(world):
     assert world.request("GET", "/api/costs")[0] == 401
 
 
+def test_a_cost_statement_is_made_for_the_picked_month_and_project(world):
+    # the cost card's button: scripts/cost-ledger.py statement over the kept view (or a closed month), read only
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    day = lambda d: {"day": d, "amount": 1.0, "provisional": False, "groups": {"svc": 1.0}}  # noqa: E731
+    doc = {"schema": 1, "kind": "cloud-costs", "today": "2026-11-03", "currency": "EUR",
+           "cost_centers": [{"id": "shop", "title": "Shop", "persona_ref": None}],
+           "accounts": [{"id": "a", "display_name": "Account A", "ok": True, "cost_center": "shop",
+                         "days": [day(f"2026-10-{n:02d}") for n in range(1, 32)]}]}
+    (folder / "costs-view.json").write_text(json.dumps(doc), encoding="utf-8")
+    status, _, body = world.request("GET", "/api/costs/statement?month=2026-10&center=shop&lang=de", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    st = data["statement"]
+    assert st["paid"] == 31.0 and st["source"] == "live" and "Shop" in st["markdown"] and st["csv"].startswith("item;")
+    status, _, body = world.request("GET", "/api/costs/statement?month=1999-01", headers=world.cookie)
+    assert status == 404 and json.loads(body)["error"]["code"] == "no_costs"
+    assert world.request("GET", "/api/costs/statement?month=nope", headers=world.cookie)[0] == 400
+    assert world.request("GET", "/api/costs/statement?month=2026-10")[0] == 401
+
+
 def test_the_token_use_is_served_for_7_30_or_90_days(world):
     # the range chips of the usage card ask for a range; anything else becomes the nearest allowed one
     asked = []
@@ -4078,6 +4655,87 @@ def test_the_runner_lets_through_only_the_a2a_ask_and_get_shapes(world):
     for bad in ([r.python, script, "new-agent", "x", "--trust", "public"], [r.python, script, "probe", "alpha"],
                 [r.python, script, "ask", "--json", "--wait", "90", "alpha", "x"],
                 [r.python, script, "ask", "--json", "--wait", "90", "../x", "--", "x"]):
+        with pytest.raises(RunnerRefused):
+            r.check(bad)
+
+
+SOURCE_SCRIPT = "skills/relay-peers/scripts/relay.py"
+
+
+def a2a_source(world, name="relay", peers=({"id": "beta", "summary": "Agent beta", "owner": "Team B"},)):
+    """A second source of peers: a script that lists them, reads their cards and asks them (agents.py)."""
+    script = world.app.root / SOURCE_SCRIPT
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("# test double\n")
+    world.app.cfg = dataclasses.replace(world.app.cfg, a2a_sources=({"name": name, "script": SOURCE_SCRIPT},))
+    world.app.runner.a2a_sources = frozenset({world.app.runner.source_script(SOURCE_SCRIPT)})
+    world.runner.handlers["relay.peers"] = lambda argv: ok({"peers": list(peers)})
+    world.runner.handlers["relay.card"] = lambda argv: ok({"card": {
+        "name": "Beta Agent", "description": "answers through the relay",
+        "supportedInterfaces": [{"url": "https://relay.example/agents/beta/", "protocolVersion": "1.0"}],
+        "securitySchemes": {"bearer": {"bearerFormat": "secret-hint"}}}})
+
+
+def test_a2a_sources_are_read_from_the_cockpit_block_and_a_bad_one_is_named(tmp_path):
+    (tmp_path / SOURCE_SCRIPT).parent.mkdir(parents=True)
+    (tmp_path / SOURCE_SCRIPT).write_text("")
+    cfg = load_web_config(tmp_path, {"cockpit": {"a2a_sources": [
+        {"name": "relay", "script": SOURCE_SCRIPT}, {"name": "x", "script": "../evil.py"},
+        {"name": "Bad Name", "script": SOURCE_SCRIPT}, {"name": "gone", "script": "skills/nope/scripts/nope.py"}]}})
+    assert cfg.a2a_sources == ({"name": "relay", "script": SOURCE_SCRIPT},)
+    warned = " ".join(cfg.config_warnings)
+    assert "cockpit.a2a_sources" in warned and "../evil.py" in warned and "nope.py" in warned
+    assert load_web_config(tmp_path, {}).a2a_sources == ()
+
+
+def test_peers_from_a_source_are_listed_with_their_card_and_never_a_secret(world):
+    a2a_source(world)
+    world.app.agents.refresh_cards(block=True)
+    peer = world.app.agents.state()["peers"][0]
+    assert (peer["id"], peer["via"], peer["owner"], peer["summary"]) == ("beta", "relay", "Team B", "Agent beta")
+    assert peer["card"]["name"] == "Beta Agent" and peer["card"]["endpoint"] == "https://relay.example/agents/beta/"
+    assert peer["reach"] == "ok" and peer["card_url"] is None and "secret-hint" not in json.dumps(peer)
+    assert world.runner.of("relay.card")[0][2:] == ["card", "--json", "beta"]
+
+
+def test_asking_a_source_peer_runs_its_script_in_the_a2a_shapes(world):
+    a2a_source(world)
+    world.app.agents.refresh_cards(block=True)
+    world.runner.handlers["relay.ask"] = lambda argv: a2a_answer(state="working", text="", task="t-9")
+    world.runner.calls.clear()
+    res = world.act("a2a_ask", peer="beta", text="hallo?")
+    turn = wait_agents(world)[0]["turns"][0]
+    argv = world.runner.of("relay.ask")[0]
+    assert argv[1] == world.app.runner.source_script(SOURCE_SCRIPT)
+    assert argv[2:6] == ["ask", "--json", "--wait", "90"] and argv[-3:] == ["beta", "--", "hallo?"]
+    assert turn["waiting"] is True and world.runner.of("a2a.ask") == []
+    world.runner.handlers["relay.get"] = lambda argv: a2a_answer(text="Ja.")
+    world.act("a2a_poll", conv=res["conv"])
+    turn = wait_agents(world)[0]["turns"][0]
+    assert world.runner.of("relay.get")[0][2:] == ["get", "--json", "beta", "t-9"] and turn["a"] == "Ja."
+
+
+def test_a_peer_file_wins_over_a_source_peer_of_the_same_name(world):
+    a2a_peers(world, "beta")
+    a2a_source(world)
+    world.app.agents.fetch = lambda url: {"name": "File Beta"}
+    world.app.agents.refresh_cards(block=True)
+    peers = world.app.agents.state()["peers"]
+    assert len(peers) == 1 and peers[0]["via"] is None and peers[0]["card"]["name"] == "File Beta"
+
+
+def test_the_runner_lets_a_source_script_through_only_in_its_shapes(world):
+    a2a_source(world)
+    r = world.app.runner
+    script = r.source_script(SOURCE_SCRIPT)
+    for good in ([r.python, script, "peers", "--json"], [r.python, script, "card", "--json", "beta"],
+                 [r.python, script, "ask", "--json", "--wait", "90", "beta", "--", "x"],
+                 [r.python, script, "get", "--json", "beta", "t-1"]):
+        r.check(good)
+    other = r.script("skills/other/scripts/other.py")
+    for bad in ([r.python, script, "config"], [r.python, script, "card", "--json", "../x"],
+                [r.python, script, "peers"], [r.python, other, "peers", "--json"],
+                [r.python, r.script("skills/a2a/scripts/a2a.py"), "peers", "--json"]):
         with pytest.raises(RunnerRefused):
             r.check(bad)
 
@@ -4376,6 +5034,21 @@ def test_every_launch_outcome_is_recorded_and_manual_nothing_partly_failed_can_b
     assert res["handed"]["status"] == outcome
 
 
+@pytest.mark.parametrize("outcome", ["busy", "running"])
+def test_an_order_for_a_tab_already_on_its_way_is_one_start_note_and_says_so(world, monkeypatch, outcome):
+    """The order goes on the item once, as the start note: a second raw note of the same words read back as the tab's
+    result (handoff_outcome). A tab that runs already is told by the same note as one that is still starting"""
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    monkeypatch.setattr(world.app.actions, "launch", lambda *a, **k: outcome)
+    world.runner.calls.clear()
+    res = world.act("quick_handoff", conv=conv, to="tab", text="Then push it.")
+    notes = [c for c in writes(world) if world.runner.key(c) == "inbox.note"]
+    assert notes == [I(world, "note", new_id, "--", "Start note: Then push it.")]
+    assert text_mod.EN["handoff_order_late"].split(":")[0] in res["note"]
+
+
 def test_a_real_launch_without_a_driver_is_recorded_as_manual(world):
     conv = answered_conv(world)
     world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1300-what-next-a1b2\n")
@@ -4534,6 +5207,27 @@ def test_a_page_item_keeps_when_it_begins():
     assert info_out(it, 0, Path("/x"), [], None, set())["at"] == "2026-10-14T18:00"
 
 
+def test_a_log_row_about_a_task_names_it_and_where_a_closed_one_lies(tmp_path):
+    from lib.bridge_cockpit import origin as og
+    from lib.bridge_cockpit.collector import info_out
+    for d in ("work/tasks/billing-retry", "work/done/2026-09/old-export", "work/done/2026-10/old-export"):
+        (tmp_path / d).mkdir(parents=True)
+        (tmp_path / d / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    known = og.known_from_root(tmp_path, fresh=True)
+    row = lambda group: info_out(m.parse_info({"title": "x", "group": group}), 0, tmp_path, [], None, set(), "day", "activity", known)
+    live = row("billing-retry")
+    assert (live["about_task"], live["about_path"], live["work_kind"]) == ("billing-retry", None, "task")
+    closed = row("old-export")
+    assert (closed["about_task"], closed["about_path"]) == ("old-export", "work/done/2026-10/old-export")
+    assert closed["work_kind"].startswith("done")
+    other = row("billing")
+    assert (other["about_task"], other["about_path"]) == (None, None)
+    # a task row stays a task row: its group never makes it about another
+    own = info_out(m.parse_info({"title": "x", "group": "billing-retry", "task": "other-task"}), 0, tmp_path, [], None, set(),
+                   "day", "activity", known)
+    assert own["about_task"] is None
+
+
 def test_a_start_that_ran_enters_the_return_channel_and_can_be_taken_out(world):
     world.runner.handlers["workplace.launch"] = lambda argv: ok(
         {"ok": True, "items": [{"item": "other-task", "label": "Other task", "ref": "surface:21"}], "report": ["started 1"]})
@@ -4544,6 +5238,98 @@ def test_a_start_that_ran_enters_the_return_channel_and_can_be_taken_out(world):
     world.act("return_forget", key="task:other-task")
     assert world.app.collector.model["returns"] == []
     refused(world, "not_applicable", "return_forget", key="task:other-task")
+
+
+# ---------------------------------------------------------------- a finished AI run (stage 2 of the one point view)
+
+from lib.bridge_cockpit.text import TABLES as _TX  # noqa: E402  (the plain words of a finished run)
+
+
+def finished_run(world, verb="close", by="check", text="closes_when holds"):
+    """A start on the yes item whose item its check closed afterwards: a done start of the return channel"""
+    world.app.launches.record([{"key": f"inbox:{YES_ID}", "item": YES_ID, "title": "Tidy labels", "mode": "go"}])
+    stamp = dt.datetime.fromtimestamp(world.clock() / 1000 + 60, dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (world.root / "work" / "inbox" / YES_ID / "events" / f"{stamp}-01-{by}-{verb}.yaml").write_text(
+        f"verb: {verb}\nby: {by}\ntext: '{text}'\n", encoding="utf-8")
+    world.app.collector.rebuild()
+    return next(r for r in world.app.collector.model["returns"] if r["key"] == f"inbox:{YES_ID}")
+
+
+def test_a_finished_run_says_in_plain_words_what_became_of_it(world):
+    r = finished_run(world)
+    assert r["stage"] == "done"
+    assert r["plain"] == _TX["en"]["returns"]["plain"]["check"]
+    assert r["result"]["text"] == "closes_when holds" and r["ended_ms"] and r["read_ms"] is None
+
+
+def test_the_activity_of_a_finished_run_reads_its_closed_item(world):
+    world.app.cfg = dataclasses.replace(world.app.cfg, flow={**world.app.cfg.flow, "enabled": True})
+    finished_run(world)
+    world.runner.handlers["inbox.list"] = lambda argv: ok([])
+    feed = world.app.activity.view(f"inbox:{YES_ID}", fresh=True)
+    assert feed["ok"] and any(r["kind"] == "status" for r in feed["rows"]), "its end stands in its Activity"
+    with pytest.raises(ActionError):
+        world.app.activity.view("inbox:20261001-0900-gone-a1b2", fresh=True)
+
+
+def test_read_takes_a_finished_run_off_its_list_and_its_undo_puts_it_back(world):
+    finished_run(world)
+    key = f"inbox:{YES_ID}"
+    out = world.act("return_read", key=key)
+    assert out["ok"] and [u["undo"] for u in out["undo"]] == [{"verb": "return_unread", "args": {"key": key}}]
+    r = next(x for x in world.app.collector.model["returns"] if x["key"] == key)
+    assert r["read_ms"], "marked read, still in the channel (and in the item's Activity)"
+    refused(world, "not_applicable", "return_read", key=key)
+    world.act("return_unread", key=key)
+    assert next(x for x in world.app.collector.model["returns"] if x["key"] == key)["read_ms"] is None
+    refused(world, "not_applicable", "return_unread", key=key)          # taken back once only
+    refused(world, "not_applicable", "return_read", key="task:demo-task")  # no finished run of that row
+
+
+def test_make_it_a_task_of_a_finished_run_takes_its_result_and_names_the_run(world):
+    finished_run(world)
+    key = f"inbox:{YES_ID}"
+    slugs = iter(["tidy-the-labels", "second"])
+    world.runner.handlers["task.new"] = lambda argv: ok({"slug": next(slugs), "status": "backlog", "warnings": []})
+    out = world.act("return_task", key=key, title="Tidy the labels for good", describe=True, close=True)
+    argv = world.runner.of("task.new")[-1]
+    assert "--headline=Tidy the labels for good" in argv and "--status" in argv
+    assert f"--situation={_TX['en']['returns']['plain']['check']}" in argv
+    assert any(a.startswith("--origin=the AI run of ") and key in a for a in argv)
+    assert out["task"] == "tidy-the-labels"
+    assert [u["undo"] for u in out["undo"]] == [{"verb": "return_task_undo", "args": {"key": key, "slug": "tidy-the-labels", "read": True}}]
+    assert next(x for x in world.app.collector.model["returns"] if x["key"] == key)["read_ms"], "closed afterwards: read"
+    # without the description and without closing it
+    out2 = world.act("return_task", key=key, title="Second", describe=False, close=False)
+    assert not any(a.startswith("--situation=") for a in world.runner.of("task.new")[-1])
+    # the undo closes the task as declined and the run stands to read again
+    world.act("return_task_undo", key=key, slug="tidy-the-labels", read=True)
+    close = world.runner.of("task.close")[-1]
+    assert "tidy-the-labels" in close and "--declined" in close
+    assert next(x for x in world.app.collector.model["returns"] if x["key"] == key)["read_ms"] is None
+    refused(world, "not_applicable", "return_task_undo", key=key, slug="tidy-the-labels", read=True)
+    refused(world, "invalid_argument", "return_task", key=key, title="x", area="Nowhere")
+    assert out2["ok"]
+
+
+def test_analyse_further_opens_the_item_again_and_starts_with_the_sentence_and_the_result(world):
+    finished_run(world)
+    key = f"inbox:{YES_ID}"
+    world.runner.handlers["workplace.launch"] = lambda argv: ok(
+        {"ok": True, "items": [{"item": YES_ID, "label": "Tidy labels", "ref": "surface:21"}], "report": ["started 1"]})
+    world.act("return_analyse", key=key, note="Check which labels came back")
+    assert world.runner.of("inbox.reopen"), "a closed item takes no start: it opens again first"
+    notes = [c for c in world.runner.of("inbox.note") if any(str(a).startswith("Start note: Check which labels came back") for a in c)]
+    assert notes and any(_TX["en"]["returns"]["plain"]["check"] in str(a) for a in notes[-1]), "the result goes along"
+    launch = world.runner.of("workplace.launch")[-1]
+    assert YES_ID in launch[launch.index("--items") + 1] and "--start-note" in launch
+    # no terminal driver: nothing opens, nothing starts
+    finished_run(world)
+    world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": []})
+    world.app.driver_caps(fresh=True)
+    before = len(world.runner.of("inbox.reopen"))
+    refused(world, "not_applicable", "return_analyse", key=key, note="again")
+    assert len(world.runner.of("inbox.reopen")) == before
 
 
 def test_a_failed_start_does_not_enter_the_return_channel(world):
@@ -4673,12 +5459,25 @@ def test_colours_come_from_design_md_with_a_fallback_for_every_token(tmp_path):
     assert pal["dark"]["primary"] == "#6366F1" and pal["dark"]["surface"] == "#111827"
     assert pal["light"]["warning"] == design.STATUS_DEFAULTS["light"]["warning"]       # a brand without one
     assert "--font-display: Inter," in css and "@media (prefers-color-scheme: dark)" in css
-    assert design.stylesheet(tmp_path / "nowhere").count("--primary:") == 3           # no DESIGN.md: still a page (light, .dark, media)
+    assert design.stylesheet(tmp_path / "nowhere").count("--primary:") == 4           # no DESIGN.md: still a page (light, .dark, media, .term)
     # and a readable one: text and ground part, in both modes, and no token is left without a colour
     bare = design.palette({})
     for mode in ("light", "dark"):
         assert bare[mode]["surface"] != bare[mode]["on-surface"] and "#808080" not in bare[mode].values()
     assert bare["light"]["surface"] == "#FFFFFF" and bare["dark"]["surface"] != "#FFFFFF"
+
+
+def test_the_term_scope_is_the_dark_set_in_both_modes(tmp_path):
+    # the Chat is a terminal: dark in light mode too, so every part inside it takes the dark tokens under .term
+    from lib.bridge_cockpit import design
+    (tmp_path / "DESIGN.md").write_text(OPEN_BRIDGE_STYLE, encoding="utf-8")
+    fm = design.front_matter(tmp_path / "DESIGN.md")
+    css = design.colors_css(fm)
+    block = css.split(".term {", 1)[1].split("}", 1)[0]
+    assert "color-scheme: dark;" in block
+    for token, value in design.palette(fm)["dark"].items():
+        assert f"--{token}: {value};" in block, token
+    assert "--ink: var(--on-surface);" in block
 
 
 def test_this_bridges_design_md_names_every_colour_itself():
@@ -4833,6 +5632,146 @@ def test_the_waiting_tab_of_an_executed_item_can_be_closed(world):
     world.runner.calls.clear()
     world.act("tab_close", tab_ref="surface:14")
     assert writes(world) == [W(world, "close", "surface:14")]
+
+
+def test_tab_behind_names_only_the_open_task_and_the_open_item(tmp_path):
+    from lib.bridge_cockpit.returns import tab_behind
+    item = "20261017-1238-some-item-abcd"
+    events = tmp_path / "work" / "inbox" / item / "events"
+    events.mkdir(parents=True)
+    task = tmp_path / "work" / "tasks" / "a-task"
+    task.mkdir(parents=True)
+    (task / "STATUS.md").write_text("x", encoding="utf-8")
+    stream = tmp_path / "work" / "streams" / "a-stream"
+    stream.mkdir(parents=True)
+    (stream / "STATUS.md").write_text("x", encoding="utf-8")
+    assert tab_behind(tmp_path, {"slug": "a-task", "item": item}) == {"task": "a-task", "item": item}
+    # a stream never ends, a task folder that is not there is nothing, a bad name is nothing
+    assert tab_behind(tmp_path, {"slug": "a-stream"}) is None
+    assert tab_behind(tmp_path, {"slug": "gone-task"}) is None
+    assert tab_behind(tmp_path, {"slug": "../x", "item": "../y"}) is None
+    assert tab_behind(tmp_path, {}) is None
+    # an item that ended is no longer behind the tab
+    (events / "20261017T105000Z-00-host-close.yaml").write_text("verb: close\n", encoding="utf-8")
+    assert tab_behind(tmp_path, {"slug": "a-task", "item": item}) == {"task": "a-task", "item": None}
+
+
+def tab_on(world, **fields):
+    """The workplace lists one more tab, waiting at its prompt (surface:20), polled at once"""
+    tab = {"name": "behind tab", "workspace": "Demo", "ref": "surface:20", "ws_ref": "workspace:2", "state": "waiting",
+           "id": "TAB-20", **fields}
+    world.runner.handlers["workplace.status"] = lambda argv: ok(STATUS + [tab])
+    world.app.tabs.poll()
+    return {t["ref"]: t for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+
+
+def test_the_tab_state_says_what_stands_behind_a_tab(world):
+    tabs = tab_on(world, slug="demo-task", item=YES_ID)
+    assert tabs["surface:20"]["behind"] == {"task": "demo-task", "item": YES_ID}
+    assert tabs["surface:13"]["behind"] is None             # wait-task has no folder under work/tasks/
+    assert tabs["surface:3"]["behind"] is None              # the control tab stands for nothing
+
+
+def test_a_tab_known_by_its_name_has_the_task_of_its_session_behind_it(world, tmp_path):
+    # most tabs carry no slug or item (bound by their name): the task comes from the session linked in it, as the
+    # page reads it (rooms.js taskOfTab), so Done and close tab stands there too and closes that task
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    world.app.sessions.base = claude_home(tmp_path, world.root, now_ms)
+    world.runner.handlers["eww.-o"] = lambda argv: ok(f"claude CMUX_SURFACE_ID={SURF} X=1\n")
+    tab_on(world, id=SURF)
+    world.act("session_link", session=SID, slug="demo-task")
+    tabs = {t["ref"]: t for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    assert tabs["surface:20"]["behind"] == {"task": "demo-task", "item": None}
+    world.runner.calls.clear()
+    world.act("tab_done", tab_ref="surface:20")
+    assert [world.runner.key(c) for c in writes(world)] == ["task.close", "workplace.close"]
+
+
+def test_how_long_a_tab_waits_outlives_a_restart_of_the_server(world):
+    # 28.10.: every line of Waiting for you read "waiting 0 min" after a restart, the walk order with it
+    from lib.bridge_cockpit.tabs import TabPoller
+    world.app.tabs.poll()
+    first = {t["ref"]: t["since_ms"] for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    world.clock.now += 6 * 60_000
+    world.app.tabs = TabPoller(world.app)        # the server started again on the same state folder
+    world.app.tabs.poll()
+    again = {t["ref"]: t["since_ms"] for t in world.app.tabs.state(world.app.collector.view)["tabs"]}
+    assert again["surface:13"] == first["surface:13"] and again["surface:13"] < world.clock.now - 5 * 60_000
+    # a tab whose state changed meanwhile starts again from now
+    world.runner.handlers["workplace.status"] = lambda argv: ok([dict(t, state="working") if t["ref"] == "surface:13" else t
+                                                                 for t in STATUS])
+    world.app.tabs = TabPoller(world.app)
+    world.app.tabs.poll()
+    assert {t["ref"]: t["since_ms"] for t in world.app.tabs.state(world.app.collector.view)["tabs"]}["surface:13"] == world.clock.now
+
+
+def test_tab_close_takes_any_quiet_tab_but_not_one_that_works_asks_or_is_the_control(world):
+    world.runner.calls.clear()
+    world.act("tab_close", tab_ref="surface:13")           # waiting, nothing filed, nothing settled
+    world.act("tab_close", tab_ref="surface:12")           # back at its shell
+    assert writes(world) == [W(world, "close", "surface:13"), W(world, "close", "surface:12")]
+    for ref in ("surface:11", "surface:7", "surface:3"):    # works, asks (a dialog), the control tab
+        with pytest.raises(ActionError) as err:
+            world.act("tab_close", tab_ref=ref)
+        assert err.value.code == "not_applicable", ref
+
+
+def test_tab_close_leaves_a_waiting_tab_that_asks_a_question(world):
+    world.runner.handlers["workplace.screen"] = lambda argv: ok({"text": "⏺ Shall I go on?\n"})
+    world.app.asks_enabled = True
+    world.app.tabs.poll()
+    assert world.app.tabs.asks_now().get("surface:13")
+    with pytest.raises(ActionError) as err:
+        world.act("tab_close", tab_ref="surface:13")
+    assert err.value.code == "not_applicable"
+
+
+def test_tab_close_takes_a_waiting_tab_whose_last_words_ask_nothing(world):
+    # every waiting tab has its last words read off the screen; only a question, options or a draft ask
+    # (model.py is_idle), so a tab that said it is done closes (28.10.: the close stood nowhere live)
+    world.runner.handlers["workplace.screen"] = lambda argv: ok({"text": "⏺ Done, the report is filed.\n"})
+    world.app.asks_enabled = True
+    world.app.tabs.poll()
+    assert world.app.tabs.asks_now().get("surface:13")
+    world.runner.calls.clear()
+    world.act("tab_close", tab_ref="surface:13")
+    assert writes(world) == [W(world, "close", "surface:13")]
+
+
+def test_tab_done_closes_the_task_and_the_item_the_way_done_does_then_the_tab(world):
+    tab_on(world, slug="demo-task", item=YES_ID)
+    world.runner.calls.clear()
+    res = world.act("tab_done", tab_ref="surface:20")
+    calls = writes(world)
+    keys = [world.runner.key(c) for c in calls]
+    assert keys == ["task.close", "inbox.close", "workplace.close"], keys
+    # the same argv as Done of Work (settle, task.py close): status done, folder moved, board, log row
+    assert calls[0][:6] == K(world, "close", "demo-task")
+    assert calls[1][-2] == "--note" and calls[1][-1]
+    assert calls[2] == W(world, "close", "surface:20")
+    assert res["ok"] is True and "behind tab" in res["note"]
+
+
+def test_tab_done_keeps_the_tab_open_when_a_step_fails_and_says_which(world):
+    tab_on(world, slug="demo-task", item=YES_ID)
+    world.runner.handlers["task.close"] = lambda argv: fail("STATUS.md is locked")
+    world.runner.calls.clear()
+    res = world.act("tab_done", tab_ref="surface:20")
+    keys = [world.runner.key(c) for c in writes(world)]
+    assert "workplace.close" not in keys and "inbox.close" in keys     # each step is tried, the tab stays
+    assert res["ok"] is False and "behind tab" in res["note"] and world.row("task:demo-task")["title"] in res["note"]
+
+
+def test_tab_done_needs_something_behind_the_tab(world):
+    tab_on(world)
+    with pytest.raises(ActionError) as err:
+        world.act("tab_done", tab_ref="surface:20")
+    assert err.value.code == "not_applicable"
+    for ref in ("surface:11", "surface:3"):                   # a tab at work, the control tab
+        with pytest.raises(ActionError) as err:
+            world.act("tab_done", tab_ref=ref)
+        assert err.value.code == "not_applicable", ref
 
 
 # ---------------------------------------------------------------- the model an agent starts with (launch.py)
@@ -5126,6 +6065,25 @@ def test_a_chat_untouched_for_a_day_goes_to_the_archive(world):
     assert [c["id"] for c in json.loads((world.app.state_dir / "quick.json").read_text())] == [fresh]
 
 
+def test_the_page_reads_the_questions_archived_in_the_last_days(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+    old = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "gestern"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.clock.advance(25 * 3600)
+    gone = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "weg damit"}, "via": "quick"})[2])["conv"]
+    wait_quick(world)
+    world.act("quick_forget", conv=gone)                       # one the person took off stays off
+    archive = lambda q="": json.loads(world.request("GET", f"/api/chats/archive{q}", headers=world.cookie)[2])  # noqa: E731
+    got = archive("?days=7")
+    assert got["ok"] is True and [c["id"] for c in got["convs"]] == [old]
+    assert got["convs"][0]["archived"] == {"why": "expired", "at_ms": int(world.clock())}
+    assert got["convs"][0]["turns"][0]["q"] == "gestern"
+    assert archive("?days=bogus")["convs"] == got["convs"]     # a word that is no number reads the default
+    world.clock.advance(8 * 86400)
+    assert archive("?days=7")["convs"] == []                   # past the window
+    assert [c["id"] for c in archive("?days=99")["convs"]] == [old]   # at most the longest window
+
+
 def test_an_expiry_the_archive_refuses_is_tried_again_only_after_an_hour(world, monkeypatch):
     world.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
     conv = json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "alt"}, "via": "quick"})[2])["conv"]
@@ -5188,6 +6146,24 @@ def test_place_is_only_core_and_only_for_a_quick_free_question(world):
 
 def test_the_page_learns_how_long_a_chat_stays(world):
     assert world.app.quick.state()["keep_hours"] == 24
+
+
+def test_a_week_of_chat_keep_hours_keeps_a_question_six_days_and_archives_it_after_the_week(tmp_path):
+    """Round 6d C1: the questions stay a week where the instance sets chat_keep_hours: 168, and the page is told so"""
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  chat_keep_hours: 168\n")
+    try:
+        w.runner.handlers["claude.p"] = lambda argv: claude_answer("ok", 0.001)
+        conv = json.loads(w.post("/api/ask", {"kind": "free", "args": {"text": "was ist offen?"}, "via": "quick"})[2])["conv"]
+        wait_quick(w)
+        assert w.app.quick.state()["keep_hours"] == 168
+        w.clock.advance(6 * 24 * 3600)
+        assert [c["id"] for c in w.app.quick.state()["convs"]] == [conv]
+        w.clock.advance(24 * 3600 + 60)
+        assert w.app.quick.state()["convs"] == []
+        _, rows = archived(w, "quick")
+        assert [(r["conv"]["id"], r["why"]) for r in rows] == [(conv, "expired")]
+    finally:
+        w.close()
 
 
 def test_a_removed_agent_conversation_is_archived(world):
@@ -6216,6 +7192,375 @@ def test_workspace_rename_takes_a_listed_workspace_without_a_title(tmp_path):
         w.close()
 
 
+# --- a new tab, a new workspace, a workspace closed (tab_new, workspace_new, workspace_close) ---
+
+NEW_CAPS = [*RENAME_CAPS, "new_tab", "new_workspace", "close_workspace", "set_color"]
+ROOMS_CFG = "cockpit:\n  enabled: true\n  language: en\n  chat_layout: workspaces\nworkplace:\n  control:\n    name: Control\n"
+TAB_MADE = {"ok": True, "report": ["tab (surface:40) in Demo"], "ref": "surface:40"}
+WS_MADE = {"ok": True, "report": ["workspace Fresh (workspace:50)"], "ws_ref": "workspace:50", "ref": "surface:51"}
+
+
+def make_world(tmp_path, config=None):
+    w = World(tmp_path, config=config)
+    w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": NEW_CAPS})
+    w.app.driver_caps(fresh=True)
+    w.runner.handlers["workplace.new-tab"] = lambda argv: ok(TAB_MADE)
+    w.runner.handlers["workplace.new-workspace"] = lambda argv: ok(WS_MADE)
+    w.runner.handlers["workplace.close-workspace"] = lambda argv: ok("")
+    return w
+
+
+@pytest.fixture
+def mworld(tmp_path):
+    w = make_world(tmp_path)
+    yield w
+    w.close()
+
+
+def test_tab_new_is_one_workplace_call_and_answers_the_ref_for_the_page(mworld):
+    mworld.runner.calls.clear()
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="  Why is the build red?\n", title=" Build chat ")
+    assert writes(mworld) == [W(mworld, "new-tab", "workspace:2", "--kind=agent", "--title=Build chat",
+                                "--text=Why is the build red?", "--json")]
+    assert res["ok"] and res["note"] == "New tab opened." and res["ref"] == "surface:40" and res["reload"] == "tabs"
+    assert res["go"]["kind"] == "tab" and res["go"]["ref"] == "surface:40"
+    assert mworld.app.tabs.next_extra < float("inf")          # a poll follows, so the new tab shows
+
+
+def test_tab_new_shell_and_a_free_agent_carry_only_what_was_asked(mworld):
+    mworld.runner.calls.clear()
+    mworld.act("tab_new", ws_ref="workspace:2", kind="shell")
+    mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="", title=None)        # an empty box is no text
+    assert writes(mworld) == [W(mworld, "new-tab", "workspace:2", "--kind=shell", "--json"),
+                              W(mworld, "new-tab", "workspace:2", "--kind=agent", "--json")]
+
+
+def test_tab_new_hands_the_sentence_to_the_cli_glued_to_its_flag(mworld):
+    """a dash at the start is no flag, a quote is no shell: one argv word, the CLI quotes it for the agent's shell"""
+    mworld.runner.calls.clear()
+    mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="--rm -rf; $(x) 'y'", title="--scratch")
+    (argv,) = writes(mworld)
+    assert argv[argv.index("--json") - 2:argv.index("--json")] == ["--title=--scratch", "--text=--rm -rf; $(x) 'y'"]
+
+
+def test_tab_new_takes_a_shell_without_a_sentence_only(mworld):
+    mworld.runner.calls.clear()
+    err = refused(mworld, "invalid_argument", "tab_new", ws_ref="workspace:2", kind="shell", text="hello")
+    assert (err.status, err.field) == (400, "text")
+    assert writes(mworld) == []
+
+
+def test_tab_new_audit_line_names_the_workspace_and_the_kind_never_the_words(mworld):
+    mworld.act("tab_new", ws_ref="workspace:2", kind="agent", text="the secret plan", title="hidden name")
+    mworld.act("tab_new", ws_ref="workspace:3", kind="shell")
+    lines = (mworld.state / "audit.log").read_text().strip().splitlines()
+    assert lines[-2].split()[1:] == ["tab_new", "workspace:2", "exits=0", "ok=true", "kind=agent"]
+    assert lines[-1].split()[1:] == ["tab_new", "workspace:3", "exits=0", "ok=true", "kind=shell"]
+    log = "\n".join(lines)
+    assert "secret" not in log and "hidden" not in log
+
+
+def test_tab_new_goes_into_a_workspace_the_terminal_shows_only(tmp_path):
+    w = make_world(tmp_path, ROOMS_CFG)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES + [{"ref": "workspace:7", "title": "Empty"}])
+        w.app.tabs.refresh_workspaces()
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        refused(w, "stale_workspace", "tab_new", ws_ref="workspace:99", kind="shell")
+        assert writes(w) == []
+        # a workspace the driver lists is live even without a tab in it
+        w.act("tab_new", ws_ref="workspace:7", kind="shell")
+        assert writes(w) == [W(w, "new-tab", "workspace:7", "--kind=shell", "--json")]
+    finally:
+        w.close()
+
+
+def test_tab_new_reads_the_tabs_again_for_a_workspace_that_appeared_after_the_last_poll(mworld):
+    """workspace_new, then at once a tab in it: the cached tab list does not know the workspace yet"""
+    fresh = {"name": "x", "workspace": "Fresh", "ref": "surface:51", "ws_ref": "workspace:9", "state": "shell", "id": "T51"}
+    mworld.runner.handlers["workplace.status"] = lambda argv: ok(STATUS + [fresh])
+    mworld.runner.calls.clear()
+    mworld.act("tab_new", ws_ref="workspace:9", kind="shell")
+    assert writes(mworld) == [W(mworld, "new-tab", "workspace:9", "--kind=shell", "--json")]
+    # a workspace that is not there after the fresh poll either stays refused
+    refused(mworld, "stale_workspace", "tab_new", ws_ref="workspace:10", kind="shell")
+
+
+def test_tab_new_names_the_model_and_effort_as_a_launch_does(tmp_path):
+    w = make_world(tmp_path, LAUNCH_CFG.format(more="    effort: true\n"))
+    try:
+        w.runner.calls.clear()
+        w.act("tab_new", ws_ref="workspace:2", kind="agent", model="opus", effort="high")
+        w.act("tab_new", ws_ref="workspace:2", kind="agent")                       # the config's default model
+        w.act("tab_new", ws_ref="workspace:2", kind="shell", model="opus")          # a shell has no model
+        first, second, third = writes(w)
+        assert first[-5:] == ["--json", "--model", "opus", "--effort", "high"]
+        assert second[-2:] == ["--model", "sonnet"]
+        assert third[-1] == "--json" and "--model" not in third
+    finally:
+        w.close()
+
+
+@pytest.mark.parametrize("args", [
+    {"ws_ref": "workspace:2; ls", "kind": "agent"}, {"ws_ref": "-workspace", "kind": "agent"}, {"kind": "agent"},
+    {"ws_ref": "workspace:2", "kind": "terminal"}, {"ws_ref": "workspace:2"}, {"ws_ref": "workspace:2", "kind": ["agent"]},
+    {"ws_ref": "workspace:2", "kind": "agent", "text": "a\x1bb"}, {"ws_ref": "workspace:2", "kind": "agent", "text": "x" * 2001},
+    {"ws_ref": "workspace:2", "kind": "agent", "text": 7}, {"ws_ref": "workspace:2", "kind": "agent", "title": "two\nlines"},
+    {"ws_ref": "workspace:2", "kind": "agent", "title": "x" * 81}, {"ws_ref": "workspace:2", "kind": "agent", "title": "  "},
+    {"ws_ref": "workspace:2", "kind": "agent", "model": "gpt-5"}, {"ws_ref": "workspace:2", "kind": "agent", "effort": "max"},
+    {"ws_ref": "workspace:2", "kind": "agent", "cwd": "/tmp"},
+])
+def test_tab_new_arguments_are_refused_before_any_call(mworld, args):
+    mworld.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        mworld.act("tab_new", **args)
+    assert err.value.status == 400
+    assert writes(mworld) == []
+
+
+def test_tab_new_and_the_others_without_the_cap_are_driver_cannot(world):
+    for verb, args in (("tab_new", {"ws_ref": "workspace:2", "kind": "shell"}),
+                       ("workspace_new", {"title": "Fresh", "kind": "shell"}),
+                       ("workspace_close", {"ws_ref": "workspace:3", "tabs": ["surface:12", "surface:13"]})):
+        world.runner.calls.clear()
+        with pytest.raises(ActionError) as err:
+            world.act(verb, **args)
+        assert (err.value.status, err.value.code) == (503, "driver_cannot"), verb
+        assert writes(world) == []
+
+
+def test_a_workplace_refusal_of_a_new_tab_has_a_code_and_no_field(mworld):
+    for err_text, code in (("refused: name in use", "name_in_use"),
+                           ("refused: a task, inbox or team tab is known by this name", "name_managed"),
+                           ("no open workspace with the ref 'workspace:2'", "stale_workspace"),
+                           ("refused: a title has 1 to 80 characters", "title_invalid"),
+                           ("refused: driver tmux cannot new tab", "driver_cannot"),
+                           ("refused: agent.new has no {prompt} slot, so the sentence would be lost", "new_refused"),
+                           ("something nobody expected", "new_refused")):
+        mworld.runner.handlers["workplace.new-tab"] = lambda argv, e=err_text: fail(e, 2)
+        with pytest.raises(ActionError) as err:
+            mworld.act("tab_new", ws_ref="workspace:2", kind="agent", title="Chat")
+        assert (err.value.code, err.value.field) == (code, None), err_text
+        assert err.value.status == (503 if code == "driver_cannot" else 409)
+
+
+def test_a_failed_new_tab_is_a_note_and_still_hands_over_the_tab_that_exists(mworld):
+    """the command did not start: the tab is open, so the page may open it, and the note says what went wrong"""
+    late = {"ok": False, "report": ["ERROR tab Chat: command did not start within 20 s"], "ref": "surface:40"}
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: RunResult(False, 1, json.dumps(late), "", 1)
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="agent", title="Chat")
+    assert not res["ok"] and "command did not start" in res["note"] and res["ref"] == "surface:40"
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: fail("driver cmux failed (exit 1): no answer")
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="agent")
+    assert not res["ok"] and "no answer" in res["note"] and "ref" not in res
+
+
+def test_a_new_tab_answer_that_is_no_ref_is_not_handed_on(mworld):
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: ok({"ok": True, "report": [], "ref": "x; rm -rf /"})
+    res = mworld.act("tab_new", ws_ref="workspace:2", kind="shell")
+    assert "ref" not in res
+
+
+def test_workspace_new_is_one_workplace_call_and_answers_both_refs(mworld, tmp_path):
+    folder = tmp_path / "project"
+    folder.mkdir()
+    mworld.runner.calls.clear()
+    res = mworld.act("workspace_new", title=" Fresh ", kind="agent", color="Teal", cwd=str(folder), text="Hello")
+    assert writes(mworld) == [W(mworld, "new-workspace", "--title=Fresh", "--kind=agent", "--color=Teal",
+                                f"--cwd={folder}", "--text=Hello", "--json")]
+    assert res["ok"] and res["note"] == "New workspace opened." and res["reload"] == "tabs"
+    assert (res["ws_ref"], res["ref"]) == ("workspace:50", "surface:51")
+    mworld.runner.calls.clear()
+    mworld.act("workspace_new", title="Plain", kind="none")
+    mworld.act("workspace_new", title="Shell", kind="shell")
+    assert writes(mworld) == [W(mworld, "new-workspace", "--title=Plain", "--kind=none", "--json"),
+                              W(mworld, "new-workspace", "--title=Shell", "--kind=shell", "--json")]
+
+
+def test_workspace_new_reads_the_workspaces_again_at_once(tmp_path):
+    w = make_world(tmp_path, ROOMS_CFG)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES)
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        w.app.tabs.poll()
+        assert w.runner.of("workplace.workspaces") == []          # kept for half a minute
+        w.act("workspace_new", title="Fresh", kind="shell")
+        w.app.tabs.poll()
+        assert len(w.runner.of("workplace.workspaces")) == 1
+    finally:
+        w.close()
+
+
+def test_workspace_new_takes_an_existing_folder_only(mworld, tmp_path):
+    a_file = tmp_path / "file.txt"
+    a_file.write_text("x")
+    mworld.runner.calls.clear()
+    for cwd in (str(tmp_path / "missing"), str(a_file), "relative/path", "--cwd", "", "~", 7, "/etc\x00/x"):
+        with pytest.raises(ActionError) as err:
+            mworld.act("workspace_new", title="Fresh", kind="shell", cwd=cwd)
+        assert (err.value.status, err.value.field) == (400, "cwd"), cwd
+    assert writes(mworld) == []
+
+
+@pytest.mark.parametrize("args", [
+    {"kind": "agent"}, {"title": "Fresh"}, {"title": "Fresh", "kind": "terminal"}, {"title": "Fresh", "kind": "agent", "color": "Sky"},
+    {"title": "Fresh", "kind": "agent", "color": "#123456"}, {"title": "two\nlines", "kind": "agent"},
+    {"title": "x" * 81, "kind": "agent"}, {"title": "  ", "kind": "agent"}, {"title": "Fresh", "kind": "none", "text": "hi"},
+    {"title": "Fresh", "kind": "shell", "text": "hi"}, {"title": "Fresh", "kind": "agent", "text": "a\x1bb"},
+    {"title": "Fresh", "kind": "agent", "model": "gpt-5"},
+])
+def test_workspace_new_arguments_are_refused_before_any_call(mworld, args):
+    mworld.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        mworld.act("workspace_new", **args)
+    assert err.value.status == 400
+    assert writes(mworld) == []
+
+
+def test_workspace_new_with_a_colour_needs_the_driver_to_colour(tmp_path):
+    w = make_world(tmp_path)
+    try:
+        w.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": [c for c in NEW_CAPS if c != "set_color"]})
+        w.app.driver_caps(fresh=True)
+        w.runner.calls.clear()
+        with pytest.raises(ActionError) as err:
+            w.act("workspace_new", title="Fresh", kind="shell", color="Teal")
+        assert (err.value.status, err.value.code) == (503, "driver_cannot")
+        assert writes(w) == []
+        w.act("workspace_new", title="Fresh", kind="shell")             # no colour asked: fine
+        assert len(writes(w)) == 1
+    finally:
+        w.close()
+
+
+def test_a_workplace_refusal_of_a_new_workspace_has_a_code_and_no_field(mworld):
+    for err_text, code in (("refused: name in use", "name_in_use"),
+                           ("refused: a configured workspace has this name (workplace.workspaces)", "name_managed"),
+                           ("refused: a title has 1 to 80 characters", "title_invalid"),
+                           ("refused: driver tmux cannot set color", "driver_cannot"),
+                           ("refused: cwd is not a folder that exists (give an absolute path)", "new_refused"),
+                           ("something nobody expected", "new_refused")):
+        mworld.runner.handlers["workplace.new-workspace"] = lambda argv, e=err_text: fail(e, 2)
+        with pytest.raises(ActionError) as err:
+            mworld.act("workspace_new", title="Fresh", kind="shell")
+        assert (err.value.code, err.value.field) == (code, None), err_text
+
+
+def test_workspace_new_audit_line_names_the_new_workspace_and_the_kind_never_the_title(mworld):
+    mworld.act("workspace_new", title="Hidden name", kind="agent", text="the secret plan")
+    lines = (mworld.state / "audit.log").read_text().strip().splitlines()
+    assert lines[-1].split()[1:] == ["workspace_new", "workspace:50", "exits=0", "ok=true", "kind=agent"]
+    assert "secret" not in lines[-1] and "Hidden" not in lines[-1]
+
+
+def test_a_failed_new_workspace_is_a_note_and_keeps_the_refs_that_exist(mworld):
+    late = {"ok": False, "report": ["workspace Fresh (workspace:50)", "ERROR tab Fresh: command did not start"],
+            "ws_ref": "workspace:50", "ref": "surface:51"}
+    mworld.runner.handlers["workplace.new-workspace"] = lambda argv: RunResult(False, 1, json.dumps(late), "", 1)
+    res = mworld.act("workspace_new", title="Fresh", kind="agent")
+    assert not res["ok"] and "command did not start" in res["note"] and res["ws_ref"] == "workspace:50"
+    mworld.runner.handlers["workplace.new-workspace"] = lambda argv: fail("driver cmux failed (exit 1): no answer")
+    res = mworld.act("workspace_new", title="Other", kind="agent")
+    assert not res["ok"] and "no answer" in res["note"] and "ws_ref" not in res
+
+
+OPS_TABS = ["surface:12", "surface:13"]       # Ops: a tab back at its shell and one waiting with nothing to ask
+
+
+def test_workspace_close_is_one_workplace_call_when_every_tab_may_close(mworld):
+    mworld.runner.calls.clear()
+    res = mworld.act("workspace_close", ws_ref="workspace:3", tabs=list(reversed(OPS_TABS)))      # the order is the page's
+    assert writes(mworld) == [W(mworld, "close-workspace", "workspace:3")]
+    assert res["ok"] and res["note"] == 'Workspace "Ops" closed' and res["reload"] == "tabs"
+
+
+def test_workspace_close_refuses_while_a_tab_works_or_asks(mworld):
+    mworld.runner.calls.clear()
+    # Demo holds a tab that asks (a dialog) and one that works
+    err = refused(mworld, "not_applicable", "workspace_close", ws_ref="workspace:2", tabs=["surface:7", "surface:8", "surface:11"])
+    assert err.status == 409 and "still works or asks" in err.message
+    assert writes(mworld) == []
+
+
+def test_workspace_close_refuses_a_tab_list_the_page_did_not_see(mworld):
+    mworld.runner.calls.clear()
+    for tabs in (["surface:12"], [*OPS_TABS, "surface:99"], [], ["surface:12", "surface:99"]):
+        err = refused(mworld, "tab_moved", "workspace_close", ws_ref="workspace:3", tabs=tabs)
+        assert err.status == 409
+    assert writes(mworld) == []
+    # a tab that moved into the workspace meanwhile is a tab the page did not see
+    mworld.runner.handlers["workplace.status"] = lambda argv: ok([dict(t, ws_ref="workspace:3", workspace="Ops")
+                                                                  if t["ref"] == "surface:11" else t for t in STATUS])
+    refused(mworld, "tab_moved", "workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    assert writes(mworld) == []
+
+
+def test_workspace_close_never_closes_the_control_workspace_or_an_unknown_one(mworld):
+    mworld.runner.calls.clear()
+    refused(mworld, "control_tab", "workspace_close", ws_ref="workspace:1", tabs=["surface:3", "surface:9"])
+    refused(mworld, "stale_workspace", "workspace_close", ws_ref="workspace:99", tabs=[])
+    assert writes(mworld) == []
+
+
+def test_workspace_close_takes_a_listed_workspace_without_a_tab(tmp_path):
+    w = make_world(tmp_path, ROOMS_CFG)
+    try:
+        w.runner.handlers["workplace.workspaces"] = lambda argv: ok(WORKSPACES + [{"ref": "workspace:7", "title": "Empty"}])
+        w.app.tabs.poll()
+        w.runner.calls.clear()
+        res = w.act("workspace_close", ws_ref="workspace:7", tabs=[])
+        assert writes(w) == [W(w, "close-workspace", "workspace:7")] and res["note"] == 'Workspace "Empty" closed'
+    finally:
+        w.close()
+
+
+def test_a_driver_failure_halfway_names_what_stayed_open(mworld):
+    """the terminal closed one tab, then refused: the note says which tab is still there"""
+    def halfway(argv):
+        mworld.runner.handlers["workplace.status"] = lambda a: ok([t for t in STATUS if t["ref"] != "surface:12"])
+        return fail("cmux refused the rest")
+    mworld.runner.handlers["workplace.close-workspace"] = halfway
+    res = mworld.act("workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    assert not res["ok"] and "cmux refused the rest" in res["note"] and "waiting plain" in res["note"]
+    assert "dead" not in res["note"]
+    # nothing closed at all: every tab is named
+    mworld.runner.handlers["workplace.status"] = lambda argv: ok(STATUS)
+    mworld.runner.handlers["workplace.close-workspace"] = lambda argv: fail("cmux refused")
+    res = mworld.act("workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    assert not res["ok"] and "dead" in res["note"] and "waiting plain" in res["note"]
+
+
+@pytest.mark.parametrize("tabs", ["surface:12", [7], ["surface:12", "surface:12"], ["surface:12; ls"], ["-tab"],
+                                  [f"surface:{i}" for i in range(101)], None, {"a": 1}])
+def test_workspace_close_arguments_are_refused_before_any_call(mworld, tabs):
+    mworld.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        mworld.act("workspace_close", ws_ref="workspace:3", tabs=tabs)
+    assert err.value.status == 400 and err.value.field == "tabs"
+    assert writes(mworld) == []
+
+
+def test_workspace_close_audit_line_counts_the_tabs_and_names_none(mworld):
+    mworld.act("workspace_close", ws_ref="workspace:3", tabs=OPS_TABS)
+    line = (mworld.state / "audit.log").read_text().strip().splitlines()[-1]
+    assert line.split()[1:] == ["workspace_close", "workspace:3", "exits=0", "ok=true", "tabs=2"]
+    assert "waiting plain" not in line and "dead" not in line
+
+
+def test_the_new_verbs_take_no_write_lock(mworld):
+    """they only steer the terminal, and a start waits seconds for its tab: another write must not wait for it"""
+    from lib.bridge_cockpit.actions_base import LOCAL_VERBS, NEEDS_CAP
+    assert {"tab_new", "workspace_new", "workspace_close"} <= LOCAL_VERBS
+    assert (NEEDS_CAP["tab_new"], NEEDS_CAP["workspace_new"], NEEDS_CAP["workspace_close"]) == \
+        ("new_tab", "new_workspace", "close_workspace")
+    seen = []
+    mworld.runner.handlers["workplace.new-tab"] = lambda argv: (seen.append(mworld.app.actions.write_lock.locked()), ok(TAB_MADE))[1]
+    mworld.act("tab_new", ws_ref="workspace:2", kind="shell")
+    assert seen == [False]
+
+
 # --- organize with AI: one model call proposes, ticked items are applied (organize_propose, organize_apply) ---
 
 ORG_CAPS = [*RENAME_CAPS, "move_tab", "set_color", "set_description"]
@@ -6759,6 +8104,51 @@ def test_a_chat_from_an_info_row_finds_its_inbox_item(world):
     assert sweep(world) is False and conv_of(world, other)
 
 
+def test_a_question_on_a_job_row_is_built_from_the_view_and_names_the_row(world):
+    write_workers(world, [WORKER_RUN])
+    conv = chat_on(world, "worker", host="homebox", id="chat-bot")
+    c = conv_of(world, conv)
+    assert c["about"] == {"kind": "worker", "key": "worker:homebox:chat-bot", "inbox": None}
+    # the question in the page's language first, the finding as the job wrote it (often English) quoted after it
+    assert c["turns"][0]["q"] == ("Background job chat-bot on homebox: last run failed. What should be done, and why? "
+                                  "The finding as the job reports it: «the last run ended with 75»")
+    # an item the job was filed as (Analyse in a tab) is what the chat waits for
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": YES_ID, "state": "open", "key": "worker:homebox:chat-bot"}])
+    world.app.inbox_cache = (0.0, None)
+    assert conv_of(world, chat_on(world, "worker", host="homebox", id="chat-bot"))["about"]["inbox"] == YES_ID
+    status, _, body = world.post("/api/ask", {"kind": "worker", "args": {"host": "homebox", "id": "gone"}, "via": "quick"})
+    assert status == 409 and json.loads(body)["error"]["code"] == "stale_row"
+
+
+def test_a_question_on_a_job_row_handed_on_keeps_its_row(world):
+    """28.10.: a question asked on the job row, then "Let AI do it": the chat named only the new item and the row lost
+    its question and its marker. The handed item is added to what the chat is about, the row's key stays"""
+    write_workers(world, [WORKER_RUN])
+    conv = chat_on(world, "worker", host="homebox", id="chat-bot")
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("quick_handoff", conv=conv, to="tab", text="I want to analyse it more closely")
+    assert conv_of(world, conv)["about"] == {"kind": "worker", "key": "worker:homebox:chat-bot", "inbox": new_id}
+    # an item the chat names already stays what it is about
+    assert world.app.quick.set_about(conv, {"kind": "handoff", "inbox": "20261010-1400-other-c3d4"}) is False
+    # a chat about nothing yet takes the handoff as it is
+    free = answered_conv(world)
+    world.act("quick_handoff", conv=free, to="tab")
+    assert conv_of(world, free)["about"] == {"kind": "handoff", "inbox": new_id}
+
+
+def test_a_question_on_a_job_row_takes_the_finding_in_one_short_line(world):
+    # a finding may carry a log excerpt: its control characters go and it is cut, so the question and its title stay short
+    write_workers(world, [{**WORKER_RUN, "findings": [{"state": "last_run_failed", "severity": "high",
+                                                       "detail": "line one\nline two\x07 " + "x" * 2000, "hint": ""}]}])
+    q = conv_of(world, chat_on(world, "worker", host="homebox", id="chat-bot"))["turns"][0]["q"]
+    assert "\n" not in q and "\x07" not in q and len(q) < 700, len(q)
+    # without a detail there is no double space
+    write_workers(world, [{**WORKER_RUN, "findings": []}])
+    q = conv_of(world, chat_on(world, "worker", host="homebox", id="chat-bot"))["turns"][0]["q"]
+    assert "  " not in q, q
+
+
 def test_a_chat_on_a_task_row_leaves_when_the_task_moves_to_done(world):
     conv = chat_on(world, "follow_up", key="task:other-task")
     assert conv_of(world, conv)["about"] == {"kind": "follow_up", "key": "task:other-task", "task": "other-task"}
@@ -6848,6 +8238,12 @@ def test_a_handed_chat_leaves_with_its_inbox_item(world):
     world.clock.advance(QUIET)
     assert sweep(world) is False
     end_item(world, new_id, world.app.clock() - 60_000, "executed")
+    # a handed chat carries what came back, and stays cockpit.chat_keep_hours after the end to be read
+    sweep(world)
+    assert conv_of(world, conv)["handed"]["outcome"]["closed"] is True
+    world.clock.advance(23 * 3600)
+    assert sweep(world) is False and conv_of(world, conv)
+    world.clock.advance(3600)
     assert sweep(world) is True and conv_of(world, conv) is None
     # a chat that already has its row keeps that one when it is handed on
     row_conv = chat_on(world, "row", key=f"inbox:{YES2_ID}")
@@ -6858,18 +8254,58 @@ def test_a_handed_chat_leaves_with_its_inbox_item(world):
 
 def test_an_info_chat_without_an_item_takes_the_item_it_is_handed_on_as(world):
     """An info row nobody filed gives its chat an `about` without an item: handed to a tab, the chat is about
-    the inbox item the handoff filed, and leaves with it like any handed chat"""
+    the inbox item the handoff filed as well, and leaves with it like any handed chat"""
     world.runner.handlers["inbox.list"] = lambda argv: ok([])
     world.app.inbox_cache = (0.0, None)
     conv = chat_on(world, "info", page="systems", section="upstream", index=0)
     assert conv_of(world, conv)["about"]["inbox"] is None
     new_id = "20261010-1500-info-chat-a1b2"
     world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    key = conv_of(world, conv)["about"]["key"]
     world.act("quick_handoff", conv=conv, to="tab")
-    assert conv_of(world, conv)["about"] == {"kind": "handoff", "inbox": new_id}
+    # the row's own key stays beside the item, so the row still finds its question (review SRV-1)
+    assert conv_of(world, conv)["about"] == {"kind": "info", "key": key, "inbox": new_id}
     world.clock.advance(QUIET)
     end_item(world, new_id, world.app.clock() - 60_000, "executed")
+    world.clock.advance(24 * 3600)
     assert sweep(world) is True and conv_of(world, conv) is None
+
+
+def note_item(world, item, at_ms, text):
+    """A note event of an inbox item, the way inbox.py writes it"""
+    events = world.root / "work" / "inbox" / item / "events"
+    events.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.fromtimestamp(at_ms / 1000, dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (events / f"{stamp}-05-tab-note.yaml").write_text(f"verb: note\nby: tab\ntext: {json.dumps(text)}\n", encoding="utf-8")
+
+
+def test_a_handed_chat_learns_what_came_back_from_its_item(world):
+    """28.10.: the close note stood only on the closed item, the chat still said "arrived in the tab". The sweep reads
+    the item's events onto the chat (`handed.outcome`): the newest note, closed or open, and when; a question asks.
+    The person's own start note is no outcome"""
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("quick_handoff", conv=conv, to="tab", text="look closer")
+    now = world.app.clock()
+    note_item(world, new_id, now + 1000, "Start note: look closer")
+    world.clock.advance(60)
+    sweep(world)
+    assert "outcome" not in conv_of(world, conv)["handed"]
+    note_item(world, new_id, now + 30_000, "Question: close it, the bot runs fine?")
+    assert sweep(world) is True       # nothing left, but the pages are told what changed
+    out = conv_of(world, conv)["handed"]["outcome"]
+    assert out == {"text": "Question: close it, the bot runs fine?", "closed": False, "asks": True,
+                   "at_ms": out["at_ms"]} and abs(out["at_ms"] - (now + 30_000)) < 1000
+    assert sweep(world) is False      # read again, the same: nothing to tell
+    end_item(world, new_id, now + 50_000)
+    note_item(world, new_id, now + 49_000, "Result: the bot runs, nothing to change")
+    sweep(world)
+    out = conv_of(world, conv)["handed"]["outcome"]
+    assert out["closed"] is True and out["asks"] is False and out["text"] == "Result: the bot runs, nothing to change"
+    # kept: the quiet time counts from the end, and a handed chat stays a day after it
+    world.clock.advance(QUIET)
+    assert conv_of(world, conv)
 
 
 def test_settle_verbs_trigger_the_sweep_on_the_next_poll(world):
@@ -7386,3 +8822,1567 @@ def test_a_change_inside_one_page_sends_only_that_page(world):
     col.view["headline"] = "Something else entirely"
     col.rebuild()
     assert [ev for ev, _ in sent] == ["view"], "a change outside the pages still sends the whole model"
+
+
+# ---------------------------------------------------------------- the files view: status and the derived next step
+
+def test_parse_tasks_keeps_status_next_and_when_the_task_last_changed():
+    out = m.parse_tasks([{"slug": "a", "label": "A", "status": "review", "next": "Call the vendor", "updated": "2026-10-20"},
+                         {"slug": "b", "label": "B", "next": 7}])
+    assert (out[0]["status"], out[0]["next"], out[0]["updated"]) == ("review", "Call the vendor", "2026-10-20")
+    assert (out[1]["status"], out[1]["next"], out[1]["updated"]) == (None, None, None)
+
+
+def test_task_next_is_derived_from_the_oldest_open_inbox_item_then_the_status_file():
+    t = tinfo("alpha", next="Write the summary", updated="2026-10-20")
+    newer = row("inbox:2", ["inbox"], inbox_id="20261012-0900-b", task="alpha", title="Newer", created="2026-10-12T09:00")
+    older = row("inbox:1", ["inbox"], inbox_id="20261010-0900-a", task="alpha", title="Older", created="2026-10-10T09:00")
+    elsewhere = row("inbox:3", ["inbox"], inbox_id="20261001-0900-c", task="beta", title="Elsewhere", created="2026-10-01T09:00")
+    assert m.task_next(t, [newer, older, elsewhere]) == {"what": "Older", "from": "inbox", "since": "2026-10-10T09:00",
+                                                        "key": "inbox:1"}
+    # without an inbox item: what STATUS.md names as next, dated by its last change
+    assert m.task_next(t, [elsewhere]) == {"what": "Write the summary", "from": "status", "since": "2026-10-20", "key": None}
+    # nothing names a next step: none is made up
+    assert m.task_next(tinfo("alpha"), []) is None
+
+
+def test_task_next_passes_over_an_inbox_item_put_off():
+    t = tinfo("alpha", next="Write the summary", updated="2026-10-20")
+    put_off = row("inbox:1", ["inbox"], inbox_id="20261001-0900-a", task="alpha", title="Put off", created="2026-10-01T09:00",
+                  inbox_state="deferred")
+    waiting = row("inbox:2", ["inbox"], inbox_id="20261005-0900-b", task="alpha", title="Waits for a yes", created="2026-10-05T09:00",
+                  inbox_state="waiting")
+    # an item put off is not open: the next step is what STATUS.md names, as the page reads it (logic.js dossierParts)
+    assert m.task_next(t, [put_off]) == {"what": "Write the summary", "from": "status", "since": "2026-10-20", "key": None}
+    # an item that waits for a yes is still open and still the oldest one
+    assert m.task_next(t, [put_off, waiting])["key"] == "inbox:2"
+
+
+def test_with_tasks_gives_every_task_row_its_status_and_derived_next_step():
+    v = view(buckets=[
+        {"id": "plan", "title": "Plan", "rows": [
+            row("inbox:1", ["inbox"], inbox_id="20261010-0900-a", task="alpha", title="Answer the vendor",
+                created="2026-10-10T09:00")]},
+        {"id": "delegate", "title": "Delegate", "rows": [row("task:gamma", ["tasks"], task="gamma", title="Next of gamma")]}])
+    tasks = [tinfo("alpha", status="doing", priority="P2"), tinfo("beta", status="review", next="Merge it", updated="2026-10-20"),
+             tinfo("gamma", status="doing", next="Next of gamma", updated="2026-10-19")]
+    out = m.with_tasks(v, tasks)
+    rows = {r["key"]: r for b in out["buckets"] for r in b["rows"]}
+    assert rows["task:alpha"]["status"] == "doing"
+    assert rows["task:alpha"]["next"] == {"what": "Answer the vendor", "from": "inbox", "since": "2026-10-10T09:00",
+                                          "key": "inbox:1"}
+    assert rows["task:beta"]["status"] == "review" and rows["task:beta"]["next"]["from"] == "status"
+    # a task the briefing already lists (its next step as the title) carries the same fields
+    assert rows["task:gamma"]["status"] == "doing" and rows["task:gamma"]["next"]["what"] == "Next of gamma"
+    # an inbox row is a part of its task: it carries neither
+    assert rows["inbox:1"]["status"] is None and rows["inbox:1"]["next"] is None
+
+
+def test_parse_view_keeps_when_an_inbox_item_was_filed():
+    raw = {"view": {"buckets": [{"id": "do", "title": "Do", "items": [
+        {"title": "A", "inbox_id": "x1", "created": "2026-10-10T09:00"}, {"title": "B", "inbox_id": "x2", "created": 5}]}]}}
+    rows = m.parse_view(raw, False, NOW)["buckets"][0]["rows"]
+    assert [r["created"] for r in rows] == ["2026-10-10T09:00", None]
+
+
+def test_the_model_rows_carry_status_and_next_step_to_the_page(world):
+    demo = world.row("task:demo-task")
+    assert demo["status"] == "doing"
+    assert demo["next"] == {"what": "Review the demo report", "from": "inbox", "since": "2026-10-09T09:00",
+                            "key": f"inbox:{ONLY_ID}"}
+    other = world.row("task:other-task")
+    assert other["status"] is None and other["next"] is None
+
+
+def test_task_detail_names_the_references_of_its_status_file(world):
+    path = world.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    text = path.read_text(encoding="utf-8").replace(
+        "origin: invented\n", "origin: invented\nnext:\n  what: Call the vendor\n  who: me\n"
+        "related:\n  - ../other-task/STATUS.md\n  - docs/example.md\n")
+    path.write_text(text, encoding="utf-8")
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    assert data["related"] == ["../other-task/STATUS.md", "docs/example.md"]
+    # a next step written as a mapping reads as its words, not as a Python dict
+    assert data["front"]["next"] == "Call the vendor"
+
+
+def test_seen_endpoint_leaves_one_page_view_line_and_refuses_bad_input(world):
+    log = world.app.state_dir / "audit.log"
+    before = log.read_text().splitlines() if log.exists() else []
+    status, _, data = world.post("/api/seen", {"page": "briefing", "view": "dossier"})
+    assert status == 200 and json.loads(data)["ok"] is True
+    new = log.read_text().splitlines()[len(before):]
+    assert len(new) == 1 and new[0].split()[1:] == ["page_view", "briefing", "view=dossier"]
+    assert world.post("/api/seen", {"page": "@start"})[0] == 200
+    assert log.read_text().splitlines()[-1].split()[1:] == ["page_view", "@start", "view=-"]
+    assert world.post("/api/seen", {"page": "../x"})[0] == 400
+    assert world.post("/api/seen", {"page": "briefing", "view": "a b"})[0] == 400
+    assert world.post("/api/seen", {"page": "briefing", "x": 1})[0] == 400
+
+
+def test_seen_endpoint_takes_a_profile_page_id_as_written(world):
+    # page ids come from the profiles as free text: capitals and dots measure too, a path or a space never
+    log = world.app.state_dir / "audit.log"
+    assert world.post("/api/seen", {"page": "Weekly.Review"})[0] == 200
+    assert log.read_text().splitlines()[-1].split()[1:] == ["page_view", "Weekly.Review", "view=-"]
+    for bad in ("a/b", "a\\b", "a b", "a\nb", "", "x" * 65):
+        assert world.post("/api/seen", {"page": bad})[0] == 400, bad
+
+
+# ---------------------------------------------------------------- the files view: find, ask a file, next step (E2)
+
+def find_handler(world):
+    """The real search on the test Bridge, as scripts/work-find.py would answer it"""
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    return lambda argv: ok(work_find.find(world.root, argv[-1], engine="python"))
+
+
+def test_find_runs_the_search_command_through_the_runner_and_answers_by_file(world):
+    world.runner.handlers["work-find.--json"] = find_handler(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/find?q=" + urllib.parse.quote("demo; rm -rf /"), headers=world.cookie)
+    assert status == 200
+    argv = world.runner.of("work-find.--json")[0]
+    assert argv[:2] == [PY, str(world.root / "scripts" / "work-find.py")]
+    assert argv[2:] == ["--root", str(world.root), "--json", "--", "demo; rm -rf /"]    # one argv word, no shell
+    assert json.loads(body)["groups"] == []
+    status, _, body = world.request("GET", "/api/find?q=demo", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True and data["groups"][0]["slug"] == "demo-task"
+    assert data["groups"][0]["path"] == "work/tasks/demo-task" and data["groups"][0]["rank"] == 0
+
+
+def test_find_refuses_a_bad_query_before_it_runs_anything(world):
+    world.runner.calls.clear()
+    for q in ("", "x", "%0A%0Aab", "a%00b", "y" * 201):
+        status, _, body = world.request("GET", f"/api/find?q={q}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == "q", q
+    assert world.runner.of("work-find.--json") == []
+    assert world.request("GET", "/api/find?q=demo")[0] == 401                       # no cookie, no search
+
+
+def test_find_says_so_when_the_search_fails_and_never_shows_the_token(world):
+    world.runner.handlers["work-find.--json"] = lambda argv: fail(f"broke near {world.app.token}")
+    status, _, body = world.request("GET", "/api/find?q=demo", headers=world.cookie)
+    assert status == 502 and json.loads(body)["error"]["code"] == "unreadable"
+    assert world.app.token.encode() not in body
+
+
+FILES_ASK_CONFIG = ("cockpit:\n  enabled: true\n  language: en\n  files_search:\n    enabled: {on}\n    budget_per_day: {budget}\n"
+                    "    block: [Versicherung, Gesundheit]\nworkplace:\n  control:\n    name: Control\n")
+
+
+def files_ask_world(tmp_path, on="true", budget=3):
+    w = World(tmp_path, config=FILES_ASK_CONFIG.format(on=on, budget=budget))
+    put = lambda rel, text: ((w.root / rel).parent.mkdir(parents=True, exist_ok=True), (w.root / rel).write_text(text, encoding="utf-8"))
+    put("work/tasks/versicherung-bestand/STATUS.md", "---\nstatus: doing\nheadline: Policies in review\n---\nsecret policy number 42\n")
+    put("work/done/2026-09/doctor-visit/STATUS.md", "---\nstatus: done\nheadline: Gesundheit check-up\n---\nblood values\n")
+    w.runner.handlers["claude.p"] = lambda argv: ok({"type": "result", "is_error": False, "total_cost_usd": 0.002,
+                                                     "modelUsage": {"claude-haiku-5-5": {}}, "result": "",
+                                                     "structured_output": {"answer": "The demo waits.", "files": [{"n": 1, "why": "it is the demo"}]}})
+    return w
+
+
+ASKED = ["work/tasks/demo-task", "work/tasks/versicherung-bestand", "work/done/2026-09/doctor-visit"]
+
+
+def test_the_records_of_the_files_tab_come_by_folder_read_only_and_need_the_cookie(world):
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/records", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    [rec] = [r for r in data["records"] if r["slug"] == "demo-task"]
+    assert rec["path"] == "work/tasks/demo-task" and rec["title"] == "Demo task" and rec["status"] == "doing"
+    assert rec["updated"] == "2026-10-08" and rec["priority"] == "P1"
+    assert world.runner.calls == []                                               # read in place, nothing run
+    assert world.request("GET", "/api/records")[0] == 401
+
+
+def test_the_work_state_says_whether_the_files_tab_may_ask_a_model_and_what_it_holds_back(tmp_path):
+    w = files_ask_world(tmp_path)
+    try:
+        fs = w.app.work_state()["files_search"]
+        assert fs == {"enabled": True, "block": ["Versicherung", "Gesundheit"], "left": 3}
+    finally:
+        w.close()
+    off = World(tmp_path / "off")
+    try:
+        assert off.app.work_state()["files_search"] == {"enabled": False, "block": [], "left": 20}
+    finally:
+        off.close()
+
+
+def test_asking_the_records_never_sends_one_the_block_list_holds_back(tmp_path):
+    w = files_ask_world(tmp_path)
+    try:
+        before = len(w.runner.calls)
+        res = w.act("files_ask", text="Which one\nwaits?", paths=ASKED)
+        calls = w.runner.calls[before:]
+        assert [w.runner.key(c) for c in calls] == ["claude.p"]
+        prompt = calls[0][-1]
+        # what the block list names never reaches the model: not its path, title, slug or text
+        for held in ("versicherung", "Policies in review", "policy number", "doctor-visit", "Gesundheit", "blood values"):
+            assert held not in prompt, held
+        head, data, label, question = prompt.split("\n", 3)
+        [rec] = json.loads(data)["records"]
+        assert rec["n"] == 1 and rec["slug"] == "demo-task" and rec["title"] == "Demo task" and "Ship the demo." in rec["text"]
+        assert question == "Which one waits?"
+        ask = res["ask"]
+        assert ask["answer"] == "The demo waits." and ask["sent"] == 1
+        assert ask["files"] == [{"n": 1, "why": "it is the demo", "slug": "demo-task", "path": "work/tasks/demo-task", "title": "Demo task"}]
+        assert ask["held"] == {"n": 2, "words": ["Versicherung", "Gesundheit"]}
+        assert ask["model"] == "haiku" and ask["left"] == 2
+    finally:
+        w.close()
+
+
+def test_asking_the_records_is_off_by_default_within_its_budget_and_refuses_what_it_cannot_send(tmp_path):
+    w = files_ask_world(tmp_path, budget=1)
+    try:
+        # only held back records: nothing to send, no call
+        with pytest.raises(ActionError) as none:
+            w.act("files_ask", text="anything?", paths=ASKED[1:])
+        assert none.value.code == "files_ask_held" and w.runner.of("claude.p") == []
+        # a folder that is no record is left out, a path outside work/ refused before anything runs
+        with pytest.raises(ActionError) as bad:
+            w.act("files_ask", text="anything?", paths=["../etc/passwd"])
+        assert bad.value.code == "invalid_argument"
+        with pytest.raises(ActionError) as gone:
+            w.act("files_ask", text="anything?", paths=["work/tasks/no-such-task"])
+        # nothing held back, the record is gone since the page read it: the page is stale, not the block list
+        assert gone.value.code == "files_ask_stale"
+        w.act("files_ask", text="anything?", paths=ASKED[:1])
+        with pytest.raises(ActionError) as spent:
+            w.act("files_ask", text="again?", paths=ASKED[:1])
+        assert spent.value.code == "files_ask_budget" and spent.value.status == 429
+        assert len(w.runner.of("claude.p")) == 1
+    finally:
+        w.close()
+    off = files_ask_world(tmp_path / "off", on="false")
+    try:
+        with pytest.raises(ActionError) as e:
+            off.act("files_ask", text="anything?", paths=ASKED[:1])
+        assert e.value.code == "files_ask_off" and off.runner.of("claude.p") == []
+    finally:
+        off.close()
+
+
+def test_a_record_whose_text_names_a_blocked_word_is_held_back_too(tmp_path):
+    """The text that goes out (the start of STATUS.md, with its front matter and `related:`) is checked as well as its
+    area, theme, path and title: a word inside a longer one holds it too (Krankenversicherung, by Versicherung)"""
+    w = files_ask_world(tmp_path)
+    try:
+        put = lambda rel, text: ((w.root / rel).parent.mkdir(parents=True, exist_ok=True), (w.root / rel).write_text(text, encoding="utf-8"))
+        put("work/tasks/school-board/STATUS.md", "---\nstatus: doing\nheadline: Parents board\n---\nAsk about the Krankenversicherung form\n")
+        put("work/tasks/tax-prep/STATUS.md", "---\nstatus: doing\nheadline: Prep\nrelated: [versicherung-bestand]\n---\nnothing else\n")
+        before = len(w.runner.calls)
+        res = w.act("files_ask", text="which?", paths=["work/tasks/demo-task", "work/tasks/school-board", "work/tasks/tax-prep"])
+        prompt = w.runner.calls[before:][0][-1]
+        for held in ("school-board", "Krankenversicherung", "tax-prep", "versicherung-bestand"):
+            assert held not in prompt, held
+        assert res["ask"]["sent"] == 1 and res["ask"]["held"] == {"n": 2, "words": ["Versicherung"]}
+    finally:
+        w.close()
+
+
+def test_the_records_name_what_the_block_list_holds_back_so_the_page_counts_as_the_server_does(tmp_path):
+    w = files_ask_world(tmp_path)
+    try:
+        status, _, body = w.request("GET", "/api/records", headers=w.cookie)
+        by = {r["slug"]: r for r in json.loads(body)["records"]}
+        assert status == 200
+        assert by["versicherung-bestand"]["held"] == ["Versicherung"] and by["doctor-visit"]["held"] == ["Gesundheit"]
+        assert by["demo-task"]["held"] == []
+    finally:
+        w.close()
+    off = World(tmp_path / "off")
+    try:
+        recs = json.loads(off.request("GET", "/api/records", headers=off.cookie)[2])["records"]
+        assert all("held" not in r for r in recs), "no block list, nothing read for it"
+    finally:
+        off.close()
+
+
+def test_the_budget_is_read_again_once_the_lock_is_taken(tmp_path):
+    w = files_ask_world(tmp_path, budget=3)
+    try:
+        left = iter([1, 0])
+        w.app.activity.budget_left = lambda service: next(left, 0)
+        with pytest.raises(ActionError) as spent:
+            w.act("files_ask", text="anything?", paths=ASKED[:1])
+        assert spent.value.code == "files_ask_budget" and w.runner.of("claude.p") == []
+    finally:
+        w.close()
+
+
+# ---------------------------------------------------------------- the history: when it was done or discussed
+
+def history_handler(world, transcripts=None):
+    """The real history on the test Bridge, as scripts/work-find.py --history would answer it"""
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    return lambda argv: ok(work_find.history(world.root, argv[-1], transcripts=transcripts))
+
+
+def test_the_timeline_runs_the_search_command_through_the_runner_and_answers_by_day(world):
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "\n| 2026-10-07 09:15 | x | demo-task | demo retry moved to the night |\n",
+                   encoding="utf-8")
+    world.runner.handlers["work-find.--history"] = history_handler(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/timeline?q=" + urllib.parse.quote("demo; rm -rf /"), headers=world.cookie)
+    assert status == 200
+    argv = world.runner.of("work-find.--history")[0]
+    assert argv[:2] == [PY, str(world.root / "scripts" / "work-find.py")]
+    # no transcripts named in the config: none passed; the words one argv word after --
+    assert argv[2:] == ["--root", str(world.root), "--history", "--json", "--meetings", "work/tasks/_meetings", "--",
+                        "demo; rm -rf /"]
+    assert json.loads(body)["entries"] == []
+    status, _, body = world.request("GET", "/api/timeline?q=demo%20retry", headers=world.cookie)
+    data = json.loads(body)
+    assert status == 200 and data["ok"] is True
+    assert data["entries"][0]["date"] == "2026-10-07" and data["entries"][0]["kind"] == "did"
+
+
+def test_the_timeline_refuses_a_bad_query_and_says_so_when_it_fails(world):
+    world.runner.calls.clear()
+    for q in ("", "x", "%0A%0Aab", "y" * 201):
+        status, _, body = world.request("GET", f"/api/timeline?q={q}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == "q", q
+    assert world.runner.of("work-find.--history") == []
+    assert world.request("GET", "/api/timeline?q=demo")[0] == 401
+    world.runner.handlers["work-find.--history"] = lambda argv: fail(f"broke near {world.app.token}")
+    status, _, body = world.request("GET", "/api/timeline?q=demo", headers=world.cookie)
+    assert status == 502 and json.loads(body)["error"]["code"] == "unreadable" and world.app.token.encode() not in body
+
+
+def test_the_transcripts_and_the_meetings_come_from_the_config_of_the_meetings(tmp_path):
+    para = tmp_path / "para"
+    (para / "Audio" / "processed").mkdir(parents=True)
+    w = World(tmp_path / "w", config=(f"cockpit:\n  enabled: true\nidentity:\n  onedrive_root: {para}\n"
+                                      "doc_sensor:\n  onedrive_root: ${onedrive_root}\nwork:\n  meetings:\n"
+                                      "    raw_record_dir: Audio/processed\n    home_dir: work/tasks/_talks\n"
+                                      "workplace:\n  control:\n    name: Control\n"))
+    try:
+        assert w.app.cfg.transcripts == para / "Audio" / "processed" and w.app.cfg.meetings == "work/tasks/_talks"
+        w.runner.handlers["work-find.--history"] = history_handler(w)
+        w.request("GET", "/api/timeline?q=demo", headers=w.cookie)
+        argv = w.runner.of("work-find.--history")[0]
+        assert argv[4:10] == ["--history", "--json", "--meetings", "work/tasks/_talks", "--transcripts",
+                              str((para / "Audio" / "processed").resolve())]
+    finally:
+        w.close()
+    for bad in ("    home_dir: ../outside\n", "    home_dir: /etc\n", "    raw_record_dir: missing/folder\n"):
+        cfg = load_web_config(tmp_path, {"cockpit": {"enabled": True}, "doc_sensor": {"onedrive_root": str(para)},
+                                         "work": {"meetings": __import__("yaml").safe_load(bad)}})
+        assert cfg.meetings == "work/tasks/_meetings", bad
+    assert load_web_config(tmp_path, {"cockpit": {"enabled": True}}).transcripts is None
+    # a relative folder without a root to stand on names nothing
+    assert load_web_config(tmp_path, {"work": {"meetings": {"raw_record_dir": "Audio/processed"}}}).transcripts is None
+
+
+# ---------------------------------------------------------------- the log page's time range: GET /api/logrange
+
+def logrange_handlers(world, repos=None):
+    """The real rows and the other history of the test Bridge, as scripts/work-find.py --rows and --events would
+    answer them; own commits as scripts/briefing.py commits would"""
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    world.runner.handlers["work-find.--rows"] = lambda argv: ok(work_find.log_rows(world.root))
+    world.runner.handlers["work-find.--events"] = lambda argv: ok(work_find.history_events(
+        world.root, query=argv[argv.index("--") + 1] if "--" in argv else None,
+        since=argv[argv.index("--since") + 1], until=argv[argv.index("--until") + 1]))
+    world.runner.handlers["briefing.commits"] = lambda argv: ok({"ok": True, "section": "commits", "skipped": [], "repos": repos if repos is not None else [
+        {"repo": "example/app", "branch": "main", "url": "https://github.com/example/app/commits/main", "ts": [int(NOW // 1000) - 3600]}]})
+
+
+def logrange_rows(world):
+    (world.root / "work" / "done" / "2026-09" / "old-export").mkdir(parents=True)
+    (world.root / "work" / "done" / "2026-09" / "old-export" / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-07 16:00 | 🔧 | old-export | export renamed |\n", encoding="utf-8")
+    week = "## Mi 30.09\n\n| 2026-09-30 08:00 | x | billing | one row in two files |\n"
+    for name in ("2026-W40.md", "2026-W40-raw.md"):
+        (world.root / "work" / "archive" / "weeks").mkdir(parents=True, exist_ok=True)
+        (world.root / "work" / "archive" / "weeks" / name).write_text(week, encoding="utf-8")
+
+
+def unpack(data):
+    """The compact rows of /api/logrange as dicts: each its id, day, time, glyph and its group's fields"""
+    out = []
+    for i, (d, time, g, y) in enumerate(data["rows"]):
+        group = data["groups"][g]
+        out.append({"id": data["offset"] + i, "date": data["days"][d], "time": time, "glyph": data["glyphs"][y], **group})
+    return out
+
+
+def texts(world, data, ids):
+    query = urllib.parse.urlencode({"ids": ",".join(map(str, ids)), "rev": data["rev"]})
+    status, _, body = world.request("GET", f"/api/logrange?{query}", headers=world.cookie)
+    return status, json.loads(body)
+
+
+def test_the_log_range_answers_compact_rows_of_the_days_asked_with_what_a_log_row_needs_and_the_own_commits(world):
+    logrange_rows(world)
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/logrange?from=2026-10-07&to=2026-10-09&commits=commits", headers=world.cookie)
+    assert status == 200, body
+    data = json.loads(body)
+    # the whole log is read once, as argv, and the range is cut from it; the commits of the profile's section, from a
+    # week back at least, so the rail can name the repositories of the last seven days that are quiet in the range
+    assert world.runner.of("work-find.--rows") == [[PY, str(world.root / "scripts" / "work-find.py"), "--root", str(world.root),
+                                                   "--rows", "--json"]]
+    assert world.runner.of("briefing.commits") == [[PY, str(world.root / "scripts" / "briefing.py"), "--root", str(world.root),
+                                                   "commits", "morning", "--section", "commits", "--since", "2026-10-03",
+                                                   "--until", "2026-10-09"]]
+    assert (data["ok"], data["from"], data["to"], data["first"], data["today"]) == (True, "2026-10-07", "2026-10-09", "2026-09-30", TODAY)
+    # the rows without their text: day, time, glyph and the group, whose task fields stand once per group
+    rows = unpack(data)
+    assert [(r["date"], r["time"]) for r in rows] == [("2026-10-09", "10:00"), ("2026-10-09", "09:30"),
+                                                      ("2026-10-09", "09:00"), ("2026-10-07", "16:00")]
+    assert "title" not in json.dumps(data["rows"]) and data["total"] == 4
+    task, closed = rows[2], rows[3]
+    assert {k: task[k] for k in ("glyph", "name", "task", "about_task", "about_path", "kind")} == {
+        "glyph": "x", "name": "demo-task", "task": "demo-task", "about_task": None, "about_path": None, "kind": "task"}
+    assert (closed["task"], closed["about_task"], closed["about_path"], closed["kind"]) == (
+        None, "old-export", "work/done/2026-09/old-export", "done_task")
+    assert data["repos"][0]["repo"] == "example/app" and data["repos_from"] == "2026-10-03"
+    # the text of the rows a list draws, by their ids
+    status, got = texts(world, data, [task["id"], closed["id"]])
+    assert status == 200 and got["texts"] == {str(task["id"]): "started the demo", str(closed["id"]): "export renamed"}
+    # All from the first day: the row that stands in a raw week and in its summary comes once
+    status, _, body = world.request("GET", "/api/logrange", headers=world.cookie)
+    every = json.loads(body)
+    assert every["from"] == "2026-09-30" and every["to"] == TODAY and every["repos"] is None
+    ids = [r["id"] for r in unpack(every)]
+    assert list(texts(world, every, ids)[1]["texts"].values()).count("one row in two files") == 1
+
+
+def test_the_log_range_finds_the_rows_that_hold_every_word_and_refuses_a_stale_answer(world):
+    logrange_rows(world)
+    logrange_handlers(world)
+    _, _, body = world.request("GET", "/api/logrange?from=2026-10-01&to=2026-10-09", headers=world.cookie)
+    data = json.loads(body)
+    rows = {r["id"]: r for r in unpack(data)}
+    query = urllib.parse.urlencode({"from": "2026-10-01", "to": "2026-10-09", "q": "DEMO  started", "rev": data["rev"]})
+    status, _, body = world.request("GET", f"/api/logrange?{query}", headers=world.cookie)
+    hits = json.loads(body)
+    # every word, case folded, in the text or the context, as the page's own filter reads a row
+    assert status == 200 and [rows[i]["time"] for i in hits["hits"]] == ["09:00"]
+    query = urllib.parse.urlencode({"from": "2026-10-01", "to": "2026-10-09", "q": "old-export", "rev": data["rev"]})
+    assert [rows[i]["name"] for i in json.loads(world.request("GET", f"/api/logrange?{query}", headers=world.cookie)[2])["hits"]] == ["old-export"]
+    # the log changed since: ids of the old answer no longer name the same rows
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-09 11:00 | x | other | a new row |\n", encoding="utf-8")
+    status, got = texts(world, data, [0])
+    assert status == 409 and got["error"]["code"] == "stale_row"
+    for bad, field in (("ids=a,b&rev=0123456789ab", "ids"), ("ids=" + ",".join(["1"] * 201) + "&rev=0123456789ab", "ids"), ("ids=1", "rev"),
+                       ("q=demo&sources=other&rev=x", "rev")):
+        status, _, body = world.request("GET", f"/api/logrange?{bad}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == field, bad
+
+
+def test_the_log_range_of_a_large_log_stays_small(world):
+    # a log the size of a busy year (8 300 rows of 900 characters) answers All in compact rows: well under 1.5 MB,
+    # where the rows with their text would weigh some 8 MB
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    import datetime as _dt
+    day0 = _dt.date(2025, 10, 1)
+    lines = []
+    for i in range(8300):
+        d = day0 + _dt.timedelta(days=i // 23)
+        lines.append(f"| {d.isoformat()} {8 + i % 11:02d}:{i % 60:02d} | 🔧 | topic-{i % 140} | {'word ' * 180}row {i} |")
+    # as an archive holds them: one file a week, each well under the 2 MB a file may have
+    weeks = world.root / "work" / "archive" / "weeks"
+    weeks.mkdir(parents=True)
+    for n in range(0, len(lines), 161):
+        (weeks / f"week-{n // 161:03d}-raw.md").write_text("\n".join(lines[n:n + 161]) + "\n", encoding="utf-8")
+    full = len(json.dumps(work_find.log_rows(world.root), ensure_ascii=False).encode("utf-8"))
+    logrange_handlers(world)
+    status, _, body = world.request("GET", "/api/logrange", headers=world.cookie)
+    assert status == 200 and json.loads(body)["total"] >= 8300
+    print(f"logrange All: compact {len(body)} B, with text {full} B")
+    assert len(body) < 1_500_000 and full > 7_000_000, (len(body), full)
+
+
+def test_the_log_range_keeps_the_log_it_read_until_a_file_of_it_changes(world):
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    for _ in range(3):
+        assert world.request("GET", "/api/logrange?from=2026-10-09&to=2026-10-09", headers=world.cookie)[0] == 200
+    assert len(world.runner.of("work-find.--rows")) == 1
+    log = world.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-09 11:00 | x | other | a new row |\n", encoding="utf-8")
+    status, _, body = world.request("GET", "/api/logrange?from=2026-10-09&to=2026-10-09", headers=world.cookie)
+    data = json.loads(body)
+    assert len(world.runner.of("work-find.--rows")) == 2 and texts(world, data, [data["offset"]])[1]["texts"] == {str(data["offset"]): "a new row"}
+
+
+def test_the_log_range_refuses_what_it_does_not_take_and_says_so_when_it_fails(world):
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    for query, field in (("from=2026-13-01", "from"), ("to=yesterday", "to"), ("from=2026-10-09&to=2026-10-01", "to"),
+                         ("sources=everything", "sources"), ("q=demo", "rev"), ("commits=../x", "commits"),
+                         ("sources=other&q=x", "q"), ("sources=other&commits=commits", "commits")):
+        status, _, body = world.request("GET", f"/api/logrange?{query}", headers=world.cookie)
+        assert status == 400 and json.loads(body)["error"]["field"] == field, query
+    assert world.runner.calls == []
+    assert world.request("GET", "/api/logrange")[0] == 401
+    world.runner.handlers["work-find.--rows"] = lambda argv: fail(f"broke near {world.app.token}")
+    status, _, body = world.request("GET", "/api/logrange", headers=world.cookie)
+    assert status == 502 and json.loads(body)["error"]["code"] == "unreadable" and world.app.token.encode() not in body
+    # commits that cannot be read leave the rows standing: the rail keeps what the briefing drew
+    logrange_handlers(world)
+    world.runner.handlers["briefing.commits"] = lambda argv: fail("no such commits section", 2)
+    status, _, body = world.request("GET", "/api/logrange?commits=commits", headers=world.cookie)
+    assert status == 200 and json.loads(body)["repos"] is None and json.loads(body)["rows"]
+
+
+def test_the_log_range_of_the_other_history_one_entry_each_with_the_words_one_argv_word(world):
+    meeting = world.root / "work" / "tasks" / "_meetings" / "2026-10-08-vendor-sync"
+    meeting.mkdir(parents=True)
+    (meeting / "summary.md").write_text("# Vendor sync\n\n- the demo retry\n", encoding="utf-8")
+    logrange_handlers(world)
+    world.runner.calls.clear()
+    status, _, body = world.request("GET", "/api/logrange?sources=other&from=2026-10-01&to=2026-10-09&q=" + urllib.parse.quote("demo; rm"),
+                                    headers=world.cookie)
+    assert status == 200
+    assert world.runner.of("work-find.--events")[0][2:] == ["--root", str(world.root), "--events", "--json", "--meetings",
+                                                            "work/tasks/_meetings", "--since", "2026-10-01", "--until",
+                                                            "2026-10-09", "--", "demo; rm"]
+    assert json.loads(body)["events"] == [] and world.runner.of("work-find.--rows") == []
+    status, _, body = world.request("GET", "/api/logrange?sources=other&from=2026-10-01&to=2026-10-09", headers=world.cookie)
+    data = json.loads(body)
+    assert "--" not in world.runner.of("work-find.--events")[-1]
+    assert [(e["date"], e["kind"], e["source"]) for e in data["events"]] == [("2026-10-08", "discussed", "vendor-sync")]
+    assert (data["from"], data["to"], "rows" in data) == ("2026-10-01", "2026-10-09", False)
+
+
+def test_every_day_lists_as_many_entries_as_its_chart_counts_for_the_same_range_words_and_sources(world, tmp_path):
+    # the list of Every day (/api/timeline: its units, a row each, a meeting, a closed task, a transcript one each) and
+    # its chart (the log's hits plus the other history's entries, /api/logrange) read one history by one rule
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    root = world.root
+    log = root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-08 10:00 | x | billing | gateway retry moved |\n", encoding="utf-8")
+    weeks = root / "work" / "archive" / "weeks"
+    weeks.mkdir(parents=True)
+    for name in ("2026-W40.md", "2026-W40-raw.md"):   # one row in a raw week and in its summary: one entry, not two
+        (weeks / name).write_text("## Mi 30.09\n\n| 2026-09-30 08:00 | x | ops | gateway retry planned |\n", encoding="utf-8")
+    meeting = root / "work" / "tasks" / "_meetings" / "2026-10-07-vendor-sync"
+    meeting.mkdir(parents=True)
+    (meeting / "summary.md").write_text("- the gateway retry\n- gateway retry again\n- gateway retry once more\n- and the gateway retry\n",
+                                        encoding="utf-8")
+    tr = tmp_path / "transcripts"
+    tr.mkdir()
+    # the words on two lines of one transcript: no line holds both, so neither the list nor the chart counts it
+    (tr / "2026-10-06_1400_call.md").write_text("A: the gateway\nB: a retry\n", encoding="utf-8")
+    (tr / "2026-10-05_0900_talk.md").write_text("A: gateway retry\n", encoding="utf-8")
+    world.runner.handlers["work-find.--history"] = lambda argv: ok(work_find.history(
+        root, argv[-1], transcripts=tr, since=argv[argv.index("--since") + 1] if "--since" in argv else None,
+        until=argv[argv.index("--until") + 1] if "--until" in argv else None))
+    logrange_handlers(world)
+    world.runner.handlers["work-find.--events"] = lambda argv: ok(work_find.history_events(
+        root, transcripts=tr, query=argv[argv.index("--") + 1] if "--" in argv else None,
+        since=argv[argv.index("--since") + 1], until=argv[argv.index("--until") + 1]))
+    for days in ({}, {"from": "2026-10-01", "to": TODAY}):
+        q = {"q": "gateway retry", **days}
+        listed = json.loads(world.request("GET", "/api/timeline?" + urllib.parse.urlencode(q), headers=world.cookie)[2])
+        rows = json.loads(world.request("GET", "/api/logrange?" + urllib.parse.urlencode(days), headers=world.cookie)[2])
+        hits = json.loads(world.request("GET", "/api/logrange?" + urllib.parse.urlencode({**q, "rev": rows["rev"]}), headers=world.cookie)[2])
+        other = json.loads(world.request("GET", "/api/logrange?" + urllib.parse.urlencode({**q, "sources": "other"}), headers=world.cookie)[2])
+        counted = len(hits["hits"]) + len(other["events"])
+        assert listed["units"] == counted, (days, listed["units"], len(hits["hits"]), other["events"])
+        assert listed["units_by_kind"] == {"did": len(hits["hits"]), **{k: sum(1 for e in other["events"] if e["kind"] == k)
+                                                                         for k in ("discussed", "closed", "transcript") if any(e["kind"] == k for e in other["events"])}}
+    assert listed["units"] == 3   # the row of 08.10, the meeting (four lines, one entry), the transcript of 05.10
+
+
+def test_the_timeline_takes_a_range_of_days(world):
+    world.runner.handlers["work-find.--history"] = history_handler(world)
+    world.runner.calls.clear()
+    status, _, _ = world.request("GET", "/api/timeline?q=demo&from=2026-10-01&to=2026-10-09", headers=world.cookie)
+    assert status == 200
+    assert world.runner.of("work-find.--history")[0][4:] == ["--history", "--json", "--meetings", "work/tasks/_meetings",
+                                                            "--since", "2026-10-01", "--until", "2026-10-09", "--", "demo"]
+    status, _, body = world.request("GET", "/api/timeline?q=demo&from=2026-10-09&to=2026-10-01", headers=world.cookie)
+    assert status == 400 and json.loads(body)["error"]["field"] == "to"
+
+
+HISTORY_ROWS = ("\n| 2026-10-06 08:00 | x | billing | gateway retry moved to the night run |\n"
+                "| 2026-10-05 08:00 | x | versicherung-bestand | gateway retry for the policy portal |\n"
+                "| 2026-10-04 08:00 | x | misc | gateway retry, Gesundheit portal too |\n")
+
+
+def timeline_ask_world(tmp_path, on="true", budget=3, terms=("gateway", "night run")):
+    w = files_ask_world(tmp_path, on=on, budget=budget)
+    log = w.root / "work" / "log.md"
+    log.write_text(log.read_text(encoding="utf-8") + HISTORY_ROWS, encoding="utf-8")
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+
+    def answer(argv):
+        if work_find.HISTORY_TERMS_SCHEMA in argv:
+            return ok({"type": "result", "is_error": False, "total_cost_usd": 0.001, "modelUsage": {"claude-haiku-5-5": {}},
+                       "result": "", "structured_output": {"terms": list(terms), "from": None, "to": None}})
+        return ok({"type": "result", "is_error": False, "total_cost_usd": 0.002, "modelUsage": {"claude-haiku-5-5": {}},
+                   "result": "", "structured_output": {"answer": "On 6 October.", "entries": [{"n": 1, "why": "it moved"}]}})
+    w.runner.handlers["claude.p"] = answer
+    return w
+
+
+def test_asking_the_timeline_takes_two_calls_and_never_sends_what_the_block_list_holds_back(tmp_path):
+    w = timeline_ask_world(tmp_path)
+    try:
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        import work_find
+        before = len(w.runner.calls)
+        res = w.act("timeline_ask", text="When did\nthe retry move?")
+        first, second = w.runner.calls[before:]
+        assert work_find.HISTORY_TERMS_SCHEMA in first and work_find.HISTORY_ANSWER_SCHEMA in second
+        assert first[-1] == f"{work_find.ASK_QUESTION_LABEL}\nWhen did the retry move?"
+        prompt = second[-1]
+        for held in ("versicherung", "policy portal", "Gesundheit"):
+            assert held not in prompt, held
+        head, data, label, question = prompt.split("\n", 3)
+        entries = json.loads(data)["entries"]
+        assert entries[0] == {"n": 1, "date": "2026-10-06", "time": "08:00", "kind": "did", "source": "billing",
+                              "text": "gateway retry moved to the night run"}
+        assert question == "When did the retry move?"
+        ask = res["timeline"]
+        assert ask["answer"] == "On 6 October." and ask["terms"] == ["gateway", "night run"]
+        assert ask["entries"][0]["n"] == 1 and ask["entries"][0]["why"] == "it moved"
+        assert ask["entries"][0]["date"] == "2026-10-06" and ask["entries"][0]["path"] == "work/log.md"
+        assert ask["held"] == {"n": 2, "words": ["Versicherung", "Gesundheit"]} and ask["sent"] == len(entries)
+        # one question counts once, both calls together
+        assert ask["model"] == "haiku" and ask["left"] == 2
+    finally:
+        w.close()
+
+
+def test_asking_the_timeline_within_a_range_of_days_sends_only_the_lines_of_those_days(tmp_path):
+    w = timeline_ask_world(tmp_path)
+    try:
+        log = w.root / "work" / "log.md"
+        log.write_text(log.read_text(encoding="utf-8") + "| 2026-10-03 08:00 | x | ops | gateway retry checked at night |\n",
+                       encoding="utf-8")
+        before = len(w.runner.calls)
+        w.act("timeline_ask", text="When did the retry move?", since="2026-10-03", until="2026-10-03")
+        _, second = w.runner.calls[before:]
+        entries = json.loads(second[-1].split("\n", 3)[1])["entries"]
+        assert entries and {e["date"] for e in entries} == {"2026-10-03"}
+    finally:
+        w.close()
+    w = timeline_ask_world(tmp_path / "none")
+    try:
+        # nothing in the range: no lines from outside it, no second call
+        res = w.act("timeline_ask", text="When did the retry move?", since="2026-01-01", until="2026-01-31")
+        assert len(w.runner.of("claude.p")) == 1 and res["timeline"]["sent"] == 0
+    finally:
+        w.close()
+
+
+def test_asking_the_timeline_is_off_with_the_files_question_within_its_budget_and_one_call_when_nothing_matches(tmp_path):
+    off = timeline_ask_world(tmp_path / "off", on="false")
+    try:
+        with pytest.raises(ActionError) as e:
+            off.act("timeline_ask", text="when?")
+        assert e.value.code == "timeline_ask_off" and off.runner.of("claude.p") == []
+    finally:
+        off.close()
+    none = timeline_ask_world(tmp_path / "none", budget=1, terms=("nothing-like-this",))
+    try:
+        res = none.act("timeline_ask", text="when did the moon land?")
+        assert len(none.runner.of("claude.p")) == 1
+        assert res["timeline"]["answer"] is None and res["timeline"]["sent"] == 0 and res["timeline"]["left"] == 0
+        with pytest.raises(ActionError) as spent:
+            none.act("timeline_ask", text="again?")
+        assert spent.value.code == "timeline_ask_budget" and spent.value.status == 429
+        with pytest.raises(ActionError) as bad:
+            none.act("timeline_ask", text="")
+        assert bad.value.code == "invalid_argument"
+    finally:
+        none.close()
+
+
+def test_the_runner_lets_the_two_history_calls_through_and_nothing_else(tmp_path):
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import work_find
+    r = Runner(tmp_path, cmux=None, claude="/x/claude")
+    for schema in (work_find.HISTORY_TERMS_SCHEMA, work_find.HISTORY_ANSWER_SCHEMA):
+        r.check(work_find.history_argv("/x/claude", "claude-haiku-5-5", "Rules.", "data", schema))
+        bad = work_find.history_argv("/x/claude", "claude-haiku-5-5", "Rules.", "data", schema)
+        bad[10] = "Read,Grep"
+        with pytest.raises(RunnerRefused):
+            r.check(bad)
+    with pytest.raises(RunnerRefused):
+        r.check(work_find.history_argv("/x/claude", "claude-haiku-5-5", "Rules.", "data", "{}"))
+
+
+def test_asking_a_file_names_it_for_an_open_task_and_never_for_a_closed_one(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("It waits on the vendor.", 0.001)
+    done = world.root / "work" / "done" / "2026-09" / "gone-task"
+    done.mkdir(parents=True)
+    (done / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+    convs = {}
+    for slug in ("demo-task", "gone-task"):
+        status, _, body = free_ask(world, "what is the cause?", context=f"File: work/tasks/{slug}", task=slug)
+        assert status == 202
+        convs[slug] = json.loads(body)["conv"]
+        wait_quick(world)
+    # an open task: the chat is about it (it leaves when the task closes); a closed one: about nothing,
+    # or the settle sweep would take the chat into the archive at once
+    assert world.app.quick.convs[convs["demo-task"]]["about"] == {"kind": "free", "key": "task:demo-task", "task": "demo-task"}
+    assert world.app.quick.convs[convs["gone-task"]]["about"] is None
+    for bad in ("../etc", "Demo", 3):
+        status, _, body = free_ask(world, "x?", task=bad)
+        assert status == 400 and json.loads(body)["error"]["field"] == "task", bad
+    status, _, body = world.post("/api/ask", {"kind": "free", "args": {"text": "hi", "task": "demo-task"}, "via": "control"})
+    assert status == 400 and json.loads(body)["error"]["field"] == "task"
+
+
+def test_a_suggested_step_asks_in_a_place_of_its_own_that_the_next_one_replaces(world):
+    world.runner.handlers["claude.p"] = lambda argv: claude_answer("Call the vendor", 0.001)
+    ask = lambda: json.loads(world.post("/api/ask", {"kind": "free", "args": {"text": "suggest", "task": "demo-task"},
+                                                     "via": "quick", "place": "suggest"})[2])["conv"]
+    first = ask()
+    wait_quick(world)
+    world.clock.advance(1)
+    second = ask()
+    wait_quick(world)
+    convs = {c["id"]: c for c in world.app.quick.state()["convs"]}
+    assert first not in convs and convs[second]["place"] == "suggest"
+    status, _, raw = world.post("/api/ask", {"kind": "overview", "args": {}, "via": "quick", "place": "suggest"})
+    assert status == 400 and json.loads(raw)["error"]["field"] == "place"
+
+
+def test_taking_over_a_next_step_writes_it_through_task_py_and_leaves_an_audit_line(world):
+    world.runner.calls.clear()
+    world.act("task_set_next", key="task:demo-task", text="  Call the vendor; rm -rf /  ")
+    assert writes(world) == [K(world, "next", "demo-task", "--", "Call the vendor; rm -rf /")]
+    line = (world.state / "audit.log").read_text().splitlines()[-1].split()
+    assert line[1:3] == ["task_set_next", "task:demo-task"] and "ok=true" in line
+    assert "Call" not in " ".join(line)                                           # never the text
+    refused(world, "not_applicable", "task_set_next", key=f"inbox:{YES_ID}", text="x")
+    refused(world, "invalid_argument", "task_set_next", key="task:demo-task", text="a\nb")
+    world.runner.handlers["task.next"] = lambda argv: fail("no such task")
+    res = world.act("task_set_next", key="task:demo-task", text="Call")
+    assert res["ok"] is False
+
+
+# ---------------------------------------------------------------- the files view: workflow runs and the folder's files (E3)
+
+def workflow(home: Path, project: str, sid: str, run: str, age_s: float = 60, **data) -> Path:
+    """One wf_*.json of a session, written `age_s` seconds ago"""
+    folder = home / "projects" / project / sid / "workflows"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{run}.json"
+    path.write_text(json.dumps({"runId": run, "status": "completed", "agentCount": 3, "startTime": 1, "durationMs": 1000,
+                                "workflowName": run, "summary": "", "script": "", **data}), encoding="utf-8")
+    t = time.time() - age_s
+    os.utime(path, (t, t))
+    return path
+
+
+def test_a_workflow_run_binds_to_its_task_only_where_one_task_is_named(world, tmp_path):
+    from lib.bridge_cockpit import sessions as sess
+    slugs = {"demo-task", "other-task", "release-notes", "open-bridge"}
+    bind = lambda text, name="x", place="", sid="s", links=None: sess.run_task(  # noqa: E731
+        text, name, sid, slugs, links or {}, root="/home/me/bridge", place=place)
+    assert bind("read work/tasks/demo-task/STATUS.md first") == ("demo-task", ["named"])
+    assert bind("the key task:other-task") == ("other-task", ["named"])
+    assert bind("see work/streams/release-notes/") == ("release-notes", ["named"])
+    assert bind("", name="demo-task") == ("demo-task", ["named"])
+    # two tasks named: no file, rather than the wrong one
+    assert bind("work/tasks/demo-task/ and work/tasks/other-task/") == (None, [])
+    # a longer slug is not the shorter one, a word in prose is no mention
+    assert bind("work/tasks/demo-task-two/STATUS.md") == (None, [])
+    assert bind("the demo-task is mentioned in passing") == (None, [])
+    # an absolute path names a task only under this Bridge's own root, never under another one
+    assert bind("read /home/me/bridge/work/tasks/demo-task/STATUS.md") == ("demo-task", ["named"])
+    assert bind("read /home/me/other-bridge/work/tasks/demo-task/STATUS.md") == (None, [])
+    assert bind("read ~/other/work/streams/demo-task/") == (None, [])
+    # the session link and the folder only confirm a mention: alone they bind nothing
+    assert bind("", sid="s1", links={"s1": {"task": "other-task"}}) == (None, [])
+    assert bind("", place="wt-release-notes") == (None, [])
+    assert bind("see work/streams/release-notes/", place="wt-release-notes") == ("release-notes", ["named", "place"])
+    # a folder that happens to end in a slug never wins over the task the run names
+    assert bind("work/tasks/demo-task/", place="dev-open-bridge") == ("demo-task", ["named"])
+    # every sign agrees: bound; the session is linked to another task: none
+    assert bind("work/tasks/demo-task/", sid="s1", links={"s1": {"task": "demo-task"}}) == ("demo-task", ["named", "session"])
+    assert bind("work/tasks/demo-task/", sid="s1", links={"s1": {"task": "other-task"}}) == (None, [])
+
+
+def transcript(home: Path, project: str, sid: str, cwd: Path) -> None:
+    """The session file beside a session's folder, whose lines carry the folder it ran in"""
+    folder = home / "projects" / project
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{sid}.jsonl").write_text(json.dumps({"type": "summary"}) + "\n"
+                                        + json.dumps({"type": "user", "cwd": str(cwd)}) + "\n", encoding="utf-8")
+
+
+def test_a_workflow_run_of_another_bridge_never_reaches_this_one(world, tmp_path):
+    """Another instance on the machine with an open task of the same slug: its runs stay its own"""
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    other = tmp_path / "other-bridge"
+    (other / "work" / "tasks" / "demo-task").mkdir(parents=True)
+    (other / "bridge-config.yaml").write_text("identity: {}\n", encoding="utf-8")
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(other))
+    transcript(home, proj, SID2, other)
+    workflow(home, proj, SID2, "wf_foreign", script="Read work/tasks/demo-task/STATUS.md")
+    workflow(home, proj, SID2, "wf_foreign_abs", script=f"Read {other}/work/tasks/demo-task/STATUS.md")
+    # a run in a folder below the other Bridge is the other Bridge's too
+    sub = other / "tools"
+    sub.mkdir()
+    sub_proj = re.sub(r"[^A-Za-z0-9]", "-", str(sub))
+    transcript(home, sub_proj, SID2, sub)
+    workflow(home, sub_proj, SID2, "wf_foreign_sub", script="work/tasks/demo-task/")
+    # a session whose folder is unknown (no session file) is never read
+    workflow(home, "-somewhere-unknown", SID2, "wf_unknown", script="work/tasks/demo-task/")
+    # a plain repository the Bridge works in (no Bridge of its own) may name a task of this one
+    repo = tmp_path / "plain-repo"
+    repo.mkdir()
+    repo_proj = re.sub(r"[^A-Za-z0-9]", "-", str(repo))
+    transcript(home, repo_proj, SID2, repo)
+    workflow(home, repo_proj, SID2, "wf_repo", script="work/tasks/demo-task/")
+    # a run of this Bridge that names the other Bridge's folder by its absolute path
+    workflow(home, re.sub(r"[^A-Za-z0-9]", "-", str(world.root)), SID2, "wf_here_abs",
+             script=f"compare with {other}/work/tasks/demo-task/STATUS.md")
+    world.app.tabs.poll()
+    assert sorted(r["id"] for r in world.app.sessions_state()["runs"]) == ["wf_repo"]
+
+
+def test_a_workflow_run_in_a_folder_that_ends_in_a_slug_binds_nothing_by_that_alone(world, tmp_path):
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    stream = world.root / "work" / "streams" / "open-bridge"
+    stream.mkdir(parents=True, exist_ok=True)
+    (stream / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    clone = tmp_path / "dev" / "open-bridge"
+    clone.mkdir(parents=True)
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(clone))
+    transcript(home, proj, SID2, clone)
+    workflow(home, proj, SID2, "wf_topic", script="refactor the parser")
+    workflow(home, proj, SID2, "wf_demo", script="work/tasks/demo-task/ is the plan")
+    world.app.tabs.poll()
+    runs = {r["id"]: r for r in world.app.sessions_state()["runs"]}
+    assert sorted(runs) == ["wf_demo"] and runs["wf_demo"]["task"] == "demo-task" and runs["wf_demo"]["how"] == ["named"]
+
+
+def test_workflow_runs_of_the_last_week_reach_the_page_bound_to_their_task(world, tmp_path):
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    other = world.root / "work" / "tasks" / "other-task"
+    other.mkdir(parents=True, exist_ok=True)
+    (other / "STATUS.md").write_text("---\nstatus: doing\n---\n", encoding="utf-8")
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(world.root))
+    workflow(home, proj, SID2, "wf_named", script="Read work/tasks/demo-task/STATUS.md", summary="Plan the demo",
+             durationMs=5000, startTime=int(now_ms - 600_000), result={"final": "All done, see notes.md"})
+    workflow(home, proj, SID2, "wf_both", script="work/tasks/demo-task/ and work/tasks/other-task/")
+    workflow(home, proj, SID2, "wf_none", script="nothing to see")
+    workflow(home, proj, SID2, "wf_old", age_s=8 * 86400, script="work/tasks/demo-task/")
+    workflow(home, proj, SID2, "wf_broken").write_text("{nope", encoding="utf-8")
+    workflow(home, proj, SID2, "wf_running", status="running", args="task:other-task", durationMs=None)
+    world.app.tabs.poll()
+    runs = {r["id"]: r for r in world.app.sessions_state()["runs"]}
+    assert sorted(runs) == ["wf_named", "wf_running"]
+    r = runs["wf_named"]
+    assert r["task"] == "demo-task" and r["name"] == "wf_named" and r["summary"] == "Plan the demo"
+    assert r["status"] == "completed" and r["agents"] == 3 and r["how"] == ["named"] and r["seen"] is False
+    assert r["answer"] == "All done, see notes.md" and r["ended_ms"] == int(now_ms - 600_000) + 5000
+    assert "script" not in r                                            # the prompt never leaves the server
+    assert runs["wf_running"]["task"] == "other-task" and runs["wf_running"]["ended_ms"] is None
+    # a run of a task that closed since drops out
+    (other / "STATUS.md").unlink()
+    assert [x["id"] for x in world.app.sessions_state()["runs"]] == ["wf_named"]
+
+
+def test_a_workflow_run_in_a_worktree_of_this_bridge_is_its_own(world, tmp_path):
+    """A worktree of the Bridge's repository carries a Bridge of its own (the user branch): it is this one"""
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    wt = tmp_path / "bridge-wt-demo-task"
+    (wt / "work" / "tasks").mkdir(parents=True)
+    (wt / "bridge-config.yaml").write_text("identity: {}\n", encoding="utf-8")
+    meta = world.root / ".git" / "worktrees" / "bridge-wt-demo-task"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "gitdir").write_text(f"{wt}/.git\n", encoding="utf-8")
+    (wt / ".git").write_text(f"gitdir: {meta}\n", encoding="utf-8")
+    proj = re.sub(r"[^A-Za-z0-9]", "-", str(wt))
+    transcript(home, proj, SID2, wt)
+    workflow(home, proj, SID2, "wf_wt", script="work/tasks/demo-task/")
+    world.app.tabs.poll()
+    runs = world.app.sessions_state()["runs"]
+    assert [(r["id"], r["task"], r["how"]) for r in runs] == [("wf_wt", "demo-task", ["named", "place"])]
+
+
+def test_a_workflow_run_is_marked_checked_once_and_the_mark_is_kept(world, tmp_path):
+    now_ms = time.time() * 1000
+    world.clock.now = now_ms
+    home = claude_home(tmp_path, world.root, now_ms)
+    world.app.sessions.base = home
+    workflow(home, re.sub(r"[^A-Za-z0-9]", "-", str(world.root)), SID2, "wf_named", script="work/tasks/demo-task/")
+    world.app.tabs.poll()
+    sent = []
+    world.app.broadcast = lambda ev, payload: sent.append((ev, payload))
+    res = world.act("run_seen", id="wf_named")
+    assert res["ok"] is True
+    assert [r["seen"] for r in world.app.sessions_state()["runs"]] == [True]
+    assert any(ev == "sessions" and p["runs"][0]["seen"] for ev, p in sent)
+    line = (world.state / "audit.log").read_text().splitlines()[-1].split()
+    assert line[1:3] == ["run_seen", "wf_named"]
+    assert "wf_named" in json.loads((world.state / "state.json").read_text())["runs_seen"]
+    refused(world, "stale_row", "run_seen", id="wf_nothing")
+    refused(world, "invalid_argument", "run_seen", id="../etc")
+
+
+def test_task_detail_lists_the_files_of_its_folder(world):
+    folder = world.root / "work" / "tasks" / "demo-task"
+    for rel in ("notes.md", "research/a.md", "plan.yaml", "video/x.md", "deliverables/y.md", ".hidden/z.md",
+                "research/deliverables/q.md", "image.png"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_text(f"# {rel}\n", encoding="utf-8")
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    assert [f["path"] for f in data["files"]] == ["notes.md", "plan.yaml", "research/a.md"]
+    assert data["files"][0]["size"] == len("# notes.md\n")
+    # one of them, to read
+    status, _, raw = world.request("GET", "/api/task?slug=demo-task&file=research/a.md", headers=world.cookie)
+    one = json.loads(raw)
+    assert status == 200 and one["file"] == "research/a.md" and one["text"] == "# research/a.md\n" and one["cut"] is False
+    for bad in ("video/x.md", "image.png", "STATUS.md", "nope.md"):
+        assert world.request("GET", f"/api/task?slug=demo-task&file={bad}", headers=world.cookie)[0] == 404, bad
+    for bad in ("../other-task/STATUS.md", "/etc/passwd", "a\\b.md"):
+        assert world.request("GET", f"/api/task?slug=demo-task&file={urllib.parse.quote(bad)}", headers=world.cookie)[0] == 400, bad
+
+
+def test_every_listed_file_can_be_read_whatever_its_name(world):
+    folder = world.root / "work" / "tasks" / "demo-task"
+    for rel in ("Übergabe.md", "notes (v2).md", "a, b.yaml", "café/plan.md"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_text(f"# {rel}\n", encoding="utf-8")
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    listed = [f["path"] for f in data["files"]]
+    assert sorted(listed) == sorted(["Übergabe.md", "notes (v2).md", "a, b.yaml", "café/plan.md"])
+    for rel in listed:
+        status, _, raw = world.request("GET", f"/api/task?slug=demo-task&file={urllib.parse.quote(rel)}", headers=world.cookie)
+        assert status == 200 and json.loads(raw)["text"] == f"# {rel}\n", rel
+    for bad in ("..", "./notes.md", "x/../../other-task/STATUS.md", ".hidden.md", "a\x00b.md", "a\nb.md"):
+        assert world.request("GET", f"/api/task?slug=demo-task&file={urllib.parse.quote(bad)}", headers=world.cookie)[0] == 400, bad
+
+
+def test_the_file_list_never_walks_into_hidden_or_dependency_folders(world, monkeypatch):
+    from lib.bridge_cockpit import details
+    folder = world.root / "work" / "tasks" / "demo-task"
+    for rel in ("repo/node_modules/pkg/README.md", "repo/.git/x.md", "a/README.md", "notes.md"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_text("x\n", encoding="utf-8")
+    walked = []
+    real = details.os.walk
+    def spy(top, *a, **k):
+        for entry in real(top, *a, **k):
+            walked.append(Path(entry[0]))
+            yield entry
+    monkeypatch.setattr(details.os, "walk", spy)
+    assert [f["path"] for f in details.folder_files(folder)] == ["a/README.md", "notes.md"]
+    assert not any(p.name in ("node_modules", ".git") for p in walked)
+
+
+def test_a_long_file_is_read_only_up_to_its_cut(world, monkeypatch):
+    from lib.bridge_cockpit import details
+    folder = world.root / "work" / "tasks" / "demo-task"
+    (folder / "long.md").write_text("x" * (details.FILE_TEXT_MAX * 3), encoding="utf-8")
+    one = details.task_file(world.root, "demo-task", "long.md")
+    assert one["cut"] is True and len(one["text"]) == details.FILE_TEXT_MAX
+    (folder / "exact.md").write_text("y" * details.FILE_TEXT_MAX, encoding="utf-8")
+    assert details.task_file(world.root, "demo-task", "exact.md")["cut"] is False
+
+
+def test_a_file_of_a_closed_task_is_read_from_its_folder(world):
+    closed = world.root / "work" / "done" / "2026-01" / "old-task"
+    closed.mkdir(parents=True)
+    (closed / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+    (closed / "notes.md").write_text("# kept\n", encoding="utf-8")
+    q = "slug=old-task&path=work/done/2026-01/old-task"
+    data = json.loads(world.request("GET", f"/api/task?{q}", headers=world.cookie)[2])
+    assert data["kind"] == "done" and [f["path"] for f in data["files"]] == ["notes.md"]
+    status, _, raw = world.request("GET", f"/api/task?{q}&file=notes.md", headers=world.cookie)
+    assert status == 200 and json.loads(raw)["text"] == "# kept\n"
+
+
+def test_task_detail_has_no_files_where_its_folder_holds_only_status(world):
+    data = json.loads(world.request("GET", "/api/task?slug=demo-task", headers=world.cookie)[2])
+    assert data["files"] == []
+
+
+# ---------------------------------------------------------------- round 4 of Work through: what the model carries
+
+R4_TASKS = [
+    {**TASKS[0], "kind": "tasks", "updated": "2026-10-08"},
+    {"slug": "parked", "label": "Parked idea", "area": "Ops", "priority": "P3", "status": "backlog", "kind": "tasks",
+     "updated": "2026-09-01"},
+    {"slug": "river", "label": "River", "area": "Ops", "priority": "P2", "status": "doing", "kind": "streams",
+     "blocked_by": "the vendor", "updated": "2026-10-01"},
+]
+DEFERRED_ID = "20261009-0930-later-call-b9c0"
+
+
+def r4_world(tmp_path, scope: str = "all", flow: bool = False, pages: list | None = None) -> World:
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  files_scope: " + scope + "\n"
+              + ("  flow:\n    enabled: true\n" if flow else ""), serve=False, prepare=False)
+    # workplace.py tasks lists the backlog only with --all
+    w.runner.handlers["workplace.tasks"] = lambda argv: ok(
+        [t for t in R4_TASKS if "--all" in argv or t.get("status", "doing") in ("doing", "review")])
+    base = w.runner.handlers["briefing.collect"]
+
+    def collect(argv):
+        data = json.loads(base(argv).out)
+        data["view"]["buckets"][1]["items"].append(
+            {"title": "Call back later", "inbox_id": DEFERRED_ID, "gate": "only-you", "inbox_state": "deferred",
+             "urgency": "later", "sources": ["inbox"]})
+        data["pages"] += pages or []
+        return ok(data)
+    w.runner.handlers["briefing.collect"] = collect
+    item = w.root / "work" / "inbox" / DEFERRED_ID
+    (item / "events").mkdir(parents=True)
+    (item / "item.yaml").write_text("schema_version: 1\ncreated: '2026-10-09T09:30'\nfrom: person\nkind: decision\n"
+                                    "summary: Call back later\ngate: only-you\nurgency: later\n", encoding="utf-8")
+    (item / "events" / "20261009T093100Z-01-web-defer.yaml").write_text(
+        "verb: defer\nby: web\nat: '2026-10-09T09:31'\nuntil: '2026-10-01'\n", encoding="utf-8")
+    (item / "events" / "20261009T093200Z-02-web-defer.yaml").write_text(
+        "verb: defer\nby: web\nat: '2026-10-09T09:32'\nuntil: '2026-10-14T18:00'\n", encoding="utf-8")
+    w.app.tabs.poll()
+    w.app.collector.request("both")
+    w.app.collector.drain()
+    return w
+
+
+def test_a_task_row_carries_the_day_it_last_changed_and_a_deferred_item_the_day_it_comes_back(tmp_path):
+    w = r4_world(tmp_path)
+    try:
+        assert w.row("task:demo-task")["updated"] == "2026-10-08"
+        assert w.row("task:river")["updated"] == "2026-10-01"
+        assert w.row(f"inbox:{ONLY_ID}")["updated"] is None and w.row("ref:example/repo#12")["updated"] is None
+        # the newest defer names the day, a time on it does not count
+        assert w.row(f"inbox:{DEFERRED_ID}")["until"] == "2026-10-14"
+        assert w.row(f"inbox:{ONLY_ID}")["until"] is None and w.row("task:demo-task")["until"] is None
+        # the hidden rows carry both keys as well
+        w.app.store.hide("task:demo-task", "2099-01-05")
+        w.app.collector.rebuild()
+        hidden = {r["key"]: r for r in w.app.collector.model["hidden"]}
+        assert hidden["task:demo-task"]["updated"] == "2026-10-08" and hidden["task:demo-task"]["until"] is None
+        assert m._base_row()["updated"] is None and m._base_row()["until"] is None
+    finally:
+        w.close()
+
+
+def universe(model: dict) -> list[str]:
+    """Every open row of the model as Work through counts it: sections, hidden rows not decided here, every file,
+    every task a page names that is open (a task or a stream), every item put off past the briefing's window"""
+    keys = [r["key"] for s in model["sections"] for r in s["rows"]]
+    keys += [r["key"] for r in model["hidden"] if r.get("settled_as") is None]
+    keys += [f"task:{f['slug']}" for f in model["files"] or []]
+    keys += [r["key"] for r in model["task_rows"] if r.get("closable") or r.get("stream")]
+    keys += [r["key"] for r in model.get("deferred") or []]
+    return keys
+
+
+def test_flow_open_counts_every_open_row_once(tmp_path):
+    w = r4_world(tmp_path)
+    try:
+        w.app.store.hide("ref:example/repo#12", "2099-01-05")          # put off: still open
+        w.app.store.dismiss("ref:example/repo#7", "done", "Answer from the vendor")   # decided here: not open
+        w.app.collector.rebuild()
+        model = w.app.collector.model
+        rows = [r["key"] for s in model["sections"] for r in s["rows"]] + [r["key"] for r in model["hidden"]]
+        assert len(rows) == len(set(rows))                              # no key twice across sections and hidden
+        expected = {f"inbox:{ONLY_ID}", f"inbox:{YES_ID}", f"inbox:{YES2_ID}", f"inbox:{FILED_ID}", f"inbox:{DEFERRED_ID}",
+                    "task:demo-task", "task:river", "ref:example/repo#12", "task:parked"}
+        assert set(universe(model)) == expected
+        assert model["counts"]["flow_open"] == len(expected) == 9
+        assert {r["key"]: r["settled_as"] for r in model["hidden"]}["ref:example/repo#7"] == "done"
+    finally:
+        w.close()
+
+
+def test_flow_open_without_files_counts_the_sections_and_the_hidden_rows(tmp_path):
+    w = r4_world(tmp_path, scope="active")
+    try:
+        model = w.app.collector.model
+        assert model["files"] is None
+        assert model["counts"]["flow_open"] == len(set(universe(model))) == 9
+        assert "task:parked" not in universe(model)                    # no backlog task without the files
+    finally:
+        w.close()
+
+
+def gh_page(*ids, extra=(), view="board", boards=True) -> dict:
+    """A GitHub page as briefing.py writes one: the section the rows of Due name as their source (`github`) on its
+    board view with a board, one actionable item per id, and any further section"""
+    sec = {"id": "github", "kind": "tracker", "title": "GitHub", "status": "ok", "view": view, "total": len(ids),
+           "items": [{"id": rid, "row_id": rid, "title": f"Issue {rid}", "actionable": True} for rid in ids]}
+    if boards:
+        sec["boards"] = [{"name": "Tool board", "slug": "tool-board", "mode": "mine", "open": len(ids)}]
+    return {"id": "github", "title": "GitHub", "sections": [sec, *extra]}
+
+
+def with_pages(world, *pages) -> dict:
+    world.app.collector.view["pages"] = [*world.app.collector.view.get("pages", []), *m.parse_pages({"pages": list(pages)})]
+    world.app.collector.rebuild()
+    return world.app.collector.model
+
+
+def page_keys(world, page: str = "github", section: str = "github") -> list[str]:
+    pg = next(p for p in world.app.collector.model["pages"] if p["id"] == page)
+    return [i["key"] for s in pg["sections"] if s["id"] == section for i in s["items"]]
+
+
+def test_the_github_list_carries_every_row_so_its_search_and_filter_see_them_all(world):
+    """G1: a section on its board view (the GitHub list, views/github.js) searches and filters every row on the page,
+    so the model carries all of them, not the first ITEM_CAP; a plain table keeps its cap and its "more n" """
+    plain = {"id": "plain", "kind": "command", "title": "Plain", "status": "ok", "total": 87,
+             "items": [{"id": f"p{n}", "title": f"Row {n}"} for n in range(87)]}
+    model = with_pages(world, gh_page(*[f"example/repo#{n}" for n in range(100, 187)], extra=[plain]))
+    gh, rest = next(p for p in model["pages"] if p["id"] == "github")["sections"]
+    assert (len(gh["items"]), gh["more"], gh["total"]) == (87, 0, 87)
+    assert (len(rest["items"]), rest["more"]) == (50, 37)
+
+
+def test_a_decision_on_a_github_row_holds_in_work_through_and_on_the_github_page(world):
+    """G2: Due and the GitHub page show one issue under two keys (ref:<id> and item:<page>/<section>/<id>, the page
+    section among the row's sources): Later, Done or Show again under either key holds under both, in "more" too"""
+    item = "item:github/github/example/repo#12"
+    model = with_pages(world, gh_page("example/repo#12", "example/repo#99"))
+    hidden = lambda: {r["key"]: (r["hidden_until"], r["settled_as"]) for r in world.app.collector.model["hidden"]}  # noqa: E731
+    assert item in page_keys(world) and "ref:example/repo#12" not in hidden()
+    open_before = model["counts"]["flow_open"]
+    # Later on the GitHub page: Work through has the issue under Later until the same day, still open
+    world.act("hide", key=item, until="2026-11-08")
+    assert item not in page_keys(world) and hidden()["ref:example/repo#12"] == ("2026-11-08", None)
+    assert world.app.collector.model["counts"]["flow_open"] == open_before
+    # Show again in Work through: back on both, nothing of it left in the store
+    world.act("unhide", key="ref:example/repo#12")
+    assert item in page_keys(world) and "ref:example/repo#12" not in hidden()
+    assert not {item, "ref:example/repo#12"} & set(world.app.store.hidden())
+    # Later in Work through: the GitHub page and its "more" leave the row out, the other row stays
+    world.act("hide", key="ref:example/repo#12", until="2026-11-08")
+    items, _ = world.app.collector.page_items("github", "github")
+    assert item not in page_keys(world) and [i["key"] for i in items] == ["item:github/github/example/repo#99"]
+    # Show again from the page's side (the undo of its Later): back on both
+    world.act("unhide", key=item)
+    assert item in page_keys(world) and "ref:example/repo#12" not in hidden()
+    # Done on the GitHub page: decided in Work through too, so it counts as open no more; Show again takes it back
+    world.app.store.dismiss(item, "done", "Issue example/repo#12")
+    world.app.collector.rebuild()
+    assert hidden()["ref:example/repo#12"] == (None, "done") and item not in page_keys(world)
+    assert world.app.collector.model["counts"]["flow_open"] == open_before - 1
+    world.act("unhide", key=item)
+    assert item in page_keys(world) and world.app.collector.model["counts"]["flow_open"] == open_before
+
+
+def test_a_decision_in_work_through_never_silences_an_alarm_or_a_command_list(world):
+    """G2 holds for an issue on a GitHub page, a tracker list: a probe on an alarm section (kind command) that lists
+    the id of a ref row of Due keeps its row, its finding and its alarm when the row is put off in Work through"""
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "github", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all probes green",
+         "items": [{"id": "example/repo#7", "title": "Backup failed", "tone": "bad", "actionable": True}]}]}
+    model = with_pages(world, ops)
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    assert "item:ops/github/example/repo#7" not in world.app.collector.twins("ref:example/repo#7")
+    world.act("hide", key="ref:example/repo#7", until="2026-11-08")       # Later in Work through
+    model = world.app.collector.model
+    sec = next(p for p in model["pages"] if p["id"] == "ops")["sections"][0]
+    assert [i["key"] for i in sec["items"]] == ["item:ops/github/example/repo#7"] and sec["bad"] == 1
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    # a tracker section with an alarm is no plain GitHub list either: its finding stays
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "ops"]
+    ops["sections"][0]["kind"] = "tracker"
+    with_pages(world, ops)
+    assert "item:ops/github/example/repo#7" not in world.app.collector.twins("ref:example/repo#7")
+
+
+def test_a_new_decision_replaces_what_the_twins_held(world):
+    """One decision under both keys also when each side decided once: Later on the GitHub page until A, then Later
+    again from Work through until B leaves one key in the store, and the row of Due, the page and its "more" agree
+    on B; Done from Work through after a Later on the page leaves no older Later behind for Show again"""
+    item, ref = "item:github/github/example/repo#12", "ref:example/repo#12"
+    with_pages(world, gh_page("example/repo#12", "example/repo#99"))
+    world.act("hide", key=item, until="2026-11-08")
+    world.act("hide", key=ref, until="2026-11-30")
+    assert world.app.store.hidden() == {ref: "2026-11-30"}
+    hidden = {r["key"]: r["hidden_until"] for r in world.app.collector.model["hidden"]}
+    assert hidden[ref] == "2026-11-30"
+    merged = m.with_twins(world.app.store.hidden(), world.app.collector.twin_map)
+    assert merged[item] == merged[ref] == "2026-11-30"
+    items, _ = world.app.collector.page_items("github", "github")
+    assert item not in page_keys(world) and [i["key"] for i in items] == ["item:github/github/example/repo#99"]
+    # and the other way round: shortening from the page writes the page's key only
+    world.act("hide", key=item, until="2026-11-10")
+    assert world.app.store.hidden() == {item: "2026-11-10"}
+    # Done in Work through: the page's Later goes, so Show again brings the row back on both sides at once
+    world.act("settle", keys=[ref], outcome="done")
+    assert item not in world.app.store.hidden() and ref in world.app.store.dismissed()
+    world.act("unhide", key=ref)
+    assert not world.app.store.hidden() and not world.app.store.dismissed() and item in page_keys(world)
+
+
+def test_show_again_marks_undone_only_what_it_took_back(world):
+    """Show again marks the history entry undone only under the keys whose decision it took back: an expired Later
+    of a twin keeps its history entry"""
+    item, ref = "item:github/github/example/repo#12", "ref:example/repo#12"
+    with_pages(world, gh_page("example/repo#12"))
+    world.act("hide", key=ref, until="2026-11-30")
+    assert item in world.app.collector.twins(ref)
+    undone = []
+    world.app.history.mark_undone = lambda verb, ident: undone.append((verb, ident))
+    world.act("unhide", key=ref)
+    assert undone == [("unhide", ref)]
+
+
+def test_a_due_row_names_the_github_list_it_stands_in(world):
+    """G3: a row of Due whose issue stands in a GitHub list (a section on its board view with a board or figures)
+    names that list, so Work through folds it into one line leading there; a row no such list holds names none"""
+    listed = {"id": "listed", "title": "Listed", "sections": [
+        {"id": "github", "kind": "tracker", "title": "Plain", "status": "ok",
+         "items": [{"id": "example/repo#7", "title": "Answer from the vendor", "actionable": True}]}]}
+    with_pages(world, gh_page("example/repo#12"), listed)
+    assert world.row("ref:example/repo#12")["on_board"] == {"page": "github", "section": "github"}
+    # on a plain list only: a twin for the decisions, but no GitHub list to fold into
+    assert world.row("ref:example/repo#7")["on_board"] is None
+    assert "item:listed/github/example/repo#7" in world.app.collector.twins("ref:example/repo#7")
+    # a board view without a board or a figure is no GitHub list either
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "github"]
+    with_pages(world, gh_page("example/repo#12", boards=False))
+    assert world.row("ref:example/repo#12")["on_board"] is None
+
+
+IDEA_ID = "20261020-0800-a-shelved-idea-1a2b"
+BACK_ID = "20261020-0810-put-off-and-back-3c4d"
+FAR_ID = "20261020-0820-runs-on-a-person-5e6f"
+
+
+def inbox_item(root: Path, iid: str, kind: str, summary: str, events: list[tuple[str, str]]) -> None:
+    folder = root / "work" / "inbox" / iid
+    (folder / "events").mkdir(parents=True)
+    (folder / "item.yaml").write_text(f"schema_version: 1\ncreated: '2026-10-20T08:00'\nfrom: person\nkind: {kind}\n"
+                                      f"summary: {summary}\ngate: only-you\nurgency: later\n", encoding="utf-8")
+    for n, (verb, extra) in enumerate(events):
+        (folder / "events" / f"20261020T09{n:02d}00Z-{n:02d}-web-{verb}.yaml").write_text(
+            f"verb: {verb}\nby: web\nat: '2026-10-20T09:{n:02d}'\n{extra}", encoding="utf-8")
+
+
+def work_page(*items, tasks=()) -> dict:
+    """A work page as briefing.py writes one: its inbox sections (open, the idea shelf, what runs on) and its tasks"""
+    return {"id": "work", "title": "Work", "group": "work", "sections": [
+        {"id": "ideas", "kind": "inbox", "title": "Ideas", "status": "ok", "items": [
+            {"id": iid, "inbox": iid, "title": title, "origin_section_kind": "inbox"} for iid, title in items]},
+        {"id": "tasks", "kind": "tasks", "title": "Tasks", "status": "ok", "items": [
+            {"title": title, "task": slug, "state": "doing"} for slug, title in tasks]}]}
+
+
+def test_work_through_carries_what_the_work_page_shows_beyond_the_briefing(tmp_path):
+    """an idea put off for months, an item put off that waits on a person, a stream a page names without a
+    STATUS.md of its own: open, so Work through holds them; an item taken back on and a closed task are not"""
+    page = work_page((IDEA_ID, "A shelved idea"), (BACK_ID, "Put off and back on"), (FAR_ID, "Runs on a person"),
+                     (DEFERRED_ID, "Call back later"),
+                     tasks=[("job-hunt", "Job hunt"), ("old-one", "An old task"), ("demo-task", "Demo task")])
+    w = r4_world(tmp_path, flow=True, pages=[page])
+    try:
+        inbox_item(w.root, IDEA_ID, "idea", "A shelved idea", [("defer", "until: '2027-01-25'\n")])
+        inbox_item(w.root, BACK_ID, "decision", "Put off and back on", [("defer", "until: '2027-01-25'\n"), ("reopen", "")])
+        inbox_item(w.root, FAR_ID, "decision", "Runs on a person", [("defer", "until: '2026-12-01T09:00'\nwaits_on: the vendor\n")])
+        (w.root / "work" / "streams" / "job-hunt" / "2026-10").mkdir(parents=True)   # a stream of folders, no STATUS.md
+        (w.root / "work" / "done" / "2026-10" / "old-one").mkdir(parents=True)
+        (w.root / "work" / "done" / "2026-10" / "old-one" / "STATUS.md").write_text("---\nstatus: done\n---\n", encoding="utf-8")
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        model = w.app.collector.model
+        deferred = {r["key"]: r for r in model["deferred"]}
+        assert set(deferred) == {f"inbox:{IDEA_ID}", f"inbox:{FAR_ID}"}
+        idea = deferred[f"inbox:{IDEA_ID}"]
+        assert (idea["inbox_state"], idea["until"], idea["art"], idea["inbox_id"], idea["title"]) == (
+            "deferred", "2027-01-25", "idea", IDEA_ID, "A shelved idea")
+        assert deferred[f"inbox:{FAR_ID}"]["until"] == "2026-12-01"
+        rows = {r["key"]: r for r in model["task_rows"]}
+        assert rows["task:job-hunt"]["stream"] is True and not rows["task:old-one"]["closable"] and not rows["task:old-one"]["stream"]
+        keys = set(universe(model))                     # first source wins: a task of the files may stand in task_rows too
+        assert model["counts"]["flow_open"] == len(keys)
+        assert "task:job-hunt" in keys and "task:old-one" not in keys and f"inbox:{BACK_ID}" not in keys
+        # every inbox item and task the work page shows is open in Work through, or closed
+        shown = [it for sec in next(p for p in model["pages"] if p["id"] == "work")["sections"] for it in sec["items"]]
+        rows_out = [r for sec in model["sections"] for r in sec["rows"]] + model["hidden"] + model["deferred"]
+        by_inbox = {r["inbox_id"] for r in rows_out if r.get("inbox_id") and r["key"] in keys}
+        for it in shown:
+            if it.get("inbox"):
+                assert it["inbox"] in by_inbox or it["inbox"] == BACK_ID, it
+            elif it.get("task"):
+                assert f"task:{it['task']}" in keys or it["task"] == "old-one", it
+        # the verbs reach a carried row like any other
+        assert w.row(f"inbox:{IDEA_ID}")["inbox_state"] == "deferred"
+    finally:
+        w.close()
+
+
+def test_with_work_through_off_nothing_is_carried(tmp_path):
+    page = work_page((IDEA_ID, "A shelved idea"))
+    w = r4_world(tmp_path, pages=[page])
+    try:
+        inbox_item(w.root, IDEA_ID, "idea", "A shelved idea", [("defer", "until: '2027-01-25'\n")])
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        assert "deferred" not in w.app.collector.model
+    finally:
+        w.close()
+
+
+def test_a_page_task_carries_its_status_from_the_task_list(tmp_path):
+    page = work_page(tasks=[("parked", "Parked idea")])
+    w = r4_world(tmp_path, flow=True, pages=[page])
+    try:
+        rows = {r["key"]: r for r in w.app.collector.model["task_rows"]}
+        assert rows["task:parked"]["status"] == "backlog"
+    finally:
+        w.close()
+
+
+# ---------------------------------------------------------------- a finding marked seen ("Seen", round 6d)
+
+def put_workers(world, detail: str, at: str = "2026-10-07T07:45:56Z") -> None:
+    folder = world.root / ".bridge" / "resources"
+    folder.mkdir(parents=True, exist_ok=True)
+    run = {"id": "chat-bot", "host": "mini", "kind": "daemon", "state": "last_run_failed", "severity": "high",
+           "findings": [{"state": "last_run_failed", "severity": "high", "detail": detail, "hint": ""},
+                        {"state": "in_sync", "severity": "info", "detail": "matches its stamp", "hint": ""}],
+           "strip": [{"at": at, "rc": 75, "verdict": "failed", "key": "chat-bot"}]}
+    (folder / "workers-view.json").write_text(json.dumps({"schema": 1, "runs": [run, {"id": "calm", "host": "mini"}]}),
+                                              encoding="utf-8")
+
+
+def served_runs(world) -> dict:
+    status, _, body = world.request("GET", "/api/workers", headers=world.cookie)
+    assert status == 200
+    return {r["id"]: r for r in json.loads(body)["view"]["runs"]}
+
+
+def test_a_job_finding_seen_stays_calm_until_it_changes(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    assert "acked" not in served_runs(world)["chat-bot"]
+    world.act("finding_ack", key="worker:mini:chat-bot")
+    runs = served_runs(world)
+    assert runs["chat-bot"]["acked"]["day"] and "acked" not in runs["calm"]
+    # kept in the shared record beside the other decisions, so a restart and every machine keep it
+    assert any(p.name.endswith("-ack.yaml") for p in (world.root / "work" / "cockpit" / "settled").glob("*.yaml"))
+    # a NEW failure has another fingerprint: red again
+    put_workers(world, "the last run of chat-bot ended with 1 at 2026-10-08T10:00:00+00:00", at="2026-10-08T10:00:00Z")
+    assert "acked" not in served_runs(world)["chat-bot"]
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    assert "acked" in served_runs(world)["chat-bot"]
+    world.act("finding_unack", key="worker:mini:chat-bot")       # "show again"
+    assert "acked" not in served_runs(world)["chat-bot"]
+    refused(world, "stale_row", "finding_ack", key="worker:mini:nothing")
+    refused(world, "invalid_argument", "finding_ack", key="worker:../x")
+
+
+def test_a_finding_seen_stays_seen_while_only_its_age_grows(world):
+    # an overdue job's detail counts the seconds since its last line, a check row its hours: that alone is no news
+    put_workers(world, "chat-bot last wrote a line 4210s ago and its declared cadence is 300s")
+    world.act("finding_ack", key="worker:mini:chat-bot")
+    put_workers(world, "chat-bot last wrote a line 4570s ago and its declared cadence is 300s")
+    assert "acked" in served_runs(world)["chat-bot"]
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "probes", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all green", "items": [{"id": "copy", "title": "Copy", "detail": "last copy 3 h ago", "tone": "warn"}]}]}
+    with_pages(world, ops)
+    world.act("finding_ack", key="item:ops/probes/copy")
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "ops"]
+    ops["sections"][0]["items"][0]["detail"] = "last copy 5 h ago"
+    model = with_pages(world, ops)
+    it = next(p for p in model["pages"] if p["id"] == "ops")["sections"][0]["items"][0]
+    assert it["tone"] == "dim" and it["acked"]["tone"] == "warn"
+
+
+def test_a_page_finding_seen_leaves_the_badge_and_the_alarm_until_it_changes(world):
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "probes", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all green", "items": [{"id": "disk", "title": "Disk", "detail": "92 % full", "tone": "bad"}]}]}
+    model = with_pages(world, ops)
+    key = "item:ops/probes/disk"
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    world.act("finding_ack", key=key)
+    model = world.app.collector.model
+    pg = next(p for p in model["pages"] if p["id"] == "ops")
+    it = pg["sections"][0]["items"][0]
+    assert it["tone"] == "dim" and it["acked"]["tone"] == "bad" and it["acked"]["day"]
+    assert pg["sections"][0]["bad"] == 0 and pg["badge"]["kind"] != "bad"
+    assert not [a for a in model["alarms"] if a["page_id"] == "ops"]
+    # the finding changed: red again
+    world.app.collector.view["pages"] = [p for p in world.app.collector.view["pages"] if p["id"] != "ops"]
+    ops["sections"][0]["items"][0]["detail"] = "99 % full"
+    model = with_pages(world, ops)
+    assert [a["count"] for a in model["alarms"] if a["page_id"] == "ops"] == [1]
+    world.act("finding_ack", key=key)
+    world.act("finding_unack", key=key)
+    assert [a["count"] for a in world.app.collector.model["alarms"] if a["page_id"] == "ops"] == [1]
+
+
+def test_shown_again_names_the_row_by_its_title_also_without_an_id(world):
+    ops = {"id": "ops", "title": "Ops", "sections": [
+        {"id": "probes", "kind": "command", "title": "Probes", "status": "ok", "alarm": True, "bad": 1, "weight": 1,
+         "total": 1, "empty": "all green", "items": [{"title": "Disk of the archive", "detail": "92 % full", "tone": "bad"}]}]}
+    model = with_pages(world, ops)
+    key = next(p for p in model["pages"] if p["id"] == "ops")["sections"][0]["items"][0]["key"]
+    world.act("finding_ack", key=key)
+    res = world.act("finding_unack", key=key)
+    assert "Disk of the archive" in res["note"] and "/h" not in res["note"]
+
+
+def close_item(world, item_id: str, *, key: str, summary: str, note: str, at: str = "2026-10-08T06:36:47+00:00"):
+    item = world.root / "work" / "inbox" / item_id
+    (item / "events").mkdir(parents=True)
+    (item / "item.yaml").write_text(yaml_dump({"schema_version": 1, "created": "2026-10-08T07:36", "from": "watcher",
+                                               "kind": "alert", "summary": summary, "key": key}), encoding="utf-8")
+    (item / "events" / "20261008T063647Z-00-mac-close.yaml").write_text(
+        yaml_dump({"verb": "close", "by": "mac", "at": at, "text": note}), encoding="utf-8")
+
+
+def yaml_dump(data: dict) -> str:
+    import yaml
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
+def test_closing_the_item_of_a_job_marks_its_finding_seen_with_the_close_note(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-job-chat-bot-a1b2", key="worker:mini:chat-bot",
+               summary="Background job chat-bot on mini: last run failed", note="exit 75 was a restart, nothing to do")
+    world.app.ack_closed_findings()
+    run = served_runs(world)["chat-bot"]
+    assert run["acked"]["note"] == "exit 75 was a restart, nothing to do"
+    # undone by hand, the same close does not mark it again
+    world.act("finding_unack", key="worker:mini:chat-bot")
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+
+
+def test_closing_an_item_that_was_already_there_marks_its_finding_seen_on_the_next_pass(world):
+    # inbox.py close writes into <id>/events/, which leaves the item folder's own time as it was: the pass reads
+    # the events folders too, so a close of an existing item is seen without another item changing
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-job-chat-bot-a1b2", key="worker:mini:chat-bot",
+               summary="Background job chat-bot on mini: last run failed", note="exit 75 was a restart, nothing to do")
+    events = world.root / "work" / "inbox" / "20261008-0736-job-chat-bot-a1b2" / "events"
+    close = next(events.iterdir())
+    body = close.read_text(encoding="utf-8")
+    close.unlink()
+    item = events.parent
+    stamp = item.stat().st_mtime_ns
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+    os.utime(events, ns=(stamp - 10_000_000_000, stamp - 10_000_000_000))
+    (events / close.name).write_text(body, encoding="utf-8")
+    os.utime(item, ns=(stamp, stamp))
+    world.app.ack_closed_findings()
+    assert served_runs(world)["chat-bot"]["acked"]["note"] == "exit 75 was a restart, nothing to do"
+
+
+def test_a_handoff_question_about_a_job_counts_like_its_own_item(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-question-c3d4", key="web:q0123456789",
+               summary="Background job chat-bot on mini: last run failed. What should be done, and why?",
+               note="a planned restart")
+    world.app.ack_closed_findings()
+    assert served_runs(world)["chat-bot"]["acked"]["note"] == "a planned restart"
+
+
+def test_a_close_before_the_failure_does_not_mark_it_seen(world):
+    put_workers(world, "the last run of chat-bot ended with 1 at 2026-10-08T09:00:00+00:00", at="2026-10-08T09:00:00Z")
+    close_item(world, "20261008-0736-job-chat-bot-e5f6", key="worker:mini:chat-bot",
+               summary="Background job chat-bot on mini", note="older trouble")
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+
+
+def test_another_item_that_only_names_the_job_and_its_machine_does_not_mark_it_seen(world):
+    put_workers(world, "the last run of chat-bot ended with 75 at 2026-10-07T07:45:56+00:00")
+    close_item(world, "20261008-0736-chat-bot-on-mini-halted-a7b8", key="watcher:chat-bot",
+               summary="chat-bot on mini halted", note="another matter")
+    world.app.ack_closed_findings()
+    assert "acked" not in served_runs(world)["chat-bot"]
+
+
+def test_closing_the_item_analyse_in_a_tab_filed_marks_the_job_seen_and_keeps_its_item_on_the_row(world):
+    # the analysis files under worker:<host>:<id>, the key a close is read by: its close note greys the job
+    run = {**WORKER_RUN, "strip": [{"at": "2026-10-07T07:45:56Z", "rc": 75, "verdict": "failed"}]}
+    write_workers(world, [run])
+    new_id = "20261008-0736-background-job-chat-bot-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.act("worker_advise", host="homebox", id="chat-bot")
+    add = next(c for c in writes(world) if world.runner.key(c) == "inbox.add")
+    key = next(a for a in add if a.startswith("--key="))[len("--key="):]
+    close_item(world, new_id, key=key, summary="Background job chat-bot on homebox: last run failed",
+               note="exit 75 was a planned restart")
+    world.runner.handlers["inbox.list"] = lambda argv: ok([{"id": new_id, "state": "done", "key": key}])
+    world.app.inbox_cache = (0.0, None)
+    world.app.ack_closed_findings()
+    served = served_runs(world)["chat-bot"]
+    assert served["acked"]["note"] == "exit 75 was a planned restart"
+    assert served["advise"] == {"inbox": new_id, "state": "done"}
+
+
+# ---------------------------------------------------------------- stage 4: In progress with a check-in
+
+def test_work_on_puts_an_item_with_someone_until_its_check_in_day_and_takes_it_back(world):
+    world.runner.calls.clear()
+    res = world.act("work_on", key=f"inbox:{YES_ID}", who="lena", until=TOMORROW, text="She drafts the contract")
+    calls = writes(world)
+    assert I(world, "defer", YES_ID, "--until", TOMORROW, "--on", "lena", "--check") in calls
+    assert any("She drafts the contract" in " ".join(c) for c in calls), "the sentence as a note"
+    assert res["settled"] == [f"inbox:{YES_ID}"]
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "inbox"][0]
+    assert undo["verb"] == "inbox_reopen"
+    # a task: who takes its step and the check-in day, the step kept; the undo puts the old who back
+    world.runner.calls.clear()
+    world.act("work_on", key="task:demo-task", who="lena", until=TOMORROW)
+    assert writes(world)[0] == K(world, "next", "demo-task", "--who", "lena", "--check", TOMORROW, "--json")
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo["verb"] == "task_next" and undo["args"]["slug"] == "demo-task" and undo["args"]["clear_check"] is True
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world)[0][:4] == K(world, "next", "demo-task")[:4] and "--clear-check" in writes(world)[0]
+    # who is one line, the day a day
+    for bad in ({"who": "", "until": TOMORROW}, {"who": "lena", "until": "tomorrow"}, {"who": "a\nb", "until": TOMORROW}):
+        with pytest.raises(ActionError):
+            world.act("work_on", key="task:demo-task", **bad)
+
+
+def test_stuck_ends_the_check_in_with_the_reason_as_a_note_and_the_point_needs_you_again(world):
+    world.runner.calls.clear()
+    world.act("checkin_stuck", key=f"inbox:{YES_ID}", text="The other side does not answer")
+    calls = writes(world)
+    assert any(c[:4] == I(world, "reopen", YES_ID)[:4] for c in calls)
+    assert any("The other side does not answer" in " ".join(c) for c in calls)
+    world.runner.calls.clear()
+    world.act("checkin_stuck", key="task:demo-task", text="Waits on the vendor")
+    calls = writes(world)
+    assert K(world, "next", "demo-task", "--who", "me", "--clear-check", "--json") in calls
+    assert any("Waits on the vendor" in " ".join(c) for c in calls)
+
+
+def test_a_check_in_reaches_the_row_from_the_item_and_from_the_task(tmp_path):
+    from lib.bridge_cockpit import details as dt_
+    events = [{"verb": "defer", "at": "2026-10-04T09:00:00+00:00", "until": "2026-10-11", "waits_on": "lena", "check": True}]
+    assert dt_._checkin(events) == {"who": "lena", "until": "2026-10-11", "since": "2026-10-04"}
+    assert dt_._checkin(events + [{"verb": "reopen", "at": "2026-10-12T09:00:00+00:00"}]) is None, "an answer ends it"
+    assert dt_._checkin([{"verb": "defer", "until": "2026-10-11", "waits_on": "lena"}]) is None, "a plain later is none"

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -382,6 +383,50 @@ def test_a_repository_without_a_web_remote_has_no_link_and_still_counts(tmp_path
     assert "url" not in item and item["total"] == 1
     [item] = run_commits(root, {"kind": "commits"}, GitWithRemote({str(a): ["2026-10-05"]}, "/srv/git/alpha"))["items"]
     assert "url" not in item
+
+
+def test_own_commits_of_a_range_as_times_per_repository_for_the_log_page(tmp_path):
+    a, q = repo(tmp_path / "code" / "alpha"), repo(tmp_path / "code" / "quiet")
+    root = bridge(tmp_path, {"local_root": str(tmp_path / "code"),
+                             "base": {"alpha": {"github": "o/alpha"}, "quiet": {"github": "o/quiet"}}})
+    git = GitWithRemote({str(a): ["1790003600", "1790000000", "not a time"]}, "git@github.com:o/alpha.git", branch="dev")
+    c = bf.Context(root, now=NOW, run=git, cfg={})
+    got = bf.commit_times({"kind": "commits", "author": "me", "all_branches": True}, c, "2026-10-01", "2026-10-05")
+    # a repository without a commit in the range leaves no entry; the times oldest first, as epoch seconds
+    assert got == {"repos": [{"repo": "alpha", "branch": "dev", "url": "https://github.com/o/alpha/commits/dev",
+                              "ts": [1790000000, 1790003600]}], "skipped": []}
+    log = next(call for call in git.calls if call[3] == "log" and call[2] == str(a))
+    assert log[4:10] == ["--since", "2026-10-01 00:00", "--until", "2026-10-05 23:59:59", "--format=%ct", "--date=local"]
+    assert "--author=me@example.com" in log and "--branches" in log
+    assert not any(call[2] == str(q) and call[3] == "rev-parse" for call in git.calls)
+
+
+def test_the_command_lists_own_commits_of_a_range_from_the_profiles_commits_section(tmp_path, monkeypatch, capsys):
+    b = repo(tmp_path / "beta")
+    root = bridge(tmp_path)
+    (root / "workflow" / "briefings").mkdir(parents=True)
+    (root / "workflow" / "briefings" / "day.yaml").write_text(yaml.safe_dump(
+        {"schema_version": 1, "scope": "user", "id": "day", "default": True,
+         "sections": [{"kind": "activity"}, {"id": "repos", "kind": "commits", "repos": [str(b)]}]}), encoding="utf-8")
+    calls = []
+
+    def fake(argv, timeout=30, cwd=None):
+        calls.append(list(argv))
+        if argv[3] == "log":
+            return "1790000000\n"
+        if argv[3:6] == ["rev-parse", "--abbrev-ref", "HEAD"]:
+            return "main\n"
+        raise bf.SourceError("no remote")
+
+    monkeypatch.setattr(bf, "_default_run", fake)
+    assert bf.main(["--root", str(root), "commits", "day", "--section", "repos", "--since", "2026-10-01",
+                    "--until", "2026-10-05"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data == {"ok": True, "section": "repos", "repos": [{"repo": "beta", "branch": "main", "url": None,
+                                                               "ts": [1790000000]}], "skipped": []}
+    assert bf.main(["--root", str(root), "commits", "day", "--section", "nope", "--since", "2026-10-01",
+                    "--until", "2026-10-05"]) == 2
+    assert bf.main(["--root", str(root), "commits", "--since", "2026-10-05", "--until", "2026-10-01"]) == 2
 
 
 def test_a_log_row_names_its_task_and_status_file_when_the_task_exists(tmp_path):

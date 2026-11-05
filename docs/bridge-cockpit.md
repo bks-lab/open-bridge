@@ -1,13 +1,15 @@
 ---
-summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the news ticker, the status pages, the task check, the keyboard, the safety model, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
+summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, a page's search over every day before with Ask AI, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-10-24
+last_updated: 2026-11-05
 related:
   - bridge-cockpit-dev.md
   - briefings.md
   - workplace.md
   - inbox.md
   - cloud-costs.md
+  - cockpit-areas.md
+  - cockpit-files.md
   - ../bridge-config.yaml.template
   - ../workflow/briefings/_template.yaml
   - ../scripts/bridge-cockpit.py
@@ -70,6 +72,7 @@ their defaults:
 |---|---|---|
 | `enabled` | `false` | `bridge-cockpit.py` refuses to start until this is `true` |
 | `port` | `8797` | the page answers on `http://127.0.0.1:<port>/` |
+| `local_name` | none | one DNS label (a-z, 0-9, `-`): the page also answers on `http://<local_name>.localhost:<port>/`, and `open`, `url` and `status` use that address (below, A name of its own) |
 | `open_in` | `auto` | `auto`: a cmux browser tab inside cmux, else your default browser; `cmux`, `system`, or `none` (print a login link, good once within a minute; with `--json` only the port) |
 | `relay` | `false` | `true`: the control session takes questions from the page as prompts; needs the `cockpit-relay` mod (below), so it stays off unless asked for |
 | `profile` | `briefing.default` | which briefing profile the page shows |
@@ -79,17 +82,62 @@ their defaults:
 | `voice` | `false` | the browser also speaks a tab that starts waiting for you |
 | `launch.target` | `area` | where Let AI do it opens a tab: `area`, `tab`, `workspace` or `auto` ([`workplace.md`](workplace.md)) |
 | `triage_daily` | `false` | `true`: the triage sorts every task and inbox item once a day by itself (a small model call, a few cents); otherwise only on "sort again" |
+| `served.ask` | none | `people`, who may ask (with `auth: login` exactly one name, a subscription is for its owner alone; it may be left out when `codex` names everyone), `codex` (`people`, each on a login of their own, optional `model` and `path`), `manager` (who switches each person on their Settings page), `auth` (`login`, the service user's Claude login, or `key`), with `key` also `key_ref` (`keychain://<service>/<account>`) or `key_env` (a variable's name), `claude` (the CLI's absolute path where a service's PATH does not find it), `model` (`haiku`, `sonnet`), `daily_questions` (per person, 30). Without the block their Chat says it is not set up. Section "A person's question" |
+| `served.access` | none | `team_domain`, `aud`, `host`: a served cockpit behind a sign-in gateway, section 2. A wrong block stops the start |
 | `chat_layout` | `classic` | `workspaces`: the Chat tab as cmux shows it, see [The chat as cmux](#the-chat-as-cmux) |
-| `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); 0 keeps them, then only the limit of 30 applies |
+| `chat_keep_hours` | `24` | quick chats and A2A agent conversations untouched this long go to the archive (below); a chat handed to a tab stays this long after the latest of its handoff, its result and its item's end; 0 keeps them, then only the limit of 30 applies. An empty chat names the time it keeps a question ("Questions stay in the list for 7 days" with `168`) |
+| `work_view` | `due` | the view the work tab opens on: `due`, `source` (By source), `jev` (By Jev) or `flow` (Work through, with `flow.enabled`); a view the tab does not offer opens Work through where the tab offers it, else the first view kept. `files` names no view of the work tab any more: the first visit of the work tab opens the Files tab once ([The Files tab](#the-files-tab)), and the work tab keeps the view it falls back to. A click on the tab's switch still picks another for this browser, until the key changes |
+| `work_views` | `[due, source, jev, files, flow]` | the views the work tab's switch offers, in this order whatever the list's; an unknown word is left out, not a list or nothing left offers all. `files` is no view of the switch: it stands for the Files tab, right after the work tab, and is always kept (every link that opens a task's file leads there). With one view left the switch does not show. A `work_view` the list leaves out opens Work through where it is kept and on, else the first view kept; no way stores a view switched off, so a jump to the work page or to Jev lands there too. Recommended once Work through holds everything: `[files, flow]`: the work tab shows Work through alone, the Sessions tab goes (Running now lists the sessions) and the task check is the row Check tasks under Not now, with no tab of its own |
+| `focus_to_files` | `false` | `true`: when the focus on the start page runs out, its calm card and its last step lead on into the Files view of the work tab rather than to the tasks |
+| `files_scope` | `active` | which tasks are files in the Files view: `active` the `doing` and `review` ones, as before; `all` every task and stream but the closed ones, the queue as the order of the walk and every one in the list on the left, see [Every task as a file](cockpit-files.md#every-task-as-a-file). Any other value keeps `active` and is named in `status` |
+| `files_search.enabled` | `false` | Ask AI on the start of the Files tab: one model call without tools, only on a click, over at most 12 of the records listed, see [The Files tab](#the-files-tab). Off, the button does not show and the verb refuses |
+| `files_search.budget_per_day` | `20` | how many questions a day may go to the model; `0` none |
+| `files_search.model` | none | the model, `haiku`, `sonnet` or `opus`; none: the service `cockpit-files` of `workflow/ai-services/` (default Haiku) |
+| `files_search.block` | `[]` | words that keep a record private: a record whose area (front matter and row), context, theme, path, title or the text that would go (the start of its STATUS.md, front matter and `related:` included) holds one, case folded, never reaches the model; the server drops it before the request is built, and the page says how many stay back and by which words (the records carry the server's decision, so the count before the click is the server's). A word also matches inside a longer one: `Steuer` holds back a record on `Steuerung` too, it holds back more, never less. At most 50 words of 60 characters |
+| `origin_map` | none | your own source names, mapped to a category the work tab shows: a name or a quoted glob (`"*-health"`) to one of `github`, `tracker`, `calendar`, `bot`, `session`, `skill`, `work`, `person`, `bridge`, `other`. It comes before the built-in rules; a wrong category or a repeated name is ignored and named in `status`. It stays on the server, the page never sees it (see [Where a row comes from](#where-a-row-comes-from)) |
+| `describe` | `auto: off` | each item's brief (name, stand, goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
+| `flow.enabled` | `false` | the view Work through of the work tab: everything open grouped by theme or area, one point at a time as a card with five verbs, or as a list with suggestions and a batch, see [Work through](#work-through-flow). Off, the view does not exist |
+| `flow.drop_reasons` | `[resolves_itself, not_needed, someone_else, not_worth_it]` | the reasons "Drop because" offers to click, beside a free field; the four keys are worded by the page in both languages, a reason of your own (1 to 80 characters, at most 12) stands as written |
+| `flow.return_after_s` | `20` | after "To tab" on a card, how many seconds later (at most 4 hours) the page asks how it went once it is in view again; `0` asks at the first return. Switching apps without "To tab" never asks |
+| `flow.prep_ahead` | `2` | how many cards after the one in front get their brief prepared (`describe_run`, within `describe.budget_per_hour`), only when it is missing or stale; `0` prepares none |
+| `flow.max_running` | `4` | how many started agents may run before Let AI do it asks "4 are running already. Start anyway?" (at least 1); a batch of the list starts no more than that |
+| `flow.rank_max_age_days` | `7` | a Jev rank older than this many days does not order the tasks (the triage's `next_rank` is left out), the plain order takes over; at least 1 |
+| `flow.themes.enabled` | `false` | Work through groups its points by themes a small model gives them, across the areas (Themes beside Areas at the top of its left column), and suggests a decision for each in the same call, see [Work through](#work-through-flow). Off, the areas group them |
+| `flow.themes.max_themes` | `8` | the most themes there may be, the ones a person made included (2 to 20) |
+| `flow.themes.budget_per_day` | `6` | how many runs a day may order the themes, the click "Order themes again" included; once spent, the areas group what has no theme yet until the next day |
+| `flow.themes.model` | none | the model of the themes, `haiku`, `sonnet` or `opus`; none: the service `cockpit-themes` of `workflow/ai-services/` (default Haiku) |
+| `flow.rerank_per_day` | `3` | how often a day a click on "order again" may ask Jev anew; `0` only the order of the day's first call. Reserved: the page has no such button yet, so nothing reads it |
+| `flow.ahead_days` | `2` | a point with a due day further ahead than this many days, and not urgency now, waits under Not now, Later, until that many days before it (a due with a time counts by its day); `0` waits for the day itself, `366` shows everything at once as before |
+| `flow.read_days` | `3` | a finished AI run (a start whose item ended after it) that nobody marked **Read** leaves the group Finished, to read this many days after its item ended (by its start where that time is unknown); it stays in its item's Activity. At least `1` |
+| `flow.infer_sessions` | `true` | with `flow.enabled`, a live Claude session in a tab that names one open task in the end of its own transcript (`task.py <verb> <slug>`, `work/tasks/<slug>/`, `task:<slug>`) runs under Running now as work on it, without a link by hand; only the slug and the sign leave the server. A link by hand or a start from the cockpit wins, Not this task undoes it for good |
+| `flow.summary.enabled` | `false` | the summary on top of a point's Activity tab: a click on "Summarise since last week" has a small model sum up what happened to the point in at most three sentences, see [Work through](#work-through-flow). Off, the button does not show |
+| `flow.summary.budget_per_day` | `10` | how many summaries a day may call the model; a point whose rows did not change answers the kept one without a call and without counting. `0` calls none |
+| `flow.summary.model` | none | the model of the summary, `haiku`, `sonnet` or `opus`; none: the service `cockpit-activity` of `workflow/ai-services/` (default Haiku) |
+| `flow.instruct.enabled` | `false` | the instruction line at the foot of Work through: a sentence a small model turns into steps of the verbs there are, shown as "This is how I understood it" and run only on a click, see [Work through](#work-through-flow). Off, the line does not show |
+| `flow.instruct.budget_per_day` | `30` | how many sentences a day may go to the model; `0` none |
+| `flow.instruct.model` | none | the model of the instruction line, `haiku`, `sonnet` or `opus`; none: the service `cockpit-instruct` of `workflow/ai-services/` (default Haiku) |
+| `flow.attach.enabled` | `false` | Attach a document at the foot of a point's Activity: the file goes into the deliverables folder of the point's open task (never elsewhere), see [Work through](#work-through-flow). Off, the button does not show and the route refuses |
+| `flow.attach.max_mb` | `10` | the largest document Attach takes, in megabytes (1 to 25); the page checks the size before it sends |
+| `flow.checkin.enabled` | `false` | the Bridge looks before a check-in: on a check-in's day or the day before, one small model call reads what the Bridge already holds of the point since it was handed over and the check-in card says what it found and where, see [The Bridge looks before a check-in](#the-bridge-looks-before-a-check-in). Off, a check-in asks you as before |
+| `flow.checkin.budget_per_day` | `10` | how many looks a day may call the model; `0` none. A look with nothing new since the hand-over and no ref to read needs no call; a failed call counts. Over it, the card asks as before |
+| `flow.checkin.model` | none | the model of the look, `haiku`, `sonnet` or `opus`; none: the service `cockpit-checkin` of `workflow/ai-services/` (default Haiku) |
+| `flow.prio.fallback` | `none` | `haiku`: a read-in with Jev on a click that fails (Jev busy, 5xx, a timeout, no key; never a refusal such as 401 or 403) runs Haiku instead, while `flow.prio.haiku.enabled`, within its budget, and Prio's foot says so; the daily order never falls back. `none`: the failure stands |
+| `flow.prio.haiku.enabled` | `false` | **Read in with Haiku** at Prio's foot: a small Claude model ranks the points as Jev does, see [Work through](#work-through-flow). Off, the button does not show and the route refuses (`prio_off`). Haiku needs no Jev: `integrations.typesafe` may be off |
+| `flow.prio.haiku.budget_per_day` | `6` | how many read-ins a day Haiku may run (the fallback included); `0` none. A run is counted before the call, also when it fails |
+| `flow.prio.haiku.model` | none | the model of Read in with Haiku, `haiku`, `sonnet` or `opus`; none: the service `cockpit-prio` of `workflow/ai-services/` (default Haiku) |
+| `a2a_sources` | none | further sources of A2A peers beside `infra/a2a-peers/`: a list of `{name, script}`, `script` a skill's own `skills/<skill>/scripts/<name>.py` that reaches agents another way (an access proxy, a broker) and keeps its own credentials. At most four; a bad entry is ignored and named in `status`. Contract under [Peers from a script](#5-asking-claude-the-relay) |
 | `snapshot_minutes` | `60` | while the server runs, save the cmux layout this often, only when it changed; `0` = only on "Save layout now" |
-| `person_name` | none | how Claude and Jev name you; without it they say "the user" |
+| `idle_minutes` | `10` | a tab the terminal reports as waiting that has been still this long and whose last words ask nothing (no question mark, no options, nothing typed in its prompt) is done, not waiting: it leaves "waits for you" and counts as "to review" in its area; a tab whose item or task is settled is done at once; it reads the tab's screen, so without a terminal driver that serves screens (or with the questions off) only the settled rule applies and every other tab keeps waiting; an idle tab raises no "waits for an hour" and the decision guide does not read it; `0` = off |
+| `person_name` | none | how Claude and Jev name you; without it they say "the user". With `flow.enabled`, a task whose next step names you is yours, not one that waits on others |
 | `launch_model` | off | the model an agent tab starts with, and whether a judge recommends one (section 3, "The model an agent starts with") |
 | `ticker` | off | the news ticker on the start page: Bridge status and AI news feeds (section 3, "The news ticker") |
-| `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Help and Settings still start it), see [The first-run tour](#the-first-run-tour) |
+| `tour` | `true` | the first-run tour: a first visit offers a short introduction of the page; `false` never offers it by itself (Settings, Help and Explain still start it), see [The first-run tour](#the-first-run-tour) |
+| `setup` | `true` | the Setup page: what still keeps the cockpit from working well, and the catalogue's features that are off, each with how it is switched on; `false` collects no such page, see [The Setup page](#the-setup-page) |
 | `session_guide` | off | the decision guide: Claude Haiku reads a waiting tab's session and offers its next steps as buttons, in the chat and on the Sessions page (section 3, "The decision guide") |
 | `usage.remotes` | the machines of `infra/instances` | other machines whose token use the overview page adds in (`infra/remotes` names; `[]` for none), see the overview page, "Tokens" |
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
 | `usage.remote_file` | `~/.bridge/resources/usage.json` | the file `scripts/usage-export.py` writes on those machines |
+| `usage.clicks` | `true` | the click origin log: which control was used from which page, view and area, by name and count, never its words or what it was about (`usage.jsonl`, section 6); `scripts/cockpit-usage.py` reads it. `false` writes nothing; any other value warns and keeps `true` |
 
 Migration note: `language`, `full_minutes`, `voice`, `launch.target` and
 `snapshot_minutes` used to be set under `briefing.claude_code_ui`, the block
@@ -127,7 +175,8 @@ an edit, start a new session or run `/reload-plugins`. More in
 In a Claude Code session in the Bridge root, type `/cockpit`. The skill
 runs `python3 scripts/bridge-cockpit.py open --json`: the server starts (or the
 running one is reused) and the page opens where `open_in` says. The note in
-the conversation names only where it opened and `http://127.0.0.1:<port>/`,
+the conversation names only where it opened and its address (`http://127.0.0.1:<port>/`,
+or the `local_name` one),
 never a link with a key or a login code. It then reads `status --json` once:
 `can_launch: false` means no terminal driver starts agent tabs (`workplace.driver`),
 so it says so and offers to set the driver; the header of the page shows "agent
@@ -154,12 +203,58 @@ asks for a fresh link (`url`, or `/cockpit`). `new-token` makes a new key on
 the next start, which also ends every cookie, and every browser goes through
 `url` once more.
 
+**On an always-on machine.** `serve --served` is the cockpit for people, without a model, a terminal or the daily triage; their entries are committed and pushed as they land ([always-on machine](always-on-machine.md#a-cockpit-on-this-machine)).
+
+**Behind a sign-in gateway.** With `cockpit.served.access` a served cockpit may stand behind Cloudflare Access (or
+any gateway signing the same RS256 assertion). It still binds `127.0.0.1`; a tunnel brings the requests in.
+
+```yaml
+cockpit:
+  served:
+    access:
+      team_domain: team.example.org   # the team's address, without https://
+      aud: <the application's audience tag>
+      host: cockpit.example.org       # the public address of this cockpit
+```
+
+Each workspace then says who may sign in under which address: `members: [pat]` plus `logins: {pat: pat@example.org}`.
+A person's page holds Start, Today with Work through where the owner has it on (the points of their areas and the verbs
+Done, Later, Drop, no model and no tab), Dates where their workspaces name calendars under `sources.calendars` (only those
+calendars, read from the calendar sections of the briefing), the files, the Chat and their own Settings (colours and
+language, kept per person in `people/<name>.json` of the state folder, never in `bridge-config.yaml`). Today offers a field
+for a new task: it lands in the backlog of their area, by `task.py new --area`.
+
+There is no owner on such a server. Every request needs the public name and a token signed by the gateway for this
+application, checked here on each request (`scripts/lib/bridge_cockpit/signin.py`): signature against the team's
+`/cdn-cgi/access/certs`, issuer, audience, expiry, then the address mapped through `logins:`. The plain address header
+counts for nothing, the key's cookie, a login link and `url` open nothing, and no cookie is set. An unknown address gets
+a page saying so. Only `/api/health` answers without a token, and only under the local name, for the status probe. A
+half block stops the start instead of opening the server. Without the block, or without `--served`, nothing changes.
+
+Open a tunnel only after the gateway's application and its rule stand: the check here is the second lock, not the only one.
+
 **Always there.** Without autostart the server runs until you stop it or the
 computer restarts. `autostart on` (macOS) installs a LaunchAgent
 (`~/Library/LaunchAgents/ai.open-bridge.cockpit.<hash>.plist`) that starts
 `serve` at login and again after a crash, never after `stop`; it keeps the
 PATH of the shell that switched it on, since the cockpit calls cmux, gh, git
 and claude. `autostart off` removes it. It is off unless you switch it on.
+
+Since the Setup page lists **Cockpit at login** on a Mac with the cockpit on, it shows
+whether the login item is there (the LaunchAgent file, not a config value), and Let AI
+do it runs `autostart on`.
+
+**A name of its own.** `cockpit.local_name: my-bridge` gives the page the address
+`http://my-bridge.localhost:<port>/`. Every name ending in `.localhost` means this
+computer (RFC 6761); macOS resolves it without a hosts file, and so do the common
+browsers. The server takes exactly that one name beside `127.0.0.1` and `localhost`,
+for the address header and for the origin of every click; any other `.localhost`
+name stays refused, as before. The port stays in the address: without it the
+server would need port 80, which only an administrator may open. A value that is
+no DNS label stops the start, as a bad port does. After setting it, `stop` and
+`open` (the running server keeps the names it started with); the cookie belongs
+to one name, so the new address asks for one login link, which `open` brings.
+Two Bridges on one computer take two names.
 
 **Try it without a Bridge.** A live demo with invented data runs on the
 website: https://bks-lab.github.io/open-bridge/cockpit-demo/. Nothing there
@@ -170,37 +265,77 @@ without changing your stored choice.
 ## 3. What you see
 
 The header carries the profile's title, when the briefing was
-collected, a loading indicator, reload, the theme switch (auto, light, dark),
-help, and a dot for the relay. Under it sits the page bar. In front stand the
+collected as a button with ↻ on it (a click collects every source fresh; while
+a fresh pass runs it waits), the warnings before it (connection lost, a stale
+model, a failed pass: at every width, below 1280 pixels only the time gives way
+and stays in the tooltip), a loading indicator, Tabs, Ask, History, Notes (the
+bell: what the cockpit reported lately, newest first), a dot for the relay, and
+Help (`?`) last: Explain first in it, then the topics of the look-up card and the
+tour. The colours (auto, light, dark) and the look-up card stand in Settings,
+Appearance. Under it sits the page bar. In front stand the
 tabs of every day: "Start" (a new visit opens on it, a reload stays where it
-was), "Today" (the briefing), "Chat", then the profile's pages with the
+was), "Today" (the briefing), "Files" (the records, a search first, see [The Files
+tab](#the-files-tab)), "Chat", then the profile's pages with the
 default `group: main` (Work and Operations in a typical profile). Behind them
-come Sessions, Background jobs, A2A connections, Tidy up, Jev and every profile page
-with `group: more`. While the bar is wide enough every tab stands in it; when
+come Sessions (only without Work through: with it, Running now lists the
+sessions, see below), Background jobs (unless the profile places it under a page,
+see Sub pages), A2A connections (only with the classic chat: with
+`chat_layout: workspaces` the agents are an area of the Chat, see [The chat as
+cmux](#the-chat-as-cmux)), Check tasks (only without Work through: with it, the
+check is a row under Not now, see [Today](#today-the-briefing), Checking and closing tasks), Jev and every profile page with `group: more`. While the bar is wide enough every tab stands in it; when
 they would overflow, that second group folds, from the last tab forward,
-behind a last tab, "More", which carries the name of the page open behind it
-and a dot when one of them has something. Alt 1 to Alt 9 follow the same
-order. A page with `group: day` has no tab: its sections stand under "What
+behind a last tab, "More", which carries the name of the page open behind it,
+else a dot in the strongest colour a tab behind it wears for a reason: red for
+a finding or a background job that is down, amber for a warning (an A2A agent
+waiting, Jev not ready). A grey count, a green ok or a running agent is no
+reason. Alt 1 to Alt 9 follow the same order; a tooltip names them only while
+the shortcuts are on. A page with `group: day` has no tab: its sections stand under "What
 happened today" in the middle of the Today page.
 
 A page with `group: work` has no tab either: it folds into the Today tab, which
 then carries that page's title (Work, say) and a switch over its left column
-with three views. **Due** is the four blocks below, and the tab opens on it.
+with its views (none when only one is left). **Due** is the four blocks below, and the tab opens on it
+unless `cockpit.work_view` names another view. A view the switch does not offer
+(`cockpit.work_views`) falls back to Work through where it is on, in the page and
+on the server, and is never stored.
 **By source** is the work page itself, its sections as labels. **By Jev** is the
 Jev picture (the matrix and the plan) fed by the work page's order, and it
 stands only where that page has `jev:` and Jev is on. With such a page the Jev
 tab goes too: it is the By Jev view now, and an old link to it or to the work
 page opens the matching view. The day moves to Start as well: dates, status,
-what is clear or needs tidying and the workplace stand there as cards in a shelf
-"The day", above the project chips since those do not filter it, and the pages of
-`group: day` close the start page as shelves of their own. The middle of Due
-keeps only the headline and a button to Start.
+what is clear, the small fixes and the workplace stand there as cards in a shelf
+"The day", above the areas and the project chips since those do not filter it, and the pages of
+`group: day` close the start page as shelves of their own. Both show in the
+bridge and tiles views only; the overview has no shelves. "The day" is a shelf
+like the others (Settings, Start page), on until switched off; the panel of the
+bridge's core repeats what of it concerns the briefing itself: a source that
+failed, was skipped or found something, the small fixes and the workplace. The
+pages of `group: day` have no switch: without Due they have no other place, and
+a link to one opens the start page instead of Work. The middle of Due
+shows the day in full in every case (headline, dates, status, what is clear,
+the small fixes, the workplace, the pages of `group: day`), under the same area
+filter as the rows beside it. **Small fixes** (de: Kleine Handgriffe) holds
+what runs beside the work: tasks without a next step, issues assigned to you
+with no task, a source that failed, rows muted or in a group the profile does
+not show; each line is one sentence that says what to do ("2 tasks have no next
+step (a, b). Open it and write one in."), worded from the facts the view
+carries (`tend`), the server's text for a kind the page has no sentence for.
 
 Only one number in the bar carries colour: Today's count of what waits for
 you, the same count as the start page's station "waits for you" and the
 headline in the middle (the approvals stand in its tooltip and in their own
-block). A finding is red wherever it is; every other count is grey. A page
-badge that adds up several sections names them in its tooltip. A finding on a
+block). It counts the rows of Now that ask you: every row that is no inbox
+item, and of the inbox only the asks (decision, question, draft). An idea or a
+report filed for today still stands in Now, it is just not counted, so the
+section's own head can show the larger number ([inbox.md § Arts](inbox.md#arts)).
+The start page's lists named "waiting on you" show the same asks.
+With Work through on, the count is Work through's instead: its points that
+need you, less the finished starts (see "The numbers come from Work through"
+under [The start page](#the-start-page)), so the bar, the start page and Work
+through show one number.
+A finding is red wherever it is; every other count is grey. A page
+badge that adds up several sections names them in its tooltip; a row put off or
+settled weighs in it no more than it counts. A finding on a
 status page also shows as a banner on the Today tab.
 
 The buttons speak four verbs everywhere, also in the Telegram inbox watcher:
@@ -209,16 +344,963 @@ reports, then waits), **Ask** (a short read-only answer in the chat) and
 **Close** (done, not doing, or more). "To tab", "Message" and "View" only stand
 where a tab already runs.
 
+### Where a row comes from
+
+Every work row carries two tags, in this order, as words and never as colour alone:
+
+- **What it is.** Task, Stream, Closed task or Ended stream (Closed alone for an older search hit that cannot
+  say which of the two); Report (an inbox item), always followed by
+  "about ▣ Task: X" or "about ↻ Stream: X" when it belongs to one; Issue, with the same "about" when a task
+  or stream syncs it; or Item. A stream's tag also has a dashed border, a second cue beside the word.
+- **Where it comes from.** One word and a short detail: GitHub (with the repository), the name of another
+  board (GitLab, Azure Boards), Calendar, Bot (a scheduled run, a notifier, a check, a bot, a machine),
+  Session (an agent session or tab: Claude, Codex and the like), Skill (a skill run such as a briefing or
+  meeting notes), From task or From stream (filed while working on it), By hand (a person), Bridge (started
+  here, no other source written down: `task.py`'s own "Ad-hoc <date>") or Other source. A task whose origin is
+  free text no rule knows (a call, a meeting, a mail) reads Other source with that text, and a row with no
+  source at all reads "Other source · unknown", so no work row goes without the tag. The text as it was
+  written stands in the tooltip and in full in the detail's "Source" row, so the word never hides anything.
+  The drawers, the walk bars, the check table, the live feed and the history say Task or Stream the same way.
+
+The source of an inbox item is who filed it, not what it is about: a radar job that files about an issue reads
+"Bot · radar job" and shows the issue number beside it. A row you sent to the inbox from the cockpit takes the
+source of the page row it came from (a GitHub row stays GitHub) and its detail says "filed from the cockpit".
+
+The rules, first match wins: your `cockpit.origin_map`; `bridge-cockpit` (By hand, filed from the cockpit); a
+`tab:` or `tab-` name (Session); an agent tool (`claude`, `codex`, `gemini`, `copilot`, `cursor`, `opencode`, also
+with `-session`); a `-session` suffix or a second part `session` or `chat` (`laptop/session`); `github`, a GitHub
+link or an `owner/repo#n` (GitHub); a leading `bridge/` (the rest is read again, else Bot); an open task or stream
+slug (From task, From stream); a run this Bridge declares (`workflow/workloads/`, `infra/channels/`, `agents/` with
+an `agent.yaml`) or a machine of `infra/remotes/` (Bot); an agent tool by its longer name (`claude-code`); the shape
+`<machine>/<job>` (Bot; the first part is dropped from the detail only when it is a machine this Bridge knows); a
+skill folder of this Bridge (Skill); a closed task or ended stream slug; a script of the Bridge itself
+(`scripts/*.py`, `skills/*/scripts/*.py`, such as `cloud-costs`) or a name ending in `-bot`, `-notifier`,
+`-autorun`, `-watcher`, `-probe`, `-monitor` and the like (Bot); anything else is Other source with its text. A
+task's own origin is GitHub only when it starts with the link or the `owner/repo#n` (a PR mentioned in the middle
+is no origin). A board row is named by its provider first (a GitLab row is never called GitHub), a GitHub link or
+`owner/repo#n` only when no provider is known. Map your own names when a word is wrong:
+
+```yaml
+cockpit:
+  origin_map:
+    notes-bot: bot
+    "*-health": bot        # globs need quotes
+    alex: person
+```
+
+### Fields in the Chat
+
+The Chat holds one to four fields: one, two side by side or on top of each other, three side by side, one large with
+two small, or four in a grid. A field shows a tab or **Topic**. The fields live on the page, the terminal stays as it
+is, so tabs of different workspaces stand side by side. A click in the list goes to the active field, a tab dragged from
+the list opens where it lands. The ⇄ between two fields swaps them, so does dragging a field's head onto another, and
+the bar between them sets the width. **Chat + topic** opens the reading of the open chat and its file beside it; Topic
+follows the open chat until you hold it. A chat without a file can pick one there. The bar on top lists the tabs of the
+open chat's workspace, and ⛶ leaves only the fields. This browser keeps the layout. A narrow field wraps the lines of a
+wider terminal, since the terminal keeps its own width.
+
+### Tools of a chat
+
+Under a field's head stand the tools: **Stop** (or Ctrl+C in a shell), **Commands** with a search, **Write** for a long
+text, **Keys** as buttons, **History** and the size of the type. A command is typed as you would type it, through
+`tab_keys`, and stays off while the tab asks or holds a draft; `/clear` asks once more on its row. **History** shows an
+agent tab's whole conversation from its session file and a shell's scrollback, with a search (`GET /api/tab-history`).
+
+**Scrolling up reads on.** An agent that repaints its own screen (Claude Code in full-screen mode) leaves the terminal
+no scrollback, so a read of the tab gives only the lines in view. Above that screen the field shows the conversation
+from the session file, so the wheel goes on upwards into it. Older turns come as you near the top, what you read stays
+in place while they arrive or the tab goes on working, and **To the end** brings you back. A line marks where the
+terminal starts; the text of a long answer runs on across it, nothing stands twice. Tools show as one line, their output
+is not in a session's turns. A shell keeps its own scrollback, of which the field holds the last 400 lines.
+The tab's own status line, where it names them, gives the head its model, context and cost.
+
+`+` on a workspace starts a chat: Claude with a first sentence or none, a shell, or an earlier session going on.
+**New** beside Workspaces makes a workspace. ⋯ on a tab opens it beside the others, renames, moves or pins it, tells you
+when it is done, and branches the conversation. ⋯ on a workspace shows all its tabs side by side and closes it, which the
+server refuses while a tab works or asks. Words marked in the terminal can be copied, asked about, put in the file or
+sent to another chat, where they wait unsent. The search over the list looks through names, last words and questions.
+
+The **Terminal** switch on the bar joins page and terminal, both off until set: the page follows the tab in front there
+(driver field `front`), and a click here brings a tab to the front there.
+
+### The Files tab
+
+**Files** is a tab of its own, right after the work tab. While no record is open, the search and its list take the
+whole width, the records in columns; once one opens, the tab is laid out in the three columns of Work through. The left
+column holds a large search field with **Walk through the active records (n)** beside it, chips for area, state and
+kind (task or stream, a closed one by what it was), each group under its label, and the records changed last with the
+matching line as plain text; a click opens a record in the middle as a file with its next step, its drawers and a
+question to the file, while the list stays where it was (the field is the one search). The right column carries the
+buttons of that record's point in Work through, the same ones, never a second set; **Close the record** in the
+middle's head closes it. With `cockpit.files_search` on (off by default) a
+question to the AI has its own field and a button "Ask the AI about these n records"; a line under it says what a
+click sends, how many stay private and how many questions are left today, and the search words are never the
+question. It has a page of its own: [`cockpit-files.md`](cockpit-files.md).
+
+Where Work through is on (`cockpit.flow.enabled: true`), a record opened from the list, or walked, shows in the
+middle the same view as a point of Work through ([One point view](#one-point-view)): its card, its tabs, the
+instruction line with Instruct or Ask, the walk over the records listed (or the queue walked, with the line of what
+it leaves out over it), **Close the record** as its way back, and the right column of that point. A closed copy, or
+a task no row names, opens as a point of its own, read from its file; a closed one offers no verb. Without Work
+through (the default) the record keeps its file card with its drawers and **Details** under the verbs, as described
+above.
+
+### Work through (`@flow`)
+
+**Work through** is a view of the work tab, last in its switch beside Due, By
+source and By Jev, there only with `cockpit.flow.enabled: true`
+(`cockpit.work_view: flow` opens the tab on it). It is laid out as cmux lays
+out a workspace:
+
+- **Left**, like a mail app's folders with their mails, the list of the work:
+  every open point under its theme, area or square. First the **themes** a
+  small model gives the open points across the areas (`cockpit.flow.themes`,
+  below), or the **areas** (`workplace.workspaces`, the same names and colours
+  as the cmux workspaces; Themes and Areas switch at the top while the themes
+  are on): one entry per theme or area that holds a point, with its colour,
+  how many need you (in the warning tone) and how many are open, **No theme
+  yet** or **No area** last, under **All themes** (or All areas), and under the
+  list one menu **Order ▾** with what orders it, each only where it applies:
+  **Order themes again**, **Sort again** (below), **Read in with Jev** and
+  **Read in with Haiku** (Prio, below) and **Rename** the theme entered; one
+  that runs already stands off and busy, and the line of what runs stays under
+  it. A click enters one: the list stays as it is, the one entered marked, All
+  leads back, and its points stand in the middle only. Under each entry stand
+  its points as a list, in the order its overview walks them, each its name and
+  its stand in a word (no boxes: ticking stays in the overview). A click on one
+  opens it in the middle with its theme entered, at its place in that theme's
+  walk, and the list stays beside it with the point open marked: the next one
+  is a click away, and the walk bar under the point goes on in the same order
+  and on into the next theme. With no point open the middle shows the overview,
+  the start view of the page. With Jev or Haiku a third order, **Prio**, stands
+  beside Themes and Areas (below). On top stands **Running now** as one row
+  with its count while an agent works (below), its only place: no strip of it
+  stands over an overview, and the head line counts the same number. Under it
+  **Finished, to read** with its count while an AI run finished and nobody read
+  it yet (below). At the foot **Check tasks** as a
+  block of its own with what the last check left to decide ("2 to decide",
+  "nothing to decide"; "running" during a run, "not run yet" before the first),
+  and under it **Not now** with its groups (below): a click on Check tasks shows
+  the check in the middle, with Back, a run button that says it asks the AI and
+  what the last run cost ("Check again (about 0.33 ct)"), one plain line of what
+  it does, then the verdict filter, the sort, closing many at once and the table,
+  and under it how the check ran folded into one line (its stations inside); no
+  right column, instruction line or walk bar beside it. What counts to decide is
+  a task whose verdict is close or stale and that nobody kept open; waiting,
+  unclear and continue only say how it stands.
+  What one of them opens in the middle is scrolled into view.
+  On a narrow screen the list is one select over the middle, Running now a
+  strip over it and Not now folded under it.
+- **In the middle**, on entering a theme (and at the level of all of them),
+  its **overview**: every point as a row of a table in three bands by who takes
+  its next step, **Check-in** (a point whose check-in day came, below), **Needs
+  you** and **The Bridge does** (its next step is the Bridge's, first or
+  alone). A row says three things: its **name** (below), where it stands muted
+  under it (the brief's stand, else the triage's gist, else its kind and, for a
+  task nobody works on, when it last moved; where its only word is its tab's or
+  its start's state it says so, "Agent tab: finished", never a bare "Finished"
+  that reads as if the point were done; the walk bar's next point the same),
+  and its **next step** with who
+  takes it as a chip and the day it asks again or is due. Nothing ticked, one
+  line says that ticking shows the batch buttons and offers **Tick the
+  suggestions**; once a row is ticked the batch bar stands on top, sticky and
+  compact (below). Each band's head has a box of its own that ticks that band
+  alone. A click on a name opens the
+  **point**: on top **Back to overview** with the theme's name beside it, a
+  line "n ticked" with **See in the overview** while points are ticked, then
+  the point as a card that carries its content only: its kind in its head (the
+  one place its state stands) with what kind of row it is and **Pin** (it pins
+  the row to the start page) at the end, its name, where it stands in one
+  sentence under it (else the task it is about), its **next step** in one line
+  (Next step, the step, who takes it as a chip, its due day or the day it asks
+  again), the tab's question with one row of
+  answers (the decision guide folded under **Show the decision guide**), what
+  came back, the last lines of its tab's screen. Who works on it and since when
+  is a field on the right, the criteria of its brief stand in Description. Under
+  the card the point's **tabs** (below), at the
+  foot the line with **Instruct | Ask** (below) and under it the files
+  view's walk bar
+  (**Previous point**, "n of m", the next title, **Next point**). After the
+  last point of a theme or area it leads to the first point of the next one
+  where something is open. Neither the title nor anything else opens the item
+  drawer or another view: this is the one point view, the same wherever a row
+  opens ([One point view](#one-point-view)).
+- **Right**, only while a point or an entry is open (the overview and a list
+  of Not now take its width), **What you can do**, in three parts:
+  1. **One strong button** that applies the AI's suggestion at once, with its
+     verb and the step: **Let the Bridge: <step>** (a start with the step as its
+     sentence), **Done**, **Later** (until the day suggested, else in a week) or
+     **Drop** (with the reason suggested). Its reason and where it comes from
+     (the triage of a day, the task check, Jev, the themes run) stand on it on
+     hover, and nowhere else on the point. Without a suggestion it is **Give
+     your yes** where an item waits for it, else **Let the Bridge: <step>** where
+     the next step is the Bridge's; where the next step is yours, none stands.
+     While an agent tab is on the point it is **To tab**, except while the tab
+     asks what its card answers (its options, yes and no): then To tab waits in
+     More and the card takes the answer. A suggested Done of an
+     issue on a board opens the board's moves (**Done, on its board ▾**), where
+     the move that fits is the strong one: the board's rules close it through
+     review.
+  2. **The four states** in a quiet 2x2: **Done**, **In progress ▾**, **Later
+     ▾** and **Drop ▾** (an issue's Done hides it). One that cannot go now stays
+     in its place, off, with one line that says why: Done and Drop while its tab
+     asks (nothing closes what waits for an answer) and on a stream. Where the
+     close of the tab behind it ends the point, Done is **Done and close tab**.
+     A finished, lost or asking start keeps its own verbs (the verb the AI
+     suggests strong, else Done and close the tab).
+  3. **More ▾**, a menu of every other verb that applies; a verb that cannot
+     apply is left out: **Make it a task** (verb `to_task` on an inbox item: a
+     task in the backlog, the item closes with a pointer to it, and the task
+     opens in the same view; on an issue without a task whose GitHub page offers
+     the step, an agent tab makes it), **Open on GitHub** and **Board moves** (an
+     issue or a pull request; the moves only where its board is known: Set to
+     review, Done and Check with AI), **Show in the net** (a task), **Describe
+     again**, **Get advice**, **Assign tab <workspace> / <name>** (verb `adopt`
+     for a tab already running free in a task's area), **Back on** (a row of
+     Later), **Steps** (a row with steps on its page; it opens the tab Steps),
+     **Runs on** (the return card), **Not this task** (a session's entry),
+     **Improve** (a task in review), and while an agent tab is on the point
+     **View**, **To tab** and the tab's close.
+
+  **In progress ▾** says who has it and until when: **Me**, **Bridge**, a person
+  the instance names (`cockpit.person_name` and the people its tasks name) or
+  **someone else …** with a name; then **in 3 days**, **in 1 week** (the
+  default), **in 2 weeks** or a date (its field says "or a date"); and a line **What runs?** (optional, kept
+  as a note). **Hand it over** sends verb `work_on`: an inbox item is put off
+  until that day as a check-in (`inbox.py defer --until --on <who> --check`), a
+  task's next step goes to that person with that day (`task.py next --who
+  --check`), any other row is hidden until it. **Bridge** is Let AI do it: the
+  panel of a start, with a sentence of yours. Each has an undo. Until its day
+  the row runs elsewhere (Not now, **Running elsewhere**, "with <who> · asks on
+  <day>"); on that day it comes back on top as a **check-in**: "In progress with
+  <who> since <day>. How does it stand?" with **Done**, **Still running ▾** (a
+  new day), **Stuck** (back to you, verb `checkin_stuck`, the reason as a note),
+  **Drop ▾** and **Follow up with <who>** (the Bridge starts on a draft of a
+  follow-up through the mail-draft skill, never sends it). The right column then holds no 2x2, only More.
+  With `cockpit.flow.checkin` on, the Bridge looked first and the card says so
+  under **The Bridge looked**: what it found and where, what it could not read,
+  or that nothing new came since the hand-over (below).
+
+  Under it the **Fields**, like the sidebar of an issue tracker, four of them:
+  **Theme** (to change, with the themes on), **Area**, **Who** (who takes the
+  next step as a chip while nobody works on it, else who works on it in a few
+  words, "Agent tab (waiting)", "Bridge (at work)", "Your session", with the
+  whole line, its tab's name and since when, on hover) and **Due** (while it is with someone **Asks again** with its check-in
+  day). Every other field is folded under **Details ▾** at their foot:
+  **Prio** (Jev's quadrant and rank while Jev's order of the point is younger
+  than `rank_max_age_days`, else the day's triage rank, else the priority) with
+  a task's priority beside it, **Urgency** (an inbox item's), **Urgent**,
+  **Important** and **Effort** as small bars (only with Jev's order), **Team**
+  and **Task check** (a task's), **Source** (its chip, **STATUS.md** of the task
+  an item belongs to, which opens that task in the same view, an issue or a
+  pull request by its ref on the web), **Created**, **Moved** (the newest row
+  of its Activity), the **Original title** where the point is shown by another
+  name, and the facts the item drawer held: an inbox item's kind, approval, who
+  closes it, when it closes on its own, what runs on its yes, its key and its
+  id; a task's type, what blocks it and the path of its STATUS.md. There is no
+  Status field: the card's head says it. What the detail column changed is
+  changed in its field, a select as Theme is one, through the same verbs and
+  their guards: **Area** of an inbox item without a task (one of the configured
+  areas, or No area; the owner's only, verb `area`), its **Urgency** (now,
+  today, later, verb `urgency`) and a task's priority (P0 to P3, verb
+  `priority`); none has an undo, as before. **Team** says how far a task's team
+  is (its roles started), starts its next role or a team that fits (verb
+  `team_role`); **Task check** shows the verdict of the last check with its
+  reason, **Keep open** and **Check again** (or **Check** before the first).
+  Neither stands on a person's page. A closed point shows the values as words.
+  There is no Details link and no drawer from a point; each report of the
+  reports card has **Open** beside Seen, which shows that report alone in the
+  same view (Back leads to the card).
+
+**A point's name, stand and step (stage 4).** Every view of Work through names
+a point the same way (logic.js `pointName`), in every line the person reads:
+the card, the overview, the lists of Not now, Running now, Prio's squares, the
+instruction line and Ask ("For: <name>"), a plan's steps (the server words them
+with the raw title, the page by the name, logic.js `rowName`), Merge, Related,
+the jump to a tab and the new task a finished run becomes. A sentence the Bridge
+gets (the note of a start) keeps the original title. An inbox item by its brief's
+**name**, else its title; a task or stream by its H1 (the row title the server
+sends is the H1 alone), unless the H1 is a slug or longer than 60 characters,
+then by its brief's name. Where the name is another than the title, the title
+stands as **Original title** under Details and in Description's fold. Under the
+name stands where it stands, one sentence: the brief's **stand**, else the
+day's triage gist, else nothing; the AI's suggestion has no line of its own any
+more. The next step is one line: the step, who takes it as a chip (you in the
+warning tone, the Bridge in the info tone, a person plain) and its due day or,
+while it is with someone, the day it asks again. **Description** keeps the goal
+in sight and folds everything else under **What else is stored ▾**: the
+original title, the headline, what it is about, the description as filed, the
+user story (only where its "as" is not the owner), the criteria and the
+sections of STATUS.md.
+
+Before the first state arrives the middle shows the loading or warning block
+Due shows, never "All decided". A click on a tab's name (the tab column, the
+Chat) opens what it works on here: its point, its entry under Running now or
+its row of Not now in the same view. Jev's daily order and the themes are asked for in every
+mode, once a load; "Ask Jev again" stays a click. The pill "Only pinned" does
+not stand here, it filters nothing in this view. **Next point** follows the
+order of the overview.
+
+The three columns stand side by side down to a width of 1180 pixels; below
+that the right column stands under the middle, and on a narrow screen the left
+column becomes a select on top and the tab bar scrolls sideways.
+
+The head says "N points · R running · M not now" (the running part only while
+something runs) and how many were decided here. The three add up to everything
+open: every row of the sections and every hidden row not decided here, with
+`cockpit.files_scope: all` every task and stream of the files view, every task
+a page names whose folder is open (`model.task_rows` that are closable or a
+stream: a stream of folders without a STATUS.md of its own too), and every
+inbox item a page lists that is put off past the briefing's window
+(`model.deferred`, only with Work through on: the idea shelf, what runs on),
+each once. The server sends the same number as `model.counts.flow_open`.
+
+The points come in groups whose order is fixed in the code; nothing moves a
+point across a group, a Jev rank only orders inside one:
+
+| # | Group | What | Order inside |
+|---|---|---|---|
+| 1 | Back from a tab | the return card after **To tab** (below) | one |
+| 2 | A tab asks | a start whose tab asks, and every tab that wants you (needs-you, or waiting at its prompt and not quiet yet: the rule of the rest of the cockpit), with or without a task | the oldest question first |
+| 3 | Finished or quiet | a start of the return channel with its answer or result line, and one whose tab went quiet (stage `idle`) | the oldest first |
+| 4 | Tab gone | a start without a tab and without a word | the newest first |
+| 5 | A question for you | an inbox item that asks (art `ask`), with or without a task | a due day first, then the oldest |
+| 6 | In progress | every task with status doing that no agent works on right now (what runs stands under Running now) | by `next_rank`, a Jev view of a work page, priority, age |
+| 7 | In review | the tasks in review, every priority | as the tasks above |
+| 8 | Issues and PRs | an issue or pull request in Now (urgency now or today, or to do) | a due day first, then priority |
+| 9 | Reports | the reports (art `report`), as one tab | the oldest first |
+
+Groups 1 to 5 **need you**: the left column counts them. A start whose item
+ended after it (stage `done`) stands in none of them and never counts as
+needing you: it is under **Finished, to read** (below). Every open row stands
+exactly once: on a point, under Running now or in one group of Not now; a start,
+a tab or a question about a task takes that task out of the others. A tab that
+asks brings the task of the session linked to it (by hand, by its task tab or
+recognised): while it asks, the task stands once, as that card, and goes back
+to Running now once the tab works again or went quiet. A doing
+task with an agent at work stands under Running now; without one it is **In
+progress**, and the field **Who works on it** says "Nobody works on it right
+now, last moved N days ago" (its `updated` day, the `last_updated` of its
+STATUS.md). The right column offers **To tab** and **View** (the strong one
+while a tab is at work or asks), **Done**, **Later until** and **Drop
+because**, and without a tab at work **Let AI go on with it** (a start with a
+sentence, as always). Ideas and backlog tasks come back only when nothing is
+open: the calm card offers up to three to start.
+
+**Running now.** What an agent works on right now is not a point and never
+part of the walk, the overview's table or a batch. It stands on top of the left
+column as one row with its count and a dot that pulses while an entry works,
+and only there (one count, the same in the head line and on the start page's
+areas); a click lists every entry in the middle, each with its tab, stage,
+since when, how it is known, **To tab** and **View**. A row of a list an agent
+is at work on carries a small "running" marker. An entry opened from that list goes back to it. An entry with a task of its own has a box there, in the same
+selection as the overview's: it is only for **Merge** with a point (the one an
+agent works on is suggested to stay, so no folder moves from under it) and
+**Done**; a batch never starts, puts off or drops what runs, its line says
+"stays out". That is a start of the cockpit that runs, a live session at
+work that works on a task, and a task's own tab at work. A tab quiet at its
+prompt (stage `idle`, "finished") runs no more: its task stands as a point
+again (In progress, Who works on it says finished), a start that finished is a
+card To look at; one waiting that is not quiet yet wants you and is a point. In
+the middle every live Claude session of the machine at work stands
+there too, with a task or without one and even without a terminal driver, as a
+compact card of the Sessions page (state, title as the jump to its tab, its
+agents, two lines of its tab, one next step, a task to link), one card per tab;
+an entry in a session's tab is that card, and **View in chat** opens the tab in
+the Chat where the Chat lays out its tabs (`chat_layout: workspaces`). A tab
+that asks is a point (A tab asks), never here. A start whose item ended after
+it with a word of its end (a note, the close, the action that ran) does not
+vanish: it stands under **Finished, to read** (below). A start that ended
+without any word leaves as before. A note headed `Question:` or `Frage:` keeps
+its start at the stage `asks`, also once its tab is gone, until a tab works on
+it again or the item closes; a tab still for over a minute after that note,
+with nothing asked on its screen, was answered in the terminal and stands
+`idle`. Which
+task a session works on: a link by hand (the Sessions page), else its tab's own
+task (every start from the cockpit), else, with `flow.infer_sessions` (on by
+default), the task it is **recognised** on. For that the server reads the end
+of the session's own transcript (`~/.claude/projects/<folder>/<session id>.jsonl`,
+the last 256 KiB, further up to 4 MiB while nothing decides, at most 400
+events) and takes the newest message or tool call that names exactly one open
+task: `task.py <verb> <slug>`, `work/tasks/<slug>/` (relative, or under the
+Bridge's root written absolute or as `~/...`) or `task:<slug>`. A tool's
+result never counts (a listing names many tasks), a line that names two is
+skipped. Only sessions of this Bridge in a tab are read, at most 12 per scan,
+never another Bridge's; no model is asked, and of the text only the slug leaves
+the server. A click on a title opens the entry in the middle with its card,
+its tabs and the instruction line; the right column offers To tab first, View,
+Done, Later and Drop, and for a session **Not this task**: it unlinks the
+session and remembers that it does not work on that task (`session_unlink`,
+kept in `state.json` as `session_refused`), so it is not recognised on it
+again; Link on the Sessions page takes that back. The Sessions page marks a
+recognised task as such.
+
+**Finished, to read.** An AI run whose item or task ended after its start
+(stage `done`) is no point and never needs you: it stands in a group of its own,
+a row under Running now with its count. A click lists the runs in the middle,
+the newest end first (the same table as the other lists: the title, what came of
+it, the day it ended, the area where one has it), and a title opens the run in
+the one point view (To the list, the walk walks the group). What came of it is
+one plain sentence in the page's language, which the server writes next to the
+run's own text (`plain` beside `result` in `model.returns`): a close by the
+item's own check says that its check found the problem gone and the item closed
+itself, nothing to do; a close by a person, an action that ran, a drop or a
+rejection say so plainly; a note keeps its own words. The card shows that
+sentence and folds the run's own text under **The run's words** (de: Wortlaut
+des Laufs). **Who works on it** says "AI run of <day>, finished"; for a start
+that still runs it names its stage in words and, past a day, the days, never a
+raw stage or more than 24 hours. Its tabs are **Description** (what the run was
+asked: how it started and the person's sentence, the newest `Start note:` on its
+item), **Activity** (its start and its end among the item's events) and
+**Related** (the item or task it ran on, and the task that item belongs to).
+The right column offers, in this order:
+
+- **Read** (strong): takes the run off the list (`return_read`, `read_ms` in
+  `launches.json`), with Undo (`return_unread`). This was **Take off the list**.
+- **Analyse further ▾**: a panel with an empty sentence, model and effort, and a
+  new run on the same item or task through the same start as Let AI do it, its
+  sentence and the run's result handed in as the note on the item
+  (`return_analyse`). A closed item or task opens again for it first, with a
+  note why; like every start it has no Undo. The same guard as Let AI do it: without a terminal
+  driver the button is off and says why, past `max_running` it asks first.
+- **Make it a task ▾**: a panel with the title from the run, the area (one of
+  the configured areas, or none), **Take the result as the description** and
+  **Take this run off the list afterwards**, both ticked. The server writes a new
+  task in the backlog with `task.py new` (`--situation` the result, `--origin`
+  naming the run), marks the run read when the second box is ticked, and the
+  new task opens in the same view (`return_task`, Undo declines that task and
+  puts the run back).
+
+Later until and Drop because do not apply: the item already ended. The
+instruction line works on a run too: the planner may plan **read**, **task**
+(Make it a task with a title) and **analyse** (Analyse further with a
+sentence), each through the verb above. Unread, a run leaves the group by itself
+`flow.read_days` days (default 3) after its item ended; it stays in the item's
+Activity. Without a terminal driver the group still lists what a run came to.
+
+**No Sessions tab beside it.** Where the work tab offers Work through
+(`cockpit.flow.enabled`, kept by `cockpit.work_views`) the bar has no Sessions
+tab and no "AI n" badge: every way to the Sessions page (a link, a note, the
+band, the tour, an area's number, the header chip, a page an older cockpit
+stored) opens Running now. What the badge counted stands here as points already.
+A Bridge without Work through keeps the tab and its page.
+
+**Not now.** At the foot of the left column, every open row that is no point
+and does not run here, in four groups and one line, in this order: **Running
+elsewhere** holds what is in progress with someone until its check-in day
+("with <who> · asks on <day>"), what waits on others (on a person or a run, and
+an item the Bridge runs on its own after your yes; a task whose next step names
+you, `cockpit.person_name` or "me", waits on nobody else and is a point) and
+the issues and pull requests watched that are not in Now (each with its
+repository); **Later** holds what is put off (hidden until a day, put off in
+the inbox, or due later than the lead time) and what rests (blocked, quiet for
+long, up for parking, a task whose status is unknown), each row with its reason
+in the column **Why** ("put off until", "blocked:", "resting since"); **Ideas and
+backlog** (ideas of the inbox, also one put off with the day it comes back, and
+backlog tasks) and **Streams** (they come through their inbox items). A watched row that stands on a GitHub list of a page (the
+row's `on_board`) is folded into one quiet line "n on GitHub" (the page's
+title): a click opens that page at that list, and the line counts its rows, so
+the head's sum stays whole. A checkup warning, an application, a follow-up
+point, a row that needs you or one put off never fold. A click on a group shows
+its list in the middle: a box, the name with where it stands (in Running
+elsewhere, else on whom it waits), its next step with who takes it and the day
+it asks again (in Later, why), and the batch bar with the verbs the group
+offers once a row is ticked. A title opens the row in the middle in the one point view, an issue,
+an inbox item or a task alike, with the same tabs, fields and verbs as every
+point: **To the list** leads back to the group, and the walk bar walks the
+group's rows (after a decision the next row moves up; once the group is empty,
+the overview).
+
+| Group | Verbs of its batch bar |
+|---|---|
+| Running elsewhere | Back on (each row by why it waits; a check-in comes back to you), Later, Done, Drop |
+| Later | Back on (each row by why it waits), Later, Done, Drop |
+| Ideas and backlog | Let AI do it, Later, Done, Drop |
+| Streams | Later |
+
+**Back on** takes a row up again: a hidden row shows (`unhide`), a deferred
+item opens (`inbox_reopen`), a blocked task runs on (`task_running` clears its
+blocker), a resting one is kept (`task_keep`); a task that waits on someone
+else's next step has nothing to clear, so it stays out and the line says so.
+A point due later than the lead time
+shows now, in this browser only (kept as `bridge-cockpit.flowEarly` until its
+day). In Later each row that can come back carries Back on as a button of its
+own too, one click without ticking it first. Back on carries no undo; put the
+row off again instead. A row decided
+here (done, not doing) is open no longer: it is listed nowhere and not counted.
+
+**Not too early** (`flow.ahead_days`, default 2). A point due further ahead
+than that, and not of urgency now, waits under Later until that many days
+before its day, then it is a point again; a due with a time counts by its day.
+With 2, an item due on Sunday at 19:00 stands under Later "from Friday" until
+Friday. `0` waits for the day itself.
+
+**Merge.** When two or more ticked rows of a batch bar (the overview or a Not
+now list) are open finite tasks, **Merge** opens a panel under the bar: which
+task stays, a choice per task with its count of activity and when it last
+moved, one an agent works on suggested, else the one with the most activity. **Merge** in it closes the
+others as merged into the one that stays (`flow_merge`, through `task.py
+merge`, see [`work-system.md`](work-system.md)): their headline, goal, notes and
+open steps come over as one section of the kept task, their documents stay
+where they are and are linked from it, and each closes with `outcome: merged`
+and `merged_into`. The Activity of both shows the decision. **Undo the batch**
+takes every merge back (`task_unmerge`, one per merged task, also from the
+history): both STATUS.md files come back byte for byte as they were before the
+merge (`task.py merge` keeps them in `.bridge/task-merges.json`; a brief the
+describe pass wrote meanwhile does not count as a change), so no note and no new
+`last_updated` stays behind and no brief turns stale. A file changed since is
+edited instead: the section, the tagged `related:` lines and the merge's note
+leave the kept task, the merged one opens again with the status it had and its
+blocker, and the undo writes no note of its own (only its log row). The notes a
+merge, its undo and a reopen after it wrote never come over into a later merged
+section. `related:` in any block style (indented or not, an item over two lines)
+stays readable; a list the merge could not extend safely stays as it was, with
+a warning. A section changed by hand since cannot be
+taken back (`merge_changed`); streams and inbox items do not merge
+(`merge_not_task`), and with any of them ticked the button stays grey and says
+so.
+
+**Prio** (while a work page with `jev:` exists and Jev or Haiku can read in).
+A third order beside Themes and Areas, kept in this browser: the open points by
+the quadrants of an Eisenhower matrix as a 2x2 grid in the middle, columns
+urgent and not urgent, rows important and not important. Each square shows its
+count, how many of its points only you can do (only where the ranker said so,
+never because of the square), its first four titles and a suggestion; **Not
+rated yet** stands under the grid while points have no rating (new since the
+read-in). A click on a square enters it, its points in the ranker's rank, the
+walk too.
+
+Two rankers read in, both at all times at the foot of Prio's left column:
+**Read in with Jev** (TypeSafe, while `integrations.typesafe` is on and has its
+key) and **Read in with Haiku** (a small Claude model, `prio.py`, the service
+`cockpit-prio`, while `flow.prio.haiku.enabled`, within
+`flow.prio.haiku.budget_per_day`; it works with Jev off). Either takes every
+point the view shows: tasks, inbox items, tabs, issues and pull requests,
+meeting references, what runs under Running now, also the points the triage
+marked. The page only names the points by key: the server looks each one up
+in what it knows itself (its rows, the work page's sections, its tabs), drops a
+key it cannot place, and holds back a point of a section in `skip_sections` and
+one whose title, detail, task, source or gist on the server holds a `private`
+word; the foot says how many the private words held back. Only the same thing
+goes once: one key twice, or a tab that works on a task of its own (that task);
+a title alike is never a reason. Per point only title, kind, status, due in
+words ("tomorrow", "in 3 days", "overdue 2 days", computed in code), whether an
+agent works on it, its age in days, the triage's one-line gist, the section's
+label and the priority leave the machine, all from the server's item, never a
+path, a detail text or an item id; all in one request (above 60 points in
+batches of 60, at most three). A view too big for one Haiku prompt drops the
+gists, then the points of the lowest priority, and counts them as left out.
+Both answer the same per point (urgency, impact and effort on four levels, only
+you or not, a rank; Haiku adds half a sentence of why), so the grid works the
+same; a point left without urgency or impact gets no square and stands under
+Not rated yet. The order names its ranker: the foot reads "Haiku, 29 Oct 14:10,
+18 points", and the newest order wins whichever ranker made it. With
+`flow.prio.fallback: haiku` a Jev read-in on a click that fails runs Haiku
+instead and the foot says so. Without a click Jev orders once a day by itself
+(the first view of the day once the tabs, sessions and triage are read, as the
+Jev view does); it never falls back, and when it fails no reload asks again that
+day, only a click. Haiku never runs by itself. An order counts
+only while it is younger than `flow.rank_max_age_days`. The ranker also feeds
+the suggestions, after the triage and the themes: Let AI do it for a point that
+is urgent and not important, and Drop for one that is neither, but never for a
+point an agent works on or a task in progress or review that moved within the
+last seven days, and **Tick the suggestions** never ticks a ranker's Drop.
+
+**Themes** (`cockpit.flow.themes.enabled: true`). A small model (`themes.py`,
+one `claude -p` call with the points as data: title, kind, area and the goal of
+the brief) gives every open point one of a few themes, two or three words in
+the instance's language, across the areas, and in the same call a suggestion for
+each point (below). The result is kept (`.bridge/cockpit/flow-themes.json`):
+points that come later are given the themes there are, a new theme only where
+none fits, never more than `max_themes`. The page asks only when the view shows
+points without a theme (each once per page load), and **Order themes again**
+orders every point anew; there is no timer. Where the work tab offers no By
+source, **Sort again** stands beside it in Order ▾ in every order of the left
+column: the daily triage asked anew for what changed (below), the button By
+source carries in its strip. Every run counts against
+`budget_per_day`; once it is spent, what has no theme yet stands under **No
+theme yet** until the next day. A point you move to another theme or a new one,
+and a theme you rename, stay as you set them through every later run. With the
+themes off, without a Claude model, or on an older server, the areas group
+the points.
+
+**The overview and its batch.** Every point of the theme as a row: a box, the
+title (with its kind and age under it), stage, area, and a **suggestion** with
+half a sentence of why: Done, Drop
+(with a reason of `cockpit.flow.drop_reasons`), Later until a day, Let AI do it,
+or Needs you. It comes from the day's triage first (verdict close, stale or
+waiting, else who does it), while that is at most two days old, and from the
+task check's verdict on a task (close is Done, stale Drop, waiting Later until
+Monday; kept says nothing): where both judged, the newer speaks, and the line
+under the suggestion names the check and its day; else from the themes run. The line over the rows says where the suggestions come from and
+that they are only suggestions. **Tick the suggestions** ticks the rows whose
+suggestion is Done, Drop or Later (never Let AI do it); the boxes and **All**
+tick by hand, and the bar says what the ticked ones would do ("2 ticked: 1 done,
+1 drop"). **Run the suggestions** takes each ticked row's own suggestion;
+**Done**, **Later until** and **Drop because** (one reason for all) do the same
+for all ticked rows. Nothing goes out before the one line that says what will
+happen ("2 done, 1 drop: No longer needed, 1 later until 31.10.") is confirmed.
+Then each call goes out in turn (`settle` for many keys at once, `later` and
+`shelve` one by one), one toast says how many were decided, and **Undo the
+batch**, once, in the overview, takes every one of them back through the undo
+each verb returned. The server's note of each step lands in the notes, not as a
+toast of its own. Let AI do it in a batch starts a point only with its own sentence and
+only while fewer than `cockpit.flow.max_running` run; the rest stays out, and
+the line says so. A point an agent already works on (a start of the cockpit
+that is not over, or a tab of its task) is never suggested for Let AI do it,
+and a batch starts no second agent on it. Later and Drop sent to all or to the
+ticked rows leave such a row out too (`working`); on the one point open they act.
+
+The five verbs stand in the right column under each other. Only a suggestion
+makes one the primary button (the triage's verdict, the task check, the themes
+run or Jev); without one there is none, and Advise is never primary by itself. A
+finding that brings an action of its own puts **Give your yes** first as the
+primary button. Each kind of point gets the verbs that fit it:
+
+- **A task in review**: Done (primary), Improve (what is still to do, to its tab
+  while its agent waits there, else as a new start), Later until, Drop because,
+  Advise. No Let AI do it: the work is done and waits for a look.
+- **An issue or a pull request**: **Open on GitHub** (or Open in the tracker)
+  first; its Done says **Hide**, since it only leaves this list and the issue
+  stays open where it lives.
+- **A GitHub issue on a board of `workflow/projects/`**: under Open on GitHub
+  the board and its status (`GET /api/issue`, which runs
+  `skills/github-projects-manager/scripts/issue_transition.py plan`), then
+  **Set to review** and **Done**, each opening its sentence first. Set to review
+  needs one (it becomes the review comment, governance K3) and sends
+  `issue_review`; Done names what the click will do and the board's
+  `governance.rules`, then sends `issue_done`: the review comment and review
+  state first on every board that has review states (K1 at every level), then
+  the done state; only when every board reads back at its target does the issue
+  close on GitHub (as not planned where a board declined it), and the row
+  leaves the list. A board of the issue that `workflow/projects/` does not know
+  is named and keeps its status. The board script is the only writer, reads
+  every write back, and one issue moves once at a time; a run that stops after a
+  first write says so. Only a person's click moves an
+  issue (K1): where the AI suggests closing, the button that fits is the strong
+  one and its reason stands in the field already, Hide stays plain.
+  **Check with AI** beside them (verb `issue_check`, service
+  `cockpit-issue-check`, `scripts/lib/bridge_cockpit/issue_check.py`) reads the
+  issue's detail fresh (body, last comments, the pull requests that close
+  it, its boards) and asks a small model, as data under a fixed schema, whether
+  it is done: a verdict (done, not done, unclear), the reason, the evidence,
+  what is still open and a review comment. Unclear asks the stronger model once.
+  The answer stands on the card and is kept per issue
+  (`issue-check.json` in the state folder, it comes back with `GET /api/issue`
+  while the issue is unchanged; a done on an open issue without a merged pull
+  request, or with a body cut for length, becomes unclear); a
+  done makes the button that fits strong with the comment in its field, a not
+  done or unclear makes none strong and outweighs the triage. It writes nothing
+  to GitHub.
+- **A finished start**: Done and close the tab, then View, Open answer, Improve
+  and Runs on, then Later until and Drop because.
+- **A tab that asks**: To tab, View, Advise and Later until only. Nothing closes
+  or drops what waits for your answer until the tab no longer asks.
+- **The reports**: each with a box and Done, All above them; the button on the
+  right settles only the ticked ones (All done when every one is ticked).
+
+A tab's close, and on a finished start the jump to the tab, stand apart under the
+verbs, never between them. A verb sent from a suggestion, a batch or the
+instruction line says so (`by`: `suggestion`, `batch`, `instruction`; a click of
+your own sends none): the history, the start and the audit line keep it and
+Activity shows it as who decided; nothing acts on it:
+
+| Verb | Sends |
+|---|---|
+| Let AI do it | `do_it` with a sentence, always: the field is filled with the title and the request to end with a note "Result: ...", and Start stays grey while it is empty. A start with a sentence never approves an item's own action; an item that needs your yes keeps **Give your yes** beside the verbs |
+| Advise | a read-only quick question about the row; the answer shows in the card, with **Start from it**. The answer names the card's own button, Let AI do it, and no key (the quick question goes out with `origin: flow`) |
+| Done | `settle` done |
+| Later until | `later`: tomorrow, Monday, next week or a date |
+| Drop because | a reason from `cockpit.flow.drop_reasons` or typed, never without one: a task is shelved (`shelve`, an idea in the inbox and the task declined, taken back by reopening it), anything else settled as not doing with the reason. A stream's own row offers neither Drop nor Done; an inbox item about a stream is decided like any other item |
+
+**Let AI do it** shows the model and its effort under the start sentence (the
+picker of every start, while `cockpit.launch_model` is on): with Auto, the
+router's recommendation for this card is fetched once (`/api/route`) and kept
+for the page's life. Once `cockpit.flow.max_running` agents run (the entries
+of In progress at work), Start asks first: "4 are running already. Start anyway?". One
+click starts one item; there is no start of several at once.
+
+**A tab asks.** The card shows the question the tab poll read (`asks.py`) and
+its answers as buttons, the same as everywhere a tab is answered: a dialog's
+options (`tab_option`), yes and no, go on, a field for an answer of your own.
+With the decision guide on, its steps stand under them. Every answer names
+the question it answers, so nothing reaches a tab that moved on; once sent,
+the card leaves the queue until the tab asks anew. The right column offers no
+start (the tab takes no sentence while it asks): **To tab** first, **View**,
+then the other verbs. A tab that waits at its prompt with nothing asked on its
+screen (no question, no options, nothing typed) is headed **A tab waits** (de:
+Tab wartet) instead, so the head never says it asks beside its close.
+
+**Finished or quiet.** A finished start shows its answer, or its result line
+(a note "Result: ..." on its task since the start), and a quiet one says that
+no question was read. Under it the criteria of the item's brief as a plain list
+to check yourself: nothing ticks them and nothing judges them. The right
+column offers **Done and close the tab**, **Improve** (what is still to do: sent to the tab
+while its agent waits there, else a new start with those words), **Runs on**
+and **Drop because**. A lost start offers **Start again**.
+
+**Briefs ahead.** When a point is opened, the next
+`cockpit.flow.prep_ahead` points whose brief is missing or stale get it written
+(`describe_run` with `ahead: true`), one at a time, each key once per page
+load, never on a timer, and quietly: no toast for them. A refusal (the hour's budget spent, a brief being
+written already) ends the round; the cards not asked for yet are asked for
+when a later card comes up. These runs keep within `describe.budget_per_hour`;
+a click on a card's Describe button still always runs.
+
+**The return card.** **To tab** on a card remembers the jump, in the page's
+memory only (a reload forgets it). When the page is in view again at least
+`cockpit.flow.return_after_s` seconds later (and within four hours), the card
+**Back from the tab ...: How did it go?** stands in front, with Done, Later
+until, Drop because and Runs on; any answer forgets the jump. Switching
+to another app and back without To tab never brings it.
+
+**The tabs under the card**, as an issue tracker has them: **Description**
+(the goal of the point's brief in sight, the rest folded under **What else is
+stored ▾**, above; its source stands in the fields), **Steps** with how many of how many are done (the checklist of
+STATUS.md, read only), **Activity** with how many rows it holds, and **Related**
+with how many (the other rows of the same task, the paths STATUS.md names). The
+tab you pick stays from point to point (remembered in this browser); a tab the
+point lacks falls back to Description, and a point with one tab only and the
+Reports card have no bar. The panes read at most about 820 pixels wide.
+
+**Activity** is one list of everything that happened to the point, newest first,
+read from what the Bridge keeps anyway (`activity.py`); nothing is asked of a
+tab. Each row says when, what kind, what (a change as the old value struck
+through, then the new one; a decision taken back says so) and who or what did it
+(you, an AI suggestion taken, a batch, the instruction line, the themes run, an
+agent, the Bridge, git). The filters count their rows:
+
+| Filter | Rows |
+|---|---|
+| All | every row below |
+| Notes | the notes of its task (`task.py note`), an inbox item's notes, the rows of `work/log.md` that name the task (one that repeats a note of the same day is left out) |
+| Documents | the files in the task's `deliverables/` (any type, eight folders deep, no dotfiles, no links), new or changed: when git added and last changed each, else the file's own times; a document attached from here says so. Each is a link that opens it in a new tab |
+| State | a change of `status:` (as git has it, and the working tree against the last commit), an inbox item's state, a move to another theme, each decision of the page (done, not doing, later until, dropped with its reason, hidden) and whether it was taken back, when it was created, and who drives it (the starts of agents, linked sessions) |
+| Agents | the starts of the return channel with their result, the workflow runs of the task, linked sessions; a live tab links to the page's view of it |
+| Code | the issues and pull requests of `sync.github`, and the GitHub issues, pull requests and commits its notes and log rows name, each once (the one that is the row's own source stands in the fields) |
+
+An inbox item that names a task shows that task's documents too. At most 200
+rows show; the counts are taken before that. Git is optional: without it, or
+when a call fails, the file times stand in. The list is read when the point
+opens (its count and its fields need it) and kept for 20 seconds; a verb on the
+row, a note or an attachment reads it anew.
+
+On top, with `cockpit.flow.summary.enabled`, **Summarise since last week**: a
+small model sums up the rows of the last seven days (none: the newest 40, at most
+60) in at most three sentences, in the instance's language, shown with its model
+and time and kept per point (`flow-activity.json`). The same rows answer the
+kept summary without a call; once rows came since it reads **outdated** and the
+button asks again. Each call counts against `budget_per_day`, one runs at a time,
+and a refusal says itself in place, never as a toast. At the foot a one-line
+field **Write a note** with **Add note** (the verb `note`, as everywhere) and,
+with `cockpit.flow.attach.enabled` on a point with an open task, **Attach a
+document**: the page checks the size against `max_mb` first, the server writes
+the file flat into the task's `deliverables/` under a safe name (no folder, no
+path, a name already there gets `-2` up to `-99`), leaves a note "Attached:
+deliverables/<name>" on the task, and the list shows it as attached. An inbox
+item that names a task attaches to that task; a point without one offers no
+button.
+
+**The instruction line** (`cockpit.flow.instruct.enabled`, off by default), at
+the foot of the middle above the walk bar, one row while it is empty: one
+sentence to the Bridge in place of a few clicks. Above it what it speaks for:
+on a point that point ("For: <title>", and "a reply goes to its live tab" while
+its tab waits at its prompt), on the Reports card its reports, in the overview
+the ticked points or all points of the theme (at most 50 go, and the label says
+so). A point with no item behind it (a tab alone, a start whose item is not in
+the list) has no line, except a finished AI run under Finished, to read: the
+line speaks for it by its key, and the planner may plan Read, Make it a task and
+Analyse further for it. **Send** hands the sentence
+and the points (their titles, kinds, the verbs each offers and whether a tab
+runs, nothing more) to a
+small model that answers with steps of the verbs there are: Done, Later until a
+day, Drop because, Let AI do it with a sentence, a reply to the point's tab while
+it waits at its prompt (a tab that asks a choice is answered on the card). A
+mail becomes a start of Let AI do it whose sentence asks for a draft with the
+mail-draft skill, a draft only, never sent. The server checks every step against
+what each point offers, the day and the scope, and runs nothing. The page shows
+**This is how I understood it**: the steps in words, each point that drops out
+of a step struck through in it with why (a reply to a tab that asks a choice
+says to answer it on the card), what was unclear; **Run** sends the steps
+through the same verbs and their undo
+(quiet, one toast, with `by: instruction`, a start never where an agent works
+already nor past `max_running`, Later and Drop not on a row an agent works on
+unless the sentence spoke for that one point), and **Undo the instruction** stands under the
+line once; **Change** puts the sentence back into the field, **Discard** drops
+the plan. Opening another point or the overview drops the plan too. Every call
+counts against `budget_per_day`, one runs at a time.
+
+On an open point the line has two ways, **Instruct | Ask** (de: Anweisen |
+Fragen), a switch over it while the instruction line is on. **Ask** sends the
+sentence as a question about this point the way the Files tab asks a file: one
+read-only quick question with the point as data (a task its folder and cover, any
+other row its title, key, state, brief, next step, what the triage made of it and
+its description; the task named only where the point is an open task), and the
+answer stands under the line with **Close**. Ask needs no
+`cockpit.flow.instruct`: with the instruction line off, and on a closed point,
+the line asks only. A person's page asks nothing here.
+
+#### One point view
+
+Where Work through is on (`cockpit.flow.enabled: true`, kept by
+`cockpit.work_views`), every way to an item or a task opens it in the point view
+of Work through, never in a drawer or a view of its own: a title on the start
+page, a page or a card, a link in a chat, a toast, the Related tab, Source's
+STATUS.md, a search hit, a row of a list of Not now. It lands on the work tab in
+Work through, in the middle, where the row stands there: its point (at the level
+of all, the walk walks the queue), its entry under Running now, its row in its
+group of Not now (To the list, the walk walks the group), else a **point of its
+own** (another area's row with its verbs, a task no section lists, a closed task
+or a settled item read from its file and read only). A page item that is no row
+(a gauge, a date, a machine) keeps its info drawer. The Files tab shows the same view for a record ([The Files
+tab](#the-files-tab)).
+
+One place keeps its own way: a row of the **GitHub list** opens beside the list,
+never in Work through and never over the list. The list keeps the left half and
+marks the open row; the right half shows the row's steps and what GitHub says
+(read as it opens). A click on another row on the left switches the right, the
+bar at its foot walks the list as it is shown (search, order, the boards
+unfolded) with **Back** and **Next** (and `n` / `p` with the shortcuts on),
+Escape or the cross gives the room back to the list. On a phone the row takes
+the screen and the switch above leads back to the list.
+
+Every way to a row means every way, also those that opened the detail column
+beside a page: a title of the task check, a task row on a page, a row of the
+start page that is no inbox item nor task (an issue, a pull request, a
+tracker's row), a row of Due, a tab's name. A way that comes from a list brings
+the list along: the walk walks that list in its order, and **To the list**
+leads back to where it stood (the task check, the page, the start page, Due),
+whichever group of Work through the row stands in. What the detail column held
+besides stands in the view too: **Why it is here** (the briefing's reasons) and
+the lines its page writes of its task on top of **Description**, a GitHub
+issue's or pull request's text and people under **What it says on GitHub**
+there (read from GitHub as soon as the point opens), the steps a row has on its page (an
+application's) in **Steps**, each a button of two clicks as on the page (a
+GitHub row's of one), the asks the briefing folded into a row under **Related**
+(**Asked about it**, each a click into the same view) and the sessions linked to
+its task there too (a live one **To tab**, an ended one **Go on in it**). Who
+takes a next step reads in words: you and the Bridge as before, anyone else by
+the name as STATUS.md writes it with its first letter capital. The owner (a step
+whose `who:` is the name `cockpit.person_name` gives) reads as **you** on the
+who chip of Work through, as the band does; a sentence that names the owner to
+someone else keeps the name. What the item drawer held stands in the view: its facts
+under **Details ▾** at the foot of the fields (created and the source stay fields),
+what it is about (the triage's gist, why only you can do it, its reason) and the
+description as filed on top of **Description**, a task's STATUS.md in its sections
+folded under **From the file** (stage 4: under What else is stored, with the
+headline of its file), its next step as a line in the card, the item's events as the filter **History** of
+**Activity**, the task an item belongs to and the paths its STATUS.md names in
+**Related** (each a click into the same view), the star as **Pin** in the card's
+head, Open on GitHub in More. Without Work through (the default of
+open-bridge) the item drawer and the file card of the Files tab stay as they
+were, Details under the verbs included.
+
+**Without a terminal driver** the cards of the agents (groups 1 to 4), Running
+now and every way to a tab stay out. A start then hands out the
+commands to start it by hand.
+
+**Upgrading.** Opt-in, nothing changes until the key is set: without
+`cockpit.flow.enabled: true` the view does not exist. Work through was a tab of
+its own (page `@flow`) and is a view of the work tab now: a stored page `@flow`
+or a link to it opens the work tab in that view, and `cockpit.work_view` takes
+`flow`. The chips and the lane Running are gone; the left column and the overview
+stand for them, and doing tasks moved from the decision cards to In progress.
+The themes are a second opt-in (`cockpit.flow.themes.enabled`, off by default):
+four new verbs (`flow_themes_run`, `flow_theme_move`, `flow_theme_new`,
+`flow_theme_rename`), the state's key `themes` and the event `themes`; a page
+that does not read them is not affected. `/api/ask` takes two optional fields,
+`origin` (`flow`: the answer names the card's verb and no key) and `keys`
+(true only while the page has its shortcuts on: only then does the answer name
+Cmd Enter); a page that sends neither gets an answer that names no key. The page
+adds the verb `shelve` and `describe_run`'s `ahead` (from the first version);
+every other page, view, verb and endpoint stays as it was. The tabs under the
+card, Activity, the right column and the instruction line came later: see
+[Upgrading: the tabs, Activity and the instruction line](#upgrading-the-tabs-activity-and-the-instruction-line).
+Running now, Not now, Merge, Prio and the lead time came in a later version:
+see [Upgrading: Running now, Not now, Merge and Prio](#upgrading-running-now-not-now-merge-and-prio).
+To try it in the demo, open the work tab and pick Work through (`?work=flow`
+opens it there); `?flow=0` shows the demo without it, `?work_page=1` adds the
+work page that Prio orders, and `?views=files,flow` narrows the switch.
+
 ### The start page
 
-"Start" is the way in, styled like the project website (DESIGN.md: a
+**The overview (the default).** Start is a slim control view with three
+parts and nothing else:
+
+1. One head line: the day, "N waiting on you (6 tabs, 3 entries)" (the
+   first number of the line All, so what has no area counts too; a click
+   leads where that number leads, without a filter), the findings of a status page
+   and a control session that is not listening as signals (each opens its
+   place). The page carries no settings link of its own: Settings sits in the page bar.
+2. The **Areas** as a table ([`cockpit-areas.md`](cockpit-areas.md)): the column heads once on top; on a
+   narrow screen each line wraps and every number carries its label (the
+   table keeps its table roles for screen readers). With the shelf switched
+   off a line says where it went.
+3. One line **Next up**: the next calendar row that has not begun and the
+   quota the defaults take (the first with a window of a day or more), each a
+   link to its detail.
+
+**The numbers come from Work through** (when `cockpit.flow` is on). Each line
+of the areas is what Work through shows under that area as its filter, read
+from the same function (`flowParts` under `areaScope`, scripts/web/flow.js
+`flowAreas`), so nothing is counted by a second rule:
+
+| Column | What Work through holds |
+|---|---|
+| waiting | the tabs that ask, the questions, the lost starts and the return card (its groups that need you, less the finished starts); the tabs among them make the "tabs" of the head line |
+| running | what Running now lists: what is at work, never a finished (quiet) session |
+| to review | the finished starts |
+| overdue | the points and entries of Running now past their date |
+| tasks | the tasks, the doing and the issues of the walk |
+
+What Work through puts under Not now (put off, given your yes, waiting on
+others, resting, blocked, due later than the lead time, ideas, streams,
+watched issues) counts in no column, and a tab answered here stops waiting at
+once. A row of two areas stands in both lines; the line All counts what Work
+through shows unfiltered, each thing once, so it can be less than the sum of
+the lines. The head line, the tile "waiting" and the work tab's count in the
+page bar are the line All's waiting; the overview of Work ("N for you now")
+is the line of the area it is filtered to. Under an area Work through holds
+that area's open tasks a page names and items put off past the window only
+(`task_rows`, `deferred`), no other area's. A click on waiting, to review or overdue
+opens Work through on its overview under that area, running opens Running now.
+Without Work through the start page keeps its own count (`homeAreas`: the asks
+of Now and the tabs that want you, the line All their sum).
+
+Between the table and Next up the overview can show four **parts**, each off
+until switched on under Settings, Start page, "Parts of the overview" (saved
+with the rest of the start page, `home_tiles` ids `d:waiting`, `d:guide`,
+`d:tabs`, `d:day`; a choice made before they existed does not get them):
+*Waiting on you* (the section of Work, with its actions and the star),
+*Decision guide* (the reading of the next tab that waits on you, the chat's
+own card with its guards, Next and Previous through the others), *Agent
+tabs* (the cards beside Work) and *The day* (dates, status and small fixes of
+the middle of Work; commits and the log of today stay there). They stand
+in the order chosen there (arrows move one); on a wide screen the guide and
+the tabs stand side by side. Each follows the area filter as Work does, the
+bar over the page then names the filter, and a part with nothing in it
+stays away. With Waiting on you on, the row keys (`j` `k` `Enter` and the
+letters) act on its rows, only those it shows; `x` does not pick there.
+
+Everything else lives on its own page. The other views (bridge, tiles,
+list, focus) and every shelf stay a choice under Settings, Start page; a
+shelf chosen shows only in those views, and Settings says so beside it
+("not in the overview"). A choice saved before the overview existed has no view option
+set and so shows the overview; one that picked tiles, list or focus keeps
+it. The bridge is now the option `o:stage`, off by default, and the Pinned
+shelf is no longer among the defaults (Work filters by the star instead).
+
+**The other views.** "Start" in them is styled like the project website (DESIGN.md: a
 Playfair heading over an eyebrow, cards on hairlines). It greets by
 `cockpit.person_name`, repeats the briefing's headline, and carries a field
 that asks the chat directly. Findings of a status page and a control session
 that is not listening stand under it as signals; each opens its place.
 
-**The news ticker (off by default).** With `cockpit.ticker.enabled` the start
-page shows two kinds of items, each in its own place:
+**The news ticker (off by default).** With `cockpit.ticker.enabled` the
+cockpit shows two kinds of items, each in its own place. The news band is off
+the start page unless Settings, News ticker, "On the start page" is on (kept
+in this browser only); then it runs as one thin line under the head line,
+and under the greeting in the bridge and tiles views:
 
 - **What happens in the Bridge** stands still as a list in the live section of
   the side card "Today", above the live events: what runs (agent tabs at work, busy
@@ -229,7 +1311,9 @@ page shows two kinds of items, each in its own place:
   quotas near or over their pace, token outliers, peers and machines that do
   not answer, and the last warning notes. The page builds these from what it
   already holds, so they cost nothing and change the moment the state does. A
-  click opens the place it names: the page, the tab, the row or the drawer.
+  click opens the place it names: the page, the tab, the row or the drawer. A
+  source, the pass, the load or the triage opens the day column of Due, or,
+  where the work tab offers no Due, Start with the day's status in view.
   Red comes before orange, orange before blue. Six rows show; the rest opens
   in place behind "N more". While status rows stand there and no live event
   came yet, the live feed says so in one short line instead of its longer
@@ -269,8 +1353,8 @@ anywhere:
   "new" mark and the head counts them. The visit is kept in the browser, and
   a reload is no new visit.
 
-The classic view shows the news band under the greeting and the status list
-under the band.
+The classic view shows the status list under the greeting, the news band
+above it when it is switched on for the start page.
 
 The band moves slowly and stops while the pointer or the keyboard focus is
 on it, and with its Pause button (the way for touch and keyboard, kept per
@@ -339,25 +1423,26 @@ follow: what waits on you, the agent tabs that wait, and every page with a
 count, its largest sections underneath (a page with findings names where
 they are). A click opens the page.
 
-What stands on the start page is your choice. "Customise" beside the
-bridge opens a drawer that leaves the page in view, so every change shows at
-once: the view (bridge, tiles, list or focus, four pictures to pick from), the stations as
-one list in their order (a switch each, a grip to drag, arrows for the
-keyboard; the bridge has room for 13, Today takes the 14th place), the
-sections below, what a click on the core does, and the small details. Every
-row says in one line what it does. "All settings" leads to the same editors
-on the settings page. The choice lives on the server (`state.json`, key
+What stands on the start page is your choice, all of it in one place:
+Settings, Start page, reached through Settings in the page bar like every
+other setting. In this order: the view (overview, bridge, tiles, list or focus, five
+pictures to pick from), the parts of the overview, then the tiles and
+sections of the other views: the stations as one list in their order (a
+switch each, a grip to drag, arrows for the keyboard; the bridge has room for
+13, Today takes the 14th place), the sections below, what a click on the
+core does; last the options. Every row says in one line what it does. The choice lives on the server (`state.json`, key
 `home_tiles`, action `home_tiles`), so every browser shows the same. Until
-one is made the page shows the bridge with the first quota of a window of a
+one is made the page shows the overview; the other views then show the first quota of a window of a
 day or more, what waits on you, With the AI, the agent tabs, the background
-jobs, the next date, the page with the tasks, every shelf and every option.
+jobs, the next date, the page with the tasks, every shelf but Pinned and every option but the views.
 
-More it can show, each one switched in "Customise":
+More it can show, each one switched in Settings, Start page:
 
 - **Next up**: one step, large. A tab that asks you, else the first row
   waiting on you, else the first P0 or P1 task.
 - **Pinned**: rows you starred. The star sits on every card and every
-  Briefing row; a tab card stars its task. Kept on the server (`pins`).
+  Briefing row; a tab card stars its task. Kept on the server (`pins`). Off
+  by default: Work has the star filter "Only pinned" in its bar instead.
 - **Next date**: a countdown to the next calendar row that has not begun
   (rows carry their start as `at`). A click opens the event: its calendar,
   place and people, "Join" for a meeting link, its steps as buttons ("Prepare",
@@ -372,7 +1457,7 @@ More it can show, each one switched in "Customise":
   the numbers.
 - **Order**: drag a station in the list, or move it one place up or down.
 
-**The bridge.** Unless the tiles, the list or the focus view is chosen, the start page draws the
+**The bridge.** With the bridge view chosen (`o:stage`), the start page draws the
 picture of the explainer films: the terminal line (it asks the chat), the
 core with its rings, the chosen tiles as stations on curved links, the card
 "Today" with the next step. A station's heart line beats by its state (red
@@ -441,10 +1526,18 @@ Esc surfaces. The graph is built once a minute at most.
 **With AI.** Every start handed to a tab ("Let AI do it", "Advise",
 "Collect context") is kept in `launches.json` (`returns.py`), a week long.
 Its stage is read from what the Bridge has, nothing is asked of the tab:
-started, working, asks you (the tab waits), answer (a filed inbox item, or a
-note on its inbox item written after the start), done (its inbox item
-closed, or its task moved to `work/done/`), and "no word" when the tab is
-gone without an answer. The page follows tab states live and shows the stage
+started, working, asks you (a dialog the terminal reports, or a question read
+off the tab's screen: a question mark, numbered options, words typed in its
+prompt), quiet (`idle`: the tab stopped working and the words read off its
+screen ask nothing, or its agent left the shell; most likely through; a tab
+whose screen was not read keeps asking), answer (a filed inbox item, a note on its inbox item
+written after the start, or a note on its task since the day of the start that
+begins with `Result:`, in German `Ergebnis:`, and stands after the cockpit's
+own start line of that day), done (its inbox item closed, or
+its task moved to `work/done/`), and "no word" when the tab is gone without an
+answer. An agent tells its result in one line with
+`task.py note <slug> -- "Result: ..."`; the cockpit writes no line of its own
+for it. The page follows tab states live and shows the stage
 wherever the item appears: a chip on its card, its Briefing row and its row on
 every page (Work included), and the whole return panel (steps, the tab's last
 line or the answer, the ways on) at the top of its drawer and its detail. A
@@ -466,9 +1559,13 @@ before, a fall counts as a reset from zero, and each count keeps its last
 value of the day. Two weeks are kept. It starts with the first reading, so
 the bars and the trend fill in over the following days.
 
-Below sit project chips, made from the workspaces of the agent tabs and the
-projects of the rows (area, else the mark), most frequent first. A chip
-filters every shelf, and the choice is kept in the browser. The shelves:
+The project chips, the **Areas** lines with their numbers, where each number leads, the one area
+filter over Work, Chat and Sessions and why a tab gone idle counts as finished have a page of their
+own: [`cockpit-areas.md`](cockpit-areas.md).
+
+`g` then `a` jumps to the
+start page and puts the focus on the area lines; `j` and `k` move there, `Enter`
+picks. The shelves:
 
 - **Continue**: the agent tabs as cards, the ones that need you first. The
   band names the project and shows the last lines of the screen. One click
@@ -551,14 +1648,16 @@ next one instead of closing the drawer. With the keyboard shortcuts on, `n` and
 the screen and shows the next title on its own line.
 
 **With AI on the Sessions tab.** The Sessions tab leads with what the AI was
-handed, in four groups: **Done, please check** (a start whose item closed or
-whose task moved to `work/done/`, or that left an answer, plus every waiting tab
-whose own item or task is settled without a start of the cockpit naming it),
+handed, in five groups: **Done, please check** (a start that left an answer or a
+result, or whose tab went quiet), **Settled, the tab can go** (a start whose
+item closed or whose task moved to `work/done/`, only while its tab is still
+open, plus every waiting tab whose own item or task is settled without a start
+of the cockpit naming it; a settled start without a tab stands nowhere),
 **Needs you**, **Working** and **No word**. A settled tab says why ("Done: its
 item is closed. The tab can go.") and offers **Close tab** as its one next step,
-the same on its session card, in the agent tab column and on its return card;
-the server lets a waiting tab close when its result is filed or its item or task
-is settled, and refuses it otherwise. The Sessions tab badge reads "AI n" while
+the same on its session card, in the agent tab column and on its return card.
+Since round 6d every tab that neither works nor asks can be closed (see **One
+close for every tab** below). The Sessions tab badge reads "AI n" while
 something done or a question waits there, else the session count, grey either
 way. Each session card now carries its tab's last line and its next step instead
 of only "Go to tab". The workplace keeps a tab named after its item once the
@@ -587,6 +1686,29 @@ running session), the session's `subagents/` and `workflows/` folders under
 `ps` and matched to the tab list; the rest of the environment is dropped. A
 subagent counts as active while its transcript grew in the last two minutes.
 
+**One close for every tab.** A tab that waits or is back at its shell, asks
+nothing (no question, no options, nothing typed in its prompt; its last words
+alone ask nothing, the rule of the quiet tabs) unless its item or task is
+settled already, and is not the control tab has the same close wherever it stands: a
+point of Work through (Abarbeiten) and the aside of a record on the Files tab,
+Running now and its session cards, a return card, a tab card and the head of a
+tab open in the Chat (the lines of Waiting for you stay one line each and lead
+there). With an open task or
+inbox item behind the tab it is **Done and close tab** (de: Erledigt und Tab
+schließen) with **Close tab only** beside it, else **Close tab** alone. Done and
+close tab ends each of them the way Done does (`task.py close`: status done,
+moved to `work/done/YYYY-MM/`, board and log row; `inbox.py close` with the
+done note) and closes the tab only when every end went through; otherwise the
+tab stays open and the message names what is not done. A close of a tab that
+handed back something nobody has looked at here yet (it filed a row, or a start
+of it holds a result) asks once more ("Close tab: sure?") on the first click,
+and falls back after a few seconds; in the head of a tab open in the Chat, where
+its screen stands beside the button, it closes at once. Where a point offers its
+own Done for the same row, only one Done stands there. The server sends what
+stands behind a tab as `behind` (`{task, item}`, null for the control tab): its
+task, or for a tab known by its name alone (no task in its binding) the task of
+the session working in it, the one its head names, and its inbox item.
+
 **Agent tabs.** Let AI do it and Advise open an agent tab per item through
 `workplace.py launch` and the terminal driver in the `workplace:` block of
 `bridge-config.yaml` ([`workplace.md`](workplace.md)), for cmux for example:
@@ -604,7 +1726,8 @@ already runs; the row then offers "Go to tab". A tab in state `shell` (the
 command never started, or the agent ended) blocks nothing: its row offers
 Restart beside "Go to tab".
 
-**Checking and closing tasks.** "⟳ Check tasks" (on the Check tab, in the
+**Checking and closing tasks.** "⟳ Check tasks" (in Work through the button
+of Check tasks, where Work through is on; else on the Check tasks tab; in the
 header of Your tasks, and on every page that lists tasks) runs
 `task.py review` in the background: a small model reads every task in doing or
 review (steps, log, commits, linked issues resolved in one GitHub call) and
@@ -615,8 +1738,8 @@ the finished check arrives as a note with its cost. Rows then carry a verdict
 chip (close?, stale?, waiting, unclear?). A task's detail shows the
 recommendation with its reason, confidence, model and evidence, with Close ▾,
 Keep open (until the task changes), Check again and, for unclear or guessed
-answers, Check closer with the stronger model. The Check tab is the overview of
-the last run: a filter per verdict and "changed", sort by verdict, priority or
+answers, Check closer with the stronger model. Check tasks (the row in Work
+through, or the tab without it) is the overview of the last run: a filter per verdict and "changed", sort by verdict, priority or
 quiet, and a selection for Let AI do it (n) ▾, Close n ▾, Keep open and Check
 closer. Both doors work as on every other row: Close ▾ on a
 task the check would close starts with the check's reason in the sentence, and
@@ -674,6 +1797,7 @@ work:
     command: "claude -p --model {model} --output-format json --no-session-persistence --setting-sources '' --strict-mcp-config --tools ''"
     max_age_days: 7
     stale_days: 21
+    skip_sections: []   # briefing section ids the triage leaves out
 ```
 
 The overview of the last check (on the page that holds the task check) reads
@@ -697,14 +1821,256 @@ marked, the end stays in view unless you scrolled up, and below it stand Yes, No
 on as the tab's state allows and a box that sends a message to it (Enter
 sends, Shift+Enter a new line). Escape or a click outside closes it.
 
+**A tab's history.** The screen of a tab is only what the terminal shows now;
+`GET /api/tab-history?ref=...` (read only) answers with the whole conversation,
+searchable: `{ok, ref, name, source, turns, total, matched, truncated, at_ms}`,
+each turn `{i, role, text, at_ms}`. A tab that runs a Claude session answers from
+the session's transcript (`source: "session"`, and its id as `sid`): the tab is tied to the session by
+the live session list (the session's process carries the tab's `CMUX_SURFACE_ID`
+or `TMUX_PANE`, which the scan matches to the tab list: `tab.ref` of a session in
+`sessions.sessions` of the state), the newest session of a tab decides, and its turns are `user`, `agent` and `tool` (one short
+line a call, `Bash: git status`; never a tool's result, thinking, the harness's
+reminders or a subagent). A tab with no session, or whose transcript is gone,
+answers from the terminal (`source: "terminal"`): the scrollback through the
+driver (`workplace.py screen --lines 5000`), cut into blocks at the blank lines,
+role `terminal`, no time. A shell tab has all of it; an agent that repaints its
+screen has only what it shows. `q` is a plain case-insensitive substring over the
+text (at most 200 characters) and answers only the matching turns, `matched`
+counting them. The newest `limit` turns come (default 200, at most 500, and no
+more than 256 KiB of text), oldest first; `truncated` says older ones were left
+out, and `before=<i of the oldest turn held>` pages back to them. A turn's text is
+cut at 20,000 characters, and a conversation keeps its newest 50,000 turns. A
+transcript is streamed, never read whole, and kept parsed by path, mtime and size
+(a file that grew is read from where the last read ended); every text goes through
+the same scrub as the screen, so the key never leaves and a search cannot find it.
+Nothing is written and no agent runs.
+
+**A page's search.** A profile page with `search: true` carries a search field
+above its sections with three modes beside it; switching keeps the text (on a
+log page with a time range the first mode is **In range**, see below). In
+**Today** typing two characters or more filters the page's own rows to those
+that hold every word, in every section at once, its head counting the hits (a
+section that drew only its first rows loads the rest first, so the filter covers
+all of today; a section of groups shows every match unfolded, one without a
+match says "Nothing matches the filter", and with no hit at all a line offers
+**Every day**). **Every day** (on the switch, on Enter, and as one types, once
+the typing pauses) leaves the rows as they are and asks the history with the same words
+(`GET /api/timeline`, `scripts/work-find.py --history`): every line that holds
+every word in the log rows of `work/log.md` and `work/archive/` (an old row with
+only its time takes the day from the `## <weekday> DD.MM` head above it and the
+year from the file's name), the meeting notes of a day
+(`work/archive/days/YYYY-MM/DD_*.md`, the time from the nearest `## HH:MM`
+head), the meeting folders `<work.meetings.home_dir>/YYYY-MM-DD-<slug>/`
+(default `work/tasks/_meetings`), the closed tasks (`work/done/`, the day they
+closed) and the raw meeting transcripts in `work.meetings.raw_record_dir` under
+`doc_sensor.onedrive_root` (`*.md` whose name carries the day and the time, no
+link followed, nothing over 2 MB). The lines stand as a timeline by day, newest
+first, each with its time, what it is (log, meeting, closed, transcript), where
+it stands and the line; a meeting folder, a closed task, a transcript or one
+meeting of a day brings at most three lines and says how many more it holds,
+the words stand marked, and a closed task opens in the Files tab. With
+`cockpit.files_search` on, the mode **Ask AI** (Enter or its button, the
+questions left today beside it) asks when it was done or discussed (the verb
+`timeline_ask`): a first
+call turns the question into search terms and maybe a range of days, the
+server picks the 60 lines that hold the most of them, every line a word of
+`files_search.block` names in its path, source or text stays back before
+anything is built, and a second call answers from the rest with the days and
+the lines it names. Both calls run without tools, settings or session, count
+as one question of `files_search.budget_per_day`, and take its model.
+
+**A page's log layout.** A section with `view: log` draws its rows as a log:
+under sticky hour heads (`13:00`; an earlier day's row under its date), each
+row its time, the glyph of its activity type, its context as a chip and its
+text clamped to two lines (a click opens it in full and offers its detail; a row of a task, or whose context
+names a task, a stream or a closed one of this Bridge, carries a file mark and offers **Open its file**, a closed
+one by its newest folder under `work/done/`),
+the typed words marked, the first 100 rows and a button for the next ones. A
+section with `place: rail` stands in a narrow column beside the main one, its
+rows as tiles two to a row: the name, the `when` with its leading number large
+(a `commits` row: "3 today"), the sparkline at the start of its detail as bars,
+the rest (the branch) and the row's web page as the tile's link; a dim row
+(nothing today) is named in one quiet line below. A page with either key takes
+the layout: its head names the day, the title and how many log lines in how
+many topics (the page's plain count and a plain ok stay on its tab, a finding keeps its mark); the search bar (with `search: true`) spans both columns; the rail
+also carries the log's contexts as topic chips with their counts, and a chip
+filters the log to its topic together with the typed words (the head of the
+log counts the hits and names the topic). In **Every day** the timeline stands
+in the main column in place of the log, in **Ask AI** the answer stands above
+it; the rail stays. Under 900 pixels the columns stack, the rail first.
+
+**The log page's time range.** Where the `view: log` section is the work log
+(`kind: activity`), a range panel stands between the search bar and the two
+columns; no profile key asks for it. It offers **Today** (the default each time
+the page opens), **Yesterday**, **7 days**, **30 days** and **All** (from the
+first day of the log), names the range in words with its count of lines, keeps
+a **Back** to the range before, and a **Bars per** choice (automatic: the
+smallest of 15 and 30 minutes, 1, 3, 6 and 12 hours, a day or a week that stays
+at 60 bars, 240 for days; any other width that fits). Below it a bar chart counts
+the log rows per bar; the bars stand on the local calendar (a day stays a day
+across a clock change, a week starts on Monday), weekends are shaded where a bar
+is a day or less, what has not happened yet is hatched and a line marks now.
+Dragging picks a range snapped to the bars and zooms in on release, a click on a
+bar zooms into it, hovering names the bar, its count and its three busiest
+contexts. The pointer does all of it; no key is needed and none is named.
+
+The log, its topic chips and the `commits` tiles of the rail follow the range:
+over several days the log stands under day heads, each with its count and
+**only this day**, within one day under its hours, newest first; a tile counts
+the own commits of the range with a sparkline over it, six tiles at most and the
+rest in one line, and the repositories busy in the last seven days but quiet in
+the range are named below. The first mode of the search reads **In range**:
+typing filters the rows of the range, and the chart shows only the hits on a
+scale of their own. **Every day** turns the range to **All** (Back returns) and
+its chart stacks the log rows with the meetings, the closed tasks and the
+transcripts, one each (`work-find.py --events`, with the words only those that
+hold every one), each kind in a colour of its own with a key; its timeline reads
+the days of the range (`/api/timeline?from=&to=`). **Ask AI** asks within the
+range too (the verb `timeline_ask` with `since` and `until`): a range the
+question names narrows it, never past it.
+
+The page draws today from the section the collector read, so it never waits for
+the history; the range's rows come from `GET /api/logrange`
+(`bridge_cockpit/logrange.py`). `?from=YYYY-MM-DD&to=YYYY-MM-DD` (both days in
+the range; without `from` the log's first day, without `to` today) and
+`&commits=<section id>` answer the rows of the log and its archive
+(`work-find.py --rows`, a row that stands in a raw week and its summary once)
+compactly, without their text: each row its day, time, context and glyph as an
+index into the answer's lists, the task a context is or is about once per
+context, plus the answer's `rev`; and the own commits of that section over the
+range as times (`briefing.py commits`, from a week back at least). A year of
+some 8 000 rows answers in under 200 KB where the rows with their text would
+weigh some 8 MB. `&ids=…&rev=…` answers the text of the rows the list draws,
+a page at a time, and `&q=words&rev=…` the ids of the rows that hold every word
+(their text and context, case folded): the page sends the words once the typing
+pauses, and its chart, topics and list follow the ids. A `rev` the log has
+changed since is refused (409), and the page reads the range anew.
+`?sources=other[&q=words]` answers the history beside the log. The page counts
+the bars itself (`logic.js`), so a zoom or another width never asks again; it
+asks only for days it does not hold yet, and again for the days it holds when
+the collector read the day anew. The server keeps the whole log until a file of
+`work/log.md` or `work/archive/` changes and cuts each range from it; the
+commits and the other history it keeps a minute per range. A row of an earlier
+day opens in the same detail as one of today, with its day and time and the
+work log as where it comes from.
+
+```yaml
+view:
+  pages:
+    - id: day
+      title: Daily log
+      search: true
+      sections:
+        - {id: activity, view: log}      # the log by hour with its time range, topic chips beside it
+        - {id: commits, place: rail}     # repository tiles in the rail
+```
+
 **Overview pages and tokens.** A profile page with `overview: true` opens
 with a board of tiles: one per section, with its count, its loudest row and a
 colour for the worst tone (a quota gauge shows its fullest value, a plain gauge
-its counts), plus one for the background jobs of the Background jobs tab, one for the tokens
+its counts), plus one for the background jobs (only where Background jobs keep a
+tab of their own; under a page they stand in its folder bar), one for the tokens
 of the week and, when the page places the cost card, one for the cloud costs
 (yesterday, the month so far and seven small bars). A click on a section tile
 scrolls to that section, the cost tile to the cost card, the workers
-tile opens the Background jobs tab.
+tile opens the Background jobs tab on every job. A sub page with `overview: true`
+(Sub pages, below) has no tiles: it heads with one card of one line per section
+drawn (a dot, the title, what it says: "1 fine, 1 off", "4 warnings: <section>"),
+where neighbours that say the same of their one row fold into one line; a click
+jumps to the section. Jobs, tokens and costs do not stand there.
+
+**Only an outage is red.** A background job counts as down when the engine
+files it with severity high (gone, disabled, stopped, its last run failed),
+as upkeep when medium (drifted, a unit without its marker, a program outside
+the repository). Only the jobs that are down colour anything: the Background
+jobs tab or its place in the folder bar (a red count, none for upkeep), its tile on Start
+(red with the count, neutral with upkeep alone, green when nothing), the news
+band. The tile's line reads "3 down, 25 to tend, 59 of 87 fine". The engine's
+own page keeps its own count.
+
+**Sub pages and folders.** A profile page with `under: <page>` has no tab: the
+page it stands under becomes a folder. Under the tabs, on the folder and on each
+of its pages, stands one bar of its places: "Overview" (the folder page itself),
+then each sub page in the order `view.pages` lists them, each with a dot and a
+short note ("1 down", "4 warnings", "unreadable"), the open one marked. The bar
+is the way back on every width (it scrolls sideways on a narrow screen). The
+folder's tab keeps its badge, lit while a sub page is open and red with the
+outages and findings of its sub pages (upkeep and warnings never colour it), and
+carries a small ▾ beside its name with the same places and marks; a click on the
+tab itself always opens the overview. The Background jobs page is placed the same
+way with an entry of its own, `{id: "@workers", under: <page>}`. A place is red
+with findings or an unreadable source (Background jobs only with an outage),
+orange with warnings (one by its title, several as "n warnings in <section>"),
+else neutral, and green only where an alarm section of that page reports nothing,
+so rows that nothing measures live never look in order. Drop the line `under:`
+and the page is a tab again, in the place its listing gives it.
+
+**Machines.** The overview of a folder lists each machine once, right under its
+head: every host a background job runs on, and every machine a sub page names in
+a row of its own that names a known machine (a job's host, or a machine of
+`bridge-resources.py machines`, read by the row's source id `machine:<name>`):
+by its tag `Remote`, its id `pc:<name>`, else its title. A line names the
+machine, "always on" for the always-on one, else its state from the inventory
+without the device word ("Windows 11 Pro · offline"), how many jobs run there,
+how many are down and to tend, and a chip for each sub page that names it with
+what it says there ("Lab: off"); a machine no job runs on still has its line
+when a sub page names it. A click
+on the line opens Background jobs filtered to that machine (or the page that
+names it when no job runs there), a chip opens its page. Machines nothing runs on
+and no sub page names (a printer, a watch) are not listed.
+
+**Background jobs.** Every way in shows every job, grouped by machine: the
+always-on machine first, then those with an outage, then by the most jobs, each
+with its count, "n down" and "n to tend" in its head. Inside a machine stand its
+systems, those with an outage first, each job worst first; a row names its kind
+before its purpose (appointment, interval, service, agent, watcher), and under its schedule
+the last run and the next one ("last run 21:01 · next run 06:05", the day in
+front when not today). Only findings are marked. The head names every machine
+the list holds, a line under it says the scheduled workflows are these jobs too,
+and the search answers to a job's kind in both languages and to the words a
+person uses for them: every job to "worker" and "job", an appointment or
+interval to "workflow". The count of units a machine runs without a declaration
+stands only while the filter leaves a job. The chips filter by machine
+first, then by state, kind and area; "Only with a finding" and "Only outages"
+are filters there, off by default. The figures on top count In service, Down,
+To tend, Not reported and Retired. An open job row offers two things.
+**Analyse in a tab** (verb `worker_advise {host, id}`) files the job to the
+inbox under the fixed key `worker:<host>:<id>` with a brief the server builds
+from `workers-view.json` (job, machine, unit, kind, schedule, program, log,
+last and next run, every finding with its hint) and starts a reporting tab
+that reads the job's declaration, checks unit and log live, names the cause
+and proposes a fix without changing anything. The click is an order: it goes
+on the item as its start note, so the tab never closes the item on its own,
+not even as overtaken, and asks before it closes (the same rule as a handoff
+with an order, below). A second click finds the same item; an item the person
+dropped for that job is opened again first. While the item is open and its tab
+is there the row says "in a tab" with **Open tab**; just started it says
+"starting"; with no tab left it says "tab ended" and offers the analysis again.
+Once it ended, its result from the return channel stands under the findings,
+and the closed row says "result in". A finding reads as the job wrote it,
+quoted after its state. **Ask** asks the quick chat about the job (kind
+`worker`): the server words the question from the view, the finding quoted at
+its end on one line of at most 300 characters, and ties it to the row
+(`about.key: worker:<host>:<id>`), which the question keeps when it is handed
+on (the item is added beside it). A row asked before shows that question
+instead of a second one, as "question open", "answered", "no answer" (its last
+turn failed) or, once handed on, the marker every question list shows (in its
+tab, done, asks you, tab ended), with **Open** and a quiet **Ask again** beside
+it; a page row (`InfoRow`) does the same under its own key. A job with a high or medium finding has **Seen** on its open row, last after Analyse in a tab and Ask (a page row
+that is bad or warn has it among its buttons, "Settled this time: grey until the finding
+changes"): the finding as it stands now turns grey with the day and the close note, and counts
+toward no red tile, no badge and no alarm; a new finding (another fingerprint: state and
+detail, so a new failure time; a span of time in the words, "4210s ago" or "3 h ago", counts as
+one mark, so a finding that only grows older stays seen) is red again, and **Show again** takes it back. A seen row offers no new analysis while no item of it is open. Closing the inbox
+item of a job (key `worker:<host>:<id>`, which is the item Analyse in a tab files, or a question handed over
+about it) does the same
+with its close note, when the close came after the job's newest failure; the cockpit sees that close on
+its next look at the inbox, an item that was already there included. A close it read once stays read on
+every machine, so Show again holds. The decision lives in
+`work/cockpit/settled/` beside the hides, as act `ack`. A section with `hide_ok: true` is drawn only while one of
+its rows is bad or its source fails; it still feeds the page's number, the
+alarm and what other cards read from it ([`briefings.md`](briefings.md)
+§ Dashboard pages).
 
 **Where the live cards go.** Three cards are not sections but live views:
 `costs` (cloud costs), `usage` (tokens) and `noise` (noise in the inbox). A
@@ -719,7 +2085,8 @@ cards:
 ```
 
 A page with `overview: true` and no `cards:` shows tokens and noise at the end,
-as before. A card named twice stands where it is first named; when the page
+as before; a sub page (`under:` a folder) shows none, since they stand on the
+folder's overview. A card named twice stands where it is first named; when the page
 shows Jev's order instead of its sections, cards placed after a section move to
 the end.
 
@@ -795,11 +2162,13 @@ impact and effort, 0 to 3, and whether only you can do it) and its label (the
 section), then the rows Jev did not see. Only the click on "Order with Jev"
 sends anything (`POST /api/jev/rank` with `force`); opening the page asks the
 server for the last order, kept per page in `jev-pages.json` beside the state.
-What goes out is title, the triage's one-line gist, the label and the priority.
-Rows stay home when their section is in `skip_sections`, when their title,
-detail, task, source (who filed an inbox item) or gist holds a `private` word,
-or when the triage says they can close or an agent does them. More rows than
-one request holds go in batches of 20, at most three. The strip names how many
+What goes out is title, kind, status, the triage's one-line gist, the label and
+the priority. Rows stay home when their section is in `skip_sections` or when
+their title, detail, task, source (who filed an inbox item) or gist holds a
+`private` word; what the triage marked goes too, and a row without an inbox item
+or a task by its page key. More rows than one request holds (60) go in batches,
+at most three. Prio's read-in on Work through sends the points of its view
+instead (see Prio above). The strip names how many
 were left out and why, and the tokens the order took. A work page of `group:
 work` has no strip: its By Jev view asks with `daily`, so the first look of a
 day orders by itself and every later one that day shows the kept order, and its
@@ -807,8 +2176,9 @@ button orders anew. The same filter applies to both.
 
 A page holding inbox and task rows together also filters by kind: one chip
 per label (Inbox, Task, or a section's short title) with its count, for the
-sections, the triage strip and Jev's list alike. Such a page is also where the
-task check stands: its own tab goes, and the Task chip shows the check (run,
+sections, the triage strip and Jev's list alike. Without Work through such a
+page is also where the task check stands (with Work through on, the check is its
+row under Not now, and this page shows one line with a link there): its own tab goes, and the Task chip shows the check (run,
 verdict filter, sort, picking, closing many at once) with the tasks it has not
 seen yet below it. A stored link to the old tab lands there.
 
@@ -855,14 +2225,17 @@ carries today's date, the name from `cockpit.person_name` (else "the user"),
 the sentence `integrations.typesafe.person`, and rows of the dashboard, never a
 detail text, a file, a path, a log line or an inbox event:
 
-- **The Jev tab** sends up to 20 rows it shows (briefing sections first, then
+- **The Jev tab** sends up to 60 rows it shows (briefing sections first, then
   tasks) with only these fields where a row has them: title, why, priority,
   urgency, due, area, gate, bucket, section, task type, inbox state. It sends
   every such row; it has no private filter.
-- **A work page with `jev:`** sends only a row's title, the triage's one-line
-  gist, its section and its priority. It leaves out the sections in
-  `skip_sections`, every row whose title, detail, task, source or gist holds a
-  `private` word, and the rows the triage says can go or an agent does.
+- **A work page with `jev:`** sends only a row's title, kind, status, the
+  triage's one-line gist, its section and its priority. It leaves out the
+  sections in `skip_sections` and every row whose title, detail, task, source
+  or gist holds a `private` word.
+- **Prio's read-in** (Work through) sends per point title, kind, status, due in
+  words, running, age in days and the gist, held back only by the work page's
+  `private` words; with Read in with Haiku the same goes to Claude instead.
 
 - **Auto for the model of a start** (`cockpit.launch_model`, below) sends
   only an item's title, kind and priority.
@@ -906,8 +2279,8 @@ sends counts as Auto's recommendation and stays under `max_model`. The effort
 and priority go to the
 judge, never its detail or a path.
 
-The page **Settings** (behind More) has three areas: Start page, Appearance
-and Model choice. Model choice shows every key above in three cards (the
+The page **Settings** (behind More) opens on Setup ([The Setup page](#the-setup-page)) and has
+the areas Start page, Appearance and Model choice. Model choice shows every key above in three cards (the
 main switch, the choice by hand, Auto) and changes it on top of the config;
 Auto's details show only while Auto is on, and the Jev and Haiku tables carry
 a scale from 0 to 3 that shows which model each rating gets. A change is kept
@@ -967,6 +2340,15 @@ Later. Rows that need no one (a gauge, an appointment, a commit count, a log lin
 buttons; a section can switch it for all its rows with `actionable: true|false` in its
 page entry (docs/briefings.md).
 
+**One decision under both keys.** An issue that stands in the work tab (keyed
+`ref:<id>`) and on a GitHub page (`item:<page>/<section>/<id>`) is one row to
+decide: Later, Done and Show again from either side act under both keys, on the
+page, in its "more" list and in Work through, and the work row names the GitHub
+list it stands in as `on_board: {page, section}` (null where none). A new
+decision replaces what the other key held, so one issue never holds two dates.
+Only a tracker list twins: a command list or an alarm section keeps its rows, so
+a Later in Work through never takes a failing probe off its page or its alarm.
+
 **GitHub work with steps.** A `github-work` section (docs/briefings.md § GitHub
 work) on a page with `view: board` lists one row per issue or pull request
 under its board: the board's status (the field `board.status_field` of its
@@ -974,13 +2356,43 @@ registry names, default `Status`), its priority as a chip when the registry
 names a `board.priority_field`, the pull requests that close it, the task of
 this Bridge that syncs it. The rows of a board sort by state, by priority (P1
 before P2 before P3, a row without one last; offered only when a row carries
-one) or newest first. Above the rows stand its figures (open, yours,
-wanting your review, your open PRs, in progress, in review, blocked, quiet,
-yours without a task, closed and merged lately), a tile per board with its open cards per state as a
-bar and the switch Off · Mine · All, and the people the rows are with; a click
-on any of them filters the rows, a second clears it. Opening a row reads its
+one) or newest first. Every row of the section is loaded (up to 300, where a
+plain table stops at 50 with "more n"), so search and filter see them all.
+Above the rows stand only the figures that have a cause and a count above
+zero (wanting your review, blocked, quiet, yours without a task); a click on one
+filters the rows, a second clears it. Under them a filter bar: **Board** (each
+board, and "no board"), **Assigned to** ("Me" first, then every assignee by
+count, "nobody" last), **Opened by** ("Me", then every author; a draft card names
+its creator), **Repository**, **Kind** (issue, pull request, draft
+card) and **Board status** (the column, rows on a board only, one option whatever its case), each a compact
+select that shows only with two values or more among all rows (one that another
+choice narrowed to a single value keeps its place with that value), every option
+with how many rows it would leave given the other choices. The choices combine with each other,
+with the figures and with the search (which also reads author and board); "n of N
+rows" and "Reset all filters" stand beside them while one is set. The choice is
+kept per section in this browser. Your own login is read from the rows (the
+author of a row you opened, else the one assignee of a row assigned to you);
+where no row says, the login stands beside Me. A row names repo#number (no GitHub chip beside it, the ref says so), its
+column, up to three labels with "+n" for the rest, "assigned: @a, @b" (up to three,
+or "nobody assigned") and "opened by @x" ("opened by you" for yours), and for a pull request draft,
+review and checks (80 rows at most, yours before a teammate's card and pull
+requests first among them, read in the call that finds the pull requests that
+close an issue, no extra call). "Group by board" (on by default)
+switches to one flat list where each row names its board. A click on a name on a
+row sets that filter (Assigned to or Opened by) beside the other choices; a
+Person kept before round 6d reads back as Assigned to. The line "n on
+GitHub" in Work through leads here with the filter cleared, so the page shows
+the rows it counted. Under each board's head in the list stand its facts: whose cards
+(yours or every card), how many are open on the board, the count per state
+with its dot, and the cut where the board was read only in part. Which cards a
+board loads (Off, Mine, All) is set in Settings, GitHub boards ("Which boards to
+load" above the rows leads there). With All a teammate's card stands here and in
+the filters, never among the rows of Work. Opening a row reads its
 issue or pull request (description, last comments, labels, boards, review and
-checks) and shows its steps as buttons. Its "Steps ▾" menu starts an agent tab
+checks) and shows its steps as buttons. A row has one start, a split button: its
+lead step on the left, ▾ beside it with the other steps, and **To tab** in the
+lead's place while an agent works on the row; **Close** stands beside it. The
+steps start an agent tab
 on the row with everything the agent needs in its prompt: Analyse, Implement,
 Review the PR, Make it a task, Sync status, Remind, plus the section's own
 `row_steps`. The tab is
@@ -998,11 +2410,12 @@ writes to GitHub by itself; the prompt sends board changes through
 `github-projects-manager` and keeps merging with you.
 
 **Dates as an agenda.** A calendar section with `view: agenda` (docs/briefings.md
-§ Dashboard pages) opens with its figures: today and how long it is busy,
-tomorrow, the next seven days, collisions, the next event with a countdown, the
-longest free block left today, and what other sections on the page say is
-overdue or due this week. Below, Agenda, Week and Month switch the view (the
-choice is kept in the browser). The agenda lists the events by day under a head
+§ Dashboard pages) opens with two figures: the events that collide (a click
+filters the list to them) and the longest free block left today. The next
+event stands on Start, due rows in Work, where Later holds them. Below, Agenda,
+Week and Month switch the view (the choice is kept in the browser); the month
+is offered once the loaded dates span four weeks, and a month kept from before
+shows the agenda until then. The agenda lists the events by day under a head
 with a bar of the busy hours and a now mark; each event shows its time and
 length, calendar, place or "online" with Join, its people and what it collides
 with, and its steps (Prepare, the series' own) as buttons. The week is a grid
@@ -1043,6 +2456,19 @@ row a row in `work/log.md` (`task.py log`), since it has no place of its own
 here. Not now on a task writes "Later until <day>" even without a sentence:
 the page only hides the row, the task keeps why it was put off.
 
+**A settled row stays settled on every machine.** That a row is hidden until a
+day, or out of the briefing as done or not doing, is itself written to
+`work/cockpit/settled/`, which git tracks: one new file per decision, written
+once and never changed, the way the inbox records its events. Two machines that
+settle rows and sync through git only ever add different files, so a rebase has
+nothing to merge. "Show again" and an undo are a file of their own too
+(`act: unsettle`), never a deletion, since a file removed on one machine while
+the other still holds it is exactly the conflict this layout avoids. For each
+row the newest file decides. The page reads the folder on every pass and the
+watcher notices when a pull brings a new file, so a row settled elsewhere
+leaves the page within seconds. Commit the folder with the rest of `work/`; see
+"Upgrading: settled rows in git" in section 6.
+
 **Dropping asks why.** Drop on an inbox row opens a small dialog with four
 reasons: not worth it this time (preselected, so Enter keeps it one keystroke),
 a duplicate, never this kind again, this source is too loud. The last two
@@ -1054,10 +2480,15 @@ and a drop of several rows drop without a reason, as before.
 "Undo" for ten seconds. For a task it restores the status the task had before
 the close (backlog, doing or review, read from its STATUS.md); an entry without
 one reopens as doing. "History" in the header lists everything the dashboard
-closed, dropped, settled or hid, by day, each with its way back: a task "open
-again" (`task.py reopen`, back to doing) or "still to be done" (back to the
-backlog with a note), an inbox item "open again" (`inbox.py reopen`), any other
-row "show again". What was taken back says when. Closes from before the history
+closed, dropped, settled or hid, by day, each with its way back: a task back
+to the status it had ("open again" to doing, "back in review", or "still to be
+done", back to the backlog with a note; an entry from before this knew no
+status and reopens as doing), an inbox item "open again" (`inbox.py reopen`),
+any other row "show again". Above each day's entries stand its notes
+("Notes (n)", the newest first, today's under "Today, <day>"): the toasts of
+that day, each a click to the place it names; the bell in the header lists the
+same notes, newest first.
+What was taken back says when. Closes from before the history
 existed are filled in once from `audit.log`; one that was opened again since
 shows as taken back.
 
@@ -1092,9 +2523,30 @@ page tab glides to the next. Every movement is a damped spring from
 and `opacity` only. With "reduce motion" set in the system, everything stands
 at its end state at once and nothing moves by itself.
 
-Toasts report every action, and the notes drawer keeps the last 20. A tab that
-starts waiting for you is announced; with `voice: true` the browser also says
-it.
+Toasts report every action, and the history keeps the last 20 notes under
+their day (`at_ms` dates a note). A tab that starts waiting for you is announced
+as a toast only while that tab is out of sight (not while its tab view is open,
+nor while the Chat shows it as the room of its area); the note lands in the
+history either way, and a tab running over an hour always toasts. With
+`voice: true` the browser also says it.
+
+A note that names its place leads there. It carries `go`, one small closed
+union: `{kind: tab, ref}` (the tab, brought to the front where the driver can,
+else shown large here), `{kind: row, key}` (a row of the model, opened whole;
+one that is gone opens Today), `{kind: item, key}` (an inbox item or a task in
+the item drawer), `{kind: page, id}`, `{kind: conv, id}` (an A2A
+conversation), `{kind: ask, id}` (a chat with the Bridge) and `{kind: claude}`
+(the control session). The server builds it with `ctx.note(text, bad, go)`
+and `App.note(text, tone, go)` and sends it with the note, in the action
+result and in the `note` event; `actions_base.note_go` keeps only the field of
+the kind and drops any other shape, as `logic.js noteGo` does on the page. A
+toast or a note in the history with `go` is one button: a click dismisses the
+toast (or closes the history) and goes there; the close X and Undo stay apart
+and never navigate. Tab alerts lead to their tab, a start that answered to its
+row, an answered chat or agent to its conversation, and the band's status
+list uses the same targets for its notes. At most four toasts stand at once:
+one more does not vanish silently, a last compact toast says "+N more" and
+opens the history, where every note still is.
 
 **Triage on the task and inbox pages.** `scripts/triage.py run` sorts every
 task that is not done (streams never close and are left out), every open
@@ -1122,53 +2574,347 @@ two clicks after naming it (the `settle` verb, so the history can undo it). An
 inbox row on a page carries its item id (`inbox`), which is how a row finds its
 triage.
 
+A section that only adds noise or cost can be left out of the triage:
+`work.review.skip_sections` lists briefing section ids (the `sources` of a row),
+for example `[applications]`. Its tracker rows (a board card, an issue, an
+application, a date: a `ref` with no task and no inbox item) are not sent to a
+model and are not in `.bridge/triage.json`, so they keep the bucket the
+briefing gave them and carry no triage mark. A row that two sections carry is
+skipped only when both are listed. Open tasks and inbox items are judged from
+their own lists whatever section shows them, so the key does not leave those out.
+
+**Upgrading.** Opt-in, nothing changes until the key is set: an instance that
+does not have `work.review.skip_sections` judges every row as before. To leave
+a section out, add its id under `work.review` in `bridge-config.yaml`, then
+run "sort again"; rows already in the cache from that section simply stop
+being listed.
+
+### Each item's brief
+
+A brief says what an item is for and when it is done: a `goal` (one sentence of
+what is different afterwards), a user `story` {as, want, so_that} when one fits,
+and two to five `acceptance` criteria, checkable outcomes rather than steps (a
+stream has none). Since stage 4 of the one point view it also carries a `name`,
+what the cockpit calls the item (at most 60 characters and about seven words, in
+the instance's language, never an id, a path or a file name), and a `stand`,
+where it stands now in one sentence (at most 140 characters); Work through shows
+both ([A point's name, stand and step](#work-through-flow)). Its shape and
+limits are `card_fields.py`; a task keeps it in
+the `brief:` block of its STATUS.md (`task.py brief`), an inbox item in its
+`describe` event (`inbox.py describe`).
+
+The small model writes it (service `cockpit-describe` in
+`workflow/ai-services/`, default `haiku` resolved to its full id; one call
+without tools, settings or session, a fixed JSON schema with the limits of a
+brief). The model may think before it answers, at the effort
+`cockpit.describe.effort` names (`--effort`, `low`, `medium` or `high`,
+default `medium`). One call at `medium` on 2026-10-26 thought for about 2500 of
+its 2900 output tokens and cost about $0.002, so 20 calls an hour cost near
+$0.04. The
+item goes in as data: a few frontmatter fields, its heading, the start of the
+body, its two last sections and its open inbox items, about 6000 characters.
+`by` names the model that answered as `modelUsage` reports it; another one than
+asked for is flagged as `model_mismatch`.
+
+The model keeps a brief up to date by itself as long as no person changed it.
+Once a person did, it only proposes: describe_apply takes a proposal over, as
+it is or as the person changed it (`edited: true`), describe_discard drops it.
+A brief changed by hand in the file counts as a person's too: `.bridge/describe.json`
+keeps the hash of each brief as describe wrote it, and the next pass marks a
+changed one `edited: true` without a model call. A brief is stale when its
+`basis` is no longer the item's text. That file is kept per machine, while
+STATUS.md travels through git: on another machine or in a fresh clone a brief
+describe wrote has no hash, so it counts as a person's (the model only
+proposes for it, and a hand edit of it is not marked). What the gate left out
+of a brief it still wrote (a text over its limit, fewer than two criteria for
+a task) is kept as the card's `warnings`. A placeholder is no text to the gate
+(`card_fields.py placeholder`): "placeholder", TODO, TBD, n/a, lorem, an
+ellipsis, a value in angle brackets or the field's own key as its value, case and
+the punctuation around it aside. A placeholder goal gives no brief, so nothing is
+written and the brief before stays as it is; a placeholder name, stand, story part
+or criterion is left out like any wrong text. A rewrite of a brief describe wrote
+never trades its criteria for none: where the new answer of a task has no
+criteria, the ones of the brief before stay, with a warning that says so.
+
+**References.** A criterion has to make sense from the card alone, so the data
+carries `references`: what a reader can reach from the item
+(`scripts/lib/bridge_cockpit/brief_refs.py`). That is the repository the task is
+bound to (`sync.github.repo`, else its context's `sync.defaults.github.repo` or
+`repos[].github`), its issues as `owner/repo#n` and its board, URLs and
+`owner/repo#n` of the text, a bare `#n` of the text written as `owner/repo#n`
+when exactly one repository is known ("Board #18" is a board, never an issue),
+paths the text names that exist, the files of the task folder, and the slugs of
+other tasks that exist; for an inbox item its detail, its `closes_when` probe and
+its task. At most 24, scrubbed like the rest; one the scrub changes is left out.
+The rules say: cite only from that list, exactly as written; never a bare `#n`,
+never "the list" or "the report §6" without saying what and where; when the text
+names something only vaguely, describe it in words; and when a criterion is
+about a listed reference (the epic the task is bound to), cite it exactly, so
+the card can link it. After the answer every
+reference the brief names is checked against the list. One that does not resolve
+(a bare `#n` with no or two repositories, a section such as §6 without a place
+beside it, a path that does not exist, an issue number the text never names)
+does not stop the write, since a brief with a goal beats none: it is kept in
+`warnings` ("Unresolved reference: §6", in the cockpit's language), the card
+shows the gap "points at something that cannot be found", and with
+`auto: stale` the brief counts as stale for one more try of the pass on this
+text, never more. A section of a law ("§ 14 UStG", "§ 3 Abs. 2"), words such as
+"Soll/Ist/Delta", tool names such as "Node.js", a plain word in backticks and a
+colour such as "#a1b2c3" are no references. What is reachable is read with the
+item, again once its STATUS.md, its folder or a folder right inside it changed,
+so a file made later in the folder is found.
+
+**Prompt version.** describe.json stores the version of the rules
+(`PROMPT_VERSION` in `describe.py`) with every brief describe writes. A brief
+describe wrote from an older version (or before there was one) that nobody
+changed counts as stale, so `auto: stale` writes it again within the budget of
+the hour. A person's brief is never rewritten for it. The view's `stale_why`
+says which reason holds: `basis` (the text moved on), `prompt`, `refs` or
+`fields`. The rules of stage 4 (`PROMPT_VERSION` 3) ask for the name and the
+stand, so every brief describe wrote before them counts as stale (`prompt`),
+and a brief without a name or a stand counts as stale too: describe's own is
+written again, a person's gets one proposal that adds them (`fields`, once per
+text), which the person takes over or drops; the rest of a person's brief stays
+as it is.
+
+**How long a backlog takes.** At the default `budget_per_hour: 20` the pass
+writes at most 20 briefs an hour, one call at a time, a pass every ten minutes:
+a backlog of N briefs without a name and a stand takes about N / 20 hours (100
+items about five hours, 400 about a day), and only with `auto: stale`. With
+`auto: missing` the pass writes only items that have no brief at all; the older
+ones get their name and stand when Work through prepares its next cards
+(`flow.prep_ahead`, within the same budget) or on a click of **Describe again**
+(More ▾). There is no one-shot verb. For one run through the backlog, raise
+`budget_per_hour` for that time (for 100 items, `100`, at about $0.002 a call
+near $0.20) with `auto: stale`, restart the server and set it back afterwards;
+the calls still go one at a time, so the pace is then how long each call takes
+(a call at `medium` thinks for some seconds).
+
+"Describe" on a card (`describe_run {key}`) asks for one item now; it counts
+against the budget but is never refused. The Work through page writes the
+briefs of its next cards ahead (`describe_run {key, ahead: true}`): those runs
+are refused with `describe_budget` once the hour's budget is spent. With
+
+```yaml
+cockpit:
+  describe:
+    auto: missing        # or stale
+    budget_per_hour: 20
+    effort: medium       # low, medium or high
+```
+
+a pass of the server every ten minutes takes the items without a brief (and,
+with `stale`, the stale ones), proposes at most once per text for a brief a
+person wrote, does not ask again for a text whose answer failed, stays within
+the calls of the hour (clicks count, but are never refused) and never runs two
+calls at once. A card reads `written` (`ai`, `human` or none), `stale`, the
+waiting `proposal`, `running`, `last_error`, `stale_why` and `refs` (what the
+stored brief names, resolved) from `describe.state_for`.
+
+### The Bridge looks before a check-in
+
+A point in progress with someone (**In progress ▾**, verb `work_on`) comes back
+on its check-in day and asks how it stands. With `cockpit.flow.checkin` on, the
+Bridge looks first, on that day or the day before, so the card can say what it
+already knows (`scripts/lib/bridge_cockpit/checkin.py`):
+
+- **What it reads.** Only what the Bridge already holds of the point, and only
+  what came after the hand-over (the day the check-in was set): its Activity
+  (the item's events and notes, the task's notes and status changes, the rows
+  of `work/log.md` naming it, its documents, the starts of agents), the front
+  matter of the task's STATUS.md (status, next step, what blocks it), and the
+  state of up to four GitHub refs the point names (an issue closed or open, a
+  pull request merged or not), read through `inbox.py probe`, the probe code
+  `closes_when` uses. It asks nobody and writes nowhere but its own state file.
+- **One call.** A small model (`cockpit.flow.checkin.model`, else the service
+  `cockpit-checkin`, default Haiku), no tools, no session, no settings, a fixed
+  schema: whether it found something new, one or two sentences, and the labels
+  of the sources the sentence rests on. The rules say: only the sources given,
+  each fact with its label, never an inference, a plan or a promise.
+- **What stands.** A label the model was not given is dropped, and a finding
+  that names none is no finding. What could not be read (a ref whose state the
+  probe could not tell) is said by the Bridge itself, never by the model. With
+  nothing since the hand-over and no ref to read, the look is "Nothing new since
+  <day>" without a call.
+- **Once per check-in day.** A look is kept per point with the check-in day it
+  was for; Still running (a new day) is a new check-in and looked at again. A
+  failed call leaves the card asking as before and is tried again the next day
+  at the earliest; over `budget_per_day` nothing is called, and the card asks.
+
+The card shows it under **The Bridge looked**: the sentence, "Where: <labels>",
+"Could not read: <what>", or "Nothing new since <day>". The answers stay the
+same. The looks live in `flow-checkin.json` with the calls of the day.
+
+### One card for every item
+
+Every task, stream and inbox item looks the same wherever it opens: in the
+middle column, in the drawer of the Inbox and Tasks pages and in the files view.
+It has one title there (a task's H1, never its headline), and under it, each
+only when the item has it:
+
+- the **goal**, set apart and first: what is different once it is done;
+- the **user story** as one sentence ("As a reader of the docs, I want one
+  index of every page, so that I never search the folder");
+- the **acceptance criteria** as a short list to read. They are not ticked: the
+  steps checklist of STATUS.md stays the only thing to tick;
+- the **next step** with who takes it and by when;
+- chips for the state, the owner, the priority, the due day, the area and the
+  source, the progress of the steps (2 of 5), and quiet hints for what is
+  missing: no goal yet, a placeholder step, no next step, an entry about a task
+  that is closed already (with "Close this entry" beside it; there is no verb
+  that moves an inbox entry to another task, so the card offers no "reassign"),
+  a brief that points at something that cannot be found.
+
+Where the goal or a criterion names a reference, it is a link: an issue,
+pull request or URL opens on GitHub or the web in a new tab, a task slug opens
+the task in the files view, a file of a task folder is read in place under the
+brief (as the Files drawer reads it), and any other path shows as code with a
+copy button. A reference nobody can reach stays text, with a quiet "not found"
+on hover and for a screen reader. The parts come from the card's `brief_refs`.
+
+A check or an info row shows only what it has, so it stays small. A list row
+shows the card's title. Its goal stands under the title on the start page, and
+on Today in place of a missing triage gist. A detail head leaves out the chips
+its facts list says further down (a task's status and priority, an inbox
+item's state and due day).
+
+Text a model wrote and no person edited carries a small **AI**; the model and
+the day show on hover and are its label for a screen reader. Once the item changed past it, **outdated** stands
+beside it, saying why on hover: the item changed, an older version of the rules
+wrote it, or it names something that cannot be found and is tried once more.
+
+**Describe with AI** on a task, stream or inbox item asks the small model for
+its goal, story and criteria now. While no person edited the brief, it is
+written straight into the item. Once a person did, the model only proposes: the
+proposal shows in the card with **Apply**, **Edit** and **Discard**. Edit
+opens a small form (the goal, the three parts of the story, up to five
+criteria) and saves what you wrote as your own text; nothing changes in the
+item before Apply or Save. A newer proposal replaces an open form. After Apply
+or Discard the focus goes back to Describe with AI. Only one describe runs at a
+time, so while one runs, the button waits on every card. A failed try shows like
+any other failed action.
+
 A command row that offers steps of its own (`actions`, docs/briefings.md) shows
 an "Action" menu: two clicks run one through `row_action {page, section, index,
-action}`, which calls `briefing.py act` and voids the section's cache. A step
+action}`, which calls `briefing.py act` and voids the section's cache, and again
+after each wait of a `recheck` the step returned (docs/briefings.md). A step
 whose command returned an undo token is in the history and in the toast with
 "take back" (`row_undo {section, row, action}`), the same way as a close.
 
 ### The chat as cmux
 
+The whole Chat reads as a terminal, in `workspaces` and in `classic`, in a light page too: dark
+ground, mono type, a tab's screen coloured by what a line is (what you typed, what Claude says, tool
+output, a diff, paths and links, the ✓ and ✗ of a result), a cursor in its prompt while the tab is
+read live, and `❯` before every box you type in. The tab window, the questions and the A2A chats
+wear the same. Its colours are the dark set of your `DESIGN.md`, so a fork's brand carries over.
+
+It also takes the keyboard, in the Chat and in the tab window, for every tab, a plain shell too. Click the
+screen and every key goes straight to the tab: letters, Enter, Esc, Tab, Shift+Tab, Backspace, Delete, the
+arrows, Home, End, Page Up and Down, Ctrl+C and every other Ctrl and letter, and a paste whole with its lines.
+What you type shows at once and the screen follows within about a second, read fast while you type. The cursor is
+solid while the keyboard is here and an outline otherwise, as in a terminal without focus. Cmd stays your Mac's,
+so Cmd+C copies; dragging selects and does not start typing. A click beside it, or Ctrl+] from the keyboard, gives
+the keys back to the page. The boxes and answer buttons stay as they were, with their guards.
+
+It reads the terminal as text, and that sets the limits: the colours are the page's own by what a line is, not
+the program's; the cursor stands at the end of the prompt, even when the arrow keys moved the real one; F keys
+do not reach cmux; an Option key makes its character, so no Option+B for a word back. A full-screen program such as
+vim shows, but as text every read. A driver without the `keys` verb leaves the screen to read.
+
 With `cockpit.chat_layout: workspaces` the Chat tab is laid out like the terminal you work in.
 
-- **On top of the left side**, "Waiting for you" lists the tabs that wait for
-  you or need you, the most urgent first (the control tab never), each with its
-  workspace, its question and the answers, see [Answering a tab from
-  here](#answering-a-tab-from-here). A click anywhere in a row opens its tab on
-  the right; a click on one of its answers or its text field does only that. A
+- **On top of the left side** stands a switch between two areas, "Work" and
+  "A2A (n)", where n is the number of A2A peers. Work is everything below; A2A
+  lists the agents as cards (reach dot, held answers, when the last call was) and
+  shows the picked agent's conversation on the right, with its bar, its card and
+  its box, as the A2A connections tab does in the classic chat. The choice is kept
+  in this browser (`bridge-cockpit.chatArea`). Without a peer there is no switch
+  and the Chat shows Work. There is then no A2A connections tab: every way to an
+  agent (a toast "an agent answered", the band's "agent not reachable", an agent
+  on the start page, a stored page) opens the Chat on its A2A area with that agent
+  or conversation picked. The way back works the same: a tab, a workspace, a chat or
+  a Bridge picked from anywhere (Work through, the start page's waiting tabs) opens
+  the Chat on Work, even when it was left on A2A. So the signal is not lost with
+  the tab, the Chat tab and the A2A switch wear it: a spinner while an agent
+  answers, a dot while an answer is held for its owner.
+- **Over it all**, where it applies: why the relay is off, with the start
+  control, and that the control session does not listen to it (the header's
+  relay badge leads here where Work through lists the sessions); "no terminal
+  driver" and "tab list not current since" with the reason, as the tab column
+  shows them. A tab open on the right names its task ("Task <title>", from the
+  tab's own task or the newest live session in it), which opens in the item
+  drawer over the Chat. Its head also says where it came from, "from: <title>"
+  (de: aus: <Titel>), for the question, background job, inbox item or other task
+  it was started from: a click opens the question in the Chat, the job on the
+  Background jobs page, the item or task in the drawer. The same words stand as
+  a second line of the tab's row in the sidebar. Where the origin is the tab's
+  own task only the task link shows. The head carries the tab's close (above,
+  **One close for every tab**) beside it.
+- **In Work, near the top**, "Waiting for you" lists the tabs that wait for
+  you or need you, the most urgent first (the control tab never), one short entry
+  each: its dot, its name and how long it has been in its state (one word more
+  only where that state is not waiting), and under it one line of where it
+  stands, its workspace and what it asks or its last words, so two tabs of one
+  name read apart; its whole question is the entry's tooltip. How long survives
+  a restart of the server (`tabs-seen.json`). A click on the line opens the tab on the right,
+  where its question and the answers stand, see [Answering a tab from
+  here](#answering-a-tab-from-here); the list itself answers nothing and closes
+  nothing: a tab that asks nothing closes from its head on the right, which then
+  opens the next one, so the list stays one line a tab. In its workspace below the same
+  tab is a grey row saying "waiting", so it is not read twice. A
   tab that has been in one state unusually long (`long`: working for an hour, or
-  a filed result waiting a long time) stands there too, without a question and
-  without answer buttons, so it is not forgotten. While the pointer or the focus
+  a filed result waiting a long time) stands there too, so it is not
+  forgotten. While the pointer or the focus
   is in the group its rows keep their order, and a tab that starts asking is
   added at the end; the sorted order comes back when the pointer leaves, so a
   click never lands on a row that was pushed under it.
 - **Below it** stand the workspaces in the terminal's order, pinned ones first.
   Each shows its colour, its state, its unread count and, when its folder is
   another Bridge's clone, that Bridge's name. Below each workspace are its tabs,
-  most urgent first. The quick chats sit in the control workspace
-  (`workplace.control`), the newest six and "all" for the rest.
+  most urgent first.
+- **The questions** (de: Fragen) have a section of their own directly under
+  "Waiting for you", above the workspaces, in every sort mode (with "By status",
+  right under the order bar), so a question just asked is found without
+  scrolling: open and handed questions first, then the answered ones, newest
+  first in each. Its head has "+ New question". A question stays in the list
+  `chat_keep_hours` after it last moved (its last turn, its handoff or what came
+  back from it) and then stands in the archive. Each carries
+  its title (below) on a line of its own and under it, once handed on, its marker
+  and its time. "Earlier questions too"
+  also reads the archive (`GET /api/chats/archive?days=7`, read only: at most
+  14 days and 60 questions, newest first, without the ones you removed); those
+  stand greyed, have no ×, and open read only, and an archive with none says so.
 - **Below the workspaces** come the other Bridges on this machine that have no
-  workspace ("Bridges on this machine"), and the A2A agents.
+  workspace ("Bridges on this machine"). The A2A agents stand in their own area.
 - **On the right** is what you picked:
   - a tab's terminal, read every 1.5 s to 5 s (slower while it stays the same),
     with "Write" to open it in its window with the message box and keys;
-  - a quick chat with its box. The box is one input: a chip under it says where
-    Enter goes, "Asks here, read only" or "Starts an agent tab". The guess reads
-    the first words: a trailing `?` or a question word (what, how, which, ... /
-    was, wie, welche, ...) asks, an order word (fix, create, set up, ... / mach,
-    erstelle, leg an, ...) starts a tab, anything unclear asks. A leading `?` or
-    `!` decides it and is dropped from the text. A click on the chip picks the
-    other route and holds it until the box is empty again, however the guess
-    changes while you type on. Cmd or Ctrl Enter starts a tab at once, whatever
-    the chip says. Once the chat is handed on, the chip gives way to a status
-    line (see [5. Asking Claude](#5-asking-claude-the-relay)). There is no
-    countdown and no timer;
+  - a quick chat with its box. The box is one field, "Question or order" (de:
+    Frage oder Auftrag), with two buttons that never change: **Ask** (de: Fragen)
+    asks here, read only, and **Let AI do it** (de: AI machen lassen) starts an
+    agent tab. Nothing guesses from the words any more, and no chip or hint
+    stands under the field. On the Chat page the header's Ask puts the cursor
+    into this field instead of opening a window. The field and the buttons name
+    no keys (the cockpit is used by mouse first); Enter asks and Cmd or Ctrl
+    Enter starts the tab still. Once the chat is handed on, a status line stands
+    under the field (see [5. Asking Claude](#5-asking-claude-the-relay)). There
+    is no countdown and no timer;
   - an agent with its conversations;
   - a Bridge's folder and how to work in it.
 
-**Chats leave on their own.** A chat started from a briefing row or handed to a
-tab leaves when its item closes, once it has been quiet for 10 minutes. The chat
+**The Chat opens where you were.** Every room you pick, a tab, a workspace, a
+question or a Bridge, is kept in this browser (`bridge-cockpit.chatRoom`), and
+the Chat opens there next time. A kept tab or workspace that is gone opens the
+chat instead. With nothing kept the Chat picks once, as soon as the questions
+and the tabs are read: an open question or one answered within the hour, else
+the first tab that waits for you. It never switches on its own after that.
+
+**Chats leave on their own.** A chat started from a briefing row leaves when its
+item closes, once it has been quiet for 10 minutes. A chat handed to a tab stays
+`chat_keep_hours` (a day by default; 0 keeps it) after the latest of its
+handoff, what came back from its item and the item's end, so its result can
+still be read there. The chat
 keeps what it is about (`about`: the row, and the inbox item or task behind it,
 or the inbox item it was handed on as). On the tab poll, at most once a minute
 and at once after a verb that closes, drops or reopens an item, the cockpit
@@ -1202,8 +2948,10 @@ the workspace ref (`ws_ref`, carried on the session's tab), so two workspaces
 with the same title never share a count. A session that sits in no tab of this
 Bridge (another folder, another Bridge here) counts nowhere in the sidebar; the
 header names it only in its tooltip ("elsewhere on this machine"). The header
-chip ("3 working · 5 subagents · 2 workflows") adds up this Bridge's tabs and
-opens the Sessions page on a click.
+chip ("3 working · 5 subagents · 2 AI runs") adds up this Bridge's tabs and
+opens the Sessions page on a click. It says AI runs, not workflows, for the
+Claude workflows of a session: to a person the workflows are what the machines
+run, under Background jobs, which its tooltip names.
 
 **Order.** Three ways, picked at the top of the sidebar and kept in this
 browser. "Terminal order" keeps the terminal's order. "Most urgent first" orders
@@ -1223,7 +2971,7 @@ lists them; a tab picked in the sidebar starts the walk there. At the foot of
 the open tab stands the same bar the lists have under a detail: back, "2 of 5",
 the next tab with its workspace and Next, the two after it as links (keys `n`
 and `p` on the Chat page, when shortcuts are on). An answer that reached the
-tab, or "Close tab" in its head (for a tab that waits or is a bare terminal),
+tab, or the close in its head (for a tab that neither works nor asks),
 goes on to the next tab by itself, as settling an entry does in the lists. The
 walk keeps the order it began with: a tab answered meanwhile keeps its place
 while it is open, a closed one drops out, and a tab that starts waiting later
@@ -1263,6 +3011,37 @@ cockpit refuses, and says why:
 
 The audit line names the tab or workspace ref only, never the name. With the
 workspace list on, a renamed workspace is read again at the next poll.
+
+**A new chat, a new workspace, a workspace closed.** Three verbs make and unmake
+rooms through the terminal driver (`workplace.py new-tab`, `new-workspace` and
+`close-workspace`). Each needs the driver's optional verb (`new_tab`,
+`new_workspace`, `close_workspace`); without it the verb is refused with
+`driver_cannot`, so the page offers none. None takes the focus, none takes the
+write lock, and each audit line names the workspace and the kind, never a word you
+typed.
+
+- `tab_new {ws_ref, kind, text?, title?, model?, effort?}` opens one tab in a
+  workspace the terminal shows. `kind` is `agent` (a chat: `text` is your first
+  sentence and the agent's whole prompt, with no task around it, or nothing for a
+  free chat) or `shell` (the terminal's own shell, which takes no `text`). The
+  agent is `workplace.agent.new` with the model and effort of a launch
+  (`cockpit.launch_model`). The answer carries `ref`, the new tab, also when its
+  command did not start (the note then says so): the page opens it from there.
+- `workspace_new {title, kind, color?, cwd?, text?, model?, effort?}` opens a
+  workspace with its first tab. `kind` is `agent`, `shell` or `none` (a plain
+  shell as well: a workspace cannot be empty). `cwd` must be an absolute folder
+  that exists, `color` a palette name and the driver must serve `set_color`. The
+  answer carries `ws_ref` and `ref`, the workspace and its first tab.
+- `workspace_close {ws_ref, tabs}` closes a workspace and what runs in it. `tabs`
+  is the list of refs the page saw in it. Nothing closes while one of them works
+  or asks (the rule of a single close), never the control workspace, and a list
+  that differs from the tabs now in the workspace is refused as `tab_moved`. A
+  terminal that fails halfway leaves a note naming the tabs still open.
+
+A title follows the rules of a rename (a name in use, a task tab's name and a
+configured workspace are refused). A refusal of `workplace.py` has a code of its
+own: `name_in_use`, `name_managed`, `stale_workspace`, `title_invalid`,
+`driver_cannot`, else `new_refused`.
 
 **Organize with AI.** "Organize with AI" in the head of the sidebar (shown when
 the driver renames tabs) asks the model once for a tidier order: shorter names
@@ -1357,12 +3136,10 @@ click on the branch leaves it. Cmd or Ctrl Enter in the box sends as well.
   session was started with, the ask before the last, the last ask and the
   agent's words after it (drawn as text from Markdown), or the end of the
   screen.
-- **In the chat as cmux** a switch in the tab pane's head picks what a waiting
-  tab shows: "Reading" (the reading takes the pane), "Both" (the reading above
-  the terminal, scrolling in a row of its own; the default) or "Terminal" (the
-  question off the screen and the terminal, as without the guide). The sidebar's
-  "Waiting for you" follows it: with "Terminal" its rows show the screen's
-  words. The choice is kept in this browser.
+- **In the chat as cmux** the terminal always stays in view. A waiting tab shows
+  a bar at its lower edge: what it waits for, its steps as buttons and "Answer
+  yourself", which hands the keyboard to the terminal. "Whole reading" opens the
+  Topic field beside the chat, with the full reading above the task's file.
 - **Where it shows**: in the chat as cmux, the reading's first sentence under
   each row of "Waiting for you" and the whole tree in a tab's pane on the right;
   in the classic chat, the sentence on a slim tab card and the tree once "more"
@@ -1396,48 +3173,136 @@ click on the branch leaves it. Cmd or Ctrl Enter in the box sends as well.
 The settings page switches `enabled` and `auto` on top of the config, kept in
 `.bridge/cockpit/guide.json`, with its own "Reset to config".
 
+### The Setup page
+
+The first time someone opens the cockpit it should help them set the Bridge up; opened again later,
+the same place should say what still keeps the cockpit from working well. That place is the area
+**Setup** (de: Einrichtung) of **Settings**, the first of its areas. It is made of three ordinary
+`command` sections of `scripts/bridge-setup.py`, which the cockpit collects with `briefing.py
+collect --setup` (`cockpit.setup: false` leaves them and the area out). They travel as a page of
+the view like any other (id `setup`, group `settings`), so a row keeps its key, its filing and its
+sweep, but that page has no tab and no place behind More: Settings, Setup draws its sections with
+the same rows and steps a page has. A finding of the checks shows without opening Settings: the
+Settings tab carries the count (red for a red finding, and More wears its colour when Settings is
+folded behind it), and a link, a tile or the band that names the page opens Settings at Setup:
+
+- **What keeps the cockpit from working well** (`setup-checks`): a row only when something is
+  actually wrong, none when all is well. Task management is off (`work.enabled`), so the work pages
+  stay empty; no terminal driver starts agent tabs, so Let AI do it starts nothing (asked through
+  `workplace.py caps`, the same answer `bridge-cockpit.py status` reads; no answer is no finding);
+  no machine is named in `inbox.runner`, so a yes given on the page runs on whichever machine calls
+  `inbox.py run` ([`inbox.md`](inbox.md)); only the built-in briefing profile, or a profile copied
+  from `workflow/briefings/_template.yaml` that still holds a placeholder of the template (such as
+  `your-org` in the owners of its GitHub section), which finds nothing and reports no error; GitHub
+  switched on but `gh` missing or not signed in (red); and the keys of the `cockpit:` block that do
+  not work as written (the warnings of `status`); a service that is switched on but whose
+  `workflow/ai-services/` file names a provider its code cannot run, or cannot be used
+  (`provider_gaps` of `status`, [`ai-services.md`](ai-services.md)).
+  Each detail says what to do, with the exact key or command.
+- **Can be switched on** (`setup-available`): the features of the onboarding catalogue that are off
+  here and offered (Jev only with a key configured, the relay only when `mods/cockpit-relay/`
+  exists, the Bridge-Deck never), each with the step that switches it on, in the order
+  `purpose.focus` gives. A feature put off shows dim with its date until `remind_after` and then as
+  before; one silenced, or declined during onboarding, never shows.
+- **Switched on** (`setup-on`): what is on, information only.
+
+A finding gets the steps every finding has: Let AI do it, Advise, Close and Later. Let AI do it files
+the row to the inbox and starts an agent tab on it; once the problem is fixed the row is gone, and
+after the next full pass the cockpit closes the item it filed, so a fixed problem disappears by
+itself. A row of the catalogue offers Let AI do it too, and the agent tab runs the catalogue's own
+step for it (`/bridge-onboard --add <feature>`, or the config key it names), where the person
+confirms. Its own steps are the onboarding's decisions, **Ask again in 30 days** and **Not for
+me**; the cockpit's Later beside them only hides the row on this page until a day.
+
+What the page never does: switch a feature on, or write `bridge-config.yaml`. Its checks read only
+this Bridge's files (so `discovery.mode: confined` holds), with two probes of five seconds each:
+the terminal driver through the Bridge's own `workplace.py`, and `gh auth status` only while
+`integrations.github.enabled` is true. It never scans the machine. The one write is Ask again in 30
+days and Not for me: `work/onboarding-state.yaml`, in the schema of the onboarding's Discovery State
+(`deferred` with `remind_after` 30 days on, or `silenced`), through `briefing.py act` like any step
+of a command row. A file it cannot read, or one that is not a mapping, is refused and left as it
+is; a step reads, changes and replaces it under a lock (`.bridge/setup.lock`), so two clicks side
+by side lose nothing, and the file keeps its mode, but not its comments. The undo token carries
+what stood there before (status, `remind_after`, `decided_at`) and a digest of what the step
+wrote: the script restores that entry exactly, and refuses once the entry changed since. The catalogue
+behind the page is `skills/bridge-onboard/references/features.yaml`, one entry per feature of
+`feature-catalog.md`; a test holds the two equal. A profile can place any of the three sections
+on a page of its own (`view.pages`), where it stands with a tab as before and counts there; the
+ids are reserved, so no profile section may take one.
+
+The first visit's welcome offers **Set up first** beside Start the tour and Skip while the checks
+have a row: it opens Settings at Setup and closes the welcome without ending the tour, so the next
+visit offers the tour again.
+
 ### The first-run tour
 
 The first time the page opens it offers a short tour, the way other tools introduce
 themselves: a welcome with "Start the tour" and "Skip", then one step per area with
 that area lit up and the rest dimmed: the tabs on top, Start, Today, the agent tabs
-(not on a narrow screen), Ask, Sessions, Help and settings. Next and Back go
+(not on a narrow screen), Ask, Sessions (Running now where Work through lists the
+sessions), Help and settings. Next and Back go
 through it (also the arrow keys), a step opens the page it shows, and the end goes
-back to the page where it began. Skip or `Esc` ends it at any step.
+back to the page where it began. Skip or `Esc` ends it at any step. While the Setup page has a finding the welcome also offers
+**Set up first** ([The Setup page](#the-setup-page)).
 
 How it ended (finished or skipped, with the date) is kept on the server in
-`state.json`, key `tour`, so another browser does not offer it again. Help ("Start
-the tour") and Settings, Appearance, Introduction start it again at any time; Settings
+`state.json`, key `tour`, so another browser does not offer it again. Help in the
+header, Settings, Appearance, Introduction and the bar of Explain start it again at
+any time; Settings
 can also offer it again on the next visit (verb `tour_reset`). `cockpit.tour:
 false` switches the offer off for a Bridge whose people know the page; the buttons
 still start it. In mock mode it stays closed unless the link carries `&tour=1`.
 
 ### Explain this page
 
-"Explain" in the header (the bulb; also in Help) lays notes over the page as it
+"Explain", the first item of Help in the header (`?` with the shortcuts on), lays notes over the page as it
 stands: each area the page shows gets a numbered note beside it, a ring around it
 (an ellipse for a button or a chip, a frame for a row or a column) and an arrow from
 the note to the ring. Every page explains its own parts: Start, Today, Chat,
-Sessions, Background jobs, A2A connections, Tidy up, Jev and Settings each have their
-own list, and a page of the briefing profile explains the parts it is built from
+Files, Sessions, Background jobs, A2A connections, Check tasks, Jev and Settings each have
+their own list (Settings at its area Setup one of the three lists there), and a page of the briefing profile explains the parts it is built from
 (the count beside its title, the overview tiles, the sorting bars, a section's
-head, its rows, the GitHub figures and boards, the quota gauges, the costs, the
-dates). The notes come in rounds so none covers another: the page first, the header
-(views, As of, Reload, Ask, History, Claude, Notes, Help) in a round of its own after
+head, its rows, the GitHub figures, filters and boards, the quota gauges, the costs, the
+dates, the folder bar, the machines and a sub page's head card). The notes come in rounds so none covers another: the page first, the header
+(views, As of, Tabs, Ask, History, Notes, Claude, Help) in a round of its own after
 it, read from left to right. Next, Back and the arrow keys page through the rounds,
 and the bar says which round shows and how many areas stand further down (scroll,
 and they follow). An area the page does not show right now is left out. A click
-anywhere or `Esc` closes it, and its bar starts the tour. It sends nothing and keeps
-nothing.
+anywhere or `Esc` closes it, and its bar starts the tour. It sends nothing.
 
-### Help
+**What bothers you here?** (de: Was stört hier?) in the bar opens a short field
+(300 characters). While it is open, a click on a note picks that area instead of
+closing the window, and a click beside the notes closes nothing, so a slight miss
+never loses the sentence; **Cancel** closes the field. **Note it** keeps the sentence with the page, view and area
+as a proposal in `work/_learning/proposals/` for the next round of
+`/bridge-learn` (verb `explain_note`); the window says it was noted and that
+nothing was sent. The audit line names the place, never the sentence.
 
-Help (`?` in the header) shows one topic at a time, in tabs: **This page** lists
-the same explanations as the notes, for the parts this page shows, and the header
-below them; **Rows** says what a row's mark and its section mean; **Acting** covers
-the panel, Let AI do it, Advise, Close and Ask; **Keys** has the shortcuts, or how
-to switch them on; **Costs and safety** says what spends tokens and what leaves the
-machine. Its title row starts the tour and shows the notes on the page.
+**What the page is used for.** With `cockpit.usage.clicks` on (the default) the
+page counts which control was clicked from which page, view and area, by the
+control's name (its `data-u` or its own classes, never its words), and sends
+the counts in small batches (`POST /api/clicks`, every 30 seconds while the
+page shows and when it hides). The server keeps only those names and drops any
+event that holds words, an item key or a path. `scripts/cockpit-usage.py`
+counts this log and `audit.log` since its last run (14 days on the first,
+`--days n` or `--since YYYY-MM-DD`) and proposes, at most 10 a run and never
+twice for one topic, what may go: pages no longer opened, areas and controls
+not used (judged only over 14 days the click log covers), pages left again
+within 5 seconds, and back and forth between two pages. Each becomes a proposal
+in `work/_learning/proposals/` for `/bridge-learn`; `--dry-run` writes nothing.
+Nothing runs it on a timer: run it at the start of a round.
+
+### Look up
+
+The card **Look up** in Settings, Appearance (between Keyboard shortcuts and
+Introduction; Help in the header opens it on any of its topics) shows one topic
+at a time: **Rows** says what a row's mark and
+its section mean; **Acting** covers the panel, Let AI do it, Advise, Close and
+Ask; **Keys** lists the shortcuts while they are on, and while they are off says
+only that they are off and where to switch them on (mouse first: no key named;
+the Help menu offers Keys only while they are on);
+**Costs and safety** says what spends tokens and what leaves the
+machine. What a part of the page is for, Explain shows on the page itself.
 
 ### Keyboard
 
@@ -1456,15 +3321,18 @@ the focus is not in a text field:
 | `r` | reload, fresh |
 | `/` | the command box |
 | `g` then `t` | the agent tabs |
-| `n` / `p` | the next / previous entry of the walk you are in: a detail opened from a list, the Today list, the Chat page's tabs, the focus on the start page |
+| `g` then `a` | the start page, the focus on its Areas; there `j` / `k` move and `Enter` picks |
+| `Esc` | also: on Work, Chat or Sessions with nothing open, show every area again |
+| `n` / `p` | the next / previous entry of the walk you are in: a detail opened from a list, the Today list, the Chat page's tabs, the focus on the start page, the Files view |
 | `Alt` + `1` to `9` | the page tabs |
-| `?` | help |
+| `?` | explain this page |
 
 The row keys (`j` `k` `Enter` `x` and the five letters) act on the Briefing
 page only; `n` and `p` act while a detail opened from a list is open (the item
 drawer included), on the Today list with a row open in the center, on the
-Chat page (where `n` starts the walk through the tabs that want you) and on
-the start page in the focus view; the others work on every page. A text field keeps every key,
+Chat page (where `n` starts the walk through the tabs that want you), on
+the start page in the focus view (with `cockpit.focus_to_files`, `n` on its
+last step opens the Files view) and in the Files view of the work tab; the others work on every page. A text field keeps every key,
 `Alt` + a digit included, because on many keyboards that is how a bracket
 or a pipe is typed: leave the field with `Esc` first, for instance after
 the Chat page put the cursor in its box.
@@ -1474,6 +3342,10 @@ number a row shows and the letter of the table above. A row
 with a running tab jumps there instead of starting a second one, and `a` or
 `w` is refused for an entry only you can do, a row that waits for someone else,
 and a yes already given.
+A text that starts with `?` is no code but a search: `?gateway september`
+opens the work tab on its Files view with what the search found, for this
+visit only: the next load opens the work tab on the view it had before. Every
+code stays as it was.
 
 ## 4. Safety model
 
@@ -1490,15 +3362,19 @@ nothing a stranger could trigger:
   own) whose value is also derived from the key and dated, so the cookie is
   not the key and the server stops taking it after three days; the address
   bar keeps no code;
-- every request must name `127.0.0.1:<port>` or `localhost:<port>` as its
-  host, every click must come from the page itself (`Origin`, a second value
+- every request must name `127.0.0.1:<port>`, `localhost:<port>` or, with
+  `cockpit.local_name`, `<local_name>.localhost:<port>` as its host, every click must come from the page itself (`Origin`, a second value
   derived from the key in a header, `Sec-Fetch-Site`), and the page allows no frames,
   no scripts from elsewhere and no external addresses at all;
 - the page sends verbs, never commands: a fixed list (approve, defer, drop,
-  close, settle (done or not doing), urgency, priority, note, check tasks, keep
-  open, close task, launch, adopt, send, key,
-  close tab, snapshot, ticker settings, ticker refresh, ticker edit, ticker
-  profile, guide read, guide settings), every id
+  close, settle (done or not doing), shelve (a task parked as an idea, with its
+  reason), urgency, priority, note, attach (a document into a task's
+  deliverables), merge (open tasks into one, and its undo), check tasks, keep
+  open, close task, files ask, launch,
+  adopt, send, key,
+  close tab, done and close tab, finding seen, explain note, snapshot, ticker
+  settings, ticker refresh, ticker edit, ticker profile, guide read, guide
+  settings), every id
   checked again before it reaches a script, every argument a separate word,
   texts after `--`;
 - the news ticker reads only the feed addresses you wrote into
@@ -1531,10 +3407,32 @@ nothing a stranger could trigger:
   the read-only quick chat (`claude -p` with Read, Grep and Glob), the A2A
   shapes of section 5, `codex exec --sandbox read-only`, the Haiku judge of how
   complex an item is (no tools, no settings, no session), "Organize with AI"
-  (one call, no tools, it keeps only tab refs and task slugs from the answer)
+  (one call, no tools, it keeps only tab refs and task slugs from the answer),
+  the summary of a point's Activity, the instruction line of Work through and
+  Ask AI on the Files tab (each one call with no tools, no settings and no
+  session, its own JSON schema; Ask AI sends at most 12 records as data, never
+  one the block list of `cockpit.files_search` holds, and keeps only the record
+  numbers its answer names;
+  the instruction line's answer is only a plan the page shows, checked against
+  the verbs each point offers, and nothing runs before your click on Run), two
+  read-only `git log` shapes over one task's `deliverables/` and its
+  `STATUS.md` (five seconds each, the folder checked against
+  `work/tasks/<slug>` or `work/streams/<slug>`)
   and `/bin/ps eww -o command= -p <pid>` with a pid of digits only, for the
   Sessions page. The cmux CLI is never called directly: whatever the page does
   to an agent tab goes through `workplace.py` and its terminal driver;
+- a new chat (`tab_new`, `workspace_new`) hands your first sentence to the agent as one shell word: the server sends it
+  glued to its flag (`--text=...`), `workplace.py` checks it (no control code but a line break and a tab, at most 2000
+  characters) and quotes it for the shell, and a sentence that starts with a dash goes after `--`. It is the agent's
+  whole prompt, never a command. A shell tab and a workspace of kind `none` take no sentence. Their audit lines name
+  the workspace and the kind. As an argument the sentence stands in your own process list for a moment, and a driver
+  may keep the command in a private launcher file (cmux does: mode 0600, pruned after 7 days), as for any start;
+- the live terminal (`tab_keys`) is a keyboard, so it carries none of the guards of an answer: you type at the
+  screen you see, into a shell as well. It takes what a keyboard makes and no more: a key of the list `TERM_KEYS`,
+  text without a control code, a paste without one, checked in the server and again in `workplace.py`, so no
+  escape sequence reaches a terminal through it. Only a click on the screen gives it the keyboard. Its audit
+  line names the tab, never what was typed, and the driver gets the keys as an argument, so for a moment
+  they stand in your own process list;
 - an answer to a tab reaches only the question you saw. It carries the hash
   of that question, the tab's name (unless that name is empty or longer than
   120 characters, which the check does not take) and the state it was in. Before anything is
@@ -1549,6 +3447,17 @@ nothing a stranger could trigger:
   takes only its options (a typed digit would pick one past that check). A
   refusal sends nothing and says so
   ("The tab moved on before the answer, nothing was sent.");
+- a document of a task (`GET /api/flow/doc`) is served only from below that
+  task's `deliverables/`, with no link on the way and only a regular file, and
+  never runs as a page of the cockpit: an HTML file opens sandboxed (its
+  scripts cannot reach the cockpit, the network or a form), an image or a text
+  file under a policy that loads nothing else, a PDF in the browser's viewer,
+  anything else as a download. An attached document (`POST /api/flow/attach`,
+  off unless `cockpit.flow.attach.enabled`) goes only into the deliverables
+  folder of an open task, as a new file (never over one), under a name cleaned
+  of paths and odd characters, within `max_mb`; this one route takes a larger
+  body, every other POST stays at 64 KB. Its audit line names the row and the
+  size, never the file's name;
 - "Organize with AI" changes only what you ticked, of a proposal that is at
   most 15 minutes old. Before it applies anything the server polls the tabs and
   reads the workspaces again; an item whose value is no longer the one it was
@@ -1563,6 +3472,11 @@ nothing a stranger could trigger:
 - nothing goes out without your click, and an inbox action approved on the
   page still runs only at the next `inbox.py run`, on the machine named in
   `inbox.runner` ([`inbox.md`](inbox.md));
+- the Setup page switches nothing on and never writes `bridge-config.yaml`: its rows are
+  `briefing.py` command sections of `scripts/bridge-setup.py`, which reads only this Bridge's files
+  and probes `gh` only while GitHub is switched on; its one write is Ask again in 30 days and Not for me into
+  `work/onboarding-state.yaml`, through the same row step and undo as any command row, no verb of
+  its own ([The Setup page](#the-setup-page));
 - the server collects with `--no-save`: the page never moves the "since last
   time" baseline of your text briefing;
 - every POST except `/api/reload` and `/api/presence` (whether a page is
@@ -1573,6 +3487,33 @@ nothing a stranger could trigger:
   rows, judge), `/api/jev/run` and `/api/jev/rank` (`jev_run`, `jev_rank`,
   requests, rows and model sent to Jev) and a triage run (`triage`, click or
   daily, number of items, model; a click while one runs says `started=false`).
+  `GET /api/find` is a read: it runs `scripts/work-find.py` through the
+  runner's allowlist with the words as one argument after `--`, leaves no
+  line, and refuses a query shorter than 2 or longer than 200 characters or
+  one with a control character before anything runs.
+  `GET /api/timeline` is the same kind of read: `scripts/work-find.py
+  --history` through the runner, the words one argument after `--`, the
+  transcripts' folder only where the config names one that exists, `from`
+  and `to` checked as days.
+  `GET /api/logrange` is one too: `scripts/work-find.py --rows` or `--events`
+  and `scripts/briefing.py commits` through the runner, every parameter checked
+  before anything runs (days, `sources` log or other, a section id only with
+  the log, words and ids with the log only with the `rev` of an answer, at most
+  200 ids), no line.
+  `GET /api/records` is a read too: the records of the Files tab's list
+  (every task, stream and closed task, its front matter read in place, newest
+  first, at most 2000), no runner call and no line. So is
+  `GET /api/chats/archive?days=n`: the questions of the archive of the last
+  1 to 14 days, at most 60, never the removed ones.
+  `GET /api/tab-history` is a read too: a transcript of this machine streamed in
+  place (found through the live session of a known tab, never from a path the
+  request gives) or the scrollback through `workplace.py screen`, the ref checked
+  as a tab and known, the search at most 200 characters and the numbers checked
+  before anything is read, every text scrubbed, no line.
+  `/api/seen` is the page's own measure: opening a page or a view of it
+  leaves `page_view`, the page id and `view=` (the work tab's view, the start
+  page's view, else `-`), nothing more. The first line waits for the model, so
+  a remembered view is measured as what it is.
   Read-only verbs and requests refused before anything happened leave none;
 - a question for Claude carries a signature (HMAC-SHA256) made with
   `relay.key`, which lives outside the Bridge in a folder only you can open
@@ -1597,6 +3538,72 @@ use it until it ends. That needs a program running on your computer, which
 could also read the key in `token`; stop the dashboard (`bridge-cockpit.py stop`) when
 you test web code you do not trust on this computer.
 
+### A person's question
+
+With `cockpit.served.ask` the Chat of a person works, in `scripts/lib/bridge_cockpit/person_ask.py`. It is not the owner's quick question. Before each question the documents of their files are copied into `<state>/people/<name>/room`, chosen by the rule of their files tab, and `sources.documents` of their workspaces comes along: folders through a mirror that a thread of its own refreshes at most every ten minutes, so a question never waits, and named files of the Bridge such as `folder/*.yaml`. `scripts/lib/document_paths.py` refuses the home folder, code, cloud-synced and system folders and wide patterns, when a definition is validated and again on the resolved folder. Links are not followed.
+
+It follows the workspace: only a workspace at `boundary.level: room` feeds the folder, and a person without one has no question. `wall` promises the operating system's sandbox, which is not built, so it opens nothing either.
+
+The session runs in that folder with Read, Grep and Glob and without settings, and Claude Code refuses a path outside the folder by itself: relative, absolute, by Grep and through a link. That is the CLI's own limit, with no sandbox of the operating system behind it. `auth: login` uses the Claude login of the service's user. **A subscription login is meant for its holder alone: use it to try this yourself, and give every further person access of their own**, `auth: key` for instance. `auth: key` runs on that key and nothing else: a configuration folder of its own holds no login and every other way to sign in is removed, so a bad key fails instead of falling back to a subscription. A question is a plain text; context, other kinds, a model, the control session are refused. What stands in a file is data, the system text says so and read tools give it nothing to act through. A person has one question running at a time and `daily_questions` a day, chats are kept per person in `chats.json`, and a session id never reaches a page.
+
+`served.ask.codex` opens a second road for the people it names, each on a Codex login of their own. Sign one in once on the machine: `CODEX_HOME=<state>/people/<name>/codex codex login --device-auth -c 'cli_auth_credentials_store="file"'`. Until that file exists the road stays closed. `served.ask.manager` names who switches each person between what they are allowed, or off, in the card Chat for each person on their Settings page; the choice is kept in `<state>/ask-engines.json`. A Claude login stays with the one person under `people`, so the card offers it to nobody else, and a chat that changes road starts a new session.
+
+Codex reads through a shell, and its `read-only` sandbox reads the whole disk, keys included. So a person's run does not use it: it carries a filesystem profile of its own (`PERSON_CODEX_WALL` in `scripts/lib/ai_services.py`) that the operating system holds, no network, no web search, no writing, a clean environment and no `AGENTS.md` from the folder. Planted files in the home folder, the temp folders and on an external disk stayed out of reach by `cat`, `ls` and `grep`, in a real run and in its resume; a hard link inside the folder stays readable, which is how a mirrored document arrives. That was measured on macOS with Codex 0.166, so elsewhere the road stays closed. A PDF reaches Codex only through its `.pdf.txt`, so a scan without text stays out of its sight.
+
+PDFs come along. With `pdftotext` (poppler) or pypdf on the machine a `.pdf.txt` stands beside each, so Grep finds their words; without one, or for a scan, only Read reaches them, one file at a time. Contents go to the model provider of that key. Referenced secrets are never resolved: a file is copied as it stands.
+
+### A person on a workspace
+
+The owner logs in with the key and sees everything. A person named under `members:`
+of a workspace ([`workspaces.md`](workspaces.md#members)) is logged in with
+`python3 scripts/bridge-cockpit.py url --person <name>`, a link good once for a
+minute, and from then on carries a cookie of their own with its own request token.
+The server still answers on `127.0.0.1` only; this is the first half of opening a
+cockpit to others, not a way in from outside.
+
+For a person the rule runs the other way round from the owner's page: nothing goes
+out unless `scripts/lib/bridge_cockpit/access.py` lists it.
+
+- **Routes and verbs:** the state, the live channel, a task and an inbox item they can
+  see, the records of the files tab, and the verbs that move their own rows. Every other
+  route and verb answers 403.
+- **Their page:** Start, Today, the files and the Chat, named by the server in bootstrap
+  with their routes and verbs. The page sends nothing else (`api.js`) and shows no
+  control for it: no tabs, Ask, History or reload, no Let AI do it, no check, no pin, no
+  Work through. Today is the plain day, empty sections stay out, and the Chat says that
+  questions are not set up. The files search filters their own list, the server's search
+  reads the whole Bridge and stays closed.
+- **Records:** every file of their areas, closed ones too, placed by the rule
+  `workplace.py` places a task with: `area:`, then `slugs:`, then `contexts:`. What only
+  the default area would take stays out. A slug that also names a folder outside their
+  areas does not open without its exact path.
+- **Who did it:** `audit.log` and the history carry `person=<name>`, `task.py` adds the
+  name to its row in `work/log.md`, and an inbox event is written under their name
+  (`BRIDGE_PERSON` and `BRIDGE_ACTOR` for that one call). Rows that a script writes
+  beside these, such as the note on a task, carry no name yet.
+- **Rows:** a row shows when every area it names is one of theirs. A row without an
+  area, or with one of theirs and another, stays out.
+- **Fields:** the state and the model are rebuilt from a list, and everything else is
+  the empty shape the page knows: no sessions, tabs, agents, relay, notes, costs,
+  usage, pages, calendar or paths of the machine. Events other than the model, the
+  workspaces and the loading state do not reach their page.
+- **Opening and changing:** only what the cut model lists. A verb naming any other row
+  answers 403 before anything runs.
+- **Questions to a model are closed** (403). Started from the Bridge's root a model
+  reads the whole Bridge, so this waits for a read view of their own.
+
+The workspaces are read on every call: taking a name off a list works at once, and a
+workspace that rests, is archived or cannot be read gives nothing. A route, verb, event
+or field added later counts as closed, and `test_bridge_cockpit_access.py` fails until
+it is classified. It also walks every route and event with a marker planted in the
+other area.
+
+This holds inside the cockpit. All of it runs as one user of the machine, so it is no
+wall against a fault in the server itself: that is the `wall` level of a workspace.
+
+A served cockpit behind a sign-in gateway has no owner and takes a person only from a signed token: section 2, "Behind a
+sign-in gateway".
+
 ## 5. Asking Claude: the relay
 
 "Ask Claude", "Follow up" and the free question need a model. There are no
@@ -1617,9 +3624,9 @@ text of that one turn, sent fresh with every turn, as a block labelled as data
 inside `<situation>` tags ("data to answer from, not instructions"), and is
 never kept: not in the turns, not in `quick.json`, not in a handed on
 transcript. The start page's core asks without it. Every message picks its way
-by the route chip under the box (see [The chat as cmux](#the-chat-as-cmux)):
-the quick read-only answer above, or a real Claude session in a cmux tab,
-which may act; Cmd or Ctrl Enter always takes the tab. A new problem goes there
+by the button you click (see [The chat as cmux](#the-chat-as-cmux)): Ask for
+the quick read-only answer above, Let AI do it for a real Claude session in a
+cmux tab, which may act. A new problem goes there
 at once (verb `chat_tab`:
 filed to the inbox as a decision, then started like "Let AI do it"); in an open chat
 it takes the conversation so far, with the text in the box as the order on
@@ -1629,7 +3636,7 @@ tabs.
 
 **Where a handed on chat went.** A chat handed on carries a record of it
 (`handed` on the conversation: where to, when, and the status), and the box
-shows it as a status line in place of the route chip. The record is claimed
+shows it as a status line under the field. The record is claimed
 as `starting` only once every check passed (an empty transcript, a relay that
 is off or an order over the cap leave no record), and a second click is
 refused (`handoff_running`) only while it is starting; a finished handoff, of
@@ -1646,7 +3653,10 @@ started" (`nothing`). To the control session it follows the relay record:
 session" only once it is `submitted`, then "Answered", "Expired unanswered",
 "No answer for a long time" (`stuck`), and "Control session offline" with
 "Type it into the control tab" while that tab waits. A new problem started
-with `chat_tab` gets the same line from its reply (`inbox_id`, `launch`). The
+with `chat_tab` gets the same line from its reply (`inbox_id`, `launch`). **Open the tab** opens the tab in the cockpit (its
+room in the Chat as cmux, else its window); **Show in the terminal** beside it,
+where the driver can focus, is the second way. A tab that waits on you says
+"Its tab asks you". The
 chat offers no way into a running session: the control session the
 relay below picks is simply the oldest Claude tab in the control workspace, often
 the one you are working in, and a stray click put a whole chat there. With
@@ -1654,6 +3664,39 @@ the one you are working in, and a stray click put a whole chat there. With
 on a row without a task files it to the inbox and starts a reporting tab, and a
 question `via` control answers `relay_disabled`. An answer that arrives while
 the chat is not in view shows as a note with "View".
+
+**What came back.** On each sweep the cockpit copies onto the chat what came
+from its inbox item since the handoff (`handed.outcome`: `{text, closed,
+at_ms, asks}`, quick.py `handoff_outcome`; the person's own start note does
+not count). The status line then reads "Result: ..." (a note, closed or not),
+"Asks you: ..." (a note headed `Question:` or `Frage:`) or "Done, without a
+note"; the same text stands under the last turn, and every question list marks
+the chat (logic.js `askOutcome`, `askMark`). An order typed with the handoff
+(`quick_handoff` with `text`) goes on the new item as "Start note: ..." and
+the tab starts with it, told never to close the item on its own: it writes its
+result as a note `Result: ...` and asks before closing with a note
+`Question: ...`. Its prompt then keeps no rule to close on its own (neither "close
+it when settled" nor the rule for an overtaken item), so the two never disagree.
+Every start of an inbox item with a start note gets that rule, and so does "Let
+AI do it" or "Advise" with a note typed on an inbox row, and Analyse in a tab on
+a job. A second handoff while the first tab is still starting or already at
+work writes the order once, as the start note, and says to type it into that
+tab too. A handoff whose tab is gone three minutes after the start without a
+word (as Work's "Tab gone") reads "Tab ended without a word" with **Start
+again** and **Open the item**, and its question carries the marker "tab ended"
+instead of "in its tab".
+
+**Titles of questions.** A question is named by what it is about: the job with
+its machine and state, and for a failure its day ("chat-bot · mini · last run
+failed 10/16"; a question about a job from before it carried that is read from
+its own opening words, never the trace copied into it), else the row, task or
+inbox item it was asked on, else
+its first sentence (or the title in «» of a row's prompt), cut at a word.
+Titles that read alike carry when they were asked ("today 07:34", "yesterday
+...", "20.10. ..."). The question window, the Chat page, the cmux sidebar and
+the head of an open chat use them. The question opened last is kept in this
+browser (`bridge-cockpit.lastAsk`), so a reload and the header's Ask open it
+again; a follow up goes on in it only while the server still lists it.
 
 The chat only reads, but it is told what the Bridge can do: its system text
 names the "Let AI do it" button and says to point there when something needs
@@ -1711,9 +3754,31 @@ owner's approval answers with a state that is not final: the turn shows as
 held, the tab wears a dot, and "look again" reads the task with `a2a.py get`
 without sending anything new. Conversations are kept in `agents.json` in the
 state dir, and one that leaves the list goes to the archive (see the Chat).
-Without a peer there is no tab. The quick chat's system text names
+Without a peer there is no tab. With `chat_layout: workspaces` there is no tab
+either: the same page stands in the Chat as its A2A area (see [The chat as
+cmux](#the-chat-as-cmux)). The quick chat's system text names
 `infra/a2a-peers/` too, so it can suggest asking an agent; it sends nothing
 itself.
+
+**Peers from a script** (`cockpit.a2a_sources`). Some agents are not reached by
+a public card and a bearer: they sit behind an access proxy or a broker, and
+`skills/a2a` cannot speak to them. A skill that can names its script in
+`cockpit.a2a_sources`, and its peers join the list beside the peer files, with
+"through <name>" under access. The cockpit calls that script only in four
+shapes and reads the last JSON line it prints:
+
+| Call | Answer |
+|---|---|
+| `peers --json` | `{"peers": [{"id", "summary"?, "owner"?}, ...]}` |
+| `card --json <peer>` | `{"card": {<agent card>}}` |
+| `ask --json --wait 90 [--context <id>] <peer> -- <text>` | as `a2a.py ask --json` |
+| `get --json <peer> <task>` | as `a2a.py get --json` |
+
+The script is a skill of the Bridge, so it is found under `--root`, also for a
+cockpit run from another checkout. It keeps its credentials to itself; nothing it is given or prints
+carries one, and the card summary keeps only scheme names. The list of peers is
+read again every five minutes or on "check again", and a source that fails
+keeps its last list. A peer file of the same name wins over a source's peer.
 
 **The agent bar.** Above the conversation stands the chosen agent: its name,
 the dot of its last check, and what failed (card not readable, last message not
@@ -1798,7 +3863,8 @@ fixed verbs of section 4.
 
 ## 6. Files
 
-Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores.
+Everything lives under `.bridge/cockpit/` in the Bridge root, which git ignores,
+except the record of settled rows in `work/cockpit/settled/` (below).
 The last column says whether a file holds inbox, task or chat text (titles,
 gists, questions, answers): those are the files to think of when you back up,
 share or clean up.
@@ -1807,23 +3873,35 @@ share or clean up.
 |---|---|---|
 | `token` | the key, kept across restarts until `new-token` (readable by you only) | no |
 | `server.json` | the running server: pid, port, version, never the key (readable by you only) | no |
+| `work-sync.jsonl` | the paths of a person's entries that wait to be committed and pushed (`serve --served` only) | no |
 | `server.log` | errors, dated, never a key, cookie or request body; kept to one backup (`server.log.1`) | no |
 | `stdout.log` | what the process itself prints: the dated line of each start, and a crash before the server is up | no |
 | `audit.log` | one line per write action, question, route, Jev request and triage run | no: ids and counts only, though an inbox id carries a slug of its title |
+| `usage.jsonl` | the click origin log (`cockpit.usage.clicks`): per minute which control from which page, view and area, with the verb it sent and a count; rotated at 256 KB to `usage.jsonl.1`; read by `scripts/cockpit-usage.py` | no: names from the code and counts only |
+| `usage-run.json` | when `scripts/cockpit-usage.py` last ran without `--dry-run`, the start of its next period | no |
 | `history.json` | what was closed, dropped, settled or hid, with its undo (readable by you only) | yes: the titles |
-| `state.json` | rows hidden on the page, rows marked done or not doing, team runs started from the page, the start page's tiles and pins, how the first-run tour ended | yes: the title of each row marked done or not doing |
+| `state.json` | team runs started from the page, the start page's tiles and pins, how the first-run tour ended, the workflow runs marked as checked, the sessions said not to work on a task (`session_refused`: per session id the slugs Not this task named, at most 8 each); and this machine's copy of the rows hidden or marked done or not doing (the shared record is `work/cockpit/settled/`, below) | yes: the title of each row marked done or not doing |
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
 | `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |
+| `tabs-seen.json` | since when each agent tab is in its state, so how long a tab has waited survives a restart of the server | no: tab ids and times only |
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
 | `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |
+| `workspaces.json` | the two switches of the settings page (`{"enabled": bool, "off": [names], "inactive": [names]}`) | no |
 | `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |
 | `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
+| `people/<name>/chats.json` | a person's chats, day count and session ids, with their reading folder `room` and their Codex login `codex` beside it; `documents/` and `pdf-words/` beside `people/` hold the mirror of `sources.documents` | yes: a person's chats |
+| `ask-engines.json` | which road carries each person's questions, as `served.ask.manager` set it | no |
+| `people/<name>/codex/auth.json` | the Codex login of one person, written by `codex login`; the cockpit only looks whether it is there | no |
 | `chats/` | every chat and agent conversation that left its list, whole, one file a month (`quick-YYYY-MM.jsonl`, `agents-YYYY-MM.jsonl`), never deleted (folder and files readable by you only) | yes: the chats |
 | `agents.json` | the conversations with other Bridges and A2A agents (readable by you only) | yes: the conversations |
 | `jev.json` | Jev's last rating and today's token total | yes: the titles it rated |
-| `jev-pages.json` | Jev's order per page | yes: the titles |
+| `jev-pages.json` | the order per page, by Jev or by Haiku (Prio's read-in: which ranker made it, when, how many points, held back, merged, the fallback if one ran) | yes: the titles and Haiku's reasons |
+| `flow-prio.json` | the read-ins with Haiku of the last day (`prio.py`, `cockpit.flow.prio.haiku.budget_per_day`): the time and cost of each call | no |
+| `flow-themes.json` | the themes of Work through (`themes.py`, `cockpit.flow.themes`): the themes with their names, the theme of each open point and whether a person placed it, the suggestion for each point with its half sentence of why, the runs of the last day (the budget), and the last 500 moves of a point from one theme to another (the names as they were, by the AI or a person) for its Activity | yes: theme names and the reasons of the suggestions |
+| `flow-activity.json` | Activity of Work through (`activity.py`): the summary of each point kept with the fingerprint of the rows it read, and the calls of the summary, of the instruction line and of Ask AI on the Files tab (under `files`) per day (their budgets) | yes: the summaries |
+| `flow-checkin.json` | the looks of the Bridge before a check-in (`checkin.py`, `cockpit.flow.checkin`): per point the newest look, the check-in day it was for, what it found and where, what it could not read, and the calls of the day (its budget) | yes: what it found |
 | `relay/inbox/` | questions for a session (written by the server) | yes: the questions |
 | `relay/done/` | what became of each (written by that session) | yes: the answers |
 | `relay/heartbeat/` | one file per Claude Code session with the relay on | no |
@@ -1834,10 +3912,479 @@ the cockpit (git ignores them too):
 | File | What | Inbox or chat text |
 |---|---|---|
 | `.bridge/triage.json` | the last triage run (`scripts/triage.py`): per task and inbox item a gist, a verdict and who does it | yes: titles and gists |
+| `.bridge/describe.json` | describe (`describe.py`): per item the hash of the brief as it was written, the waiting proposal, the last error and cost, and the calls of the last hour (the budget) | yes: proposed goals and criteria |
+| `.bridge/cockpit/issue-check.json` | Check with AI (`issue_check.py`): per issue the last verdict, its reason, evidence, what is still open, the review comment, the model, the cost and when | yes: a review comment drafted from the issue |
 | `.bridge/task-review.json` | the last task check (`task.py review`): per task a verdict and its reason | yes: task titles and reasons |
+| `.bridge/task-merges.json` | each merge not taken back (`task.py merge`): both STATUS.md files as they were before and after it, so `task.py unmerge` puts them back byte for byte; an undo removes its entry | yes: the whole text of both tasks |
 | `.bridge/resources/workers-view.json` | the full worker view of the Resources section (`scripts/bridge-resources.py workers`) | no |
 | `.bridge/resources/costs-view.json` | the last cloud cost report with its source, read time and age (`scripts/bridge-resources.py costs`) | no |
 | `.bridge/resources/usage-days.json` | the token counts of each closed day per source, model, project and Bridge, 120 days | no: numbers under model, project and Bridge names |
+
+One folder the cockpit writes is **not** under `.bridge/` but tracked, because
+it must reach every machine:
+
+| File | What | Inbox or chat text |
+|---|---|---|
+| `work/cockpit/settled/` | every hide ("not now until <day>"), every row marked done or not doing, every finding marked seen, every "show again", one YAML file each (`<UTC stamp>-<seq>-<rand>-<act>.yaml`, or `legacy-<hash>-<act>.yaml` for an entry migrated from `state.json`), written once, never changed; the newest file for a row decides | yes: the row titles |
+
+### Upgrading: Work through as a view, its themes and the advice
+
+Nothing has to be done by hand; each point is opt-in or read only by a page
+that knows it:
+
+1. **No tab `@flow`.** Work through is the last view of the work tab while
+   `cockpit.flow.enabled` is true. A page stored as `@flow`, or a link to it,
+   opens the work tab in that view; `cockpit.work_view: flow` opens it there
+   too. Off, a stored `flow` view opens Due.
+2. **Themes.** `cockpit.flow.themes` (off by default) adds `flow-themes.json`
+   to the cockpit's folder, the verbs `flow_themes_run`, `flow_theme_move`,
+   `flow_theme_new` and `flow_theme_rename`, the state's `themes` and the
+   event `themes`. Without them the view groups by area.
+3. **The advice of a card.** `/api/ask` takes `origin` (`flow`) and `keys`
+   (true or false), both optional and kept by the conversation: asked from a
+   card the answer names the card's button and no key, elsewhere it names Cmd
+   Enter only with `keys: true`. An older page sends neither and its answers
+   name no key any more.
+
+See [Work through](#work-through-flow).
+
+### Upgrading: the tabs, Activity and the instruction line
+
+Nothing has to be done by hand. With `cockpit.flow.enabled: false` nothing
+changes at all: every new route and verb answers `409 flow_off`, the verbs
+before they read their arguments (a bad argument does not turn it into a 400).
+
+1. **The page.** On an open point of Work through the card carries its content
+   only; the verbs moved to the right column (What you can do, under each
+   other) and the detail blocks gave way to the tabs under the card and the
+   Fields. The tab picked is kept in the browser as `bridge-cockpit.flowTab`.
+2. **New routes, read only or behind their own key.** `GET /api/flow/activity`
+   (the list of a point) and `GET /api/flow/doc` (a document of a task) need
+   only `cockpit.flow.enabled`; `POST /api/flow/attach` also
+   `cockpit.flow.attach.enabled` (off by default). A page that does not call
+   them is not affected.
+3. **New verbs.** `flow_activity_summary` (`cockpit.flow.summary`) and
+   `flow_instruct` (`cockpit.flow.instruct`), both off by default, within a
+   daily budget, one call at a time, their model from the block or the
+   services `cockpit-activity` and `cockpit-instruct` of `workflow/ai-services/`
+   (Haiku when none is declared); `flow_attach`, the verb behind the attach
+   route. The state gains `flow_ai` (what is left of both budgets today, and
+   whether an instruction is being read), which an older page skips. A step of
+   the plan names why a point drops out of it (`skipped[].why`): `not_offered`,
+   `bad_day`, `unknown_point`, `no_tab`, and `asks` for a reply to a tab that
+   asks a choice; a page that does not know a why shows it as it comes.
+4. **`by` on four verbs.** `do_it`, `later`, `shelve` and `settle` take an
+   optional `by` (`suggestion`, `batch`, `instruction`); the history entry, the
+   start and the audit line keep it. Without it the click counts as your own,
+   as before.
+5. **Files.** `flow-activity.json` joins the cockpit's folder; `flow-themes.json`
+   gains `moves`, the last 500 moves of a point between themes; an older
+   version ignores them and leaves them out the next time it writes the file,
+   so Activity then starts its theme rows anew. Both are runtime files under
+   `.bridge/cockpit/`, safe to delete.
+6. **Git, optional.** Activity reads two `git log` shapes per task when git is
+   there; without it the documents and status changes take the files' own
+   times.
+
+See [Work through](#work-through-flow).
+
+### Upgrading: Running now, Not now, Merge and Prio
+
+Nothing has to be done by hand. With `cockpit.flow.enabled: false` no
+transcript is read, `flow_merge` answers `409 flow_off` and the page has no
+Work through view. One thing changes there too, on the Sessions page: Unlink of
+the session of a task's own tab now holds (before, the next poll linked it
+again), because `session_unlink` remembers the refusal; the live sessions carry
+`task_how` and `task_since_ms` for their links. With Work through on, the view
+changes in these ways:
+
+1. **What runs no longer counts as a point.** A start at work, a session at
+   work on a task and a task's own tab stand under Running now, out of the
+   walk, the overview and the batch. The head says points, running and not
+   now, which add up to `model.counts.flow_open`.
+2. **Sessions are recognised.** `flow.infer_sessions` is on by default: a live
+   session of this Bridge in a tab is read at the end of its own transcript
+   (only its messages and tool calls, never a tool's result, no model call)
+   for the one open task it names. `sessions_state().sessions[]` gains
+   `task_how` (`hand`, `tab`, `seen`) and `task_since_ms`; `task` is the task
+   in effect. A link by hand or a start from the cockpit wins.
+   `session_unlink` also records a refusal (`session_refused` in `state.json`)
+   and answers `session: {sid, refused}`; `session_link` drops it. Set
+   `flow.infer_sessions: false` to read no transcript; a refusal holds then
+   too, so unlinking a task tab's session keeps it unlinked.
+3. **Settled rows are no longer listed.** A hidden row decided here (done, not
+   doing) used to show under the old Left out drawer; it is open no longer and
+   stands nowhere. The drawer itself gave way to Not now.
+4. **Due later waits.** `flow.ahead_days` is 2 by default: a point due further
+   ahead than two days, and not of urgency now, waits under Not now, Later,
+   until two days before. `366` shows everything at once as before.
+5. **Issues in Now are points.** An issue or pull request in the section Now
+   (urgency now or today, or to do) is a point of the new group Issues and PRs;
+   every other one stands under Watching.
+6. **Merge.** Two new verbs, `flow_merge` (behind the flow gate) and its undo
+   `task_unmerge` (no gate, only an undo the server handed out), two new error
+   codes, `merge_not_task` and `merge_changed`, and the history items `merged`
+   and `merged_in`. `task.py` gains `merge`, `unmerge` and `close --merged-into`;
+   STATUS.md gains `outcome: merged` and `merged_into`
+   ([`work-system.md`](work-system.md)). A task closed as merged keeps its
+   `blocked_by` and `blocked_since`; a plain close still drops them. `task.py
+   merge` writes `.bridge/task-merges.json`, and `unmerge` restores both files
+   from it byte for byte while neither changed since (a brief aside), else it
+   edits them as before, now without a note of its own; `unmerge` answers
+   `restored`. A merge made before this version has no entry there, so its undo
+   takes the edit path.
+7. **Rows carry `updated` and `until`.** Task rows carry their STATUS.md
+   `last_updated`, deferred inbox rows the day they come back; both are null
+   elsewhere, and a reader that does not know them skips them.
+8. **Work views.** `cockpit.work_views` (default all five) names the views of
+   the work tab's switch, and `work_state()` sends them as `views`; `files` is
+   always kept. An older server sends no `views` and the page offers all, as
+   before. Once Work through holds everything, `[files, flow]` is enough.
+9. **Everything a page shows is in it.** With Work through on the model gains
+   `deferred`: the inbox items a page lists (the idea shelf, what runs on) that
+   are put off past the briefing's window, as rows (`inbox_state: deferred`,
+   `until`), which the verbs reach like any other. Work through also places the
+   open tasks of `task_rows` (a stream of folders without a STATUS.md of its own
+   too), and a page task carries its `status` from the task list.
+   `model.counts.flow_open` counts both, also with Work through off (it is one
+   number). An idea put off now stands under Ideas and backlog with its day,
+   not under Later.
+10. **Running now, Back on, Prio.** An entry of Running now with a task of its
+   own has a box for Merge and Done with the points; a batch leaves what runs
+   out of a start, Later and Drop (`working`). Back on runs a task again only
+   where a blocker stands; a task whose next step names you
+   (`cockpit.person_name`, sent as `work.person` while Work through is on) is a
+   point, not Waits on others. Prio has Read in with Jev and Read in with
+   Haiku at the foot of its left column (`cockpit.flow.prio`; Haiku is off
+   until `flow.prio.haiku.enabled`).
+   A finished tab no longer counts under Running now, and Running now stands
+   only in the left column. A session linked to a task that closed (done, merged) counts as no
+   task from then on and is recognised again; the link itself stays for resume.
+
+### Upgrading: one place for each thing
+
+Nothing has to be done by hand: each change is code, and a few profile keys let
+a Bridge go further.
+
+1. **The work tab's views.** A view the switch does not offer falls back to
+   Work through where it is on (in the page and in `config.py`), and no way
+   stores it. `cockpit.work_view: flow` with `cockpit.work_views: [files, flow]`
+   leaves Work through and Files; without By source the task check is a tab of
+   its own again (Tidy up, behind More only when the bar is full), the triage's
+   Sort again stands at the foot of Work through's left column, the band's
+   notes on a source, the pass or the triage open the day's status on Start, and
+   Explain on the switch names only the views it offers.
+2. **Sessions.** With Work through on there is no Sessions tab, and every way to
+   it opens Running now. A tab waiting at its prompt and not quiet yet is a
+   point (A tab asks); a quiet one (`idle`) stays under Running now as finished.
+3. **The header.** As the menu decision has it: no theme or reload button,
+   the as-of time reloads; the notes stand under the bell and in the history
+   under their day (a note carries `at_ms`; one from an older server counts as
+   today's); Help, last, holds Explain first, the look-up topics and the tour,
+   so Explain has no button of its own; the colours and Look up stand in
+   Settings, Appearance, and `?` opens Explain.
+4. **Operations.** `under: <page>` on a profile page and the entry
+   `{id: "@workers", under: <page>}` make sub pages, `hide_ok: true` on a
+   section entry hides it while all is clear. Delete a section from `sections:`
+   rather than only from its page, or `page_rest: show` puts it on a tab More.
+   The states `stopped` and `last_run_failed` are red.
+5. **GitHub.** A section in the board view loads up to 300 rows; work rows
+   carry `on_board`; a decision holds under `ref:<id>` and
+   `item:<page>/<section>/<id>` alike.
+6. **Dates.** Two figures, and the month only from four weeks of dates. To keep
+   due rows off the dates page, take their section off the page and add it to
+   `view.page_skip`, since `page_rest: show` would put it on a tab More.
+
+### Upgrading: Files as a tab, the check in Work through, Operations as a folder
+
+Nothing has to be done by hand: each change is code, and the profile keys
+below only go further.
+
+1. **Files is a tab.** The work tab's switch no longer offers Files; the Files
+   tab stands right after the work tab and opens on its search. A stored or
+   configured `files` view (`cockpit.work_view: files`, or a click kept in the
+   browser) opens the Files tab once and is replaced by the view the work tab
+   falls back to. Every link that opened a task's file opens the tab with that
+   record; only a Bridge whose `work_views` keeps no `files` still shows the
+   item drawer. With `work_views: [files, flow]` the work tab shows Work
+   through alone, without a switch. The page reads the records from the new
+   read-only `GET /api/records`, so page and server go together.
+2. **Ask AI on the records.** `cockpit.files_search` is a new block, off by
+   default: `enabled`, `budget_per_day` (20), `model` and `block`, a list of
+   words that keep a record from the model. The verb `files_ask` refuses while
+   it is off; its calls count in `flow-activity.json` under `files`.
+3. **The task check.** Where Work through is on, the check is the row Check
+   tasks above Not now, and its tab goes; a stored page, the ticker, Start and
+   every link to it land there. With By source on as well, the check no longer
+   stands on that page, which shows one line with a link to Work through.
+   Without Work through nothing changes but the name: the tab is Check tasks
+   (de: Aufgaben prüfen), no longer Tidy up.
+4. **Operations as a folder.** A page with sub pages draws the folder bar on
+   top in place of its sub page tiles and the "‹ <parent>" link, and its tab
+   carries a ▾ with the same places. The order in `view.pages` is the order of
+   the tabs and of the bar. `overview: true` on a sub page gives it a head card
+   in place of the tiles. Background jobs always open on every job, grouped by
+   machine; a filter kept from before is cleared on the way in.
+5. **GitHub.** Rows carry the optional fields `author`, `by_me`, `board`,
+   `also_on` and, for a pull request, `pr: {draft, review, checks}`; people and
+   labels go up to 10 each, and `untasked` now reaches the page. A reader that
+   does not know them skips them. The filters of a section are kept in this
+   browser (`bridge-cockpit.ghFilter`), the grouping too
+   (`bridge-cockpit.ghGroup`). Board cards of every person come with
+   `cards: all` on the section's query or with All in Settings, GitHub boards.
+   A card that is not yours (`others`: neither assigned to you nor opened by
+   you, nor found by your search) stands on the GitHub page and in its filters
+   only, never among the rows of Work, so `cards: all` leaves Due and Work
+   through as `cards: mine` had them. Board columns spelled two ways ("In
+   Progress", "In progress") are one option of the filter.
+6. **Small fixes.** The block of the day once titled Housekeeping (de:
+   Aufräumen) is Small fixes (de: Kleine Handgriffe), and each line is a
+   sentence that says what to do. The view carries the lines as facts beside
+   their text (`tend`: kind, n, names, title, reason); a page of this version
+   words a known kind itself, an older one keeps the text.
+7. **Smaller.** A sub page with `overview: true` and no `cards:` has no token
+   and noise cards any more. The help menu shows Keyboard only while the
+   shortcuts are on. The header counts Claude workflows as "AI runs". A drawn
+   list shows its When column only where a row has a time.
+
+### Upgrading: quiet tabs and the result line
+
+The return channel used to call every start whose tab stopped working
+`asks`, also a tab that was long through. Nothing has to be done by hand:
+
+1. **A new stage `idle`.** `model.returns[].stage` is `asks` only when the
+   tab shows a dialog (needs-you) or a question on its screen, or when its
+   screen was not read (no driver that serves screens, the questions off, not
+   read yet); a still tab whose words read ask nothing, or a tab back at its
+   shell, is `idle`. A page of this version shows it as
+   "quiet" and files it under "Done, please check". A client that does not
+   know `idle` treats a still tab as asking, as before, because it reads the
+   tab's state live.
+2. **A task's result line.** A note on the task, since the day of the start
+   and after the cockpit's own start line of that day, that begins with
+   `Result:` (or `Ergebnis:`) turns its start into `result` with `{kind: note}`.
+   Older notes and notes with another head change nothing.
+3. **Triage rows carry `next_rank` and `rank_at`.** Jev's rank of the row from
+   the newest order of a work page, `null` without one or when it is older than
+   `cockpit.flow.rank_max_age_days`. Readers that do not know the fields skip
+   them.
+4. **`cockpit.flow`.** New keys, all with defaults, read only by the Work
+   through area, which stays off until `cockpit.flow.enabled: true`: the page
+   sorts its tasks by `next_rank`, prepares `prep_ahead` briefs and asks
+   before a start once `max_running` agents run. `rerank_per_day` is read by
+   no code yet.
+5. **`describe_run` takes `ahead`.** Optional, false by default: a run the Work
+   through page asks for ahead of a card keeps within
+   `describe.budget_per_hour` and is refused with `describe_budget` once it is
+   spent. A click sends no `ahead` and runs as before.
+
+### Upgrading: Files in three columns, jobs analysed in a tab, questions found again
+
+Nothing has to be done by hand: each change is code, and the one profile key
+below only changes how long a chat stays.
+
+1. **Files.** The Files tab has one layout, the three columns of Work through:
+   list on the left, the open record in the middle, its point's buttons on the
+   right. The separate start page and the page that replaced the list are
+   gone; every link that opened a record lands in this layout, and the head
+   button is Close the record (de: Akte schließen).
+2. **Background jobs.** New verb `worker_advise {host, id}`, refused
+   (`not_applicable`) for a job `workers-view.json` does not hold or one that
+   is retired; it files under `worker:<host>:<id>` and starts mode `report`.
+   `GET /api/workers` adds `advise: {inbox, state}` to a job filed under its
+   key. The quick chat takes the kind `worker {host, id}` (`stale_row` for a
+   job the view no longer holds), with `about: {kind: worker, key, inbox}`;
+   the page no longer words a job's question itself. A handoff keeps that
+   `about` and adds the new item as `inbox`. `worker_advise` writes a start
+   note and starts with `--start-note`, and reopens an item of its key that
+   was dropped.
+3. **Handoff with an order.** `quick_handoff` with `text` writes the order on
+   the new item as "Start note: ..." and starts the tab with `--start-note`;
+   when that note cannot be written the tab starts without it, as before. An
+   inbox start with a start note tells the agent never to close on its own,
+   and its prompt drops the rules to close (settled, overtaken). The go prompt
+   asks every question to begin with `Question:`.
+4. **What came back.** A handed chat gets `handed.outcome` on the sweep
+   (`{text, closed, at_ms, asks}`); a reader that does not know it skips it.
+   `model.returns[].result` carries `asks: true` for a note headed
+   `Question:` or `Frage:` (only when true), and a note "Start note: ..." is
+   no answer any more. Each launch row keeps `conv`, the chat it came from.
+5. **`chat_keep_hours`.** It now also says how long a chat handed to a tab
+   stays after the latest of its handoff, its outcome and its item's end (24
+   hours by default, 0 keeps it); other chats still leave 10 minutes after
+   their item ended. To have handed chats leave as quickly as before, set it
+   low, which also shortens how long untouched chats are kept.
+6. **Questions.** New read only `GET /api/chats/archive?days=n` (1 to 14,
+   at most 60, without removed, replaced or placed ones). The page keeps the
+   question opened last in this browser under `bridge-cockpit.lastAsk`.
+
+### Upgrading: a close for every tab, the Chat in two buttons, the cockpit's use counted
+
+Each change is code; two config keys are worth a look, and one script is new.
+
+1. **`chat_keep_hours: 168`** (recommended) keeps a question a week in the
+   Chat's Questions; the default stays 24 hours. An empty chat names the time.
+2. **`cockpit.usage.clicks`** (new, `true`): the click origin log
+   `usage.jsonl` beside `audit.log`. Set it to `false` to write nothing.
+3. **`scripts/cockpit-usage.py`** (new) counts that log and `audit.log` and
+   files proposals under `work/_learning/proposals/` (source type
+   `cockpit-usage` in `work/_learning/_schema.proposal.yaml`). It keeps its
+   last run in `usage-run.json`; nothing starts it on its own.
+4. **Tabs.** New verb `tab_done {tab_ref}` (cap `close`) ends the open task and
+   the open inbox item behind a tab through Done, then closes it; a partial end
+   keeps the tab open (`tab_done_partial`). `tab_close` no longer needs a filed
+   result or a settled item: it closes any tab that waits or is back at its
+   shell, asks nothing (unless settled) and is not the control tab. A tab
+   whose screen holds only its last words asks nothing (`model.asks_something`,
+   `logic.js asksSomething`). Each tab
+   of `GET /api/state` carries `behind: {task, item}` (null for the control tab).
+5. **Chat.** The route chip, its word lists and the leading `?` or `!` are
+   gone: a text that starts with `?` is sent as it is. The server's verbs
+   (`ask`, `chat_tab`, `quick_handoff`) are unchanged. The browser keeps the
+   room picked last under `bridge-cockpit.chatRoom`.
+6. **Seen.** New verbs `finding_ack {key, note}` and `finding_unack {key}` for
+   a job (`worker:<host>:<id>`) or a page row (`item:<key>`), kept as act `ack`
+   in `work/cockpit/settled/`. `GET /api/workers` adds `acked` to a job whose
+   finding was marked seen as it still stands. Closing an inbox item under
+   `worker:<host>:<id>` marks the job seen with its close note, and an agent
+   tab started with an order now writes a close note fit for that.
+7. **GitHub.** The filter Person is split into **Assigned to** and **Opened
+   by**; a Person kept in this browser reads back as Assigned to.
+8. **Explain.** New verb `explain_note {text, page, view, area}` and
+   `POST /api/clicks {events}` (at most 60 events; no audit line, as presence).
+
+### Upgrading: one point view
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true`. With it, every way that opened an inbox item or a
+task in the item drawer or the Files tab's file card opens it in Work through's
+point view instead ([One point view](#one-point-view)); the Files tab shows the
+same view for a record. The link **Details** under the verbs is gone (its facts
+fold open under Details at the foot of the fields), a title of a list of Not now
+opens the row in the middle instead of jumping to the web, the Files tab or a
+drawer, the verbs of a point stand in one order with **Make it a task** on every
+inbox item, and the line under a point asks as well as instructs. The server is
+unchanged: Make it a task is the verb `to_task`, an issue's is the GitHub page's
+step "Make it a task", Ask is the free quick question of the Files tab.
+
+### Upgrading: finished AI runs to read
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true`. A start whose item ended after it (stage `done`)
+used to stand among the finished as a card **To look at** for days, with its end
+as machine text and **Take off the list** as its only verb. It now stands under
+**Finished, to read** in [Work through](#work-through-flow) and needs you no
+more. The server adds three fields to a done
+start in `model.returns`: `plain` (the sentence in the page's language),
+`ended_ms` and `read_ms`; a page that does not read them is not affected. New
+verbs, all owner only: `return_read`, `return_unread`, `return_analyse`,
+`return_task` and `return_task_undo`. `task.py new` takes two optional flags,
+`--situation` (the text of the section Situation) and `--origin` (the origin
+line). `instruct.py` plans `read`, `task` and `analyse` for a finished run. One
+new key, `cockpit.flow.read_days` (default 3). `return_forget` stays: a lost or
+answered start, the start page and an older page still take a start off with it.
+
+### Upgrading: every way the one point view
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true`. With it, the last ways that opened the detail
+column beside a page open the one point view as well: a title of the task
+check, a task row on a page, a row of the start page that is no inbox item nor
+task, a row of Due, a tab's name. A way from a list walks that list and leads
+back to it. The detail column's pickers are fields now (Area, Urgency, the
+priority under Prio), and so are its team and the task check; its session
+list, the asks folded into a row, Why it is here and Already running? moved
+into the view as well; the steps of an application stand in its Steps tab, the
+info drawer no longer opens for them. The Details fold no longer lists an inbox
+item's urgency: it is the field Urgency. The server is unchanged: every field
+and button sends the verb the detail column sent. Without Work through the
+detail column and the item drawer stay as they were.
+
+### Upgrading: a simpler point view
+
+Nothing has to be done by hand, and the page changes only with
+`cockpit.flow.enabled: true`. With it a point has fewer buttons and less text
+([Work through](#work-through-flow)): one strong button that applies the AI's
+suggestion, the four states (Done, In progress, Later, Drop) in a quiet 2x2,
+every other verb in **More ▾**; four fields on top (Theme, Area, Who, Due) and
+the rest under **Details ▾**; the AI's suggestion as a line of its own and the
+overview's suggestion column are gone (the strong button carries its reason on
+hover, the hint line ticks the suggestions); the overview bands by who takes
+the next step (Check-in, Needs you, The Bridge does), and its batch bar stands
+only once a row is ticked; the left column's buttons are one menu **Order ▾**;
+Not now's **Watching** is part of **Running elsewhere**, which holds what is in
+progress with someone and what waits on others, and Later holds what is put off
+and what rests.
+
+What changes besides:
+
+1. **Task titles.** A task's or stream's row title is its H1 alone again (the
+   briefing composed "H1: what it is about" before); its next step stays apart
+   in the row's why ([Briefing profiles](briefings.md)).
+2. **Briefs.** A brief carries a `name` and a `stand`, and the rules are
+   version 3: with `cockpit.describe.auto: stale` the briefs describe wrote are
+   written again within the budget of the hour, a person's brief without them
+   gets one proposal ([How long a backlog takes](#each-items-brief)). Older
+   briefs read as before; a page or a tool that does not read the two fields is
+   not affected. Both schemas (`_schema.status.yaml`, `_schema.inbox-item.yaml`)
+   name them.
+3. **In progress with someone.** New owner verbs `work_on` (an inbox item put off
+   until a day as a check-in, a task's next step to someone until that day,
+   any other row hidden until it, each with an undo), `task_next` (who and the
+   check-in day of a task's step) and `checkin_stuck` (back to the owner, the
+   reason as a note). A row carries `checkin` ({who, until, since}) and the card's
+   `next` carries `check`. `inbox.py defer` takes `--check` (the defer is a
+   check-in; `--on` names who has it), `task.py next` takes `--who`, `--check`
+   and `--clear-check`, and STATUS.md's `next:` block may carry `check:`
+   ([`docs/inbox.md`](inbox.md)). An older page ignores them.
+4. **Titles that read.** `inbox.py add` warns, never refuses, on a title over 80
+   characters, a path, a file name, an id or English words in a German Bridge.
+5. **The Bridge looks before a check-in.** That came with the next version, off
+   by default: [Upgrading: the Bridge looks before a check-in](#upgrading-the-bridge-looks-before-a-check-in).
+
+### Upgrading: the Bridge looks before a check-in
+
+Nothing has to be done by hand, and nothing changes without
+`cockpit.flow.enabled: true` and `cockpit.flow.checkin.enabled: true` (off by
+default). With both, a pass of the server every ten minutes looks at each
+check-in due today or tomorrow, once per check-in day, within
+`budget_per_day` (default 10), and the check-in card says what it found
+([The Bridge looks before a check-in](#the-bridge-looks-before-a-check-in)).
+What is new: the service `cockpit-checkin` in `workflow/ai-services/` (Claude
+only, default Haiku), the state file `flow-checkin.json`, the field
+`checkin.found` on a row (`{text, where, unread, nothing, since, at_ms, model}`;
+an older page ignores it), and `inbox.py probe --json '<probe>'`, which answers
+one probe read only (`{"result": true|false|null}`, a probe that runs a
+command refused) and is how the look reads the state of a GitHub ref. No verb
+changes.
+
+### Upgrading: settled rows in git
+
+Before this change a hidden or settled row lived only in `.bridge/cockpit/state.json`,
+so another machine showed it again. Nothing has to be done by hand:
+
+1. **Migration is automatic.** On its first start the server copies every
+   `hidden` and `dismissed` entry of `state.json` into `work/cockpit/settled/`
+   as `legacy-<hash>-<act>.yaml`. The name is the hash of the entry, so a second
+   start writes nothing, and two machines holding the same entry write the same
+   file (git adds it once). A row the folder already decides is not copied, so
+   a row taken back on one machine does not return from another machine's old
+   `state.json`. `state.json` itself is left as it is.
+2. **Commit the folder.** `git add work/cockpit/settled && git commit` on each
+   machine, then pull and push as usual (`git pull --rebase`). The files never
+   conflict. Until they are committed and pulled, the other machine simply does
+   not know them yet.
+3. **Going back.** The cockpit keeps writing `hidden` and `dismissed` in
+   `state.json` beside the folder, so an older version reads this machine's
+   decisions unchanged after a downgrade. What it cannot see are the decisions
+   made on other machines since; they are back in force when you upgrade again.
+   To drop the shared record as well, remove the folder
+   (`git rm -r work/cockpit/settled`) once the older version runs; while the new
+   one runs, its next start would fill the folder again from `state.json`.
+
+If `work/cockpit/settled/` cannot be written (a read-only checkout), the cockpit
+keeps working from `state.json` alone, as before, and copies what it missed at
+a later start.
 
 The server deletes relay files after a day, heartbeats after an hour. The
 `relay/` folder is readable by you only. The signing key `relay.key` is the
@@ -1945,14 +4492,14 @@ sections:
 A page names sections by id; `validate` says which id it cannot find. A page
 with `group: more` folds behind the "More" tab when the bar is narrow; a page
 with `group: day` gets no tab and stands as "What happened today" in the
-middle of the Today page (section 3); `overview: true` and `jev:` are in
-section 3 as well.
+middle of the Today page (section 3); `overview: true`, `jev:` and `under:`
+(a sub page, Sub pages) are in section 3 as well.
 
 Every row has the same columns: when, title, detail, link. A page entry
 overrides them per section (`when`, `detail`, `link` name an item field),
 `empty` is the text for nothing (default "nothing"), `alarm: true` turns every
 row into a red finding and nothing more, `badge: false` keeps a section out of
-the number on its tab. A task's open steps are the unchecked boxes, else the
+the number on its tab, `hide_ok: true` draws it only while a row is bad. A task's open steps are the unchecked boxes, else the
 bullets under a "Next steps" heading in STATUS.md; a profile names headings in
 another language with the tasks section's `step_headings`.
 
@@ -2000,6 +4547,11 @@ The page's own buttons and help come in German and English
 (`cockpit.language`). The briefing's words (headline, tab names, "today") are
 yours: set them in `view.labels`, for example
 `labels: {page_status: Systeme, today: heute}`.
+
+The Files view calls an open or closed task a file ("File", "Files", "Next
+step", "Search the files"); in German the page says "Akte" and "Akten". Like
+every word of the page itself they come from the page's own table in both
+languages (`scripts/web/text.js`), not from the profile.
 
 Opening a `file://` link on the page is not possible; the page shows its path
 to copy.

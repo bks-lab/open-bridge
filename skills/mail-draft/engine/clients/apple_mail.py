@@ -305,10 +305,10 @@ FIND = r'''
 -- mail-draft:find
 -- Read only: finds the message a reply answers and changes nothing.
 on run argv
-    set kind to item 1 of argv
+    set refKind to item 1 of argv
     set val to item 2 of argv
     tell application "Mail"
-        if kind is "id" then
+        if refKind is "id" then
             set hits to (messages of inbox whose message id is val)
             if (count of hits) is 0 then
                 repeat with acc in accounts

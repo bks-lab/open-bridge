@@ -2,7 +2,7 @@
 Day-block template — one block per working day inside work/log.md.
 
 The Task Management system creates a fresh day-block from this file at session
-start when today has no block yet (see CLAUDE.md § Task Management and
+start when today has no block yet (see AGENTS.md § Task Management and
 rules/operations.md). Do NOT edit this template to log work — copy its body
 into work/log.md under the current week.
 

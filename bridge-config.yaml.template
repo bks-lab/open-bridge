@@ -71,6 +71,7 @@ discovery:
 #   professional      — Lead, Specialists, Tasks, Incident Response (default, en)
 #   professional-de   — Leitung, Spezialisten, Aufgaben, Stoerfall (de)
 #   professional-fr     Responsable, Spécialistes, Tâches, Incident (fr)
+#   professional-zh-cn  负责人, 专家模块, 任务, 事件 (zh-CN)
 # Custom: copy themes/_template.yaml to themes/{name}.yaml, set extends.
 # Themes only change vocabulary — never tools, delegation, or goals.
 theme: professional
@@ -128,6 +129,7 @@ work:
   #   command: "claude -p --model {model} ..."   # any agent: prompt on stdin, JSON array on stdout
   #   max_age_days: 7        # a cached verdict with unchanged evidence is reused this long
   #   stale_days: 21         # no activity this long and no blocker: the model may say stale
+  #   skip_sections: []      # briefing section ids whose tracker rows the triage leaves out (tasks and inbox items stay), e.g. [applications]
   # The models come from `models:` below: mechanical/routine first, directed/analysis for the unclear ones.
 
 # ─── Inbox ────────────────────────────────────────────────────────────
@@ -138,6 +140,8 @@ work:
 #   runner: homebox          # actor (--by / $BRIDGE_ACTOR / host name) that runs actions
 #   all_clear: []            # close texts beginning with these words count as the reporter's
 #                            # all-clear, besides "All clear" (add the words your reporters write)
+#   place_on_add: false      # true: an item filed with neither a task nor an area asks workplace.router
+#                            # for its area, detached (one small model call per item; docs/inbox.md)
 
 # ─── Workplace ────────────────────────────────────────────────────────
 # Plan the day as workspaces with one agent tab per task, and steer the tabs
@@ -148,7 +152,8 @@ work:
 #   # cmux users (optional skill, skills/cmux):
 #   # driver: {command: ["python3", "${root}/skills/cmux/scripts/cmux_driver.py"]}
 #   control: {name: Control} # the workspace whose session steers the others (the cockpit finds the control session there)
-#   workspaces:              # optional per entry: description (read by the router), aliases (other titles)
+#   workspaces:              # optional per entry: description (read by the router), aliases (other titles),
+#                            # repos (owner/repo globs: an issue without an area takes this workspace's)
 #     - {name: Bigcorp, contexts: [bigcorp], description: "client work for Bigcorp"}
 #     - {name: Misc, default: true}
 #   limits: {max_workspaces: 4, max_tabs: 3, stale_days: 10, activity_days: 7}
@@ -180,6 +185,7 @@ work:
 # cockpit:
 #   enabled: false         # bridge-cockpit.py refuses to start until this is true
 #   port: 8797             # http://127.0.0.1:<port>/ (8790 to 8799 are partly taken by other Bridge services, see the doc)
+#   local_name: my-bridge  # optional: also http://my-bridge.localhost:<port>/ (one DNS label)
 #   open_in: auto          # auto = a cmux browser tab when inside cmux, else the default browser | cmux | system | none (print the link)
 #   relay: false           # true: the control session takes questions from the page as prompts (needs mods/cockpit-relay)
 #   person_name: ""        # how the chat and Jev name you; empty: "the user"
@@ -188,10 +194,52 @@ work:
 #   full_minutes: 10       # on open, run the full briefing (trackers, checks) again when the last is older
 #   voice: false           # a tab that waits for you is also spoken (by the browser)
 #   triage_daily: false    # true: sort every task and inbox item once a day by itself (a small model call)
+#   served: {}           # serve --served behind a sign-in gateway: access: {team_domain, aud, host}, ask: {auth, key_ref, claude, model, daily_questions}, docs/bridge-cockpit.md
 #   snapshot_minutes: 60   # save the cmux layout (only on change) while the cockpit runs; 0 = only on Save
+#   idle_minutes: 10       # a waiting tab still this long that asks nothing counts as done, not waiting; 0 = off
 #   language: en           # de | en for the page's words; default language.conversation, else en
 #   chat_layout: classic   # classic | workspaces = the Chat tab as cmux shows it
 #   chat_keep_hours: 24    # an untouched quick chat leaves the list into the archive after this many hours; 0 = only the limit of 30
+#   a2a_sources: []       # further A2A peers from a skill's script (broker, access proxy), docs/bridge-cockpit.md
+#   #   - {name: broker, script: skills/<skill>/scripts/<name>.py}
+#   work_view: due         # the view the work tab opens on: due | source | jev | flow (files: the files tab; a click on its switch still picks another)
+#   work_views: [due, source, jev, files, flow]   # the views on offer; files is the files tab beside Work, always kept
+#   focus_to_files: false  # true: when the start page's focus runs out, it leads on into the files view of the work tab
+#   files_scope: active    # active | all = every task and stream is a file, the backlog behind the queue on chips
+#   files_search:          # the files tab's "Ask AI": one model call over the records shown, only on a click
+#     enabled: false
+#     budget_per_day: 20
+#     block: []            # words: a record whose area, theme, path, title or sent text holds one never goes to the model;
+#                          # a word also matches inside a longer one (Steuer holds back Steuerung too)
+#   origin_map:            # how the work tab names a source the built-in rules cannot tell: name or glob -> github | tracker
+#                          # | calendar | bot | session | skill | work | person | bridge | other (docs/bridge-cockpit.md)
+#     notes-bot: bot
+#     "*-health": bot        # globs need quotes
+#     alex: person
+#     team-notes: session
+#   describe:              # each item's brief (goal, story, acceptance) written and kept by a small model
+#     auto: off            # off | missing = items without a brief | stale = also briefs whose text moved on
+#     budget_per_hour: 20  # the most model calls of an hour; a click on a card counts but is never refused
+#     kinds: [task, stream, inbox]
+#     effort: medium       # low | medium | high: how long the model may think before it answers
+#   flow:                  # the Work through page: every open item as one card at a time, five verbs on each
+#     enabled: false       # true: the tab Work through stands right after Today
+#     drop_reasons: [resolves_itself, not_needed, someone_else, not_worth_it]   # what "Drop because" offers; own words too
+#     return_after_s: 20   # after "To tab", the page asks how it went once it is in view again this many seconds later
+#     prep_ahead: 2        # the next cards whose brief is prepared ahead, within describe.budget_per_hour; 0 = none
+#     max_running: 4       # started agents running before Let AI do it asks first
+#     rank_max_age_days: 7 # a Jev rank older than this does not order the tasks
+#     rerank_per_day: 3    # how often a day a click on "order again" may ask Jev anew
+#     ahead_days: 2        # a point due further ahead waits under Not now, Later, until this many days before
+#     read_days: 3         # a finished AI run unread leaves Finished, to read after this many days
+#     infer_sessions: true # a live session that names one open task in its transcript runs under Running now
+#     summary: {enabled: false, budget_per_day: 10}    # Activity: a small model sums up the last week on a click
+#     instruct: {enabled: false, budget_per_day: 30}   # the instruction line: a sentence becomes steps, run on a click
+#     attach: {enabled: false, max_mb: 10}             # Activity: attach a document to the task's deliverables/
+#     checkin: {enabled: false, budget_per_day: 10}    # the Bridge looks before a check-in and says what it found
+#     prio:                # Prio: a second ranker beside Jev; fallback haiku = a failed Jev read-in on a click runs Haiku
+#       fallback: none
+#       haiku: {enabled: false, budget_per_day: 6}
 #   launch:
 #     target: area         # area = the workspace of the item's area (workplace.workspaces) | tab = here | workspace = one each
 #                          # | auto = a small model picks the area or a workspace of its own (workplace.router)
@@ -233,6 +281,8 @@ work:
 #   # The settings page changes these on top, kept in .bridge/cockpit/ticker.json.
 #   tour: true               # the first-run tour: a first visit offers a short introduction of the page;
 #                            # false = never by itself (Help and Settings still start it)
+#   setup: true              # the Setup page: what still keeps the cockpit from working well and what can be
+#                            # switched on (scripts/bridge-setup.py); false = no such page
 #   session_guide:           # Claude Haiku reads a waiting tab's session and offers next steps as buttons; off by default
 #     enabled: false
 #     auto: true             # read a tab by itself when it starts waiting with a new question; false = only on the button
@@ -242,6 +292,8 @@ work:
 #     remotes: []            # infra/remotes names to read token use from; leave out: the machines of infra/instances
 #     remote_file: ~/.bridge/resources/usage.json   # what scripts/usage-export.py writes there
 #     host: my-laptop        # this machine's infra/remotes name; leave out: found by hostname or Bonjour name
+#     clicks: true           # write down which control is used from which place, never what about (.bridge/cockpit/usage.jsonl,
+#                            # counted by scripts/cockpit-usage.py); false = off
 
 
 # ─── Orchestrator ─────────────────────────────────────────────────────
@@ -453,12 +505,17 @@ mandants:
 # workflow/mail-profiles/, footers in identity/mail-footers/ (docs/mail-draft.md).
 # Nothing here sends; every client gets a draft.
 # mail:
-#   client: apple-mail          # apple-mail | outlook | eml | none (default: apple-mail on macOS, else eml)
+#   client: apple-mail          # apple-mail | outlook | imap | eml | none (default: apple-mail on macOS, else eml)
 #   default_profile: everyday
 #   language: en                # language of footers/profiles without a variant suffix
 #   drafts_dir: .bridge/mail-drafts
 #   labels: {done: "DONE", blocked: "BLOCKED"}
 #   attachment_words: ["attached", "enclosed"]
+#   imap_accounts:              # optional: drafts stored on the server, per sender and machine
+#     - address: you@example.org
+#       host: imap.example.org
+#       password_ref: keychain://mail-drafts-imap/you@example.org   # a reference, never the password
+#       use_on: [always-on]     # infra/remotes id or host name; [all] for every machine
 
 # ─── Document Sensor ──────────────────────────────────────────────────
 # Inbox scanning + PARA-style document routing. See workflow/contexts/doc-system.yaml.

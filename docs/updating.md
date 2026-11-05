@@ -1,13 +1,18 @@
 ---
 summary: "Keeping a Bridge current: the manual CORE merge, the unattended daily auto-update and its fail-closed guards, org overlay sync, and how a CORE fix you made flows back without leaving a permanent divergence."
 type: guide
-last_updated: 2026-10-24
+last_updated: 2026-11-05
 related:
   - install.md
   - org-overlays.md
+  - kernel.md
   - ../rules/core-fix-workflow.md
   - ../scripts/upstream-autoupdate.sh
   - ../scripts/install-upstream-autoupdate.sh
+  - ../scripts/migrate-entry-file.py
+  - ../scripts/migrate-docs-tier.py
+  - ../scripts/migrate-kernel.py
+  - ../scripts/check-all.py
 ---
 
 # Updating your Bridge
@@ -44,6 +49,26 @@ upstream/main` once. Details: [install.md](install.md).
 Before a merge, `python3 scripts/bridge-divergence-check.py` lists every CORE
 file you changed locally and flags the ones upstream changed too.
 
+### Check everything after a merge
+
+```bash
+python3 scripts/check-all.py           # every checker CI runs, under a minute
+python3 scripts/check-all.py --full    # plus every test suite, several minutes
+```
+
+One line per step, the tail of the output for a red one, a sum at the end, exit 0
+when nothing is red. The fast tier is a table in the script that a test holds to
+every `scripts/check-*.py` and `scripts/validate-*.py`; the full tier finds its
+suites by glob. Each step runs with an empty, temporary global git config, so a
+step that sets git identity cannot reach your `~/.gitconfig`. A step whose tool
+is absent (`node`, `uv`) is skipped, not failed. Steps run four at a time
+(`--jobs`), the longest first; with `pytest-xdist` installed the large pytest
+suite also takes the cores the other steps leave. `--full` needs `pytest` in the interpreter that runs
+it (or pass `--python`), and inside every step `python3` is that interpreter.
+`--list` shows the steps and `--only TEXT` narrows them.
+On an instance the leak scan (`no-scrub-leak.py`) reads only the files that ship
+as core: your own data carries names on purpose.
+
 **If your instance is private**, there is nothing to hand-edit after a merge. The shipped
 root `.gitignore` ignores instance data for every clone, and on a private origin
 `scripts/user-data.py arm` (run by `bin/setup`) re-allows your own by writing
@@ -53,6 +78,210 @@ commented out from an earlier version of this policy, a merge of an update to th
 conflict in that region: resolve it by taking upstream's version, then run `bin/setup` (it
 writes the four negation files) and commit them. `python3 scripts/user-data.py check`
 confirms nothing of yours is still ignored afterward.
+
+## Once: upstream removed CLAUDE.md
+
+Upstream no longer ships a root `CLAUDE.md`. Claude Code (2.1.281 or newer) reads
+`AGENTS.md` directly, the same file Codex, Cursor, Copilot and Gemini read. A
+root `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` beside it makes Claude
+Code load only that file and never `AGENTS.md`, so none of them may stay.
+
+The instance's own always-on text now lives in `identity/agent/INSTANCE.md`,
+which `AGENTS.md` imports next to `IDENTITY.md` and `SOUL.md`. It is yours: CORE
+and overlays never ship it, so nobody has to edit `AGENTS.md`.
+
+### You edited CLAUDE.md
+
+Onboarding imports, overlay imports and your own prose all count as edits. The
+next `git merge upstream/main` then stops with a modify/delete conflict on
+`CLAUDE.md`, and the daily job holds the merge with the same pointer. Resolve it
+in one command, dry run first:
+
+```bash
+python3 scripts/migrate-entry-file.py            # the plan, nothing changes
+python3 scripts/migrate-entry-file.py --write    # carry, edit the budget, git rm
+```
+
+Then run the `git add` line the script prints and `git commit`, which concludes
+the merge. On a public origin `INSTANCE.md` is ignored: the script says so, leaves
+it out of that line, and the file stays local until the private-home step.
+
+The script drops what `AGENTS.md` now covers (`@AGENTS.md`, the identity
+imports, `@ecosystem*.yaml`, which Phase 1 indexes with
+`context-index.py --registries`) and every paragraph equal to a CORE version of
+the file. Everything else moves to `INSTANCE.md` under a dated heading, with
+imports rewritten relative to that file. It removes the `CLAUDE.md` item from
+`context-budget.user.yaml` and prints the projected size of `INSTANCE.md`
+against its cap. A re-run never duplicates a carried paragraph.
+
+Migrate mid-merge, not before it. The script checks that the `AGENTS.md` in
+force (upstream's side while merging, else your working tree's) imports
+`INSTANCE.md`. An older `AGENTS.md` does not, so removing `CLAUDE.md` before the
+merge would lose `IDENTITY.md`, `SOUL.md` and the carried lines until the merge
+lands; `--write` refuses that with "merge upstream first, then migrate
+mid-merge". If the merge stops before the script exists in your tree, run
+upstream's copy while still merging:
+
+```bash
+git show MERGE_HEAD:scripts/migrate-entry-file.py | python3 - --repo-root .
+```
+
+A `CLAUDE.md` that is a symlink to `AGENTS.md` (one manual for both tools) is
+not a legacy entry: the script and the meter leave it alone.
+
+`python3 scripts/migrate-entry-file.py --check` exits 1 while any of the three
+files exists, which is what `bridge-audit` runs.
+
+### You edited AGENTS.md
+
+A fork that wrote its own lines into `AGENTS.md` conflicts on every upstream
+change to it. Move them out once:
+
+```bash
+python3 scripts/migrate-entry-file.py --file AGENTS.md            # dry run
+python3 scripts/migrate-entry-file.py --file AGENTS.md --write
+```
+
+Only the lines you added or changed go to `INSTANCE.md`, each under the CORE
+heading it sat beneath, so one added table row carries that row and not the
+table. `AGENTS.md` is restored to the CORE version the rest of your tree is on,
+the merge base, never a newer ref tip. Mid-merge, your lines are your side
+compared with the common ancestor, and the restore takes upstream's side, so a
+CORE line upstream rewrote is never carried as yours. The version restored must
+import `INSTANCE.md`; an older one makes `--write` refuse until you merge. CORE history
+comes from the ref and from every remote with the same URL, so a stale
+`upstream/main` next to a fresh `open-bridge/main` is no false verdict. The dry
+run lists your commits that touched `AGENTS.md`; one that is a CORE change
+headed upstream belongs in `/bridge-promote`, not here.
+
+Plain `--check` only warns about `AGENTS.md`, because a pending CORE change or an
+unfetched ref looks the same; `--check --file AGENTS.md` exits 1.
+
+### Merge upstream before your next /bridge-sync
+
+A branch that still carries a root `CLAUDE.md` must not sync it onto an
+upstream: it would hide `AGENTS.md` for every fork. Merge and migrate first, then
+sync; the sync prefilter skips a path the destination no longer has and says so.
+
+### An org tier migrates its core branch before its instances
+
+An org overlay or org fork with its own core branch runs the migration there
+first. Its instances merge from it, so they meet the `CLAUDE.md` deletion once,
+from one source. The org's own lines must not land in `INSTANCE.md`: that file is
+each instance's own and no core branch or overlay ships it. Pass `--to` a file
+the org does ship, such as a rule under `rules/org/`, and have each instance's
+`INSTANCE.md` import it. Where an org's shared always-on text lives by default
+is still open.
+
+### Folders that bring their own CLAUDE.md
+
+Claude Code started inside a folder that has its own `CLAUDE.md` (a workspace
+member under `.bridge/workspaces/`, an example under `examples/`) loads only
+that file. The same holds for a `CLAUDE.md` or `CLAUDE.local.md` in any parent
+folder of the repo; `bin/setup` warns about those. Start Claude Code at the repo
+root to get `AGENTS.md`.
+
+## Once: docs/ is tiered by folder
+
+Since 2026-11-05 `docs/` is tiered by folder, the way `rules/` is: `docs/` ships
+as core, and a doc of another tier lives in `docs/user/`, `docs/org/` or
+`docs/personal/`, where the folder decides. A fork that kept its own docs in
+`docs/` with a `scope: user` (or `org`, `personal`) line was protected by that
+one line only; a typo or a deleted line sent the doc to the public upstream.
+The whole model: [kernel.md](kernel.md), [extension-model.md § Scope model](extension-model.md#scope-model).
+
+**What you see after the merge.** Nothing, if every doc of yours already sits
+in a tier folder or you have none. Otherwise `python3 scripts/validate-bridge.py`
+fails each misplaced doc and names the fix, and the daily update job keeps the
+merge and files an inbox item for it (a checker that arrives with the merge and
+finds your files red never rolls the merge back). Your docs stay local the whole
+time: the router still honours their `scope:` line until they move.
+
+**The fix, dry run first:**
+
+```bash
+python3 scripts/migrate-docs-tier.py            # the plan, nothing changes
+python3 scripts/migrate-docs-tier.py --write    # move and rewrite the links
+python3 scripts/migrate-docs-tier.py --check    # exit 1 while anything is left
+```
+
+Each doc moves to `docs/<tier>/<same name>` with `git mv`, so its history
+follows. Its own relative links and its frontmatter `related:` paths are
+rewritten for the new folder, and every link elsewhere that pointed at the old
+path (Markdown, YAML, plain text; repo-relative or relative to the linking file)
+is rewritten too, in your own files, including `identity/agent/` and
+`work/memory/` where git ignores them. A CORE file is never edited: it comes
+from upstream, and a local edit would conflict with the next merge, so one that
+names the moved doc is listed (`core`); if that line is your own, move it to
+`identity/agent/INSTANCE.md` or a page in `docs/user/`. Code is never edited
+either: a script or page that still names the old path is listed for you to look
+at. Records of the past are never edited: the work log and every other `log.md`,
+closed tasks under `work/done/`, archives, `work/reports/`, deliverables, the
+inbox and any file or folder whose name starts with a date (a meeting's
+minutes and triage) say what was true when they were written, so they keep the old path and are listed as kept. The generated
+`overlays.lock.yaml` is never edited. A file your org overlay materializes is
+named (`overlay`): make the same change in the overlay's source, or its next
+sync reports a local edit. `docs/applications.md`, the one user doc the router
+knew by name, moves to `docs/user/` the same way.
+
+The script moves nothing it would have to guess about. An unknown `scope:` token
+(say `scope: usr`) is reported, and the router keeps that doc local in the
+meantime; fix the line and run the script again. A doc in a tier folder whose
+line names another tier, or a target that already exists, is reported for you to
+settle by hand. Then commit, and `validate-bridge.py` passes the docs surface.
+
+A new document about your own instance goes straight to `docs/user/`; a
+document your org overlay shares goes to `docs/org/`.
+
+## Once: the family index moved to kernel/
+
+Since 2026-11-05 the config-family index every session imports is
+`kernel/families.yaml` (YAML, generated from `docs/data-model.yaml`), no longer
+`docs/families.md`, and `AGENTS.md` imports it from there. The same update
+retires `work_system` in `ecosystem.yaml`: nothing read it (the switch is
+`work.enabled` in `bridge-config.yaml`, the paths of the log and the board are in
+`kernel/manifest.yaml`), yet the registry card showed it to every session and the
+template said it switched the work system on. Your `work/` folder, the log and
+the board are not touched. The model: [kernel.md](kernel.md).
+
+**What you see after the merge.** The merge itself moves the index, because
+both files are CORE. `python3 scripts/check-kernel.py` then names what is left in
+your own files: a registry (`ecosystem.yaml`, an org fragment such as
+`ecosystem.<org>.yaml`, `ecosystem.personal.yaml`) still carrying `work_system`,
+a card in your `context-budget.user.yaml` that still keeps it, and any file of
+yours (`identity/agent/INSTANCE.md`, a rule, a memory note) that still links
+`docs/families.md`. The daily update job keeps the merge and files an inbox item
+for it.
+
+**The fix, dry run first:**
+
+```bash
+python3 scripts/migrate-kernel.py            # the plan, nothing changes
+python3 scripts/migrate-kernel.py --write    # remove the key, follow the move
+python3 scripts/migrate-kernel.py --check    # exit 1 while anything is left
+```
+
+The key goes with its indented block, and with the comment lines directly
+above it when they name it (`# Work-system tracking ...`); a comment that does not
+(your file's header, a note on the key before it, a `# yaml-language-server`
+line) stays. Every other line of the registry stays as it was, and the card stops
+keeping it, at whatever indent your budget file uses. A card in a layout the
+script cannot edit is named for you to fix by hand, and `--write` and `--check`
+exit 1 until it is gone. An org fragment your overlay materialized is fixed
+locally too and named (`overlay`): the overlay needs the same change at its
+source, or a fresh subscriber gets the key back. A link to the old index is
+rewritten in your own Markdown, YAML and text files, in whichever form it was
+written; a line that already names the new path describes the move and stays.
+CORE files come with the update, and records of the past, code and ignored
+folders are never edited, the same rules as `scripts/migrate-docs-tier.py`
+(which also reaches `identity/agent/` and `work/memory/` where git ignores them).
+A result that would change any other key is refused and named. Line endings stay
+as they were. Then commit.
+
+**If you edited `docs/families.md` yourself,** the merge stops on a modify/delete
+conflict. Move your own lines to `identity/agent/INSTANCE.md` (that is what it is
+for), then delete the file; nothing imports it any more, so lines left in it no
+longer reach a session. `check-kernel.py` names the file while it exists.
 
 ## Unattended, once a day
 

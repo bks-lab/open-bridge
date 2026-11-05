@@ -66,7 +66,7 @@ project declares its own pipeline in config. The same engine runs a heavy projec
   **artefacts** — the diff, the plan file, the requirement — and cannot see the
   implementer's reasoning; state crosses stages **only through files** (`plan.md`, the
   diff, the reject note, `verdict.json`). `verify` and `pr` run **no model** at all.
-  The one shared context is the target repo's own `CLAUDE.md`/settings via
+  The one shared context is the target repo's own `AGENTS.md` or `CLAUDE.md`/settings via
   `--setting-sources project` — static, identical for every stage, never a stage's
   transient reasoning: this is *fresh eyes*, not *zero shared context*. The property is
   enforced purely by the **absence** of a resume flag (`stages/_lib.sh` `bp_claude`) and

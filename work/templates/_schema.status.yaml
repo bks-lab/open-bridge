@@ -17,7 +17,7 @@
 #
 # Related:
 #   - work/templates/STATUS.md  (the template / golden example)
-#   - CLAUDE.md § Task Sync Routing
+#   - AGENTS.md § Task Sync Routing
 #   - workflow/projects/_schema.yaml  (project-board configs)
 #   - protocols/standing-orders/task-sync.md  (Phase 3 — consumes this)
 
@@ -112,12 +112,28 @@ properties:
       who: {type: string, description: "bridge | me | a person"}
       due: {type: string, format: date}
       estimate_min: {type: integer, minimum: 1}
+      check:
+        type: string
+        format: date
+        description: |
+          The check-in day of a step in progress with someone (the cockpit's
+          In progress, task.py next --who --check): until then the task stands
+          under Running elsewhere, on that day it comes back and asks how it stands.
 
   outcome:
-    enum: [declined]
+    enum: [declined, merged]
     description: |
       Set only with status: done. 'declined' = task closed without completion.
+      'merged' = closed into another task (`task.py merge`), merged_into names it.
       Absent = normal completion.
+
+  merged_into:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9-]{0,79}$"
+    description: |
+      Set only with status: done and outcome: merged: the slug of the task this one
+      went into. Its notes, open steps and the paths of its documents stand there in a
+      section between `<!-- merged-from: <slug> -->` markers. `task.py reopen` drops it.
 
   was_stream:
     type: boolean
@@ -158,8 +174,25 @@ properties:
       Optional — when absent, board generator falls back to state_detail
       (truncated) or task title.
 
+  origin:
+    description: |
+      Where the task came from, one line as written by whoever started it: an
+      inbox item, a meeting, a mail, a person. Free text, not the reason for
+      the task (that is brief.goal); the cockpit names its source from it
+      (scripts/lib/bridge_cockpit/origin.py).
+
+  brief:
+    $ref: "#/$defs/Brief"
+
   # ---- Three-axis routing ----------------------------------------------
 
+  area:
+    type: string
+    minLength: 1
+    description: |
+      The workplace area (a `workplace.workspaces` name or alias, any case) this task belongs to.
+      Wins over slug patterns and contexts; one that names no workspace is ignored.
+      The cockpit groups the start page by it (docs/workplace.md).
   context:
     type: string
     pattern: "^[a-z][a-z0-9-]*$"
@@ -232,6 +265,68 @@ properties:
     description: "Free-form paths / links — for humans, not machines"
 
 $defs:
+
+  Brief:
+    type: object
+    additionalProperties: false
+    required: [goal]
+    description: |
+      What was written about an item: a goal, an optional user story and the
+      acceptance criteria, plus who wrote it, when and against which text.
+      One shape in two places, the `brief:` block of a STATUS.md and the
+      `describe` event of an inbox item. The gate every writer passes is
+      scripts/lib/bridge_cockpit/card_fields.py validate_brief; its
+      BRIEF_LIMITS are the limits below. No text holds a dash as punctuation.
+    properties:
+      name:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: |
+          Stage 4 of the cockpit's one point view: what the item is, as a person
+          names it in a list, at most about 7 words (card_fields.py allows 8),
+          everyday words; never a path, an issue or ticket number or a file name.
+          The page shows it where a title is a slug or longer than 60 characters.
+      stand:
+        type: string
+        minLength: 1
+        maxLength: 140
+        description: "Stage 4: one sentence, where the item stands now and why it is here"
+      goal:
+        type: string
+        minLength: 1
+        maxLength: 140
+        description: "One sentence: what is true once the item is done"
+      story:
+        type: object
+        additionalProperties: false
+        required: [as, want, so_that]
+        description: "Optional user story: as <who>, I want <what>, so that <why>"
+        properties:
+          as: {type: string, minLength: 1, maxLength: 80}
+          want: {type: string, minLength: 1, maxLength: 80}
+          so_that: {type: string, minLength: 1, maxLength: 80}
+      acceptance:
+        type: array
+        minItems: 0
+        maxItems: 5
+        items: {type: string, minLength: 1, maxLength: 120}
+        description: "Testable outcomes, not steps. A stream has none"
+      by:
+        type: string
+        pattern: "^(?=.*[0-9])[A-Za-z0-9][A-Za-z0-9._:/@-]*$"
+        description: "The model id exactly as the run's modelUsage reports it, never an alias such as haiku"
+      at:
+        type: string
+        format: date
+        description: "The day it was written"
+      basis:
+        type: string
+        pattern: "^[0-9a-f]{16}$"
+        description: "sha256 prefix of the STATUS.md text without this block (card_fields.brief_basis): a brief whose basis differs from the file's is stale"
+      edited:
+        type: boolean
+        description: "true once a person changed it; a model then never rewrites it unasked"
 
   SyncBlock:
     type: object

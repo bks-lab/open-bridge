@@ -1,0 +1,453 @@
+// SPDX-License-Identifier: MIT
+// The cockpit, the tabs under the card of an open point, in the one point view (views/flowpoint.js) of Work through and
+// of the Files tab, as an issue tracker keeps them: Description (since stage 1 of 04.11.2026 first what it is about,
+// from the item drawer: the triage's gist, why only you can do it and its reason, an inbox item's description as
+// filed; then goal, story and criteria; for a task the sections of its STATUS.md folded under From the file; the source
+// stands in the fields on the right, the next step in the card), Steps (n/m, the checklist of its STATUS.md), Activity
+// (count: everything that happened to the point, one list) and Related (n: the task an item belongs to, the other items
+// of that task, each a click into the same view, and the paths its STATUS.md names, the file card's references). The
+// tab chosen stays from point to point (ui.flowTab, kept in this browser); a finished AI run (stage 2) has Description
+// (what it was asked: how it started and the person's sentence, then its item's brief), Activity (its start and end,
+// from its item) and Related (the item or task it ran on, and that item's task); one the point lacks falls back to
+// Description (logic.js pointTabs, pointTab). A tab alone and the reports card have no bar. Card and panes read at most
+// 820 px wide. Stage 3, what the detail column held besides: Why it is here (the briefing's reasons) and the lines its
+// page writes of its task in Description, the steps a row has on its page (an application's, logic.js pageStepsOf) in
+// Steps, as buttons of two clicks as on the page, and under Related the asks the briefing folded into the row (each a
+// click into the same view) and the sessions of its task (views/sessions.js TaskSessions: a live one to its tab, an
+// ended one goes on in a new tab).
+// Activity (ActivityPane): on top the summary of the last week on a click (cockpit.flow.summary, within the day's
+// budget), the filters with their counts (All, Notes, Documents, State, Agents, Code: logic.js ACTIVITY_FILTERS, and
+// History where an inbox item has events, the drawer's Verlauf, logic.js historyRows: a filter of its own, not counted
+// in All), then one row per thing that happened, newest first: when, its kind, what (a change as the old value struck
+// through, then the new one; a decision taken back says so), who or what did it. A document opens in a new tab through
+// the doc route (c.docHref), a link on the web too, a tab in the page's view of it, a task in the one view. At the foot
+// a note (the verb note through the server) and, where the point has an open task, a document attached to its
+// deliverables (size checked here first, cockpit.flow.attach). The feed is read when the point opens (app.js
+// loadActivity), again after a note, an attachment or a verb on the row; a task's file is read by its slug, a closed
+// copy by its folder (the point's `file`).
+// For the mouse: no text names a key.
+// The rules every component keeps stand at the head of components.js.
+
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import {
+  activityCounts, activityFilters, activityRows, activityWhen, attachTooBig, detailNeedsLoad, errorText, flowSettings, formatDay, historyRows,
+  originOf, pageStepsOf, pointAbout, pointOriginal, pointTab, pointTabs, pointViewOn, relatedOf, rowActionKey, rowName, short, stepsOf,
+} from '../logic.js'
+import { T, language } from '../text.js'
+import { describeOf, ItemCard } from './card.js'
+import { OriginTag } from './day.js'
+import { Lines, Segmented } from './detail.js'
+import { GH_REF, GitHubDetail } from './github.js'
+import { RowSteps } from './pages.js'
+import { Btn, useRoving } from './parts.js'
+import { TaskSessions } from './sessions.js'
+
+// what Description leaves out: the source, the state, who, the prio and the dates stand in the fields and the card's
+// head, the next step's who and day too; the progress is the count of Steps; a missing part says itself once
+const DESC_SKIP = ['source', 'state', 'owner', 'priority', 'due', 'area', 'next', 'progress', 'gaps']
+
+/** What the point is about, on top of Description (the item drawer's What it is about and its Detail, logic.js
+ *  pointAbout): the gist as its head, why it needs you, its reason, an inbox item's description as filed, and since
+ *  stage 3 why it is here (the detail column's list) and the lines its page writes of its task */
+function About({ about }) {
+  const t = T()
+  const f = t.flow.one
+  if (!about) return null
+  return html`<section class="flow-about">
+    ${about.head || about.you || about.why ? html`<div class="flow-about-gist"><p class="label-caps">${f.about}</p>
+      ${about.head ? html`<p class="flow-about-head">${about.head}</p>` : null}
+      ${about.you ? html`<p><span class="flow-side-you">${f.needs(about.need)}</span></p>` : null}
+      ${about.why ? html`<p class="muted small">${about.why}</p>` : null}</div>` : null}
+    ${about.reasons?.length ? html`<div class="flow-about-why"><p class="label-caps">${t.whyTitle}</p>
+      <ul class="why">${about.reasons.map((w, i) => html`<li key=${i}>${w}</li>`)}</ul></div>` : null}
+    ${about.lines?.length ? html`<${Lines} lines=${about.lines} />` : null}
+    ${about.text ? html`<div class="flow-about-text"><p class="label-caps">${f.detail}</p><p class="pre">${about.text}</p>
+      ${about.cut ? html`<p class="muted small">${f.cut}</p>` : null}</div>` : null}
+  </section>`
+}
+
+/** A task's STATUS.md in its sections, folded under From the file (the file card's Sections) */
+function Sections({ sections }) {
+  const f = T().flow.one
+  if (!(sections ?? []).length) return null
+  return html`<details class="flow-sections"><summary>${f.sections(sections.length)}</summary>
+    ${sections.map((x, i) => html`<details key=${i} class="flow-section"><summary>${x.heading}</summary><p class="pre">${x.text}</p></details>`)}
+  </details>`
+}
+
+/** What a finished AI run was asked (stage 2): how it started (Let AI do it, Advise, Collect context) and the
+ *  person's sentence it started with, the newest "Start note:" on its item before it ended, else that it had none */
+function Asked({ start, events }) {
+  const f = T().flow.read
+  const notes = (events ?? []).filter(e => e?.verb === 'note' && /^Start note:/.test(String(e.text ?? e.note ?? '')))
+  const said = notes.length ? String(notes[notes.length - 1].text ?? notes[notes.length - 1].note).replace(/^Start note:\s*/, '') : null
+  return html`<section class="flow-about"><div class="flow-about-gist">
+    <p class="label-caps">${f.asked}</p>
+    <p class="flow-about-head">${f.mode[start.mode] ?? start.mode}</p>
+    <p class=${said ? '' : 'muted small'}>${said ?? f.noNote}</p>
+  </div></section>`
+}
+
+/** What a GitHub issue or pull request says and who is on it (the info drawer's, views/github.js GitHubDetail), read
+ *  from GitHub as soon as the point opens, as the info drawer read it (kept ten minutes on the server) */
+function GitHubFold({ gref, c }) {
+  const f = T().flow.one
+  return html`<section class="flow-gh">
+    <h3 class="label-caps">${f.onGitHub}</h3>
+    <${GitHubDetail} gref=${gref} c=${c} />
+  </section>`
+}
+
+/** Whether a user story is the owner's own ("as the operator of this tracker", "as myself"): its `as` names the owner
+ *  (cockpit.person_name) or the owner's own role; such a story says nothing a reader needs and stays out (stage 4) */
+export function ownerStory(as, s) {
+  const text = String(as ?? '').toLowerCase()
+  if (!text) return true
+  const owner = String(s?.work?.person ?? s?.server?.person ?? '').trim().toLowerCase()
+  if (owner && (text.includes(owner) || text.includes(owner.split(/\s+/)[0]))) return true
+  return /\b(i|me|myself|owner|operator|ich|mich|inhaber|betreiber|nutzer des|user of)\b/.test(text)
+}
+
+/** Description: what it is about (a finished run what it was asked), then the goal, the story and the criteria of the
+ *  point's card, written by the task or the item (none written: a line says so, not on a finished run, whose ask
+ *  stands above), then a task's own STATUS.md in its sections; a GitHub issue or pull request what it says and who is
+ *  on it (views/github.js GitHubDetail, the info drawer's, stage 3) */
+function DescPane({ row, detail, entry, item, itemCard = null, start = null, events = null, s, c }) {
+  const f = T().flow.desc
+  const card = (row.inbox_id ? row.card ?? itemCard ?? detail?.card : detail?.card ?? row.card) ?? null
+  const d = describeOf(s, row.key, detail?.describe, row.describe)
+  const loading = !!row.task && !detail && entry?.status !== 'error'
+  const own = !!row.task && row.key === `task:${row.task}`
+  const gh = !row.task && !row.inbox_id && GH_REF.test(row.ref ?? '') && (originOf(row)?.category === 'github' || /\/\/github\.com\//.test(row.url ?? ''))
+  if (pointViewOn(s)) {
+    // stage 4: the goal stands, everything else that is stored folds under one line
+    const w = T().flow.simple
+    const original = pointOriginal(row)
+    const headline = detail?.front?.headline ?? null
+    const about = pointAbout(row, s, item)
+    const story = card?.story && !ownerStory(card.story.as, s)
+    const stored = !!(original || headline || about || story || (card?.acceptance ?? []).length || (own && (detail?.sections ?? []).length))
+    return html`<div class="flow-desc">
+      ${start ? html`<${Asked} start=${start} events=${events} />` : null}
+      ${card ? html`<${ItemCard} card=${card} d=${d} dkey=${row.key} s=${s} c=${c} skip=${[...DESC_SKIP, 'summary', 'story', 'acceptance']} cls="flow-card-brief" />` : null}
+      ${card?.goal || stored || gh || (start && !loading) ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
+      ${gh ? html`<${GitHubFold} key=${row.ref} gref=${row.ref} c=${c} />` : null}
+      ${stored ? html`<details class="flow-stored"><summary>${w.more2}</summary>
+        ${original || headline ? html`<dl class="meta flow-meta">
+          ${original ? html`<div class="meta-item"><dt>${w.original}</dt><dd>${original}</dd></div>` : null}
+          ${headline ? html`<div class="meta-item"><dt>${w.headline}</dt><dd>${headline}</dd></div>` : null}</dl>` : null}
+        <${About} about=${about} />
+        ${card && (story || (card.acceptance ?? []).length) ? html`<${ItemCard} card=${story ? card : { ...card, story: null }} d=${null} dkey=${null} s=${s} c=${null}
+          skip=${[...DESC_SKIP, 'summary', 'goal', 'describe']} cls="flow-card-brief" />` : null}
+        ${own ? html`<${Sections} sections=${detail?.sections} />` : null}
+      </details>` : null}
+    </div>`
+  }
+  return html`<div class="flow-desc">
+    ${start ? html`<${Asked} start=${start} events=${events} />` : null}
+    <${About} about=${pointAbout(row, s, item)} />
+    ${gh ? html`<${GitHubFold} key=${row.ref} gref=${row.ref} c=${c} />` : null}
+    ${card ? html`<${ItemCard} card=${card} d=${d} dkey=${row.key} s=${s} c=${c} skip=${DESC_SKIP} cls="flow-card-brief" />` : null}
+    ${card?.goal || card?.story || (card?.acceptance ?? []).length || (start && !loading) ? null : html`<p class="muted small">${loading ? f.loading : f.none}</p>`}
+    ${own ? html`<${Sections} sections=${detail?.sections} />` : null}
+  </div>`
+}
+
+/** Steps: the checklist of STATUS.md as it stands, done or open (ticked there, not here); since stage 3 first the
+ *  steps the row has on its page (an application's, logic.js pageStepsOf), run by the page's command (row_action) as
+ *  the info drawer ran them: each a button of two clicks (views/pages.js RowSteps), a GitHub row's or an event's a
+ *  button of one, since they only start an agent tab */
+function StepsPane({ steps, page = null, s, c }) {
+  const t = T()
+  const f = t.flow.steps
+  const pg = page ? (s.model?.pages ?? []).find(p => p.id === page.page) : null
+  const kind = pg?.sections?.find(x => x.id === page.section)?.kind
+  const busy = page ? !!s.ui.busy?.[rowActionKey({ page: page.page, section: page.section, index: page.it.index })] : false
+  const own = page ? html`<section class="flow-page-steps"><h3 class="label-caps">${f.page(pg?.title ?? page.page)}</h3>
+    ${kind === 'tracker' || kind === 'calendar'
+      ? html`<span class="btn-row">${page.it.actions.map(a => html`<${Btn} key=${a.id} size="xs" variant="secondary" busy=${busy}
+          onClick=${() => c.act('row_action', { page: page.page, section: page.section, index: page.it.index, action: a.id })}>${a.label}<//>`)}</span>`
+      : html`<${RowSteps} it=${page.it} page=${page.page} section=${page.section} s=${s} c=${c} as="buttons" />`}</section>` : null
+  if (!steps.length) return page ? own : html`<p class="muted small">${f.none}</p>`
+  return html`${own}<ul class="flow-steps">${steps.map((st, k) => html`<li key=${k} class=${st.done ? 'is-done' : ''}>
+    <span class="flow-step-mark mono">${st.done ? f.done : f.todo}</span> <span>${st.text}</span></li>`)}</ul>`
+}
+
+/** Related of a finished AI run (stage 2): the item or the task it ran on (its own key, so no link to itself), and the
+ *  task that item belongs to, a click into the same view */
+function RunRelated({ start, item, c }) {
+  const t = T().flow
+  const slug = item?.task ?? null
+  return html`<div class="flow-related">
+    <section><h3 class="label-caps">${String(start.key).startsWith('task:') ? t.read.task : t.read.item}</h3>
+      <ul class="entries"><li class="entry"><span>${short(item?.summary ?? start.title ?? start.key, 90)}</span></li></ul></section>
+    ${slug ? html`<section><h3 class="label-caps">${t.one.parent}</h3>
+      <ul class="entries"><li class="entry"><button type="button" class="btn-link flow-related-open" onClick=${() => c.openItem(`task:${slug}`)}>${slug}</button></li></ul></section>` : null}
+  </div>`
+}
+
+/** Related: the task an item belongs to and the other items of that task as they stand in the model, each a click
+ *  into the same view (c.openItem, stage 1), and the paths STATUS.md names; since stage 3 the asks folded into the row
+ *  (each a click into the same view) and the sessions of its task (views/sessions.js TaskSessions) */
+function RelatedPane({ rel, row, s, c }) {
+  const all = T()
+  const t = all.flow
+  const f = t.related
+  const open = r => html`<button type="button" class="btn-link flow-related-open" onClick=${() => c.openItem(r.key)}>${short(rowName(s, r.key) ?? r.title ?? r.key, 90)}</button>`
+  if (!rel.parent && !rel.rows.length && !rel.paths.length && !rel.asked.length && !rel.sessions.length) return html`<p class="muted small">${f.none}</p>`
+  return html`<div class="flow-related">
+    ${rel.asked.length ? html`<section><h3 class="label-caps">${t.one.asked}</h3>
+      <ul class="entries">${rel.asked.map(r => html`<li key=${r.key} class="entry">${open(r)}</li>`)}</ul></section>` : null}
+    ${rel.sessions.length ? html`<section><h3 class="label-caps">${all.taskSessions(rel.sessions.length)}</h3>
+      <${TaskSessions} row=${row} s=${s} c=${c} bare /></section>` : null}
+    ${rel.parent ? html`<section><h3 class="label-caps">${t.one.parent}</h3>
+      <ul class="entries"><li class="entry">${open(rel.parent)}<span class="entry-tags"><${OriginTag} row=${rel.parent} /></span></li></ul></section>` : null}
+    ${rel.rows.length ? html`<section><h3 class="label-caps">${f.rows}</h3>
+      <ul class="entries">${rel.rows.map(r => html`<li key=${r.key} class="entry">${open(r)}
+        <span class="entry-tags"><${OriginTag} row=${r} /></span></li>`)}</ul></section>` : null}
+    ${rel.paths.length ? html`<section><h3 class="label-caps">${f.paths}</h3>
+      <ul class="entries">${rel.paths.map(p => html`<li key=${p} class="entry"><code>${p}</code></li>`)}</ul></section>` : null}
+  </div>`
+}
+
+/** A changed value in words: a status as the card head words it (an inbox item's too), a theme's name, who drives it
+ *  (nobody), a decision with its day or reason */
+function changeWord(ch, v, t, lang) {
+  const f = t.flow.activity
+  if (ch.field === 'status') return f.state[v] ?? t.taskState[v] ?? String(v)
+  if (ch.field === 'theme') return v ?? t.flow.side.noTheme
+  if (ch.field === 'driver') return v ?? f.nobody
+  if (ch.field === 'decision') {
+    // a merge names the other task: the one it went into, the one it took in (round 4)
+    return [f.decision[v] ?? String(v), ch.into ?? ch.from ?? null, ch.until ? f.until(formatDay(ch.until, lang)) : null, ch.reason ? f.because(ch.reason) : null].filter(Boolean).join(' ')
+  }
+  return String(v ?? '')
+}
+
+// the fields whose empty side is a value of its own: no theme yet, nobody drives it
+const NAMED_EMPTY = new Set(['theme', 'driver'])
+
+/** A change: the old value struck through, then the new one; without an old value the new one alone, but a theme or a
+ *  driver before was No theme yet or nobody, struck as such */
+function Change({ ch }) {
+  const t = T()
+  const lang = language()
+  const old = ch.old != null || NAMED_EMPTY.has(ch.field)
+  return html`<span class="flow-chg">${old ? html`<del class="flow-chg-old">${changeWord(ch, ch.old, t, lang)}</del> → ` : null}<span
+    class="flow-chg-new">${changeWord(ch, ch.new, t, lang)}</span></span>`
+}
+
+// the ref a code row starts with ("owner/repo#18", "repo#18", a commit's hash): the link of the row is that ref
+const CODE_REF_RE = /^((?:[\w.-]+\/)?[\w.-]+#\d+|[0-9a-f]{7,40})(?=\s|$)\s*/
+
+/** A code row's text with its ref as the link to the web (the mockup's "open-bridge #530"); null when it starts with none */
+function codeRef(r) {
+  const web = (r.links ?? []).find(l => l.kind === 'web')
+  const m = r.kind === 'code' && web ? CODE_REF_RE.exec(String(r.text ?? '')) : null
+  return m ? { href: web.href, ref: m[1], rest: String(r.text).slice(m[0].length), links: r.links.filter(l => l !== web) } : null
+}
+
+/** The links of a row: a document in a new tab through the doc route, a page on the web, a tab, a task */
+function Links({ links, c }) {
+  const f = T().flow.activity
+  if (!(links ?? []).length) return null
+  return html`<span class="flow-act-links">${links.map((l, k) => {
+    if (l.kind === 'doc') return html`<a key=${k} href=${c.docHref(l.slug, l.path)} target="_blank" rel="noopener noreferrer">${l.path}</a>`
+    if (l.kind === 'web') return html`<a key=${k} href=${l.href} target="_blank" rel="noopener noreferrer">${short(String(l.href).replace(/^https?:\/\//, ''), 60)}</a>`
+    if (l.kind === 'tab') return html`<button key=${k} type="button" class="btn-link" onClick=${() => c.openTabView(l.ref)}>${f.toTab}</button>`
+    if (l.kind === 'task') return html`<button key=${k} type="button" class="btn-link" onClick=${() => c.openFile(String(l.key ?? '').replace(/^task:/, ''), l.folder ?? null)}>${f.open}</button>`
+    return null
+  })}</span>`
+}
+
+// the kinds whose change says what happened: the server's text of such a row is a phrase for a reader without it
+const SAID_BY_CHANGE = new Set(['status', 'theme', 'decision', 'created'])
+
+/** What a row says besides its change and its links, said once (nothing twice): a state row says itself in its change,
+ *  a document in its link (the server's text is its path inside deliverables/), a start without a known tab names
+ *  nobody (a driver of null on both sides is no change) */
+function rowSays(r) {
+  const ch = r.change && !(r.change.field === 'driver' && r.change.old == null && r.change.new == null) ? r.change : null
+  const path = r.kind === 'doc' ? String(r.doc?.path ?? '') : ''
+  const text = !r.text || (ch && SAID_BY_CHANGE.has(r.kind)) || r.text === ch?.new || (path && (r.text === path || `deliverables/${r.text}` === path)) ? null : r.text
+  return { ch, text }
+}
+
+/** One row of the activity: when, what kind, what happened, who or what did it */
+function ActRow({ r, c }) {
+  const t = T()
+  const f = t.flow.activity
+  const lang = language()
+  const kind = r.kind === 'doc' && r.doc ? f.doc[r.doc.attached ? 'attached' : r.doc.state === 'changed' ? 'changed' : 'new'] : f.kind[r.kind] ?? r.kind
+  const who = r.by ? [f.by[r.by.kind] ?? r.by.kind, r.by.name].filter(Boolean).join(' · ') : null
+  const changes = r.kind === 'doc' && r.doc?.state === 'changed' && r.doc.changes > 1 ? f.doc.changes(r.doc.changes) : null
+  const { ch, text } = rowSays(r)
+  const code = codeRef(r)
+  return html`<li class=${`flow-act-row is-${r.kind}${r.undone_ms ? ' is-undone' : ''}`}>
+    <time class="flow-act-time mono" datetime=${r.at}>${activityWhen(r.at, lang)}</time>
+    <div class="flow-act-body">
+      <span class="flow-act-kind">${kind}${changes ? ` · ${changes}` : ''}</span>
+      <span class="flow-act-what">
+        ${ch ? html`<${Change} ch=${ch} />` : null}
+        ${code ? html`<span class="flow-act-text"><a class="flow-act-ref mono" href=${code.href} target="_blank" rel="noopener noreferrer"
+          title=${code.href}>${code.ref}</a>${code.rest ? ` ${code.rest}` : ''}</span>` : text ? html`<span class="flow-act-text">${text}</span>` : null}
+        <${Links} links=${code ? code.links : r.links} c=${c} />
+        ${r.undone_ms ? html`<span class="flow-act-undone">${f.undone}</span>` : null}
+      </span>
+      ${who ? html`<span class="flow-act-who">${who}</span>` : null}
+    </div>
+  </li>`
+}
+
+/** The summary of the last week, on a click (cockpit.flow.summary): the kept one with its model and time, outdated
+ *  once rows came since; a refusal says itself here, no toast */
+function Summary({ row, feed, s, c }) {
+  const t = T()
+  const f = t.flow.activity.summary
+  const lang = language()
+  const [err, setErr] = useState(null)
+  const on = flowSettings(s).summary.enabled
+  const kept = feed?.summary ?? null
+  if (!on && !kept) return null
+  const can = on && !!feed?.can?.summary && (!kept || kept.stale)
+  const busy = !!s.ui.busy?.[`summary:${row.key}`]
+  const left = s.flow_ai?.summary_left
+  const clock = ms => (Number.isFinite(ms) ? new Date(ms).toLocaleTimeString(lang === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' }) : '')
+  const model = m => (m ? String(m).charAt(0).toUpperCase() + String(m).slice(1) : '')
+  const ask = async () => {
+    setErr(null)
+    const r = await c.flowSummary(row.key)
+    if (r?.error) setErr(errorText(r.error, t))
+  }
+  if (!kept && !can) return null
+  return html`<div class="flow-act-sum">
+    ${kept ? html`<p class="flow-act-sum-text"><b>${f.title}</b> <span class="muted small">(${f.meta(model(kept.model), clock(kept.at_ms))})</span>
+      ${kept.stale ? html` <span class="flow-act-stale">${f.stale}</span>` : null}<br />${kept.text}</p>` : null}
+    ${can ? html`<span class="flow-act-sum-acts"><${Btn} size="xs" variant="secondary" icon="spark" busy=${busy} onClick=${ask}>${kept ? f.again : f.button}<//>
+      ${busy ? html`<span class="muted small" role="status">${f.running}</span>` : Number.isInteger(left) ? html`<span class="muted small">${f.left(left)}</span>` : null}</span>` : null}
+    ${err ? html`<p class="small verbbar-err" role="status">${err}</p>` : null}
+  </div>`
+}
+
+/** The foot of Activity: a note in one line, and a document attached where the point has an open task */
+function ActFoot({ row, feed, s, c }) {
+  const f = T().flow.activity
+  const [text, setText] = useState('')
+  const [msg, setMsg] = useState(null)
+  const file = useRef(null)
+  const set = flowSettings(s)
+  const v = text.replace(/\s+/g, ' ').trim()
+  const busy = !!s.ui.busy?.[row.key]
+  const attaching = !!s.ui.busy?.[`attach:${row.key}`]
+  const add = async () => {
+    if (!v) return
+    const r = await c.flowNote(row.key, v)
+    if (!r?.ok) return
+    setText('')
+    // written while a filter hides the notes: back to All, where it shows
+    if (!['all', 'notes'].includes(s.ui.flowFilter ?? 'all')) c.flowFilter('all')
+  }
+  const pick = e => {
+    const el = e.currentTarget
+    const it = el.files?.[0] ?? null
+    el.value = ''
+    if (!it) return
+    if (attachTooBig(it.size, s)) { setMsg(f.attach.tooBig(set.attach.max_mb)); return }
+    setMsg(null)
+    c.flowAttach(row.key, it)
+  }
+  const id = `flow-note-${row.key}`
+  return html`<div class="flow-act-foot">
+    ${feed?.can?.note !== false ? html`<form class="flow-act-noteform" onSubmit=${e => { e.preventDefault(); add() }}>
+      <label class="sr-only" for=${id}>${f.note.label}</label>
+      <input id=${id} class="input flow-act-note" type="text" maxlength="2000" placeholder=${f.note.label} value=${text}
+        onInput=${e => setText(e.currentTarget.value)} />
+      <${Btn} size="sm" variant="secondary" busy=${busy} disabled=${!v} onClick=${add}>${f.note.add}<//>
+    </form>` : null}
+    ${set.attach.enabled && feed?.can?.attach ? html`<span class="flow-act-attach">
+      <input ref=${file} type="file" class="flow-act-file" hidden onChange=${pick} />
+      <${Btn} size="sm" variant="ghost" busy=${attaching} onClick=${() => file.current?.click()}>${attaching ? f.attach.running : f.attach.button}<//>
+    </span>` : null}
+    ${msg ? html`<p class="small verbbar-err" role="status">${msg}</p>` : null}
+  </div>`
+}
+
+/** One event of an inbox item's history (the drawer's Verlauf): when, its verb, who, until when, what it noted */
+function HistoryRow({ r }) {
+  const t = T()
+  const f = t.flow.activity
+  const lang = language()
+  return html`<li class="flow-act-row is-history">
+    <time class="flow-act-time mono" datetime=${r.at}>${activityWhen(r.at, lang)}</time>
+    <div class="flow-act-body">
+      <span class="flow-act-kind">${t.item.verb[r.verb] ?? r.verb}</span>
+      <span class="flow-act-what">${r.until ? html`<span class="flow-act-text">${t.hiddenUntil(r.until)}</span>` : null}
+        ${r.note ? html`<span class="flow-act-text">${r.note}</span>` : null}</span>
+      ${r.by ? html`<span class="flow-act-who">${f.by[r.by] ?? r.by}</span>` : null}
+    </div>
+  </li>`
+}
+
+/** Activity: the summary, the filters with their counts (History where the item has events), the rows of the filter,
+ *  the note and the attachment */
+function ActivityPane({ row, entry, history, s, c }) {
+  const f = T().flow.activity
+  const feed = entry?.data ?? null
+  if (!feed) return html`<p class="muted small" role="status">${entry?.status === 'error' ? entry.error ?? f.loading : f.loading}</p>`
+  const filters = activityFilters(history)
+  const filter = filters.includes(s.ui.flowFilter) ? s.ui.flowFilter : 'all'
+  const counts = { ...activityCounts(feed), history: history.length }
+  const rows = filter === 'history' ? [] : activityRows(feed, filter)
+  return html`<div class="flow-act">
+    <${Summary} row=${row} feed=${feed} s=${s} c=${c} />
+    <div class="flow-act-filters"><${Segmented} label=${f.filters} values=${filters.map(id => [id, `${f.filter[id]} ${counts[id]}`])}
+      current=${filter} onPick=${v => c.flowFilter(v)} /></div>
+    ${filter === 'history' ? html`<ol class="flow-act-rows">${history.map(r => html`<${HistoryRow} key=${r.id} r=${r} />`)}</ol>`
+      : rows.length ? html`<ol class="flow-act-rows">${rows.map(r => html`<${ActRow} key=${r.id} r=${r} c=${c} />`)}</ol>`
+      : html`<p class="muted small">${(feed.rows ?? []).length ? f.noneHere : f.none}</p>`}
+    ${feed.more ? html`<p class="muted small">${f.more}</p>` : null}
+    <${ActFoot} row=${row} feed=${feed} s=${s} c=${c} />
+  </div>`
+}
+
+/** The tab bar under the card and the pane of the tab chosen; the task's file and the feed are read here when the
+ *  point opens, and again when they went stale */
+export function PointTabs({ x, s, c }) {
+  const f = T().flow
+  const keys = useRoving()
+  const tabs = pointTabs(x, s)
+  const row = tabs.length ? x.row : null
+  // a closed copy is read by its folder (the point's `file`), any other task by its slug
+  const slug = row?.task ? x.file ?? row.task : null
+  const entry = slug ? s.details?.task?.[slug] : null
+  const act = row ? s.details?.activity?.[row.key] : null
+  const ver = s.model?.collected_ms ?? 0
+  useEffect(() => { if (slug && detailNeedsLoad(entry, ver)) c.loadTask(slug) }, [slug, ver, entry?.stale])
+  useEffect(() => { if (row && detailNeedsLoad(act, ver)) c.loadActivity(row.key) }, [row?.key, ver, act?.stale])
+  if (!row) return null
+  const detail = entry?.data ?? null
+  const feed = act?.data ?? null
+  // an inbox item's own detail (read by the one point view, views/flowpoint.js): its description and its history
+  const itemData = row.inbox_id ? s.details?.inbox?.[row.inbox_id]?.data ?? null : null
+  const history = historyRows(itemData?.events)
+  const tab = pointTab(tabs, s.ui.flowTab)
+  const steps = stepsOf(detail)
+  const rel = relatedOf(x, s, detail)
+  const run = x.group === 'read' ? x.start : null
+  const nRel = run ? 1 + (itemData?.item?.task ? 1 : 0) : (rel.parent ? 1 : 0) + rel.rows.length + rel.paths.length + rel.asked.length + rel.sessions.length
+  const n = { steps: steps.length ? `${steps.filter(st => st.done).length}/${steps.length}` : null, activity: feed ? String(activityCounts(feed).all) : null,
+    related: nRel ? String(nRel) : null }
+  const pane = tab === 'steps' ? html`<${StepsPane} steps=${steps} page=${pageStepsOf(row, s)} s=${s} c=${c} />`
+    : tab === 'activity' ? html`<${ActivityPane} row=${row} entry=${act} history=${history} s=${s} c=${c} />`
+      : tab === 'related' ? (run ? html`<${RunRelated} start=${run} item=${itemData?.item ?? null} c=${c} />` : html`<${RelatedPane} rel=${rel} row=${row} s=${s} c=${c} />`)
+        : html`<${DescPane} row=${row} detail=${detail} entry=${entry} item=${itemData?.item ?? null} itemCard=${itemData?.card ?? null}
+          start=${run} events=${itemData?.events ?? null} s=${s} c=${c} />`
+  return html`<section class="flow-ptabs" aria-label=${f.ptabs.label}>
+    <div class="flow-ptabs-bar" role="tablist" aria-label=${f.ptabs.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
+      ${tabs.map(id => html`<button type="button" key=${id} role="tab" id=${`flow-ptab-${id}`} data-tab=${id} aria-selected=${String(tab === id)}
+        aria-controls="flow-ptab-pane" class=${`flow-ptab${tab === id ? ' is-on' : ''}`} onClick=${() => tab !== id && c.flowTab(id)}>${f.ptabs[id]}${n[id]
+          ? html` <span class="flow-ptab-n">${n[id]}</span>` : null}</button>`)}
+    </div>
+    <div class="flow-ptabs-pane" id="flow-ptab-pane" role="tabpanel" aria-labelledby=${`flow-ptab-${tab}`}>${pane}</div>
+  </section>`
+}

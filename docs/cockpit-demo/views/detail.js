@@ -5,14 +5,14 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
-  stateToken, canTab, settledRefs, statusSplit, tabNextStep, workPageOf,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue,
+  stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas, startWaiting,
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf
 } from '../logic.js'
 import { T, language } from '../text.js'
+import { ItemCard, TASK_FACTS_SKIP, describeKey, describeOf } from './card.js'
 import { ReviewBlock } from './check.js'
-import { KindTag, RowBar, Skeleton } from './day.js'
+import { KindTag, OriginTag, RowBar, Skeleton } from './day.js'
 import { ReturnChip, ReturnPanel } from './home.js'
-import { START_PAGE } from './nav.js'
 import { PageSection } from './pages.js'
 import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine, WalkBar } from './parts.js'
 import { TaskSessions } from './sessions.js'
@@ -23,28 +23,34 @@ function Overview({ s, c }) {
   const t = T()
   const m = s.model
   if (!m) return html`<div class="panel panel-pad"><${Skeleton} lines=${6} /></div>`
+  // under an area filter the count is the area's, as its line on the overview has it; the rest of the
+  // headline (free time, what comes) is the day's
+  // with Work through on the count is its own, the start page's line for the area (flow.js startWaiting)
+  const area = s.ui.area ? homeAreas(s.tabs?.tabs, m.sections, [], s.now || Date.now())
+    .find(a => !a.none && a.name.toLowerCase() === s.ui.area.trim().toLowerCase()) : null
+  const waiting = startWaiting(s, s.ui.area) ?? (s.ui.area ? area?.waiting ?? 0 : m.briefing_badge ?? 0)
   const head = html`
     <span class="eyebrow">${t.overviewTitle}</span>
-    <h2 class="detail-title">${t.forYouNow(m.briefing_badge ?? 0)}${m.headline_rest ? ` · ${m.headline_rest}` : ''}</h2>
+    <h2 class="detail-title">${t.forYouNow(waiting)}${m.headline_rest ? ` · ${m.headline_rest}` : ''}</h2>
     ${m.since ? html`<p class="muted">${m.since}</p>` : null}`
-  // with a work tab the day (dates, status, what happened) stands on Start; here only the headline and the way there
-  if (workPageOf(m.pages)) {
-    return html`<div class="panel panel-pad overview">${head}
-      <p class="row-in muted">${t.dayOnStart}
-        <${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(START_PAGE)}>${t.dayOnStartOpen}<//></p>
-      <p class="hint muted">${t.detailEmpty}</p>
-    </div>`
-  }
+  // the day (dates, status, what happened) stands here, with a work tab too: the overview on Start has none.
+  // Under an area filter it keeps to the area as the rows beside it do (the star is the rows' own filter)
+  const day = areaScope({ ...s, ui: { ...s.ui, pinnedOnly: false } })
   return html`<div class="panel panel-pad overview">${head}
-    <${DayView} s=${s} c=${c} />
+    <${DayView} s=${day} c=${c} />
     <p class="hint muted">${t.detailEmpty}</p>
   </div>`
 }
 
-/** The day: dates, status, what is clear, what needs tidying, the workplace and the pages of group day.
+/** The lines of Small fixes: each one in the page's own sentence for its kind (extras.tend, briefing_view), the
+ *  text the server wrote for a kind it has none for and for an older server that sends no facts */
+export const tendLines = (ex, t) => (Array.isArray(ex.tend) && ex.tend.length ? ex.tend.map(x => t.tend[x.kind]?.(x) ?? x.text) : ex.hygiene)
+
+/** The day: dates, status, what is clear, the small fixes, the workplace and the pages of group day.
  *  In the middle of Today as one panel, or on Start where a work tab exists as one card per block,
- *  where the pages of group day stand as a shelf of their own (DayPages) */
-export function DayView({ s, c, cards = false }) {
+ *  where the pages of group day stand as a shelf of their own (DayPages); `pages` false leaves those out
+ *  (the overview's day: dates, status and small fixes, the long log stays on Work) */
+export function DayView({ s, c, cards = false, pages = true }) {
   const t = T()
   const m = s.model
   if (!m) return html`<${Skeleton} lines=${6} />`
@@ -59,7 +65,7 @@ export function DayView({ s, c, cards = false }) {
     (ex.clear ?? []).length ? { id: 'clear', title: t.clearTitle,
       body: html`<ul class="plain">${ex.clear.map((x, i) => html`<li key=${i}><${StateLine} token="success" word=${x} /></li>`)}</ul>` } : null,
     (ex.hygiene ?? []).length ? { id: 'hygiene', title: t.hygieneTitle,
-      body: html`<ul class="plain">${ex.hygiene.map((x, i) => html`<li key=${i}><${StateLine} token="warning" word=${x} /></li>`)}</ul>` } : null,
+      body: html`<ul class="plain">${tendLines(ex, t).map((x, i) => html`<li key=${i}><${StateLine} token="warning" word=${x} /></li>`)}</ul>` } : null,
     ex.workplace ? { id: 'workplace', title: t.workplaceTitle,
       body: html`<p class="row-in">${ex.workplace.replace(/\s*\S+\?$/, '')}
         ${wpPage ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.setPage(wpPage.id)}>${t.workplaceOpen}<//>` : null}</p>` } : null,
@@ -71,12 +77,13 @@ export function DayView({ s, c, cards = false }) {
   }
   const [agenda, status, ...rest] = blocks
   return html`<div class="day-view">
+    ${s.ui?.area ? html`<p class="muted small">${t.allAreas}</p>` : null}
     <div class="ov-grid">
       <div class="ov-block"><h3 class="label-caps">${agenda.title}</h3>${agenda.body}</div>
       <div class="ov-block"><h3 class="label-caps">${status.title}</h3>${status.body}</div>
     </div>
     ${rest.map(b => html`<div key=${b.id} class="ov-block"><h3 class="label-caps">${b.title}</h3>${b.body}</div>`)}
-    <${DayPages} s=${s} c=${c} />
+    ${pages ? html`<${DayPages} s=${s} c=${c} />` : null}
   </div>`
 }
 
@@ -105,6 +112,19 @@ function StatusList({ rows, s, c }) {
     </details>` : null}`
 }
 
+/** Where the row comes from, in full: the word, the text as it was written (selectable, nothing cut), the ref,
+ *  what kind of report it is, and whether a click in the cockpit filed it; null when nothing is known */
+function FromFact({ row }) {
+  const t = T()
+  const o = originOf(row)
+  if (!o && !row.inbox_kind) return null
+  return html`<span class="meta-from">${o ? html`<${OriginTag} origin=${{ ...o, ref: null }} />` : null}
+    ${o?.raw ? html`<span class="meta-from-raw">${o.raw}</span>` : null}
+    ${o?.ref ? html`<span class="mono">${o.ref}</span>` : null}
+    ${row.inbox_kind ? html`<span class="muted">${t.item.kindName[row.inbox_kind] ?? row.inbox_kind}</span>` : null}
+    ${o?.via_cockpit ? html`<span class="muted">${t.originViaCockpit}</span>` : null}</span>`
+}
+
 function MetaList({ row, s }) {
   const t = T()
   // a source is a section id: its title on the dashboard's pages names it in words
@@ -121,18 +141,22 @@ function MetaList({ row, s }) {
     ['ref', row.ref],
     ['state', row.inbox_state ? (t.item.stateName[row.inbox_state] ?? row.inbox_state) : null],
     ['sources', (row.sources ?? []).map(x => titles.get(x) ?? x).join(', ') || null],
+    ['from', FromFact({ row })],
   ].filter(([, v]) => v)
   return html`<dl class="meta">${items.map(([k, v]) => html`<div class="meta-item" key=${k}><dt>${t.meta[k]}</dt><dd>${v}</dd></div>`)}</dl>`
 }
 
-export function Segmented({ label, values, current, onPick, busy }) {
+export function Segmented({ label, values, current, onPick, busy, u }) {
   return html`<div class="seg" role="group" aria-label=${label}>
-    ${values.map(([v, word]) => html`<button type="button" key=${v} class=${`seg-btn${current === v ? ' is-on' : ''}`}
+    ${values.map(([v, word]) => html`<button type="button" key=${v} class=${`seg-btn${current === v ? ' is-on' : ''}`} data-u=${u ? `${u}-${v}` : undefined}
       aria-pressed=${String(current === v)} disabled=${busy} onClick=${() => current !== v && onPick(v)}>${word}</button>`)}
   </div>`
 }
 
-function TeamBlock({ row, s, c }) {
+/** A task's team (model.teams): how far the one started is, its next role to start or what it waits for, and the
+ *  teams that fit it to start (verb team_role). `bare` without its block and heading, where the place names it (the
+ *  field Team of the one point view, stage 3) */
+export function TeamBlock({ row, s, c, bare = false }) {
   const t = T()
   const teams = s.model?.teams ?? []
   const busy = !!s.ui.busy[row.key]
@@ -140,8 +164,8 @@ function TeamBlock({ row, s, c }) {
   const team = row.team ? teams.find(x => x.id === row.team.team_id) : null
   const suggestions = (row.team_suggestions ?? []).map(id => teams.find(x => x.id === id)).filter(Boolean)
   if (!team && !suggestions.length) return null
-  return html`<div class="block">
-    <h3 class="label-caps">${t.teamTitle}</h3>
+  return html`<div class=${bare ? 'flow-team' : 'block'}>
+    ${bare ? null : html`<h3 class="label-caps">${t.teamTitle}</h3>`}
     ${team ? html`<div class="team-state">
       <span>${t.teamProgress(team.label, row.team.started, team.roles.length)}</span>
       <ol class="roles">${team.roles.map((r, i) => html`<li key=${r.id} class=${i < row.team.started ? 'is-done' : ''}>
@@ -158,6 +182,25 @@ function TeamBlock({ row, s, c }) {
   </div>`
 }
 
+/** The area of an inbox item without a task: one of the configured areas (workplace.workspaces), or none.
+ *  The router gives it one when it is filed; this is where a person puts it right. An item with a task
+ *  shows the task's area and has no picker */
+function AreaPick({ row, s, c, busy }) {
+  const t = T()
+  const areas = s.boot?.config?.areas ?? []
+  if (!row.inbox_id || row.task || !areas.length || personOf(s)) return null
+  const current = row.area ?? ''
+  const names = current && !areas.includes(current) ? [...areas, current] : areas
+  return html`<div class="sub-block">
+    <h4 class="sub-title">${t.areaPrefix}</h4>
+    <select class="input input-sm area-pick" aria-label=${t.areaPrefix} disabled=${busy} value=${current}
+      onChange=${e => { const v = e.currentTarget.value; if (v !== current) c.act('area', v ? { key: row.key, value: v } : { key: row.key }) }}>
+      <option value="">${t.areaNone}</option>
+      ${names.map(a => html`<option key=${a} value=${a}>${a}</option>`)}
+    </select>
+  </div>`
+}
+
 function ActionsBlock({ row, s, c }) {
   const t = T()
   const busy = !!s.ui.busy[row.key]
@@ -170,7 +213,8 @@ function ActionsBlock({ row, s, c }) {
       <h4 class="sub-title">${t.urgencyPrefix}</h4>
       <${Segmented} label=${t.urgencyPrefix} busy=${busy} current=${row.urgency}
         values=${['now', 'today', 'later'].map(v => [v, t.urgency[v]])} onPick=${v => c.act('urgency', { key: row.key, value: v })} />
-    </div>` : row.task ? html`<div class="sub-block">
+    </div>
+    <${AreaPick} row=${row} s=${s} c=${c} busy=${busy} />` : row.task ? html`<div class="sub-block">
       <h4 class="sub-title">${t.prioPrefix}</h4>
       <${Segmented} label=${t.prioPrefix} busy=${busy} current=${row.priority}
         values=${['P0', 'P1', 'P2', 'P3'].map(v => [v, v])} onPick=${v => c.act('priority', { key: row.key, value: v })} />
@@ -181,6 +225,40 @@ function ActionsBlock({ row, s, c }) {
         onClick=${() => c.act('adopt', { key: row.key, tab_ref: a.ref })}>${a.workspace} / ${a.name}<//>`)}</div>
     </div>` : null}
   </div>`
+}
+
+/** The one close of a tab, wherever a point or a card has one (round 6d; the rule is logic.js tabCloseOffer): with
+ *  an open task or inbox item behind the tab Done and close tab (verb tab_done, which the server resolves) and Close
+ *  tab only beside it, else Close tab alone; nothing while the tab works or asks. A close whose answers went unseen
+ *  arms on the first click (the second-click pattern of RowSteps, falling back after a few seconds). `strong` makes
+ *  the lead button primary, `only` leaves out Done and close tab where the place offers its own (FlowAside's Done),
+ *  `looking` where the tab's screen stands beside it (the Chat's room: what it handed back is in view, so no second
+ *  click), `onClosed` runs after a close or a Done that went through (the Chat walks on) */
+export function TabClose({ tab, s, c, size = 'xs', strong = false, only = false, looking = false, onClosed = null }) {
+  const t = T()
+  const offer = tabCloseOffer(tab, s)
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return undefined
+    const id = setTimeout(() => setArmed(false), 4000)
+    return () => clearTimeout(id)
+  }, [armed])
+  if (!offer) return null
+  const busy = !!s.ui?.busy?.[tab.ref]
+  const went = r => { if (r?.ok) onClosed?.(r) }
+  const close = async () => {
+    if (offer.unseen && !looking && !armed) { setArmed(true); return }
+    setArmed(false)
+    went(await c.act('tab_close', { tab_ref: tab.ref }))
+  }
+  const both = offer.done && !only
+  const word = offer.done ? t.btnCloseTabOnly : t.btnCloseTab
+  return html`<span class="tab-close">
+    ${both ? html`<${Btn} size=${size} variant=${strong ? 'primary' : 'secondary'} busy=${busy}
+      u="tab-done" onClick=${async () => went(await c.act('tab_done', { tab_ref: tab.ref }))}>${t.btnDoneCloseTab}<//>` : null}
+    <${Btn} size=${size} variant=${strong && !both ? 'primary' : 'secondary'} busy=${busy} pressed=${armed ? true : undefined}
+      u="tab-close" title=${armed ? t.closeTabUnseen : undefined} onClick=${close}>${armed ? t.closeTabSure(word) : word}<//>
+  </span>`
 }
 
 export function TabControls({ tab, s, c, compact = false, slim = false }) {
@@ -204,7 +282,7 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
       yes: () => html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>`,
       no: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>`,
       go_on: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>`,
-      close: () => html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>`,
+      close: () => html`<${TabClose} tab=${tab} s=${s} c=${c} strong />`,
       jump: () => html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>`,
       view: () => html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>`,
     }
@@ -217,8 +295,7 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}
       ${tab.state === 'waiting' && !tab.filed_by && !settled && !tab.is_control ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
         onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>` : null}
-      ${tab.state === 'waiting' && (tab.filed_by || settled) && !tab.is_control && canTab(s, 'close') ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
-        onClick=${() => c.act('tab_close', { tab_ref: tab.ref })}>${t.btnCloseTab}<//>` : null}
+      <${TabClose} tab=${tab} s=${s} c=${c} strong />
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}
       ${canTab(s, 'screen') ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>` : null}
       ${tab.live ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => c.setOpenMsg(open ? null : tab.ref)}>${t.btnMessage}<//>` : null}
@@ -239,7 +316,7 @@ function TabInfo({ row, s, c }) {
   return html`<div class="block tab-info">
     <h3 class="label-caps">${t.tabsTitle}</h3>
     <div class="tab-info-line">
-      <${StateLine} token=${stateToken(tab.state)} strong=${tab.state === 'needs-you'} word=${t.state[tab.state] ?? tab.state} />
+      <${StateLine} token=${stateToken(tabStateKey(tab))} strong=${tab.state === 'needs-you'} word=${t.state[tabStateKey(tab)] ?? tab.state} />
       <span class="muted">${tab.workspace ? `${tab.workspace} / ` : ''}${tab.name}</span>
       ${tab.since_ms ? html`<span class="mono muted">${t.sinceFor(duration(s.now - tab.since_ms))}</span>` : null}
     </div>
@@ -292,7 +369,7 @@ export function Lines({ lines }) {
   return html`<ul class="lines">${lines.map((l, i) => html`<li key=${i}><span class="line-kind">${t.lineKind[l.kind] ?? `${l.kind}: `}</span><span>${l.text}</span></li>`)}</ul>`
 }
 
-function TaskDetail({ slug, s, c, exclude }) {
+function TaskDetail({ slug, s, c, exclude, carded = false }) {
   const t = T()
   const d = s.details.task[slug]
   const ver = s.model?.collected_ms ?? 0
@@ -307,7 +384,7 @@ function TaskDetail({ slug, s, c, exclude }) {
     const f = d.data.front ?? {}
     const facts = ['status', 'priority', 'type', 'created', 'last_updated', 'origin', 'blocked_by'].filter(k => f[k])
     body = html`
-      ${f.headline ? html`<p class="task-headline">${f.headline}</p>` : null}
+      ${f.headline && !carded ? html`<p class="task-headline">${f.headline}</p>` : null}
       <dl class="meta">${facts.map(k => html`<div class="meta-item" key=${k}><dt>${t.front[k]}</dt>
         <dd>${k === 'status' ? (t.taskState[f[k]] ?? f[k]) : String(f[k])}</dd></div>`)}</dl>
       <div class="task-sections">
@@ -318,15 +395,37 @@ function TaskDetail({ slug, s, c, exclude }) {
       ${(d.data.log ?? []).length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskLog}</h4>
         <ol class="log-rows">${d.data.log.map((l, i) => html`<li key=${i}><span class="mono muted">${l.at}</span><span>${l.text}</span></li>`)}</ol></div>` : null}`
   }
+  const kindRow = { key: `task:${slug}`, task: slug, work_kind: d?.data?.work_kind ?? byKey.get(`task:${slug}`)?.work_kind }
+  // the head word is the kind (task, stream, closed task, ended stream), never "Task" over a stream
+  const wk = workKindOf(kindRow, s) ?? 'task'
   return html`<div class="block task-detail">
-    <h3 class="label-caps">${t.taskTitle}: <span class="mono">${slug}</span></h3>
+    <h3 class="label-caps">${t.kind[wk] ?? t.taskTitle}: <span class="mono">${slug}</span></h3>
+    <p class="detail-kind"><${KindTag} row=${kindRow} s=${s} /> <${OriginTag} row=${kindRow} origin=${d?.data?.origin ?? byKey.get(`task:${slug}`)?.origin ?? null} /></p>
     ${lines.length ? html`<${Lines} lines=${lines} />` : null}
     ${body}
-    ${entries.length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskEntries}</h4>
+    ${entries.length ? html`<div class="sub-block"><h4 class="sub-title">${t.taskEntries(wk)}</h4>
       <ul class="entries">${entries.map(r => html`<li key=${r.key} class="entry">
         <button type="button" class="btn-link" onClick=${() => c.select(r.key)}>${short(r.title, 80)}</button>
+        <span class="entry-tags"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} /></span>
         <span class="btn-row"><${RowBar} row=${r} s=${s} c=${c} pin=${false} /></span></li>`)}</ul></div>` : null}
   </div>`
+}
+
+/** The card chips a row detail leaves out: the priority chip and origin tag of its head, and what its MetaList,
+ *  TaskDetail or InboxDetail facts below say (area, due, an inbox state, a task's status) */
+function rowDetailSkip(row) {
+  return ['priority', 'source', row.area ? 'area' : null, row.due ? 'due' : null,
+    row.inbox_state || (row.task && !row.inbox_id) ? 'state' : null].filter(Boolean)
+}
+
+/** The asks filed about this line ("ask about this row") that the briefing folded into it (collector.py
+ *  also_inbox): no line of their own, so they stand here, each opening its item. They end with the line */
+function AlsoAsked({ row, c }) {
+  const t = T()
+  const asks = (row.also_inbox ?? []).filter(a => a?.id)
+  if (!asks.length) return null
+  return html`<ul class="also-asked">${asks.map(a => html`<li key=${a.id}>
+    <button type="button" class="btn-link" onClick=${() => c.openItem(`inbox:${a.id}`, { inbox: a.id, title: a.title })}>${t.alsoAsked(short(a.title || a.id, 80))}</button></li>`)}</ul>`
 }
 
 function RowDetail({ row, s, c }) {
@@ -338,27 +437,30 @@ function RowDetail({ row, s, c }) {
     <header class="detail-head">
       <span class="detail-eyebrow">${n ? html`<span class="sec-count mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>` : null}
         <span class="eyebrow">${t.section[row.section] ?? row.section}</span></span>
-      <h2 class="detail-title" id="detail-title" tabindex="-1">${row.title}</h2>
-      <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /></p>
+      <h2 class="detail-title" id="detail-title" tabindex="-1">${row.card?.title || row.title}</h2>
+      <p class="detail-kind"><${KindTag} row=${row} s=${s} c=${c} link /> <${OriginTag} row=${row} /></p>
       <div class="detail-chips">
         <${ReturnChip} s=${s} rowKey=${[row.key, row.task ? `task:${row.task}` : null]} />
-        ${row.tab ? html`<${Chip} token=${stateToken(row.tab.state)}>${t.state[row.tab.state]}<//>` : null}
+        ${row.tab ? html`<${Chip} token=${stateToken(tabStateKey(row.tab))}>${t.state[tabStateKey(row.tab)] ?? row.tab.state}<//>` : null}
         <${MarkChip} mark=${row.mark} /><${PrioChip} priority=${row.priority} />
         ${row.hidden_until ? html`<span class="chip">${t.hiddenUntil(formatDay(row.hidden_until, language()))}</span>` : null}
       </div>
       <${LinkView} link=${row.link} c=${c} onOpenTask=${openTask} />
       ${row.task ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openInner(`task:${row.task}`)}>${t.item.inNet}<//>` : null}
     </header>
+    <${ItemCard} card=${row.card} d=${describeOf(s, describeKey(row), row.describe)} dkey=${describeKey(row)} s=${s} c=${c}
+      skip=${rowDetailSkip(row)} cls="detail-card" />
     <${ReturnPanel} s=${s} c=${c} keys=${[row.key, row.task ? `task:${row.task}` : null]} />
     <${MetaList} row=${row} s=${s} />
     ${(row.why ?? []).length ? html`<div class="block"><h3 class="label-caps">${t.whyTitle}</h3>
       <ul class="why">${row.why.map((w, i) => html`<li key=${i}>${w}</li>`)}</ul></div>` : null}
+    <${AlsoAsked} row=${row} c=${c} />
     ${row.inbox_id ? html`<${InboxDetail} id=${row.inbox_id} s=${s} c=${c} />` : null}
     <${TabInfo} row=${row} s=${s} c=${c} />
     <${ActionsBlock} row=${row} s=${s} c=${c} />
     ${row.hidden_until ? html`<div class="block"><${Btn} size="xs" onClick=${() => c.act('unhide', { key: row.key })}>${t.btnShowAgain}<//></div>` : null}
     <${TeamBlock} row=${row} s=${s} c=${c} />
-    ${row.task ? html`<${TaskDetail} slug=${row.task} s=${s} c=${c} exclude=${row.key} />` : null}
+    ${row.task ? html`<${TaskDetail} slug=${row.task} s=${s} c=${c} exclude=${row.key} carded=${!row.inbox_id && !!row.card?.summary} />` : null}
   </article>`
 }
 
@@ -371,7 +473,12 @@ export function NextUp({ s, c, byKey, current, queue = s.ui.queue }) {
   const v = current ? queueView(queue, current, e => live.has(e.key)) : null
   if (!v || v.total < 2) return null
   const look = e => s.triage?.items?.[e.key]?.gist || (byKey.get(e.key)?.why ?? [])[0] || undefined
-  const entry = (e, max) => ({ key: e.key, title: short(e.title || byKey.get(e.key)?.title || e.key, max), look: look(e), onOpen: () => c.openNext(e) })
+  // kind and source of every entry of the walk; a page item the model holds no row for (By source) reads its own
+  const entry = (e, max) => {
+    const r = byKey.get(e.key) ?? (e.it ? itemRow(e.it) : null)
+    return { key: e.key, title: short(e.title || byKey.get(e.key)?.title || e.key, max), look: look(e), onOpen: () => c.openNext(e),
+      sub: r ? html`<span class="entry-tags"><${KindTag} row=${r} s=${s} /><${OriginTag} row=${r} /></span>` : null }
+  }
   const [next, ...later] = v.next
   return html`<${WalkBar} label=${t.nextLabel} shortcuts=${s.ui.shortcuts} pos=${[v.pos, v.total]} onPrev=${v.prev ? () => c.openNext(v.prev) : null}
     next=${next ? entry(next, 90) : null} later=${later.map(e => entry(e, 80))} done=${t.nextDone} />`
@@ -393,10 +500,15 @@ export function DetailColumn({ s, c, byKey }) {
   if (!key) body = html`<${Overview} s=${s} c=${c} />`
   else if (row) body = html`<${RowDetail} key=${row.key} row=${row} s=${s} c=${c} />`
   else if (key.startsWith('task:')) {
+    const data = s.details?.task?.[key.slice(5)]?.data
+    const wk = data?.work_kind ?? workKindOf({ task: key.slice(5) }, s) ?? 'task'
     body = html`<article class="panel panel-pad detail">
       <${DetailBack} s=${s} c=${c} />
-      <header class="detail-head"><span class="eyebrow">${t.taskTitle}</span><h2 class="detail-title">${key.slice(5)}</h2></header>
-      <${TaskDetail} slug=${key.slice(5)} s=${s} c=${c} /></article>`
+      <header class="detail-head"><span class="eyebrow">${t.kind[wk] ?? t.taskTitle}</span><h2 class="detail-title">${data?.card?.title || key.slice(5)}</h2>
+        <p class="detail-kind"><${KindTag} row=${{ key, task: key.slice(5), work_kind: wk }} s=${s} />
+          <${OriginTag} origin=${data?.origin ?? null} /></p></header>
+      <${ItemCard} card=${data?.card} d=${describeOf(s, key, data?.describe)} dkey=${key} s=${s} c=${c} skip=${TASK_FACTS_SKIP} cls="detail-card" />
+      <${TaskDetail} slug=${key.slice(5)} s=${s} c=${c} carded=${!!data?.card?.summary} /></article>`
   } else {
     body = html`<div class="panel panel-pad"><p class="muted">${t.rowGone}</p>
       ${s.ui.pageDetail ? html`<${Btn} size="xs" onClick=${c.closePeek}>${t.closeDetail}<//>`

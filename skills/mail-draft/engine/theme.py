@@ -15,6 +15,11 @@ The token stays the source; the adjustment is reported, never silent.
 
 `plain` and `minimal` are not lesser versions of the design. They are the
 version for a recipient for whom a designed mail would be wrong.
+
+WHICH design: the Bridge resolves it (scripts/designs.py), asked with the
+persona the mail goes out under, so a second identity can wear a second brand
+(`design_ref:` in identity/personas/<id>.yaml). Outside a Bridge, where no
+resolver ships, it is the root DESIGN.md as before.
 """
 
 from __future__ import annotations
@@ -173,9 +178,49 @@ def ensure_contrast(fg: str, bg: str, minimum: float = 4.5) -> str:
 
 # ------------------------------------------------------------------ design --
 
-def read_design(root: Path) -> dict:
-    path = root / "DESIGN.md"
+def _resolver():
+    """scripts/designs.py of the Bridge this skill ships in, or None outside one.
+
+    The code comes from the skill's own tree, the data from `root`: the
+    resolver is pure, and MAIL_DRAFT_ROOT may name another tree (the tests do).
+    """
+    path = Path(__file__).resolve().parents[3] / "scripts" / "designs.py"
     if not path.is_file():
+        return None
+    import importlib.util  # noqa: PLC0415
+    spec = importlib.util.spec_from_file_location("bridge_designs", path)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except ImportError:          # no PyYAML: the root DESIGN.md, as before
+        return None
+    return mod
+
+
+def design_file(root: Path, persona: str | None = None) -> Path | None:
+    """The design a mail wears: resolved for `persona`, else the root DESIGN.md.
+
+    The persona counts only when its file exists. A profile may name a persona
+    the Bridge has no file for (its footer carries the name); that drafted fine
+    before designs existed, and a design lookup is no reason to fail it now.
+    """
+    designs = _resolver()
+    if designs is None:
+        path = root / "DESIGN.md"
+        return path if path.is_file() else None
+    if persona and not (designs.ID_RE.match(persona)
+                        and (root / "identity" / "personas" / f"{persona}.yaml").is_file()):
+        persona = None
+    try:
+        return designs.resolve(root, persona=persona or None).path
+    except designs.DesignError as err:
+        from .config import ConfigError  # noqa: PLC0415
+        raise ConfigError(str(err)) from err
+
+
+def read_design(root: Path, persona: str | None = None) -> dict:
+    path = design_file(root, persona)
+    if path is None or not path.is_file():
         return {}
     text = path.read_text(encoding="utf-8")
     if not text.startswith("---"):
@@ -184,7 +229,7 @@ def read_design(root: Path) -> dict:
     if end < 0:
         return {}
     from .config import parse_yaml  # noqa: PLC0415 - plain themes never need PyYAML
-    return parse_yaml(text[3:end], "DESIGN.md") or {}
+    return parse_yaml(text[3:end], path.name) or {}
 
 
 def _font_stack(family: str | None, fallback: str) -> str:
@@ -305,11 +350,11 @@ def _looks_serif(family: str) -> bool:
     return any(w in f for w in ("serif", "playfair", "georgia", "garamond", "times", "merriweather", "lora")) and "sans" not in f
 
 
-def load(name: str, root: Path, overrides: dict | None = None) -> Theme:
+def load(name: str, root: Path, overrides: dict | None = None, persona: str | None = None) -> Theme:
     if name in BUILTIN:
         return Theme(dict(BUILTIN[name]), dict(NEUTRAL_DARK), [], name)
     if name == "design":
-        design = read_design(root)
+        design = read_design(root, persona)
         if not design:
             return Theme(dict(BUILTIN["minimal"]), dict(NEUTRAL_DARK),
                          ["DESIGN.md has no frontmatter, using minimal"], "design")

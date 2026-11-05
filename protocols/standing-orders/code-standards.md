@@ -17,7 +17,7 @@ summary: "Code quality expectations applied to dispatched build sub-agents."
 
 ## Rules
 
-- Read the target repo's CLAUDE.md before making changes
+- Read the target repo's AGENTS.md or CLAUDE.md before making changes
 - Follow existing patterns in the codebase — don't introduce new conventions
 - Don't add features, refactor code, or make improvements beyond what was asked
 - Don't add error handling for scenarios that can't happen
@@ -37,6 +37,6 @@ summary: "Code quality expectations applied to dispatched build sub-agents."
 
 ## Violations
 
-- Modifying files in a repo without reading its CLAUDE.md first
+- Modifying files in a repo without reading its AGENTS.md or CLAUDE.md first
 - Bundling unrelated changes in a single commit
 - Adding unrequested features, refactors, or improvements

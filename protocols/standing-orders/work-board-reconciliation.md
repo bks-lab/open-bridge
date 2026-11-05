@@ -36,7 +36,7 @@ folder ↔ `status:` can.
 
 ## Session-Start Scan (advisory)
 
-After Task Management load (CLAUDE.md § Session Start step 2), reconcile the
+After Task Management load (AGENTS.md § Task Management › Session Start, rules/operations.md), reconcile the
 folder ↔ `status:` axis (board-row drift is gone — the board is generated):
 
 ```

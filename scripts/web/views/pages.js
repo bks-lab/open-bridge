@@ -1,27 +1,31 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, profile pages: sections, tiles, mosaic, the overview board, the Jev order.
+// The cockpit, profile pages: sections, tiles, mosaic, the overview board, a folder's machines, a sub page's head
+// card, the Jev order.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
-  sectionStamp, triageKey, triageShows, sectionTile, tokenText, usageToday,
+  sectionStamp, triageKey, triageShows, sectionTile, jobCounts, machineLines, pageSummary, short, tokenText, usageToday, tabStateKey,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
-  cardPlan, moneyText, costBoard,
+  cardPlan, moneyText, costBoard, itemRow, ghFiltered, ghMyLogin,
+  areaLog,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
-import { PageItemActions, RowBar } from './day.js'
+import { KindTag, OriginTag, PageItemActions, RowBar } from './day.js'
 import { Lines } from './detail.js'
-import { ReturnChip } from './home.js'
+import { ReturnChip, RowAsk } from './home.js'
 import { rowClickOpens, useFocusOnOpen } from './overlays.js'
-import { Btn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
+import { Btn, SeenBtn, SkipFix, Chip, Dot, Empty, Icon, MarkChip, PrioChip, ResIcon, StateLine, VerdictChip, usePopover, useRoving, useTween } from './parts.js'
 import { GitHubBoard, GitHubList, ghShows } from './github.js'
+import { WORKERS_PAGE, folderOf, subPagesOf } from './nav.js'
 import { DatesAgenda } from './dates.js'
 import { CostCard, UsageCard } from './costs.js'
+import { LogRows } from './logpage.js'
 
 // ---------------------------------------------------------------- pages
 
@@ -97,15 +101,32 @@ function GaugeTile({ it, page, section, c }) {
 }
 
 /** A command row's own steps (an application: followed up, turned down, ...) in two clicks; each is
- *  run by its section's command and can be taken back from the toast or the history */
-export function RowSteps({ it, page, section, s, c }) {
+ *  run by its section's command and can be taken back from the toast or the history. `as="buttons"`
+ *  (a section's `steps: buttons`) sets every step out as a button of its own: the first click arms it,
+ *  the second runs it, and an armed button falls back after a few seconds. `head` (a GitHub row's lead
+ *  step or To tab, views/github.js) makes it one split button: the head left, ▾ with these steps */
+export function RowSteps({ it, page, section, s, c, as = 'menu', head = null }) {
   const t = T()
   const [open, setOpen] = useState(false)
+  const [armed, setArmed] = useState(null)
   const box = usePopover(open, setOpen)
   const busy = !!s.ui.busy[rowActionKey({ page, section, index: it.index })]
-  const pick = action => { setOpen(false); c.act('row_action', { page, section, index: it.index, action }) }
+  const pick = action => { setOpen(false); setArmed(null); c.act('row_action', { page, section, index: it.index, action }) }
+  useEffect(() => {
+    if (!armed) return undefined
+    const id = setTimeout(() => setArmed(null), 4000)
+    return () => clearTimeout(id)
+  }, [armed])
+  if (as === 'buttons') {
+    return html`<span class="btn-row row-step-buttons">${it.actions.map(a => html`<${Btn} key=${a.id} size="xs"
+      variant=${armed === a.id ? 'primary' : 'secondary'} busy=${busy} pressed=${armed === a.id}
+      title=${armed === a.id ? t.stepConfirmTitle : undefined}
+      onClick=${() => (armed === a.id ? pick(a.id) : setArmed(a.id))}>${armed === a.id ? t.stepConfirm(a.label) : a.label}<//>`)}</span>`
+  }
   return html`<span class="settle" ref=${box}>
-    <${Btn} size="xs" variant="ghost" busy=${busy} pressed=${open} title=${t.rowStepsTitle} onClick=${() => setOpen(!open)}>${t.rowSteps} ▾<//>
+    ${head ? html`<span class="btn-split">${head}<${Btn} size="xs" variant="primary" busy=${busy} pressed=${open} title=${t.rowStepsTitle}
+        label=${t.rowStepsMore} onClick=${() => setOpen(!open)}>▾<//></span>`
+      : html`<${Btn} size="xs" variant="ghost" busy=${busy} pressed=${open} title=${t.rowStepsTitle} onClick=${() => setOpen(!open)}>${t.rowSteps} ▾<//>`}
     ${open ? html`<span class="settle-menu" role="menu">${it.actions.map(a => html`<button type="button" role="menuitem" key=${a.id}
       class="settle-item" onClick=${() => pick(a.id)}><span>${a.label}</span></button>`)}</span>` : null}
   </span>`
@@ -123,7 +144,7 @@ export function rowEntry(it, page, section, byKey) {
 /** The rows of a list in the order it shows them, as the queue its details walk through */
 export const rowQueue = (rows, byKey) => rows.map(r => rowEntry(r.it, r.page, r.section, byKey)).filter(Boolean)
 
-function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue = null }) {
+function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue = null, steps = 'menu', timed = true }) {
   const t = T()
   const tri = s.triage?.items?.[triageKey(it)] ?? null
   const [open, setOpen] = useState(false)
@@ -137,7 +158,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
   return html`<tr class=${`${tone ? `tone-${tone}` : ''} row-opens`} tabindex="0"
     onClick=${e => { if (rowClickOpens(e)) openIt() }}
     onKeyDown=${e => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); openIt() } }}>
-    <td class="c-when mono">${it.when}</td>
+    ${timed ? html`<td class="c-when mono">${it.when}</td>` : null}
     <td class=${`c-item${tri ? ' has-gist' : ''}`}>
       ${tri ? html`<${TriageGist} tri=${tri} keyRow=${actionRow(it, byKey)} c=${c} s=${s} />` : null}
       <div class="info-title">
@@ -149,14 +170,15 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
             aria-haspopup="true" onClick=${e => c.peek(`task:${it.task}`, e.currentTarget, queue)}>
             ${tone ? html`<${StateLine} token=${toneToken(tone)} strong=${tone === 'bad'} word=${it.title} />` : it.title}</button>`
           : tone ? html`<${StateLine} token=${toneToken(tone)} strong=${tone === 'bad'} word=${it.title} />` : html`<span>${it.title}</span>`}
+        <span class="info-kinds"><${KindTag} row=${itemRow(it)} s=${s} /><${OriginTag} row=${itemRow(it)} /></span>
         <${MarkChip} mark=${it.mark} /><${PrioChip} priority=${it.priority} />
         ${it.task ? html`<${VerdictChip} review=${byKey.get(`task:${it.task}`)?.review} />` : null}
         ${it.state ? html`<span class="chip">${t.taskState[it.state] ?? it.state}</span>` : null}
-        ${it.tab ? html`<${Chip} token=${stateToken(it.tab.state)}>${t.state[it.tab.state] ?? it.tab.state}<//>` : null}
+        ${it.tab ? html`<${Chip} token=${stateToken(tabStateKey(it.tab))}>${t.state[tabStateKey(it.tab)] ?? it.tab.state}<//>` : null}
         ${it.starting ? html`<${Chip} token="info">${t.startingTab}<//>` : null}
         <${ReturnChip} s=${s} rowKey=${[itemKey, it.task ? `task:${it.task}` : null]} />
       </div>
-      ${detail ? html`<div class="info-detail muted">${detail}</div>` : null}
+      ${detail || it.acked ? html`<div class="info-detail muted">${[detail, it.acked && t.findingSeen.on(it.acked.day, it.acked.note)].filter(Boolean).join(' · ')}</div>` : null}
       ${it.meter ? html`<${MeterBar} meter=${it.meter} scale=${scale} tone=${tone} />` : null}
       ${open && (it.lines ?? []).length ? html`<${Lines} lines=${it.lines} />` : null}
     </td>
@@ -164,51 +186,16 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${14} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" cls="act-quiet" title=${it.link.path} onClick=${() => c.copy(it.link.path)}>${t.copyPath}<//>` : null}
-      <${PageItemActions} it=${it} s=${s} c=${c} />
-      ${it.ask ? html`<${Btn} size="xs" variant="ghost" cls="act-quiet" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
+      <${PageItemActions} it=${it} s=${s} c=${c} /><${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />
+      ${it.ask ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
-      ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} />` : null}
+      ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}
       ${actionRow(it, byKey) && (it.inbox || it.task) ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
     </span></td>
   </tr>`
 }
 
 // ---------------------------------------------------------------- drawn sections: tiles and mosaic
-
-/** Symbols for drawn rows: a source names a family (a device type, a cloud service, a provider), the
- *  page draws a plain line icon; anything unknown is a box */
-const RES_ICONS = {
-  laptop: 'M4 6h16v10H4zM2 19h20',
-  monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
-  server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
-  router: 'M3 14h18v6H3zM7 17h.01M11 17h.01M8 14 5 8M16 14l3-6',
-  phone: 'M7 2h10v20H7zM11 18h2',
-  robot: 'M6 8h12v10H6zM12 4v4M9 12h.01M15 12h.01M9 15h6',
-  printer: 'M6 3h12v6H6zM4 9h16v8H4zM8 14h8v7H8z',
-  usb: 'M9 2h6v8H9zM7 10h10v12H7z',
-  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1-1.9 1.9-.1-.1a1.6 1.6 0 0 0-2.7 1.1V20h-2.6v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1-1.9-1.9.1-.1A1.6 1.6 0 0 0 4.6 15H4v-2.6h.2a1.6 1.6 0 0 0 1.1-2.7l-.1-.1 1.9-1.9.1.1a1.6 1.6 0 0 0 2.7-1.1V4h2.6v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1 1.9 1.9-.1.1a1.6 1.6 0 0 0 1.1 2.7h.2V15z',
-  bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8z',
-  globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
-  page: 'M6 2h9l5 5v15H6zM14 2v6h6',
-  tunnel: 'M3 20v-8a9 9 0 0 1 18 0v8M7 20v-8a5 5 0 0 1 10 0v8',
-  cloud: 'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z',
-  mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
-  box: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10',
-}
-
-const ICON_OF = {
-  macos: 'laptop', windows: 'monitor', linux: 'server', saas: 'cloud', router: 'router', 'kvm-over-ip': 'monitor',
-  'smart-device': 'phone', robot: 'robot', '3d-printer': 'printer', 'usb-toolkit': 'usb', worker: 'gear',
-  'function app': 'bolt', 'web app': 'globe', zone: 'globe', pages: 'page', tunnel: 'tunnel', account: 'cloud',
-  azure: 'cloud', cloudflare: 'cloud', aws: 'cloud', gcp: 'cloud', m365: 'cloud', tailscale: 'cloud', ionos: 'globe',
-  google: 'mail', icloud: 'mail', microsoft365: 'mail', exchange: 'mail', imap: 'mail',
-}
-
-function ResIcon({ name, size = 18 }) {
-  const d = RES_ICONS[ICON_OF[name] ?? name] ?? RES_ICONS.box
-  return html`<svg class="res-icon" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d=${d} /></svg>`
-}
 
 export { usePopover }   // the menus of day.js and header.js take it from here
 
@@ -272,9 +259,11 @@ export function StatusMenu({ it, page, section, c }) {
 }
 
 /** One drawn row: symbol, name, state as dot and word, what it is, the way to it */
-function ResTile({ it, page, section, c, i, services }) {
+function ResTile({ it, page, section, c, i, services, s = null, steps = 'menu' }) {
   const t = T()
   const tone = it.tone ?? 'ok'
+  // the web link: the row's own, else its url where that is http(s) (a commits row names its repository's page so)
+  const href = it.link?.kind === 'web' ? it.link.href : /^https?:\/\//.test(it.url ?? '') ? it.url : null
   return html`<article class=${`rtile rt-${tone} row-in card-opens`} style=${{ '--i': Math.min(i, 14) }} tabindex="0"
     onClick=${e => { if (rowClickOpens(e)) c.openInfo(it, page, section) }}
     onKeyDown=${e => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); c.openInfo(it, page, section) } }}>
@@ -283,14 +272,17 @@ function ResTile({ it, page, section, c, i, services }) {
       <h4 class="rtile-title" title=${it.title}>${it.title}</h4>
       <span class=${`rdot rdot-${tone}`} aria-hidden="true"></span>
     </header>
+    ${it.when ? html`<p class="rtile-when">${it.when}</p>` : null}
     ${it.detail ? html`<p class="rtile-detail">${it.detail}</p>` : null}
     ${it.meter ? html`<${MeterBar} meter=${it.meter} scale=${0} tone=${it.tone} />` : null}
     <footer class="rtile-foot">
       ${services ? html`<${Btn} size="xs" variant="secondary" onClick=${services.open}>${t.resServices(services.n)}<//>` : null}
       ${it.account?.status ? html`<${StatusMenu} it=${it} page=${page} section=${section} c=${c} />` : null}
-      ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
+      ${href ? html`<a class="btn btn-ghost btn-xs" href=${href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${13} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
+      ${steps === 'buttons' && s && it.actions?.length && it.row_id
+        ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as="buttons" />` : null}
     </footer>
   </article>`
 }
@@ -354,7 +346,7 @@ const MANY = 6     // a group with more rows than this shows its head, its probl
 
 /** Cards in groups: a group's own head row (an account with its counts) leads it, the rest are tiles;
  *  a large group shows only what needs a look, the whole of it opens as a list */
-function TilesView({ items, page, section, sections, c }) {
+function TilesView({ items, page, section, sections, c, s = null, steps = 'menu' }) {
   const t = T()
   const f = useRowFilter(items)
   const [drawer, setDrawer] = useState(null)
@@ -402,7 +394,7 @@ function TilesView({ items, page, section, sections, c }) {
               <span class=${`fdot fdot-${FILTER_TONE[k]}`} aria-hidden="true"></span>${t.filterTone[k]} <span class="mono">${n(k)}</span></span>`)}</span></header>` : null}
         ${big && tiles.length ? html`<h4 class="label-caps mosaic-sub">${t.mosaicProblems(tiles.length)}</h4>` : null}
         ${tiles.length ? html`<div class="rtiles">${tiles.map((it, i) => html`<${ResTile} key=${it.index} it=${it} i=${i} page=${page}
-          section=${section} c=${c} services=${servicesOf(it)} />`)}</div>` : null}
+          section=${section} c=${c} services=${servicesOf(it)} s=${s} steps=${steps} />`)}</div>` : null}
       </section>`
     })}
     ${drawer ? html`<${ResDrawer} d=${drawer} page=${page} c=${c} onClose=${() => setDrawer(null)} />` : null}
@@ -445,12 +437,12 @@ function MosaicView({ items, page, section, c }) {
 
 /** Rows under their group (a log under its task), the busiest first; each group shows its newest
  *  rows, the rest one click away */
-function GroupsView({ items, page, section, c }) {
+function GroupsView({ items, page, section, c, whole = false }) {
   const t = T()
   const [open, setOpen] = useState({})
   const groups = groupRows(items).sort((a, b) => b.rows.length - a.rows.length)
   return html`<div class="gview">${groups.map((g, gi) => {
-    const all = !!open[g.key]
+    const all = whole || !!open[g.key]
     const rows = all ? g.rows : g.rows.slice(0, 3)
     return html`<section class="gview-group row-in" key=${g.key} style=${{ '--i': Math.min(gi, 14) }}>
       <header class="gview-head">
@@ -464,33 +456,41 @@ function GroupsView({ items, page, section, c }) {
         <span class="gview-when mono">${it.when}</span><span class="gview-text">${it.title}</span>
         ${it.ask ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.ask('info', { page, section, index: it.index })}>${t.btnAsk}<//>` : null}
       </li>`)}</ul>
-      ${g.rows.length > 3 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown"
+      ${g.rows.length > 3 && !whole ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown"
         onClick=${() => setOpen({ ...open, [g.key]: !all })}>${all ? t.mosaicFewer : t.mosaicAll(g.rows.length)}<//>` : null}
     </section>`
   })}</div>`
 }
 
-export function PageSection({ page, section, s, c }) {
+export function PageSection({ page, section, s, c, q = '', topic = null }) {
   const byKey = indexRows(s.model)
   const t = T()
-  // a GitHub section's figures and boards filter its rows: kept in the section, gone with a new page
-  const [ghFilter, setGhFilter] = useState(null)
+  // a GitHub section's figures and filter bar filter its rows: kept per section in this browser (round 6c)
+  const ghKey = `${page.id}/${section.id}`, ghFilter = s.ui.ghFilter?.[ghKey] ?? null
+  const setGhFilter = f => c.setGhFilter(ghKey, f)
   const gh = !!(section.metrics?.length || section.boards?.length)
   const stamp = sectionStamp(section.as_of, s.model?.collected_at)
   const more = section.whole ? null : s.more[`${page.id}/${section.id}`]   // whole: the caller already took every row
   // a task or inbox section follows the triage filter on top of its page
   const all = more ? more.items : (section.items ?? [])
-  const items = section.kind === 'tasks' || section.kind === 'inbox'
-    ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter)) : all
+  const kept = section.kind === 'tasks' || section.kind === 'inbox'
+    ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all))) : all
+  // the words of the page's search (views/timeline.js PageSearch): the rows that hold every one
+  const words = q.trim()
+  // the topic chip of a log (views/logpage.js): the rows of that context alone
+  const picked = topic && section.view === 'log' ? filterRows(kept, { group: topic }) : kept
+  const items = words ? words.split(/\s+/).reduce((rows, w) => filterRows(rows, { q: w }), picked) : picked
   const left = more ? 0 : section.more ?? 0
   const scale = meterScale(items)
   // nothing found: a section that says so in one quiet line, or none at all when the profile asks
-  const quiet = !items.length && section.status !== 'error' && section.status !== 'skipped' && !(gh && ghFilter)
+  const quiet = !items.length && section.status !== 'error' && section.status !== 'skipped' && !(gh && ghFiltered(ghFilter))
   if (quiet && section.hide_empty) return null
+  // kept on the page for what reads it there (an account's services, the badge, the alarm): drawn only with a finding
+  if (section.hide_ok && !section.bad && section.status !== 'error') return null
   if (quiet) {
     return html`<section class="panel psec psec-quiet" aria-labelledby=${`ps-${page.id}-${section.id}`}>
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}</h2>
-      <${StateLine} token=${section.alarm ? 'success' : 'info'} word=${section.empty || t.empty} />
+      <${StateLine} token=${section.alarm ? 'success' : 'info'} word=${(words || picked !== kept) && kept.length ? t.filterNone : section.empty || t.empty} />
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </section>`
   }
@@ -498,11 +498,12 @@ export function PageSection({ page, section, s, c }) {
   if (section.status === 'skipped') body = html`<p class=${section.left_out ? 'muted' : ''}><${StateLine} token=${section.left_out ? 'info' : 'warning'} word=${skipText(section, t)} />
     ${skipFixable(section) ? html` <${SkipFix} s=${s} c=${c} title=${section.title} reason=${section.reason} />` : null}</p>`
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
-  else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} />`
+  else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} s=${s} steps=${section.steps ?? 'menu'} />`
   else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
-  else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} />`
+  else if (section.view === 'log') body = html`<${LogRows} items=${areaLog(s, items)} page=${page.id} section=${section.id} c=${c} words=${words} />`
+  else if (section.view === 'groups') body = html`<${GroupsView} items=${items} page=${page.id} section=${section.id} c=${c} whole=${!!words} />`
   // a github-work section on its board view: the GitHub list (views/github.js), not the general table
-  else if (section.view === 'board' && gh) body = html`<${GitHubList} items=${items} page=${page.id} section=${section} s=${s} c=${c} byKey=${byKey} />`
+  else if (section.view === 'board' && gh) body = html`<${GitHubList} items=${items} page=${page.id} section=${section} s=${s} c=${c} byKey=${byKey} filter=${ghFilter} setFilter=${setGhFilter} me=${ghMyLogin(all)} />`
   else if (section.view === 'mosaic') body = html`<${MosaicView} items=${items} page=${page.id} section=${section.id} c=${c} />`
   else if (gaugeSection(items)) {
     body = html`<ul class="gtiles">${items.map(it => html`<${GaugeTile} key=${it.index} it=${it} page=${page.id} section=${section.id} c=${c} />`)}</ul>`
@@ -511,15 +512,15 @@ export function PageSection({ page, section, s, c }) {
     // board: the rows under their group (a GitHub row's board), the groups in the order the rows first name them
     const lanes = section.kind === 'tasks' ? TASK_LANES.map(id => [id, items.filter(it => taskLane(it) === id)]).filter(([, l]) => l.length)
       : section.view === 'board' ? [...new Set(items.map(it => it.group ?? ''))].map(g => [g, items.filter(it => (it.group ?? '') === g)]) : []
-    // the order the rows are shown in is the order a detail walks on to the next
+    // the shown order is the one a detail walks on; When only where a row has a time; the actions head for a reader only
     const shown = lanes.length > 1 ? lanes.flatMap(([, l]) => l) : items
-    const queue = rowQueue(shown.map(it => ({ it, page: page.id, section: section.id })), byKey)
-    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} queue=${queue} />`
+    const queue = rowQueue(shown.map(it => ({ it, page: page.id, section: section.id })), byKey), timed = items.some(it => it.when)
+    const row = it => html`<${InfoRow} key=${it.index} it=${it} page=${page.id} section=${section.id} s=${s} c=${c} byKey=${byKey} scale=${scale} queue=${queue} steps=${section.steps ?? 'menu'} timed=${timed} />`
     body = html`<div class="table-wrap" tabindex="0" role="region" aria-label=${section.title}>
       <table class="tbl">
-        <thead><tr><th scope="col" class="c-when">${t.col.when}</th><th scope="col">${t.col.item}</th><th scope="col" class="c-acts">${t.col.actions}</th></tr></thead>
+        <thead><tr>${timed ? html`<th scope="col" class="c-when">${t.col.when}</th>` : null}<th scope="col">${t.col.item}</th><th scope="col" class="c-acts"><span class="sr-only">${t.col.actions}</span></th></tr></thead>
         ${lanes.length > 1 ? lanes.map(([id, list]) => html`<tbody key=${id} class=${section.view === 'board' ? 'lane-group' : `lane-${id}`}>
-          <tr class="lane-head"><th scope="rowgroup" colspan="3"><span class="label-caps">${section.view === 'board' ? (id || t.groupOther) : t.lane[id]}</span> <span class="sec-count mono">${list.length}</span></th></tr>
+          <tr class="lane-head"><th scope="rowgroup" colspan=${timed ? 3 : 2}><span class="label-caps">${section.view === 'board' ? (id || t.groupOther) : t.lane[id]}</span> <span class="sec-count mono">${list.length}</span></th></tr>
           ${list.map(row)}</tbody>`)
           : html`<tbody>${items.map(row)}</tbody>`}
       </table>
@@ -528,14 +529,15 @@ export function PageSection({ page, section, s, c }) {
   return html`<section class="panel panel-pad psec" aria-labelledby=${`ps-${page.id}-${section.id}`}>
     <header class="psec-head">
       <h2 class="sec-title" id=${`ps-${page.id}-${section.id}`}>${section.title}
-        ${section.status !== 'skipped' && section.status !== 'error' ? html`<span class="sec-count mono">${section.total ?? section.count}</span>` : null}</h2>
+        ${section.status !== 'skipped' && section.status !== 'error' ? html`<span class="sec-count mono">${words || picked !== kept ? items.length : section.total ?? section.count}</span>` : null}
+        ${picked !== kept ? html`<span class="muted"> · ${topic}</span>` : null}</h2>
       ${section.bad ? html`<${StateLine} token="danger" strong word=${t.badgeFindings(section.bad)} />` : null}
       ${stamp ? html`<span class="muted small" title=${t.measuredTitle}>${t.measuredAt(stamp)}</span>` : null}
     </header>
     ${section.stale ? html`<p class="muted small"><${StateLine} token="warning" word=${section.stale} /></p>` : null}
-    ${gh ? html`<${GitHubBoard} section=${section} filter=${ghFilter} setFilter=${setGhFilter} s=${s} c=${c} />` : null}
-    ${gh && ghFilter && !items.length ? html`<${Empty}>${t.filterNone}<//>` : body}
-    ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${t.btnMore(left)}<//>` : null}
+    ${gh ? html`<${GitHubBoard} section=${section} items=${all} filter=${ghFilter} setFilter=${setGhFilter} s=${s} c=${c} />` : null}
+    ${gh && ghFiltered(ghFilter) && !items.length ? html`<${Empty}>${t.filterNone}<//>` : body}
+    ${left > 0 ? html`<${Btn} size="xs" variant="ghost" icon="chevronDown" onClick=${() => c.loadMore(page.id, section.id)}>${section.scoped ? t.btnMoreScoped(left) : t.btnMore(left)}<//>` : null}
   </section>`
 }
 
@@ -558,19 +560,19 @@ function BoardTile({ title, tone, big, sub, note, onClick, label, bars = null })
   </button></li>`
 }
 
-/** The board on top of a page with `overview: true`: a tile per section and per live source (workers, tokens,
- *  costs when the page places the cost card), each a click away from its details. The running sessions stand in
- *  the tab column beside it */
+/** The board on top of a page with `overview: true`: a tile per section and per live source (workers, tokens, costs
+ *  when the page places the cost card), each a click away from its details. Its sub pages (`under:`) stand in the
+ *  folder bar above it, Background jobs among them; Background jobs with a tab of their own keep a tile here, red
+ *  only for an outage, and it opens on every job. The running sessions stand in the tab column beside it */
 export function OverviewBoard({ page, s, c }) {
   const t = T()
   const lang = language()
   const tiles = []
   const stats = s.workers?.data?.stats
-  if (stats) {
-    const bad = stats.with_findings ?? 0
-    const all = stats.in_service ?? 0
-    tiles.push(html`<${BoardTile} key="@w" title=${t.workersTab} tone=${bad ? 'warning' : 'success'} big=${bad || all}
-      sub=${t.overviewWorkers(all - bad, all, bad)} label=${t.overviewJump(t.workersTab)} onClick=${() => c.openWorkers({})} />`)
+  if (stats && !subPagesOf(s, page.id).includes(WORKERS_PAGE)) {
+    const j = jobCounts(s.workers.data)
+    tiles.push(html`<${BoardTile} key="@w" title=${t.workersTab} tone=${j.failing ? 'danger' : j.upkeep ? 'neutral' : 'success'} big=${j.failing || j.all}
+      sub=${t.overviewWorkers(j.ok, j.all, j.failing, j.upkeep)} label=${t.overviewJump(t.workersTab)} onClick=${() => c.openWorkers({})} />`)
   }
   const plan = cardPlan(page)
   const placed = [...Object.values(plan.after).flat(), ...plan.end]
@@ -593,6 +595,7 @@ export function OverviewBoard({ page, s, c }) {
   for (const sec of page.sections ?? []) {
     const x = sectionTile(sec)
     if (sec.hide_empty && !x.count && x.state === 'ok') continue
+    if (sec.hide_ok && !sec.bad && x.state !== 'error') continue
     const sub = x.state === 'error' ? t.unreadable(x.note || '') : x.state === 'skipped' ? skipText(sec, t)
       : x.peak ? t.overviewPeak(x.peak.title, x.peak.percent)
       : x.counts ? x.counts.map(g => `${g.title} ${Math.round(g.value)}/${Math.round(g.max)}`).join(', ')
@@ -601,6 +604,64 @@ export function OverviewBoard({ page, s, c }) {
       sub=${sub} note=${x.state === 'ok' ? x.note : null} label=${t.overviewJump(sec.title)} onClick=${() => jumpTo(`ps-${page.id}-${sec.id}`)} />`)
   }
   return html`<ul class="oboard" aria-label=${page.title}>${tiles}</ul>`
+}
+
+/** The machines on top of a folder page, one line each (logic.js machineLines): its background jobs and outages,
+ *  whether it is always on, and where a sub page names it (a lab: its state there). The line opens the machine's
+ *  jobs, or the page that names it when no job runs there; a place opens its page. None outside a folder page */
+export function MachineLines({ page, s, c }) {
+  const t = T()
+  if (folderOf(s, page?.id) !== page?.id) return null
+  const pages = s.model?.pages ?? []
+  const folder = [page, ...subPagesOf(s, page.id).map(id => pages.find(p => p.id === id)).filter(Boolean)]
+  const view = s.workers?.data
+  const lines = machineLines({ runs: view?.runs ?? [], hosts: view?.hosts ?? (view?.host ? [view.host] : []), pages: folder })
+    .map(x => ({ ...x, places: x.places.filter(p => p.page !== page.id) })).filter(x => x.jobs || x.places.length)
+  if (!lines.length) return null
+  return html`<section class="panel panel-pad mlines" aria-labelledby=${`ml-${page.id}`}>
+    <h2 class="sec-title mlines-title" id=${`ml-${page.id}`}>${t.machinesTitle}</h2>
+    <ul class="mlines-list">${lines.map(x => {
+      const open = () => (x.jobs ? c.openWorkers({ host: x.name }) : c.setPage(x.places[0].page))
+      const tone = x.tone === 'bad' ? 'danger' : x.tone === 'dim' ? 'on-surface-muted' : x.jobs ? 'success' : 'on-surface-muted'
+      return html`<li key=${x.name} class="mline">
+        <button type="button" class="mline-main" aria-label=${x.jobs ? t.machineOpen(x.name) : t.overviewJump(x.places[0].title)} onClick=${open}>
+          <${Dot} token=${tone} /><strong class="mline-name">${x.name}</strong>
+          ${x.always ? html`<span class="chip">${t.machineAlways}</span>` : x.state ? html`<span class="muted small" title=${x.state}>${short(x.state, 56)}</span>` : null}
+          <span class="small">${x.jobs ? t.machineJobs(x.jobs) : t.machineNoJobs}</span>
+          ${x.failing ? html`<span class="small mline-bad">${t.folderOutages(x.failing)}</span>` : null}
+          ${x.upkeep ? html`<span class="muted small">${t.machineUpkeep(x.upkeep)}</span>` : null}
+        </button>
+        ${x.places.map(p => html`<button key=${p.page} type="button" class="fchip mline-place" aria-label=${t.machinePlace(p.title, p.state)}
+          onClick=${() => c.setPage(p.page)}><${Dot} token=${p.tone ? toneToken(p.tone) : 'success'} /><span>${t.machinePlace(p.title, p.state)}</span></button>`)}
+      </li>`
+    })}</ul>
+  </section>`
+}
+
+/** The head card of a sub page with `overview: true` (a lab): one line per part, folded where they say the same
+ *  (logic.js pageSummary), each a jump to its part. Only the page's own parts: the jobs, tokens and costs stand on
+ *  the folder's overview and its bar */
+export function PageSummary({ page, s, c }) {
+  const t = T()
+  const lines = pageSummary(page)
+  if (!lines.length) return null
+  const say = x => {
+    if (x.kind === 'error') return t.unreadable(x.note || '')
+    if (x.kind === 'skipped') return skipText(x.section, t)
+    if (x.kind === 'loud') return [x.tone === 'danger' ? t.folderFindings(x.n) : t.folderWarnings(x.n), x.note].filter(Boolean).join(': ')
+    if (x.kind === 'peak') return t.overviewPeak(x.peak.title, x.peak.percent)
+    if (x.kind === 'gauges') return x.gauges.map(g => `${g.title} ${Math.round(g.value)}/${Math.round(g.max)}`).join(', ')
+    if (x.kind === 'one') return [x.text, x.detail].filter(Boolean).join(' · ')
+    if (x.kind === 'rows') return t.summaryRows(x.counts.ok, x.counts.off)
+    return x.text
+  }
+  return html`<section class="panel panel-pad psum" aria-label=${t.summaryLabel(page.title)}>
+    <ul class="psum-list">${lines.map(x => html`<li key=${x.ids[0]}>
+      <button type="button" class="psum-line" onClick=${() => jumpTo(`ps-${page.id}-${x.ids[0]}`)} aria-label=${t.overviewJump(x.titles[0])}>
+        <${Dot} token=${x.tone === 'neutral' ? 'on-surface-muted' : x.tone} /><span class="psum-title" title=${x.titles.join(', ')}>${t.summaryParts(x.titles)}</span>
+        <span class="psum-text">${say(x)}</span>
+      </button></li>`)}</ul>
+  </section>`
 }
 
 /** A page's live card by its id (`cards:` in the profile places them, cardPlan says where) */

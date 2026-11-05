@@ -329,6 +329,26 @@ properties:
     additionalProperties: true
     description: "Backup config for SaaS data"
 
+  telemetry:
+    type: object
+    additionalProperties: true
+    description: |
+      Managed telemetry sink offered by this instance, the counterpart to a
+      service's `observability` block. Advertise it by adding an ingest
+      capability (e.g. `otlp-ingest`) to `capabilities`, so a skill finds the
+      sink by capability rather than by filename; a fresh sink is then added
+      without touching skill code.
+
+      Typical content: signal endpoints and which signals are actually
+      accepted (measured, not declared), how far credentials can be scoped on
+      ingest versus on read, credential policy plus pointers into `auth`
+      (never a secret value), default retention, and the tenant partitions
+      living on this sink (owner, sensitivity, read scope, retention,
+      offboarding, and whether each partition was decided or merely grew).
+
+      One direction only: services point here, this block never lists the
+      services writing to it (see rules/discovery.md).
+
   # Router-specific (e.g. {your-router}.yaml):
   known_devices:
     oneOf:

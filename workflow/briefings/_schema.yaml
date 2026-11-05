@@ -137,13 +137,19 @@ $defs:
           docs/briefings.md § Dashboard pages.
         items:
           type: object
-          required: [id, sections]
+          required: [id]
           additionalProperties: false
+          # "@workers" places the cockpit's own Background jobs page under a page of this list: an id and under, no sections
+          if: {properties: {id: {const: "@workers"}}}
+          then: {required: [under], propertyNames: {enum: [id, under]}}
+          else: {required: [sections]}
           properties:
-            id: {type: string, minLength: 1, not: {enum: [briefing, more]}, description: "briefing and more are taken: the briefing page and the page for the rest."}
+            id: {type: string, minLength: 1, not: {enum: [briefing, more]}, description: "briefing and more are taken: the briefing page and the page for the rest. @workers places the cockpit's Background jobs page (with under, nothing else)."}
+            under: {type: string, minLength: 1, description: "The id of another page of this list: this page gets no tab; that page becomes a folder: a bar on top of it and of each page under it lists them all, a ▾ at its tab opens the same list, and its tab stays lit while one of them is open. The order of this list is the order of the bar and of the tabs. Without under the page is a tab of its own again. One level deep; neither page may be of group work or day."}
             title: {type: string, description: "Tab name. Default: the label page_<id>, else the id."}
             group: {enum: [main, more, work, day], description: "main (default): a tab in the page bar. more: after the daily tabs, and folded behind a More menu when the bar is too narrow. work: no tab of its own; the page is the by-source view of the work tab, beside what is due and, with jev:, by Jev (the Jev tab then folds into it too). day: no tab of its own; its sections stand under the day list of the Today page."}
-            overview: {type: boolean, description: "true: a dashboard opens the page with a board of tiles, one per section (its count and its loudest row), each a jump to its section. Default false."}
+            search: {type: boolean, description: "true: a dashboard draws a search field above the page's sections. Typing filters the page's own rows; Search all days lists every line of the work log and its archive, the meeting notes and folders, the closed tasks and the raw transcripts (work.meetings.raw_record_dir) that holds every word, by day; Ask AI (with cockpit.files_search on) answers when something was done or discussed, with its sources. Default false."}
+            overview: {type: boolean, description: "true: a dashboard opens the page with a board of tiles, one per section (its count and its loudest row), each a jump to its section. On a page with under it is a head card instead, one line per section, without the live tiles (jobs, tokens, costs) of the folder's own page. Default false."}
             cards:
               type: array
               description: |
@@ -186,12 +192,19 @@ $defs:
                       empty: {type: string, description: "What the section says with nothing in it. Default: label page_empty."}
                       alarm: {type: boolean, description: "Every row is a finding (red), and empty means all green."}
                       badge: {type: boolean, description: "false: listed, but left out of the number on the tab. Default true."}
-                      view: {enum: [table, tiles, mosaic, groups, board, agenda], description: "How a dashboard draws the rows. table (default); tiles and mosaic: cards; groups: short lists under each row's group; board: the table with its rows under their group (a GitHub row's board); agenda: a calendar section by day, as a week or a month, with its figures."}
+                      view: {enum: [table, tiles, mosaic, groups, board, agenda, log], description: "How a dashboard draws the rows. table (default); tiles and mosaic: cards; groups: short lists under each row's group; board: the table with its rows under their group (a GitHub row's board); agenda: a calendar section by day, as a week or a month, with its figures; log: a log under its hours, each row its time, glyph, context and text, the contexts as topic chips that filter it."}
+                      place: {enum: [main, rail], description: "Where a dashboard sets the section. main (default): the page's column; rail: a narrow column beside it, its rows as compact tiles (a commits section: today's count, the sparkline, the branch and its link). A page with a rail section or a log view takes the two-column layout."}
                       hide_empty: {type: boolean, description: "true: an empty section is left out instead of saying so."}
+                      steps: {enum: [menu, buttons], description: "How a dashboard offers a row's own steps (a command row's actions). menu (default): one button opens them; buttons: each step is a button of its own, run by a second click on it."}
                       actionable: {type: boolean, description: "Whether a person can hand the rows on (Do it, Advise, Later, Close). Default: findings and tracker rows."}
+                      hide_ok: {type: boolean, description: "true: the section stays on the page for what reads it there (an account's services, the tab badge, the alarm) but is drawn only while one of its rows is a finding."}
       page_rest:
         enum: [show, hide]
         description: "A section no page names: show it on the tab 'more' (default) or leave it out."
+      page_skip:
+        type: array
+        items: {type: string}
+        description: "Section ids kept off every page, the rest page included: a section another part reads (a file it writes, a list Work holds), shown nowhere on its own."
       marks:
         type: array
         description: |
@@ -213,7 +226,7 @@ $defs:
       labels:
         type: object
         propertyNames:
-          enum: [activity_title, agenda_title, all_clear, back_on, boards_title, bucket_more, busy_until, capped, clash_row, clashes, col_board, col_branch, col_commits, col_days, col_note, col_repo, col_what, col_when, collides, commits, commits_today, due, end, error, first_title, free_rest, free_until, hidden, housekeeping, info_tag, lage, later, look_again, meanwhile, more, muted, new, next_date, no_next, nudge, only_you, overview_file, owed, page_dates, page_empty, page_more, page_status, page_today, page_trackers, page_work, parallel, report_title, repos_skipped, section_activity, section_advise, section_calendar, section_inbox, section_next_up, section_runs_on, section_tasks, section_workplace, shutdown, since, st_blocked, st_in_progress, st_new, st_ready, st_review, task, today, tomorrow, until, untasked, waiting_days, why, with, workplace, yours_today]
+          enum: [activity_title, agenda_title, all_clear, also_asked, also_asked_one, back_on, boards_title, bucket_more, busy_until, capped, clash_row, clashes, col_board, col_branch, col_commits, col_days, col_note, col_repo, col_what, col_when, collides, commits, commits_today, do_reports, do_reports_one, due, end, error, first_title, free_rest, free_until, hidden, housekeeping, info_tag, lage, later, look_again, meanwhile, more, muted, new, next_date, next_step, no_next, nudge, only_you, overview_file, owed, page_dates, page_empty, page_more, page_status, page_today, page_trackers, page_work, parallel, report_title, repos_skipped, section_activity, section_advise, section_calendar, section_inbox, section_next_up, section_runs_on, section_tasks, section_workplace, shutdown, since, st_blocked, st_in_progress, st_new, st_ready, st_review, task, today, tomorrow, until, untasked, waiting_days, waiting_for, why, with, workplace, yours_today, yours_today_one]
         additionalProperties: {type: string}
         description: |
           Any word the reader sees, by label name (docs/briefings.md lists them). A
@@ -468,8 +481,9 @@ $defs:
           then also carries untasked: true for an open issue assigned to you
           that no task or stream that is not done names, false otherwise; when
           the tasks could not be read it is left out and the row carries
-          unknown: [untasked], so an item a rule filed on it stays open. Default true for github-work, false for the
-          others.
+          unknown: [untasked], so an item a rule filed on it stays open. Default true for the GitHub providers
+          (github, github-board, github-work), so the view can fold a task's issue into its inbox line; false for
+          the others.
       prepare:
         type: boolean
         description: |

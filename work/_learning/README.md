@@ -125,7 +125,7 @@ conversation, capture it for review later".
 
 ## What is NOT here
 
-- ❌ MEMORY.md — that's a separate system, see CLAUDE.md § Auto Memory.
+- ❌ MEMORY.md — that's a separate system, see docs/memory.md.
   Proposals MAY suggest a memory entry via `target.type: memory`, but the
   actual write to MEMORY.md happens human-approved later.
 - ❌ Per-skill telemetry beyond invocation count — privacy + signal-to-noise.

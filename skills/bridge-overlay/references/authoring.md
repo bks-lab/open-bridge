@@ -18,7 +18,7 @@ narrative lives in `docs/org-overlays.md`. Schemas are authoritative:
 <your-overlay-repo>/
 ├── overlay.manifest.yaml            REQUIRED  — root declaration (schema-validated)
 ├── README.md                        REQUIRED  — what this overlay is, who it's for
-├── ecosystem.<org>.yaml             OPTIONAL  — ecosystem fragment (@import-wired, never merged)
+├── ecosystem.<org>.yaml             OPTIONAL  — ecosystem fragment (indexed at session start, never merged)
 ├── .github/workflows/publish-guard.yml  RECOMMENDED — leak gate before publish
 └── tree/                            the mirror — mirrors the Bridge layout
     ├── workflow/contexts/<org>-billing.yaml
@@ -143,12 +143,19 @@ Notes:
 ### The ecosystem fragment
 
 Name it `ecosystem.<org>.yaml`. The consumer materializes it **verbatim** to its
-root as a managed file and adds an idempotent `@ecosystem.<org>.yaml` `@import`
-line to `CLAUDE.md`. A consumer's local edit goes through the 3-way merge on a
+root as a managed file, and Phase 1 indexes it at session start
+(`context-index.py --registries`): materialized at the consumer root and indexed
+at session start, never merged, and never imported, since the engine writes no
+entry file. A consumer's local edit goes through the 3-way merge on a
 re-sync, and a same-line conflict keeps the consumer's side and reports it. The
 fragment is **never block-merged** into the consumer's `ecosystem.yaml`. Keep it a
 self-contained fragment (your org's repos / workspaces / projects), generic and
 PII-free, exactly like the main `ecosystem.yaml` it sits beside.
+
+Give every child a `description:`. Phase 1 reads the fragment as a card, one
+line per repo, workspace or project, and that label is what the card shows: a
+child without one is listed as a bare name, which says it exists and not whether
+it is the one a session wants (`docs/context-index.md`).
 
 ## The publish-guard CI idea
 

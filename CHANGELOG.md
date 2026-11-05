@@ -17,6 +17,35 @@ between updates; the two links above never do.
 
 ## Recent themes
 
+**The family index moved into kernel/; work_system retired.** AGENTS.md imports
+`kernel/families.yaml`, generated as YAML; Phase 0 and Phase 1 have caps; the
+`work_system` block in ecosystem.yaml, which nothing read, is gone from the
+template and the registry card. `scripts/migrate-kernel.py` removes it from a
+fork and follows the moved index in a fork's own files (docs/updating.md). A follow-up
+keeps both migrations off CORE files, generated locks and dated records, reaches
+the instance files git ignores, names files an org overlay ships, and lets the
+daily job keep a merge that only changed the manifest.
+
+**The kernel, written down once; docs/ tiered by folder.** `kernel/manifest.yaml`
+names every file, command and listing a session reads before its first answer,
+where it lives, when it is read and which file links it, and
+`scripts/check-kernel.py` holds it to the router, the meter and the data model
+(docs/kernel.md). `docs/` gained `user/`, `org/` and `personal/` tier folders like
+`rules/`; a doc of another tier left in `docs/` fails `validate-bridge.py`, and
+`scripts/migrate-docs-tier.py` moves it (docs/updating.md).
+
+**AGENTS.md as a stable kernel.** The config-family index is generated from
+docs/data-model.yaml into docs/families.md, which AGENTS.md imports; a new
+family is a data row, not an edit to the manual, and a guard keeps lists out
+of AGENTS.md.
+
+**AGENTS.md is the only entry file.** CLAUDE.md is gone; Claude Code 2.1.281+
+reads AGENTS.md directly, the instance layer loads through fixed imports
+(`identity/agent/IDENTITY.md`, `SOUL.md` and the new `INSTANCE.md`), org
+registries are indexed instead of imported (`scripts/context-index.py
+--registries`), and `scripts/migrate-entry-file.py` moves a fork's CLAUDE.md
+lines (docs/updating.md).
+
 **Secrets, as references instead of values.** A broker that resolves a
 `vault://`/`keychain://`-style reference at read time and never prints the
 value ([#222](https://github.com/bks-lab/open-bridge/pull/222)), placement

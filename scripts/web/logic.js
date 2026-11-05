@@ -6,6 +6,14 @@
 // The server decides everything about the domain (which section a row is in, which
 // actions apply, whether a tab waits). These helpers only format and look things up.
 import { TABLES } from './text.js'
+import { inProject } from './areas.js'
+
+// the areas, the files view, the Work through page and its one point view live in files of their own; every name
+// passes on from here
+export * from './areas.js'
+export * from './files.js'
+export * from './flow.js'
+export * from './point.js'
 
 /** The words of one language (text.js, rules/language-policy.md section 3); English for any other */
 const tableOf = lang => (TABLES[lang] ?? TABLES.en).logic
@@ -76,15 +84,67 @@ export function parseShortcut(text) {
   return t.split(/\s+/).map(code => ({ n: Number(code.slice(0, -1)), letter: code.slice(-1) }))
 }
 
+/** Where a row comes from, as the server classified it (lib/bridge_cockpit/origin.py): the category, a word key
+ * (a board's name, the kind of a task or stream), a short detail, the raw text as written, a ref, and whether a click
+ * in the cockpit filed it. The page never parses a source itself */
+export const ORIGIN_CATEGORIES = ['github', 'tracker', 'calendar', 'bot', 'session', 'skill', 'work', 'person', 'bridge', 'other']
+export const WORK_KINDS = ['task', 'stream', 'done_task', 'done_stream']
+
+export function originOf(row) {
+  const o = row?.origin ?? null
+  return o && ORIGIN_CATEGORIES.includes(o.category) ? o : null
+}
+
+/** Whether the task or stream a row is, or is about, is a task, a stream, a closed task or an ended stream: the
+ * server's work_kind, else the task row of that slug (indexRows), else the stream flag of an older server */
+export function workKindOf(row, s) {
+  if (WORK_KINDS.includes(row?.work_kind)) return row.work_kind
+  const slug = row?.task ?? row?.about_task ?? null
+  if (slug) {
+    const k = indexRows(s?.model).get(`task:${slug}`)?.work_kind
+    if (WORK_KINDS.includes(k)) return k
+  }
+  if (row?.task) return row.stream ? 'stream' : 'task'
+  if (row?.about_task) return row.about_kind === 'stream' ? 'stream' : 'task'
+  return null
+}
+
 /** What a row is, the second axis beside its section (which says what it needs from you): 'task' finite work
- * under work/tasks/, 'stream' long-running work under work/streams/, 'inbox' a report in the inbox (`task` the task
- * it is about, if any), 'issue' an issue on a board (owner/repo#n), 'other' an item of another briefing source
- * (an application, a deadline, a check), with that source's name. Shown first on every row (views/day.js KindTag) */
-export function rowKind(row) {
-  if (row?.inbox_id) return { kind: 'inbox', task: row.task ?? null }
-  if (row?.task) return { kind: row.stream ? 'stream' : 'task', task: row.task }
-  if (typeof row?.ref === 'string' && /^[\w.-]+\/[\w.-]+#\d+$/.test(row.ref)) return { kind: 'issue', ref: row.ref }
+ * under work/tasks/, 'stream' long-running work under work/streams/, 'done_task' and 'done_stream' the same once
+ * closed under work/done/, 'inbox' a report in the inbox, 'issue' an issue on a board (owner/repo#n), each of these
+ * two with `task` and `taskKind` for the task or stream it is about, 'other' an item of another briefing source
+ * (an application, a deadline, a check). Shown first on every row (views/day.js KindTag) */
+export function rowKind(row, s) {
+  if (row?.inbox_id) {
+    const task = row.task ?? row.about_task ?? null
+    return { kind: 'inbox', task, taskKind: task ? workKindOf(row, s) : null }
+  }
+  if (typeof row?.ref === 'string' && /^[\w.-]+\/[\w.-]+#\d+$/.test(row.ref)) {
+    const task = row.about_task ?? row.task ?? null
+    return { kind: 'issue', ref: row.ref, task, taskKind: task ? workKindOf(row, s) : null }
+  }
+  // 'done': closed under work/done/ with no word on whether it was a task or a stream (an older server's search hit)
+  if (row?.task) return { kind: row.work_kind === 'done' ? 'done' : workKindOf(row, s) ?? 'task', task: row.task }
   return { kind: 'other', source: row?.sources?.[0] ?? null }
+}
+
+/** The work kind of a place under work/ (a search hit's path): a task, a stream, or 'done' for closed under
+ * work/done/, where the path alone cannot say whether it was a task or a stream (the server's work_kind can) */
+export function placeKind(path) {
+  const m = /^work\/(tasks|streams|done)\//.exec(String(path ?? ''))
+  return m ? { tasks: 'task', streams: 'stream', done: 'done' }[m[1]] : null
+}
+
+/** A page item (By source, the Jev list, a board row) in the shape KindTag and OriginTag read: an inbox item, an
+ * issue (its board facts or its row id), a task, else an item; with the task or stream a board row is about */
+export function itemRow(it) {
+  const gh = it?.gh ?? null
+  const id = typeof it?.row_id === 'string' && /^[\w.-]+\/[\w.-]+#\d+$/.test(it.row_id) ? it.row_id : null
+  const ref = gh?.repo && Number.isInteger(gh?.number) ? `${gh.repo}#${gh.number}` : id
+  const about = it?.task ? null : (gh?.task ?? null)
+  return { key: it?.key ?? null, inbox_id: it?.inbox && !ref ? it.inbox : null, task: it?.task ?? null, ref,
+    about_task: about, about_kind: it?.about_kind ?? (about ? (gh?.stream ? 'stream' : 'task') : null),
+    work_kind: it?.work_kind ?? null, origin: it?.origin ?? null, stream: false, sources: [] }
 }
 
 /** The rows of a section by the repo of their issue (owner/repo#n), in the order a repo first shows up; rows
@@ -292,14 +352,125 @@ export function prioRank(priority) {
 // the work's own order on a GitHub page: what is stuck or waits on a review first, what nobody started last
 const GH_STATE_RANK = { blocked: 0, review: 1, in_progress: 2, ready: 3, new: 4 }
 
+// two ISO times, the earlier first and one that is missing after both
+const earlier = (x, y) => (x && y ? (x < y ? -1 : x > y ? 1 : 0) : x ? -1 : y ? 1 : 0)
+
 /** The rows of one board in the order the person picked: by state (the work's order), newest first, or by
- *  the board's priority (P1 before P2 before P3, equal ones in the work's order); newest first breaks a tie */
+ *  the board's priority (P1 before P2 before P3, equal ones in the work's order); newest first breaks a tie.
+ *  Oldest first, to work through old ones and close them: opened longest ago on top, opened the same minute the
+ *  one quiet the longest first, a row that does not say when it was opened last */
 export function ghSortRows(rows, by) {
   const at = it => it.gh?.changed ?? ''
   const state = it => GH_STATE_RANK[it.gh?.state] ?? 5
+  if (by === 'oldest') return [...rows].sort((a, b) => earlier(a.gh?.created, b.gh?.created) || earlier(a.gh?.changed, b.gh?.changed))
   return [...rows].sort((a, b) => by === 'recent'
     ? at(b).localeCompare(at(a))
     : (by === 'priority' ? prioRank(a.gh?.priority) - prioRank(b.gh?.priority) : 0) || state(a) - state(b) || at(b).localeCompare(at(a)))
+}
+
+/** Where a row opened beside the GitHub list stands in that list's walk (the rows as the list showed them when it was
+ *  clicked, views/github.js GitHubList): its place, how many, the one before and the ones after; null when the row is
+ *  not in it (it changed or left) */
+export function ghWalkAt(walk, it) {
+  if (!it || !Array.isArray(walk)) return null
+  const i = walk.findIndex(x => x?.index === it.index && x?.title === it.title)
+  if (i < 0) return null
+  return { pos: i + 1, total: walk.length, prev: walk[i - 1] ?? null, next: walk.slice(i + 1) }
+}
+
+// the GitHub page's filter bar (round 6c, views/github.js): Board, Assigned to, Opened by (round 6d: the one Person
+// split in two), Repository, Kind and Board status, one choice each, combined with the figure picked; GH_ME stands
+// for you, GH_NONE for no board and for nobody assigned
+export const GH_DIMS = ['board', 'assignee', 'author', 'repo', 'type', 'status']
+export const GH_ME = '@me'
+export const GH_NONE = '-'
+
+/** Your GitHub login as the rows tell it: the author of a row you opened, else the one assignee of a row assigned to
+ *  you; null when no row says (the filter then lists your login beside Me) */
+export function ghMyLogin(items) {
+  for (const it of items ?? []) if (it.gh?.by_me && it.gh.author) return it.gh.author
+  for (const it of items ?? []) if ((it.flags ?? []).includes('mine') && it.gh?.people?.length === 1) return it.gh.people[0]
+  return null
+}
+
+/** A board column as one value whatever its case and spaces ("In Progress" and "In progress" are one column);
+ *  the bar shows the first spelling it meets (ghStatusWords) */
+export const ghStatusKey = v => String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+
+/** The spelling the bar shows for each column key: the first a row has */
+export function ghStatusWords(items) {
+  const out = new Map()
+  for (const it of items ?? []) {
+    const raw = String(it.gh?.status ?? '').replace(/\s+/g, ' ').trim()
+    if (raw && !out.has(ghStatusKey(raw))) out.set(ghStatusKey(raw), raw)
+  }
+  return out
+}
+
+/** The values a row has in one dimension: the boards it stands on (no board as GH_NONE; an older server names the
+ *  board only as the group, unless that group is the repository), the people assigned (you as Me, nobody as GH_NONE),
+ *  who opened it (you as Me, none when the server does not say), its repository, its kind, and its column on a board */
+export function ghValues(it, dim, me = null) {
+  const g = it.gh ?? {}
+  const board = g.board !== undefined ? g.board : (it.group && it.group !== g.repo ? it.group : null)
+  if (dim === 'board') return board ? [board, ...(g.also_on ?? [])] : [GH_NONE]
+  if (dim === 'repo') return g.repo ? [g.repo] : []
+  if (dim === 'type') return [g.type ?? 'issue']
+  if (dim === 'status') return board && g.status ? [ghStatusKey(g.status)] : []
+  const flags = it.flags ?? []
+  if (dim === 'author') {
+    const mine = flags.includes('my_pr') || g.by_me === true || (!!me && g.author === me)
+    return mine ? [GH_ME] : g.author ? [g.author] : []
+  }
+  const people = g.people ?? []
+  const mine = flags.includes('mine') || (!!me && people.includes(me))
+  const others = [...new Set(people)].filter(p => p !== me)
+  return [...(mine ? [GH_ME] : []), ...others, ...(people.length || mine ? [] : [GH_NONE])]
+}
+
+/** A row passes the filter: it carries the figure picked (open is every row) and, in each dimension chosen, the
+ *  value chosen; `skip` leaves one dimension open (to count its options) */
+export function ghPasses(it, f, me = null, skip = null) {
+  if (!f) return true
+  if (f.flag && f.flag !== 'open' && !(it.flags ?? []).includes(f.flag)) return false
+  return GH_DIMS.every(d => d === skip || f[d] == null || ghValues(it, d, me).includes(d === 'status' ? ghStatusKey(f[d]) : f[d]))
+}
+
+/** Whether anything is chosen */
+export const ghFiltered = f => !!f && (!!f.flag || GH_DIMS.some(d => f[d] != null))
+
+/** The options of each dimension, each with the rows it would show beside the other choices: Me first, nobody and no
+ *  board last, the boards in the registry's order (`order.board`), the rest the most first; a value chosen earlier
+ *  that no row has any more stays listed with 0, so it can be seen and taken back */
+export function ghFacets(items, f, me = null, order = {}) {
+  const out = {}
+  const edge = v => (v === GH_ME ? -1 : v === GH_NONE ? 1 : 0)
+  for (const d of GH_DIMS) {
+    const n = new Map()
+    for (const it of items ?? []) {
+      if (ghPasses(it, f, me, d)) for (const v of new Set(ghValues(it, d, me))) n.set(v, (n.get(v) ?? 0) + 1)
+    }
+    const kept = f?.[d] == null ? null : d === 'status' ? ghStatusKey(f[d]) : f[d]
+    if (kept != null && !n.has(kept)) n.set(kept, 0)
+    const pos = v => { const i = (order[d] ?? []).indexOf(v); return i < 0 ? 999 : i }
+    out[d] = [...n].map(([value, count]) => ({ value, n: count }))
+      .sort((a, b) => edge(a.value) - edge(b.value) || pos(a.value) - pos(b.value) || b.n - a.n || String(a.value).localeCompare(String(b.value)))
+  }
+  return out
+}
+
+/** The filters kept in this browser, read back clean: per section ("page/section") the dimensions and the figure
+ *  that hold a text; anything else, and a section with nothing chosen, is dropped. A Person kept before round 6d
+ *  becomes Assigned to (Me, a login and nobody pick the same rows assigned there), unless that is chosen already */
+export function ghFilterKept(raw) {
+  const out = {}
+  for (const [key, kept0] of Object.entries(raw && typeof raw === 'object' ? raw : {})) {
+    if (!/^[^/]+\/[^/]+$/.test(key) || !kept0 || typeof kept0 !== 'object') continue
+    const f = typeof kept0.person === 'string' && kept0.assignee == null ? { ...kept0, assignee: kept0.person } : kept0
+    const kept = Object.fromEntries([...GH_DIMS, 'flag'].filter(d => typeof f[d] === 'string' && f[d]).map(d => [d, f[d].slice(0, 120)]))
+    if (Object.keys(kept).length) out[key] = kept
+  }
+  return out
 }
 
 /** Design token for an item tone */
@@ -320,6 +491,12 @@ export function noteToken(tone) {
   return { ok: 'success', warn: 'warning', bad: 'danger' }[tone] ?? 'info'
 }
 
+/** The state a tab shows: 'idle' for one that waits but is finished (the server's `idle`), else its state */
+export const tabStateKey = tab => (tab?.state === 'waiting' && tab.idle ? 'idle' : tab?.state)
+
+/** The number on the header's Tabs button: the tabs that want you (wantsYou), not the finished ones */
+export const tabsButtonCount = tabs => (tabs ?? []).filter(wantsYou).length
+
 /** Design token for a tab state */
 export function stateToken(state) {
   return { 'needs-you': 'danger', waiting: 'warning', working: 'success' }[state] ?? 'on-surface-muted'
@@ -335,6 +512,14 @@ export function indexRows(model) {
   for (const r of model.hidden ?? []) if (!byKey.has(r.key)) byKey.set(r.key, r)
   for (const r of model.task_rows ?? []) if (!byKey.has(r.key)) byKey.set(r.key, r)
   return byKey
+}
+
+/** The live describe views (the `describe` event, an action's answer) a new model leaves standing: those of keys
+ *  it carries no row of, since a row of the model carries its own describe view (a run the live event alone
+ *  reported, of an item without a row, keeps its `running` until the server says otherwise) */
+export function liveDescribeAfter(describe, model) {
+  const rows = indexRows(model)
+  return Object.fromEntries(Object.entries(describe ?? {}).filter(([k]) => !rows.has(k)))
 }
 
 /** The rows a section shows: every row when expanded, else the compact keys */
@@ -447,13 +632,18 @@ const SIDEBAR_STATE = { waiting: 'waiting', 'needs input': 'needs-you', running:
  *  another Bridge's clone, and the quick chats in the control workspace; then the other Bridges on this
  *  machine that have no workspace, and the A2A agents. A workspace the list does not name (or no list
  *  at all) still shows from its tabs, marked known: false */
-/** The chats a list shows, quick chats and A2A conversations alike: not the start page's core (its panel
- *  shows it, a new one replaces it) and none untouched past keep_hours (the server archives it with its
- *  next look); one still answering, or an A2A task its owner still holds, always */
+/** When a chat last moved, as the server keeps it (quick.py _since): its last answer or question, its handoff, or
+ *  what came back from it */
+export const chatSince = x => Math.max(x.last_ms ?? x.started_ms ?? 0, x.handed?.at_ms ?? 0, x.handed?.outcome?.at_ms ?? 0)
+
+/** The chats a list shows, quick chats and A2A conversations alike: none with a place of its own (the start page's
+ *  core and a file's suggested next step: their panels show them, a new one replaces the last) and none untouched past keep_hours
+ *  (chatSince, so a handed question whose result came back stays; the server archives it with its next look); one still
+ *  answering, or an A2A task its owner still holds, always */
 export function listedChats(convs, keepHours, nowMs) {
   const cutoff = keepHours > 0 && Number.isFinite(nowMs) ? nowMs - keepHours * 3600000 : null
-  return (convs ?? []).filter(x => x.place !== 'core' && (x.running || x.turns?.at(-1)?.waiting || cutoff == null
-    || (x.last_ms ?? x.started_ms) >= cutoff))
+  return (convs ?? []).filter(x => !x.place && (x.running || x.turns?.at(-1)?.waiting || cutoff == null
+    || chatSince(x) >= cutoff))
 }
 
 export function roomsOf(s) {
@@ -500,9 +690,11 @@ export function roomsOf(s) {
   return {
     workspaces: out,
     chats: placed ? [] : chats,
-    bridges: bridges.filter(b => !out.some(w => w.bridge?.id === b.id)),
+    // a workspace the area filter left out still has its Bridge: that one is no "other" Bridge either
+    bridges: bridges.filter(b => !out.some(w => w.bridge?.id === b.id)
+      && !(s.tabs?.hidden_workspaces ?? []).some(w => bridgeOf(w)?.id === b.id)),
     agents: s.agents?.peers ?? [],
-    waiting: tabs.filter(t => !t.is_control && (t.state === 'needs-you' || t.state === 'waiting')).length,
+    waiting: tabs.filter(wantsYou).length,
   }
 }
 
@@ -512,28 +704,33 @@ export function attentionTabs(tabs) {
     .sort((a, b) => (STATE_ORDER[a.state] ?? 4) - (STATE_ORDER[b.state] ?? 4) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
 }
 
-const STATUS_GROUPS = ['needs-you', 'waiting', 'working', 'shell']
+const STATUS_GROUPS = ['needs-you', 'waiting', 'working', 'idle', 'shell']
+
+/** Whether a tab wants you: it needs you, or waits and has not gone idle (finished, nothing asked; the
+ *  server's `idle`), and is not the control tab. Its state stays 'waiting' when idle, so a test on the
+ *  state alone counts finished tabs as waiting */
+export const wantsYou = t => !!t && !t.is_control && (t.state === 'needs-you' || (t.state === 'waiting' && !t.idle))
 
 /** Every tab under its status, in the order you walk them (ui.roomsSort: status): needs you, waiting,
- *  working, terminal, each the longest in its state first, then by name. A state the list does not know
+ *  working, idle (waiting but finished), terminal, each the longest in its state first, then by name. A state the list does not know
  *  stands with the terminals; the control tab, which never waits for you, is left out. [{ state, tabs }],
  *  no group for a status without tabs */
 export function statusQueue(tabs) {
   const by = new Map(STATUS_GROUPS.map(x => [x, []]))
   for (const t of tabs ?? []) {
-    if (!t.is_control) by.get(by.has(t.state) ? t.state : 'shell').push(t)
+    if (!t.is_control) by.get(t.state === 'waiting' && t.idle ? 'idle' : by.has(t.state) ? t.state : 'shell').push(t)
   }
   const since = t => (Number.isFinite(t.since_ms) ? t.since_ms : Infinity)
   return STATUS_GROUPS.map(state => ({ state, tabs: by.get(state).sort((a, b) => since(a) - since(b) || String(a.name).localeCompare(String(b.name))) }))
     .filter(g => g.tabs.length)
 }
 
-/** Whether a tab wants you: it needs you or waits, and is not the control tab */
-export const tabWaits = tab => !!tab && !tab.is_control && (tab.state === 'needs-you' || tab.state === 'waiting')
+/** Whether a tab wants you (wantsYou), under the name the views know */
+export const tabWaits = wantsYou
 
 /** The tabs that want you, in the order By status lists them: the walk on the Chat page */
 export const walkRefs = tabs => statusQueue(tabs).filter(g => g.state === 'needs-you' || g.state === 'waiting')
-  .flatMap(g => g.tabs.map(t => t.ref))
+  .flatMap(g => g.tabs.filter(wantsYou).map(t => t.ref))
 
 /** The walk through the tabs as the lists walk theirs (queueView): the order taken when the walk began
  *  (ui.tabWalk), then every tab that started waiting since, at the end. A tab answered meanwhile keeps
@@ -659,6 +856,29 @@ export function formatClock(ms, lang) {
   }
 }
 
+// where a note leads (its `go`), the same small union the server sends (actions_base.py note_go): each kind with
+// the one field it needs and its pattern; the band's status targets (tickerStatusItems) are the same shape
+// a row key as ROW_KEY_RE takes it: the part after the kind may hold slashes but never a ".." segment
+const GO_FIELDS = {
+  tab: ['ref', /^[A-Za-z0-9%][A-Za-z0-9:%_.@/-]{0,63}$/],
+  row: ['key', /^(inbox|task|ref|title|item):(?!(?:.*\/)?\.\.(?:\/|$)).{1,240}$/],
+  item: ['key', /^(inbox|task):(?!(?:.*\/)?\.\.(?:\/|$)).{1,240}$/],
+  page: ['id', /^@?[a-z0-9][a-z0-9_-]{0,63}$/],
+  conv: ['id', /^g[0-9a-f]{10}$/],
+  ask: ['id', /^q[0-9a-f]{10}$/],
+  claude: null,
+}
+
+/** A note's target with the field of its kind only; anything else (an unknown kind, a broken field) null */
+export function noteGo(go) {
+  if (!go || typeof go !== 'object' || typeof go.kind !== 'string' || !Object.hasOwn(GO_FIELDS, go.kind)) return null
+  const spec = GO_FIELDS[go.kind]
+  if (!spec) return { kind: go.kind }
+  const [field, re] = spec
+  const v = go[field]
+  return typeof v === 'string' && re.test(v) && !/[\x00-\x1f]/.test(v) ? { kind: go.kind, [field]: v } : null
+}
+
 /** Notes keep the newest `max` entries; an entry equal in text and tone to a toast still on screen is
  * dropped (the server broadcasts action notes that the POST also returns). Once that toast is gone the
  * same text is news again: a retry that fails the same way shows again. */
@@ -667,17 +887,63 @@ export function addNote(notes, note, now, toasts = [], max = 20) {
   return [...notes, { ...note, ms: now }].slice(-max)
 }
 
-/** What a pushed note does to `{ notes, toasts }`: a new note and, unless `toast` is false, a toast
- * with `id` (the newest four stay up). A note a visible toast already shows changes neither and comes
- * back with `dup` set, so the caller can hand a twin's action to that toast. */
-export function pushNoteState({ notes, toasts }, note, now, id, toast = true) {
+// the toasts that stand at once; one more is counted in `toastsMore`, shown as one last "+N more" toast
+export const TOAST_MAX = 4
+
+/** What a pushed note does to `{ notes, toasts, toastsMore }`: a new note and, unless `toast` is false, a
+ * toast with `id`. Four stay up; one pushed out is counted in `toastsMore`, never lost without a word (the
+ * notes in the history keep it), and named in `out`, so its timer stops. The oldest toast without an action goes
+ * first, so an Undo stays within its few seconds; only when every one has an action does the oldest go. A
+ * note a visible toast already shows changes neither and comes back with `dup` set, so the caller can hand
+ * a twin's action and target to that toast (giveTwin). Its `go` is kept only as noteGo takes it. */
+export function pushNoteState({ notes, toasts, toastsMore = 0 }, note, now, id, toast = true) {
   const tone = note.tone ?? 'info'
-  const next = addNote(notes, { at: note.at, text: note.text, tone }, now, toasts)
-  if (next === notes) return { notes, toasts, dup: true }
-  if (!toast) return { notes: next, toasts, dup: false }
-  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, conv: note.conv ?? null, undo: note.undo ?? null,
-    copy: note.copy ?? null }
-  return { notes: next, toasts: [...toasts, t].slice(-4), toast: t, dup: false }
+  const go = noteGo(note.go)
+  const next = addNote(notes, { at: note.at, text: note.text, tone, go }, now, toasts)
+  if (next === notes) return { notes, toasts, toastsMore, out: [], dup: true }
+  if (!toast) return { notes: next, toasts, toastsMore, out: [], dup: false }
+  const t = { id, text: note.text, tone, at: note.at, action: note.action ?? null, undo: note.undo ?? null, copy: note.copy ?? null, go }
+  const kept = [...toasts, t]
+  const out = []
+  while (kept.length > TOAST_MAX) {
+    const plain = kept.findIndex(x => !x.action)
+    out.push(kept.splice(plain >= 0 ? plain : 0, 1)[0].id)
+  }
+  return { notes: next, toasts: kept, toastsMore: toastsMore + out.length, out, toast: t, dup: false }
+}
+
+/** A note whose text a toast still up shows (pushNoteState `dup`; the server's note event is often first):
+ * the twin hands that toast the action it lacks (an undo, a copy) and the place it lacks, never replaces
+ * either. `{ toasts, id }` with the id whose timer starts again, or null when it has nothing to give. */
+export function giveTwin(toasts, note) {
+  const go = noteGo(note.go)
+  const twin = toasts.find(t => t.text === note.text && ((note.action && !t.action) || (go && !t.go)))
+  if (!twin) return null
+  const gives = note.action && !twin.action ? { action: note.action, undo: note.undo ?? null, copy: note.copy ?? null } : {}
+  return { toasts: toasts.map(t => (t === twin ? { ...t, ...gives, go: t.go ?? go } : t)), id: twin.id }
+}
+
+/** A toast dismissed: the "+N more" toast goes with the last of the others */
+export function dismissState({ toasts, toastsMore = 0 }, id) {
+  const left = toasts.filter(t => t.id !== id)
+  return { toasts: left, toastsMore: left.length ? toastsMore : 0 }
+}
+
+/** The notes in the history opened from the "+N more" toast: the count goes, the toasts still up stay */
+export function notesOpenedState() {
+  return { toastsMore: 0 }
+}
+
+/** Whether a tab alert makes a toast or only a note in the history: a tab that starts waiting toasts while it is out
+ *  of sight, not while its tab view is open or the Chat shows it in its work area (no tab view over it); a tab past
+ *  the hour always toasts */
+export function alertToasts(s, alert) {
+  if (alert?.kind !== 'tab_waiting') return true
+  const ui = s?.ui ?? {}
+  const ref = alert.ref
+  if (!ref) return true
+  if (ui.tabView) return ui.tabView !== ref
+  return !(ui.page === '@chat' && ui.chatArea !== 'a2a' && ui.room?.kind === 'tab' && ui.room.id === ref)
 }
 
 /** Insert or replace a relay record by id; newest first */
@@ -749,11 +1015,14 @@ export function connLost(conn, sinceMs, now) {
  * The states the page must never hide, at any width: a lost connection (the data shown no longer
  * updates), a model from the last run, a pass that failed. Each is a dot plus a written word.
  */
+/** A person named under `members:` (access.py), as bootstrap names them; null for the owner */
+export const personOf = s => s?.boot?.config?.person ?? null
+
 export function pageWarnings(s, t) {
   const out = []
   // no driver serves `launch`: every "Let AI do it" fails until workplace.driver is set (18.10.); not known yet is no warning
   const caps = s.driver?.caps
-  if (Array.isArray(caps) && !caps.includes('launch')) out.push({ token: 'warning', word: t.noDriver, title: t.noDriverTitle, kind: 'driver' })
+  if (Array.isArray(caps) && !caps.includes('launch') && !personOf(s)) out.push({ token: 'warning', word: t.noDriver, title: t.noDriverTitle, kind: 'driver' })
   if (connLost(s.conn, s.connMs, s.now)) out.push({ token: 'warning', word: t.connLost })
   if (s.model?.stale) out.push({ token: 'warning', word: t.staleModel })
   const ld = s.loading ?? {}
@@ -770,7 +1039,7 @@ export function modalKeyAllowed(ui, key, gPending) {
   if (!ui?.drawer) return true
   // n and p act on the item drawer itself: they walk the list it was opened from
   if (ui.drawer === 'item' && ui.queue?.length && (key === 'n' || key === 'p')) return true
-  return key === 'g' || (gPending && key === 't')
+  return key === 'g' || (gPending && (key === 't' || key === 'a'))
 }
 
 /** The list a detail was opened from (ui.queue), seen from its open entry: where it stands (pos of
@@ -815,11 +1084,11 @@ export function detailNeedsLoad(entry, ver) {
   return !!entry.stale || entry.ver !== ver
 }
 
-/** Marks the details of a row's inbox entry and task as stale (after an action on that row) */
+/** Marks the details of a row's inbox entry, task and Activity (Work through) as stale (after an action on that row) */
 export function invalidateDetails(details, row) {
   if (!row || (!row.inbox_id && !row.task)) return details
-  const mark = (table, id) => (id && table[id] ? { ...table, [id]: { ...table[id], stale: true } } : table)
-  return { ...details, inbox: mark(details.inbox, row.inbox_id), task: mark(details.task, row.task) }
+  const mark = (table, id) => (id && table?.[id] ? { ...table, [id]: { ...table[id], stale: true } } : table ?? {})
+  return { ...details, inbox: mark(details.inbox, row.inbox_id), task: mark(details.task, row.task), activity: mark(details.activity, row.key) }
 }
 
 /** The "more" lists fetched for the run the model shows; one from an older run would freeze the section */
@@ -1003,6 +1272,8 @@ export function gaugeSection(items) {
  *  while it stays the same */
 export const SCREEN_POLL_MS = 1500
 export const SCREEN_POLL_MAX_MS = 5000
+export const SCREEN_FAST_MS = 200       // the read while you type, for SCREEN_FAST_FOR_MS after the last key
+export const SCREEN_FAST_FOR_MS = 2500
 
 /** One answer of the tab view's screen read against the screen it holds: { screen, delay }. An unchanged
  *  screen (unchanged, or the same hash in full) keeps the held object, so the view does not render again,
@@ -1013,8 +1284,18 @@ export function screenPoll(prev, data, delay = SCREEN_POLL_MS) {
   return { screen: prev, delay: Math.min(SCREEN_POLL_MAX_MS, Math.round(delay * 1.5)) }
 }
 
-/** A Claude Code terminal as chat lines: what you typed (❯ or >), what Claude says (⏺), tool output (⎿),
- *  the rest as it stands. Blank runs collapse to one, so the stream reads like a chat */
+/** How a screen line reads beside its kind: a rule, a tool at work, the hints under the prompt, a line of a diff */
+function termTone(lead, line) {
+  if (/^[─━═]{3,}$/.test(lead)) return 'rule'
+  if (/^[✻✽✶✳✢]/.test(lead)) return 'work'
+  if (lead.startsWith('⏵')) return 'hint'
+  const diff = /^\s+\d+\s+([+-])/.exec(line)
+  return diff ? (diff[1] === '+' ? 'add' : 'del') : null
+}
+
+/** A Claude Code terminal as chat lines: what you typed (❯ or >, a bare prompt too, with the indented lines it wraps
+ *  into), what Claude says (⏺), tool output (⎿), the rest as it stands; `tone` where a line reads apart (termTone). Blank runs
+ *  collapse to one, so the stream reads like a chat */
 export function screenLines(text) {
   const out = []
   let kind = 'plain'
@@ -1025,26 +1306,291 @@ export function screenLines(text) {
       if (out.length && out[out.length - 1].text !== '') out.push({ kind: 'gap', text: '' })
       continue
     }
-    if (/^[❯>]\s/.test(lead)) kind = 'user'
+    if (/^[❯>](\s|$)/.test(lead)) kind = 'user'
     else if (lead.startsWith('⏺')) kind = 'claude'
     else if (lead.startsWith('⎿')) kind = 'tool'
     else if (/^[─━═╭╰│]/.test(lead)) kind = 'frame'
-    else if (kind === 'frame' || kind === 'tool') kind = 'plain'
-    out.push({ kind, text: line })
+    else if (kind === 'frame' || kind === 'tool' || (kind === 'user' && (lead === line || out[out.length - 1]?.kind === 'gap'))) kind = 'plain'
+    const tone = termTone(lead, line)
+    out.push(tone ? { kind, text: line, tone } : { kind, text: line })
   }
   while (out.length && out[out.length - 1].kind === 'gap') out.pop()
   return out
 }
 
+// what went before the screen of an agent tab. An agent that repaints its screen leaves the terminal no scrollback, so
+// what it scrolled away is read from the session file (GET /api/tab-history) and stands above the screen (TermScreen)
+const PAST_HEAD = 32    // letters of a turn's opening that find it on the screen
+const PAST_SHORT = 8    // fewer than this finds anything
+const PAST_MISS = 2     // turns in a row not on the screen end the look
+const PAST_LOOK = 8     // lines of words at the top of the screen tried where a turn runs on to it
+
+const letters = text => String(text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+
+/** How many of a tab's turns (oldest first) stand before its screen. The screen is the end of the conversation as
+ *  drawn, wrapped and without the markdown, so a turn is on it when the letters of its opening are, read from the end.
+ *  A tool's line is not looked for (the terminal folds those), and a turn found further back after PAST_MISS turns
+ *  that are not on it is another one in the same words */
+export function pastCut(turns, screen) {
+  const seen = letters(screen)
+  let cut = turns.length
+  let miss = 0
+  for (let k = turns.length - 1; k >= 0 && miss < PAST_MISS; k--) {
+    if (turns[k].role === 'tool') continue
+    const head = letters(turns[k].text.split('\n', 1)[0]).slice(0, PAST_HEAD)
+    if (head.length < PAST_SHORT) continue
+    if (seen.includes(head)) { cut = k; miss = 0 } else miss++
+  }
+  return cut
+}
+
+/** Where a turn runs on to the screen: `text` up to the first line of words the screen starts with, null when none of
+ *  those is in it. The last such place, for it is the end of the turn that stands there */
+function pastTrim(text, screen) {
+  const all = letters(text)
+  const starts = String(screen ?? '').split('\n').map(letters).filter(l => l.length >= PAST_SHORT).slice(0, PAST_LOOK)
+  for (const line of starts) {
+    const at = all.lastIndexOf(line.slice(0, PAST_HEAD))
+    if (at < 0) continue
+    let seen = 0
+    for (const m of text.matchAll(/[\p{L}\p{N}]/gu)) if (seen++ === at) return text.slice(0, m.index).trimEnd()
+  }
+  return null
+}
+
+/** The turns to stand above a screen: those before it (pastCut), and of a long answer that scrolled half out of it the
+ *  part that is gone, so the text runs on across the seam. Tools after that answer are on the screen too */
+export function pastShown(turns, screen) {
+  const kept = turns.slice(0, pastCut(turns, screen))
+  let k = kept.length - 1
+  while (k >= 0 && kept[k].role === 'tool') k--
+  const text = k >= 0 ? pastTrim(kept[k].text, screen) : null
+  if (text == null) return kept
+  return text ? [...kept.slice(0, k), { ...kept[k], text }] : kept.slice(0, k)
+}
+
+/** A read of the history (tab_history.py) put to what is held: { sid, turns, more }. The end of a new read replaces
+ *  the end, older pages go before it, and another session in the tab starts anew. Only a session file is a past: a
+ *  tab without one has its scrollback on the screen */
+export function pastMerge(held, read, older = false) {
+  const same = !!held && read?.source === 'session' && held.sid === read.sid
+  const turns = read?.turns ?? []
+  if (older) return same ? { ...held, turns: [...turns, ...held.turns], more: !!read.truncated && turns.length > 0 } : held
+  if (read?.source !== 'session') return null
+  if (!same) return { sid: read.sid, turns, more: !!read.truncated }
+  const first = turns[0]?.i ?? Infinity
+  const kept = held.turns.filter(x => x.i < first)
+  return { ...held, turns: [...kept, ...turns], more: kept.length ? held.more : !!read.truncated }
+}
+
+/** Turns as the terminal draws them, for screenLines: its marks, the lines of a turn under the first, no bold markers.
+ *  A tool's output is not in a transcript's turns, its call stands as one line */
+export function pastText(turns) {
+  const block = (mark, text) => mark + text.replace(/\*\*/g, '').split('\n').map(l => l.trimEnd()).join('\n  ')
+  return turns.map(x => (x.role === 'tool' ? `⎿  ${x.text}` : block(x.role === 'user' ? '❯ ' : '⏺ ', x.text))).join('\n\n').replace(/^ +$/gm, '')
+}
+
+// the live terminal: a key press as what it sends, none for what the browser or the Mac keeps. Text is no key here: it
+// comes through the input event, so a dead key and an Option character arrive as what they make
+const TERM_NAMED = { Enter: 'enter', Escape: 'escape', Tab: 'tab', Backspace: 'backspace', Delete: 'delete', ArrowUp: 'up', ArrowDown: 'down',
+  ArrowLeft: 'left', ArrowRight: 'right', Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown' }
+const TERM_TEXT_MAX = 4000
+
+/** A keydown as a step of the terminal ({ key }), or null: Cmd stays the Mac's, a composition its own */
+export function termKey(e) {
+  if (e.metaKey || e.isComposing) return null
+  if (e.ctrlKey) return /^[a-z]$/i.test(e.key) ? { key: `ctrl+${e.key.toLowerCase()}` } : null
+  if (e.key === 'Tab' && e.shiftKey) return { key: 'shift+tab' }
+  return TERM_NAMED[e.key] ? { key: TERM_NAMED[e.key] } : null
+}
+
+/** The steps waiting to go out, with one more: text runs together up to what one step carries, the order stays */
+export function termQueue(steps, step) {
+  const last = steps[steps.length - 1]
+  if (step.text && last?.text && last.text.length + step.text.length <= TERM_TEXT_MAX) return [...steps.slice(0, -1), { text: last.text + step.text }]
+  return [...steps, step]
+}
+
+/** What the prompt shows of what was typed until the screen has it: more text, one less on Backspace; any other key
+ *  leaves the line to the terminal */
+export function termEcho(echo, step) {
+  if (step.text || step.paste) return echo + (step.text ?? step.paste)
+  return step.key === 'backspace' ? echo.slice(0, -1) : ''
+}
+
+/** A paste as the terminal takes it: its lines and tabs stay, control codes go */
+export const termPaste = text => String(text ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+
+const TERM_MARK = /^(\s*)([❯>⏺⎿])(?=\s|$)/
+// a link, a path (with ~/ or ./, or a folder and a file with its extension, so und/oder and z.B. stay words), the two result marks
+const TERM_PIECES = /(https?:\/\/[^\s<>"')\]]*[^\s<>"')\].,;:!?])|(~\/[\w.@/-]*[\w@/-]|\.{1,2}\/[\w.@/-]*[\w@/-]|\/?[\w.@-]+(?:\/[\w.@-]+)*\/[\w@-]+\.[A-Za-z]\w{0,7}(?::\d+)?)|([✓✔])|([✗✘])/gu
+const TERM_PIECE_KINDS = ['url', 'path', 'ok', 'bad']
+
+/** One screen line in pieces to colour, { t, c } with c a kind or none; joined they are the line */
+export function termParts(text) {
+  const out = []
+  const plain = t => { if (t) out.push({ t }) }
+  const mark = TERM_MARK.exec(text)
+  if (mark) {
+    plain(mark[1])
+    out.push({ t: mark[2], c: 'mark' })
+  }
+  const rest = mark ? text.slice(mark[0].length) : text
+  let at = 0
+  for (const m of rest.matchAll(TERM_PIECES)) {
+    plain(rest.slice(at, m.index))
+    out.push({ t: m[0], c: TERM_PIECE_KINDS[m.slice(1).findIndex(Boolean)] })
+    at = m.index + m[0].length
+  }
+  plain(rest.slice(at))
+  return out
+}
+
 // ---------------------------------------------------------------- workers tab (workload view --json)
 
+// red is an outage (gone, switched off, stopped, its last run failed), orange the upkeep a declaration and its machine
+// drift into; the same table as STATE_TONE in scripts/bridge-resources.py
 const WORKER_TONE = { in_sync: 'ok', observed: 'ok', intentionally_absent: 'dim', 'not reported': 'dim', not_provisioned: 'dim', absent: 'bad', disabled: 'bad',
-  drifted: 'warn', inventory_missing: 'warn', source_drift: 'warn', inventory_stale: 'warn' }
+  stopped: 'bad', last_run_failed: 'bad', drifted: 'warn', inventory_missing: 'warn', source_drift: 'warn', inventory_stale: 'warn' }
 
 /** A run's state as a tone: ok, warn, bad, dim; anything unknown is warn, never silently ok */
 export function workerTone(run) {
-  if (run?.retired) return 'dim'
+  // a finding marked seen (`acked`, server.py workers_with_acks) is grey until it changes
+  if (run?.retired || run?.acked) return 'dim'
   return WORKER_TONE[run?.state] ?? (run?.state ? 'warn' : 'ok')
+}
+
+/** The severity of a run's worst finding as the engine files it (high, medium, info), or null: the run's own
+ *  `severity` where the view names one, else read off its findings */
+export function jobSeverity(run) {
+  // seen as it stands: no outage and no upkeep, so no red tile, no badge and no alarm count it
+  if (run?.acked) return 'info'
+  if (typeof run?.severity === 'string' && run.severity && run.severity !== 'none') return run.severity
+  const sev = (run?.findings ?? []).map(f => f?.severity)
+  return ['high', 'medium', 'info'].find(x => sev.includes(x)) ?? null
+}
+
+/** The background jobs in service by what they want: `failing` an outage (the engine's high: gone, stopped, its last
+ *  run failed), `upkeep` a deviation to tend (medium: a unit without its marker, a program outside the repository),
+ *  `ok` the rest of `all`. Only an outage is loud wherever the cockpit counts jobs; upkeep stays calm */
+export function jobCounts(view) {
+  const runs = (view?.runs ?? []).filter(r => !r.retired)
+  const failing = runs.filter(r => jobSeverity(r) === 'high').length
+  const upkeep = runs.filter(r => jobSeverity(r) === 'medium').length
+  const all = view?.stats?.in_service ?? runs.length
+  return { all, failing, upkeep, ok: Math.max(0, all - failing - upkeep) }
+}
+
+// worst first: an outage, then upkeep, then the rest (jobSeverity)
+const SEVERITY_RANK = { high: 0, medium: 1 }
+const severityRank = run => SEVERITY_RANK[jobSeverity(run)] ?? 2
+
+/** When a run ran last and starts next, in ms or null: the last of its recorded runs, and its next start today, read
+ *  off its schedule: an `at HH:MM` still to come on a day its marks say it is due, or `every Ns` after the last run */
+export function runTimes(run, now) {
+  const stamp = Date.parse((run?.strip ?? []).at(-1)?.at ?? run?.day?.trace_at ?? '')
+  const last = Number.isFinite(stamp) ? stamp : null
+  const when = String(run?.when ?? '')
+  const every = when.match(/^every (\d+)s$/)
+  if (every) {
+    const next = last == null ? null : last + Number(every[1]) * 1000
+    return { last, next: next != null && next >= now ? next : null }
+  }
+  if (!(run?.day?.marks ?? []).some(m => m.today)) return { last, next: null }
+  const day = new Date(now)
+  const starts = [...when.matchAll(/\bat (\d\d):(\d\d)\b/g)]
+    .map(m => new Date(day.getFullYear(), day.getMonth(), day.getDate(), Number(m[1]), Number(m[2])).getTime())
+  return { last, next: starts.filter(x => x > now).sort((a, b) => a - b)[0] ?? null }
+}
+
+/** The newest quick chat a row was asked in: the conversation whose `about.key` (quick.py) is the row's key, a job's
+ *  worker:<host>:<id> or a page row's item:<page>/<section>/<id>; null when the row was never asked */
+export function rowConv(convs, key) {
+  if (!key) return null
+  return (convs ?? []).filter(c => c?.about?.key === key)
+    .sort((a, b) => (b.last_ms ?? b.started_ms ?? 0) - (a.last_ms ?? a.started_ms ?? 0))[0] ?? null
+}
+
+/** The background jobs by machine: the always-on machines first (`hosts`, the ones the view was drawn for), then
+ *  those with an outage, then the most jobs. Inside a machine its systems (groupBySystem), those with an outage
+ *  first, then those with upkeep, each run worst first */
+export function groupByHost(runs, { hosts = [], systems = [] } = {}) {
+  const byHost = new Map()
+  for (const r of runs ?? []) {
+    const host = r.host || '?'
+    if (!byHost.has(host)) byHost.set(host, [])
+    byHost.get(host).push(r)
+  }
+  const out = [...byHost].map(([host, list]) => {
+    const sorted = [...list].sort((a, b) => severityRank(a) - severityRank(b))
+    const groups = groupBySystem(sorted, systems).map((g, i) => ({ g, i, rank: Math.min(...g.runs.map(severityRank)) }))
+      .sort((a, b) => a.rank - b.rank || a.i - b.i).map(x => x.g)
+    return { host, always: (hosts ?? []).includes(host), runs: sorted, groups,
+      failing: list.filter(r => jobSeverity(r) === 'high').length, upkeep: list.filter(r => jobSeverity(r) === 'medium').length }
+  })
+  return out.sort((a, b) => b.always - a.always || b.failing - a.failing || b.runs.length - a.runs.length || a.host.localeCompare(b.host))
+}
+
+/** The source id of a page item: `id` where a row has one, else the end of its key (collector.info_out sends
+ *  `key` item:<page>/<section>/<id> and `row_id`, never `id`) */
+function sourceId(it, page, sec) {
+  if (typeof it?.id === 'string') return it.id
+  const head = `item:${page?.id}/${sec?.id}/`
+  const key = String(it?.key ?? '')
+  return key.startsWith(head) ? key.slice(head.length) : typeof it?.row_id === 'string' ? it.row_id : ''
+}
+
+/** The machine a row of another page names: its tag Remote, its id pc:<name>, else its title */
+const rowMachine = (it, id) => String(it?.tags?.Remote ?? (id.startsWith('pc:') ? id.slice(3) : it?.title ?? '')).toLowerCase()
+
+/** A machine's state without its device word (bridge-resources.py machines leads with it, the tags say it already) */
+function machineState(it) {
+  const parts = String(it?.detail ?? '').split(' · ')
+  const device = Object.values(it?.tags ?? {}).map(v => String(v).toLowerCase())
+  return (parts.length > 1 && device.includes(parts[0].toLowerCase()) ? parts.slice(1) : parts).join(' · ')
+}
+
+/** The machines of a folder's overview, one line each: every machine a background job runs on and every machine
+ *  a page of the folder names in a row of its own (a lab's remote). A row `machine:<name>` (bridge-resources.py
+ *  machines, its source id read by sourceId) gives a machine its state and makes it known; a row of another page
+ *  that names a known machine (its tag Remote, its id pc:<name>, else its title) puts the machine on that page
+ *  (`places`). The always-on machines first, then those with an outage, the most jobs */
+export function machineLines({ runs = [], hosts = [], pages = [] } = {}) {
+  const live = (runs ?? []).filter(r => !r.retired && r.host)
+  const inventory = new Map()
+  const rows = []
+  for (const p of pages ?? []) {
+    for (const sec of p.sections ?? []) {
+      for (const it of sec.items ?? []) {
+        const id = sourceId(it, p, sec)
+        if (id.startsWith('machine:')) inventory.set((id.slice(8) || String(it.title ?? '')).toLowerCase(), it)
+        else {
+          const name = rowMachine(it, id)
+          if (name) rows.push({ name, page: p, it })
+        }
+      }
+    }
+  }
+  const lines = new Map()
+  const line = name => {
+    const key = name.toLowerCase()
+    if (!lines.has(key)) lines.set(key, { name, runs: [], places: [] })
+    return lines.get(key)
+  }
+  for (const r of live) line(r.host).runs.push(r)
+  for (const { name, page, it } of rows) {
+    if (!lines.has(name) && !inventory.has(name)) continue
+    const x = line(lines.get(name)?.name ?? inventory.get(name).title ?? name)
+    if (!x.places.some(p => p.page === page.id)) x.places.push({ page: page.id, title: page.title, tone: it.tone ?? null, state: it.detail ?? '' })
+  }
+  const always = new Set((hosts ?? []).map(h => String(h).toLowerCase()))
+  return [...lines.values()].map(x => {
+    const inv = inventory.get(x.name.toLowerCase())
+    const failing = x.runs.filter(r => jobSeverity(r) === 'high').length
+    return { name: x.name, always: always.has(x.name.toLowerCase()), jobs: x.runs.length, failing,
+      upkeep: x.runs.filter(r => jobSeverity(r) === 'medium').length, state: inv ? machineState(inv) : '',
+      tone: failing ? 'bad' : inv?.tone ?? null, places: x.places }
+  }).sort((a, b) => b.always - a.always || b.failing - a.failing || b.jobs - a.jobs || a.name.localeCompare(b.name))
 }
 
 /** How a recorded run is drawn: a shape and a tone, never colour alone */
@@ -1066,13 +1612,21 @@ export function workerFacets(runs, filter = {}) {
   return out
 }
 
-/** Search, facets and "only with a finding" */
-export function filterWorkers(runs, { q = '', kind = null, sphere = null, state = null, host = null, attention = false } = {}) {
+// the words a background job answers to beside its own: its kind in both languages, and the words a person uses for
+// them (every job is a worker, a scheduled or interval run a workflow)
+const JOB_WORDS = { interval: 'interval intervall workflow', daemon: 'service dienst daemon', recurring: 'appointment termin scheduled geplant workflow',
+  agent: 'agent', watch: 'watcher beobachter' }
+const jobWords = r => `worker job hintergrundjob ${JOB_WORDS[r.kind] ?? ''}`
+
+/** Search (its id, title, purpose, system, and the words of its kind, jobWords), facets and "only with a finding" */
+export function filterWorkers(runs, { q = '', kind = null, sphere = null, state = null, host = null, attention = false, outage = false } = {}) {
   const needle = q.trim().toLowerCase()
   return (runs ?? []).filter(r => (!kind || r.kind === kind) && (!sphere || r.sphere === sphere)
     && (!state || r.state === state) && (!host || r.host === host)
-    && (!attention || (r.findings ?? []).some(serious))
-    && (!needle || `${r.id} ${r.title ?? ''} ${r.purpose ?? ''} ${r.system ?? ''}`.toLowerCase().includes(needle)))
+    && (!attention || (!r.acked && (r.findings ?? []).some(serious)))
+    // an outage as jobCounts counts it (the engine's high), what the red tile of Background jobs opens on
+    && (!outage || jobSeverity(r) === 'high')
+    && (!needle || `${r.id} ${r.title ?? ''} ${r.purpose ?? ''} ${r.system ?? ''} ${jobWords(r)}`.toLowerCase().includes(needle)))
 }
 
 /** Runs grouped by system in the order the view lists its systems, the rest after them */
@@ -1095,6 +1649,52 @@ export const TONE_FILTERS = [['all', () => true], ['problems', it => it.tone ===
 /** The tone a state filter stands for, for its dot */
 export const FILTER_TONE = { ok: 'ok', problems: 'warn', off: 'dim' }
 export const toneFilter = key => (TONE_FILTERS.find(([k]) => k === key) ?? TONE_FILTERS[0])[1]
+
+/** The lines of the history (/api/timeline, the AI's cited ones too) by day, in the order they came: [{date, rows}] */
+export function timelineDays(entries) {
+  const out = []
+  for (const e of entries ?? []) {
+    const last = out[out.length - 1]
+    if (last && last.date === e.date) last.rows.push(e)
+    else out.push({ date: e.date, rows: [e] })
+  }
+  return out
+}
+
+/** Whether a profile page takes the log layout (views/logpage.js): a section in the rail beside the main column
+ *  (`place: rail`) or a log (`view: log`) */
+export function logLayout(page) {
+  return (page?.sections ?? []).some(sec => sec.place === 'rail' || sec.view === 'log')
+}
+
+/** The rows of a log under their hours, in the order they came: [{key, rows}]. Today's rows carry their time
+ *  (`09:15`, head `09:00`); an earlier day's carry its date, which is the head then */
+export function logHours(items) {
+  const out = []
+  for (const it of items ?? []) {
+    const m = /^(\d{1,2}):\d{2}$/.exec(it.when ?? '')
+    const key = m ? `${m[1].padStart(2, '0')}:00` : (it.when ?? '')
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.rows.push(it)
+    else out.push({ key, rows: [it] })
+  }
+  return out
+}
+
+/** The contexts of a log's rows (their `group`) with how many rows each holds, the busiest first: [[name, n]] */
+export function logTopics(items) {
+  const n = new Map()
+  for (const it of items ?? []) if (it.group) n.set(it.group, (n.get(it.group) ?? 0) + 1)
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
+
+const SPARK = '▁▂▃▄▅▆▇█'
+
+/** A sparkline at the start of a text (a commits row's detail, `▁▂█ main`) as bar heights 0 to 7, and the rest */
+export function sparkOf(text) {
+  const m = /^([▁▂▃▄▅▆▇█]+)\s*(.*)$/.exec(String(text ?? ''))
+  return m ? { bars: [...m[1]].map(ch => SPARK.indexOf(ch)), rest: m[2] } : { bars: [], rest: String(text ?? '') }
+}
 
 /** Rows that pass the search, the state, the group and every chosen tag ({label: value}) */
 export function filterRows(items, { q = '', tone = 'all', group = null, tags = {} } = {}) {
@@ -1133,6 +1733,258 @@ export function groupRows(items) {
   }
   const out = [...groups].map(([key, rows]) => ({ key, rows }))
   return [...out.filter(g => g.key), ...out.filter(g => !g.key)]
+}
+
+// ---------------------------------------------------------------- the log page's time range (views/logrange.js)
+
+/** The widths a bar of the range chart may have, smallest first: minutes, each a step of the local calendar */
+export const RANGE_STEPS = [{ key: '15m', min: 15 }, { key: '30m', min: 30 }, { key: '1h', min: 60 }, { key: '3h', min: 180 },
+  { key: '6h', min: 360 }, { key: '12h', min: 720 }, { key: '1d', min: 1440 }, { key: '1w', min: 10080 }]
+/** The ranges a click picks, in the order they stand */
+export const RANGE_PRESETS = ['today', 'yesterday', '7d', '30d', 'all']
+/** At most this many bars a range draws on its own (day bars and wider: RANGE_DAY_BARS); a chosen width up to RANGE_BARS_MAX */
+export const RANGE_BARS = 60
+export const RANGE_DAY_BARS = 240
+export const RANGE_BARS_MAX = 400
+
+/** Local midnight of the day a moment falls on */
+export function dayStart(ms) {
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+/** Local midnight `n` days after the day of `ms`, a calendar day (23 or 25 hours across a clock change) */
+export function shiftDays(ms, n) {
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime()
+}
+
+/** A range ({preset} or {from, to}) as {from, to, preset}: a preset from the moment now, All from the log's first day
+ *  (`firstMs`, today without one); `to` always the end, never in it */
+export function rangeOf(range, nowMs, firstMs = null) {
+  const today = dayStart(nowMs)
+  const span = { today: [today, shiftDays(today, 1)], yesterday: [shiftDays(today, -1), today], '7d': [shiftDays(today, -6), shiftDays(today, 1)],
+    '30d': [shiftDays(today, -29), shiftDays(today, 1)], all: [dayStart(Math.min(firstMs ?? today, today)), shiftDays(today, 1)] }
+  if (range?.preset && span[range.preset]) return { from: span[range.preset][0], to: span[range.preset][1], preset: range.preset }
+  return { from: range.from, to: range.to, preset: null }
+}
+
+/** How many bars of `step` a range holds, by the wall clock: thirty days are thirty days across a clock change, so the
+ *  width a range takes does not hang on the time zone */
+const barsOf = (from, to, step) =>
+  ((to - from) - (new Date(to).getTimezoneOffset() - new Date(from).getTimezoneOffset()) * 60000) / (step.min * 60000)
+
+/** The bar width a range takes on its own: the smallest that keeps it at RANGE_BARS bars (RANGE_DAY_BARS for days) */
+export function rangeStepAuto(from, to) {
+  return RANGE_STEPS.find(st => barsOf(from, to, st) <= (st.min >= 1440 ? RANGE_DAY_BARS : RANGE_BARS)) ?? RANGE_STEPS[RANGE_STEPS.length - 1]
+}
+
+/** The bar widths a person may choose for a range: one bar at least, RANGE_BARS_MAX at most */
+export function rangeSteps(from, to) {
+  return RANGE_STEPS.filter(st => barsOf(from, to, st) >= 1 && barsOf(from, to, st) <= RANGE_BARS_MAX)
+}
+
+/** The width chosen (its key), else, or when it does not fit the range, the automatic one */
+export function rangeStep(from, to, key = 'auto') {
+  return rangeSteps(from, to).find(st => st.key === key) ?? rangeStepAuto(from, to)
+}
+
+/** The start of the bar a moment falls in: a week from its Monday, a day from midnight, else minutes of the local day */
+export function stepFloor(ms, step) {
+  const z = dayStart(ms)
+  if (step.min === 10080) return shiftDays(z, -((new Date(z).getDay() + 6) % 7))
+  if (step.min === 1440) return z
+  const d = new Date(ms)
+  const at = Math.floor((d.getHours() * 60 + d.getMinutes()) / step.min) * step.min
+  const day = new Date(z)
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, at).getTime()
+}
+
+/** The start of the next bar */
+export function stepNext(ms, step) {
+  if (step.min >= 1440) return shiftDays(ms, step.min / 1440)
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes() + step.min).getTime()
+}
+
+/** The edges of a range's bars, the first at or before `from`, the last at or after `to` */
+export function rangeEdges(from, to, step) {
+  const out = [stepFloor(from, step)]
+  while (out[out.length - 1] < to && out.length <= RANGE_BARS_MAX + 2) out.push(stepNext(out[out.length - 1], step))
+  return out
+}
+
+/** The bar a moment falls in, -1 outside */
+export function barOf(edges, ms) {
+  if (!(ms >= edges[0]) || !(ms < edges[edges.length - 1])) return -1
+  let lo = 0, hi = edges.length - 2
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (edges[mid] <= ms) lo = mid
+    else hi = mid - 1
+  }
+  return lo
+}
+
+/** How many of the moments (`ts` of each) fall in each bar; with `kindOf` one count per kind: {kind: counts} */
+export function rangeCounts(items, edges, kindOf = null) {
+  const blank = () => new Array(Math.max(0, edges.length - 1)).fill(0)
+  const out = kindOf ? {} : blank()
+  for (const it of items ?? []) {
+    const i = barOf(edges, it.ts)
+    if (i < 0) continue
+    if (!kindOf) { out[i]++; continue }
+    const k = kindOf(it)
+    ;(out[k] ??= blank())[i]++
+  }
+  return out
+}
+
+/** The rows of a range: those of `asc` (oldest first, each with `ts`) from `from` up to `to`, newest first */
+export function rangeSlice(asc, from, to) {
+  const at = ms => {
+    let lo = 0, hi = asc.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (asc[mid].ts < ms) lo = mid + 1; else hi = mid }
+    return lo
+  }
+  return asc.slice(at(from), at(to)).reverse()
+}
+
+/** The local moment of a day and a time (YYYY-MM-DD, HH:MM; noon without a time) */
+export function dayTime(day, time) {
+  const [y, mo, d] = String(day).split('-').map(Number)
+  const [h, mi] = /^\d{1,2}:\d{2}$/.test(time ?? '') ? time.split(':').map(Number) : [12, 0]
+  return new Date(y, mo - 1, d, h, mi).getTime()
+}
+
+/** Where a row of the range comes from, for its detail: the work log of this Bridge (the view names it) */
+export const LOG_ORIGIN = Object.freeze({ category: 'bridge', word_key: null, detail: null, raw: 'work/log.md', ref: null, via_cockpit: false })
+
+/** The compact rows /api/logrange answered (newest first, each [day, time, group, glyph] by index into `days`,
+ *  `groups`, `glyphs`, its id `offset` plus its place) as rows of the log (views/logpage.js LogRows), oldest first,
+ *  each with its moment (`ts`), its day, its id and an index of its own beside the drawn section's. The text comes
+ *  apart, by id (logText): `title` stays null here */
+export function logRangeRows(data) {
+  const groups = data?.groups ?? [], days = data?.days ?? [], glyphs = data?.glyphs ?? []
+  // newest first in the answer: oldest first here, rows of one minute in the opposite order, so that a range read
+  // back newest first (rangeSlice) keeps them as they came
+  return (data?.rows ?? []).map(([d, time, g, y], at) => {
+    const day = days[d], grp = groups[g] ?? {}, id = (data.offset ?? 0) + at
+    return { index: 100000 + id, id, title: null, when: time ?? '', glyph: glyphs[y] ?? null, group: grp.name ?? null, detail: grp.name ?? '',
+      tone: null, task: grp.task ?? null, about_task: grp.about_task ?? null, about_path: grp.about_path ?? null, work_kind: grp.kind ?? null,
+      day, ts: dayTime(day, time), origin: LOG_ORIGIN, at }
+  }).sort((a, b) => a.ts - b.ts || b.at - a.at).map(({ at, ...r }) => r)
+}
+
+/** The rows of today the log section drew, oldest first with their moment: `at` where the row carries it, else its
+ *  time on today's date; a row of an earlier day (its `when` a day) is left to the range */
+export function logTodayRows(items, nowMs) {
+  const today = isoDate(nowMs)
+  const out = []
+  for (const it of items ?? []) {
+    const at = typeof it.at === 'string' ? Date.parse(it.at) : NaN
+    const ts = Number.isFinite(at) ? at : /^\d{1,2}:\d{2}$/.test(it.when ?? '') ? dayTime(today, it.when) : NaN
+    if (Number.isFinite(ts) && isoDate(ts) === today) out.push({ it: { ...it, ts, day: today }, at: out.length })
+  }
+  // newest first as drawn: oldest first here, rows of one minute in the opposite order (as logRangeRows)
+  return out.sort((a, b) => a.it.ts - b.it.ts || b.at - a.at).map(x => x.it)
+}
+
+/** The rows of a log under their days, in the order they came: [{key (YYYY-MM-DD), rows}] */
+export function logDays(items) {
+  const out = []
+  for (const it of items ?? []) {
+    const key = it.day ?? isoDate(it.ts)
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.rows.push(it)
+    else out.push({ key, rows: [it] })
+  }
+  return out
+}
+
+/** Whether a range lies within one calendar day */
+export function rangeOneDay(from, to) {
+  return dayStart(from) === dayStart(to - 1)
+}
+
+/** A round top for a chart's scale: 1 to 5 as they are, else 1, 2, 2.5, 5 or 10 times a power of ten */
+export function niceMax(n) {
+  if (n <= 5) return Math.max(1, Math.ceil(n))
+  const p = 10 ** Math.floor(Math.log10(n))
+  return [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= n) ?? n
+}
+
+/** Where the bars stand in a chart `width` wide (margins of the axis inside): x of a moment, the bar under an x */
+export function chartGeometry(edges, width, margin = { l: 38, r: 10 }) {
+  const span = edges[edges.length - 1] - edges[0] || 1
+  const plot = Math.max(1, width - margin.l - margin.r)
+  const x = ms => margin.l + (ms - edges[0]) / span * plot
+  const barAt = px => {
+    if (px <= x(edges[0])) return 0
+    for (let i = 0; i < edges.length - 1; i++) if (px < x(edges[i + 1])) return i
+    return edges.length - 2
+  }
+  return { x, barAt, plot, left: margin.l, right: width - margin.r }
+}
+
+/** A day as the range names it: weekday and date (`Do 29.10.2026`, `Thu 29 Oct 2026`), without the year when asked */
+export function rangeDay(ms, lang, withYear = true) {
+  const d = new Date(ms)
+  const wd = weekdayNames(lang)[(d.getDay() + 6) % 7]
+  if (String(lang).startsWith('de')) return `${wd} ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${withYear ? d.getFullYear() : ''}`
+  const month = new Intl.DateTimeFormat(lang, { month: 'short' }).format(d)
+  return `${wd} ${d.getDate()} ${month}${withYear ? ` ${d.getFullYear()}` : ''}`
+}
+
+/** A day short, without weekday and year: `29.10.`, `29 Oct` */
+export function shortDay(ms, lang) {
+  const d = new Date(ms)
+  return String(lang).startsWith('de') ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.`
+    : `${d.getDate()} ${new Intl.DateTimeFormat(lang, { month: 'short' }).format(d)}`
+}
+
+/** The labels under a chart's axis: the widest calendar unit that leaves 64 px between two (an hour up to a month),
+ *  midnight and Mondays (a month's first in a long range) marked */
+export function rangeTicks(edges, width, lang) {
+  const first = edges[0], last = edges[edges.length - 1], span = last - first
+  const plot = Math.max(1, width - 48), de = String(lang).startsWith('de')
+  const unit = [60, 180, 360, 720, 1440, 10080].find(m => m * 60000 / span * plot >= 64) ?? 'month'
+  const out = []
+  if (unit === 'month') {
+    const fmt = new Intl.DateTimeFormat(lang, { month: 'short' })
+    for (let d = new Date(new Date(first).getFullYear(), new Date(first).getMonth() + 1, 1); d.getTime() < last; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      out.push({ ms: d.getTime(), label: d.getMonth() === 0 ? String(d.getFullYear()) : fmt.format(d).replace(/\.$/, ''), mid: d.getMonth() === 0 })
+    }
+    return out
+  }
+  const step = { min: unit }
+  let ms = stepFloor(first, step)
+  if (ms < first) ms = stepNext(ms, step)
+  for (; ms <= last && out.length < 200; ms = stepNext(ms, step)) {
+    const d = new Date(ms)
+    if (unit < 1440) out.push(d.getHours() === 0 && d.getMinutes() === 0 ? { ms, label: rangeDay(ms, lang, false), mid: true } : { ms, label: clockTime(ms) })
+    else if (unit === 1440) out.push({ ms, label: span <= 15 * DAY ? `${weekdayNames(lang)[(d.getDay() + 6) % 7]} ${de ? `${pad(d.getDate())}.` : d.getDate()}`
+      : shortDay(ms, lang), mid: d.getDay() === 1 && span > 15 * DAY })
+    else out.push({ ms, label: shortDay(ms, lang) })
+  }
+  return out
+}
+
+/** The own commits of each repository in a range, the busiest first: [{repo, branch, url, n, spark}], `spark` the
+ *  commits in `slices` equal parts of the range */
+export function repoRange(repos, from, to, slices = 14) {
+  const k = Math.max(1, slices), w = (to - from) / k
+  return (repos ?? []).map(r => {
+    const ms = (r.ts ?? []).map(t => t * 1000).filter(t => t >= from && t < to)
+    const spark = new Array(k).fill(0)
+    for (const t of ms) spark[Math.min(k - 1, Math.floor((t - from) / w))]++
+    return { repo: r.repo, branch: r.branch ?? '', url: /^https?:\/\//.test(r.url ?? '') ? r.url : null, n: ms.length, spark }
+  }).filter(r => r.n).sort((a, b) => b.n - a.n || a.repo.localeCompare(b.repo))
+}
+
+/** Whether a repository has an own commit from `from` up to `to` */
+export function repoBusy(repo, from, to) {
+  return (repo.ts ?? []).some(t => t * 1000 >= from && t * 1000 < to)
 }
 
 /** Short weekday names Monday first, from the platform for the page's language ("Mo", "Di" / "Mon", "Tue") */
@@ -1310,7 +2162,6 @@ export function scheduleText(when, lang = 'en') {
   return out.map(o => `${o.head} ${o.times.join(', ')}`).join('; ')
 }
 
-
 /** The note under a run's day axis (`workload view`) in words, the last run in local time */
 export function dayNoteText(note, lang = 'en') {
   const L = tableOf(lang).notes
@@ -1343,17 +2194,61 @@ export function railShown(page, chatLayout = 'classic', hidden = false) {
   return !hidden && RAIL.has(page) && !(page === '@chat' && chatLayout === 'workspaces')
 }
 
+/** railShown for the state as it is: Work through (a view of the work tab) has its own columns, the details of
+ *  the point in front on the right, so the tab column folds there too */
+export function railOn(s, hidden = s?.ui?.railHidden) {
+  return !personOf(s) && railShown(s?.ui?.page, s?.rooms?.layout, hidden) && !(s?.ui?.page === 'briefing' && workViewIn(s) === 'flow')
+}
+
+/** Whether a tab may close (round 6d): it neither works nor asks (waiting at its prompt with no question, options
+ *  or draft read off its screen, asksSomething, or back at its shell; a settled one asks nothing any more, as the server's quiet rule has
+ *  it), it is no control tab, and the driver closes tabs; `can(right)` as canTab. The server holds the same rule
+ *  (actions_tabs.py closable) */
+export function tabCloses(tab, can, settled = false) {
+  return !!tab && !tab.is_control && (tab.state === 'waiting' || tab.state === 'shell') && !(asksSomething(tab.ask) && !settled && !tab.settled)
+    && can('close')
+}
+
+/** Where a waiting tab stands, in one line for its entry under Waiting for you (round 6d C2): its workspace, then the
+ *  first line of what it asks, else its last words; two tabs of one name (two "Claude Code") tell apart by it */
+export function waitLage(tab) {
+  const line = previewText(String(tab?.ask?.text ?? '').split('\n').find(x => x.trim()) ?? '') || previewText(tab?.last)
+  return [tab?.workspace, line].filter(Boolean).join(' · ')
+}
+
+/** Whether the words read off a waiting tab's screen ask anything (model.py asks_something): a question (yes or no,
+ *  a question mark at the end), options, or a draft in its prompt. Every waiting tab has its last words read, so
+ *  words alone ask nothing; a tab that said it is done closes */
+export function asksSomething(ask) {
+  return !!ask && !!(ask.yes_no || ask.options?.length || ask.draft || /\?\s*$/.test(ask.text ?? ''))
+}
+
+/** The close of a tab wherever a point or a card has one (views/detail.js TabClose), null where it may not close
+ *  (tabCloses). `done`: an open task or inbox item stands behind it (the server's `behind`), so Done and close the
+ *  tab leads and Close tab only stands beside it; `unseen`: something came back from it (it filed a row, or a start
+ *  of it holds a result) and nothing behind it is settled yet (its item closed, its task done, here or by its start),
+ *  so a close asks first; `keys` the row keys of what stands behind it */
+export function tabCloseOffer(tab, s) {
+  const settled = !!tab?.settled || (!!tab && settledRefs(s?.model?.returns, s?.tabs?.tabs, s?.now || Date.now()).has(tab.ref))
+  if (!tabCloses(tab, v => canTab(s, v), settled)) return null
+  const keys = [tab.behind?.task ? `task:${tab.behind.task}` : null, tab.behind?.item ? `inbox:${tab.behind.item}` : null].filter(Boolean)
+  const back = !!tab.filed_by || (s?.model?.returns ?? []).some(r => r.tab?.ref === tab.ref && r.result?.text)
+  return { done: keys.length > 0, unseen: back && !settled, keys }
+}
+
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab
  *  that filed its result or whose start is settled, else go to the tab; `can(right)` says what this cockpit
- *  may do with a tab (canTab) */
+ *  may do with a tab (canTab). Round 6d: a tab that may close (tabCloses) offers the close beside going on or
+ *  going to it, so `close` stands for the one close of every place (views/detail.js TabClose) */
 export function tabNextStep(tab, can, settled = false) {
   const own = !tab.is_control
   const finished = !!tab.filed_by || settled
+  const closes = tabCloses(tab, can, settled)
   if (tab.state === 'needs-you' && can('key')) return ['yes', 'no']
-  if (tab.state === 'waiting' && own && finished && can('close')) return ['close']
-  if (tab.state === 'waiting' && own && !tab.filed_by) return ['go_on']
-  if (can('focus')) return ['jump']
-  return can('screen') ? ['view'] : []
+  if (tab.state === 'waiting' && own && finished && closes) return ['close']
+  if (tab.state === 'waiting' && own && !tab.filed_by) return closes ? ['go_on', 'close'] : ['go_on']
+  const way = can('focus') ? ['jump'] : can('screen') ? ['view'] : []
+  return closes ? [...way, 'close'] : way
 }
 
 /** The time a page section names beside its title: only when its source measured at another time than
@@ -1401,6 +2296,57 @@ export function sectionTile(section) {
   return { count, loud: loud.length, tone, note: loud[0]?.title ?? null, peak, counts, state: 'ok' }
 }
 
+/** The tile of a sub page on the page it stands under (`under:`): red with its findings (a section drawn only with a
+ *  finding counts too), red with the reason of a source that could not be read, orange with the rows that need a look
+ *  (one by its title, several by how many and the sections they stand in, `warnIn`: a log line's title alone reads
+ *  cryptic on a tile); else the size of its first drawn section and how those rows stand. Green only where an alarm section of the page
+ *  reports nothing: rows nothing measures live (a device outside the tailnet, an account) never make it look in order */
+export function subPageTile(page) {
+  const sections = page?.sections ?? []
+  const items = sections.flatMap(sec => sec.items ?? [])
+  const lead = sections.find(sec => !sec.hide_ok) ?? sections[0] ?? null
+  const rows = lead?.items ?? []
+  const base = { big: lead?.total ?? lead?.count ?? rows.length, lead: lead?.title ?? '', note: null, error: false, warnIn: null,
+    counts: { ok: rows.filter(toneFilter('ok')).length, problems: rows.filter(toneFilter('problems')).length, off: rows.filter(toneFilter('off')).length } }
+  const bad = sections.reduce((n, sec) => n + (typeof sec.bad === 'number' ? sec.bad : (sec.items ?? []).filter(it => it.tone === 'bad').length), 0)
+  if (bad) return { ...base, tone: 'danger', big: bad, note: items.find(it => it.tone === 'bad')?.title ?? null }
+  const broken = sections.find(sec => sec.status === 'error')
+  if (broken) return { ...base, tone: 'danger', note: broken.reason || broken.title || '', error: true }
+  const warn = items.filter(it => it.tone === 'warn')
+  if (warn.length > 1) {
+    const where = [...new Set(sections.filter(sec => (sec.items ?? []).some(it => it.tone === 'warn')).map(sec => sec.title).filter(Boolean))]
+    return { ...base, tone: 'warning', big: warn.length, warnIn: where }
+  }
+  if (warn.length) return { ...base, tone: 'warning', big: 1, note: warn[0].title ?? null }
+  const clear = sections.some(sec => sec.alarm && sec.status === 'ok' && !(sec.total ?? sec.count ?? (sec.items ?? []).length))
+  return { ...base, tone: clear ? 'success' : 'neutral' }
+}
+
+/** The head card of a sub page with `overview: true`: one line per drawn section, its tone and what to say (`kind`:
+ *  error, skipped, loud with how many and the first, peak, gauges, empty, one row's title, or rows in order and off),
+ *  never the live sources of the folder's own overview (jobs, tokens, costs). Neighbours that say the same of their
+ *  one row (a lab at rest) fold into one line */
+export function pageSummary(page) {
+  const out = []
+  for (const sec of page?.sections ?? []) {
+    const x = sectionTile(sec)
+    if (sec.hide_empty && !x.count && x.state === 'ok') continue
+    if (sec.hide_ok && !sec.bad && x.state !== 'error') continue
+    const rows = sec.items ?? []
+    const kind = x.state !== 'ok' ? x.state : x.loud ? 'loud' : x.peak ? 'peak' : x.counts ? 'gauges' : !x.count ? 'empty'
+      : rows.length === 1 ? 'one' : 'rows'
+    const line = { ids: [sec.id], titles: [sec.title], tone: x.tone, kind, section: sec, n: x.loud, note: x.note, peak: x.peak, gauges: x.counts,
+      text: kind === 'one' ? rows[0].title ?? '' : kind === 'empty' ? sec.empty ?? '' : '', detail: kind === 'one' ? rows[0].detail ?? '' : '',
+      counts: { ok: rows.filter(toneFilter('ok')).length, off: rows.filter(toneFilter('off')).length } }
+    const prev = out.at(-1)
+    if (kind === 'one' && prev?.kind === 'one' && prev.text === line.text && prev.tone === line.tone) {
+      prev.ids.push(sec.id)
+      prev.titles.push(sec.title)
+    } else out.push(line)
+  }
+  return out
+}
+
 export const USAGE_SOURCES = ['session', 'subagent', 'worker']
 
 /** Today's written tokens and the usual day (the mean of the earlier days with any use; null without one) */
@@ -1414,11 +2360,12 @@ export function usageToday(usage) {
 // ---------------------------------------------------------------- live cards on a page, stacked bars, cloud costs
 
 /** Where a page's live cards stand: `after` maps a section id to the cards right after it, `end` the cards at the
- *  end of the page. A page without `cards:` keeps what `overview: true` alone drew (usage and noise at the end);
+ *  end of the page. A page without `cards:` keeps what `overview: true` alone drew (usage and noise at the end),
+ *  but for a sub page (`under:` a folder), whose tokens and noise stand on the folder's overview already;
  *  a card after a section the page does not show goes to the end */
 export function cardPlan(page) {
   const cards = Array.isArray(page?.cards) ? page.cards
-    : page?.overview ? [{ id: 'usage', after: null }, { id: 'noise', after: null }] : []
+    : page?.overview && !page?.under ? [{ id: 'usage', after: null }, { id: 'noise', after: null }] : []
   const ids = new Set((page?.sections ?? []).map(sec => sec.id))
   const plan = { after: {}, end: [] }
   const seen = new Set()
@@ -1542,6 +2489,55 @@ export function costDay(costs, day) {
   }).filter(x => x.amount > 0).sort((x, y) => y.amount - x.amount)
 }
 
+/** The cost card's persona chips (whose costs: a company, a freelance practice): all and each persona_ref of the
+ *  cost centers, none while fewer than two personas own a project */
+export function costPersonaChoices(costs) {
+  const personas = [...new Set((costs?.cost_centers ?? []).map(c => c.persona_ref).filter(Boolean))]
+  return personas.length > 1 ? ['all', ...personas] : []
+}
+
+/** The cost card's project chips: all, each cost center (of one persona when one is picked), and "none" while an
+ *  entry belongs to no project; none at all when no cost center is declared (workflow/cost-centers/) */
+export function costCenterChoices(costs, persona = 'all') {
+  const centers = (costs?.cost_centers ?? []).filter(c => !persona || persona === 'all' || c.persona_ref === persona).map(c => c.id)
+  if (!(costs?.cost_centers ?? []).length) return []
+  const loose = (!persona || persona === 'all') && (costs?.accounts ?? []).some(a => !a.cost_center)
+  return ['all', ...centers, ...(loose ? ['none'] : [])]
+}
+
+/** The cost file seen through one project and one persona: their entries only ('none': those of no project,
+ *  'all': unchanged), so the bars, the day and the totals all count the same entries */
+export function costScope(costs, center, persona = 'all') {
+  if (!costs) return costs
+  let accounts = costs.accounts ?? []
+  if (persona && persona !== 'all') {
+    const mine = new Set((costs.cost_centers ?? []).filter(c => c.persona_ref === persona).map(c => c.id))
+    accounts = accounts.filter(a => mine.has(a.cost_center))
+  }
+  if (center && center !== 'all') {
+    const want = center === 'none' ? null : center
+    accounts = accounts.filter(a => (a.cost_center ?? null) === want)
+  }
+  return accounts === costs.accounts ? costs : { ...costs, accounts }
+}
+
+/** The months a cost statement can be made for: those the view holds days of, newest first */
+export function costMonths(costs) {
+  const months = new Set()
+  for (const a of costs?.accounts ?? []) for (const d of a.days ?? []) if (typeof d.day === 'string') months.add(d.day.slice(0, 7))
+  return [...months].sort().reverse()
+}
+
+/** One project's budget as an account would carry it (for budgetBar): its entries' month so far and forecast
+ *  summed against the project's budget_month; null without a project or a budget */
+export function costCenterBudget(costs, center) {
+  const c = (costs?.cost_centers ?? []).find(x => x.id === center)
+  if (!c || !(Number(c.budget_month) > 0)) return null
+  const mine = (costs.accounts ?? []).filter(a => a.ok !== false && a.cost_center === center)
+  const sum = f => Math.round(mine.reduce((s, a) => s + (Number(a[f]) || 0), 0) * 100) / 100
+  return { month_to_date: sum('month_to_date'), forecast_month: sum('forecast_month'), budget_month: Number(c.budget_month) }
+}
+
 /** The sum over a range and the month so far, over every account that answered */
 export function costTotals(costs, range) {
   const ok = (costs?.accounts ?? []).filter(a => a.ok)
@@ -1643,15 +2639,143 @@ export function workPageOf(pages) {
   return (pages ?? []).find(p => p?.group === 'work') ?? null
 }
 
-/** The views of the work tab: what is due (the four blocks) always, by source where a work page exists,
- *  by Jev where that page asks for an order and Jev is switched on and has its key */
-export function workViews(page, jev) {
-  return ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : [])]
+/** The views on offer: what is due (the four blocks) always, by source where a work page exists, by Jev where
+ *  that page asks for an order and Jev is switched on and has its key, the files (one task at a time,
+ *  views/dossier.js) always, and Work through (views/flow.js) last while cockpit.flow.enabled is on (`flow`): extra
+ *  views, the default only where cockpit.work_view says so. `allowed`, the words of cockpit.work_views (work_state
+ *  views), keeps only the views it names; nothing left, or an older server that sends none, keeps them all */
+function viewsOnOffer(page, jev, flow = false, allowed = null) {
+  const all = ['due', ...(page ? ['area'] : []), ...(page?.jev && jev?.enabled && jev?.ready ? ['jev'] : []), 'dossier', ...(flow ? ['flow'] : [])]
+  if (!Array.isArray(allowed)) return all
+  const ids = new Set(allowed.map(workViewId).filter(Boolean))
+  const kept = all.filter(v => ids.has(v))
+  return kept.length ? kept : all
 }
 
-/** The view the work tab shows: the remembered one where it can, else what is due */
-export function workViewOf(view, page, jev) {
-  return workViews(page, jev).includes(view) ? view : 'due'
+/** The views of the work tab: those on offer (viewsOnOffer) but the files, which are a tab of their own beside it
+ *  (round 6c, FILES_PAGE); where the list keeps only the files, what is due */
+export function workViews(page, jev, flow = false, allowed = null) {
+  const kept = viewsOnOffer(page, jev, flow, allowed).filter(v => v !== 'dossier')
+  return kept.length ? kept : ['due']
+}
+
+// the files tab (views/dossier.js): the records of the work system, searched first, beside the work tab
+export const FILES_PAGE = '@files'
+
+/** Whether the files tab stands in the bar: the files view is on offer (cockpit.work_views keeps it; this server
+ *  always does) */
+export function filesOn(s) {
+  return viewsOnOffer(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null).includes('dossier')
+}
+
+/** Whether the pages of group day stand on the work tab: in the middle of Due, so only where the switch offers Due.
+ *  Without it they close the start page, and a link to one goes there instead of to a view that does not show it */
+export function dayPagesOnWork(views) {
+  return (views ?? []).includes('due')
+}
+
+/** A work tab view 'dossier' a browser or the config (work_view: files) still names, now that the files are a tab of
+ *  their own: null for none, else {view, page}, the view the work tab shows instead (to keep) and the files tab where
+ *  the work tab was open */
+export function filesMoved(s) {
+  if (s?.ui?.workView !== 'dossier') return null
+  return { view: workViewIn(s), page: s.ui.page === 'briefing' && filesOn(s) ? FILES_PAGE : null }
+}
+
+/** The view the work tab shows: the remembered one (none remembered: what is due, as app.js loads it) where it can,
+ *  else Work through where it is on offer, else the first view kept */
+export function workViewOf(view, page, jev, flow = false, allowed = null) {
+  const views = workViews(page, jev, flow, allowed)
+  const want = view ?? 'due'
+  return views.includes(want) ? want : views.includes('flow') ? 'flow' : views[0]
+}
+
+/** The views of the work tab under the state: workViews with the work page, Jev, cockpit.flow.enabled and
+ *  cockpit.work_views of `s` */
+export function workViewsIn(s) {
+  return workViews(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null)
+}
+
+/** The view of the work tab under the state: workViewOf with the work page, Jev, cockpit.flow.enabled and
+ *  cockpit.work_views of `s` */
+export function workViewIn(s) {
+  return workViewOf(s?.ui?.workView, workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null)
+}
+
+/** Where a way that names a view of the work tab (a jump to the work page, to Jev, to the task check, a click on
+ *  the switch) lands under the state: {view, save}, the view itself where it is on offer and to be kept as the
+ *  tab's view, else the view the tab falls back to (workViewOf), never kept, so a view switched off is not stored */
+export function workViewGo(s, view) {
+  const on = workViewsIn(s).includes(view)
+  return { view: on ? view : workViewIn({ ...s, ui: { ...s?.ui, workView: view } }), save: on }
+}
+
+/** Whether the live sessions stand in Running now of Work through rather than on a tab of their own (round 6): the
+ *  work tab offers Work through (cockpit.flow.enabled, kept by cockpit.work_views), whose Running now lists every
+ *  live session as a card, with a terminal driver or without one. Then the bar has no Sessions tab and every way to
+ *  it leads there (flowPageFor); a Bridge without Work through keeps the tab */
+export function sessionsInFlow(s) {
+  return workViews(workPageOf(s?.model?.pages), s?.jev, s?.work?.flow?.enabled === true, s?.work?.views ?? null).includes('flow')
+}
+
+/** Whether the task check stands in Work through rather than on a tab of its own (round 6 c): the same rule as the
+ *  sessions (sessionsInFlow), the work tab offers Work through. Then its row stands under Not now and every way to the
+ *  check leads there (flowPageFor); a Bridge without Work through keeps the tab, or the check's place on a page */
+export function checkInFlow(s) {
+  return sessionsInFlow(s)
+}
+
+// the verdicts that want a decision (close, stale; verdictToken): waiting, unclear and continue only say how it stands
+const DECIDE_VERDICTS = new Set(['close', 'stale'])
+
+/** How many decisions the last task check left open: the tasks it judged that are still open, whose verdict wants a
+ *  decision (close or stale) and that nobody kept as they are (the count on the row of Work through) */
+export function checkOpen(model) {
+  const byKey = indexRows(model)
+  return (model?.review?.keys ?? []).map(k => byKey.get(k))
+    .filter(r => r?.review && !r.review.kept && DECIDE_VERDICTS.has(r.review.verdict)).length
+}
+
+/** Where a page id leads that is a view now: the Work through page (@flow, a stored page or a link of an older
+ *  page) is the work tab in its view Work through; the Sessions page (@sessions) is its Running now (flowView
+ *  running) where that lists the live sessions (sessionsInFlow of `s`), so every way to the tab lands there: a
+ *  link, a note, the band, the tour, an area's number, a page stored by an older cockpit; the task check's page
+ *  (@check) is its Check tasks (flowView check) the same way (checkInFlow). Null for every other id */
+export function flowPageFor(id, s = null) {
+  if (id === '@flow') return { page: 'briefing', view: 'flow' }
+  if (id === '@sessions' && sessionsInFlow(s)) return { page: 'briefing', view: 'flow', flowView: 'running' }
+  if (id === '@check' && checkInFlow(s)) return { page: 'briefing', view: 'flow', flowView: 'check' }
+  return null
+}
+
+// cockpit.work_view names a view by the word the docs use; the page has its own ids for them
+const WORK_VIEW_IDS = { due: 'due', source: 'area', jev: 'jev', files: 'dossier', flow: 'flow' }
+
+/** The view id a word of cockpit.work_view names, or null for anything else */
+export function workViewId(word) {
+  return typeof word === 'string' && Object.hasOwn(WORK_VIEW_IDS, word) ? WORK_VIEW_IDS[word] : null
+}
+
+/** The view the work tab opens on at the start of a visit: `remembered` (the last click on its switch, or null),
+ *  `seen` (the config word this browser saw last, or null) and `configured` (the config word the server sends).
+ *  A config that changed since this browser last saw it wins once over the remembered view; after that a click
+ *  holds again. "due" counts as what a browser saw before there was a config, so the default changes nothing.
+ *  Returns { view, seen }, `seen` the word to keep (null: nothing to keep, an older server or an unknown word) */
+export function workViewStart(remembered, seen, configured) {
+  const id = workViewId(configured)
+  if (!id) return { view: remembered ?? 'due', seen: seen ?? null }
+  const changed = configured !== (workViewId(seen) ? seen : 'due')
+  return { view: changed ? id : remembered ?? id, seen: configured }
+}
+
+/** workViewStart over what a browser remembers, `stored` { workTab, workTabSeen } (the last click on the switch,
+ *  the config word seen last). Returns { view, writes }, writes holding only the entries that change */
+export function workViewWrites(stored, configured) {
+  const start = workViewStart(stored?.workTab ?? null, stored?.workTabSeen ?? null, configured)
+  const writes = {}
+  if (start.seen && start.seen !== stored?.workTabSeen) writes.workTabSeen = start.seen
+  if (start.view !== (stored?.workTab ?? null)) writes.workTab = start.view
+  return { view: start.view, writes }
 }
 
 /** The rows of a work page for the order of Jev: `ranked` in Jev's order, `rest` (not sent, or new since)
@@ -1699,11 +2823,15 @@ export function workKinds(sections, kinds) {
 }
 
 /** Where the task check stands when inbox and tasks share a page: that page and the label of its tasks
- *  section ({page, label}), else null and the check keeps a tab of its own */
-export function reviewHome(pages, kinds) {
+ *  section ({page, label}), else null and the check keeps a tab of its own. `views`, the views of the work tab
+ *  on offer (workViewsIn): the work page is the check's place only while By source (`area`) is among them; where
+ *  Work through (`flow`) is among them, no page is (round 6 c: the check stands in Work through, checkInFlow) */
+export function reviewHome(pages, kinds, views = null) {
+  if (Array.isArray(views) && views.includes('flow')) return null
   for (const p of pages ?? []) {
     const tasks = (p.sections ?? []).find(sec => sec.kind === 'tasks')
-    if (tasks && workKinds(p.sections, kinds).length) return { page: p.id, label: workLabel(tasks, kinds) }
+    if (!tasks || !workKinds(p.sections, kinds).length) continue
+    return p.group === 'work' && Array.isArray(views) && !views.includes('area') ? null : { page: p.id, label: workLabel(tasks, kinds) }
   }
   return null
 }
@@ -1857,6 +2985,7 @@ export function guideKey(tab) {
  *  now; fresh: its options answer what the tab asks now */
 export function guideOf(s, tab) {
   const g = s?.guide
+  // by state on purpose: an idle tab can still be answered, so the guide reads it too
   if (!g?.enabled || !tab || tab.is_control || (tab.state !== 'needs-you' && tab.state !== 'waiting')) return { status: 'off', entry: null }
   const entry = g.entries?.[tab.ref] ?? null
   if (!entry) return { status: 'none', entry }
@@ -1912,11 +3041,6 @@ export function greetingPart(hour) {
   return 'evening'
 }
 
-/** The project a row belongs to: its area, else its first area name, else the label of its mark */
-export function rowProject(row) {
-  return row?.area || row?.area_names?.[0] || row?.mark?.label || ''
-}
-
 /** The page that holds the tasks (a section of kind tasks), else the briefing: where "to the tasks" leads */
 export function workPageId(model) {
   return (model?.pages ?? []).find(p => (p.sections ?? []).some(x => x.kind === 'tasks'))?.id ?? 'briefing'
@@ -1932,46 +3056,12 @@ export function dayLabel(date, lang) {
   return date.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-/** The project chips of the start page: the workspaces of the agent tabs and the projects of the rows,
- *  the most frequent first (ties by name), each name once whatever its case; the spelling seen first wins,
- *  tabs before rows. The control tab and nameless entries count for nothing */
-export function homeProjects(tabs, rows) {
-  const seen = new Map()
-  const add = name => {
-    const key = String(name ?? '').trim().toLowerCase()
-    if (!key) return
-    const x = seen.get(key) ?? { name: String(name).trim(), n: 0 }
-    x.n += 1
-    seen.set(key, x)
-  }
-  for (const t of tabs ?? []) if (!t.is_control) add(t.workspace)
-  for (const r of rows ?? []) add(rowProject(r))
-  return [...seen.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).map(x => x.name)
-}
-
-/** Does a tab or a row belong to the chosen project? No project chosen: everything does */
-export function inProject(x, project) {
-  if (!project) return true
-  const want = String(project).toLowerCase()
-  const names = [x?.workspace, x?.area, ...(x?.area_names ?? []), x?.mark?.label]
-  return names.some(n => n && String(n).toLowerCase() === want)
-}
-
 /** The cards of "continue": the agent tabs of the project without the control tab and bare shells,
  *  the ones that need you first, then waiting, then working; within a state the longest first */
 export function homeContinue(tabs, project) {
   const rank = t => STATE_ORDER[t.state] ?? 4
   return (tabs ?? []).filter(t => !t.is_control && t.state !== 'shell' && inProject(t, project))
     .sort((a, b) => rank(a) - rank(b) || (a.since_ms ?? 0) - (b.since_ms ?? 0))
-}
-
-const PROJECT_TONES = ['secondary', 'accent', 'success', 'warning', 'info']
-
-/** A project's tone for its card band: the same name always the same DESIGN.md token, whatever its case */
-export function projectTone(name) {
-  let h = 0
-  for (const ch of String(name ?? '').toLowerCase()) h = (h * 31 + ch.codePointAt(0)) >>> 0
-  return PROJECT_TONES[h % PROJECT_TONES.length]
 }
 
 /** The agent tab that works on a task, by the task's slug */
@@ -1999,10 +3089,14 @@ export function tileSlug(text) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
 }
 
-const HOME_SHELVES = ['focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
-const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'classic', 'list', 'focusview']
+const HOME_SHELVES = ['day', 'areas', 'focus', 'returns', 'pinned', 'continue', 'waiting', 'tasks', 'starts']
+const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 'stage', 'classic', 'list', 'focusview']
 const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
-const OFF_BY_DEFAULT = new Set(['o:classic', 'o:list', 'o:focusview', 'k:brief'])   // the bridge stage is the start page; tiles, list and focus are a choice
+// the parts the overview can show under its table, each off until chosen (Settings, Start page)
+export const DESK_PARTS = ['waiting', 'guide', 'tabs', 'day']
+// the control view (areas) is the start page; the bridge, tiles, list and focus are a choice, the pinned shelf too
+// (Work filters by the star). A choice saved before o:stage existed has no view option and so gets the control view
+const OFF_BY_DEFAULT = new Set(['o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:brief', 's:pinned'])
 
 /** Everything the start page can show, in the order it offers it: each gauge in percent of a page (a quota),
  *  the counts of the day, every page of the profile, the shelves, and the options that change how things
@@ -2021,21 +3115,32 @@ export function homeCatalog(model, { workers = true } = {}) {
   for (const id of ['c:waiting', 'c:returns', 'c:tabs', 'c:agents', 'c:workers', 'c:next', 'c:done']) {
     if (id !== 'c:workers' || workers) out.push({ id, kind: 'count' })
   }
-  for (const p of model?.pages ?? []) out.push({ id: `p:${p.id}`, kind: 'page', label: p.title, page: p })
+  // a page of the settings group (the Setup page) is no page of its own: it stands in Settings, Setup
+  for (const p of model?.pages ?? []) if (p.group !== 'settings') out.push({ id: `p:${p.id}`, kind: 'page', label: p.title, page: p })
   for (const x of HOME_SHELVES) out.push({ id: `s:${x}`, kind: 'shelf' })
   for (const x of HOME_OPTIONS) out.push({ id: `o:${x}`, kind: 'option' })
   for (const x of HOME_CORE) out.push({ id: `k:${x}`, kind: 'core' })
+  for (const x of DESK_PARTS) out.push({ id: `d:${x}`, kind: 'desk' })
   return out
 }
 
 /** What a page shows before anyone chose: the first quota of a window of a day or more, what waits on you,
  *  the next date, the page with the tasks, every shelf and every option */
 function homeDefaults(model, all) {
-  const quota = all.find(x => x.kind === 'quota' && x.it.meter.window_h >= 24) ?? all.find(x => x.kind === 'quota')
+  const quota = firstQuota(all)
   const work = (model?.pages ?? []).find(p => (p.sections ?? []).some(sec => sec.kind === 'tasks'))
   return new Set([quota?.id, 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', work ? `p:${work.id}` : null,
     ...HOME_SHELVES.map(x => `s:${x}`), ...HOME_OPTIONS.map(x => `o:${x}`), ...HOME_CORE.map(x => `k:${x}`)]
     .filter(x => x && !OFF_BY_DEFAULT.has(x)))
+}
+
+function firstQuota(all) {
+  return all.find(x => x.kind === 'quota' && x.it.meter.window_h >= 24) ?? all.find(x => x.kind === 'quota') ?? null
+}
+
+/** The quota "next up" names: the one the defaults take, the first with a window of a day or more */
+export function homeQuota(model) {
+  return firstQuota(homeCatalog(model))
 }
 
 /** What the start page shows, in its order: the choice made ({tiles, seen} from the server), else the
@@ -2082,12 +3187,13 @@ export function dropAmong(list, among, id, target) {
   return refill(list, among, next)
 }
 
-const HOME_VIEWS = { list: 'o:list', focus: 'o:focusview', tiles: 'o:classic' }   // in the order one wins over the next
+const HOME_VIEWS = { list: 'o:list', focus: 'o:focusview', tiles: 'o:classic', stage: 'o:stage' }   // in the order one wins over the next
 
-/** The start page's view from what is chosen: the list, the focus, the tiles of before, else the bridge */
+/** The start page's view from what is chosen: the list, the focus, the tiles of before, the bridge, else
+ *  the control view ('areas': one head line, the areas, next up) */
 export function homeView(chosen) {
   const on = new Set(chosen ?? [])
-  return Object.keys(HOME_VIEWS).find(v => on.has(HOME_VIEWS[v])) ?? 'stage'
+  return Object.keys(HOME_VIEWS).find(v => on.has(HOME_VIEWS[v])) ?? 'areas'
 }
 
 /** The chosen list with one view picked: every view option out, the picked one at the end */
@@ -2117,18 +3223,48 @@ export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
   const bound = new Map(shown.map(r => [r.key, tabOfTask(live, r.task)]).filter(([, tb]) => tb))
   const seenTabs = new Set([...(lead?.kind === 'tab' ? [lead.tab.ref] : []), ...[...bound.values()].map(tb => tb.ref)])
   const free = state => live.filter(x => x.state === state && !seenTabs.has(x.ref))
+  // resting by state on purpose: a tab gone idle rests there too, it asks nothing
   return { lead, asking: free('needs-you'), waiting, pinned, tasks, running: free('working'), resting: free('waiting'),
     tabOf: key => bound.get(key) ?? null }
 }
 
-/** The queue of the focus view, from the parts of the list: the lead, the tabs that ask, the rows that
- *  wait on you, then the P0 and P1 tasks; what merely runs or rests is not yours to take */
-export function homeQueue(parts) {
+/** The one queue every walk takes, in one order: a tab that asks, a result that waits, an open inbox item,
+ *  then the tasks; what merely runs or rests is not yours to take. `scope` picks whose parts it reads:
+ *  - 'focus' (the start page, homeListParts): its lead first, then the tabs that ask, the rows that wait on
+ *    you, and of the tasks only P0 and P1, as the focus has always shown it;
+ *  - 'dossier' (the files view, dossierParts): one entry per task (a file), at the place of the first reason
+ *    that names it, every priority; a file is {kind: 'dossier', id, slug, row, reason, tab?, result?, item?},
+ *    `row` its task row. A tab, a result or an item opens a file from `files`, a task on its own only from
+ *    `tasks`. Backlog, blocked and resting tasks stand in neither, so no file opens for them */
+export function queueOf(parts, { scope = 'focus' } = {}) {
+  if (scope === 'dossier') {
+    // a file is its task row: the row keyed task:<slug> where one stands, else the first that names the task
+    const bySlug = new Map()
+    for (const r of [...(parts?.files ?? []), ...(parts?.tasks ?? [])]) {
+      if (!bySlug.has(r.task) || (r.key === `task:${r.task}` && bySlug.get(r.task).key !== r.key)) bySlug.set(r.task, r)
+    }
+    const files = new Map()
+    const add = (slug, reason, extra) => {
+      if (!slug || !bySlug.has(slug) || files.has(slug)) return
+      const row = bySlug.get(slug)
+      files.set(slug, { kind: 'dossier', id: row.key, slug, row, reason, ...extra })
+    }
+    for (const t of parts?.asking ?? []) add(t.slug, 'tab', { tab: t })
+    for (const r of parts?.results ?? []) add(r.slug, 'result', { result: r })
+    for (const r of parts?.waiting ?? []) add(r.task, 'inbox', { item: r })
+    for (const r of parts?.tasks ?? []) add(r.task, 'task', {})
+    return [...files.values()]
+  }
   const tab = x => ({ kind: 'tab', id: x.ref, tab: x })
   const row = r => ({ kind: 'row', id: r.key, row: r })
   const lead = parts?.lead ? [parts.lead.kind === 'tab' ? tab(parts.lead.tab) : row(parts.lead.row)] : []
   return [...lead, ...(parts?.asking ?? []).map(tab), ...(parts?.waiting ?? []).map(row),
     ...(parts?.tasks ?? []).filter(r => /^P[01]$/.test(r.priority ?? '')).map(row)]
+}
+
+/** The queue of the focus view, from the parts of the list: the one queue in its focus scope */
+export function homeQueue(parts) {
+  return queueOf(parts, { scope: 'focus' })
 }
 
 /** The rows of a start-page list in the order it shows them, as the queue a detail opened there walks
@@ -2148,6 +3284,14 @@ export function focusIndex(queue, at) {
   if (!n || !at) return 0
   const i = queue.findIndex(x => x.id === at.id)
   return i >= 0 ? i : Math.min(Math.max(0, at.i ?? 0), n - 1)
+}
+
+/** Where n or p moves a focus walk from `at`: { to } the step it reaches, { files: true } for n past the last
+ *  step where cockpit.focus_to_files (`toFiles`) leads on into the files view, else null */
+export function focusStep(queue, at, key, toFiles = false) {
+  const to = focusIndex(queue, at) + (key === 'n' ? 1 : -1)
+  if (queue?.[to]) return { to }
+  return key === 'n' && toFiles ? { files: true } : null
 }
 
 /** The one next step of the start page: a tab that asks you, else the first row waiting on you, else the
@@ -2188,6 +3332,13 @@ export function untilText(ms) {
   const h = Math.floor(min / 60)
   if (h >= 24) return `${Math.floor(h / 24)} d ${h % 24} h`
   return h ? `${h} h ${min % 60} min` : `${min} min`
+}
+
+/** Whether a row counts as waiting for you (briefing_view.asks_you): every row that is no inbox item, and of the
+ *  inbox only the asks. An idea or a report filed for today stands in Now, it just asks nothing of you; an inbox
+ *  row without its art (an older server) is an ask */
+export function asksYou(row) {
+  return !row?.inbox_id || (row.art ?? 'ask') === 'ask'
 }
 
 /** How many of a page's items belong to a project (by mark or area) */
@@ -2248,22 +3399,26 @@ export function speechError(code) {
 export const RETURN_STAGES = ['started', 'working', 'asks', 'result', 'done']
 
 /** Where a start stands now: the server knows the answer and the close; the tab's state the page sees itself,
- *  so a tab that just began to wait shows at once, not with the next collection */
+ *  so a tab that just began to wait shows at once, not with the next collection. A still tab asks unless the
+ *  server read its screen and found no question (`idle`); a dialog (needs-you) always asks */
 export function liveStage(r, tabs, nowMs) {
   if (r.stage === 'result' || r.stage === 'done') return r.stage
   const mine = (tabs ?? []).filter(t => !t.is_control && (t.ref === r.tab?.ref || t.slug === r.item || t.item === r.item))
-  if (mine.some(t => t.state !== 'working')) return 'asks'
+  // a question it left on its item (returns.py `asks`) stands without a tab too, until its tab works again
+  if (r.result?.asks && !mine.some(t => t.state === 'working')) return 'asks'
+  if (mine.some(t => t.state !== 'working')) return r.stage === 'idle' && !mine.some(t => t.state === 'needs-you') ? 'idle' : 'asks'
   if (mine.length) return 'working'
   return nowMs - r.at_ms < 180000 ? 'started' : 'lost'
 }
 
-/** The starts handed to the AI by what they want of you: done or answered and to check, a question, at
- *  work, or gone without a word. Newest first within a group, as the server sends them */
+/** The starts handed to the AI by what they want of you: answered or gone quiet and to check, settled (done:
+ *  nothing left to check, at most a tab to close), a question, at work, or gone without a word. Newest first
+ *  within a group, as the server sends them */
 export function aiGroups(returns, tabs, nowMs) {
-  const g = { check: [], asks: [], working: [], lost: [] }
+  const g = { check: [], done: [], asks: [], working: [], lost: [] }
   for (const r of returns ?? []) {
     const live = liveStage(r, tabs, nowMs)
-    const to = live === 'done' || live === 'result' ? 'check' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
+    const to = live === 'result' || live === 'idle' ? 'check' : live === 'done' ? 'done' : live === 'asks' ? 'asks' : live === 'lost' ? 'lost' : 'working'
     g[to].push({ ...r, live })
   }
   return g
@@ -2275,18 +3430,19 @@ export function settledRefs(returns, tabs, nowMs) {
   return new Set((returns ?? []).filter(r => r.tab?.ref && open.has(r.tab.ref) && liveStage(r, tabs, nowMs) === 'done').map(r => r.tab.ref))
 }
 
-/** What the AI left for you: checks whose tab is still open, tabs settled on their own, and the questions */
+/** What the AI left for you: checks and settled starts whose tab is still open, tabs settled on their own, and
+ *  the questions */
 export function aiWaiting(returns, tabs, nowMs) {
   const g = aiGroups(returns, tabs, nowMs)
   const open = new Set((tabs ?? []).map(t => t.ref))
-  const done = new Set(g.check.filter(r => r.tab?.ref && open.has(r.tab.ref)).map(r => r.tab.ref))
+  const done = new Set([...g.check, ...g.done].filter(r => r.tab?.ref && open.has(r.tab.ref)).map(r => r.tab.ref))
   for (const t of tabs ?? []) if (t.settled && t.state === 'waiting' && !t.is_control) done.add(t.ref)
   return done.size + g.asks.length
 }
 
 /** The tone of a stage: an answer is good news, a question waits on you, work runs, a lost start is red */
 export function stageTone(stage) {
-  return { started: 'info', working: 'info', asks: 'warning', result: 'success', done: 'success', lost: 'danger' }[stage] ?? 'muted'
+  return { started: 'info', working: 'info', asks: 'warning', idle: 'muted', result: 'success', done: 'success', lost: 'danger' }[stage] ?? 'muted'
 }
 
 /** What happened between two states of the page, for the live feed: rows that came and went, a row turned
@@ -2312,7 +3468,9 @@ export function feedEvents(prev, next, prevTabs, nextTabs, at) {
   const stage = new Map((prev.returns ?? []).map(r => [r.key, r.stage]))
   for (const r of next.returns ?? []) {
     const was = stage.get(r.key)
-    if (was && was !== r.stage && (r.stage === 'result' || r.stage === 'done')) out.push({ kind: 'answer', key: r.key, title: r.title, at })
+    // result then done is one answer
+    const answered = st => st === 'result' || st === 'done'
+    if (was && !answered(was) && answered(r.stage)) out.push({ kind: 'answer', key: r.key, title: r.title, at })
     if (was && was !== r.stage && r.stage === 'lost') out.push({ kind: 'lost', key: r.key, title: r.title, at })
   }
   const alarms = new Set((prev.alarms ?? []).map(x => `${x.page_id}/${x.section_title}`))
@@ -2322,15 +3480,29 @@ export function feedEvents(prev, next, prevTabs, nextTabs, at) {
   return out
 }
 
-/** The feed with new events in front, at most `cap`; an event that repeats the newest of its kind and row
- *  is dropped */
+// how close the same event about the same thing has to follow to count once
+const FEED_REPEAT_MS = 10 * 60000
+
+/** The feed with new events in front, at most `cap`. An event is dropped only when the newest entry about
+ *  the same thing is of its kind and a few minutes old: a row that leaves and comes back says so, and a tab
+ *  that asks again later or a finding that returns is news again */
 export function addFeed(feed, events, cap = 50) {
   const out = [...feed]
+  // a finding is named by its section, which can stand on more than one page
+  const about = x => x.key ?? x.ref ?? (x.page ? `${x.page}/${x.title}` : x.title)
   for (const e of events) {
-    if (out.some(x => x.kind === e.kind && (x.key ?? x.ref ?? x.title) === (e.key ?? e.ref ?? e.title))) continue
+    const last = out.filter(x => about(x) === about(e)).sort((x, y) => y.at - x.at)[0]
+    if (last && last.kind === e.kind && Math.abs(e.at - last.at) < FEED_REPEAT_MS) continue
     out.unshift(e)
   }
   return out.sort((x, y) => y.at - x.at).slice(0, cap)
+}
+
+/** Whether the start page reads the background jobs again: a new briefing pass landed (the Resources
+ *  section writes their view), the Bridge has workers, and no read is under way */
+export function workersDue(prev, next, workers) {
+  if (!prev || !next || prev.collected_ms === next.collected_ms) return false
+  return !['none', 'loading'].includes(workers?.status)
 }
 
 // ---------------------------------------------------------------- the inner room: the knowledge graph in 3D
@@ -2489,7 +3661,8 @@ export function situation(model, tabs, nowMs) {
     work: rows('work'),
     later: rows('later'),
     asking: live.filter(t => t.state === 'needs-you'),
-    waiting: live.filter(t => t.state === 'waiting'),
+    waiting: live.filter(t => t.state === 'waiting' && wantsYou(t)),
+    idle: live.filter(t => t.state === 'waiting' && t.idle),
     working: live.filter(t => t.state === 'working'),
     answers: returns.filter(r => r.stage === 'result'),
     lost: returns.filter(r => r.stage === 'lost'),
@@ -2533,35 +3706,31 @@ export function askContext(s, lang = 'de') {
   return out.length <= CONTEXT_MAX ? out : ''
 }
 
-// ---------------------------------------------------------------- the chat's one input: where Enter goes
-
-/** Where a text typed into the chat goes: `quick` (a read-only answer here) or `tab` (an agent tab that may
- *  act), and why: a leading ? or ! (`prefix`, stripped), the first words (`words`: a trailing ? or a
- *  question word asks, an order word starts a tab, in English and German), or `default` (unclear asks).
- *  The word lists are language data in text.js (route) */
-export function routeOf(raw) {
-  const text = String(raw ?? '').trim()
-  if (text.startsWith('?')) return { to: 'quick', by: 'prefix', text: text.slice(1).trim() }
-  if (text.startsWith('!')) return { to: 'tab', by: 'prefix', text: text.slice(1).trim() }
-  const lists = key => Object.values(TABLES).flatMap(t => t.route?.[key] ?? []).map(w => w.toLowerCase())
-  const filler = new Set(lists('fillerWords'))
-  let words = text.toLowerCase().replace(/[.,:;!?]+/g, ' ').split(/\s+/).filter(Boolean)
-  while (words.length > 1 && filler.has(words[0])) words = words.slice(1)
-  // a list entry of two words matches the first two, or its first word alone (German puts the particle last:
-  // "leg eine Aufgabe an")
-  const hit = list => list.some(w => w === words[0] || w === words.slice(0, 2).join(' ') || (w.includes(' ') && w.split(' ')[0] === words[0]))
-  if (text.endsWith('?') || hit(lists('questionWords'))) return { to: 'quick', by: 'words', text }
-  if (hit(lists('orderWords'))) return { to: 'tab', by: 'words', text }
-  return { to: 'quick', by: 'default', text }
-}
+// ---------------------------------------------------------------- the status line of a chat handed on
 
 const HANDOFF_FAILED = new Set(['failed', 'partly', 'aborted', 'error', 'rejected'])
+// the launch outcomes after which a tab works on what it was handed
+const TAB_LIVE = new Set(['started', 'running', 'busy'])
+// the head of a note on an item, which the status line names in its own words
+const NOTE_HEAD_RE = /^\s*(?:Result|Ergebnis|Question|Frage)\s*:\s*/i
+// how long a start without a tab counts as starting (returns.py GRACE_MS, liveStage): later, its tab is gone
+const START_GRACE_MS = 180000
+// how many days of archived questions the Chat's "all of the last days" reads (GET /api/chats/archive)
+export const ASK_ARCHIVE_DAYS = 7
+
+/** A tab start handed on whose tab is gone: no tab carries its item, and its grace is over. A record without
+ *  its time cannot tell, so it is not gone */
+const tabGone = (handed, tab, nowMs) => !tab && TAB_LIVE.has(handed.status) && typeof handed.at_ms === 'number'
+  && nowMs - handed.at_ms >= START_GRACE_MS
 
 /** The status line of a chat that was handed on (quick.py `handed`, or the page's own record of a chat_tab
  *  reply): `word` is a key of text.js handoff, `tone` a state token, `action` what a button beside it does
  *  (retry, jump to the tab, ask_via_tab). The control route reads its relay record; the tab route finds the
- *  tab that carries the inbox item. null without a record */
-export function handoffStatus(handed, relayRecords, tabs) {
+ *  tab that carries the inbox item, and once something came back from that item (askOutcome of
+ *  `handed.outcome`, quick.py handoff_outcome) says it: its question, its result, or a close without a word.
+ *  A tab that waits on you before anything came back says that; a start whose tab is gone with nothing back says
+ *  that too (`gone`, as Work's "Tab gone"), with a new start and its item (`item`). null without a record */
+export function handoffStatus(handed, relayRecords, tabs, nowMs = Date.now()) {
   if (!handed?.status) return null
   const out = (word, tone, action = null, extra = {}) => ({ word, tone, action, ...extra })
   if (handed.status === 'starting') return out('starting', 'info')
@@ -2581,13 +3750,349 @@ export function handoffStatus(handed, relayRecords, tabs) {
     return out('failed', 'danger', 'retry')
   }
   const tab = handed.inbox_id ? (tabs ?? []).find(t => t?.item === handed.inbox_id) : null
-  if (tab && ['started', 'running', 'busy'].includes(handed.status)) return out('inTab', 'success', 'jump', { ref: tab.ref, tab: tab.name })
+  const jump = tab ? ['jump', { ref: tab.ref, tab: tab.name }] : [null, {}]
+  const back = askOutcome({ handed })
+  if (back) {
+    const said = { text: back.text ?? '', at_ms: back.at_ms }
+    if (back.asks) return out('asks', 'warning', jump[0], { ...jump[1], ...said })
+    if (said.text) return out('result', back.closed ? 'success' : 'info', jump[0], { ...jump[1], ...said })
+    if (back.closed) return out('closed', 'success', jump[0], { ...jump[1], ...said })
+  }
+  if (tab?.state === 'needs-you' && TAB_LIVE.has(handed.status)) return out('asksYou', 'warning', ...jump)
+  if (tab && TAB_LIVE.has(handed.status)) return out('inTab', 'success', ...jump)
+  if (tabGone(handed, tab, nowMs)) return out('gone', 'warning', 'retry', { item: handed.inbox_id ?? null })
   if (handed.status === 'started') return out('started', 'info')
   if (handed.status === 'running' || handed.status === 'busy') return out('running', 'info')
   if (handed.status === 'manual') return out('manual', 'warning')
   if (handed.status === 'nothing') return out('nothing', 'warning', 'retry')
   if (HANDOFF_FAILED.has(handed.status)) return out('failed', 'danger', 'retry')
   return out('failed', 'danger', 'retry')
+}
+
+// ---------------------------------------------------------------- questions found again (round 6d)
+
+/** What came back from the item a question was handed on as: quick.py handoff_outcome writes it onto the
+ *  conversation's `handed` record as { text, closed, at_ms, asks }. `text` without its head ("Result:",
+ *  "Question:"), null when the item closed without a word. null while nothing came back */
+export function askOutcome(conv) {
+  const raw = conv?.handed?.outcome
+  if (!raw || typeof raw !== 'object') return null
+  const text = String(raw.text ?? '').replace(NOTE_HEAD_RE, '').trim() || null
+  if (!text && !raw.closed && !raw.asks) return null
+  return { text, asks: raw.asks === true, closed: raw.closed === true, at_ms: raw.at_ms ?? null }
+}
+
+/** The marker of a handed question in every list: `asksYou` (its tab asks you, or came back with a question),
+ *  `done` (its item closed, or it came back while no tab works on it any more; `text` its outcome), `inTab`
+ *  (its tab took it and works), `gone` (its tab ended, or never came, and nothing came back); null for a question
+ *  never handed on, or one whose start failed. `ref` the tab that carries it, while there is one */
+export function askMark(conv, tabs, nowMs = Date.now()) {
+  const handed = conv?.handed
+  if (!handed || handed.to !== 'tab') return null
+  const tab = handed.inbox_id ? (tabs ?? []).find(t => t?.item === handed.inbox_id) ?? null : null
+  const outcome = askOutcome(conv)
+  const ref = tab?.ref ?? null
+  const live = TAB_LIVE.has(handed.status)
+  if (outcome?.asks || (!outcome && tab?.state === 'needs-you' && live)) return { word: 'asksYou', tone: 'warning', text: outcome?.text ?? null, ref }
+  if (outcome && (outcome.closed || !tab)) return { word: 'done', tone: 'success', text: outcome.text, ref }
+  if (!outcome && tabGone(handed, tab, nowMs)) return { word: 'gone', tone: 'warning', text: null, ref }
+  return live || outcome ? { word: 'inTab', tone: 'info', text: outcome?.text ?? null, ref } : null
+}
+
+/** "heute 07:34", "gestern 07:34", "20.10. 07:34": when a question was asked, for titles that read alike */
+export function askStamp(ms, nowMs, lang) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return ''
+  const w = (TABLES[lang] ?? TABLES.en).asks
+  const d = new Date(ms)
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (isoDate(ms) === isoDate(nowMs)) return `${w.today} ${hm}`
+  if (isoDate(ms) === isoDate(nowMs - DAY)) return `${w.yesterday} ${hm}`
+  return chatStamp(ms, nowMs, lang)
+}
+
+const WORKER_KEY = /^worker:([^:]+):(.+)$/
+
+// the words a question about a job opens with (text.py ask_worker, both languages): its id, machine and state
+const WORKER_ASK = /^(?:Background job|Hintergrundjob) (\S+) (?:on|auf) ([^\s:]+): ([^.]{1,60})\./
+
+/** The day of a job's newest failure (its strip), short: 16.10. (de), 10/16 (en); null without one */
+function failedDay(run, lang) {
+  const at = (run?.strip ?? []).filter(e => e?.verdict === 'failed' || e?.verdict === 'expired').map(e => Date.parse(e.at))
+    .filter(Number.isFinite).sort((a, b) => b - a)[0]
+  if (at === undefined) return null
+  const d = new Date(at)
+  return String(lang).startsWith('de') ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.` : `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+/** The title of a question: what it is about (a job with its machine, its state and the day of its failure, the
+ *  row or task it was asked on, the inbox item it became; a question about a job from before it carried that, by
+ *  its opening words), else its first sentence, or the title in guillemets a row's prompt carries, cut at a word */
+export function askTitle(conv, s, lang) {
+  const about = conv?.about && typeof conv.about === 'object' ? conv.about : {}
+  const said = WORKER_ASK.exec(String(conv?.turns?.[0]?.q ?? '').trim())
+  const job = WORKER_KEY.exec(about.key ?? '') ?? (said ? [null, said[2], said[1]] : null)
+  if (job) {
+    const [, host, id] = job
+    const run = (s?.workers?.data?.runs ?? []).find(r => r?.host === host && r?.id === id)
+    const state = run?.state ?? about.state
+    const words = (TABLES[lang] ?? TABLES.en).workerState ?? {}
+    const word = state ? words[state] ?? state : said && !about.key ? said[3].trim() : null
+    // the day only where the state is the failure (a job in order since keeps no old date)
+    const day = word && (state === 'last_run_failed' || !state) ? failedDay(run, lang) : null
+    return [run?.title || id, host, word && day ? `${word} ${day}` : word].filter(Boolean).join(' · ')
+  }
+  if (typeof about.title === 'string' && about.title.trim()) return short(about.title, 80)
+  const rows = indexRows(s?.model)
+  for (const key of [about.key, about.task && `task:${about.task}`, about.inbox && `inbox:${about.inbox}`]) {
+    const title = key ? rows.get(key)?.title : null
+    if (title) return short(title, 80)
+  }
+  const text = String(conv?.turns?.[0]?.q ?? '').replace(/\s+/g, ' ').trim()
+  const quoted = /«([^»]{3,})»/.exec(text)
+  return short(quoted ? quoted[1] : text.split(/(?<=[.!?])\s/)[0], 60)
+}
+
+/** The questions a list shows, each with its title, marker and whether it is open (answering, unanswered or
+ *  handed on): the open ones first, then the answered, the newest first in each. Titles that read alike carry
+ *  when they were asked */
+export function askList(convs, s, lang) {
+  const tabs = s?.tabs?.tabs
+  const out = (convs ?? []).map(conv => {
+    const mark = askMark(conv, tabs, s?.now || Date.now())
+    const last = conv.turns?.at(-1)
+    return { conv, title: askTitle(conv, s, lang), mark, open: !!(conv.running || mark || (last && !last.a && !last.error)) }
+  })
+  const seen = new Map()
+  for (const x of out) seen.set(x.title, (seen.get(x.title) ?? 0) + 1)
+  for (const x of out) if (seen.get(x.title) > 1) x.title = `${x.title} · ${askStamp(x.conv.started_ms, s?.now, lang)}`
+  const at = x => x.conv.last_ms ?? x.conv.started_ms ?? 0
+  return out.sort((a, b) => (b.open ? 1 : 0) - (a.open ? 1 : 0) || at(b) - at(a))
+}
+
+/** How many hours a question stays in the list (quick.py state keep_hours, cockpit.chat_keep_hours); 24 when
+ *  the server did not say, its own default (config.py) */
+export const keepHoursOf = quick => (Number.isFinite(quick?.keep_hours) ? quick.keep_hours : 24)
+
+// the rooms of the Chat as cmux a browser keeps (round 6d C3), and how long a question counts as just answered
+const KEPT_ROOMS = new Set(['tab', 'ws', 'bridge', 'chat'])
+const FRESH_ANSWER_MS = 3600000
+
+/** The room this browser kept (localStorage bridge-cockpit.chatRoom), read back only in its known shapes and
+ *  marked `kept`: a kept room that is gone gives way to the chat (roomShown). null for anything else */
+export function roomKept(raw) {
+  let v
+  try { v = JSON.parse(raw) } catch { return null }
+  if (!v || typeof v !== 'object' || Array.isArray(v) || !KEPT_ROOMS.has(v.kind)) return null
+  if (v.kind === 'chat') return { kind: 'chat', kept: true }
+  return typeof v.id === 'string' && v.id && v.id.length <= 200 ? { kind: v.kind, id: v.id, kept: true } : null
+}
+
+/** What this browser keeps of a picked room: the room without its mark, or null */
+export function roomToKeep(room) {
+  if (!room || !KEPT_ROOMS.has(room.kind)) return null
+  return JSON.stringify(room.kind === 'chat' ? { kind: 'chat' } : { kind: room.kind, id: room.id })
+}
+
+/** The room the right side shows: the one picked, else the chat. One kept from before a reload whose tab,
+ *  workspace or Bridge is gone shows the chat; one picked by hand stays and says it is closed */
+export function roomShown(s) {
+  const room = s?.ui?.room ?? null
+  if (!room) return { kind: 'chat' }
+  if (!room.kept) return room
+  const gone = room.kind === 'tab' ? Array.isArray(s.tabs?.tabs) && !s.tabs.tabs.some(x => x.ref === room.id)
+    : room.kind === 'ws' ? Array.isArray(s.tabs?.workspaces) && !roomsOf(s).workspaces.some(w => w.key === room.id)
+    : room.kind === 'bridge' ? Array.isArray(s.rooms?.bridges) && !s.rooms.bridges.some(b => b.id === room.id)
+    : false
+  return gone ? { kind: 'chat' } : room
+}
+
+/** The task a tab works on: its own (a task tab), else the newest live session in it linked to one (by hand, by its
+ *  task tab, or recognised from what it did); null for none and for the control session */
+export function taskOfTab(s, tab) {
+  if (tab.is_control) return null
+  if (tab.slug) return tab.slug
+  const linked = (s.sessions?.sessions ?? []).filter(x => x.task && x.tab?.ref === tab.ref)
+    .sort((a, b) => (b.started_ms ?? 0) - (a.started_ms ?? 0))[0]
+  return linked?.task ?? null
+}
+
+/** Model, context and cost as an agent tab's own status line names them, read off its screen: only what is there,
+ *  null without any. A status line is the user's own, so this reads the common shapes and asks nothing of them */
+export function termStatus(text) {
+  const tail = String(text ?? '').split('\n').slice(-6).join('\n')
+  const model = tail.match(/\[((?:Opus|Sonnet|Haiku|Fable)[^\]\n]{0,40})\]/)?.[1] ?? null
+  const ctx = tail.match(/\b(\d{1,3})%\/\d+[kKmM]\b/)?.[1]
+  const cost = tail.match(/\$\d+(?:[.,]\d{1,2})?/)?.[0] ?? null
+  const context = ctx == null ? null : Math.min(100, Number(ctx))
+  return model || context != null || cost ? { model, context, cost } : null
+}
+
+/** The commands of a tab's menu: an agent's by what they do and the skills of this Bridge, a shell's few. Each is what
+ *  you would type yourself; `ask` asks once more, on the row */
+export function termCommands(tab, s, t) {
+  const c = t.cmd
+  if (tab.state === 'shell') return [{ title: t.often, items: ['git status', 'git pull', 'ls -la'].map(cmd => ({ cmd, say: '' })).concat({ cmd: 'claude', say: c.claude }) }]
+  const skills = (s.skills ?? []).map(x => ({ cmd: `/${x.name}`, say: x.title ?? '' }))
+  return [
+    { title: t.talk, items: [{ cmd: '/clear', say: c.clear, ask: true }, { cmd: '/compact', say: c.compact }, { cmd: '/rewind', say: c.rewind }, { cmd: '/branch', say: c.branch }, { cmd: '/resume', say: c.resume }] },
+    { title: t.setting, items: [{ cmd: '/model', say: c.model }, { cmd: '/effort', say: c.effort }, { cmd: '/context', say: c.context }, { cmd: '/usage', say: c.usage }, { cmd: '/status', say: c.status }] },
+    ...(skills.length ? [{ title: t.skills, items: skills }] : []),
+  ]
+}
+
+/** The colours a workspace can take (workplace.py COLORS), by name */
+export const WORKSPACE_COLORS = ['Red', 'Crimson', 'Orange', 'Amber', 'Olive', 'Green', 'Teal', 'Aqua', 'Blue', 'Navy', 'Indigo', 'Purple', 'Magenta', 'Rose', 'Brown', 'Charcoal']
+
+// ---------------------------------------------------------------- the fields of the Chat (views/fields.js)
+
+/** The layouts and how many fields each holds. A field holds a tab's ref, Zum Thema or nothing; the fields live on
+ *  this page only, the terminal stays as it is, so tabs of any workspace stand side by side */
+export const FIELD_COUNT = { 1: 1, '2h': 2, '2v': 2, 3: 3, m2: 3, 4: 4 }
+const LAYOUT_OF = { 1: '1', 2: '2h', 3: '3', 4: '4' }
+const SPLIT_DEFAULT = 58
+const isRef = p => typeof p === 'string' && p !== ''
+export const isTopic = p => p?.topic === true
+const newTopic = () => ({ topic: true, follow: true, tab: null })
+
+/** The value ui.fields as it may be used, whatever was kept in this browser. `ref`, the room open now, takes the
+ *  active field unless a field holds it: every way into a tab goes through the room */
+export function fieldsOf(raw, ref = null) {
+  const layout = Object.hasOwn(FIELD_COUNT, raw?.layout) ? raw.layout : '1'
+  const n = FIELD_COUNT[layout]
+  const panes = (Array.isArray(raw?.panes) ? raw.panes : []).slice(0, n)
+    .map(p => (isRef(p) ? p : isTopic(p) ? { topic: true, follow: p.follow !== false, tab: isRef(p.tab) ? p.tab : null } : null))
+  while (panes.length < n) panes.push(null)
+  const at = Number.isInteger(raw?.active) ? raw.active : 0
+  const split = Number.isFinite(raw?.split) ? Math.min(75, Math.max(25, raw.split)) : SPLIT_DEFAULT
+  const f = { layout, panes, active: at >= 0 && at < n ? at : 0, split }
+  return ref && !panes.includes(ref) ? fieldsPick(f, ref) : f
+}
+
+const shrunk = (f, panes) => {
+  const n = Math.max(1, panes.length)
+  return { ...f, layout: LAYOUT_OF[n], panes: panes.length ? panes : [null], active: Math.min(f.active, n - 1) }
+}
+
+/** A tab goes to the active field, or the first that is no Zum Thema; one that stands in a field is only found */
+export function fieldsPick(f, ref) {
+  const panes = f.panes.slice()
+  const at = panes.indexOf(ref)
+  if (at >= 0) return { ...f, active: at }
+  const to = isTopic(panes[f.active]) ? panes.findIndex(p => !isTopic(p)) : f.active
+  if (to < 0) return shrunk({ ...f, active: 0 }, [ref, ...panes])
+  panes[to] = ref
+  return { ...f, panes, active: to }
+}
+
+/** Daneben: a free field, else one more field, else the one after the active */
+export function fieldsBeside(f, ref) {
+  if (f.panes.includes(ref)) return f
+  const panes = f.panes.slice()
+  const free = panes.indexOf(null)
+  if (free >= 0) { panes[free] = ref; return { ...f, panes, active: free } }
+  if (panes.length < 4) { panes.push(ref); return { ...shrunk(f, panes), active: panes.length - 1 } }
+  const to = (f.active + 1) % 4
+  panes[to] = ref
+  return { ...f, panes, active: to }
+}
+
+/** Another layout keeps what is open as far as it fits; `fill` (refs) fills the fields it adds */
+export function fieldsLayout(f, layout, fill = []) {
+  const n = FIELD_COUNT[layout] ?? 1
+  const panes = f.panes.filter(Boolean)
+  for (const ref of fill) if (panes.length < n && !panes.includes(ref)) panes.push(ref)
+  while (panes.length < n) panes.push(null)
+  return { ...f, layout, panes: panes.slice(0, n), active: Math.min(f.active, n - 1) }
+}
+
+export function fieldsSwap(f, a, b) {
+  const panes = f.panes.slice()
+  ;[panes[a], panes[b]] = [panes[b], panes[a]]
+  return { ...f, panes, active: f.active === a ? b : f.active === b ? a : f.active }
+}
+
+/** A field closes, the tab in it runs on; the empty ones go with it and the layout follows */
+export function fieldsClose(f, i) {
+  return shrunk(f, f.panes.filter((p, k) => k !== i && p))
+}
+
+/** Zum Thema beside the chat, once */
+export function fieldsTopic(f) {
+  if (f.panes.some(isTopic)) return f
+  const panes = f.panes.slice()
+  const free = panes.indexOf(null)
+  if (free >= 0) panes[free] = newTopic()
+  else if (panes.length < 4) panes.push(newTopic())
+  else panes[3] = newTopic()
+  return { ...shrunk(f, panes), active: f.active }
+}
+
+/** Holds Zum Thema at `ref`, or lets it follow the open chat again */
+export function fieldsHold(f, i, ref) {
+  const panes = f.panes.slice()
+  panes[i] = panes[i].follow ? { topic: true, follow: false, tab: ref } : newTopic()
+  return { ...f, panes }
+}
+
+/** All tabs of a workspace side by side, up to four */
+export function fieldsWall(f, refs) {
+  const panes = refs.slice(0, 4)
+  return panes.length ? { ...shrunk({ ...f, active: 0 }, panes) } : f
+}
+
+/** A tab dropped on a field: one that stands in a field changes places, any other opens there */
+export function fieldsDrop(f, i, ref) {
+  const had = f.panes.indexOf(ref)
+  if (had >= 0) return had === i ? f : fieldsSwap(f, had, i)
+  const panes = f.panes.slice()
+  panes[i] = ref
+  return { ...f, panes, active: i }
+}
+
+/** Where the Chat opens once when nothing is kept or picked (round 6d C3): a question that is open or was
+ *  answered within the hour, else the first tab that wants you; null for nothing, or when a room or a question
+ *  is picked already. { room, conv } */
+export function chatLanding(s, lang) {
+  if (s?.ui?.room || s?.ui?.quickConv) return null
+  const now = s?.now || Date.now()
+  const asks = askList(listedChats(s?.quick?.convs, s?.quick?.keep_hours, now), s, lang)
+  const fresh = asks.find(x => x.open || now - (x.conv.last_ms ?? x.conv.started_ms ?? 0) < FRESH_ANSWER_MS)
+  if (fresh) return { room: { kind: 'chat' }, conv: fresh.conv.id }
+  const ref = walkRefs(s?.tabs?.tabs)[0]
+  return ref ? { room: { kind: 'tab', id: ref }, conv: null } : null
+}
+
+// an inbox item's id (inbox.py: date, time, slug, hash); a start on anything else is a task's
+const INBOX_ITEM_RE = /^\d{8}-\d{4}-/
+
+/** Where a tab came from (round 6d C5): the start that opened it (model.returns, by its tab, else by its item
+ *  or task), the question it was handed on from (the start's conv, or the question handed on as its item), the
+ *  job, inbox item or task behind it. { kind: ask | job | item | task, key, title, conv? }, null for the control
+ *  session and a tab of nothing known */
+export function tabOrigin(s, tab, lang) {
+  if (!tab || tab.is_control) return null
+  const returns = s?.model?.returns ?? []
+  const own = tab.item ?? tab.slug ?? null
+  const start = returns.find(r => r.tab?.ref === tab.ref) ?? (own ? returns.find(r => r.item === own) : null) ?? null
+  const item = tab.item ?? (start && INBOX_ITEM_RE.test(start.item ?? '') ? start.item : null)
+  const convs = [...(s?.quick?.convs ?? []), ...(s?.chatArchive?.convs ?? [])]
+  const conv = (start?.conv ? convs.find(x => x.id === start.conv) : null)
+    ?? (item ? convs.find(x => x.handed?.inbox_id === item || (x.about?.kind === 'handoff' && x.about?.inbox === item)) : null)
+  if (conv) return { kind: 'ask', key: `ask:${conv.id}`, conv: conv.id, title: askTitle(conv, s, lang) }
+  const rows = indexRows(s?.model)
+  if (item) {
+    const row = rows.get(`inbox:${item}`)
+    const job = WORKER_KEY.exec(row?.inbox_key ?? '')
+    if (job) {
+      const [key, host, id] = job
+      const run = (s?.workers?.data?.runs ?? []).find(r => r?.host === host && r?.id === id)
+      return { kind: 'job', key, title: `${run?.title || id} · ${host}` }
+    }
+    return { kind: 'item', key: `inbox:${item}`, title: short(row?.title ?? start?.title ?? item, 80) }
+  }
+  const slug = tab.slug ?? (start && !INBOX_ITEM_RE.test(start.item ?? '') ? start.item : null)
+  if (!slug) return null
+  return { kind: 'task', key: `task:${slug}`, title: short(rows.get(`task:${slug}`)?.title ?? slug, 80) }
 }
 
 const VERDICT_KEYS = { first: ['zuerst', 'first'], then: ['dann', 'then'], later: ['kann warten', 'can wait'] }
@@ -2621,7 +4126,8 @@ export function graphLive(g, tabs, returns, runs) {
   const task = slug => slug ? g.index.get(`work/tasks/${slug}/STATUS.md`) ?? g.index.get(`work/streams/${slug}/STATUS.md`) : undefined
   for (const t of tabs ?? []) {
     if (t.is_control || !t.slug) continue
-    if (t.state === 'needs-you' || t.state === 'waiting') put(task(t.slug), { tone: 'asks', text: t.name, ref: t.ref })
+    if (wantsYou(t)) put(task(t.slug), { tone: 'asks', text: t.name, ref: t.ref })
+    else if (t.state === 'waiting' && t.idle) put(task(t.slug), { tone: 'answer', text: t.name, ref: t.ref })   // finished: to check
     else if (t.state === 'working') put(task(t.slug), { tone: 'working', text: t.name, ref: t.ref })
   }
   for (const r of returns ?? []) {
@@ -2659,7 +4165,7 @@ export function themeOverride(search) {
 // ---------------------------------------------------------------- the model an agent tab starts with (launch)
 
 /** The verbs that start an agent: only these carry a model and an effort, and only while launch is on */
-export const START_VERBS = ['do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff']
+export const START_VERBS = ['tab_new', 'workspace_new', 'do_it', 'advise', 'start_agent', 'collect_context', 'team_role', 'session_resume', 'chat_tab', 'quick_handoff', 'return_analyse']
 export const LAUNCH_MODELS = ['haiku', 'sonnet', 'opus']
 export const LAUNCH_EFFORTS = ['low', 'medium', 'high', 'xhigh']
 
@@ -2788,6 +4294,9 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   const add = (id, cat, tone, key, vars = [], target = null) => out.push({ id: `st:${id}`, cat, tone, key, vars, target })
   const model = s?.model ?? {}
   const tk = s?.ticker ?? {}
+  // where the state of the sources, the pass and the triage stands: the day column of Due, else (Due switched off)
+  // the day's status on Start (round 6 B), since Work through shows neither it nor its Repair
+  const dayAt = workViewsIn(s).includes('due') ? { kind: 'page', id: 'briefing' } : { kind: 'page', id: '@start', at: '.day-status' }
   // 1 findings on a page
   for (const a of model.alarms ?? []) add(`alarm:${a.page_id}:${a.section_title}`, 'failing', 'bad', 'alarm', [a.count, `${a.section_title} (${a.page_title})`], { kind: 'page', id: a.page_id })
   // 2 the quotas, against their marks and their pace
@@ -2800,21 +4309,21 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   for (const o of tk.perf?.outliers ?? []) add(`outlier:${o.source}`, 'quota', 'warn', 'outlier', [o.source, o.factor], { kind: 'page', id: '@sessions' })
   // 4 and 5 the briefing pass: failed, or running far longer than it should
   const ld = s?.loading ?? {}
-  if (ld.last_error) add('load-failed', 'failing', 'bad', 'loadFailed', [short(ld.last_error.message ?? '', 60)], { kind: 'page', id: 'briefing' })
+  if (ld.last_error) add('load-failed', 'failing', 'bad', 'loadFailed', [short(ld.last_error.message ?? '', 60)], dayAt)
   if (ld.pass && ld.started_ms && now - ld.started_ms > Math.max(1.5 * (ld.eta_ms || 0), 30000)) {
     add('load-slow', 'slow', 'warn', 'loadSlow', [duration(now - ld.started_ms)])
   }
   // 6 the last pass, against the collect time limit
   const pass = (tk.perf?.passes ?? []).at(-1)
   const limit = tk.limits?.timeout_ms ?? 0
-  if (pass && limit && pass.took_ms >= 0.9 * limit) add('pass-slow', 'slow', 'bad', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
-  else if (pass && pass.took_ms >= 60000) add('pass-slow', 'slow', 'warn', 'passSlow', [Math.round(pass.took_ms / 1000)], { kind: 'page', id: 'briefing' })
+  if (pass && limit && pass.took_ms >= 0.9 * limit) add('pass-slow', 'slow', 'bad', 'passSlow', [Math.round(pass.took_ms / 1000)], dayAt)
+  else if (pass && pass.took_ms >= 60000) add('pass-slow', 'slow', 'warn', 'passSlow', [Math.round(pass.took_ms / 1000)], dayAt)
   // 7 a source of the briefing in error: out of time is slow, anything else failing
   for (const x of model.status ?? []) {
-    if (skipFixable(x)) add(`source:${x.title}`, 'failing', 'warn', 'sourceCannotRun', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })
+    if (skipFixable(x)) add(`source:${x.title}`, 'failing', 'warn', 'sourceCannotRun', [x.title, short(x.reason ?? '', 60)], dayAt)
     if (x.state !== 'error') continue
-    if (/took longer|time limit/i.test(x.reason ?? '')) add(`source:${x.title}`, 'slow', 'warn', 'sourceSlow', [x.title], { kind: 'page', id: 'briefing' })
-    else add(`source:${x.title}`, 'failing', 'bad', 'sourceFailed', [x.title, short(x.reason ?? '', 60)], { kind: 'page', id: 'briefing' })
+    if (/took longer|time limit/i.test(x.reason ?? '')) add(`source:${x.title}`, 'slow', 'warn', 'sourceSlow', [x.title], dayAt)
+    else add(`source:${x.title}`, 'failing', 'bad', 'sourceFailed', [x.title, short(x.reason ?? '', 60)], dayAt)
   }
   // 8 to 10 the page itself
   if (model.stale) add('stale', 'failing', 'warn', 'stale')
@@ -2850,8 +4359,8 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   else if (rv.error) add('review', 'failing', 'bad', 'reviewFailed', [], { kind: 'review' })
   if (!rv.running && (rv.last?.to_close ?? 0) > 0) add('to-close', 'waiting', 'info', 'toClose', [rv.last.to_close], { kind: 'review' })
   // 18 the daily check
-  if (s?.triage?.running) add('triage', 'running', 'info', 'triageRuns', [], { kind: 'page', id: 'briefing' })
-  else if (s?.triage?.error) add('triage', 'failing', 'bad', 'triageFailed', [], { kind: 'page', id: 'briefing' })
+  if (s?.triage?.running) add('triage', 'running', 'info', 'triageRuns', [], dayAt)
+  else if (s?.triage?.error) add('triage', 'failing', 'bad', 'triageFailed', [], dayAt)
   // 19 and 20 the agents of other Bridges
   for (const p of s?.agents?.peers ?? []) {
     if (['refused', 'failed', 'unreachable'].includes(p.reach)) add(`peer:${p.id}`, 'offline', 'warn', 'peerDown', [p.name ?? p.id], { kind: 'page', id: '@agents' })
@@ -2864,9 +4373,13 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   }
   // 21 the background jobs
   for (const run of s?.workers?.data?.runs ?? []) {
-    if (run.retired) continue
+    if (run.retired || run.acked) continue
     const lastRun = (run.strip ?? []).at(-1)
-    const tone = workerTone(run) === 'bad' || ['failed', 'expired'].includes(lastRun?.verdict) ? 'bad' : workerTone(run) === 'warn' ? 'warn' : null
+    // an outage is news in red; upkeep the engine files medium is no news at all, only a run without a severity
+    // keeps the orange of its state
+    const sev = jobSeverity(run)
+    const tone = sev === 'high' || workerTone(run) === 'bad' || ['failed', 'expired'].includes(lastRun?.verdict) ? 'bad'
+      : sev == null && workerTone(run) === 'warn' ? 'warn' : null
     if (tone) add(`job:${run.id}`, 'failing', tone, tone === 'bad' ? 'jobFailed' : 'jobWarn', [run.title ?? run.id], { kind: 'workers' })
   }
   // 22 machines, clouds and model sources that are down, from the pages of the profile
@@ -2884,17 +4397,23 @@ export function tickerStatus(s, now, kinds = TICKER_KINDS) {
   if (s?.relay?.enabled && !s.relay.online) add('relay', 'offline', 'warn', 'controlOffline', [], { kind: 'claude' })
   // 25 the last loud notes of the last quarter hour; a server note replayed on load carries ms 0 and stays out
   const loud = (s?.notes ?? []).filter(x => (x.tone === 'bad' || x.tone === 'warn') && x.ms && now - x.ms < TICKER_NOTE_MS)
-  for (const n of loud.slice(-3)) {
-    add(`note:${n.at ?? ''}:${n.text}`, 'notes', n.tone, 'note', [n.text])
-  }
+  // a note about a tab the status shows as waiting or long in one state would say it twice; a tab that only
+  // works, or whose kind is switched off, does not stand in for its note
   const want = new Set(kinds ?? TICKER_KINDS)
+  const named = new Set(out.filter(x => want.has(x.cat) && /^st:tab-(waits|long):/.test(x.id)).map(x => x.target.ref))
+  for (const n of loud.filter(x => !(x.go?.kind === 'tab' && named.has(x.go.ref))).slice(-3)) {
+    add(`note:${n.at ?? ''}:${n.text}`, 'notes', n.tone, 'note', [n.text], noteGo(n.go))
+  }
   return out.filter(x => want.has(x.cat))
 }
 
 /** Where a page target of the band leads: every page the controller routes itself (the tab row, a page
- *  of group work or day, Jev wherever it lives); Today only for a name that exists nowhere */
+ *  of group work or day, Jev wherever it lives, the agents wherever a peer is: as cmux they are the Chat's
+ *  A2A area, a page that is a view now, like the Sessions tab as Running now: flowPageFor; app.js setPage);
+ *  Today only for a name that exists nowhere */
 export function tickerPage(s, id, order = []) {
-  const known = order.includes(id) || id === '@jev' || (s?.model?.pages ?? []).some(p => p.id === id)
+  const known = order.includes(id) || id === '@jev' || (id === '@agents' && (s?.agents?.peers ?? []).length > 0)
+    || (s?.model?.pages ?? []).some(p => p.id === id) || !!flowPageFor(id, s)
   return known ? id : 'briefing'
 }
 
@@ -3167,7 +4686,9 @@ export function tourIndex(s) {
 
 /** The tour's steps in order. A step names its texts (text.js tour.steps.<id>), the page it opens and the
  *  area it lights (a CSS selector); one without a target stands in the middle. The tab column is left out
- *  where the layout shows none (narrow: its own switch at the foot) */
+ *  where the layout shows none (narrow: its own switch at the foot); the files tab where it stands in the bar
+ *  (filesOn); the sessions are Running now where Work through lists them (sessionsInFlow: the same page id,
+ *  app.js setPage leads it there) */
 export function tourSteps(s) {
   const narrow = s?.layout === 'narrow'
   return [
@@ -3175,12 +4696,41 @@ export function tourSteps(s) {
     { id: 'pages', target: '.pagebar' },
     { id: 'start', page: '@start', target: '#main' },
     { id: 'work', page: 'briefing', target: '#main' },
+    ...(filesOn(s) ? [{ id: 'files', page: FILES_PAGE, target: '#main' }] : []),
     ...(narrow ? [] : [{ id: 'tabs', target: '#tabs-column, .hdr-tabs' }]),
     { id: 'ask', target: '.hdr-ask' },
-    { id: 'sessions', page: '@sessions', target: '#main' },
+    { id: sessionsInFlow(s) ? 'running' : 'sessions', page: '@sessions', target: '#main' },
     { id: 'help', target: '.hdr-help' },
     { id: 'done' },
   ]
+}
+
+/** The Setup page (docs/bridge-cockpit.md, The Setup page): the page that holds its checks (a profile may place
+ *  them on a page of its own) and how many of their rows are findings, red or yellow; null without the section */
+export function setupPageOf(model) {
+  for (const p of model?.pages ?? []) {
+    const sec = (p.sections ?? []).find(x => x?.id === 'setup-checks')
+    if (sec) return { page: p.id, findings: (sec.items ?? []).filter(it => it?.tone === 'bad' || it?.tone === 'warn').length }
+  }
+  return null
+}
+
+/** The Settings area a page of the group settings opens (the Setup page, briefing_view SETUP_GROUP): it has no tab
+ *  and no place behind More, its sections stand in Settings, Setup; null for every other page */
+export function settingsAreaOf(model, id) {
+  return (model?.pages ?? []).some(p => p.id === id && p.group === 'settings') ? 'setup' : null
+}
+
+/** What the Settings tab carries: the badge of the Setup page while it stands in Settings and counts something (a
+ *  finding of its checks); null otherwise, also when a profile placed the checks on a page of its own, whose tab counts them */
+export function settingsBadgeOf(model) {
+  const badge = (model?.pages ?? []).find(p => p.group === 'settings')?.badge
+  return badge && (badge.kind === 'bad' || badge.kind === 'count') ? badge : null
+}
+
+/** Whether the welcome offers "Set up first": something on the Setup page still keeps the cockpit from working well */
+export function setupWanted(model) {
+  return (setupPageOf(model)?.findings ?? 0) > 0
 }
 
 /** Where the tour's box stands beside the lit area `rect` ({top, left, width, height}, null: none): below
@@ -3209,9 +4759,12 @@ export function tourPlace(rect, box, view, gap = 12) {
 // hints.items.<id>; an area the page does not show is left out when drawn. The page comes first, the header
 // on every page in a round of its own after it, so its notes never take the page's room
 const HINTS = {
-  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'], ['startTools', '.stage-tools'],
+  '@start': [['prompt', '.stage-prompt'], ['signals', '.home-signals'], ['ticker', '.ticker'],
     ['stations', '.station'], ['core', '.core-button'], ['today', '.stage-card'], ['projects', '.home-chips'],
     ['tabCards', '.hcard:not(.hcard-row)'], ['rowCards', '.hcard-row'], ['starts', '.home-starts']],
+  // the files tab on its search start: the field, its chips, the question to the AI, the records, the walk
+  '@files': [['filesFind', '.fs-find'], ['filesAsk', '.fs-ask'], ['filesChips', '.fs-chips'], ['filesList', '.fs-list'],
+    ['filesWalk', '.fs-walk']],
   briefing: [['alarm', '.col-day .alarm'], ['secHead', '.col-day .sec-head'], ['rowMain', '.col-day .row-main'],
     ['rowActs', '.col-day .row-acts'], ['secTools', '.col-day .sec-tools'], ['hiddenRows', '.col-day .hidden-rows'],
     ['detail', '.col-detail'], ['tabcol', '#tabs-column'], ['tabWait', '#tabs-column .tabcard.st-needs-you'], ['snap', '#tabs-column .snap']],
@@ -3220,7 +4773,8 @@ const HINTS = {
   '@sessions': [['stats', '.stats'], ['guideBoard', '.guide-board'], ['guideRoot', '.guide-root'],
     ['guideBranches', '.guide-branches'], ['guideFoot', '.guide-foot'], ['sessCards', '.sess-grid'],
     ['sessAgents', '.sess-agent-list'], ['sessFoot', '.sess-foot']],
-  '@workers': [['workerStats', '.stats'], ['wfilters', '.wfilters'], ['wgroup', '.wgroup .rgroup-head'], ['wrow', '.wrow-name'],
+  '@workers': [['folderbar', '.folderbar'], ['workerStats', '.stats'], ['wfilters', '.wfilters'], ['wmachine', '.wmachine-head'],
+    ['wgroup', '.wgroup .rgroup-head'], ['wrow', '.wrow-name'],
     ['wwhen', '.wrow-when'], ['wstrip', '.wrow-strip'], ['wstate', '.wrow-state']],
   '@agents': [['agentList', '.agents-list'], ['agentConvs', '.agent-convs'], ['agentProfile', '.agent-bar'],
     ['agentSkills', '.agent-skill-cards'], ['agentModes', '.agent-modes'], ['agentSend', '.chat-main .tabview-send']],
@@ -3228,25 +4782,133 @@ const HINTS = {
     ['reviewSort', '.review-top .seg'], ['reviewTable', '.tbl-review']],
   '@jev': [['jevRun', '.jev-actions'], ['jevStage', '.jev-stage'], ['jevPlan', '.jev-side']],
   '@settings': [['settingsNav', '.settings-nav'], ['settingsBody', '.settings-body'], ['setCard', '.set-card-head']],
+  // Settings at its area Setup (briefing.py collect --setup): the three lists, each a section drawn as on a page
+  '@settings/setup': [['settingsNav', '.settings-nav'], ['setupChecks', '.settings-body .psec[aria-labelledby$="-setup-checks"]'],
+    ['setupAvailable', '.settings-body .psec[aria-labelledby$="-setup-available"]'],
+    ['setupOn', '.settings-body .psec[aria-labelledby$="-setup-on"]'], ['rowActs', '.settings-body .psec td.c-acts']],
+  // Work through, a view of the work tab (its parts are explained there, hintsFor), with the session cards of Running now
+  // and the row of the task check under Not now with the check's filter and table in the middle (round 6 c)
+  '@flow': [['flowSide', '.flow-side'], ['flowOverview', '.flow-overview'], ['flowCard', '.flow-card'], ['flowVerbs', '.flow-card .verbbar'],
+    ['flowDetails', '.flow-details'], ['flowWalk', '.flow-walk'], ['sessCards', '.flow-sessions'], ['flowCheck', '.flow-check-row'],
+    ['reviewFilter', '.review-bar'], ['reviewTable', '.tbl-review']],
 }
 // a page of the briefing profile is built from the same parts everywhere: each part it has is explained
-const PAGE_HINTS = [['pageBadge', '.col-page > .page-head .pbadge'], ['oboard', '.oboard'], ['kinds', '.tri-kinds'],
+const PAGE_HINTS = [['folderbar', '.folderbar'], ['pageBadge', '.col-page > .page-head .pbadge'], ['machines', '.mlines'],
+  ['oboard', '.oboard'], ['psum', '.psum'], ['kinds', '.tri-kinds'],
   ['triage', '.tri-sort'], ['reviewStrip', '.review-strip'], ['jorder', '.jorder'], ['sectionHead', '.psec .psec-head'],
-  ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghb-boards'],
-  ['ghPeople', '.ghb-people'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
+  ['table', '.psec .table-wrap'], ['quiet', '.psec-quiet'], ['ghFigures', '.ghb-figures'], ['ghBoards', '.ghl-facts'],
+  ['ghFilters', '.ghf'], ['ghList', '.ghl-tools'], ['gauges', '.gtiles'], ['costBars', '.ubars'], ['costList', '.clist'],
   ['calFigures', '.calf'], ['calBar', '.calbar'], ['calDays', '.cal-day']]
-const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['reload', '.hdr-reload'], ['tabsButton', '.hdr-tabs'],
-  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['relay', '.hdr-relay'], ['notes', '.hdr-notes'], ['help', '.hdr-help']]
+// the as-of time is the reload button; the notes stand under the bell and in the history by day; Help, last, holds
+// Explain first, then the look-up topics and the tour (decision 6, menue.md)
+const HEADER_HINTS = [['pages', '.pagebar'], ['asof', '.hdr-asof'], ['tabsButton', '.hdr-tabs'],
+  ['ask', '.hdr-ask'], ['history', '.hdr-history'], ['notes', '.hdr-notes'], ['relay', '.hdr-relay'], ['help', '.hdr-help']]
 
 /** What the overlay explains on the page now: its own areas (group page), then the header (group head).
- *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts */
+ *  The work tab showing a page instead of the day's columns (by area, by Jev) explains that page's parts; the work
+ *  switch's item carries the views on offer as `vars` */
 export function hintsFor(s) {
   const page = s?.ui?.page
-  const dayColumns = page !== 'briefing' || workViewOf(s.ui.workView, workPageOf(s.model?.pages), s.jev) === 'due'
-  const own = !dayColumns ? [['workSwitch', '.work-switch'], ...PAGE_HINTS, ['tabcol', '#tabs-column']]
-    : HINTS[page] ?? [...PAGE_HINTS, ['tabcol', '#tabs-column']]
-  return [...own.map(([id, target]) => ({ id, target, group: 'page' })),
+  const view = page === 'briefing' ? workViewIn(s) : null
+  const dayColumns = page !== 'briefing' || view === 'due'
+  const own = view === 'flow' ? [['workSwitch', '.work-switch'], ...HINTS['@flow']] : !dayColumns ? [['workSwitch', '.work-switch'], ...PAGE_HINTS, ['tabcol', '#tabs-column']]
+    : (page === '@settings' && s?.ui?.settingsSection === 'setup' ? HINTS['@settings/setup'] : null) ?? HINTS[page]
+      ?? [...PAGE_HINTS, ['tabcol', '#tabs-column']]
+  // the work switch names the views it offers, no other (round 6 B): its words get them as `vars` (hintText)
+  const vars = id => (id === 'workSwitch' ? { vars: [workViewsIn(s)] } : {})
+  return [...own.map(([id, target]) => ({ id, target, group: 'page', ...vars(id) })),
     ...HEADER_HINTS.map(([id, target]) => ({ id, target, group: 'head' }))]
+}
+
+/** A hint's words as the page shows them: a body that depends on the page (a function of the hint's `vars`, hintsFor)
+ *  filled in, any other as it stands */
+export function hintText(words, vars = []) {
+  return typeof words?.body === 'function' ? { ...words, body: words.body(...vars) } : words
+}
+
+// ---------------------------------------------------------------- the click origin log (round 6d, item 10)
+
+// which control was used from which place, never what about: the page, its view, the area of the explain overlay the
+// click stood in and the control's name from the code, counted and sent in small batches (POST /api/clicks, usage.jsonl
+// on the server, counted by scripts/cockpit-usage.py); only while the server's bootstrap says clicks: true
+export const USAGE_FLUSH_MS = 30000
+export const USAGE_VERB_MS = 2000      // a verb this soon after a click was sent by it
+const USAGE_MAX = 40
+const USAGE_CONTROL = new Set(['button', 'a', 'input', 'select', 'summary', 'label', 'textarea'])
+const USAGE_ROLES = new Set(['button', 'tab', 'menuitem', 'option', 'switch', 'checkbox', 'radio', 'link'])
+// classes that say how a control looks or stands, not which it is
+const USAGE_PLAIN = /^(btn|is-|has-|on$|off$|active$|small$|muted$|mono$|tone-|st-|sr-only$)/
+const USAGE_NAME = /^@?[A-Za-z][A-Za-z0-9_-]{0,47}$/
+
+/** The page and view a click is counted on: the work tab's view, the start page's view, else none (as /api/seen) */
+export function usagePlace(s) {
+  const page = s?.ui?.page ?? '-'
+  const view = page === 'briefing' ? workViewIn(s) : page === '@start' ? homeView(homeChosen(s?.model, s?.home)) : null
+  return { page, view: typeof view === 'string' && USAGE_NAME.test(view) ? view : '-' }
+}
+
+/** The name of the control a click stands in: its data-u, else up to two of its own classes (none that says how it
+ *  looks, none with a digit), else its role or tag. Never its words. null where the click hit no control */
+export function usageControl(target) {
+  for (let n = target; n && n.nodeType === 1; n = n.parentNode) {
+    const tag = String(n.tagName ?? '').toLowerCase()
+    const role = n.getAttribute?.('role') ?? null
+    const u = n.getAttribute?.('data-u') ?? null
+    if (!USAGE_CONTROL.has(tag) && !USAGE_ROLES.has(role) && !u) continue
+    if (u && USAGE_NAME.test(u)) return u
+    const own = String(n.getAttribute?.('class') ?? n.className ?? '').split(/\s+/)
+      .filter(c => c && USAGE_NAME.test(c) && !/\d/.test(c) && !USAGE_PLAIN.test(c) && c === c.toLowerCase())
+    if (own.length) return own.slice(0, 2).join('.')
+    return role && USAGE_NAME.test(role) ? role : tag || null
+  }
+  return null
+}
+
+/** The innermost area of the explain overlay (hintsFor: the page's, then the header's) the click stands in; a dialog
+ *  without one says dialog; else '-' */
+export function usageArea(s, target) {
+  const hints = hintsFor(s)
+  for (let n = target; n && n.nodeType === 1; n = n.parentNode) {
+    for (const h of hints) {
+      try { if (n.matches?.(h.target)) return h.id } catch { /* a selector this browser does not know */ }
+    }
+    if (n.getAttribute?.('role') === 'dialog') return 'dialog'
+  }
+  return '-'
+}
+
+/** The page's click log: click({page, view, area, control}) and verb(name) count, flush() sends what was counted as
+ *  one batch, and a batch of `max` different events goes by itself. Only the named fields are kept, so a title
+ *  handed in by mistake never leaves the page. A verb without a click just before it is no use of a control */
+export function createUsageLog({ send, now = Date.now, max = USAGE_MAX }) {
+  let counts = new Map()
+  let last = null
+  const name = v => (typeof v === 'string' && v ? v : '-')
+  function flush() {
+    if (!counts.size) return
+    const events = [...counts.values()]
+    counts = new Map()
+    send(events)
+  }
+  const add = ev => {
+    const key = [ev.kind, ev.page, ev.view, ev.area, ev.control, ev.verb].join('|')
+    const had = counts.get(key)
+    counts.set(key, had ? { ...had, n: had.n + 1 } : { ...ev, n: 1 })
+    if (counts.size >= max) flush()
+  }
+  return {
+    click(at) {
+      if (!at || name(at.control) === '-') return
+      const ev = { kind: 'click', page: name(at.page), view: name(at.view), area: name(at.area), control: name(at.control), verb: '-' }
+      last = { ev, at: now() }
+      add(ev)
+    },
+    verb(verb) {
+      if (!last || now() - last.at > USAGE_VERB_MS || typeof verb !== 'string') return
+      add({ ...last.ev, kind: 'verb', verb })
+    },
+    flush,
+  }
 }
 
 const HINT_MARGIN = 12    // the notes keep this far off the screen's edges

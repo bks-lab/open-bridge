@@ -24,6 +24,8 @@ fs.writeFileSync(path.join(tmp, 'web', 'package.json'), '{ "type": "module" }\n'
 const load = rel => import(pathToFileURL(path.join(tmp, 'web', rel)).href)
 const { html, render } = await load('vendor/htm-preact-3.1.1.module.js')
 const { ConfigWarnings, SettingsPage } = await load('views/settings.js')
+const settingsModule = await load('views/settings.js')
+const logic = await load('logic.js')
 const en = (await load('text.js')).TABLES.en
 
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
@@ -60,4 +62,50 @@ test('config warnings: the settings page shows the box above its areas', () => {
   const el = mount(html`<${SettingsPage} s=${withWarnings(LINES)} c=${{}} />`)
   assert.equal(el.$$('.set-warnings-list li').length, 2)
   assert.ok(el.$('.settings-layout'), 'the areas still render')
+})
+
+// ---------------------------------------------------------------- the start page's settings, in one place
+
+function startSettings(home = null) {
+  const s = cockpitState(NOW, { ui: { page: '@settings', settingsSection: 'start' } })
+  return { ...s, home: home ?? s.home }
+}
+
+function calls() {
+  const out = []
+  return { out, c: new Proxy({}, { get: (_, k) => (k === 'then' ? undefined : (...a) => { out.push([k, ...a]) }) }) }
+}
+
+test('settings, start page: view, the overview parts, the tiles and shelves of the other views, the options', () => {
+  const el = mount(html`<${SettingsPage} s=${startSettings()} c=${calls().c} />`)
+  const titles = el.$$('.set-card-name').map(x => x.text())
+  for (const t of [en.settings.viewTitle, en.settings.deskTitle, en.settings.shelvesTitle, en.settings.detailsTitle]) {
+    assert.ok(titles.includes(t), `${t} in ${titles.join(' | ')}`)
+  }
+  // the view comes first, the overview parts second
+  assert.equal(titles[0], en.settings.viewTitle)
+  assert.equal(titles[1], en.settings.deskTitle)
+  // nothing of the drawer is left: the module has no Customise drawer
+  assert.equal(settingsModule.CustomizeDrawer, undefined)
+})
+
+test('settings, the overview parts: four switches, all off by default, saved with the start page choice', () => {
+  const { out, c } = calls()
+  const s = startSettings()
+  const el = mount(html`<${SettingsPage} s=${s} c=${c} />`)
+  const card = el.$$('.set-card').find(x => x.$('.set-card-name').text() === en.settings.deskTitle)
+  const switches = card.$$('[role="switch"]')
+  assert.equal(switches.length, 4)
+  assert.deepEqual(switches.map(x => x.getAttribute('aria-checked')), ['false', 'false', 'false', 'false'])
+  switches[1].click()
+  const [name, ids] = out.at(-1)
+  assert.equal(name, 'setHomeTiles')
+  assert.ok(ids.includes('d:guide'))
+  // a part switched on can move: the order of the chosen ones is the overview's order
+  const chosen = [...logic.homeChosen(s.model, null), 'd:waiting', 'd:day']
+  const on = mount(html`<${SettingsPage} s=${startSettings({ tiles: chosen, seen: logic.homeCatalog(s.model).map(x => x.id), pins: [] })} c=${c} />`)
+  const desk = on.$$('.set-card').find(x => x.$('.set-card-name').text() === en.settings.deskTitle)
+  desk.button(en.settings.down(en.home.deskPart.waiting)).click()
+  const order = out.at(-1)[1].filter(x => x.startsWith('d:'))
+  assert.deepEqual(order, ['d:day', 'd:waiting'])
 })

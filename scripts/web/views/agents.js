@@ -6,15 +6,32 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { short, chatStamp, listedChats, a2aTrouble, a2aHost } from '../logic.js'
 import { T, language } from '../text.js'
 import { SendBox, Thinking, useStickToEnd } from './chat.js'
-import { Btn, Dot, Icon, StateLine, useRoving } from './parts.js'
+import { Btn, Dot, Icon, Spinner, StateLine, useRoving } from './parts.js'
 import { Prose } from './prose.js'
 
 // ---------------------------------------------------------------- A2A agents
 
 const REACH_TONE = { ok: 'ok', refused: 'bad', failed: 'bad', unreachable: 'warn', unknown: 'dim' }
 
+/** What the conversations with the agents signal: 'running' while one is answering, else 'waiting' while
+ *  an answer is held for its owner, else null. The Agents tab, the Chat tab and the Chat's A2A switch wear it */
+export function agentBadge(s) {
+  const convs = s?.agents?.convs ?? []
+  if (convs.some(x => x.running)) return 'running'
+  if (convs.some(x => !x.running && x.turns?.at(-1)?.waiting)) return 'waiting'
+  return null
+}
+
+/** The mark of agentBadge: a spinner while an agent answers, a dot while an answer is held */
+export function AgentMark({ kind }) {
+  const t = T()
+  if (!kind) return null
+  return html`<span class="agent-mark" title=${t.chatArea[kind]}>${kind === 'running' ? html`<${Spinner} />` : html`<${Dot} token="warning" />`}<span class="sr-only">${t.chatArea[kind]}</span></span>`
+}
+
 /** One agent as a card: who it is from its card, what it may do, whether the last call went through, and
- *  its own button for the card (Steckbrief), beside the pick and never inside it */
+ *  its own button for the card (Steckbrief), beside the pick and never inside it; without `onProfile` (the
+ *  Chat's A2A list, where the bar above the conversation opens the card) no such button */
 function AgentCard({ p, on, c, s, held = 0, profileOpen, onProfile }) {
   const t = T()
   const card = p.card ?? {}
@@ -31,9 +48,9 @@ function AgentCard({ p, on, c, s, held = 0, profileOpen, onProfile }) {
         ${p.last_ms ? html`<span class="muted">${t.agentLast(chatStamp(p.last_ms, s.now, language()))}</span>` : null}
       </span>
     </button>
-    <button type="button" class=${`btn btn-${on && profileOpen ? 'primary' : 'secondary'} btn-xs agent-card-profile`}
+    ${onProfile ? html`<button type="button" class=${`btn btn-${on && profileOpen ? 'primary' : 'secondary'} btn-xs agent-card-profile`}
       aria-expanded=${String(!!(on && profileOpen))} aria-controls="agent-profile" onClick=${() => onProfile(p.id)}>
-      <${Icon} name=${on && profileOpen ? 'chevronUp' : 'chevronDown'} size=${13} /><span class="btn-label">${on && profileOpen ? t.agentCardHide : t.agentCardShow}</span></button>
+      <${Icon} name=${on && profileOpen ? 'chevronUp' : 'chevronDown'} size=${13} /><span class="btn-label">${on && profileOpen ? t.agentCardHide : t.agentCardShow}</span></button>` : null}
   </div>`
 }
 
@@ -84,7 +101,7 @@ function AgentProfile({ p, onExample, c, s }) {
     [t.agentFact.version, card.version], [t.agentFact.protocol, [card.binding, card.protocol && `A2A ${card.protocol}`].filter(Boolean).join(' · ')],
     [t.agentFact.provider, card.provider?.name], [t.agentFact.endpoint, card.endpoint],
     [t.agentFact.card, p.card ? null : p.card_url],
-    [t.agentFact.access, [p.needs_token ? t.agentToken : t.agentOpen, p.network ? t.agentNet[p.network] ?? p.network : null].filter(Boolean).join(' · ')],
+    [t.agentFact.access, [p.needs_token ? t.agentToken : t.agentOpen, p.network ? t.agentNet[p.network] ?? p.network : null, p.via ? t.agentVia(p.via) : null].filter(Boolean).join(' · ')],
     [t.agentFact.modes, card.input?.length ? `${card.input.join(', ')} → ${(card.output ?? []).join(', ')}` : null],
     [t.agentFact.gate, p.usage?.human_gate], [t.agentFact.allowed, p.usage?.allowed?.length ? p.usage.allowed.map(x => t.agentModes[x] ?? x).join(', ') : null],
     [t.agentFact.owner, p.owner],
@@ -147,6 +164,29 @@ function AgentThread({ conv, peer, c, s }) {
   })
 }
 
+/** How many conversations with this peer hold an answer for its owner */
+const heldOf = (convs, id) => convs.filter(x => x.peer === id && !x.running && x.turns.at(-1)?.waiting).length
+
+/** The peer the agents' views show: the open conversation's, else the one picked, else the first */
+function currentPeer(s, peers) {
+  const conv = (s.agents?.convs ?? []).find(x => x.id === s.ui.agentConv) ?? null
+  const id = conv?.peer ?? s.ui.agentPeer ?? peers[0]?.id
+  return peers.find(p => p.id === id) ?? peers[0]
+}
+
+/** The agents as cards for the Chat as cmux (its A2A area): reach dot, held answers, the last call; a pick
+ *  opens the agent's latest conversation on the right (AgentsPage embedded) */
+export function AgentList({ s, c }) {
+  const t = T()
+  const a = s.agents ?? {}
+  const peers = a.peers ?? []
+  const convs = listedChats(a.convs, a.keep_hours, s.now)
+  const peer = currentPeer(s, peers)
+  return html`<nav class="panel rooms-agents agents-list" aria-label=${t.chatArea.agents}>
+    ${peers.map(p => html`<${AgentCard} key=${p.id} p=${p} on=${p.id === peer?.id} c=${c} s=${s} held=${heldOf(convs, p.id)} />`)}
+  </nav>`
+}
+
 /** The page of the A2A agents; `embedded` (the chat as cmux) shows one agent without the page head and the list */
 export function AgentsPage({ s, c, embedded = false }) {
   const t = T()
@@ -156,8 +196,7 @@ export function AgentsPage({ s, c, embedded = false }) {
   // the conversations the lists show: none untouched past keep_hours, the way the chats leave (agents.py expire)
   const convs = listedChats(a.convs, a.keep_hours, s.now)
   const conv = (a.convs ?? []).find(x => x.id === s.ui.agentConv) ?? null
-  const peerId = conv?.peer ?? s.ui.agentPeer ?? peers[0]?.id
-  const peer = peers.find(p => p.id === peerId) ?? peers[0]
+  const peer = currentPeer(s, peers)
   const mine = convs.filter(x => x.peer === peer?.id)
   const [text, setText] = useState('')
   // the card: open by itself while no conversation is open, folded under one; the bar's button decides otherwise
@@ -183,13 +222,13 @@ export function AgentsPage({ s, c, embedded = false }) {
     setProfile({ peer: pid, open: true })
   }
   const listHidden = embedded || !!s.ui.agentsListHidden
-  return html`<div class=${embedded ? 'agentspage is-embedded' : 'col col-page agentspage'}>
+  return html`<div class=${embedded ? 'agentspage is-embedded' : 'col col-page agentspage term'}>
     ${embedded ? null : html`<header class="page-head"><h2 class="detail-title">${t.agentsTab}</h2>
       <span class="muted small">${t.agentsIntro}</span></header>`}
     <div class=${`agents-grid${listHidden ? ' is-wide' : ''}`}>
       ${listHidden ? null : html`<nav class="agents-list" id="agents-list" aria-label=${t.agentsTab}>
         ${peers.map(p => html`<${AgentCard} key=${p.id} p=${p} on=${p.id === peer?.id} c=${c} s=${s}
-          held=${convs.filter(x => x.peer === p.id && !x.running && x.turns.at(-1)?.waiting).length}
+          held=${heldOf(convs, p.id)}
           profileOpen=${showProfile} onProfile=${toggleProfile} />`)}
       </nav>`}
       <section class="panel chat-main" aria-label=${peer?.card?.name || peer?.id}>

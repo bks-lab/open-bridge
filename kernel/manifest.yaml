@@ -1,0 +1,314 @@
+# The kernel manifest: every file, command and injected listing a session reads
+# before its first answer, and the files that define that set. One entry each.
+#
+# Specification: docs/kernel.md. Checked by scripts/check-kernel.py, which holds
+# every entry to the scope router, measure-context.py, docs/data-model.yaml and
+# the file named in `via:`. Edit this file when the kernel changes; never add a
+# file to kernel/ that is not described here.
+#
+# kernel/ is CORE and ships wholesale. An instance never edits this file and
+# never adds one beside it: its own always-on files live in identity/agent/
+# (IDENTITY.md, SOUL.md, INSTANCE.md) and are capped in context-budget.user.yaml.
+#
+# Fields (docs/kernel.md § The manifest):
+#   path | glob | command | harness   exactly one: what is read
+#   tier      core | org | personal | user, as the scope router decides. A file has
+#             exactly one; `mixed` only marks a listing or a command's output that
+#             is assembled from several tiers when the session starts
+#   role      what it is, in a few words
+#   read      import | harness | start | command | named | tool  (when it is read)
+#   via       the file(s) that link or instruct it; `harness` when the tool loads it itself
+#   reaches   session, subagent
+#   optional  true when a fresh clone does not have it
+#   expect    absent: the file must not exist
+#   exclude   a glob entry only: matching paths it does not mean
+#   generated_by / source   for a generated file: the generator and its input
+#   debt      a known contradiction: kind (placement | unmeasured | uninstructed),
+#             reason, until. Printed on every run; a stale debt is a finding.
+#   note      one line on why, when the fields do not say it
+schema_version: 1
+
+entries:
+  # ---------------------------------------------------------------- entry
+  - path: AGENTS.md
+    tier: core
+    role: entry file and operating manual
+    read: import
+    via: [harness]
+    reaches: [session, subagent]
+    note: Claude Code loads it by name; every other agent reads it as its entry file.
+
+  - path: GEMINI.md
+    tier: core
+    role: entry pointer for Gemini CLI
+    read: import
+    via: [harness]
+    reaches: [session, subagent]
+    debt:
+      kind: unmeasured
+      reason: measure-context.py measures the Claude Code surface; this file only points at AGENTS.md
+      until: the meter measures the surface of each tool, not only Claude Code's
+
+  - path: .github/copilot-instructions.md
+    tier: core
+    role: entry pointer for GitHub Copilot
+    read: import
+    via: [harness]
+    reaches: [session, subagent]
+    debt:
+      kind: unmeasured
+      reason: measure-context.py measures the Claude Code surface; this file only points at AGENTS.md
+      until: the meter measures the surface of each tool, not only Claude Code's
+
+  - path: CLAUDE.md
+    tier: user
+    role: legacy entry file that would shadow AGENTS.md
+    read: import
+    via: [harness]
+    reaches: [session, subagent]
+    expect: absent
+    note: scripts/migrate-entry-file.py moves a fork off it (docs/updating.md).
+
+  - path: CLAUDE.local.md
+    tier: user
+    role: legacy entry file that would shadow AGENTS.md
+    read: import
+    via: [harness]
+    reaches: [session, subagent]
+    expect: absent
+
+  - path: .claude/CLAUDE.md
+    tier: user
+    role: legacy entry file that would shadow AGENTS.md
+    read: import
+    via: [harness]
+    reaches: [session, subagent]
+    expect: absent
+
+  # -------------------------------------------------------------- imports
+  - path: kernel/families.yaml
+    tier: core
+    role: config-family index
+    read: import
+    via: [AGENTS.md]
+    reaches: [session, subagent]
+    generated_by: scripts/data-model.py
+    source: docs/data-model.yaml
+    note: YAML like its source; an @-line imports it as text, the same as Markdown.
+
+  - path: docs/families.md
+    tier: core
+    role: the family index's old place, before 2026-11-05
+    read: named
+    via: [harness]
+    reaches: []
+    expect: absent
+    note: "the merge deletes it; if you kept your own lines in it, move them to identity/agent/INSTANCE.md and delete the file; python3 scripts/migrate-kernel.py --write follows your links to kernel/families.yaml"
+
+  - path: identity/agent/IDENTITY.md
+    tier: user
+    role: the agent's name and role
+    read: import
+    via: [AGENTS.md]
+    reaches: [session, subagent]
+    optional: true
+
+  - path: identity/agent/SOUL.md
+    tier: user
+    role: the agent's voice and discipline
+    read: import
+    via: [AGENTS.md]
+    reaches: [session, subagent]
+    optional: true
+
+  - path: identity/agent/INSTANCE.md
+    tier: user
+    role: the instance's own always-on text
+    read: import
+    via: [AGENTS.md]
+    reaches: [session, subagent]
+    optional: true
+
+  # ------------------------------------------------------------- listings
+  - harness: "listing:skills"
+    tier: mixed
+    role: name and description of every skill
+    read: harness
+    via: [harness]
+    reaches: [session, subagent]
+
+  - harness: "listing:agents"
+    tier: mixed
+    role: name and description of every sub-agent
+    read: harness
+    via: [harness]
+    reaches: [session, subagent]
+
+  - harness: "harness:memory-index"
+    tier: user
+    role: the memory index the harness injects
+    read: harness
+    via: [harness]
+    reaches: [session, subagent]
+    optional: true
+
+  # ------------------------------------------------- Phase 0 and Phase 1
+  - path: rules/session-start.md
+    tier: core
+    role: the Phase 0 gate
+    read: start
+    via: [AGENTS.md]
+    reaches: [session]
+
+  - path: rules/operations.md
+    tier: core
+    role: the Phase 1 sequence
+    read: start
+    via: [AGENTS.md]
+    reaches: [session]
+    note: Read when work.enabled is true.
+
+  - command: "python3 scripts/bridge-config.py --session"
+    tier: user
+    role: the session slice of bridge-config.yaml
+    read: command
+    via: [AGENTS.md]
+    reaches: [session]
+
+  - path: ecosystem.yaml
+    tier: user
+    role: the instance's repo registry, read as a card
+    read: start
+    via: [AGENTS.md]
+    reaches: [session]
+    optional: true
+    note: Phase 1 reads every registry through `python3 scripts/context-index.py --registries`.
+
+  - glob: "ecosystem.*.yaml"
+    exclude: [ecosystem.example.yaml, ecosystem.personal.yaml, ecosystem.local.yaml]
+    tier: org
+    role: an org's registry fragment, read as a card
+    read: start
+    via: [rules/operations.md]
+    reaches: [session]
+    optional: true
+    note: ecosystem.example.yaml is the CORE template onboarding copies; no session reads it.
+
+  - path: ecosystem.personal.yaml
+    tier: personal
+    role: the personal registry fragment, read as a card
+    read: start
+    via: [rules/operations.md]
+    reaches: [session]
+    optional: true
+
+  - path: ecosystem.local.yaml
+    tier: personal
+    role: the legacy name of ecosystem.personal.yaml
+    read: start
+    via: [rules/operations.md]
+    reaches: [session]
+    optional: true
+
+  - command: "python3 scripts/standing-orders.py --index"
+    tier: mixed
+    role: the standing-order index
+    read: command
+    via: [AGENTS.md]
+    reaches: [session]
+
+  - glob: "protocols/standing-orders/*.md"
+    tier: core
+    role: the bodies of the CORE orders marked load eager
+    read: start
+    via: [AGENTS.md]
+    reaches: [session]
+
+  - glob: "protocols/standing-orders/user/*.md"
+    tier: user
+    role: the bodies of the instance's own orders marked load eager
+    read: start
+    via: [rules/operations.md]
+    reaches: [session]
+    optional: true
+
+  - command: "python3 scripts/memory-location.py index"
+    tier: user
+    role: where the memory index lives
+    read: command
+    via: [rules/operations.md]
+    reaches: [session]
+
+  - command: "python3 scripts/worklog.py --recent 3"
+    tier: user
+    role: the recent work-log slice
+    read: command
+    via: [AGENTS.md]
+    reaches: [session]
+
+  - path: work/board.md
+    tier: user
+    role: the generated board
+    read: start
+    via: [AGENTS.md]
+    reaches: [session]
+    optional: true
+
+  # ------------------------------------------- what defines the set (tools)
+  - path: kernel/manifest.yaml
+    tier: core
+    role: this manifest
+    read: tool
+    via: [scripts/check-kernel.py]
+    reaches: []
+
+  - path: docs/data-model.yaml
+    tier: core
+    role: the model of every config family, and what AGENTS.md may hold
+    read: tool
+    via: [scripts/data-model.py, scripts/categorize-commits.py]
+    reaches: []
+
+  - path: work/data-model.yaml
+    tier: user
+    role: the instance's own config families
+    read: tool
+    via: [scripts/data-model.py]
+    reaches: []
+    optional: true
+
+  - path: context-budget.yaml
+    tier: core
+    role: the caps on everything always-on
+    read: tool
+    via: [scripts/measure-context.py]
+    reaches: []
+
+  - path: context-budget.user.yaml
+    tier: user
+    role: the instance's caps on its own always-on files
+    read: tool
+    via: [scripts/measure-context.py]
+    reaches: []
+    optional: true
+
+  - path: docs/schemas/context-budget.schema.yaml
+    tier: core
+    role: the schema both budget files follow
+    read: tool
+    via: [context-budget.yaml]
+    reaches: []
+
+# Keys no file may carry any more: a declaration nothing reads but a session
+# still sees. check-kernel.py names each one a file still has; `fix` removes it.
+retired:
+  - file: "ecosystem*.yaml"
+    key: work_system
+    reason: "nothing reads it; the switch is work.enabled in bridge-config.yaml and the paths are in kernel/manifest.yaml, yet the registry card showed it to every session"
+    fix: python3 scripts/migrate-kernel.py --write
+
+# Kernel paths that moved. check-kernel.py names an instance's own live file
+# that still names the old path; migrate-kernel.py rewrites it.
+moved:
+  - old: docs/families.md
+    new: kernel/families.yaml

@@ -1,7 +1,7 @@
 ---
 summary: "A question-to-location map: the question in the words somebody asks it on the left, the file that answers it on the right. CORE ships the CORE rows; an instance appends its own in work/where-things-live.md"
 type: reference
-last_updated: 2026-09-24
+last_updated: 2026-11-05
 related:
   - ../rules/knowledge-growth.md
   - structure.md
@@ -31,14 +31,18 @@ searches again.
 
 | Question | Where |
 |---|---|
+| Which config family answers this, and when do I read its folder? | [`kernel/families.yaml`](../kernel/families.yaml), generated from [`docs/data-model.yaml`](data-model.yaml) |
 | Which fields does a new config file of a given type take? | [`rules/file-creation.md`](../rules/file-creation.md#where-templates-live-lookup-table), then that type's `_template.yaml` and `_schema.yaml` |
 | Which folder does a new kind of config go in? | [`docs/structure.md`](structure.md#cluster-wrappers--default-to-folder) |
 | Which AI CLI handles each service, and how can a worker choose one? | [`docs/ai-services.md`](ai-services.md), `workflow/ai-services/` |
 | Does this file ship to open-bridge, or stay in my instance? | [`docs/structure.md`](structure.md#core--user-split), [`docs/extension-model.md`](extension-model.md) |
+| Where does a document about my own instance go? | `docs/user/` ([`rules/knowledge-growth.md`](../rules/knowledge-growth.md#the-tiers)); a fork that kept one in `docs/` moves it with [`scripts/migrate-docs-tier.py`](updating.md#once-docs-is-tiered-by-folder) |
+| What does every session read before its first answer, where does each piece live, and which file links it? | [`docs/kernel.md`](kernel.md), [`kernel/manifest.yaml`](../kernel/manifest.yaml) |
 | How does a skill find every file of one config type? | [`rules/discovery.md`](../rules/discovery.md#contract) |
 | Which field values and states may I set on a tracker board? | [`workflow/projects/_template.yaml`](../workflow/projects/_template.yaml), then the instance's `workflow/projects/<slug>.yaml` |
 | Where does a secret go, and how does a config file refer to it? | [`rules/secret-placement.md`](../rules/secret-placement.md), [`infra/secret-stores/_template.yaml`](../infra/secret-stores/_template.yaml) |
 | Which cloud tenant and subscription does a command need? | [`docs/cloud-accounts.md`](cloud-accounts.md) |
+| Which design (colours, fonts, brand) does this piece of work use, and where does another brand go? | [`DESIGN.md`](../DESIGN.md#designs-in-this-bridge), then `python3 scripts/designs.py resolve`; brands live in `identity/designs/` |
 | Which machine is "my PC", and how do I reach it? | [`skills/remote/references/fleet.md`](../skills/remote/references/fleet.md#stage-1--identify-target), then the instance's `infra/remotes/` |
 
 ## Gates: how an operation is guarded
@@ -51,6 +55,7 @@ searches again.
 | May I push this branch to that remote? | [`rules/push-guard.md`](../rules/push-guard.md#the-invariant) |
 | What is scanned before a file moves to open-bridge? | [`rules/promote-safety.md`](../rules/promote-safety.md#what-to-scan) |
 | What do I owe after a push before I call it done? | [`rules/ci-discipline.md`](../rules/ci-discipline.md) |
+| How do I run every check CI runs on my own machine? | [`docs/updating.md`](updating.md#check-everything-after-a-merge) |
 | When does work need an independent review before "done"? | [`rules/operations.md`](../rules/operations.md#pre-done-independent-review) |
 | May I trust a `status:` field that says a service is running? | [`rules/deploy-reconciliation.md`](../rules/deploy-reconciliation.md#the-rule) |
 | How much may a session load before it starts working? | [`context-budget.yaml`](../context-budget.yaml) |
@@ -102,10 +107,14 @@ searches again.
 | What does my briefing show, from which trackers, and how do I change it? | [`docs/briefings.md`](briefings.md) |
 | How do I choose the cockpit's tabs, columns, marks and language? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) § 8 |
 | How do I see and steer the whole Bridge in a browser (inbox, tasks, agent tabs, machines)? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) (early version) |
+| What still keeps my cockpit from working well, and which features can I still switch on? | the cockpit's Settings, Setup: [`docs/bridge-cockpit.md`](bridge-cockpit.md) "The Setup page" (`scripts/bridge-setup.py`) |
 | What is in `mods/`, and how do I install or test a mod? | [`mods/README.md`](../mods/README.md) |
 | How do the day's agent tabs get planned and steered, with or without a terminal tool? | [`docs/workplace.md`](workplace.md) |
 | How does a machine that is always on become the arm of my Bridge? | [`docs/always-on-machine.md`](always-on-machine.md) |
 | How do I close a task? | [`docs/work-system.md`](work-system.md#3-step-close) |
+| Which task, open or closed, mentioned a word, and in which file? | [`docs/work-system.md`](work-system.md#finding-work) (`scripts/work-find.py`), in the cockpit the search of [the files view](cockpit-files.md) |
+| Which view does the cockpit's work tab open on, and how do I switch it? | [`docs/cockpit-files.md`](cockpit-files.md) (`cockpit.work_view`, `cockpit.focus_to_files`, `cockpit.files_scope`) |
+| Why does the cockpit call a row Bot, Session, Skill or Other source, and how do I name my own sources? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) "Where a row comes from" (`cockpit.origin_map`) |
 | What does a row of the work log look like? | [`AGENTS.md`](../AGENTS.md#logging), [`docs/work-system.md`](work-system.md#log-format--one-file-per-period-daily-blocks) |
 | Which always-on orders apply to every session? | [`protocols/standing-orders/README.md`](../protocols/standing-orders/README.md) |
 | Which language must a file be written in? | [`rules/language-policy.md`](../rules/language-policy.md) |

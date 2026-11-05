@@ -2,10 +2,6 @@
 org: acme-dev
 local_root: ~/Developer/acme
 
-work_system:
-  enabled: true
-  path: work/
-
 projects:
   bigcorp:
     display_name: "BigCorp E-Commerce"

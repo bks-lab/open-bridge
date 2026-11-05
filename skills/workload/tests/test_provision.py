@@ -340,6 +340,62 @@ class Applying(ProvisionBase):
                       "a failed replace has to put the previous files back")
         self.assertIn("restore", " ".join(str(f) for f in outcome.findings).lower())
 
+    def test_a_failed_verify_after_a_replace_loads_the_previous_unit_again(self):
+        """Putting the old file back is half a rollback: launchd still holds the
+        new unit until something unloads it and loads the old bytes."""
+        w, a = self.load("block-style-report"), self.artifact()
+        runner = RecordingRunner()
+        runner.add("print", FakeCompleted(rc=113,
+                                          stdout=read_output("launchctl-print-notfound.txt")))
+        obs = self.provisioned(w, a, stamp=self.stamp_for(w, a, artifact_digest=OTHER_DIGEST),
+                               marker_digest=OTHER_DIGEST)
+        plan = provision.plan(w, a, obs)
+        root = make_repo(self.tmpdir())
+        provision.apply(plan, w, self.host(), a, self.ctx(),
+                        dry_run=False, timeout_sec=10, runner=runner, root=root)
+        straps = [c["joined"] for c in runner.calls if "launchctl bootstrap" in c["joined"]]
+        self.assertEqual(len(straps), 2,
+                         "after the restore the previous unit has to be loaded again")
+        restore = next(i for i, c in enumerate(runner.calls)
+                       if ".prev" in c["joined"] and "mv " in c["joined"])
+        self.assertTrue(any("launchctl bootstrap" in c["joined"]
+                            for c in runner.calls[restore:]))
+
+    def test_a_failed_bootstrap_during_a_replace_brings_the_previous_unit_back(self):
+        """The real failure: bootout succeeded, the bootstrap of the new bytes
+        failed, and the run stopped there. The unit stayed unloaded, a
+        production service was down until a human put the old file back."""
+        w, a = self.load("block-style-report"), self.artifact()
+
+        class FirstBootstrapFails(RecordingRunner):
+            straps = 0
+
+            def __call__(inner, argv=None, *args, step=None, **kwargs):
+                text = " ".join(str(x) for x in getattr(argv, "argv", argv or ()))
+                if "bootstrap" in text:
+                    inner.straps += 1
+                    if inner.straps == 1:
+                        inner.calls.append({"argv": (), "joined": text, "kwargs": kwargs,
+                                            "step": argv})
+                        raise errors.StepFailed(argv=("launchctl", "bootstrap"), rc=5,
+                                                stderr="Bootstrap failed: 5: Input/output error")
+                return RecordingRunner.__call__(inner, argv, *args, step=step, **kwargs)
+
+        runner = FirstBootstrapFails()
+        obs = self.provisioned(w, a, stamp=self.stamp_for(w, a, artifact_digest=OTHER_DIGEST),
+                               marker_digest=OTHER_DIGEST)
+        plan = provision.plan(w, a, obs)
+        self.assertEqual(plan.action, "replace")
+        root = make_repo(self.tmpdir())
+        with self.assertRaises(errors.StepFailed) as caught:
+            provision.apply(plan, w, self.host(), a, self.ctx(),
+                            dry_run=False, timeout_sec=10, runner=runner, root=root)
+        self.assertEqual(runner.straps, 2, "the previous unit must be bootstrapped again")
+        calls = runner.joined_calls
+        self.assertIn(".prev", calls, "the previous files must be put back")
+        self.assertLess(calls.index("mv "), calls.rindex("bootstrap"))
+        self.assertIn("previous", str(caught.exception).lower())
+
     def test_a_verify_timeout_leaves_the_outcome_unverified(self):
         w, a = self.load("block-style-report"), self.artifact()
         runner = RecordingRunner()
@@ -491,6 +547,42 @@ class Adopting(ProvisionBase):
                                   dry_run=False, runner=runner, root=root)
         self.assertTrue(outcome.verified)
         self.assertIn("adopted", str(outcome.action) + " " + runner.joined_calls)
+
+    def test_an_adopted_hand_made_unit_is_replaced_without_force(self):
+        """A hand made unit has no guard script, the render has one. Adopt used
+        to fall back to the RENDERED digest when the file counts differed, so the
+        stamp claimed the bridge's own version was on the machine. The next
+        provision then saw "stamp equals render, files differ" and refused with
+        foreign-edit, although nobody had touched anything since the adopt. Found
+        three times in one morning on real machines; each needed --force."""
+        from unittest import mock
+        w, a = self.load("block-style-report"), self.artifact()
+        self.assertGreater(len(a.files), 1, "the case needs a render with a guard script")
+        unit = next(f for f in a.files if str(f.path).endswith(".plist"))
+        runner = RecordingRunner()
+        runner.add("launchctl print", completed_from("launchctl-print-no-marker.txt"))
+        runner.add(f"cat {unit.path}", FakeCompleted(stdout="<plist>made by hand</plist>\n"))
+        for f in a.files:
+            if f is not unit:
+                runner.add(f"cat {f.path}", FakeCompleted(rc=1, stdout=""))
+        captured = []
+        root = make_repo(self.tmpdir())
+        with mock.patch.object(provision.stamp_mod, "write_stamp",
+                               side_effect=lambda st, *x, **k: captured.append(st)):
+            provision.adopt(w, self.host(), a, self.ctx(), timeout_sec=10,
+                            dry_run=False, runner=runner, root=root)
+        self.assertEqual(len(captured), 1)
+        stamp = captured[0]
+        self.assertNotEqual(stamp.artifact_digest, a.digest,
+                            "the stamp must record what is there, not what would be rendered")
+
+        live = provision.RenderedFile(path=unit.path, mode=unit.mode,
+                                      content="<plist>made by hand</plist>\n")
+        digests = {str(f.path): None for f in a.files}
+        digests[str(unit.path)] = base.digest_of([live])
+        obs = self.observation(a, present=True, running=True, stamp=stamp,
+                               file_digests=digests)
+        self.assertEqual(provision.plan(w, a, obs).action, "replace")
 
     def test_adopt_refuses_when_nothing_is_there(self):
         w, a = self.load("block-style-report"), self.artifact()

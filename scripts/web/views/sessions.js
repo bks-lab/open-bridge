@@ -1,26 +1,31 @@
 // SPDX-License-Identifier: MIT
-// The cockpit, the sessions and the background jobs pages.
+// The cockpit, the sessions and the background jobs pages. SessionCard also stands in Running now of Work through
+// (views/flowrun.js SessionCards, round 6), compact and with that page's box, task line and way to the Chat. Where
+// Running now lists the sessions (logic.js sessionsInFlow) the Sessions page has no tab and every way to it leads
+// there; the control session's notice stands on the head of the Chat as well (views/header.js ControlNotice).
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, formatClock, indexRows, short, stateToken, agentLane, laneWindow, runToken, serious, scheduleText,
-  dayNoteText, weekdayNames, filterWorkers, groupBySystem, stripMark, workerFacets, workerTone, aiGroups, previewText,
+  dayNoteText, weekdayNames, filterWorkers, groupByHost, jobCounts, runTimes, stripMark, workerFacets, workerTone, aiGroups, previewText,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Skeleton } from './day.js'
 import { TabControls } from './detail.js'
-import { ReturnCard } from './home.js'
+import { ReturnCard, RowAsk, returnsOf } from './home.js'
 import { TabCard } from './tabs.js'
 import { GuideBoard, GuideLine } from './guide.js'
-import { StartControl, canStartControl } from './header.js'
-import { Btn, Chip, CountNum, Dot, Empty, StateLine, useHits, useTween } from './parts.js'
+import { FolderBar, StartControl, canStartControl } from './header.js'
+import { openTabRoom } from './nav.js'
+import { Btn, Chip, CountNum, Dot, Empty, SeenBtn, StateLine, useHits, useTween } from './parts.js'
 
 // ---------------------------------------------------------------- sessions
 
 /** What a session is doing, in one word: its tab's attention state wins over busy or idle */
 function sessionState(x) {
   const tabState = x.tab?.state
+  if (tabState === 'waiting' && x.tab?.idle) return ['idle', stateToken('idle')]   // finished: done, not waiting
   if (tabState === 'needs-you' || tabState === 'waiting') return [tabState, stateToken(tabState)]
   return [x.status, x.status === 'busy' ? 'success' : 'on-surface-muted']
 }
@@ -44,7 +49,9 @@ function AgentLane({ agents, now }) {
   </div>`
 }
 
-export function SessionCard({ x, i = 0, s, c }) {
+/** One live session as a card. `compact` (Running now): the agents as a count and a lane, no list, the session id
+ *  only as a tooltip; `lead` stands first in its head (a box), `more` under its title, `foot` beside its next step */
+export function SessionCard({ x, i = 0, s, c, compact = false, lead = null, more = null, foot = null }) {
   const t = T()
   // the session list names its tab slim; the tab list has the rest (last line, filed result, settled)
   const tab = x.tab ? (s.tabs?.tabs ?? []).find(y => y.ref === x.tab.ref) ?? x.tab : null
@@ -59,6 +66,7 @@ export function SessionCard({ x, i = 0, s, c }) {
     ${alert ? html`<span class="hit hit-alert" key=${`a${alert}`} aria-hidden="true"></span>` : null}
     ${newAgent ? html`<span class="hit" key=${`n${newAgent}`} aria-hidden="true"></span>` : null}
     <div class="sess-head">
+      ${lead}
       <${StateLine} token=${token} strong=${state === 'needs-you'} word=${t.sessionStatus[state] ?? state} />
       <span class="muted small">${t.sessionSince(duration(s.now - (x.since_ms || s.now)))}</span>
       ${x.tab?.is_control ? html`<span class="chip">${t.sessionControl}</span>` : null}
@@ -68,9 +76,10 @@ export function SessionCard({ x, i = 0, s, c }) {
     ${x.tab?.is_control && !x.relay ? html`<p class="small"><${StateLine} token="warning" word=${t.sessionControlNoRelay} /></p>` : null}
     ${jump ? html`<button type="button" class="sess-title btn-link" title=${t.sessionJumpTitle(title)} onClick=${jump}>${short(title, 70)}</button>`
       : html`<span class="sess-title">${short(title, 70)}</span>`}
-    <div class="sess-where muted small">
+    ${more}
+    <div class="sess-where muted small" title=${compact ? x.id : undefined}>
       ${x.tab ? html`<span>${x.tab.workspace}</span>` : html`<span>${t.sessionNoTab}</span>`}
-      <span class="mono">${x.id}</span>
+      ${compact ? null : html`<span class="mono">${x.id}</span>`}
       <span>${t.sessionStarted(duration(s.now - (x.started_ms || s.now)))}</span>
     </div>
     ${agents.running_count || agents.done_recent ? html`<div class="sess-agents">
@@ -78,7 +87,7 @@ export function SessionCard({ x, i = 0, s, c }) {
       ${agents.done_recent ? html`<span class="muted small">${t.agentsDone(agents.done_recent)}</span>` : null}
     </div>` : null}
     <${AgentLane} agents=${agents.running} now=${s.now} />
-    ${agents.running.length ? html`<ul class="sess-agent-list">${agents.running.map(a => html`<li key=${a.id} class="row-in">
+    ${agents.running.length && !compact ? html`<ul class="sess-agent-list">${agents.running.map(a => html`<li key=${a.id} class="row-in">
         <${Dot} token="success" pulse />
         <span class="mono small">${a.type}</span>
         <span class="sess-agent-desc">${a.description ?? ''}</span>
@@ -91,6 +100,7 @@ export function SessionCard({ x, i = 0, s, c }) {
     <div class="btn-row sess-foot">
       ${tab ? html`<${TabControls} tab=${tab} s=${s} c=${c} slim />`
         : jump ? html`<${Btn} size="xs" variant="secondary" busy=${busy} onClick=${jump}>${t.sessionJump}<//>` : null}
+      ${foot}
       <${SessionTask} x=${x} s=${s} c=${c} />
     </div>
   </li>`
@@ -107,14 +117,17 @@ function openTasks(s) {
   return [...out].map(([slug, title]) => ({ slug, title })).sort((a, b) => a.slug.localeCompare(b.slug))
 }
 
-/** Which task a session works on: a task tab links itself, any other is linked here by hand */
+/** Which task a session works on: a task tab links itself, any other is linked here by hand, or the cockpit
+ *  recognised it from what the session did lately (task_how seen, round 4), which Not this task takes back */
 function SessionTask({ x, s, c }) {
   const t = T()
   if (!x.sid) return null
   const tasks = openTasks(s)
+  const seen = x.task_how === 'seen'
   return html`<span class="sess-task small">
     ${x.task ? html`<span class="chip chip-task" title=${t.sessionTaskTitle}>${t.sessionTask(x.task)}</span>
-      <button type="button" class="btn-link small" onClick=${() => c.act('session_unlink', { session: x.sid })}>${t.sessionUnlink}</button>`
+      ${seen ? html`<span class="muted sess-seen" title=${t.sessionSeenTitle}>${t.sessionSeen}</span>` : null}
+      <button type="button" class="btn-link small" onClick=${() => c.act('session_unlink', { session: x.sid })}>${seen ? t.sessionNotThis : t.sessionUnlink}</button>`
       : html`<select class="input input-sm sess-task-pick" aria-label=${t.sessionLinkLabel} title=${t.sessionLinkLabel}
           onChange=${e => { const slug = e.currentTarget.value; if (slug) c.act('session_link', { session: x.sid, slug }) }}>
           <option value="">${t.sessionLinkLabel}</option>
@@ -123,16 +136,15 @@ function SessionTask({ x, s, c }) {
   </span>`
 }
 
-/** A task's sessions: the live ones lead to their tab, an ended one goes on in a new tab (claude --resume) */
-export function TaskSessions({ row, s, c }) {
+/** A task's sessions: the live ones lead to their tab, an ended one goes on in a new tab (claude --resume). `bare`
+ *  without its block and heading, where the place names them (the Related tab of the one point view, stage 3) */
+export function TaskSessions({ row, s, c, bare = false }) {
   const t = T()
   if (!row.task) return null
   const links = (s.sessions?.links ?? []).filter(l => l.task === row.task)
   if (!links.length) return null
   const live = new Map((s.sessions?.sessions ?? []).map(x => [x.sid, x]))
-  return html`<div class="sub-block">
-    <h4 class="sub-title">${t.taskSessions(links.length)}</h4>
-    <ul class="plain task-sessions">${links.slice(0, 6).map(l => {
+  const list = html`<ul class="plain task-sessions">${links.slice(0, 6).map(l => {
       const x = live.get(l.sid)
       return html`<li key=${l.sid} class="row-in">
         <${StateLine} token=${x ? 'success' : 'on-surface-muted'} word=${x ? t.sessionLive : t.sessionEnded} />
@@ -140,28 +152,32 @@ export function TaskSessions({ row, s, c }) {
         ${x?.tab ? html`<${Btn} size="xs" variant="secondary" onClick=${() => c.act('tab_jump', { tab_ref: x.tab.ref })}>${t.btnToTab}<//>`
           : x ? null : html`<${Btn} size="xs" variant="secondary" busy=${!!s.ui.busy[row.key]} onClick=${() => c.act('session_resume', { session: l.sid })}>${t.sessionResume}<//>`}
       </li>`
-    })}</ul>
-  </div>`
+    })}</ul>`
+  return bare ? list : html`<div class="sub-block"><h4 class="sub-title">${t.taskSessions(links.length)}</h4>${list}</div>`
 }
 
-/** What the AI was handed from the cockpit this week, by what it wants of you: done and to check (a
- *  settled one offers to close its tab), a question, at work, gone without a word. Older tabs that no
- *  start of the cockpit names stay below as sessions */
+/** What the AI was handed from the cockpit this week, by what it wants of you: answered or gone quiet and to
+ *  check, done (a settled start only while its tab is open, which it offers to close: one without a tab wants
+ *  nothing more), a question, at work, gone without a word. Older tabs that no start of the cockpit names stay
+ *  below as sessions */
 function AiReturns({ s, c }) {
   const t = T()
-  const g = aiGroups(s.model?.returns, s.tabs?.tabs, s.now || Date.now())
-  const order = ['check', 'asks', 'working', 'lost']
+  const tabs = s.tabs?.tabs ?? []
+  const g = aiGroups(s.model?.returns, tabs, s.now || Date.now())
+  const order = ['check', 'done', 'asks', 'working', 'lost']
   // tabs whose item or task is settled without a start of the cockpit naming them: done as well
+  const open = new Set(tabs.map(x => x.ref))
   const named = new Set((s.model?.returns ?? []).map(r => r.tab?.ref).filter(Boolean))
-  const loose = (s.tabs?.tabs ?? []).filter(x => x.settled && x.state === 'waiting' && !x.is_control && !named.has(x.ref))
-  const count = k => g[k].length + (k === 'check' ? loose.length : 0)
+  const loose = tabs.filter(x => x.settled && x.state === 'waiting' && !x.is_control && !named.has(x.ref))
+  const list = k => (k === 'done' ? g.done.filter(r => open.has(r.tab?.ref)) : g[k])
+  const count = k => list(k).length + (k === 'done' ? loose.length : 0)
   if (!order.some(k => count(k))) return null
   return html`<section class="panel panel-pad psec ai-returns" aria-labelledby="ai-returns-title">
     <header class="psec-head"><h3 class="sec-title" id="ai-returns-title">${t.home.returnsTitle}</h3></header>
     ${order.filter(k => count(k)).map(k => html`<div class="ai-group" key=${k}>
       <h4 class="label-caps">${t.aiGroup[k]} <span class="sec-count mono">${count(k)}</span></h4>
-      <div class="ai-cards">${g[k].map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
-        ${k === 'check' ? loose.map(x => html`<${TabCard} key=${x.ref} tab=${x} s=${s} c=${c} byKey=${indexRows(s.model)} />`) : null}</div>
+      <div class="ai-cards">${list(k).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
+        ${k === 'done' ? loose.map(x => html`<${TabCard} key=${x.ref} tab=${x} s=${s} c=${c} byKey=${indexRows(s.model)} />`) : null}</div>
     </div>`)}
   </section>`
 }
@@ -225,21 +241,56 @@ function RunStrip({ strip, continuous }) {
     ${last.map((e, i) => { const [shape, tone] = stripMark(e); return html`<span key=${i} class=${`strip-m sm-${tone}`} title=${`${e.at ?? ''} ${e.verdict ?? ''}`}>${shape}</span>` })}</span>`
 }
 
-function WorkerRow({ r, nowPct, c, i }) {
+/** A moment of a run: the time of day, with the day in front when it is not today */
+function runClock(ms, now) {
+  const lang = language()
+  const hm = formatClock(ms, lang).slice(0, 5)
+  return new Date(ms).toDateString() === new Date(now).toDateString() ? hm
+    : `${new Date(ms).toLocaleDateString(lang, { day: 'numeric', month: 'numeric' })} ${hm}`
+}
+
+// an item Analyse in a tab filed that is still open (inbox.py states), so the row offers its tab, not a second one
+const ADVISE_OPEN = ['open', 'approved', 'waiting', 'deferred']
+
+/** A job's Analyse in a tab (actions_pages.py worker_advise): while its item is open and its tab is there the row
+ *  says "in a tab" and opens the tab, in its room of the Chat where the Chat lays out its tabs (as views/flowrun.js
+ *  SessionCards); just started it says so and waits; with no tab left it says the tab ended and offers a new start,
+ *  which finds the same item. Never "in a tab" without one. A job whose finding was marked seen (or whose analysis
+ *  closed its item, server.py ack_closed_findings) needs no new start until it fails anew: the row then offers only
+ *  "show again" beside the question, and the way to a tab still at work */
+function WorkerAdvise({ r, ret, s, c }) {
+  const t = T()
+  const open = ADVISE_OPEN.includes(r.advise?.state)
+  if (r.acked && !open) return null
+  const start = html`<${Btn} size="xs" variant="secondary" u="worker-advise" onClick=${() => c.act('worker_advise', { host: r.host, id: r.id })}>${t.btnWorkerAdvise}<//>`
+  if (open && ret?.tab) return html`<${Chip} token="info">${t.workerInTab}<//>
+    <${Btn} size="xs" variant="secondary" onClick=${() => openTabRoom(s, c, ret.tab.ref)}>${t.workerToTab}<//>`
+  if (open && ret?.live === 'started') return html`<${Chip} token="info">${t.workerStarting}<//>`
+  return html`${open && ret ? html`<${Chip} token="warning">${t.workerTabGone}<//>` : null}${start}`
+}
+
+function WorkerRow({ r, s, now, nowPct, c, i }) {
   const t = T()
   const [open, setOpen] = useState(false)
   const tone = workerTone(r)
-  const top = (r.findings ?? []).find(serious) ?? (r.findings ?? [])[0]
+  // the result of its last analysis in a tab (the return channel, returns.py), under its findings, and named on the
+  // closed row too, so a row with an answer reads apart from one never analysed
+  const advised = r.advise ? returnsOf(s).find(x => x.key === `inbox:${r.advise.inbox}`) ?? null : null
   const days = weekdayNames(language())
   const week = r.week?.length === 7 ? [...r.week.slice(1), r.week[0]] : []
+  // what kind of job it is and when it ran and runs, so a scheduled workflow reads apart from a service
+  const times = runTimes(r, now)
   return html`<li class=${`wrow rt-${tone} row-in${open ? ' is-open' : ''}`} style=${{ '--i': Math.min(i, 16) }}>
     <button type="button" class="wrow-main" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>
       <span class=${`rdot rdot-${tone}`} aria-hidden="true"></span>
-      <span class="wrow-name"><strong>${r.title || r.id}</strong><span class="muted small">${r.purpose ?? ''}</span></span>
-      <span class="wrow-when"><span class="small" title=${r.when ?? ''}>${scheduleText(r.when, language())}</span><${DayAxis} day=${r.day} nowPct=${nowPct} /></span>
+      <span class="wrow-name"><strong>${r.title || r.id}</strong><span class="muted small">${[t.workerKind[r.kind] ?? r.kind, r.purpose].filter(Boolean).join(' · ')}</span></span>
+      <span class="wrow-when"><span class="small" title=${r.when ?? ''}>${scheduleText(r.when, language())}</span><${DayAxis} day=${r.day} nowPct=${nowPct} />
+        ${times.last != null || times.next != null ? html`<span class="muted small wrow-times">${[times.last != null ? t.workerLast(runClock(times.last, now)) : '',
+          times.next != null ? t.workerNext(runClock(times.next, now)) : ''].filter(Boolean).join(' · ')}</span>` : null}</span>
       <span class="wrow-strip"><${RunStrip} strip=${r.strip} continuous=${r.continuous} /></span>
       <span class="wrow-state"><span class=${`chip chip-tk tk-${runToken(tone)}`}>
-        <${Dot} token=${runToken(tone)} /><span>${t.workerState[r.state] ?? r.state}</span></span></span>
+        <${Dot} token=${runToken(tone)} /><span>${r.acked ? t.findingSeen.on(r.acked.day, '') : t.workerState[r.state] ?? r.state}</span></span>
+        ${advised?.result?.text ? html`<span class="chip chip-tk tk-info wrow-result">${t.workerResultIn}</span>` : null}</span>
     </button>
     ${open ? html`<div class="wrow-detail">
       <dl class="wmeta">
@@ -250,29 +301,42 @@ function WorkerRow({ r, nowPct, c, i }) {
       ${week.length ? html`<div class="wweek" role="group" aria-label=${t.workerWeek}>${week.map((on, k) => html`<span key=${k} class=${`wday${on ? ' is-on' : ''}`}>${days[k]}</span>`)}
         ${(r.ran_days ?? []).length ? html`<span class="muted small">${t.workerRanDays(r.ran_days.length)}</span>` : null}</div>` : null}
       ${(r.findings ?? []).some(f => f.severity !== 'info') ? html`<ul class="wfind">${r.findings.filter(f => f.severity !== 'info').map((f, k) => html`<li key=${k}>
-        <${StateLine} token=${f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${f.severity === 'high'}
-          word=${`${t.workerState[f.state] ?? f.state}: ${f.detail ?? ''}`} />
+        <${StateLine} token=${r.acked ? 'info' : f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'} strong=${!r.acked && f.severity === 'high'}
+          word=${`${t.workerState[f.state] ?? f.state}${f.detail ? `: ${t.workerQuote(f.detail)}` : ''}`} />
         ${f.hint ? html`<p class="muted small wfind-hint">${t.workerHint(f.hint)}</p>` : null}</li>`)}</ul>` : null}
+      ${advised?.result?.text ? html`<p class="muted small wfind-hint">${t.workerResult(short(advised.result.text, 300))}</p>` : null}
+      ${r.acked ? html`<p class="muted small">${t.findingSeen.on(r.acked.day, r.acked.note)}</p>` : null}
       <div class="btn-row">
-        <${Btn} size="xs" variant="secondary" onClick=${() => c.ask('free', { text: t.workerAsk(r.id, r.host, t.workerState[r.state] ?? r.state, top?.detail ?? '') })}>${t.btnAsk}<//>
+        <${WorkerAdvise} r=${r} ret=${advised} s=${s} c=${c} />
+        <${RowAsk} s=${s} c=${c} rowKey=${`worker:${r.host}:${r.id}`} variant="secondary" cls="" onAsk=${() => c.ask('worker', { host: r.host, id: r.id })} />
+        <${SeenBtn} k=${`worker:${r.host}:${r.id}`} acked=${r.acked} loud=${(r.findings ?? []).some(serious)} c=${c} />
       </div>
     </div>` : null}
   </li>`
 }
 
-/** Every declared run of the always-on machines, drawn by this page from `workload view --json` */
+// the machines a view lists jobs of, in the order the page draws them (groupByHost), for its head
+const hostsOf = (runs, view) => groupByHost(runs, { hosts: view?.hosts ?? (view?.host ? [view.host] : []) }).map(m => m.host)
+  .filter(h => h !== '?').join(', ') || view?.host || '?'
+
+/** Every declared run of the always-on machines, drawn by this page from `workload view --json`: by machine, the
+ *  always-on first, every job in view and only the findings marked; a filter (the machine first) narrows it. A line
+ *  under the head says that the scheduled workflows of the machines are these jobs too; the count of
+ *  units a machine runs without a declaration stands only while the filter leaves a job */
 export function WorkersPage({ s, c }) {
   const t = T()
   const w = s.workers ?? {}
   useEffect(() => { c.loadWorkers() }, [s.model?.seq ?? 0])
-  const [flt, setFlt] = useState(() => ({ q: '', kind: null, sphere: null, state: null, host: null, attention: false, ...(s.ui.workersFilter ?? {}) }))
+  const [flt, setFlt] = useState(() => ({ q: '', kind: null, sphere: null, state: null, host: null, attention: false, outage: false, ...(s.ui.workersFilter ?? {}) }))
   const view = w.data
   const runs = (view?.runs ?? []).filter(r => !r.retired)
   const shown = filterWorkers(runs, flt)
   const facets = workerFacets(runs, flt)
-  const groups = groupBySystem(shown, view?.systems)
-  const now = new Date()
+  const machines = groupByHost(shown, { hosts: view?.hosts ?? (view?.host ? [view.host] : []), systems: view?.systems })
+  const nowMs = s.now || Date.now()
+  const now = new Date(nowMs)
   const nowPct = (now.getHours() * 60 + now.getMinutes()) / 1440
+  const jobs = jobCounts(view)
   const at = Date.parse(view?.generated_at ?? '')
   const set = patch => setFlt(f => ({ ...f, ...patch }))
   const facetRow = name => {
@@ -285,16 +349,19 @@ export function WorkersPage({ s, c }) {
         ${name === 'state' ? (t.workerState[v] ?? v) : name === 'kind' ? (t.workerKind[v] ?? v) : v} <span class="mono">${n}</span></button>`)}</span></div>`
   }
   return html`<div class="col col-page">
+    <${FolderBar} s=${s} c=${c} />
     <header class="page-head">
       <h2 class="detail-title">${t.workersTab}</h2>
-      ${view ? html`<span class="muted small">${t.workersFrom(view.host, Number.isFinite(at) ? formatClock(at, language()).slice(0, 5) : '?')}</span>` : null}
+      ${view ? html`<span class="muted small">${t.workersFrom(hostsOf(runs, view), Number.isFinite(at) ? formatClock(at, language()).slice(0, 5) : '?')}</span>` : null}
       <button type="button" class="btn-link small" onClick=${() => c.loadWorkers()}>${t.reload}</button>
     </header>
+    <p class="muted small workers-intro">${t.workersIntro}</p>
     ${w.status === 'none' ? html`<div class="panel panel-pad"><p class="muted">${t.workersNone}</p></div>` : !view
       ? html`<div class="panel panel-pad"><${Skeleton} lines=${6} /></div>` : html`
       <dl class="stats">
         <div><dt>${t.workerStat.in_service}</dt><dd><${CountNum} value=${view.stats?.in_service ?? runs.length} /></dd></div>
-        <div><dt>${t.workerStat.with_findings}</dt><dd><${CountNum} value=${view.stats?.with_findings ?? 0} /></dd></div>
+        <div><dt>${t.workerStat.failing}</dt><dd><${CountNum} value=${jobs.failing} /></dd></div>
+        <div><dt>${t.workerStat.upkeep}</dt><dd><${CountNum} value=${jobs.upkeep} /></dd></div>
         <div><dt>${t.workerStat.not_reported}</dt><dd><${CountNum} value=${view.stats?.not_reported ?? 0} /></dd></div>
         <div><dt>${t.workerStat.retired}</dt><dd><${CountNum} value=${view.stats?.retired ?? 0} /></dd></div>
       </dl>
@@ -304,21 +371,31 @@ export function WorkersPage({ s, c }) {
             onInput=${e => set({ q: e.currentTarget.value })} />
           <button type="button" class=${`fchip${flt.attention ? ' is-on' : ''}`} aria-pressed=${String(flt.attention)}
             onClick=${() => set({ attention: !flt.attention })}><span class="fdot fdot-warn" aria-hidden="true"></span>${t.workerAttention}</button>
+          ${flt.outage || jobs.failing ? html`<button type="button" class=${`fchip${flt.outage ? ' is-on' : ''}`} aria-pressed=${String(flt.outage)}
+            onClick=${() => set({ outage: !flt.outage })}><span class="fdot fdot-bad" aria-hidden="true"></span>${t.workerOutage}</button>` : null}
           <span class="muted small">${t.workersShown(shown.length, runs.length)}</span>
         </div>
-        ${['state', 'kind', 'sphere', 'host'].map(facetRow)}
+        ${['host', 'state', 'kind', 'sphere'].map(facetRow)}
       </section>
-      ${!shown.length ? html`<div class="panel panel-pad"><${Empty}>${t.filterNone}<//></div>` : groups.map(g => {
-        const n = k => g.runs.filter(r => workerTone(r) === k).length
-        return html`<section class="panel panel-pad wgroup" key=${g.id}>
-          <header class="rgroup-head"><h3 class="rgroup-title">${g.id === '_standalone' || !g.title ? t.workerAlone : g.id === '_undecided' ? t.workerUndecided : g.title}</h3>
-            <span class="sec-count mono">${g.runs.length}</span>
-            <span class="rgroup-count">${['ok', 'warn', 'bad', 'dim'].filter(k => n(k)).map(k => html`
-              <span key=${k} class="rgroup-n"><span class=${`fdot fdot-${k}`} aria-hidden="true"></span><span class="mono">${n(k)}</span></span>`)}</span>
-          </header>
-          <ul class="wlist rview">${g.runs.map((r, i) => html`<${WorkerRow} key=${r.id} r=${r} i=${i} nowPct=${nowPct} c=${c} />`)}</ul>
-        </section>`
-      })}
-      ${(view.elsewhere?.undeclared?.counted ?? 0) ? html`<p class="muted small">${t.workersElsewhere(view.elsewhere.undeclared.counted)}</p>` : null}`}
+      ${!shown.length ? html`<div class="panel panel-pad"><${Empty}>${t.filterNone}<//></div>` : machines.map(m => html`<section class="panel panel-pad wmachine" key=${m.host}>
+        <header class="rgroup-head wmachine-head"><h3 class="rgroup-title">${m.host}</h3>
+          ${m.always ? html`<span class="chip">${t.machineAlways}</span>` : null}
+          <span class="sec-count mono">${m.runs.length}</span>
+          ${m.failing ? html`<span class="chip chip-tk tk-danger"><${Dot} token="danger" /><span>${t.folderOutages(m.failing)}</span></span>` : null}
+          ${m.upkeep ? html`<span class="muted small">${t.machineUpkeep(m.upkeep)}</span>` : null}
+        </header>
+        ${m.groups.map(g => {
+          const n = k => g.runs.filter(r => workerTone(r) === k).length
+          return html`<div class="wgroup" key=${g.id}>
+            <header class="rgroup-head"><h4 class="rgroup-title wgroup-title">${g.id === '_standalone' || !g.title ? t.workerAlone : g.id === '_undecided' ? t.workerUndecided : g.title}</h4>
+              <span class="sec-count mono">${g.runs.length}</span>
+              <span class="rgroup-count">${['ok', 'warn', 'bad', 'dim'].filter(k => n(k)).map(k => html`
+                <span key=${k} class="rgroup-n"><span class=${`fdot fdot-${k}`} aria-hidden="true"></span><span class="mono">${n(k)}</span></span>`)}</span>
+            </header>
+            <ul class="wlist rview">${g.runs.map((r, i) => html`<${WorkerRow} key=${r.id} r=${r} s=${s} i=${i} now=${nowMs} nowPct=${nowPct} c=${c} />`)}</ul>
+          </div>`
+        })}
+      </section>`)}
+      ${(view.elsewhere?.undeclared?.counted ?? 0) && shown.length ? html`<p class="muted small">${t.workersElsewhere(view.elsewhere.undeclared.counted)}</p>` : null}`}
   </div>`
 }

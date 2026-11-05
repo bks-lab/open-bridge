@@ -307,10 +307,13 @@ NEEDLES = (
            'pattern: "^(\\\\*|[a-z][a-z0-9-]*\\\\*?)$"', 'pattern: "^(\\\\*|[a-z][a-z0-9-]*\\\\*?|.*)$"',
            "An address could name a store no reference can reach, and nobody would notice.",
            expect="the addresses pattern is"),
-    Needle("an always-on file points at an object", "CLAUDE.md",
-           "@AGENTS.md\n", "@AGENTS.md\nsee object://recordings/2026-09/kickoff.m4a\n",
+    # AGENTS.md, never a CLAUDE.md: writing one into the copy would make it the
+    # entry and shadow AGENTS.md. The heading is kept verbatim on purpose.
+    Needle("an always-on file points at an object", "AGENTS.md",
+           "## Session Start Detection (automatic)\n",
+           "## Session Start Detection (automatic)\nsee object://recordings/2026-09/kickoff.m4a\n",
            "Session start would depend on a store being reachable.",
-           expect="CLAUDE.md: carries object://recordings/"),
+           expect="AGENTS.md: carries object://recordings/"),
 )
 
 

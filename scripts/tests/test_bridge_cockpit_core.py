@@ -37,7 +37,7 @@ CORE = _cc.SCRIPTS_CORE_ALLOWLIST
 # text files only: the fonts and icons the page serves itself are binary and name nothing
 DASHBOARD = sorted(p for p in CORE if not p.endswith((".woff2", ".png", ".ico")) and p.startswith(("scripts/web/", "scripts/lib/bridge_cockpit/")) or p in (
     "scripts/bridge-cockpit.py", "scripts/bridge-resources.py", "scripts/cloud-inventory.py", "scripts/cloud-costs.py",
-    "scripts/usage-export.py", "scripts/lib/briefing_view.py"))
+    "scripts/usage-export.py", "scripts/cockpit-usage.py", "scripts/bridge-setup.py", "scripts/lib/briefing_view.py"))
 
 JS_STATIC = re.compile(r"""^\s*(?:import|export)\b[^'"]*?\bfrom\s+['"](\.{1,2}/[^'"]+)['"]|^\s*import\s+['"](\.{1,2}/[^'"]+)['"]""", re.M)
 HTML_REF = re.compile(r"""<(?:script|link)\b[^>]*?\b(?:src|href)=["'](?!https?:|//|#)([^"']+)["']""")
@@ -137,13 +137,50 @@ def test_the_instance_words_come_from_the_instance(tmp_path):
     assert instance_words(tmp_path / "missing") == []                 # a fresh clone: nothing to look for
 
 
+def upstream_lines(root: Path, rel: str, ref: str = "upstream/main"):
+    """The lines of `rel` as the upstream ref has them, or None when there is no such ref or file.
+    A line that is already upstream is CORE text by definition: only a line a fork added or changed can leak
+    an instance word (a remote named like a product would otherwise flag every legitimate mention of it).
+    In upstream's own CI the tree is upstream, so nothing is filtered there."""
+    probe = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", ref + "^{commit}"],
+                           capture_output=True, text=True)
+    if probe.returncode != 0:
+        return None
+    shown = subprocess.run(["git", "-C", str(root), "show", f"{ref}:{rel}"], capture_output=True, text=True)
+    if shown.returncode != 0:
+        return None
+    return set(shown.stdout.splitlines())
+
+
+def test_a_word_on_an_upstream_line_is_ignored_but_not_on_an_added_line(tmp_path):
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                       check=True, capture_output=True)
+    git("init", "-q", "-b", "main")
+    (tmp_path / "page.js").write_text("// the widget shows a gadget\nconst a = 1\n", encoding="utf-8")
+    git("add", "page.js")
+    git("commit", "-q", "-m", "base")
+    git("update-ref", "refs/remotes/upstream/main", "HEAD")
+    (tmp_path / "page.js").write_text("// the widget shows a gadget\nconst a = 1\n// gadget of mine\n", encoding="utf-8")
+    known = upstream_lines(tmp_path, "page.js")
+    assert known == {"// the widget shows a gadget", "const a = 1"}
+    word = re.compile(r"\bgadget\b")
+    lines = (tmp_path / "page.js").read_text(encoding="utf-8").splitlines()
+    assert [n for n, line in enumerate(lines, 1) if word.search(line) and line not in known] == [3]
+    assert upstream_lines(tmp_path, "missing.js") is None            # a file upstream does not have
+    assert upstream_lines(tmp_path / "nowhere", "page.js") is None   # no repo or no upstream ref: no filter
+
+
 def test_no_instance_words_in_core_dashboard_files():
     hits = []
     for rel in DASHBOARD:
         path = ROOT / rel
         if not path.is_file() or "/vendor/" in rel:
             continue
+        known = upstream_lines(ROOT, rel) or set()
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line in known:
+                continue
             if INSTANCE_WORDS.search(line):
                 hits.append(f"{rel}:{n}: {line.strip()[:120]}")
             elif PROFILE_ID.search(line) and (rel, "profile") not in EXCEPTIONS:
@@ -370,3 +407,77 @@ def test_every_error_code_the_server_sends_is_worded_in_both_languages():
     for lang, keys in tables.items():
         assert codes - INTERNAL_CODES - keys == set(), f"text.js errors ({lang}) lacks these codes"
     assert tables["en"] == tables["de"]
+
+
+# ---------------------------------------------------------------- which design the cockpit wears
+# The cockpit is the instance's own page, so it wears the instance default: the active theme's
+# `branding.design` (step 5 of scripts/designs.py), else the root DESIGN.md. It never guesses a
+# context or a persona, and its cache follows the file the resolver names, not the root.
+
+def _branded(tmp_path: Path) -> Path:
+    (tmp_path / "DESIGN.md").write_text('---\nname: root\ncolors:\n  primary: "#101010"\n---\n', encoding="utf-8")
+    (tmp_path / "identity" / "designs").mkdir(parents=True)
+    (tmp_path / "identity" / "designs" / "brand.md").write_text(
+        '---\nscope: user\nname: brand\ndescription: d\ncolors:\n  primary: "#5A1E3C"\n---\n', encoding="utf-8")
+    (tmp_path / "themes").mkdir()
+    (tmp_path / "themes" / "house.yaml").write_text("meta: {name: house}\nbranding: {design: brand}\n", encoding="utf-8")
+    (tmp_path / "bridge-config.yaml").write_text("theme: house\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_the_stylesheet_follows_the_theme_design(tmp_path):
+    from lib.bridge_cockpit import design
+    root = _branded(tmp_path)
+    assert design.design_file(root) == root / "identity" / "designs" / "brand.md"
+    css = design.stylesheet(root)
+    assert "#5A1E3C" in css and "#101010" not in css
+    (root / "bridge-config.yaml").write_text("theme: professional\n", encoding="utf-8")
+    assert design.design_file(root) == root / "DESIGN.md"
+    assert "#101010" in design.stylesheet(root)
+
+
+def test_the_colour_cache_watches_the_resolved_file(tmp_path):
+    import threading
+    import types
+    from lib.bridge_cockpit import server
+    root = _branded(tmp_path)
+    app = types.SimpleNamespace(root=root, _colors=None, _colors_lock=threading.Lock())
+    first, _ = server.App.colors_css(app)
+    assert b"#5A1E3C" in first
+    brand = root / "identity" / "designs" / "brand.md"
+    brand.write_text(brand.read_text(encoding="utf-8").replace("#5A1E3C", "#3C1E5A"), encoding="utf-8")
+    second, _ = server.App.colors_css(app)
+    assert b"#3C1E5A" in second, "an edit to the resolved design file did not reach /colors.css"
+
+
+def test_a_broken_theme_design_is_said_and_clears_when_fixed(tmp_path):
+    import threading
+    import types
+    from lib.bridge_cockpit import server
+    root = _branded(tmp_path)
+    (root / "themes" / "house.yaml").write_text("meta: {name: house}\nbranding: {design: ghost}\n", encoding="utf-8")
+    app = types.SimpleNamespace(root=root, _colors=None, _colors_lock=threading.Lock())
+    broken, tag_broken = server.App.colors_css(app)
+    assert b"design error" in broken and b"ghost" in broken
+    # fixed by dropping the reference: the file served stays the root DESIGN.md, only the error goes
+    (root / "themes" / "house.yaml").write_text("meta: {name: house}\n", encoding="utf-8")
+    fixed, tag_fixed = server.App.colors_css(app)
+    assert b"design error" not in fixed and b"#101010" in fixed, "the error comment outlived the fix"
+    assert tag_fixed != tag_broken
+
+
+def test_the_resolution_is_cached_against_config_and_theme(tmp_path, monkeypatch):
+    from lib.bridge_cockpit import design
+    root = _branded(tmp_path)
+    calls = []
+    real = design._resolver().resolve
+    monkeypatch.setattr(design._resolver(), "resolve", lambda *a, **k: calls.append(1) or real(*a, **k))
+    for _ in range(3):
+        assert design.design_file(root).name == "brand.md"
+    assert len(calls) == 1, "bridge-config and the theme were parsed again on every /colors.css request"
+    theme = root / "themes" / "house.yaml"
+    theme.write_text(theme.read_text(encoding="utf-8") + "# touched\n", encoding="utf-8")
+    import os
+    os.utime(theme, ns=(theme.stat().st_atime_ns, theme.stat().st_mtime_ns + 10_000_000))
+    design.design_file(root)
+    assert len(calls) == 2, "a changed theme must be resolved again"

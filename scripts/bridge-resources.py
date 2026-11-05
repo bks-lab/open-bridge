@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fnmatch
 import json
 import os
 import re
@@ -44,13 +45,15 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCES = Path(".bridge") / "resources"     # what the dashboard showed last, under the Bridge root
 
-# a worker state as a tone, the same table as WORKER_TONE in scripts/web/logic.js; anything else is warn
+# a worker state as a tone, the same table as WORKER_TONE in scripts/web/logic.js; anything else is warn. Red is an
+# outage (gone, switched off, stopped, its last run failed), orange the upkeep a declaration and its machine drift into
 STATE_TONE = {"in_sync": "none", "observed": "none", "unmanaged": "none", "intentionally_absent": "dim",
               "not reported": "dim", "not_provisioned": "dim", "absent": "bad", "disabled": "bad",
+              "stopped": "bad", "last_run_failed": "bad",
               "drifted": "warn", "inventory_missing": "warn", "source_drift": "warn", "inventory_stale": "warn"}
 # workers that need a look, worst first; in_sync, unmanaged and observed are not listed one by one
-WORKER_RANK = {"absent": 0, "disabled": 1, "drifted": 2, "inventory_missing": 3, "source_drift": 4,
-               "inventory_stale": 5, "not_provisioned": 6, "unknown": 7}
+WORKER_RANK = {"absent": 0, "disabled": 1, "stopped": 1, "last_run_failed": 1, "drifted": 2, "inventory_missing": 3,
+               "source_drift": 4, "inventory_stale": 5, "not_provisioned": 6, "unknown": 7}
 QUIET_STATES = {"in_sync", "unmanaged", "observed", "intentionally_absent"}
 # keys whose entries are resources of an account, at the top or under `cloud:`
 RESOURCE_KEYS = ("subscriptions", "resource_groups", "keyvaults", "app_registrations", "zones", "workers",
@@ -82,13 +85,14 @@ TX = {
         "costs_missing": "no cost report from {src}: {err}", "costs_yesterday": "yesterday {amount}",
         "costs_month": "{month} {amount}", "costs_of": "{amount} of {budget}", "costs_login": "{name}: sign-in needed, {hint}",
         "costs_old": "the report is {h} h old",
+        "costs_credits": "used {used}, credits {credits}",
         "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September",
                    "October", "November", "December"],
         "g_always": "Always on", "g_online": "Online", "g_offline": "Offline", "g_outside": "Not in the tailnet",
         "g_cloud": "Cloud", "g_mail": "Mail and calendar", "g_other": "Other", "g_inactive": "Inactive",
         "g_ok": "In order",
         "tag_kind": "Kind", "tag_state": "State", "tag_group": "Resource group", "tag_location": "Region",
-        "tag_provider": "Provider", "tag_status": "Status", "tag_type": "Device",
+        "tag_provider": "Provider", "tag_status": "Status", "tag_type": "Device", "tag_project": "Project",
         "tag_declared": "Known from", "declared_nowhere": "nowhere", "registry": "registry",
         "retired_on": "retired {date}, still at the provider",
         "status": {"active": "active", "paused": "paused", "disabled": "switched off", "legacy": "legacy",
@@ -124,13 +128,14 @@ TX = {
         "costs_missing": "kein Kostenbericht von {src}: {err}", "costs_yesterday": "gestern {amount}",
         "costs_month": "{month} {amount}", "costs_of": "{amount} von {budget}", "costs_login": "{name}: Anmeldung nötig, {hint}",
         "costs_old": "der Bericht ist {h} h alt",
+        "costs_credits": "verbraucht {used}, Gutschrift {credits}",
         "months": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
                    "Oktober", "November", "Dezember"],
         "g_always": "Immer an", "g_online": "Online", "g_offline": "Offline", "g_outside": "Nicht im Tailnet",
         "g_cloud": "Cloud", "g_mail": "Mail und Kalender", "g_other": "Weitere", "g_inactive": "Inaktiv",
         "g_ok": "In Ordnung",
         "tag_kind": "Art", "tag_state": "Zustand", "tag_group": "Ressourcengruppe", "tag_location": "Region",
-        "tag_provider": "Anbieter", "tag_status": "Status", "tag_type": "Gerät",
+        "tag_provider": "Anbieter", "tag_status": "Status", "tag_type": "Gerät", "tag_project": "Projekt",
         "tag_declared": "Bekannt aus", "declared_nowhere": "nirgends", "registry": "Registry",
         "retired_on": "ausgemustert {date}, beim Anbieter noch da",
         "status": {"active": "aktiv", "paused": "pausiert", "disabled": "deaktiviert", "legacy": "Altlast",
@@ -262,7 +267,9 @@ def machine_rows(root: Path, tx: dict, peers: dict | None) -> list[dict]:
         parts = [str(x) for x in (m.get("type"), m.get("os")) if x]
         tone = "none"
         if peers is None:
+            # nothing live says it is up: grey like a machine outside the tailnet, never green
             parts.append(tx["no_tailscale"])
+            tone = "dim"
         elif ts in peers:
             p = peers[ts]
             parts.append(tx["online"] if p["online"] else tx["offline"])
@@ -608,6 +615,58 @@ def _merge_costs(reports: list[tuple[str, dict]], now: dt.datetime, stale_h: flo
     return [(src, acc, stale, age_h) for _rank, src, acc, stale, age_h in best.values()]
 
 
+def cost_centers(root: Path | None) -> list[dict]:
+    """workflow/cost-centers/*.yaml in file-name order (the `_` files are not ones): a project that gathers cost
+    entries across accounts. `sources` are entry ids or patterns (`openai-x/proj_*`); an account id names its parts
+    too. A file that cannot be read is left out, never fatal to the cost card."""
+    if root is None:
+        return []
+    out = []
+    for path in sorted((root / "workflow" / "cost-centers").glob("*.yaml")):
+        if path.name.startswith("_"):
+            continue
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if isinstance(data, dict) and data.get("id") and isinstance(data.get("sources"), list):
+            out.append(data)
+    return out
+
+
+def center_view(center: dict, root: Path, rates: dict) -> dict:
+    """What the cost card needs of a cost center: id, title, persona (and its name from identity/personas/), and a
+    budget_month converted to EUR with the report's rates (kept as declared, with budget_fx_missing, without one)."""
+    out = {"id": str(center["id"]), "title": str(center.get("title") or center["id"]), "persona_ref": center.get("persona_ref")}
+    ref = center.get("persona_ref")
+    if ref:
+        try:
+            persona = yaml.safe_load((root / "identity" / "personas" / f"{ref}.yaml").read_text(encoding="utf-8"))
+            if isinstance(persona, dict) and persona.get("display_name"):
+                out["persona_title"] = str(persona["display_name"])
+        except (OSError, yaml.YAMLError):
+            pass
+    budget = center.get("budget_month")
+    if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget > 0:
+        cur = str(center.get("currency") or "EUR").upper()
+        rate = 1.0 if cur == "EUR" else rates.get(cur)
+        out["budget_month"] = round(float(budget) / rate, 2) if rate else float(budget)
+        out["budget_currency"] = cur
+        if not rate:
+            out["budget_fx_missing"] = True
+    return out
+
+
+def cost_center_of(entry_id: str, centers: list[dict]) -> dict | None:
+    """The first cost center whose sources name this entry, or its account (the id before the first `/`)."""
+    account = entry_id.split("/", 1)[0]
+    for center in centers:
+        for pattern in center.get("sources") or []:
+            if fnmatch.fnmatchcase(entry_id, str(pattern)) or fnmatch.fnmatchcase(account, str(pattern)):
+                return center
+    return None
+
+
 def cost_rows(root: Path | None, tx: dict, srcs: str | list[str], now: dt.datetime, stale_h: float,
               run=subprocess.run) -> list[dict]:
     """One row per account of the cost reports: yesterday, the month so far and the budget, red over the budget,
@@ -638,12 +697,16 @@ def cost_rows(root: Path | None, tx: dict, srcs: str | list[str], now: dt.dateti
     data = newest
     yesterday = (today - dt.timedelta(days=1)).isoformat()
     month = tx["months"][today.month - 1]
+    centers = cost_centers(root)
     kept = []
     for src, acc, stale, age_h in _merge_costs(reports, now, stale_h):
         aid, name = str(acc.get("id")), str(acc.get("display_name") or acc.get("id"))
         provider = str(acc.get("provider") or "")
+        center = cost_center_of(aid, centers)
+        acc["cost_center"] = str(center["id"]) if center else None
         extra = {"group": name, "icon": provider or "account", "account": {"id": aid},
-                 "tags": tags(**{tx["tag_provider"]: provider})}
+                 "tags": tags(**{tx["tag_provider"]: provider,
+                                 tx["tag_project"]: (center.get("title") or center["id"]) if center else None})}
         login = acc.get("login") if isinstance(acc.get("login"), dict) else {}
         if not acc.get("ok") and acc.get("error_kind") == "auth" and isinstance(login.get("argv"), list) and login["argv"]:
             cmd = login_command(login["argv"], src)
@@ -662,6 +725,9 @@ def cost_rows(root: Path | None, tx: dict, srcs: str | list[str], now: dt.dateti
                 so_far = tx["costs_of"].format(amount=so_far, budget=money(tx, budget, cur, whole=True))
             parts = [tx["costs_yesterday"].format(amount=money(tx, _amount_on(acc, yesterday), cur)),
                      tx["costs_month"].format(month=month, amount=so_far)]
+            if acc.get("credits_month"):
+                parts.append(tx["costs_credits"].format(used=money(tx, acc.get("used_month"), cur),
+                                                        credits=money(tx, acc["credits_month"], cur)))
             if stale and age_h is not None:
                 parts.append(tx["costs_old"].format(h=int(age_h)))
             over = budget is not None and isinstance(mtd, (int, float)) and mtd > budget
@@ -673,6 +739,7 @@ def cost_rows(root: Path | None, tx: dict, srcs: str | list[str], now: dt.dateti
         kept.append(acc)
     if root is not None:
         view = {**data, "accounts": kept, "today": today.isoformat(),
+                "cost_centers": [center_view(c, root, (data.get("fx") or {}).get("rates") or {}) for c in centers],
                 "source": ", ".join(source_name(s) for s, _d in reports),
                 "sources": [{"source": source_name(s), "host": d.get("host"), "at": d.get("at"),
                              "stale": _age(d, now, stale_h)[0]} for s, d in reports],

@@ -96,6 +96,13 @@ class ReplyScript(BridgeCase):
         for script in (self.script(), FIND):
             self.assertNotRegex(script.lower(), r"\bsend\b")
 
+    def test_find_script_names_no_variable_after_a_mail_term(self):
+        # `kind` is a property of Mail's dictionary: inside `tell application "Mail"` a variable of that name
+        # reads Mail's term instead, so the lookup by message id never matched (27.10.)
+        from engine.clients.apple_mail import FIND
+        for word in ("kind", "id", "name", "content"):
+            self.assertNotRegex(FIND, rf"\bset {word} to\b")
+
 
 class ReplyHandoff(BridgeCase):
     def handoff(self, saved: str, reply_answer=OK_REPLY, attach: bool = False, before: str = "0",

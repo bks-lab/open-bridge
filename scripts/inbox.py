@@ -14,11 +14,13 @@ things as open that had been solved hours earlier, because the sentence saying
         --action-json '{"argv": ["gh", "pr", "merge", "70", "-R", "org/repo"]}' \\
         --closes-when-json '{"gh_pr": "org/repo#70", "state": "merged"}'
     python3 scripts/inbox.py list            # open items, most urgent first
+    python3 scripts/inbox.py list --art ask  # only what needs a person (ask · report · idea)
     python3 scripts/inbox.py approve <id> [--when-json '{"gh_pr": "org/repo#70", "state": "green"}']
     python3 scripts/inbox.py check           # close what the live source says is done
     python3 scripts/inbox.py run             # execute what a person released
     python3 scripts/inbox.py render          # regenerate work/inbox.md (a view)
     python3 scripts/inbox.py reopen <id> [--note TEXT]   # undo a close, drop or reject
+    python3 scripts/inbox.py probe --json '{"gh_issue": "org/repo#12", "state": "closed"}'   # one probe, read only
 
 LAYOUT. ``work/inbox/<id>/item.yaml`` is written once and never changed.
 Every later change (a note, a yes, a close) is a NEW file under
@@ -32,17 +34,28 @@ issue closed, a file present, a command exiting 0, a time passed). ``check``
 runs the probes and closes what holds. A probe that cannot be evaluated is
 UNKNOWN, never true: an item stays open rather than vanishing on a network error.
 
+WAITING FOR. ``waits_for`` names a probe in the same language for an item that only
+asks once something has happened ("the quota was raised: switch over"). Until it holds
+the item is ``waiting`` and asks nobody; ``check`` records a ``ready`` event when it
+does, and the item is open. Unknown is still waiting, never ready. ``wait`` sets the
+condition on an item already filed.
+
+ARTS. Three ways a person sees an item, derived from its kind and never stored: ``ask``
+(decision, question, draft: needs a yes, a word or a click), ``report`` (finding, result: how
+something stands) and ``idea`` (mentioned, nothing came of it yet). An unknown kind is an ask.
+
 GATES. ``free`` the Bridge may act alone · ``your-yes`` acts after a person said
 yes, also a conditional yes ("merge once green") that ``run`` executes when the
 condition holds · ``only-you`` (send, publish, pay) is never executed by this
 script, whatever was recorded.
 
-MUTE. A drop may say why: ``once`` (this one, no rule), ``duplicate``, ``family`` (never
-this kind again: the source plus the key up to its last colon, or the kind when the key has no
-family) or ``source`` (the whole source, for ``MUTE_SOURCE_DAYS``). The last two leave a rule,
+MUTE. A drop may say why: ``once`` (this one, no rule), ``duplicate``, ``stale`` (it went old,
+no rule), ``family`` (never this kind again: the source plus the key up to its last colon, or the
+kind when the key has no family) or ``source`` (the whole source, for ``MUTE_SOURCE_DAYS``). The last two leave a rule,
 one file of its own under ``work/inbox/_mutes/``. A finding that matches a rule is still filed
 and dropped at once by ``mute``: it counts in ``stats`` and a reopen brings it back. An item
-filed as ``now`` is never muted. ``stats`` shows per source how much a person dropped.
+filed as ``now`` is never muted. ``stats`` shows per source how much a person dropped. Sources that
+differ only in case are one source to the rules and to ``stats``.
 
 REOPEN. A close by mistake is undone with a ``reopen`` event, never by deleting the
 close: the item is open again, every yes before it is void (an executed action does
@@ -70,7 +83,8 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
-from lib.inbox_verbs import TERMINAL  # noqa: E402  (shared with the cockpit's return channel)
+from lib.bridge_cockpit.card_fields import validate_brief  # noqa: E402  (the one shape of a brief)
+from lib.inbox_verbs import ARTS, TERMINAL, art_of_kind  # noqa: E402  (shared with the cockpit and the briefing)
 
 SCHEMA_VERSION = 1
 
@@ -80,12 +94,15 @@ URGENCIES = ("now", "today", "later")
 #: Who ends an item when it has no probe. `reporter`: the job that filed it closes it when the
 #: condition is gone (by key). `person`: only a person can say it is done. `bot`: a watcher acts
 #: on it and closes it. An item with neither a probe nor a closer is the one that stays open for
-#: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out).
+#: ever, which is what the inbox exists to prevent (2026-10-07: 51 of 62 items had no way out), so
+#: `add` files one without a probe, a closer or an action as `person`.
 CLOSERS = ("probe", "reporter", "person", "bot")
-VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen")
+VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "executed", "failed", "urgency", "reopen",
+         "area", "describe", "wait", "ready")
 ACTIVE_STATES = ("open", "approved", "waiting")
 #: Why a person dropped an item. `family` and `source` leave a mute rule behind.
-DROP_REASONS = ("once", "duplicate", "family", "source")
+#: `stale`: it went old without anybody acting on it (a cleanup proposes these), no rule.
+DROP_REASONS = ("once", "duplicate", "family", "source", "stale")
 MUTE_REASONS = ("family", "source")
 #: A source mute ends by itself: a source that was too loud for a month may have been fixed since.
 MUTE_SOURCE_DAYS = 30
@@ -245,6 +262,14 @@ def probe(spec, *, now: dt.datetime | None = None, gh: GhRunner | None = None,
     return None
 
 
+def probe_once(spec, *, gh: GhRunner | None = None, base: Path | None = None) -> bool | None:
+    """One probe, read only: what `inbox.py probe` answers (the cockpit's check-in look reads the state of a GitHub
+    ref with it). A probe that runs a command anywhere in it is refused (ValueError): this way only reads."""
+    if not isinstance(spec, dict) or _has_command(spec):
+        raise ValueError("a probe here is a mapping that runs no command")
+    return probe(spec, gh=gh, base=base)
+
+
 # ---------------------------------------------------------------- model
 
 @dataclass
@@ -272,6 +297,18 @@ class Item:
             set_by = [e.data.get("value") for e in self.events
                       if e.verb == "urgency" and e.data.get("value") in URGENCIES]
             return set_by[-1] if set_by else self.data.get("urgency")
+        if key == "area":
+            # The same for the area (a workspace name); an empty value takes it back. An item linked to a
+            # task shows that task's area wherever it is drawn, this one only counts for an item without.
+            set_to = [e.data.get("value") for e in self.events if e.verb == "area"]
+            value = set_to[-1] if set_to else self.data.get("area")
+            return str(value).strip() or None if value is not None else None
+        if key == "brief":
+            # What was written about the item (goal, story, acceptance): the last `describe` event, one without
+            # a brief takes it back. Read through the same gate it was written through, so a hand-edited
+            # event never shows a text the gate would refuse.
+            set_to = [e.data.get("brief") for e in self.events if e.verb == "describe"]
+            return validate_brief(set_to[-1])[0] if set_to and set_to[-1] is not None else None
         if key in ("kind", "gate", "task", "source", "created", "key",
                    "action", "closes_when", "detail", "due", "closer"):
             return self.data.get("from" if key == "source" else key)
@@ -298,16 +335,31 @@ class Item:
 
     @property
     def deferral(self) -> dict | None:
-        """The defer in force: {"until", "on"}. `on` is what it waits on ("runs on": a person, a run);
-        a plain "later" has none. A yes or a reopen takes a defer back, as in `state`."""
+        """The defer in force: {"until", "on", "check"}. `on` is what it waits on ("runs on": a person, a run);
+        a plain "later" has none. `check` marks a check-in (the cockpit's In progress: with `on` until the day,
+        which then asks how it stands rather than coming back as a plain later). A yes or a reopen takes a defer
+        back, as in `state`."""
         current = None
         for e in self.events:
             if e.verb == "defer":
                 # stored as waits_on: a bare `on` key is a boolean to YAML 1.1 readers (the first events wrote it)
-                current = {"until": e.data.get("until"), "on": e.data.get("waits_on") or e.data.get("on")}
+                current = {"until": e.data.get("until"), "on": e.data.get("waits_on") or e.data.get("on"),
+                           "check": e.data.get("check") is True}
             elif e.verb in ("approve", "reopen") or e.verb in TERMINAL:
                 current = None
         return current
+
+    @property
+    def waits_for(self) -> dict | None:
+        """The condition the item waits for before it asks anyone: the one it was filed with, else the last `wait`
+        event; a `ready` event (check found it held) ends it."""
+        current = self.data.get("waits_for") or None
+        for e in self.events:
+            if e.verb == "wait":
+                current = e.data.get("waits_for") or None
+            elif e.verb == "ready":
+                current = None
+        return current if isinstance(current, dict) else None
 
     @property
     def last_failed(self) -> bool:
@@ -337,6 +389,8 @@ class Item:
                     return "deferred"
             except ValueError:
                 pass
+        if self.waits_for:
+            return "waiting"                      # asks nobody until its condition holds (check records `ready`)
         approval = self.approval
         if approval is True:
             return "approved"
@@ -347,13 +401,77 @@ class Item:
     def as_dict(self) -> dict:
         deferral = self.deferral or {}
         return {"id": self.id, "state": self.state, **{k: v for k, v in self.data.items()
-                                                      if k != "schema_version"}, "urgency": self.urgency,
+                                                      if k != "schema_version"}, "urgency": self.urgency, "area": self.area,
+                "art": art_of_kind(self.kind),
+                "brief": self.brief,
                 **({"deferred_until": deferral["until"]} if deferral.get("until") else {}),
+                # the condition in force: a `wait` event sets it, `ready` ends it (item.yaml keeps the first)
+                **({"waits_for": self.waits_for} if self.waits_for or "waits_for" in self.data else {}),
                 **({"waiting_on": deferral["on"]} if deferral.get("on") else {})}
+
+
+def art_of(item) -> str:
+    """What a person sees an item as: `ask`, `report` or `idea` (lib/inbox_verbs.py ART_OF_KIND). Derived from
+    the kind of an Item or of its as_dict(), never stored, so every item filed before the arts has one."""
+    return art_of_kind(item.get("kind") if isinstance(item, dict) else item.kind)
+
+
+def source_key(source) -> str:
+    """What two sources are compared by: "Host-A/notify" and "host-a/notify" are one source to `stats` and the
+    mute rules. Only the comparison folds the case; every item and rule keeps its source as it was written."""
+    return str(source or "").strip().casefold()
 
 
 def _warn(text: str) -> None:
     print(f"inbox: {text}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------- a title a person reads (stage 4 of the cockpit)
+
+#: a title longer than this is a sentence, not a name a list can show
+TITLE_LINT_MAX = 80
+_PATH_RE = re.compile(r"(?:^|\s)(?:~|\.{0,2})/\S|\b[A-Za-z]:\\")
+_FILE_RE = re.compile(r"\b[\w-]+\.(?:md|py|js|mjs|ts|json|ya?ml|sh|txt|html?|css|toml|log|csv|pdf|plist)\b", re.I)
+_ID_RE = re.compile(r"\b\d{8}-\d{4}\b|\b[0-9a-f]{12,}\b|\b[a-z]+(?:-[a-z0-9]+){3,}\b")
+#: everyday English words that do not occur in German text: two of them in a German Bridge's title is English
+_ENGLISH = {"the", "and", "with", "for", "of", "to", "is", "are", "check", "update", "fix", "run", "please", "from", "this",
+            "that", "should", "needs", "waiting", "failed", "after", "before", "again"}
+
+
+def title_lint(summary: str, language: str | None) -> list[str]:
+    """What makes a title hard to read in a list, each as one line that says what to change: over TITLE_LINT_MAX
+    characters, a path, a file name, an id-like token (an inbox id, a hash, a slug of four parts), or English words
+    where the Bridge's language is German. Only words: `add` warns and files the item all the same"""
+    text = " ".join(str(summary or "").split())
+    out = []
+    if len(text) > TITLE_LINT_MAX:
+        out.append(f"title: {len(text)} characters, at most {TITLE_LINT_MAX}: say what it is in a few words, the rest goes in --detail")
+    if _PATH_RE.search(text):
+        out.append("title: names a path: say what it is about, the path goes in --detail")
+    if _FILE_RE.search(text):
+        out.append("title: names a file: say what it is about, the file name goes in --detail")
+    if _ID_RE.search(text):
+        out.append("title: carries an id-like token: name the thing in words, the id goes in --detail or --key")
+    if str(language or "").lower().startswith("de"):
+        words = [w.lower() for w in re.findall(r"[A-Za-z]+", text)]
+        if sum(w in _ENGLISH for w in words) >= 2:
+            out.append("title: reads English, the Bridge speaks German: write the title in German")
+    return out
+
+
+def _language(root: Path) -> str | None:
+    """The Bridge's language as the cockpit reads it: cockpit.language, else language.conversation"""
+    path = root / "bridge-config.yaml"
+    try:
+        data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    own = (data.get("cockpit") or {}).get("language") if isinstance(data.get("cockpit"), dict) else None
+    conv = data.get("language")
+    conv = conv.get("conversation") if isinstance(conv, dict) else conv
+    return next((v for v in (own, conv) if isinstance(v, str) and v), None)
 
 
 _NO_TIME = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
@@ -408,6 +526,8 @@ class Inbox:
         # each see an approved item before the other's `executed` event arrived
         # through git, and a non-idempotent action (open an issue) would run twice.
         self.runner = _slug(runner, 30) if runner else None
+        self.last_new: str | None = None      # the id the last add() created, None when it was a repeat
+        self.last_ready: list = []            # the ids the last check() opened because their waits_for held
         # work/inbox → repository root: probes and actions resolve relative paths there
         self.base = self.root.parent.parent
 
@@ -502,7 +622,8 @@ class Inbox:
     def add(self, *, source: str, kind: str, summary: str, task: str | None = None,
             gate: str = "your-yes", urgency: str = "today", detail: str | None = None,
             action: dict | None = None, closes_when: dict | None = None, key: str | None = None,
-            due: str | None = None, closer: str | None = None) -> str:
+            due: str | None = None, closer: str | None = None, area: str | None = None,
+            waits_for: dict | None = None) -> str:
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {KINDS}")
         if gate not in GATES:
@@ -513,11 +634,14 @@ class Inbox:
             raise ValueError("summary is required")
         if closes_when is not None and not isinstance(closes_when, dict):
             raise ValueError("closes_when must be a probe mapping")
+        if waits_for is not None and not isinstance(waits_for, dict):
+            raise ValueError("waits_for must be a probe mapping")
         if closer is not None and closer not in CLOSERS:
             raise ValueError(f"closer must be one of {CLOSERS}")
         _check_action(action)
         if due is not None:
             _parse_when(due)            # raises ValueError on a date nobody can read
+        self.last_new = None
         if key:
             # A repeat of an open item is that item. A DROPPED key stays dropped:
             # a person said "do not tell me about this", and the next run of the
@@ -544,21 +668,23 @@ class Inbox:
             item_id = f"{stem}-{secrets.token_hex(2)}"
         data = {"schema_version": SCHEMA_VERSION, "created": now.isoformat(timespec="minutes"),
                 "from": source, "kind": kind, "summary": summary.strip(), "urgency": urgency, "gate": gate}
+        if not closes_when and not closer and not action:
+            # Nothing would end it: a person does. Filers run unattended and swallow errors, so a refusal would
+            # lose the item; until 2026-10 this only warned, and a quarter of the items never closed.
+            closer = "person"
         for name, value in (("task", task), ("due", due), ("detail", detail), ("key", key),
-                            ("action", action), ("closes_when", closes_when), ("closer", closer)):
+                            ("action", action), ("closes_when", closes_when), ("waits_for", waits_for), ("closer", closer),
+                            ("area", str(area).strip() if area else None)):
             if value:
                 data[name] = value
-        if kind in ("finding", "question") and not closes_when and not closer:
-            # A warning, not a refusal: filers run unattended and swallow errors, so a refusal
-            # would lose the finding. Pass --closes-when-json or --closer to say how it ends.
-            _warn(f"{summary.strip()[:60]!r}: no way to close (neither closes_when nor closer); "
-                  f"it stays open until a person closes it")
         _dump(self.root / item_id / "item.yaml", data)
         (self.root / item_id / "events").mkdir(exist_ok=True)
         rule = self.muted_by(source, kind, key) if urgency != "now" else None
         if rule is not None:
             # filed and dropped at once: the noise stays countable and a reopen brings it back
             self.event(item_id, "drop", by=MUTE_ACTOR, reason="muted", rule=rule["id"])
+        else:
+            self.last_new = item_id     # a new open item, not a repeat (main() places only those)
         return item_id
 
     def event(self, item_id: str, verb: str, *, by: str | None = None, **data) -> None:
@@ -578,6 +704,12 @@ class Inbox:
     def note(self, item_id: str, text: str) -> None:
         self.event(item_id, "note", text=text)
 
+    def wait(self, item_id: str, condition: dict) -> None:
+        """The item waits for `condition` (a probe) before it asks anyone; `check` makes it open once it holds."""
+        if not isinstance(condition, dict) or not condition:
+            raise ValueError("a wait needs a probe mapping")
+        self.event(item_id, "wait", waits_for=condition)
+
     def approve(self, item_id: str, when: dict | None = None, text: str | None = None) -> None:
         if when is not None:
             if self.get(item_id).gate == "only-you":
@@ -593,6 +725,26 @@ class Inbox:
         if state in ("done", "dropped"):
             raise ValueError(f"{item_id} is closed ({state}); its urgency no longer matters")
         self.event(item_id, "urgency", value=value)
+
+    def set_area(self, item_id: str, value: str, *, by: str | None = None, why: str | None = None) -> None:
+        """Give an open item its area (a workspace name), or take it back with an empty value."""
+        state = self.get(item_id).state
+        if state in ("done", "dropped"):
+            raise ValueError(f"{item_id} is closed ({state}); its area no longer matters")
+        self.event(item_id, "area", by=by, value=str(value or "").strip(), why=why)
+
+    def describe(self, item_id: str, brief: dict | None, *, by: str | None = None) -> None:
+        """Write what an open item is about (card_fields.py: goal, story, acceptance, by, at, basis, edited), or
+        take it back with None. A brief the gate finds anything wrong with is refused, nothing is written."""
+        state = self.get(item_id).state
+        if state in ("done", "dropped"):
+            raise ValueError(f"{item_id} is closed ({state}); there is nothing left to describe")
+        if brief is not None:
+            clean, errors = validate_brief(brief)
+            if errors or clean is None:
+                raise ValueError("brief: " + "; ".join(errors or ["empty"]))
+            brief = clean
+        self.event(item_id, "describe", by=by, brief=brief)
 
     def reject(self, item_id: str, note: str | None = None) -> None:
         self.event(item_id, "reject", text=note)
@@ -670,7 +822,7 @@ class Inbox:
 
     def muted_by(self, source: str, kind: str, key: str | None) -> dict | None:
         for rule in self.mutes():
-            if rule["source"] != source:
+            if source_key(rule["source"]) != source_key(source):
                 continue
             if rule.get("key_prefix") and not str(key or "").startswith(rule["key_prefix"]):
                 continue
@@ -699,7 +851,8 @@ class Inbox:
                     continue
             except ValueError:
                 continue
-            row = rows.setdefault(item.source, {"source": item.source, "filed": 0, "dropped": 0, "muted": 0,
+            # one row per source whatever its case, named as it was first written
+            row = rows.setdefault(source_key(item.source), {"source": item.source, "filed": 0, "dropped": 0, "muted": 0,
                                                 "done": 0, "open": 0, "reasons": {}})
             row["filed"] += 1
             state = item.state
@@ -746,22 +899,30 @@ class Inbox:
 
     # -------------------------------------------------- acting on the live source
     def check(self) -> list:
-        closed = []
+        """Close what `closes_when` says is done (the ids are returned) and wake what waited for a condition that
+        now holds (a `ready` event; the ids in `last_ready`). Unknown closes nothing and wakes nothing."""
+        closed, self.last_ready = [], []
         for item in self.items():
-            if item.state in ("done", "dropped") or not item.closes_when:
+            if item.state in ("done", "dropped"):
                 continue
-            if item.gate == "only-you" and _has_command(item.closes_when):
-                continue                # only-you means nothing of it executes, a probe command included
-            if probe(item.closes_when, now=self.clock(), gh=self.gh, base=self.base, item=item) is True:
-                self.event(item.id, "close", by="check", text="closes_when holds")
-                closed.append(item.id)
+            if item.closes_when and not (item.gate == "only-you" and _has_command(item.closes_when)):
+                # only-you means nothing of it executes, a probe command included
+                if probe(item.closes_when, now=self.clock(), gh=self.gh, base=self.base, item=item) is True:
+                    self.event(item.id, "close", by="check", text="closes_when holds")
+                    closed.append(item.id)
+                    continue
+            wanted = item.waits_for if item.state == "waiting" else None
+            if wanted and not (item.gate == "only-you" and _has_command(wanted)):
+                if probe(wanted, now=self.clock(), gh=self.gh, base=self.base, item=item) is True:
+                    self.event(item.id, "ready", by="check", text="waits_for holds")
+                    self.last_ready.append(item.id)
         return closed
 
     def runnable(self) -> list:
         ready = []
         for item in self.items():
-            if not item.action or item.state not in ACTIVE_STATES or item.gate == "only-you":
-                continue
+            if not item.action or item.state not in ACTIVE_STATES or item.gate == "only-you" or item.waits_for:
+                continue                # an item that waits for its condition runs nothing, a free one included
             approval = item.approval
             if item.gate == "free" and approval is None:
                 if item.last_failed:
@@ -860,11 +1021,14 @@ class Inbox:
                 problems.append(f"{where}: {exc}")
             for path in sorted((item_dir / "events").glob("*.yaml")):
                 try:
-                    verb = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("verb")
+                    event = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
                 except yaml.YAMLError:
-                    verb = None
+                    event = {}
+                verb = event.get("verb") if isinstance(event, dict) else None
                 if verb not in VERBS:
                     problems.append(f"{where}: event {path.name} has verb {verb!r}")
+                elif verb == "describe" and event.get("brief") is not None:
+                    problems += [f"{where}: describe event {path.name}: {e}" for e in validate_brief(event["brief"])[1]]
         return problems
 
 
@@ -889,6 +1053,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--kind", required=True, choices=KINDS)
     a.add_argument("--summary", required=True)
     a.add_argument("--task")
+    a.add_argument("--area", help="the workspace the item belongs to (a name from workplace.workspaces); "
+                                  "an item with a task shows the task's area")
     a.add_argument("--gate", default="your-yes", choices=GATES)
     a.add_argument("--urgency", default="today", choices=URGENCIES)
     a.add_argument("--due", help="YYYY-MM-DD or YYYY-MM-DDTHH:MM: when it happens or must be done")
@@ -896,8 +1062,10 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--key", help="dedup key: a watcher that fires again adds no second item")
     a.add_argument("--action-json")
     a.add_argument("--closes-when-json")
+    a.add_argument("--waits-for-json", help="a probe: the item waits (asks nobody) until it holds; check opens it")
     a.add_argument("--closer", choices=CLOSERS,
-                   help="who ends it when there is no probe: reporter, person or bot")
+                   help="who ends it when there is no probe: reporter, person or bot "
+                        "(default person when there is neither a probe nor an action)")
     a.add_argument("--quiet-after-close-h", type=float, default=None,
                    help="if a reader closed this key within N hours and the detail is unchanged, "
                         "record `seen` there, file nothing and print `quiet <id> <by> <at>`")
@@ -906,6 +1074,7 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--all", action="store_true")
     ls.add_argument("--json", action="store_true")
     ls.add_argument("--short", action="store_true", help="one line per item, for a phone or an e-ink screen")
+    ls.add_argument("--art", choices=ARTS, help="only one art: ask (needs you), report (how something stands), idea")
 
     sub.add_parser("show").add_argument("id")
     ap = sub.add_parser("approve", help="say yes; with --when-json it runs once the condition holds")
@@ -920,7 +1089,7 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--key", help="close every live item filed under this key instead of one id")
         if name == "drop":
             sp.add_argument("--reason", choices=DROP_REASONS,
-                            help="why: once, duplicate, family (mute this kind of the source), "
+                            help="why: once, duplicate, stale, family (mute this kind of the source), "
                                  f"source (mute the source for {MUTE_SOURCE_DAYS} days)")
     ro = sub.add_parser("reopen", help="undo a close, drop, reject, defer or a yes not run yet: the item is open again")
     ro.add_argument("id")
@@ -929,9 +1098,23 @@ def build_parser() -> argparse.ArgumentParser:
     df.add_argument("id")
     df.add_argument("--until", required=True, help="YYYY-MM-DD")
     df.add_argument("--on", default=None, help="what it waits on (\"runs on\"): a person or a run; quiet until then")
+    df.add_argument("--check", action="store_true",
+                    help="a check-in (the cockpit's In progress): with --on until the day, which then asks how it stands")
     ur = sub.add_parser("urgency", help="re-prioritise an open item")
     ur.add_argument("id")
     ur.add_argument("value", choices=URGENCIES)
+    ar = sub.add_parser("area", help="give an open item its area (a workspace name), or --clear it")
+    ar.add_argument("id")
+    ar.add_argument("value", nargs="?")
+    ar.add_argument("--clear", action="store_true")
+    de = sub.add_parser("describe", help="write what an open item is about (a brief: goal, story, acceptance), "
+                                         "or --clear it")
+    de.add_argument("id")
+    de.add_argument("--brief-json", help='{"goal": "...", "acceptance": ["..."], "by": "<model id>", ...}')
+    de.add_argument("--clear", action="store_true")
+    wt = sub.add_parser("wait", help="the item waits for a condition (a probe) before it asks anyone")
+    wt.add_argument("id")
+    wt.add_argument("--for-json", required=True, help='a probe, e.g. {"gh_pr": "contoso/portal#70", "state": "merged"}')
     nt = sub.add_parser("note")
     nt.add_argument("id")
     nt.add_argument("text")
@@ -942,7 +1125,9 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("stats", help="per source: filed, dropped by a person, muted, loudest first")
     st.add_argument("--days", type=int, default=30)
     st.add_argument("--json", action="store_true")
-    sub.add_parser("check", help="close every item whose closes_when holds")
+    sub.add_parser("check", help="close every item whose closes_when holds, open every one whose waits_for holds")
+    pb = sub.add_parser("probe", help="answer one probe, read only (never a command probe): {\"result\": true|false|null}")
+    pb.add_argument("--json", required=True, dest="spec_json", help='e.g. {"gh_pr": "org/repo#70", "state": "merged"}')
     rn = sub.add_parser("run", help="execute released actions (free, yes, or yes-once-condition)")
     rn.add_argument("--dry-run", action="store_true")
     sub.add_parser("render", help="regenerate work/inbox.md")
@@ -1024,6 +1209,40 @@ def _settings(root: Path) -> dict:
     return block if isinstance(block, dict) else {}
 
 
+def _place_later(root: Path, item_id: str) -> None:
+    """Start `workplace.py place` for a new item, detached: a filer (a watcher, a hook) must never wait
+    on a model, and a router that fails or is not configured leaves the item as it was, without an area."""
+    argv = [sys.executable, str(ROOT / "scripts" / "workplace.py"), "--root", str(root),
+            "place", "--pending", "--quiet"]
+    try:
+        # --pending: a burst of new items (a watcher filing twenty) still makes one placer and one router call
+        subprocess.Popen(argv, cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as exc:
+        _warn(f"{item_id}: could not start placing it in an area ({exc})")
+
+
+def area_name(root: Path, value: str | None) -> str | None:
+    """The workspace name an area means (name or alias, whatever its case), as the task areas resolve. Without
+    configured workspaces the value stands as written; one that names none of them raises ValueError."""
+    want = str(value or "").strip()
+    if not want:
+        return None
+    path = root / "bridge-config.yaml"
+    try:
+        data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
+    except (OSError, yaml.YAMLError):
+        data = {}
+    spaces = [ws for ws in ((data.get("workplace") or {}) if isinstance(data, dict) else {}).get("workspaces") or ()
+              if isinstance(ws, dict) and isinstance(ws.get("name"), str) and ws["name"].strip()]
+    if not spaces:
+        return want
+    for ws in spaces:
+        if want.casefold() in [str(n).strip().casefold() for n in [ws["name"], *(ws.get("aliases") or [])] if n]:
+            return ws["name"].strip()
+    raise ValueError(f"{want!r} is no area here (workplace.workspaces: {', '.join(w['name'] for w in spaces)})")
+
+
 def _runner(root: Path) -> str | None:
     return _settings(root).get("runner")
 
@@ -1035,6 +1254,14 @@ def _all_clear(root: Path) -> tuple:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd == "probe":
+        # read only: no item, no event, no actor; a command probe or no mapping is refused
+        try:
+            print(json.dumps({"result": probe_once(json.loads(args.spec_json), base=args.root)}))
+        except ValueError as exc:
+            print(f"inbox.py probe: {exc}", file=sys.stderr)
+            return 2
+        return 0
     actor = args.by or _default_actor()
     box = Inbox(args.root / "work" / "inbox", actor=actor, runner=_runner(args.root), all_clear=_all_clear(args.root))
     try:
@@ -1044,12 +1271,25 @@ def main(argv=None) -> int:
             box.event(item.id, "seen", summary=args.summary)
             print(f"quiet {item.id} {closed.by} {closed.at}")
         elif args.cmd == "add":
+            # a title a person reads in a list (stage 4): warned about, never refused
+            for line in title_lint(args.summary, _language(args.root)):
+                _warn(line)
+            try:
+                args.area = area_name(args.root, args.area)
+            except ValueError as exc:
+                # a filer runs unattended: an unknown area is warned about and left out, never a lost item
+                _warn(f"{exc}; filed without an area")
+                args.area = None
             print(box.add(source=args.source, kind=args.kind, summary=args.summary, task=args.task,
                           gate=args.gate, urgency=args.urgency, detail=args.detail, key=args.key, due=args.due,
                           action=_json_arg(args.action_json), closes_when=_json_arg(args.closes_when_json),
-                          closer=args.closer))
+                          closer=args.closer, area=args.area, waits_for=_json_arg(args.waits_for_json)), flush=True)
+            if box.last_new and not args.task and not args.area and _settings(args.root).get("place_on_add") is True:
+                _place_later(args.root, box.last_new)
         elif args.cmd == "list":
             items = box.items() if args.all else box.open_items()
+            if args.art:
+                items = [i for i in items if art_of(i) == args.art]
             if args.json:
                 print(json.dumps([i.as_dict() for i in items], ensure_ascii=False, indent=1))
             elif args.short:
@@ -1101,15 +1341,31 @@ def main(argv=None) -> int:
             (args.root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")
         elif args.cmd == "defer":
             dt.date.fromisoformat(args.until)
-            box.event(box.resolve(args.id), "defer", until=args.until, **({"waits_on": args.on} if args.on else {}))
+            if args.check and not args.on:
+                print("inbox: a check-in names who has it: --check needs --on", file=sys.stderr)
+                return 2
+            box.event(box.resolve(args.id), "defer", until=args.until, **({"waits_on": args.on} if args.on else {}),
+                      **({"check": True} if args.check else {}))
         elif args.cmd == "urgency":
             box.set_urgency(box.resolve(args.id), args.value)
             (args.root / "work" / "inbox.md").write_text(box.render(), encoding="utf-8")
+        elif args.cmd == "area":
+            if args.clear == bool((args.value or "").strip()):
+                raise ValueError("give an area or --clear, not both and not neither")
+            box.set_area(box.resolve(args.id), "" if args.clear else area_name(args.root, args.value))
+        elif args.cmd == "describe":
+            if args.clear == bool(args.brief_json):
+                raise ValueError("give --brief-json or --clear, not both and not neither")
+            box.describe(box.resolve(args.id), None if args.clear else _json_arg(args.brief_json))
         elif args.cmd == "note":
             box.note(box.resolve(args.id), args.text)
+        elif args.cmd == "wait":
+            box.wait(box.resolve(args.id), _json_arg(args.for_json))
         elif args.cmd == "check":
             for item_id in box.check():
                 print(f"closed {item_id}")
+            for item_id in box.last_ready:
+                print(f"ready {item_id}")
         elif args.cmd == "run":
             report = box.run_report(dry_run=args.dry_run)
             if report["skipped"]:

@@ -25,12 +25,12 @@ keeps its own user data separate.
 
 > **Note:** This instance uses the cluster-wrapper layout
 > (`identity/`, `infra/`, `workflow/`). Other instances may stay on
-> the older layout — see [`CLAUDE.md`](../CLAUDE.md) section
+> the older layout — see [`AGENTS.md`](../AGENTS.md) section
 > "Layout — Cluster-Wrappers".
 
 > **Related but not identical:** Multi-instance describes
 > **several Bridges side by side**, all pulling from the same upstream.
-> The tier model (see CLAUDE.md § Tier Model) has a different focus:
+> The tier model (see [`docs/org-overlays.md`](org-overlays.md)) has a different focus:
 > **one** Bridge with *two* upstreams (open-bridge = OSS layer,
 > `<your-org>/<your-bridge>` = your org overlay) and a multi-upstream
 > promote flow (`/promote` routes `scope:core` to open-bridge,
@@ -142,7 +142,7 @@ git remote add upstream https://github.com/bks-lab/open-bridge.git
 
 > **Note:** Public OSS upstream is `bks-lab/open-bridge`. Org-internal
 > users may set upstream to `<your-org>/<your-bridge>` (a private fork
-> that layers org-specific skills on top). See CLAUDE.md
+> that layers org-specific skills on top). See [`docs/org-overlays.md`](org-overlays.md)
 > § Tier Model for the multi-upstream pattern.
 
 Both instances run `git fetch upstream main` + `git merge` for
@@ -173,7 +173,7 @@ see [Capability Isolation](#capability-isolation) below.
 - **USER paths** (bridge-config.yaml, workflow/contexts/, work/, .claude/agents/,
   infra/channels/, infra/remotes/, identity/mandants/, workflow/calendars/) live only on `user/{name}`
 - If you never push `user/{name}`, none of that data leaves your machine
-- CORE paths (CLAUDE.md, docs/, templates, commands) contain no
+- CORE paths (AGENTS.md, docs/, templates, commands) contain no
   organization-specific data
 
 **What stays local in a local-only instance:**
@@ -253,7 +253,7 @@ channel](skill-distribution-architecture.md#why-the-user-level-is-not-a-distribu
 
 **What you gain:**
 - Full data isolation between organizations
-- Each instance has its own context window (no CLAUDE.md bloat)
+- Each instance has its own context window (no always-on bloat)
 - Each organization gets the full Bridge feature set independently
 - Local-only instances give git-backed work tracking to projects that
   previously had no version-controlled logs

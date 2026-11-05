@@ -2,8 +2,10 @@
 #
 # Validates `work/inbox/<id>/item.yaml`, the file `scripts/inbox.py add` writes
 # once and never changes. Events under `work/inbox/<id>/events/` are validated
-# by `python3 scripts/inbox.py validate` (their verb must be one of the nine
-# below). The contract is scripts/inbox.py; this schema mirrors it.
+# by `python3 scripts/inbox.py validate` (their verb must be one of
+# inbox.VERBS; a `describe` event carries a `brief` as `$defs/brief`, the
+# same shape as the `brief:` block of a STATUS.md, and a `wait` event a probe
+# as `waits_for`). The contract is scripts/inbox.py; this schema mirrors it.
 #
 # Related:
 #   - work/templates/inbox-item.yaml  (annotated example)
@@ -34,6 +36,7 @@ properties:
     description: "Who filed it: a machine/job, an agent or a tab"
   kind:
     enum: [decision, question, finding, draft, result, idea]
+    description: "What it is. Its art is derived, never stored: decision, question, draft are an ask; finding, result a report; idea an idea (docs/inbox.md § Arts)"
   summary:
     type: string
     minLength: 1
@@ -50,6 +53,9 @@ properties:
     type: string
     pattern: "^[a-z][a-z0-9-]*$"
     description: "Slug of the task or stream it belongs to"
+  area:
+    type: string
+    description: "The area (a workplace.workspaces name) of an item without a task; a later `area` event replaces it. With a task, the task's area counts"
   due:
     type: string
     description: "YYYY-MM-DD or YYYY-MM-DDTHH:MM"
@@ -72,12 +78,77 @@ properties:
         type: string
   closes_when:
     $ref: "#/$defs/probe"
+  waits_for:
+    $ref: "#/$defs/probe"
+    description: "Optional: the item asks nobody (state waiting) until this probe holds; `check` then records a `ready` event and the item is open. Unknown keeps it waiting. A `wait` event sets it on an item already filed (docs/inbox.md, Waiting for a condition)"
   closer:
     type: string
     enum: [probe, reporter, person, bot]
-    description: "Who ends the item when it has no probe: the reporter (closes by key once the condition is gone), a person, or a watcher bot. An item with neither closes_when nor closer has no way out; `add` warns."
+    description: "Who ends the item when it has no probe: the reporter (closes by key once the condition is gone), a person, or a watcher bot. `add` files an item with neither closes_when, closer nor action as `person`, so none is left without a way out."
 
 $defs:
+  brief:
+    type: object
+    additionalProperties: false
+    required: [goal]
+    description: |
+      What was written about an item: a goal, an optional user story and the
+      acceptance criteria, plus who wrote it, when and against which text.
+      One shape in two places, the `brief:` block of a STATUS.md and the
+      `describe` event of an inbox item. The gate every writer passes is
+      scripts/lib/bridge_cockpit/card_fields.py validate_brief; its
+      BRIEF_LIMITS are the limits below. No text holds a dash as punctuation.
+    properties:
+      name:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: |
+          Stage 4 of the cockpit's one point view: what the item is, as a person
+          names it in a list, at most about 7 words (card_fields.py allows 8),
+          everyday words; never a path, an issue or ticket number or a file name.
+          The page shows it where a title is a slug or longer than 60 characters.
+      stand:
+        type: string
+        minLength: 1
+        maxLength: 140
+        description: "Stage 4: one sentence, where the item stands now and why it is here"
+      goal:
+        type: string
+        minLength: 1
+        maxLength: 140
+        description: "One sentence: what is true once the item is done"
+      story:
+        type: object
+        additionalProperties: false
+        required: [as, want, so_that]
+        description: "Optional user story: as <who>, I want <what>, so that <why>"
+        properties:
+          as: {type: string, minLength: 1, maxLength: 80}
+          want: {type: string, minLength: 1, maxLength: 80}
+          so_that: {type: string, minLength: 1, maxLength: 80}
+      acceptance:
+        type: array
+        minItems: 0
+        maxItems: 5
+        items: {type: string, minLength: 1, maxLength: 120}
+        description: "Testable outcomes, not steps. A stream has none"
+      by:
+        type: string
+        pattern: "^(?=.*[0-9])[A-Za-z0-9][A-Za-z0-9._:/@-]*$"
+        description: "The model id exactly as the run's modelUsage reports it, never an alias such as haiku"
+      at:
+        type: string
+        format: date
+        description: "The day it was written"
+      basis:
+        type: string
+        pattern: "^[0-9a-f]{16}$"
+        description: "sha256 prefix of the STATUS.md text without this block (card_fields.brief_basis): a brief whose basis differs from the file's is stale"
+      edited:
+        type: boolean
+        description: "true once a person changed it; a model then never rewrites it unasked"
+
   probe:
     type: object
     minProperties: 1

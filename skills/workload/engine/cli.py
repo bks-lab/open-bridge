@@ -245,6 +245,10 @@ def _hollow_failure_promises(workloads, root) -> list:
     """
     findings = []
     for workload in workloads:
+        # Retired: switched off on purpose, its script never runs, so a promise
+        # about its failures has nobody left to break.
+        if getattr(workload, "is_retired", False):
+            continue
         response = getattr(workload, "response", None)
         if "failure" not in (getattr(response, "notify_on", None) or ()):
             continue

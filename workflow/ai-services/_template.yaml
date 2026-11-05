@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=./_schema.yaml
 # One consumer's AI selection. Copy to <id>.yaml; absent files keep Claude.
-# Built-in consumers: briefing-chat, task-review, triage.
+# Built-in consumers and the providers each can run: python3 scripts/ai-run.py --list
+# (docs/ai-services.md). A provider a consumer cannot run keeps it off and shows as a gap.
 # Workers opt in with scripts/ai-run.py --service <id>.
 schema_version: 1
 scope: user

@@ -1,7 +1,7 @@
 ---
 summary: "Plan the day's work as workspaces with one agent tab per task, and steer the tabs from one place, through a driver so the same Bridge works with any terminal tool or none."
 type: guide
-last_updated: 2026-10-17
+last_updated: 2026-10-30
 related:
   - ../scripts/workplace.py
   - ../scripts/task.py
@@ -32,6 +32,9 @@ python3 scripts/workplace.py adopt <tab> <slug> # name an open tab after its tas
 python3 scripts/workplace.py rename <ref> -- <title>            # name one tab of your own (its live ref only)
 python3 scripts/workplace.py rename-workspace <ws_ref> -- <title> # name one workspace (its live ref only)
 python3 scripts/workplace.py control --yes      # a new agent tab in the control workspace (workplace.control.command, default claude)
+python3 scripts/workplace.py new-tab <ws_ref> [--kind agent|shell] [--text=<first sentence>]   # one new chat or shell in a workspace
+python3 scripts/workplace.py new-workspace --title=<title> [--kind agent|shell|none] [--cwd=<folder>]   # one new workspace
+python3 scripts/workplace.py close-workspace <ws_ref>   # close a workspace and what runs in it (only when you ask)
 ```
 
 ## Plan and driver are separate on purpose
@@ -91,7 +94,7 @@ workplace:
                                      # agent there when a driver creates the workspace
   workspaces:
     - {name: Bigcorp, contexts: [bigcorp], color: "#1565C0", description: "client work for Bigcorp"}
-    - {name: Platform, slugs: ["platform-*"], aliases: [Infra]}
+    - {name: Platform, slugs: ["platform-*"], aliases: [Infra], repos: ["example-org/*"]}
     - {name: Misc, default: true}
   limits: {max_workspaces: 4, max_tabs: 3, stale_days: 10, activity_days: 7}
   tab_names: {payments-incident: Payments}
@@ -104,7 +107,15 @@ workplace:
 A workspace entry takes `name` (required), `contexts` and `slugs` (which tasks go
 there), `default`, `color`, `description` (one line a router reads to place work)
 and `aliases` (other titles under which the terminal may already show that
-workspace, so an existing one is reused rather than opened twice).
+workspace, so an existing one is reused rather than opened twice) and `repos`
+(owner/repo globs, any case: an issue or pull request of a matching repository that
+has no area of its own stands in this workspace's area on the cockpit's start page
+and under its area filter; the first workspace that matches wins).
+
+A task can name its workspace itself with `area:` in its STATUS.md head (a
+workspace's `name` or one of its `aliases`, any case). That wins over `slugs` and
+`contexts`; an `area:` that names no workspace is ignored and the rules decide.
+The cockpit's start page groups its areas by the same match.
 
 `agent.new` gets `{slug}` and `{prompt}` (a short instruction to read the task's
 STATUS.md, log rows, commits and open inbox items, report in eight lines and wait),
@@ -126,7 +137,7 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "caps"}` | `{"caps": ["tabs", "sessions", "open", "launch", "send", "rename", ...]}`: the verbs this driver serves. A driver that answers no `caps` counts as serving the six above |
 | `{"verb": "focus", "tab": ref}` | `{"report": [...]}`: the tab comes to the front |
 | `{"verb": "key", "tab": ref, "key": k}` | `{"report": [...]}`: one key into the tab, `k` one of `enter`, `escape`, `y`, `n`, `1` to `9` |
-| `{"verb": "screen", "tab": ref, "lines": n}` | `{"text": "..."}`: the last `n` lines the tab shows, plain text, read only |
+| `{"verb": "screen", "tab": ref, "lines": n}` | `{"text": "..."}`: the last `n` lines the tab shows, plain text, read only. `workplace.py screen` and both shipped drivers let up to 5000 lines through (a shell tab's whole scrollback, which the cockpit's tab history reads; the tab view asks for 400). A tab with an agent shows only its repainted screen, whatever `n` is |
 | `{"verb": "close", "tab": ref}` | `{"report": [...]}`: closes that one tab, only ever on an explicit request |
 | `{"verb": "workspaces"}` | `{"workspaces": [{"ref", "title", "color", "color_name", "description", "pinned", "cwd", "branch", "dirty", "pr", "unread", "latest", "statuses"}]}`: the workspaces as the terminal shows them, read only (`workplace.py workspaces --json`; the cockpit's chat as cmux) |
 | `{"verb": "control", "control": {...}, "command": "...", "root": "..."}` | `{"report": [...]}`: a new agent tab in the control workspace, which is created when it is missing (`workplace.py control --yes`) |
@@ -134,17 +145,22 @@ the same shape `agents/_runtime/approval.py` uses for owner approval:
 | `{"verb": "move_tab", "tab": ref, "workspace": ws_ref, "index": n}` | `{"report": [...]}`: one tab into another workspace, nothing focused; `index` (from 0) is optional (cmux: `move-surface --focus false`; tmux: `move-window -d` into the session, without an index). The last tab of a workspace is never moved (an `ERROR` line instead): the terminal would drop the emptied workspace |
 | `{"verb": "set_color", "workspace": ws_ref, "color": name or null}` | `{"report": [...]}`: a palette colour by its name (see below), `null` takes the colour off (cmux: `workspace-action set-color` with the hex, `clear-color`; tmux has none) |
 | `{"verb": "set_description", "workspace": ws_ref, "text": "..." or null}` | `{"report": [...]}`: one line of description, `null` takes it off (cmux: `workspace-action set-description`, `clear-description`; tmux has none) |
+| `{"verb": "new_tab", "workspace": ws_ref, "title": "..." or null, "command": "..." or null}` | `{"report": [...], "ref": "<the new tab>"}`: one new tab in that workspace, nothing focused. No `command` is a plain shell; a `command` is sent the way `launch` sends it (cmux: `new-surface --focus false`, the start marker awaited; tmux: `new-window -d` into the session by its id). The answer carries the ref of a tab that exists, also when its command did not start (an `ERROR` line says so) |
+| `{"verb": "new_workspace", "title": "...", "color": name or null, "cwd": "..." or null, "command": "..." or null}` | `{"report": [...], "ws_ref": "<the workspace>", "ref": "<its first tab>"}`: one new workspace with its first tab, nothing focused; `cwd` defaults to the Bridge folder, a colour is a palette name (cmux: `workspace create`, then `set-color`; tmux: `new-session -d`, which has no colour and refuses one, and refuses a name another session has) |
+| `{"verb": "close_workspace", "workspace": ws_ref}` | `{"report": [...]}`: closes that one workspace and what runs in it, only on an explicit request, and never the last workspace of a window (cmux) or of the server (tmux): an `ERROR` line instead (cmux: `close-workspace`; tmux: `kill-session`) |
+
+| `{"verb": "keys", "tab": ref, "keys": [{"text": "..."}, {"key": name}, {"paste": "..."}]}` | `{"report": [...]}`: a keyboard, in order, for the live terminal of the cockpit. `text` is typed as it is, `paste` goes in whole with its lines, `key` is one of `TERM_KEYS` in `workplace.py`: enter, escape, tab, shift+tab, backspace, delete, the four arrows, home, end, pageup, pagedown, ctrl+a to ctrl+z. It must also type into a prompt that holds text and into an open dialog (cmux: `send --force`, `send-key --force`; tmux: `send-keys`). `workplace.py` checks the list before a driver sees it: text holds no control code, so no escape sequence comes through this door |
 
 Every verb after `caps` is optional. A terminal that cannot do one leaves it out of
 `caps`, and whoever steers the tabs (`workplace.py`, the cockpit) offers only
 what the driver serves. With them the cockpit steers any terminal the same way:
-jump to a tab, answer a question with a key, read what a tab shows, close a
-finished one. A `ref` is the driver's own name for a tab (`surface:3` in cmux,
+jump to a tab, answer a question with a key, read what a tab shows, type into it
+as a keyboard does, close a finished one, open a chat or a shell, open or close a workspace. A `ref` is the driver's own name for a tab (`surface:3` in cmux,
 `%3` in tmux): letters, digits and `:%_.@/-`, at most 64 characters.
 
 Rules every driver keeps: it never closes a tab or a workspace on its own (only
-`close`, which a person asked for); a tab that is already
-open is reused, never opened twice; `here` is the calling tab, which becomes the
+`close` and `close_workspace`, which a person asked for); a tab the plan has open already
+is reused, never opened twice (`new_tab` and `launch` open one on purpose); `here` is the calling tab, which becomes the
 control tab and moves last so no workspace is ever left empty. A driver that fails or
 answers something unreadable is reported as a line, never raised, so the plan always
 stands. A step the terminal refused is a report line starting with `ERROR`, never a
@@ -190,6 +206,38 @@ stores for each:
 A workspace in the `workspaces` answer reports its colour as the hex (`color`) and,
 for a palette hex, its name (`color_name`, `null` for any other colour). Colours are
 compared by that name, never by the hex as typed.
+
+Three commands open and close, again by live refs only (exit 2 for a name, a part of one, a ref that is
+not open, a verb the driver does not announce in its `caps`, a title that does not pass the rules of
+`rename`, a sentence it cannot carry). They check everything before the driver is asked to make or close
+anything; a driver that fails or refuses (an `ERROR` line) is exit 1:
+
+```bash
+python3 scripts/workplace.py new-tab workspace:2 --kind shell --title=Scratch --json
+python3 scripts/workplace.py new-tab workspace:2 --text="Why is the build red?" --model sonnet
+python3 scripts/workplace.py new-workspace --title=Research --color Teal --cwd=/path/to/folder --json
+python3 scripts/workplace.py close-workspace workspace:3
+```
+
+`new-tab WS_REF` opens one tab in that workspace, `new-workspace --title=T` one workspace with its first tab,
+`close-workspace WS_REF` closes a workspace and what runs in it. The free texts (`--title`, `--text`) are glued
+to their flag, so a dash at the start is no flag. A title follows the rules of `rename`: not a name the workplace
+manages (a task, inbox or team tab, a configured workspace) and not one in use. `--cwd` is an absolute folder that
+exists; `--color` a palette name, and the driver must serve `set_color`.
+
+`--kind agent` (the default) starts the configured agent, `workplace.agent.new`, the way `launch` does: `--model`,
+`--effort` and the `agent.model` and `agent.effort` defaults work the same. What differs is the prompt. A free chat
+has no task, so `--text` is the person's first sentence and the agent's whole prompt, quoted for the shell, or there
+is no prompt at all and the `{prompt}` slot goes with its blank. A sentence needs that slot in the template (otherwise
+it is refused, the words would be lost); one that starts with a dash is put after `--`. The tab carries
+`BRIDGE_TAB_SLUG=chat-<8 hex>` like any agent tab, so it is no control session and takes no question of the
+cockpit, and it starts in the Bridge folder (in the `--cwd` folder for a workspace). `--kind shell` starts no
+command, the terminal's own shell; a workspace also takes `--kind none`, which is the same thing, since a terminal
+cannot make a workspace without a tab. `--text` is for an agent only.
+
+With `--json` the answer is `{"ok": bool, "report": [...], "ref": ..., "ws_ref": ...}` and carries the new refs
+(`ref` for a tab, `ws_ref` and `ref` for a workspace), also when a step went wrong after the tab was made
+(exit 1, `ok` false): the tab exists, and the caller may open it.
 
 A driver ships as an optional skill or with the tool itself; the plan never
 imports it. `skills/cmux` is the reference driver, active only where cmux is
@@ -250,7 +298,7 @@ it reaches the briefing and every other reader.
 |---|---|
 | `tab` (default) | the workspace of the calling tab (`--here`, else the caller the driver reports); the cmux driver refuses when it cannot find one and never falls back to the selected workspace |
 | `workspace` | one new workspace per item, named after its label |
-| `area` | the workspace of the item's area, the same one `open` would choose (`workspaces:` by slug, then context, then the default): a task by its own STATUS, an inbox item by the task it is linked to, an unlinked inbox item into the default workspace. A missing area workspace is created once, found by `name` or any of its `aliases`, and the tab goes into it as a named tab |
+| `area` | the workspace of the item's area, the same one `open` would choose (`workspaces:` by the task's `area:`, then slug, then context, then the default): a task by its own STATUS, an inbox item by the task it is linked to, an unlinked inbox item into the default workspace. A missing area workspace is created once, found by `name` or any of its `aliases`, and the tab goes into it as a named tab |
 | `auto` | a router decides area and own workspace per item (below); the driver then gets `workspace` for the items that get their own and `area` for the rest |
 
 The driver receives, per tab, `label` (the tab title), `slug` (the agent session
@@ -310,10 +358,23 @@ command to start by hand. The relay mod `mods/cockpit-relay` reads `BRIDGE_TAB_S
 itself: in a launched tab it never heartbeats, so an agent tab never takes the
 cockpit's questions.
 
-`workplace.py tasks [--json]` lists every active task flat, sorted by priority and then
+The same router places inbox items: `workplace.py place --items <id>[,<id>]` or
+`place --unplaced` (every open item with neither a task nor an area) asks it once which
+workspace each item belongs to and writes the answer as the item's `area`
+([`inbox.md`](inbox.md)); `--dry-run` writes nothing. `inbox.py add` starts
+`place --pending` for a new item when `inbox.place_on_add` is true: after a short wait, one
+placer at a time (a lock in `.bridge/cache/`). The router runs in the repository root. An inbox item without a task then launches into
+its area's workspace instead of the default one.
+
+`workplace.py tasks [--json] [--all]` lists every active task flat, sorted by priority and then
 activity: label, area, priority, score, `blocked_by`, and `stale` (no activity for longer
 than `limits.stale_days`). `propose` decides which of them get a tab today; `tasks` is the
-whole list, for any UI or script that drives `workplace.py`.
+whole list, for any UI or script that drives `workplace.py`. Each row also carries what a
+card is written from: the `brief:` block as a mapping, the `headline`, `next_who` and
+`next_due` of a `next:` mapping, and `progress` {done, total} counted from the `- [x]` and
+`- [ ]` lines of the body (none without a checklist), and `placeholder`, true while an open line
+still reads as the template's first step ("First step", "First action"). `--all` adds the
+backlog; the day plan never sees it.
 
 ## Teams: several role tabs on one task
 
