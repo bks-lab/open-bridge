@@ -18,6 +18,8 @@ script checks every promise in it against the sources that decide them:
   how       each `via:` file exists and names what it links: an `@`-line for an
             import, the path or command for the rest
   who       an import and a listing reach sub-agents; Phase 0/1 reads never do
+  retired   no file still carries a key the manifest retires (`retired:`), and
+            the finding names the migration that removes it
 
 A contradiction the project knows about is not hidden: the entry carries a
 `debt:` with a reason and an `until`, which this script prints on every run. A
@@ -69,6 +71,8 @@ class Context:
     tier_of: Callable[[str], str]         # the scope router
     kernel_files: list[str]               # every file under kernel/
     core_checkout: bool                   # no bridge-config.yaml: the CORE repo itself
+    retired: list[dict] = field(default_factory=list)   # keys no file may carry any more
+    moved: list[dict] = field(default_factory=list)     # kernel paths that moved: old -> new
 
 
 @dataclass
@@ -202,7 +206,8 @@ def _check_entry(ctx: Context, entry: dict) -> tuple[list[str], dict[str, str]]:
             # A link to AGENTS.md is one manual for both tools, not a shadow
             # (measure-context.py and migrate-entry-file.py read it the same way).
             if present and not alias:
-                plain.append("must stay absent, and it exists")
+                note = f" ({entry['note']})" if entry.get("note") else ""
+                plain.append(f"must stay absent, and it exists{note}")
         elif not present and not entry.get("optional"):
             plain.append("is missing")
         if tier != "mixed" and ctx.tier_of(value) != tier:
@@ -264,6 +269,28 @@ def _check_entry(ctx: Context, entry: dict) -> tuple[list[str], dict[str, str]]:
     return plain, debtable
 
 
+def _own_files_naming_moved(ctx) -> list[tuple[str, dict]]:
+    """An instance's own live files that still name a kernel path that moved.
+
+    The answer comes from scripts/migrate-kernel.py itself (its file list, its
+    matcher, its rules: no CORE file, no record of the past, no code, no
+    ignored folder), so whatever this reports, `migrate-kernel.py --write`
+    fixes, and a green check after the fix is guaranteed rather than hoped for.
+    Accepts a Context or a repo root.
+    """
+    root = Path(ctx.root if isinstance(ctx, Context) else ctx)
+    moved = ctx.moved if isinstance(ctx, Context) else None
+    if isinstance(ctx, Context) and not moved:
+        return []
+    mk = _load("migrate_kernel_for_check", "migrate-kernel.py")
+    pairs = None if moved is None else [(m["old"], m["new"]) for m in moved if m.get("old") and m.get("new")]
+    plan = mk.plan_moves(root, pairs)
+    if not plan.files:
+        return []
+    return [(rel, {"old": ", ".join(o for o, _ in plan.moves), "new": ", ".join(n for _, n in plan.moves)})
+            for rel in plan.files]
+
+
 def evaluate(ctx: Context) -> Report:
     report = Report()
     described: set[str] = {MANIFEST}
@@ -300,6 +327,34 @@ def evaluate(ctx: Context) -> Report:
         if not any(_covers(e, rel) and e.get("read") == "import" for e in ctx.entries if _subject(e)):
             report.problems.append(f"{rel}: an @-line imports it, but {MANIFEST} has no "
                                    "read: import entry for it")
+    for item in ctx.retired:
+        missing = [k for k in ("file", "key", "reason", "fix") if not str(item.get(k) or "").strip()]
+        if missing:
+            report.problems.append(f"retired entry {item!r}: needs {', '.join(missing)}")
+            continue
+        # `file` may be a glob (every registry); a CORE file is upstream's to fix.
+        for rel in sorted(p.relative_to(ctx.root).as_posix() for p in ctx.root.glob(item["file"])
+                          if p.is_file()):
+            text = _read(ctx.root, rel)
+            if (text is not None and ctx.tier_of(rel) != "core"
+                    and re.search(rf"^{re.escape(item['key'])}:", text, re.MULTILINE)):
+                report.problems.append(f"{rel}: carries the retired key {item['key']} "
+                                       f"({item['reason']}); run `{item['fix']}`")
+        # The instance's own card for that file must stop keeping the key.
+        budget = _read(ctx.root, USER_BUDGET)
+        if budget:
+            try:
+                cards = (yaml.safe_load(budget) or {}).get("items") or {}
+            except yaml.YAMLError:
+                cards = {}
+            for name, spec in cards.items():
+                keep = ((spec or {}).get("card") or {}).get("keep") or []
+                if fnmatch.fnmatchcase(str(name), item["file"]) and item["key"] in keep:
+                    report.problems.append(f"{USER_BUDGET}: the card of {name} still keeps the "
+                                           f"retired key {item['key']}; run `{item['fix']}`")
+    for rel, move in _own_files_naming_moved(ctx):
+        report.problems.append(f"{rel}: names {move['old']}, which moved to {move['new']}; "
+                               "run `python3 scripts/migrate-kernel.py --write`")
     for rel in ctx.kernel_files:
         if rel not in described:
             report.problems.append(f"{rel}: kernel/ is CORE and holds only what {MANIFEST} "
@@ -373,6 +428,8 @@ def gather(root: Path) -> Context:
         tier_of=tier_of,
         kernel_files=kernel_files,
         core_checkout=not (root / "bridge-config.yaml").exists(),
+        retired=list(manifest.get("retired") or []),
+        moved=list(manifest.get("moved") or []),
     )
 
 

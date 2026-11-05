@@ -828,7 +828,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     # Registered 2026-10-30 with AGENTS.md as the only entry file: the
     # migration for a fork's CLAUDE.md, and the tests that hold the entry
     # file, the setup version warning and the dead CLAUDE.md links; then with
-    # the kernel rewrite, the invariants AGENTS.md plus docs/families.md keep.
+    # the kernel rewrite, the invariants AGENTS.md plus kernel/families.yaml keep.
     "scripts/migrate-entry-file.py",
     "scripts/tests/test_claude_md_links.py",
     "scripts/tests/test_entry_file.py",
@@ -844,6 +844,10 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_check_kernel.py",
     "scripts/tests/test_docs_tier.py",
     "scripts/tests/test_migrate_docs_tier.py",
+    # Registered 2026-11-05 with kernel/families.yaml and the manifest's
+    # `retired:` keys: the one-time removal of a retired key from a fork.
+    "scripts/migrate-kernel.py",
+    "scripts/tests/test_migrate_kernel.py",
 })
 
 
@@ -907,7 +911,7 @@ ROOT_CORE = frozenset({
 #   - rules/ is top-level files only; a subfolder is a tier and an unknown one
 #     stays user.
 #   - kernel/ is enumerated, not a folder: only the files it names ship (today
-#     kernel/manifest.yaml). Any other file there stays user, fail closed, and
+#     kernel/manifest.yaml, kernel/families.yaml). Any other file there stays user, fail closed, and
 #     check-kernel.py fails on it (docs/kernel.md).
 #   - agents/ ships its runtime, template, gateway and tests; every
 #     agents/<name>/ instance is user (USER_PATTERNS).
@@ -915,7 +919,7 @@ ROOT_CORE = frozenset({
 #     .claude/agents/ route by declared scope.
 CORE_PATTERNS_RE = re.compile(
     r"^(?:docs|protocols|trackers|themes|mods|examples|\.github|bin)/"
-    r"|^kernel/manifest\.yaml$"                  # kernel/ is ENUMERATED: only what it names ships
+    r"|^kernel/(?:manifest|families)\.yaml$"     # kernel/ is ENUMERATED: only what it names ships
     r"|^\.(?:claude|agents)/skills/"             # discovery symlink: skills/ routes by its own scope
     r"|^\.claude/agents/"                         # sub-agents; a declared scope already answered above
     r"|^rules/[^/]+\.md$"

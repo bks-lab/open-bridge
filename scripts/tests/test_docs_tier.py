@@ -96,6 +96,8 @@ def test_kernel_ships_only_the_files_it_names(tree):
     _write(tree, "kernel/stray.md", _doc("user"))
     _write(tree, "kernel/notes.yaml", "a: 1\n")
     assert cc.classify_file("kernel/manifest.yaml") == "core"
+    _write(tree, "kernel/families.yaml", "families: []\n")
+    assert cc.classify_file("kernel/families.yaml") == "core"
     assert cc.classify_file("kernel/stray.md") == "user"
     assert cc.classify_file("kernel/notes.yaml") == "user"
 

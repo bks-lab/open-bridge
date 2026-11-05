@@ -27,7 +27,7 @@ SLOTS = [
     "identity/agent/INSTANCE.md",
 ]
 # The slots, then the generated family index, in this order (Step 2, B1).
-IMPORTS = [*SLOTS, "docs/families.md"]
+IMPORTS = [*SLOTS, "kernel/families.yaml"]
 CODEX_CUT = 32768
 POINTERS = ["GEMINI.md", ".github/copilot-instructions.md"]
 

@@ -259,7 +259,7 @@ jobs:
       # A sub-agent loads the entry file, its @-imports and the listings, and
       # no Phase 1: no standing order, no registry card. A family named only in
       # an eager order is resident in the session and invisible to every
-      # dispatch. CORE names its families in docs/families.md, which AGENTS.md
+      # dispatch. CORE names its families in kernel/families.yaml, which AGENTS.md
       # imports, so this passes by construction once the index is imported.
       - name: Every config family is reachable from a sub-agent too
         run: python3 scripts/check-reachability.py --surface subagent
@@ -271,7 +271,7 @@ jobs:
 
       # One picture of the data model, held to the tree: every config family
       # is described exactly once in docs/data-model.yaml, and the tables in
-      # docs/data-model.md, the ring on the landing page and docs/families.md
+      # docs/data-model.md, the ring on the landing page and kernel/families.yaml
       # (imported by AGENTS.md) are generated from it; it also checks every
       # route/skill/guide field and guards the AGENTS.md kernel sections.
       # The landing page said "the agent reads every ring" for weeks after

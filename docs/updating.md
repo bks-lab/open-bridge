@@ -11,6 +11,7 @@ related:
   - ../scripts/install-upstream-autoupdate.sh
   - ../scripts/migrate-entry-file.py
   - ../scripts/migrate-docs-tier.py
+  - ../scripts/migrate-kernel.py
   - ../scripts/check-all.py
 ---
 
@@ -222,6 +223,52 @@ settle by hand. Then commit, and `validate-bridge.py` passes the docs surface.
 
 A new document about your own instance goes straight to `docs/user/`; a
 document your org overlay shares goes to `docs/org/`.
+
+## Once: the family index moved to kernel/
+
+Since 2026-11-05 the config-family index every session imports is
+`kernel/families.yaml` (YAML, generated from `docs/data-model.yaml`), no longer
+`docs/families.md`, and `AGENTS.md` imports it from there. The same update
+retires `work_system` in `ecosystem.yaml`: nothing read it (the switch is
+`work.enabled` in `bridge-config.yaml`, the paths of the log and the board are in
+`kernel/manifest.yaml`), yet the registry card showed it to every session and the
+template said it switched the work system on. Your `work/` folder, the log and
+the board are not touched. The model: [kernel.md](kernel.md).
+
+**What you see after the merge.** The merge itself moves the index, because
+both files are CORE. `python3 scripts/check-kernel.py` then names what is left in
+your own files: a registry (`ecosystem.yaml`, an org fragment such as
+`ecosystem.<org>.yaml`, `ecosystem.personal.yaml`) still carrying `work_system`,
+a card in your `context-budget.user.yaml` that still keeps it, and any file of
+yours (`identity/agent/INSTANCE.md`, a rule, a memory note) that still links
+`docs/families.md`. The daily update job keeps the merge and files an inbox item
+for it.
+
+**The fix, dry run first:**
+
+```bash
+python3 scripts/migrate-kernel.py            # the plan, nothing changes
+python3 scripts/migrate-kernel.py --write    # remove the key, follow the move
+python3 scripts/migrate-kernel.py --check    # exit 1 while anything is left
+```
+
+The key goes with its indented block and the comment lines directly above it
+(a `# yaml-language-server` header stays); every
+other line of the registry stays as it was, and the card stops keeping it. An
+org fragment your overlay materialized is fixed locally too; the overlay itself
+needs the same change at its source. A link to the old index is
+rewritten in your own Markdown, YAML and text files, in whichever form it was
+written; a line that already names the new path describes the move and stays.
+CORE files come with the update, and records of the past (`work/log.md`,
+`work/done/`, archives, a task's or stream's `deliverables/`, the inbox), code and
+ignored folders are never edited, the same rules as `scripts/migrate-docs-tier.py`.
+A result that would change any other key is refused and named. Line endings stay
+as they were. Then commit.
+
+**If you edited `docs/families.md` yourself,** the merge stops on a modify/delete
+conflict. Move your own lines to `identity/agent/INSTANCE.md` (that is what it is
+for), then delete the file; nothing imports it any more, so lines left in it no
+longer reach a session. `check-kernel.py` names the file while it exists.
 
 ## Unattended, once a day
 

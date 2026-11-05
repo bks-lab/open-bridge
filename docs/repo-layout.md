@@ -17,7 +17,7 @@ related:
 The cluster-wrapper layout (`identity/`/`infra/`/`workflow/` with
 default-to-folder per config type) is the load-bearing rule of this
 repo. This page indexes every visual rendering of it. They are the
-visual companions to [`docs/families.md`](families.md) (the family
+visual companions to [`kernel/families.yaml`](../kernel/families.yaml) (the family
 index, generated from `docs/data-model.yaml`) and
 [`docs/structure.md`](structure.md) — same truth, different modalities.
 
@@ -93,6 +93,6 @@ the network layer only if you need it.
 
 The authoritative CORE/USER per-path table lives in
 [`docs/structure.md`](structure.md); the family map is
-[`docs/families.md`](families.md), generated from `docs/data-model.yaml`.
+[`kernel/families.yaml`](../kernel/families.yaml), generated from `docs/data-model.yaml`.
 Visualisations render that. On conflicts, docs/structure.md and
 docs/data-model.yaml win; `regions.yaml` must follow.

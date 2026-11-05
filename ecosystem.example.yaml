@@ -23,14 +23,6 @@
 org: your-org
 local_root: ~/Developer/your-org          # local clones live under <local_root>/<repo>
 
-# Work-system tracking. When enabled, AGENTS.md session-start + logging rules apply.
-work_system:
-  enabled: true
-  path: work/
-  files:
-    current: work/log.md
-    board: work/board.md
-
 # ---------------------------------------------------------------------------
 # base — repos every team member needs
 # ---------------------------------------------------------------------------

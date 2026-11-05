@@ -47,7 +47,7 @@ entries:
     debt:
       kind: unmeasured
       reason: measure-context.py measures the Claude Code surface; this file only points at AGENTS.md
-      until: step 2 decides whether the meter counts the entry files of other tools
+      until: the meter measures the surface of each tool, not only Claude Code's
 
   - path: .github/copilot-instructions.md
     tier: core
@@ -58,7 +58,7 @@ entries:
     debt:
       kind: unmeasured
       reason: measure-context.py measures the Claude Code surface; this file only points at AGENTS.md
-      until: step 2 decides whether the meter counts the entry files of other tools
+      until: the meter measures the surface of each tool, not only Claude Code's
 
   - path: CLAUDE.md
     tier: user
@@ -86,7 +86,7 @@ entries:
     expect: absent
 
   # -------------------------------------------------------------- imports
-  - path: docs/families.md
+  - path: kernel/families.yaml
     tier: core
     role: config-family index
     read: import
@@ -94,10 +94,16 @@ entries:
     reaches: [session, subagent]
     generated_by: scripts/data-model.py
     source: docs/data-model.yaml
-    debt:
-      kind: placement
-      reason: the one always-on file in docs/, a folder of guides read only when named
-      until: step 2 moves it to kernel/ as kernel/families.yaml
+    note: YAML like its source; an @-line imports it as text, the same as Markdown.
+
+  - path: docs/families.md
+    tier: core
+    role: the family index's old place, before 2026-11-05
+    read: named
+    via: [harness]
+    reaches: []
+    expect: absent
+    note: "the merge deletes it; if you kept your own lines in it, move them to identity/agent/INSTANCE.md and delete the file; python3 scripts/migrate-kernel.py --write follows your links to kernel/families.yaml"
 
   - path: identity/agent/IDENTITY.md
     tier: user
@@ -153,10 +159,6 @@ entries:
     read: start
     via: [AGENTS.md]
     reaches: [session]
-    debt:
-      kind: unmeasured
-      reason: every session reads it before its first answer, and no cap holds it
-      until: step 2 gives it a cap
 
   - path: rules/operations.md
     tier: core
@@ -165,10 +167,6 @@ entries:
     via: [AGENTS.md]
     reaches: [session]
     note: Read when work.enabled is true.
-    debt:
-      kind: unmeasured
-      reason: Phase 1 follows it on every session with the work system on, and no cap holds it
-      until: step 2 gives it a cap
 
   - command: "python3 scripts/bridge-config.py --session"
     tier: user
@@ -300,3 +298,17 @@ entries:
     read: tool
     via: [context-budget.yaml]
     reaches: []
+
+# Keys no file may carry any more: a declaration nothing reads but a session
+# still sees. check-kernel.py names each one a file still has; `fix` removes it.
+retired:
+  - file: "ecosystem*.yaml"
+    key: work_system
+    reason: "nothing reads it; the switch is work.enabled in bridge-config.yaml and the paths are in kernel/manifest.yaml, yet the registry card showed it to every session"
+    fix: python3 scripts/migrate-kernel.py --write
+
+# Kernel paths that moved. check-kernel.py names an instance's own live file
+# that still names the old path; migrate-kernel.py rewrites it.
+moved:
+  - old: docs/families.md
+    new: kernel/families.yaml
