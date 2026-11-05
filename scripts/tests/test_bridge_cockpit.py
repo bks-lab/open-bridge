@@ -2971,14 +2971,14 @@ def test_login_code_exchange_and_cookie(world):
     assert value and value != token and token not in headers["Set-Cookie"]
     assert headers["Set-Cookie"] == (f"bw_token_{world.port}={value}; HttpOnly; SameSite=Strict; Path=/; "
                                      f"Max-Age={COOKIE_AGE_S}")
-    assert 86400 <= COOKIE_AGE_S <= 7 * 86400             # a few days, not a year
+    assert COOKIE_AGE_S == 30 * 86400                     # a month, renewed while used (test_bridge_cockpit_signed_in.py)
     assert world.request("GET", "/api/state", headers={"Cookie": f"{world.app.cookie_name}={value}"})[0] == 200
     # the page's own view switches survive the exchange, anything else is dropped
     status, headers, _ = world.request("GET", f"/?code={login_code(token, world.clock())}&mock=1&lang=de&evil=x&offline=%2F%2Fa")
     assert status == 303 and headers["Location"] == "/?mock=1&lang=de"
     status, headers, body = world.request("GET", "/?code=wrong")
     assert status == 401 and "Set-Cookie" not in headers
-    assert b"<title>Bridge Cockpit</title>" in body and b"open the cockpit" in body.lower()
+    assert b"<title>Bridge Cockpit</title>" in body and b"sign in to the cockpit" in body.lower()
     status, headers, body = world.request("GET", "/", headers=world.cookie)
     assert status == 200 and b"<title>Briefing</title>" in body
     assert headers["Content-Security-Policy"].startswith("default-src 'self'; script-src 'self'")
@@ -5525,11 +5525,12 @@ def test_the_page_names_its_icons_and_ships_them():
         assert (ROOT / "scripts" / "web" / path[1:]).is_file(), path
 
 
-def test_colors_css_is_served_with_the_cookie_only(world):
-    status, headers, body = world.request("GET", "/colors.css", headers=world.cookie)
-    assert status == 200 and headers["Content-Type"].startswith("text/css") and b"--primary:" in body
-    status, _, _ = world.request("GET", "/colors.css")
-    assert status == 401
+def test_colors_css_is_served_without_a_session_too(world):
+    # the sign-in page wears the Bridge's colours: the design's tokens hold no data of the Bridge
+    for headers in (world.cookie, {}):
+        status, got, body = world.request("GET", "/colors.css", headers=headers)
+        assert status == 200 and got["Content-Type"].startswith("text/css") and b"--primary:" in body
+    assert world.request("GET", "/style.css")[0] == 401
 
 
 def test_colors_css_is_built_once_per_design_md_and_revalidates_with_304(world, monkeypatch):

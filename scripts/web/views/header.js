@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { personOf, agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
+import { nextTheme, personOf, agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
@@ -219,9 +219,25 @@ export function Header({ s, c }) {
       ${s.layout === 'narrow' || person ? null : html`<${AgentsChip} s=${s} c=${c} />`}
       ${s.layout === 'narrow' || person ? null : html`<${RelayBadge} s=${s} c=${c} />`}
       ${s.layout === 'narrow' || person ? null : html`<${StartControl} s=${s} c=${c} short />`}
+      <${ThemeButton} s=${s} c=${c} person=${person} />
       <${HelpMenu} s=${s} c=${c} />
     </div>
   </header>`
+}
+
+/** Light, dark or the system's, one click away: the same choice as Settings, Appearance. The owner's stays in this
+ *  browser; a person's is also kept on the server, as their Settings page keeps it */
+function ThemeButton({ s, c, person }) {
+  const t = T()
+  const mode = ['auto', 'light', 'dark'].includes(s.ui.theme) ? s.ui.theme : 'auto'
+  const next = nextTheme(mode)
+  const words = t.themeButton(t.theme[mode], t.theme[next])
+  const pick = () => {
+    c.setTheme(next)
+    if (person) c.act('person_settings', { theme: next })
+  }
+  return html`<${Btn} variant="ghost" size="sm" icon=${mode === 'dark' ? 'moon' : mode === 'light' ? 'sun' : 'auto'}
+    label=${words} title=${words} onClick=${pick} cls="hdr-theme" />`
 }
 
 /** What a page's count adds up from: each counting section with its title, for the badge's tooltip */

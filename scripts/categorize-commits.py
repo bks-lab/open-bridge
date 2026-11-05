@@ -586,6 +586,9 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_asks.py",
     "scripts/lib/bridge_cockpit/autostart.py",            # the cockpit's login item: label and LaunchAgent path
     "scripts/tests/test_bridge_cockpit_local_name.py",
+    "scripts/tests/test_bridge_cockpit_signed_in.py",
+    "scripts/tests/bridge_cockpit_theme_button.test.mjs",
+    "scripts/web/signin.css",                              # the page a browser without a session sees
     "scripts/tests/test_bridge_cockpit_idle.py",        # a finished tab is done, not waiting
     "scripts/lib/bridge_cockpit/actions.py",
     "scripts/lib/bridge_cockpit/actions_base.py",

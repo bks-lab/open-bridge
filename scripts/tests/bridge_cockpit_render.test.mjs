@@ -388,7 +388,7 @@ test('page bar and header: a tooltip names a key only while the shortcuts are on
 
 // ---------------------------------------------------------------- Header: four parts and the as-of time (K1 to K5)
 
-test('header: the as-of time is the reload button with its mark; no colours, reload or Explain button beside it', () => {
+test('header: the as-of time is the reload button with its mark; no reload or Explain button beside it, the colours one is back', () => {
   const s = cockpitState(NOW)
   const c = recorder()
   const el = mount(html`<${Header} s=${s} c=${c} />`)
@@ -399,9 +399,8 @@ test('header: the as-of time is the reload button with its mark; no colours, rel
   assert.match(asof.getAttribute('title'), new RegExp(en.reloadTitle.replace(/[()]/g, '\\$&')))
   asof.click()
   assert.deepEqual(c.calls, [['reload']])
-  for (const gone of ['.hdr-reload', '.hdr-theme', '.hdr-explain']) assert.ok(!el.$(gone), `${gone} left the header`)
-  assert.ok(!el.$$('button').some(b => /^Theme\b/.test(b.getAttribute('aria-label') ?? '')), 'no colours button')
-  for (const kept of ['.hdr-ask', '.hdr-history', '.hdr-notes', '.hdr-help']) assert.ok(el.$(kept), `${kept} stays`)
+  for (const gone of ['.hdr-reload', '.hdr-explain']) assert.ok(!el.$(gone), `${gone} left the header`)
+  for (const kept of ['.hdr-ask', '.hdr-history', '.hdr-notes', '.hdr-theme', '.hdr-help']) assert.ok(el.$(kept), `${kept} stays`)
 })
 
 test('header as the menu has it (decision 6): Notes is the bell, Help ? holds Explain first, the look-up topics and the tour', async () => {

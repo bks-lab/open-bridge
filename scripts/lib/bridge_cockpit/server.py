@@ -8,7 +8,8 @@ session that reads the status file does not take the key along. The key itself n
 those places: `bridge-cockpit.py url` prints a login code made from it
 (login_code, good once and for CODE_AGE_S), /?code= turns that into an HttpOnly
 SameSite=Strict cookie whose value is derived from the key and dated (good for
-COOKIE_AGE_S), so the bare address works from then on in that browser. Every request must
+COOKIE_AGE_S, renewed at most once per COOKIE_RENEW_S while it is used), so the bare address works from then on
+in that browser. Every request must
 name 127.0.0.1:<port>, localhost:<port> or, under cockpit.local_name, <name>.localhost:<port> as Host (DNS rebinding); every POST also carries
 a second derived value (csrf, handed out by /api/bootstrap) in X-Bridge-Token, a matching
 Origin and a JSON body of at most 64 KB. No CORS headers, no access log, static files only from
@@ -144,10 +145,16 @@ ERROR_STATUS = {"unauthorized": 401, "forbidden_origin": 403, "bad_host": 403, "
                 "unknown_verb": 400, "invalid_argument": 400, "invalid_json": 400, "stale_row": 409, "stale_tab": 409,
                 "not_applicable": 409, "relay_offline": 409, "cmux_unavailable": 503, "cli_unavailable": 503,
                 "driver_cannot": 503, "unreadable": 502, "internal": 500}
-UNAUTHORIZED_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Bridge Cockpit</title></head>"
-                     "<body><p>Open the cockpit once with a fresh link from <code>python3 scripts/bridge-cockpit.py url</code> "
-                     "(it works once, for a minute); after that the plain address works in this browser for a few days.</p>"
-                     "</body></html>")
+PUBLIC_STYLE = "/signin.css"     # the sign-in page is what a browser without a session sees, and the CSP allows no inline style
+
+
+def signin_page(lang: str, words: dict, expired: bool) -> str:
+    """What a browser without a valid session sees: fixed text, nothing of a request comes into it."""
+    head, body = (words["expired_head"], words["expired"]) if expired else (words["new_head"], words["new"])
+    return (f"<!doctype html><html lang=\"{lang}\"><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Bridge Cockpit</title>"
+            "<link rel=\"stylesheet\" href=\"/colors.css\"><link rel=\"stylesheet\" href=\"/signin.css\"></head>"
+            f"<body class=\"signin\"><main><h1>{head}</h1><p>{body}</p><p>{words['how']}</p></main></body></html>")
 
 
 NOT_OPEN_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Bridge Cockpit</title></head>"
@@ -394,15 +401,32 @@ class App:
             return f"{person}.{ts}.{mac(self.token, f'person|{person}|{ts}')}"
         return f"{ts}.{mac(self.token, f'session|{ts}')}"
 
-    def session_person(self, value: str) -> str | None:
-        """Whom a person's cookie names, None for anything else"""
+    def person_issued(self, value: str) -> tuple[str, int] | None:
+        """(person, second of issue) of a person's cookie made with this key, however old; None for anything else"""
         fields = (value or "").split(".")
         if len(fields) != 3 or not ac.PERSON_RE.match(fields[0]) or not fields[1].isdigit() or len(fields[1]) > 12:
             return None
         person, stamp, given = fields
         if not hmac.compare_digest(given.encode("utf-8"), mac(self.token, f"person|{person}|{stamp}").encode("utf-8")):
             return None
-        return person if -CLOCK_SKEW_S <= self.now_s() - int(stamp) <= COOKIE_AGE_S else None
+        return person, int(stamp)
+
+    def session_issued(self, value: str) -> int | None:
+        """The second an owner's cookie made with this key was issued, however old"""
+        return parse_signed(self.token, "session", value, parts=2)[1]
+
+    def fresh(self, ts: int | None) -> bool:
+        return ts is not None and -CLOCK_SKEW_S <= self.now_s() - ts <= COOKIE_AGE_S
+
+    def session_person(self, value: str) -> str | None:
+        """Whom a person's cookie names, None for anything else"""
+        found = self.person_issued(value)
+        return found[0] if found and self.fresh(found[1]) else None
+
+    def session_cookie(self, person: str | None = None) -> str:
+        """The Set-Cookie value a login link and a renewal send alike"""
+        return (f"{self.cookie_name}={self.session_value(person=person)}; HttpOnly; SameSite=Strict; Path=/; "
+                f"Max-Age={COOKIE_AGE_S}")
 
     def person_client(self, person: str) -> SSEClient:
         """A live page of a person: every event goes through access.py on its way there"""
@@ -412,8 +436,7 @@ class App:
         return self.csrf if person is None else derived(self.token, f"csrf|{person}")
 
     def session_ok(self, value: str) -> bool:
-        _, ts = parse_signed(self.token, "session", value, parts=2)
-        return ts is not None and -CLOCK_SKEW_S <= self.now_s() - ts <= COOKIE_AGE_S
+        return self.fresh(self.session_issued(value))
 
     def scrub(self, text: str) -> str:
         return text.replace(self.token, "[token]") if self.token else text
@@ -1000,6 +1023,9 @@ class Handler(BaseHTTPRequestHandler):
         self.security_headers(html=html, static=static)
         for key, value in (extra or {}).items():
             self.send_header(key, value)
+        if getattr(self, "renewed", None):
+            self.send_header("Set-Cookie", self.renewed)
+            self.renewed = None
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -1017,7 +1043,8 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             self.send_error_json("unauthorized", "missing or wrong token")
         else:
-            self.send_bytes(401, UNAUTHORIZED_PAGE.encode("utf-8"), "text/html; charset=utf-8", html=True)
+            page = signin_page(self.app.cfg.language, self.app.tx["signin"], self.session_expired())
+            self.send_bytes(401, page.encode("utf-8"), "text/html; charset=utf-8", html=True)
 
     # ------------------------------------------------------------ checks
 
@@ -1073,18 +1100,46 @@ class Handler(BaseHTTPRequestHandler):
         after one it cannot parse, and another app on 127.0.0.1 (any port) may have set such one."""
         if self.app.sign_in:
             return self.person is not None      # signed_in ran first
-        name = self.app.cookie_name
+        app = self.app
         self.person = None
         found = None
+        for value in self.session_cookies():
+            ts = app.session_issued(value)
+            if app.fresh(ts):
+                self.issued = (None, ts)
+                return True
+            mine = app.person_issued(value)
+            if found is None and mine and app.fresh(mine[1]):
+                found = mine
+        self.person = found[0] if found else None     # a person's cookie: every answer below goes through access.py
+        self.issued = found
+        return found is not None
+
+    def session_cookies(self) -> list:
+        """The values of every cookie of our name. Parsed by hand: SimpleCookie drops every cookie after one it
+        cannot parse, and another app on 127.0.0.1 (any port) may have set such one."""
+        name, out = self.app.cookie_name, []
         for header in self.headers.get_all("Cookie") or []:
             for part in header.split(";"):
                 key, sep, value = part.strip().partition("=")
                 if sep and key.strip() == name:
-                    if self.app.session_ok(value.strip().strip('"')):
-                        return True
-                    found = found or self.app.session_person(value.strip().strip('"'))
-        self.person = found       # a person's cookie: every answer below goes through access.py
-        return found is not None
+                    out.append(value.strip().strip('"'))
+        return out
+
+    def session_expired(self) -> bool:
+        """A cookie made with this key that has run out: this browser was signed in, which a forged one cannot claim"""
+        app = self.app
+        return any(app.session_issued(v) is not None or app.person_issued(v) is not None for v in self.session_cookies())
+
+    def renew_session(self) -> None:
+        """A session in use goes on: the next answer carries a fresh cookie, once per COOKIE_RENEW_S at most, for
+        the same owner or person. Never behind the gateway, where only its token counts."""
+        issued = getattr(self, "issued", None)
+        if self.app.sign_in or not issued:
+            return
+        person, ts = issued
+        if self.app.now_s() - ts >= COOKIE_RENEW_S:
+            self.renewed = self.app.session_cookie(person)
 
     def precheck(self) -> bool:
         if not self.host_ok():
@@ -1098,6 +1153,8 @@ class Handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------ methods
 
     def handle_safely(self, fn: Callable[[], None]) -> None:
+        self.renewed = None      # one handler serves every request of a kept-alive connection
+        self.issued = None
         try:
             fn()
         except (BrokenPipeError, ConnectionResetError):
@@ -1136,7 +1193,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self.send_json(200, {"ok": True, "version": VERSION, "instance": app.instance})
             return
-        if path in PUBLIC_ICONS:
+        if path in PUBLIC_ICONS or path == PUBLIC_STYLE:
             self.get_static(path)
             return
         if path == "/" and "code" in query and not app.sign_in:
@@ -1148,18 +1205,21 @@ class Handler(BaseHTTPRequestHandler):
                 keep = [(k, query[k][0]) for k in VIEW_PARAMS if query.get(k) and VIEW_VALUE_RE.match(query[k][0])]
                 location = "/" + (f"?{urllib.parse.urlencode(keep)}" if keep else "")
                 self.send_bytes(303, b"", "text/plain; charset=utf-8", extra={
-                    "Location": location, "Set-Cookie": f"{app.cookie_name}={app.session_value(person=person)}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_AGE_S}"})
+                    "Location": location, "Set-Cookie": app.session_cookie(person)})
             else:
                 self.send_unauthorized(path)
+            return
+        if path == "/colors.css":
+            # the Bridge's own colours and fonts, from the design it resolves (design.py): every fork shows its brand,
+            # the sign-in page too, so it needs no session
+            self.get_colors()
             return
         if not self.cookie_ok():
             self.send_unauthorized(path)
             return
+        self.renew_session()
         if path.startswith("/api/"):
             self.get_api(path, query)
-        elif path == "/colors.css":
-            # the Bridge's own colours and fonts, from the design it resolves (design.py): every fork shows its brand
-            self.get_colors()
         else:
             self.get_static(path)
 
@@ -1809,7 +1869,8 @@ def scratch_of(root: Path | str, state_dir: Path | str) -> dict | None:
     return None
 
 
-COOKIE_AGE_S = 3 * 86400    # a browser logs in again after a few days
+COOKIE_AGE_S = 30 * 86400   # a browser left alone for a month logs in again
+COOKIE_RENEW_S = 86400      # a session in use is renewed this often
 CODE_AGE_S = 60             # a login code from `url` works once, within this minute
 CLOCK_SKEW_S = 5
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,}")

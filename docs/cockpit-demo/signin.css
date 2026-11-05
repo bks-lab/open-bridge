@@ -1,0 +1,10 @@
+/* SPDX-License-Identifier: MIT */
+/* The sign-in page (server.py signin_page). Served without a session, like colors.css, so it stands alone. */
+.signin { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 16px; box-sizing: border-box;
+  background: var(--surface); color: var(--on-surface); font: 15px/1.6 var(--font-ui, system-ui, sans-serif); }
+.signin main { max-width: 460px; padding: 32px; background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: 6px; }
+.signin h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+.signin p { margin: 0 0 12px; }
+.signin p:last-child { margin-bottom: 0; color: var(--on-surface-muted); font-size: 13px; }
+.signin code { font-size: 13px; }

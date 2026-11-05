@@ -75,6 +75,7 @@ const en = {
   commandHint: 'Codes as numbered on the left: a let AI do it, b later, c discard, v advise, w own workspace; ?words searches the files',
   notCode: text => `not a code: ${text} (e.g. 1a 3b)`,
   theme: { auto: 'auto', light: 'light', dark: 'dark' },
+  themeButton: (now, next) => `Colours: ${now}. A click switches to ${next}`,
   // the header's bell and Help (decision 6, menue.md)
   helpTitle: 'Help',
   notesTitle: 'Notes',
@@ -1872,6 +1873,7 @@ const de = {
   commandHint: 'Kürzel wie links nummeriert: a AI machen lassen, b Später, c Verwerfen, v Beraten, w eigener Workspace; ?Wörter durchsucht die Akten',
   notCode: text => `kein Kürzel: ${text} (z. B. 1a 3b)`,
   theme: { auto: 'auto', light: 'hell', dark: 'dunkel' },
+  themeButton: (now, next) => `Farben: ${now}. Ein Klick schaltet auf ${next}`,
   helpTitle: 'Hilfe',
   notesTitle: 'Meldungen',
   notesEmpty: 'Noch keine Meldungen.',
