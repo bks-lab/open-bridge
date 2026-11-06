@@ -127,8 +127,8 @@ def _block(selector: str, values: dict, scheme: str | None = None, indent: str =
 
 def colors_css(design: dict) -> str:
     """The stylesheet: light colours on :root, dark ones under .dark and under prefers-color-scheme when the page
-    set no .light, the inner room's always-dark colours, and the dark set again under .term: the Chat is a
-    terminal in both modes, so whatever stands inside it takes the dark tokens."""
+    set no .light, and the inner room's always-dark colours. The Chat (.term) takes no set of its own: it follows
+    the page's mode like every other part."""
     pal = palette(design)
     light = {**pal["light"], **DERIVED["light"]}
     dark = {**pal["dark"], **DERIVED["dark"]}
@@ -136,8 +136,7 @@ def colors_css(design: dict) -> str:
     nested = _block("  :root:not(.light)", dark, "dark", "    ").replace("\n}\n", "\n  }\n")
     return ("/* generated from DESIGN.md by scripts/lib/bridge_cockpit/design.py: edit DESIGN.md, not this */\n"
             + _block(":root", light, "light") + _block(":root.dark", dark, "dark")
-            + "@media (prefers-color-scheme: dark) {\n" + nested + "}\n" + _block(":root", void)
-            + _block(".term", dark, "dark"))
+            + "@media (prefers-color-scheme: dark) {\n" + nested + "}\n" + _block(":root", void))
 
 
 SERIF_WORDS = ("serif", "playfair", "georgia", "garamond", "times")
