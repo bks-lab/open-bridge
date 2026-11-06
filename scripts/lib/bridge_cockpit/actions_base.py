@@ -78,7 +78,10 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False),
                         "note": ("text", False)},
     # text: the person's sentence, kept where the row lives (WorkVerbs.write_note)
-    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False), "by": ("by", False)},
+    # revisit (Work through with cockpit.flow.seen on): read now, back unread on `until` or on something new before it;
+    # nothing hidden, nothing put off, the sentence a note only when there is one (actions_work.py v_later)
+    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False), "by": ("by", False),
+              "revisit": ("bool", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
     # until: the day the idea may surface again, else task.py's own default
@@ -187,6 +190,11 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # and taken back ("show again"); note: what settled it, shown beside it
     "finding_ack": {"key": ("finding_key", True), "note": ("text", False)},
     "finding_unack": {"key": ("finding_key", True)},
+    # the read marks of Work through (cockpit.flow.seen, seen.py): points read (an open, Mark all read), one marked unread
+    # again (Mark unread, key U; also the undo of a revisit), a point kept in focus (it counts as active)
+    "seen_read": {"keys": ("keys", True)},
+    "seen_unread": {"key": ("key", True)},
+    "seen_focus": {"key": ("key", True), "on": ("bool", True)},
     "start_control": {},
     "snapshot_list": {},
     "ask_via_tab": {"relay_id": ("relay_id", True)},
@@ -279,7 +287,8 @@ GO_FIELDS = {
 READ_ONLY_VERBS = frozenset({"snapshot_list", "organize_propose", "workspace_plan"})
 # only stores with their own locks (store.py, launch.py, ticker.py, guide.py): they never wait for a write that runs
 LOCAL_VERBS = frozenset({"person_settings", "ask_engine", "pin", "hide", "home_tiles", "ticker_settings", "ticker_settings_reset", "launch_settings",
-                         "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack", "guide_read", "guide_settings", "guide_settings_reset",
+                         "launch_settings_reset", "session_link", "run_seen", "finding_ack", "finding_unack",
+                         "seen_read", "seen_unread", "seen_focus", "guide_read", "guide_settings", "guide_settings_reset",
                          "tour_done", "tour_reset", "explain_note", "flow_themes_run", "flow_theme_move", "flow_theme_new",
                          "flow_theme_rename", "flow_activity_summary", "flow_instruct", "files_ask", "timeline_ask", "tab_keys",
                          "tab_new", "workspace_new", "workspace_close", "workspace_switch", "workspace_active", "workspaces_enabled"})

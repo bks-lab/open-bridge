@@ -51,6 +51,8 @@ from .actions_work import WorkVerbs
 
 #: the verbs of Work through's rounds 3 and 4, refused with flow_off before their arguments are checked
 FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach", "flow_merge"})
+#: verbs that write nothing a read mark compares: the marks' own and the questions; no absorb around them
+NO_ABSORB = frozenset({"seen_read", "seen_unread", "seen_focus", *READ_ONLY_VERBS})
 #: a folder of one record, as work_find.known_folders names it (a question to the records names them so)
 RECORD_PATH_RE = re.compile(r"^work/(?:(?:tasks|streams)|done/[0-9]{4}-[0-9]{2}|streams/[a-z0-9][a-z0-9-]{0,79}/[0-9]{4}-[0-9]{2})"
                             r"/[a-z0-9][a-z0-9-]{0,79}\Z")
@@ -486,22 +488,35 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         ctx.by = clean.pop("by", None)
         touched = self.touched(clean)
+        absorbs = bool(touched) and verb not in NO_ABSORB and hasattr(self.app, "seen_pre")
+
+        def own() -> None:
+            """The handler as a write of the person's own: a read point it moves is no news to them (seen.py absorb).
+            The markers are read right before and right after it, inside the lock the verb holds, so a second write
+            verb cannot fall between them; a write from outside the cockpit (an agent, a pull) can, and then counts
+            only where it came before the verb"""
+            pre = self.app.seen_pre(touched) if absorbs else None
+            try:
+                self.recorded(ctx, handler, clean)
+            finally:
+                if pre:
+                    self.app.seen_absorb(pre)
         try:
             with acting(viewer):    # the scripts of this call write the person's name, not the page's
                 if verb in READ_ONLY_VERBS:
                     handler(ctx, **clean)
                 elif verb in LOCAL_VERBS:
-                    self.recorded(ctx, handler, clean)
+                    own()
                 elif verb in LAYOUT_VERBS:
                     with self.layout_lock:
-                        self.recorded(ctx, handler, clean)
+                        own()
                 else:
                     with self.write_lock:
                         ctx.locked = True
                         syncs = self.app.work_sync if viewer is not None else None
                         before = syncs.snapshot() if syncs else None
                         try:
-                            self.recorded(ctx, handler, clean)
+                            own()
                         finally:
                             if syncs:
                                 syncs.after(before, viewer)   # a refused step may already have written

@@ -15,6 +15,7 @@ import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   adoptStepOf, basicVerbs, canTab, DAY, dropReasonWord, flowAction, flowDriver, flowLive, flowRunning, flowSettings, flowTabOf, formatDay, haikuReady, isoDate,
   jevReady, leftPlan, moreOf, personOf, pointName, replyOptions, short, strongOf, tabCloseOffer, triageRunning, workPageOf,
+  pointKeys, readMark, seenOn, seenSettings,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TabClose } from './detail.js'
@@ -63,6 +64,13 @@ export function SimpleActs({ x, row, s, c, sug }) {
   const strong = live || x.group === 'checkin' ? null : strongOf(x, s, sug)
   const by = strong?.sug ? 'suggestion' : null
   const send = async a => { if (!a) return; const r = await c.act(a.verb, a.args); if (r?.ok) c.flowDecided() }
+  // the read marks (cockpit.flow.seen): Later is Revisit, read now and back unread on its day; with open_reads click a
+  // point stays unread until Read; a doing task that rests offers to go on with it in focus
+  const seen = seenOn(s)
+  const mark = seen && !person && !x.readOnly && x.group !== 'read' ? readMark(x, s) : null
+  const focusable = !!mark?.active
+  const inFocus = (s.seen?.focus ?? []).includes(row.key)
+  const revisitArgs = seen && !person ? { revisit: true } : null
   // the strong button applies what it says at once; a start past the cap of what runs opens its panel instead
   // an issue on a board closes by the board's rules (review first): the suggestion's Done opens its moves, where the
   // move that fits is the strong one with the reason in its field
@@ -75,7 +83,7 @@ export function SimpleActs({ x, row, s, c, sug }) {
       if (flowRunning(s) >= flowSettings(s).max_running) { setCrowd(true); return }
       return send(flowAction('do', row, w.startStep(strong.step ?? title), by))
     }
-    if (strong.verb === 'later') return send(flowAction('later', row, laterDay, by))
+    if (strong.verb === 'later') return send(flowAction('later', row, laterDay, by, revisitArgs))
     if (strong.verb === 'drop') return send(flowAction('drop', row, sug?.drop ? dropReasonWord(sug.drop, lang) : sug?.reason || w.dropSug, by))
     return send(flowAction('done', row, '', by))
   }
@@ -84,7 +92,8 @@ export function SimpleActs({ x, row, s, c, sug }) {
   const laterDay = sug?.until ?? isoDate((s.now || Date.now()) + 7 * DAY)
   const strongWord = !strong ? null : viaBoard ? `${w.boardDone} ${panel === 'board' ? '▴' : '▾'}` : strong.verb === 'yes' ? f.approve
     : strong.verb === 'do' ? w.strongDo(strong.step ?? title)
-      : strong.verb === 'later' ? f.list.laterUntil(formatDay(laterDay, lang)) : w[strong.verb] ?? f.verbs[strong.verb]
+      : strong.verb === 'later' ? (revisitArgs ? f.marks.strong(formatDay(laterDay, lang)) : f.list.laterUntil(formatDay(laterDay, lang)))
+        : w[strong.verb] ?? f.verbs[strong.verb]
   // the suggestion's why and where it comes from stand on the strong button, on hover (stage 4: no line of its own)
   const sugTitle = strong?.sug && sug ? [sugWhy(sug, lang), sugFrom(sug, lang)].filter(Boolean).join(' · ') : null
   // a tab that asks what its card answers (its options, yes and no: logic.js replyOptions) needs no jump: To tab is
@@ -118,6 +127,8 @@ export function SimpleActs({ x, row, s, c, sug }) {
     if (id === 'unlink') return item(id, f.run.unlink, run(() => c.act('session_unlink', { session: x.session.sid })))
     return null
   })}
+    ${mark && !mark.live && !(mark.unread && mark.why?.kind === 'forced') ? item('unread', f.marks.markUnread, run(() => c.flowUnread(row.key))) : null}
+    ${focusable ? item('focus', inFocus ? f.marks.unfocus : f.marks.focus, run(() => c.flowFocus(row.key, !inFocus))) : null}
     ${review ? item('improve', f.improve.button, () => { setPanel('improve'); setMore(false) }) : null}
     ${near && flowDriver(s) ? item('view', f.view, run(() => c.openTabView(near.ref))) : null}
     ${(!live || cardAnswers) && near && flowDriver(s) ? item('totab', f.toTab, run(() => c.flowJump({ key: row.key, ref: near.ref, title }))) : null}
@@ -125,9 +136,15 @@ export function SimpleActs({ x, row, s, c, sug }) {
   const toTask = basic.some(v => v.id === 'task') ? (row.inbox_id
     ? { what: f.basic.taskInbox, run: async () => { const r = await c.act('to_task', { key: row.key }); if (r?.ok && r.task) c.openItem(`task:${r.task}`); return r } }
     : { what: f.basic.taskIssue, run: () => c.act('row_action', { ...adopt, action: 'adopt' }) }) : null
-  const hasMore = !!menu && (items.length || review || near || offer)
+  const hasMore = !!menu && (items.length || review || near || offer || (mark && !mark.live) || focusable)
+  // Read (open_reads click) while the point is unread; Go on, keep in focus where a doing task rests and nothing else is strong
+  const readBtn = mark?.unread && !mark.live && seenSettings(s).open_reads === 'click'
+    ? html`<${Btn} size="sm" variant="primary" cls="verbbar-strong flow-read-btn" onClick=${() => c.flowSeen(pointKeys(x))}>${f.marks.read}<//>` : null
+  const goOn = !strongBtn && focusable && !mark.active.active && !inFocus
+    ? html`<${Btn} size="sm" variant="primary" cls="verbbar-strong" onClick=${() => c.flowFocus(row.key, true)}>${f.marks.goOn}<//>` : null
   return html`<div class="flow-simple">
-    ${strongBtn}
+    ${readBtn}
+    ${strongBtn ?? goOn}
     ${crowd ? html`<div class="verbbar-acts" role="alert"><span class="small">${f.start.busy(flowRunning(s))}</span>
       <${Btn} size="sm" variant="secondary" onClick=${() => { setCrowd(false); send(flowAction('do', row, w.startStep(strong?.step ?? title), by)) }}>${f.start.anyway}<//></div>` : null}
     ${x.group === 'checkin' ? null : html`<${VerbBar} row=${row} s=${s} c=${c} simple stack off=${{ ...off, work: off.work ?? null }}

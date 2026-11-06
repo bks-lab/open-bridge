@@ -470,3 +470,19 @@
 /* Description: what else is stored, folded under one line */
 .flow-stored { margin-top: 8px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; }
 .flow-stored > summary { cursor: pointer; font-weight: 600; }
+
+/* the read marks of Work through (cockpit.flow.seen, views/flowmarks.js): the unread count bold beside every open one
+   faint, an unread row of the overview with its dot and why, the folds Read (n) and Resting (n), the Revisit panel */
+.flow-side-counts { flex: none; display: inline-flex; align-items: baseline; gap: 6px; }
+.flow-side-unread { font-size: var(--text-label); font-weight: 700; color: var(--on-surface); }
+.flow-side-pt.is-unread .flow-side-pt-name { font-weight: 600; }
+.flow-ov-row.is-unread .flow-ov-open { font-weight: 600; }
+.flow-ov-row.is-read .flow-ov-open { font-weight: 400; }
+.flow-ov-unread { display: inline-flex; align-items: center; margin-right: 6px; vertical-align: middle; }
+.flow-ov-why { display: block; margin-top: 2px; color: var(--info); }
+.flow-ov-readall { margin: var(--space-sm) 0; }
+.flow-ov-allread { margin: var(--space-sm) 0; color: var(--on-surface-muted); }
+.flow-ov-fold { margin-top: var(--space-sm); }
+.flow-ov-fold > summary { cursor: pointer; padding: 4px 0; color: var(--on-surface-muted); }
+.flow-ov-fold .flow-ov-table { margin-top: 4px; }
+.flow-revisit .field-row, .flow-revisit > .input { margin-top: 6px; }

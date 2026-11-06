@@ -12,7 +12,7 @@
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
 import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, pointName, pointOriginal, projectTone, replyOptions, replySend,
-  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf } from './logic.js'
+  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf, personOf, workViewIn } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -105,7 +105,9 @@ export function flowSettings(s) {
     read_days: int('read_days', 3, 1),
     // round 3, each off unless the server says on (an older server sends none of them)
     summary: { enabled: f.summary?.enabled === true }, instruct: { enabled: f.instruct?.enabled === true },
-    attach: { enabled: f.attach?.enabled === true, max_mb: Number.isFinite(mb) && mb >= 1 ? mb : 10 } }
+    attach: { enabled: f.attach?.enabled === true, max_mb: Number.isFinite(mb) && mb >= 1 ? mb : 10 },
+    // the read marks (cockpit.flow.seen, seen.py), off unless the server says on
+    seen: seenSettings(s) }
 }
 
 /** Whether a terminal driver starts tabs here: without one nothing runs from the page, so the lane, the cards of
@@ -753,10 +755,12 @@ export function pointsIn(points, side, s, mode) {
   return out.sort((a, b) => byDue(rowOf(a), rowOf(b)) || next(a) - next(b) || byPrio(rowOf(a), rowOf(b)) || byAge(rowOf(a), rowOf(b)))
 }
 
-/** The count of a side: its open points (reports by their rows) and how many of them need you */
-function countOf(points) {
+/** The count of a side: its open points (reports by their rows), how many of them need you and, with the read marks on,
+ *  how many are unread (`unread`, the bold number; no such key while they are off) */
+function countOf(points, s = null) {
   const open = points.reduce((n, x) => n + (x.kind === 'reports' ? x.rows.length : 1), 0)
-  return { open, you: points.filter(x => FLOW_YOU.includes(x.group)).length }
+  const you = points.filter(x => FLOW_YOU.includes(x.group)).length
+  return s && seenOn(s) ? { open, you, unread: points.filter(x => readMark(x, s).unread).length } : { open, you }
 }
 
 /** The entries of the left column: All on top, then each theme or area that holds a point, No theme yet or No area
@@ -767,11 +771,11 @@ function countOf(points) {
 export function flowSides(s, points, mode = flowMode(s)) {
   const sides = []
   if (mode === 'prio') {
-    for (const q of FLOW_QUADRANTS) sides.push({ id: `q:${q}`, quadrant: q, name: null, tone: QUAD_TONE[q], color: null, ...countOf(pointsIn(points, `q:${q}`, s, mode)) })
+    for (const q of FLOW_QUADRANTS) sides.push({ id: `q:${q}`, quadrant: q, name: null, tone: QUAD_TONE[q], color: null, ...countOf(pointsIn(points, `q:${q}`, s, mode), s) })
   } else if (mode === 'themes') {
     for (const t of s?.themes?.themes ?? []) {
       const mine = pointsIn(points, `t:${t.id}`, s, mode)
-      if (mine.length) sides.push({ id: `t:${t.id}`, theme: t, name: t.name, tone: projectTone(t.name), color: null, ...countOf(mine) })
+      if (mine.length) sides.push({ id: `t:${t.id}`, theme: t, name: t.name, tone: projectTone(t.name), color: null, ...countOf(mine, s) })
     }
   } else {
     const rows = (points ?? []).flatMap(x => (x.kind === 'reports' ? x.rows : x.row ? [x.row] : []))
@@ -781,12 +785,12 @@ export function flowSides(s, points, mode = flowMode(s)) {
       const mine = pointsIn(points, areaId(name), s, mode)
       if (!mine.length) continue
       const ws = spaces.find(w => String(w.title ?? '').trim().toLowerCase() === name.trim().toLowerCase() && w.color)
-      sides.push({ id: areaId(name), name, tone: projectTone(name), color: ws?.color ?? null, ...countOf(mine) })
+      sides.push({ id: areaId(name), name, tone: projectTone(name), color: ws?.color ?? null, ...countOf(mine, s) })
     }
   }
   const rest = pointsIn(points, NO_SIDE, s, mode)
-  return [{ id: 'all', name: null, tone: null, color: null, ...countOf(points ?? []) }, ...sides,
-    ...(rest.length ? [{ id: NO_SIDE, name: null, tone: 'muted', color: null, ...countOf(rest) }] : [])]
+  return [{ id: 'all', name: null, tone: null, color: null, ...countOf(points ?? [], s) }, ...sides,
+    ...(rest.length ? [{ id: NO_SIDE, name: null, tone: 'muted', color: null, ...countOf(rest, s) }] : [])]
 }
 
 // the tone of each square of Jev in the left column and the grid
@@ -917,7 +921,7 @@ export function batchPreselect(rows, s) {
  *  only with its own sentence and only while fewer than max_running run, else it stays out. {calls, skipped, counts}:
  *  calls in the order done, later, drop, do; skipped [{row, why}], why not_offered, no_suggestion, you, working (an
  *  agent is on it already, atWork) or running */
-export function batchPlan(rows, how, s, value = '', lang = 'en') {
+export function batchPlan(rows, how, s, value = '', lang = 'en', revisit = seenOn(s)) {
   const by = how === 'suggested' ? 'suggestion' : 'batch'
   // stage 4: In progress for every ticked row, with one person until one check-in day (value {who, until})
   if (how === 'work') {
@@ -949,7 +953,7 @@ export function batchPlan(rows, how, s, value = '', lang = 'en') {
     if (verb === 'done') done.push(row)
     else if (verb === 'later') {
       const day = how === 'suggested' ? sug.until : value
-      const a = flowAction('later', row, day, by)
+      const a = flowAction('later', row, day, by, revisit ? { revisit: true } : null)
       if (a) later.push(a)
       else skipped.push({ row, why: 'not_offered' })
     } else if (verb === 'drop') {
@@ -976,7 +980,7 @@ export function batchPlan(rows, how, s, value = '', lang = 'en') {
   const calls = [...(done.length ? [{ verb: 'settle', args: { keys: done.map(r => r.key), outcome: 'done', by } }] : []),
     ...later, ...shelves, ...settles.values(), ...starts]
   return { calls, skipped, counts: { done: done.length, later: later.length, drop: drop.length, do: starts.length },
-    how, value, days: [...new Set(later.map(a => a.args.until))], reasons: [...new Set(drop.map(a => a.args.reason ?? a.args.text))] }
+    how, value, revisit: !!revisit && later.length > 0, days: [...new Set(later.map(a => a.args.until))], reasons: [...new Set(drop.map(a => a.args.reason ?? a.args.text))] }
 }
 
 /** The half sentence of why the ranker suggests a verb, by its square and named (Jev or Haiku), in the page's
@@ -992,7 +996,8 @@ export const rankerName = r => (r === 'haiku' ? 'Haiku' : 'Jev')
  *  Back on carries no undo: put it off again instead. {calls, early: [key], skipped: [{row, why}], counts} */
 export function leftPlan(entries, verb, s, value = '', lang = 'en') {
   if (verb !== 'back') {
-    const plan = batchPlan((entries ?? []).map(e => e.row), verb, s, value, lang)
+    // a row of Not now is no point: its Later puts it off as before, a read mark would not take it anywhere
+    const plan = batchPlan((entries ?? []).map(e => e.row), verb, s, value, lang, false)
     return { ...plan, early: [], counts: { back: 0, ...plan.counts } }
   }
   const calls = []
@@ -1131,14 +1136,15 @@ export function suggestedVerb(row, triage = null) {
  *  approves an item's own action unseen (actions_work.py do_it); Drop shelves a task (an idea in the inbox, the
  *  task declined) and settles anything else as not doing, the reason with it. Advise is a question (c.flowAdvise).
  *  `by` says where the decision came from (suggestion, batch, instruction); a click of the person's own sends none */
-export function flowAction(verb, row, value = '', by = null) {
+export function flowAction(verb, row, value = '', by = null, more = null) {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim()
   const key = row?.key
   if (!key) return null
   const tag = by ? { by } : {}
   if (verb === 'do') return text ? { verb: 'do_it', args: { keys: [key], note: text, ...tag } } : null
   if (verb === 'done') return { verb: 'settle', args: { keys: [key], outcome: 'done', ...tag } }
-  if (verb === 'later') return /^\d{4}-\d{2}-\d{2}$/.test(text) ? { verb: 'later', args: { key, until: text, ...tag } } : null
+  // more: what a Revisit adds (revisit: true, and the person's sentence as text when there is one)
+  if (verb === 'later') return /^\d{4}-\d{2}-\d{2}$/.test(text) ? { verb: 'later', args: { key, until: text, ...tag, ...(more ?? {}) } } : null
   if (verb === 'drop') {
     if (!text || isStream(row)) return null
     return row.task && !row.inbox_id ? { verb: 'shelve', args: { key, reason: text.slice(0, 200), ...tag } }
@@ -1299,6 +1305,12 @@ export function flowFields(x, s, feed = null, detail = null) {
   const origin = typeof detail?.front?.origin === 'string' ? detail.front.origin.trim() : ''
   const link = /^https?:\/\/\S+$/.test(origin) ? origin : null
   const url = row?.url ?? link
+  // the read marks: when it was read and when it comes back, and whether a doing task is active or rests
+  if (row?.key && !x.readOnly && x.group !== 'read' && !LIVE_GROUPS.includes(x.group) && seenOn(s)) {
+    const mark = rowMark(row, s)
+    out.push({ id: 'readmark', mark })
+    if (mark.active) out.push({ id: 'active', active: mark.active })
+  }
   out.push({ id: 'source', row, rows: reports ? x.rows : null, url: url ?? null, link: link && link !== url ? link : null })
   // a start whose item is not in the list: it was made and last moved when it started
   const started = x.kind === 'start' && Number.isFinite(x.start?.at_ms) ? localStamp(x.start.at_ms) : null
@@ -1311,7 +1323,7 @@ export function flowFields(x, s, feed = null, detail = null) {
 
 // the fields that stand in the right column of the one point view (stage 4), in their order; every other one of
 // flowFields stands in the fold Details at their foot
-export const SIMPLE_FIELDS = ['theme', 'area', 'who', 'due']
+export const SIMPLE_FIELDS = ['theme', 'area', 'who', 'due', 'readmark', 'active']
 
 /** The fields of a point split for the one point view (stage 4): {top, rest}. `top` Theme, Area, Who (who works on it,
  *  and the step's who where nobody does: `step`) and Due, or the day it asks again where a check-in is set (`ask`);
@@ -1445,13 +1457,148 @@ export function instructCalls(plan, s, lang = 'en') {
         if (running >= cap) { out(k, 'running'); continue }
       }
       const value = op === 'later' ? step.until : op === 'drop' ? dropReasonWord(step.reason ?? '', lang) : step.note
-      const a = flowAction(op, row, value, 'instruction')
+      const a = flowAction(op, row, value, 'instruction', op === 'later' && seenOn(s) ? { revisit: true } : null)
       if (!a) { out(k, op === 'later' ? 'bad_day' : 'not_offered'); continue }
       if (op === 'do') running += 1
       calls.push(a)
     }
   }
   return { calls, skipped }
+}
+
+// ---------------------------------------------------------------- the read marks (cockpit.flow.seen, seen.py)
+
+// what may make a read point unread again (cockpit.flow.seen.counts) and the marker each reads (seen.py MARKERS): note
+// and status share the time of the task's STATUS.md
+export const SEEN_COUNTS = ['note', 'status', 'doc', 'run', 'code', 'log', 'inbox']
+export const SEEN_REVISIT = { active: 7, resting: 14, backlog: 30, question: 2, issue: 7 }
+const COUNT_MARKER = { note: 'file', status: 'file', doc: 'doc', run: 'run', code: 'code', log: 'log', inbox: 'inbox' }
+// the groups that ask for you now (a check-in, the return card, a tab that asks, a finished start, a lost one): a read
+// mark never folds them, they count as unread while they stand
+const LIVE_GROUPS = ['checkin', 'back', 'asks', 'result', 'lost']
+
+/** The read marks' settings as the server sends them (cockpit.flow.seen), with the defaults of seen.py */
+export function seenSettings(s) {
+  const v = s?.work?.flow?.seen ?? {}
+  const days = (x, d) => (Number.isInteger(x) && x >= 1 ? x : d)
+  return { enabled: v.enabled === true, open_reads: v.open_reads === 'click' ? 'click' : 'auto', active_days: days(v.active_days, 7),
+    revisit_days: Object.fromEntries(Object.entries(SEEN_REVISIT).map(([k, d]) => [k, days(v.revisit_days?.[k], d)])),
+    counts: Object.fromEntries(SEEN_COUNTS.map(k => [k, v.counts?.[k] !== false])) }
+}
+
+/** Whether the read marks are on here: Work through and its block cockpit.flow.seen, the owner's page (a person's page
+ *  keeps no marks) */
+export const seenOn = s => flowOn(s) && seenSettings(s).enabled && !personOf(s)
+
+/** The markers the counts switch on */
+function countedMarkers(s) {
+  const c = seenSettings(s).counts
+  return new Set(SEEN_COUNTS.filter(k => c[k]).map(k => COUNT_MARKER[k]))
+}
+
+/** The movement markers of a row as the server read them (model.moved, seen.py Markers): {file, doc, log, inbox, run,
+ *  code}, each a time in ms; {} where it has none */
+export const movedOf = (row, s) => s?.model?.moved?.[row?.key] ?? {}
+
+/** Whether a doing task is active or rests (null for any other row): active while it is kept in focus, pinned, an
+ *  agent works on it, or something counted moved within active_days (its newest marker, else its updated day; a task
+ *  that never moved as far as the page knows counts as active). {active, by: focus|pin|agent|null, days, last} */
+export function activeOf(row, s) {
+  if (!row || !isTaskRow(row) || isStreamRow(row) || !TASK_STATES.includes(row.status)) return null
+  const nowMs = s?.now || Date.now()
+  const marks = countedMarkers(s)
+  const moved = Object.entries(movedOf(row, s)).filter(([k, v]) => marks.has(k) && Number.isFinite(v)).map(([, v]) => v)
+  const updated = DAY_RE.test(String(row.updated ?? '')) ? new Date(`${String(row.updated).slice(0, 10)}T00:00:00`).getTime() : null
+  const last = moved.length ? Math.max(...moved) : updated
+  const days = Number.isFinite(last) ? Math.max(0, dayNumber(isoDate(nowMs)) - dayNumber(isoDate(last))) : null
+  const by = (s?.seen?.focus ?? []).includes(row.key) ? 'focus' : (s?.home?.pins ?? []).includes(row.key) ? 'pin' : atWork(row, s) ? 'agent' : null
+  return { active: !!by || days == null || days <= seenSettings(s).active_days, by, days, last: Number.isFinite(last) ? last : null }
+}
+
+/** Which interval of cockpit.flow.seen.revisit_days a row comes back after: a question or an approval of the inbox
+ *  (an idea counts as backlog), a backlog task, a doing task active or resting, anything else as an issue */
+export function revisitKind(row, s, act = activeOf(row, s)) {
+  if (row?.inbox_id) return row.art === 'idea' ? 'backlog' : 'question'
+  if (row && isTaskRow(row)) return row.status === 'backlog' ? 'backlog' : act && !act.active ? 'resting' : 'active'
+  return 'issue'
+}
+
+const addDays = (iso, n) => dayOf(dayNumber(iso) + n)
+
+/** The read mark of one row: {unread, why, back, read, kind, resting, rest_days, active, mark}. Unread while it was never
+ *  opened (why never), the person marked it unread (forced), a counted marker moved past the one the mark kept (new,
+ *  with what and the day), or its revisit day came (revisit with the day; resting with the days where a doing task
+ *  rests). Read otherwise, with the day it comes back (the day the person set, else read day + its kind's interval) */
+export function rowMark(row, s) {
+  if (!row?.key) return { unread: true, why: { kind: 'live' }, live: true, back: null }
+  const today = isoDate(s?.now || Date.now())
+  const mark = s?.seen?.marks?.[row.key] ?? null
+  const act = activeOf(row, s)
+  const resting = !!act && !act.active
+  const kind = revisitKind(row, s, act)
+  const base = { mark, resting, rest_days: resting ? act.days : null, active: act, kind }
+  if (!mark) return { ...base, unread: true, why: { kind: 'never' }, back: null, read: null }
+  const read = Number.isFinite(mark.at) && mark.at > 0 ? isoDate(mark.at) : null
+  if (mark.unread) return { ...base, unread: true, why: { kind: 'forced' }, back: null, read }
+  const marks = countedMarkers(s)
+  let news = null
+  for (const [k, v] of Object.entries(movedOf(row, s))) {
+    if (!marks.has(k) || !Number.isFinite(v) || v <= (mark.m?.[k] ?? 0)) continue
+    if (!news || v > news.at) news = { what: k, at: v }
+  }
+  if (news) return { ...base, unread: true, why: { kind: 'new', what: news.what, day: isoDate(news.at) }, back: null, read }
+  const back = mark.until ?? (read ? addDays(read, seenSettings(s).revisit_days[kind]) : today)
+  if (back <= today) return { ...base, unread: true, why: resting ? { kind: 'resting', days: act.days } : { kind: 'revisit', day: back }, back, read }
+  return { ...base, unread: false, why: null, back, read }
+}
+
+/** The read mark of a point: a group that asks for you now is unread while it stands (why live), the reports card by its
+ *  first unread report, any other point by its row (rowMark) */
+export function readMark(x, s) {
+  if (!x) return { unread: false, why: null, back: null }
+  if (LIVE_GROUPS.includes(x.group)) return { unread: true, why: { kind: 'live' }, live: true, back: null }
+  if (x.kind === 'reports') {
+    const marks = (x.rows ?? []).map(r => rowMark(r, s))
+    return marks.find(m => m.unread) ?? marks[0] ?? { unread: false, why: null, back: null }
+  }
+  return rowMark(x.row, s)
+}
+
+/** The walk with the read marks on: the unread points of the side in the overview's order, and the one open (`at`), so
+ *  Next goes on from it to the next unread one; every point while the marks are off */
+export function unreadWalk(queue, s, at = null) {
+  if (!seenOn(s)) return queue ?? []
+  return (queue ?? []).filter(x => x.id === at?.id || readMark(x, s).unread)
+}
+
+/** The figures of the read marks over a list of points: `fresh` the unread ones that are new (never opened, marked
+ *  unread, something new, or asking now), `revisit` the ones whose revisit day came (resting ones too), `next` the
+ *  nearest day a read one comes back {day, n} (null when none is read) */
+export function seenFigures(points, s) {
+  let fresh = 0
+  let revisit = 0
+  const backs = []
+  for (const x of points ?? []) {
+    const r = readMark(x, s)
+    if (r.unread) { if (['revisit', 'resting'].includes(r.why?.kind)) revisit += 1; else fresh += 1 }
+    else if (r.back) backs.push(r.back)
+  }
+  const day = backs.sort()[0] ?? null
+  return { fresh, revisit, unread: fresh + revisit, next: day ? { day, n: backs.filter(b => b === day).length } : null }
+}
+
+/** The row key of the point open in the middle of Work through, for the key U (Mark unread): only with the read marks on,
+ *  on the work tab in Work through, a point of the walk that does not ask for you now; else null */
+export function flowOpenKey(s) {
+  if (!seenOn(s) || s?.ui?.page !== 'briefing' || workViewIn(s) !== 'flow' || s.ui.flowView !== 'point' || !s.ui.flowAt) return null
+  const x = flowQueue(flowParts(s), 'all').find(p => p.id === s.ui.flowAt.id)
+  return x && !readMark(x, s).live ? pointKeys(x)[0] ?? null : null
+}
+
+/** The keys Mark all read sends: the unread points of the list that have a row (a tab alone has none), at most 50 per
+ *  call (actions.py keys) */
+export function readKeys(points, s) {
+  return [...new Set((points ?? []).filter(x => !LIVE_GROUPS.includes(x.group) && readMark(x, s).unread).flatMap(pointKeys))]
 }
 
 // ---------------------------------------------------------------- the start page's numbers

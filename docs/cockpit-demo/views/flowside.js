@@ -54,7 +54,7 @@ import {
   activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
   flowRunning, flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts,
   pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf,
-  fieldsSplit, pointName, pointsIn, whoBrief
+  fieldsSplit, pointName, pointsIn, whoBrief, readMark, seenOn
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -70,6 +70,7 @@ import { LaunchPick } from './launch.js'
 import { Btn, PrioChip, WhoChip } from './parts.js'
 import { VerbBar } from './verbbar.js'
 import { OrderMenu, SimpleActs } from './flowsimple.js'
+import { activeWords, markWords, SideCount } from './flowmarks.js'
 
 /** The words of a side: its theme or area name, else All or None in the words of the mode */
 export function sideName(side, mode) {
@@ -118,17 +119,18 @@ export function Resort({ s, c }) {
 function SidePoints({ side, points, mode, current, s, c }) {
   const pts = walkOrder(pointsIn(points, side.id, s, mode), mode === 'prio' ? (side.id === 'none' ? 'due' : 'rank') : null)
   if (!pts.length) return null
+  const seen = seenOn(s)
   return html`<ul class="flow-side-pts">${pts.map((p, k) => html`<${SidePoint} key=${p.id} p=${p} on=${!!current && p.id === current}
-    open=${() => c.flowSidePoint(side.id, p.id, k)} />`)}</ul>`
+    unread=${seen && readMark(p, s).unread} open=${() => c.flowSidePoint(side.id, p.id, k)} />`)}</ul>`
 }
 
 /** One point of the list; the one open scrolls into view in the column when the walk in the middle reaches it */
-function SidePoint({ p, on, open }) {
+function SidePoint({ p, on, open, unread = false }) {
   const ref = useRef(null)
   useEffect(() => { if (on) ref.current?.scrollIntoView?.({ block: 'nearest' }) }, [on])
   const name = pointTitle(p)
   const stand = pointStandWord(p)
-  return html`<li><button ref=${ref} type="button" class=${`flow-side-pt${on ? ' is-current' : ''}`} aria-current=${on ? 'true' : undefined}
+  return html`<li><button ref=${ref} type="button" class=${`flow-side-pt${on ? ' is-current' : ''}${unread ? ' is-unread' : ''}`} aria-current=${on ? 'true' : undefined}
     title=${name} onClick=${open}>
     <span class="flow-side-pt-name">${name}</span>${stand ? html`<span class="flow-side-pt-stand muted small">${stand}</span>` : null}
   </button></li>`
@@ -151,7 +153,7 @@ function SideList({ sides, entered, mode, points, marked, current = null, s, c }
       <li key="all"><button type="button" class=${`flow-side-item is-all${on('all') ? ' is-on' : ''}`} aria-current=${on('all') ? 'true' : undefined}
         onClick=${() => c.flowSide(null)}>
         <span class="flow-side-name"><span class="flow-side-label">${sideName(null, mode)}</span></span>
-        <span class="flow-side-open mono muted" title=${f.open(every?.open ?? 0)}>${every?.open ?? 0}</span>
+        <${SideCount} side=${every} />
       </button></li>
       ${sides.filter(x => x.id !== 'all').map(x => html`<li key=${x.id}>
       <button type="button" class=${`flow-side-item${x.you ? ' is-you' : ''}${on(x.id) ? ' is-on' : ''}`} aria-current=${on(x.id) ? 'true' : undefined}
@@ -159,7 +161,7 @@ function SideList({ sides, entered, mode, points, marked, current = null, s, c }
         <${SideDot} side=${x} />
         <span class="flow-side-name"><span class="flow-side-label">${sideName(x, mode)}</span>
           ${x.you ? html`<span class="flow-side-you">${f.you(x.you)}</span>` : null}</span>
-        <span class="flow-side-open mono muted" title=${f.open(x.open)}>${x.open}</span>
+        <${SideCount} side=${x} />
       </button>
       <${SidePoints} side=${x} points=${points} mode=${mode} current=${current} s=${s} c=${c} /></li>`)}</ul>
     ${pointViewOn(s) ? html`<${OrderMenu} mode=${mode} keys=${keys} busy=${busy} entered=${entered} naming=${renaming} setNaming=${setRenaming}
@@ -742,6 +744,8 @@ function Fields({ x, s, c }) {
         ${fld.url ? link(fld.url) : null}${fld.link ? link(fld.link) : null}</span>`
     }
     if (fld.id === 'created' || fld.id === 'moved') return fld.value ? activityWhen(fld.value, lang) : none
+    if (fld.id === 'readmark') return markWords(fld.mark, lang)
+    if (fld.id === 'active') return activeWords(fld.active, lang)
     return none
   }
   // stage 4: Theme, Area, Who and Due (or the day it asks again) on top, every other field folded under Details

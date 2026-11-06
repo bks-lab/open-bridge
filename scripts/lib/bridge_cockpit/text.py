@@ -221,6 +221,10 @@ EN: dict = {
     "to_task_failed": "Could not make it a task: {err}",
     # a finished AI run (stage 2 of the one point view): read, read again, analysed further, made a task
     "return_read": "Read: {title}", "return_unread": "To read again",
+    # the read marks of Work through (seen.py): a revisit set, its note when a sentence came with it, a point unread again
+    "revisit_note": "Revisit on {until}", "revisit_set": "Revisit on {until}: {title}", "seen_unread": "Unread again: {title}",
+    "seen_focus_on": "In focus: {title} counts as active", "seen_focus_off": "No longer in focus: {title}",
+    "seen_off": "The read marks are off (cockpit.flow.seen.enabled)",
     "analyse_note": "{note} The run before came to this: {result}",
     "analyse_reopen": "Opened again to analyse it further",
     "return_origin": "the AI run of {day} on {title} ({key})",
@@ -677,6 +681,9 @@ DE: dict = {
     "to_task_undone_reason": "Zurückgenommen: wieder in den Posteingang",
     "to_task_failed": "Zur Aufgabe machen ging nicht: {err}",
     "return_read": "Gelesen: {title}", "return_unread": "Wieder zum Lesen",
+    "revisit_note": "Wiedervorlage am {until}", "revisit_set": "Wiedervorlage am {until}: {title}",
+    "seen_unread": "Wieder ungelesen: {title}", "seen_focus_on": "Im Fokus: {title} zählt als aktiv",
+    "seen_focus_off": "Nicht mehr im Fokus: {title}", "seen_off": "Die Lesemarken sind aus (cockpit.flow.seen.enabled)",
     "analyse_note": "{note} Der Lauf davor kam zu diesem Ergebnis: {result}",
     "analyse_reopen": "Wieder geöffnet, um es weiter zu analysieren",
     "return_origin": "der KI-Lauf vom {day} zu {title} ({key})",

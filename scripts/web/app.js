@@ -19,7 +19,7 @@ import {
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn,
-  pointBack, pointList, ghWalkAt,
+  pointBack, pointList, ghWalkAt, flowOpenKey,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -189,6 +189,8 @@ const store = createStore({
   describe: {},
   // the themes of Work through (themes.py state): the themes, the theme of each point, the suggestions
   themes: null,
+  // the read marks of Work through (seen.py state): {marks: {key: {at, m, until, unread}}, focus: [key]}
+  seen: { marks: {}, focus: [] },
   history: [],
   jev: { enabled: false, ready: false, reason: 'off' },
   workers: { status: 'idle', data: null, error: null },
@@ -416,6 +418,8 @@ function applyState(payload) {
     tour: payload.tour ?? s.tour,
     work: payload.work ?? s.work,
     themes: payload.themes ?? s.themes,
+    // the read marks of Work through (cockpit.flow.seen, seen.py)
+    seen: payload.seen ?? s.seen,
     // what the day's budgets of Work through still hold: summaries and instructions (round 3)
     flow_ai: payload.flow_ai ?? s.flow_ai,
     rooms: payload.rooms ?? s.rooms,
@@ -545,6 +549,10 @@ const handlers = {
   // the themes of Work through changed: a run, a move, a new name (themes.py changed)
   themes(ev) {
     if (ev && typeof ev === 'object') store.set(s => ({ ...s, themes: ev }))
+  },
+  // a read mark changed: a point opened, marked unread, put to a revisit day, kept in focus, here or in another browser
+  seen(ev) {
+    if (ev && typeof ev === 'object' && ev.marks) store.set(s => ({ ...s, seen: ev }))
   },
   // a brief written, proposed, applied or dropped, here or by the server's own pass (describe.py changed)
   describe(ev) {
@@ -1399,6 +1407,23 @@ const ctl = {
   flowGo: (id, i) => setUi(ui => ({ flowAt: { id, i }, flowView: 'point', flowPlan: ui.flowAt?.id === id ? ui.flowPlan : null, flowList: null })),
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
   flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
+  // the read marks (cockpit.flow.seen): points read, quietly (an open, Read, Mark all read), at once in the page and
+  // then on the server in calls of at most 50 keys; a refusal leaves them unread, as the next state says
+  flowSeen: async keys => {
+    const list = [...new Set(keys ?? [])].filter(Boolean)
+    if (!list.length) return false
+    const at = Date.now()
+    store.set(s => ({ ...s, seen: { ...s.seen, marks: { ...(s.seen?.marks ?? {}), ...Object.fromEntries(list.map(k => [k,
+      { at, m: s.model?.moved?.[k] ?? {}, until: null, unread: false }])) } } }))
+    for (let i = 0; i < list.length; i += 50) {
+      const res = await api.action('seen_read', { keys: list.slice(i, i + 50) })
+      if (!res.ok) { if (res.status === 401) failNote(res); return false }
+    }
+    return true
+  },
+  // Mark unread (More ▾, key U): it stays unread until it is opened again; Keep in focus: a doing task counts as active
+  flowUnread: key => act('seen_unread', { key }),
+  flowFocus: (key, on) => act('seen_focus', { key, on }),
   // To tab on a card: the jump goes out and is remembered for the return card; a driver that cannot jump shows the
   // tab's screen instead, and that asks nothing on the way back
   flowJump(card) {
@@ -2229,6 +2254,14 @@ function onKey(e) {
     const at = lines.indexOf(document.activeElement)
     e.preventDefault()
     return lines[Math.min(lines.length - 1, Math.max(0, at + (key === 'j' ? 1 : -1)))]?.focus()
+  }
+  // u on a point open in Work through with the read marks on: Mark unread, until it is opened again
+  if (key === 'u') {
+    const open = flowOpenKey(s)
+    if (open) {
+      e.preventDefault()
+      return ctl.flowUnread(open)
+    }
   }
   // the row keys act on Work, and on the overview while it shows the rows waiting on you (keyScope)
   const ks = keyScope(s)

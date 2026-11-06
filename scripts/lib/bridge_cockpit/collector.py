@@ -33,6 +33,7 @@ from .daybook import week_done
 from .details import INBOX_ID_RE, inbox_facts
 from .watch import task_snapshot
 from . import returns as ret
+from . import seen as seen_mod
 
 TASK_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")      # the same rule as actions.SLUG_RE
 
@@ -812,6 +813,17 @@ class Collector:
                           and app.launches.mark(r["key"], r["stage"])]
             except (OSError, ValueError, TypeError, AttributeError, KeyError):
                 model["returns"], to_log = [], []
+            # the read marks of Work through compare these (seen.py): only while they are on, so nothing is read for them
+            # otherwise; a failure leaves the points unread, never the page down
+            if app.seen_on():
+                try:
+                    rows = [*(r for sec in model.get("sections") or [] for r in sec.get("rows") or []),
+                            *(model.get("hidden") or []), *(model.get("task_rows") or []), *(model.get("deferred") or []),
+                            *({"key": f"task:{f['slug']}", "task": f["slug"]} for f in model.get("files") or []
+                              if isinstance(f, dict) and f.get("slug"))]
+                    model["moved"] = app.markers.build(rows, model.get("returns"), seen_mod.code_markers(self.view, pairs))
+                except (OSError, ValueError, TypeError, AttributeError, KeyError):
+                    model["moved"] = {}
             self.model, self.index = model, index
             # Published under the lock: two rebuilds reach the page in the order of their seq
             # (publish only serializes and enqueues). A model equal to the last one sent but for

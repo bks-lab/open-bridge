@@ -237,6 +237,12 @@ work:
 #     instruct: {enabled: false, budget_per_day: 30}   # the instruction line: a sentence becomes steps, run on a click
 #     attach: {enabled: false, max_mb: 10}             # Activity: attach a document to the task's deliverables/
 #     checkin: {enabled: false, budget_per_day: 10}    # the Bridge looks before a check-in and says what it found
+#     seen:                # read marks: a point opened is read until something new happens or its revisit day comes
+#       enabled: false
+#       open_reads: auto   # auto = opening reads it | click = only the Read button does
+#       active_days: 7     # a doing task that moved within this many days is active, else it rests
+#       revisit_days: {active: 7, resting: 14, backlog: 30, question: 2, issue: 7}   # back unread after, without news
+#       counts: {note: true, status: true, doc: true, run: true, code: true, log: true, inbox: true}   # what is news
 #     prio:                # Prio: a second ranker beside Jev; fallback haiku = a failed Jev read-in on a click runs Haiku
 #       fallback: none
 #       haiku: {enabled: false, budget_per_day: 6}
