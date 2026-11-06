@@ -604,6 +604,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_settled.py",
     "scripts/lib/bridge_cockpit/seen.py",                 # Work through: read marks and the movement markers they compare
     "scripts/tests/test_bridge_cockpit_seen.py",
+    "scripts/tests/test_bridge_cockpit_hand_over.py",     # Work through: Hand over, and a Drop that drops (drop_idea)
     "scripts/lib/bridge_cockpit/details.py",
     "scripts/lib/bridge_cockpit/jev.py",          # optional integration, off unless integrations.typesafe.enabled
     "scripts/lib/bridge_cockpit/launch.py",       # the model an agent starts with, off unless cockpit.launch_model.enabled
@@ -806,6 +807,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_prio.test.mjs",
     "scripts/tests/bridge_cockpit_point.test.mjs",      # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/tests/bridge_cockpit_read.test.mjs",       # finished AI runs: the group to read, the plain sentence, the run's verbs
+    "scripts/tests/bridge_cockpit_hand_over.test.mjs",  # Hand over without Me, the Drop line, the batch
     "scripts/tests/bridge_cockpit_seen.test.mjs",       # read marks: unread and read, the folds, the walk, Revisit
     "scripts/tests/bridge_cockpit_simple.test.mjs",     # stage 4: the name, the stand, the step, the bands, More, the check-in
     "scripts/tests/bridge_cockpit_settle.test.mjs",

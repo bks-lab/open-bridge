@@ -225,6 +225,7 @@ work:
 #   flow:                  # the Work through page: every open item as one card at a time, five verbs on each
 #     enabled: false       # true: the tab Work through stands right after Today
 #     drop_reasons: [resolves_itself, not_needed, someone_else, not_worth_it]   # what "Drop because" offers; own words too
+#     drop_idea: true      # Drop on a task: true = shelve (declined + an idea back in 90 days) | false = closed as declined, no idea
 #     return_after_s: 20   # after "To tab", the page asks how it went once it is in view again this many seconds later
 #     prep_ahead: 2        # the next cards whose brief is prepared ahead, within describe.budget_per_hour; 0 = none
 #     max_running: 4       # started agents running before Let AI do it asks first

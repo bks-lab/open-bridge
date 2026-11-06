@@ -56,7 +56,7 @@ export const FLOW = {
           p.counts.drop ? `${p.counts.drop} drop${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} ${p.revisit ? 'revisit on' : 'later until'} ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} to an agent` : null,
-          p.counts.work ? `${p.counts.work} in progress with ${p.value?.who ?? ''} until ${p.days.map(day).join(', ')}` : null].filter(Boolean)
+          p.counts.work ? `${p.counts.work} ${p.hand ? 'handed over to' : 'in progress with'} ${p.value?.who ?? ''} until ${p.days.map(day).join(', ')}` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'stays' : 'stay'} out` : null
         return [parts.join(', ') || 'Nothing to do', out].filter(Boolean).join('; ')
       },
@@ -96,6 +96,10 @@ export const FLOW = {
     drop: {
       label: 'Why it goes', other: 'Another reason', send: 'Drop',
       reason: { resolves_itself: 'Resolves itself', not_needed: 'No longer needed', someone_else: 'Someone else does it', not_worth_it: 'Too big for what it brings' },
+      // what the click will do (logic.js dropWhat), by kind and by cockpit.flow.drop_idea
+      what: { idea: day => `Closes the task; it comes back as an idea on ${day}`, task: 'Closes the task for good',
+        inbox: 'Drops the item; the reason stays on it as a note', issue: 'Hides it here; it stays open on GitHub',
+        other: 'Hides it here for good; its source stays as it is' },
     },
     advice: {
       title: 'Advice', running: 'Asking for advice', failed: 'No answer came back.', start: 'Start from it', close: 'Close',
@@ -287,6 +291,9 @@ export const FLOW = {
     // the read marks (cockpit.flow.seen): why a point is unread, the folds of what is read, the walk when all is read,
     // the head line, the fields Read mark and Active, Read, Mark unread, Keep in focus and Revisit ▾
     marks: {
+      // with the marks on In progress is Hand over: for someone else only, the same check-in
+      handOver: 'Hand over', handTo: 'To whom?',
+      handedSince: (day, who) => (day ? `Handed over to ${who} on ${day}. How does it stand?` : `Handed over to ${who}. How does it stand?`),
       why: {
         never: 'New, never opened', forced: 'Marked unread', new: (what, day) => `New: ${what} (${day})`,
         revisit: day => `Revisit from ${day}`,
@@ -367,7 +374,7 @@ export const FLOW = {
           p.counts.drop ? `${p.counts.drop} weg${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
           p.counts.later ? `${p.counts.later} ${p.revisit ? 'Wiedervorlage am' : 'später bis'} ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} an einen Agenten` : null,
-          p.counts.work ? `${p.counts.work} in Arbeit bei ${p.value?.who ?? ''} bis ${p.days.map(day).join(', ')}` : null].filter(Boolean)
+          p.counts.work ? `${p.counts.work} ${p.hand ? 'übergeben an' : 'in Arbeit bei'} ${p.value?.who ?? ''} bis ${p.days.map(day).join(', ')}` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'bleibt' : 'bleiben'} draußen` : null
         return [parts.join(', ') || 'Nichts zu tun', out].filter(Boolean).join('; ')
       },
@@ -407,6 +414,9 @@ export const FLOW = {
     drop: {
       label: 'Warum es weg kann', other: 'Anderer Grund', send: 'Weg damit',
       reason: { resolves_itself: 'Erledigt sich von selbst', not_needed: 'Nicht mehr nötig', someone_else: 'Macht jemand anders', not_worth_it: 'Zu groß für den Nutzen' },
+      what: { idea: day => `Schließt die Aufgabe; sie kommt als Idee am ${day} wieder`, task: 'Schließt die Aufgabe endgültig',
+        inbox: 'Verwirft den Eintrag; der Grund bleibt als Notiz daran', issue: 'Blendet es hier aus; auf GitHub bleibt es offen',
+        other: 'Blendet es hier endgültig aus; seine Quelle bleibt, wie sie ist' },
     },
     advice: {
       title: 'Rat', running: 'Rat wird geholt', failed: 'Keine Antwort gekommen.', start: 'Daraus starten', close: 'Schließen',
@@ -583,6 +593,8 @@ export const FLOW = {
       run: day => `KI-Lauf vom ${day}, fertig`,
     },
     marks: {
+      handOver: 'Übergeben', handTo: 'An wen?',
+      handedSince: (day, who) => (day ? `Am ${day} an ${who} übergeben. Wie ist der Stand?` : `An ${who} übergeben. Wie ist der Stand?`),
       why: {
         never: 'Neu, noch nie geöffnet', forced: 'Als ungelesen markiert', new: (what, day) => `Neu: ${what} (${day})`,
         revisit: day => `Wiedervorlage ab ${day}`,

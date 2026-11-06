@@ -24,7 +24,7 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { personOf, BASIC_VERBS, checkinDays, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, nextWho, parseDate, short,
-  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName, seenOn } from '../logic.js'
+  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName, seenOn, dropWhat } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
@@ -106,6 +106,9 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   // the read marks on (cockpit.flow.seen): Later of the four states is Revisit ▾, read now and back unread on its day; the
   // sentence, when there is one, is the only thing written into the task
   const revisit = simple && seenOn(s)
+  // and In progress is Hand over: for someone else only (the person's own later is Revisit, keeping it active is Keep
+  // in focus), the same verb work_on and its check-in
+  const hand = revisit
   const [sentence, setSentence] = useState('')
   const busy = !!s.ui?.busy?.[row.key]
   const finish = r => {
@@ -147,7 +150,8 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   }
   const nowMs = s.now || Date.now()
   const putOff = iso => send(flowAction('later', row, iso, by('later'), revisit ? { revisit: true, ...(sentence.trim() ? { text: sentence.trim() } : {}) } : null))
-  const word = v => words[v] ?? (v === 'task' ? f.basic.task : revisit && v === 'later' ? f.marks.revisit : simple && f.simple[v] ? f.simple[v] : f.verbs[v])
+  const word = v => words[v] ?? (v === 'task' ? f.basic.task : revisit && v === 'later' ? f.marks.revisit : hand && v === 'work' ? f.marks.handOver
+    : simple && f.simple[v] ? f.simple[v] : f.verbs[v])
   const pickDay = () => {
     const iso = parseDate(day, s.now)
     if (!iso) return setDayErr(t.noDate(day || ' '))
@@ -169,7 +173,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const kind = fixed ? html`${yesStrong ? yesBtn('primary') : null}${first}${lead}${list.filter(v => !BASIC.has(v)).map(btn)}
     ${yes && !yesStrong ? yesBtn('secondary') : null}${extra}` : null
   const days = checkinDays(nowMs)
-  const people = simple && open === 'work' ? workWho(s) : []
+  const people = simple && open === 'work' ? workWho(s).filter(p => !hand || p !== 'me') : []
   const simpleBtn = v => html`<${Btn} key=${v} size="xs" variant="secondary" cls="verbbar-state" busy=${busy && !off[v]} disabled=${!!off[v]}
     title=${off[v] ? f.basic.off[off[v]] ?? off[v] : undefined} pressed=${PANELS.has(v) && !off[v] ? open === v : undefined}
     onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`
@@ -192,7 +196,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     </div>`}
     ${tail ? html`<div class="verbbar-row verbbar-tail">${tail}</div>` : null}
     ${open === 'work' ? html`<div class="verbbar-panel flow-work" role="group" aria-label=${f.simple.work}>
-      <p class="label-caps">${f.simple.whoLabel}</p>
+      <p class="label-caps">${hand ? f.marks.handTo : f.simple.whoLabel}</p>
       <div class="flow-work-chips">${people.map(p => html`<${Btn} key=${p} size="xs" variant="secondary" pressed=${who === p}
         onClick=${() => setWho(p)}>${p === 'me' ? f.simple.me : p === 'bridge' ? f.simple.bridge : nextWho(p, s, lang)}<//>`)}
         <${Btn} size="xs" variant="secondary" pressed=${who === 'other'} onClick=${() => setWho('other')}>${f.simple.other}<//></div>
@@ -268,6 +272,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
           onInput=${e => { setOther(e.currentTarget.value); setReason(null) }} />
         <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!why} onClick=${() => send(flowAction('drop', row, why, by('drop')))}>${f.drop.send}<//>
       </span>
+      <p class="muted small flow-drop-what">${dropWhat(row, s, lang)}</p>
     </div>` : null}
   </div>`
 }

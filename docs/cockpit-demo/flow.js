@@ -12,7 +12,7 @@
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
 import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, pointName, pointOriginal, projectTone, replyOptions, replySend,
-  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf, personOf, workViewIn } from './logic.js'
+  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf, personOf, workViewIn, formatDay } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -97,6 +97,8 @@ export function flowSettings(s) {
   const int = (k, d, low) => (Number.isInteger(f[k]) && f[k] >= low ? f[k] : d)
   const mb = f.attach?.max_mb
   return { enabled: f.enabled === true, drop_reasons: Array.isArray(f.drop_reasons) ? f.drop_reasons : [],
+    // what Drop does to a task (cockpit.flow.drop_idea): shelve it as an idea (the default) or close it for good
+    drop_idea: f.drop_idea !== false,
     return_after_s: Number.isFinite(f.return_after_s) ? f.return_after_s : 20, prep_ahead: int('prep_ahead', 2, 0),
     max_running: int('max_running', 4, 1), rank_max_age_days: int('rank_max_age_days', 7, 1),
     // round 4: how many days before its due a point comes up (C)
@@ -931,7 +933,8 @@ export function batchPlan(rows, how, s, value = '', lang = 'en', revisit = seenO
       if (!row?.key || isStream(row)) skipped.push({ row, why: 'not_offered' })
       else calls.push({ verb: 'work_on', args: { key: row.key, who: value?.who, until: value?.until } })
     }
-    return { calls, skipped, counts: { done: 0, later: 0, drop: 0, do: 0, work: calls.length }, how, value, days: [value?.until].filter(Boolean), reasons: [] }
+    return { calls, skipped, counts: { done: 0, later: 0, drop: 0, do: 0, work: calls.length }, how, value, days: [value?.until].filter(Boolean), reasons: [],
+      hand: seenOn(s) }
   }
   const done = []
   const later = []
@@ -1151,6 +1154,22 @@ export function flowAction(verb, row, value = '', by = null, more = null) {
       : { verb: 'settle', args: { keys: [key], outcome: 'not_doing', text, ...tag } }
   }
   return null
+}
+
+// how many days a shelved task's idea stays quiet when no day is given (task.py SHELVE_DAYS)
+const SHELVE_DAYS = 90
+
+/** What Drop does to a row, in one plain line before the click: a task shelved as an idea that comes back after
+ *  SHELVE_DAYS (cockpit.flow.drop_idea, the default) or closed for good, an inbox item dropped with its reason as a
+ *  note, an issue or a pull request hidden here while it stays open on GitHub, any other row hidden here for good */
+export function dropWhat(row, s, lang = 'en') {
+  const w = (TABLES[lang] ?? TABLES.en).flow.drop.what
+  if (row?.task && !row.inbox_id) {
+    if (!flowSettings(s).drop_idea) return w.task
+    return w.idea(formatDay(dayOf(dayNumber(isoDate(s?.now || Date.now())) + SHELVE_DAYS), lang))
+  }
+  if (row?.inbox_id) return w.inbox
+  return REF_RE.test(String(row?.ref ?? '')) || refOfUrl(row?.url) ? w.issue : w.other
 }
 
 /** The start sentence a start opens with: the row's title and the request for a result line (text-flow.js) */

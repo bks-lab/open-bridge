@@ -21,7 +21,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { activityWhen, atWork, batchPlan, batchPreselect, batchSummary, checkinDays, DAY, dropReasonWord, flowDrive, flowSettings, flowSuggestion, FLOW_BANDS,
   FLOW_YOU, formatDay, isoDate, jevWhy, personOf, mergeable, mergeKeep, nextMonday, nextWho, pointBand, pointName, pointStand, pointStep, rankerName,
-  readKeys, readMark, rowProject, rowRunning, seenFigures, seenOn, short, stageTone, workWho } from '../logic.js'
+  readKeys, readMark, rowProject, rowRunning, seenFigures, seenOn, short, stageTone, workWho, dropWhat } from '../logic.js'
 import { T, TABLES, language } from '../text.js'
 import { KindTag } from './day.js'
 import { unreadWhy } from './flowmarks.js'
@@ -175,11 +175,13 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
   const reasons = flowSettings(s).drop_reasons
   const merging = personOf(s) ? [] : mergeable(chosen)      // a merge is no verb of a person's (access.py)
   const canMerge = merging.length >= 2 && merging.length === chosen.length
+  // with the read marks on In progress is Hand over, for someone else only (views/verbbar.js)
+  const hand = seenOn(s)
   const verb = v => {
     const off = !chosen.length
     if (v === 'suggested') return html`<${Btn} key=${v} size="sm" variant="primary" disabled=${!suggested?.calls.length} onClick=${() => ask('suggested')}>${w.run}<//>`
     if (v === 'later' || v === 'drop' || v === 'work') {
-      const word = v === 'later' ? f.verbs.later : v === 'work' ? f.simple.work : f.verbs.drop
+      const word = v === 'later' ? f.verbs.later : v === 'work' ? (hand ? f.marks.handOver : f.simple.work) : f.verbs.drop
       return html`<${Btn} key=${v} size="sm" variant="secondary" disabled=${off} pressed=${panel === v} onClick=${() => setPanel(panel === v ? null : v)}>${word} ▾<//>`
     }
     const word = v === 'back' ? f.notnow.back : v === 'do' ? f.verbs.do : f.verbs.done
@@ -207,8 +209,8 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
       <${Btn} size="sm" variant="secondary" onClick=${() => ask('later', isoDate(nowMs + 7 * DAY))}>${f.later.week}<//>
     </div>` : null}
     ${panel === 'work' ? html`<div class="verbbar-panel flow-work" role="group" aria-label=${f.simple.work}>
-      <p class="label-caps">${f.simple.whoLabel}</p>
-      <div class="flow-work-chips">${workWho(s).filter(p => p !== 'bridge').map(p => html`<${Btn} key=${p} size="xs" variant="secondary"
+      <p class="label-caps">${hand ? f.marks.handTo : f.simple.whoLabel}</p>
+      <div class="flow-work-chips">${workWho(s).filter(p => p !== 'bridge' && !(hand && p === 'me')).map(p => html`<${Btn} key=${p} size="xs" variant="secondary"
         pressed=${who === p} onClick=${() => setWho(p)}>${p === 'me' ? f.simple.me : nextWho(p, s, lang)}<//>`)}</div>
       <p class="label-caps">${f.simple.whenLabel}</p>
       <div class="flow-work-chips">${[3, 7, 14].map(d => html`<${Btn} key=${d} size="xs" variant="secondary" disabled=${!who}
@@ -219,6 +221,7 @@ export function BatchBar({ pickable, chosen, onPick, verbs, planOf, onRun, sugge
       <span class="field-row"><input class="input" type="text" maxlength="200" aria-label=${f.drop.other} placeholder=${f.drop.other} value=${other}
         onInput=${e => setOther(e.currentTarget.value)} />
         <${Btn} size="sm" variant="primary" disabled=${!other.trim()} onClick=${() => ask('drop', other.trim())}>${f.drop.send}<//></span>
+      ${[...new Set(chosen.map(r => dropWhat(r, s, lang)))].map(line => html`<p key=${line} class="muted small flow-drop-what">${line}</p>`)}
     </div>` : null}
     ${panel === 'merge' && canMerge ? html`<${MergePanel} rows=${chosen} s=${s} c=${c} from=${from} onClose=${() => setPanel(null)} onPick=${onPick} />` : null}
     ${plan ? html`<div class="flow-list-confirm" role="alert">

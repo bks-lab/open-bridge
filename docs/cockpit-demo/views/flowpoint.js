@@ -25,7 +25,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   asksSomething, checkinDays, detailNeedsLoad, dropReasonWord, duration, flowAction, flowDrive, flowSettings, formatDay, guideOf, nextWho, personOf,
-  pointName, pointStand, pointStep, previewText, reportsTicked, resultText, short, soloSource, stageTone, tabOfTask,
+  pointName, pointStand, pointStep, previewText, reportsTicked, resultText, short, soloSource, stageTone, tabOfTask, dropWhat, seenOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag } from './day.js'
@@ -160,7 +160,7 @@ function CheckinCard({ x, n = 1, s, c }) {
   return html`<article class="fx-hero tk-warning flow-checkin" aria-labelledby="flow-title">
     <header class="fx-hero-top"><span class="fx-kind"><${Dot} token="warning" />${f.checkinKind}</span><${HeadEnd} row=${row} s=${s} c=${c} /></header>
     <h2 id="flow-title" class="fx-title">${name}</h2>
-    <p class="fx-sub">${f.since(since, who)}</p>
+    <p class="fx-sub">${seenOn(s) ? t.flow.marks.handedSince(since, who) : f.since(since, who)}</p>
     <${Looked} found=${ck.found} lang=${lang} />
     <div class="verbbar-acts flow-checkin-acts" role="group" aria-label=${f.answers}>
       <${Btn} size="sm" variant="secondary" busy=${busy} onClick=${() => send(flowAction('done', row, ''))}>${t.flow.verbs.done}<//>
@@ -181,6 +181,7 @@ function CheckinCard({ x, n = 1, s, c }) {
     </div>` : null}
     ${open === 'drop' ? html`<div class="verbbar-panel verbbar-acts" role="group" aria-label=${t.flow.drop.label}>
       ${reasons.map(r => html`<${Btn} key=${r} size="sm" variant="secondary" busy=${busy} onClick=${() => send(flowAction('drop', row, dropReasonWord(r, lang)))}>${dropReasonWord(r, lang)}<//>`)}
+      <p class="muted small flow-drop-what">${dropWhat(row, s, lang)}</p>
     </div>` : null}
   </article>`
 }

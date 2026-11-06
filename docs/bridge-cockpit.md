@@ -98,6 +98,7 @@ their defaults:
 | `describe` | `auto: off` | each item's brief (name, stand, goal, story, acceptance) written and kept by a small model, see [Each item's brief](#each-items-brief): `auto` is `off`, `missing` (items without a brief) or `stale` (also briefs whose text moved on); `budget_per_hour` (`20`) caps the calls of an hour; `kinds` (`[task, stream, inbox]`) names what the pass takes; `effort` (`medium`) is how long the model may think, `low`, `medium` or `high`. The button on a card works with `auto: off` too |
 | `flow.enabled` | `false` | the view Work through of the work tab: everything open grouped by theme or area, one point at a time as a card with five verbs, or as a list with suggestions and a batch, see [Work through](#work-through-flow). Off, the view does not exist |
 | `flow.drop_reasons` | `[resolves_itself, not_needed, someone_else, not_worth_it]` | the reasons "Drop because" offers to click, beside a free field; the four keys are worded by the page in both languages, a reason of your own (1 to 80 characters, at most 12) stands as written |
+| `flow.drop_idea` | `true` | what Drop does to a task: `true` shelves it as before (the task closes as declined and an idea of it waits in the inbox, put off 90 days, `task.py shelve`); `false` closes it as declined with the reason and files no idea. The Drop menu says which before the click. An inbox item and an issue drop the same either way |
 | `flow.return_after_s` | `20` | after "To tab" on a card, how many seconds later (at most 4 hours) the page asks how it went once it is in view again; `0` asks at the first return. Switching apps without "To tab" never asks |
 | `flow.prep_ahead` | `2` | how many cards after the one in front get their brief prepared (`describe_run`, within `describe.budget_per_hour`), only when it is missing or stale; `0` prepares none |
 | `flow.max_running` | `4` | how many started agents may run before Let AI do it asks "4 are running already. Start anyway?" (at least 1); a batch of the list starts no more than that |
@@ -588,6 +589,8 @@ out a workspace:
   new day), **Stuck** (back to you, verb `checkin_stuck`, the reason as a note),
   **Drop ▾** and **Follow up with <who>** (the Bridge starts on a draft of a
   follow-up through the mail-draft skill, never sends it). The right column then holds no 2x2, only More.
+  With the read marks on (`cockpit.flow.seen`) In progress ▾ is **Hand over ▾**
+  (de: Übergeben ▾), see [Read marks](#read-marks).
   With `cockpit.flow.checkin` on, the Bridge looked first and the card says so
   under **The Bridge looked**: what it found and where, what it could not read,
   or that nothing new came since the hand-over (below).
@@ -1022,7 +1025,7 @@ Activity shows it as who decided; nothing acts on it:
 | Advise | a read-only quick question about the row; the answer shows in the card, with **Start from it**. The answer names the card's own button, Let AI do it, and no key (the quick question goes out with `origin: flow`) |
 | Done | `settle` done |
 | Later until | `later`: tomorrow, Monday, next week or a date |
-| Drop because | a reason from `cockpit.flow.drop_reasons` or typed, never without one: a task is shelved (`shelve`, an idea in the inbox and the task declined, taken back by reopening it), anything else settled as not doing with the reason. A stream's own row offers neither Drop nor Done; an inbox item about a stream is decided like any other item |
+| Drop because | a reason from `cockpit.flow.drop_reasons` or typed, never without one: a task is shelved (`shelve`, an idea in the inbox and the task declined, taken back by reopening it), or, with `cockpit.flow.drop_idea: false`, closed as declined with the reason and no idea; anything else settled as not doing with the reason. One plain line under the reasons says before the click what it will do: for a task "Closes the task; it comes back as an idea on <day>" (90 days on) or "Closes the task for good", for an inbox item that it is dropped with the reason as a note (a drop from here leaves no mute rule), for an issue or a pull request "Hides it here; it stays open on GitHub", for any other row that it is hidden here for good. The batch bar shows the line of each kind ticked, and a batch Drop and the instruction line's drop follow the same setting (the server decides, `shelve` stays the verb). A stream's own row offers neither Drop nor Done; an inbox item about a stream is decided like any other item |
 
 **Let AI do it** shows the model and its effort under the start sentence (the
 picker of every start, while `cockpit.launch_model` is on): with Auto, the
@@ -1209,6 +1212,15 @@ history names it "revisit on <day>", and the point's Activity shows it as a
 decision **Revisit** with its day; a row of
 Not now keeps Later as it was (it is no point, a mark would not move it). Due
 days keep working as before (`ahead_days`).
+
+**Hand over replaces In progress.** With the marks on, In progress ▾ of the
+four states is **Hand over ▾** (de: Übergeben ▾), and so is the batch bar's: it
+is for someone else only, the Bridge, a person the instance names or someone
+else …, never **Me** (your own "later" is Revisit, keeping a task active is Keep
+in focus). It sends the same verb `work_on` with the same check-in on its day;
+its note and history say "Handed over to <who>" (de: "Übergeben an <who>"), and
+the check-in card asks "Handed over to <who> on <day>. How does it stand?". The
+instruction line has no op for it, so its planner is unchanged.
 
 **Active and resting.** A doing task is **active** while something counted moved
 on it within `active_days` (7), an agent works on it, it is pinned or you keep it
@@ -4487,6 +4499,16 @@ The server deletes relay files after a day, heartbeats after an hour. The
 one file outside the Bridge: `~/.local/state/bridge-cockpit/` (folder and file
 readable by you only), or the folder `$BRIDGE_COCKPIT_KEY_DIR` names; delete it
 to get a new one at the next start.
+
+### Upgrading: Hand over and a Drop that drops
+
+New key `cockpit.flow.drop_idea`, default `true`: Drop on a task shelves it as it
+always did, so nothing changes for an existing Bridge; set `false` to close a
+dropped task as declined with its reason and no idea in the inbox. The Drop menu
+now says in one line what the click will do, wherever it stands (a point, the
+batch bar, the check-in card). With the read marks on, In progress ▾ is Hand over
+▾ without Me, and its words say handed over; off, it is unchanged. No verb
+changed on the wire: `shelve` and `work_on` stay, the server decides by the key.
 
 ### Upgrading: read marks
 

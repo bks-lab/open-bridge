@@ -285,7 +285,7 @@ def test_with_work_through_on_the_state_names_the_person_its_waiting_rule_reads(
 
 def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(tmp_path):
     cfg = load_web_config(tmp_path, {})
-    assert cfg.flow == {"enabled": False, "drop_reasons": ["resolves_itself", "not_needed", "someone_else", "not_worth_it"],
+    assert cfg.flow == {"enabled": False, "drop_reasons": ["resolves_itself", "not_needed", "someone_else", "not_worth_it"], "drop_idea": True,
                         "return_after_s": 20, "prep_ahead": 2, "max_running": 4, "rank_max_age_days": 7,
                         "rerank_per_day": 3, "ahead_days": 2, "read_days": 3, "infer_sessions": True,
                         "themes": {"enabled": False, "max_themes": 8, "budget_per_day": 6, "model": None},
