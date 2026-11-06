@@ -115,7 +115,7 @@ NOTE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?: (.+)$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
 COMMIT_URL_RE = re.compile(r"https?://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/commit/([0-9a-f]{7,40})\b")
 STATUS_LINE_RE = re.compile(r"^([+-])status:\s*(.*?)\s*(?:#.*)?$")
-UNTIL_RE = re.compile(r"until (\d{4}-\d{2}-\d{2})")
+UNTIL_RE = re.compile(r"(?:until|revisit on) (\d{4}-\d{2}-\d{2})")
 NAME_KEEP_RE = re.compile(r"[^\w .()+,=@-]")
 EXT_RE = re.compile(rf"^(.+?)(\.[^.\s]{{1,{EXT_MAX}}})\Z")
 #: the inbox verbs that change an item's state, and the state each leaves it in (inbox.py Item.state)
@@ -843,7 +843,9 @@ class _Feed:
                 did = str(it.get("did") or "")
                 verb = entry.get("verb")
                 until = UNTIL_RE.search(did)
-                new = ("later" if verb in ("later", "runs_on") else "hidden" if verb == "hide" else
+                # a revisit (the read marks, seen.py) is a later that hides nothing: its own word, its day
+                new = ("revisit" if did.startswith("revisit on") else
+                       "later" if verb in ("later", "runs_on") else "hidden" if verb == "hide" else
                        "shelved" if verb == "shelve" or did == "shelved" else
                        {"done": "done", "declined": "not_doing", "not_doing": "not_doing", "dropped": "dropped",
                         "merged": "merged", "merged_in": "merged_in"}.get(did)
@@ -855,7 +857,8 @@ class _Feed:
                 other = {"merged": it.get("into"), "merged_in": it.get("from")}.get(new)
                 other = other if isinstance(other, str) and details.SLUG_RE.match(other) else None
                 words = self.tx["decision"][new] + (" " + self.tx["until"].format(day=until.group(1))
-                                                    if until and new in ("later", "hidden") else "") \
+                                                    if until and new in ("later", "hidden") else
+                                                    f" {until.group(1)}" if until and new == "revisit" else "") \
                     + (f" {other}" if other else "")
                 row = self.add("decision", words, at_ms=entry.get("at_ms"),
                                change=change("decision", None, new, until=until.group(1) if until else None,

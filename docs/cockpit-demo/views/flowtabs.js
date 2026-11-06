@@ -219,7 +219,9 @@ function changeWord(ch, v, t, lang) {
   if (ch.field === 'driver') return v ?? f.nobody
   if (ch.field === 'decision') {
     // a merge names the other task: the one it went into, the one it took in (round 4)
-    return [f.decision[v] ?? String(v), ch.into ?? ch.from ?? null, ch.until ? f.until(formatDay(ch.until, lang)) : null, ch.reason ? f.because(ch.reason) : null].filter(Boolean).join(' ')
+    // a revisit names its day alone (Revisit 20 Oct), a later its day with until
+    const day = ch.until ? (v === 'revisit' ? formatDay(ch.until, lang) : f.until(formatDay(ch.until, lang))) : null
+    return [f.decision[v] ?? String(v), ch.into ?? ch.from ?? null, day, ch.reason ? f.because(ch.reason) : null].filter(Boolean).join(' ')
   }
   return String(v ?? '')
 }

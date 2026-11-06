@@ -363,7 +363,7 @@ EN: dict = {
     # the Activity tab of Work through (activity.py): the words of its rows, the attach note, the summary's refusals
     "activity": {"attached": "Attached: deliverables/{name}", "status": "Status changed", "created": "Created",
                  "theme": "Theme changed", "until": "until {day}",
-                 "decision": {"done": "Done", "not_doing": "Will not be done", "later": "Later", "shelved": "Dropped with a reason",
+                 "decision": {"done": "Done", "not_doing": "Will not be done", "later": "Later", "revisit": "Revisit", "shelved": "Dropped with a reason",
                               "dropped": "Dropped", "hidden": "Hidden", "merged": "Merged into", "merged_in": "Merged in"},
                  "off": "Work through is switched off (cockpit.flow.enabled)",
                  "summary_off": "The summary is switched off (cockpit.flow.summary.enabled)",
@@ -825,7 +825,7 @@ DE: dict = {
     # the Activity tab of Work through (activity.py): the words of its rows, the attach note, the summary's refusals
     "activity": {"attached": "Angehängt: deliverables/{name}", "status": "Stand geändert", "created": "Angelegt",
                  "theme": "Thema geändert", "until": "bis {day}",
-                 "decision": {"done": "Erledigt", "not_doing": "Wird nicht gemacht", "later": "Später", "shelved": "Weg mit Grund",
+                 "decision": {"done": "Erledigt", "not_doing": "Wird nicht gemacht", "later": "Später", "revisit": "Wiedervorlage", "shelved": "Weg mit Grund",
                               "dropped": "Verworfen", "hidden": "Ausgeblendet", "merged": "Zusammengeführt in",
                               "merged_in": "Zusammengeführt aus"},
                  "off": "Abarbeiten ist ausgeschaltet (cockpit.flow.enabled)",

@@ -481,6 +481,14 @@ function areasAll(areas, name) {
   return { name, ...Object.fromEntries([...AREA_FIGS.map(([k]) => k), 'waitingTabs', 'waitingRows'].map(k => [k, sum(k)])) }
 }
 
+/** The read marks on the start page (cockpit.flow.seen): "n new · m revisits today" as the Work through head line counts
+ *  them (flow.js flowAreas `seen`, the one computation), a click into Work through; nothing while they are off */
+function SeenLine({ seen, c }) {
+  if (!seen) return null
+  return html`<button type="button" class="btn-link home-seen" onClick=${() => c.goArea(null, { page: '@flow' })}>
+    ${T().flow.marks.head(seen.fresh, seen.revisit)}</button>`
+}
+
 /** The areas of the start page and their line All: with Work through on what it shows under each area (flow.js
  *  flowAreas, All counted once), else the start page's own count (homeAreas, All their sum) */
 function startAreas(s, allName) {
@@ -591,7 +599,7 @@ function HomeDesk({ s, c }) {
   const now = s.now || Date.now()
   const on = new Set(homeChosen(s.model, s.home))
   // the head's number is the line All's: every area and what has none, its jump the same as that number's
-  const { areas, all } = startAreas(s, h.all)
+  const { areas, all, seen } = startAreas(s, h.all)
   const waiting = all.waiting
   const relayDown = s.relay?.enabled && !s.relay?.online
   const next = nextEvent(s.model, now)
@@ -602,6 +610,7 @@ function HomeDesk({ s, c }) {
       <button type="button" class=${`desk-waiting${waiting ? ' tk-warning' : ''}`} onClick=${() => c.goArea(null, areaJump('waiting', all))}>
         ${waiting ? html`<${Dot} token="warning" />` : null}<span>${h.deskWaiting(waiting)}</span>
         ${waiting ? html`<span class="muted">${h.deskSplit(all.waitingTabs, all.waitingRows)}</span>` : null}</button>
+      <${SeenLine} seen=${seen} c=${c} />
       ${(s.model?.alarms ?? []).map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}
         onClick=${() => c.setPage(a.page_id)}><${Dot} token="danger" /><span>${h.alarm(a.count, `${a.section_title} (${a.page_title})`)}</span></button>`)}
       ${relayDown ? html`<button type="button" class="home-signal tk-warning" onClick=${c.openClaude}>
@@ -765,6 +774,7 @@ function HomeBoard({ s, c }) {
       <p class="home-eyebrow">${day}</p>
       <h1 class="home-title">${greetingText(now.getHours(), person, h.greeting)}.</h1>
       ${s.model?.headline ? html`<p class="home-lead">${leadOf(s.model)}</p>` : null}
+      ${flowOn(s) ? html`<${SeenLine} seen=${flowAreas(s).seen} c=${c} />` : null}
       <${HomeAsk} s=${s} c=${c} />
       ${(s.model?.alarms ?? []).length || relayDown ? html`<div class="home-signals">
         ${(s.model?.alarms ?? []).map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}

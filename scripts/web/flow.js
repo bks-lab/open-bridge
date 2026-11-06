@@ -1642,7 +1642,7 @@ export function flowAreas(s) {
   const nowMs = s?.now || Date.now()
   // a start goes quiet or is lost by the clock (liveStage, flowArm), so the memo keeps a few seconds only
   const key = [s?.model, s?.tabs, s?.sessions, s?.driver, s?.work, s?.ui?.answered, s?.ui?.flowJump, s?.ui?.flowEarly, s?.jevOrder,
-    s?.triage, s?.jev, Math.floor(nowMs / 5000)]
+    s?.triage, s?.jev, s?.seen, s?.home, Math.floor(nowMs / 5000)]
   if (startMemo.key && startMemo.key.every((v, i) => v === key[i])) return startMemo.out
   const base = { ...s, ui: { ...(s?.ui ?? {}), page: FLOW_PAGE, area: null } }
   const whole = flowParts(base)
@@ -1658,7 +1658,9 @@ export function flowAreas(s) {
     total: x.waiting + x.running + x.review + x.overdue, ...extra })
   const areas = names.map(name => line(name, startFigures(flowParts(areaScope({ ...base, ui: { ...base.ui, area: name } })), nowMs)))
   const none = line('', startFigures(withoutArea(whole), nowMs), { none: true, tone: 'muted' })
-  const out = { areas: [...areas, none].filter(a => a.total > 0 || a.tasks > 0 || a.resting > 0), all: line(null, startFigures(whole, nowMs)) }
+  // the read marks (cockpit.flow.seen): new and revisits today over every point, as the Work through head line counts them
+  const out = { areas: [...areas, none].filter(a => a.total > 0 || a.tasks > 0 || a.resting > 0), all: line(null, startFigures(whole, nowMs)),
+    seen: seenOn(s) ? seenFigures(flowQueue(whole, 'all'), s) : null }
   startMemo = { key, out }
   return out
 }

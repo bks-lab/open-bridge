@@ -296,3 +296,61 @@ test('the words: both languages under the same keys, German without a dash as pu
   assert.equal(de.flow.marks.unread, 'Ungelesen')
   assert.match(de.flow.marks.allDone(null), /^Alles gelesen/)
 })
+
+// ---------------------------------------------------------------- follow-up: the start page, the instruction line
+
+test('the start page counts new and revisits from the same computation as the Work through head line', () => {
+  const s = state({ work: [task('a'), task('b'), task('c')], marks: { 'task:a': read(1), 'task:b': read(8) } })
+  const queue = logic.flowQueue(logic.flowParts(s), 'all')
+  assert.deepEqual(logic.flowAreas(s).seen, logic.seenFigures(queue, s))
+  assert.equal(logic.flowAreas(state({ work: [task('a')], seen: { enabled: false } })).seen, null, 'off: nothing')
+})
+
+test('the start page shows the line and leads into Work through; off it stays as it was', () => {
+  const { HomePage } = views.home
+  const c = recorder()
+  const el = mount(html`<${HomePage} s=${cockpitState(NOW, state({ work: [task('a'), task('b')], marks: { 'task:a': read(8) }, ui: { page: '@start' } }))} c=${c} />`)
+  const line = el.$('.home-seen')
+  assert.ok(line, 'the line stands in the head')
+  assert.equal(line.text().trim(), en.flow.marks.head(1, 1))
+  line.click()
+  assert.deepEqual(c.calls.at(-1), ['goArea', null, { page: '@flow' }])
+  const off = mount(html`<${HomePage} s=${cockpitState(NOW, state({ work: [task('a')], seen: { enabled: false }, ui: { page: '@start' } }))} c=${recorder()} />`)
+  assert.equal(off.$('.home-seen'), null)
+  assert.equal(de.flow.marks.head(1, 1), '1 neu · 1 Wiedervorlage heute')
+})
+
+test('the instruction line words a later step as a revisit while the marks are on', () => {
+  const { stepWord } = views.flowinstruct
+  const st = { op: 'later', until: '2026-10-12' }
+  const day = logic.formatDay('2026-10-12', 'en')
+  assert.equal(stepWord(st, en.flow.instruct, 'en', state()), en.flow.instruct.op.revisit(day))
+  assert.equal(stepWord(st, en.flow.instruct, 'en', state({ seen: { enabled: false } })), en.flow.instruct.op.later(day))
+  assert.match(de.flow.instruct.op.revisit('12.10.'), /^Wiedervorlage 12\.10\./)
+  assert.equal(en.histDid('revisit on 2026-10-20'), 'revisit on 2026-10-20')
+  assert.equal(de.histDid('revisit on 2026-10-20'), 'Wiedervorlage am 2026-10-20')
+  assert.equal(en.flow.activity.decision.revisit, 'Revisit')
+  assert.equal(de.flow.activity.decision.revisit, 'Wiedervorlage')
+})
+
+test('the demo shows the marks with ?seen=1: one read, one new since, the rest never opened; its verbs keep them', async () => {
+  const { mock } = await loadCockpit()
+  const tr = mock.createMockTransport({ lang: 'en', latency: 0, seen: true })
+  const events = []
+  tr.events(new Proxy({}, { get: (_, name) => p => events.push([name, p]) }), () => {})
+  const st = (await tr.get('/api/state')).data
+  assert.equal(st.work.flow.seen.enabled, true)
+  const s = { ...st, now: Date.now(), ui: { page: 'briefing', workView: 'flow' } }
+  const index = logic.rowMark({ key: 'task:docs-refresh', task: 'docs-refresh', status: 'doing' }, s)
+  assert.equal(index.unread, false)
+  assert.equal(logic.rowMark({ key: 'task:release-polish', task: 'release-polish', status: 'doing' }, s).why.kind, 'new')
+  const act = (verb, args) => tr.post('/api/action', { verb, args })
+  await act('seen_read', { keys: ['task:release-polish'] })
+  await act('later', { key: 'task:docs-refresh', until: '2099-01-02', revisit: true })
+  const after = (await tr.get('/api/state')).data.seen.marks
+  assert.equal(after['task:release-polish'].unread, false)
+  assert.equal(after['task:docs-refresh'].until, '2099-01-02')
+  await new Promise(r => setTimeout(r, 50))
+  assert.ok(events.some(([name]) => name === 'seen'), 'the page hears it')
+  assert.equal(mock.buildState(Date.now(), {}).work.flow.seen.enabled, false, 'without ?seen=1 the demo is as before')
+})

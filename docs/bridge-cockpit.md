@@ -1202,7 +1202,11 @@ weeks or a date, and a sentence if you want one. It sends the verb `later` with
 something new before it); nothing is hidden or put off, and the task or item is
 written to only when there is a sentence (as a note, as Later did). Its undo
 marks the point unread. The suggestion's Later becomes **Revisit <day>**, the
-overview's batch and the instruction line plan a revisit the same way; a row of
+overview's batch and the instruction line plan a revisit the same way: the
+planner hears later as a revisit (the point comes back unread on its day), and
+"This is how I understood it" says **Revisit <day>** for such a step. The
+history names it "revisit on <day>", and the point's Activity shows it as a
+decision **Revisit** with its day; a row of
 Not now keeps Later as it was (it is no point, a mark would not move it). Due
 days keep working as before (`ahead_days`).
 
@@ -1222,7 +1226,11 @@ ones fold under **Read (n)** and the read resting ones under **Resting (n)** at
 the foot. **Next point** walks the unread points only (and the one open); when
 none is left its middle says **All read** with the next revisit day and how many
 points come back then, and so does an overview with nothing unread. The head
-line adds "n new · m revisits today". The fields of a point add **Read mark**
+line adds "n new · m revisits today", and the start page shows the same line
+(the control view in its head line, the classic view under its greeting), from
+the same count over every point of Work through, whatever area is picked; a
+click opens Work through on its overview. The stage view of the start page does
+not show it. The fields of a point add **Read mark**
 ("read <day>, comes back <day> or on something new") and **Active**. Without
 `seen.enabled` nothing of this shows and Later stays Later; a person's page keeps
 no marks.
@@ -4493,6 +4501,14 @@ before), the state's key `seen` and its event `seen`, and the model's key
 never opened: **Mark all read** takes them all at once. Going back: switch the key
 off (or downgrade); `seen.json` stays and is ignored, and nothing was written to
 a task or an item by a mark.
+
+Later on top of this (no new key): the start page shows "n new · m revisits
+today" while the marks are on; the instruction line words a later step as a
+revisit and its planner is told what a revisit does; the history line of a
+revisit reads "revisit on <day>" and its Activity row the decision **Revisit**
+(`revisit` among the decisions of `activity.py`). The cockpit demo shows the
+marks with `?seen=1` (two points read, one of them new since, the rest never
+opened), its verbs kept in the page's state only. Off, everything stays as before.
 
 ## 7. Ports
 
