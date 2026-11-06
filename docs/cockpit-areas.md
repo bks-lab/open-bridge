@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's areas: the project chips, the Areas lines of the start page and their numbers, where each number leads, the one area filter over Work, Chat and Sessions, and why a tab gone idle is finished rather than waiting on you."
 type: guide
-last_updated: 2026-10-31
+last_updated: 2026-11-06
 related:
   - bridge-cockpit.md
   - cockpit-files.md
@@ -35,7 +35,9 @@ shows everything again. With the shelf on and a line for every chip, the lines
 replace the chips. In the overview a name opens the area's files instead (Work,
 view Files, the filter set, for this visit: the view the work tab opens on stays).
 Under an area, Chat lists only the workspaces that hold one of the area's tabs or carry
-its name, and an area without any agent tab says so in the bar ("No agent tab in X") with
+its name. A parent area takes its child areas with it (`parent` in `workflow/workspaces/`, as
+Settings, Workspaces shows them, all the way down), so their workspaces and tabs stand under it
+too; a child switched off or resting stays out, and its own children with it. An area without any agent tab says so in the bar ("No agent tab in X") with
 a button that shows every area again. What has no area stands last as **No area**; its name and numbers lead to the
 same pages without a filter. An inbox item counts under its task's area, else under
 the area it was given ([`inbox.md`](inbox.md): `--area`, or the router when it is
