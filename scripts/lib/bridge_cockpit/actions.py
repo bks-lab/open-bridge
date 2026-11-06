@@ -488,24 +488,35 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         ctx.by = clean.pop("by", None)
         touched = self.touched(clean)
-        # a write of the person's own on a read point is no news to them (seen.py absorb): the files' markers before it
-        pre = self.app.seen_pre(touched) if touched and verb not in NO_ABSORB and hasattr(self.app, "seen_pre") else None
+        absorbs = bool(touched) and verb not in NO_ABSORB and hasattr(self.app, "seen_pre")
+
+        def own() -> None:
+            """The handler as a write of the person's own: a read point it moves is no news to them (seen.py absorb).
+            The markers are read right before and right after it, inside the lock the verb holds, so a second write
+            verb cannot fall between them; a write from outside the cockpit (an agent, a pull) can, and then counts
+            only where it came before the verb"""
+            pre = self.app.seen_pre(touched) if absorbs else None
+            try:
+                self.recorded(ctx, handler, clean)
+            finally:
+                if pre:
+                    self.app.seen_absorb(pre)
         try:
             with acting(viewer):    # the scripts of this call write the person's name, not the page's
                 if verb in READ_ONLY_VERBS:
                     handler(ctx, **clean)
                 elif verb in LOCAL_VERBS:
-                    self.recorded(ctx, handler, clean)
+                    own()
                 elif verb in LAYOUT_VERBS:
                     with self.layout_lock:
-                        self.recorded(ctx, handler, clean)
+                        own()
                 else:
                     with self.write_lock:
                         ctx.locked = True
                         syncs = self.app.work_sync if viewer is not None else None
                         before = syncs.snapshot() if syncs else None
                         try:
-                            self.recorded(ctx, handler, clean)
+                            own()
                         finally:
                             if syncs:
                                 syncs.after(before, viewer)   # a refused step may already have written
@@ -514,8 +525,6 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             # instruction line changes nothing
             if verb not in KEEPS_FEEDS and touched and getattr(self.app, "activity", None) is not None:
                 self.app.activity.drop(touched)
-            if pre:
-                self.app.seen_absorb(pre)
         return self.finish(ctx)
 
     @staticmethod

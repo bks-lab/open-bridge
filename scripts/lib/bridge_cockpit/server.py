@@ -600,28 +600,66 @@ class App:
         flow = getattr(self.cfg, "flow", None) or {}
         return flow.get("enabled") is True and (flow.get("seen") or {}).get("enabled") is True
 
+    def seen_links(self) -> dict[str, list[str]]:
+        """task key -> the open inbox items of the last model that name that task (their events are the task's `inbox`
+        marker, seen.py Markers.build)"""
+        collector = getattr(self, "collector", None)
+        model = (collector.model or {}) if collector else {}
+        rows = [*(r for sec in model.get("sections") or [] for r in sec.get("rows") or []), *(model.get("hidden") or []),
+                *(model.get("deferred") or [])]
+        out: dict[str, list[str]] = {}
+        for r in rows:
+            if isinstance(r, dict) and isinstance(r.get("inbox_id"), str) and isinstance(r.get("task"), str) and r["task"]:
+                ids = out.setdefault(f"task:{r['task']}", [])
+                if r["inbox_id"] not in ids:
+                    ids.append(r["inbox_id"])
+        return out
+
+    def seen_fresh(self, keys: list[str], links: dict[str, list[str]] | None = None) -> dict[str, dict]:
+        """The markers the files behind `keys` give now (seen.py Markers.fresh), a task's with the newest event of the
+        open inbox items that name it, as the model reads it"""
+        links = self.seen_links() if links is None else links
+        out = self.markers.fresh(keys)
+        for key in keys:
+            ids = links.get(key) if key.startswith("task:") else None
+            times = [self.markers.inbox(i).get("inbox") for i in ids or []]
+            times = [t for t in times if isinstance(t, int)]
+            if times:
+                out.setdefault(key, {})["inbox"] = max(times)
+        return out
+
     def seen_markers(self, keys: list[str]) -> dict[str, dict]:
-        """The movement markers of `keys` now: what the last model read (a run's end, an issue's change, the events of
-        a task's inbox items), the files behind them read anew (seen.py Markers)"""
+        """The movement markers of `keys` now: what the last model read (a run's end, an issue's change), the files
+        behind them read anew (seen_fresh)"""
         collector = getattr(self, "collector", None)
         last = ((collector.model or {}).get("moved") or {}) if collector else {}
-        fresh = self.markers.fresh(keys)
+        fresh = self.seen_fresh(keys)
         return {k: {**(last.get(k) or {}), **(fresh.get(k) or {})} for k in keys}
 
     def seen_pre(self, keys: list[str]) -> dict[str, dict] | None:
-        """The files' markers of the read points among `keys` before a write of the person's own (or describe's);
-        None while the marks are off or none of them is read"""
+        """The markers of the read points a write of the person's own (or describe's) may move, before it: the keys it
+        names and the tasks an inbox item among them names (its events are theirs too); None while the marks are off
+        or none of them is read. What is taken in is what seen_fresh reads: the files, the log and the inbox events;
+        a run's end and an issue's change on GitHub are not (module doc of seen.py)"""
         if not self.seen_on():
             return None
-        read = [k for k in keys if self.seen.mark(k) is not None]
-        return self.markers.fresh(read) if read else None
+        links = self.seen_links()
+        items = {f"inbox:{i}": k for k, ids in links.items() for i in ids}
+        wide = list(dict.fromkeys([*keys, *(items[k] for k in keys if k in items)]))
+        read = [k for k in wide if self.seen.mark(k) is not None]
+        return {"links": links, "markers": self.seen_fresh(read, links)} if read else None
 
-    def seen_absorb(self, pre: dict[str, dict] | None) -> None:
-        """After that write: what it moved is no news (SeenStore.absorb); the page hears of the marks that changed"""
+    def seen_absorb(self, pre: dict | None) -> None:
+        """After that write: what it moved is no news (SeenStore.absorb); the page hears of the marks that changed.
+        Never raises: a verb that went through is not turned into a failure by its read marks"""
         if not pre:
             return
-        if self.seen.absorb(pre, self.markers.fresh(list(pre))):
-            self.broadcast("seen", self.seen.state())
+        try:
+            before = pre["markers"]
+            if self.seen.absorb(before, self.seen_fresh(list(before), pre["links"])):
+                self.broadcast("seen", self.seen.state())
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            self.log_error(f"read marks after a verb: {exc!r}")
 
     def records_held(self, res: dict) -> dict:
         """The records of the files tab, each with `held`: the words of the block list that keep it from a question

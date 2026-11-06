@@ -218,6 +218,10 @@ class WorkVerbs:
     def v_seen_unread(self, ctx: Ctx, key: str) -> None:
         """Mark unread (More ▾, key U), and the undo of a revisit: unread until it is opened again"""
         self.seen_guard()
+        # the undo a revisit handed out is taken back once: a stale Undo in the history can no longer force it unread
+        history = getattr(self.app, "history", None)
+        if history is not None:
+            history.mark_undone("seen_unread", key)
         if self.app.seen.unread(key):
             found = self.app.collector.resolve(key)
             title = ((found or {}).get("row") or {}).get("title") or key.split(":", 1)[-1]

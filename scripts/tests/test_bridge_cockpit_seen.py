@@ -285,3 +285,78 @@ def test_a_brief_describe_writes_is_no_news(seen_world):
     item = {"kind": "task", "id": "demo-task", "key": TASK, "basis": "b1"}
     w.app.describe.write(item, {"goal": "Ship the demo.", "criteria": ["It runs."]}, edited=False)
     assert w.app.seen.mark(TASK)["m"]["file"] == 1_800_000_300_000
+
+
+# ---------------------------------------------------------------- review: absorb, undo, a broken file, the log
+
+def test_a_verb_on_an_item_that_names_a_read_task_is_no_news_to_the_task(seen_world):
+    from test_bridge_cockpit import ONLY_ID
+    w = seen_world
+    events = w.root / "work" / "inbox" / ONLY_ID / "events"
+    events.mkdir(parents=True)
+    (w.root / "work" / "inbox" / ONLY_ID / "item.yaml").write_text("summary: Review\ntask: demo-task\n", encoding="utf-8")
+    (events / "20261001T080000Z-00-mac-note.yaml").write_text("verb: note\n", encoding="utf-8")
+    w.app.collector.rebuild()
+    assert "inbox" in w.app.collector.model["moved"][TASK], "the item's event stands for the task too"
+    w.act("seen_read", keys=[TASK])
+
+    def note(argv):
+        (events / "20261009T100000Z-00-web-note.yaml").write_text("verb: note\n", encoding="utf-8")
+        return ok("")
+    w.runner.handlers["inbox.note"] = note
+    w.act("note", key=f"inbox:{ONLY_ID}", text="mine")
+    w.app.collector.rebuild()
+    assert w.app.collector.model["moved"][TASK]["inbox"] == w.app.seen.mark(TASK)["m"]["inbox"], \
+        "the person's own note on the item leaves the task read"
+
+
+def test_the_undo_of_a_revisit_is_marked_taken_back(seen_world):
+    w = seen_world
+    out = w.act("later", key=TASK, until="2026-10-20", revisit=True)
+    item = w.app.history.open_undo("seen_unread", {"key": TASK})
+    assert item is not None and out["undo"]
+    w.act("seen_unread", key=TASK)
+    assert w.app.history.open_undo("seen_unread", {"key": TASK}) is None, "a stale Undo cannot come back"
+    assert w.app.seen.mark(TASK)["unread"] is True
+
+
+def test_a_broken_mark_is_dropped_and_the_store_still_starts(tmp_path):
+    (tmp_path / "seen.json").write_text('{"v": 1, "marks": {"task:a": {"at": 1e999, "m": {}}, "task:b": {"at": 5, "m": {"file": NaN}},'
+                                        ' "task:c": {"at": 7, "m": {"file": 3}}}, "focus": ["task:c"]}', encoding="utf-8")
+    store = sn.SeenStore(tmp_path, Clock())
+    assert set(store.state()["marks"]) == {"task:c"} and store.state()["focus"] == ["task:c"]
+
+
+def test_a_full_disk_never_turns_a_verb_into_a_failure(seen_world, monkeypatch):
+    w = seen_world
+    w.act("seen_read", keys=[TASK])
+    from lib.bridge_cockpit import store as st
+
+    def full(*a, **k):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(st, "atomic_write_json", full)
+    status = w.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+
+    def note(argv):
+        touch(status, time.time() + 50)
+        return ok("")
+    w.runner.handlers["task.note"] = note
+    assert w.act("note", key=TASK, text="mine")["ok"]
+    assert w.act("later", key=TASK, until="2026-10-20", revisit=True)["ok"]
+
+
+def test_the_log_names_a_one_word_slug_only_as_a_task_reference(tmp_path):
+    root = tmp_path
+    for slug in ("backup", "demo-task"):
+        (root / "work" / "tasks" / slug).mkdir(parents=True)
+        (root / "work" / "tasks" / slug / "STATUS.md").write_text("# x\n", encoding="utf-8")
+    log = root / "work" / "log.md"
+    log.write_text("| 2026-10-09 09:00 | x | other | the backup ran fine, demo-task moved |\n", encoding="utf-8")
+    markers = sn.Markers(root)
+    got = markers.fresh(["task:backup", "task:demo-task"])
+    assert "log" not in got["task:backup"], "an ordinary word is no mention of a one-word slug"
+    assert "log" in got["task:demo-task"], "a slug with a hyphen is distinctive enough as a word"
+    for row in ("| 2026-10-09 10:00 | x | backup | done |", "| 2026-10-09 10:01 | x | other | see work/tasks/backup/STATUS.md |",
+                "| 2026-10-09 10:02 | x | other | task:backup closed |", "| 2026-10-09 10:03 | x | other | task.py note backup -- hi |"):
+        log.write_text(row + "\n", encoding="utf-8")
+        assert "log" in sn.Markers(root).fresh(["task:backup"])["task:backup"], row

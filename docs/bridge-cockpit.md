@@ -1172,15 +1172,23 @@ stands. The finished AI runs keep their own Read under Finished, to read.
 **What makes a point unread again.** Real movement since it was read, read from
 what the server already has per row (`seen.py`), never by running the Activity
 feed per row: the time of a task's STATUS.md (a note, a status change), its
-deliverables (a document), a row of `work/log.md` that names its slug, an event
+deliverables (a document), a row of `work/log.md` that names the task (its
+context cell, `work/tasks/<slug>`, `task:<slug>` or `task.py <verb> <slug>`; a slug
+with a hyphen also as a plain word, a one-word slug never, since it would match
+ordinary words), an event
 of the inbox item or of an open item that names the task, the end of an AI run
 on it, and for an issue or a pull request the time GitHub says it changed where
 a list of a page holds it. The mark keeps these markers as they were when it was
 read (`model.moved` carries them now); a later one is news. `counts` switches the
 kinds on and off (note and status share the file's time). Never news: a brief
-describe writes, a theme given, a Prio or Jev order, and your own clicks in the
-cockpit (the markers after your verb become the mark's, as long as nothing new
-was pending before it). A row of another kind (a date, a page item) and an issue
+describe writes, a theme given, a Prio or Jev order, and what your own clicks in
+the cockpit change of a task's file, documents and log rows and of inbox events,
+on the points the verb names and on the tasks an inbox item among them names
+(read right before and right after the verb, inside its lock; the after values
+become the mark's, as long as nothing new was pending before it). Not taken in:
+the end of an AI run, and an issue or pull request moved from the cockpit, whose
+new time comes from GitHub with a later read of the board, so it can stand as new
+once that read comes. A row of another kind (a date, a page item) and an issue
 no list holds have no marker and come back only on their revisit day; a STATUS.md
 a git pull changed counts as new here.
 

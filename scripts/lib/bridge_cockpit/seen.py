@@ -20,7 +20,7 @@ the mark kept (later is new).
 |---|---|---|
 | file  | a task or stream | the mtime of its STATUS.md (a note, a status change, any edit of the file) |
 | doc   | a task or stream | the newest mtime of its deliverables/ folder and the entries right inside it |
-| log   | a task or stream | the newest row of work/log.md that names the slug (its context, or the slug as a word) |
+| log   | a task or stream | the newest row of work/log.md that names the task: its context cell, `work/tasks/<slug>`, `work/streams/<slug>`, `task:<slug>` or `task.py <verb> <slug>`; a slug with a hyphen also as a word of the text (a one-word slug never, it would match ordinary words) |
 | inbox | an inbox item    | the newest event of the item, but `describe`, `seen` and `area` (a brief, a runner's look, a routing) |
 | inbox | a task           | the newest such event of an open inbox item that names the task |
 | run   | any row          | the end of a finished AI run on the row (returns.py `ended_ms`) |
@@ -29,8 +29,12 @@ the mark kept (later is new).
 `cockpit.flow.seen.counts` says which kinds count: note and status both read `file` (the server cannot tell a note
 from a status change without reading the file), doc `doc`, log `log`, inbox `inbox`, run `run`, code `code`.
 Not movement: a brief written by describe, a theme given, a Prio or Jev order (none of them touches a marker but
-the brief, which absorb() takes in), and the person's own verbs in the cockpit (absorb: the markers after the verb
-become the mark's, where nothing new was pending before it).
+the brief, which absorb() takes in), and what the person's own verbs in the cockpit move of `file`, `doc`, `log` and
+`inbox`, for the points the verb names and the tasks an inbox item among them names (absorb: those markers read right
+before and right after the verb, inside its lock, and the after values become the mark's where nothing new was
+pending before it). Not taken in: `run` (a run ends by an agent, and a verb that ends the item takes the point off the
+list anyway) and `code` (GitHub's time comes with a later read of the board, after the verb): an issue moved from the
+cockpit can stand as new once the board is read again.
 
 Limits: a row of another kind (a date, a page item) has no marker and comes back only on its revisit day; an issue
 that no list of a page holds has no `code` marker either; a pull from git sets the mtimes of the files it changed,
@@ -41,9 +45,11 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import json
+import math
 import os
 import re
 import stat
+import sys
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -63,9 +69,12 @@ INBOX_QUIET = frozenset({"describe", "seen", "area"})
 EVENT_RE = re.compile(r"^(\d{8}T\d{6}Z)-\d{2}-.+-([a-z_]+)\.yaml\Z")
 LOG_ROW_RE = re.compile(r"^\| (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) \|")
 WORD_RE = re.compile(r"(?<![a-z0-9-])[a-z0-9][a-z0-9-]*(?![a-z0-9-])")
+# how a log row names a task as a task: work/tasks/<slug>, work/streams/<slug>, task:<slug>, task.py <verb> <slug>
+TASK_REF_RE = re.compile(r"(?:work/(?:tasks|streams)/|task:|task\.py\s+[a-z][a-z_-]*\s+)([a-z0-9][a-z0-9-]*)")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 INBOX_ID_RE = re.compile(r"^\d{8}-\d{4}-[a-z0-9-]{1,80}\Z")
 MARKS_MAX = 3000
+MS_MAX = 10 ** 14           # a time in ms past the year 5000 is no time a mark keeps
 FOCUS_MAX = 200
 
 
@@ -246,7 +255,12 @@ class Markers:
             except ValueError:
                 continue
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            words = set(WORD_RE.findall(" | ".join(cells[2:]))) if len(cells) >= 4 else set()
+            if len(cells) < 4:
+                continue
+            text = " | ".join(cells[3:])
+            # the context cell, a task reference, and a word with a hyphen (a slug of two words or more is distinctive);
+            # a one-word slug counts only as a reference or the context, never as an ordinary word of the text
+            words = {cells[2], *TASK_REF_RE.findall(text), *(w for w in WORD_RE.findall(text) if "-" in w)}
             for word in words:
                 if index.get(word, 0) < at:
                     index[word] = at
@@ -321,24 +335,37 @@ class SeenStore:
             data = {}
         data = data if isinstance(data, dict) else {}
         marks = data.get("marks") if isinstance(data.get("marks"), dict) else {}
-        self._marks = {k: self._clean(v) for k, v in marks.items() if isinstance(k, str) and isinstance(v, dict)}
+        # entry by entry: one a hand or an old version broke (NaN, Infinity, a huge number) is dropped, never the start
+        cleaned = {k: self._clean(v) for k, v in marks.items() if isinstance(k, str) and isinstance(v, dict)}
+        self._marks = {k: v for k, v in cleaned.items() if v is not None}
         focus = data.get("focus")
         self._focus = [k for k in focus if isinstance(k, str)][:FOCUS_MAX] if isinstance(focus, list) else []
 
     @staticmethod
-    def _clean(v: dict) -> dict:
-        m = v.get("m") if isinstance(v.get("m"), dict) else {}
-        until = v.get("until") if isinstance(v.get("until"), str) and re.match(r"^\d{4}-\d{2}-\d{2}\Z", v["until"]) else None
-        return {"at": int(v["at"]) if isinstance(v.get("at"), (int, float)) else 0,
-                "m": {k: int(x) for k, x in m.items() if k in MARKERS and isinstance(x, (int, float))},
-                "until": until, "unread": v.get("unread") is True}
+    def _clean(v: dict) -> dict | None:
+        """One mark as kept, or None where a time in it is no finite number"""
+        def ms(x: Any) -> int | None:
+            if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or abs(x) > MS_MAX:
+                raise ValueError(x)
+            return int(x)
+        try:
+            m = v.get("m") if isinstance(v.get("m"), dict) else {}
+            until = v.get("until") if isinstance(v.get("until"), str) and re.match(r"^\d{4}-\d{2}-\d{2}\Z", v["until"]) else None
+            return {"at": ms(v["at"]) if "at" in v else 0, "m": {k: ms(x) for k, x in m.items() if k in MARKERS},
+                    "until": until, "unread": v.get("unread") is True}
+        except (ValueError, TypeError, OverflowError):
+            return None
 
     def _save(self) -> None:
         from .store import atomic_write_json      # store.py imports model.py; kept late, no cycle
         if len(self._marks) > MARKS_MAX:
             for drop in sorted(self._marks, key=lambda k: self._marks[k]["at"])[:len(self._marks) - MARKS_MAX]:
                 del self._marks[drop]
-        atomic_write_json(self.path, {"v": 1, "marks": self._marks, "focus": self._focus})
+        try:
+            atomic_write_json(self.path, {"v": 1, "marks": self._marks, "focus": self._focus})
+        except OSError as exc:
+            # a full disk or a read-only folder: the marks hold in memory, the verb that wrote them still succeeds
+            sys.stderr.write(f"seen.json: not saved ({exc})\n")
 
     def state(self) -> dict:
         with self.lock:
