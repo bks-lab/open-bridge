@@ -54,7 +54,7 @@ export const FLOW = {
         const day = d => { const [, m, x] = String(d).split('-'); return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1] ?? m} ${Number(x)}` }
         const parts = [p.counts.back ? `${p.counts.back} back on` : null, p.counts.done ? `${p.counts.done} done` : null,
           p.counts.drop ? `${p.counts.drop} drop${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
-          p.counts.later ? `${p.counts.later} later until ${p.days.map(day).join(', ')}` : null,
+          p.counts.later ? `${p.counts.later} ${p.revisit ? 'revisit on' : 'later until'} ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} to an agent` : null,
           p.counts.work ? `${p.counts.work} in progress with ${p.value?.who ?? ''} until ${p.days.map(day).join(', ')}` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'stays' : 'stay'} out` : null
@@ -203,7 +203,7 @@ export const FLOW = {
       can: 'What you can do', label: 'Fields',
       theme: 'Theme', area: 'Area', who: 'Who', prio: 'Prio', urgency: 'Urgent', impact: 'Important', effort: 'Effort', due: 'Due',
       when: 'Urgency', team: 'Team', check: 'Task check', ask: 'Check-in', original: 'Original title',
-      source: 'Source', created: 'Created', moved: 'Moved', none: 'not set', link: 'Open the link',
+      source: 'Source', created: 'Created', moved: 'Moved', none: 'not set', link: 'Open the link', readmark: 'Read mark', active: 'Active',
       level: { high: 'high', mid: 'medium', low: 'low' },
       quadrant: { now: 'Do now', plan: 'Plan', hand: 'Hand off', drop: 'Drop' }, onlyYou: 'only you',
       jevPlace: (n, who = 'Jev') => `${who} #${n}`, rank: n => `Rank ${n}`,
@@ -284,6 +284,30 @@ export const FLOW = {
       taskClose: 'Take this run off the list afterwards', taskGo: 'Make the task',
       run: day => `AI run of ${day}, finished`,
     },
+    // the read marks (cockpit.flow.seen): why a point is unread, the folds of what is read, the walk when all is read,
+    // the head line, the fields Read mark and Active, Read, Mark unread, Keep in focus and Revisit ▾
+    marks: {
+      why: {
+        never: 'New, never opened', forced: 'Marked unread', new: (what, day) => `New: ${what} (${day})`,
+        revisit: day => `Revisit from ${day}`,
+        resting: n => (n == null ? 'Resting: go on, park or close?' : `Resting for ${n} day${n === 1 ? '' : 's'}: go on, park or close?`),
+      },
+      what: { file: 'a note or a status change', doc: 'a document', log: 'a log row', inbox: 'an inbox event', run: 'an AI run finished',
+        code: 'it moved on GitHub' },
+      unread: 'Unread', readFold: n => `Read (${n})`, restingFold: n => `Resting (${n})`,
+      allRead: 'Mark all read', allReadSide: name => `Mark all of ${name} read`,
+      allDone: next => (next ? `All read. Next revisit ${next.day} (${next.n === 1 ? '1 point' : `${next.n} points`}).` : 'All read.'),
+      head: (n, m) => `${n} new · ${m === 1 ? '1 revisit' : `${m} revisits`} today`,
+      sideTitle: (n, all) => `${n} unread of ${all}`,
+      field: 'Read mark', active: 'Active',
+      mark: { never: 'never opened', forced: 'marked unread', read: day => `read ${day}`,
+        back: (read, back) => `read ${read}, comes back ${back} or on something new`, news: 'something new came since' },
+      act: { focus: 'in focus', pin: 'pinned', agent: 'an agent works on it', moved: day => `active, last moved ${day}`,
+        resting: n => (n == null ? 'resting' : `resting for ${n} day${n === 1 ? '' : 's'}`), unknown: 'active' },
+      read: 'Read', markUnread: 'Mark unread', focus: 'Keep in focus', unfocus: 'No longer in focus', goOn: 'Go on, keep in focus',
+      revisit: 'Revisit', revisitLabel: 'Comes back unread on', tomorrow: 'Tomorrow', monday: 'Monday', week: '1 week', twoWeeks: '2 weeks',
+      date: 'Date', go: 'Set', text: 'A sentence (optional; only then a note in the task)', strong: day => `Revisit ${day}`,
+    },
     ask: {
       mode: 'Instruct or ask', instruct: 'Instruct', ask: 'Ask', label: 'A question about this point',
       placeholder: 'A question about this point, for example: what happened since Monday?', send: 'Ask', running: 'The AI reads the point',
@@ -341,7 +365,7 @@ export const FLOW = {
         const day = d => { const [, m, x] = String(d).split('-'); return `${Number(x)}.${Number(m)}.` }
         const parts = [p.counts.back ? `${p.counts.back} wieder dran` : null, p.counts.done ? `${p.counts.done} erledigt` : null,
           p.counts.drop ? `${p.counts.drop} weg${p.reasons.length === 1 ? `: ${p.reasons[0]}` : ''}` : null,
-          p.counts.later ? `${p.counts.later} später bis ${p.days.map(day).join(', ')}` : null,
+          p.counts.later ? `${p.counts.later} ${p.revisit ? 'Wiedervorlage am' : 'später bis'} ${p.days.map(day).join(', ')}` : null,
           p.counts.do ? `${p.counts.do} an einen Agenten` : null,
           p.counts.work ? `${p.counts.work} in Arbeit bei ${p.value?.who ?? ''} bis ${p.days.map(day).join(', ')}` : null].filter(Boolean)
         const out = p.skipped.length ? `${p.skipped.length} ${p.skipped.length === 1 ? 'bleibt' : 'bleiben'} draußen` : null
@@ -484,7 +508,7 @@ export const FLOW = {
       can: 'Was du tun kannst', label: 'Felder',
       theme: 'Thema', area: 'Bereich', who: 'Wer', prio: 'Prio', urgency: 'Dringend', impact: 'Wichtig', effort: 'Aufwand', due: 'Fällig',
       when: 'Dringlichkeit', team: 'Team', check: 'Aufgaben-Prüfung', ask: 'Nachfrage', original: 'Originaltitel',
-      source: 'Quelle', created: 'Angelegt', moved: 'Bewegt', none: 'nicht gesetzt', link: 'Link öffnen',
+      source: 'Quelle', created: 'Angelegt', moved: 'Bewegt', none: 'nicht gesetzt', link: 'Link öffnen', readmark: 'Lesemarke', active: 'Aktiv',
       level: { high: 'hoch', mid: 'mittel', low: 'niedrig' },
       quadrant: { now: 'Jetzt', plan: 'Planen', hand: 'Abgeben', drop: 'Weg' }, onlyYou: 'nur du',
       jevPlace: (n, who = 'Jev') => `${who} #${n}`, rank: n => `Rang ${n}`,
@@ -557,6 +581,28 @@ export const FLOW = {
       taskTitle: 'Titel', taskArea: 'Bereich', noArea: 'Kein Bereich', taskDescribe: 'Ergebnis als Beschreibung übernehmen',
       taskClose: 'Diesen Lauf danach aus der Liste nehmen', taskGo: 'Aufgabe anlegen',
       run: day => `KI-Lauf vom ${day}, fertig`,
+    },
+    marks: {
+      why: {
+        never: 'Neu, noch nie geöffnet', forced: 'Als ungelesen markiert', new: (what, day) => `Neu: ${what} (${day})`,
+        revisit: day => `Wiedervorlage ab ${day}`,
+        resting: n => (n == null ? 'Ruht: weiter, parken oder schließen?' : `Ruht seit ${n} ${n === 1 ? 'Tag' : 'Tagen'}: weiter, parken oder schließen?`),
+      },
+      what: { file: 'eine Notiz oder ein Statuswechsel', doc: 'ein Dokument', log: 'eine Logzeile', inbox: 'ein Ereignis im Posteingang',
+        run: 'ein KI-Lauf ist fertig', code: 'auf GitHub bewegt' },
+      unread: 'Ungelesen', readFold: n => `Gelesen (${n})`, restingFold: n => `Ruht (${n})`,
+      allRead: 'Alles als gelesen markieren', allReadSide: name => `Alles in ${name} als gelesen markieren`,
+      allDone: next => (next ? `Alles gelesen. Nächste Wiedervorlage ${next.day} (${next.n === 1 ? '1 Punkt' : `${next.n} Punkte`}).` : 'Alles gelesen.'),
+      head: (n, m) => `${n} neu · ${m === 1 ? '1 Wiedervorlage' : `${m} Wiedervorlagen`} heute`,
+      sideTitle: (n, all) => `${n} ungelesen von ${all}`,
+      field: 'Lesemarke', active: 'Aktiv',
+      mark: { never: 'noch nie geöffnet', forced: 'als ungelesen markiert', read: day => `gelesen ${day}`,
+        back: (read, back) => `gelesen ${read}, kommt wieder ${back} oder bei Neuem`, news: 'seitdem kam Neues' },
+      act: { focus: 'im Fokus', pin: 'angepinnt', agent: 'ein Agent arbeitet daran', moved: day => `aktiv, zuletzt bewegt ${day}`,
+        resting: n => (n == null ? 'ruht' : `ruht seit ${n} ${n === 1 ? 'Tag' : 'Tagen'}`), unknown: 'aktiv' },
+      read: 'Gelesen', markUnread: 'Als ungelesen markieren', focus: 'Im Fokus halten', unfocus: 'Nicht mehr im Fokus', goOn: 'Weiter, im Fokus halten',
+      revisit: 'Wiedervorlage', revisitLabel: 'Kommt ungelesen zurück am', tomorrow: 'Morgen', monday: 'Montag', week: '1 Woche', twoWeeks: '2 Wochen',
+      date: 'Datum', go: 'Setzen', text: 'Satz dazu (optional; nur dann eine Notiz in der Aufgabe)', strong: day => `Wiedervorlage ${day}`,
     },
     ask: {
       mode: 'Anweisen oder fragen', instruct: 'Anweisen', ask: 'Fragen', label: 'Frage zu diesem Punkt',

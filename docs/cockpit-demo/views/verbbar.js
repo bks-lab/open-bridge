@@ -24,7 +24,7 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { personOf, BASIC_VERBS, checkinDays, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, nextWho, parseDate, short,
-  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName } from '../logic.js'
+  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName, seenOn } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
@@ -103,6 +103,10 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const [dayErr, setDayErr] = useState('')
   const [manual, setManual] = useState(null)
   const [crowd, setCrowd] = useState(0)    // how many ran when Start asked first; 0: not asked
+  // the read marks on (cockpit.flow.seen): Later of the four states is Revisit ▾, read now and back unread on its day; the
+  // sentence, when there is one, is the only thing written into the task
+  const revisit = simple && seenOn(s)
+  const [sentence, setSentence] = useState('')
   const busy = !!s.ui?.busy?.[row.key]
   const finish = r => {
     if (r?.ok) c.flowDecided()
@@ -142,8 +146,8 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     finish(r)
   }
   const nowMs = s.now || Date.now()
-  const putOff = iso => send(flowAction('later', row, iso, by('later')))
-  const word = v => words[v] ?? (v === 'task' ? f.basic.task : simple && f.simple[v] ? f.simple[v] : f.verbs[v])
+  const putOff = iso => send(flowAction('later', row, iso, by('later'), revisit ? { revisit: true, ...(sentence.trim() ? { text: sentence.trim() } : {}) } : null))
+  const word = v => words[v] ?? (v === 'task' ? f.basic.task : revisit && v === 'later' ? f.marks.revisit : simple && f.simple[v] ? f.simple[v] : f.verbs[v])
   const pickDay = () => {
     const iso = parseDate(day, s.now)
     if (!iso) return setDayErr(t.noDate(day || ' '))
@@ -224,7 +228,24 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
       ${manual ? html`<div class="verbbar-manual"><p class="small">${f.start.manual}</p><pre class="mono small">${manual.join('\n')}</pre>
         <${Btn} size="xs" variant="secondary" icon="copy" onClick=${() => c.copy(manual.join('\n'))}>${f.start.copy}<//></div>` : null}
     </div>` : null}
-    ${open === 'later' ? html`<div class="verbbar-panel" role="group" aria-label=${f.later.label}>
+    ${open === 'later' && revisit ? html`<div class="verbbar-panel flow-revisit" role="group" aria-label=${f.marks.revisitLabel}>
+      <p class="label-caps">${f.marks.revisitLabel}</p>
+      <div class="verbbar-acts">
+        <${Btn} size="sm" variant="secondary" onClick=${() => putOff(isoDate(nowMs + DAY))}>${f.marks.tomorrow}<//>
+        <${Btn} size="sm" variant="secondary" onClick=${() => putOff(isoDate(nextMonday(nowMs)))}>${f.marks.monday}<//>
+        <${Btn} size="sm" variant="secondary" onClick=${() => putOff(isoDate(nowMs + 7 * DAY))}>${f.marks.week}<//>
+        <${Btn} size="sm" variant="secondary" onClick=${() => putOff(isoDate(nowMs + 14 * DAY))}>${f.marks.twoWeeks}<//>
+      </div>
+      <span class="field-row">
+        <input class="input input-date mono" type="text" inputmode="numeric" aria-label=${f.marks.date} placeholder=${t.datePlaceholder}
+          value=${day} aria-invalid=${dayErr ? 'true' : undefined} onInput=${e => { setDay(e.currentTarget.value); setDayErr('') }} />
+        <${Btn} size="sm" variant="secondary" disabled=${!day.trim()} onClick=${pickDay}>${f.marks.go}<//>
+        ${dayErr ? html`<span class="small verbbar-err" role="alert">${dayErr}</span>` : null}
+      </span>
+      <input class="input" type="text" maxlength="300" aria-label=${f.marks.text} placeholder=${f.marks.text} value=${sentence}
+        onInput=${e => setSentence(e.currentTarget.value)} />
+    </div>` : null}
+    ${open === 'later' && !revisit ? html`<div class="verbbar-panel" role="group" aria-label=${f.later.label}>
       <div class="verbbar-acts">
         <${Btn} size="sm" variant="secondary" onClick=${() => putOff(isoDate(nowMs + DAY))}>${f.later.tomorrow}<//>
         <${Btn} size="sm" variant="secondary" onClick=${() => putOff(isoDate(nextMonday(nowMs)))}>${f.later.monday}<//>

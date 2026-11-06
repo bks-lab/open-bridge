@@ -428,11 +428,12 @@ const reasonWord = x => {
  *  without a row, `whyOf` its word on the right, `done` the line past the last one, and `onwards` ({title, word,
  *  onGo}) what comes after the last one: Next then leads there (the next theme or area where something is open) */
 export function Walk({ queue, i, s, c, go: walkTo = null, words = null, titleFor = null, tagsOf = null, whyOf = null, done = null,
-  onwards = null, cls = '' }) {
+  onwards = null, cls = '', keep = false }) {
   const t = T()
   const w = words ?? t.dossier.walk
   const [list, setList] = useState(false)
-  if (queue.length < 2 && !onwards) return null
+  // keep: the bar stands with one point too, so its middle can say what comes after (Work through: All read)
+  if (queue.length < 2 && !onwards && !(keep && queue.length)) return null
   const go = k => { setList(false); walkTo ? walkTo(k) : c.dossierWalk(queue[k].id, k) }
   const next = i + 1 < queue.length ? queue[i + 1] : null
   const title = x => (titleFor ? titleFor(x) : x.row.title)

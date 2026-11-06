@@ -55,7 +55,8 @@
 import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, instructScope, laneRows, leftWalk, pointListAt, pointsIn,
-  runningOf, prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf, pointName
+  runningOf, prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf, pointName,
+  pointKeys, readMark, seenFigures, seenOn, seenSettings, unreadWalk
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
@@ -111,10 +112,13 @@ function FlowBody({ s, c }) {
   // Next goes the way the overview lists them (round 6 B, views/flowlist.js walkOrder)
   const band = mode === 'prio' && entered ? (entered.id === 'none' ? 'due' : 'rank') : null
   const queue = walkOrder(pointsIn(all, side, s, mode), band)
+  // the read marks (cockpit.flow.seen): Next walks the unread points only, and the one open (logic.js unreadWalk)
+  const seen = seenOn(s)
+  const walkQ = seen ? unreadWalk(queue, s, s.ui.flowAt) : queue
   const lane = pointsIn(parts.lane, side, s, mode)
   // one count of Running now for the head and the left column (runningOf), and no strip of it over any overview
   const runs = runningOf(parts)
-  const i = focusIndex(queue, s.ui.flowAt)
+  const i = focusIndex(walkQ, s.ui.flowAt)
   // the middle: the point open, an entry of Running now, a group of Not now (its list, or one of its rows as a point,
   // ui.flowLeftAt, stage 1), a point of its own (ui.flowSolo, stage 1), the task check, else the overview; what went (a
   // point decided, a start that finished, a group emptied) falls back to the overview, a row that left its group to
@@ -131,8 +135,8 @@ function FlowBody({ s, c }) {
   const ri = focusIndex(parts.read, s.ui.flowReadAt)
   const view = running ? 'run' : group ? (leftQueue.length ? 'leftPoint' : 'left') : solo ? 'solo'
     : reading ? (s.ui.flowReadAt ? 'readPoint' : 'read') : s.ui.flowView === 'check' ? 'check'
-    : s.ui.flowView === 'running' && runs.n ? 'running' : s.ui.flowView === 'point' && queue.length ? 'point' : 'overview'
-  const x = view === 'point' ? queue[i] ?? null : view === 'run' ? running : view === 'leftPoint' ? leftQueue[li] ?? null : view === 'solo' ? alone
+    : s.ui.flowView === 'running' && runs.n ? 'running' : s.ui.flowView === 'point' && walkQ.length ? 'point' : 'overview'
+  const x = view === 'point' ? walkQ[i] ?? null : view === 'run' ? running : view === 'leftPoint' ? leftQueue[li] ?? null : view === 'solo' ? alone
     : view === 'readPoint' ? parts.read[ri] ?? null : null
   const driver = flowDriver(s)
   // the boxes: every point with a row, and what runs with a task of its own (for a merge and Done only)
@@ -140,15 +144,17 @@ function FlowBody({ s, c }) {
   // (the view `running` shows every entry, so its boxes count at every side)
   const keys = new Set([...listRows(queue).filter(r => r.row).map(r => r.id), ...(view === 'running' ? laneRows(parts.lane) : runRows).map(r => r.id)])
   const picked = new Set((s.ui.flowPicked ?? []).filter(k => keys.has(k)))
-  const go = k => c.flowGo(queue[k].id, k)
+  const go = k => c.flowGo(walkQ[k].id, k)
   const decided = s.ui.flowDecided ?? 0
   // after the last point of a theme or area: the first point of the next one below it where something is open
   const at = sides.findIndex(v => v.id === side)
-  const nextSide = entered ? sides.slice(at + 1).find(v => v.id !== 'all' && v.open) ?? sides.slice(1, Math.max(1, at)).find(v => v.open) : null
+  // with the read marks on, a side where something is unread
+  const has = v => (seen ? v.unread : v.open)
+  const nextSide = entered ? sides.slice(at + 1).find(v => v.id !== 'all' && has(v)) ?? sides.slice(1, Math.max(1, at)).find(has) : null
   const onwards = nextSide ? { title: f.walk2.nextSide(sideName(nextSide, mode)), word: f.walk2.toSide, onGo: () => c.flowSide(nextSide.id, 'point') } : null
   // the point in front changed: the briefs of the next points are written ahead, where one is missing or stale
   const ahead = flowSettings(s).prep_ahead
-  const prep = view === 'point' && x ? prepTargets(queue, i, ahead, s) : []
+  const prep = view === 'point' && x ? prepTargets(walkQ, i, ahead, s) : []
   useEffect(() => { if (prep.length) c.flowPrep(prep) }, [x?.id, ahead])
   // the points without a theme get theirs when the view shows them, once per key on this page load (app.js), in every
   // order of the left column: the themes run's suggestions stand in the overview in Areas and Prio too (round 6 B)
@@ -162,6 +168,15 @@ function FlowBody({ s, c }) {
   // only once the page has read what it shows (prioLoaded): the day's order of an early snapshot would rank too little
   const loaded = prioLoaded(s)
   useEffect(() => { if (work && order === undefined && loaded) c.flowPrioOrder(work.id) }, [work?.id, order === undefined, loaded])
+  // opening a point reads it (open_reads auto): once per open, so Mark unread on it holds until it is opened again; a
+  // group that asks for you now and a finished run (its own Read) keep no mark
+  const auto = seen && seenSettings(s).open_reads === 'auto'
+  const reads = auto && x && !x.readOnly && x.group !== 'read' && ['point', 'leftPoint', 'solo'].includes(view) && !readMark(x, s).live
+    ? pointKeys(x) : []
+  useEffect(() => { if (reads.length) c.flowSeen(reads) }, [x?.id, auto])
+  const figures = seen ? seenFigures(all, s) : null
+  // the points of the side besides the one open: none of them unread, the walk bar says All read and when the next comes
+  const rest = seen && view === 'point' && x ? seenFigures(queue.filter(p => p.id !== x.id), s) : null
   const name = sideName(entered, mode)
   // what the instruction line speaks for: the point or the entry open, else the ticked points or every point of the side;
   // nothing on a point of its own that is closed (its verbs act on nothing), Ask still asks about it
@@ -197,19 +212,20 @@ function FlowBody({ s, c }) {
         : { back: { word: f.point.back, onClick: () => c.flowOverview() }, theme: name,
           above: picked.size ? html`<div class="flow-picked-line"><span class="muted small">${f.point.ticked(picked.size)}</span>
             <${Btn} size="sm" variant="secondary" onClick=${() => c.flowOverview()}>${f.point.see}<//></div>` : null,
-          walk: { ...walk2, queue, i, go, done: f.walk2.last, onwards } }
+          walk: { ...walk2, queue: walkQ, i, go, done: rest && !rest.unread ? f.marks.allDone(rest.next) : f.walk2.last, onwards, keep: seen } }
   const point = placed && list ? { ...placed, back: listBack, walk: listWalk, above: null } : placed
   return html`<div class="col col-page flow">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
-      <p class="muted small">${[f.count(counts.points, runs.n, counts.left), decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
+      <p class="muted small">${[f.count(counts.points, runs.n, counts.left), figures ? f.marks.head(figures.fresh, figures.revisit) : null,
+        decided ? f.decided(decided) : null].filter(Boolean).join(' · ')}</p>
     </header>
     ${driver || personOf(s) ? null : html`<p class="flow-nodriver muted small">${f.noDriver}</p>`}
     <div class=${`flow-grid${x ? '' : ' no-aside'}`}>
       <${FlowSide} sides=${sides} entered=${entered} mode=${mode} all=${all} view=${view} running=${runs} left=${parts.leftOut}
         run=${running?.id ?? null} open=${group?.reason ?? null} read=${parts.read} current=${view === 'point' ? x?.id ?? null : null} s=${s} c=${c} />
       <section class=${`flow-main${x ? ' is-point' : ''}`} aria-label=${f.title} ref=${main}>
-        ${point ? html`<${PointView} x=${x} ...${point} scope=${scope} n=${view === 'point' ? queue.length : 1} s=${s} c=${c} />`
+        ${point ? html`<${PointView} x=${x} ...${point} scope=${scope} n=${view === 'point' ? walkQ.length : 1} s=${s} c=${c} />`
           : view === 'solo' ? html`<header class="flow-main-head">
               <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${listBack?.onClick ?? (() => c.flowOverview())}>${listBack?.word ?? f.point.back}<//></header>
             <p class="muted" role="status">${soloEntry?.status === 'error' || (soloEntry?.data && !alone) ? f.one.gone : f.one.loading}</p>`

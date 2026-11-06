@@ -21,9 +21,10 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { activityWhen, atWork, batchPlan, batchPreselect, batchSummary, checkinDays, DAY, dropReasonWord, flowDrive, flowSettings, flowSuggestion, FLOW_BANDS,
   FLOW_YOU, formatDay, isoDate, jevWhy, personOf, mergeable, mergeKeep, nextMonday, nextWho, pointBand, pointName, pointStand, pointStep, rankerName,
-  rowProject, rowRunning, short, stageTone, workWho } from '../logic.js'
+  readKeys, readMark, rowProject, rowRunning, seenFigures, seenOn, short, stageTone, workWho } from '../logic.js'
 import { T, TABLES, language } from '../text.js'
 import { KindTag } from './day.js'
+import { unreadWhy } from './flowmarks.js'
 import { Btn, Dot, WhoChip } from './parts.js'
 
 /** The rows of a list: one per point with a row, a reports card by each of its reports; a tab alone has no row to
@@ -235,19 +236,58 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
   const f = t.flow
   const w = f.list
   const lang = language()
-  const bands = bandsOf(points, band)
+  // the read marks (cockpit.flow.seen): the bands hold the unread points (a dot, why under the name), the read ones fold
+  // under Read (n) and the resting doing tasks under Resting (n) at the foot
+  const seen = seenOn(s)
+  const marks = seen ? new Map(points.map(x => [x.id, readMark(x, s)])) : null
+  const unread = seen ? points.filter(x => marks.get(x.id).unread) : points
+  const read = seen ? points.filter(x => !marks.get(x.id).unread && !marks.get(x.id).resting) : []
+  const resting = seen ? points.filter(x => !marks.get(x.id).unread && marks.get(x.id).resting) : []
+  const bands = bandsOf(unread, band)
   const person = !!personOf(s)       // their list: the points and the verbs that are theirs, no AI's suggestion
-  const rows = bands.flatMap(b => b.rows)
+  const rows = bandsOf(points, band).flatMap(b => b.rows)
   const pickable = rows.filter(r => r.row)
   // the ticked points, and what runs ticked on the strip above (logic.js laneRows): for a merge or Done
   const chosen = [...pickable, ...running].filter(r => picked.has(r.id)).map(r => r.row)
   const day = v => formatDay(String(v).slice(0, 10), lang)
   if (!rows.length) return html`<section class="flow-overview" aria-label=${w.label}><p class="muted">${w.empty}</p></section>`
   // stage 4: a row says three things, its name, where it stands under it, and its next step with who takes it beside
+  const line = r => {
+    const row = r.row
+    const title = row ? pointName(row) : titleFor(r.x)
+    const stand = row ? pointStand(row, s) : null
+    const step = row ? pointStep(row, s) : null
+    // without a stand: its kind, and for a task in progress nobody works on, when it last moved
+    const drive = row && !stand && r.x.group === 'doing' ? flowDrive(r.x, s) : null
+    const idle = drive?.by === 'none' ? f.doing.none(drive.days) : null
+    // an agent at work on it: a small marker only (what runs stands under Running now, never as a strip here)
+    const runs = row ? rowRunning(row, s) : false
+    const when = step?.check ? f.simple.asksOn(day(step.check)) : step?.due ? f.simple.dueOn(day(step.due)) : null
+    const mark = marks?.get(r.x.id) ?? null
+    const fresh = !!mark?.unread
+    const why = fresh ? unreadWhy(mark, lang) : ''
+    return html`<tr key=${r.id} class=${`flow-ov-row${row && picked.has(r.id) ? ' is-picked' : ''}${seen ? (fresh ? ' is-unread' : ' is-read') : ''}`}>
+      <td>${row ? html`<input type="checkbox" class="flow-ov-pick" aria-label=${w.pick(short(title, 60))} checked=${picked.has(r.id)}
+        onClick=${() => c.flowPick([r.id], !picked.has(r.id))} />` : null}</td>
+      <td class="flow-ov-point">${fresh ? html`<span class="flow-ov-unread" title=${f.marks.unread}><${Dot} token="info" /><span class="sr-only">${f.marks.unread}</span></span>` : null}<button type="button" class="flow-ov-open" onClick=${() => c.flowGo(r.x.id, points.indexOf(r.x))}>${short(title, 120)}</button>
+        ${runs ? html`<span class="flow-ov-running small"><${Dot} token="info" pulse /> ${f.list.running}</span>` : null}
+        ${why ? html`<span class="flow-ov-why small">${why}</span>` : null}
+        <span class="flow-ov-stand muted small">${stand ? short(stand, 160) : idle ? `${kindFor(r.x)} · ${idle}` : kindFor(r.x)}</span></td>
+      <td class="flow-ov-step small">${step ? html`<span>${short(step.what, 90)}</span> <${WhoChip} who=${step.who} s=${s} />${when
+        ? html`<span class="flow-ov-when muted">${when}</span>` : null}` : null}</td>
+    </tr>`
+  }
+  const fold = (list, word) => (list.length ? html`<details class="flow-ov-fold">
+    <summary class="label-caps">${word(list.length)}</summary>
+    <table class="flow-ov-table"><tbody>${bandsOf(list, band).flatMap(b => b.rows).map(line)}</tbody></table>
+  </details>` : null)
+  const toRead = seen ? readKeys(unread, s) : []
+  const figures = seen && !unread.length ? seenFigures(points, s) : null
   return html`<section class="flow-overview" aria-label=${w.label}>
     <${BatchBar} pickable=${pickable} chosen=${chosen} onPick=${(keys, on) => c.flowPick(keys, on)} verbs=${person ? ['done', 'later', 'drop'] : ['suggested', 'done', 'work', 'later', 'drop']}
       planOf=${(how, value) => batchPlan(chosen, how, s, value, lang)} onRun=${plan => c.flowBatch(plan?.calls ?? [])} suggest=${!person} s=${s} c=${c} />
-    <table class="flow-ov-table">
+    ${figures ? html`<p class="flow-ov-allread" role="status">${f.marks.allDone(figures.next)}</p>` : null}
+    ${bands.length ? html`<table class="flow-ov-table">
       <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${w.pickAll}</span></th><th>${w.cols.point}</th><th>${w.cols.step}</th></tr></thead>
       <tbody>${bands.map(b => {
         const ids = b.rows.filter(r => r.row).map(r => r.id)
@@ -255,27 +295,10 @@ export function FlowOverview({ points, picked, titleFor, kindFor, band = null, r
         return html`<tr key=${`band-${b.band}`} class="flow-ov-group"><th colspan="3" scope="colgroup"><span class="flow-ov-grouphead">
           ${ids.length ? html`<input type="checkbox" class="flow-ov-grouppick" aria-label=${w.pickGroup(f.groups[b.band])} checked=${all}
             onClick=${() => c.flowPick(ids, !all)} />` : null}<span class="label-caps">${f.groups[b.band]}</span></span></th></tr>
-        ${b.rows.map(r => {
-          const row = r.row
-          const title = row ? pointName(row) : titleFor(r.x)
-          const stand = row ? pointStand(row, s) : null
-          const step = row ? pointStep(row, s) : null
-          // without a stand: its kind, and for a task in progress nobody works on, when it last moved
-          const drive = row && !stand && r.x.group === 'doing' ? flowDrive(r.x, s) : null
-          const idle = drive?.by === 'none' ? f.doing.none(drive.days) : null
-          // an agent at work on it: a small marker only (what runs stands under Running now, never as a strip here)
-          const runs = row ? rowRunning(row, s) : false
-          const when = step?.check ? f.simple.asksOn(day(step.check)) : step?.due ? f.simple.dueOn(day(step.due)) : null
-          return html`<tr key=${r.id} class=${`flow-ov-row${row && picked.has(r.id) ? ' is-picked' : ''}`}>
-            <td>${row ? html`<input type="checkbox" class="flow-ov-pick" aria-label=${w.pick(short(title, 60))} checked=${picked.has(r.id)}
-              onClick=${() => c.flowPick([r.id], !picked.has(r.id))} />` : null}</td>
-            <td class="flow-ov-point"><button type="button" class="flow-ov-open" onClick=${() => c.flowGo(r.x.id, points.indexOf(r.x))}>${short(title, 120)}</button>
-              ${runs ? html`<span class="flow-ov-running small"><${Dot} token="info" pulse /> ${f.list.running}</span>` : null}
-              <span class="flow-ov-stand muted small">${stand ? short(stand, 160) : idle ? `${kindFor(r.x)} · ${idle}` : kindFor(r.x)}</span></td>
-            <td class="flow-ov-step small">${step ? html`<span>${short(step.what, 90)}</span> <${WhoChip} who=${step.who} s=${s} />${when
-              ? html`<span class="flow-ov-when muted">${when}</span>` : null}` : null}</td>
-          </tr>`
-        })}`})}</tbody>
-    </table>
+        ${b.rows.map(line)}`})}</tbody>
+    </table>` : null}
+    ${toRead.length ? html`<p class="flow-ov-readall"><${Btn} size="sm" variant="ghost" onClick=${() => c.flowSeen(toRead)}>${f.marks.allRead}<//></p>` : null}
+    ${fold(read, f.marks.readFold)}
+    ${fold(resting, f.marks.restingFold)}
   </section>`
 }
