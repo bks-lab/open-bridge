@@ -950,3 +950,110 @@ def test_design_ref_default_is_an_opt_out_not_an_edge(tmp_path):
         "DESIGN.md": "---\nname: root\n---\n",
     })
     assert edges.check(tmp_path) == []
+
+
+# ── ids the data model declares ──────────────────────────────────────────────────────────
+# A mail profile names its footer by id (`footer: contact`). An id has no path
+# shape, so nothing checked it until docs/data-model.yaml was read for the
+# `key → <wrapper>/<family>/` declarations. Found by the open-bridge testbed: a
+# profile copied from the template named a footer no instance had, and only
+# mail-draft noticed, at draft time.
+
+_MODEL = """families:
+  - path: workflow/mail-profiles/
+    references: ["footer → identity/mail-footers/", "persona_ref → identity/personas/",
+                 "applies_to.mandants → identity/mandants/"]
+  - path: workflow/workloads/
+    references: ["placement.host → infra/remotes/", "credential_ref → a secret store, by URI"]
+"""
+
+
+def test_an_id_the_data_model_declares_is_an_edge(tmp_path):
+    root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
+                            "identity/mail-footers/studio.yaml": "id: studio\n",
+                            "workflow/mail-profiles/everyday.yaml": "footer: studio\n"})
+    assert ("workflow/mail-profiles/everyday.yaml", "footer", "id:identity/mail-footers/studio") in edges.all_edges(root)
+    assert edges.check(root) == []
+
+
+def test_an_id_no_entry_has_is_named_as_dead(tmp_path):
+    root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
+                            "workflow/mail-profiles/everyday.yaml": "footer: contact\n"})
+    findings = edges.check(root)
+    assert findings == ["workflow/mail-profiles/everyday.yaml :: footer names `contact`, "
+                        "which no entry in identity/mail-footers/ has"]
+
+
+def test_ids_under_a_nested_key_and_in_lists_are_read(tmp_path):
+    root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
+                            "identity/mandants/acme.yaml": "id: acme\n",
+                            "workflow/mail-profiles/everyday.yaml": "applies_to:\n  mandants: [acme, ghost]\n",
+                            "workflow/workloads/nightly.yaml": "placement:\n  host: nas\n"})
+    found = edges.check(root)
+    assert any("`ghost`" in f for f in found) and any("`nas`" in f for f in found)
+    assert not any("`acme`" in f for f in found)
+
+
+def test_an_id_edge_is_never_moved_or_rewritten(tmp_path):
+    root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
+                            "examples/x/identity/mail-footers/contact.yaml": "id: contact\n",
+                            "workflow/mail-profiles/everyday.yaml": "footer: contact\n"})
+    assert edges.classify(root, "id:identity/mail-footers/contact") == ("dead", None)
+    edges.fix_moved(root)
+    assert (root / "workflow/mail-profiles/everyday.yaml").read_text() == "footer: contact\n"
+
+
+def test_prose_targets_paths_uris_and_templates_are_no_id_edges(tmp_path):
+    root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
+                            "workflow/workloads/nightly.yaml": "credential_ref: keychain://x\nplacement:\n  host: local/box\n",
+                            "workflow/mail-profiles/_template.yaml": "footer: contact\n",
+                            "workflow/mail-profiles/plain.yaml": "footer: false\n"})
+    assert [e for e in edges.all_edges(root) if e[2].startswith("id:")] == []
+
+
+def test_an_entry_kept_as_a_folder_resolves(tmp_path):
+    root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
+                            "identity/mail-footers/studio/footer.yaml": "id: studio\n",
+                            "workflow/mail-profiles/everyday.yaml": "footer: studio\n"})
+    assert edges.check(root) == []
+
+
+def test_the_real_data_model_yields_declarations():
+    decls = edges.id_declarations(REPO_ROOT)
+    assert ("workflow/mail-profiles/", "footer", "identity/mail-footers/") in decls
+    assert not any(key == "design_ref" for _, key, _ in decls)
+
+
+def test_local_is_this_machine_not_a_remote(tmp_path):
+    # `host: local` / `runtime.remote: local` mean "this machine" in the templates
+    root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
+                            "workflow/workloads/nightly.yaml": "placement:\n  host: local\n"})
+    assert edges.check(root) == []
+
+
+# ── the backups template names its state file where instances keep it ──────────────────
+# `infra/backups/_template.yaml` said `state_file: backups/_state.yaml`, a path from
+# before the cluster wrappers; an instance copied from it got a reference this
+# checker reports as moved. Found by the open-bridge testbed.
+import yaml as _yaml
+
+BACKUP_STATE = "infra/backups/_state.yaml"
+
+
+def _first_doc(rel: str) -> dict:
+    docs = [d for d in _yaml.safe_load_all((REPO_ROOT / rel).read_text(encoding="utf-8")) if d]
+    return docs[0]
+
+
+def test_the_template_names_the_sidecar_beside_it():
+    assert _first_doc("infra/backups/_template.yaml")["state_file"] == BACKUP_STATE
+
+
+def test_every_example_agrees_with_the_template():
+    for topology in sorted(REPO_ROOT.glob("examples/*/infra/backups/topology.yaml")):
+        assert _first_doc(str(topology.relative_to(REPO_ROOT)))["state_file"] == BACKUP_STATE, topology
+
+
+def test_the_schema_states_the_same_default():
+    text = (REPO_ROOT / "infra/backups/_schema.yaml").read_text(encoding="utf-8")
+    assert f"default: {BACKUP_STATE}" in text

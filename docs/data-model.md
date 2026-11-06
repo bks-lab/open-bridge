@@ -90,7 +90,9 @@ draws exactly this, from the same file as the tables below:
    a session will see it, so "when named" never turns into "never".
 4. **Beyond it** are the references between entries (`persona_ref`, `context_ref`,
    `remote_ref` and the rest), the path the agent walks after the first hop.
-   `scripts/check-edges.py` holds each one to resolving.
+   `scripts/check-edges.py` holds each one to resolving: a path by its shape, an id
+   (`footer: studio`) by the `key → <wrapper>/<family>/` declarations under
+   `references:` in `docs/data-model.yaml`.
 5. **Outside the dashed line** is what never enters git: secret stores and object
    stores, reached by URI, and local caches. Why content that is not
    configuration gets a store of its own: [`object-store.md`](object-store.md).

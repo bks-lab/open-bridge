@@ -347,6 +347,80 @@ def iter_design_refs(repo_root) -> list[tuple[str, str, str]]:
     return found
 
 
+# Id references between config entries, as docs/data-model.yaml declares them:
+# `footer → identity/mail-footers/` in a mail profile names a footer by its id.
+# Paths are found by their shape; an id has none, so without the declaration a
+# profile naming a footer nobody wrote passed every guard (mail-draft validate
+# was the first to notice, at draft time). Only declarations of the plain form
+# `dotted.key → <wrapper>/<family>/` count; prose targets ("a secret store, by
+# URI") are no id edge. `design_ref` keeps its own reader above.
+DATA_MODEL = "docs/data-model.yaml"
+ID_PREFIX = "id:"
+ID_DECL = re.compile(r"^\s*([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)\s*→\s*((?:identity|infra|workflow)/[a-z0-9-]+/)\s*$")
+ID_VALUE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Values that are no entry: `host: local` and `runtime.remote: local` mean this machine.
+ID_NOT_AN_ENTRY = {"local"}
+
+
+def id_declarations(repo_root) -> list[tuple[str, str, str]]:
+    """(referring family folder, dotted key, target family folder) from the data model."""
+    path = Path(repo_root) / DATA_MODEL
+    if yaml is None or not path.is_file():
+        return []
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return []
+    out = []
+    for fam in doc.get("families") or []:
+        if not isinstance(fam, dict):
+            continue
+        for ref in fam.get("references") or []:
+            m = ID_DECL.match(str(ref))
+            if m and m.group(1) != DESIGN_KEY:
+                out.append((str(fam.get("path", "")), m.group(1), m.group(2)))
+    return out
+
+
+def _values_at(node, keys: list[str]):
+    """Every scalar at a dotted key; a list on the way is walked item by item."""
+    if isinstance(node, list):
+        for item in node:
+            yield from _values_at(item, keys)
+        return
+    if not keys:
+        if isinstance(node, str):
+            yield node
+        return
+    if isinstance(node, dict) and keys[0] in node:
+        yield from _values_at(node[keys[0]], keys[1:])
+
+
+def iter_id_refs(repo_root) -> list[tuple[str, str, str]]:
+    """Every declared reference by id, as (file, key path, id:<family>/<id>)."""
+    root = Path(repo_root)
+    found = []
+    for family, key, target in id_declarations(repo_root):
+        for path in sorted(root.glob(f"{family}*.yaml")):
+            rel = str(path.relative_to(root))
+            if path.name.startswith("_") or _skip(rel):
+                continue
+            try:
+                doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except (yaml.YAMLError, UnicodeDecodeError):
+                continue
+            for value in _values_at(doc, key.split(".")):
+                value = value.strip()
+                if ID_VALUE.match(value) and value not in ID_NOT_AN_ENTRY:   # a path or URI is the path reader's
+                    found.append((rel, key, f"{ID_PREFIX}{target}{value}"))
+    return found
+
+
+def _id_resolves(root: Path, target: str) -> bool:
+    base = root / target[len(ID_PREFIX):]
+    return any(p.exists() for p in (base.with_name(base.name + ".yaml"), base.with_name(base.name + ".md"), base))
+
+
 def _router():
     spec = importlib.util.spec_from_file_location("categorize_commits_for_edges", HERE / "categorize-commits.py")
     module = importlib.util.module_from_spec(spec)
@@ -380,7 +454,7 @@ def design_tier_findings(repo_root) -> list[str]:
 
 def all_edges(repo_root) -> list[tuple[str, str, str]]:
     _files_by_name.cache_clear()           # one walk per run, never a stale one
-    return iter_edges(repo_root) + iter_design_refs(repo_root) + iter_md_links(repo_root)
+    return iter_edges(repo_root) + iter_design_refs(repo_root) + iter_id_refs(repo_root) + iter_md_links(repo_root)
 
 
 def links_into(repo_root, old: str) -> list[str]:
@@ -470,6 +544,10 @@ def classify(repo_root, target: str) -> tuple[str, str | None]:
         ok = (DESIGN_ID.match(design_id) and design_id != DESIGN_OPT_OUT
               and (root / target).is_file())
         return ("ok", None) if ok else ("dead", None)
+    # An entry named by id resolves in its family folder or nowhere: never moved,
+    # since `--fix` would write a path where an id belongs.
+    if target.startswith(ID_PREFIX):
+        return ("ok", None) if _id_resolves(root, target) else ("dead", None)
     if (root / target).exists():
         return "ok", None
 
@@ -521,6 +599,9 @@ def check(repo_root) -> list[str]:
             )
         elif state == "dead" and key.startswith("#L") and rel.startswith(MD_HISTORY_PREFIXES):
             continue
+        elif state == "dead" and target.startswith(ID_PREFIX):
+            family, _, ident = target[len(ID_PREFIX):].rpartition("/")
+            findings.append(f"{rel} :: {key} names `{ident}`, which no entry in {family}/ has")
         elif state == "dead":
             findings.append(f"{rel} :: {key} -> {target} is dead, nothing at that path")
 

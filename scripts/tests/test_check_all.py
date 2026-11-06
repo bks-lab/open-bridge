@@ -146,9 +146,24 @@ def test_python3_inside_a_step_is_the_chosen_interpreter(ca, tmp_path):
     # Shell suites call bare `python3`; on a machine where that is another
     # interpreter without pytest, sixteen of them went red for no reason.
     env = ca.isolated_env(tmp_path, python=sys.executable)
-    import shutil as _sh
-    found = _sh.which("python3", path=env["PATH"])
-    assert found and pathlib.Path(found).resolve() == pathlib.Path(sys.executable).resolve()
+    import subprocess as _sp
+    out = _sp.run(["python3", "-c", "import sys; print(sys.executable)"], env=env,
+                  capture_output=True, text=True, check=True).stdout.strip()
+    assert pathlib.Path(out).resolve() == pathlib.Path(sys.executable).resolve()
+
+
+def test_a_virtualenv_interpreter_keeps_its_packages(ca, tmp_path):
+    # The shim used to point at the RESOLVED interpreter. A virtualenv's python
+    # is a symlink to the base interpreter, so resolving it left the venv, and
+    # every step that imports a package only the venv has (yaml) failed.
+    import subprocess as _sp
+    venv = tmp_path / "venv"
+    _sp.run([sys.executable, "-m", "venv", "--without-pip", str(venv)], check=True)
+    (tmp_path / "work").mkdir()
+    env = ca.isolated_env(tmp_path / "work", python=str(venv / "bin" / "python"))
+    out = _sp.run(["python3", "-c", "import sys; print(sys.prefix)"], env=env,
+                  capture_output=True, text=True, check=True).stdout.strip()
+    assert pathlib.Path(out).resolve() == venv.resolve()
 
 
 def test_steps_run_in_parallel(ca, tmp_path):

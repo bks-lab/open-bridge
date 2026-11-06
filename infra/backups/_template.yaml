@@ -62,4 +62,4 @@ pipelines:
 
 # State (what last ran when) lives in a sidecar file,
 # so that topology.yaml stays clean as pure config in git:
-state_file: backups/_state.yaml
+state_file: infra/backups/_state.yaml

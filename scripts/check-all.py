@@ -231,9 +231,14 @@ def isolated_env(tmpdir: pathlib.Path, python: str | None = None) -> dict:
     if python:
         shim = pathlib.Path(tmpdir) / "bin"
         shim.mkdir(exist_ok=True)
-        real = shutil.which(python) or python
+        # A wrapper, not a symlink to the resolved file: a virtualenv's python is
+        # itself a symlink to the base interpreter, and only the path it is
+        # started under finds the venv's pyvenv.cfg and so its packages.
+        real = pathlib.Path(shutil.which(python) or python).absolute()
         for name in ("python3", "python"):
-            (shim / name).symlink_to(pathlib.Path(real).resolve())
+            wrapper = shim / name
+            wrapper.write_text(f'#!/bin/sh\nexec "{real}" "$@"\n', encoding="utf-8")
+            wrapper.chmod(0o755)
         env["PATH"] = f"{shim}{os.pathsep}{env.get('PATH', '')}"
     env.update({
         "GIT_CONFIG_GLOBAL": str(cfg),
