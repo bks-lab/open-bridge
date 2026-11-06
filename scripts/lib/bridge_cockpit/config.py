@@ -57,7 +57,9 @@ FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 
 # checkin the look of the Bridge before a check-in (checkin.py, cockpit.flow.checkin {enabled, budget_per_day, model},
 # off by default, BUDGET looks a day); seen the read marks of the points (seen.py, cockpit.flow.seen {enabled, open_reads,
 # active_days, revisit_days, counts}, off by default like every block of the page that changes how it lists its points)
-FLOW_KEYS = ("enabled", "drop_reasons", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "infer_sessions",
+# drop_idea: Drop on a task shelves it (declined, and an idea filed and put off, task.py shelve; the default, as it always
+# did), or, false, closes it as declined with its reason and files no idea
+FLOW_KEYS = ("enabled", "drop_reasons", "drop_idea", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "infer_sessions",
              "themes", "summary", "instruct", "attach", "prio", "checkin", "seen")
 FLOW_REASON_MAX = 80
 FLOW_REASONS_MAX = 12
@@ -238,7 +240,7 @@ def ai_gaps(root: Path) -> list[dict]:
 
 
 def flow_defaults() -> dict:
-    return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "return_after_s": 20,
+    return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "drop_idea": True, "return_after_s": 20,
             **{key: default for key, default, _low in FLOW_INTS}, "infer_sessions": True, "themes": thm.defaults(),
             "summary": act.ai_defaults(act.SUMMARY_BUDGET), "instruct": act.ai_defaults(act.INSTRUCT_BUDGET),
             "attach": act.attach_defaults(), "prio": pr.defaults(), "checkin": cki.defaults(), "seen": sn.defaults()}
@@ -325,6 +327,8 @@ def flow_of(value: Any) -> dict:
         out["enabled"] = value["enabled"]
     if isinstance(value.get("infer_sessions"), bool):
         out["infer_sessions"] = value["infer_sessions"]
+    if isinstance(value.get("drop_idea"), bool):
+        out["drop_idea"] = value["drop_idea"]
     if isinstance(value.get("drop_reasons"), list):
         out["drop_reasons"] = _flow_reasons(value["drop_reasons"])[0] or out["drop_reasons"]
     after = value.get("return_after_s")
@@ -353,7 +357,7 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
         at = f"{where}.{str(key)[:40]}"
         if v is None:
             continue
-        if key in ("enabled", "infer_sessions") and not isinstance(v, bool):
+        if key in ("enabled", "infer_sessions", "drop_idea") and not isinstance(v, bool):
             out.append(f"{at}: must be true or false, got {_show(v)}; using {_show(used[key])}")
         elif key == "drop_reasons":
             if not isinstance(v, list):

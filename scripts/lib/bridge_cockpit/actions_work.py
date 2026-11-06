@@ -287,7 +287,11 @@ class WorkVerbs:
             raise bad_arg("who", "one line of 1 to 60 characters: who has it")
         found = self.entry(key)
         row = found["row"]
-        words = self.tx["work_on_note"].format(who=who, until=until) + (f": {text}" if text else "")
+        # with the read marks on (cockpit.flow.seen) the page calls it Hand over: the same check-in, its own words
+        hand = self.app.seen_on() if hasattr(self.app, "seen_on") else False
+        note_w, back_w = ("hand_over_note", "hand_over_back") if hand else ("work_on_note", "work_on_back")
+        did = f"handed over to {who} until {until}" if hand else f"in progress with {who} until {until}"
+        words = self.tx[note_w].format(who=who, until=until) + (f": {text}" if text else "")
         if row.get("inbox_id"):
             item = self.inbox_id(row)
             if not self.write_note(ctx, row, words):
@@ -296,8 +300,8 @@ class WorkVerbs:
             if not run.ok:
                 ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
                 return
-            ctx.history.append(history_item(row["key"], row["title"], "inbox", f"in progress with {who} until {until}", item))
-            self.settle(ctx, row, self.tx["work_on_back"].format(who=who, until=until))
+            ctx.history.append(history_item(row["key"], row["title"], "inbox", did, item))
+            self.settle(ctx, row, self.tx[back_w].format(who=who, until=until))
             return
         if row.get("task"):
             slug = self.slug(row)
@@ -310,11 +314,11 @@ class WorkVerbs:
             # who had the step before: the undo gives it back (the card's next.who, else the owner)
             old_who = (((found.get("out") or {}).get("card") or {}).get("next") or {}).get("who")
             ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
-                                "did": f"in progress with {who} until {until}", "ident": slug, "undone_ms": None,
+                                "did": did, "ident": slug, "undone_ms": None,
                                 "work_kind": "stream" if row.get("stream") else "task",
                                 "undo": {"verb": "task_next", "args": {"slug": slug, "who": old_who or "me",
                                                                        "clear_check": True}}})
-            ctx.note(self.tx["work_on_back"].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
+            ctx.note(self.tx[back_w].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
             ctx.delta()
             self.app.collector.request("both")
             return
@@ -571,6 +575,10 @@ class WorkVerbs:
         if not row.get("task") or row.get("inbox_id") or row.get("stream") or (entry["out"] or {}).get("stream"):
             raise self.not_applicable("only a task is shelved; a stream runs on, an inbox item is dropped", "key")
         slug = self.slug(row)
+        # cockpit.flow.drop_idea false: Drop drops, the task closes as declined with its reason and no idea is filed
+        if (getattr(self.app.cfg, "flow", None) or {}).get("drop_idea", True) is False:
+            self.v_task_close(ctx, [key], "not_doing", reason)
+            return
         before = self.task_status(slug)     # read before the shelve moves the folder: the undo restores it
         argv = self.task_cmd("shelve", slug, f"--reason={reason}", *(["--until", until] if until else []))
         run = ctx.call("task.shelve", slug, argv, SHORT_TIMEOUT)

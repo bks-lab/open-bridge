@@ -213,6 +213,9 @@ EN: dict = {
     # stage 4 of the one point view: In progress with a check-in, Stuck on a check-in
     "work_on_note": "In progress with {who}, check-in {until}",
     "work_on_back": "In progress with {who}, the check-in comes on {until}",
+    # the same with the read marks on (cockpit.flow.seen): In progress is Hand over, for someone else only
+    "hand_over_note": "Handed over to {who}, check-in {until}",
+    "hand_over_back": "Handed over to {who}, the check-in comes on {until}",
     "stuck_note": "Stuck: {text}",
     "stuck_plain": "Stuck, back to you",
     "running_again": "{slug} is worked on again",
@@ -674,6 +677,8 @@ DE: dict = {
     "runs_on_note": "Läuft noch, nachsehen {until}",
     "work_on_note": "In Arbeit bei {who}, Nachfrage am {until}",
     "work_on_back": "In Arbeit bei {who}, die Nachfrage kommt am {until}",
+    "hand_over_note": "Übergeben an {who}, Nachfrage am {until}",
+    "hand_over_back": "Übergeben an {who}, die Nachfrage kommt am {until}",
     "stuck_note": "Hängt: {text}",
     "stuck_plain": "Hängt, zurück zu dir",
     "running_again": "{slug} ist wieder dran",
