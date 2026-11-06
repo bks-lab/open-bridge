@@ -1151,6 +1151,74 @@ answer stands under the line with **Close**. Ask needs no
 `cockpit.flow.instruct`: with the instruction line off, and on a closed point,
 the line asks only. A person's page asks nothing here.
 
+#### Read marks
+
+With `cockpit.flow.seen.enabled: true` Work through remembers which points you
+already looked at, as a mail app remembers its read mails. One rule: **read
+means out of sight until something new happens to the point or its revisit day
+comes, whichever is first.** The mark is the cockpit's own (`seen.json` in its
+state folder, below); the task or the inbox item itself is never changed by it.
+
+**Read and unread.** Opening a point marks it read (`open_reads: auto`, the
+default). With `open_reads: click` a point stays unread until you click
+**Read**, the strong button on the right while it is unread. **Mark unread** in
+More ▾ (and `u` while the shortcuts are on) makes the open point unread again;
+it stays unread until it is opened again later. **Mark all read** under the
+overview reads every unread point of the theme or area entered (or of all of
+them). A group that asks for you now (a check-in, the return card, a tab that
+asks, a finished or lost start) is no part of it: it stands unread while it
+stands. The finished AI runs keep their own Read under Finished, to read.
+
+**What makes a point unread again.** Real movement since it was read, read from
+what the server already has per row (`seen.py`), never by running the Activity
+feed per row: the time of a task's STATUS.md (a note, a status change), its
+deliverables (a document), a row of `work/log.md` that names its slug, an event
+of the inbox item or of an open item that names the task, the end of an AI run
+on it, and for an issue or a pull request the time GitHub says it changed where
+a list of a page holds it. The mark keeps these markers as they were when it was
+read (`model.moved` carries them now); a later one is news. `counts` switches the
+kinds on and off (note and status share the file's time). Never news: a brief
+describe writes, a theme given, a Prio or Jev order, and your own clicks in the
+cockpit (the markers after your verb become the mark's, as long as nothing new
+was pending before it). A row of another kind (a date, a page item) and an issue
+no list holds have no marker and come back only on their revisit day; a STATUS.md
+a git pull changed counts as new here.
+
+**Revisit replaces Later.** Every read point comes back unread by itself after
+the interval of its kind (`revisit_days`): a doing task that is active 7 days, one
+that rests 14 (it then asks "go on, park or close?"), a backlog task or an idea
+30, a question or an approval of the inbox 2, an issue or a pull request 7. On a
+point, Later ▾ of the four states is **Revisit ▾**: tomorrow, Monday, 1 week, 2
+weeks or a date, and a sentence if you want one. It sends the verb `later` with
+`revisit: true`: the point is read now and comes back unread on that day (or on
+something new before it); nothing is hidden or put off, and the task or item is
+written to only when there is a sentence (as a note, as Later did). Its undo
+marks the point unread. The suggestion's Later becomes **Revisit <day>**, the
+overview's batch and the instruction line plan a revisit the same way; a row of
+Not now keeps Later as it was (it is no point, a mark would not move it). Due
+days keep working as before (`ahead_days`).
+
+**Active and resting.** A doing task is **active** while something counted moved
+on it within `active_days` (7), an agent works on it, it is pinned or you keep it
+in focus (**Keep in focus** in More ▾, its own list in `seen.json`, beside the
+pin); else it **rests** for so many days. The field Active says which, and a
+resting task comes back after the resting interval. Where it rests and nothing
+else is strong, the right column offers **Go on, keep in focus**.
+
+**On the page.** The left column counts the unread points of each theme or area
+bold, every open one faint beside them. The overview lists, band by band, the
+unread points first, each with a dot and why it is unread under its name ("New:
+a note or a status change (Mon 3 Nov)", "Revisit from <day>", "Resting for 9
+days: go on, park or close?", "New, never opened", "Marked unread"); the read
+ones fold under **Read (n)** and the read resting ones under **Resting (n)** at
+the foot. **Next point** walks the unread points only (and the one open); when
+none is left its middle says **All read** with the next revisit day and how many
+points come back then, and so does an overview with nothing unread. The head
+line adds "n new · m revisits today". The fields of a point add **Read mark**
+("read <day>, comes back <day> or on something new") and **Active**. Without
+`seen.enabled` nothing of this shows and Later stays Later; a person's page keeps
+no marks.
+
 #### One point view
 
 Where Work through is on (`cockpit.flow.enabled: true`, kept by
@@ -4403,6 +4471,20 @@ The server deletes relay files after a day, heartbeats after an hour. The
 one file outside the Bridge: `~/.local/state/bridge-cockpit/` (folder and file
 readable by you only), or the folder `$BRIDGE_COCKPIT_KEY_DIR` names; delete it
 to get a new one at the next start.
+
+### Upgrading: read marks
+
+Opt-in: nothing changes until `cockpit.flow.seen.enabled: true` (with
+`cockpit.flow.enabled`). The block's other keys have their defaults
+(`bridge-config.yaml.template`, [Read marks](#read-marks)). New on the wire: the
+verbs `seen_read` (keys), `seen_unread` (key) and `seen_focus` (key, on), the
+optional `revisit` of `later` (a page that does not send it puts off as
+before), the state's key `seen` and its event `seen`, and the model's key
+`moved` (only while the marks are on). New file: `seen.json` in the state folder
+(section 6), kept on this machine only. On the first day every point is new,
+never opened: **Mark all read** takes them all at once. Going back: switch the key
+off (or downgrade); `seen.json` stays and is ignored, and nothing was written to
+a task or an item by a mark.
 
 ## 7. Ports
 
