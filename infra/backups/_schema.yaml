@@ -93,7 +93,7 @@ properties:
 
   state_file:
     type: string
-    description: "Relative path to the state sidecar (default: backups/_state.yaml). The skill writes it; topology.yaml stays clean config."
+    description: "Relative path to the state sidecar (default: infra/backups/_state.yaml). The skill writes it; topology.yaml stays clean config."
 
 # Notes (advisory):
 # - topology.yaml is the source of truth — NEVER hardcode backup paths in a skill.
