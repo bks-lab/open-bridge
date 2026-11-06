@@ -5480,6 +5480,13 @@ def test_the_term_scope_follows_the_page_mode(tmp_path):
     assert ":root.dark .term {" in term and "black" in term.split(":root.dark .term {", 1)[1].split("}", 1)[0]
 
 
+def test_a_workspace_head_leaves_room_for_its_buttons():
+    # + and the menu stand over the right edge of a workspace's head: the head keeps that edge free, so its
+    # state word ("waiting") never runs under them
+    css = (ROOT / "scripts" / "web" / "term.css").read_text(encoding="utf-8")
+    assert ".room-ws:has(> .room-ws-acts) > .room-ws-head { padding-right:" in css
+
+
 def test_this_bridges_design_md_names_every_colour_itself():
     # the instance's own palette needs no fallback: what it shows is what DESIGN.md declares
     from lib.bridge_cockpit import design
