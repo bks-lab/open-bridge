@@ -1029,3 +1029,31 @@ def test_local_is_this_machine_not_a_remote(tmp_path):
     root = _tree(tmp_path, {"docs/data-model.yaml": _MODEL,
                             "workflow/workloads/nightly.yaml": "placement:\n  host: local\n"})
     assert edges.check(root) == []
+
+
+# ── the backups template names its state file where instances keep it ──────────────────
+# `infra/backups/_template.yaml` said `state_file: backups/_state.yaml`, a path from
+# before the cluster wrappers; an instance copied from it got a reference this
+# checker reports as moved. Found by the open-bridge testbed.
+import yaml as _yaml
+
+BACKUP_STATE = "infra/backups/_state.yaml"
+
+
+def _first_doc(rel: str) -> dict:
+    docs = [d for d in _yaml.safe_load_all((REPO_ROOT / rel).read_text(encoding="utf-8")) if d]
+    return docs[0]
+
+
+def test_the_template_names_the_sidecar_beside_it():
+    assert _first_doc("infra/backups/_template.yaml")["state_file"] == BACKUP_STATE
+
+
+def test_every_example_agrees_with_the_template():
+    for topology in sorted(REPO_ROOT.glob("examples/*/infra/backups/topology.yaml")):
+        assert _first_doc(str(topology.relative_to(REPO_ROOT)))["state_file"] == BACKUP_STATE, topology
+
+
+def test_the_schema_states_the_same_default():
+    text = (REPO_ROOT / "infra/backups/_schema.yaml").read_text(encoding="utf-8")
+    assert f"default: {BACKUP_STATE}" in text
