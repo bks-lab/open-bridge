@@ -237,6 +237,29 @@ export const AREA_PAGES = new Set(['briefing', '@chat', '@sessions', '@flow', '@
 // work tab's fallback (a Due switched off falls back to Work through) never leads back into Work through
 const DUE_ROWS = '@due'
 
+/** The names an area stands for in the Chat: its own and those of its child areas, all the way down, from the
+ *  Settings' workspaces (workspaces.py: id, area, title, children). A child switched off in the picker or resting
+ *  is left out, and its children with it. Without that list only the area's own name */
+export function areaFamily(items, area) {
+  const list = Array.isArray(items) ? items : []
+  const byId = new Map(list.filter(i => i?.id).map(i => [i.id, i]))
+  const top = list.find(i => areaKey(i?.area || i?.title || i?.key) === areaKey(area))
+  const names = [area]
+  const seen = new Set()
+  const walk = item => {
+    if (!item || seen.has(item.id)) return
+    seen.add(item.id)
+    for (const id of item.children ?? []) {
+      const child = byId.get(id)
+      if (!child || seen.has(child.id) || child.on === false || child.active === false || child.held_by || child.active_held_by) continue
+      names.push(child.area || child.title || child.key)
+      walk(child)
+    }
+  }
+  walk(top)
+  return names.filter(Boolean)
+}
+
 /** The row behind a page item: by its key, its task or its inbox item */
 function itemRow(it, byKey) {
   return byKey.get(it.key) ?? (it.task ? byKey.get(`task:${it.task}`) : null) ?? (it.inbox ? byKey.get(`inbox:${it.inbox}`) : null) ?? null
@@ -307,12 +330,15 @@ export function areaScope(s) {
     return { ...s, model, more, tabs: area ? { ...s.tabs, tabs: tabs.filter(keepTab) } : s.tabs, wholeModel: s.model, wholeTabs: s.tabs }
   }
   if (page === '@chat') {
-    const kept = tabs.filter(keepTab)
+    // the area and its child areas below it (the Settings' workspaces), so a parent's Chat holds its children's tabs
+    const family = areaFamily(s.workspaces?.items, area)
+    const inFamily = x => family.some(n => inProject(x, n))
+    const kept = tabs.filter(t => keepTab(t) || inFamily(t))
     const listed = s.tabs?.workspaces
-    // and only the workspaces that hold one of those tabs or carry the area's name: the others showed up
-    // empty under the filter, a workspace nobody could enter (25.10.)
+    // and only the workspaces that hold one of those tabs or carry the name of the area or a child: the others
+    // showed up empty under the filter, a workspace nobody could enter (25.10.)
     const holds = w => kept.some(t => (t.ws_ref && w.ref ? t.ws_ref === w.ref : t.workspace === w.title))
-    const keepWs = w => holds(w) || inProject({ workspace: w.title }, area)
+    const keepWs = w => holds(w) || inFamily({ workspace: w.title })
     // the ones left out still tell the sidebar which Bridge a workspace lies in (roomsOf: other Bridges)
     const workspaces = listed ? { workspaces: listed.filter(keepWs), hidden_workspaces: listed.filter(w => !keepWs(w)) } : {}
     return { ...s, tabs: { ...s.tabs, tabs: kept, ...workspaces } }

@@ -239,6 +239,34 @@ test('the area filter: Work, Chat and Sessions show the area only, the other pag
   assert.deepEqual(logic.areaScope({ ...base, ui: { page: '@chat', area: null, pinnedOnly: true } }).tabs.tabs.length, 3)
 })
 
+test('the Chat under an area shows the workspaces and tabs of its child areas too, not those of a hidden or resting child', async () => {
+  const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
+  const tabs = [{ ref: 'c', is_control: true, workspace: 'Bridge', state: 'waiting' }, { ref: 'a', workspace: 'ACME', state: 'working' },
+    { ref: 'k', workspace: 'Kite', state: 'waiting' }, { ref: 'g', workspace: 'Gull', state: 'working' },
+    { ref: 'r', workspace: 'Reed', state: 'working' }, { ref: 'o', workspace: 'ORBIT', state: 'needs-you' }]
+  const listed = [{ ref: 'w1', title: 'Bridge' }, { ref: 'w2', title: 'ACME' }, { ref: 'w3', title: 'Kite' }, { ref: 'w4', title: 'Gull' },
+    { ref: 'w5', title: 'Reed' }, { ref: 'w6', title: 'ORBIT' }, { ref: 'w7', title: 'Wren' }]
+  // the Settings' workspaces (workspaces.py): ACME has Kite and Reed; Kite has Gull and Wren (a grandchild each); Reed rests
+  const item = (id, area, over = {}) => ({ key: area, area, id, title: area, parent: null, children: [], on: true, active: true, ...over })
+  const items = [item('acme', 'ACME', { children: ['kite', 'reed', 'acme'] }), item('kite', 'Kite', { parent: 'acme', children: ['gull', 'wren'] }),
+    item('gull', 'Gull', { parent: 'kite' }), item('wren', null, { key: 'wren', title: 'Wren', parent: 'kite' }),
+    item('reed', 'Reed', { parent: 'acme', active: false }), item('orbit', 'ORBIT')]
+  const at = (area, ws = items) => logic.areaScope({ tabs: { tabs, workspaces: listed }, workspaces: { enabled: true, items: ws }, ui: { page: '@chat', area } })
+  const acme = at('ACME')
+  assert.deepEqual(acme.tabs.tabs.map(t => t.ref), ['c', 'a', 'k', 'g'])
+  assert.deepEqual(acme.tabs.workspaces.map(w => w.title), ['Bridge', 'ACME', 'Kite', 'Gull', 'Wren'])
+  assert.deepEqual(acme.tabs.hidden_workspaces.map(w => w.title), ['Reed', 'ORBIT'])
+  // a child area picked itself: that one and its own children, never the parent
+  assert.deepEqual(at('kite').tabs.workspaces.map(w => w.title), ['Bridge', 'Kite', 'Gull', 'Wren'])
+  // a child switched off in the picker stays out, and its own children with it
+  const off = items.map(i => (i.id === 'kite' ? { ...i, on: false } : i))
+  assert.deepEqual(at('ACME', off).tabs.workspaces.map(w => w.title), ['Bridge', 'ACME'])
+  // without the Settings' list, or with its main switch off, the Chat filters by the area's own name as before
+  const plain = logic.areaScope({ tabs: { tabs, workspaces: listed }, ui: { page: '@chat', area: 'ACME' } })
+  assert.deepEqual(plain.tabs.workspaces.map(w => w.title), ['Bridge', 'ACME'])
+  assert.deepEqual(at('ACME', []).tabs.workspaces.map(w => w.title), ['Bridge', 'ACME'])
+})
+
 test('the tabs button counts the tabs that want you; a finished tab reads done', async () => {
   const logic = await import(pathToFileURL(path.join(WEB, 'logic.js')).href)
   const tabs = [{ ref: 'n', state: 'needs-you' }, { ref: 'w', state: 'waiting', waiting: true }, { ref: 'i', state: 'waiting', idle: true, long: null },
