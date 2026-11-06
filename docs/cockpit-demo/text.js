@@ -658,6 +658,7 @@ const en = {
     merged_in: 'took a merged task in' })[did]
     ?? (String(did).startsWith('hidden until ') ? `hidden until ${String(did).slice(13)}`
       : String(did).startsWith('later until ') ? `later, until ${String(did).slice(12)}`
+      : String(did).startsWith('revisit on ') ? `revisit on ${String(did).slice(11)}`
       : String(did).startsWith('runs on until ') ? `runs on, look again ${String(did).slice(14)}` : String(did)),
   histBackfilled: 'from the older log',
   histUndone: at => `taken back ${at}`,
@@ -2425,6 +2426,7 @@ const de = {
     merged_in: 'hat eine Aufgabe aufgenommen' })[did]
     ?? (String(did).startsWith('hidden until ') ? `ausgeblendet bis ${String(did).slice(13)}`
       : String(did).startsWith('later until ') ? `später, bis ${String(did).slice(12)}`
+      : String(did).startsWith('revisit on ') ? `Wiedervorlage am ${String(did).slice(11)}`
       : String(did).startsWith('runs on until ') ? `läuft noch, nachsehen ${String(did).slice(14)}` : String(did)),
   histBackfilled: 'aus dem älteren Protokoll',
   histUndone: at => `zurückgenommen ${at}`,

@@ -360,3 +360,23 @@ def test_the_log_names_a_one_word_slug_only_as_a_task_reference(tmp_path):
                 "| 2026-10-09 10:02 | x | other | task:backup closed |", "| 2026-10-09 10:03 | x | other | task.py note backup -- hi |"):
         log.write_text(row + "\n", encoding="utf-8")
         assert "log" in sn.Markers(root).fresh(["task:backup"])["task:backup"], row
+
+
+# ---------------------------------------------------------------- follow-up: the instruction line and Activity say Revisit
+
+def test_the_planner_hears_later_as_a_revisit_while_the_marks_are_on():
+    from lib.bridge_cockpit import instruct as ins
+    pts = [{"n": 1, "title": "x", "out": {"kind": "task", "settle": ["done"]}, "tab": None}]
+    plain, _ = ins.prompt(pts, "later", "2026-10-09", "English", [], True)
+    revisit, _ = ins.prompt(pts, "later", "2026-10-09", "English", [], True, revisit=True)
+    assert "comes back unread" not in plain and "later (not now;" in plain
+    assert "later (not now: the point is read now and comes back unread on until" in revisit
+
+
+def test_a_revisit_stands_in_activity_as_a_revisit_with_its_day(seen_world):
+    w = seen_world
+    w.act("later", key=TASK, until="2026-10-20", revisit=True)
+    data = w.app.activity.view(TASK, fresh=True)
+    [row] = [r for r in data["rows"] if r["kind"] == "decision"]
+    assert row["change"]["new"] == "revisit" and row["change"]["until"] == "2026-10-20"
+    assert row["text"].startswith("Revisit")

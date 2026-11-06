@@ -22,16 +22,17 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { dropReasonWord, errorText, flowSettings, formatDay, INSTRUCT_MAX, instructCalls, instructWhy, personOf, pointContext, pointName, rowName, short } from '../logic.js'
+import { dropReasonWord, errorText, flowSettings, formatDay, INSTRUCT_MAX, instructCalls, instructWhy, personOf, pointContext, pointName, rowName, seenOn, short } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { Btn } from './parts.js'
 import { Prose } from './prose.js'
 
-/** What a step does, in words: its verb (a start for a mail says it drafts only), its day or reason */
-function stepWord(st, f, lang) {
+/** What a step does, in words: its verb (a start for a mail says it drafts only), its day or reason; a later is a
+ *  Revisit while the read marks are on (it goes out as one, logic.js instructCalls) */
+export function stepWord(st, f, lang, s = null) {
   if (st.op === 'do' || st.op === 'mail') return st.mail || st.op === 'mail' ? f.op.mail : f.op.do
-  if (st.op === 'later') return f.op.later(formatDay(String(st.until ?? ''), lang))
+  if (st.op === 'later') return (s && seenOn(s) ? f.op.revisit : f.op.later)(formatDay(String(st.until ?? ''), lang))
   if (st.op === 'drop') return f.op.drop(dropReasonWord(st.reason ?? '', lang))
   return f.op[st.op] ?? String(st.op)
 }
@@ -65,7 +66,7 @@ function Plan({ plan, s, c, onChange }) {
     ${(plan.steps ?? []).length ? html`<ol class="flow-instruct-steps">${plan.steps.map((st, k) => {
       const runs = (st.keys ?? []).some(key => !skipped.some(x => x.step === k && x.key === key))
       return html`<li key=${k} class=${`flow-instruct-step${runs ? '' : ' is-out'}`}>
-        <span class="flow-instruct-op">${stepWord(st, f, lang)}</span><${StepPoints} st=${st} k=${k} skipped=${skipped} s=${s} f=${f} />
+        <span class="flow-instruct-op">${stepWord(st, f, lang, s)}</span><${StepPoints} st=${st} k=${k} skipped=${skipped} s=${s} f=${f} />
         ${st.op === 'reply' && st.text ? html` <q class="flow-instruct-said">${st.text}</q>` : null}
         ${st.op === 'task' && st.title ? html` <q class="flow-instruct-said">${st.title}</q>` : null}
         ${['do', 'mail', 'analyse'].includes(st.op) && st.note && runs ? html`<span class="flow-instruct-note muted small">${st.note}</span>` : null}

@@ -1120,11 +1120,17 @@ export function buildState(now = Date.now(), opts = {}) {
   ]
 
   const relayOnline = !opts.offline
+  // the read marks of Work through (cockpit.flow.seen): ?seen=1 switches them on, with two points read yesterday, one of
+  // which moved since (a note an hour ago), and the rest never opened
+  const seenOn = opts.seen === true && opts.flow !== false && !empty
+  const seenRead = seenOn ? { [rows.index.key]: { at: now - DAY, m: {}, until: null, unread: false },
+    [rows.polish.key]: { at: now - DAY, m: { file: now - 2 * DAY }, until: null, unread: false } } : {}
   return localize({
     ok: true,
     server: { version: '0.1.0', started_ms: now - 50 * MIN },
     model: {
       seq: 3, stale: false, profile: 'morning', title: 'Morning',
+      ...(seenOn ? { moved: { [rows.polish.key]: { file: now - 60 * MIN } } } : {}),
       collected_at: hhmm(now - 2 * MIN), collected_ms: now - 2 * MIN, full_ms: now - 2 * MIN, is_full: true,
       headline: empty ? 'Nothing waits for you' : '2 for you today, coming up: Review the demo report',
       since: empty ? null : 'since 08:40: 1 new', skipped: [],
@@ -1202,7 +1208,9 @@ export function buildState(now = Date.now(), opts = {}) {
         // round 3: the summary of a point's Activity, the instruction line, a document attached (all off by default)
         summary: { enabled: opts.flow !== false, budget_per_day: 10, model: null },
         instruct: { enabled: opts.flow !== false, budget_per_day: 30, model: null },
-        attach: { enabled: opts.flow !== false, max_mb: 10 } } },
+        attach: { enabled: opts.flow !== false, max_mb: 10 },
+        seen: { enabled: seenOn, open_reads: 'auto', active_days: 7 } } },
+    seen: { marks: seenRead, focus: [] },
     // what the day's budgets of Work through still hold (server.py state_payload flow_ai)
     flow_ai: { summary_left: 10, instruct_left: 30, instruct_running: false },
     // the themes of Work through (themes.py state), invented: three themes across the areas, a point moved by hand
@@ -2583,6 +2591,20 @@ export function createMockTransport(opts = {}) {
         if (verb === 'approve_all' && !args.confirm) return ok({ ...result, note: '', confirm: { count: keys.length } })
         // "What bothers you here?": the window says itself that it was noted, the demo keeps no proposal
         if (verb === 'explain_note') return ok({ ...result, note: '' })
+        // the read marks (seen.py): read, unread, focus and a revisit (later with revisit) live in the page's state only
+        if (verb.startsWith('seen_') || (verb === 'later' && args.revisit)) {
+          const marks = { ...(state.seen?.marks ?? {}) }
+          let focus = [...(state.seen?.focus ?? [])]
+          const mark = until => ({ at: now(), m: state.model.moved?.[args.key] ?? {}, until, unread: false })
+          if (verb === 'seen_read') for (const k of keys) marks[k] = { ...mark(null), m: state.model.moved?.[k] ?? {} }
+          if (verb === 'seen_unread' && marks[args.key]) marks[args.key] = { ...marks[args.key], unread: true }
+          if (verb === 'seen_focus') focus = args.on ? [...new Set([...focus, args.key])] : focus.filter(k => k !== args.key)
+          if (verb === 'later') marks[args.key] = mark(args.until)
+          state.seen = { marks, focus }
+          emit('seen', state.seen)
+          return ok({ ...result, note: verb === 'seen_read' ? '' : verb === 'later' ? `Mock: revisit on ${args.until}` : result.note,
+            undo: verb === 'later' ? [{ title: args.key, kind: 'other', undo: { verb: 'seen_unread', args: { key: args.key } } }] : [] })
+        }
         // a finished AI run (stage 2 of the one point view): read takes it off its list (and back on), a task of it
         // opens as a new backlog task, analyse further starts a new run (Running now, as a start does)
         if (verb === 'return_read' || verb === 'return_unread') {
