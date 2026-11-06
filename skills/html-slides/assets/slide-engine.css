@@ -96,7 +96,7 @@ body {
   position: fixed; bottom: clamp(12px, 2vh, 24px); right: clamp(12px, 2vw, 24px);
   font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);
   z-index: 100; font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--bg) 60%, transparent);
 }
 
 .deck-hints {
@@ -104,7 +104,7 @@ body {
   transform: translateX(-50%); font-family: var(--font-mono);
   font-size: 11px; color: var(--text-dim); opacity: 0.6; z-index: 100;
   transition: opacity 0.5s ease; white-space: nowrap;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--bg) 60%, transparent);
 }
 .deck-hints.faded { opacity: 0; pointer-events: none; }
 
@@ -116,7 +116,7 @@ body {
 .deck-track {
   position: fixed; bottom: clamp(12px, 2vh, 24px); left: clamp(12px, 2vw, 24px);
   font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);
-  z-index: 100; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 100; text-shadow: 0 1px 3px color-mix(in srgb, var(--bg) 60%, transparent);
 }
 :root:not([data-track-active]) .deck-track { display: none; }
 
@@ -158,7 +158,6 @@ body {
   border: 1px solid var(--border-bright); border-radius: 12px;
   padding: clamp(18px, 3vh, 32px) clamp(20px, 3vw, 40px);
   max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
 .deck-help__title {
   font-family: var(--font-display); font-size: clamp(20px, 2.4vw, 28px);
@@ -324,19 +323,48 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, var(--border-bright) 1px, transparent 1px);
+  background-image: var(--decor-grid, radial-gradient(circle, var(--border-bright) 1px, transparent 1px));
   background-size: 32px 32px;
   opacity: 0.4;
   pointer-events: none;
   z-index: 0;
 }
 
+/* ============ TONE (data-tone) ============ */
+/* A slide's chapter colour, declared instead of styled inline:
+   data-tone="accent|green|red|amber|cyan" on a slide (a split
+   panel takes one too, for its label only). It colours the
+   label (and a divider's heading) and lays a soft glow behind the slide. The glow,
+   the title glow, the dot grid and the gradient backdrop are decoration; each one
+   reads a switch (--decor-glow, --decor-grid, --decor-fill) that a preset sets to
+   turn them all off at once, and .fx turns them back on. */
+.slide { --tone: var(--accent); --tone-dim: var(--accent-dim); --glow-at: 50% 80%; }
+[data-tone="green"] { --tone: var(--green); --tone-dim: var(--green-dim); }
+[data-tone="red"]   { --tone: var(--red);   --tone-dim: var(--red-dim); }
+[data-tone="amber"] { --tone: var(--amber); --tone-dim: var(--amber-dim); }
+[data-tone="cyan"]  { --tone: var(--cyan);  --tone-dim: var(--cyan-dim); }
+.slide--divider { --glow-at: 80% 60%; }
+.slide--content { --glow-at: 20% 80%; }
+.slide--table   { --glow-at: 70% 30%; }
+.slide[data-tone] {
+  background-image: var(--decor-glow, radial-gradient(ellipse at var(--glow-at), var(--tone-dim) 0%, transparent 42%));
+}
+.slide[data-tone] .slide__label,
+.slide__panel[data-tone] .slide__label,
+.slide--divider[data-tone] .slide__heading,
+.slide--title[data-tone] .slide__display { color: var(--tone); }
+
+/* ============ SPACING AND SIZE UTILITIES ============ */
+.slide__heading--sm { font-size: clamp(22px, 3.5vw, 36px); }
+.slide__heading--xl { font-size: clamp(32px, 6vw, 64px); }
+.slide__heading + .slide__subtitle { margin-top: 12px; }
+
 /* ============ SLIDE TYPE: TITLE ============ */
 .slide--title {
   justify-content: center;
   align-items: center;
   text-align: center;
-  background-image: radial-gradient(ellipse at 50% 30%, var(--accent-dim) 0%, transparent 50%);
+  background-image: var(--decor-glow, radial-gradient(ellipse at 50% 30%, var(--accent-dim) 0%, transparent 50%));
 }
 .slide--title .slide__display { color: var(--accent); }
 
@@ -555,8 +583,14 @@ body {
   background-size: cover; background-position: center;
   z-index: 0;
 }
+img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* A picture inside a content or split slide: it stays within its column, flat, with a hairline. */
+.slide__image {
+  display: block; max-width: 100%; max-height: 60vh; height: auto; object-fit: contain;
+  border: 1px solid var(--border-bright); border-radius: 12px; box-shadow: none;
+}
 .slide__bg--gradient {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--bg) 80%, var(--accent) 20%) 0%, var(--bg) 40%, var(--surface) 100%);
+  background: var(--decor-fill, linear-gradient(135deg, color-mix(in srgb, var(--bg) 80%, var(--accent) 20%) 0%, var(--bg) 40%, var(--surface) 100%));
 }
 /* Structural scrim: a veil in the theme background under the text, so --text reads
    over any image in either theme (a black scrim left dark text unreadable in light). */
@@ -565,6 +599,15 @@ body {
   background: linear-gradient(to top, color-mix(in srgb, var(--bg) 82%, transparent) 0%,
     color-mix(in srgb, var(--bg) 35%, transparent) 45%, transparent 100%);
   z-index: 1;
+}
+/* The text block carries its own veil, taller than the block itself, so label,
+   heading and subtitle read over a dark or a light image alike while the upper
+   part of the image stays visible. */
+.slide--bleed .slide__content::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none;
+  left: 0; right: 0; bottom: 0; top: -22vh;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg) 94%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 94%, transparent) 62%, transparent 100%);
 }
 .slide--bleed .slide__content {
   position: relative; z-index: 2;

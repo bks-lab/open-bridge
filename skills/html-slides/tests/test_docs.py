@@ -136,6 +136,20 @@ def test_slide_type_count_matches_tree():
     assert all(n == real for _, n in mentions), (real, mentions)
 
 
+def test_module_count_matches_tree():
+    real = len(list((SKILL / "assets" / "modules").glob("*.js")))
+    mentions = _mentions(r"\b(\d+) modules\b")
+    assert mentions, "SKILL.md should say how many deck modules ship"
+    assert all(n == real for _, n in mentions), (real, mentions)
+
+
+def test_every_module_has_a_section_in_modules_md():
+    doc = (SKILL / "reference" / "modules.md").read_text("utf-8")
+    for js in sorted((SKILL / "assets" / "modules").glob("*.js")):
+        assert "## Module: %s\n" % js.stem in doc, js.stem
+        assert "| `%s` |" % js.stem in doc, "the shipped-modules table lists %s" % js.stem
+
+
 def test_slide_types_are_numbered_in_order():
     text = (SKILL / "reference" / "slide-types.md").read_text("utf-8")
     nums = [int(n) for n in re.findall(r"^### (\d+)\. ", text, re.M)]

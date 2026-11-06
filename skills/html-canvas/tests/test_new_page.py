@@ -544,3 +544,37 @@ def test_a_design_outside_the_bridge_is_not_recorded(tmp_path):
     out = tmp_path / "page.html"
     assert run("--out", str(out), "--design", str(own)).returncode == 0
     assert "design-source:" not in out.read_text("utf-8"), "an explicit path outside the Bridge stays unrecorded"
+
+
+# --- the recorded design stays inside the Bridge ---------------------------------------------
+
+def _bridge_design():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bd_under_test", SCRIPTS / "bridge_design.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.parametrize("label", ["../../outside/brand.md", "/tmp/elsewhere/DESIGN.md",
+                                   "skills/html-canvas/SKILL.md", "identity/designs/../../x.md",
+                                   "identity/designs/brand.txt"])
+def test_a_recorded_design_outside_the_bridge_or_no_design_is_refused(label):
+    bd = _bridge_design()
+    with pytest.raises(bd.DesignError) as err:
+        bd.recorded("/* design-source: %s */" % label)
+    assert label in str(err.value)
+
+
+@pytest.mark.parametrize("label,rel", [("DESIGN.md", "DESIGN.md"),
+                                       ("identity/designs/brand.md", "identity/designs/brand.md"),
+                                       ("docs/site/DESIGN.md", "docs/site/DESIGN.md")])
+def test_a_recorded_design_inside_the_bridge_resolves(label, rel):
+    bd = _bridge_design()
+    assert bd.recorded("/* design-source: %s */" % label) == (bd.BRIDGE / rel).resolve()
+
+
+def test_source_mark_only_records_what_recorded_accepts(tmp_path):
+    bd = _bridge_design()
+    assert bd.source_mark(bd.BRIDGE / "DESIGN.md") == "/* design-source: DESIGN.md */\n"
+    assert bd.source_mark(bd.BRIDGE / "skills" / "html-canvas" / "SKILL.md") == "", "not a design: unrecorded"

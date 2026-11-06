@@ -746,6 +746,8 @@
               stage:theme     {theme: 'dark'|'light'} and
               stage:lang      {lang: 'de'|'en'}: the slide's theme and language,
                               applied without storing a choice (see "Stage look")
+              stage:hash      {hash: 'name=value&t=120'}: a scenario, read like the
+                              address hash at boot (srcdoc frames have none)
      Framed, the page marks <html data-sim-embedded="yes">; simulation.css hides
      the page's own toolbar then, because theme, language and print belong to
      the slide around it.
@@ -792,6 +794,25 @@
       });
     }
 
+    /* A scenario from the slide, applied like the hash at boot: invalid values
+       are ignored, speed only when a button offers it, and t= seeks there and
+       stays paused (touched, so autostart never takes it back). */
+    function applyHash(raw) {
+      var h = url.parse(raw), act = Sim.active;
+      if (!act || !clock) return;
+      var P = act.params;
+      if (P) P.names.forEach(function (n) { if (has(h, n)) P.set(n, h[n]); });
+      if (has(h, 'speed')) {
+        var b = [].slice.call(doc.querySelectorAll('[data-sim-speed] button[data-speed]'))
+          .filter(function (x) { return x.getAttribute('data-speed') === h.speed; })[0];
+        if (b) b.click();
+      }
+      if (has(h, 't') && /^\d+$/.test(h.t) && parseInt(h.t, 10) > 0 && clock.replayable) {
+        clock.touched = true;
+        clock.seek(parseInt(h.t, 10));
+      }
+    }
+
     if (embedded) {
       doc.documentElement.setAttribute('data-sim-embedded', 'yes');
       global.addEventListener('message', function (e) {
@@ -803,6 +824,8 @@
           if (reduced()) clock.runToEnd(); else clock.start();
         } else if (d.type === 'stage:maximize' && typeof d.on === 'boolean') {
           reflect(d.on);
+        } else if (d.type === 'stage:hash' && typeof d.hash === 'string') {
+          applyHash(d.hash);
         }
       });
       /* Capture on the window, so the page's own T and L handlers (the shell's,
@@ -904,10 +927,12 @@
      returns [[name, value], ...] for whatever they own (Sim.params, the speed). */
   var url = (function () {
     var sources = [];
-    function parse() {
+    function parse(raw) {
       /* No prototype: a name such as hasOwnProperty or __proto__ in a link is
-         a plain key here, never a builtin. */
-      var out = Object.create(null), h = String(global.location && global.location.hash || '').replace(/^#/, '');
+         a plain key here, never a builtin. A string argument is parsed instead
+         of the address (the stage:hash message hands one over). */
+      var out = Object.create(null),
+          h = String(raw !== undefined ? raw : (global.location && global.location.hash || '')).replace(/^#/, '');
       if (h.indexOf('=') < 0) return out;
       h.split('&').forEach(function (kv) {
         var i = kv.indexOf('=');

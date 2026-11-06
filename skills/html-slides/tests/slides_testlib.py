@@ -42,6 +42,16 @@ def load_preset(slug: str) -> dict:
     return yaml.safe_load((PRESETS / f"{slug}.yaml").read_text("utf-8"))
 
 
+# The {image-path} placeholder of the image examples, as an inline pixel so a probe deck loads offline.
+PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+
+
+def filled(html: str) -> str:
+    """The catalog's `{Heading}` stand-ins written as plain text, so a probe deck passes the
+    gate's placeholder rule (verify-page.py) the way a deck with real content does."""
+    return re.sub(r">(\s*)\{([^{}<>\n]+)\}(\s*)<", r">\1\2\3<", html)
+
+
 def slide_type_snippets() -> list[tuple[str, str]]:
     """(heading, html) for every numbered slide type in reference/slide-types.md."""
     lines = (REFERENCE / "slide-types.md").read_text("utf-8").splitlines()
@@ -55,7 +65,7 @@ def slide_type_snippets() -> list[tuple[str, str]]:
         if ln.startswith("```"):
             if inside:
                 if heading is not None:
-                    out.append((heading, "\n".join(block)))
+                    out.append((heading, "\n".join(block).replace("{image-path}", PIXEL)))
                     heading = None
                 block, inside = [], False
             elif ln.strip() == "```html":

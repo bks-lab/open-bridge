@@ -55,7 +55,9 @@ The reasons, one test each, are in the header of `assets/slide-stage.js` and in
 The deck and the simulation share no code: they talk through `postMessage`
 (`stage:ready`, `stage:key`, `stage:maximize`, `stage:restart`, and from the deck
 `stage:theme {theme: "light"|"dark"}` and `stage:lang {lang: "de"|"en"}`, each sent
-after `stage:ready` and again on every real change of the deck's theme or language),
+after `stage:ready` and again on every real change of the deck's theme or language, and
+`stage:hash {hash: "load=high&t=120"}` once after `stage:ready` when the stage carries a
+scenario),
 and each side accepts a message only from the window it expects (`event.source`).
 The deck reads theme and language from `<html>` (theme class, else the OS;
 `data-lang`, else `lang`), so the stage works with any engine version. The page side
@@ -65,13 +67,34 @@ the simulation hides its own toolbar; the stage hands it the deck's theme and
 language (`stage:theme`, `stage:lang`) once it is ready and on every switch, so T and L on the
 deck reach the page as well.
 
+## A scenario per slide
+
+A simulation reads its scenario values and a position from the URL hash once at boot
+(`#load=high&t=120`: a parameter value, then a tick; a link with `t=` opens paused there).
+Put it on the stage in either place:
+
+```html
+<div class="stage" data-src="run.html#load=high&t=120"></div>
+<div class="stage" data-src="run.html" data-stage-hash="load=high&t=120"></div>
+```
+
+With a file next to the deck the frame loads `run.html#...` and the page reads its own hash.
+A srcdoc frame (the send copy) has no hash, so the stage also posts `stage:hash` to the page
+after `stage:ready` (and again when the frame is reloaded by a restart that rebuilds it), and
+the engine applies it like the boot hash. Invalid values are ignored as at boot. The restart
+button resets the run to tick 0 with the scenario values kept. The bundler keeps the
+fragment of `data-src` as `data-stage-hash` on the stage, so a send copy shows the same
+scenario and position as the working copy. Two slides can show the same page in two
+scenarios: two stages, two hashes.
+
 ## Sending a deck with a stage
 
 A stage with `data-src` needs the page next to the deck. For a copy that travels
 alone, the bundler (`scripts/inline-assets.py`, which runs html-canvas
 `bundle.py`) folds it: the page is bundled first, carried as an inert
 `<script type="text/plain" data-encoding="base64">` payload, and the stage's
-`data-src` becomes `data-srcdoc-ref` pointing at it. A hand-made payload works the
+`data-src` becomes `data-srcdoc-ref` pointing at it (a `#fragment` of `data-src` stays
+as `data-stage-hash`). A hand-made payload works the
 same way (`data-srcdoc-ref="run-1"` on the stage, the page as base64 UTF-8 in
 `<script type="text/plain" id="run-1" data-encoding="base64">`). Open the send
 copy from an empty folder to prove it runs.

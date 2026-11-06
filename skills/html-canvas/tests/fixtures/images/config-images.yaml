@@ -1,0 +1,5 @@
+# A bridge-config.yaml excerpt: the block gen-images.py reads.
+html_canvas:
+  images:
+    provider: auto
+    style: "calm flat illustration, soft light"

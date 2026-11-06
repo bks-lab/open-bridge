@@ -21,6 +21,9 @@ What happens to each reference (paths resolve against the file that holds them):
                              window.__bundle.load(iframe) (lazy stage frames)
   .stage data-src         -> same payload, referenced as data-srcdoc-ref (html-slides
                              live stage; payloads carry data-encoding="base64")
+  data-src="p.html#a=b"   -> on a stage or iframe the fragment is kept as
+                             data-stage-hash="a=b" (srcdoc has no URL hash); the slide
+                             posts it to the page as stage:hash
   <a href="page.html">    -> only with --pages: payload that opens in a new tab
                              from a Blob URL; without --pages it is an error
   <a href="file.pdf">     -> data: URI with a download name
@@ -90,7 +93,7 @@ URL_ATTRS = {
     "input": ("src",), "image": ("href", "xlink:href"), "link": ("href", "imagesrcset"),
 }
 SKIP_PREFIXES = ("data:", "blob:", "about:", "javascript:", "mailto:", "tel:", "sms:")
-LOADER_VERSION = "bundle-loader v2"
+LOADER_VERSION = "bundle-loader v3"
 LOADER_MARK = re.compile(r"bundle-loader v\d+")
 
 LOADER = """<script>
@@ -107,6 +110,19 @@ LOADER = """<script>
     if (id && !frame.hasAttribute('srcdoc')) frame.srcdoc = new TextDecoder('utf-8').decode(bytes(id));
   }
   window.__bundle = { load: load };
+  /* A srcdoc frame has no URL hash: the scenario kept as data-stage-hash is
+     handed over when the framed simulation says stage:ready. */
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.type !== 'stage:ready') return;
+    var frames = document.querySelectorAll('iframe[data-bundle][data-stage-hash]');
+    for (var i = 0; i < frames.length; i++) {
+      if (frames[i].contentWindow === e.source) {
+        e.source.postMessage({ type: 'stage:hash', hash: frames[i].getAttribute('data-stage-hash') }, '*');
+        return;
+      }
+    }
+  });
   var frames = document.querySelectorAll('iframe[data-bundle]:not([data-bundle-lazy])');
   for (var i = 0; i < frames.length; i++) load(frames[i]);
   function open(id, hash) {
@@ -376,6 +392,7 @@ class Bundler:
                     extra.append(f'data-bundle="{self.payload(target, doc, payloads)}"')
                     if key == "data-src":
                         extra.append("data-bundle-lazy")
+                    self._keep_fragment(res, by, extra)
                 else:
                     extra.append(f'{key}="{self.data_uri(target)}"')
         elif "data-buehne" in by or ("stage" in (by["class"].value or "").split() if "class" in by else False):
@@ -389,6 +406,7 @@ class Bundler:
                     dropped.add(key)
                     if "data-srcdoc-ref" not in by:
                         extra.append(f'data-srcdoc-ref="{self.payload(res[1], doc, payloads)}"')
+                    self._keep_fragment(res, by, extra)
                     break
         elif name == "a" and "href" in by and by["href"].value is not None:
             a = by["href"]
@@ -498,6 +516,13 @@ class Bundler:
                        "are not followed, so the send copy will not find it")
                 if msg not in self.result.warnings:
                     self.result.warnings.append(msg)
+
+    @staticmethod
+    def _keep_fragment(res, by, extra: list) -> None:
+        """srcdoc has no URL hash, so a scenario after '#' travels as data-stage-hash."""
+        frag = res[2][1:] if len(res) > 2 and res[2] else ""
+        if frag and "data-stage-hash" not in by:
+            extra.append(f'data-stage-hash="{htmllib.escape(frag, quote=True)}"')
 
     # ---- payloads -----------------------------------------------------------
     def payload(self, target: Path, doc: Path, payloads: dict) -> str:

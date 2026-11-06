@@ -325,6 +325,33 @@ def test_a_stage_data_src_becomes_a_base64_srcdoc_ref(tree, tmp_path):
     assert src == "frames/plain.html" and "Größe" in data.decode("utf-8")
 
 
+def test_a_stage_fragment_survives_as_data_stage_hash(tree, tmp_path):
+    """srcdoc has no hash, so the scenario of data-src="run.html#a=b&t=3" travels as an attribute."""
+    index = tree / "index.html"
+    index.write_text(index.read_text("utf-8").replace(
+        "</body>", '<div class="stage" id="st" data-src="frames/plain.html#load=high&amp;t=120"></div>\n'
+        '<div class="stage" id="nf" data-src="frames/plain.html"></div>\n</body>', 1), encoding="utf-8")
+    out = tmp_path / "stagehash.html"
+    r = run(SCRIPT, index, "--out", out)
+    assert r.returncode == 0, r.stderr
+    html = out.read_text("utf-8")
+    tag = re.search(r'<div class="stage" id="st"[^>]*>', html).group(0)
+    assert 'data-stage-hash="load=high&amp;t=120"' in tag and "data-srcdoc-ref=" in tag and "data-src=" not in tag
+    plain = re.search(r'<div class="stage" id="nf"[^>]*>', html).group(0)
+    assert "data-stage-hash" not in plain and "data-srcdoc-ref=" in plain
+
+
+def test_an_iframe_fragment_survives_as_data_stage_hash(tree, tmp_path):
+    index = tree / "index.html"
+    index.write_text(index.read_text("utf-8").replace(
+        "</body>", '<iframe id="fr" data-src="frames/plain.html#t=9"></iframe>\n</body>', 1), encoding="utf-8")
+    out = tmp_path / "framehash.html"
+    r = run(SCRIPT, index, "--out", out)
+    assert r.returncode == 0, r.stderr
+    tag = re.search(r'<iframe id="fr"[^>]*>', out.read_text("utf-8")).group(0)
+    assert 'data-stage-hash="t=9"' in tag and "data-bundle=" in tag
+
+
 def test_a_page_named_in_a_script_string_is_warned_about(tree, tmp_path):
     index = tree / "index.html"
     index.write_text(index.read_text("utf-8").replace(
@@ -486,3 +513,32 @@ def test_a_linked_page_gets_its_fonts_in_its_payload(tree, tmp_path):
     pays = payloads(out.read_text("utf-8"))
     page = [data for src, data in pays.values() if src == "pages/second.html"]
     assert page and b"@font-face" in page[0], r.stderr
+
+
+def test_a_bundled_page_hands_the_kept_hash_to_its_simulation_frame(browser, tmp_path):
+    """No stage here: the bundle loader answers the frame's stage:ready with stage:hash."""
+    from canvas_testlib import run_new_simulation
+    src = tmp_path / "src"
+    src.mkdir()
+    r = run_new_simulation(src / "sim.html", "--archetype", "worklist", "--title", "Hash probe", "--force")
+    assert r.returncode == 0, r.stderr
+    (src / "index.html").write_text(
+        '<!doctype html><meta charset="utf-8"><title>Host</title>'
+        '<iframe id="fr" src="sim.html#t=120" style="width:900px;height:700px"></iframe>'
+        '<iframe id="other" src="sim.html" style="width:300px;height:300px"></iframe>', encoding="utf-8")
+    out = tmp_path / "host-bundled.html"
+    r = run(SCRIPT, src / "index.html", "--out", out)
+    assert r.returncode == 0, r.stderr
+    html = out.read_text("utf-8")
+    assert 'data-stage-hash="t=120"' in html and "bundle-loader v3" in html
+    ctx, page, _ = _open_alone(browser, out, tmp_path)
+    try:
+        frame = page.frame_locator("#fr")
+        frame.locator("[data-sim-run]").wait_for()
+        page.wait_for_function("() => document.getElementById('fr').contentWindow.Sim.active.clock.ticks === 120")
+        page.wait_for_timeout(500)
+        # Opened at the position and paused there: a run that merely passed tick 120 would have moved on.
+        assert page.evaluate("document.getElementById('fr').contentWindow.Sim.active.clock.ticks") == 120
+        assert page.errors == []
+    finally:
+        ctx.close()

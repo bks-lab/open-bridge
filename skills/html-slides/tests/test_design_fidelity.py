@@ -63,7 +63,8 @@ def build(tmp_path: Path, *extra: str, color: str = "green") -> Path:
     out = tmp_path / ("deck-%s.html" % ("-".join(a.strip("-") for a in extra) or "design"))
     subprocess.run([sys.executable, str(NEW_DECK), "--title", "Fidelity probe", "--slides", str(frag),
                     "--out", str(out), "--force", "--deck-attr", "data-tracks-cycle=short full",
-                    "--deck-attr", "data-tracks-default=full", *extra], check=True, capture_output=True)
+                    "--deck-attr", "data-tracks-default=full", "--no-verify", *extra],
+                   check=True, capture_output=True)
     return out
 
 

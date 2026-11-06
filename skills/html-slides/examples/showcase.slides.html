@@ -80,11 +80,11 @@
 
 /* Terminal: the code block of the engine with a plain tab, no window dots. */
 .sc-term { max-width: 920px; width: 100%; margin-top: clamp(24px, 3.4vh, 36px); }
-.sc-term .ok { color: color-mix(in srgb, var(--green) 70%, var(--text)); }
+.sc-term .ok { color: color-mix(in srgb, var(--green) 55%, var(--code-text)); }
 
 /* Legend of the syntax colours, set inside the code block so each word shows its colour. */
 .sc-legend { margin-top: clamp(10px, 1.6vh, 16px); padding-top: 10px; border-top: 1px solid var(--border);
-  display: flex; flex-wrap: wrap; gap: 6px 18px; font: 13px/1.5 var(--font-mono); color: var(--text-dim); }
+  display: flex; flex-wrap: wrap; gap: 6px 18px; font: 13px/1.5 var(--font-mono); color: var(--code-text); }
 .sc-legend__label { text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; font-weight: 600; }
 
 .sc-jump {
@@ -136,7 +136,7 @@
   <p class="slide__label reveal"><span data-de>html-slides und html-canvas</span><span data-en>html-slides and html-canvas</span></p>
   <h1 class="slide__display reveal"><span data-de>Alles, was ein Deck kann</span><span data-en>Everything a deck can do</span></h1>
   <div class="reveal">
-    <p class="slide__subtitle" style="margin-top:clamp(24px,4vh,44px);"><span data-de>Ein Deck, das jede Fähigkeit auf einer eigenen Folie zeigt, und sagt, wie man sie benutzt.</span><span data-en>One deck that shows every capability on a slide of its own, and says how to use it.</span></p>
+    <p class="slide__subtitle"><span data-de>Ein Deck, das jede Fähigkeit auf einer eigenen Folie zeigt, und sagt, wie man sie benutzt.</span><span data-en>One deck that shows every capability on a slide of its own, and says how to use it.</span></p>
   </div>
   <div class="reveal">
     <p class="sc-how"><span class="sc-how__label"><span data-de>Bedienen</span><span data-en>How</span></span>
@@ -191,11 +191,11 @@
 </section>
 
 <!-- Divider: navigation -->
-<section class="slide slide--divider" id="s-nav" data-time="10">
+<section class="slide slide--divider" id="s-nav" data-time="10" data-tone="cyan">
   <span class="slide__number" aria-hidden="true">01</span>
   <div>
     <h2 class="slide__heading reveal">Navigation</h2>
-    <p class="slide__subtitle reveal" style="margin-top:12px;"><span data-de>Alles mit der Tastatur, alles auch per Klick.</span><span data-en>Everything from the keyboard, everything by click as well.</span></p>
+    <p class="slide__subtitle reveal"><span data-de>Alles mit der Tastatur, alles auch per Klick.</span><span data-en>Everything from the keyboard, everything by click as well.</span></p>
   </div>
 </section>
 
@@ -316,11 +316,11 @@
 </section>
 
 <!-- Divider: look and language -->
-<section class="slide slide--divider" id="s-look" data-time="10">
+<section class="slide slide--divider" id="s-look" data-time="10" data-tone="green">
   <span class="slide__number" aria-hidden="true">02</span>
   <div>
     <h2 class="slide__heading reveal"><span data-de>Aussehen und Sprache</span><span data-en>Look and language</span></h2>
-    <p class="slide__subtitle reveal" style="margin-top:12px;"><span data-de>Die Farben kommen aus DESIGN.md, nicht von Hand.</span><span data-en>The colours come from DESIGN.md, not by hand.</span></p>
+    <p class="slide__subtitle reveal"><span data-de>Die Farben kommen aus DESIGN.md, nicht von Hand.</span><span data-en>The colours come from DESIGN.md, not by hand.</span></p>
   </div>
 </section>
 
@@ -329,8 +329,8 @@
   <div class="slide__panels">
     <div class="slide__panel slide__panel--primary">
       <p class="slide__label reveal"><span data-de>Hell und dunkel</span><span data-en>Light and dark</span></p>
-      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Beide Modi aus DESIGN.md</span><span data-en>Both modes from DESIGN.md</span></h2>
-      <ul class="slide__bullets" style="margin-top:16px;">
+      <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Beide Modi aus DESIGN.md</span><span data-en>Both modes from DESIGN.md</span></h2>
+      <ul class="slide__bullets">
         <li class="reveal"><span data-de>Das Preset „design“ ist Standard, sobald eine DESIGN.md gefunden wird</span><span data-en>The “design” preset is the default once a DESIGN.md is found</span></li>
         <li class="reveal"><span data-de>Ohne gespeicherte Wahl gilt die Einstellung des Systems</span><span data-en>Without a stored choice the system setting applies</span></li>
       </ul>
@@ -340,8 +340,8 @@
     </div>
     <div class="slide__panel slide__panel--secondary">
       <p class="slide__label reveal"><span data-de>Deutsch und Englisch</span><span data-en>German and English</span></p>
-      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Jeder Text als Paar</span><span data-en>Every text as a pair</span></h2>
-      <ul class="slide__bullets" style="margin-top:16px;">
+      <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Jeder Text als Paar</span><span data-en>Every text as a pair</span></h2>
+      <ul class="slide__bullets">
         <li class="reveal"><code>&lt;span data-de&gt;</code> <span data-de>und</span><span data-en>and</span> <code>&lt;span data-en&gt;</code></li>
         <li class="reveal"><span data-de>L schaltet sofort, ohne Neuladen: Folien, Hilfe, Bedienelemente, Bühne</span><span data-en>L switches at once, without a reload: slides, help, controls, stage</span></li>
         <li class="reveal"><span data-de>Die Wahl bleibt je <code>data-deck-id</code> gespeichert</span><span data-en>The choice is kept per <code>data-deck-id</code></span></li>
@@ -393,15 +393,15 @@
   <span class="slide__number" aria-hidden="true">03</span>
   <div>
     <h2 class="slide__heading reveal"><span data-de>Folientypen</span><span data-en>Slide types</span></h2>
-    <p class="slide__subtitle reveal" style="margin-top:12px;"><span data-de>Elf Bausteine, alle in diesem Deck.</span><span data-en>Eleven building blocks, all of them in this deck.</span></p>
+    <p class="slide__subtitle reveal"><span data-de>Elf Bausteine, alle in diesem Deck.</span><span data-en>Eleven building blocks, all of them in this deck.</span></p>
   </div>
 </section>
 
 <!-- Table: the slide types -->
 <section class="slide slide--table" id="s-table" data-time="45">
   <p class="slide__label reveal"><span data-de>Tabelle</span><span data-en>Table</span></p>
-  <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Die elf Folientypen und wo sie hier stehen</span><span data-en>The eleven slide types and where they are here</span></h2>
-  <div class="table-wrap reveal" style="margin-top:clamp(8px,1.5vh,20px);">
+  <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Die elf Folientypen und wo sie hier stehen</span><span data-en>The eleven slide types and where they are here</span></h2>
+  <div class="table-wrap reveal">
     <div class="table-scroll">
       <table class="data-table">
         <thead><tr><th><span data-de>Typ</span><span data-en>Type</span></th><th><span data-de>Klasse</span><span data-en>Class</span></th><th><span data-de>Beispiel</span><span data-en>Example</span></th></tr></thead>
@@ -429,8 +429,8 @@
 <!-- Code block -->
 <section class="slide slide--code" id="s-code" data-time="30">
   <p class="slide__label reveal">Code</p>
-  <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Eine Folie ist ein Stück HTML</span><span data-en>A slide is a piece of HTML</span></h2>
-  <div class="slide__code-block reveal" style="margin-top:clamp(24px,3.4vh,36px); max-width:900px; width:100%;">
+  <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Eine Folie ist ein Stück HTML</span><span data-en>A slide is a piece of HTML</span></h2>
+  <div class="slide__code-block reveal">
     <span class="slide__code-filename">slides.html</span>
     <pre><code><span class="kw">&lt;section</span> class=<span class="str">"slide slide--content"</span> data-track=<span class="str">"full"</span> data-time=<span class="str">"90"</span><span class="kw">&gt;</span>
   <span class="kw">&lt;h2</span> class=<span class="str">"slide__heading reveal"</span><span class="kw">&gt;</span><span class="hl">Heading</span><span class="kw">&lt;/h2&gt;</span>
@@ -483,7 +483,7 @@
 <!-- Card grid: cheat sheet -->
 <section class="slide" id="s-cheat" data-time="30">
   <p class="slide__label reveal"><span data-de>Spickzettel</span><span data-en>Cheat sheet</span></p>
-  <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Alles, was ein Deck lesen kann</span><span data-en>Everything a deck reads</span></h2>
+  <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Alles, was ein Deck lesen kann</span><span data-en>Everything a deck reads</span></h2>
   <div class="cheat-grid">
     <div class="cheat-card reveal">
       <div class="cheat-card__title"><span data-de>Auf der Folie</span><span data-en>On a slide</span></div>
@@ -515,7 +515,7 @@
 <!-- Decision page excerpt -->
 <section class="slide slide--content" id="s-decision" data-time="60">
   <p class="slide__label reveal"><span data-de>Entscheidungsseite, Auszug</span><span data-en>Decision page, excerpt</span></p>
-  <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Wie liefern wir ein Deck aus?</span><span data-en>How do we deliver a deck?</span></h2>
+  <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Wie liefern wir ein Deck aus?</span><span data-en>How do we deliver a deck?</span></h2>
   <div class="sc-options reveal">
     <article class="sc-option sc-option--pick">
       <span class="sc-option__tag"><span data-de>Option A</span><span data-en>Option A</span></span>
@@ -543,7 +543,7 @@
 <!-- Terminal mockup (full track) -->
 <section class="slide slide--code" id="s-terminal" data-track="full" data-time="30">
   <p class="slide__label reveal"><span data-de>Prüfung</span><span data-en>Gate</span></p>
-  <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Die Prüfung im Terminal</span><span data-en>The gate in the terminal</span></h2>
+  <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Die Prüfung im Terminal</span><span data-en>The gate in the terminal</span></h2>
   <div class="slide__code-block sc-term reveal">
     <span class="slide__code-filename">zsh</span>
     <pre><code><span class="hl">$</span> verify-page.py showcase-deck.html --design DESIGN.md --deck
@@ -563,7 +563,7 @@ verify-page: 0 errors, 0 warnings (1 page)
   <span class="slide__number" aria-hidden="true">04</span>
   <div>
     <h2 class="slide__heading reveal"><span data-de>Vortragen</span><span data-en>Presenting</span></h2>
-    <p class="slide__subtitle reveal" style="margin-top:12px;"><span data-de>Fünf Module, gebaut mit <code>--with all</code>. Ohne Taste bleibt das Deck, wie es war.</span><span data-en>Five modules, built with <code>--with all</code>. Without a key the deck stays as it was.</span></p>
+    <p class="slide__subtitle reveal"><span data-de>Fünf Module, gebaut mit <code>--with all</code>. Ohne Taste bleibt das Deck, wie es war.</span><span data-en>Five modules, built with <code>--with all</code>. Without a key the deck stays as it was.</span></p>
   </div>
 </section>
 
@@ -681,7 +681,7 @@ verify-page: 0 errors, 0 warnings (1 page)
 <!-- Module steps: code line walkthrough -->
 <section class="slide slide--code" id="s-walk" data-time="45">
   <p class="slide__label"><span data-de>Code Zeile für Zeile</span><span data-en>Code line by line</span></p>
-  <h2 class="slide__heading" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Jeder Schritt hebt eine Zeilengruppe hervor</span><span data-en>Every step highlights a group of lines</span></h2>
+  <h2 class="slide__heading slide__heading--sm"><span data-de>Jeder Schritt hebt eine Zeilengruppe hervor</span><span data-en>Every step highlights a group of lines</span></h2>
   <div class="slide__code-block sc-walk">
     <span class="slide__code-filename">slides.html</span>
     <pre data-lines="1|2-4|5|*"><code><span class="kw">&lt;section</span> class=<span class="str">"slide"</span> id=<span class="str">"s-walk"</span> data-time=<span class="str">"45"</span><span class="kw">&gt;</span>
@@ -750,7 +750,7 @@ verify-page: 0 errors, 0 warnings (1 page)
   <span class="slide__number" aria-hidden="true">05</span>
   <div>
     <h2 class="slide__heading reveal"><span data-de>Live-Bühne</span><span data-en>Live stage</span></h2>
-    <p class="slide__subtitle reveal" style="margin-top:12px;"><span data-de>Kein Bild einer Simulation, sondern die Simulation.</span><span data-en>Not a picture of a simulation, the simulation itself.</span></p>
+    <p class="slide__subtitle reveal"><span data-de>Kein Bild einer Simulation, sondern die Simulation.</span><span data-en>Not a picture of a simulation, the simulation itself.</span></p>
   </div>
 </section>
 
@@ -776,16 +776,16 @@ verify-page: 0 errors, 0 warnings (1 page)
   <div class="slide__panels">
     <div class="slide__panel slide__panel--primary">
       <p class="slide__label reveal"><span data-de>Druck und PDF</span><span data-en>Print and PDF</span></p>
-      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Eine Seite je Folie</span><span data-en>One page per slide</span></h2>
-      <ul class="slide__bullets" style="margin-top:16px;">
+      <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Eine Seite je Folie</span><span data-en>One page per slide</span></h2>
+      <ul class="slide__bullets">
         <li class="reveal"><span class="sc-kbd">⌘ P</span> <span data-de>oder</span><span data-en>or</span> <code>render-pdf.cjs</code>, 297 x 167 mm</li>
         <li class="reveal"><span data-de>Alle Folien, alle Einläufe und Schritte sichtbar, keine Tinte</span><span data-en>Every slide, every reveal and step visible, no ink</span></li>
       </ul>
     </div>
     <div class="slide__panel slide__panel--secondary">
       <p class="slide__label reveal"><span data-de>Versand</span><span data-en>Sending</span></p>
-      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.2vw,34px);"><span data-de>Eine Datei zum Lesen</span><span data-en>One file to read</span></h2>
-      <ul class="slide__bullets" style="margin-top:16px;">
+      <h2 class="slide__heading slide__heading--sm reveal"><span data-de>Eine Datei zum Lesen</span><span data-en>One file to read</span></h2>
+      <ul class="slide__bullets">
         <li class="reveal"><code>bundle.py</code> <span data-de>faltet alles ein, was das Deck lädt</span><span data-en>folds in everything the deck loads</span></li>
         <li class="reveal"><span data-de>Gebaut mit</span><span data-en>Built with</span> <code>data-read-default</code>: <span data-de>öffnet als Dokument, R zeigt die Folien</span><span data-en>opens as a document, R shows the slides</span></li>
         <li class="reveal"><code>check-anonymity.py</code> <span data-de>vor jedem externen Versand</span><span data-en>before anything leaves the house</span></li>
@@ -822,8 +822,8 @@ verify-page: 0 errors, 0 warnings (1 page)
   <div class="slide__scrim"></div>
   <div class="slide__content">
     <p class="slide__label reveal"><span data-de>Selbst ausprobieren</span><span data-en>Try it yourself</span></p>
-    <h2 class="slide__heading reveal" style="font-size:clamp(32px,6vw,64px);"><span data-de>Fragen?</span><span data-en>Questions?</span></h2>
-    <p class="slide__body reveal" style="margin-top:clamp(12px,2.2vh,24px);"><span data-de>Zum Ausprobieren: <span class="sc-kbd">P</span> Referentenansicht, <span class="sc-kbd">D</span> Stift, <span class="sc-kbd">R</span> Lesen, <span class="sc-kbd">F</span> Spur, <span class="sc-kbd">L</span> Sprache, <span class="sc-kbd">?</span> alle Tasten. Wie das Deck gebaut ist, steht auf der Begleitseite oben links.</span><span data-en>To try: <span class="sc-kbd">P</span> presenter view, <span class="sc-kbd">D</span> pen, <span class="sc-kbd">R</span> read, <span class="sc-kbd">F</span> track, <span class="sc-kbd">L</span> language, <span class="sc-kbd">?</span> every key. How the deck is built is on the companion page at the top left.</span></p>
+    <h2 class="slide__heading slide__heading--xl reveal"><span data-de>Fragen?</span><span data-en>Questions?</span></h2>
+    <p class="slide__body reveal"><span data-de>Zum Ausprobieren: <span class="sc-kbd">P</span> Referentenansicht, <span class="sc-kbd">D</span> Stift, <span class="sc-kbd">R</span> Lesen, <span class="sc-kbd">F</span> Spur, <span class="sc-kbd">L</span> Sprache, <span class="sc-kbd">?</span> alle Tasten. Wie das Deck gebaut ist, steht auf der Begleitseite oben links.</span><span data-en>To try: <span class="sc-kbd">P</span> presenter view, <span class="sc-kbd">D</span> pen, <span class="sc-kbd">R</span> read, <span class="sc-kbd">F</span> track, <span class="sc-kbd">L</span> language, <span class="sc-kbd">?</span> every key. How the deck is built is on the companion page at the top left.</span></p>
     <div class="slide__actions reveal">
       <button type="button" class="slide__btn" data-deck="goto:#s-agenda"><span data-de>Zur Übersicht</span><span data-en>To the overview</span> <span class="slide__btn-arrow" aria-hidden="true">→</span></button>
     </div>

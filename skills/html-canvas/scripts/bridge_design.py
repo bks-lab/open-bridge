@@ -35,6 +35,21 @@ class DesignError(ValueError):
     """The Bridge could not resolve a design; the message names the id and its source."""
 
 
+def _recordable(path: Path) -> bool:
+    """A design a page may record and read back: inside the Bridge, and either a file under
+    identity/designs/ or a file named DESIGN.md. Anything else is never read as a design."""
+    root = BRIDGE.resolve()
+    path = Path(path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    if path.suffix != ".md":
+        return False
+    family = (root / "identity" / "designs").resolve()
+    return path.parent == family or path.name == "DESIGN.md"
+
+
 def is_path(value: str) -> bool:
     """`brand.md` or `sub/brand` names a file; only a bare word is a design id."""
     return value.endswith(".md") or "/" in value or "\\" in value
@@ -52,11 +67,10 @@ def source_mark(path: Path | None) -> str:
     family = (BRIDGE / "identity" / "designs").resolve()
     if path.parent == family and ID_RE.match(path.stem) and path.suffix == ".md":
         label = path.stem
+    elif _recordable(path):
+        label = path.relative_to(BRIDGE.resolve()).as_posix()
     else:
-        try:
-            label = path.relative_to(BRIDGE.resolve()).as_posix()
-        except ValueError:
-            return ""
+        return ""
     return "/* design-source: %s */\n" % label
 
 
@@ -68,7 +82,11 @@ def recorded(text: str) -> Path | None:
     label = m.group(1).strip()
     if ID_RE.match(label) and not is_path(label):
         return resolve(label)
-    return BRIDGE / label
+    path = (BRIDGE / label).resolve()
+    if Path(label).is_absolute() or not _recordable(path):
+        raise DesignError("the recorded design %r is no design inside this Bridge (identity/designs/ or a "
+                          "DESIGN.md); pass --design" % label)
+    return path
 
 
 def find_design(start: Path) -> Path | None:

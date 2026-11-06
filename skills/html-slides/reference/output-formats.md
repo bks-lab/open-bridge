@@ -7,7 +7,10 @@ A deck built with `scripts/new-deck.py` already embeds its fonts, tokens and eng
 between markers; after an engine or DESIGN.md change, `new-deck.py --refresh deck.html`
 rewrites those regions in place and leaves the slides alone. The checks that gate a
 deck for sending (`html-canvas/scripts/verify-page.py --deck`, then
-`check-anonymity.py`) run on that file.
+`check-anonymity.py`) run on that file. `new-deck.py` already ran the static gate
+with `--allow-sample`; the send gate runs without it, so a sample slide `--blocks`
+added and a catalog placeholder (`{Heading}`) left in a slide fail it here, and the
+motion of the `motion` module prints and exports at its end state.
 
 | Goal | Script | When to run |
 |------|--------|-------------|

@@ -4,8 +4,8 @@ description: >-
   Builds single-file HTML slide decks from any content: DESIGN.md brand or a style preset, light/dark, embedded fonts, tracks, speaker notes, live stages, offline; PDF export, a quality gate and an anonymity check before sending. Trigger: "create a presentation", "make slides", "slide deck", "html slides", "PowerPoint alternative", "/slides".
 metadata:
   scope: core
-  version: 2.1.0
-  last_updated: 2026-10-24
+  version: 2.2.0
+  last_updated: 2026-11-06
 ---
 
 # HTML Slide Deck Generator
@@ -27,12 +27,17 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | A different cut of one deck (prep vs. live, short vs. long) | `data-track` on slides, key F | `reference/slide-types.md` § Engine Contract |
 | Speaker notes, a clickable agenda | `<aside class="notes">`, slide type 10 (Overview) | `reference/slide-types.md` |
 | A running simulation inside a slide | `new-deck.py --with-stage`, a `.stage` element | `reference/stage.md` |
+| The simulation in a chosen scenario or at a chosen moment on one slide | `data-src="run.html#load=high&t=120"` or `data-stage-hash`; the send bundle keeps it, the slide posts it as `stage:hash` | `reference/stage.md` § A scenario per slide |
 | Presenting live: blank screen, jump to a slide number, zoom, language switch, notes handout | built in: keys B / W, digits + Enter, Alt+click, L, `data-print-notes` | `reference/slide-types.md` § Engine Contract |
-| An optional deck feature (one of the 5 modules below) or writing one | `new-deck.py --with NAME` (or `--with all`), `SlideDeck.use()` | `reference/modules.md` |
+| An optional deck feature (one of the 6 modules below) or writing one | `new-deck.py --with NAME` (or `--with all`), `SlideDeck.use()` | `reference/modules.md` |
 | A presenter view on a second screen, a time budget per slide, a rehearsal with plan vs actual | `--with presenter`, `data-time="90"` on slides, key P | `reference/modules.md` § Module: presenter |
 | Point at or mark up a slide while presenting: laser pointer, pen, marker | `--with draw`, keys Q and D | `reference/modules.md` § Module: draw |
 | Reveal points one by one, walk through code line by line | `--with steps`, `data-step`, `data-lines` | `reference/modules.md` § Module: steps |
 | Morph an element from one slide to the next | `--with morph`, `data-morph="name"` | `reference/modules.md` § Module: morph |
+| Motion that plays when a slide comes up: count-up numbers, staggered entrances, lines that draw, a message flow | `--with motion`, `data-count`, `data-stagger`, `data-draw` | `reference/modules.md` § Module: motion |
+| A slide that looks like a canvas page: KPI row, matrix, timeline, swimlane, decision, glossary and the other html-canvas blocks | `new-deck.py --blocks kpi-row,matrix` (`--list` shows them) | `reference/blocks.md` |
+| The deck in the design of a context or persona | `--context NAME` / `--persona ID` | `reference/deck-build.md` § Presets |
+| Generated illustrations or mood images on slides, from the Codex CLI, a configured command or the agent's own image tool | `<img data-image-prompt="…">` in the slide, then `html-canvas/scripts/gen-images.py` plan / generate / place | `html-canvas/references/images.md` |
 | A deck handed over to be read, not presented: every slide with its notes as one document | `--with read`, key R; a send copy opens in it with `--deck-attr data-read-default=` | `reference/modules.md` § Module: read |
 | Pick a look | DESIGN.md (default) or a style preset by name | `reference/deck-build.md` § Presets |
 | A deck in no house brand, or no DESIGN.md exists | `--preset <slug>` | `presets/_template.yaml`, `assets/discovery-menu.html` |
@@ -58,14 +63,21 @@ python3 skills/html-slides/scripts/new-deck.py --title "Quarterly review" --lang
 3. **Generate** with `new-deck.py`. Engine options (tracks, counter format, back
    link) go on the deck element with `--deck-attr data-NAME=VALUE`. It splices the pre-paint theme script, the
    embedded fonts, the tokens, `assets/slide-engine.css` and `assets/slide-engine.js`
-   (first line `slide-engine v2`), plus the stage module with `--with-stage` and
-   each deck module named by `--with` (`reference/modules.md`).
-   `--lang de` localises the controls, the help and the ARIA texts.
-4. **Run the gate** (Definition of done), then open the file in the browser.
+   (first line `slide-engine v2`), plus the stage module with `--with-stage`,
+   each deck module named by `--with` (`reference/modules.md`) and the html-canvas
+   blocks named by `--blocks` (`reference/blocks.md`).
+   `--lang de` localises the controls, the help and the ARIA texts; `--title-de` and
+   `--title-en` give the title slide both languages. `--list` names the presets,
+   modules and blocks.
+4. **The gate runs on its own** at the end of every build and refresh (static, with
+   `--allow-sample`), and the exit code is its result. Fix what it reports, run the
+   browser pass (Definition of done), then open the file in the browser.
 
 **Updating an existing deck:** `new-deck.py --refresh deck.html` rewrites only the
-marker regions the deck already carries (engine, tokens, fonts, preset CSS, stage, modules)
-from the current assets, DESIGN.md and preset. The slides are never touched, and a
+marker regions the deck already carries (engine, tokens, fonts, preset CSS, blocks, stage,
+modules) from the current assets, DESIGN.md and preset. A design deck records the design
+it was built with (`/* design-source: <id> */`) and a refresh reads it back, so
+`--design` is only needed to change it. The slides are never touched, and a
 second run gives the same bytes. A deck from before the generator has no markers:
 leave it as it is (its engine is embedded and keeps working), or move its slides
 into a fresh `new-deck.py --slides` build. Details: `reference/deck-build.md`.
@@ -73,8 +85,8 @@ into a fresh `new-deck.py --slides` build. Details: `reference/deck-build.md`.
 ## Look: DESIGN.md first, style presets as fallback
 
 - **DESIGN.md wins.** When one is found walking up from the output path, or given
-  with `--design` (a path or an id under `identity/designs/`), the `design` preset is
-  the default. A deck inside the Bridge wears the design the Bridge resolves (the
+  with `--design` (a path or an id under `identity/designs/`), `--context` or
+  `--persona` (whose `design_ref` names it), the `design` preset is the default. A deck inside the Bridge wears the design the Bridge resolves (the
   theme's `branding.design`, else the root DESIGN.md); a deck written into another
   repository keeps that repository's DESIGN.md: colours through
   `presets/design.map.yaml` and `html-canvas/scripts/design-to-css.py`, families and
@@ -101,21 +113,20 @@ pass that cannot run is an error, not a pass.
 
 ```bash
 V=skills/html-canvas/scripts/verify-page.py
-python3 $V deck.html --design DESIGN.md   # always: no external or sibling file, no placeholder, no stray hex
-uv run --with playwright python $V deck.html --design DESIGN.md --deck   # before delivery: renders it,
-                                          # contrast per theme, overflow per slide, one print page per slide
+python3 $V deck.html            # new-deck.py runs this after every build: no external or sibling file,
+                                # no placeholder ({{X}} or a catalog {Heading}), no sample, no stray hex
+uv run --with playwright python $V deck.html --deck   # before delivery: renders it,
+                                # contrast per theme, overflow per slide, one print page per slide
 ```
 
-Pass the same `--design` the deck was built with. Without it the gate takes the
-nearest DESIGN.md at or above the deck, but never above the project root (the
-first folder with `.git` or `bridge-config.yaml`), and says which one it used.
-A deck built from another DESIGN.md gets a `design-source` warning. `--deck`
-needs playwright and its chromium; a bare `python3` without them fails as
-`browser-skipped`.
-
-A style preset deck is off brand by definition: while a DESIGN.md is in reach,
-the gate reports its preset colours as `hex` errors. That is the one known
-exception; every other finding gets fixed.
+The gate reads the design the deck recorded; a deck that records none is checked
+against the nearest DESIGN.md at or above it, never above the project root (the
+first folder with `.git` or `bridge-config.yaml`), and the output says which one it
+used. A style preset deck is off brand by definition: its own palette is one
+`style-preset` warning, not a list of `hex` errors (a hex picked by hand elsewhere
+still is one). Before sending, the sample slides `--blocks` adds are written or
+gone: without `--allow-sample` the gate fails on them. `--deck` needs playwright and
+its chromium; a bare `python3` without them fails as `browser-skipped`.
 
 ## Send path
 
@@ -126,6 +137,7 @@ exception; every other finding gets fixed.
 | The deck loads local files (images, a stage page next to it) | `scripts/inline-assets.py deck.html deck-send.html`, which runs the shared `html-canvas/scripts/bundle.py` |
 | Mail the deck | anonymity check, gate, bundle, PDF, then check the bundled copy again |
 | Send it to readers, not an audience | build a reading copy from the same slides (`--with read --deck-attr data-read-default=`), then the same path |
+| The deck has generated images | `gen-images.py place` (relative) while working; `inline-assets.py` or `place --embed` before the gate; say in the notes or on the closing slide that they are AI-generated |
 
 An instance names its own wordlist in `bridge-config.yaml` under
 `html_slides.anonymity_wordlist`, never in this skill. Order and options:
@@ -136,18 +148,20 @@ An instance names its own wordlist in `bridge-config.yaml` under
 | File | Read it when |
 |---|---|
 | `scripts/new-deck.py` | building or refreshing any deck |
-| `reference/deck-build.md` | marker regions, preset choice, fonts, refresh, writing a preset |
+| `reference/deck-build.md` | marker regions, preset choice, `--context` / `--persona`, the recorded design, the gate run, `--list`, fonts, refresh, writing a preset |
+| `reference/blocks.md` | html-canvas blocks in a deck: `--blocks`, the token aliases, a block slide, density |
 | `reference/slide-types.md` | writing slides; the Engine Contract (options, keys, API) |
 | `reference/rules.md` | planning content: the DESIGN.md rule, anti-slop list, density limits |
 | `reference/stage.md` | a live simulation inside a slide |
-| `reference/modules.md` | deck modules: `--with`, the plugin API `SlideDeck.use()`, writing and testing one |
+| `reference/modules.md` | deck modules: `--with`, the plugin API `SlideDeck.use()`, writing and testing one, motion |
 | `reference/output-formats.md` | PDF, bundle, anonymity check, the package to send |
 | `presets/_template.yaml` | the preset schema, before writing one |
 | `assets/slide-engine.css`, `assets/slide-engine.js` | extending the engine (then add a test) |
 | `assets/slide-stage.css`, `assets/slide-stage.js` | extending the stage (same) |
-| `assets/modules/` | the deck modules (`draw`, `morph`, `presenter`, `read`, `steps`), one `.js` and `.css` each |
+| `assets/modules/` | the deck modules (`draw`, `morph`, `motion`, `presenter`, `read`, `steps`), one `.js` and `.css` each |
 | `assets/fonts/`, `scripts/font-face.py` | preset fonts (woff2 plus OFL licences) |
 | `scripts/check-anonymity.py`, `scripts/render-pdf.cjs`, `scripts/inline-assets.py` | the send path |
+| `html-canvas/scripts/gen-images.py` | image slots in a deck: plan, generate, place |
 
 ## Tests
 

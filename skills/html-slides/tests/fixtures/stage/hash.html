@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage scenario probe</title>
+<style>
+html,body{margin:0;height:100%}
+.slide{height:100vh;box-sizing:border-box;padding:16px 24px;display:flex;flex-direction:column}
+.slide .stage{flex:1 1 auto;min-height:0;height:auto}
+/*STAGE_CSS*/
+</style>
+</head>
+<body>
+<!-- Three stages, one slide each is not needed: no deck engine, all stages load on arrival.
+     H: a srcdoc stage with an explicit data-stage-hash (what the send bundle writes).
+     F: a src stage with the scenario after # in data-src.
+     N: a srcdoc stage without any scenario. -->
+<section class="slide" id="s0">
+  <div class="stage" id="stageH" data-srcdoc-ref="sim-h" data-stage-hash="load=high&amp;t=120" data-title="Stage H"></div>
+  <div class="stage" id="stageF" data-src="child.html#load=low&amp;t=7" data-title="Stage F"></div>
+  <div class="stage" id="stageN" data-srcdoc-ref="sim-h" data-title="Stage N"></div>
+</section>
+<script type="text/plain" id="sim-h" data-encoding="base64">/*SRCDOC_C*/</script>
+<script>
+/*STAGE_JS*/
+</script>
+</body>
+</html>

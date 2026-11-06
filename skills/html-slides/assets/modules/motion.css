@@ -1,0 +1,46 @@
+/* deck module: motion (reference/modules.md, section "motion"). Every moving state
+   hangs on the engine's .is-active slide and on :root.motion-ready, which motion.js
+   sets only where motion may play: not under reduced motion, not in a presenter
+   preview. All of it is screen only and stands aside in the reading view, so print,
+   the PDF, the reading view and a deck without the script show the end state. */
+
+/* the canvas message-flow wires: dashed at rest, wherever they are */
+.slide .flow-line { stroke-dasharray: 4 4; }
+
+@keyframes deck-flow { to { stroke-dashoffset: -8; } }
+/* a packet travels A to B in the first half of the cycle, B to A in the second */
+@keyframes deck-msg-fwd {
+  0% { transform: translateX(0); opacity: 0; } 8% { opacity: 1; }
+  44% { transform: translateX(var(--d, 280px)); opacity: 1; }
+  52%, 100% { transform: translateX(var(--d, 280px)); opacity: 0; }
+}
+@keyframes deck-msg-back {
+  0%, 50% { transform: translateX(0); opacity: 0; } 58% { opacity: 1; }
+  94% { transform: translateX(calc(var(--d, 280px) * -1)); opacity: 1; }
+  100% { transform: translateX(calc(var(--d, 280px) * -1)); opacity: 0; }
+}
+
+@media screen {
+  /* data-stagger: the children wait off stage and enter one after another */
+  :root.motion-ready:not(.deck-read) .slide:not(.is-active) [data-stagger] > * {
+    opacity: 0; transform: translateY(0.6em);
+  }
+  :root.motion-ready:not(.deck-read) .slide.is-active [data-stagger] > * {
+    transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: calc(var(--motion-i, 0) * var(--motion-step, 90ms));
+  }
+
+  /* data-draw: motion.js gives each stroke its length as dash; away it is undrawn */
+  :root.motion-ready:not(.deck-read) .slide:not(.is-active) .motion-draw { stroke-dashoffset: var(--motion-len, 0); }
+  :root.motion-ready:not(.deck-read) .slide.is-active .motion-draw {
+    transition: stroke-dashoffset var(--motion-draw, 1.2s) cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* the reading view is a document: everything at its end state at once */
+  :root.deck-read .slide [data-stagger] > *, :root.deck-read .slide .motion-draw { transition: none; }
+
+  /* message flow: only while its slide is on screen */
+  :root.motion-ready:not(.deck-read) .slide.is-active .flow-line { animation: deck-flow 2.4s linear infinite; }
+  :root.motion-ready:not(.deck-read) .slide.is-active .msg-fwd { animation: deck-msg-fwd 3s ease-in-out infinite; }
+  :root.motion-ready:not(.deck-read) .slide.is-active .msg-back { animation: deck-msg-back 3s ease-in-out infinite; }
+}

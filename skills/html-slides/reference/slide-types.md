@@ -4,20 +4,31 @@
 
 ## Color System
 
-Available accent colors for `var(--{color})` and `var(--{color}-dim)`:
+A slide declares its chapter colour with `data-tone` on the `<section>` (never an inline
+`style`): `<section class="slide slide--content" data-tone="green">`. Values:
 
-| Color | Use for |
-|-------|---------|
-| `accent` / `green` | Default, positive, success, new |
+| Tone | Use for |
+|------|---------|
+| `accent` (default) | Default, the preset's own colour |
+| `green` | Positive, success, new |
 | `red` | Problems, warnings, "before" state |
 | `amber` | Caution, strings, configuration |
 | `cyan` | Info, keywords, technical details |
 
-Add custom semantic colors by extending `:root` with additional `--{name}` / `--{name}-dim` pairs.
+A style preset renders a tone as the label colour (the heading on a divider) plus a
+soft glow behind the slide. In the examples below `{color}` stands for one of these
+values. A split panel takes `data-tone` too and colours its label only. Slide
+spacing and size come from classes, not inline styles: `.slide__heading--sm` and
+`.slide__heading--xl` set the heading size, and a heading, subtitle, bullet list,
+code block or table that follows each other keep their distance on their own.
 
-With the `design` preset (a DESIGN.md is present) these colours are status colours
-and carry state only: a heading or label colour and a glow taken from them give way
-to the heading colour and the accent, so write `accent` there. Buttons take
+The decoration (a tone's glow, the title glow, the `slide--with-grid` dot texture and
+the `slide__bg--gradient` backdrop) is on in a style preset. With the `design` preset
+(a DESIGN.md is present) the tone is quiet: the label takes the accent, the headings
+the heading colour, and the decoration is off; `.fx` on `<html>`, the `.deck` or one
+`.slide` brings it back. Status colours carry state only there. Old decks with inline
+`style="color:var(--green)"` or a `radial-gradient` background keep working, and the
+design preset neutralises them the same way. Buttons take
 `.slide__btn` (and `.slide__btn--primary` for the one main action) inside
 `.slide__actions`; the primary one is the brand's `primary` fill.
 
@@ -42,11 +53,11 @@ Center-aligned, large display text, accent-colored heading. Use for opening slid
 Big faded number in background, heading + subtitle. Use to introduce new sections.
 
 ```html
-<section class="slide slide--divider" style="background-image:radial-gradient(ellipse at 80% 60%, var(--{color}-dim) 0%, transparent 40%);">
+<section class="slide slide--divider" data-tone="{color}">
   <span class="slide__number" aria-hidden="true">{01}</span>
   <div>
-    <h2 class="slide__heading reveal" style="color:var(--{color});">{Section Title}</h2>
-    <p class="slide__subtitle reveal" style="margin-top:12px;">{Section subtitle}</p>
+    <h2 class="slide__heading reveal">{Section Title}</h2>
+    <p class="slide__subtitle reveal">{Section subtitle}</p>
   </div>
 </section>
 ```
@@ -55,10 +66,10 @@ Big faded number in background, heading + subtitle. Use to introduce new section
 3:2 grid with bullet list left, optional visual right. Main workhorse slide.
 
 ```html
-<section class="slide slide--content" style="background-image:radial-gradient(ellipse at 20% 80%, var(--{color}-dim) 0%, transparent 45%);">
+<section class="slide slide--content" data-tone="{color}">
   <div class="slide__inner">
     <div>
-      <p class="slide__label reveal" style="color:var(--{color});">{Label}</p>
+      <p class="slide__label reveal">{Label}</p>
       <h2 class="slide__heading reveal">{Heading}</h2>
       <ul class="slide__bullets">
         <li class="reveal">{Point 1}</li>
@@ -66,7 +77,8 @@ Big faded number in background, heading + subtitle. Use to introduce new section
       </ul>
     </div>
     <div class="slide__aside reveal">
-      <!-- Optional: SVG diagram, small code block, or icon -->
+      <!-- Optional aside: SVG diagram, small code block, icon, or a picture -->
+      <img class="slide__image" src="{image-path}" alt="{what the picture shows}">
     </div>
   </div>
 </section>
@@ -78,17 +90,17 @@ Side-by-side comparison. Use for before/after, pros/cons.
 ```html
 <section class="slide slide--split">
   <div class="slide__panels">
-    <div class="slide__panel slide__panel--primary">
-      <p class="slide__label reveal" style="color:var(--red);">{Left Label}</p>
-      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.5vw,36px);">{Left Title}</h2>
-      <ul class="slide__bullets" style="margin-top:16px;">
+    <div class="slide__panel slide__panel--primary" data-tone="red">
+      <p class="slide__label reveal">{Left Label}</p>
+      <h2 class="slide__heading slide__heading--sm reveal">{Left Title}</h2>
+      <ul class="slide__bullets">
         <li class="reveal">{item}</li>
       </ul>
     </div>
-    <div class="slide__panel slide__panel--secondary">
-      <p class="slide__label reveal" style="color:var(--green);">{Right Label}</p>
-      <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.5vw,36px);">{Right Title}</h2>
-      <ul class="slide__bullets" style="margin-top:16px;">
+    <div class="slide__panel slide__panel--secondary" data-tone="green">
+      <p class="slide__label reveal">{Right Label}</p>
+      <h2 class="slide__heading slide__heading--sm reveal">{Right Title}</h2>
+      <ul class="slide__bullets">
         <li class="reveal">{item}</li>
       </ul>
     </div>
@@ -100,9 +112,9 @@ Side-by-side comparison. Use for before/after, pros/cons.
 Full-width data table with header and hover effects. The card is as tall as its rows.
 
 ```html
-<section class="slide slide--table" style="background-image:radial-gradient(ellipse at 70% 30%, var(--cyan-dim) 0%, transparent 40%);">
+<section class="slide slide--table" data-tone="cyan">
   <p class="slide__label reveal">{Label}</p>
-  <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.5vw,36px);">{Title}</h2>
+  <h2 class="slide__heading slide__heading--sm reveal">{Title}</h2>
   <div class="table-wrap reveal">
     <div class="table-scroll">
       <table class="data-table">
@@ -120,8 +132,8 @@ Full-width data table with header and hover effects. The card is as tall as its 
 Centered code with filename badge and syntax highlighting via CSS classes.
 
 ```html
-<section class="slide slide--code" style="background-image:radial-gradient(ellipse at 50% 80%, var(--accent-dim) 0%, transparent 40%);">
-  <h2 class="slide__heading reveal" style="text-align:center;font-size:clamp(22px,3.5vw,36px);">{Title}</h2>
+<section class="slide slide--code" data-tone="accent">
+  <h2 class="slide__heading slide__heading--sm reveal">{Title}</h2>
   <div class="slide__code-block reveal">
     <span class="slide__code-filename">{filename}</span>
     <pre><code><span class="kw">keyword</span> <span class="str">"string"</span> <span class="cm"># comment</span> <span class="hl">highlighted</span></code></pre>
@@ -159,7 +171,7 @@ Horizontal steps with arrows between them.
 ```html
 <section class="slide">
   <p class="slide__label reveal">{Label}</p>
-  <h2 class="slide__heading reveal" style="font-size:clamp(22px,3.5vw,36px);">{Title}</h2>
+  <h2 class="slide__heading slide__heading--sm reveal">{Title}</h2>
   <div class="cheat-grid">
     <div class="cheat-card reveal">
       <div class="cheat-card__title">{Card Title}</div>
@@ -172,16 +184,16 @@ Horizontal steps with arrows between them.
 ```
 
 ### 9. Closing / Full-Bleed
-Gradient (or image) background under a veil in the theme background, text at the bottom; reads in light and dark. Use for the final "Questions?" slide.
+Image (or gradient) background under a veil in the theme background, text at the bottom; reads in light and dark. Use for the final "Questions?" slide. The image is an `<img class="slide__bg" alt="">` that fills the slide (cover, behind the scrim), never an inline `background-image`; for a gradient use `<div class="slide__bg slide__bg--gradient"></div>` instead of the `<img>`.
 
 ```html
 <section class="slide slide--bleed">
-  <div class="slide__bg slide__bg--gradient"></div>
+  <img class="slide__bg" src="{image-path}" alt="">
   <div class="slide__scrim"></div>
   <div class="slide__content">
-    <p class="slide__label reveal" style="color:var(--accent);">{call to action}</p>
-    <h2 class="slide__heading reveal" style="font-size:clamp(32px,6vw,64px);">{Closing Text}</h2>
-    <p class="slide__subtitle reveal" style="margin-top:12px;">{subtitle}</p>
+    <p class="slide__label reveal">{call to action}</p>
+    <h2 class="slide__heading slide__heading--xl reveal">{Closing Text}</h2>
+    <p class="slide__subtitle reveal">{subtitle}</p>
   </div>
 </section>
 ```

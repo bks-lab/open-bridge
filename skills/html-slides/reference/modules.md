@@ -1,7 +1,7 @@
 # Deck Modules: optional features and the plugin API
 
 Read this when a deck needs a feature the engine does not carry by default (a
-presenter window, drawing, step reveals, a reading view), or when writing such a
+presenter window, drawing, step reveals, motion, a reading view), or when writing such a
 module. A deck that names no module carries none of their bytes and behaves
 exactly as before.
 
@@ -30,6 +30,7 @@ python3 skills/html-slides/scripts/new-deck.py --title "Review" --slides slides.
 |---|---|---|---|
 | `draw` | laser pointer and a pen or marker on the slide | Q, D (then C, Z, H) | § Module: draw |
 | `morph` | elements with the same `data-morph` glide from one slide to the next | none | § Module: morph |
+| `motion` | count-up numbers, staggered entrances, lines that draw, the message flow, each when its slide comes up | none | § Module: motion |
 | `presenter` | presenter window, time budget per slide, rehearsal, floating timer | P, Shift+P | § Module: presenter |
 | `read` | reading view: the slides of the track as one document with notes | R | § Module: read |
 | `steps` | `data-step` reveals and `data-lines` code walkthroughs, the step in the link | none | § Module: steps |
@@ -308,6 +309,47 @@ place and size to the new one, and the rest of the screen cross-fades.
   duration; the default is 450 ms.
 - `steps` and `morph` work together: the steps of a slide are walked first, the
   morph runs on the move to the next slide.
+
+## Module: motion
+
+`--with motion`. Motion that plays when its slide becomes the active one and resets
+when the slide is left, so it plays again on the next visit. It reads markup only; a
+slide without it is untouched.
+
+| Markup | Effect |
+|---|---|
+| `data-count="1200"` | the first number in the element's text counts up to 1200; the text as written (`1200 users`, `42,5 %`) is the end state and stays outside the count |
+| `data-count-from="200"`, `data-count-duration="900"` | the start value (default 0) and the length in ms (default 1200) |
+| `data-stagger` on a container | its children enter one after another (fade and rise); `data-stagger="120"` sets the gap in ms (default 90) |
+| `data-draw` on an `svg` or a shape | every stroke (`path`, `line`, `polyline`, `polygon`, `circle`, `ellipse`, `rect`) draws itself; `data-draw="1600"` sets the duration in ms (default 1200) |
+| `.flow-line`, `.msg-fwd`, `.msg-back` | the html-canvas message flow (`new-deck.py --blocks message-flow`, which adds this module): the wires run dashed and a packet travels A to B and back, only while the slide is on screen |
+
+```html
+<p class="slide__body"><span data-count="1200">1200</span> users a day</p>
+<ul class="slide__bullets" data-stagger><li>Collect</li><li>Check</li><li>Ship</li></ul>
+<svg data-draw viewBox="0 0 400 80" aria-hidden="true"><path d="M10 70 L140 30 L270 50 L390 10" fill="none" stroke="var(--accent)" stroke-width="3"/></svg>
+```
+
+- **When it plays.** The module hangs every moving state on the engine's `.is-active`
+  slide and on `:root.motion-ready`, which it sets at start. The first slide plays on
+  load; a slide change by key, swipe, wheel or `goTo` plays the slide reached. Leaving
+  a slide resets it at once: numbers back to their written value, children and lines
+  back off stage, ready for the next visit.
+- **End state everywhere nothing should move.** Under `prefers-reduced-motion` the
+  module never sets `motion-ready` (and drops it when the setting changes), so every
+  element shows as written. All rules are `@media screen`, so print and the PDF show
+  the end state, and a count still running is finished on `beforeprint`. The reading
+  view (`read` module) shows every slide finished and finishes running counts. A
+  presenter preview (`data-deck-preview`) loads nothing of it.
+- **Colours** are the deck tokens the markup names (`var(--accent)` on a stroke); the
+  module itself sets none. It works next to `.reveal` (an entrance once per deck) and
+  `steps` (a reveal per key press): staggered children of a `data-steps` list are a
+  contradiction, pick one.
+- **Classes and variables** for a deck's own CSS: `motion-ready` on `<html>`,
+  `motion-draw` and `--motion-len` on a stroke, `--motion-i` on a staggered child,
+  `--motion-step` on its container, `--motion-draw` on a stroke with its own duration.
+
+Tests: `tests/test_module_motion.py`.
 
 ## Module: read
 

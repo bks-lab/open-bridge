@@ -12,9 +12,13 @@ else is generated, and lives in a marked region the tool owns:
                               --region deck-tokens, a style preset from its YAML
   slide-engine:css   <style>  assets/slide-engine.css, byte for byte
   deck-preset-css    <style>  the preset's css_overrides
+  deck-blocks        <style>  html-canvas section blocks (only with --blocks): the block
+                              list, an alias layer from the canvas token names onto the
+                              deck tokens, the CSS of the blocks and what they require
   slide-stage:css    <style>  assets/slide-stage.css (only with --with-stage)
   slide-engine:js    <body>   assets/slide-engine.js in a <script>, byte for byte
   slide-stage:js     <body>   assets/slide-stage.js in a <script> (only with --with-stage)
+  deck-blocks:js     <body>   the sections.js part of every chosen block that has one
   deck-module:NAME   <body>   assets/modules/NAME.css in its own <style>, if present, then
                               assets/modules/NAME.js in a <script> (only with --with NAME),
                               after the engine and the stage, one region per module by name
@@ -25,31 +29,42 @@ the name would glue onto the next selector and void that rule. Every region
 inside <style> therefore opens with an empty rule `{}` that swallows it.
 
 --refresh rewrites only the regions a deck already carries, from the current
-assets, DESIGN.md and preset; text outside them is never touched, no region is
-added (the set of modules stays the one the deck has), and a second run gives
-the same bytes. Every splice is read back and
+assets, DESIGN.md and preset; text outside them is never touched, and a second
+run gives the same bytes. The set of modules stays the one the deck has. One
+region can be added: deck-blocks:js, when --blocks on a refresh swaps the block
+set of a deck built with --blocks for one that needs a script. Every splice is read back and
 compared before the file is written.
 
 Preset choice: --preset when given; else `design` when a DESIGN.md is given
-(--design, a path or a design id) or found walking up from the output path;
-else the style preset marked `default: true`. On --refresh the preset is read
-back from the deck. A walk that ends at the Bridge's own DESIGN.md asks the
-Bridge which design applies (the theme's branding.design, else that file), so a
-deck inside the Bridge wears the instance's design while a deck written into
-another repository keeps that repository's (html-canvas bridge_design.py).
+(--design, a path or a design id, or --context / --persona whose design_ref
+names one) or found walking up from the output path; else the style preset
+marked `default: true`. On --refresh the preset is read back from the deck, and
+a design deck reads back the design it recorded (`/* design-source: <id> */`)
+unless --design, --context or --persona names another. A walk that ends at the
+Bridge's own DESIGN.md asks the Bridge which design applies (the theme's
+branding.design, else that file), so a deck inside the Bridge wears the
+instance's design while a deck written into another repository keeps that
+repository's (html-canvas bridge_design.py).
+
+Every build and refresh ends with the gate, html-canvas verify-page.py (static,
+--allow-sample), and exits with its result; --no-verify skips it.
 
 Fonts: embedded by default (style presets depend on their typefaces);
 --no-embed-fonts leaves the region empty and the deck on its fallback stacks.
 
 Usage:
   new-deck.py --title "Quarterly review" --out deck.html [--slides slides.html]
-              [--preset SLUG] [--design DESIGN.md] [--lang en|de]
-              [--with-stage] [--with NAME | --with all ...] [--no-embed-fonts] [--force]
-  new-deck.py --refresh deck.html [--out other.html] [--preset SLUG]
-              [--design DESIGN.md] [--embed-fonts | --no-embed-fonts]
+              [--title-de T --title-en T] [--preset SLUG]
+              [--design DESIGN.md | --context C | --persona P] [--lang en|de]
+              [--with-stage] [--with NAME | --with all ...] [--blocks a,b | all]
+              [--no-embed-fonts] [--force] [--no-verify]
+  new-deck.py --refresh deck.html [--out other.html] [--preset SLUG] [--blocks a,b]
+              [--design DESIGN.md | --context C | --persona P] [--embed-fonts | --no-embed-fonts]
+  new-deck.py --list
 
 --slides is an HTML fragment of <section class="slide ..."> elements
-(reference/slide-types.md); without it the deck gets one title slide.
+(reference/slide-types.md); without it the deck gets one title slide, and with
+--blocks one sample slide per block after it (marked data-sample).
 """
 from __future__ import annotations
 
@@ -57,6 +72,7 @@ import argparse
 import html as html_mod
 import importlib.util
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -83,12 +99,17 @@ REGIONS = (
     ("deck-tokens", "css"),
     ("slide-engine:css", "css"),
     ("deck-preset-css", "css"),
+    ("deck-blocks", "css"),
     ("slide-stage:css", "css"),
     ("slide-engine:js", "body"),
     ("slide-stage:js", "body"),
+    ("deck-blocks:js", "body"),
 )
 CSS_REGIONS = {name for name, where in REGIONS if where == "css"}
 STAGE_REGIONS = ("slide-stage:css", "slide-stage:js")
+BLOCKS_CSS, BLOCKS_JS = "deck-blocks", "deck-blocks:js"
+BLOCK_REGIONS = (BLOCKS_CSS, BLOCKS_JS)
+BLOCKS_LINE_RE = re.compile(r"^/\* blocks: (.*?) \*/$", re.M)
 MODULE_PREFIX = "deck-module:"
 MODULE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 MODULE_MARK_RE = re.compile(r"<!-- deck-module:([a-z0-9][a-z0-9-]*):start -->")
@@ -318,7 +339,7 @@ def design_tokens(preset: dict, design: Path) -> str:
     css += "\n:root {\n%s\n}\n" % "\n".join(lines)
     begin, end, _ = d2c.markers("deck-tokens")
     filled = d2c.inject(begin + "\n" + NEUTRAL_TOKENS + "\n" + end, css, "deck-tokens")
-    return css_region("/* deck-preset: design */\n" + filled)
+    return css_region("/* deck-preset: design */\n" + bridge_design().source_mark(design) + filled)
 
 
 def design_families(preset: dict, design: Path) -> dict[str, list[int]]:
@@ -352,7 +373,7 @@ def fonts_region(slug: str, preset: dict, design: Path | None, embed: bool) -> s
     return "\n" + ff.font_face_block(roles) + "\n"
 
 
-def region_contents(names, slug, preset, design, embed) -> dict[str, str]:
+def region_contents(names, slug, preset, design, embed, blocks=()) -> dict[str, str]:
     out: dict[str, str] = {}
     for name in names:
         if name == "deck-prepaint":
@@ -371,9 +392,161 @@ def region_contents(names, slug, preset, design, embed) -> dict[str, str]:
             out[name] = css_region(read_asset("slide-stage.css"))
         elif name == "slide-stage:js":
             out[name] = script_region(read_asset("slide-stage.js"))
+        elif name == BLOCKS_CSS:
+            out[name] = blocks_css(list(blocks), preset)
+        elif name == BLOCKS_JS:
+            out[name] = js_region(blocks_js(list(blocks)))
         elif name.startswith(MODULE_PREFIX):
             out[name] = module_region(name[len(MODULE_PREFIX):])
     return out
+
+
+# --- html-canvas section blocks ------------------------------------------------------------
+
+# Blocks a deck answers in its own way: asked for by name they are refused, `all` leaves
+# them out. The engine owns navigation, the overview and print.
+DECK_REFUSED = {
+    "hero": "the title slide (slide type 1) opens a deck",
+    "section-opener": "its rule restyles every <section>, so every slide; a divider slide (type 2) opens a section",
+    "section-nav": "the deck navigates by its keys, dots and counter",
+    "toc": "an overview slide (type 10) is the deck's table of contents",
+    "index": "an overview slide (type 10) links the slides",
+    "print": "the engine prints one slide per page",
+}
+# Required by a block on a page, never spliced into a deck: the canvas animation layer
+# brings its own .reveal, which would fight the engine's; the motion module moves a
+# deck's message flow instead.
+DECK_DROPPED = {"animations"}
+NEEDS_MOTION = {"message-flow"}
+
+# The canvas token names a block reads, on the deck tokens. On :root for what lives
+# outside a slide (the glossary popover), on .slide so a slide's own tokens carry over.
+ALIASES = """\
+/* canvas tokens on deck tokens: html-canvas blocks read the names on the left */
+:root, .slide {
+  --ink: var(--text); --on-surface: var(--text); --muted: var(--text-dim);
+  --raised: var(--surface); --surface-subtle: var(--surface); --surface-muted: var(--surface2);
+  --line: var(--border); --line-subtle: var(--border); --line-strong: var(--border-bright);
+  --accent-text: var(--accent); --accent-line: var(--accent);
+  --accent-soft: var(--accent-dim); --accent-subtle: var(--accent-dim);
+  --secondary: var(--accent);
+  --ok: var(--green); --ok-text: var(--green); --warn: var(--amber); --danger: var(--red); --info: var(--cyan);
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 10px; --radius-full: 9999px;
+  --shadow-soft: none;
+  --shadow-hover: 0 8px 20px -6px color-mix(in srgb, var(--text) 18%, transparent);
+{style}}"""
+# A style preset names no heading colour and no text on a fill; the design preset does.
+STYLE_ALIASES = "  --heading: var(--text); --on-primary: var(--bg);\n"
+
+# A block on a 16:9 slide: no page margins, nothing wider than the slide.
+DECK_FIT = """\
+/* deck fit: a block on a slide */
+.slide .blk { margin: 0; width: 100%; min-width: 0; }
+.slide .blk + .blk, .slide .slide__label + .blk { margin-top: clamp(12px, 2.4vh, 24px); }
+.slide .tbl-wrap table { min-width: 0; }
+.slide .diagram svg { min-width: 0; }
+.slide .glossary { border: 0; padding: 0; }
+/* code on the deck's code ground: its text colour, accents lifted toward it */
+.slide .term-body { color: var(--code-text); }
+.slide .term-body .pr { color: color-mix(in srgb, var(--accent) 45%, var(--code-text)); }
+.slide .term-body .ok { color: color-mix(in srgb, var(--green) 45%, var(--code-text)); }
+/* a decision page is a page: on a slide it closes up (split it over two slides when it grows) */
+.slide .decision { gap: clamp(8px, 1.8vh, 18px); }
+.slide .decision h3 { margin: 0; }
+.slide .dec-opt { padding: 10px 14px; gap: 4px 12px; }
+.slide .decision th, .slide .decision td { padding: 6px 12px; }
+.slide .decision .note { margin: 0; padding: 10px 16px; }
+.slide .dec-open { gap: 2px; }"""
+
+
+def new_page():
+    return module("html_canvas_new_page", CANVAS_SCRIPTS / "new-page.py")
+
+
+def block_catalog() -> list[str]:
+    return new_page().catalog()
+
+
+def parse_blocks(raw: str | None) -> list[str]:
+    """--blocks a,b or `all`: names checked against the catalog and the deck, each once."""
+    if not raw:
+        return []
+    names = block_catalog()
+    wanted = [b for b in re.split(r"[,\s]+", raw.strip()) if b]
+    if wanted == ["all"]:
+        left = [b for b in names if b in DECK_REFUSED]
+        if left:
+            print("new-deck: --blocks all leaves out what a deck answers itself: %s" % ", ".join(left),
+                  file=sys.stderr)
+        return [b for b in names if b not in DECK_REFUSED]
+    unknown = [b for b in wanted if b not in names]
+    if unknown:
+        raise DeckError("unknown block(s): %s (see --list)" % ", ".join(unknown))
+    refused = [b for b in wanted if b in DECK_REFUSED]
+    if refused:
+        raise DeckError("not in a deck: %s" % "; ".join("%s (%s)" % (b, DECK_REFUSED[b]) for b in refused))
+    return list(dict.fromkeys(wanted))
+
+
+def resolve_blocks(blocks: list[str]) -> list[str]:
+    """The blocks with what they require, dependencies first (html-canvas new-page.py)."""
+    try:
+        order = new_page().resolve(blocks)
+    except SystemExit:
+        raise DeckError("html-canvas sections.css does not hold every block it requires")
+    return [b for b in order if b not in DECK_DROPPED]
+
+
+def blocks_css(blocks: list[str], preset: dict) -> str:
+    table = new_page().css_blocks()
+    parts = ["/* blocks: %s */" % ", ".join(blocks), ALIASES.replace("{style}", "" if is_design(preset) else STYLE_ALIASES)]
+    parts += [table[b][1] for b in resolve_blocks(blocks)]
+    parts.append(DECK_FIT)
+    css = "\n\n".join(parts)
+    if "</style" in css.lower():
+        raise DeckError("html-canvas sections.css contains </style>, which would end its element early")
+    return css_region(css)
+
+
+def blocks_js(blocks: list[str]) -> str:
+    table = new_page().js_blocks()
+    body = "\n\n".join(table[b] for b in resolve_blocks(blocks) if b in table)
+    if "</script" in body.lower():
+        raise DeckError("html-canvas sections.js contains </script>, which would end its element early")
+    return body
+
+
+def js_region(body: str) -> str:
+    return script_region(body) if body else "\n"
+
+
+def recorded_blocks(html: str) -> list[str] | None:
+    pos = span(html, BLOCKS_CSS)
+    m = BLOCKS_LINE_RE.search(html[pos[0]:pos[1]]) if pos else None
+    return [b for b in re.split(r",\s*", m.group(1)) if b] if m else None
+
+
+def block_label(name: str) -> str:
+    de, en = new_page().LABELS.get(name, (name, name))
+    return "<span data-de>%s</span><span data-en>%s</span>" % (de, en)
+
+
+def block_slides(blocks: list[str]) -> str:
+    """One sample slide per block: its catalog markup under a label, marked data-sample."""
+    np_ = new_page()
+    out = []
+    for b in [x for x in blocks if x not in np_.LAST_BLOCKS] + [x for x in blocks if x in np_.LAST_BLOCKS]:
+        try:
+            markup = np_.markup(b)
+        except SystemExit:
+            raise DeckError("html-canvas sections.md has no example for block %s" % b)
+        if not markup:
+            continue
+        out.append('<section class="slide slide--content" data-sample>\n'
+                   '  <p class="slide__label">%s</p>\n'
+                   '  <div class="blk" id="blk-%s">\n%s\n  </div>\n</section>'
+                   % (block_label(b), b, np_.unescape_symbols(markup)))
+    return "\n".join(out)
 
 
 # --- deck modules --------------------------------------------------------------------------
@@ -486,15 +659,20 @@ def deck_attrs(items: list[str]) -> str:
     return "".join(out)
 
 
-def skeleton(title: str, lang: str, slides: str, stage: bool, attrs: str = "", modules=()) -> str:
+def skeleton(title: str, lang: str, slides: str, stage: bool, attrs: str = "", modules=(),
+             blocks: bool = False, block_js: bool = False) -> str:
     def r(name: str) -> str:
         s, e = marks(name)
         return s + e
     style = [r("deck-tokens"), r("slide-engine:css"), r("deck-preset-css")]
+    if blocks:
+        style.append(r(BLOCKS_CSS))
     body_end = [r("slide-engine:js")]
     if stage:
         style.append(r("slide-stage:css"))
         body_end.append(r("slide-stage:js"))
+    if block_js:
+        body_end.append(r(BLOCKS_JS))
     body_end.extend(r(module_region_name(m)) for m in modules)
     return "\n".join([
         "<!DOCTYPE html>",
@@ -520,23 +698,34 @@ def skeleton(title: str, lang: str, slides: str, stage: bool, attrs: str = "", m
     ])
 
 
-def title_slide(title: str) -> str:
+def title_slide(title: str, title_de: str | None = None, title_en: str | None = None) -> str:
+    text = html_mod.escape(title, quote=False)
+    if title_de or title_en:
+        text = "<span data-de>%s</span><span data-en>%s</span>" % (
+            html_mod.escape(title_de or title, quote=False), html_mod.escape(title_en or title, quote=False))
     return ('<section class="slide slide--title">\n  <div class="slide__content">\n'
-            '    <h1 class="slide__display reveal">%s</h1>\n  </div>\n</section>'
-            % html_mod.escape(title, quote=False))
+            '    <h1 class="slide__display reveal">%s</h1>\n  </div>\n</section>' % text)
 
 
-def choose_preset(slug: str | None, design_arg: str | None, anchor: Path) -> tuple[str, dict, Path | None]:
-    design = None
-    if design_arg:
-        try:
+def named_design(design_arg: str | None, context: str | None, persona: str | None, anchor: Path) -> Path | None:
+    """The design --design, --context or --persona names, else the one found above `anchor`."""
+    try:
+        if design_arg:
             design = bridge_design().resolve(design_arg)
-        except ValueError as e:
-            raise DeckError(str(e))
-        if not design.is_file():
-            raise DeckError("--design: %s not found" % design)
-    else:
-        design = find_design(anchor)
+        elif context or persona:
+            design = bridge_design().resolve(context=context, persona=persona, target=anchor, fallback=False)
+        else:
+            return find_design(anchor)
+    except ValueError as e:
+        raise DeckError(str(e))
+    if design is not None and not design.is_file():
+        raise DeckError("--design: %s not found" % design)
+    return design
+
+
+def choose_preset(slug: str | None, design_arg: str | None, anchor: Path, context: str | None = None,
+                  persona: str | None = None, design: Path | None = None) -> tuple[str, dict, Path | None]:
+    design = design or named_design(design_arg, context, persona, anchor)
     slug = slug or ("design" if design else default_style_slug())
     preset = load_preset(slug)
     if is_design(preset) and not design:
@@ -545,31 +734,70 @@ def choose_preset(slug: str | None, design_arg: str | None, anchor: Path) -> tup
     return slug, preset, design
 
 
+def deck_title(args) -> str:
+    title = args.title or (args.title_de if args.lang == "de" else args.title_en) or args.title_en or args.title_de
+    if not title:
+        raise DeckError("a new deck needs --title (or --title-de / --title-en) and --out (or use --refresh DECK)")
+    if args.lang == "de" and args.title_de:
+        return args.title_de
+    if args.lang == "en" and args.title_en:
+        return args.title_en
+    return title
+
+
 def build(args) -> int:
-    if not args.title or not args.out:
+    title = deck_title(args)
+    if not args.out:
         raise DeckError("a new deck needs --title and --out (or use --refresh DECK)")
     out = Path(args.out)
     if out.exists() and not args.force:
         raise DeckError("%s exists; pass --force to overwrite it, or --refresh it" % out)
+    blocks = parse_blocks(args.blocks)
     if args.slides:
         slides = Path(args.slides).read_text(encoding="utf-8")
         if not SLIDE_RE.search(slides):
             raise DeckError("%s holds no <section class=\"slide ...\"> element" % args.slides)
     else:
-        slides = title_slide(args.title)
+        slides = title_slide(args.title or title, args.title_de, args.title_en)
+        if blocks:
+            slides += "\n" + block_slides(blocks)
     attrs = deck_attrs(args.deck_attr)
-    slug, preset, design = choose_preset(args.preset, args.design, out.resolve().parent)
+    slug, preset, design = choose_preset(args.preset, args.design, out.resolve().parent, args.context, args.persona)
 
-    modules = resolve_modules(args.with_modules)
-    names = [name for name, _ in REGIONS if args.with_stage or name not in STAGE_REGIONS]
+    requested = list(args.with_modules)
+    if NEEDS_MOTION & set(blocks) and "motion" in available_modules() and "motion" not in resolve_modules(requested):
+        print("new-deck: %s moves with the motion module; added --with motion"
+              % ", ".join(sorted(NEEDS_MOTION & set(blocks))), file=sys.stderr)
+        requested.append("motion")
+    modules = resolve_modules(requested)
+    block_js = bool(blocks) and bool(blocks_js(blocks))
+    names = [name for name, _ in REGIONS
+             if (args.with_stage or name not in STAGE_REGIONS)
+             and (name != BLOCKS_CSS or blocks) and (name != BLOCKS_JS or block_js)]
     names += [module_region_name(m) for m in modules]
-    contents = region_contents(names, slug, preset, design, not args.no_embed_fonts)
-    html = splice(skeleton(args.title, args.lang, slides, args.with_stage, attrs, modules), contents)
+    contents = region_contents(names, slug, preset, design, not args.no_embed_fonts, blocks)
+    html = splice(skeleton(title, args.lang, slides, args.with_stage, attrs, modules, bool(blocks), block_js),
+                  contents)
     verify(html, contents)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
     report(out, slug, design, html)
-    return 0
+    return gate(out, design, args)
+
+
+def add_block_js_region(html: str) -> str:
+    """An empty deck-blocks:js region after the engine (and stage) script, for a refresh
+    whose new block set needs a script the old one did not."""
+    anchor = None
+    for name in ("slide-stage:js", "slide-engine:js"):
+        if span(html, name) is not None:
+            anchor = marks(name)[1]
+            break
+    if anchor is None:
+        raise DeckError("the deck has no engine script region to place the block scripts after")
+    s, e = marks(BLOCKS_JS)
+    i = html.index(anchor) + len(anchor)
+    return html[:i] + "\n" + s + e + html[i:]
 
 
 def refresh(args) -> int:
@@ -583,6 +811,23 @@ def refresh(args) -> int:
         raise DeckError("--deck-attr is for a new build; --refresh keeps the deck element as it is "
                         "(build the slides again with --deck-attr for a copy with other options)")
     html = src.read_text(encoding="utf-8")
+
+    blocks: list[str] = []
+    if span(html, BLOCKS_CSS) is not None:
+        blocks = parse_blocks(args.blocks) if args.blocks else (recorded_blocks(html) or [])
+        unknown = [b for b in blocks if b not in block_catalog() or b in DECK_REFUSED]
+        if unknown:
+            raise DeckError("the deck names block(s) the catalog no longer has for a deck: %s" % ", ".join(unknown))
+        if NEEDS_MOTION & set(blocks) and span(html, module_region_name("motion")) is None:
+            print("new-deck: %s moves with the motion module, which this deck does not carry; build the "
+                  "slides into a fresh deck with --with motion" % ", ".join(sorted(NEEDS_MOTION & set(blocks))),
+                  file=sys.stderr)
+        if blocks and blocks_js(blocks) and span(html, BLOCKS_JS) is None:
+            html = add_block_js_region(html)
+    elif args.blocks:
+        raise DeckError("--blocks on --refresh swaps the set of a deck built with --blocks; this one has no "
+                        "deck-blocks region (build the slides into a fresh deck with --blocks)")
+
     present = [name for name, _ in REGIONS if span(html, name) is not None]
     present += [module_region_name(m) for m in sorted(set(MODULE_MARK_RE.findall(html)))
                 if span(html, module_region_name(m)) is not None]
@@ -597,7 +842,17 @@ def refresh(args) -> int:
     preset, design = {}, None
     if needs_preset:
         if slug:
-            slug, preset, design = choose_preset(slug, args.design, src.resolve().parent)
+            named = args.design or args.context or args.persona
+            built_with = None
+            if not named and tokens:
+                try:
+                    built_with = bridge_design().recorded(html[tokens[0]:tokens[1]])
+                except ValueError as e:
+                    raise DeckError("%s records a design that no longer resolves: %s" % (src, e))
+                if built_with is not None and not built_with.is_file():
+                    raise DeckError("%s records the design %s, which is gone; pass --design" % (src, built_with))
+            slug, preset, design = choose_preset(slug, args.design, src.resolve().parent, args.context,
+                                                 args.persona, built_with)
         else:
             print("new-deck: no preset recorded in %s and none given; left as they are: %s"
                   % (src, ", ".join(needs_preset)), file=sys.stderr)
@@ -611,13 +866,33 @@ def refresh(args) -> int:
     else:
         embed = not (fonts and NO_FONTS in html[fonts[0]:fonts[1]])
 
-    contents = region_contents(present, slug, preset, design, embed)
+    contents = region_contents(present, slug, preset, design, embed, blocks)
     updated = splice(html, contents)
     verify(updated, contents, [n for n in present if n in contents])
     out = Path(args.out) if args.out else src
     out.write_text(updated, encoding="utf-8")
     report(out, slug, design, updated, refreshed=present)
-    return 0
+    return gate(out, design, args)
+
+
+def gate(out: Path, design: Path | None, args) -> int:
+    """The quality gate on what was just written (html-canvas verify-page.py, static).
+
+    A fresh deck may hold catalog sample slides by design, so sample text is a warning
+    here; the send gate (verify-page without --allow-sample) is where it has to be gone.
+    """
+    if getattr(args, "no_verify", False):
+        return 0
+    script = CANVAS_SCRIPTS / "verify-page.py"
+    if not script.is_file():
+        raise DeckError("%s not found; html-slides needs the html-canvas skill next to it" % script)
+    cmd = [sys.executable, str(script), str(out), "--allow-sample"]
+    if design:
+        cmd += ["--design", str(design)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    return 1 if r.returncode else 0
 
 
 def report(out: Path, slug: str | None, design: Path | None, html: str, refreshed=None) -> None:
@@ -627,24 +902,59 @@ def report(out: Path, slug: str | None, design: Path | None, html: str, refreshe
     source = (" from %s" % design) if (slug == "design" and design) else ""
     mods = [m for m in MODULE_MARK_RE.findall(html)]
     modules = (", modules %s" % ", ".join(dict.fromkeys(mods))) if mods else ""
-    print("new-deck: %s %s (preset %s%s, %s, %d slides%s)"
-          % (what, out, slug or "unknown", source, engine, len(SLIDE_RE.findall(html)), modules))
+    blocks = recorded_blocks(html)
+    blocks = (", blocks %s" % ", ".join(blocks)) if blocks else ""
+    print("new-deck: %s %s (preset %s%s, %s, %d slides%s%s)"
+          % (what, out, slug or "unknown", source, engine, len(SLIDE_RE.findall(html)), modules, blocks))
+
+
+def list_all() -> int:
+    """--list: the presets, the modules and the blocks a deck can take."""
+    print("presets:")
+    default = default_style_slug()
+    for p in sorted(PRESETS.glob("*.yaml")):
+        if p.name.startswith("_") or p.name.endswith(".map.yaml"):
+            continue
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        mark = "  (default)" if p.stem == default else ("  (from DESIGN.md)" if data.get("source") == "design" else "")
+        print("  %-18s%s%s" % (p.stem, str(data.get("name") or "").strip(), mark))
+    print("modules:")
+    for m in available_modules():
+        print("  %s" % m)
+    print("blocks:")
+    table = new_page().css_blocks()
+    for name in block_catalog():
+        if name in DECK_REFUSED:
+            print("  %-15s not in a deck: %s" % (name, DECK_REFUSED[name]))
+            continue
+        req = [r for r in table.get(name, ([], ""))[0] if r not in DECK_DROPPED]
+        extra = ["needs %s" % ", ".join(req)] if req else []
+        if name in NEEDS_MOTION:
+            extra.append("moves with --with motion")
+        print("  %-15s%s" % (name, ("  (%s)" % "; ".join(extra)) if extra else ""))
+    return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Assemble or refresh a single-file html-slides deck")
     ap.add_argument("--title", help="deck title (<title>, and the title slide without --slides)")
+    ap.add_argument("--title-de", dest="title_de", help="the title in German (the title slide shows the pair)")
+    ap.add_argument("--title-en", dest="title_en", help="the title in English")
     ap.add_argument("--out", help="the deck to write; with --refresh, write here instead of in place")
     ap.add_argument("--slides", help="HTML fragment of <section class=\"slide ...\"> elements")
     ap.add_argument("--preset", help="preset slug (default: design when a DESIGN.md is found, "
                                      "else the preset marked default)")
     ap.add_argument("--design", help="DESIGN.md or design id to use (default: the nearest one above the "
                                     "output, inside the Bridge the design it resolves)")
+    ap.add_argument("--context", help="workflow/contexts/<name>.yaml whose design_ref the deck wears")
+    ap.add_argument("--persona", help="identity/personas/<id>.yaml whose design_ref the deck wears")
     ap.add_argument("--lang", choices=("en", "de"), default="en", help="<html lang> (default en)")
     ap.add_argument("--with-stage", action="store_true", help="add the live stage (assets/slide-stage.*)")
     ap.add_argument("--with", dest="with_modules", action="append", default=[], metavar="NAME",
                     help="inline the deck module assets/modules/NAME.js (+ .css); repeatable, "
                          "`all` takes every module (build only, a refresh keeps the deck's set)")
+    ap.add_argument("--blocks", help="html-canvas section blocks, comma separated, or `all` (see --list); "
+                                     "on --refresh: swap the set of a deck built with --blocks")
     ap.add_argument("--deck-attr", action="append", default=[], metavar="data-NAME=VALUE",
                     help="an engine option on the deck element, e.g. data-tracks-default=short or "
                          "data-back-href=page.html (repeatable; build only, a refresh keeps the deck element)")
@@ -652,10 +962,15 @@ def main() -> int:
     ap.add_argument("--embed-fonts", action="store_true", help="with --refresh: embed even if the deck had none")
     ap.add_argument("--refresh", metavar="DECK", help="rewrite the marker regions of an existing deck")
     ap.add_argument("--force", action="store_true", help="overwrite an existing --out when building")
+    ap.add_argument("--no-verify", action="store_true", help="skip the gate (verify-page.py) after writing; for tests and scripted "
+                         "pipelines that run the gate themselves")
+    ap.add_argument("--list", action="store_true", help="list presets, modules and blocks, then exit")
     args = ap.parse_args()
     if args.embed_fonts and args.no_embed_fonts:
         ap.error("--embed-fonts and --no-embed-fonts exclude each other")
     try:
+        if args.list:
+            return list_all()
         return refresh(args) if args.refresh else build(args)
     except (DeckError, OSError) as e:
         print("new-deck: %s" % e, file=sys.stderr)

@@ -10,14 +10,22 @@ Static mode (default, stdlib only):
   external-url    a resource (src, link href, url(), @import) on another host
   local-ref       a resource next to the page: it breaks once the file travels alone
   external-link   an <a href> leaving the page (warning: fine for a cited source)
-  placeholder     a leftover {{TEMPLATE}} placeholder
+  placeholder     a leftover {{TEMPLATE}} placeholder, or a text that is nothing but a
+                  single-brace catalog phrase ({Main Title}, {Point 1}) outside code,
+                  pre, kbd, samp, script and style
   sample          catalog sample text: a block new-page.py marked data-sample, or a
                   text that is only an ellipsis (--allow-sample: warning)
+  image-slot      an <img data-image-prompt> without a src (or an empty one): an AI image
+                  slot gen-images.py has not filled yet (--allow-sample: warning)
   design-source   the page names the DESIGN.md it was generated from, and the gate
                   reads another (warning)
   entity          an HTML entity or \\u escape spelling a non-ASCII letter (error),
                   or another non-ASCII character (warning); write the character
   hex             a hex colour not declared in the DESIGN.md front matter
+  style-preset    a deck built with an html-slides style preset (/* deck-preset: <slug> */,
+                  any slug but design): the colours of its own palette, inside its
+                  deck-tokens and deck-preset-css regions, are one warning instead of
+                  hex errors; it is off brand by definition (a hex elsewhere stays an error)
   font-face       a family named without @font-face that is no system family
                   (warning: embedding is optional, the stack falls back)
   lang-pair       data-de without its data-en counterpart, or the other way round
@@ -112,6 +120,12 @@ SAFE_SCHEMES = {"data", "blob", "about", "javascript", "mailto", "tel"}
 HEX_RE = re.compile(r"#([0-9a-fA-F]{3,8})(?![0-9a-zA-Z_-])")
 JS_HEX_RE = re.compile(r"""(['"`])#([0-9a-fA-F]{3,8})\1""")
 PLACEHOLDER_RE = re.compile(r"\{\{[^{}\n]{1,80}\}\}")
+# a text node that is only `{Main Title}`: one brace pair round a phrase with a letter or digit
+BRACE_RE = re.compile(r"^\{(?!\{)[^{}\n]{0,78}[A-Za-z0-9][^{}\n]{0,78}\}$")
+LITERAL_TAGS = {"code", "pre", "kbd", "samp", "script", "style", "textarea"}
+# html-slides records the preset a deck was built with; its palette lives in these regions
+DECK_PRESET_RE = re.compile(r"/\* deck-preset: ([a-z0-9][a-z0-9-]*) \*/")
+PRESET_REGION_RE = re.compile(r"<!-- (deck-tokens|deck-preset-css):start -->(.*?)<!-- \1:end -->", re.S)
 ENTITY_RE = re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});")
 ESCAPE_RE = re.compile(r"\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})")
 COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
@@ -233,6 +247,7 @@ class Page(HTMLParser):
         self.elements: list[dict] = []
         self.stack: list[int] = []
         self.texts: list[tuple[str, int]] = []
+        self.text_owners: list[int | None] = []   # the element each text sits in, by index
         self.styles: list[tuple[str, int]] = []
         self.scripts: list[tuple[str, int]] = []
         self._raw: str | None = None
@@ -271,6 +286,7 @@ class Page(HTMLParser):
             self.scripts.append((data, line))
         else:
             self.texts.append((data, line))
+            self.text_owners.append(self.stack[-1] if self.stack else None)
 
 
 def parse(text: str) -> Page:
@@ -371,6 +387,23 @@ def check_placeholders(raw: str, rep: Report) -> None:
         rep.add("placeholder", ERROR, "leftover template placeholder %s" % m.group(0), line_at(raw, m.start()))
 
 
+def check_brace_placeholders(page: Page, rep: Report) -> None:
+    """A text that is nothing but a single-brace phrase, the html-slides catalog's stand-in
+    (`{Main Title}`, `{Point 1}`, `{01}`). Code, pre, kbd and samp show braces on purpose."""
+    hits = []
+    for (text, line), owner in zip(page.texts, page.text_owners):
+        s = text.strip()
+        if not BRACE_RE.match(s):
+            continue
+        chain = [] if owner is None else [page.elements[owner], *ancestors(page, owner)]
+        if any(el["tag"] in LITERAL_TAGS for el in chain):
+            continue
+        hits.append((s, line))
+    if hits:
+        rep.add("placeholder", ERROR, "%d text%s nothing but a catalog placeholder, e.g. %s; write the content"
+                % (len(hits), " is" if len(hits) == 1 else "s are", hits[0][0]), hits[0][1])
+
+
 ELLIPSIS_ONLY = {"…", "...", "…."}
 
 
@@ -387,6 +420,16 @@ def check_sample(page: Page, rep: Report, allow: bool) -> None:
     if bare:
         rep.add("sample", level, "%d text%s nothing but an ellipsis, the catalog's stand-in for content"
                 % (len(bare), " is" if len(bare) == 1 else "s are"), bare[0])
+
+
+def check_image_slots(page: Page, rep: Report, allow: bool) -> None:
+    """An image slot (`<img data-image-prompt>`) that gen-images.py has not filled: no src yet."""
+    empty = [el["line"] for el in page.elements
+             if el["tag"] == "img" and "data-image-prompt" in el["attrs"] and not (el["attrs"].get("src") or "").strip()]
+    if empty:
+        rep.add("image-slot", WARNING if allow else ERROR,
+                "%d image slot%s not generated yet: run gen-images.py" % (len(empty), "" if len(empty) == 1 else "s"),
+                empty[0])
 
 
 def check_entities(raw: str, page: Page, rep: Report) -> None:
@@ -417,14 +460,36 @@ def check_entities(raw: str, page: Page, rep: Report) -> None:
                 % ", ".join(items), line)
 
 
-def check_hex(page: Page, rep: Report, declared: set[str]) -> None:
+def style_preset(raw: str) -> tuple[str | None, list[tuple[int, int]]]:
+    """The html-slides style preset a deck records in its deck-tokens region (never `design`),
+    and the lines its preset regions hold, as (first, last) pairs; (None, []) for every other
+    page. The marker lines themselves are not inside: generated content starts below them."""
+    slug, spans = None, []
+    for region in PRESET_REGION_RE.finditer(raw):
+        if region.group(1) == "deck-tokens":
+            m = DECK_PRESET_RE.search(region.group(2))
+            slug = m.group(1) if m else slug
+        start, end = line_at(raw, region.start(2)), line_at(raw, region.end(2))
+        if end - start > 1:
+            spans.append((start + 1, end - 1))
+    if not slug or slug == "design":
+        return None, []
+    return slug, spans
+
+
+def check_hex(page: Page, rep: Report, declared: set[str],
+              preset: tuple[str | None, list[tuple[int, int]]] = (None, [])) -> None:
     ids = {(el["attrs"].get("id") or "").lower() for el in page.elements}
     hits: dict[str, list[int]] = {}
+    slug, spans = preset
+    off_brand: dict[str, list[int]] = {}
 
     def take(digits: str, line: int) -> None:
         h = norm_hex(digits)
         if h and h not in declared:
-            hits.setdefault(h if len(digits) in (3, 6) else "#" + digits.lower(), []).append(line)
+            inside = any(a <= line <= b for a, b in spans)
+            (off_brand if inside else hits).setdefault(
+                h if len(digits) in (3, 6) else "#" + digits.lower(), []).append(line)
 
     for css, first in page.styles:
         text = blank(blank(css, CSS_COMMENT_RE), CSS_URL_RE)
@@ -449,6 +514,12 @@ def check_hex(page: Page, rep: Report, declared: set[str]) -> None:
     for value, lines in hits.items():
         rep.add("hex", ERROR, "%s is not declared in the DESIGN.md front matter (%d use%s); use a token"
                 % (value, len(lines), "" if len(lines) == 1 else "s"), lines[0])
+    if off_brand:
+        n = len({norm_hex(v[1:]) for v in off_brand})
+        rep.add("style-preset", WARNING, "the deck wears the style preset %s: %d colour%s of its own palette, "
+                "none from DESIGN.md (%s); expected for a deck off the house brand, build it with the design "
+                "preset to wear the brand" % (slug, n, "" if n == 1 else "s", rep.design.name if rep.design else "-"),
+                min(min(v) for v in off_brand.values()))
 
 
 def families(value: str) -> list[str]:
@@ -574,12 +645,14 @@ def static_checks(path: Path, rep: Report, allow: set[str], forbid: str, allow_s
     raw = blank(text, COMMENT_RE)
     check_urls(page, rep, allow)
     check_placeholders(raw, rep)
+    check_brace_placeholders(page, rep)
     check_sample(page, rep, allow_sample)
+    check_image_slots(page, rep, allow_sample)
     check_entities(raw, page, rep)
     if rep.design:
         rep.notes.append("checked against %s" % rep.design)
         check_design_source(text, rep)
-        check_hex(page, rep, declared_hex(rep.design))
+        check_hex(page, rep, declared_hex(rep.design), style_preset(text))
     else:
         rep.notes.append("no DESIGN.md found, hex check skipped (pass --design)")
     check_fonts(page, rep)

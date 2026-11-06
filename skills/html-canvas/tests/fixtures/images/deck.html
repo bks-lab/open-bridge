@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Image slots</title>
+<style>
+/* <img data-image-prompt="inside a style block, ignored"> */
+img { max-width: 100%; }
+</style>
+</head>
+<body>
+<!-- <img data-image-prompt="inside a comment, ignored" alt="no"> -->
+<section class="slide">
+  <h1>Küstenstädte &amp; Häfen</h1>
+  <img src="logo.png" alt="Plain logo, no slot">
+  <img data-image-prompt="A quiet abstract network of light lines" data-image-ratio="16:9" alt="Abstract network">
+</section>
+<section class="slide">
+  <img data-image-prompt="Warm morning light over a harbour &amp; boats" data-image-id="harbour" data-image-style="soft watercolour" data-image-ratio="3:2" alt="Harbour at dawn" class="hero">
+  <p>Text with ümlauts and a trailing space </p>
+</section>
+<section class="slide">
+  <img alt="A simple chart" data-image-prompt='Labelled bar chart, three bars' data-image-text="allow" data-image-ratio="1:1" data-image-ref="ref.png" />
+</section>
+<script>
+const tpl = '<img data-image-prompt="inside a script, ignored">';
+</script>
+</body>
+</html>
