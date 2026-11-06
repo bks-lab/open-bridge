@@ -16,7 +16,7 @@ the deck is hand-picked, and `html-canvas/scripts/verify-page.py` holds it to th
 - The rules below that name fonts or colours apply to **style presets only**.
   DESIGN.md is a decision already taken: if it names Inter, the deck uses Inter.
 - The `design` preset sets display type to weight 500 with `-0.01em` tracking,
-  and keeps decoration (gradient zones, backdrop blur) behind the class `fx` on
+  and keeps decoration (the glow of a `data-tone`, the title glow, the dot grid, gradient backdrops, backdrop blur) behind the class `fx` on
   `<html>`, the `.deck` or one `.slide`. Without `fx` a slide stays flat.
 
 ## Anti-AI-Slop Blacklist
@@ -54,7 +54,7 @@ the deck is hand-picked, and `html-canvas/scripts/verify-page.py` holds it to th
 ## General Design Rules
 
 1. **Every element that should animate** gets class `reveal`
-2. **Background gradients** via inline `style` with `radial-gradient` for subtle color zones (with the `design` preset they show only behind `.fx`)
+2. **Chapter colour and glow** via `data-tone="accent|green|red|amber|cyan"` on the slide, never an inline `style` (with the `design` preset the tone is quiet and the glow shows only behind `.fx`)
 3. **Grid backgrounds** via `slide--with-grid` class for dot pattern
 4. **10-15 slides** is ideal for a focused presentation
 5. **Decorative SVGs** can be added with `class="slide__decor"` (absolute positioned, pointer-events:none)

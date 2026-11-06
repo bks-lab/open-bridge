@@ -561,3 +561,31 @@ def test_a_large_stage_covers_the_deck_chrome_of_an_isolated_slide(open_deck):
     vh = page.evaluate("innerHeight")
     hit = page.evaluate("(y) => { const e = document.elementFromPoint(20, y); return e && (e.id || e.tagName); }", vh - 10)
     assert hit != "chrome", "the deck chrome sits on top of the large stage"
+
+
+# --- a scenario per slide: stage:hash --------------------------------------------------
+
+def hash_msgs(page, sid: str) -> list:
+    return child_msgs(page, sid, "stage:hash")
+
+
+def test_a_srcdoc_stage_with_data_stage_hash_posts_it_after_ready(open_deck):
+    page = open_deck("hash.html")
+    wait_loaded(page, "stageH")
+    child_frame(page, "stageH").wait_for_function("() => window.__msgs.some(m => m.type === 'stage:hash')")
+    assert hash_msgs(page, "stageH") == [{"type": "stage:hash", "hash": "load=high&t=120"}]
+    assert page.errors == []
+
+
+def test_a_fragment_in_data_src_is_posted_without_the_hash_sign(open_deck):
+    page = open_deck("hash.html")
+    wait_loaded(page, "stageF")
+    child_frame(page, "stageF").wait_for_function("() => window.__msgs.some(m => m.type === 'stage:hash')")
+    assert hash_msgs(page, "stageF")[-1]["hash"] == "load=low&t=7"
+
+
+def test_a_stage_without_a_scenario_posts_no_hash(open_deck):
+    page = open_deck("hash.html")
+    wait_loaded(page, "stageN")
+    child_frame(page, "stageN").wait_for_function("() => window.__msgs.some(m => m.type === 'stage:theme')")
+    assert hash_msgs(page, "stageN") == []

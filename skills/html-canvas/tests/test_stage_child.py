@@ -257,3 +257,60 @@ def test_no_chip_shows_before_the_run(open_page, tmp_path):
     page = open_page(probed(crowded(assemble(tmp_path))))
     for s in page.evaluate(STACKS):
         assert s["n"] == 0 and s["drawn"] == s["model"] == 0, s
+
+
+# --- a scenario per slide: stage:hash ------------------------------------------------
+
+@pytest.fixture
+def framed_worklist(browser, tmp_path):
+    """Like `framed`, with the worklist archetype, which has a replayable clock and a scenario param."""
+    d = tmp_path / "framed-wl"
+    d.mkdir()
+    (d / "child.html").write_text(assemble(tmp_path, "worklist"), encoding="utf-8")
+    (d / "index.html").write_text((STAGE_FIXTURES / "parent.html").read_text("utf-8"), encoding="utf-8")
+    ctx = browser.new_context(viewport={"width": 1000, "height": 800})
+    page = ctx.new_page()
+    page.errors = []
+    page.on("pageerror", lambda e: page.errors.append(str(e)))
+    page.goto((d / "index.html").as_uri())
+    page.wait_for_function("window.received && window.received.some(m => m && m.type === 'stage:ready')")
+    yield page
+    ctx.close()
+
+
+def test_stage_hash_sets_a_param_the_speed_and_a_paused_position(framed_worklist):
+    page, frame = framed_worklist, child(framed_worklist)
+    assert frame.evaluate("Sim.active.params.get('scenario')") != "clean"
+    page.evaluate("window.toChild({type: 'stage:hash', hash: 'scenario=clean&speed=2&t=120'})")
+    frame.wait_for_function("Sim.active.clock.ticks === 120")
+    assert frame.evaluate("Sim.active.params.get('scenario')") == "clean"
+    assert frame.evaluate("Sim.active.clock.speed") == 2
+    assert run_state(frame) == "paused"
+    page.wait_for_timeout(300)
+    assert frame.evaluate("Sim.active.clock.ticks") == 120
+    assert page.errors == []
+
+
+def test_stage_hash_ignores_invalid_values_like_the_boot_path(framed_worklist):
+    page, frame = framed_worklist, child(framed_worklist)
+    before = frame.evaluate("[Sim.active.params.get('scenario'), Sim.active.clock.speed]")
+    page.evaluate("window.toChild({type: 'stage:hash', hash: 'scenario=bogus&speed=9&t=-4&__proto__=1'})")
+    page.wait_for_timeout(200)
+    assert frame.evaluate("[Sim.active.params.get('scenario'), Sim.active.clock.speed]") == before
+    assert frame.evaluate("Sim.active.clock.ticks") == 0
+    assert page.errors == []
+
+
+def test_stage_hash_from_a_foreign_source_or_with_a_leading_hash_sign(framed_worklist):
+    page, frame = framed_worklist, child(framed_worklist)
+    page.evaluate("window.viaForeign({type: 'stage:hash', hash: 'scenario=clean'})")
+    page.wait_for_timeout(200)
+    assert frame.evaluate("Sim.active.params.get('scenario')") != "clean", "a sibling frame set the scenario"
+    page.evaluate("window.toChild({type: 'stage:hash', hash: '#scenario=clean'})")
+    frame.wait_for_function("Sim.active.params.get('scenario') === 'clean'")
+
+
+def test_stage_hash_is_documented_in_the_engine_and_the_reference():
+    assert "stage:hash" in ENGINE
+    text = (SKILL / "references" / "simulation.md").read_text("utf-8")
+    assert "stage:hash" in text

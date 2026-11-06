@@ -340,6 +340,7 @@ dead control. Both archetypes ship that button with `hidden`.
 | `stage:restart` | slide to simulation | none | reset the run in place and start it again (under reduced motion: compute it to the end). The slide falls back to reloading the frame when no `stage:ready` has arrived |
 | `stage:theme` | slide to simulation | `theme`: `dark` or `light` | the slide's theme, sent on every change and once after `stage:ready`. The frame follows it and does **not** store it, so a standalone visit keeps its own preference. A framed page carries `data-sim-embedded="yes"` and hides its own toolbar, because theme, language and print belong to the slide |
 | `stage:lang` | slide to simulation | `lang`: `de` or `en` | the slide's language, same rules. The frame relabels its T and L buttons and aria labels through the shell's own `storage` listener, without writing storage |
+| `stage:hash` | slide to simulation | `hash`: the scenario string without `#`, such as `load=high&t=120` | a scenario for a frame that has no address hash (a srcdoc frame, which is what the send bundle makes). Sent once after `stage:ready`, and again after the frame is reloaded. The engine applies it exactly like the hash read at boot: `Sim.params` values (an invalid one is ignored and the value kept), `speed` (only a speed a button offers), and with `t=` it seeks there and stays paused. Additive, so the contract stays `contract: 1` |
 
 Every message is a plain object with a `type` string; anything else is ignored.
 

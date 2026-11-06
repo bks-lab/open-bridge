@@ -55,6 +55,10 @@ STATIC_CASES = [
     ("external-link.html", "external-link", "warning"),
     ("local-ref.html", "local-ref", "error"),
     ("placeholder.html", "placeholder", "error"),
+    ("brace-placeholder.html", "placeholder", "error"),
+    ("style-preset.html", "style-preset", "warning"),
+    ("image-slot.html", "image-slot", "error"),
+    ("design-preset-hex.html", "hex", "error"),
     ("entity.html", "entity", "error"),
     ("escape.html", "entity", "error"),
     ("hex.html", "hex", "error"),
@@ -539,3 +543,74 @@ def test_browser_leaves_steps_not_yet_reached_to_the_steps_module(browser, tmp_p
     page = _variant(tmp_path, "faded.html", css + ".faded{opacity:0}", body='<p class="faded">Gone</p>')
     code, data = run(str(page), "--browser")
     assert ("reduced-motion", "warning") in findings(data), data
+
+
+# --- single-brace placeholders (the html-slides catalog writes {Heading}, {Point 1}) -------
+
+def test_a_text_that_is_only_a_brace_phrase_is_a_placeholder():
+    code, data = run(str(FIX / "brace-placeholder.html"))
+    assert code == 1
+    msg = data["pages"][0]["findings"][0]["message"]
+    assert "3 texts" in msg and "{Section Title}" in msg, msg
+
+
+def test_braces_in_code_prose_and_script_are_no_placeholder():
+    code, data = run(str(FIX / "brace-clean.html"))
+    assert code == 0 and findings(data) == [], data
+
+
+# --- a style preset deck is off brand by definition ----------------------------------------
+
+def test_a_style_preset_deck_reports_its_palette_once_as_a_warning():
+    code, data = run(str(FIX / "style-preset.html"))
+    assert code == 0 and findings(data) == [("style-preset", "warning")], data
+    msg = data["pages"][0]["findings"][0]["message"]
+    assert "swiss-modern" in msg and "3" in msg, msg
+
+
+def test_a_hand_picked_hex_outside_the_preset_regions_is_still_an_error():
+    code, data = run(str(FIX / "style-preset-hex.html"))
+    assert code == 1
+    assert sorted(findings(data)) == [("hex", "error"), ("style-preset", "warning")], data
+    hexes = [f["message"] for f in data["pages"][0]["findings"] if f["rule"] == "hex"]
+    assert len(hexes) == 1 and "#123abc" in hexes[0], hexes
+
+
+# --- image slots (gen-images.py fills them) --------------------------------------------------
+
+def test_an_unfilled_image_slot_names_the_generator():
+    code, data = run(str(FIX / "image-slot.html"))
+    assert code == 1
+    msg = data["pages"][0]["findings"][0]["message"]
+    assert "2 image slots" in msg and "gen-images.py" in msg, msg
+
+
+def test_a_filled_image_slot_is_green():
+    code, data = run(str(FIX / "image-slot-filled.html"))
+    assert code == 0 and findings(data) == [], data
+
+
+def test_allow_sample_makes_an_unfilled_slot_a_warning():
+    code, data = run(str(FIX / "image-slot.html"), "--allow-sample")
+    assert code == 0 and findings(data) == [("image-slot", "warning")], data
+
+
+
+def test_a_palette_colour_used_outside_the_preset_regions_is_still_an_error(tmp_path):
+    page = tmp_path / "reuse.html"
+    page.write_text((FIX / "style-preset.html").read_text("utf-8").replace(
+        ".slide{height:100vh;", ".slide{border-top:1px solid #d62d20;height:100vh;"), encoding="utf-8")
+    code, data = run(str(page))
+    assert code == 1
+    hexes = [f["message"] for f in data["pages"][0]["findings"] if f["rule"] == "hex"]
+    assert len(hexes) == 1 and "#d62d20" in hexes[0], data
+    assert ("style-preset", "warning") in findings(data)
+
+
+def test_a_preset_comment_outside_a_token_region_changes_nothing(tmp_path):
+    """Any page could write the comment; only a deck-tokens region makes a deck."""
+    page = tmp_path / "fake.html"
+    page.write_text((FIX / "hex.html").read_text("utf-8").replace(
+        "<style>", "<style>\n/* deck-preset: swiss-modern */", 1), encoding="utf-8")
+    code, data = run(str(page))
+    assert code == 1 and rules(data) == {"hex"}, data

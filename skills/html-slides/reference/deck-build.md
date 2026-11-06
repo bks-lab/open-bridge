@@ -8,13 +8,21 @@ what it writes and why.
 
 ```bash
 python3 skills/html-slides/scripts/new-deck.py --title "Quarterly review" --out deck.html \
-    [--slides slides.html] [--preset SLUG] [--design DESIGN.md] [--lang en|de] \
-    [--with-stage] [--with NAME ... | --with all] [--deck-attr data-NAME=VALUE ...] \
-    [--no-embed-fonts] [--force]
+    [--title-de "Quartalsbericht" --title-en "Quarterly review"] \
+    [--slides slides.html] [--preset SLUG] [--design DESIGN.md | --context NAME | --persona ID] \
+    [--lang en|de] [--with-stage] [--with NAME ... | --with all] [--blocks a,b | --blocks all] \
+    [--deck-attr data-NAME=VALUE ...] [--no-embed-fonts] [--force] [--no-verify]
 
 python3 skills/html-slides/scripts/new-deck.py --refresh deck.html [--out other.html] \
-    [--preset SLUG] [--design DESIGN.md] [--embed-fonts | --no-embed-fonts]
+    [--preset SLUG] [--design DESIGN.md | --context NAME | --persona ID] [--blocks a,b] \
+    [--embed-fonts | --no-embed-fonts] [--no-verify]
+
+python3 skills/html-slides/scripts/new-deck.py --list    # presets, modules, blocks
 ```
+
+`--title-de` and `--title-en` put both languages on the title slide (a
+`data-de` / `data-en` pair the engine switches with L); `<title>` takes the one of
+`--lang`. `--title` alone serves both.
 
 `--slides` is an HTML fragment of `<section class="slide ...">` elements
 (`reference/slide-types.md`). An existing `--out` is refused unless `--force`.
@@ -29,8 +37,33 @@ key wins and how transitions nest). The report line names the modules the deck c
 The DESIGN.md lookup stops at the project root (the first folder above the output
 with `.git` or `bridge-config.yaml`); without one only the output folder counts, so
 a stray DESIGN.md in a temp or home folder never brands a deck. `--design` names it
-outright, and every run prints which one it used.
+outright, `--context` and `--persona` name it through the `design_ref` of
+`workflow/contexts/<name>.yaml` or `identity/personas/<id>.yaml` (resolved by the
+Bridge, `scripts/designs.py`, as `html-canvas/scripts/new-page.py` does), and every
+run prints which one it used.
 Every splice is read back and compared before the file is written.
+
+**The gate runs after every build and refresh:** `html-canvas/scripts/verify-page.py`
+on the written file, static, with `--allow-sample` and the design the deck wears, and
+the run exits with its result (1 on an error, the file is written either way).
+`--no-verify` skips it, for tests and scripted pipelines that run the gate themselves
+(never for a deck that goes out). The browser pass (`--deck`) stays a separate step before
+delivery.
+
+### The recorded design
+
+A design deck writes the design it wears into its token region, below the preset
+line: `/* design-source: <id> */` for a design under `identity/designs/`, or the
+path inside the Bridge for any other DESIGN.md of the Bridge. A refresh reads it
+back instead of resolving afresh, so a deck built with `--design <id>` far from any
+repository refreshes without `--design`; `--design`, `--context` or `--persona` on
+the refresh replaces it. The gate reads the same line, so the standalone
+`verify-page.py deck.html` checks against the right design and never silently
+skips the hex check. A recorded label that points outside the Bridge, or at a
+file that is neither under `identity/designs/` nor a `DESIGN.md`, is refused by
+refresh and gate alike (pass `--design`). A DESIGN.md outside the Bridge (a target repository's own) is
+not recorded: the walk up from the deck finds it again. A style preset deck records
+no design.
 
 ## Marker regions
 
@@ -45,9 +78,11 @@ is generated and lives in a region the tool owns,
 | `deck-tokens` | `<style>` | colour and font variables; the first line names the preset (`/* deck-preset: <slug> */`) |
 | `slide-engine:css` | `<style>` | `assets/slide-engine.css`, byte for byte |
 | `deck-preset-css` | `<style>` | the preset's `css_overrides` |
+| `deck-blocks` | `<style>` | only with `--blocks`: the block list (`/* blocks: a, b */`), the alias layer from the canvas token names onto the deck tokens, the CSS of the blocks and what they require, slide fit rules (`reference/blocks.md`) |
 | `slide-stage:css` | `<style>` | `assets/slide-stage.css`, only with `--with-stage` |
 | `slide-engine:js` | `<body>` | `assets/slide-engine.js`, byte for byte |
 | `slide-stage:js` | `<body>` | `assets/slide-stage.js`, only with `--with-stage` |
+| `deck-blocks:js` | `<body>` | only when a chosen block has a behaviour (`glossary`, `alt-table`): its part of `html-canvas/assets/sections.js` |
 | `deck-module:NAME` | `<body>` | `assets/modules/NAME.css` in its own `<style>` (when the module has one), then `assets/modules/NAME.js`, only with `--with NAME`; one region per module, sorted by name, after the engine and the stage (`reference/modules.md`) |
 
 The engine assets carry a version stamp on their first line (`slide-engine v2`),
@@ -62,13 +97,17 @@ never inside a region and never directly after a region's end marker.
 ## Refresh
 
 `--refresh deck.html` rewrites only the regions a deck already carries, from the
-current assets, DESIGN.md and preset. Text outside them is never touched, no
-region is added, and a second run gives the same bytes. The modules a deck carries
+current assets, DESIGN.md and preset. Text outside them is never touched, and a
+second run gives the same bytes. The only region a refresh can add is
+`deck-blocks:js`, when `--blocks` swaps the set for one that needs a script (below). The modules a deck carries
 stay its set: their code is refreshed, none is added or dropped, and `--with` on a
 refresh is refused (build the slides into a fresh deck to change the set). A module
 whose file is gone is an error, and nothing is written. The preset is read back
-from the `deck-preset` comment unless `--preset` names another. Use it after an
-engine update, a DESIGN.md change, or to restyle a deck.
+from the `deck-preset` comment unless `--preset` names another, the design from the
+`design-source` comment unless `--design`, `--context` or `--persona` names another.
+The block set is read back from the `deck-blocks` region; `--blocks` on a refresh
+swaps it, and is refused on a deck built without `--blocks`. Use it after an engine update, a DESIGN.md change, or to
+restyle a deck.
 
 A deck without markers predates the generator. It keeps working (its engine is
 embedded), and the engine reads its old names (`data-spur`, `window.slideEngine`,
@@ -79,8 +118,9 @@ show which old patterns stay supported.
 ## Presets
 
 **Choice:** `--preset` when given; else `design` when a DESIGN.md is given
-(`--design`) or found walking up from the output path; else the style preset
-marked `default: true`. On `--refresh` the preset is read back from the deck.
+(`--design`, `--context`, `--persona`) or found walking up from the output path;
+else the style preset marked `default: true`. On `--refresh` the preset is read
+back from the deck. `--list` shows every preset, the default marked.
 
 **`design`** holds no colour and names no typeface. Colours come from DESIGN.md
 through `presets/design.map.yaml` and `html-canvas/scripts/design-to-css.py`

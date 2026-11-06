@@ -591,6 +591,12 @@ def mini_bridge(tmp_path: Path) -> Path:
     (root / "themes").mkdir()
     (root / "themes" / "house.yaml").write_text("meta: {name: house}\nbranding: {design: brand}\n", encoding="utf-8")
     (root / "bridge-config.yaml").write_text("theme: house\n", encoding="utf-8")
+    plain = fixture.replace("name: fixture-deck-brand", "scope: user\nname: other\ndescription: d", 1)
+    (root / "identity" / "designs" / "other.md").write_text(plain.replace("#2F5D8A", "#3A5F1E"), encoding="utf-8")
+    (root / "workflow" / "contexts").mkdir(parents=True)
+    (root / "workflow" / "contexts" / "client.yaml").write_text("id: client\ndesign_ref: other\n", encoding="utf-8")
+    (root / "identity" / "personas").mkdir(parents=True)
+    (root / "identity" / "personas" / "author.yaml").write_text("id: author\ndesign_ref: other\n", encoding="utf-8")
     return root
 
 
@@ -616,3 +622,140 @@ def test_the_target_repos_design_still_wins_over_the_bridge(tmp_path):
                     "--title", "x", "--slides", str(SLIDES), "--out", str(out)], check=True, capture_output=True)
     tokens = region(out.read_text("utf-8"), "deck-tokens")
     assert "#2F5D8A" in tokens and "#5A1E3C" not in tokens
+
+
+def bridge_deck(bridge: Path, out: Path, *extra, check=True):
+    proc = subprocess.run([sys.executable, str(bridge / "skills" / "html-slides" / "scripts" / "new-deck.py"),
+                           "--title", "x", "--slides", str(SLIDES), "--out", str(out), *map(str, extra)],
+                          capture_output=True, text=True)
+    if check:
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+    return proc
+
+
+# --- --context and --persona: the deck wears the design they point at ---------------------
+
+@pytest.mark.parametrize("flag,value", [("--context", "client"), ("--persona", "author")])
+def test_context_or_persona_picks_the_referenced_design(tmp_path, flag, value):
+    bridge = mini_bridge(tmp_path)
+    out = bridge / "work" / "deck.html"
+    out.parent.mkdir()
+    bridge_deck(bridge, out, flag, value)
+    tokens = region(out.read_text("utf-8"), "deck-tokens")
+    assert "#3A5F1E" in tokens and "#5A1E3C" not in tokens, "the referenced design, not the theme's"
+
+
+def test_unknown_context_is_refused(tmp_path):
+    bridge = mini_bridge(tmp_path)
+    proc = bridge_deck(bridge, bridge / "work" / "deck.html", "--context", "nowhere", check=False)
+    assert proc.returncode != 0 and "nowhere" in proc.stderr
+
+
+# --- the deck records the design it was built with -----------------------------------------
+
+def test_a_deck_remembers_its_design_for_refresh_and_gate(tmp_path):
+    """Built with --design <id> outside every repo: refresh and the gate need no --design."""
+    bridge = mini_bridge(tmp_path)
+    out = tmp_path / "loose" / "deck.html"
+    out.parent.mkdir()
+    bridge_deck(bridge, out, "--design", "other")
+    html = out.read_text("utf-8")
+    assert "/* design-source: other */" in region(html, "deck-tokens")
+    gate = bridge / "skills" / "html-canvas" / "scripts" / "verify-page.py"
+    v = subprocess.run([sys.executable, str(gate), str(out), "--json"], capture_output=True, text=True)
+    assert v.returncode == 0, v.stdout[-1500:]
+    assert '"design": null' not in v.stdout, "the gate read the recorded design, it did not skip the hex check"
+    out.write_text(html.replace("#3A5F1E", "#3A5F1F", 1), encoding="utf-8")
+    proc = subprocess.run([sys.executable, str(bridge / "skills" / "html-slides" / "scripts" / "new-deck.py"),
+                           "--refresh", str(out)], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    tokens = region(out.read_text("utf-8"), "deck-tokens")
+    assert "#3A5F1E" in tokens and "#3A5F1F" not in tokens
+    assert "/* design-source: other */" in tokens
+
+
+def test_a_named_design_on_refresh_replaces_the_recorded_one(tmp_path):
+    bridge = mini_bridge(tmp_path)
+    out = tmp_path / "loose" / "deck.html"
+    out.parent.mkdir()
+    bridge_deck(bridge, out, "--design", "other")
+    proc = subprocess.run([sys.executable, str(bridge / "skills" / "html-slides" / "scripts" / "new-deck.py"),
+                           "--refresh", str(out), "--design", "brand"], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    tokens = region(out.read_text("utf-8"), "deck-tokens")
+    assert "#5A1E3C" in tokens and "/* design-source: brand */" in tokens
+
+
+def test_a_style_preset_deck_records_no_design(plain_dir):
+    html = build(plain_dir / "deck.html")
+    assert "design-source:" not in html
+
+
+# --- the gate runs after every build and refresh -------------------------------------------
+
+def test_build_runs_the_gate_and_reports_it(plain_dir):
+    proc = run("--title", "Gate", "--slides", SLIDES, "--out", plain_dir / "deck.html")
+    assert "verify-page:" in proc.stdout, proc.stdout
+
+
+def test_a_catalog_placeholder_left_in_the_slides_fails_the_build(plain_dir):
+    frag = plain_dir / "slides.html"
+    frag.write_text(SLIDES.read_text("utf-8").replace("Second slide", "{Heading}"), encoding="utf-8")
+    out = plain_dir / "deck.html"
+    proc = run("--title", "Gate", "--slides", frag, "--out", out, check=False)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert out.is_file(), "the deck is written; the gate says what is left to do"
+    assert "placeholder" in proc.stdout
+
+
+def test_refresh_runs_the_gate_too(plain_dir):
+    out = plain_dir / "deck.html"
+    build(out)
+    out.write_text(out.read_text("utf-8").replace("Third slide", "{Heading}"), encoding="utf-8")
+    proc = run("--refresh", out, check=False)
+    assert proc.returncode == 1 and "placeholder" in proc.stdout, proc.stdout
+
+
+def test_a_style_preset_deck_beside_a_design_md_passes_with_one_warning(brand_dir):
+    out = brand_dir / "deck.html"
+    proc = run("--title", "Off brand", "--slides", SLIDES, "--out", out, "--preset", "swiss-modern")
+    assert "style-preset" in proc.stdout and " 0 errors" in proc.stdout, proc.stdout
+
+
+# --- --list and the title in both languages -------------------------------------------------
+
+def test_list_names_presets_modules_and_blocks():
+    out = run("--list").stdout
+    for head in ("presets:", "modules:", "blocks:"):
+        assert head in out, out
+    assert "swiss-modern" in out and "steps" in out and "kpi-row" in out
+    assert "(default)" in out
+    assert re.search(r"toc\s+.*not in a deck", out), "blocks a deck refuses say so"
+
+
+def test_title_in_both_languages(plain_dir):
+    out = plain_dir / "deck.html"
+    run("--title-de", "Quartalsbericht", "--title-en", "Quarterly review", "--lang", "de", "--out", out)
+    html = out.read_text("utf-8")
+    assert "<title>Quartalsbericht</title>" in html
+    assert '<span data-de>Quartalsbericht</span><span data-en>Quarterly review</span>' in html
+
+
+def test_a_deck_needs_some_title(plain_dir):
+    proc = run("--out", plain_dir / "deck.html", check=False)
+    assert proc.returncode != 0 and "--title" in proc.stderr
+
+
+def test_refresh_refuses_a_recorded_design_outside_the_bridge(tmp_path):
+    bridge = mini_bridge(tmp_path)
+    out = tmp_path / "loose" / "deck.html"
+    out.parent.mkdir()
+    bridge_deck(bridge, out, "--design", "other")
+    secret = tmp_path / "secret.md"
+    secret.write_text("---\nname: x\ncolors:\n  primary: '#000000'\n---\n", encoding="utf-8")
+    html = out.read_text("utf-8").replace("/* design-source: other */", "/* design-source: ../secret.md */")
+    out.write_text(html, encoding="utf-8")
+    proc = subprocess.run([sys.executable, str(bridge / "skills" / "html-slides" / "scripts" / "new-deck.py"),
+                           "--refresh", str(out)], capture_output=True, text=True)
+    assert proc.returncode == 1 and "../secret.md" in proc.stderr, proc.stdout + proc.stderr
+    assert out.read_text("utf-8") == html, "nothing is written"

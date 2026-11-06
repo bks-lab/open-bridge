@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Style preset deck</title>
+<style>
+<!-- deck-tokens:start -->
+{} /* swallows the marker name above */
+/* deck-preset: swiss-modern */
+:root{--bg:#f4f1ea;--text:#141414;--accent:#d62d20}
+:root.theme-light{--bg:#f4f1ea;--text:#141414}
+<!-- deck-tokens:end -->
+<!-- deck-preset-css:start -->
+{} /* swallows the marker name above */
+.slide__label{border-bottom:2px solid #d62d20}
+<!-- deck-preset-css:end -->
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui, sans-serif}
+.slide{height:100vh;box-sizing:border-box;padding:40px}
+</style>
+</head>
+<body>
+<section class="slide"><h1>One</h1><p>First slide.</p></section>
+</body>
+</html>

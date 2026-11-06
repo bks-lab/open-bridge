@@ -14,6 +14,9 @@
 
     Attributes on the stage:
       data-src          relative path of the page to run
+      data-stage-hash   scenario for the page, e.g. "load=high&t=120" (also read from
+                        the part of data-src after #); posted as stage:hash after
+                        stage:ready, because a srcdoc frame has no address hash
       data-srcdoc-ref   id of an inert <script type="text/plain"> or <template>
                         holding the page itself; base64 when it carries
                         data-encoding="base64" (UTF-8 safe). Wins over data-src,
@@ -47,7 +50,7 @@
           loaded stage is never reloaded by a second load call, only by restart
 
     The contract with the page inside (stage:ready, stage:key, stage:maximize,
-    stage:restart, stage:theme, stage:lang) is documented in html-canvas references/simulation.md,
+    stage:restart, stage:theme, stage:lang, stage:hash) is documented in html-canvas references/simulation.md,
     "Embedding in a slide". A message counts only when its source is the
     window of one of our own frames: srcdoc and file:// pages have no origin
     worth comparing, so the window is the only reliable check.
@@ -99,11 +102,15 @@
     if (!ref && src && doc.getElementById('viz-' + src.replace(/[^a-z0-9]/gi, '-'))) {
       ref = 'viz-' + src.replace(/[^a-z0-9]/gi, '-');
     }
+    /* The scenario of a stage: explicit, or the fragment of data-src. */
+    var hash = attr(host, ['data-stage-hash']);
+    if (hash === null && src && src.indexOf('#') > -1) hash = src.slice(src.indexOf('#') + 1);
+    if (hash) hash = hash.replace(/^#/, '');
     var mode = (attr(host, ['data-mode', 'data-buehne-modus']) || 'fit').trim().toLowerCase();
     mode = (mode === 'read' || mode === 'lesen') ? 'read' : 'fit';
     var vp = (attr(host, ['data-viewport', 'data-buehne-viewport']) || '1440x900').split('x');
     var st = {
-      host: host, frame: frame, src: src, ref: ref, mode: mode,
+      host: host, frame: frame, src: src, ref: ref, hash: hash || null, mode: mode,
       vw: parseInt(vp[0], 10) || 1440, vh: parseInt(vp[1], 10) || 900,
       slide: frame.closest('.slide'), iframe: null, ready: false
     };
@@ -382,6 +389,8 @@
       tell(st, { type: 'stage:maximize', on: maxed === st });
       st.sentTheme = st.sentLang = null;
       sendLook(st);
+      /* A srcdoc frame has no address hash, so the scenario travels as a message. */
+      if (st.hash) tell(st, { type: 'stage:hash', hash: st.hash });
     } else if (d.type === 'stage:maximize') {
       if (d.on === true) enterMax(st);
       else if (d.on === false) { if (maxed === st) exitMax(); }

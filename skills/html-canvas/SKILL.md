@@ -4,8 +4,8 @@ description: >-
   Builds single-file HTML documents: explainers, reference pages, architecture visualizations, light/dark and DE/EN toggles, DESIGN.md tokens. Also running models: simulations with a clock. NOT marketing pages or ops dashboards (creative-design-stack), not ecosystem maps (bridge-explorer). Trigger: "create an HTML page", "explainer", "html kit", "theme toggle", "simulate this".
 metadata:
   scope: core
-  version: 1.3.0
-  last_updated: 2026-10-24
+  version: 1.4.0
+  last_updated: 2026-11-06
 ---
 
 # html-canvas
@@ -33,6 +33,7 @@ bundle (`scripts/bundle.py`) and the theme contract
 | Reading aids: glossary popovers, contents with scroll spy, a chart shown as table, print rules | `new-page.py --blocks glossary,toc,alt-table,print` | `references/sections.md` § Reading aids |
 | Behaviour on a page: reveal, count-up, filter, scrollspy | paste the snippet | `references/interactivity.md` |
 | A deck to present | use `html-slides` | |
+| Generated images for slots (illustration, mood image) | `<img data-image-prompt="…">` slots, then `scripts/gen-images.py` plan, generate, place | `references/images.md` |
 | Send, mail, attach, download folder | `scripts/bundle.py` (Send path below) | |
 | Another skill's HTML needs the brand or the theme switch | `design-to-css.py --map/--selectors/--region` | `references/theme-contract.md` |
 | An old page with the previous language swap | migrate in place | `references/build-workflow.md` § Migrating |
@@ -128,6 +129,15 @@ from the colours behind the text and, where a gradient, an image or a sibling la
 names the DESIGN.md it checked against, and a page generated from another one gets
 a `design-source` warning.
 
+**Placeholders:** `placeholder` fails a leftover `{{TEMPLATE}}` and a text that is
+nothing but a single-brace catalog phrase (`{Main Title}`, `{Point 1}`, `{01}`, the
+html-slides slide catalog's stand-ins); braces in code, pre, kbd, samp, script and
+prose stay fine. **Style preset decks:** an html-slides deck records its preset
+(`/* deck-preset: <slug> */`); for any slug but `design` the colours of its own
+palette (its `deck-tokens` and `deck-preset-css` regions) are one `style-preset`
+warning, not `hex` errors, since such a deck is off the house brand by choice. A hex
+picked by hand anywhere else in it is still an error.
+
 **Sample text:** `new-page.py` marks every block it inserts with `data-sample`, and
 the catalog's stand-in content is a bare `…`. The gate fails both (`sample`) until
 the text is written and the attribute dropped; `new-page.py` itself runs the gate
@@ -148,6 +158,8 @@ local pages. A deck's `data-back-href` back link travels as a payload with `--pa
 without it, or with a missing target, it is a warning. Remote resources are refused unless `--allow-remote`; nothing is written
 until every reference resolves; a sha256 per source goes to stderr or `--manifest`.
 Run the gate on the bundled copy.
+A page with placed images points at `<stem>.images/`: bundle it (or `gen-images.py place --embed`) before
+the gate, which refuses sibling files (`local-ref`).
 
 ## Non-negotiables (full bar in `references/build-workflow.md`)
 
@@ -169,6 +181,7 @@ Run the gate on the bundled copy.
 | `references/sections.md` | composing `<main>`: the block catalog |
 | `scripts/verify-page.py` | the gate, for pages and decks |
 | `scripts/bundle.py` | the send copy |
+| `scripts/gen-images.py`, `references/images.md` | AI images for page or deck slots: plan, generate (Codex CLI, a configured command, or the agent's own image tool), place |
 | `scripts/design-to-css.py` | tokens, also for other consumers (`--map`, `--selectors`, `--region`) |
 | `scripts/embed-fonts.py`, `assets/fonts/` | embedding typefaces (woff2 plus OFL licences) |
 | `references/theme-contract.md` | the light/dark contract every HTML skill follows |

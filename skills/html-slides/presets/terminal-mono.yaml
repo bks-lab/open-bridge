@@ -33,7 +33,7 @@ colors:
     border: "rgba(80, 250, 123, 0.06)"
     border-bright: "rgba(80, 250, 123, 0.12)"
     text: "#c8d6e5"
-    text-dim: "#5a6a7a"
+    text-dim: "#7e8fa0"
     accent: "#50fa7b"
     accent-dim: "rgba(80, 250, 123, 0.08)"
     code-bg: "#060a10"
@@ -54,16 +54,23 @@ colors:
     border: "rgba(0, 80, 40, 0.08)"
     border-bright: "rgba(0, 80, 40, 0.16)"
     text: "#1a2332"
-    text-dim: "#5a6a7a"
-    accent: "#0d7a3e"
+    text-dim: "#576676"
+    accent: "#0c733a"
     accent-dim: "rgba(13, 122, 62, 0.08)"
     code-bg: "#1a2332"
     code-text: "#c8d6e5"
-    green: "#0d7a3e"
+    green: "#0c733a"
     green-dim: "rgba(13, 122, 62, 0.08)"
-    red: "#dc2626"
+    red: "#c42020"
     red-dim: "rgba(220, 38, 38, 0.08)"
-    amber: "#a16207"
+    amber: "#905806"
     amber-dim: "rgba(161, 98, 7, 0.08)"
     cyan: "#0369a1"
     cyan-dim: "rgba(3, 105, 161, 0.08)"
+
+css_overrides: |
+  /* The code block stays dark in both modes, so syntax colours are lifted toward its text colour. */
+  .slide__code-block .hl { color: color-mix(in srgb, var(--accent) 45%, var(--code-text)); }
+  .slide__code-block .str { color: color-mix(in srgb, var(--amber) 45%, var(--code-text)); }
+  .slide__code-block .kw { color: color-mix(in srgb, var(--cyan) 45%, var(--code-text)); }
+  .slide__code-block .cm { color: color-mix(in srgb, var(--text-dim) 30%, var(--code-text)); }

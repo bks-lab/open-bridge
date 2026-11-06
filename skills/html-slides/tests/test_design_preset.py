@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from slides_testlib import ASSETS, FIXTURES, PRESETS, REFERENCE, SKILL, slide_type_snippets
+from slides_testlib import ASSETS, FIXTURES, PRESETS, REFERENCE, SKILL, filled, slide_type_snippets
 
 CANVAS = SKILL.parent / "html-canvas" / "scripts"
 NEW_DECK = SKILL / "scripts" / "new-deck.py"
@@ -35,14 +35,19 @@ def canvas_module(name: str):
     return mod
 
 
+# Engine-internal switches and tone variables: set by the engine or a preset, not palette tokens.
+INTERNAL_VARS = {"tone", "tone-dim", "glow-at", "decor-glow", "decor-grid", "decor-fill"}
+
+
 def engine_vars() -> set[str]:
     css = (ASSETS / "slide-engine.css").read_text("utf-8")
-    return set(re.findall(r"var\(--([a-z0-9-]+)", css))
+    return set(re.findall(r"var\(--([a-z0-9-]+)", css)) - INTERNAL_VARS
 
 
 def all_types_fragment(tmp_path: Path) -> Path:
     frag = tmp_path / "all-types.html"
-    frag.write_text("\n".join(h.replace("{color}", "accent") for _, h in slide_type_snippets()), encoding="utf-8")
+    frag.write_text("\n".join(filled(h.replace("{color}", "accent")) for _, h in slide_type_snippets()),
+                    encoding="utf-8")
     return frag
 
 
@@ -109,9 +114,12 @@ def test_design_deck_declares_no_undeclared_hex(tmp_path):
 
 
 def test_a_style_preset_deck_fails_the_same_check(tmp_path):
-    """Counter-check: the hex rule bites on a hand-picked palette, so the green above means something."""
+    """Counter-check: the gate sees a hand-picked palette, so the green above means something.
+    A style preset is off brand by choice: its palette is one style-preset warning, no hex error."""
     report = verify(build(tmp_path, "--preset", "swiss-modern"))
-    assert findings(report, "hex"), "swiss-modern names hex values DESIGN.md does not declare"
+    off = findings(report, "style-preset")
+    assert len(off) == 1 and off[0]["level"] == "warning", off
+    assert findings(report, "hex") == [], findings(report, "hex")
 
 
 def test_design_deck_names_no_font_without_face(tmp_path):

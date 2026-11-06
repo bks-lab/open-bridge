@@ -28,14 +28,14 @@ colors:
     border: "rgba(0, 102, 255, 0.06)"
     border-bright: "rgba(0, 102, 255, 0.12)"
     text: "#e8eaf0"
-    text-dim: "#6b7280"
-    accent: "#0066ff"
+    text-dim: "#9096a2"
+    accent: "#4f95ff"
     accent-dim: "rgba(0, 102, 255, 0.08)"
     code-bg: "#0a0c12"
     code-text: "#e8eaf0"
     green: "#10b981"
     green-dim: "rgba(16, 185, 129, 0.1)"
-    red: "#ef4444"
+    red: "#f26a6a"
     red-dim: "rgba(239, 68, 68, 0.1)"
     amber: "#f59e0b"
     amber-dim: "rgba(245, 158, 11, 0.1)"
@@ -49,19 +49,24 @@ colors:
     border: "rgba(0, 82, 204, 0.08)"
     border-bright: "rgba(0, 82, 204, 0.16)"
     text: "#1a1a1a"
-    text-dim: "#6b7280"
+    text-dim: "#5e6471"
     accent: "#0052cc"
     accent-dim: "rgba(0, 82, 204, 0.08)"
     code-bg: "#1a1d27"
     code-text: "#e8eaf0"
-    green: "#059669"
+    green: "#04714f"
     green-dim: "rgba(5, 150, 105, 0.08)"
-    red: "#dc2626"
+    red: "#c21f1f"
     red-dim: "rgba(220, 38, 38, 0.08)"
-    amber: "#d97706"
+    amber: "#965204"
     amber-dim: "rgba(217, 119, 6, 0.08)"
-    cyan: "#0891b2"
+    cyan: "#066d86"
     cyan-dim: "rgba(8, 145, 178, 0.08)"
 
 css_overrides: |
+  /* The code block stays dark in both modes, so syntax colours are lifted toward its text colour. */
+  .slide__code-block .hl { color: color-mix(in srgb, var(--accent) 45%, var(--code-text)); }
+  .slide__code-block .str { color: color-mix(in srgb, var(--amber) 45%, var(--code-text)); }
+  .slide__code-block .kw { color: color-mix(in srgb, var(--cyan) 45%, var(--code-text)); }
+  .slide__code-block .cm { color: color-mix(in srgb, var(--text-dim) 30%, var(--code-text)); }
   .slide__display { letter-spacing: -2px; font-weight: 800; }

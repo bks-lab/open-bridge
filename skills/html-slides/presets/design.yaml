@@ -71,11 +71,12 @@ css_overrides: |
      back). Status colours stay with status dots and the words beside them. */
   :root:not(.fx) .deck:not(.fx) .slide:not(.fx) :is(.slide__display, .slide__heading) { color: var(--heading) !important; }
   :root:not(.fx) .deck:not(.fx) .slide:not(.fx) .slide__label { color: var(--accent) !important; }
-  :root:not(.fx) .deck:not(.fx) .slide:not(.fx)[style*="gradient"],
-  :root:not(.fx) .deck:not(.fx) .slide--title:not(.fx) { background-image: none !important; }
-  :root:not(.fx) .deck:not(.fx) .slide:not(.fx) .slide__bg--gradient { background: var(--bg); }
-  /* No texture: the dot grid behind a slide is decoration. */
-  :root:not(.fx) .deck:not(.fx) .slide--with-grid:not(.fx)::before { content: none; background-image: none; }
+  :root:not(.fx) .deck:not(.fx) .slide:not(.fx)[style*="gradient"] { background-image: none !important; }
+  /* One switch for every decoration the engine draws: the glow a data-tone (or the
+     title) lays behind a slide, the dot grid and the gradient backdrop. */
+  :root:not(.fx) .deck:not(.fx) .slide:not(.fx) { --decor-glow: none; --decor-grid: none; --decor-fill: var(--bg); }
+  /* So a data-tone is quiet here: the label takes the accent and the headings the
+     heading colour (rules above), and the glow is off (switch above). */
   /* Decoration only behind .fx: without it, no backdrop blur either. */
   :root:not(.fx) .deck-dots,
   :root:not(.fx) .theme-toggle,
@@ -114,6 +115,8 @@ css_overrides: |
   .deck-counter, .deck-track, .deck-hints { text-shadow: none; font-size: 12px; color: var(--text-dim); }
   .deck-hints { opacity: 1; }
   .deck-dots { background: none; }
+  /* The key help is a card with a hairline, not a floating shadow. */
+  .deck-help__card { box-shadow: none; }
 
   /* Split slides stand on one ground: two columns with a hairline between them,
      their content starting at the same height. */
