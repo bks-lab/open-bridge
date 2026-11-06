@@ -273,6 +273,8 @@ button.st-chip:hover:not(:disabled) { border-color: var(--accent-line); color: v
 .room-ws { position: relative; }
 .room-ws-acts { position: absolute; top: 3px; right: 2px; display: flex; gap: 2px; opacity: 0.75; }
 .room-ws:hover .room-ws-acts { opacity: 1; }
+/* the two buttons stand over the head's right edge: the head keeps it free, so its state word never runs under them */
+.room-ws:has(> .room-ws-acts) > .room-ws-head { padding-right: 54px; }
 .room-mini, .field-plus { width: 22px; height: 22px; display: inline-grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--on-surface-muted); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
 .room-mini:hover, .field-plus:hover { background: var(--surface-muted); color: var(--ink); }
 .room-mini.is-plus, .field-plus { color: var(--accent); font-weight: 700; }
