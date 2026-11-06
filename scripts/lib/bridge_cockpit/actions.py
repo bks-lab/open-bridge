@@ -51,6 +51,8 @@ from .actions_work import WorkVerbs
 
 #: the verbs of Work through's rounds 3 and 4, refused with flow_off before their arguments are checked
 FLOW_OFF_FIRST = frozenset({"flow_activity_summary", "flow_instruct", "flow_attach", "flow_merge"})
+#: verbs that write nothing a read mark compares: the marks' own and the questions; no absorb around them
+NO_ABSORB = frozenset({"seen_read", "seen_unread", "seen_focus", *READ_ONLY_VERBS})
 #: a folder of one record, as work_find.known_folders names it (a question to the records names them so)
 RECORD_PATH_RE = re.compile(r"^work/(?:(?:tasks|streams)|done/[0-9]{4}-[0-9]{2}|streams/[a-z0-9][a-z0-9-]{0,79}/[0-9]{4}-[0-9]{2})"
                             r"/[a-z0-9][a-z0-9-]{0,79}\Z")
@@ -486,6 +488,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         ctx.by = clean.pop("by", None)
         touched = self.touched(clean)
+        # a write of the person's own on a read point is no news to them (seen.py absorb): the files' markers before it
+        pre = self.app.seen_pre(touched) if touched and verb not in NO_ABSORB and hasattr(self.app, "seen_pre") else None
         try:
             with acting(viewer):    # the scripts of this call write the person's name, not the page's
                 if verb in READ_ONLY_VERBS:
@@ -510,6 +514,8 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
             # instruction line changes nothing
             if verb not in KEEPS_FEEDS and touched and getattr(self.app, "activity", None) is not None:
                 self.app.activity.drop(touched)
+            if pre:
+                self.app.seen_absorb(pre)
         return self.finish(ctx)
 
     @staticmethod

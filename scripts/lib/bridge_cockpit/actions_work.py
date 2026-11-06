@@ -163,11 +163,16 @@ class WorkVerbs:
             return
         self.launch(ctx, [row], "context", self.app.cfg.target)
 
-    def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None) -> None:
+    def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None, revisit: bool = False) -> None:
         """Put off until a day. An inbox item records its defer itself and keeps the sentence as a note; a task, a
         stream and any other row are only hidden here, so the decision is written where the row lives
-        (write_note), with the sentence when there is one."""
+        (write_note), with the sentence when there is one. With `revisit` (Work through's Revisit ▾ while the read
+        marks are on) nothing is hidden or put off: the point is read now and comes back unread on that day
+        (revisit_on); a person's page has no marks, so its Later stays as it was."""
         row = self.entry(key)["row"]
+        if revisit and ctx.person is None and self.app.seen_on():
+            self.revisit_on(ctx, row, until, text)
+            return
         words = self.tx["later_note"].format(until=until) + (f": {text}" if text else "")
         # every inbox item is put off, whatever its gate: hidden only, a free one would still run meanwhile
         if row.get("inbox_id"):
@@ -184,6 +189,49 @@ class WorkVerbs:
             return
         self.write_note(ctx, row, words)
         self.hide_until(ctx, row, until)
+
+    def revisit_on(self, ctx: Ctx, row: dict, until: str, text: str | None) -> None:
+        """Revisit (seen.py): read now, unread again on `until` or on something new before it. The sentence, when
+        there is one, is a note where the row lives, written first so the mark takes it in as seen; without one the
+        task or item is not touched. Undone by marking it unread again (seen_unread)"""
+        key = row["key"]
+        if text and not self.write_note(ctx, row, self.tx["revisit_note"].format(until=until) + f": {text}"):
+            return
+        self.app.seen.revisit(key, until, self.app.seen_markers([key])[key])
+        ctx.history.append({"key": key, "title": str(row["title"])[:200], "kind": "other", "did": f"revisit on {until}",
+                            "ident": key, "undo": {"verb": "seen_unread", "args": {"key": key}}, "undone_ms": None})
+        ctx.note(self.tx["revisit_set"].format(until=until, title=m.short(row["title"], 60)))
+        self.app.broadcast("seen", self.app.seen.state())
+
+    def seen_guard(self) -> None:
+        if not self.app.seen_on():
+            raise ActionError(409, "seen_off", self.tx["seen_off"], None)
+
+    def v_seen_read(self, ctx: Ctx, keys: list[str]) -> None:
+        """Points read: opened (cockpit.flow.seen.open_reads auto), Read clicked, or Mark all read. Quiet: no note, no
+        history; the mark keeps the markers each had now. A key need not be a row the model holds (a closed point
+        opened on its own reads too)"""
+        self.seen_guard()
+        self.app.seen.read(self.app.seen_markers(keys))
+        self.app.broadcast("seen", self.app.seen.state())
+
+    def v_seen_unread(self, ctx: Ctx, key: str) -> None:
+        """Mark unread (More ▾, key U), and the undo of a revisit: unread until it is opened again"""
+        self.seen_guard()
+        if self.app.seen.unread(key):
+            found = self.app.collector.resolve(key)
+            title = ((found or {}).get("row") or {}).get("title") or key.split(":", 1)[-1]
+            ctx.note(self.tx["seen_unread"].format(title=m.short(title, 60)))
+        self.app.broadcast("seen", self.app.seen.state())
+
+    def v_seen_focus(self, ctx: Ctx, key: str, on: bool) -> None:
+        """Keep in focus: a doing task in focus counts as active (cockpit.flow.seen.active_days), whatever moved"""
+        self.seen_guard()
+        if self.app.seen.focus(key, on):
+            found = self.app.collector.resolve(key)
+            title = ((found or {}).get("row") or {}).get("title") or key.split(":", 1)[-1]
+            ctx.note(self.tx["seen_focus_on" if on else "seen_focus_off"].format(title=m.short(title, 60)))
+        self.app.broadcast("seen", self.app.seen.state())
 
     def v_runs_on(self, ctx: Ctx, keys: list[str], until: str, on: str | None = None) -> None:
         """"Runs on": quiet until a day, waiting on someone or something. An inbox item is put off with what

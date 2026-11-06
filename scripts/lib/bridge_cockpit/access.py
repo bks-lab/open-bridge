@@ -64,6 +64,7 @@ OWNER_VERBS = frozenset("""
     flow_theme_rename flow_themes_run github_board github_board_default guide_read guide_settings
     guide_settings_reset hide home_tiles inbox_reopen inbox_unmute issue_check issue_done issue_review
     launch_settings launch_settings_reset organize_apply organize_propose pin quick_forget quick_handoff
+    seen_focus seen_read seen_unread
     return_analyse return_forget return_read return_task return_task_undo return_unread row_action row_undo run_seen runs_on session_link session_resume session_unlink shelve snapshot
     snapshot_list start_agent start_control tab_close tab_done tab_go_on tab_jump tab_keys tab_move tab_new tab_no
     tab_option tab_rename tab_send tab_yes task_keep task_reopen task_review task_running task_unmerge team_role
@@ -73,7 +74,7 @@ OWNER_VERBS = frozenset("""
 
 PERSON_EVENTS = frozenset({"view", "workspaces", "loading"})
 OWNER_EVENTS = frozenset({"ticker", "guide", "quick", "sessions", "agents", "relay", "acks", "triage", "quick_live",
-                          "home", "view_pages", "tour", "themes", "tabs", "relay_state", "note", "launch", "describe",
+                          "home", "view_pages", "tour", "themes", "seen", "tabs", "relay_state", "note", "launch", "describe",
                           "alert"})
 
 # the state as a person gets it: these are worked out below, the rest is the empty shape the page knows
@@ -96,6 +97,7 @@ STATE_NEUTRAL: dict[str, Any] = {
     "themes": {"enabled": False, "max_themes": 0, "themes": [], "assign": {}, "by_person": [], "suggest": {}, "at_ms": None,
                "budget_left": 0, "running": False, "last_error": None},
     "flow_ai": {"summary_left": 0, "instruct_left": 0, "instruct_running": False},
+    "seen": {"marks": {}, "focus": []},
     "rooms": {"layout": "classic", "root": None, "control": None, "bridges": []}}
 
 MODEL_FIELDS = frozenset({"seq", "collected_at", "collected_ms", "full_ms", "is_full"})
@@ -110,7 +112,7 @@ MODEL_NEUTRAL: dict[str, Any] = {
 # a date as a person gets it: what the calendar says, nothing a page of the owner hangs on it. No overlaps: they name
 # the events beside it, which may stand in a calendar that is not theirs. No figures either, they count all of them
 FLOW_KEPT = frozenset({"drop_reasons", "return_after_s"})
-FLOW_OFF: dict[str, Any] = {"prep_ahead": 0, "infer_sessions": False, **{k: {"enabled": False} for k in ("instruct", "themes", "summary", "attach", "prio")}}
+FLOW_OFF: dict[str, Any] = {"prep_ahead": 0, "infer_sessions": False, **{k: {"enabled": False} for k in ("instruct", "themes", "summary", "attach", "prio", "seen")}}
 DATE_FIELDS = frozenset({"title", "when", "id", "cal", "group"})
 DATE_NEUTRAL: dict[str, Any] = {"detail": "", "tone": None, "url": None, "task": None, "ask": False, "mark": None, "lines": [],
                                 "actions": None, "flags": None, "tags": None}

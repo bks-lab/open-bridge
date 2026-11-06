@@ -54,6 +54,7 @@ from .collector import Collector
 from .logrange import LogRange, Refused, Stale as LogStale, check as check_logrange, check_days as check_range
 from .daybook import DayBook
 from .returns import Launches
+from .seen import Markers, SeenStore
 from .work_sync import WorkSync
 from .launch import LaunchError, LaunchModel
 from .ticker import Ticker
@@ -274,6 +275,9 @@ class App:
         # hidden and settled rows also go to work/cockpit/settled/, tracked, so every machine keeps them (settled.py)
         self.store = WebStore(self.state_dir, clock, settled_dir=self.root / "work" / "cockpit" / "settled")
         self.daybook = DayBook(self.state_dir, clock)     # the start page's day by day (daybook.py)
+        # the read marks of Work through (cockpit.flow.seen) and the movement markers they compare (seen.py)
+        self.seen = SeenStore(self.state_dir, clock)
+        self.markers = Markers(self.root)
         self.launches = Launches(self.state_dir, clock)   # every start handed to a tab, for the return channel (returns.py)
         self.graph = Graph(self.root)                       # the inner room's knowledge graph (graph.py)
         self.work_sync = self.make_work_sync() if cfg.served else None
@@ -568,7 +572,7 @@ class App:
                 "prio": prio.state(self),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
                 "workspaces": self.workspaces.state(),
-                "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(),
+                "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(), "seen": self.seen.state(),
                 # the model calls of the Activity tab and the instruction line: the runs left today (activity.py)
                 "flow_ai": self.activity.flow_ai(),
                 "rooms": {"layout": self.cfg.chat_layout, "root": str(self.root), "control": self.cfg.control,
@@ -590,6 +594,34 @@ class App:
                                  "block": list(act.block(self, "files").get("block") or []),
                                  "left": self.activity.budget_left("files")},
                 **({"person": person} if person else {})}
+
+    def seen_on(self) -> bool:
+        """Whether the read marks of Work through are on: the page and its block cockpit.flow.seen"""
+        flow = getattr(self.cfg, "flow", None) or {}
+        return flow.get("enabled") is True and (flow.get("seen") or {}).get("enabled") is True
+
+    def seen_markers(self, keys: list[str]) -> dict[str, dict]:
+        """The movement markers of `keys` now: what the last model read (a run's end, an issue's change, the events of
+        a task's inbox items), the files behind them read anew (seen.py Markers)"""
+        collector = getattr(self, "collector", None)
+        last = ((collector.model or {}).get("moved") or {}) if collector else {}
+        fresh = self.markers.fresh(keys)
+        return {k: {**(last.get(k) or {}), **(fresh.get(k) or {})} for k in keys}
+
+    def seen_pre(self, keys: list[str]) -> dict[str, dict] | None:
+        """The files' markers of the read points among `keys` before a write of the person's own (or describe's);
+        None while the marks are off or none of them is read"""
+        if not self.seen_on():
+            return None
+        read = [k for k in keys if self.seen.mark(k) is not None]
+        return self.markers.fresh(read) if read else None
+
+    def seen_absorb(self, pre: dict[str, dict] | None) -> None:
+        """After that write: what it moved is no news (SeenStore.absorb); the page hears of the marks that changed"""
+        if not pre:
+            return
+        if self.seen.absorb(pre, self.markers.fresh(list(pre))):
+            self.broadcast("seen", self.seen.state())
 
     def records_held(self, res: dict) -> dict:
         """The records of the files tab, each with `held`: the words of the block list that keep it from a question

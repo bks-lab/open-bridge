@@ -846,7 +846,11 @@ class Describer:
         else:
             argv_ = actions.task_cmd("brief", item["id"], "--brief-json", json.dumps(body, ensure_ascii=False),
                                      "--basis", item["basis"], *(["--edited"] if edited else []), "--json")
+        # a brief is no news to a point the person read (seen.py absorb): the markers before the write
+        pre = self._seen_pre(item)
         run = self._call(call, f"{'inbox' if item['kind'] == 'inbox' else 'task'}.brief", item["key"], argv_, WRITE_TIMEOUT)
+        if run.ok:
+            self._seen_absorb(pre)
         if not run.ok:
             err = (run.err or "").strip().splitlines()[-1:] or ["no answer"]
             changed = "changed since" in err[0]
@@ -880,11 +884,21 @@ class Describer:
                                   json.dumps({**item["brief"], "edited": True}, ensure_ascii=False))
         else:
             argv_ = actions.task_cmd("brief", item["id"], "--mark-edited")
+        pre = self._seen_pre(item)
         run = self._call(call, "task.brief", item["key"], argv_, WRITE_TIMEOUT)
         if run.ok:
+            self._seen_absorb(pre)
             item["edited"] = True
             if item.get("brief"):
                 item["brief"] = {**item["brief"], "edited": True}
+
+    def _seen_pre(self, item: dict) -> dict | None:
+        pre = getattr(self.app, "seen_pre", None)
+        return pre([item["key"]]) if pre and isinstance(item.get("key"), str) else None
+
+    def _seen_absorb(self, pre: dict | None) -> None:
+        if pre and hasattr(self.app, "seen_absorb"):
+            self.app.seen_absorb(pre)
 
     def today(self) -> str:
         return dt.datetime.fromtimestamp(self.app.clock() / 1000).date().isoformat()
