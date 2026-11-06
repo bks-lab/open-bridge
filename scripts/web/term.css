@@ -1,22 +1,29 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * The Chat as a terminal, in both modes. `.term` takes the dark set of colors.css (design.py), so whatever stands
- * inside it, a button, a card, a field, is dark with no rule of its own here; this file only adds what makes it read
- * as a terminal: the ground, the mono type, the colours of a screen line, the prompt. No colour of its own: every
- * tint is a token mixed. The glow stays on marks and prompts, the text itself stays sharp to read for hours.
+ * The Chat as a terminal. `.term` follows the page's mode like every other part: light on a light page, dark on a
+ * dark one, so whatever stands inside it, a button, a card, a field, needs no rule of its own here. This file only
+ * adds what makes it read as a terminal: the ground, the mono type, the colours of a screen line, the prompt. No
+ * colour of its own: every tint is a token mixed. The glow stays on marks and prompts, and only in the dark: on a
+ * light ground it would blur them. The text itself stays sharp to read for hours.
  */
 
 .term {
   --font-ui: var(--font-mono);
   --font-display: var(--font-mono);
-  --term-ground: color-mix(in srgb, var(--surface) 76%, black);
-  --term-tint: color-mix(in srgb, var(--accent) 13%, transparent);
-  --term-scan: color-mix(in srgb, var(--on-surface) 2.5%, transparent);
-  --term-glow: 0 0 9px color-mix(in srgb, currentColor 55%, transparent);
+  --term-ground: var(--surface);
+  --term-tint: color-mix(in srgb, var(--accent) 9%, transparent);
+  --term-scan: color-mix(in srgb, var(--on-surface) 1.5%, transparent);
+  --term-glow: none;
   font-family: var(--font-mono);
   color: var(--on-surface);
   scrollbar-color: var(--border) transparent;
   scrollbar-width: thin;
+}
+:root.dark .term {
+  --term-ground: color-mix(in srgb, var(--surface) 76%, black);
+  --term-tint: color-mix(in srgb, var(--accent) 13%, transparent);
+  --term-scan: color-mix(in srgb, var(--on-surface) 2.5%, transparent);
+  --term-glow: 0 0 9px color-mix(in srgb, currentColor 55%, transparent);
 }
 .term ::selection { background: color-mix(in srgb, var(--accent) 38%, transparent); color: var(--ink); }
 

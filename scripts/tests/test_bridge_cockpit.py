@@ -5459,7 +5459,7 @@ def test_colours_come_from_design_md_with_a_fallback_for_every_token(tmp_path):
     assert pal["dark"]["primary"] == "#6366F1" and pal["dark"]["surface"] == "#111827"
     assert pal["light"]["warning"] == design.STATUS_DEFAULTS["light"]["warning"]       # a brand without one
     assert "--font-display: Inter," in css and "@media (prefers-color-scheme: dark)" in css
-    assert design.stylesheet(tmp_path / "nowhere").count("--primary:") == 4           # no DESIGN.md: still a page (light, .dark, media, .term)
+    assert design.stylesheet(tmp_path / "nowhere").count("--primary:") == 3           # no DESIGN.md: still a page (light, .dark, media)
     # and a readable one: text and ground part, in both modes, and no token is left without a colour
     bare = design.palette({})
     for mode in ("light", "dark"):
@@ -5467,17 +5467,17 @@ def test_colours_come_from_design_md_with_a_fallback_for_every_token(tmp_path):
     assert bare["light"]["surface"] == "#FFFFFF" and bare["dark"]["surface"] != "#FFFFFF"
 
 
-def test_the_term_scope_is_the_dark_set_in_both_modes(tmp_path):
-    # the Chat is a terminal: dark in light mode too, so every part inside it takes the dark tokens under .term
+def test_the_term_scope_follows_the_page_mode(tmp_path):
+    # the Chat reads as a terminal in its type and lines, not in its colours: light on a light page, dark on a dark
+    # one, so no dark set of its own under .term, and term.css tells the ground of each mode apart
     from lib.bridge_cockpit import design
     (tmp_path / "DESIGN.md").write_text(OPEN_BRIDGE_STYLE, encoding="utf-8")
-    fm = design.front_matter(tmp_path / "DESIGN.md")
-    css = design.colors_css(fm)
-    block = css.split(".term {", 1)[1].split("}", 1)[0]
-    assert "color-scheme: dark;" in block
-    for token, value in design.palette(fm)["dark"].items():
-        assert f"--{token}: {value};" in block, token
-    assert "--ink: var(--on-surface);" in block
+    css = design.colors_css(design.front_matter(tmp_path / "DESIGN.md"))
+    assert ".term" not in css
+    term = (ROOT / "scripts" / "web" / "term.css").read_text(encoding="utf-8")
+    light = term.split(".term {", 1)[1].split("}", 1)[0]
+    assert "black" not in light, "the light ground stays light"
+    assert ":root.dark .term {" in term and "black" in term.split(":root.dark .term {", 1)[1].split("}", 1)[0]
 
 
 def test_this_bridges_design_md_names_every_colour_itself():
