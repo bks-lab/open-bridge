@@ -60,7 +60,7 @@ def test_the_reading_aids_are_catalog_blocks():
 def test_every_script_block_names_a_catalog_block():
     names = JS_BLOCK.findall(SECTIONS_JS.read_text("utf-8"))
     catalog = re.findall(r'^## <a id="([a-z0-9-]+)"></a>', SECTIONS_MD.read_text("utf-8"), re.M)
-    assert set(names) == {"glossary", "toc", "alt-table", "print"}
+    assert set(names) == {"glossary", "knowledge", "toc", "alt-table", "print"}
     assert set(names) <= set(catalog)
     assert len(names) == len(set(names))
 

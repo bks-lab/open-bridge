@@ -101,3 +101,29 @@ def mini_bridge(tmp_path: Path, brand_primary: str = "#5A1E3C") -> Path:
     (root / "workflow" / "contexts").mkdir(parents=True)
     (root / "workflow" / "contexts" / "client.yaml").write_text("id: client\ndesign_ref: brand\n", encoding="utf-8")
     return root
+
+
+# WCAG contrast of each selector's text against the ground behind it, in the page.
+# Used by the knowledge-panel tests of html-canvas and html-slides.
+CONTRAST = r"""
+(sel) => {
+  const parse = c => { let m = c.match(/rgba?\(([^)]+)\)/);
+    if (m) { const p = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }
+    m = c.match(/color\(srgb ([^)]+)\)/);
+    if (m) { const p = m[1].split(/[ \/]+/).filter(Boolean).map(Number); return [p[0] * 255, p[1] * 255, p[2] * 255, p.length > 3 ? p[3] : 1]; }
+    return null; };
+  const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const ground = el => { const layers = [];
+    for (let e = el; e; e = e.parentElement) { const b = parse(getComputedStyle(e).backgroundColor);
+      if (b && b[3] > 0) { layers.push(b); if (b[3] >= 1) break; } }
+    let base = [255, 255, 255];
+    for (let i = layers.length - 1; i >= 0; i--) { const b = layers[i]; base = [0, 1, 2].map(k => b[k] * b[3] + base[k] * (1 - b[3])); }
+    return base; };
+  return sel.map(s => { const el = document.querySelector(s); if (!el) return [s, null];
+    const c = parse(getComputedStyle(el).color), b = ground(el), fg = [0, 1, 2].map(k => c[k] * c[3] + b[k] * (1 - c[3]));
+    const a = lum(fg), z = lum(b); return [s, (Math.max(a, z) + 0.05) / (Math.min(a, z) + 0.05)]; });
+}
+"""
+PANEL_TEXT = [".kp-kind", ".kp-type", ".kp-title", ".kp-summary", ".kp-body h3", ".kp-relv",
+              ".kp-rel [data-kp-go]", ".kp-pass blockquote", ".kp-pass cite", ".kp-foot"]

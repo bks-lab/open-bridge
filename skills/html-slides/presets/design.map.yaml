@@ -14,6 +14,16 @@
 # A role a DESIGN.md lacks is reported and left out; the deck then keeps the
 # neutral value new-deck.py writes above the generated block (derived from the
 # text and ground colours), so an older manifest still gives a legible deck.
+#
+# A role a DESIGN.md has for light but not for dark is another gap: the generator
+# would repeat the light value in the dark group, and a caption grey tuned for a
+# white page lands on a near-black one (3.7:1). The two roles the engine sets as
+# text on the plain ground, text-dim and accent, therefore name a `dark-fallback`:
+# the dark ink mixed into the dark ground, the same formula as the neutral
+# --text-dim in new-deck.py. It applies only when the manifest declares a dark
+# palette but no dark value for that role, and only when the light value fails
+# 4.5:1 on the dark ground (a brand accent that reads there keeps its colour); a
+# declared value always wins.
 
 # A deck prints the mode it shows: render-pdf.cjs --theme light|dark picks it,
 # so the generator's light-on-paper print block stays out of the deck.
@@ -33,12 +43,12 @@ vars:
   border: border
   border-bright: border-strong
   text: on-surface
-  text-dim: on-surface-muted
+  text-dim: {role: on-surface-muted, dark-fallback: {role: on-surface, mix: 72, with: surface}}
   # The engine sets labels, numbers and title type in --accent, so it takes the
   # brand's text-safe accent: `secondary` (links, eyebrows, step numbers) in the
   # current DESIGN.md shape. `accent` there is a fill and chart colour that need
   # not reach 4.5:1 as text. Its tint behind accent text is `accent-subtle`.
-  accent: secondary
+  accent: {role: secondary, dark-fallback: {role: on-surface, mix: 72, with: surface}}
   accent-dim: accent-subtle
   # The fill of a primary button and the text on it, in both modes. A brand whose
   # primary stays the same in dark mode keeps it a fill there, never text.

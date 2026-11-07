@@ -1,0 +1,12 @@
+# A consumer map whose text roles say what they become in dark mode when the
+# manifest declares a dark palette but no dark value for the role.
+vars:
+  bg: surface
+  text: on-surface
+  text-dim:
+    role: on-surface-muted
+    dark-fallback: {role: on-surface, mix: 72, with: surface}
+  accent:
+    role: secondary
+    dark-fallback: {role: on-surface, mix: 72, with: surface}
+  accent-dim: {role: secondary, mix: 15, with: surface}

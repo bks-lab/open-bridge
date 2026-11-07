@@ -1,7 +1,7 @@
 ---
 summary: "The one light/dark contract for every HTML skill: .dark on <html>, color-scheme, pre-paint, <skill>-theme, OS fallback, and how DESIGN.md reaches a consumer through design-to-css.py"
 type: reference
-last_updated: 2026-10-24
+last_updated: 2026-11-07
 related:
   - skills/html-canvas/SKILL.md
   - skills/html-canvas/assets/shell.html
@@ -114,7 +114,14 @@ vars:
 - **Roles are DESIGN.md colour keys** as written in `colors:`, not the shell's
   short names. A role resolves per mode: light from `colors:`, dark from
   `colorsDark:` or a legacy `dark-<role>` key, and from the light value when the
-  manifest has no dark one.
+  manifest has no dark palette at all. A map entry can name a
+  `dark-fallback: {role, mix, with}`: when the manifest has a dark palette but no
+  dark value for this role, the dark group derives it as
+  `color-mix(in srgb, <role> <mix>%, <with>)` from the dark values instead of
+  repeating the light colour (a light text colour on a dark ground fails
+  contrast). It is a contrast repair, not a restyle: a light value that already
+  reaches 4.5:1 on the dark ground stays. A declared dark value always wins. The deck map uses it for
+  `text-dim` and `accent`.
 - **Derived variants** are `color-mix(in srgb, <role> <mix>%, <with>)`, with
   `with` either another role or `transparent` (the default). Never an `rgba()`
   literal: it would freeze a value DESIGN.md can no longer change.
