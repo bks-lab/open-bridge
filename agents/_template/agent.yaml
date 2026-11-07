@@ -70,6 +70,19 @@ trust: "public"
 #     - id: <peer-name>
 #       token_env: AGENT_PEER_TOKEN_<PEER>
 #       tailscale_login: <login@of-the-peer>
+#
+# Derived mode: accept any peer an upstream relay vouches for, without listing it
+# here or restarting. The relay sends `X-A2A-Sender: <id>` and a bearer token equal to
+# hex HMAC-SHA256(secret, "a2a-local-bearer/v1/" + id). The secret (32 characters or
+# more) lives in the environment and belongs to the relay alone: whoever holds it can
+# speak as any id. `peers: open` takes any plain id (a-z, 0-9, -), a list restricts.
+# auth:
+#   mode: derived
+#   secret_env: AGENT_PEER_SECRET
+#   sender_header: X-A2A-Sender     # optional, the default
+#   peers: open                     # or a list: [alice, bob]
+# With access: (one folder per peer), add peer_template: "share/peers/_default" so a
+# first-time peer gets a copy of it; without it a new peer's request fails closed.
 
 # Owner approval (optional, any trust level; made for trust: peer). Every finished
 # answer is held, the task stays WORKING with a waiting message, and nothing of the

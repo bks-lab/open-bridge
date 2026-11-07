@@ -33,6 +33,12 @@ security add-generic-password -a "$USER" -s <name>-peer-alice -w "$(openssl rand
 Hand it over on a channel without history. The agent refuses to start when a token
 is missing, short, or written into agent.yaml.
 
+Behind a relay that authenticates callers itself, `auth.mode: derived` needs no token
+per caller: one shared secret in `secret_env` (32 characters or more), the caller's
+id in `X-A2A-Sender`, and a bearer token equal to hex HMAC-SHA256(secret,
+`a2a-local-bearer/v1/<id>`). `peers: open` accepts any plain id, a list restricts.
+The secret stays with the relay; whoever holds it can speak as any id.
+
 ## 4. Launch
 
 `agents/<name>/launch.sh` reads the tokens into the environment and starts the
@@ -120,6 +126,7 @@ reads only its own folder, and the owner can keep topics "on request":
 ```yaml
 access:
   peers_dir: "share/peers"      # one folder per auth.peers id; the agent will not start without them
+  peer_template: "share/peers/_default"   # optional: copied for a first-time peer (auth.mode derived, peers: open)
   grant:
     command: ["python3", "<repo>/skills/a2a/scripts/share_build.py", "grant",
               "--config", "<instance>/access.yaml", "--root", "<repo>", "--out", "<instance>/share"]

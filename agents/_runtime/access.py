@@ -4,6 +4,7 @@ Declared in ``agent.yaml``::
 
     access:
       peers_dir: "share/peers"          # inside the instance dir; one folder per peer id
+      peer_template: "share/peers/_default"   # optional; a first-time peer's folder is copied from it
       grant:                            # optional: the owner can open a topic on request
         command: ["python3", "${tools_dir}/grant.py"]   # argv, no shell
         timeout_sec: 120
@@ -13,8 +14,17 @@ Declared in ``agent.yaml``::
 ``${grounding_dir}`` placeholder in ``allowed_tools`` resolves to it, and the
 ``inline_grounding`` files are read from it fresh on every request, so a rebuilt
 folder applies at once. What a peer may see is decided by what the owner puts in
-its folder, never by the prompt. A peer without a folder does not start the agent,
-and a folder that vanished later fails the request instead of falling back.
+its folder, never by the prompt. A listed peer without a folder does not start the
+agent, and a folder that vanished later fails the request instead of falling back.
+
+**Peers nobody listed.** With ``auth.mode: derived`` and ``peers: open`` there is no
+list at startup, so the folder is ensured per request: when ``<peers_dir>/<id>/`` is
+missing and ``peer_template`` is set and present, the template is copied there
+(into a temp dir beside it, then renamed, so two first requests at once end in one
+folder). Symlinks in the template are skipped, never followed. No template and no
+folder fails the request closed; there is never a broader folder to fall back to.
+With a template, a deleted folder comes back on the next request, so deleting a
+folder does not revoke a peer: a peer list does.
 
 **Access on request.** A folder may list topics the owner keeps "on request"
 (how it says so is the instance's business, usually an index file). When the answer
@@ -59,7 +69,10 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import re
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,6 +109,7 @@ class GrantConfig:
 class AccessConfig:
     peers_dir: Path | None = None
     grant: GrantConfig | None = None
+    peer_template: Path | None = None
 
     @property
     def enabled(self) -> bool:
@@ -123,21 +137,25 @@ _SCOPED_TOOL_RE = re.compile(r"^(Read|Glob|Grep)\(/\$\{grounding_dir\}/\*\*\)$")
 
 def parse_access(
     instance: str, spec: dict | None, *, inst_dir: Path, tools_dir: str,
-    trust: str, peer_ids: list[str], allowed_tools: str, extra_read_dirs: list[str],
-    has_approval: bool,
+    trust: str, peer_ids: list[str] | tuple[str, ...] | None, allowed_tools: str,
+    extra_read_dirs: list[str], has_approval: bool,
 ) -> AccessConfig:
     """Resolve the ``access:`` block; raise on anything that would not hold.
 
     The folder is the boundary only if nothing reads past it, so the tool rules must
     be read tools confined to ``${grounding_dir}`` and nothing else, and no extra
     directory may be mounted. The cwd alone confines nothing.
+
+    ``peer_ids`` None means any vouched-for id may call (derived auth, ``peers:
+    open``): no folder is checked at startup, it is ensured per request.
     """
     if not spec:
         return AccessConfig()
     where = f"agent '{instance}': access"
     if trust != "peer":
         raise ValueError(f"{where} works only with trust: peer (one folder per known peer)")
-    bad = [peer for peer in peer_ids if not TOPIC_RE.match(str(peer))]
+    listed = list(peer_ids or [])
+    bad = [peer for peer in listed if not TOPIC_RE.match(str(peer))]
     if bad:
         raise ValueError(f"{where}: peer id {bad[0]!r} is not a plain id (a-z, 0-9, . _ -)")
     rules = [r.strip() for r in str(allowed_tools).split(",") if r.strip()]
@@ -155,13 +173,82 @@ def parse_access(
     peers_dir = (inst / spec["peers_dir"]).resolve()
     if not peers_dir.is_relative_to(inst) or peers_dir == inst:
         raise ValueError(f"{where}.peers_dir must be inside the instance dir, got {spec['peers_dir']!r}")
-    missing = [p for p in peer_ids if not (peers_dir / p).is_dir()]
+    missing = [p for p in listed if not (peers_dir / p).is_dir()]
     if missing:
         raise ValueError(f"{where}: no folder for peer(s) {', '.join(missing)} under {peers_dir}")
+    template = _parse_template(where, spec.get("peer_template"), inst, peers_dir)
     grant = _parse_grant(where, spec.get("grant"), tools_dir)
     if grant is not None and not has_approval:
         raise ValueError(f"{where}.grant needs an approval: block, someone has to say yes")
-    return AccessConfig(peers_dir=peers_dir, grant=grant)
+    return AccessConfig(peers_dir=peers_dir, grant=grant, peer_template=template)
+
+
+def _parse_template(where: str, raw, inst: Path, peers_dir: Path) -> Path | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"{where}.peer_template must name a folder inside the instance")
+    lexical = inst / raw
+    template = lexical.resolve()
+    if not template.is_relative_to(inst) or template in (inst, peers_dir):
+        raise ValueError(f"{where}.peer_template must be inside the instance dir, got {raw!r}")
+    if template.parent == peers_dir and TOPIC_RE.match(template.name):
+        # A name a peer could carry would make the template that peer's own folder.
+        raise ValueError(f"{where}.peer_template {raw!r} is named like a peer; use e.g. _default")
+    if not template.is_dir():
+        logger.warning("access: peer_template %s is missing; new peers fail until it exists", raw)
+    # Keep the path as written: a symlinked template is refused per request, never
+    # silently replaced by its target.
+    return Path(os.path.abspath(lexical))
+
+
+def _skip_links_and_specials(directory: str, names: list[str]) -> list[str]:
+    """copytree ignore hook: copy regular files and real folders only."""
+    skipped = []
+    for name in names:
+        path = os.path.join(directory, name)
+        if os.path.islink(path) or not (os.path.isfile(path) or os.path.isdir(path)):
+            skipped.append(name)
+    return skipped
+
+
+def ensure_peer_folder(peers_dir: Path, peer: str, template: Path | None) -> Path | None:
+    """Return ``<peers_dir>/<peer>``, copying it from ``template`` when missing.
+
+    Never raises; None means fail closed (bad id, no template, a copy that broke).
+    The copy goes to a temp dir beside the target and is renamed into place, so a
+    concurrent first request either wins the rename or finds the winner's folder.
+    """
+    if not peer or not TOPIC_RE.match(peer):
+        return None
+    peers_dir = Path(peers_dir)
+    folder = peers_dir / peer
+    if os.path.lexists(folder):
+        return folder.resolve() if folder.is_dir() else None
+    if template is None:
+        return None
+    template = Path(template)
+    if template.is_symlink() or not template.is_dir():
+        logger.warning("access: no usable peer_template, the request fails closed")
+        return None
+    try:
+        staging = Path(tempfile.mkdtemp(prefix=f".new-{peer}-", dir=peers_dir))
+    except OSError:
+        logger.exception("access: cannot stage a folder for a new peer")
+        return None
+    try:
+        tree = staging / "tree"
+        shutil.copytree(template, tree, symlinks=False, ignore=_skip_links_and_specials)
+        try:
+            os.rename(tree, folder)
+            logger.info("access: folder for new peer %s copied from the template", peer)
+        except OSError:
+            pass  # another first request won; its folder is checked below
+    except OSError:
+        logger.exception("access: copying the template for %s failed", peer)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return folder.resolve() if folder.is_dir() and not folder.is_symlink() else None
 
 
 def _parse_grant(where: str, spec, tools_dir: str) -> GrantConfig | None:
@@ -248,9 +335,13 @@ class Scopes:
             return False
 
     def for_peer(self, peer: str | None) -> RunScope | None:
-        """The peer's own folder, or None when there is none (fail closed)."""
+        """The peer's own folder, or None when there is none (fail closed).
+
+        A missing folder is copied from ``peer_template`` first, when one is set."""
         if not peer or self._cfg.peers_dir is None or not TOPIC_RE.match(peer):
             return None
+        if self._cfg.peer_template is not None:
+            ensure_peer_folder(self._cfg.peers_dir, peer, self._cfg.peer_template)
         folder = (self._cfg.peers_dir / peer).resolve()
         if folder.parent != self._cfg.peers_dir or not folder.is_dir():
             return None
