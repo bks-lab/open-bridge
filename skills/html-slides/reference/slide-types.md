@@ -321,7 +321,9 @@ A deck built with `--blocks kpi-row` gets the same numbers on the metric cards w
 
 ### 14. Quote
 One statement in large light type (the body family, weight 300) behind an accent bar, its
-source below. Keep it to two or three lines.
+source below. Keep it to two or three lines. With a label and heading above it (a longer
+statement that is the slide's content, not its headline), the quote takes body-sized light
+type in the dimmed text colour, with room below the heading; bullets may follow it.
 
 ```html
 <section class="slide slide--quote">
