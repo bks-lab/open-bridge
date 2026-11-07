@@ -2043,6 +2043,16 @@ def log_row(text: str, now: dt.datetime, row: str, marker: str, block: str) -> s
     return "\n".join(lines) + "\n"
 
 
+def filed_summary(section_title: str, item: dict) -> str:
+    """The title of an inbox item filed from a section row: the section, the row's own words and its state.
+    An issue or PR id stays (a person can open it); any other id is plumbing and stays out (07.11.2026)."""
+    rid = str(item.get("id") or "")
+    ref = rid if re.match(r"^[\w.-]+/[\w.-]+#\d+$", rid) else ""
+    label = item.get("raw_state") or item.get("state") or ""
+    text = " ".join(x for x in (ref, str(item.get("title") or "").strip()) if x) or rid
+    return f"{section_title}: {text}" + (f" ({label})" if label else "")
+
+
 def housekeep(root: Path, now: dt.datetime, *, summary: str, profile_id: str, run=None,
               weekday: str | None = None) -> list:
     """The briefing's own bookkeeping, done by the engine so a run cannot skip it:
@@ -2121,9 +2131,9 @@ def file_to_inbox(box, profile: dict, result: dict) -> tuple:
             key = prefix + item["id"]
             wanted.add(key)
             label = item.get("raw_state") or item.get("state") or ""
-            summary = f"{entry['title']}: {item['id']} {item.get('title') or ''}".strip()
+            summary = filed_summary(entry["title"], item)
             existing = [i for i in box.items() if i.key == key and i.state not in ("done",)]
-            box.add(source=f"briefing/{pid}", kind="finding", summary=summary + (f" ({label})" if label else ""),
+            box.add(source=f"briefing/{pid}", kind="finding", summary=summary,
                     detail=item.get("url"), urgency=rule.get("urgency", "today"), gate=rule.get("gate", "your-yes"),
                     key=key, closer="reporter")      # this function closes it when the row is gone
             if not existing:

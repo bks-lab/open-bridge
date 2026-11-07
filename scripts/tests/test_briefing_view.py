@@ -881,8 +881,8 @@ def test_report_why_has_no_internal_ids_and_links_issue_refs():
           "url": "https://github.com/acme/app/pull/7"}
     text = bv.draw(_report(None, sections, sec("up", "command", [up]), sec("gh", "tracker", [pr])))
     assert "upstream:acme" not in text
-    assert "**Overlay acme: sync due** (drift)" in text
-    assert "**Fix it** ([acme/app#7](https://github.com/acme/app/pull/7) · your PR, open 8 days)" in text
+    assert "**Overlay acme: sync due**" in text and "drift" not in text    # a one-word category is no fact
+    assert "**Fix it**  \n   [acme/app#7](https://github.com/acme/app/pull/7) · your PR, open 8 days" in text
 
 
 def test_report_bucket_shows_a_mix_of_sources_not_the_first_one_only():
@@ -1320,3 +1320,41 @@ def test_a_report_only_you_can_act_on_stays_yours():
                       gate="only-you", due="2026-12-03")
     v = bv.build(result(sec("inbox", "inbox", [item])), profile(view={"style": "triage"}, sections=[{"kind": "inbox"}]))
     assert [b["id"] for b in v["buckets"] if b["items"]] == ["plan"]
+
+
+def test_report_puts_a_rows_facts_on_a_line_of_their_own():
+    # a title followed by a parenthesis of six facts read as one long sentence (07.11.)
+    item = inbox_item("i1", "Answer the client", due="2026-10-05")
+    text = bv.draw(_report(None, [{"kind": "inbox"}], sec("inbox", "inbox", [item])))
+    lines = text.splitlines()
+    i = next(n for n, l in enumerate(lines) if l.startswith("1. "))
+    assert lines[i] == "1. **Answer the client**  "
+    assert lines[i + 1].startswith("   ") and "due today" in lines[i + 1]
+
+
+def test_a_row_names_one_date_not_three():
+    item = inbox_item("i1", "Chase the vendor", urgency="later", due="2026-10-06", state="deferred",
+                      until="2026-10-06", waiting_on="Vendor")
+    v = _report(None, [{"kind": "inbox"}], sec("inbox", "inbox", [item]))
+    why = next(r["why"] for b in v["buckets"] for r in b["items"])
+    text = bv._why({**next(r for b in v["buckets"] for r in b["items"]), "why": why + ["look again 07.10"]},
+                   v["labels"])
+    assert "due tomorrow" in text and "back on" not in text and "look again" not in text
+
+
+def test_a_row_in_do_does_not_say_only_you_again():
+    item = inbox_item("i1", "Sign the contract", gate="only-you")
+    text = bv.draw(_report({"report": {"top": 0 + 1}}, [{"kind": "inbox"}],
+                           sec("inbox", "inbox", [inbox_item("i0", "First"), item])))
+    row = next(l for n, l in enumerate(text.splitlines()) if "Sign the contract" in l)
+    following = text.splitlines()[text.splitlines().index(row) + 1] if row.endswith("  ") else ""
+    assert "only you" not in row and "only you" not in following
+
+
+def test_a_one_word_category_is_no_fact_line():
+    # "Warnung", "Bewerbung" stood alone under a row: a producer's category, nothing to read (07.11.)
+    sections = [{"kind": "command", "id": "apps", "argv": ["x"]}]
+    rows = [_ritem(1, "Chase the agency, 26 days without an answer", raw_state="application"),
+            _ritem(2, "Overlay acme: sync due", raw_state="2 commits behind")]
+    text = bv.draw(_report(None, sections, _rsec("apps", "Apps", rows)))
+    assert "application" not in text and "2 commits behind" in text

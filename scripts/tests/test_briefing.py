@@ -1809,3 +1809,11 @@ def test_an_inbox_section_marks_an_item_that_waits_for_a_condition(tmp_path):
     by = {i["id"]: i for i in sec["items"]}
     assert by[waits]["state"] == "waiting" and by[waits]["waits_for"] is True
     assert by[plain]["state"] == "waiting" and not by[plain].get("waits_for")
+
+
+def test_a_filed_row_reads_as_its_title_not_its_id():
+    # 07.11.2026: "Systemproben: memory/no-unreachable-facts Memory-Fakt ohne Verweis" led with an internal id.
+    probe = {"id": "memory/no-unreachable-facts", "title": "A fact nobody links to", "raw_state": "warning"}
+    assert bf.filed_summary("Systems", probe) == "Systems: A fact nobody links to (warning)"
+    issue = {"id": "acme/site#7", "title": "Write the onboarding page", "state": "blocked"}
+    assert bf.filed_summary("GitHub", issue) == "GitHub: acme/site#7 Write the onboarding page (blocked)"
