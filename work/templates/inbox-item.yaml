@@ -18,6 +18,8 @@ key: pr-contoso-portal-70            # optional: a repeated finding with this ke
 action:                              # optional: what `run` executes once released (no shell)
   argv: [gh, pr, merge, "70", -R, contoso/portal]
   label: Merge PR 70
+actions: [approve, reject]           # optional: the buttons a notifier shows, in order; [] = none, absent = unknown
+# expires_at: "2026-10-04T10:30:00+02:00"   # optional: when it stops mattering (shown, changes no state)
 closes_when:                         # optional: probe against the live source, evaluated by `check`
   gh_pr: contoso/portal#70
   state: merged

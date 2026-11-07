@@ -110,6 +110,9 @@ MUTE_SOURCE_DAYS = 30
 MUTES_DIR = "_mutes"
 MUTE_ACTOR = "mute"
 ACTION_KEYS = {"argv", "label"}
+#: What a person may do with an item, in display order (`actions:`), so a notifier shows exactly these
+#: buttons. `[]` is "nothing to do", no field is "unknown" (a notifier keeps guessing from the gate).
+PERSON_ACTIONS = ("approve", "reject", "defer", "drop", "close")
 RUN_TIMEOUT_SEC = 600
 PROBE_TIMEOUT_SEC = 30
 OUTPUT_TAIL = 400
@@ -310,7 +313,7 @@ class Item:
             set_to = [e.data.get("brief") for e in self.events if e.verb == "describe"]
             return validate_brief(set_to[-1])[0] if set_to and set_to[-1] is not None else None
         if key in ("kind", "gate", "task", "source", "created", "key",
-                   "action", "closes_when", "detail", "due", "closer"):
+                   "action", "closes_when", "detail", "due", "closer", "actions", "expires_at"):
             return self.data.get("from" if key == "source" else key)
         raise AttributeError(key)
 
@@ -502,6 +505,27 @@ def _check_action(action) -> None:
         raise ValueError("action.argv must be a non-empty list of strings (no shell)")
 
 
+def _check_actions(actions) -> None:
+    """`actions`: a list of unique PERSON_ACTIONS; None means the field is absent."""
+    if actions is None:
+        return
+    if (not isinstance(actions, list) or not all(isinstance(a, str) and a in PERSON_ACTIONS for a in actions)
+            or len(set(actions)) != len(actions)):
+        raise ValueError(f"actions must be a list of unique verbs from {PERSON_ACTIONS}, got {actions!r}")
+
+
+def _check_expires_at(value) -> None:
+    """`expires_at`: an ISO 8601 timestamp with a time-zone offset; None means absent."""
+    if value is None:
+        return
+    try:
+        parsed = dt.datetime.fromisoformat(value) if isinstance(value, str) and "T" in value else None
+    except ValueError:
+        parsed = None
+    if parsed is None or parsed.tzinfo is None:
+        raise ValueError(f"expires_at must be an ISO 8601 timestamp with an offset, got {value!r}")
+
+
 def _dump(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -623,7 +647,8 @@ class Inbox:
             gate: str = "your-yes", urgency: str = "today", detail: str | None = None,
             action: dict | None = None, closes_when: dict | None = None, key: str | None = None,
             due: str | None = None, closer: str | None = None, area: str | None = None,
-            waits_for: dict | None = None) -> str:
+            waits_for: dict | None = None, actions: list | None = None,
+            expires_at: str | None = None) -> str:
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {KINDS}")
         if gate not in GATES:
@@ -639,6 +664,8 @@ class Inbox:
         if closer is not None and closer not in CLOSERS:
             raise ValueError(f"closer must be one of {CLOSERS}")
         _check_action(action)
+        _check_actions(actions)
+        _check_expires_at(expires_at)
         if due is not None:
             _parse_when(due)            # raises ValueError on a date nobody can read
         self.last_new = None
@@ -677,6 +704,10 @@ class Inbox:
                             ("area", str(area).strip() if area else None)):
             if value:
                 data[name] = value
+        if actions is not None:
+            data["actions"] = list(actions)     # [] is kept: "nothing to do" is not "unknown"
+        if expires_at:
+            data["expires_at"] = expires_at
         _dump(self.root / item_id / "item.yaml", data)
         (self.root / item_id / "events").mkdir(exist_ok=True)
         rule = self.muted_by(source, kind, key) if urgency != "now" else None
@@ -1015,10 +1046,12 @@ class Inbox:
             for name, allowed in (("kind", KINDS), ("gate", GATES), ("urgency", URGENCIES)):
                 if data.get(name) and data[name] not in allowed:
                     problems.append(f"{where}: {name} {data[name]!r} not in {allowed}")
-            try:
-                _check_action(data.get("action"))
-            except ValueError as exc:
-                problems.append(f"{where}: {exc}")
+            for check, name in ((_check_action, "action"), (_check_actions, "actions"),
+                                (_check_expires_at, "expires_at")):
+                try:
+                    check(data.get(name))
+                except ValueError as exc:
+                    problems.append(f"{where}: {exc}")
             for path in sorted((item_dir / "events").glob("*.yaml")):
                 try:
                     event = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -1061,6 +1094,12 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--detail")
     a.add_argument("--key", help="dedup key: a watcher that fires again adds no second item")
     a.add_argument("--action-json")
+    acts = a.add_mutually_exclusive_group()
+    acts.add_argument("--action", dest="actions", action="append", choices=PERSON_ACTIONS,
+                      help="a verb a person may take on it, repeatable, in display order (what a notifier offers)")
+    acts.add_argument("--no-actions", dest="actions", action="store_const", const=[],
+                      help="nothing to do for a person: writes `actions: []`, a notifier shows no buttons")
+    a.add_argument("--expires-at", help="ISO 8601 timestamp with offset: when the item stops mattering")
     a.add_argument("--closes-when-json")
     a.add_argument("--waits-for-json", help="a probe: the item waits (asks nobody) until it holds; check opens it")
     a.add_argument("--closer", choices=CLOSERS,
@@ -1283,7 +1322,8 @@ def main(argv=None) -> int:
             print(box.add(source=args.source, kind=args.kind, summary=args.summary, task=args.task,
                           gate=args.gate, urgency=args.urgency, detail=args.detail, key=args.key, due=args.due,
                           action=_json_arg(args.action_json), closes_when=_json_arg(args.closes_when_json),
-                          closer=args.closer, area=args.area, waits_for=_json_arg(args.waits_for_json)), flush=True)
+                          closer=args.closer, area=args.area, waits_for=_json_arg(args.waits_for_json),
+                          actions=args.actions, expires_at=args.expires_at), flush=True)
             if box.last_new and not args.task and not args.area and _settings(args.root).get("place_on_add") is True:
                 _place_later(args.root, box.last_new)
         elif args.cmd == "list":

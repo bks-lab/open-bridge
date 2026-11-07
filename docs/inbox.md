@@ -177,6 +177,27 @@ already filed (a `wait` event; the last one wins, `ready` ends it). Its
 `closes_when` still closes it while it waits, and `only-you` never runs a
 `command` probe here either.
 
+## What a person can do (`actions`, `expires_at`)
+
+A notifier (a phone bot, the cockpit) shows buttons on an item. Derived from the
+gate alone they misfire: "tomorrow" on an answer that expires in an hour, no
+"approve" where one is needed. The filer knows better and says so:
+
+- `actions`: the verbs a person may take, in display order, each one of
+  `approve`, `reject`, `defer`, `drop`, `close`. A notifier shows exactly these.
+  `actions: []` means nothing to do: show the item, no buttons. **No field means
+  unknown**: the notifier keeps its old behaviour and derives buttons from the
+  gate. A list with an unknown or repeated verb makes the item invalid.
+- `expires_at`: an ISO 8601 timestamp with an offset, when the item stops
+  mattering. A notifier shows it ("valid until 14:30"). It changes no state by
+  itself; whatever times out closes or drops the item as before.
+
+The filer sets both at `add`: `--action approve --action reject` (repeatable),
+`--no-actions` for `[]`, `--expires-at 2026-10-04T14:30:00+02:00`.
+`scripts/inbox-approve.py` files a held answer with `[approve, reject]` and
+`expires_at` at the end of its timeout. `actions` is not `action`, the command
+`run` executes once released.
+
 ## Every item needs a way out (`closer`)
 
 An item without a probe stays open until somebody remembers it. `closer` says who
@@ -368,7 +389,8 @@ first.
 
 [`agents/_runtime/approval.py`](../agents/_runtime/approval.py) holds an agent's
 outbound answer until a person approves it. An approver command can file the
-held answer as an inbox item (kind `draft`, gate `only-you`) so it shows up where
+held answer as an inbox item (kind `draft`, gate `only-you`, `actions` approve and
+reject, `expires_at` when the approval times out) so it shows up where
 everything else waits, and the person's `approve --text` releases an edited
 version. That bridge is the script `scripts/inbox-approve.py`, written separately
 from this model.
