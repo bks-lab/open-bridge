@@ -149,8 +149,21 @@ CARDS = """
 """
 
 
+QUOTE_HEADED = """
+<section class="slide slide--quote" id="quote-headed">
+  <p class="slide__label reveal">Mandate</p>
+  <h2 class="slide__heading reveal">The assignment in one sentence</h2>
+  <blockquote class="slide__quote reveal"><p>The goal is to assess the cyber risks of the named areas continuously,
+    to rate them and to recommend prioritised measures. This needs access to contacts, documents and systems.</p></blockquote>
+  <div class="slide__arc reveal" aria-hidden="true"></div>
+  <ul class="slide__bullets"><li class="reveal">Sponsor: the management board</li><li class="reveal">Contractor: the consortium</li></ul>
+</section>
+"""
+
+
 def all_forms() -> str:
-    return "\n".join([media(sid="m-right"), media("left", "1/3", sid="m-left"), STATS, QUOTE, DECISION, AGENDA, CARDS])
+    return "\n".join([media(sid="m-right"), media("left", "1/3", sid="m-left"), STATS, QUOTE, QUOTE_HEADED, DECISION,
+                      AGENDA, CARDS])
 
 
 def rect(page, sel: str) -> dict:
@@ -484,6 +497,18 @@ def test_quote_is_large_light_type_with_an_accent_bar(style_deck):
     assert look["size"] >= 32 and look["weight"] <= 400, look
     bar = style_deck.evaluate(LOOK, "#quote .slide__quote")
     assert bar["left"] == style_deck.evaluate(RESOLVE, "accent") and bar["leftw"] >= 2, bar
+
+
+@pytest.mark.parametrize("fixture", ["style_deck", "design_deck"])
+def test_a_quote_under_a_heading_is_body_type_below_the_heading_with_room(request, fixture):
+    page = request.getfixturevalue(fixture)
+    go(page, "quote-headed")
+    head = page.evaluate(LOOK, "#quote-headed .slide__heading")
+    quote = page.evaluate(LOOK, "#quote-headed .slide__quote p")
+    assert 18 <= quote["size"] <= 0.72 * head["size"], (quote["size"], head["size"])
+    assert quote["color"] == page.evaluate(RESOLVE, "text-dim"), quote
+    gap = rect(page, "#quote-headed .slide__quote")["top"] - rect(page, "#quote-headed .slide__heading")["bottom"]
+    assert gap >= 20, gap
 
 
 def test_quote_bar_is_a_hairline_under_the_design_preset(design_deck):
