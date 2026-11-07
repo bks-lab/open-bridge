@@ -129,7 +129,7 @@ def corpus_files(dirs: list[Path]) -> list[Path]:
 
 
 def is_acronym(name: str) -> bool:
-    """A name without a lower-case letter (IT, NIS2, ISO/IEC 27001) matches only as written;
+    """A name without a lower-case letter (IT, HTTP2, ISO/IEC 27001) matches only as written;
     any other name matches in any case, so "Latency" finds "latency" mid-sentence."""
     return any(ch.isalpha() for ch in name) and not any(ch.islower() for ch in name)
 
