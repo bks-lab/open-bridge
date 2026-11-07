@@ -234,3 +234,40 @@ def test_a_rule_travels_with_the_decision():
 def test_an_unusable_rule_fails_the_whole_decision_closed(rule):
     body = f"import json; print(json.dumps({{'decision':'approve','rule':{rule}}}))"
     assert _run(CommandApprover(_program(body))).verdict == "error"
+
+
+class _FailingRunner(_FakeRunner):
+    """The runner's own failure text instead of an answer: the turn never produced one."""
+
+    FAILURE = "The agent is briefly overloaded. Please try again in a moment."
+
+    @property
+    def failure_messages(self):
+        return frozenset({self.FAILURE})
+
+    async def __call__(self, prompt, *, context_id=None, resume_session_id=None):
+        return self.FAILURE
+
+    async def stream(self, prompt, *, context_id=None, resume_session_id=None):
+        yield {"kind": "answer", "text": self.FAILURE}
+
+
+def test_a_failed_turn_is_never_put_to_the_owner(monkeypatch):
+    # Seen 07.11.2026: the model did not start, the runtime's "briefly overloaded" text
+    # went to the owner as a draft answer, and releasing it would have sent the error.
+    monkeypatch.setattr(server_module, "SubprocessClaudeRunner", _FailingRunner)
+    monkeypatch.setattr(server_module, "CommandApprover", _FakeApprover)
+    _FakeApprover.decision = Decision("approve")
+    _FakeApprover.hold = 0.0
+    _FakeApprover.requests = []
+    with TestClient(build_app(_cfg())) as c:
+        task = _final(c, _send(c)["id"])
+    assert _FakeApprover.requests == []
+    assert _FailingRunner.FAILURE in _texts(task)
+
+
+def test_the_runner_names_its_failure_texts():
+    from _runtime.runner import SubprocessClaudeRunner
+    r = SubprocessClaudeRunner(binary="claude", model="m", system_prompt="", working_dir=".",
+                               timeout_message="t", empty_message="e", spawn_error_message="s")
+    assert r.failure_messages == frozenset({"t", "e", "s"})

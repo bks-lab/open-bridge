@@ -825,7 +825,7 @@ def test_report_states_the_situation_in_one_line_by_exception():
                            _rsec("upstream", "Upstream", []),
                            _rsec("work", "Work", [_ritem(2, "Write the spec")])))
     lage = next(l for l in text.splitlines() if l.startswith("**Status:**"))
-    assert "✗ Pipeline (timeout)" in lage and "⚠ Systems (1)" in lage and "✓ Upstream" in lage
+    assert "✗ Pipeline (timeout)" in lage and "⚠ Systems (1 → 2)" in lage and "✓ Upstream" in lage   # 2: its row
     assert "Work" not in lage and "Inbox" not in lage        # inputs, not health: their rows speak
     assert "| Area |" not in text
 
@@ -1217,3 +1217,98 @@ def test_a_blocked_task_folds_into_its_inbox_line_with_why_it_waits():
     rows = _rows_of(bv.build(r, profile(view={"style": "triage"})))
     assert [x["title"] for x in rows] == ["Answer the vendor"]
     assert "vendor test run" in rows[0]["why"] and not any(w.startswith("next:") for w in rows[0]["why"])
+
+
+# ---------------------------------------------------------------- a report a person can read (07.11.2026)
+# The morning report of 07.11. was read back and failed: a bucket head counted the rows
+# already shown under First, dated decisions sat behind "+38 more", the status line warned
+# about rows nobody could see, "new" stood on every row, steps broke off mid-clause, the
+# board inventory filled Plan, and on a Saturday it proposed a working day.
+
+def _numbered(text):
+    return {int(m[1]): m[2] for m in re.finditer(r"^(\d+)\. (.*)$", text, re.M)}
+
+
+def test_a_bucket_head_counts_only_the_rows_not_already_first():
+    items = [inbox_item(f"i{n}", f"Thing {n}") for n in range(5)]
+    text = bv.draw(_report({"report": {"top": 3, "per_bucket": 5}}, [{"kind": "inbox"}], sec("inbox", "inbox", items)))
+    assert "### Do (you, today) · 2" in text
+
+
+def test_a_dated_row_is_never_hidden_behind_undated_ones():
+    sections = [{"kind": "inbox"}, {"kind": "tasks"}]
+    # round robin between sources gave the inbox three of five lines; its fourth and fifth were the deadlines
+    tasks = [task_item(f"t{n}", f"Task {n}", nxt={"what": f"step {n}"}) for n in range(6)]
+    dated = [inbox_item(f"d{n}", f"Deadline {n}", urgency="later", due=f"2026-10-{20 + n}") for n in range(4)]
+    text = bv.draw(_report({"report": {"top": 1, "per_bucket": 4}}, sections,
+                           sec("inbox", "inbox", [inbox_item("i0", "Now", urgency="now")] + dated),
+                           sec("tasks", "tasks", tasks)))
+    assert all(f"Deadline {n}" in text for n in range(4))
+
+
+def test_the_status_line_points_at_the_rows_it_warns_about():
+    many = [_ritem(n, f"Plan item {n}") for n in range(9)]
+    text = bv.draw(_report({"report": {"top": 1, "per_bucket": 2}}, HEALTH,
+                           sec("inbox", "inbox", [inbox_item("i1", "Answer the client")]),
+                           _rsec("work", "Work", many),
+                           _rsec("upstream", "Upstream", [_ritem(99, "Overlay acme: sync due")])))
+    rows = _numbered(text)
+    n = next(k for k, v in rows.items() if "Overlay acme" in v)
+    lage = next(l for l in text.splitlines() if l.startswith("**Status:**"))
+    assert f"⚠ Upstream (1 → {n})" in lage
+
+
+def test_new_is_said_once_when_most_rows_are_new():
+    items = [inbox_item(f"i{n}", f"Thing {n}", new=True) for n in range(4)]
+    text = bv.draw(bv.build(result(sec("inbox", "inbox", items), previous_at="2026-10-01T08:00"),
+                            profile(view={"style": "report"}, sections=[{"kind": "inbox"}])))
+    assert not any(l.rstrip(")").endswith("new") for l in _numbered(text).values())
+    assert "since 01.10 08:00: 4 new" in text
+
+
+def test_a_long_step_is_cut_at_a_clause_not_in_its_middle():
+    step = "Watch the fix for a week in trial (until 13.11.), then Alice decides whether it stays or goes back"
+    assert bv._short(step, 80) == "Watch the fix for a week in trial (until 13.11.)…"
+
+
+def test_a_collapsed_section_is_counted_not_listed():
+    sections = [{"kind": "inbox"}, {"kind": "tracker", "id": "gh", "provider": "github", "title": "GitHub"}]
+    cards = [{"id": f"acme/app#{n}", "title": f"Card {n}", "state": "ready"} for n in range(7)]
+    text = bv.draw(_report({"report": {"collapse": ["gh"]}}, sections,
+                           sec("inbox", "inbox", [inbox_item("i1", "Answer the client")]),
+                           sec("gh", "tracker", cards, title="GitHub")))
+    assert "Card " not in text and "GitHub 7" in text
+    assert bf.profile_problems(profile(view={"style": "report", "report": {"collapse": ["gh"]}}), "morning") == []
+    assert any("collapse" in m for m in bf.profile_problems(profile(view={"report": {"collapse": "gh"}}), "morning"))
+
+
+def test_an_off_day_shows_what_is_due_and_counts_the_rest():
+    # NOW is a Monday; a profile that keeps Mondays free sees only the dated and the urgent.
+    sections = [{"kind": "inbox"}, {"kind": "tasks"}, {"kind": "workplace"}]
+    tasks = [task_item(f"t{n}", f"Task {n}", nxt={"what": f"step {n}"}) for n in range(4)]
+    tabs = [{"id": "t0", "title": "t0", "state": "new"}]
+    v = {"off_days": {"days": ["mon"]}}
+    text = bv.draw(_report(v, sections,
+                           sec("inbox", "inbox", [inbox_item("i1", "Due soon", urgency="later", due="2026-10-20")]),
+                           sec("tasks", "tasks", tasks), sec("workplace", "workplace", tabs)))
+    assert "Due soon" in text and "Task 1" not in text
+    assert "Off today: 4 more wait for the next working day" in text
+    assert "Tabs:" not in text
+    assert bf.profile_problems(profile(view={"style": "report", "off_days": {"days": ["sat", "sun"]}}), "morning") == []
+    assert any("off_days" in m for m in bf.profile_problems(profile(view={"off_days": {"days": ["someday"]}}), "morning"))
+
+
+def test_a_finding_that_can_wait_is_the_bridges_to_look_at_first():
+    later = inbox_item("i1", "Two jobs missing from the nightly report", urgency="later", kind="finding")
+    today = inbox_item("i2", "Your child wrote something you should know", urgency="today", kind="finding")
+    v = bv.build(result(sec("inbox", "inbox", [later, today])), profile(view={"style": "triage"}, sections=[{"kind": "inbox"}]))
+    where = {r["title"]: b["id"] for b in v["buckets"] for r in b["items"]}
+    assert where["Two jobs missing from the nightly report"] == "delegate"
+    assert where["Your child wrote something you should know"] == "do"
+
+
+def test_the_workplace_line_adds_up():
+    tabs = [{"id": "a", "title": "a", "state": "new"}, {"id": "b", "title": "b", "state": "resume"},
+            {"id": "c", "title": "c", "state": "open"}]
+    v = bv.build(result(sec("workplace", "workplace", tabs)), profile(view={"style": "triage"}, sections=[{"kind": "workplace"}]))
+    assert v["workplace"] == "Tabs: 3 proposed (1 new, 1 to resume, 1 already open). Open them?"

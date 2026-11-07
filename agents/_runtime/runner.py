@@ -200,6 +200,14 @@ class SubprocessClaudeRunner:
         self._empty_message = empty_message
         self._spawn_error_message = spawn_error_message
 
+    @property
+    def failure_messages(self) -> frozenset[str]:
+        """The texts returned in place of an answer when the turn failed (timeout, no
+        output, no process). They are not the model's words, so the executor never puts
+        them to the owner for release."""
+        return frozenset(m for m in (self._timeout_message, self._empty_message,
+                                     self._spawn_error_message) if m)
+
     def _build_cmd(
         self, prompt: str, *, stream: bool, resume_session_id: str | None = None,
         scope=None,

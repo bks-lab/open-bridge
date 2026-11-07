@@ -463,7 +463,9 @@ class ClaudeAgentExecutor(AgentExecutor):
             if result is None:
                 return
             answer, notice = result
-        elif held:
+        elif held and answer not in getattr(self._runner, "failure_messages", ()):
+            # A failed turn has no answer to release: its fixed error text goes out as
+            # it is, never as a draft the owner might send on (seen 07.11.2026).
             answer = await self._await_approval(
                 updater, context, cid, user_text, answer, peer=peer, slot_key=slot_key
             )

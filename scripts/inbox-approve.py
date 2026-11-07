@@ -73,6 +73,16 @@ def decision_of(item) -> dict | None:
     return None
 
 
+def _clip(text: str, limit: int) -> str:
+    """At most ``limit`` characters, cut between words: a question cut inside a word
+    reads as a typo in the briefing (07.11.2026)."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    head = text[:limit + 1].rsplit(" ", 1)[0].rstrip(" ,;:")
+    return (head or text[:limit]) + "…"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="inbox-approve.py", description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--root", type=Path, default=ROOT)
@@ -101,7 +111,7 @@ def main(argv=None) -> int:
     # must never meet the first answer's yes.
     item_id = box.add(
         source=f"agent-approval/{peer}", kind="draft", gate="only-you", urgency="now",
-        summary=f"Answer to {peer} waits for your release: {str(request.get('question') or '')[:80]}",
+        summary=f"Answer to {peer} waits for your release: {_clip(str(request.get('question') or ''), 80)}",
         detail=f"Question:\n{request.get('question') or ''}\n\nDrafted answer:\n{answer}",
     )
     item_path = f"work/inbox/{item_id}"
