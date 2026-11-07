@@ -257,6 +257,39 @@ def test_browser_skips_decoration_marked_aria_hidden(browser, tmp_path):
     assert "contrast" in rules(data, "error"), "the same text without aria-hidden still counts"
 
 
+INK = (".ink{font-size:48px;color:var(--ink);background-image:linear-gradient(90deg,var(--ink),%s);"
+       "-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}")
+
+
+@pytest.mark.parametrize("ground", ["", " class=\"glow\""], ids=["plain", "over-a-gradient"])
+def test_browser_reads_gradient_text_by_its_stops(browser, tmp_path, ground):
+    """Text painted with a background clipped to it: the gradient is the ink, never the
+    ground, and every stop of it has to read against what lies behind."""
+    glow = ".glow{background-image:linear-gradient(var(--surface),color-mix(in srgb,var(--surface) 92%,var(--ink)))}"
+    good = _variant(tmp_path, "ink-good.html", glow + INK % "color-mix(in srgb,var(--ink) 80%,var(--accent))",
+                    '<div%s><p><span class="ink">98%%</span></p></div>' % ground)
+    code, data = run(str(good), "--browser")
+    assert "contrast" not in rules(data), data
+    faint = _variant(tmp_path, "ink-faint.html", glow + INK % "var(--surface)",
+                     '<div%s><p><span class="ink">98%%</span></p></div>' % ground)
+    code, data = run(str(faint), "--browser")
+    assert "contrast" in rules(data, "error"), "a stop in the ground colour is unreadable"
+
+
+
+INVISIBLE = ".lost{font-size:48px;color:var(--ink);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;%s}"
+
+
+@pytest.mark.parametrize("paint", ["background-image:none",
+                                   "background-image:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)"],
+                         ids=["no-gradient", "image-only"])
+def test_browser_flags_a_transparent_fill_with_no_gradient_stops(browser, tmp_path, paint):
+    """A gradient that failed to resolve leaves the text transparent: its colour is not
+    what is painted, so the text counts as unreadable, never as its colour."""
+    page = _variant(tmp_path, "lost.html", INVISIBLE % paint, '<p><span class="lost">98%</span></p>')
+    code, data = run(str(page), "--browser")
+    assert "contrast" in rules(data, "error"), data
+
 CODE_FONT_CSS = ":root{--font-mono:ui-monospace, Menlo, monospace}"
 
 

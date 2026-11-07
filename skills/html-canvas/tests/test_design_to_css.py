@@ -148,6 +148,54 @@ def test_missing_role_is_reported_and_skipped_without_strict():
     assert set(groups[":root"]) == {"bg"} == set(groups["html.dark"])
 
 
+def test_optional_role_a_design_lacks_is_skipped_silently_even_under_strict(tmp_path):
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  bg: surface\n  gradient-from: {role: no-such-role, optional: true}\n", encoding="utf-8")
+    res = _run(TOKENS / "design-current.md", "--map", m, "--strict")
+    assert res.returncode == 0 and "warning" not in res.stderr
+    assert set(_groups(res.stdout)[":root"]) == {"bg"}
+
+
+def test_optional_role_a_design_has_is_emitted(tmp_path):
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  bg: surface\n  hl: {role: surface, optional: true}\n", encoding="utf-8")
+    groups = _groups(_run(TOKENS / "design-current.md", "--map", m).stdout)
+    assert set(groups[":root"]) == {"bg", "hl"}
+
+
+def test_optional_must_be_a_boolean(tmp_path):
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  hl: {role: surface, optional: maybe}\n", encoding="utf-8")
+    res = _run(TOKENS / "design-current.md", "--map", m, check=False)
+    assert res.returncode != 0 and "hl" in res.stderr
+
+
+
+def _design_with(tmp_path, value: str) -> Path:
+    d = tmp_path / "DESIGN.md"
+    text = (TOKENS / "design-current.md").read_text("utf-8")
+    d.write_text(text.replace("colors:\n", "colors:\n  gradient-from: %s\n" % value, 1), encoding="utf-8")
+    return d
+
+
+@pytest.mark.parametrize("value", ['"linear-gradient(90deg, #102030, #205080)"', '"var(--accent)"', '"bold"'])
+def test_map_rejects_a_mapped_value_that_is_no_colour(tmp_path, value):
+    """A non-colour copied into a colour variable breaks what reads it (gradient text goes
+    invisible), so the map refuses it with the variable and the role named."""
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  bg: surface\n  gradient-from: {role: gradient-from, optional: true}\n", encoding="utf-8")
+    res = _run(_design_with(tmp_path, value), "--map", m, check=False)
+    assert res.returncode != 0, res.stdout
+    assert "gradient-from" in res.stderr and "colour" in res.stderr, res.stderr
+
+
+@pytest.mark.parametrize("value", ['"#7B2FF7"', '"oklch(0.62 0.2 300)"', '"rgb(120 40 240)"'])
+def test_map_accepts_a_hex_or_a_colour_function(tmp_path, value):
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  bg: surface\n  gradient-from: {role: gradient-from, optional: true}\n", encoding="utf-8")
+    res = _run(_design_with(tmp_path, value), "--map", m)
+    assert _groups(res.stdout)[":root"]["gradient-from"] == value.strip('"')
+
 def test_map_ignores_unmapped_design_keys_under_strict():
     # brand-only-key is not in COLOR_MAP; with a map only the map's roles count.
     assert _run(TOKENS / "design-current.md", "--map", TOKENS / "map.yaml", "--strict").returncode == 0

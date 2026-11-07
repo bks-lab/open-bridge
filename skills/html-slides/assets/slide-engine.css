@@ -687,13 +687,178 @@ img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
 .overview-tile__title { font-size: clamp(15px, 1.7vw, 20px); font-weight: 600; line-height: 1.3; }
 .overview-tile__desc { font-size: clamp(12px, 1.2vw, 14px); color: var(--text-dim); line-height: 1.45; }
 
+/* ============ KEYNOTE FORMS (opt-in) ============ */
+/* Optional markup for a keynote look: a photo half panel, gradient numbers, a
+   glowing arc, a quote, a result card, a numbered list and tinted cards. Every
+   rule here needs one of these classes, so a deck without them renders as before.
+   Colours are deck tokens mixed with color-mix; nothing here is a literal colour. */
+
+/* Media split: a photo fills its share of the slide edge to edge, full height,
+   the text column keeps the slide padding on the other side. data-media="left"
+   moves the photo, data-media-size="1/3|2/5|1/2" sets its share (default 2/5).
+   An image slot without a src yet shows the surface colour in the same box. */
+.slide--media { --media-share: 40%; --media-gap: clamp(40px, 5vw, 80px); }
+.slide--media[data-media-size="1/3"] { --media-share: 33.333%; }
+.slide--media[data-media-size="2/5"] { --media-share: 40%; }
+.slide--media[data-media-size="1/2"] { --media-share: 50%; }
+.slide.slide--media:not([data-media="left"]) { padding-right: calc(var(--media-share) + var(--media-gap)); }
+.slide.slide--media[data-media="left"] { padding-left: calc(var(--media-share) + var(--media-gap)); }
+.slide--media > .slide__media {
+  position: absolute; top: 0; right: 0; z-index: 0;
+  display: block; width: var(--media-share); height: 100%; max-width: none;
+  object-fit: cover; border: 0; border-radius: 0; box-shadow: none;
+  background: var(--surface); color: var(--text-dim);
+}
+.slide--media[data-media="left"] > .slide__media { right: auto; left: 0; }
+.slide--media > .slide__content { position: relative; z-index: 1; min-width: 0; }
+@media screen and (max-width: 768px) {
+  .slide.slide--media:not([data-media="left"]),
+  .slide.slide--media[data-media="left"] { padding: 0; justify-content: flex-start; }
+  .slide--media > .slide__media {
+    position: static; order: -1; flex-shrink: 0; width: 100%; height: clamp(220px, 34vh, 320px);
+  }
+  .slide--media > .slide__content { padding: clamp(28px, 5vh, 48px) 16px; }
+}
+
+/* Big numbers: .slide__stat (a value with its label under it), several side by
+   side in .slide__stats; .metrics--gradient gives the kpi-row block the same
+   numbers. The value is a text gradient from the accent to the accent mixed
+   towards the text colour (or between --gradient-from and --gradient-to when the
+   design names a gradient, presets/design.map.yaml), so both ends read at least as well as the accent;
+   without background-clip support, in print and under forced colours it is the
+   solid accent. .slide__stat--solid keeps one value solid. */
+.slide__stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: clamp(20px, 3vw, 48px); margin-top: clamp(16px, 3vh, 36px);
+}
+.slide__stat { display: flex; flex-direction: column; gap: clamp(6px, 1vh, 10px); min-width: 0; }
+.slide__stat-value {
+  font-family: var(--font-display); font-size: clamp(44px, 7vw, 96px); font-weight: 700;
+  line-height: 1; letter-spacing: -0.02em; font-variant-numeric: lining-nums tabular-nums;
+  color: var(--accent); overflow-wrap: anywhere;
+}
+.slide__stat-label {
+  font-size: clamp(13px, 1.4vw, 17px); line-height: 1.4; color: var(--text-dim); text-wrap: pretty;
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .slide__stat:not(.slide__stat--solid) .slide__stat-value, .metrics--gradient .m-val {
+    color: var(--accent);
+    background-image: linear-gradient(100deg, var(--gradient-from, var(--accent)) 10%,
+      var(--gradient-to, color-mix(in oklab, var(--accent) 55%, var(--text))) 95%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    padding-bottom: 0.06em;   /* descenders stay inside the painted box */
+  }
+}
+
+/* Glow arc: a thin curved line under a heading, glowing in the accent and fading
+   at both ends. Decorative (aria-hidden); the markup is the opt-in, so it shows
+   in every preset, the design preset included. .slide__arc--center centres it. */
+.slide__arc {
+  position: relative; display: block; pointer-events: none;
+  width: min(100%, 520px); height: clamp(14px, 2.4vh, 24px); margin: clamp(10px, 1.8vh, 20px) 0;
+  border-top: 1px solid var(--accent); border-radius: 50% / 100% 100% 0 0;
+  filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 55%, transparent));
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, var(--accent) 28%, var(--accent) 72%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, var(--accent) 28%, var(--accent) 72%, transparent 100%);
+}
+.slide__arc--center { margin-left: auto; margin-right: auto; }
+
+/* Quote slide: large light type in the body family behind an accent bar. */
+.slide--quote { justify-content: center; }
+.slide__quote {
+  max-width: min(100%, 1040px); border-left: 3px solid var(--accent);
+  padding: 4px 0 4px clamp(20px, 3vw, 40px);
+}
+.slide__quote p {
+  max-width: 36ch; font-family: var(--font-body); font-weight: 300; font-size: clamp(22px, 2.9vw, 44px);
+  line-height: 1.22; letter-spacing: -0.01em; color: var(--text); text-wrap: balance;
+}
+.slide__quote-source {
+  margin-top: clamp(14px, 2.6vh, 30px); font-family: var(--font-body);
+  font-size: clamp(13px, 1.4vw, 17px); color: var(--text-dim);
+}
+
+/* Result card: a tall rounded card on a soft accent tint, typically in the aside
+   of a decision slide. A small caps label, one or more values; an arc between
+   two values separates them. */
+.slide__result {
+  display: flex; flex-direction: column; justify-content: center; gap: clamp(8px, 1.6vh, 18px);
+  width: 100%; min-height: min(58vh, 440px);
+  padding: clamp(24px, 4vh, 48px) clamp(22px, 2.6vw, 40px);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: clamp(16px, 2vw, 28px);
+}
+.slide__result-label {
+  font-family: var(--font-label, var(--font-mono)); font-size: clamp(11px, 1.1vw, 13px); font-weight: 600;
+  text-transform: uppercase; letter-spacing: var(--label-tracking, 1.5px);
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+}
+.slide__result-value {
+  font-family: var(--font-display); font-size: clamp(22px, 2.8vw, 36px); font-weight: 600;
+  line-height: 1.2; color: var(--text); text-wrap: balance;
+}
+.slide__result .slide__arc { width: 100%; margin: clamp(2px, 0.8vh, 8px) 0; }
+
+/* Numbered list: a small boxed number (01, 02, ...) from a CSS counter, a title
+   in <strong> and an optional description line after it. --2col sets two columns. */
+ol.slide__numbered {
+  list-style: none; padding: 0; counter-reset: slide-num;
+  display: grid; gap: clamp(14px, 2.4vh, 28px); margin-top: clamp(16px, 2.8vh, 32px);
+}
+ol.slide__numbered--2col { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(24px, 4vw, 64px); }
+.slide__numbered > li {
+  counter-increment: slide-num; display: grid; grid-template-columns: auto minmax(0, 1fr);
+  column-gap: clamp(12px, 1.4vw, 20px); align-items: start;
+}
+.slide__numbered > li::before {
+  content: counter(slide-num, decimal-leading-zero);
+  grid-row: 1 / span 2; min-width: 2.6em; padding: 4px 6px; text-align: center;
+  font-family: var(--font-mono); font-size: clamp(11px, 1.1vw, 14px); font-weight: 600;
+  line-height: 1.4; font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 6px;
+}
+.slide__numbered > li > strong {
+  grid-column: 2; font-size: clamp(15px, 1.8vw, 21px); font-weight: 600; line-height: 1.35; color: var(--text);
+}
+.slide__numbered > li > :not(strong) {
+  grid-column: 2; margin-top: 2px; font-size: clamp(13px, 1.4vw, 16px); line-height: 1.5; color: var(--text-dim);
+}
+@media (max-width: 768px) { ol.slide__numbered--2col { grid-template-columns: minmax(0, 1fr); } }
+
+/* Tinted cards: .cards--tinted on a .cheat-grid or .scenario-grid turns its cards
+   into soft accent-tinted cards with a hairline and a larger radius. */
+.cards--tinted > .cheat-card, .cards--tinted > .scenario-card {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: clamp(14px, 1.6vw, 22px);
+}
+
+/* Print and forced colours: numbers in a solid colour, the arc stays on paper and
+   goes under forced colours, where it would draw a stray system line. */
+@media print {
+  .slide__stat:not(.slide__stat--solid) .slide__stat-value, .metrics--gradient .m-val {
+    background-image: none; -webkit-text-fill-color: currentColor; color: var(--accent);
+  }
+}
+@media (forced-colors: active) {
+  .slide__arc { display: none; }
+  .slide__stat:not(.slide__stat--solid) .slide__stat-value, .metrics--gradient .m-val {
+    background-image: none; color: CanvasText; -webkit-text-fill-color: CanvasText;
+  }
+}
+/* ============ END KEYNOTE FORMS ============ */
+
 /* ============ BEAMER ZOOM ============
    Large screens scale slide content; title, full-bleed and split slides keep their own sizing. */
 @media (min-width: 1500px) and (min-height: 880px) {
-  .slide:not(.slide--title):not(.slide--bleed):not(.slide--split) > :not(.slide__decor):not(.slide__bg):not(.slide__scrim) { zoom: 1.2; }
+  .slide:not(.slide--title):not(.slide--bleed):not(.slide--split) > :not(.slide__decor):not(.slide__bg):not(.slide__scrim):not(.slide__media) { zoom: 1.2; }
 }
 @media (min-width: 2200px) and (min-height: 1200px) {
-  .slide:not(.slide--title):not(.slide--bleed):not(.slide--split) > :not(.slide__decor):not(.slide__bg):not(.slide__scrim) { zoom: 1.45; }
+  .slide:not(.slide--title):not(.slide--bleed):not(.slide--split) > :not(.slide__decor):not(.slide__bg):not(.slide__scrim):not(.slide__media) { zoom: 1.45; }
 }
 
 /* ============ RESPONSIVE ============ */
@@ -722,7 +887,7 @@ img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
   .slide--content .slide__aside { margin-top: clamp(16px, 3vh, 28px); }  /* stacked, never dropped */
   .deck-hints { display: none; }
   /* the fixed back link sits over the top padding: clear it */
-  :root:has(.deck-back) .slide:not(.slide--split):not(.slide--bleed) { padding-top: 64px; }
+  :root:has(.deck-back) .slide:not(.slide--split):not(.slide--bleed):not(.slide--media) { padding-top: 64px; }
   .slide--split .slide__panels { grid-template-columns: 1fr; }
   .scenario-grid, .cheat-grid { grid-template-columns: 1fr; }
   .pipeline { flex-direction: column; }

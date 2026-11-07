@@ -1,6 +1,6 @@
 # Output Formats: the send path
 
-Three optional post-generation steps live in `scripts/`. Use them after the deck
+Four optional post-generation steps live in `scripts/`. Use them after the deck
 HTML is written. Each is independent: run any combination, in any order.
 
 A deck built with `scripts/new-deck.py` already embeds its fonts, tokens and engine
@@ -17,8 +17,9 @@ motion of the `motion` module prints and exports at its end state.
 | Fold remaining local `img/`, `lib/` or `fonts/` references into the file | `inline-assets.py` | Only when the deck still references such files |
 | PDF copy of the deck | `render-pdf.cjs` | Whenever the user wants a printable, mailable or archival version |
 | Audit for names, identifiers and leftover placeholders | `check-anonymity.py` | Before any external send (mail, customer portal, public link) |
+| Editable PowerPoint copy (section 4) | `render-pptx.py` | Only when someone wants to edit the deck in PowerPoint; PDF stays the send format |
 
-All three scripts run on a *generated* deck, not on the preset YAMLs.
+All four scripts run on a *generated* deck, not on the preset YAMLs.
 
 ---
 
@@ -176,6 +177,74 @@ The check finds that file walking up from the deck (or takes `--config FILE`) an
 adds the lists to the default without a flag; `--no-config` skips it. The older key
 `html_slides.wordlist` is still read. `--extra-wordlist` is the older spelling of `--wordlist`
 and works the same.
+
+---
+
+## 4. PowerPoint (PPTX)
+
+An optional copy for a colleague who wants to edit the deck in PowerPoint. PDF stays
+the default send format; nothing else in the skill depends on this step.
+
+```bash
+uv run --with python-pptx --with playwright python scripts/render-pptx.py deck.html deck.pptx
+uv run --with python-pptx --with playwright python scripts/render-pptx.py deck.html deck.pptx \
+    --theme dark --lang en --font-fallback "Montserrat=Arial,Heebo=Arial"
+uv run --with python-pptx --with playwright python scripts/render-pptx.py deck.html shots.pptx --mode image
+```
+
+It opens the deck in headless Chromium (1920 x 1080, or `--size 1280x720` at twice the
+pixel density), puts every slide in its end state like print does (reveals shown,
+`motion` counters at their last number, every `steps` item visible, stages loaded) and
+writes one 16:9 slide (13.333 x 7.5 in) per deck slide.
+
+**What is editable (`--mode hybrid`, the default):**
+- Text: every visible text block (headings, paragraphs, list items, labels, buttons)
+  is a PowerPoint text box at its measured place, with font family, size, weight,
+  italic, colour, alignment, line height, letter spacing and capitals. Lines break
+  where the browser broke them; word wrap and autofit are off, so the layout holds.
+  Stacked siblings (list items, the lines of a code block) share one text box, one
+  paragraph each; a list with a visible marker gets a PowerPoint bullet or number
+  (`start`, `value` and `reversed` keep the numbers the browser shows). Gradient text
+  takes the first gradient colour. Text cut off by an ancestor (overflow, line clamp)
+  is exported only as far as it shows.
+- Tables: every `<table>` is a native PowerPoint table at its place carrying the cell
+  text (bold header cells, the cells' padding and alignment); the caption is a text box.
+  The table's look (fills, rules, rounded corners, images or SVG in cells) stays in the
+  picture under it, so moving the native table means moving text, not the drawing.
+- Speaker notes: `<aside class="notes">` goes to the notes page of its slide.
+
+**What is a picture:** behind the text sits a full-slide screenshot of the slide with
+only the exported text made transparent (nothing in the page moves for it): images,
+SVG diagrams and their labels, cards, table fills and rules, gradients, glows, custom
+list markers and decorative `aria-hidden` elements such as the big chapter number. Fixed
+overlays beside the slides (the engine's counter, dots and hints) are left out.
+`--mode image` writes the plain screenshot only: pixel exact, nothing editable.
+
+**Options:** `--theme light|dark` (default: as the deck opens, light), `--lang de|en`
+for a bilingual deck (only that language is exported, notes too), `--track NAME`
+(default: every slide, like print; a name the deck does not know is refused),
+`--size 1920x1080|1280x720`, `--mode hybrid|image`, `--allow-network`. Without that
+last flag the render loads nothing over the network (only `file:`, `data:`, `about:`
+and `blob:`), the same offline contract the deck keeps.
+
+**Fonts:** PowerPoint draws text with the font family by name, and a deck embeds its
+fonts only for the browser. The script lists the families the PPTX uses on stderr;
+install them where the file is opened, or map them to installed ones with
+`--font-fallback "Name=Other,..."`. A substitute font has other widths, so lines may
+come out a little longer or shorter than in the deck.
+
+**Limits:** animations, steps, morphs and slide transitions are not rebuilt: every slide
+is a still of its end state. A live stage, a simulation or any other frame is part of
+the picture, frozen as it looked. Text inside SVG, canvas or a frame is not editable.
+Text that sits on its own pill or badge stays editable, but a substitute font can move
+it against the shape drawn in the picture.
+
+**Requires:** `python-pptx` and `playwright` with its Chromium
+(`playwright install chromium`). Without them the script prints one line saying so.
+
+Exit codes: 0 written, 1 the render failed or the output cannot be written, 2 wrong
+usage (an unknown track, the output path equal to the input) or a missing dependency.
+On success it prints `render-pptx: wrote <path> (<n> slides, <m> text boxes, <k> tables)`.
 
 ---
 

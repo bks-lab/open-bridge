@@ -35,8 +35,9 @@ def canvas_module(name: str):
     return mod
 
 
-# Engine-internal switches and tone variables: set by the engine or a preset, not palette tokens.
-INTERNAL_VARS = {"tone", "tone-dim", "glow-at", "decor-glow", "decor-grid", "decor-fill"}
+# Engine-internal switches, tone and layout variables: set by the engine or a preset, not palette tokens.
+INTERNAL_VARS = {"tone", "tone-dim", "glow-at", "decor-glow", "decor-grid", "decor-fill", "media-share", "media-gap",
+                 "label-tracking"}
 
 
 def engine_vars() -> set[str]:

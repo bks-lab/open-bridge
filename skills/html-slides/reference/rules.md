@@ -50,6 +50,11 @@ the deck is hand-picked, and `html-canvas/scripts/verify-page.py` holds it to th
 | Code | Max 20 lines | Cut to essence |
 | Table | Max 8 visible rows | Scroll hint or split |
 | Pipeline | Max 6 steps | Group or split to 2 slides |
+| Media split | Max 4 bullets beside the photo (3 at `data-media-size="1/2"`) | Split, or a smaller photo share |
+| Key numbers | Max 4 numbers, labels of one line | Second slide, or a table |
+| Quote | One quote, max 3 lines | Shorten the quote |
+| Result card | Max 3 values | Move the rest to the bullets |
+| Numbered agenda | Max 6 items (8 with `--2col`) | Split into 2 slides |
 
 ## General Design Rules
 

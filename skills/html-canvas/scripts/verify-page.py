@@ -45,7 +45,8 @@ Static mode (default, stdlib only):
   visible), lang-hidden (an element carrying both data-de and data-en, shown in
   neither), contrast (body text under 4.5:1, 3:1 for large text; over a gradient,
   an image or a sibling layer such as a scrim, the ground is read from a
-  screenshot with all text hidden; text inside aria-hidden="true" is decoration
+  screenshot with all text hidden; gradient text, a background clipped to the
+  text, is measured by every stop of its gradient; text inside aria-hidden="true" is decoration
   and not measured), code-font (code, kbd, pre or samp set in another family
   than the page's --font-mono, warning; only where the page declares one),
   reduced-motion
@@ -748,7 +749,25 @@ JS_CONTRAST = """() => {
   const rgba = c => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = c;
     cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
   const over = (top, under) => [0, 1, 2].map(i => top[i] * top[3] + under[i] * (1 - top[3])).concat([1]);
-  const paints = cs => cs.backgroundImage !== 'none' || rgba(cs.backgroundColor)[3] > 0;
+  // A background clipped to the text (gradient text) is the ink of that text, never its ground.
+  const ink = cs => (cs.webkitBackgroundClip || cs.backgroundClip) === 'text';
+  const paints = cs => !ink(cs) && (cs.backgroundImage !== 'none' || rgba(cs.backgroundColor)[3] > 0);
+  const COLOR_FN = /(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\\([^()]*\\)/g;
+  // The colours a text is painted in: its fill, or every stop of the gradient it is cut
+  // from. A transparent fill with no readable stop (the gradient failed to resolve, or is
+  // only an image) paints nothing legible: it stays transparent and measures 1:1.
+  const inks = (el, cs) => {
+    const fill = rgba(cs.webkitTextFillColor || cs.color);
+    if (fill[3] >= 0.01) return [fill];
+    for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
+      const s = getComputedStyle(e);
+      if (ink(s) && s.backgroundImage !== 'none') {
+        const stops = s.backgroundImage.match(COLOR_FN) || [];
+        if (stops.length) return stops.map(rgba);
+      }
+    }
+    return [fill];
+  };
   // A positioned sibling of the text or of one of its ancestors that overlaps it
   // (a scrim, a gradient layer, a photo) paints behind the text without being an
   // ancestor, so the colour walk below cannot see it.
@@ -771,6 +790,7 @@ JS_CONTRAST = """() => {
     const layers = [];
     for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
       const cs = getComputedStyle(e);
+      if (ink(cs)) continue;
       if (cs.backgroundImage !== 'none') return null;
       const c = rgba(cs.backgroundColor);
       if (c[3] > 0) layers.push(c);
@@ -793,13 +813,16 @@ JS_CONTRAST = """() => {
     const cs = getComputedStyle(el);
     const size = parseFloat(cs.fontSize), weight = parseInt(cs.fontWeight, 10) || 400;
     const need = (size >= 24 || (size >= 18.66 && weight >= 700)) ? 3 : 4.5;
-    const bg = ground(el);
+    const bg = ground(el), colors = inks(el, cs);
     if (!bg) {
-      if (el !== document.body) layered.push({el, color: rgba(cs.color), need, desc: desc(el), done: false});
+      if (el !== document.body) layered.push({el, colors, need, desc: desc(el), done: false});
       continue;
     }
-    const fg = over(rgba(cs.color), bg);
-    const a = lum(fg), b = lum(bg), ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    let ratio = Infinity;
+    for (const c of colors) {
+      const fg = over(c, bg), a = lum(fg), b = lum(bg);
+      ratio = Math.min(ratio, (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05));
+    }
     if (ratio < need) bad.push({el: desc(el), ratio: Math.round(ratio * 100) / 100, need});
   }
   window.__vpLayered = layered;
@@ -825,7 +848,13 @@ HIDE_TEXT = ("*,*::before,*::after{color:transparent!important;-webkit-text-fill
 MAX_LAYER_SHOTS = 40
 
 JS_LAYER_BEGIN = """(css) => {
-  const st = document.createElement('style'); st.id = '__vp-hide-text'; st.textContent = css;
+  // gradient text keeps painting its clipped background with the text hidden: hide that too
+  for (const e of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(e);
+    if ((cs.webkitBackgroundClip || cs.backgroundClip) === 'text') e.setAttribute('data-vp-ink', '');
+  }
+  const st = document.createElement('style'); st.id = '__vp-hide-text';
+  st.textContent = css + '[data-vp-ink]{background:none!important}';
   document.head.appendChild(st);
   window.__vpScroll = [...document.querySelectorAll('*')].filter(e => e.scrollTop || e.scrollLeft)
     .map(e => [e, e.scrollTop, e.scrollLeft]);
@@ -834,6 +863,7 @@ JS_LAYER_BEGIN = """(css) => {
 
 JS_LAYER_END = """() => {
   const st = document.getElementById('__vp-hide-text'); if (st) st.remove();
+  for (const e of document.querySelectorAll('[data-vp-ink]')) e.removeAttribute('data-vp-ink');
   for (const [e, t, l] of (window.__vpScroll || [])) { e.scrollTop = t; e.scrollLeft = l; }
 }"""
 
@@ -870,8 +900,8 @@ JS_LAYER_SAMPLE = """async (url) => {
     if (!rects.every(r => r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth)) continue;
     x.done = true;
     let worst = Infinity;
-    for (const r of rects) for (const fx of [0.1, 0.5, 0.9]) for (const fy of [0.3, 0.7]) {
-      const bg = px(r.left + r.width * fx, r.top + r.height * fy), fg = over(x.color, bg);
+    for (const r of rects) for (const fx of [0.1, 0.5, 0.9]) for (const fy of [0.3, 0.7]) for (const c of x.colors) {
+      const bg = px(r.left + r.width * fx, r.top + r.height * fy), fg = over(c, bg);
       const a = lum(fg), b = lum(bg);
       worst = Math.min(worst, (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05));
     }

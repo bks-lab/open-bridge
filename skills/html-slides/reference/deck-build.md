@@ -155,7 +155,10 @@ template. A new font family needs its woff2 files and licence under
 The engine keeps the deck's own contract: `.theme-dark` or `.theme-light` on
 `<html>`, the choice stored as `slide-theme` in `localStorage` (every access in
 `try`/`catch`), the OS preference while nothing is stored, key T and the toggle
-button to switch. The pre-paint region applies it before the first paint. The
+button to switch. `new-deck.py --theme-default dark|light` writes
+`data-theme-default` onto `<html>`: the deck then opens in that theme until the
+viewer picks one, whatever the OS says (a brand made for the dark). The attribute
+sits outside the regions, so a refresh keeps it. The pre-paint region applies it before the first paint. The
 general rule set, and the `.dark` class every other HTML skill uses, is
 `html-canvas/references/theme-contract.md`.
 

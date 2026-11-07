@@ -74,3 +74,15 @@
 @font-face { font-family: "Fraunces"; font-style: normal; font-weight: 400; src: url("fonts/fraunces-latin-400-normal.woff2") format("woff2"); }
 @font-face { font-family: "Fraunces"; font-style: normal; font-weight: 600; src: url("fonts/fraunces-latin-600-normal.woff2") format("woff2"); }
 @font-face { font-family: "Fraunces"; font-style: normal; font-weight: 700; src: url("fonts/fraunces-latin-700-normal.woff2") format("woff2"); }
+
+/* Keynote pair, for a DESIGN.md that names them (not used by a style preset). */
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 400; src: url("fonts/montserrat-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 500; src: url("fonts/montserrat-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 600; src: url("fonts/montserrat-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 700; src: url("fonts/montserrat-latin-700-normal.woff2") format("woff2"); }
+
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 300; src: url("fonts/heebo-latin-300-normal.woff2") format("woff2"); }
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 400; src: url("fonts/heebo-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 500; src: url("fonts/heebo-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 600; src: url("fonts/heebo-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 700; src: url("fonts/heebo-latin-700-normal.woff2") format("woff2"); }

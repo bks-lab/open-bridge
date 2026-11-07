@@ -145,13 +145,15 @@ NEUTRAL_TOKENS = """\
 
 PREPAINT = """
 <script>
-/* Theme pre-paint (html-slides): the saved choice, else the OS, before the first
-   paint. Following the OS is not a choice, so it is never written to storage. */
+/* Theme pre-paint (html-slides): the saved choice, else the deck's own default
+   (data-theme-default on <html>, new-deck.py --theme-default), else the OS, before
+   the first paint. A default is not a choice, so it is never written to storage. */
 (function () {
   var saved = null;
   try { saved = localStorage.getItem('%s'); } catch (e) { /* no storage */ }
-  var dark = saved === 'dark' || (saved !== 'light' && !!window.matchMedia &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches);
+  var def = document.documentElement.getAttribute('data-theme-default');
+  var dark = saved === 'dark' || (saved !== 'light' && (def === 'dark' || (def !== 'light' &&
+    !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)));
   document.documentElement.classList.add(dark ? 'theme-dark' : 'theme-light');
 })();
 </script>
@@ -318,7 +320,10 @@ def design_tokens(preset: dict, design: Path) -> str:
     except (OSError, ValueError, yaml.YAMLError) as e:
         raise DeckError("design map: %s" % e)
     data = d2c.frontmatter(design)
-    css, missing = d2c.build_mapped_css(data, entries, selectors, print_block)
+    try:
+        css, missing = d2c.build_mapped_css(data, entries, selectors, print_block)
+    except ValueError as e:
+        raise DeckError("%s: %s" % (design, e))
     if missing:
         print("new-deck: %d mapped role(s) not in %s, the neutral value stays: %s"
               % (len(missing), design, ", ".join(missing)), file=sys.stderr)
@@ -660,7 +665,7 @@ def deck_attrs(items: list[str]) -> str:
 
 
 def skeleton(title: str, lang: str, slides: str, stage: bool, attrs: str = "", modules=(),
-             blocks: bool = False, block_js: bool = False) -> str:
+             blocks: bool = False, block_js: bool = False, theme_default: str | None = None) -> str:
     def r(name: str) -> str:
         s, e = marks(name)
         return s + e
@@ -676,7 +681,7 @@ def skeleton(title: str, lang: str, slides: str, stage: bool, attrs: str = "", m
     body_end.extend(r(module_region_name(m)) for m in modules)
     return "\n".join([
         "<!DOCTYPE html>",
-        '<html lang="%s">' % lang,
+        '<html lang="%s"%s>' % (lang, ' data-theme-default="%s"' % theme_default if theme_default else ""),
         "<head>",
         '<meta charset="UTF-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
@@ -776,7 +781,8 @@ def build(args) -> int:
              and (name != BLOCKS_CSS or blocks) and (name != BLOCKS_JS or block_js)]
     names += [module_region_name(m) for m in modules]
     contents = region_contents(names, slug, preset, design, not args.no_embed_fonts, blocks)
-    html = splice(skeleton(title, args.lang, slides, args.with_stage, attrs, modules, bool(blocks), block_js),
+    html = splice(skeleton(title, args.lang, slides, args.with_stage, attrs, modules, bool(blocks), block_js,
+                          args.theme_default),
                   contents)
     verify(html, contents)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -949,6 +955,9 @@ def main() -> int:
     ap.add_argument("--context", help="workflow/contexts/<name>.yaml whose design_ref the deck wears")
     ap.add_argument("--persona", help="identity/personas/<id>.yaml whose design_ref the deck wears")
     ap.add_argument("--lang", choices=("en", "de"), default="en", help="<html lang> (default en)")
+    ap.add_argument("--theme-default", choices=("light", "dark"),
+                    help="the theme the deck opens in when the viewer chose none (default: the OS); "
+                         "build only, a refresh keeps the <html> tag")
     ap.add_argument("--with-stage", action="store_true", help="add the live stage (assets/slide-stage.*)")
     ap.add_argument("--with", dest="with_modules", action="append", default=[], metavar="NAME",
                     help="inline the deck module assets/modules/NAME.js (+ .css); repeatable, "

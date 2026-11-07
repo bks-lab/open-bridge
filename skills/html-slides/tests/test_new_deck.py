@@ -204,6 +204,15 @@ def test_design_preset_without_design_md_is_refused(plain_dir):
     assert "DESIGN.md" in proc.stderr
 
 
+def test_design_with_a_non_colour_value_is_refused_cleanly(plain_dir):
+    bad = plain_dir / "DESIGN.md"
+    bad.write_text("---\nname: bad\ncolors:\n  surface: \"#ffffff\"\n  on-surface: \"#111111\"\n"
+                   "  secondary: \"linear-gradient(red, blue)\"\n---\n", encoding="utf-8")
+    proc = run("--title", "x", "--design", bad, "--out", plain_dir / "d.html", check=False)
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr and "not a colour" in proc.stderr
+
+
 # --- fonts ---------------------------------------------------------------------------------
 
 def test_fonts_are_embedded_by_default(plain_dir):
@@ -759,3 +768,33 @@ def test_refresh_refuses_a_recorded_design_outside_the_bridge(tmp_path):
                            "--refresh", str(out)], capture_output=True, text=True)
     assert proc.returncode == 1 and "../secret.md" in proc.stderr, proc.stdout + proc.stderr
     assert out.read_text("utf-8") == html, "nothing is written"
+
+
+# --- a deck that opens dark (or light) whatever the OS says ---------------------------------
+
+def test_theme_default_is_written_onto_html(plain_dir):
+    html = build(plain_dir / "deck.html", "--theme-default", "dark")
+    assert re.search(r'<html lang="en" data-theme-default="dark">', html)
+    assert "data-theme-default" in region(html, "deck-prepaint")
+
+
+def test_without_theme_default_the_html_tag_is_unchanged(plain_dir):
+    html = build(plain_dir / "deck.html")
+    assert '<html lang="en">' in html
+
+
+def test_theme_default_rejects_other_values(plain_dir):
+    res = run("--title", "x", "--out", plain_dir / "deck.html", "--theme-default", "blue", check=False)
+    assert res.returncode == 2
+
+
+def test_theme_default_opens_dark_under_a_light_os_and_a_saved_choice_wins(plain_dir, open_html):
+    html = build(plain_dir / "deck.html", "--theme-default", "dark", "--no-embed-fonts")
+    page = open_html(html)
+    page.evaluate("() => { try { localStorage.removeItem('slide-theme'); } catch (e) {} }")
+    page.reload()
+    assert page.evaluate("() => document.documentElement.classList.contains('theme-dark')")
+    page.evaluate("() => localStorage.setItem('slide-theme', 'light')")
+    page.reload()
+    assert page.evaluate("() => document.documentElement.classList.contains('theme-light')")
+    page.evaluate("() => localStorage.removeItem('slide-theme')")

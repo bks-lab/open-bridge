@@ -1,11 +1,11 @@
 ---
 name: html-slides
 description: >-
-  Builds single-file HTML slide decks from any content: DESIGN.md brand or a style preset, light/dark, embedded fonts, tracks, speaker notes, live stages, offline; PDF export, a quality gate and an anonymity check before sending. Trigger: "create a presentation", "make slides", "slide deck", "html slides", "PowerPoint alternative", "/slides".
+  Builds single-file HTML slide decks from any content: DESIGN.md brand or a style preset, light/dark, embedded fonts, tracks, speaker notes, live stages, offline; PDF and optional PowerPoint (PPTX) export, a quality gate and an anonymity check before sending. Trigger: "create a presentation", "make slides", "slide deck", "html slides", "PowerPoint alternative", "/slides".
 metadata:
   scope: core
-  version: 2.2.0
-  last_updated: 2026-11-06
+  version: 2.3.0
+  last_updated: 2026-11-07
 ---
 
 # HTML Slide Deck Generator
@@ -36,6 +36,7 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | Morph an element from one slide to the next | `--with morph`, `data-morph="name"` | `reference/modules.md` § Module: morph |
 | Motion that plays when a slide comes up: count-up numbers, staggered entrances, lines that draw, a message flow | `--with motion`, `data-count`, `data-stagger`, `data-draw` | `reference/modules.md` § Module: motion |
 | A slide that looks like a canvas page: KPI row, matrix, timeline, swimlane, decision, glossary and the other html-canvas blocks | `new-deck.py --blocks kpi-row,matrix` (`--list` shows them) | `reference/blocks.md` |
+| A keynote look: a photo filling half the slide, gradient numbers, a glowing arc under a heading, a quote, a decision with a result card, a numbered agenda | `slide--media`, `slide__stat`, `slide__arc`, `slide--quote`, `slide__result`, `slide__numbered` (all opt-in markup) | `reference/slide-types.md` § Keynote Forms |
 | The deck in the design of a context or persona | `--context NAME` / `--persona ID` | `reference/deck-build.md` § Presets |
 | Generated illustrations or mood images on slides, from the Codex CLI, a configured command or the agent's own image tool | `<img data-image-prompt="…">` in the slide, then `html-canvas/scripts/gen-images.py` plan / generate / place | `html-canvas/references/images.md` |
 | A deck handed over to be read, not presented: every slide with its notes as one document | `--with read`, key R; a send copy opens in it with `--deck-attr data-read-default=` | `reference/modules.md` § Module: read |
@@ -58,7 +59,7 @@ python3 skills/html-slides/scripts/new-deck.py --title "Quarterly review" --lang
 1. **Plan the content** against the density limits in `reference/rules.md`:
    title, sections, content slides, closing. Split, never cram.
 2. **Write the slides** as one HTML fragment of `<section class="slide ...">`
-   elements, from the 11 slide types in `reference/slide-types.md`. Without
+   elements, from the 16 slide types in `reference/slide-types.md`. Without
    `--slides` the deck gets one title slide to fill in.
 3. **Generate** with `new-deck.py`. Engine options (tracks, counter format, back
    link) go on the deck element with `--deck-attr data-NAME=VALUE`. It splices the pre-paint theme script, the
@@ -100,7 +101,8 @@ into a fresh `new-deck.py --slides` build. Details: `reference/deck-build.md`.
   marked `default: true`). Offer the picker `assets/discovery-menu.html` when the
   user wants to choose; no answer means the default.
 - **Theme contract:** the engine keeps `.theme-dark` / `.theme-light` on `<html>`,
-  stored as `slide-theme`, the OS preference while nothing is stored, key T
+  stored as `slide-theme`, the OS preference while nothing is stored (or the deck's
+  own default: `new-deck.py --theme-default dark` for a brand made for the dark), key T
   toggles. The shared rule set is `html-canvas/references/theme-contract.md`.
 - **Fonts are embedded by default** (style presets depend on their typefaces);
   `--no-embed-fonts` leaves the deck on its fallback stacks. A send copy always
@@ -134,6 +136,7 @@ its chromium; a bare `python3` without them fails as `browser-skipped`.
 |---|---|
 | "send to customer", "external", "check before sending" | `scripts/check-anonymity.py deck.html`, resolve every hit (exit 1 on hits) |
 | "as PDF", "print", "attachment" | `node scripts/render-pdf.cjs deck.html deck.pdf [--theme light]`, one 16:9 page per slide |
+| "as PowerPoint", "PPTX", the recipient edits in PowerPoint (optional, PDF stays the default) | `uv run --with python-pptx --with playwright python scripts/render-pptx.py deck.html deck.pptx`: native text boxes and tables over a picture of each slide, notes on the notes pages; `--mode image` for pixel-exact pictures (`reference/output-formats.md` § PowerPoint) |
 | The deck loads local files (images, a stage page next to it) | `scripts/inline-assets.py deck.html deck-send.html`, which runs the shared `html-canvas/scripts/bundle.py` |
 | Mail the deck | anonymity check, gate, bundle, PDF, then check the bundled copy again |
 | Send it to readers, not an audience | build a reading copy from the same slides (`--with read --deck-attr data-read-default=`), then the same path |
