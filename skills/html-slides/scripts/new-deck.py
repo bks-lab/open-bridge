@@ -320,7 +320,10 @@ def design_tokens(preset: dict, design: Path) -> str:
     except (OSError, ValueError, yaml.YAMLError) as e:
         raise DeckError("design map: %s" % e)
     data = d2c.frontmatter(design)
-    css, missing = d2c.build_mapped_css(data, entries, selectors, print_block)
+    try:
+        css, missing = d2c.build_mapped_css(data, entries, selectors, print_block)
+    except ValueError as e:
+        raise DeckError("%s: %s" % (design, e))
     if missing:
         print("new-deck: %d mapped role(s) not in %s, the neutral value stays: %s"
               % (len(missing), design, ", ".join(missing)), file=sys.stderr)

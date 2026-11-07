@@ -456,6 +456,12 @@ jobs:
       - name: Install pytest and pyyaml
         run: pip install pyyaml pytest
 
+      # html-slides' PowerPoint export (scripts/render-pptx.py) needs python-pptx.
+      # Its suite fails instead of skipping when CI is set, so a missing package
+      # shows up here rather than as a quietly skipped module.
+      - name: Install python-pptx
+        run: pip install python-pptx==1.0.2
+
       # The html-canvas and html-slides browser tests open each page from an
       # empty dir over file:// in headless chromium. Without it they skip, and
       # a skipped browser test proves nothing about the offline contract.

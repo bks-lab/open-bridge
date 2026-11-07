@@ -15,7 +15,8 @@ Speaker notes (`aside.notes`) go to the notes page of their slide.
 Usage:
     uv run --with python-pptx --with playwright python render-pptx.py deck.html deck.pptx
         [--mode hybrid|image] [--size 1920x1080|1280x720] [--theme light|dark]
-        [--lang de|en] [--track NAME] [--font-fallback "Montserrat=Arial,Heebo=Arial"]
+        [--lang de|en] [--track NAME] [--allow-network]
+        [--font-fallback "Montserrat=Arial,Heebo=Arial"]
 
 Needs python-pptx and playwright with its chromium (`playwright install chromium`).
 Exit codes: 0 written, 1 render failed, 2 wrong usage or a missing dependency.
@@ -50,6 +51,8 @@ def parse_args(argv):
     p.add_argument("--theme", choices=("light", "dark"), help="theme to render (default: as the deck opens, light)")
     p.add_argument("--lang", choices=("de", "en"), help="language of a bilingual deck")
     p.add_argument("--track", help="export only this track (default: every slide, like print)")
+    p.add_argument("--allow-network", action="store_true",
+                   help="let the deck load http(s) resources (default: only file:, data:, about:, blob:)")
     p.add_argument("--font-fallback", default="",
                    help='replace font families in the PPTX, e.g. "Montserrat=Arial,Heebo=Arial"')
     try:
@@ -88,6 +91,29 @@ EXTRACT_JS = r"""
   const isBlock = (el) => { const d = getComputedStyle(el).display; return d !== 'inline' && d !== 'contents'; };
   const blockOf = (node) => { let e = node.parentElement; while (e && e !== slide && !isBlock(e)) e = e.parentElement; return e || slide; };
   const opacityOf = (el) => { let o = 1; for (let e = el; e && e !== document.body; e = e.parentElement) o *= parseFloat(getComputedStyle(e).opacity) || 0; return o; };
+  // the visible part of an element: the slide, cut by every ancestor that clips its overflow
+  const clips = new Map();
+  const clipOf = (el) => {
+    if (clips.has(el)) return clips.get(el);
+    let c;
+    if (!el || el === slide || el === document.body) c = { l: sr.left, t: sr.top, r: sr.right, b: sr.bottom };
+    else {
+      c = Object.assign({}, clipOf(el.parentElement));
+      const cs = getComputedStyle(el);
+      if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible' || (cs.clip && cs.clip !== 'auto') || /paint|strict|content/.test(cs.contain || '')) {
+        const r = el.getBoundingClientRect();
+        if (cs.overflowX !== 'visible' || cs.clip !== 'auto' || cs.contain !== 'none') { c.l = Math.max(c.l, r.left); c.r = Math.min(c.r, r.right); }
+        if (cs.overflowY !== 'visible' || cs.clip !== 'auto' || cs.contain !== 'none') { c.t = Math.max(c.t, r.top); c.b = Math.min(c.b, r.bottom); }
+      }
+    }
+    clips.set(el, c);
+    return c;
+  };
+  const shown = (r, el) => {
+    const c = clipOf(el);
+    const w = Math.min(r.r, c.r) - Math.max(r.l, c.l), h = Math.min(r.b, c.b) - Math.max(r.t, c.t);
+    return w > 0 && h > 0 && w * h >= 0.5 * Math.max(1, (r.r - r.l) * (r.b - r.t));
+  };
   const inside = (r) => r.width > 0 && r.height > 0 && r.right > sr.left && r.left < sr.right && r.bottom > sr.top && r.top < sr.bottom;
   const gradOf = (cs) => {
     const clip = (cs.webkitBackgroundClip || '') + ' ' + (cs.backgroundClip || '');
@@ -129,11 +155,11 @@ EXTRACT_JS = r"""
   };
 
   // ---- walk the slide: text nodes grouped by their nearest block element
-  const blocks = new Map(), order = [], wrapped = [], clipped = new Set();
+  const blocks = new Map(), order = [], hidden = new Set(), clipped = new Set();
   const walker = document.createTreeWalker(slide, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode(n) {
       if (n.nodeType === 1) {
-        if (n.matches(SKIP) || n.tagName === 'TABLE') return NodeFilter.FILTER_REJECT;
+        if (n.matches(SKIP) || n.tagName === 'TD' || n.tagName === 'TH') return NodeFilter.FILTER_REJECT;
         return n.tagName === 'BR' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
       }
       return /\S/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
@@ -173,17 +199,34 @@ EXTRACT_JS = r"""
           if (k) { b.tokens.push({ br: true }); at += 1; }
           if (part && cs.whiteSpace !== 'pre-line') {
             const r = measure(at, part.length);
-            if (r) b.tokens.push({ text: part, st, r, ws: true });
+            if (r && shown(r, parent)) b.tokens.push({ text: part, st, r, ws: true });
           }
           at += part.length;
         });
         continue;
       }
-      const r = measure(m.index, tok.length);
-      if (r) b.tokens.push({ text: transform(tok, cs), st, r });
+      // a word the browser broke across lines (after a hyphen) becomes one token per line
+      let from = m.index, len = tok.length;
+      while (len > 0) {
+        range.setStart(t, from); range.setEnd(t, from + len);
+        const rs = range.getClientRects();
+        if (!rs.length) break;
+        let k = len;
+        if (rs.length > 1 && rs[rs.length - 1].top > rs[0].top + rs[0].height / 2) {
+          while (k > 1) {
+            range.setStart(t, from); range.setEnd(t, from + k - 1);
+            const part = range.getClientRects();
+            k -= 1;
+            if (part.length && part[part.length - 1].top <= rs[0].top + rs[0].height / 2) break;
+          }
+        }
+        const r = measure(from, k);
+        if (r && shown(r, parent)) b.tokens.push({ text: transform(text.slice(from, from + k), cs), st, r });
+        from += k; len -= k;
+      }
     }
     if (st.clip) clipped.add(st.clip);
-    wrapped.push(t);
+    hidden.add(parent);
   }
   // ---- tokens into lines, lines into a box
   const out = [], ids = new Map();
@@ -227,8 +270,18 @@ EXTRACT_JS = r"""
     const li = b.el.tagName === 'LI' ? b.el : null;
     let bullet = null;
     if (li && cs.display === 'list-item' && cs.listStyleType !== 'none') {
-      bullet = { type: cs.listStyleType, n: [].indexOf.call(li.parentElement.children, li) + 1,
-                 start: parseInt(li.parentElement.getAttribute('start'), 10) || 1 };
+      // the number the browser shows: start, reversed and value all count
+      const list = li.parentElement, items = [].filter.call(list.children, (c) => c.tagName === 'LI');
+      const rev = list.tagName === 'OL' && list.hasAttribute('reversed');
+      let n = parseInt(list.getAttribute('start'), 10);
+      if (isNaN(n)) n = rev ? items.length : 1;
+      for (const it of items) {
+        const v = parseInt(it.getAttribute('value'), 10);
+        if (!isNaN(v)) n = v;
+        if (it === li) break;
+        n += rev ? -1 : 1;
+      }
+      bullet = { type: cs.listStyleType, num: n };
       if (hide) li.setAttribute('data-pptx-marker', '');
     }
     out.push({
@@ -264,16 +317,18 @@ EXTRACT_JS = r"""
         const cs = getComputedStyle(td), z = zoomOf(td);
         const leaf = (() => { const w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (/\S/.test(n.nodeValue) && visible(n.parentElement)) return n.parentElement; return td; })();
         const st = styleOf(leaf);
-        let bg = rgba(cs.backgroundColor);
-        if (bg[3] === 0) bg = rgba(getComputedStyle(tr).backgroundColor);
-        if (bg[3] === 0 && tr.parentElement) bg = rgba(getComputedStyle(tr.parentElement).backgroundColor);
-        const bw = parseFloat(cs.borderBottomWidth) * z;
         const txt = transform(cellText(td), getComputedStyle(leaf));
         let align = cs.textAlign; if (align === 'start' || align === 'justify') align = 'left'; if (align === 'end') align = 'right';
         cells.push({ w: td.getBoundingClientRect().width, r: ri, c: ci, rs: td.rowSpan || 1, cs: td.colSpan || 1, text: txt, st, th: td.tagName === 'TH',
-          align, valign: cs.verticalAlign, bg: bg[3] > 0 ? bg : null,
-          pad: ['Left', 'Right', 'Top', 'Bottom'].map((s) => parseFloat(cs['padding' + s]) * z),
-          border: bw > 0 && cs.borderBottomStyle !== 'none' ? { w: bw, c: rgba(cs.borderBottomColor) } : null });
+          align, valign: cs.verticalAlign,
+          pad: ['Left', 'Right', 'Top', 'Bottom'].map((s) => parseFloat(cs['padding' + s]) * z) });
+        const tw = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+        for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+          if (/\S/.test(n.nodeValue) && n.parentElement && visible(n.parentElement) && !n.parentElement.closest(SKIP)) {
+            hidden.add(n.parentElement);
+            const pst = styleOf(n.parentElement); if (pst.clip) clipped.add(pst.clip);
+          }
+        }
         for (let a = 0; a < (td.rowSpan || 1); a++) for (let k = 0; k < (td.colSpan || 1); k++) {
           grid[ri + a] = grid[ri + a] || []; grid[ri + a][ci + k] = true;
         }
@@ -288,7 +343,6 @@ EXTRACT_JS = r"""
     tables.push({ box: { l: r.left - sr.left, t: r.top - sr.top, w: r.width, h: r.height },
       cols: colW, rows: rows.map((tr) => tr.getBoundingClientRect().height), ncols,
       cells });
-    if (hide) tb.setAttribute('data-pptx-hide', '');
   });
 
   // ---- notes, in the active language
@@ -298,34 +352,92 @@ EXTRACT_JS = r"""
     const lang = (D.state && D.state().lang) || 'en', other = lang === 'de' ? 'en' : 'de';
     const copy = aside.cloneNode(true);
     copy.querySelectorAll('[data-' + other + ']:not([data-' + lang + '])').forEach((e) => e.remove());
-    const parts = [];
-    const blocksIn = copy.querySelectorAll('p, li, h1, h2, h3, h4, div:not(:has(p, li, div))');
-    if (blocksIn.length) blocksIn.forEach((e) => { const s = e.textContent.replace(/\s+/g, ' ').trim(); if (s) parts.push((e.tagName === 'LI' ? '- ' : '') + s); });
-    else parts.push(copy.textContent.replace(/\s+/g, ' ').trim());
+    // one pass: every text node goes to its nearest block, so nothing is lost or doubled
+    const BLK = /^(P|LI|BLOCKQUOTE|PRE|H[1-6]|DIV|DD|DT|TR|CAPTION|FIGCAPTION|SECTION|ARTICLE|UL|OL|DL|TABLE|THEAD|TBODY|TFOOT|HEADER|FOOTER|FIGURE|ADDRESS|HR)$/;
+    const segs = [];
+    let cur = null;
+    const tw = document.createTreeWalker(copy, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+      if (n.nodeType === 1) {
+        if (n.tagName === 'BR' && cur) cur.text += '\n';
+        else if ((n.tagName === 'TD' || n.tagName === 'TH') && n.previousElementSibling && cur) cur.text += ' | ';
+        continue;
+      }
+      if (!/\S/.test(n.nodeValue) && !(cur && cur.text)) continue;
+      let blk = n.parentElement;
+      while (blk && blk !== copy && !BLK.test(blk.tagName)) blk = blk.parentElement;
+      if (!cur || cur.key !== blk) {
+        cur = { key: blk, text: '', pre: !!(n.parentElement.closest && n.parentElement.closest('pre')), li: blk && blk.tagName === 'LI' };
+        segs.push(cur);
+      }
+      cur.text += cur.pre ? n.nodeValue : n.nodeValue.replace(/\s+/g, ' ');
+    }
+    const parts = segs.map((g) => {
+      const t = g.pre ? g.text.replace(/^\n+|\s+$/g, '') : g.text.replace(/ *\n */g, '\n').trim();
+      return t ? (g.li ? '- ' : '') + t : '';
+    }).filter(Boolean);
     notes = parts.join('\n');
   }
 
-  // ---- hide what the PPTX rebuilds, so the picture does not carry it twice
+  // ---- hide what the PPTX rebuilds, so the picture does not carry it twice. Only
+  // attributes and one style sheet change: no element is added, so no selector of the
+  // deck matches differently and nothing moves between measuring and the screenshot.
+  let css = '';
   if (hide) {
-    wrapped.forEach((t) => {
-      if (!t.parentNode) return;
-      const w = document.createElement('pptx-t');
-      t.parentNode.insertBefore(w, t); w.appendChild(t);
+    const n0 = (window.__pptxN = window.__pptxN || 0);
+    let n = n0;
+    const plan = [];
+    const keep = (el, sel) => {
+      const cs = getComputedStyle(el, sel || null);
+      return 'color:' + cs.color + ' !important;-webkit-text-fill-color:' + cs.webkitTextFillColor
+        + ' !important;text-shadow:' + cs.textShadow + ' !important;';
+    };
+    hidden.forEach((el) => {
+      const id = ++n, cs = getComputedStyle(el);
+      // what currentColor painted besides the text keeps its colour
+      let own = '';
+      ['Top', 'Right', 'Bottom', 'Left'].forEach((side) => {
+        if (parseFloat(cs['border' + side + 'Width']) > 0) own += 'border-' + side.toLowerCase() + '-color:' + cs['border' + side + 'Color'] + ' !important;';
+      });
+      if (cs.boxShadow !== 'none') own += 'box-shadow:' + cs.boxShadow + ' !important;';
+      if (parseFloat(cs.outlineWidth) > 0) own += 'outline-color:' + cs.outlineColor + ' !important;';
+      if (!clipped.has(el)) own += 'background-color:' + cs.backgroundColor + ' !important;';
+      plan.push([el, 'data-pptx-h', id]);
+      css += '[data-pptx-h="' + id + '"]{' + own + '}';
+      ['::before', '::after'].forEach((p) => {
+        const c = getComputedStyle(el, p).content;
+        if (c && c !== 'none' && c !== 'normal') css += '[data-pptx-h="' + id + '"]' + p + '{' + keep(el, p) + '}';
+      });
+      // children that are not hidden themselves (an icon, a skipped label) keep their colour
+      [].forEach.call(el.children, (k) => {
+        if (hidden.has(k)) return;
+        const kid = ++n;
+        plan.push([k, 'data-pptx-r', kid]);
+        css += '[data-pptx-r="' + kid + '"]{' + keep(k) + '}';
+      });
+      // a line drawn by an ancestor (underline, line-through) runs under this text too
+      for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) {
+        if ((getComputedStyle(e).textDecorationLine || 'none') !== 'none') plan.push([e, 'data-pptx-d', '']);
+        if (e === slide) break;
+      }
     });
+    window.__pptxN = n;
+    plan.forEach(([el, attr, v]) => el.setAttribute(attr, String(v)));
     clipped.forEach((e) => e && e.setAttribute('data-pptx-clip', ''));
   }
   const clean = (st) => { const { clip, ...rest } = st; return rest; };
   out.forEach((o) => o.lines.forEach((ln) => ln.forEach((tk) => { tk.st = clean(tk.st); })));
   tables.forEach((tb) => tb.cells.forEach((c) => { c.st = clean(c.st); }));
-  return { w: sr.width, h: sr.height, blocks: out, tables, notes };
+  return { w: sr.width, h: sr.height, blocks: out, tables, notes, css };
 }
 """
 
 HIDE_CSS = """
-pptx-t { color: transparent !important; -webkit-text-fill-color: transparent !important;
-         text-shadow: none !important; -webkit-text-stroke: 0 !important; }
+[data-pptx-h] { color: transparent !important; -webkit-text-fill-color: transparent !important;
+                text-shadow: none !important; -webkit-text-stroke: 0 !important;
+                text-decoration-color: transparent !important; }
+[data-pptx-d] { text-decoration-color: transparent !important; }
 [data-pptx-clip] { background: none !important; }
-[data-pptx-hide] { visibility: hidden !important; }
 li[data-pptx-marker]::marker { color: transparent !important; }
 """
 
@@ -336,20 +448,37 @@ END_STATE_CSS = """
 .code-line.is-on { box-shadow: none !important; }
 .slide .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
 *, *::before, *::after { transition-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; }
-body > :not(.deck) { visibility: hidden !important; }
-.deck-zoom-hint, .deck-hints, .deck-progress, .deck-dots, .deck-counter, .deck-track, .deck-help, .deck-notes { display: none !important; }
+[data-pptx-chrome], .deck-zoom-hint, .deck-hints, .deck-progress, .deck-dots, .deck-counter, .deck-live,
+.deck-track, .deck-help, .deck-notes, .deck-back, .deck-cover, .deck-jump, .deck-read-bar, .deck-read-progress,
+.deck-read-head, .deck-read-live { display: none !important; }
 """
+
+
+class UnknownTrack(Exception):
+    pass
 
 
 def load_deck(page, src: Path, args):
     page.goto(src.as_uri(), wait_until="load")
     page.wait_for_function("() => window.SlideDeck && typeof window.SlideDeck.count === 'function'", timeout=15000)
-    page.evaluate(
+    info = page.evaluate(
         """async ({theme, lang, track}) => {
           const D = window.SlideDeck, root = document.documentElement;
           if (theme) { root.classList.remove('theme-light', 'theme-dark'); root.classList.add('theme-' + theme); }
           if (lang && D.setLang) D.setLang(lang);
           if (D.setTrack) D.setTrack(track || 'all');
+          // fixed or sticky overlays beside the slides (engine and module chrome, a site
+          // header around the deck) would sit on every screenshot; the slides' own
+          // ancestors and everything holding a slide stay
+          const slides = Array.from(document.querySelectorAll('.slide'));
+          const holds = (e) => slides.some((s) => e === s || e.contains(s));
+          for (let a = slides[0] && slides[0].parentElement; a && a !== document.documentElement; a = a.parentElement) {
+            Array.from(a.children).forEach((c) => {
+              if (holds(c)) return;
+              const pos = getComputedStyle(c).position;
+              if (pos === 'fixed' || pos === 'sticky') c.setAttribute('data-pptx-chrome', '');
+            });
+          }
           document.querySelectorAll('.slide').forEach((s) => s.classList.add('visible'));
           document.querySelectorAll('img[loading="lazy"]').forEach((img) => { img.loading = 'eager'; });
           window.dispatchEvent(new Event('beforeprint'));
@@ -363,9 +492,16 @@ def load_deck(page, src: Path, args):
             f.addEventListener('load', () => res(), { once: true }); setTimeout(res, 8000);
           })));
           await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+          const tracks = new Set();
+          document.querySelectorAll('.slide[data-track], .slide[data-spur]').forEach((s) =>
+            (s.getAttribute('data-track') || s.getAttribute('data-spur') || '').split(/\\s+/).forEach((t) => t && tracks.add(t)));
+          return { track: D.state ? D.state().track : 'all', known: Array.from(tracks) };
         }""",
         {"theme": args.theme, "lang": args.lang, "track": args.track},
     )
+    if args.track and args.track != "all" and info["track"] != args.track:
+        raise UnknownTrack("render-pptx: unknown track %r (the deck has: %s)"
+                           % (args.track, ", ".join(info["known"]) or "no tracks"))
     page.add_style_tag(content=END_STATE_CSS)
     return page.evaluate("() => window.SlideDeck.count()")
 
@@ -454,7 +590,7 @@ class Builder:
 
         f = run.font
         f.name = self.family(st["family"])
-        f.size = Pt(round(self.pt(st["size"]) * 2) / 2)
+        f.size = Pt(max(1.0, round(self.pt(st["size"]) * 2) / 2))  # PowerPoint takes 1 pt and up
         f.bold = st["weight"] >= 600
         f.italic = bool(st["italic"])
         if st["underline"]:
@@ -494,7 +630,7 @@ class Builder:
                 r.text = tok["text"]
                 self.run_style(r, tok["st"])
 
-    def bullet(self, para, block, indent_px):
+    def bullet(self, para, block, indent_px, start):
         ppr = para._p.get_or_add_pPr()
         ind = self.emu(indent_px)
         ppr.set("marL", str(ind))
@@ -506,7 +642,7 @@ class Builder:
             clr.append(clr.makeelement(qn("a:srgbClr"), {"val": "%02X%02X%02X" % tuple(first["color"])}))
             ppr.append(clr)
         if b["type"] in NUMBERED:
-            ppr.append(ppr.makeelement(qn("a:buAutoNum"), {"type": NUMBERED[b["type"]], "startAt": str(b["start"])}))
+            ppr.append(ppr.makeelement(qn("a:buAutoNum"), {"type": NUMBERED[b["type"]], "startAt": str(start)}))
         else:
             ppr.append(ppr.makeelement(qn("a:buChar"), {"char": BULLETS.get(b["type"], "•")}))
 
@@ -528,6 +664,10 @@ class Builder:
         if a["parent"] != b["parent"] or a["tag"] != b["tag"] or a["align"] != b["align"]:
             return False
         if bool(a["bullet"]) != bool(b["bullet"]) or b["box"]["t"] < a["box"]["b"] - 2:
+            return False
+        # PowerPoint numbers the paragraphs of a box on from the first: only an item that
+        # continues the count joins (a reversed list or a jump by value starts a new box)
+        if a["bullet"] and a["bullet"]["type"] in NUMBERED and b["bullet"]["num"] != a["bullet"]["num"] + 1:
             return False
         if b["box"]["t"] - a["box"]["b"] > 2.5 * max(a["lineHeight"], b["lineHeight"]):
             return False
@@ -562,7 +702,7 @@ class Builder:
             para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             self.fill_paragraph(para, b)
             if b["bullet"]:
-                self.bullet(para, b, indent)
+                self.bullet(para, b, indent, group[0]["bullet"]["num"])
             if prev is not None:
                 para.space_before = Pt(round(max(0.0, self.pt(b["box"]["t"] - prev["box"]["b"])), 1))
             prev = b
@@ -570,7 +710,6 @@ class Builder:
 
     # ---- tables
     def table(self, slide, t):
-        from pptx.dml.color import RGBColor
         from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
         from pptx.util import Emu
 
@@ -600,14 +739,7 @@ class Builder:
                 self.no_lines(tbl.cell(row, col))
         for c in t["cells"]:
             cell = tbl.cell(c["r"], c["c"])
-            if c["bg"]:
-                cell.fill.solid()
-                cell.fill.fore_color.rgb = RGBColor(*c["bg"][:3])
-                if c["bg"][3] < 0.999:
-                    clr = cell._tc.tcPr.find(qn("a:solidFill")).find(qn("a:srgbClr"))
-                    clr.append(clr.makeelement(qn("a:alpha"), {"val": str(int(c["bg"][3] * 100000))}))
-            else:
-                cell.fill.background()
+            cell.fill.background()  # fills, rules, images: the picture under the table
             pl, pr, ptop, pb = c["pad"]
             cell.margin_left, cell.margin_right = Emu(self.emu(pl)), Emu(self.emu(pr))
             cell.margin_top, cell.margin_bottom = Emu(self.emu(ptop)), Emu(self.emu(pb))
@@ -622,8 +754,6 @@ class Builder:
                 self.run_style(run, c["st"])
                 if c["th"]:
                     run.font.bold = True
-            if c["border"]:
-                self.line(cell, "a:lnB", c["border"])
         self.n_tables += 1
 
     @staticmethod
@@ -633,22 +763,6 @@ class Builder:
             ln = tcpr.makeelement(qn(tag), {"w": "0"})
             ln.append(ln.makeelement(qn("a:noFill"), {}))
             tcpr.insert(i, ln)
-
-    def line(self, cell, tag, border):
-        tcpr = cell._tc.get_or_add_tcPr()
-        for old in tcpr.findall(qn(tag)):
-            tcpr.remove(old)
-        ln = tcpr.makeelement(qn(tag), {"w": str(max(1, self.emu(border["w"]))), "cmpd": "sng"})
-        fill = ln.makeelement(qn("a:solidFill"), {})
-        clr = fill.makeelement(qn("a:srgbClr"), {"val": "%02X%02X%02X" % tuple(border["c"][:3])})
-        if border["c"][3] < 0.999:
-            clr.append(clr.makeelement(qn("a:alpha"), {"val": str(int(border["c"][3] * 100000))}))
-        fill.append(clr)
-        ln.append(fill)
-        # lnL, lnR, lnT, lnB keep their schema order ahead of the fill
-        order = ["a:lnL", "a:lnR", "a:lnT", "a:lnB"]
-        pos = sum(1 for child in tcpr if child.tag in {qn(o) for o in order[: order.index(tag)]})
-        tcpr.insert(pos, ln)
 
 
 def qn(tag: str) -> str:
@@ -662,6 +776,8 @@ def main(argv=None) -> int:
     src, out = Path(args.input).resolve(), Path(args.output).resolve()
     if not src.is_file():
         die("render-pptx: input not found: %s" % src)
+    if out == src:
+        die("render-pptx: output is the same file as the input: %s" % src)
     try:
         import pptx  # noqa: F401
         from playwright.sync_api import sync_playwright
@@ -678,6 +794,11 @@ def main(argv=None) -> int:
         try:
             ctx = browser.new_context(viewport={"width": vw, "height": vh}, device_scale_factor=scale,
                                       color_scheme=args.theme or "light", reduced_motion="reduce")
+            if not args.allow_network:
+                # a deck is one offline file: nothing it loads may leave the machine
+                ctx.route("**/*", lambda route: route.continue_()
+                          if route.request.url.split(":", 1)[0] in ("file", "data", "about", "blob")
+                          else route.abort())
             page = ctx.new_page()
             n = load_deck(page, src, args)
             builder = Builder(args, vw)
@@ -687,15 +808,23 @@ def main(argv=None) -> int:
                 settle(page, i)
                 data = page.evaluate(EXTRACT_JS, {"index": i, "hide": args.mode == "hybrid"}) if args.mode == "hybrid" else None
                 if data is not None:
+                    if data["css"]:
+                        page.add_style_tag(content=data["css"])
                     page.evaluate("() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)))")
                 builder.add_slide(screenshot(page, i), data)
+        except UnknownTrack as exc:
+            die(str(exc))
         except Exception as exc:
-            print("render-pptx: render failed: %s" % exc, file=sys.stderr)
+            print("render-pptx: render failed: %s" % str(exc).strip().splitlines()[0], file=sys.stderr)
             return 1
         finally:
             browser.close()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    builder.prs.save(str(out))
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        builder.prs.save(str(out))
+    except OSError as exc:
+        print("render-pptx: cannot write %s: %s" % (out, exc.strerror or exc), file=sys.stderr)
+        return 1
     if builder.fonts:
         names = sorted(builder.fonts, key=lambda k: -builder.fonts[k])
         mapped = ["%s -> %s" % (f, args.fallback[f.lower()]) if f.lower() in args.fallback else f for f in names]

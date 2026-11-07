@@ -276,6 +276,20 @@ def test_browser_reads_gradient_text_by_its_stops(browser, tmp_path, ground):
     assert "contrast" in rules(data, "error"), "a stop in the ground colour is unreadable"
 
 
+
+INVISIBLE = ".lost{font-size:48px;color:var(--ink);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;%s}"
+
+
+@pytest.mark.parametrize("paint", ["background-image:none",
+                                   "background-image:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)"],
+                         ids=["no-gradient", "image-only"])
+def test_browser_flags_a_transparent_fill_with_no_gradient_stops(browser, tmp_path, paint):
+    """A gradient that failed to resolve leaves the text transparent: its colour is not
+    what is painted, so the text counts as unreadable, never as its colour."""
+    page = _variant(tmp_path, "lost.html", INVISIBLE % paint, '<p><span class="lost">98%</span></p>')
+    code, data = run(str(page), "--browser")
+    assert "contrast" in rules(data, "error"), data
+
 CODE_FONT_CSS = ":root{--font-mono:ui-monospace, Menlo, monospace}"
 
 

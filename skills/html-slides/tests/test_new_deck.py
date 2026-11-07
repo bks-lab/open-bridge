@@ -204,6 +204,15 @@ def test_design_preset_without_design_md_is_refused(plain_dir):
     assert "DESIGN.md" in proc.stderr
 
 
+def test_design_with_a_non_colour_value_is_refused_cleanly(plain_dir):
+    bad = plain_dir / "DESIGN.md"
+    bad.write_text("---\nname: bad\ncolors:\n  surface: \"#ffffff\"\n  on-surface: \"#111111\"\n"
+                   "  secondary: \"linear-gradient(red, blue)\"\n---\n", encoding="utf-8")
+    proc = run("--title", "x", "--design", bad, "--out", plain_dir / "d.html", check=False)
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr and "not a colour" in proc.stderr
+
+
 # --- fonts ---------------------------------------------------------------------------------
 
 def test_fonts_are_embedded_by_default(plain_dir):

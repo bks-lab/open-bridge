@@ -32,8 +32,11 @@ CANVAS = SKILL.parent / "html-canvas"
 GATE = CANVAS / "scripts" / "verify-page.py"
 TOOLING = FIXTURES / "tooling"
 REGION_RE = re.compile(r"/\* =+ KEYNOTE FORMS \(opt-in\) =+ \*/.*?/\* =+ END KEYNOTE FORMS =+ \*/\n?", re.S)
-KEYNOTE_CLASSES = ("slide--media", "slide__media", "slide__stat", "metrics--gradient", "slide__arc",
-                   "slide--quote", "slide__quote", "slide__result", "slide__numbered", "cards--tinted")
+# Whole class names: a keynote rule has to need one of these outside any :not().
+KEYNOTE_CLASSES = {"slide--media", "slide__media", "slide__stats", "slide__stat", "slide__stat-value",
+                   "slide__stat-label", "metrics--gradient", "slide__arc", "slide__arc--center", "slide--quote",
+                   "slide__quote", "slide__quote-source", "slide__result", "slide__result-label",
+                   "slide__result-value", "slide__numbered", "slide__numbered--2col", "cards--tinted"}
 OLD_TYPES = 11
 
 
@@ -209,8 +212,35 @@ def test_every_keynote_rule_needs_a_keynote_class():
     body = REGION_RE.search(engine_css()).group(0)
     sels = _selectors(body)
     assert sels
-    loose = [s for s in sels if not any(c in s for c in KEYNOTE_CLASSES)]
+    loose = [s for s in sels if not required_classes(s) & KEYNOTE_CLASSES]
     assert loose == [], loose
+
+
+def _strip_not(sel: str) -> str:
+    """The selector with every :not(...) argument removed, nested parentheses included."""
+    out, i = [], 0
+    while i < len(sel):
+        if sel.startswith(":not(", i):
+            depth, i = 1, i + 5
+            while i < len(sel) and depth:
+                depth += {"(": 1, ")": -1}.get(sel[i], 0)
+                i += 1
+            continue
+        out.append(sel[i])
+        i += 1
+    return "".join(out)
+
+
+def required_classes(sel: str) -> set[str]:
+    """Whole class names an element must carry for `sel` to match (outside :not)."""
+    return set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", _strip_not(sel)))
+
+
+@pytest.mark.parametrize("sel,ok", [(".slide--media > .slide__media", True), (".slide__stat-value", True),
+                                    (":not(.slide__media) p", False), (".slide__statement", False),
+                                    (".slide:not(.slide--quote:not(.x)) p", False), (".cards--tinted > .cheat-card", True)])
+def test_the_keynote_class_check_reads_whole_names_outside_not(sel, ok):
+    assert bool(required_classes(sel) & KEYNOTE_CLASSES) is ok
 
 
 SNAPSHOT = """() => { const props = [...getComputedStyle(document.body)].filter(p => !p.startsWith('transition') && !p.startsWith('animation'));
@@ -229,15 +259,34 @@ def _with_engine(html: str, css: str) -> str:
     return html[:m.start()] + start + "\n" + sink + css + "\n" + end + html[m.end():]
 
 
-@pytest.mark.parametrize("viewport,media", [
-    ({"width": 1280, "height": 720}, "screen"), ({"width": 1920, "height": 1080}, "screen"),
-    ({"width": 600, "height": 900}, "screen"), ({"width": 1280, "height": 600}, "screen"),
-    ({"width": 1280, "height": 720}, "print")], ids=["1280", "1920", "600", "short", "print"])
-def test_a_deck_without_the_new_classes_renders_as_before(open_html, page, viewport, media):
+def baseline_engine() -> str:
+    """slide-engine.css as origin/main ships it: the engine before the keynote forms."""
+    try:
+        proc = subprocess.run(["git", "-C", str(SKILL), "show", "origin/main:skills/html-slides/assets/slide-engine.css"],
+                              capture_output=True, text=True, encoding="utf-8")
+    except OSError as exc:
+        pytest.skip("git not available: %s" % exc)
+    if proc.returncode != 0 or "slide-engine" not in proc.stdout:
+        pytest.skip("no origin/main engine to compare with: %s" % proc.stderr.strip())
+    return proc.stdout
+
+
+@pytest.mark.parametrize("viewport,media,back", [
+    ({"width": 1280, "height": 720}, "screen", False), ({"width": 1920, "height": 1080}, "screen", False),
+    ({"width": 2400, "height": 1300}, "screen", False), ({"width": 600, "height": 900}, "screen", False),
+    ({"width": 600, "height": 900}, "screen", True), ({"width": 1280, "height": 600}, "screen", False),
+    ({"width": 1280, "height": 720}, "print", False)],
+    ids=["1280", "1920", "2400", "600", "600-back-link", "short", "print"])
+def test_a_deck_without_the_new_classes_renders_as_before(open_html, page, viewport, media, back):
+    """The old slide types under the shipped engine and under origin/main's engine: every
+    computed style equal, so neither the keynote region nor the :not() additions outside it
+    change a deck that does not use the new classes."""
+    before = baseline_engine()
     old = [h.replace("{color}", "accent") for _, h in slide_type_snippets()[:OLD_TYPES]]
-    html = deck(old).replace("</head>", STILL + "</head>", 1)
+    html = deck(old, deck_attrs='data-back-href="index.html"' if back else "")
+    html = html.replace("</head>", STILL + "</head>", 1)
     snaps = []
-    for css in (engine_css(), REGION_RE.sub("", engine_css())):
+    for css in (engine_css(), before):
         open_deck(open_html, _with_engine(html, css), viewport=viewport)
         page.emulate_media(media=media)
         page.wait_for_timeout(100)

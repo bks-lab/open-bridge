@@ -203,21 +203,29 @@ writes one 16:9 slide (13.333 x 7.5 in) per deck slide.
   italic, colour, alignment, line height, letter spacing and capitals. Lines break
   where the browser broke them; word wrap and autofit are off, so the layout holds.
   Stacked siblings (list items, the lines of a code block) share one text box, one
-  paragraph each; a list with a visible marker gets a PowerPoint bullet or number.
-  Gradient text takes the first gradient colour.
-- Tables: every `<table>` is a native PowerPoint table at its place, with cell text,
-  bold header cells, cell fills, padding and the bottom rule of each cell.
+  paragraph each; a list with a visible marker gets a PowerPoint bullet or number
+  (`start`, `value` and `reversed` keep the numbers the browser shows). Gradient text
+  takes the first gradient colour. Text cut off by an ancestor (overflow, line clamp)
+  is exported only as far as it shows.
+- Tables: every `<table>` is a native PowerPoint table at its place carrying the cell
+  text (bold header cells, the cells' padding and alignment); the caption is a text box.
+  The table's look (fills, rules, rounded corners, images or SVG in cells) stays in the
+  picture under it, so moving the native table means moving text, not the drawing.
 - Speaker notes: `<aside class="notes">` goes to the notes page of its slide.
 
 **What is a picture:** behind the text sits a full-slide screenshot of the slide with
-that text and those tables left out: images, SVG diagrams and their labels, cards,
-gradients, glows, custom list markers and decorative `aria-hidden` elements such as the
-big chapter number. `--mode image` writes the plain screenshot only: pixel exact,
-nothing editable.
+only the exported text made transparent (nothing in the page moves for it): images,
+SVG diagrams and their labels, cards, table fills and rules, gradients, glows, custom
+list markers and decorative `aria-hidden` elements such as the big chapter number. Fixed
+overlays beside the slides (the engine's counter, dots and hints) are left out.
+`--mode image` writes the plain screenshot only: pixel exact, nothing editable.
 
 **Options:** `--theme light|dark` (default: as the deck opens, light), `--lang de|en`
 for a bilingual deck (only that language is exported, notes too), `--track NAME`
-(default: every slide, like print), `--size 1920x1080|1280x720`, `--mode hybrid|image`.
+(default: every slide, like print; a name the deck does not know is refused),
+`--size 1920x1080|1280x720`, `--mode hybrid|image`, `--allow-network`. Without that
+last flag the render loads nothing over the network (only `file:`, `data:`, `about:`
+and `blob:`), the same offline contract the deck keeps.
 
 **Fonts:** PowerPoint draws text with the font family by name, and a deck embeds its
 fonts only for the browser. The script lists the families the PPTX uses on stderr;
@@ -234,7 +242,8 @@ it against the shape drawn in the picture.
 **Requires:** `python-pptx` and `playwright` with its Chromium
 (`playwright install chromium`). Without them the script prints one line saying so.
 
-Exit codes: 0 written, 1 the render failed, 2 wrong usage or a missing dependency.
+Exit codes: 0 written, 1 the render failed or the output cannot be written, 2 wrong
+usage (an unknown track, the output path equal to the input) or a missing dependency.
 On success it prints `render-pptx: wrote <path> (<n> slides, <m> text boxes, <k> tables)`.
 
 ---

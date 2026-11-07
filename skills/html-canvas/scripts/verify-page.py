@@ -753,16 +753,20 @@ JS_CONTRAST = """() => {
   const ink = cs => (cs.webkitBackgroundClip || cs.backgroundClip) === 'text';
   const paints = cs => !ink(cs) && (cs.backgroundImage !== 'none' || rgba(cs.backgroundColor)[3] > 0);
   const COLOR_FN = /(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\\([^()]*\\)/g;
-  // The colours a text is painted in: its colour, or every stop of the gradient it is cut from.
+  // The colours a text is painted in: its fill, or every stop of the gradient it is cut
+  // from. A transparent fill with no readable stop (the gradient failed to resolve, or is
+  // only an image) paints nothing legible: it stays transparent and measures 1:1.
   const inks = (el, cs) => {
+    const fill = rgba(cs.webkitTextFillColor || cs.color);
+    if (fill[3] >= 0.01) return [fill];
     for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
       const s = getComputedStyle(e);
-      if (ink(s) && s.backgroundImage !== 'none' && rgba(cs.webkitTextFillColor || cs.color)[3] < 0.01) {
+      if (ink(s) && s.backgroundImage !== 'none') {
         const stops = s.backgroundImage.match(COLOR_FN) || [];
         if (stops.length) return stops.map(rgba);
       }
     }
-    return [rgba(cs.color)];
+    return [fill];
   };
   // A positioned sibling of the text or of one of its ancestors that overlaps it
   // (a scrim, a gradient layer, a photo) paints behind the text without being an

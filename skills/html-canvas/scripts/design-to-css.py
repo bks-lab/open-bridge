@@ -415,6 +415,22 @@ def load_map(path: Path) -> tuple[dict, dict, bool]:
     return entries, {k: str(v) for k, v in selectors.items()}, print_block
 
 
+# What a mapped colour role may hold: a hex value or one colour function (the same
+# functions verify-page.py reads). Anything else, a gradient, a var() or a word, would
+# land unchecked in a colour variable and break what reads it.
+COLOUR_VALUE = re.compile(r"#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})"
+                          r"|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)")
+
+
+def check_colour(value, name: str, role: str, mode: str) -> str:
+    """`value` as a string when it is a colour, else a ValueError naming variable and role."""
+    text = str(value).strip()
+    if not COLOUR_VALUE.fullmatch(text):
+        raise ValueError(f"--{name} <- {role} ({mode}): {text!r} is not a colour; "
+                         f"use a hex value or a colour function such as oklch(...)")
+    return text
+
+
 def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
                      print_block: bool = True) -> tuple[str, list[str]]:
     """Return (css, missing roles) holding exactly the mapped variables per mode."""
@@ -444,10 +460,11 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
                 missing += [f"{name} <- {r}" for r in absent]
             continue
         for target, dark, on_paper in ((light, False, False), (darks, True, False), (paper, False, True)):
-            val = resolve(spec["role"], dark, on_paper)
+            mode = "dark" if dark else ("print" if on_paper else "light")
+            val = check_colour(resolve(spec["role"], dark, on_paper), name, spec["role"], mode)
             if "mix" in spec:
-                ground = (resolve(spec["with"], dark, on_paper) if spec.get("with") not in (None, "transparent")
-                          else "transparent")
+                ground = (check_colour(resolve(spec["with"], dark, on_paper), name, spec["with"], mode)
+                          if spec.get("with") not in (None, "transparent") else "transparent")
                 val = f"color-mix(in srgb, {val} {spec['mix']:g}%, {ground})"
             target.append(f"  --{name}: {val};")
 
@@ -616,7 +633,10 @@ def main() -> int:
     args.design = str(chosen)
     design = frontmatter(Path(args.design))
     if entries is not None:
-        css, missing = build_mapped_css(design, entries, selectors, print_block)
+        try:
+            css, missing = build_mapped_css(design, entries, selectors, print_block)
+        except ValueError as e:
+            sys.exit("design-to-css: %s" % e)
         skipped = []
     else:
         css, skipped = build_css(design, selectors)

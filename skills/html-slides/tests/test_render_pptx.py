@@ -1,23 +1,40 @@
 """scripts/render-pptx.py: an editable PowerPoint copy of a deck.
 
 Skips cleanly without python-pptx, without the playwright Python package or
-without the chromium it drives. The decks are built with new-deck.py from plain
+without the chromium it drives; under CI (env CI set) a missing piece fails
+instead, so the suite cannot go quietly green there. The decks are built with new-deck.py from plain
 fragments, so the test exercises the markup the docs promise.
 """
 from __future__ import annotations
 
+import http.server
+import importlib
 import io
 import os
+import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
 
 from slides_testlib import SKILL
 
-pptx = pytest.importorskip("pptx")
-pytest.importorskip("playwright.sync_api")
+IN_CI = bool(os.environ.get("CI"))
+
+
+def _need(name: str):
+    try:
+        return importlib.import_module(name)
+    except ImportError as exc:
+        if IN_CI:
+            raise RuntimeError("%s is required in CI: %s" % (name, exc)) from exc
+        pytest.skip("%s not installed" % name, allow_module_level=True)
+
+
+pptx = _need("pptx")
+_need("playwright.sync_api")
 
 
 RENDER = SKILL / "scripts" / "render-pptx.py"
@@ -82,7 +99,7 @@ def deck(tmp_path_factory) -> Path:
 
 def export(src: Path, out: Path, *args) -> "pptx.Presentation":
     proc = run(src, out, *args)
-    if proc.returncode == 2 and "chromium" in proc.stderr.lower():
+    if proc.returncode == 2 and "chromium" in proc.stderr.lower() and not IN_CI:
         pytest.skip("chromium not available: " + proc.stderr.strip())
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "render-pptx: wrote" in proc.stdout
@@ -206,7 +223,7 @@ def test_hidden_text_is_not_baked_into_the_background(hybrid):
 
 def test_prints_the_fonts_the_deck_uses(deck, tmp_path):
     proc = run(deck, tmp_path / "f.pptx", "--font-fallback", "Nonexistent=Arial")
-    if proc.returncode == 2 and "chromium" in proc.stderr.lower():
+    if proc.returncode == 2 and "chromium" in proc.stderr.lower() and not IN_CI:
         pytest.skip("chromium not available")
     assert proc.returncode == 0, proc.stderr
     assert "fonts:" in proc.stderr.lower()
@@ -229,3 +246,258 @@ def test_wrong_usage_exits_2(tmp_path):
     assert proc.returncode == 2
     proc = run(tmp_path / "missing.html", tmp_path / "out.pptx")
     assert proc.returncode == 2
+
+
+# --------------------------------------------------------------------------- review fixes
+
+def build(tmp: Path, fragment: str, *extra, name="deck.html") -> Path:
+    frag = tmp / ("frag-" + name)
+    frag.write_text(fragment, encoding="utf-8")
+    out = tmp / name
+    subprocess.run([sys.executable, str(NEW_DECK), "--title", "Probe", "--slides", frag,
+                    "--out", out, "--force", "--no-verify", *map(str, extra)],
+                   check=True, capture_output=True)
+    return out
+
+
+def background(slide):
+    from PIL import Image
+
+    return Image.open(io.BytesIO(pictures(slide)[0].image.blob)).convert("RGB")
+
+
+def count_near(img, box, rgb, tol=48):
+    region = img.crop(box)
+    return sum(n for n, c in region.getcolors(region.width * region.height)
+               if max(abs(a - b) for a, b in zip(c, rgb)) <= tol)
+
+
+def emu_box(img, sh):
+    sx, sy = img.width / SLIDE_W, img.height / SLIDE_H
+    return (int(sh.left * sx), int(sh.top * sy), int((sh.left + sh.width) * sx), int((sh.top + sh.height) * sy))
+
+
+def bbox_of(img, rgb, tol=40):
+    px = img.load()
+    xs, ys = [], []
+    for y in range(0, img.height, 2):
+        for x in range(0, img.width, 2):
+            if max(abs(a - b) for a, b in zip(px[x, y], rgb)) <= tol:
+                xs.append(x)
+                ys.append(y)
+    return (min(xs), min(ys), max(xs), max(ys)) if xs else None
+
+
+TABLE_STEPS = """
+<section class="slide slide--content">
+  <h2 class="slide__heading slide__heading--sm">Stepped table</h2>
+  <table class="data-table" style="color:#101010">
+    <caption>Table caption text</caption>
+    <thead><tr><th>Column one</th><th>Column two</th></tr></thead>
+    <tbody data-steps>
+      <tr><td>Gamma cell text</td><td>Delta cell text</td></tr>
+      <tr><td>Epsilon cell text</td><td>Zeta cell text</td></tr>
+    </tbody>
+  </table>
+</section>
+"""
+
+
+def test_table_with_steps_is_not_doubled_and_keeps_its_caption(tmp_path):
+    prs = export(build(tmp_path, TABLE_STEPS, "--with", "steps"), tmp_path / "t.pptx")
+    slide = prs.slides[0]
+    shape = next(sh for sh in slide.shapes if sh.has_table)
+    tbl = shape.table
+    assert tbl.cell(1, 0).text == "Gamma cell text" and tbl.cell(2, 1).text == "Zeta cell text"
+    img = background(slide)
+    box = emu_box(img, shape)
+    area = (box[2] - box[0]) * (box[3] - box[1])
+    assert count_near(img, box, (0x10, 0x10, 0x10)) / area < 0.002, "cell text baked into the picture"
+    assert "Table caption text" in all_text(slide)
+
+
+def test_table_visual_stays_in_the_picture(tmp_path):
+    frag = TABLE_STEPS.replace('<table class="data-table" style="color:#101010">',
+                               '<table class="data-table" style="color:#101010;border:6px solid #ff0000">')
+    prs = export(build(tmp_path, frag), tmp_path / "t.pptx")
+    img = background(prs.slides[0])
+    assert bbox_of(img, (255, 0, 0)) is not None, "the table border left the picture"
+
+
+def _red_slide(body):
+    return ('<section class="slide slide--content"><h2 class="slide__heading">Wrapped deck heading</h2>'
+            '<div style="width:300px;height:120px;background:#ff0000"></div></section>' + body)
+
+
+@pytest.mark.parametrize("variant", ["wrapper", "body"])
+def test_deck_without_a_top_level_deck_element_is_not_blank(tmp_path, variant):
+    src = build(tmp_path, _red_slide(""))
+    html = src.read_text("utf-8")
+    m = re.search(r'<div class="deck"[^>]*>', html)
+    assert m
+    if variant == "wrapper":
+        html = html.replace(m.group(0), '<main class="page-wrap">' + m.group(0), 1).replace("</body>", "</main></body>", 1)
+    else:
+        # slides straight in <body>: drop the deck element, keep its children
+        start = m.end()
+        end = html.index("</section>", html.rindex("<section", 0, html.index("</body>"))) + len("</section>")
+        close = html.index("</div>", end)
+        html = html[:m.start()] + html[start:close] + html[close + len("</div>"):]
+    src.write_text(html, encoding="utf-8")
+    prs = export(src, tmp_path / "w.pptx")
+    assert "Wrapped deck heading" in all_text(prs.slides[0])
+    assert bbox_of(background(prs.slides[0]), (255, 0, 0)) is not None, "slide blanked"
+
+
+def _autonum(slide):
+    out = []
+    for sh in slide.shapes:
+        if not sh.has_text_frame:
+            continue
+        for p in sh.text_frame.paragraphs:
+            ppr = p._p.pPr
+            num = None if ppr is None else ppr.find("{http://schemas.openxmlformats.org/drawingml/2006/main}buAutoNum")
+            if num is not None:
+                out.append((p.text, num.get("startAt"), sh.shape_id))
+    return out
+
+
+def test_numbered_lists_keep_their_numbers(tmp_path):
+    frag = """
+<section class="slide slide--content"><div class="slide__inner"><div>
+  <ol start="3" style="list-style:decimal;padding-left:2em"><li>third item</li><li>fourth item</li></ol>
+  <ol reversed style="list-style:decimal;padding-left:2em"><li>rev three</li><li>rev two</li><li>rev one</li></ol>
+  <ol style="list-style:decimal;padding-left:2em"><li value="10">item ten</li><li>item eleven</li></ol>
+</div></div></section>"""
+    prs = export(build(tmp_path, frag), tmp_path / "n.pptx")
+    nums = _autonum(prs.slides[0])
+    first = {t: (s, sid) for t, s, sid in nums}
+    assert first["third item"][0] == "3"
+    # a paragraph that continues the sequence sits in the same box (PowerPoint counts on)
+    assert first["fourth item"][1] == first["third item"][1]
+    assert first["item ten"][0] == "10" and first["item eleven"][1] == first["item ten"][1]
+    # a reversed list cannot count on: every item carries its own number
+    assert [first[t][0] for t in ("rev three", "rev two", "rev one")] == ["3", "2", "1"]
+    assert len({first[t][1] for t in ("rev three", "rev two", "rev one")}) == 3
+
+
+def test_notes_keep_every_block_once(tmp_path):
+    frag = """
+<section class="slide slide--content"><h2 class="slide__heading">Notes probe</h2>
+<aside class="notes"><p>Intro para</p>Loose words<blockquote>Quoted line</blockquote>
+<ul><li>Item alpha</li><li>Item beta</li></ul><pre>code line</pre><h5>Small head</h5>
+<div><p>Nested para</p></div></aside></section>"""
+    prs = export(build(tmp_path, frag), tmp_path / "notes.pptx")
+    text = prs.slides[0].notes_slide.notes_text_frame.text
+    for part in ("Intro para", "Loose words", "Quoted line", "Item alpha", "Item beta", "code line",
+                 "Small head", "Nested para"):
+        assert text.count(part) == 1, (part, text)
+
+
+def test_hiding_text_does_not_move_the_picture(tmp_path):
+    frag = """
+<section class="slide slide--content"><style>.shift > * { margin-left: 120px; }</style>
+<div class="slide__inner"><div>
+  <p class="shift slide__body">Plain words <b style="background:#ff0000;color:#ff0000">mark</b></p>
+  <p class="slide__body"><span style="text-decoration:underline 4px #00ff00">Underlined words</span></p>
+  <p class="slide__body" style="text-decoration:line-through 4px #0000ff"><span>Struck words</span></p>
+</div></div></section>"""
+    src = build(tmp_path, frag)
+    hyb = export(src, tmp_path / "h.pptx")
+    img = export(src, tmp_path / "i.pptx", "--mode", "image")
+    a, b = background(hyb.slides[0]), background(img.slides[0])
+    # the red mark is a background box: same place in both pictures
+    ra = bbox_of(a, (255, 0, 0))
+    rb = bbox_of(b, (255, 0, 0))
+    assert ra and rb and all(abs(x - y) <= 4 for x, y in zip(ra, rb)), (ra, rb)
+    assert bbox_of(a, (0, 255, 0)) is None, "underline left in the picture"
+    assert bbox_of(a, (0, 0, 255)) is None, "line-through left in the picture"
+
+
+def test_clipped_text_is_cut_and_tiny_text_exports(tmp_path):
+    frag = """
+<section class="slide slide--content"><div class="slide__inner"><div>
+  <div style="width:240px;height:60px;overflow:hidden"><p class="slide__body" style="white-space:nowrap">Seen start of a line
+  that runs on and on far beyond the clip box until FARWORD</p></div>
+  <p style="font-size:1px">tiny</p>
+</div></div></section>"""
+    prs = export(build(tmp_path, frag), tmp_path / "c.pptx")
+    text = all_text(prs.slides[0])
+    assert "Seen" in text and "FARWORD" not in text
+    sizes = [r.font.size.pt for sh in prs.slides[0].shapes if sh.has_text_frame
+             for p in sh.text_frame.paragraphs for r in p.runs if r.font.size]
+    assert min(sizes) >= 1
+
+
+TRACKS = """
+<section class="slide"><h2 class="slide__heading">Common slide</h2></section>
+<section class="slide" data-track="long"><h2 class="slide__heading">Long only</h2></section>
+<section class="slide" data-track="short"><h2 class="slide__heading">Short only</h2></section>
+"""
+
+
+def test_track_exports_that_track_and_refuses_an_unknown_one(tmp_path):
+    src = build(tmp_path, TRACKS)
+    prs = export(src, tmp_path / "s.pptx", "--track", "short")
+    assert [all_text(s) for s in prs.slides] == ["Common slide", "Short only"]
+    proc = run(src, tmp_path / "x.pptx", "--track", "nosuch")
+    assert proc.returncode == 2 and "nosuch" in proc.stderr
+    assert not (tmp_path / "x.pptx").exists()
+
+
+def test_theme_dark_renders_dark(tmp_path):
+    src = build(tmp_path, TRACKS)
+    light = background(export(src, tmp_path / "l.pptx", "--theme", "light").slides[0]).getpixel((5, 5))
+    dark = background(export(src, tmp_path / "d.pptx", "--theme", "dark").slides[0]).getpixel((5, 5))
+    assert sum(dark) < sum(light) - 150, (light, dark)
+
+
+def test_network_is_blocked_unless_allowed(tmp_path):
+    hits = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        url = "http://127.0.0.1:%d/probe.png" % srv.server_port
+        src = build(tmp_path, '<section class="slide"><h2 class="slide__heading">Net</h2><img src="%s" alt="x"></section>' % url)
+        export(src, tmp_path / "a.pptx")
+        assert hits == []
+        export(src, tmp_path / "b.pptx", "--allow-network")
+        assert hits
+    finally:
+        srv.shutdown()
+
+
+def test_output_equal_to_input_is_refused(deck, tmp_path):
+    copy = tmp_path / "same.html"
+    copy.write_bytes(deck.read_bytes())
+    proc = run(copy, copy)
+    assert copy.read_bytes() == deck.read_bytes()
+    assert proc.returncode == 2 and "same" in proc.stderr.lower()
+
+
+def test_unwritable_output_is_one_line_and_exit_1(deck, tmp_path):
+    blocker = tmp_path / "file.txt"
+    blocker.write_text("x", encoding="utf-8")
+    proc = run(deck, blocker / "out.pptx")
+    assert proc.returncode == 1, proc.stderr
+    assert len(proc.stderr.strip().splitlines()) == 1 and "Traceback" not in proc.stderr
+
+
+def test_a_word_broken_across_lines_is_kept(tmp_path):
+    frag = """
+<section class="slide slide--content"><div class="slide__inner"><div>
+  <p class="slide__body" style="width:260px">Freigabe des Termins mit dem IT-Security-Verantwortlichen-Ende.</p>
+</div></div></section>"""
+    prs = export(build(tmp_path, frag), tmp_path / "w.pptx")
+    text = all_text(prs.slides[0]).replace("\v", "").replace("\n", "")
+    assert "Verantwortlichen-Ende." in text, text
