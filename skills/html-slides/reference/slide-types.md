@@ -1,6 +1,6 @@
 # Slide Types Reference
 
-11 slide types with full HTML examples. Read this file when writing the slides; the decks are assembled by `scripts/new-deck.py`.
+16 slide types with full HTML examples (types 12 to 16 are the keynote forms). Read this file when writing the slides; the decks are assembled by `scripts/new-deck.py`.
 
 ## Color System
 
@@ -167,6 +167,8 @@ Horizontal steps with arrows between them.
 
 ### 8. Card Grid (Scenarios / Cheat Sheet)
 2x2 grid of cards. Use `.scenario-grid` + `.scenario-card` or `.cheat-grid` + `.cheat-card`.
+Add `cards--tinted` to the grid (`<div class="cheat-grid cards--tinted">`) for soft cards on an
+accent tint with a hairline and a larger radius, the keynote look.
 
 ```html
 <section class="slide">
@@ -240,6 +242,138 @@ Any slide may carry an `<aside class="notes">`. It never shows on the slide or i
     <p>{What to say, in two or three short sentences}</p>
     <p>{The question to expect, and the answer}</p>
   </aside>
+</section>
+```
+
+## Keynote Forms
+
+Types 12 to 16 give a deck the look of a corporate keynote: a photo half panel, big
+gradient numbers, a glowing arc under a heading, a quote, a result card on a decision
+slide and a numbered agenda. Every one is optional markup: a deck that uses none of
+these classes renders exactly as before. All colours come from the deck tokens, so they
+follow the preset or DESIGN.md in light and dark. With the `design` preset the arc still
+shows (the markup is the opt-in), the quote bar is a hairline and the numbers and result
+values take the one display cut.
+
+### 12. Media Split (Photo Half Panel)
+A photo fills one side of the slide edge to edge, full height, no frame (`object-fit: cover`);
+the text column keeps the slide padding on the other side. `data-media="right"` (default) or
+`"left"` picks the side, `data-media-size="1/3|2/5|1/2"` the photo's share (default `2/5`).
+Under 768 px wide the photo stacks above the text at a fixed height; print keeps it side by
+side. An AI image slot works the same way: `<img class="slide__media" data-image-prompt="..."
+data-image-ratio="4:3" alt="...">` without a `src` shows the surface colour in the same box
+until `html-canvas/scripts/gen-images.py` fills it.
+
+```html
+<section class="slide slide--media" data-media="right" data-media-size="2/5">
+  <img class="slide__media" src="{image-path}" alt="{what the picture shows}">
+  <div class="slide__content">
+    <p class="slide__label reveal">{Label}</p>
+    <h2 class="slide__heading reveal">{Heading}</h2>
+    <div class="slide__arc reveal" aria-hidden="true"></div>
+    <ul class="slide__bullets">
+      <li class="reveal">{Point 1}</li>
+      <li class="reveal">{Point 2}</li>
+      <li class="reveal">{Point 3}</li>
+    </ul>
+  </div>
+</section>
+```
+
+### 13. Key Numbers (Gradient Stats)
+Up to four big numbers side by side, each with its label under it. The number is a text
+gradient from the accent to the accent mixed towards the text colour, so both ends read at
+least as well as the accent; print, forced colours and a browser without
+`background-clip: text` get the solid accent. `slide__stat--solid` keeps one number solid.
+The `.slide__arc` under the heading is a thin glowing curve, decorative (`aria-hidden`),
+hidden under forced colours; `slide__arc--center` centres it.
+
+```html
+<section class="slide">
+  <p class="slide__label reveal">{Label}</p>
+  <h2 class="slide__heading reveal">{Heading}</h2>
+  <div class="slide__arc reveal" aria-hidden="true"></div>
+  <div class="slide__stats reveal">
+    <div class="slide__stat">
+      <span class="slide__stat-value">{98%}</span>
+      <span class="slide__stat-label">{what the number counts}</span>
+    </div>
+    <div class="slide__stat">
+      <span class="slide__stat-value">{4 min}</span>
+      <span class="slide__stat-label">{what the number counts}</span>
+    </div>
+    <div class="slide__stat">
+      <span class="slide__stat-value">{12}</span>
+      <span class="slide__stat-label">{what the number counts}</span>
+    </div>
+  </div>
+</section>
+```
+
+A deck built with `--blocks kpi-row` gets the same numbers on the metric cards with
+`metrics--gradient` on the block container:
+
+```html
+<div class="metrics metrics--gradient">
+  <div class="metric"><div class="m-label">{Label}</div><div class="m-val">{18,400}</div><div class="m-sub">{context}</div></div>
+</div>
+```
+
+### 14. Quote
+One statement in large light type (the body family, weight 300) behind an accent bar, its
+source below. Keep it to two or three lines.
+
+```html
+<section class="slide slide--quote">
+  <blockquote class="slide__quote reveal">
+    <p>{The sentence worth remembering}</p>
+    <footer class="slide__quote-source">{Name, role}</footer>
+  </blockquote>
+</section>
+```
+
+### 15. Decision with Result Card
+The content slide with a result card as its aside: a tall rounded card on a soft accent
+tint, a small caps label and one or more values; an arc between two values separates them.
+
+```html
+<section class="slide slide--content">
+  <div class="slide__inner">
+    <div>
+      <p class="slide__label reveal">{Label}</p>
+      <h2 class="slide__heading reveal">{The decision}</h2>
+      <ul class="slide__bullets">
+        <li class="reveal">{Reason 1}</li>
+        <li class="reveal">{Reason 2}</li>
+      </ul>
+    </div>
+    <div class="slide__aside reveal">
+      <div class="slide__result">
+        <p class="slide__result-label">{Result today}</p>
+        <p class="slide__result-value">{First result}</p>
+        <div class="slide__arc" aria-hidden="true"></div>
+        <p class="slide__result-value">{Second result}</p>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+### 16. Numbered Agenda
+A numbered list with a small boxed number (01, 02, ...) drawn by a CSS counter, a title in
+`<strong>` and an optional description line. `slide__numbered--2col` sets two columns, one
+again under 768 px.
+
+```html
+<section class="slide">
+  <p class="slide__label reveal">{Label}</p>
+  <h2 class="slide__heading reveal">{Agenda Title}</h2>
+  <ol class="slide__numbered slide__numbered--2col reveal">
+    <li><strong>{Item title}</strong><span>{One line on it}</span></li>
+    <li><strong>{Item title}</strong><span>{One line on it}</span></li>
+    <li><strong>{Item title}</strong><span>{One line on it}</span></li>
+    <li><strong>{Item title}</strong></li>
+  </ol>
 </section>
 ```
 

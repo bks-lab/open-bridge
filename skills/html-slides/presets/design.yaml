@@ -52,6 +52,8 @@ css_overrides: |
   .slide__display { font-weight: 500; letter-spacing: -0.01em; }
   /* Headings in the display family take its one cut too; the family is the hierarchy. */
   .slide__heading { font-weight: 500; }
+  /* The keynote numbers and result values are display type as well: the same cut. */
+  .slide__stat-value, .slide__result-value { font-weight: 500; }
   /* Subtitles and taglines are body copy in DESIGN.md, not letter-spaced mono. */
   .slide__subtitle { font-family: var(--font-body); letter-spacing: 0; }
   /* The label above a heading is DESIGN.md's eyebrow: its family and its tracking
@@ -97,6 +99,7 @@ css_overrides: |
   .overview-tile:hover, .overview-tile:focus-visible { border-color: var(--accent); }
   .scenario-card { border-left-width: 1px; border-left-color: var(--border); }
   .data-table th { border-bottom-width: 1px; }
+  .slide__quote { border-left-width: 1px; }
   .deck-notes { border-top-width: 1px; border-top-color: var(--border-bright); }
 
   /* Code chips sit on the muted surface in the text colour; the accent tint is for

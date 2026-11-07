@@ -148,6 +148,28 @@ def test_missing_role_is_reported_and_skipped_without_strict():
     assert set(groups[":root"]) == {"bg"} == set(groups["html.dark"])
 
 
+def test_optional_role_a_design_lacks_is_skipped_silently_even_under_strict(tmp_path):
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  bg: surface\n  gradient-from: {role: no-such-role, optional: true}\n", encoding="utf-8")
+    res = _run(TOKENS / "design-current.md", "--map", m, "--strict")
+    assert res.returncode == 0 and "warning" not in res.stderr
+    assert set(_groups(res.stdout)[":root"]) == {"bg"}
+
+
+def test_optional_role_a_design_has_is_emitted(tmp_path):
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  bg: surface\n  hl: {role: surface, optional: true}\n", encoding="utf-8")
+    groups = _groups(_run(TOKENS / "design-current.md", "--map", m).stdout)
+    assert set(groups[":root"]) == {"bg", "hl"}
+
+
+def test_optional_must_be_a_boolean(tmp_path):
+    m = tmp_path / "map.yaml"
+    m.write_text("vars:\n  hl: {role: surface, optional: maybe}\n", encoding="utf-8")
+    res = _run(TOKENS / "design-current.md", "--map", m, check=False)
+    assert res.returncode != 0 and "hl" in res.stderr
+
+
 def test_map_ignores_unmapped_design_keys_under_strict():
     # brand-only-key is not in COLOR_MAP; with a map only the map's roles count.
     assert _run(TOKENS / "design-current.md", "--map", TOKENS / "map.yaml", "--strict").returncode == 0

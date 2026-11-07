@@ -54,3 +54,8 @@ vars:
   amber-dim: {role: warning, mix: 14, with: surface}
   cyan: info
   cyan-dim: {role: info, mix: 14, with: surface}
+  # A brand that uses a gradient names its two ends; the big numbers
+  # (.slide__stat, .metrics--gradient) run from one to the other. A brand without
+  # them keeps the accent-derived gradient the engine falls back to.
+  gradient-from: {role: gradient-from, optional: true}
+  gradient-to: {role: gradient-to, optional: true}

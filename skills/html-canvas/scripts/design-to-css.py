@@ -59,7 +59,8 @@ Serving another consumer (references/theme-contract.md):
   # --region    fills /* <name>:begin */ ... /* <name>:end */ in any file
   #             instead of the shell's design-tokens region. Idempotent, and
   #             --out may name the input file to rewrite it in place.
-  # Under --strict a role the map names and DESIGN.md lacks exits non-zero.
+  # Under --strict a role the map names and DESIGN.md lacks exits non-zero; an
+  # entry marked {role: ..., optional: true} is left out silently instead.
 
 Embedding the typefaces (optional, for a page that is sent or bundled):
   design-to-css.py DESIGN.md --embed-fonts [--font-dir DIR ...] --shell --out page.html
@@ -402,6 +403,8 @@ def load_map(path: Path) -> tuple[dict, dict, bool]:
             raise ValueError(f"{path}: {name} sets 'with' but no 'mix' percentage")
         if not isinstance(spec.get("with", ""), str):
             raise ValueError(f"{path}: {name} 'with' must be a role name or transparent")
+        if not isinstance(spec.get("optional", False), bool):
+            raise ValueError(f"{path}: {name} 'optional' must be true or false")
         entries[name] = spec
     selectors = data.get("selectors") or {}
     if not isinstance(selectors, dict) or set(selectors) - set(DEFAULT_SELECTORS):
@@ -436,7 +439,9 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
         roles = [spec["role"]] + ([spec["with"]] if spec.get("with") not in (None, "transparent") else [])
         absent = [r for r in roles if r not in colors]
         if absent:
-            missing += [f"{name} <- {r}" for r in absent]
+            # an optional role (a brand extra such as a gradient) is simply left out
+            if not spec.get("optional"):
+                missing += [f"{name} <- {r}" for r in absent]
             continue
         for target, dark, on_paper in ((light, False, False), (darks, True, False), (paper, False, True)):
             val = resolve(spec["role"], dark, on_paper)
