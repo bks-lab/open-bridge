@@ -163,7 +163,8 @@ def test_mark_finds_a_term_at_the_head_of_a_compound(tmp_path):
                     '<section class="slide"><p>Hyperlatency is a made-up word.</p></section>', encoding="utf-8")
     run(PACK, "mark", page, "--pack", tmp_path / "pack.json", "--write")
     html = page.read_text("utf-8")
-    assert (BUTTON % ("latency", "latency")) + "-bound" in html
+    assert '<span class="kp-nobr">' + (BUTTON % ("latency", "latency")) + '-bound</span>' in html, \
+        "the help mark and the rest of the compound never part at a line end"
     assert "<p>Hyperlatency is a made-up word.</p>" in html, "inside a word nothing is marked"
 
 

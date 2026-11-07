@@ -84,7 +84,9 @@ that mention a label or alias, the passage in the section the term list names fo
 summary first, prose before table rows. A name with a lower-case letter matches in any
 case (`Latency` finds "the latency"); a name without one is an acronym and matches only
 as written (`IT` never finds "it"). A term may head a compound (`latency-bound`), never
-sit inside a word. Neighbours are the relations the
+sit inside a word. A compound is wrapped as
+`<span class="kp-nobr">` around the mark and the rest of the word, so the help mark
+never ends a line ahead of "-bound"; mark a compound by hand the same way. Neighbours are the relations the
 term list names, then the terms that share a paragraph with it, most frequent first.
 Passages are clipped at sentence ends.
 

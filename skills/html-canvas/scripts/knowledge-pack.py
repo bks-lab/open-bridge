@@ -383,7 +383,13 @@ def mark(html: str, terms: list[dict], headings: bool) -> tuple[str, list[tuple[
             if start < pos:
                 continue
             out.append(esc(text[pos:start]))
-            out.append('<button type="button" class="kp-term" data-know="%s">%s</button>' % (key, esc(text[start:end])))
+            btn = '<button type="button" class="kp-term" data-know="%s">%s</button>' % (key, esc(text[start:end]))
+            tail = re.match(r"-[\w-]*\w", text[end:])
+            if tail:
+                # a compound ("NIS2-Nachweise"): the help mark and the rest never part at a line end
+                btn = '<span class="kp-nobr">%s%s</span>' % (btn, esc(tail.group(0)))
+                end += tail.end()
+            out.append(btn)
             pos = end
             done.add(key)
             report.append((scope, key))
