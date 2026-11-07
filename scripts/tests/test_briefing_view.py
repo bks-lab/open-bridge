@@ -1312,3 +1312,11 @@ def test_the_workplace_line_adds_up():
             {"id": "c", "title": "c", "state": "open"}]
     v = bv.build(result(sec("workplace", "workplace", tabs)), profile(view={"style": "triage"}, sections=[{"kind": "workplace"}]))
     assert v["workplace"] == "Tabs: 3 proposed (1 new, 1 to resume, 1 already open). Open them?"
+
+
+def test_a_report_only_you_can_act_on_stays_yours():
+    # 07.11.2026: a payment to check and file (gate only-you) went to "I'll do".
+    item = inbox_item("i1", "Check the incoming payment, file the receipt", urgency="later", kind="finding",
+                      gate="only-you", due="2026-12-03")
+    v = bv.build(result(sec("inbox", "inbox", [item])), profile(view={"style": "triage"}, sections=[{"kind": "inbox"}]))
+    assert [b["id"] for b in v["buckets"] if b["items"]] == ["plan"]

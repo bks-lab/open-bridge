@@ -243,7 +243,7 @@ which agent renders it:
 | Source | Bucket |
 |---|---|
 | inbox item, urgency `now`/`today`, or due within the lookahead | do |
-| inbox report (`finding`, `result`) that is not `now`/`today` and not due within the lookahead | delegate: the Bridge looks at it first |
+| inbox report (`finding`, `result`) that is not `now`/`today`, not due within the lookahead and not `only-you` | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
 | inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |

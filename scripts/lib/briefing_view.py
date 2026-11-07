@@ -1216,7 +1216,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     # instead of stating the hoped-for outcome as a fact (29.10.)
                     bucket, title = "waiting", labels["waiting_for"].format(title=title)
                 elif item.get("kind") in ("finding", "result") and item.get("urgency") not in ("now", "today") \
-                        and not soon:
+                        and not soon and item.get("gate") != "only-you":
                     # a report asks nobody: what can wait is the Bridge's to look at first, not your plan (07.11.)
                     bucket = "delegate"
                 else:
