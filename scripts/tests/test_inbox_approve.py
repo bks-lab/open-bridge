@@ -8,6 +8,7 @@ there, so held answers sit next to everything else that needs that person.
 """
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import json
 import subprocess
@@ -74,6 +75,35 @@ def test_held_answer_becomes_an_only_you_draft(repo):
     assert item.kind == "draft" and item.gate == "only-you" and item.urgency == "now"
     assert "partner-bridge" in item.summary and "Friday" in item.detail
     proc.kill()
+
+
+def test_held_answer_offers_approve_and_reject_until_it_times_out(repo):
+    before = dt.datetime.now().astimezone()
+    proc = start(repo, timeout_sec=600)
+    item_id = wait_for_item(repo)
+    item = inbox.Inbox(repo / "work" / "inbox", actor="owner").get(item_id)
+    proc.kill()
+    assert item.actions == ["approve", "reject"]
+    expires = dt.datetime.fromisoformat(item.expires_at)
+    assert expires.tzinfo is not None
+    assert abs((expires - before).total_seconds() - 600) < 30
+    assert inbox.Inbox(repo / "work" / "inbox", actor="owner").validate() == []
+
+
+def test_detail_shows_question_and_drafted_answer_in_full(repo):
+    long_answer = "Line one of the answer.\n" + "word " * 300 + "\nThe last line."
+    proc = subprocess.Popen(
+        [sys.executable, str(APPROVER), "--root", str(repo), "--poll", "0.1"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    assert proc.stdin is not None
+    proc.stdin.write(json.dumps({**REQUEST, "answer": long_answer, "timeout_sec": 20}))
+    proc.stdin.close()
+    item_id = wait_for_item(repo)
+    proc.kill()
+    detail = inbox.Inbox(repo / "work" / "inbox", actor="owner").get(item_id).detail
+    assert "Question:\nWhen is the next release?" in detail
+    assert "Drafted answer:\n" + long_answer in detail
 
 
 @pytest.mark.parametrize("verb, expected", [("approve", "approve"), ("reject", "reject"), ("drop", "reject")])

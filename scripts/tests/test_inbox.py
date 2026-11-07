@@ -1031,3 +1031,86 @@ def test_probe_once_reads_a_ref_through_the_gh_runner_and_refuses_commands():
     assert calls[0][:3] == ["issue", "view", "12"]
     with pytest.raises(ValueError):
         inbox.probe_once({"command": ["true"]}, gh=fake_gh)
+
+
+# ---------------------------------------------------------------- actions and expires_at: what a notifier offers
+# A notifier used to guess its buttons from the gate: "tomorrow" on an answer that expires in an hour, no
+# "approve". The item now says which verbs a person may take; `[]` is nothing to do, absent is unknown.
+
+def test_add_with_actions_and_expires_at_round_trips(box):
+    item_id = add(box, actions=["approve", "reject"], expires_at="2026-10-04T19:00:00+02:00")
+    item = box.get(item_id)
+    assert item.actions == ["approve", "reject"]
+    assert item.expires_at == "2026-10-04T19:00:00+02:00"
+    stored = yaml.safe_load((box.root / item_id / "item.yaml").read_text(encoding="utf-8"))
+    assert stored["actions"] == ["approve", "reject"] and stored["expires_at"] == "2026-10-04T19:00:00+02:00"
+    as_dict = item.as_dict()
+    assert as_dict["actions"] == ["approve", "reject"] and as_dict["expires_at"] == "2026-10-04T19:00:00+02:00"
+    assert box.validate() == []
+
+
+def test_empty_actions_is_kept_and_differs_from_absent(box):
+    none_to_do = add(box, summary="it ran", kind="result", actions=[])
+    unknown = add(box, summary="it ran too", kind="result")
+    stored = yaml.safe_load((box.root / none_to_do / "item.yaml").read_text(encoding="utf-8"))
+    assert stored["actions"] == []
+    assert box.get(none_to_do).actions == []
+    assert "actions" not in yaml.safe_load((box.root / unknown / "item.yaml").read_text(encoding="utf-8"))
+    assert box.get(unknown).actions is None and box.get(unknown).expires_at is None
+    assert "actions" not in box.get(unknown).as_dict()
+    assert box.get(none_to_do).as_dict()["actions"] == []
+
+
+@pytest.mark.parametrize("actions", [["tomorrow"], ["approve", "approve"], "approve", [1], [None]])
+def test_add_rejects_unknown_or_repeated_actions(box, actions):
+    with pytest.raises(ValueError):
+        add(box, actions=actions)
+
+
+@pytest.mark.parametrize("value", ["2026-10-04T19:00", "tomorrow", "2026-10-04", 5])
+def test_add_rejects_expires_at_without_an_offset(box, value):
+    with pytest.raises(ValueError):
+        add(box, expires_at=value)
+
+
+def test_validate_reports_hand_edited_actions_and_expires_at(box):
+    item_id = add(box)
+    path = box.root / item_id / "item.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path.write_text(yaml.safe_dump({**data, "actions": ["approve", "later"]}), encoding="utf-8")
+    assert any(item_id in p and "actions" in p for p in box.validate())
+    path.write_text(yaml.safe_dump({**data, "expires_at": "soon"}), encoding="utf-8")
+    assert any(item_id in p and "expires_at" in p for p in box.validate())
+
+
+def test_cli_add_action_flags_and_expires_at(tmp_path):
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "draft", "--summary", "Answer waits",
+                "--action", "approve", "--action", "reject", "--expires-at", "2026-10-04T19:00:00+02:00")
+    assert r.returncode == 0, r.stderr
+    first = r.stdout.strip()
+    r = run_cli(tmp_path, "add", "--from", "cli", "--kind", "result", "--summary", "Backup ran", "--no-actions")
+    assert r.returncode == 0, r.stderr
+    second = r.stdout.strip()
+    rows = {i["id"]: i for i in json.loads(run_cli(tmp_path, "list", "--json").stdout)}
+    assert rows[first]["actions"] == ["approve", "reject"]
+    assert rows[first]["expires_at"] == "2026-10-04T19:00:00+02:00"
+    assert rows[second]["actions"] == []
+    assert run_cli(tmp_path, "validate").returncode == 0
+
+
+def test_cli_add_refuses_a_bad_action_and_both_action_flags(tmp_path):
+    assert run_cli(tmp_path, "add", "--from", "c", "--kind", "draft", "--summary", "s",
+                   "--action", "tomorrow").returncode == 2
+    assert run_cli(tmp_path, "add", "--from", "c", "--kind", "draft", "--summary", "s",
+                   "--action", "approve", "--no-actions").returncode == 2
+    assert run_cli(tmp_path, "add", "--from", "c", "--kind", "draft", "--summary", "s",
+                   "--expires-at", "2026-10-04T19:00").returncode != 0
+    assert not any((tmp_path / "repo" / "work" / "inbox").iterdir())
+
+
+def test_the_item_schema_declares_actions_and_expires_at():
+    schema = yaml.safe_load((ROOT / "work" / "templates" / "_schema.inbox-item.yaml").read_text(encoding="utf-8"))
+    actions = schema["properties"]["actions"]
+    assert actions["type"] == "array" and actions["uniqueItems"] is True
+    assert tuple(actions["items"]["enum"]) == inbox.PERSON_ACTIONS
+    assert schema["properties"]["expires_at"]["type"] == "string"
