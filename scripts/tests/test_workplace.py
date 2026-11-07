@@ -524,10 +524,40 @@ def test_launch_task_report_prompt_is_exactly_the_open_prompt(lrepo):
 
 def test_launch_inbox_label_and_command(lrepo):
     (e,) = wp.build_launch(lrepo, {}, [INBOX_ID], "go")
-    assert e["label"] == "Inbox systems-remotes-buildhost-0855"
-    assert e["label"].startswith("Inbox systems-remotes") and len(e["label"]) <= len("Inbox ") + 30
-    assert e["label"].isascii()
-    assert INBOX_ID in e["command"]
+    assert e["label"] == "x · 0855"          # the item's summary, and its hash keeps two alike apart
+    assert e["slug"] == "inbox-systems-remotes-buildhost-0855" and f"-n {e['slug']}" in e["command"]
+    assert INBOX_ID in e["command"] and e["command"].isascii()
+
+
+def test_an_inbox_tab_is_named_by_its_summary_not_its_id(lrepo):
+    """07.11.: a tab handed on from the chat was "Inbox upstreams-overlay-org-a-n-c469", the id's words cut
+    to thirty letters; in the terminal nobody could tell what it works on. It carries the summary now, cut at
+    a word, umlauts kept; the hash stays so two items alike get two names. No summary: the old name."""
+    iid = "20261107-1432-upstreams-overlay-org-a-newer-upst-c469"
+    assert wp.inbox_label(iid, "Check: café overlay: a newer upstream state waits, sync due") == \
+        "Check: café overlay: a newer… · c469"
+    assert wp.inbox_label(iid, "Short") == "Short · c469"
+    assert wp.inbox_label(iid, "two\nlines\tand\x07control") == "two lines and control · c469"
+    assert wp.inbox_label(iid, "") == "Inbox upstreams-overlay-org-a-n-c469"
+    assert len(wp.inbox_label(iid, "a" * 200)) <= wp.LABEL_MAX + len(" · c469")
+    # NFD (as a terminal may hand it back) and NFC give the same name
+    import unicodedata
+    assert wp.inbox_label(iid, unicodedata.normalize("NFD", "Café")) == "Café · c469"
+
+
+def test_status_rows_find_an_inbox_tab_by_its_summary_name_and_by_the_names_tabs_had(lrepo):
+    import unicodedata
+    item = lrepo / "work" / "inbox" / INBOX_ID / "item.yaml"
+    item.write_text(item.read_text(encoding="utf-8").replace("summary: x", "summary: 'Check: café buildhost'"),
+                    encoding="utf-8")
+    (e,) = wp.build_launch(lrepo, {}, [INBOX_ID], "go")
+    assert e["label"] == "Check: café buildhost · 0855"
+    names = [e["label"], unicodedata.normalize("NFD", e["label"]), f"Inbox {wp.inbox_slug(INBOX_ID)}",
+             f"inbox-{wp.inbox_slug(INBOX_ID)}"]
+    driver = wp.NoneDriver()
+    driver.tabs = lambda: [{"name": n, "workspace": "W", "ref": f"surface:{i}", "state": "waiting"}
+                           for i, n in enumerate(names)]
+    assert [r["item"] for r in sorted(wp.status_rows(lrepo, {}, driver), key=lambda r: r["ref"])] == [INBOX_ID] * 4
 
 
 def test_launch_labels_are_unique_within_one_launch(lrepo):
@@ -778,6 +808,79 @@ def test_route_keeps_the_rules_when_the_router_names_no_known_area_or_fails(lrep
     junk = wp.route(lrepo, _router("no json here"), entries)
     assert junk[0]["workspace"] == before
     assert wp.route(lrepo, ROUTE_CFG, entries)[0]["workspace"] == before   # no router configured
+
+
+def _placed_item(root: Path, iid: str, area: str | None = None, task_slug: str | None = None) -> None:
+    d = root / "work" / "inbox" / iid
+    d.mkdir(parents=True)
+    (d / "item.yaml").write_text(
+        "schema_version: 1\nkind: question\nsummary: overlay sync due\ngate: free\n"
+        + (f"task: {task_slug}\n" if task_slug else "")
+        + "created: '2026-10-06T17:00:00+02:00'\nfrom: test\n", encoding="utf-8")
+    if area:
+        (d / "events").mkdir()
+        (d / "events" / "20261006T150000Z-00-router-area.yaml").write_text(
+            f"verb: area\nby: router\nat: '2026-10-06T15:00:00+00:00'\nvalue: {area}\nwhy: placed before\n",
+            encoding="utf-8")
+
+
+def test_route_keeps_an_area_the_item_already_has_and_asks_only_for_the_rest(lrepo):
+    """07.11.: an item placed in its area a minute before was asked about again at its start, and the second
+    answer (the catch-all) won, so its tab opened in a new, empty catch-all workspace. An item with an area
+    or a task keeps that place, a task with `area:` in its head keeps it too; the router hears only the rest."""
+    _placed_item(lrepo, "20261006-1700-overlay-sync-due-dddd", area="Bigcorp")
+    _placed_item(lrepo, "20261006-1701-linked-thing-eeee", task_slug="payments-incident")
+    task(lrepo, "platform-pinned", area="Bigcorp")
+    items = ["20261006-1700-overlay-sync-due-dddd", "20261006-1701-linked-thing-eeee", "platform-pinned", INBOX_ID]
+    entries = wp.build_launch(lrepo, CFG, items, "go")
+    everything_to_misc = json.dumps([{"item": i, "workspace": "Misc", "own": True, "why": "catch-all"} for i in items])
+    cfg = {**CFG, "router": {"command": [sys.executable, "-c",
+                                         "import sys; open(sys.argv[1], 'w').write(sys.stdin.read()); "
+                                         f"print({everything_to_misc!r})", str(lrepo / "prompt.txt")]}}
+    routed = {e["item"]: e for e in wp.route(lrepo, cfg, entries)}
+    asked = (lrepo / "prompt.txt").read_text(encoding="utf-8")
+    for kept in items[:3]:
+        assert routed[kept]["workspace"] == "Bigcorp" and routed[kept]["own"] is False and kept not in asked
+        assert routed[kept]["placed_by"] in ("area", "task")
+    assert routed[INBOX_ID]["workspace"] == "Misc" and INBOX_ID in asked
+    assert routed[INBOX_ID]["placed_by"] == "router" and routed[INBOX_ID]["why"] == "catch-all"
+
+
+def test_route_asks_nothing_when_every_item_has_its_place(lrepo, tmp_path):
+    _placed_item(lrepo, "20261006-1700-overlay-sync-due-dddd", area="Bigcorp")
+    entries = wp.build_launch(lrepo, CFG, ["20261006-1700-overlay-sync-due-dddd"], "go")
+    flag = tmp_path / "asked"
+    cfg = {**CFG, "router": {"command": [sys.executable, "-c", f"open({str(flag)!r}, 'w').write('x'); print('[]')"]}}
+    assert wp.route(lrepo, cfg, entries)[0]["workspace"] == "Bigcorp"
+    assert not flag.exists()
+
+
+def test_a_launch_writes_the_routers_pick_as_the_items_area(lrepo, monkeypatch):
+    """where a tab went and why stays on the item, not only in a passing message (07.11.); a placed item is not
+    asked and gets no second area event, a dry run writes nothing"""
+    _placed_item(lrepo, "20261006-1700-overlay-sync-due-dddd", area="Bigcorp")
+    answer = json.dumps([{"item": INBOX_ID, "workspace": "Bigcorp", "own": False, "why": "company system"}])
+    monkeypatch.setattr(wp, "load_cfg", lambda root: _router(answer))
+    monkeypatch.setattr(wp, "driver_from", lambda spec: type("Fake", (wp.NoneDriver,), {
+        "launch": lambda self, tabs, target, here=None: [f"{target} ok"]})())
+    events = lrepo / "work" / "inbox" / INBOX_ID / "events"
+    both = f"{INBOX_ID},20261006-1700-overlay-sync-due-dddd"
+    assert wp.main(["--root", str(lrepo), "launch", "--items", both, "--target", "auto"]) == 0
+    assert not events.exists()
+    assert wp.main(["--root", str(lrepo), "launch", "--items", both, "--target", "auto", "--yes"]) == 0
+    (written,) = [p.read_text(encoding="utf-8") for p in events.glob("*.yaml") if "verb: area" in p.read_text(encoding="utf-8")]
+    assert "value: Bigcorp" in written and "by: router" in written and "company system" in written
+    placed = lrepo / "work" / "inbox" / "20261006-1700-overlay-sync-due-dddd" / "events"
+    assert len(list(placed.glob("*.yaml"))) == 1
+
+
+def test_the_router_hears_the_catch_all_as_the_last_choice(lrepo):
+    """the catch-all reads like a fit for anything ("not sorted yet"): the router hears it only for what fits nowhere"""
+    lines = wp._area_lines({ws["name"]: ws for ws in CFG["workspaces"]})
+    misc = next(line for line in lines.splitlines() if line.startswith("- Misc"))
+    assert "only when no other workspace fits" in misc
+    assert "only when" not in next(line for line in lines.splitlines() if line.startswith("- Bigcorp"))
+    assert "only when no other workspace fits" in wp.ROUTER_PROMPT.format(areas=lines, items="- x: y")
 
 
 def test_the_router_sees_the_task_heading_when_there_is_no_headline(lrepo):

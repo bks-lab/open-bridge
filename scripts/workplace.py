@@ -103,6 +103,7 @@ import shlex
 import subprocess
 import sys
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 
@@ -324,15 +325,22 @@ def collect_tasks(root: Path, include_all: bool = False) -> list:
     return tasks
 
 
+def named_workspace(area, cfg: dict) -> dict | None:
+    """The configured workspace an area names, by name or alias, whatever its case; None for no or an unknown name."""
+    want = str(area or "").strip().casefold()
+    if not want:
+        return None
+    return next((ws for ws in cfg.get("workspaces") or []
+                 if want in [str(n).casefold() for n in [ws.get("name"), *(ws.get("aliases") or [])] if n]), None)
+
+
 def workspace_for(task: dict, cfg: dict) -> dict:
     spaces = cfg.get("workspaces") or []
     # an `area:` in the STATUS.md head names the workspace outright, by name or alias, whatever its case;
     # one that names no workspace is ignored and the rules decide
-    want = str(task.get("area") or "").strip().casefold()
-    if want:
-        for ws in spaces:
-            if want in [str(n).casefold() for n in [ws.get("name"), *(ws.get("aliases") or [])] if n]:
-                return ws
+    named = named_workspace(task.get("area"), cfg)
+    if named:
+        return named
     for ws in spaces:
         if any(fnmatch.fnmatch(task["slug"], p) for p in ws.get("slugs") or []):
             return ws
@@ -522,6 +530,20 @@ def inbox_slug(item_id: str) -> str:
     return f"{text[:INBOX_LABEL_MAX - len(tail) - 1].rstrip('-') or 'item'}-{tail}"
 
 
+def inbox_label(item_id: str, summary) -> str:
+    """The name an inbox item's tab opens with: its summary on one line, cut at a word to LABEL_MAX, plus the id's
+    hash, so two items alike get two names (07.11.: "Inbox upstreams-overlay-org-a-n-c469" told nobody what the tab
+    works on). NFC, since a terminal may hand a name back decomposed. No summary: the id's words, as before."""
+    text = unicodedata.normalize("NFC", " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", str(summary or "")).split()))
+    if not text:
+        return f"Inbox {inbox_slug(item_id)}"
+    if len(text) > LABEL_MAX:
+        cut = text[:LABEL_MAX - 1]
+        text = (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip(",:;-(«»\"' ") + "…"
+    tail = _inbox_words(item_id)[1]
+    return f"{text} · {tail}" if tail else text
+
+
 def _legacy_inbox_slug(item_id: str) -> str:
     """The name tabs got before the hash was kept; still read so running tabs stay matched."""
     return _inbox_words(item_id)[0][:INBOX_LABEL_MAX].rstrip("-") or "item"
@@ -537,8 +559,8 @@ def _inbox_module():
 
 
 def _open_inbox_item(root: Path, name: str) -> tuple | None:
-    """(full id, linked task or None, area or None) of an open inbox item, or None when there is none (closed,
-    dropped, unknown)."""
+    """(full id, linked task or None, area or None, summary) of an open inbox item, or None when there is none
+    (closed, dropped, unknown)."""
     box_dir = root / "work" / "inbox"
     if not box_dir.is_dir():
         return None
@@ -548,11 +570,11 @@ def _open_inbox_item(root: Path, name: str) -> tuple | None:
         item = box.get(box.resolve(name))
     except (KeyError, ValueError, OSError, yaml.YAMLError):
         return None
-    return (item.id, item.task, item.area) if item.state in mod.ACTIVE_STATES else None
+    return (item.id, item.task, item.area, item.summary) if item.state in mod.ACTIVE_STATES else None
 
 
 INBOX_INDEX_CACHE = Path(".bridge") / "cache" / "workplace-inbox-index.json"
-INBOX_INDEX_CACHE_VERSION = 1
+INBOX_INDEX_CACHE_VERSION = 2       # 2: each entry keeps the label its tab opens with (inbox_label)
 
 
 def _inbox_entry_key(item_dir: Path) -> list | None:
@@ -588,7 +610,7 @@ def _write_inbox_index_cache(path: Path, entries: dict) -> None:
 
 
 def _inbox_index_states(root: Path, box_dir: Path, mod) -> list:
-    """(id, state) of every readable item. Only items whose files changed since the cache are parsed.
+    """(id, state, label) of every readable item. Only items whose files changed since the cache are parsed.
     A deferral is stored as its end date, since it lapses with the calendar and not with a file."""
     cache_path = root / INBOX_INDEX_CACHE
     cached = _read_inbox_index_cache(cache_path)
@@ -609,7 +631,8 @@ def _inbox_index_states(root: Path, box_dir: Path, mod) -> list:
                 continue
             # the state as if nothing were deferred, plus the deferral itself
             base = mod.Item(item.id, item.data, item.events, dt.date.max).state
-            entry = {"key": key, "state": base, "deferred_until": (item.deferral or {}).get("until")}
+            entry = {"key": key, "state": base, "deferred_until": (item.deferral or {}).get("until"),
+                     "label": inbox_label(item.id, item.summary)}
         entries[path.name] = entry
         state = entry["state"]
         until = entry.get("deferred_until")
@@ -619,7 +642,7 @@ def _inbox_index_states(root: Path, box_dir: Path, mod) -> list:
                     state = "deferred"
             except ValueError:
                 pass
-        rows.append((path.name, state))
+        rows.append((path.name, state, entry.get("label") or inbox_label(path.name, "")))
     if entries != cached:
         _write_inbox_index_cache(cache_path, entries)
     return rows
@@ -635,8 +658,9 @@ def inbox_tab_index(root: Path) -> dict:
         rows = _inbox_index_states(root, box_dir, mod)
     except (OSError, yaml.YAMLError):
         return {}
-    active = [i for i, state in rows if state in mod.ACTIVE_STATES]
-    settled = [i for i, state in rows if state not in mod.ACTIVE_STATES]
+    active = [i for i, state, _ in rows if state in mod.ACTIVE_STATES]
+    settled = [i for i, state, _ in rows if state not in mod.ACTIVE_STATES]
+    labels = {i: label for i, _, label in rows}
     # A tab shows either the launch label or, once claude names its session, the slug. A settled item
     # keeps its tab named too, so the cockpit can tell the tab is done; an open item with the same
     # label wins, since that is the one a new tab works on.
@@ -650,7 +674,7 @@ def inbox_tab_index(root: Path) -> dict:
                 index[f"Inbox {short}"] = index[f"inbox-{short}"] = ids[0]
         for iid in group:
             short = inbox_slug(iid)
-            index[f"Inbox {short}"] = index[f"inbox-{short}"] = iid
+            index[f"Inbox {short}"] = index[f"inbox-{short}"] = index[labels[iid]] = iid
     return index
 
 
@@ -706,6 +730,8 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             label = tab_label({"slug": name, "heading": heading(text)}, cfg)
             kind, slug = "task", name
             area = _task_area(root, name, cfg)
+            # an `area:` in its head is the person's choice, which a router never overrides (route)
+            placed_by = "area" if named_workspace(frontmatter(text).get("area"), cfg) else "rules"
             prompt = launch_prompt("task", mode, name, str(task_dir.relative_to(root) / "STATUS.md"), start_note)
             if the_team and the_role:
                 status_path = str(task_dir.relative_to(root) / "STATUS.md")
@@ -719,14 +745,17 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             if not item:
                 out.append({"item": name, "kind": "unknown", "error": f"no active task and no open inbox item {name!r}"})
                 continue
-            full, linked, placed = item
+            full, linked, placed, summary = item
             short = inbox_slug(full)
-            kind, slug, label = "inbox", f"inbox-{short}", f"Inbox {short}"
+            # the tab reads as what it works on; the session keeps the id's words (claude -n, ASCII)
+            kind, slug, label = "inbox", f"inbox-{short}", inbox_label(full, summary)
             name = env_slug = full
             # an item follows its task; an unlinked one goes to the area it was given (place), else to the
             # default workspace (its summary words are no area: "platform broke" must not match platform-*)
             area = (_task_area(root, linked, cfg) if linked and _task_dir(root, linked)
                     else workspace_for({"slug": "", "context": None, "area": placed}, cfg))
+            placed_by = ("task" if linked and _task_dir(root, linked)
+                         else "area" if named_workspace(placed, cfg) else "default")
             prompt = launch_prompt("inbox", mode, full, start_note=start_note)
         base, n = label, 1
         while label in used:
@@ -743,7 +772,7 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             extra.update(picked)
         cwd = resume_cwd if resume and resume_cwd else str(root)
         out.append({"item": name, "kind": kind, "label": label, "slug": slug, "workspace": area["name"],
-                    "aliases": list(area.get("aliases") or []), **extra,
+                    "aliases": list(area.get("aliases") or []), "placed_by": placed_by, **extra,
                     "command": f"cd -- {shlex.quote(cwd)} && export {TAB_ENV}={shlex.quote(env_slug if team else slug)} && {run}"})
     return out
 
@@ -760,6 +789,8 @@ Items:
 
 Answer with a JSON array only, one object per item:
 [{{"item": "<item id>", "workspace": "<a name from the list>", "own": false, "why": "<at most eight words>"}}]
+Pick the workspace whose description fits the item's subject; the one marked "only when no other workspace fits"
+takes an item only when none of the others does.
 "own" is true only for a large piece of work over several days that deserves a workspace of its own;
 a single finding, question, fix or reply is false and goes into its area's workspace."""
 
@@ -788,11 +819,13 @@ def route(root: Path, cfg: dict, entries: list) -> list:
 
     The router is any command that reads the prompt on stdin and prints the JSON answer,
     e.g. a small model. Without one, or when it fails or names an unknown workspace, the
-    configured rules stand and nothing gets its own workspace.
+    configured rules stand and nothing gets its own workspace. An entry that already has its place
+    (`placed_by` area or task: an `area:` in a task head, an area event on an inbox item, an item's task) is
+    never asked about: on 07.11. the second answer moved an item placed a minute before into the catch-all.
     """
     out = [{**e, "own": False} for e in entries]
     spaces = {ws["name"]: ws for ws in cfg.get("workspaces") or [] if ws.get("name")}
-    todo = [e for e in out if "command" in e]
+    todo = [e for e in out if "command" in e and e.get("placed_by") not in ("area", "task")]
     if not spaces or not todo or not (cfg.get("router") or {}).get("command"):
         return out
     picks = _ask_router(cfg, ROUTER_PROMPT.format(
@@ -803,13 +836,44 @@ def route(root: Path, cfg: dict, entries: list) -> list:
         ws = spaces.get(str(pick.get("workspace") or ""))
         if not ws:
             continue
-        e.update({"workspace": ws["name"], "aliases": list(ws.get("aliases") or []),
+        e.update({"workspace": ws["name"], "aliases": list(ws.get("aliases") or []), "placed_by": "router",
                   "own": pick.get("own") is True, "why": str(pick.get("why") or "")[:80] or "no reason given"})
     return out
 
 
+CATCH_ALL_NOTE = "only when no other workspace fits"
+
+
+def remember_routes(root: Path, entries: list) -> None:
+    """The router's pick for an inbox item at its start becomes the item's area (an `area` event by router, with
+    its why), as `place` writes it: the item, its later starts and the person all see where its tab went and why,
+    and a placer still running for it (inbox.py add) finds it placed. An item that got a task or an area meanwhile,
+    or closed, keeps what it has; nothing is written for a pick that is an own workspace (no area)."""
+    picked = [e for e in entries if e.get("kind") == "inbox" and e.get("placed_by") == "router" and not e.get("own")]
+    if not picked:
+        return
+    try:
+        mod = _inbox_module()
+        box = mod.Inbox(root / "work" / "inbox", actor="router")
+    except (OSError, ImportError, AttributeError):
+        return
+    for e in picked:
+        try:
+            now = box.get(e["item"])
+            if now.task or now.area or now.state not in mod.ACTIVE_STATES:
+                continue
+            box.set_area(now.id, e["workspace"], by="router", why=e.get("why") or None)
+        except (KeyError, ValueError, OSError, yaml.YAMLError):
+            continue
+
+
 def _area_lines(spaces: dict) -> str:
-    return "\n".join(f"- {n}: {ws.get('description') or ''}".rstrip(": ") for n, ws in spaces.items())
+    """One line per workspace for a router; the default one is marked as the last choice, since its description
+    ("not sorted yet") reads like a fit for anything."""
+    def line(n, ws):
+        text = f"- {n}: {ws.get('description') or ''}".rstrip(": ")
+        return f"{text} ({CATCH_ALL_NOTE})" if ws.get("default") else text
+    return "\n".join(line(n, ws) for n, ws in spaces.items())
 
 
 def _ask_router(cfg: dict, prompt: str, cwd: Path | None = None) -> dict:
@@ -1113,7 +1177,8 @@ def status_rows(root: Path, cfg: dict, driver) -> list | None:
     for t in tabs:
         name = t.get("name", "")
         slug, team, role = roles.get(name, (index.get(name), None, None))
-        rows.append({**t, "slug": slug, "item": items.get(name), "team": team, "role": role})
+        rows.append({**t, "slug": slug, "item": items.get(name) or items.get(unicodedata.normalize("NFC", name)),
+                     "team": team, "role": role})
     return sorted(rows, key=lambda r: (order.get(r.get("state"), 9), r.get("workspace") or ""))
 
 
@@ -1756,6 +1821,8 @@ def main(argv=None) -> int:
         if args.target == "auto":
             entries = route(args.root, cfg, entries)
             good = [e for e in entries if "command" in e]
+            if args.yes:
+                remember_routes(args.root, good)
         if args.yes and good and not args.again:
             # Never a second agent on the same item: a double click, or a click from a second session.
             rows = status_rows(args.root, cfg, driver)

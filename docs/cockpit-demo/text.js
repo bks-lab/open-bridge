@@ -860,6 +860,9 @@ const en = {
     offline: 'Control session offline',
     sentToTab: 'Typed into the control tab',
     inTab: n => `Arrived in tab ${n}`,
+    // where its tab went and why (the handed record, 07.11.)
+    where: (ws, why) => `in workspace ${ws}${why ? ` (${why})` : ''}`,
+    whereOwn: 'in a workspace of its own',
     running: 'Already running in its tab',
     failed: 'Could not start',
     manual: 'Start it yourself in the terminal',
@@ -2626,6 +2629,8 @@ const de = {
     offline: 'Steuersitzung nicht erreichbar',
     sentToTab: 'In den Steuer-Tab getippt',
     inTab: n => `Im Tab ${n} angekommen`,
+    where: (ws, why) => `im Workspace ${ws}${why ? ` (${why})` : ''}`,
+    whereOwn: 'in einem eigenen Workspace',
     running: 'Läuft schon in seinem Tab',
     failed: 'Konnte nicht starten',
     manual: 'Im Terminal selbst starten',

@@ -154,6 +154,15 @@ class LaunchSteps:
             any_skipped = any(e.get("skipped") for e in entries)
             running = [{"label": m.as_text(e.get("label") or e.get("item")), "ref": m.as_text(e.get("ref"))}
                        for e in entries if e.get("skipped") == "open" and e.get("ref")]
+            # where each tab went and who decided it, for whoever asked for the start (a handed chat keeps it, 07.11.):
+            # a tab here has no workspace of its own to name; an own workspace is named after the tab
+            if target != "tab":
+                ctx.extra["placed"] = {
+                    m.as_text(e["item"]): {"workspace": None if own else m.as_text(e.get("workspace")) or None,
+                                           "own": own, "why": m.as_text(e.get("why")) or None,
+                                           "placed_by": m.as_text(e.get("placed_by")) or None}
+                    for e in entries if e.get("item") and not e.get("error") and not e.get("skipped")
+                    for own in [bool(e.get("own")) or target == "workspace"]}
         except ValueError:
             pass  # no JSON answer: stderr is already in report
         launched = [r for r in rows if r.get("task") in started or r.get("inbox_id") in started]

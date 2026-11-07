@@ -130,7 +130,7 @@ export function ChatThread({ s, c, conv }) {
 /** The status line of a chat handed on (logic.js handoffStatus) with the one step it offers: try again, open
  *  the tab it arrived in (in the cockpit, and in the terminal beside it), or type it into the waiting control
  *  tab; once the item answered, what it said; once its tab is gone with no word, a new start and its item */
-function HandoffLine({ s, c, st, onRetry, relayId }) {
+function HandoffLine({ s, c, st, onRetry, relayId, handed }) {
   const t = T()
   const word = st.word === 'inTab' ? t.handoff.inTab(st.tab) : ['result', 'asks'].includes(st.word) ? t.handoff[st.word](short(st.text, 200))
     : t.handoff[st.word]
@@ -141,7 +141,12 @@ function HandoffLine({ s, c, st, onRetry, relayId }) {
       ${canTab(s, 'focus') ? html`<button type="button" class="btn-link small muted" onClick=${() => c.act('tab_jump', { tab_ref: st.ref })}>${t.handoff.inTerminal}</button>` : null}`
     : st.action === 'ask_via_tab' && relayId ? html`<button type="button" class="btn-link small" onClick=${() => c.act('ask_via_tab', { relay_id: relayId })}>${t.handoff.askViaTab}</button>`
     : null
-  return html`<p class="handoff-status small" role="status" data-status=${st.word}><${StateLine} token=${st.tone} word=${word} />${action ? ' ' : null}${action}</p>`
+  // where its tab went, while it is on its way or at work there (07.11.: only a passing message said so)
+  // (a started or running one, and one whose tab is there to open, unless a text that came back fills the line)
+  const placed = handed?.to === 'tab' && (['started', 'running'].includes(st.word) || (st.action === 'jump' && !st.text))
+  const where = !placed ? null : handed.own ? t.handoff.whereOwn
+    : handed.workspace ? t.handoff.where(handed.workspace, handed.why ?? null) : null
+  return html`<p class="handoff-status small" role="status" data-status=${st.word}><${StateLine} token=${st.tone} word=${where ? `${word} · ${where}` : word} />${action ? ' ' : null}${action}</p>`
 }
 
 /** Hand on, the cost so far, and the box for the next question (a reply goes on in the open chat). One field with
@@ -193,7 +198,7 @@ export function ChatFoot({ s, c, conv, autofocus }) {
       placeholder=${t.chatPlaceholder} busy=${!!s.ui.busy['ask:free']}
       disabled=${!!conv?.running} sendLabel=${t.chatAsk} u="chat-ask"
       alt=${{ u: 'chat-ai', label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
-    ${status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} />` : null}
+    ${status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} handed=${handed} />` : null}
     <${LaunchPick} s=${s} c=${c} label=${t.launch.forSolve} />
   </footer>`
 }

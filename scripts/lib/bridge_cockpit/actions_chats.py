@@ -64,7 +64,10 @@ class ChatVerbs:
             noted = bool(order) and self.write_note(ctx, {"inbox_id": new_id}, f"Start note: {order}")
             got = self.launch(ctx, [{"key": f"inbox:{new_id}", "inbox_id": new_id, "title": first, "conv": conv}], "go",
                               app.cfg.target, start_note=noted)
-            done = {"status": got, "inbox_id": new_id}
+            # where its tab went and who decided it stays on the chat (07.11.: only a passing message said so)
+            where = (ctx.extra.pop("placed", None) or {}).get(new_id) or {}
+            done = {"status": got, "inbox_id": new_id,
+                    **{k: where[k] for k in ("workspace", "own", "why", "placed_by") if where.get(k) is not None}}
             if got in ("busy", "running") and noted:
                 # the tab of this chat is already on its way or at work: the order reached the item as its start note,
                 # never that tab, and is written only once (a second, plain note would read back as the tab's result)
@@ -74,6 +77,10 @@ class ChatVerbs:
             if handed is not None:
                 ctx.extra["handed"] = handed
             ctx.audit_extra["handed"] = done["status"]
+            # the workspace is a configured name and the placer a word: both fit the audit; the reason is a text
+            for k in ("workspace", "placed_by"):
+                if done.get(k):
+                    ctx.audit_extra[k] = done[k]
 
     def handoff_names(self, conv: str) -> tuple[str, str | None, str | None]:
         """(title, task, key) of the item a chat becomes when it is handed on. A chat about nothing is titled by its
@@ -81,10 +88,17 @@ class ChatVerbs:
         prompt ("Briefing item: «…» («…»). Take a look …"), which made a poor title and named no task, so the
         briefing showed it beside the row it was about (29.10.). It is titled "Check: <row title>" instead (the prompt
         stays in the detail), carries the row's task and is keyed `ask:<the row's inbox item or ref>`, which the
-        briefing folds into that row (briefing_view.py `_fold`). The row is read from the model while it is there."""
+        briefing folds into that row (briefing_view.py `_fold`). The row is read from the model while it is there.
+        A chat on a page's info row (`about` kind info: GitHub, Upstreams, Systems) is titled "Check: <its title>"
+        the same way (07.11.: the whole prompt became the item's title and its tab's name); it keeps its own key, as
+        no briefing row folds it, and names no task."""
         app = self.app
         first = app.quick.first_question(conv)
         about = app.quick.about_of(conv)
+        if about and about.get("kind") == "info" and isinstance(about.get("key"), str):
+            found = app.collector.page_item_by_key(about["key"])
+            title = str((found[2] if found else {}).get("title") or "").strip()
+            return (self.tx["ask_item"].format(title=m.short(title, 160)) if title else first), None, None
         if not about or about.get("kind") not in ("row", "follow_up") or not isinstance(about.get("key"), str):
             return first, None, None
         found = app.collector.resolve(about["key"]) or self.page_entry(about["key"])

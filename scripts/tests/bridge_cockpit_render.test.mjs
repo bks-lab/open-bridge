@@ -1492,6 +1492,26 @@ test('a handed chat shows its status and disables the handoff buttons only while
   assert.ok(arrived.el.$('.handoff-status'))
 })
 
+test('a handed chat names the workspace its tab went to, and why', () => {
+  // 07.11.: the tab opened in the catch-all and only a passing message said so; the chat keeps saying it
+  const s0 = cockpitState(NOW)
+  const tab = s0.tabs.tabs.find(t => !t.is_control && t.state !== 'shell' && t.state !== 'needs-you')
+  const tabs = { ...s0.tabs, tabs: s0.tabs.tabs.map(t => t.ref === tab.ref ? { ...t, item: '20261009-1200-what-next-a1b2' } : t) }
+  const handed = { to: 'tab', at_ms: NOW, status: 'started', inbox_id: '20261009-1200-what-next-a1b2' }
+  const placed = renderFoot({ conv: { ...ANSWERED, handed: { ...handed, workspace: 'Demo', why: 'same area', placed_by: 'router' } },
+    over: { tabs } })
+  const text = placed.el.$('.handoff-status').text()
+  assert.match(text, new RegExp(en.handoff.inTab(tab.name)))
+  assert.ok(text.includes(en.handoff.where('Demo', 'same area')), text)
+  // on its way (no tab yet) it says where it is going; an own workspace says so; nothing named, nothing said
+  const going = renderFoot({ conv: { ...ANSWERED, handed: { ...handed, inbox_id: 'x', workspace: 'Demo' } } })
+  assert.ok(going.el.$('.handoff-status').text().includes(en.handoff.where('Demo', null)))
+  const own = renderFoot({ conv: { ...ANSWERED, handed: { ...handed, inbox_id: 'x', own: true } } })
+  assert.ok(own.el.$('.handoff-status').text().includes(en.handoff.whereOwn))
+  const bare = renderFoot({ conv: { ...ANSWERED, handed: { ...handed, inbox_id: 'x' } } })
+  assert.ok(!bare.el.$('.handoff-status').text().includes(en.handoff.where('Demo', null)))
+})
+
 test('a handed chat says what came back from its item: the result, or the question it asks', () => {
   const handed = outcome => ({ ...ANSWERED, handed: { to: 'tab', at_ms: NOW, status: 'started', inbox_id: '20261009-1200-what-next-a1b2', outcome } })
   const done = renderFoot({ conv: handed({ text: 'Result: the bot runs', closed: true, at_ms: NOW, asks: false }) })
