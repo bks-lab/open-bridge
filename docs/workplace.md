@@ -340,6 +340,15 @@ workplace:
   router: {command: "claude -p --model <small model id> --setting-sources '' --tools '' --no-session-persistence"}
 ```
 
+An item that already has its place is never asked about: a task with `area:` in its
+STATUS.md head, an inbox item with an area (set by a person or by `place`) or with a task.
+It goes to that workspace whatever the router would say, and the router hears only the
+rest. The default workspace reaches the router marked "only when no other workspace fits",
+since a catch-all description reads like a fit for anything. With `--yes`, the router's pick
+for an inbox item becomes the item's `area` (an `area` event by `router`, with its why), so
+the item and its later starts know where its tab went and why; `--json` names, per item,
+who placed it (`placed_by`: `area`, `task`, `rules`, `default` or `router`).
+
 Without a router, or when it fails or names a workspace that is not configured, the
 rules of `--target area` stand and nothing gets its own workspace. A dry run with
 `--target auto` asks the router too, so it can show the answer: each line reads
@@ -350,7 +359,11 @@ one.
 Every agent tab, launched or opened by the plan, starts with `BRIDGE_TAB_SLUG=<slug>` in
 its environment, so a session, or any tool running in that tab, can tell it was started for
 one item rather than as a free session. `status` names the task (`slug`) or inbox item (`item`) a tab works on, and keeps naming it once the item is closed or the task moved to `work/done/` (two month folders back), so a done tab can be told from a working one; an open item with the same label wins.
-A task tab's slug is the task slug; an inbox item's tab gets `inbox-<short id>`.
+A task tab's slug is the task slug; an inbox item's tab gets `inbox-<short id>` as its
+session name and opens with its summary as the tab name (cut at a word to 30 characters,
+then ` · ` and the id's hash, so two items alike get two names; `Inbox <short id>` when it has
+no summary). `status` finds an inbox tab by any of these names, and by the names tabs had
+before.
 The cockpit ([`bridge-cockpit.md`](bridge-cockpit.md)) reads `slug` and `item` from
 `status` to tie a tab to the task or inbox row it works on, and uses the same driver
 verbs for its tab buttons; without a driver it starts nothing and hands over the

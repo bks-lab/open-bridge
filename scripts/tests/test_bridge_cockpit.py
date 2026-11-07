@@ -4266,6 +4266,42 @@ def test_a_chat_about_a_row_hands_on_as_a_short_item_of_the_rows_task(world):
     assert "--summary=what next?" in add and f"--key=web:{conv}" in add
 
 
+def test_a_chat_about_an_info_row_hands_on_as_a_short_item_named_after_the_row(world):
+    """07.11.: a chat on an Upstreams row of the GitHub page was handed on as an item titled with the whole prompt
+    ("Upstreams: «…» («drift»). Take a look …"), and its tab with the first thirty letters of that. Like a briefing
+    row, it is "Check: <the row's title>" now, the prompt stays in the detail; it names no task and no row key"""
+    world.runner.handlers["inbox.list"] = lambda argv: ok([])
+    world.app.inbox_cache = (0.0, None)
+    conv = chat_on(world, "info", page="systems", section="upstream", index=0)
+    world.runner.handlers["inbox.add"] = lambda argv: ok("20261010-1500-check-upstream-drift-a1b2\n")
+    world.runner.calls.clear()
+    world.act("quick_handoff", conv=conv, to="tab")
+    add = writes(world)[0]
+    assert world.runner.key(add) == "inbox.add"
+    assert "--summary=Check: Upstream drift" in add
+    assert f"--key=web:{conv}" in add and not any(a.startswith("--task") for a in add)
+    assert any(a.startswith("--detail=") and "Upstreams: «Upstream drift»" in a for a in add)
+
+
+def test_a_handed_chat_says_which_workspace_its_tab_went_to_and_why(world):
+    """07.11.: the tab of a handed chat opened in the catch-all, and where it went and why showed only in a
+    message that passed; nothing kept it. The chat's handed record carries the workspace, why and who placed it
+    (the item's area, its task, the router, the default), the audit line the workspace and the placer"""
+    conv = answered_conv(world)
+    new_id = "20261010-1300-what-next-a1b2"
+    world.runner.handlers["inbox.add"] = lambda argv: ok(new_id + "\n")
+    world.runner.handlers["workplace.launch"] = lambda argv: ok(
+        {"ok": True, "items": [{"item": new_id, "label": "what next? · a1b2", "workspace": "Demo", "why": "same area",
+                                "placed_by": "router", "own": False}], "report": ["tab what next? · a1b2 in Demo"]})
+    world.act("quick_handoff", conv=conv, to="tab")
+    handed = handed_of(world, conv)
+    assert handed["status"] == "started" and handed["workspace"] == "Demo"
+    assert handed["why"] == "same area" and handed["placed_by"] == "router"
+    line = (world.app.state_dir / "audit.log").read_text(encoding="utf-8").strip().splitlines()[-1]
+    assert " quick_handoff " in line and "workspace=Demo" in line and "placed_by=router" in line
+    assert "same_area" not in line          # the reason is a text: it stays on the item, not in the audit
+
+
 def test_the_order_of_a_handoff_goes_as_a_start_note_the_tab_reads_first(world):
     """28.10.: "I want to analyse it more closely" stood only at the end of the item's detail and the tab closed the
     item after 31 s without asking. Now the order is the start note on the item and the launch says so (--start-note:
@@ -4931,7 +4967,9 @@ def test_handoff_to_a_tab_marks_the_chat_handed_with_inbox_and_launch_status(wor
     world.app.broadcast = lambda ev, payload: (seen.append((ev, payload)), publish(ev, payload))
     res = world.act("quick_handoff", conv=conv, to="tab")
     handed = handed_of(world, conv)
-    assert handed == {"to": "tab", "at_ms": handed["at_ms"], "status": "started", "inbox_id": new_id}
+    # and where its tab went (the launch names its workspace)
+    assert handed == {"to": "tab", "at_ms": handed["at_ms"], "status": "started", "inbox_id": new_id,
+                      "workspace": "Demo", "own": False}
     assert res["handed"] == handed
     # the page saw the claim and the outcome, each as a `quick` event
     states = [next(c for c in p["convs"] if c["id"] == conv).get("handed", {}).get("status")
