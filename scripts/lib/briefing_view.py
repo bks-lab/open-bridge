@@ -2064,7 +2064,7 @@ def _calm_link(r: dict) -> str | None:
     return url if url.endswith("STATUS.md") else None
 
 
-def _calm_title(r: dict, labels: dict, limit: int = 70, step: bool = True) -> str:
+def _calm_title(r: dict, labels: dict, limit: int = 80, step: bool = True) -> str:
     # a task row says its next step (what to do), its own title only names the task; the link opens the task
     pure_task = step and (r.get("sources") or [None])[0] == "tasks" and not r.get("inbox_id")
     title = str(r.get("step") if pure_task and r.get("step") else r.get("title") or "")
