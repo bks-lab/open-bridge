@@ -743,8 +743,8 @@ img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
   .slide__stat:not(.slide__stat--solid) .slide__stat-value, .metrics--gradient .m-val {
     color: var(--accent);
-    background-image: linear-gradient(100deg, var(--gradient-from, var(--accent)) 10%,
-      var(--gradient-to, color-mix(in oklab, var(--accent) 55%, var(--text))) 95%);
+    background-image: var(--stat-gradient, linear-gradient(100deg, var(--gradient-from, var(--accent)) 10%,
+      var(--gradient-to, color-mix(in oklab, var(--accent) 55%, var(--text))) 95%));
     -webkit-background-clip: text; background-clip: text;
     -webkit-text-fill-color: transparent;
     padding-bottom: 0.06em;   /* descenders stay inside the painted box */
@@ -752,13 +752,14 @@ img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
 }
 
 /* Glow arc: a thin curved line under a heading, glowing in the accent and fading
-   at both ends. Decorative (aria-hidden); the markup is the opt-in, so it shows
+   at both ends. A design may give it its own colour, glow and width (--arc,
+   --arc-glow, --arc-width: the highlight and glow roles and components.slide-arc). Decorative (aria-hidden); the markup is the opt-in, so it shows
    in every preset, the design preset included. .slide__arc--center centres it. */
 .slide__arc {
   position: relative; display: block; pointer-events: none;
   width: min(100%, 520px); height: clamp(14px, 2.4vh, 24px); margin: clamp(10px, 1.8vh, 20px) 0;
-  border-top: 1px solid var(--accent); border-radius: 50% / 100% 100% 0 0;
-  filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 55%, transparent));
+  border-top: var(--arc-width, 1px) solid var(--arc, var(--accent)); border-radius: 50% / 100% 100% 0 0;
+  filter: drop-shadow(0 0 3px var(--arc, var(--accent))) drop-shadow(0 0 10px var(--arc-glow, color-mix(in srgb, var(--accent) 55%, transparent)));
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, var(--accent) 28%, var(--accent) 72%, transparent 100%);
   mask-image: linear-gradient(90deg, transparent 0%, var(--accent) 28%, var(--accent) 72%, transparent 100%);
 }

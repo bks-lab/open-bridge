@@ -69,3 +69,9 @@ vars:
   # them keeps the accent-derived gradient the engine falls back to.
   gradient-from: {role: gradient-from, optional: true}
   gradient-to: {role: gradient-to, optional: true}
+  # A gradient may pass through a middle stop (new-deck.py then writes --stat-gradient).
+  gradient-via: {role: gradient-via, optional: true}
+  # A brand that draws its arc under a heading in a colour of its own names it
+  # `highlight`, and the second, wider glow `glow`; without them the arc is the accent.
+  arc: {role: highlight, optional: true}
+  arc-glow: {role: glow, optional: true}
