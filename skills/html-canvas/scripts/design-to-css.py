@@ -383,6 +383,34 @@ def parse_selectors(items: list[str]) -> dict:
 # A role resolves per mode: light from `colors:`, dark from `colorsDark:` or a
 # legacy `dark-<role>` key, falling back to the light value when the manifest
 # has no dark one (the dark group then repeats it, so both groups stay whole).
+#
+# That repeat is wrong for a text role once the manifest DOES have a dark palette:
+# a caption colour tuned for the light ground lands on the dark one. An entry may
+# say what it derives from then:
+#
+#   text-dim:
+#     role: on-surface-muted
+#     dark-fallback: {role: on-surface, mix: 72, with: surface}
+#
+# The fallback is a colour-mix of two roles, resolved in dark mode (never a
+# literal), and applies only when the manifest declares a dark palette and no
+# dark value for the entry's own role. A declared dark value always wins, and a
+# manifest with no dark palette at all keeps the plain repeat of the light group.
+def check_dark_fallback(path: Path, name: str, spec) -> dict:
+    """The validated `dark-fallback` of map entry `name`, or a ValueError naming it."""
+    where = f"{path}: {name} dark-fallback"
+    if not isinstance(spec, dict) or not isinstance(spec.get("role"), str):
+        raise ValueError(f"{where} needs {{role: ..., mix: ..., with: ...}}")
+    if set(spec) - {"role", "mix", "with"}:
+        raise ValueError(f"{where} takes only role, mix and with")
+    mix = spec.get("mix")
+    if isinstance(mix, bool) or not isinstance(mix, (int, float)) or not 0 <= mix <= 100:
+        raise ValueError(f"{where} needs a mix percentage from 0 to 100")
+    if not isinstance(spec.get("with", ""), str):
+        raise ValueError(f"{where} 'with' must be a role name or transparent")
+    return spec
+
+
 def load_map(path: Path) -> tuple[dict, dict, bool]:
     """Return (vars, selectors, print block) from a map file, or raise ValueError."""
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -405,6 +433,8 @@ def load_map(path: Path) -> tuple[dict, dict, bool]:
             raise ValueError(f"{path}: {name} 'with' must be a role name or transparent")
         if not isinstance(spec.get("optional", False), bool):
             raise ValueError(f"{path}: {name} 'optional' must be true or false")
+        if "dark-fallback" in spec:
+            check_dark_fallback(path, name, spec["dark-fallback"])
         entries[name] = spec
     selectors = data.get("selectors") or {}
     if not isinstance(selectors, dict) or set(selectors) - set(DEFAULT_SELECTORS):
@@ -450,6 +480,24 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
             return colors.get("dark-" + role, colors[role])
         return colors[role]
 
+    has_dark_palette = bool(dark_colors) or any(str(k).startswith("dark-") for k in colors)
+
+    def declares_dark(role: str) -> bool:
+        return role in dark_colors if dark_colors else ("dark-" + role) in colors
+
+    def dark_fallback(name: str, spec: dict) -> str | None:
+        """The derived dark value of an entry whose role the dark palette lacks, else None."""
+        fb = spec.get("dark-fallback")
+        if not fb or not has_dark_palette or declares_dark(spec["role"]):
+            return None
+        roles = [fb["role"]] + ([fb["with"]] if fb.get("with") not in (None, "transparent") else [])
+        if any(r not in colors for r in roles):
+            return None  # nothing to derive from: the light value stays, as without a fallback
+        val = check_colour(resolve(fb["role"], True), name, fb["role"], "dark")
+        ground = (check_colour(resolve(fb["with"], True), name, fb["with"], "dark")
+                  if fb.get("with") not in (None, "transparent") else "transparent")
+        return f"color-mix(in srgb, {val} {fb['mix']:g}%, {ground})"
+
     light, darks, paper, missing = [], [], [], []
     for name, spec in entries.items():
         roles = [spec["role"]] + ([spec["with"]] if spec.get("with") not in (None, "transparent") else [])
@@ -461,6 +509,10 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
             continue
         for target, dark, on_paper in ((light, False, False), (darks, True, False), (paper, False, True)):
             mode = "dark" if dark else ("print" if on_paper else "light")
+            derived = dark_fallback(name, spec) if dark else None
+            if derived:
+                target.append(f"  --{name}: {derived};")
+                continue
             val = check_colour(resolve(spec["role"], dark, on_paper), name, spec["role"], mode)
             if "mix" in spec:
                 ground = (check_colour(resolve(spec["with"], dark, on_paper), name, spec["with"], mode)

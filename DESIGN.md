@@ -44,6 +44,8 @@ colors:
   dark-surface-subtle: "#1F2937"   # gray-800
   dark-surface-muted: "#374151"    # gray-700
   dark-on-surface: "#D1D5DB"       # gray-300
+  dark-on-surface-muted: "#9CA3AF" # gray-400, lifted for contrast (7.0:1 on dark-surface)
+  dark-secondary: "#9CA3AF"        # gray-400, lifted for contrast (7.0:1 on dark-surface)
   dark-border: "#374151"           # gray-700
   dark-accent-from: "#A78BFA"      # violet-400 — lifted for contrast
   dark-accent-to: "#818CF8"        # indigo-400
@@ -371,11 +373,17 @@ accent gradient lifts to `#A78BFA → #818CF8` so it stays legible against dark
 backgrounds. The brand voice does not change — it is still restrained, still
 editorial.
 
+The slate text lifts as well, from gray-500 to gray-400 (`secondary` and
+`on-surface-muted → #9CA3AF`). Every text token has a dark counterpart, and a
+light value is never reused as text on a dark ground.
+
 ### Accessibility
 
 - Primary on Surface: 16.1:1 (AAA)
 - On-Surface on Surface: 9.3:1 (AAA)
 - Secondary on Surface: 4.8:1 (AA body)
+- Dark mode, Secondary (`#9CA3AF`) on Surface (`#111827`): 7.0:1 (AA body)
+- Dark mode, On-Surface (`#D1D5DB`) on Surface (`#111827`): 12.0:1 (AAA)
 - On-Primary (white) on Primary: 16.1:1 (AAA)
 
 Gradient text must always sit on solid `surface` or `surface-subtle` — never

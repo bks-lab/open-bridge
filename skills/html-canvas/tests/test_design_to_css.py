@@ -385,6 +385,124 @@ def test_legacy_primary_surface_inverts_on_dark():
     assert groups["html.dark"]["on-primary"] == "var(--surface)"
 
 
+# --- dark-fallback: a text role the dark palette never declared -----------------------------
+#
+# A manifest with a dark palette but no dark value for a role used to repeat the LIGHT value in
+# the dark group: gray-500 caption text on a gray-900 ground (3.7:1). A map entry can name what
+# the role derives from instead (`dark-fallback`), so the dark text stays legible and still
+# follows the brand's own dark ink and ground. Only then; nothing else changes.
+
+def _dark_design(tmp_path, drop=(), add="") -> Path:
+    """design-legacy.md (dark pair: surface, on-surface; no dark muted text) with edits."""
+    text = (TOKENS / "design-legacy.md").read_text("utf-8")
+    for line in drop:
+        assert line in text, line
+        text = text.replace(line, "")
+    design = tmp_path / "DESIGN.md"
+    design.write_text(text.replace("typography:", add + "typography:", 1), "utf-8")
+    return design
+
+
+def test_dark_fallback_replaces_a_light_only_text_role():
+    groups = _groups(_run(TOKENS / "design-legacy.md", "--map", TOKENS / "map-dark-fallback.yaml",
+                          "--selectors", "dark=.theme-dark").stdout)
+    assert groups[":root"]["text-dim"] == "#666666" and groups[":root"]["accent"] == "#666666"
+    derived = "color-mix(in srgb, #DDDDDD 72%, #111111)"
+    assert groups[".theme-dark"]["text-dim"] == derived
+    assert groups[".theme-dark"]["accent"] == derived
+    assert groups[".theme-dark"]["bg"] == "#111111" and groups[".theme-dark"]["text"] == "#DDDDDD"
+
+
+def test_dark_fallback_leaves_an_entry_without_one_as_it_was():
+    groups = _groups(_run(TOKENS / "design-legacy.md", "--map", TOKENS / "map-dark-fallback.yaml",
+                          "--selectors", "dark=.theme-dark").stdout)
+    assert groups[".theme-dark"]["accent-dim"] == "color-mix(in srgb, #666666 15%, #111111)"
+
+
+def test_dark_fallback_yields_to_a_declared_dark_value(tmp_path):
+    design = _dark_design(tmp_path, add='  dark-secondary: "#AAAAAA"\n  dark-on-surface-muted: "#BBBBBB"\n')
+    groups = _groups(_run(design, "--map", TOKENS / "map-dark-fallback.yaml",
+                          "--selectors", "dark=.theme-dark").stdout)
+    assert groups[".theme-dark"]["text-dim"] == "#BBBBBB"
+    assert groups[".theme-dark"]["accent"] == "#AAAAAA"
+
+
+def test_dark_fallback_yields_to_a_colorsdark_value_and_fills_a_gap_in_it(tmp_path):
+    design = tmp_path / "DESIGN.md"
+    design.write_text("---\nversion: alpha\nname: x\ncolors:\n  surface: '#FFFFFF'\n  on-surface: '#222222'\n"
+                      "  on-surface-muted: '#666666'\n  secondary: '#555555'\n"
+                      "colorsDark:\n  surface: '#101010'\n  on-surface: '#EEEEEE'\n  secondary: '#AABBCC'\n---\n", "utf-8")
+    groups = _groups(_run(design, "--map", TOKENS / "map-dark-fallback.yaml",
+                          "--selectors", "dark=.theme-dark").stdout)
+    assert groups[".theme-dark"]["accent"] == "#AABBCC", "colorsDark declares secondary"
+    assert groups[".theme-dark"]["text-dim"] == "color-mix(in srgb, #EEEEEE 72%, #101010)", "it does not declare muted"
+
+
+def test_dark_fallback_is_idle_without_any_dark_palette(tmp_path):
+    """No dark palette at all: the dark group repeats the light one, a coherent light page."""
+    design = _dark_design(tmp_path, drop=('  dark-surface: "#111111"\n', '  dark-on-surface: "#DDDDDD"\n',
+                                          '  dark-border: "#333333"\n', '  dark-accent: "#8899FF"\n'))
+    groups = _groups(_run(design, "--map", TOKENS / "map-dark-fallback.yaml",
+                          "--selectors", "dark=.theme-dark").stdout)
+    assert groups[".theme-dark"] == groups[":root"]
+
+
+@pytest.mark.parametrize("spec", [
+    "{role: on-surface, mix: 150, with: surface}",
+    "{role: on-surface, mix: lots}",
+    "{mix: 72, with: surface}",
+    "{role: on-surface, with: surface}",
+    "on-surface",
+    "{role: on-surface, mix: 72, with: surface, dark-fallback: {role: surface}}",
+])
+def test_dark_fallback_must_be_a_derived_colour_spec(tmp_path, spec):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("vars:\n  text-dim:\n    role: on-surface-muted\n    dark-fallback: %s\n" % spec, "utf-8")
+    proc = subprocess.run([sys.executable, SCRIPT, str(TOKENS / "design-legacy.md"), "--map", str(bad)],
+                          capture_output=True, text=True)
+    assert proc.returncode != 0 and "dark-fallback" in proc.stderr, proc.stderr
+
+
+def test_dark_fallback_with_an_absent_role_keeps_the_old_behaviour(tmp_path):
+    odd = tmp_path / "odd.yaml"
+    odd.write_text("vars:\n  text-dim:\n    role: on-surface-muted\n"
+                   "    dark-fallback: {role: on-surface-faint, mix: 72, with: surface}\n", "utf-8")
+    groups = _groups(_run(TOKENS / "design-legacy.md", "--map", odd, "--selectors", "dark=.theme-dark").stdout)
+    assert groups[".theme-dark"]["text-dim"] == "#666666"
+
+
+# The repo's own DESIGN.md: every text token has a dark counterpart (its own rule, "Adding a token"),
+# and the html-canvas sheet takes the declared caption colour instead of a derived one.
+
+def _luminance(hexcolor: str) -> float:
+    rgb = [int(hexcolor.lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _ratio(a: str, b: str) -> float:
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _repo_colors() -> dict:
+    import yaml
+    return yaml.safe_load((REPO / "DESIGN.md").read_text("utf-8").split("---")[1])["colors"]
+
+
+@pytest.mark.parametrize("token", ["secondary", "on-surface-muted", "on-surface"])
+def test_repo_design_text_tokens_have_a_legible_dark_counterpart(token):
+    colors = _repo_colors()
+    assert "dark-" + token in colors, "%s has no dark- counterpart" % token
+    for ground in ("dark-surface", "dark-surface-subtle"):
+        assert _ratio(colors["dark-" + token], colors[ground]) >= 4.5, (token, ground)
+
+
+def test_repo_design_canvas_sheet_declares_its_dark_caption_colour():
+    dark = _groups(_run(REPO / "DESIGN.md").stdout)["html.dark"]
+    assert dark["muted"] == _repo_colors()["dark-secondary"]
+
+
 # --- find_design: the nearest DESIGN.md, never above the project ------------------------
 
 def _d2c():
