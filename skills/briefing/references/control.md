@@ -87,6 +87,28 @@ first run of X" is never a row for the person: read the run's log or trace,
 then report the result in one sentence, and only a deviation becomes a row.
 Filing such a check needs a `closes_when`, or it is not filed.
 
+**Read the view before you hand it over.** The script computes the shape; whether
+a row makes sense is yours to see. Before showing it, go through the rows once:
+
+- A report (`finding`, `result`) in Do or Delegate that the Bridge can verify (a
+  crash, a probe, a nightly run, a missing job): check it now, say the result as
+  a note on its number ("on 4: running again since 21:10, item closed") and close
+  the item when it is settled. A green result is one sentence, not a row.
+- A draft waiting for release: read the drafted text. An error message, an empty
+  answer or a text that does not answer the question is said on the row, never
+  passed on as "waits for your yes".
+- A row whose title states a hope ("wait for X's answer") while its detail names
+  an action and a date ("no answer by the 8th: chase"): say the action, and file
+  the item as waiting (`inbox.py defer <id> --until <date> --on "<who>"`) so the
+  next run puts it under waiting on others.
+- A line that still reads like a machine (a file name, a command, a slug): say it
+  in the person's words in your note, and fix the source that wrote it.
+
+These notes go under the view, numbered by the rows they speak to; they are not a
+second copy of the view. The morning of 2026-11-07 is why: a draft whose text was
+the runtime's error message stood first as "waits for your release", and five
+reports the Bridge could have checked stood as the person's work.
+
 **Close with the receipt**, one line: `Steps: inbox ✓ · view ✓ · <owed stream>
 ✓/skipped (why) · ...`, listing exactly the streams `owed` named. A stream the
 profile covers is not listed. A stream that runs by hand every morning belongs

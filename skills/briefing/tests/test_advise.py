@@ -175,3 +175,14 @@ def test_a_task_that_runs_on_is_quiet_until_its_day(repo):
     assert advise.advise(repo, now=NOW) == []
     later = NOW.replace(month=10, day=21)
     assert checks(advise.advise(repo, now=later)) == ["blocked", "quiet"]
+
+
+def test_a_quiet_task_is_named_by_its_title_not_its_slug(repo):
+    # 07.11.2026: "ai-sccrm-onboarding-michael seit 10 Tagen unberührt" named a folder, not a piece of work.
+    task(repo, "portal-relaunch-q4", last_updated="2026-09-20")
+    status = repo / "work" / "tasks" / "portal-relaunch-q4" / "STATUS.md"
+    status.write_text(status.read_text(encoding="utf-8").replace("# portal-relaunch-q4", "# Portal relaunch"),
+                      encoding="utf-8")
+    quiet = [f for f in advise.advise(repo, now=NOW) if f["check"] == "quiet"]
+    assert quiet and quiet[0]["summary"].startswith("Portal relaunch untouched for")
+    assert quiet[0]["key"] == "advise:quiet:portal-relaunch-q4"

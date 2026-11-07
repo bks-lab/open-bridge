@@ -40,7 +40,8 @@ except ImportError:  # loaded by path (briefing.py, the tests) with scripts/ not
 STYLES = ("sources", "triage", "brevity", "plan", "report")
 BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
 VIEW_KEYS = {"style", "headline", "dayline", "agenda", "overview", "report", "since_last", "lookahead_days", "max_items", "answer_keys", "hygiene", "color",
-             "width", "labels", "buckets", "plan", "pages", "page_rest", "page_skip", "marks"}
+             "width", "labels", "buckets", "plan", "pages", "page_rest", "page_skip", "marks", "off_days"}
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 MARK_KEYS = {"label", "match", "color"}
 MARK_COLORS = ("red", "green", "yellow", "blue", "magenta", "cyan", "gray", "white")
 # Where a mark looks: the row's own words and what names its source, never a body.
@@ -87,7 +88,10 @@ LABELS = {
     "settled": "{n} settled in the cockpit",
     "hidden": "{n} hidden (bucket not shown: {ids})",
     "error": "{title} failed: {reason}",
-    "workplace": "Tabs: {n} proposed ({new} new, {resume} to resume). Open them?",
+    "workplace": "Tabs: {n} proposed ({new} new, {resume} to resume, {open} already open). Open them?",
+    "off_day": "Off today: {n} more wait for the next working day",
+    "collapsed": "Not listed one by one: {items}",
+    "status_rows": "{n} → {rows}",
     "more": "+{n} more",
     "end": "That's all for today.",
     "why": "why",
@@ -289,7 +293,10 @@ LABELS_DE = {
     "settled": "{n} im Cockpit erledigt oder zurückgestellt",
     "hidden": "{n} ausgeblendet (Fach nicht gezeigt: {ids})",
     "error": "{title} fehlgeschlagen: {reason}",
-    "workplace": "Tabs: {n} vorgeschlagen ({new} neu, {resume} fortsetzen). Öffnen?",
+    "workplace": "Tabs: {n} vorgeschlagen ({new} neu, {resume} fortsetzen, {open} schon offen). Öffnen?",
+    "off_day": "Heute frei: {n} weitere warten auf den nächsten Arbeitstag",
+    "collapsed": "Nicht einzeln aufgeführt: {items}",
+    "status_rows": "{n} → {rows}",
     "more": "+{n} weitere",
     "end": "Das war's für heute.",
     "why": "warum",
@@ -568,9 +575,16 @@ def problems(view, mutes) -> list:
                 isinstance(view.get("lookahead_days"), (str, bool, float)):
             out.append("view.lookahead_days must be a whole number of days, 0 or more")
         rcfg = view.get("report", {})
-        if not isinstance(rcfg, dict) or set(rcfg) - {"top", "per_bucket"} or \
+        if not isinstance(rcfg, dict) or set(rcfg) - {"top", "per_bucket", "collapse"} or \
                 any(not _pos_int(rcfg[k]) for k in ("top", "per_bucket") if k in rcfg):
-            out.append("view.report takes top and per_bucket, each a positive integer")
+            out.append("view.report takes top and per_bucket, each a positive integer, and collapse")
+        elif "collapse" in rcfg and not (isinstance(rcfg["collapse"], list)
+                                         and all(isinstance(x, str) and x for x in rcfg["collapse"])):
+            out.append("view.report.collapse must be a list of section ids")
+        off = view.get("off_days")
+        if off is not None and not (isinstance(off, dict) and set(off) <= {"days"} and isinstance(off.get("days"), list)
+                                    and all(d in WEEKDAYS for d in off["days"])):
+            out.append(f"view.off_days takes days, a list of {', '.join(WEEKDAYS)}")
         if view.get("overview", "inline") not in ("inline", "file"):
             out.append("view.overview must be inline or file")
         if view.get("hygiene", "bottom") not in ("bottom", "hide"):
@@ -975,6 +989,10 @@ def _short(text, limit: int) -> str:
     if len(text) <= limit:
         return text
     cut = text[: limit - 1]
+    # A clause that ends in the second half says more than the same text cut at a word inside the next one.
+    clause = max(cut.rfind(sep) for sep in (", ", "; ", ": ", ". "))
+    if clause >= limit // 2:
+        return cut[:clause].rstrip(" ,;:") + "…"
     if " " in cut and not text[limit - 1].isspace():
         cut = cut.rsplit(" ", 1)[0]
     return cut.rstrip(" ,.;:") + "…"
@@ -1167,7 +1185,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             if tabs:
                 out["workplace"] = labels["workplace"].format(
                     n=len(tabs), new=sum(1 for t in tabs if t.get("state") == "new"),
-                    resume=sum(1 for t in tabs if t.get("state") == "resume"))
+                    resume=sum(1 for t in tabs if t.get("state") == "resume"),
+                    open=sum(1 for t in tabs if t.get("state") == "open"))
             continue
         for item in items_of(s):
             if muted(sid, item):
@@ -1196,6 +1215,10 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     # filed for when something has happened (inbox.py waits_for): it asks nobody yet, and says so
                     # instead of stating the hoped-for outcome as a fact (29.10.)
                     bucket, title = "waiting", labels["waiting_for"].format(title=title)
+                elif item.get("kind") in ("finding", "result") and item.get("urgency") not in ("now", "today") \
+                        and not soon:
+                    # a report asks nobody: what can wait is the Bridge's to look at first, not your plan (07.11.)
+                    bucket = "delegate"
                 else:
                     bucket = "do" if item.get("urgency") in ("now", "today") or soon else "plan"
                 rank = 0 if item.get("urgency") == "now" else 1 if soon else 2
@@ -1483,6 +1506,26 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
                      "n": len(hidden), "names": ids})
     hygiene = [x["text"] for x in tend]
     visible = [r for r in rows if r["bucket"] not in hidden_ids]
+    health = {st["sid"] for st in data["status"] if st.get("health") and st.get("sid")}
+    for r in visible:
+        r["health"] = bool(set(r.get("sources") or []) & health)
+    titles_of = {s.get("id"): s.get("title") or s.get("id") for s in result.get("sections") or []}
+    collapsed: list = []
+    rcfg_ = view.get("report") if isinstance(view.get("report"), dict) else {}
+    if style == "report" and isinstance(rcfg_.get("collapse"), list):
+        # inventory (a board, a tracker) as one count: what was filed from it to the inbox still stands as a row
+        for sid in rcfg_["collapse"]:
+            gone = [r for r in visible if set(r.get("sources") or []) == {sid}]
+            if any(s.get("id") == sid for s in result.get("sections") or []):
+                collapsed.append(f"{titles_of.get(sid)} {len(gone)}")
+            visible = [r for r in visible if not any(r is g for g in gone)]
+    off = view.get("off_days") if isinstance(view.get("off_days"), dict) else {}
+    off_day = 0
+    if WEEKDAYS[now.weekday()] in (off.get("days") or []):
+        # a free day shows what cannot wait (Do, waiting on others, a date, a warning); the rest is one count
+        keep = [r for r in visible if r["bucket"] in ("do", "waiting") or r.get("due") or r.get("health")]
+        off_day = len(visible) - len(keep)
+        visible = keep
 
     plan_cfg: dict = view["plan"] if isinstance(view.get("plan"), dict) else {}
     workday: dict = plan_cfg["workday"] if isinstance(plan_cfg.get("workday"), dict) else {}
@@ -1500,7 +1543,10 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
            "labels": labels,
            "activity": data["activity"],
            "boards": data["boards"], "overview": view.get("overview", "inline"), "status": data["status"],
-           "report": view.get("report") if isinstance(view.get("report"), dict) else {}, "agenda": agenda if style != "plan" else [], "clear": data["clear"]}
+           "report": view.get("report") if isinstance(view.get("report"), dict) else {}, "agenda": agenda if style != "plan" else [], "clear": data["clear"],
+           "collapsed": collapsed, "off_day": off_day}
+    if off_day or (WEEKDAYS[now.weekday()] in (off.get("days") or [])):
+        out["workplace"] = None
 
     if view.get("headline", True) is not False:
         out["headline"] = _headline(visible, events, now, labels, day_end)
@@ -1829,8 +1875,11 @@ def _mix(rows: list, k: int) -> list:
     """The first k rows taken in turn from each source, order kept within a source: a capped bucket shows a mix
     instead of k rows of whichever source came first. Your own rows go first, the board's inventory takes what
     is left: six sources on five lines would otherwise push your next steps off for a card from a backlog."""
-    picked: list = []
-    for tier in ([r for r in rows if r.get("rank", OWN_RANK) < OWN_RANK], [r for r in rows if r.get("rank", OWN_RANK) >= OWN_RANK]):
+    # A row that warns (a health section) or carries a date is never the one "+N more" hides: a deadline
+    # behind board inventory was the morning's worst miss (07.11.).
+    picked: list = [r for r in rows if r.get("health") or r.get("due")][:k]
+    rest = [r for r in rows if not any(r is p for p in picked)]
+    for tier in ([r for r in rest if r.get("rank", OWN_RANK) < OWN_RANK], [r for r in rest if r.get("rank", OWN_RANK) >= OWN_RANK]):
         queues: dict = {}
         for r in tier:
             queues.setdefault(r["sources"][0] if r.get("sources") else "", []).append(r)
@@ -1845,7 +1894,9 @@ def _mix(rows: list, k: int) -> list:
 def draw_report(view: dict) -> str:
     """Markdown that reads like a report, by exception: one status line naming only
     what failed or needs a look, the first few things in bold, short lists per bucket
-    with the rest counted, tables only where rows compare (calendar, boards, activity)."""
+    with the rest counted, tables only where rows compare (calendar, boards, activity).
+    The status line points at the numbers of the rows it warns about; a bucket counts
+    only what it lists below First; "new" is said once on top when most rows are new."""
     labels = view["labels"]
     rcfg = view.get("report") or {}
     top, per_bucket = _int(rcfg.get("top"), 3, 1), _int(rcfg.get("per_bucket"), 5, 1)
@@ -1854,16 +1905,65 @@ def draw_report(view: dict) -> str:
     if view.get("headline"):
         out += [f"**{view['headline']}**", ""]
 
+    # the body first: the status line names the numbers its rows got
+    rows = [(b, r) for b in view.get("buckets") or [] for r in b["items"]]
+    listed = [r for _, r in rows[:top]]
+    shown_first = {id(r) for r in listed}
+    per = []
+    for b in view.get("buckets") or []:
+        rest = [r for r in b["items"] if id(r) not in shown_first]
+        if rest:
+            pick = _mix(rest, per_bucket)
+            per.append((b, rest, pick))
+            listed += pick
+    flood = len(listed) > 1 and sum(1 for r in listed if r["new"]) * 2 > len(listed)
+    number = {id(r): n for n, r in enumerate(listed, 1)}
+
+    def why_of(r):
+        return _why({**r, "new": r["new"] and not flood}, labels)
+
+    body = []
+    if rows:
+        body += [f"### {labels['first_title']}", ""]
+        for r in listed[:len(shown_first)]:
+            why = why_of(r)
+            body.append(f"{number[id(r)]}. {_marked(r)}**{_short(r['title'], TITLE_CHARS)}**" + (f" ({why})" if why else ""))
+        body.append("")
+    for b, rest, pick in per:
+        firsts = sum(1 for r in b["items"] if id(r) in shown_first)
+        head = f"### {b['title']} · {b.get('total', len(b['items'])) - firsts}"
+        if view.get("answer_keys") and b.get("options"):
+            head += "  *(" + " · ".join(f"{'abcdefghij'[i]} {o}" for i, o in enumerate(b["options"][:10])) + ")*"
+        body += [head, ""]
+        for r in pick:
+            why = why_of(r)
+            body.append(f"{number[id(r)]}. {_marked(r)}{_short(r['title'], TITLE_CHARS)}" + (f" ({why})" if why else ""))
+        hidden = len(rest) - len(pick) + (b.get("total", len(b["items"])) - len(b["items"]))
+        if hidden > 0:
+            body.append(f"\n*{labels['bucket_more'].format(n=hidden)}*")
+        body.append("")
+    if view.get("dropped"):       # a whole bucket that did not fit is said, never just missing
+        body += [f"*{labels['bucket_more'].format(n=view['dropped'])}*", ""]
+    if view.get("off_day"):
+        body += [f"*{labels['off_day'].format(n=view['off_day'])}*", ""]
+    if view.get("collapsed"):
+        body += [f"*{labels['collapsed'].format(items=' · '.join(view['collapsed']))}*", ""]
+
     failed = [st for st in view.get("status") or [] if st.get("status") == "error"]
     warn = [st for st in view.get("status") or [] if st.get("health") and not st.get("status") and st["count"]]
     clear = [st["title"] for st in view.get("status") or [] if st.get("health") and not st.get("status")
              and not st["count"]]
     parts = [f"✗ {st['title']} ({_short(st.get('reason', ''), 50)})" for st in failed]
-    parts += [f"⚠ {st['title']} ({st['count']})" for st in warn]
+    for st in warn:
+        nums = [str(number[id(r)]) for r in listed if st.get("sid") in (r.get("sources") or [])]
+        count = labels["status_rows"].format(n=st["count"], rows=", ".join(nums)) if nums else st["count"]
+        parts.append(f"⚠ {st['title']} ({count})")
     if clear:
         parts.append("✓ " + ", ".join(clear))
     if parts:
         out += [f"**{labels['lage']}:** " + " · ".join(parts), ""]
+    if flood and view.get("since"):
+        out += [f"*{view['since']}*", ""]
 
     agenda = view.get("agenda") or []
     if len(agenda) == 1:
@@ -1877,35 +1977,7 @@ def draw_report(view: dict) -> str:
                         " · ".join(([("⚠")] if a.get("clash") else []) +
                                    ([labels["parallel"].format(title=a["parallel"])] if a.get("parallel") else []))]
                        for a in agenda]) + [""]
-
-    rows = [(b, r) for b in view.get("buckets") or [] for r in b["items"]]
-    n = 0
-    if rows:
-        out += [f"### {labels['first_title']}", ""]
-        for b, r in rows[:top]:
-            n += 1
-            why = _why(r, labels)
-            out.append(f"{n}. {_marked(r)}**{_short(r['title'], TITLE_CHARS)}**" + (f" ({why})" if why else ""))
-        out.append("")
-    shown_first = {id(r) for _, r in rows[:top]}
-    for b in view.get("buckets") or []:
-        rest = [r for r in b["items"] if id(r) not in shown_first]
-        if not rest:
-            continue
-        head = f"### {b['title']} · {b.get('total', len(b['items']))}"
-        if view.get("answer_keys") and b.get("options"):
-            head += "  *(" + " · ".join(f"{'abcdefghij'[i]} {o}" for i, o in enumerate(b["options"][:10])) + ")*"
-        out += [head, ""]
-        for r in _mix(rest, per_bucket):
-            n += 1
-            why = _why(r, labels)
-            out.append(f"{n}. {_marked(r)}{_short(r['title'], TITLE_CHARS)}" + (f" ({why})" if why else ""))
-        hidden = len(rest) - per_bucket + (b.get("total", len(b["items"])) - len(b["items"]))
-        if hidden > 0:
-            out.append(f"\n*{labels['bucket_more'].format(n=hidden)}*")
-        out.append("")
-    if view.get("dropped"):       # a whole bucket that did not fit is said, never just missing
-        out += [f"*{labels['bucket_more'].format(n=view['dropped'])}*", ""]
+    out += body
 
     if view.get("overview", "inline") != "file":
         if view.get("boards"):

@@ -184,14 +184,15 @@ why as "next: <step>" (the cockpit shows it as the point's step line). `who:` me
 | `triage` | Every row sorted by what to do with it: **do** (you, now), **plan** (you, no date), **delegate** (the Bridge does it), **waiting** (on someone else, with how long), **drop** (park it?). A thing two sources carry (the same issue on GitHub and on a board) is one row naming both. Housekeeping comes last. |
 | `brevity` | The bottom line, then the top three with why each matters, then how many more. For a phone or a busy day. |
 | `plan` | Your rows laid into today's free calendar gaps, what the Bridge does meanwhile, and when the day ends. |
-| `report` | Markdown that reads like a report, by exception: one **status** line naming only what failed (✗) or needs a look (⚠, a `report_ok` section with rows) and the green ones in one go (✓), the calendar (a table from two events on), the **first** rows in bold, then each bucket as a short numbered list. A bucket shows `view.report.per_bucket` rows (default 5), taken in turn from each source so one source cannot fill it, and counts the rest. Tables only where rows compare. Issue and PR ids are links; internal ids stay out. |
+| `report` | Markdown that reads like a report, by exception: one **status** line naming only what failed (✗) or needs a look (⚠, a `report_ok` section with rows) and the green ones in one go (✓), the calendar (a table from two events on), the **first** rows in bold, then each bucket as a short numbered list. A bucket shows `view.report.per_bucket` rows (default 5): first every row with a date or from a `report_ok` section, then the rest taken in turn from each source so one source cannot fill it, and counts the rest. A bucket's count leaves out the rows already shown under first. The status line names the numbers of the rows it warns about (`⚠ Upstream (1 → 7)`). When most rows are new, "new" is said once under the status line instead of on every row. `view.report.collapse` lists sections (a board, a tracker) that are counted in one line instead of listed; an item filed from them to the inbox still stands as a row. Tables only where rows compare. Issue and PR ids are links; internal ids stay out. |
 
 ```yaml
 view:
   style: triage            # sources | triage | brevity | plan | report
   headline: true           # one bottom line on top: asks for you today (and the other Do rows apart), free until, next hard date
   dayline: true            # the workday as one line: · free, █ busy, ▲ now (not in brevity)
-  report: {top: 3, per_bucket: 5}   # style report: rows in bold first, rows per bucket
+  report: {top: 3, per_bucket: 5, collapse: [boards]}   # style report: rows in bold first, rows per bucket, sections only counted
+  off_days: {days: [sat, sun]}   # on these days only Do, waiting on others, dated and warning rows; the rest is one count, no tabs
   overview: inline         # inline | file: Boards and Activity below the buckets, or in a file
   agenda: true             # Calendar block: every event from now through the lookahead, overlaps marked
   since_last: true         # "since 07:18: 2 new, 1 changed"
@@ -242,6 +243,7 @@ which agent renders it:
 | Source | Bucket |
 |---|---|
 | inbox item, urgency `now`/`today`, or due within the lookahead | do |
+| inbox report (`finding`, `result`) that is not `now`/`today` and not due within the lookahead | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
 | inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |

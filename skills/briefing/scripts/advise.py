@@ -130,9 +130,13 @@ def _tasks(root: Path) -> list:
     for status in sorted((root / "work" / "tasks").glob("*/STATUS.md")):
         if status.parent.name.startswith("_"):
             continue
-        fm = _frontmatter(status.read_text(encoding="utf-8"))
+        text = status.read_text(encoding="utf-8")
+        fm = _frontmatter(text)
         if fm.get("status") in ("doing", "review"):
-            out.append({"slug": fm.get("slug") or status.parent.name, "context": fm.get("context"),
+            slug = fm.get("slug") or status.parent.name
+            # a row names the work by its title (the H1), the key keeps the slug
+            h1 = next((ln[2:].strip() for ln in text.split("\n---", 2)[-1].splitlines() if ln.startswith("# ")), "")
+            out.append({"slug": slug, "title": h1 or slug, "context": fm.get("context"),
                         "blocked_by": fm.get("blocked_by"), "updated": _day(fm.get("last_updated")),
                         "quiet_until": _day(fm.get("quiet_until"))})
     return out
@@ -190,7 +194,7 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
         elif idle >= int(cfg["stale_days"]):
             customer = t["context"] in (cfg["customer_contexts"] or [])
             found.append(_finding("quiet", t["slug"],
-                                  w["quiet"].format(slug=t["slug"], idle=idle)
+                                  w["quiet"].format(slug=t["title"], idle=idle)
                                   + (w["quiet_customer"] if customer else w["quiet_park"]),
                                   "today" if customer else "later", t["slug"]))
     if max_active and len(tasks) > int(max_active):

@@ -154,3 +154,19 @@ def test_a_decided_item_is_closed_so_it_cannot_linger(repo):
     inbox.Inbox(repo / "work" / "inbox", actor="owner").approve(item_id)
     finish(proc)
     assert inbox.Inbox(repo / "work" / "inbox", actor="owner").get(item_id).state == "done"
+
+
+def test_a_long_question_is_cut_between_words(repo):
+    # 07.11.2026: "... nur mit dem Satz 'Empfang ü" stood in the briefing, cut inside a word.
+    long_q = "Test via the broker: answer only with the sentence 'reception works' " + "and more words " * 10
+    proc = subprocess.Popen(
+        [sys.executable, str(APPROVER), "--root", str(repo), "--poll", "0.1"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    proc.stdin.write(json.dumps({**REQUEST, "question": long_q, "timeout_sec": 20}))
+    proc.stdin.close()
+    item = inbox.Inbox(repo / "work" / "inbox", actor="owner").get(wait_for_item(repo))
+    proc.kill()
+    head = item.summary.split(": ", 1)[1]
+    assert head.endswith("…")
+    assert long_q.startswith(head[:-1].rstrip()) and long_q[len(head[:-1].rstrip())] == " "
