@@ -414,13 +414,11 @@ of the page or the current slide, Esc closes the panel before any other view (th
 focus goes back only after a keyboard open). A term the
 pack does not hold stays plain text. Print hides the panel and the marks.
 `scripts/knowledge-pack.py` builds a pack from a term list and a Markdown corpus,
-checks it, marks the terms (`mark`, first mention per slide or page) and embeds it;
+checks it, marks the terms (`mark`, first mention per slide or page) and embeds it
+(`embed`, one region just before `</body>`, so removing the sample keeps it);
 contract and adapters: `references/knowledge.md`.
 ```html
 <p><span data-de>Ein markierter <button type="button" class="kp-term" data-know="example">Begriff</button> öffnet sein Wissen rechts.</span><span data-en>A marked <button type="button" class="kp-term" data-know="example">term</button> opens its knowledge on the right.</span></p>
-<!-- knowledge-pack:start -->
-<script type="application/json" id="knowledge-pack">{"schema":"knowledge-pack@1","id":"example","title":"Example","lang":"en","source":{"kind":"manual","ref":"","revision":"","generated":""},"terms":[{"id":"example","label":"Term","aliases":[],"type":"concept","summary":"Replace this pack with knowledge-pack.py embed.","neighbours":[],"passages":[],"sources":[]}]}</script>
-<!-- knowledge-pack:end -->
 ```
 *CSS: block `knowledge` in `assets/sections.css`; script: block `knowledge` in `assets/sections.js`. Both included by `new-page.py --blocks knowledge` and `new-deck.py --blocks knowledge`.*
 

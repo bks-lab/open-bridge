@@ -66,7 +66,8 @@ of the pack.
 | size | at most 120 KB | a mail attachment and the artifact viewer stay fast; typical packs are 20 to 60 KB |
 | `source.revision` | free text | the panel footer says which state of the knowledge the deck carries |
 
-`check` enforces all of it; `build` and `embed` run it too. Ids are lowercase slugs.
+`check` enforces all of it; `build` and `embed` run it too. Ids are lowercase slugs. A link (`href`) is
+http, https, mailto or relative; the panel follows nothing else, whatever wrote the pack.
 
 ## Adapters
 
@@ -91,11 +92,14 @@ Passages are clipped at sentence ends.
 knowledge in every room, offline and in a mail. A live source is an adapter run at
 build time, not a call from the page. `data-knowledge-src="pack.json"` on `<html>`
 loads a pack next to the page instead (a published copy that is updated in place);
-the embedded pack stays as fallback, and `bundle.py` folds the file in for sending.
+the embedded pack stays the fallback, also when the loaded file holds no terms. For a
+copy to send, run `embed` with the current pack: `bundle.py` does not fold a
+`data-knowledge-src` file in.
 
 ## Marking terms
 
-By hand, or with `mark`: it wraps the first mention of every pack term per slide
+By hand, or with `mark`: it reads the text as characters (`&amp;` is `&`, `&copy;` is
+no word), leaves comments, scripts, styles and quoted attributes alone, and wraps the first mention of every pack term per slide
 (per page on a canvas page), never inside headings (`--headings` allows h1 and h2),
 code, links, buttons, notes or SVG, and never twice. A term already marked by hand
 counts as marked. Without `--write` it only reports, so the author decides; marking

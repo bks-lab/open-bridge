@@ -394,8 +394,26 @@ def parse_selectors(items: list[str]) -> dict:
 #
 # The fallback is a colour-mix of two roles, resolved in dark mode (never a
 # literal), and applies only when the manifest declares a dark palette and no
-# dark value for the entry's own role. A declared dark value always wins, and a
+# dark value for the entry's own role, and only when the light value fails 4.5:1 on
+# the dark ground. A declared dark value always wins, and a
 # manifest with no dark palette at all keeps the plain repeat of the light group.
+def contrast(a: str, b: str) -> float | None:
+    """WCAG contrast of two #RGB / #RRGGBB colours; None when either is anything else."""
+    def lum(c: str) -> float | None:
+        h = c.strip().lstrip("#")
+        if not re.fullmatch(r"[0-9a-fA-F]{3}|[0-9a-fA-F]{6}", h) or not c.strip().startswith("#"):
+            return None
+        if len(h) == 3:
+            h = "".join(ch * 2 for ch in h)
+        ch = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        ch = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in ch]
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+    la, lb = lum(a), lum(b)
+    if la is None or lb is None:
+        return None
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
 def check_dark_fallback(path: Path, name: str, spec) -> dict:
     """The validated `dark-fallback` of map entry `name`, or a ValueError naming it."""
     where = f"{path}: {name} dark-fallback"
@@ -493,6 +511,13 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
         roles = [fb["role"]] + ([fb["with"]] if fb.get("with") not in (None, "transparent") else [])
         if any(r not in colors for r in roles):
             return None  # nothing to derive from: the light value stays, as without a fallback
+        # a contrast repair, not a restyle: a light value that already reads on the dark
+        # ground (a brand accent kept in both modes) stays as it is
+        ground_role = fb["with"] if fb.get("with") not in (None, "transparent") else "surface"
+        if ground_role in colors:
+            ratio = contrast(str(colors[spec["role"]]), str(resolve(ground_role, True)))
+            if ratio is not None and ratio >= 4.5:
+                return None
         val = check_colour(resolve(fb["role"], True), name, fb["role"], "dark")
         ground = (check_colour(resolve(fb["with"], True), name, fb["with"], "dark")
                   if fb.get("with") not in (None, "transparent") else "transparent")

@@ -119,7 +119,8 @@ vars:
   dark value for this role, the dark group derives it as
   `color-mix(in srgb, <role> <mix>%, <with>)` from the dark values instead of
   repeating the light colour (a light text colour on a dark ground fails
-  contrast). A declared dark value always wins. The deck map uses it for
+  contrast). It is a contrast repair, not a restyle: a light value that already
+  reaches 4.5:1 on the dark ground stays. A declared dark value always wins. The deck map uses it for
   `text-dim` and `accent`.
 - **Derived variants** are `color-mix(in srgb, <role> <mix>%, <with>)`, with
   `with` either another role or `transparent` (the default). Never an `rgba()`

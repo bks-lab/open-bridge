@@ -438,6 +438,19 @@ def test_dark_fallback_yields_to_a_colorsdark_value_and_fills_a_gap_in_it(tmp_pa
     assert groups[".theme-dark"]["text-dim"] == "color-mix(in srgb, #EEEEEE 72%, #101010)", "it does not declare muted"
 
 
+def test_dark_fallback_keeps_a_brand_colour_that_already_reads_on_the_dark_ground(tmp_path):
+    """The fallback is a contrast repair, not a restyle: a light value that reaches 4.5:1
+    on the dark ground stays (a brand accent the same in both modes keeps its colour)."""
+    design = tmp_path / "DESIGN.md"
+    design.write_text("---\nversion: alpha\nname: x\ncolors:\n  surface: '#FFFFFF'\n  on-surface: '#222222'\n"
+                      "  on-surface-muted: '#666666'\n  secondary: '#7C9CFF'\n"
+                      "  dark-surface: '#101010'\n  dark-on-surface: '#EEEEEE'\n---\n", "utf-8")
+    groups = _groups(_run(design, "--map", TOKENS / "map-dark-fallback.yaml",
+                          "--selectors", "dark=.theme-dark").stdout)
+    assert groups[".theme-dark"]["accent"] == "#7C9CFF", "reads at about 7:1 on #101010: kept"
+    assert groups[".theme-dark"]["text-dim"] == "color-mix(in srgb, #EEEEEE 72%, #101010)", "#666666 fails: derived"
+
+
 def test_dark_fallback_is_idle_without_any_dark_palette(tmp_path):
     """No dark palette at all: the dark group repeats the light one, a coherent light page."""
     design = _dark_design(tmp_path, drop=('  dark-surface: "#111111"\n', '  dark-on-surface: "#DDDDDD"\n',

@@ -159,8 +159,8 @@ def test_every_panel_text_reads_in_both_themes(open_html, plain_dir, preset):
         page.keyboard.press("Escape")
 
 
-def test_the_deck_passes_the_static_gate(plain_dir):
+def test_the_deck_passes_the_send_gate_without_samples(plain_dir):
     out = knowledge_deck(plain_dir)
     gate = CANVAS / "scripts" / "verify-page.py"
-    r = subprocess.run([sys.executable, str(gate), str(out), "--allow-sample"], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, str(gate), str(out)], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout

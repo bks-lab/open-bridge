@@ -216,6 +216,20 @@
     return e;
   }
   function text(tag, cls, parent, s) { var e = el(tag, cls, parent); e.textContent = s; return e; }
+  /* a pack can come from any tool: follow only web, mail and scheme-less links */
+  function safeHref(h) {
+    var m = /^\s*([a-z][a-z0-9+.-]*):/i.exec(h || '');
+    return !!h && (!m || /^(https?|mailto)$/i.test(m[1]));
+  }
+  function link(parent, label, href) {
+    if (!safeHref(href)) { parent.appendChild(doc.createTextNode(label)); return; }
+    var a = text('a', '', parent, label);
+    a.href = href; a.target = '_blank'; a.rel = 'noopener';
+  }
+  function english() {
+    var l = root.getAttribute('data-lang') || root.getAttribute('lang') || 'en';
+    return l.slice(0, 2).toLowerCase() !== 'de';
+  }
   function inline() {
     var s = doc.getElementById('knowledge-pack');
     if (!s) return null;
@@ -226,7 +240,7 @@
   /* where the focus goes on close: back to what opened the panel from the keyboard,
      nowhere after a pointer (a focused term would take the next Space or Enter,
      which in a deck has to move the slides on) */
-  var returnTo = null;
+  var returnTo = null, closeBtn = null;
 
   function deck() { return deckEl && window.SlideDeck ? window.SlideDeck : null; }
   function scope() {
@@ -248,8 +262,7 @@
     head.id = 'kp-head';
     var x = el('button', 'kp-close', bar, '×');
     x.type = 'button';
-    x.setAttribute('aria-label', root.getAttribute('data-lang') === 'en' ? T.close[1] : T.close[0]);
-    x.title = T.close[0] + ' (Esc)';
+    closeBtn = x;
     body = el('div', 'kp-body', panel);
     foot = el('p', 'kp-foot', panel);
     if (pack.title || (pack.source && pack.source.revision)) {
@@ -260,7 +273,9 @@
     x.addEventListener('click', close);
     back.addEventListener('click', function () {
       var h = hist.pop();
-      if (h) render(h.mode, h.id);
+      if (!h) return;
+      var t = render(h.mode, h.id);
+      if (t) t.focus({ preventScroll: true });
     });
     panel.addEventListener('click', function (e) {
       var b = e.target.closest ? e.target.closest('[data-kp-go]') : null;
@@ -302,16 +317,14 @@
         var li = el('li', '', ol);
         text('blockquote', '', li, p.text);
         var s = p.source || {}, c = el('cite', '', li), label = [s.title, s.locator].filter(Boolean).join(' · ');
-        if (s.href) { var a = text('a', '', c, label); a.href = s.href; a.target = '_blank'; a.rel = 'noopener'; }
-        else c.textContent = label;
+        link(c, label, s.href);
       });
     }
     if (t.sources && t.sources.length) {
       var su = el('ul', '', section('kp-src', 'src'));
       t.sources.forEach(function (s) {
         var li = el('li', '', su);
-        if (s.href) { var a = text('a', '', li, s.title); a.href = s.href; a.target = '_blank'; a.rel = 'noopener'; }
-        else li.textContent = s.title;
+        link(li, s.title, s.href);
       });
     }
     return h;
@@ -361,6 +374,9 @@
     if (owner) owner.setAttribute('aria-expanded', 'true');
     hist = [];
     mode = null;
+    var en = english();
+    closeBtn.setAttribute('aria-label', en ? T.close[1] : T.close[0]);
+    closeBtn.title = (en ? T.close[1] : T.close[0]) + ' (Esc)';
     panel.hidden = false;
     root.classList.add('kp-open');
     layout();
@@ -392,7 +408,13 @@
       },
       help: [{ key: 'K', de: T.help[0], en: T.help[1] }],
       init: function (api) {
-        api.on('slidechange', function () { if (isOpen() && mode === 'list') { hist = []; render('list', null); } });
+        api.on('slidechange', function () {
+          if (!isOpen() || mode !== 'list') return;
+          var had = panel.contains(doc.activeElement);
+          hist = [];
+          var t = render('list', null);
+          if (had && t) t.focus({ preventScroll: true });
+        });
       }
     });
   }
@@ -442,7 +464,7 @@
     var embedded = inline();
     if (src && window.fetch) {
       fetch(src).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(start, function () { start(embedded); });
+        .then(function (p) { start(p && p.terms ? p : embedded); }, function () { start(embedded); });
     } else start(embedded);
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', boot);

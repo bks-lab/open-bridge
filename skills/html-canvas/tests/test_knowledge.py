@@ -191,6 +191,67 @@ def test_embed_writes_one_region_and_escapes_the_script_end(tmp_path):
     assert json.loads(data)["terms"][0]["summary"] == "A </script> in the text"
 
 
+def test_embed_keeps_valid_json_whatever_the_text_holds(tmp_path):
+    pack = build_pack(tmp_path)
+    pack["terms"][0]["summary"] = "A <!-- comment --> and <script>x</script> and </SCRIPT >"
+    (tmp_path / "pack.json").write_text(json.dumps(pack), encoding="utf-8")
+    page = tmp_path / "page.html"
+    page.write_text("<html><body><p>x</p></body></html>", encoding="utf-8")
+    assert run(PACK, "embed", page, "--pack", tmp_path / "pack.json").returncode == 0
+    html = page.read_text("utf-8")
+    data = re.search(r'<script type="application/json" id="knowledge-pack">(.*?)</script>', html, re.S).group(1)
+    assert "<" not in data, "no raw angle bracket inside the script element"
+    assert json.loads(data)["terms"][0]["summary"] == pack["terms"][0]["summary"]
+
+
+def test_embed_puts_the_pack_at_the_end_of_the_body_not_into_a_sample(tmp_path):
+    page = tmp_path / "page.html"
+    page.write_text('<html><body><div data-sample><p>sample</p></div><main><p>x</p></main></body></html>', encoding="utf-8")
+    build_pack(tmp_path)
+    assert run(PACK, "embed", page, "--pack", tmp_path / "pack.json").returncode == 0
+    html = page.read_text("utf-8")
+    assert html.index("knowledge-pack:start") > html.index("</main>")
+
+
+def test_check_refuses_a_link_that_is_not_web_or_mail(tmp_path):
+    pack = build_pack(tmp_path)
+    pack["terms"][0]["passages"][0]["source"]["href"] = "javascript:alert(1)"
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(pack), encoding="utf-8")
+    r = run(PACK, "check", bad)
+    assert r.returncode == 1 and "href" in r.stdout
+
+
+def test_mark_survives_angle_brackets_in_attributes_and_text(tmp_path):
+    build_pack(tmp_path)
+    page = tmp_path / "t.html"
+    page.write_text('<section class="slide"><p title="a > b" data-x=\'<i>\'>If 2 < 3 the latency wins.</p>'
+                    '<script>var q = "queue";</script></section>'
+                    '<section class="slide"><p>The queue waits.</p></section>', encoding="utf-8")
+    run(PACK, "mark", page, "--pack", tmp_path / "pack.json", "--write")
+    html = page.read_text("utf-8")
+    assert '<p title="a > b" data-x=\'<i>\'>If 2 < 3 the ' + BUTTON % ("latency", "latency") + " wins.</p>" in html
+    assert 'var q = "queue";' in html, "script text is never marked"
+    assert "The " + BUTTON % ("queue", "queue") + " waits." in html
+
+
+def test_mark_reads_entities_as_their_characters(tmp_path):
+    terms = tmp_path / "t.yaml"
+    terms.write_text('terms:\n  - {id: qa, label: "Q&A", summary: "Questions."}\n'
+                     '  - {id: copy, label: copy, summary: "A copy."}\n', encoding="utf-8")
+    pack = tmp_path / "p.json"
+    corpus = tmp_path / "c"
+    corpus.mkdir()
+    (corpus / "a.md").write_text("# T\n\nQ&A and a copy.\n", "utf-8")
+    assert run(PACK, "build", "--terms", terms, "--corpus", corpus, "--out", pack).returncode == 0
+    page = tmp_path / "e.html"
+    page.write_text("<section class=\"slide\"><p>&copy; 2026, see the Q&amp;A.</p></section>", encoding="utf-8")
+    run(PACK, "mark", page, "--pack", pack, "--write")
+    html = page.read_text("utf-8")
+    assert BUTTON % ("qa", "Q&amp;A") in html
+    assert 'data-know="copy"' not in html, "the entity &copy; is not the word copy"
+
+
 # --- the block on a page ------------------------------------------------------------------
 
 USAGE = ('<p id="usage">The ' + BUTTON % ("latency", "latency") + ' depends on the '
@@ -316,3 +377,46 @@ def test_print_hides_the_panel(open_page, tmp_path):
     page.locator('#usage [data-know="latency"]').click()
     page.emulate_media(media="print")
     assert not page.locator(".kp-panel").is_visible()
+
+
+def test_a_link_from_the_pack_is_only_followed_when_it_is_web_or_mail(open_page, tmp_path):
+    """check() refuses such a pack, but the panel must not trust a pack another tool wrote."""
+    page_file = page_with_pack(tmp_path)
+    html = page_file.read_text("utf-8")
+    m = re.search(r'(<script type="application/json" id="knowledge-pack">)(.*?)(</script>)', html, re.S)
+    pack = json.loads(m.group(2))
+    pack["terms"][0]["passages"][0]["source"]["href"] = "javascript:alert(1)"
+    pack["terms"][0]["sources"] = [{"title": "Evil", "href": "JavaScript:alert(2)"}, {"title": "Good", "href": "https://example.org/a"}]
+    html = html[:m.start(2)] + json.dumps(pack).replace("<", "\\u003c") + html[m.end(2):]
+    page = open_page(html)
+    page.locator('#usage [data-know="latency"]').click()
+    hrefs = page.evaluate("[...document.querySelectorAll('.kp-panel a')].map(a => a.getAttribute('href'))")
+    assert "https://example.org/a" in hrefs
+    assert not any(h and h.lower().startswith("javascript:") for h in hrefs), hrefs
+
+
+def test_the_close_button_speaks_the_page_language(open_page, tmp_path):
+    page = open_page(page_with_pack(tmp_path).read_text("utf-8").replace('lang="de"', 'lang="en"'))
+    page.locator('#usage [data-know="latency"]').click()
+    close = page.locator(".kp-close")
+    assert close.get_attribute("aria-label") == "Close" and "Close" in close.get_attribute("title")
+
+
+def test_back_keeps_the_focus_in_the_panel(open_page, tmp_path):
+    page = open_page(page_with_pack(tmp_path).read_text("utf-8"))
+    page.locator('#usage [data-know="latency"]').click()
+    page.locator('.kp-rel button[data-kp-go="queue"]').click()
+    page.locator(".kp-back").click()
+    assert page.evaluate("document.querySelector('.kp-panel').contains(document.activeElement)")
+
+
+def test_print_leaves_no_room_for_the_panel(open_page, tmp_path):
+    page = open_page(page_with_pack(tmp_path).read_text("utf-8"))
+    page.set_viewport_size({"width": 800, "height": 900})
+    page.locator('#usage [data-know="latency"]').click()
+    page.emulate_media(media="print")
+    pad = page.evaluate("[getComputedStyle(document.body).paddingRight, getComputedStyle(document.body).paddingBottom]")
+    page.emulate_media(media="screen")
+    page.keyboard.press("Escape")
+    base = page.evaluate("[getComputedStyle(document.body).paddingRight, getComputedStyle(document.body).paddingBottom]")
+    assert pad == base, (pad, base)

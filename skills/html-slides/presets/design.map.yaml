@@ -21,7 +21,9 @@
 # text on the plain ground, text-dim and accent, therefore name a `dark-fallback`:
 # the dark ink mixed into the dark ground, the same formula as the neutral
 # --text-dim in new-deck.py. It applies only when the manifest declares a dark
-# palette but no dark value for that role; a declared value always wins.
+# palette but no dark value for that role, and only when the light value fails
+# 4.5:1 on the dark ground (a brand accent that reads there keeps its colour); a
+# declared value always wins.
 
 # A deck prints the mode it shows: render-pdf.cjs --theme light|dark picks it,
 # so the generator's light-on-paper print block stays out of the deck.

@@ -318,16 +318,16 @@ a[data-term]:hover,dfn[data-term]:hover{color:var(--accent-text)}
 .kp-empty{color:var(--kp-dim)}
 .kp-foot{margin:0;padding:10px 20px;border-top:1px solid var(--line);font-size:12px;color:var(--kp-dim)}
 /* a page makes room and reflows */
-html.kp-open:not(.kp-deck) body{padding-right:var(--kp-w)}
+@media screen{html.kp-open:not(.kp-deck) body{padding-right:var(--kp-w)}}
 /* a deck: the slide shrinks to the left as designed (scaled), its chrome follows */
 html.kp-deck .deck{transform-origin:0 50%;transition:transform .25s ease}
 html.kp-open.kp-deck .deck{transform:scale(var(--kp-scale,1))}
 html.kp-open.kp-deck .deck-dots{display:none}
 html.kp-open.kp-deck .deck-counter,html.kp-open.kp-deck .theme-toggle{right:calc(var(--kp-w) + 16px)}
 html.kp-open.kp-deck .deck-hints{left:calc((100vw - var(--kp-w)) / 2)}
+@media screen and (max-width:899px){html.kp-open:not(.kp-deck) body{padding-right:0;padding-bottom:min(62vh,560px)}}
 @media (max-width:899px){
   .kp-panel{top:auto;left:0;width:auto;height:min(62vh,560px);border-left:0;border-top:1px solid var(--line-strong);border-radius:var(--radius-lg) var(--radius-lg) 0 0}
-  html.kp-open:not(.kp-deck) body{padding-right:0;padding-bottom:min(62vh,560px)}
   html.kp-open.kp-deck .deck{transform:none}
   html.kp-open.kp-deck .deck-counter,html.kp-open.kp-deck .theme-toggle{right:clamp(12px,2vw,24px)}
 }
@@ -336,6 +336,5 @@ html.kp-open.kp-deck .deck-hints{left:calc((100vw - var(--kp-w)) / 2)}
   .kp-panel{display:none !important}
   .kp-term{background:none;text-decoration:none}
   .kp-term::after{content:none}
-  html.kp-open body{padding-right:0}
   html.kp-open.kp-deck .deck{transform:none}
 }

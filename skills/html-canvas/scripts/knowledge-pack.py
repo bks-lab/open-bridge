@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import html as htmllib
 import json
 import re
 import sys
@@ -253,6 +254,16 @@ def rel_path(f: Path, roots: list[Path]) -> str:
 
 # --- check --------------------------------------------------------------------------------
 
+SAFE_SCHEMES = ("http", "https", "mailto")
+
+
+def safe_href(href: str) -> bool:
+    """A web or mail link, or one without a scheme (relative, #anchor); the panel follows
+    nothing else, and check() refuses a pack that carries anything else."""
+    m = re.match(r"\s*([a-zA-Z][a-zA-Z0-9+.-]*):", href or "")
+    return not m or m.group(1).lower() in SAFE_SCHEMES
+
+
 def check(pack: dict, raw_bytes: int) -> list[str]:
     errs = []
     if pack.get("schema") != SCHEMA:
@@ -283,6 +294,11 @@ def check(pack: dict, raw_bytes: int) -> list[str]:
                 errs.append("%s: a passage of %d characters, at most %d" % (where, len(p["text"]), MAX_PASSAGE))
             if not (p.get("source") or {}).get("title"):
                 errs.append("%s: a passage without source title" % where)
+            if not safe_href((p.get("source") or {}).get("href", "")):
+                errs.append("%s: passage href %r is not http, https, mailto or relative" % (where, p["source"]["href"]))
+        for src in t.get("sources", []):
+            if not safe_href(src.get("href", "")):
+                errs.append("%s: source href %r is not http, https, mailto or relative" % (where, src["href"]))
         if len(t.get("neighbours", [])) > MAX_NEIGHBOURS:
             errs.append("%s: %d neighbours, at most %d" % (where, len(t["neighbours"]), MAX_NEIGHBOURS))
         for n in t.get("neighbours", []):
@@ -297,43 +313,68 @@ def check(pack: dict, raw_bytes: int) -> list[str]:
 
 SKIP_TAGS = {"script", "style", "code", "pre", "kbd", "samp", "button", "a", "h1", "h2", "title",
              "textarea", "select", "option", "svg", "aside", "figcaption", "label"}
-TOKEN = re.compile(r"(<!--.*?-->|<[^>]+>)", re.S)
-SCOPE = re.compile(r'<section\b[^>]*class="[^"]*\bslide\b', re.I)
+VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+        "track", "wbr"}
+ATTRS = r"""(?:[^>"']|"[^"]*"|'[^']*')*"""
+# a comment, a raw-text element whole (its text is never marked), or a tag; quoted attribute
+# values may hold ">", and a "<" not followed by a letter, "/" or "!" is text ("2 < 3")
+TOKEN = re.compile(r"<!--.*?-->|<(script|style|textarea|title)\b" + ATTRS + r">.*?</\1\s*>"
+                   r"|<[!/?a-zA-Z]" + ATTRS + ">", re.S | re.I)
+SCOPE = re.compile(r"""<section\b""" + ATTRS + r"""\bclass\s*=\s*(["'])[^"']*\bslide\b""", re.I)
+KNOWN = re.compile(r"""\bdata-know\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+
+
+def tokens(html: str):
+    """(is_markup, text) pieces in order."""
+    pos = 0
+    for m in TOKEN.finditer(html):
+        if m.start() > pos:
+            yield False, html[pos:m.start()]
+        yield True, m.group(0)
+        pos = m.end()
+    if pos < len(html):
+        yield False, html[pos:]
 
 
 def mark(html: str, terms: list[dict], headings: bool) -> tuple[str, list[tuple[int, str]]]:
     skip = SKIP_TAGS - ({"h1", "h2"} if headings else set())
     pats = [(t["id"], matcher(t)) for t in terms]
-    parts = TOKEN.split(html)
+    out_parts: list[str] = []
     stack: list[str] = []
     scope, done, report = 0, set(), []
-    for i, part in enumerate(parts):
-        if i % 2 == 1:
-            m = re.match(r"<\s*(/)?\s*([a-zA-Z0-9]+)", part)
-            if part.startswith("<!--") or not m:
+    for is_markup, part in tokens(html):
+        if is_markup:
+            out_parts.append(part)
+            m = re.match(r"<\s*(/)?\s*([a-zA-Z][a-zA-Z0-9-]*)", part)
+            if part.startswith("<!") or not m or re.match(r"<(script|style|textarea|title)\b", part, re.I):
                 continue
             name = m.group(2).lower()
             if m.group(1):
                 if name in stack:
                     while stack and stack.pop() != name:
                         pass
-            elif not part.rstrip().endswith("/>") and name not in ("br", "img", "hr", "input", "meta", "link", "source", "wbr"):
+            elif not part.rstrip().endswith("/>") and name not in VOID:
                 if name == "section" and SCOPE.match(part):
                     scope += 1
                     done = set()
                 stack.append(name)
-                known = re.search(r'data-know="([^"]+)"', part)
+                known = KNOWN.search(part)
                 if known:
-                    done.add(known.group(1))  # marked by hand or by an earlier run
+                    done.add(known.group(1) or known.group(2))  # marked by hand or by an earlier run
                     stack.append("__known")
             continue
         if not part.strip() or any(s in skip or s == "__known" for s in stack):
+            out_parts.append(part)
             continue
+        # match on the characters, not the source spelling: "&copy;" is no "copy", "Q&amp;A" is "Q&A"
+        decode = "&" in part  # only text with entities takes the decode and re-escape path
+        text = htmllib.unescape(part) if decode else part
+        esc = (lambda x: htmllib.escape(x, quote=False)) if decode else (lambda x: x)
         hits = []
         for key, pat in pats:
             if key in done:
                 continue
-            m = pat.search(part)
+            m = pat.search(text)
             if m:
                 hits.append((m.start(), m.end(), key))
         hits.sort()
@@ -341,23 +382,24 @@ def mark(html: str, terms: list[dict], headings: bool) -> tuple[str, list[tuple[
         for start, end, key in hits:
             if start < pos:
                 continue
-            out.append(part[pos:start])
-            out.append('<button type="button" class="kp-term" data-know="%s">%s</button>' % (key, part[start:end]))
+            out.append(esc(text[pos:start]))
+            out.append('<button type="button" class="kp-term" data-know="%s">%s</button>' % (key, esc(text[start:end])))
             pos = end
             done.add(key)
             report.append((scope, key))
         if out:
-            out.append(part[pos:])
-            parts[i] = "".join(out)
-    # a closing tag that was never opened leaves "__known" markers: harmless, they only skip text
-    return "".join(parts), report
+            out.append(esc(text[pos:]))
+            out_parts.append("".join(out))
+        else:
+            out_parts.append(part)  # untouched text keeps its exact bytes
+    return "".join(out_parts), report
 
 
 # --- embed --------------------------------------------------------------------------------
 
 def embed(html: str, pack: dict) -> str:
     data = json.dumps(pack, ensure_ascii=False, separators=(",", ":"))
-    data = data.replace("</", "<\\/").replace("<!--", "<\\!--")
+    data = data.replace("<", "\\u003c")  # nothing inside can end the element or open a comment
     block = '%s\n<script type="application/json" id="knowledge-pack">%s</script>\n%s' % (REGION_START, data, REGION_END)
     if REGION.search(html):
         return REGION.sub(lambda _: block, html, count=1)
