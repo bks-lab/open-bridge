@@ -38,7 +38,7 @@ are not here: they belong to the running-model layer and live in
 - Flows: [pipeline](#pipeline) · [swimlane](#swimlane) · [C4 boxes](#c4-boxes) · [ladder](#ladder) · [SVG diagram](#svg-diagram) · [message flow A→B](#message-flow)
 - Data: [KPI row](#kpi-row) · [matrix](#matrix) · [kanban](#kanban) · [table](#table) · [bar chart](#bar-chart) · [timeline](#timeline)
 - Decisions: [decision page](#decision-page)
-- Reading aids: [glossary](#glossary) · [table of contents](#toc) · [show as table](#alt-table) · [print](#print)
+- Reading aids: [glossary](#glossary) · [knowledge panel](#knowledge) · [table of contents](#toc) · [show as table](#alt-table) · [print](#print)
 - Content: [spec card](#spec-card) · [callout](#callout) · [NOT-vs-IS](#not-vs-is) · [chips](#chips) · [people](#people) · [terminal](#terminal) · [collapsible](#collapsible)
 - Chrome: [section nav](#section-nav) · [legend](#legend) · [index/launcher](#index)
 
@@ -399,6 +399,29 @@ In the text, anywhere above it:
 <p><span data-de>Die <a href="#gl-latency" data-term="latency">Latenz</a> hängt an der <dfn data-term="queue">Warteschlange</dfn>.</span><span data-en>The <a href="#gl-latency" data-term="latency">latency</a> depends on the <dfn data-term="queue">queue</dfn>.</span></p>
 ```
 *CSS: block `glossary` in `assets/sections.css`; script: block `glossary` in `assets/sections.js`. Both included by `new-page.py --blocks glossary`.*
+
+## <a id="knowledge"></a>Knowledge panel (terms open their knowledge beside the page)
+Where the glossary answers a term in a popover, the knowledge panel opens beside the
+page and keeps it readable: the page reflows to the left, a deck scales its slide to
+the left as designed. No pop-up. A term is a button with a small question mark at the
+word: `<button type="button" class="kp-term" data-know="<id>">`. The knowledge comes
+from a **knowledge pack** (`knowledge-pack@1`, JSON) embedded as
+`<script type="application/json" id="knowledge-pack">` or fetched from
+`data-knowledge-src` on `<html>` (the embedded pack is the fallback). The panel shows
+kind, name, aliases, summary, related terms (a related term in the pack opens in
+the panel, Back returns), passages with their source, and sources. K lists the terms
+of the page or the current slide, Esc closes and gives the focus back. A term the
+pack does not hold stays plain text. Print hides the panel and the marks.
+`scripts/knowledge-pack.py` builds a pack from a term list and a Markdown corpus,
+checks it, marks the terms (`mark`, first mention per slide or page) and embeds it;
+contract and adapters: `references/knowledge.md`.
+```html
+<p><span data-de>Ein markierter <button type="button" class="kp-term" data-know="example">Begriff</button> öffnet sein Wissen rechts.</span><span data-en>A marked <button type="button" class="kp-term" data-know="example">term</button> opens its knowledge on the right.</span></p>
+<!-- knowledge-pack:start -->
+<script type="application/json" id="knowledge-pack">{"schema":"knowledge-pack@1","id":"example","title":"Example","lang":"en","source":{"kind":"manual","ref":"","revision":"","generated":""},"terms":[{"id":"example","label":"Term","aliases":[],"type":"concept","summary":"Replace this pack with knowledge-pack.py embed.","neighbours":[],"passages":[],"sources":[]}]}</script>
+<!-- knowledge-pack:end -->
+```
+*CSS: block `knowledge` in `assets/sections.css`; script: block `knowledge` in `assets/sections.js`. Both included by `new-page.py --blocks knowledge` and `new-deck.py --blocks knowledge`.*
 
 ## <a id="toc"></a>Table of contents with scroll spy
 A contents box near the top. `new-page.py` fills the list with the blocks that follow

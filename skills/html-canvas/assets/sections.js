@@ -191,3 +191,243 @@
   window.addEventListener('beforeprint', before);
   window.addEventListener('afterprint', after);
 })();
+
+/* @block: knowledge */
+(function () {
+  /* Terms marked [data-know] open their knowledge in a panel beside the page: no
+     pop-up, the page makes room (a deck scales its slide to the left). The pack is
+     JSON in #knowledge-pack, or fetched from data-knowledge-src with the embedded
+     one as fallback. Layout of the term view after the entity page of an
+     associative podcast player: kind, name, aliases, summary, relations, passages
+     with their source, sources. */
+  var doc = document, root = doc.documentElement;
+  var T = {
+    kind: ['Wissen', 'Knowledge'], close: ['Schließen', 'Close'], back: ['Zurück', 'Back'],
+    rel: ['Zusammenhang', 'Related'], pass: ['Belegstellen', 'Passages'], src: ['Quellen', 'Sources'],
+    here: ['Begriffe hier', 'Terms here'], none: ['Hier ist kein Begriff markiert.', 'No term is marked here.'],
+    as: ['Stand', 'As of'], help: ['Wissen zu den Begriffen', 'Knowledge for the terms']
+  };
+  function pair(k) { return '<span data-de>' + T[k][0] + '</span><span data-en>' + T[k][1] + '</span>'; }
+  function el(tag, cls, parent, html) {
+    var e = doc.createElement(tag);
+    if (cls) e.className = cls;
+    if (html) e.innerHTML = html;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function text(tag, cls, parent, s) { var e = el(tag, cls, parent); e.textContent = s; return e; }
+  function inline() {
+    var s = doc.getElementById('knowledge-pack');
+    if (!s) return null;
+    try { return JSON.parse(s.textContent); } catch (e) { return null; }
+  }
+  var deckEl = doc.querySelector('.deck');
+  var pack = null, byId = {}, panel, body, head, back, foot, owner = null, mode = null, cur = null, hist = [];
+
+  function deck() { return deckEl && window.SlideDeck ? window.SlideDeck : null; }
+  function scope() {
+    var d = deck();
+    if (!d) return doc.body;
+    var st = d.state(), list = d.slides();
+    return list[st.index] || doc.body;
+  }
+  function build() {
+    panel = el('aside', 'kp-panel', doc.body);
+    panel.id = 'kp-panel';
+    panel.hidden = true;
+    panel.setAttribute('aria-labelledby', 'kp-head');
+    var bar = el('div', 'kp-bar', panel);
+    back = el('button', 'kp-back', bar, '‹ ' + pair('back'));
+    back.type = 'button';
+    back.hidden = true;
+    head = el('span', 'kp-kind', bar, pair('kind'));
+    head.id = 'kp-head';
+    var x = el('button', 'kp-close', bar, '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', root.getAttribute('data-lang') === 'en' ? T.close[1] : T.close[0]);
+    x.title = T.close[0] + ' (Esc)';
+    body = el('div', 'kp-body', panel);
+    foot = el('p', 'kp-foot', panel);
+    if (pack.title || (pack.source && pack.source.revision)) {
+      var s = pack.source || {};
+      foot.innerHTML = pair('as') + ': ';
+      foot.appendChild(doc.createTextNode([pack.title, s.revision, s.generated].filter(Boolean).join(' · ')));
+    } else foot.hidden = true;
+    x.addEventListener('click', close);
+    back.addEventListener('click', function () {
+      var h = hist.pop();
+      if (h) render(h.mode, h.id);
+    });
+    panel.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-kp-go]') : null;
+      if (b) { e.preventDefault(); go('term', b.getAttribute('data-kp-go')); }
+    });
+    window.addEventListener('resize', layout);
+  }
+  function section(cls, label) {
+    var s = el('section', cls, body);
+    el('h3', '', s, pair(label));
+    return s;
+  }
+  function termLink(id, label, parent) {
+    if (byId[id]) {
+      var b = text('button', '', parent, label);
+      b.type = 'button';
+      b.setAttribute('data-kp-go', id);
+      return b;
+    }
+    return text('span', '', parent, label);
+  }
+  function renderTerm(t) {
+    if (t.type) text('p', 'kp-type', body, t.type);
+    var h = text('h2', 'kp-title', body, t.label);
+    h.tabIndex = -1;
+    if (t.aliases && t.aliases.length) text('p', 'kp-aliases', body, t.aliases.join(' · '));
+    if (t.summary) text('p', 'kp-summary', body, t.summary);
+    if (t.neighbours && t.neighbours.length) {
+      var ul = el('ul', '', section('kp-rel', 'rel'));
+      t.neighbours.forEach(function (n) {
+        var li = el('li', '', ul);
+        if (n.rel) text('span', 'kp-relv', li, n.rel);
+        termLink(n.id, n.label || n.id, li);
+      });
+    }
+    if (t.passages && t.passages.length) {
+      var ol = el('ol', '', section('kp-pass', 'pass'));
+      t.passages.forEach(function (p) {
+        var li = el('li', '', ol);
+        text('blockquote', '', li, p.text);
+        var s = p.source || {}, c = el('cite', '', li), label = [s.title, s.locator].filter(Boolean).join(' · ');
+        if (s.href) { var a = text('a', '', c, label); a.href = s.href; a.target = '_blank'; a.rel = 'noopener'; }
+        else c.textContent = label;
+      });
+    }
+    if (t.sources && t.sources.length) {
+      var su = el('ul', '', section('kp-src', 'src'));
+      t.sources.forEach(function (s) {
+        var li = el('li', '', su);
+        if (s.href) { var a = text('a', '', li, s.title); a.href = s.href; a.target = '_blank'; a.rel = 'noopener'; }
+        else li.textContent = s.title;
+      });
+    }
+    return h;
+  }
+  function renderList() {
+    var h = el('h2', 'kp-title', body, pair('here'));
+    h.tabIndex = -1;
+    var seen = {}, ids = [];
+    [].forEach.call(scope().querySelectorAll('[data-know]'), function (n) {
+      var id = n.getAttribute('data-know');
+      if (byId[id] && !seen[id]) { seen[id] = 1; ids.push(id); }
+    });
+    var s = el('section', 'kp-list', body);
+    if (!ids.length) { el('p', 'kp-empty', s, pair('none')); return h; }
+    var ul = el('ul', '', s);
+    ids.forEach(function (id) {
+      var li = el('li', '', ul);
+      termLink(id, byId[id].label, li);
+      if (byId[id].type) text('span', 'kp-lt', li, byId[id].type);
+    });
+    return h;
+  }
+  function render(m, id) {
+    mode = m; cur = id;
+    body.textContent = '';
+    body.scrollTop = 0;
+    back.hidden = !hist.length;
+    return m === 'term' && byId[id] ? renderTerm(byId[id]) : renderList();
+  }
+  function go(m, id) {
+    if (mode) hist.push({ mode: mode, id: cur });
+    var h = render(m, id);
+    if (h) h.focus({ preventScroll: true });
+  }
+  function layout() {
+    if (!panel || panel.hidden || !deckEl) return;
+    var vw = root.clientWidth || window.innerWidth, pw = panel.getBoundingClientRect().width;
+    var s = vw < 900 ? 1 : Math.max(0.3, (vw - pw - 8) / vw);
+    root.style.setProperty('--kp-scale', String(s));
+  }
+  function open(m, id, trigger) {
+    if (!panel) build();
+    if (owner && owner !== trigger) owner.setAttribute('aria-expanded', 'false');
+    owner = trigger || null;
+    if (owner) owner.setAttribute('aria-expanded', 'true');
+    hist = [];
+    mode = null;
+    panel.hidden = false;
+    root.classList.add('kp-open');
+    layout();
+    var h = render(m, id);
+    if (h) h.focus({ preventScroll: true });
+  }
+  function isOpen() { return !!panel && !panel.hidden; }
+  function close() {
+    if (!isOpen()) return;
+    panel.hidden = true;
+    root.classList.remove('kp-open');
+    mode = null;
+    var a = doc.activeElement;
+    if (owner) {
+      owner.setAttribute('aria-expanded', 'false');
+      if (!a || a === doc.body || panel.contains(a)) owner.focus({ preventScroll: true });
+    }
+    owner = null;
+  }
+  function toggleList() { if (isOpen()) close(); else open('list', null, null); }
+
+  function wire(d) {
+    d.use({
+      name: 'knowledge',
+      keys: {
+        k: function () { toggleList(); return true; },
+        escape: function () { if (!isOpen()) return false; close(); return true; }
+      },
+      help: [{ key: 'K', de: T.help[0], en: T.help[1] }],
+      init: function (api) {
+        api.on('slidechange', function () { if (isOpen() && mode === 'list') { hist = []; render('list', null); } });
+      }
+    });
+  }
+  function start(p) {
+    var triggers = [].slice.call(doc.querySelectorAll('[data-know]'));
+    pack = p && p.terms ? p : null;
+    if (pack) pack.terms.forEach(function (t) { byId[t.id] = t; });
+    triggers.forEach(function (t) {
+      var id = t.getAttribute('data-know');
+      if (!byId[id]) { t.setAttribute('aria-disabled', 'true'); t.disabled = true; return; }
+      t.setAttribute('aria-expanded', 'false');
+      t.setAttribute('aria-controls', 'kp-panel');
+      t.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (isOpen() && owner === t && mode === 'term' && cur === id) { close(); return; }
+        open('term', id, t);
+      });
+    });
+    if (!pack) return;
+    if (deckEl) {
+      root.classList.add('kp-deck');
+      if (window.SlideDeck) wire(window.SlideDeck);
+      else doc.addEventListener('slidedeck:ready', function () { if (window.SlideDeck) wire(window.SlideDeck); }, { once: true });
+    } else {
+      doc.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+        var t = e.target, tag = t && t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+        if (e.key === 'Escape' && isOpen()) { close(); e.preventDefault(); }
+        else if (e.key === 'k' || e.key === 'K') { toggleList(); e.preventDefault(); }
+      });
+    }
+  }
+  function boot() {
+    var holder = root.hasAttribute('data-knowledge-src') ? root : doc.querySelector('[data-knowledge-src]');
+    var src = holder && holder.getAttribute('data-knowledge-src');
+    var embedded = inline();
+    if (src && window.fetch) {
+      fetch(src).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(start, function () { start(embedded); });
+    } else start(embedded);
+  }
+  if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();

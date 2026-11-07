@@ -76,7 +76,7 @@ LABELS = {
     "callout": ("Hinweis", "Note"), "not-vs-is": ("Abgrenzung", "Contrast"),
     "chips": ("Tags", "Tags"), "people": ("Personen", "People"), "terminal": ("Terminal", "Terminal"),
     "collapsible": ("Details", "Details"), "legend": ("Legende", "Legend"), "index": ("Index", "Index"),
-    "glossary": ("Glossar", "Glossary"), "toc": ("Inhalt", "Contents"),
+    "glossary": ("Glossar", "Glossary"), "knowledge": ("Wissen", "Knowledge"), "toc": ("Inhalt", "Contents"),
     "alt-table": ("Grafik und Tabelle", "Chart and table"), "print": ("Druck", "Print"),
 }
 

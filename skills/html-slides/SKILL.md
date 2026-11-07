@@ -40,6 +40,7 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | The deck in the design of a context or persona | `--context NAME` / `--persona ID` | `reference/deck-build.md` § Presets |
 | Generated illustrations or mood images on slides, from the Codex CLI, a configured command or the agent's own image tool | `<img data-image-prompt="…">` in the slide, then `html-canvas/scripts/gen-images.py` plan / generate / place | `html-canvas/references/images.md` |
 | A deck handed over to be read, not presented: every slide with its notes as one document | `--with read`, key R; a send copy opens in it with `--deck-attr data-read-default=` | `reference/modules.md` § Module: read |
+| Terms on a slide that open their knowledge on the right while presenting (split screen, no pop-up) | `new-deck.py --blocks knowledge`, then `html-canvas/scripts/knowledge-pack.py` mark and embed; key K | `html-canvas/references/knowledge.md` |
 | Pick a look | DESIGN.md (default) or a style preset by name | `reference/deck-build.md` § Presets |
 | A deck in no house brand, or no DESIGN.md exists | `--preset <slug>` | `presets/_template.yaml`, `assets/discovery-menu.html` |
 | PDF, mail, customer, external | the send path below | `reference/output-formats.md` |

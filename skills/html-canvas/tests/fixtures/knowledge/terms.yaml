@@ -1,0 +1,22 @@
+# Fixture for knowledge-pack.py: a neutral topic, invented text.
+terms:
+  - id: latency
+    label: Latenz
+    aliases: ["Antwortzeit"]
+    type: konzept
+    summary: "Zeit zwischen Anfrage und Antwort, gemessen am Client. Sie steigt, sobald Aufträge in der Warteschlange warten."
+    summary_source: "grundlagen.md#Latenz"
+    related:
+      - {id: queue, rel: "steigt mit"}
+  - id: queue
+    label: Warteschlange
+    aliases: ["Queue"]
+    type: technik
+    summary: "Aufträge, die auf einen freien Bearbeiter warten."
+    summary_source: "grundlagen.md#Warteschlange"
+  - id: throughput
+    label: Durchsatz
+    aliases: []
+    type: konzept
+    summary: "Erledigte Aufträge pro Zeiteinheit."
+    summary_source: "betrieb.md#Kennzahlen"

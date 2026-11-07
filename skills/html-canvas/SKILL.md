@@ -4,8 +4,8 @@ description: >-
   Builds single-file HTML documents: explainers, reference pages, architecture visualizations, light/dark and DE/EN toggles, DESIGN.md tokens. Also running models: simulations with a clock. NOT marketing pages or ops dashboards (creative-design-stack), not ecosystem maps (bridge-explorer). Trigger: "create an HTML page", "explainer", "html kit", "theme toggle", "simulate this".
 metadata:
   scope: core
-  version: 1.4.0
-  last_updated: 2026-11-06
+  version: 1.5.0
+  last_updated: 2026-11-07
 ---
 
 # html-canvas
@@ -31,6 +31,7 @@ bundle (`scripts/bundle.py`) and the theme contract
 | Many pages that must look like one set | the parallel-builder workflow | `references/build-workflow.md` |
 | An architecture explainer from a repo or its docs | `scripts/repo-scan.py`, then the playbook | `references/repo-analysis.md` |
 | Reading aids: glossary popovers, contents with scroll spy, a chart shown as table, print rules | `new-page.py --blocks glossary,toc,alt-table,print` | `references/sections.md` § Reading aids |
+| Terms that open their knowledge beside the page (a panel, no pop-up), from a knowledge pack built from Markdown or another source | `new-page.py --blocks knowledge`, then `scripts/knowledge-pack.py` build, mark, embed | `references/knowledge.md` |
 | Behaviour on a page: reveal, count-up, filter, scrollspy | paste the snippet | `references/interactivity.md` |
 | A deck to present | use `html-slides` | |
 | Generated images for slots (illustration, mood image) | `<img data-image-prompt="…">` slots, then `scripts/gen-images.py` plan, generate, place | `references/images.md` |
@@ -49,7 +50,7 @@ python3 skills/html-canvas/scripts/new-page.py --title "Option review" --lang de
 ```
 
 That writes one offline file: the shell, the DESIGN.md tokens, the example markup
-of each requested block from the 30 blocks in `references/sections.md`, and the CSS
+of each requested block from the 31 blocks in `references/sections.md`, and the CSS
 of those blocks once (from `assets/sections.css`). Blocks with a behaviour (glossary,
 toc, alt-table, print) also bring their script from `assets/sections.js`, in a
 `section-scripts` region that only such a page has. It then runs the static gate and
@@ -181,6 +182,7 @@ the gate, which refuses sibling files (`local-ref`).
 | `references/sections.md` | composing `<main>`: the block catalog |
 | `scripts/verify-page.py` | the gate, for pages and decks |
 | `scripts/bundle.py` | the send copy |
+| `scripts/knowledge-pack.py`, `references/knowledge.md` | the knowledge panel: pack contract, build from Markdown, check, mark terms, embed |
 | `scripts/gen-images.py`, `references/images.md` | AI images for page or deck slots: plan, generate (Codex CLI, a configured command, or the agent's own image tool), place |
 | `scripts/design-to-css.py` | tokens, also for other consumers (`--map`, `--selectors`, `--region`) |
 | `scripts/embed-fonts.py`, `assets/fonts/` | embedding typefaces (woff2 plus OFL licences) |
