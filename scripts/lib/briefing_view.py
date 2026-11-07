@@ -1216,7 +1216,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     # instead of stating the hoped-for outcome as a fact (29.10.)
                     bucket, title = "waiting", labels["waiting_for"].format(title=title)
                 elif item.get("kind") in ("finding", "result") and item.get("urgency") not in ("now", "today") \
-                        and not soon:
+                        and not soon and item.get("gate") != "only-you":
                     # a report asks nobody: what can wait is the Bridge's to look at first, not your plan (07.11.)
                     bucket = "delegate"
                 else:
@@ -1315,7 +1315,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 bucket = forced or bucket       # a section's `bucket: do` ranks as do too
                 add(_item_key(sid, iid), row(sid, item, bucket, item.get("title"),
                                              [iid, str(label) if label else ""], 2 if bucket == "do" else 4,
-                                             ref=iid, about_task=item.get("about_task"), about_kind=item.get("about_kind")))
+                                             ref=iid, about_task=item.get("about_task"), about_kind=item.get("about_kind"),
+                                             category=str(label) if label and not re.search(r"[\s\d]", str(label)) else None))
 
     # blocked / waiting / due advice repeats what a task or inbox row already says;
     # it stands on its own only when no such row is in the view.
@@ -1859,6 +1860,8 @@ def _why(r: dict, labels: dict) -> str:
     ref, url = r.get("ref"), str(r.get("url") or "")
     extras = []
     for w in r["why"]:
+        if w and w == r.get("category"):     # one word naming the kind of row, not a fact about it (07.11.)
+            continue
         if w and w == ref:
             if GLOBAL_ID.match(str(ref)):
                 extras.append(f"[{ref}]({url})" if url.startswith(("https://", "http://")) else ref)
@@ -1868,7 +1871,22 @@ def _why(r: dict, labels: dict) -> str:
         extras.append(labels["nudge"])
     if r["new"]:
         extras.append(labels["new"])
+    # one date per row: a due date says it, "back on" and "look again" beside it only contradict (07.11.)
+    due_head = labels["due"].split("{")[0]
+    if due_head and any(e.startswith(due_head) for e in extras):
+        drop = tuple(h for h in (labels["back_on"].split("{")[0], labels["look_again"].split("{")[0]) if h)
+        extras = [e for e in extras if not (drop and e.startswith(drop))]
+    if r.get("bucket") == "do":       # the bucket already says it is yours
+        extras = [e for e in extras if e != labels["only_you"]]
     return " · ".join(e for e in extras if e)
+
+
+def _report_row(n: int, r: dict, labels: dict, bold: bool) -> list:
+    """A numbered row: the title on its line, its facts on the next, so neither drowns the other (07.11.)."""
+    title = _short(r["title"], TITLE_CHARS)
+    head = f"{n}. {_marked(r)}" + (f"**{title}**" if bold else title)
+    why = _why(r, labels)
+    return [head + "  ", f"   {why}"] if why else [head]
 
 
 def _mix(rows: list, k: int) -> list:
@@ -1919,15 +1937,11 @@ def draw_report(view: dict) -> str:
     flood = len(listed) > 1 and sum(1 for r in listed if r["new"]) * 2 > len(listed)
     number = {id(r): n for n, r in enumerate(listed, 1)}
 
-    def why_of(r):
-        return _why({**r, "new": r["new"] and not flood}, labels)
-
     body = []
     if rows:
         body += [f"### {labels['first_title']}", ""]
         for r in listed[:len(shown_first)]:
-            why = why_of(r)
-            body.append(f"{number[id(r)]}. {_marked(r)}**{_short(r['title'], TITLE_CHARS)}**" + (f" ({why})" if why else ""))
+            body += _report_row(number[id(r)], {**r, "new": r["new"] and not flood}, labels, True)
         body.append("")
     for b, rest, pick in per:
         firsts = sum(1 for r in b["items"] if id(r) in shown_first)
@@ -1936,8 +1950,7 @@ def draw_report(view: dict) -> str:
             head += "  *(" + " · ".join(f"{'abcdefghij'[i]} {o}" for i, o in enumerate(b["options"][:10])) + ")*"
         body += [head, ""]
         for r in pick:
-            why = why_of(r)
-            body.append(f"{number[id(r)]}. {_marked(r)}{_short(r['title'], TITLE_CHARS)}" + (f" ({why})" if why else ""))
+            body += _report_row(number[id(r)], {**r, "new": r["new"] and not flood}, labels, False)
         hidden = len(rest) - len(pick) + (b.get("total", len(b["items"])) - len(b["items"]))
         if hidden > 0:
             body.append(f"\n*{labels['bucket_more'].format(n=hidden)}*")
