@@ -223,6 +223,10 @@
   }
   var deckEl = doc.querySelector('.deck');
   var pack = null, byId = {}, panel, body, head, back, foot, owner = null, mode = null, cur = null, hist = [];
+  /* where the focus goes on close: back to what opened the panel from the keyboard,
+     nowhere after a pointer (a focused term would take the next Space or Enter,
+     which in a deck has to move the slides on) */
+  var returnTo = null;
 
   function deck() { return deckEl && window.SlideDeck ? window.SlideDeck : null; }
   function scope() {
@@ -348,8 +352,10 @@
     var s = vw < 900 ? 1 : Math.max(0.3, (vw - pw - 8) / vw);
     root.style.setProperty('--kp-scale', String(s));
   }
-  function open(m, id, trigger) {
+  function open(m, id, trigger, byKeyboard) {
     if (!panel) build();
+    var a = doc.activeElement;
+    returnTo = byKeyboard ? (trigger || (a && a !== doc.body ? a : null)) : null;
     if (owner && owner !== trigger) owner.setAttribute('aria-expanded', 'false');
     owner = trigger || null;
     if (owner) owner.setAttribute('aria-expanded', 'true');
@@ -367,21 +373,22 @@
     panel.hidden = true;
     root.classList.remove('kp-open');
     mode = null;
-    var a = doc.activeElement;
-    if (owner) {
-      owner.setAttribute('aria-expanded', 'false');
-      if (!a || a === doc.body || panel.contains(a)) owner.focus({ preventScroll: true });
+    var a = doc.activeElement, inside = !a || a === doc.body || panel.contains(a) || a === owner;
+    if (owner) owner.setAttribute('aria-expanded', 'false');
+    if (inside) {
+      if (returnTo && doc.contains(returnTo)) returnTo.focus({ preventScroll: true });
+      else if (a && a !== doc.body && a.blur) a.blur();
     }
     owner = null;
+    returnTo = null;
   }
-  function toggleList() { if (isOpen()) close(); else open('list', null, null); }
+  function toggleList() { if (isOpen()) close(); else open('list', null, null, true); }
 
   function wire(d) {
     d.use({
       name: 'knowledge',
       keys: {
-        k: function () { toggleList(); return true; },
-        escape: function () { if (!isOpen()) return false; close(); return true; }
+        k: function () { toggleList(); return true; }
       },
       help: [{ key: 'K', de: T.help[0], en: T.help[1] }],
       init: function (api) {
@@ -401,10 +408,21 @@
       t.addEventListener('click', function (e) {
         e.preventDefault();
         if (isOpen() && owner === t && mode === 'term' && cur === id) { close(); return; }
-        open('term', id, t);
+        /* a click from Enter or Space carries detail 0, a pointer click 1 or more */
+        open('term', id, t, e.detail === 0);
       });
     });
     if (!pack) return;
+    /* Esc closes the panel before anything else on the page sees it (a reading view or
+       a deck module would otherwise take it first); an open help overlay goes first */
+    window.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !isOpen() || e.ctrlKey || e.metaKey || e.altKey) return;
+      var help = doc.querySelector('.deck-help');
+      if (help && !help.hidden) return;
+      close();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
     if (deckEl) {
       root.classList.add('kp-deck');
       if (window.SlideDeck) wire(window.SlideDeck);
@@ -414,8 +432,7 @@
         if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
         var t = e.target, tag = t && t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
-        if (e.key === 'Escape' && isOpen()) { close(); e.preventDefault(); }
-        else if (e.key === 'k' || e.key === 'K') { toggleList(); e.preventDefault(); }
+        if (e.key === 'k' || e.key === 'K') { toggleList(); e.preventDefault(); }
       });
     }
   }

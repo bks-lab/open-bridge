@@ -35,7 +35,6 @@ MAX_PASSAGE = 280
 MAX_PASSAGES = 4
 MAX_NEIGHBOURS = 6
 MAX_BYTES = 120_000
-TYPES_HINT = "regelwerk, norm, konzept, technik, organisation, dokument, person, ort, ereignis"
 
 REGION_START = "<!-- knowledge-pack:start -->"
 REGION_END = "<!-- knowledge-pack:end -->"
@@ -128,10 +127,18 @@ def corpus_files(dirs: list[Path]) -> list[Path]:
     return files
 
 
+def is_acronym(name: str) -> bool:
+    """A name without a lower-case letter (IT, NIS2, ISO/IEC 27001) matches only as written;
+    any other name matches in any case, so "Latency" finds "latency" mid-sentence."""
+    return any(ch.isalpha() for ch in name) and not any(ch.islower() for ch in name)
+
+
 def matcher(term: dict):
-    names = [term["label"], *term.get("aliases", [])]
-    alts = "|".join(re.escape(n) for n in sorted(set(names), key=len, reverse=True))
-    return re.compile(r"(?<![\w-])(?:%s)(?!\w)" % alts)
+    names = sorted({term["label"], *(term.get("aliases") or [])}, key=len, reverse=True)
+    # longest first, so an alias that extends the label wins at the same position
+    alts = [re.escape(n) if is_acronym(n) else "(?i:%s)" % re.escape(n) for n in names]
+    # a term may head a compound (term-based), never sit inside a word
+    return re.compile(r"(?<![\w-])(?:%s)(?!\w)" % "|".join(alts))
 
 
 def clip(text: str, m: re.Match, limit: int = MAX_PASSAGE) -> str:

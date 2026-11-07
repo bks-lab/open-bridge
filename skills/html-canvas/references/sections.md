@@ -403,14 +403,15 @@ In the text, anywhere above it:
 ## <a id="knowledge"></a>Knowledge panel (terms open their knowledge beside the page)
 Where the glossary answers a term in a popover, the knowledge panel opens beside the
 page and keeps it readable: the page reflows to the left, a deck scales its slide to
-the left as designed. No pop-up. A term is a button with a small question mark at the
-word: `<button type="button" class="kp-term" data-know="<id>">`. The knowledge comes
+the left as designed. No pop-up. A term is a button, underlined in the accent with a small
+help mark after the word: `<button type="button" class="kp-term" data-know="<id>">`. The knowledge comes
 from a **knowledge pack** (`knowledge-pack@1`, JSON) embedded as
 `<script type="application/json" id="knowledge-pack">` or fetched from
 `data-knowledge-src` on `<html>` (the embedded pack is the fallback). The panel shows
 kind, name, aliases, summary, related terms (a related term in the pack opens in
 the panel, Back returns), passages with their source, and sources. K lists the terms
-of the page or the current slide, Esc closes and gives the focus back. A term the
+of the page or the current slide, Esc closes the panel before any other view (the
+focus goes back only after a keyboard open). A term the
 pack does not hold stays plain text. Print hides the panel and the marks.
 `scripts/knowledge-pack.py` builds a pack from a term list and a Markdown corpus,
 checks it, marks the terms (`mark`, first mention per slide or page) and embeds it;

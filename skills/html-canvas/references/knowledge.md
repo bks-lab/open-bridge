@@ -20,7 +20,7 @@ knowledge travels with the page as a small JSON pack.
 
 | Part | Where | Job |
 |---|---|---|
-| Term mark | in the text | `<button type="button" class="kp-term" data-know="<id>">NIS2</button>`, a quiet highlight with a small question mark |
+| Term mark | in the text | `<button type="button" class="kp-term" data-know="<id>">latency</button>`: a thin accent underline and a small filled help mark after the word, inside the line box |
 | Knowledge pack | `<script type="application/json" id="knowledge-pack">`, between `<!-- knowledge-pack:start -->` and `:end` | every term the page uses, one hop of neighbours, passages, sources |
 | Panel | block `knowledge` in `assets/sections.js` and `assets/sections.css` | reads the pack, shows a term, its relations and passages; one code path for pages and decks |
 | Build side | `scripts/knowledge-pack.py` | `build` (Markdown adapter), `check`, `mark`, `embed` |
@@ -45,12 +45,12 @@ of the pack.
 ```json
 {
   "schema": "knowledge-pack@1",
-  "id": "project-terms", "title": "Project knowledge", "lang": "de",
+  "id": "project-terms", "title": "Project knowledge", "lang": "en",
   "source": {"kind": "markdown", "ref": "docs/", "revision": "a1b2c3d", "generated": "2026-11-07"},
   "terms": [{
-    "id": "latency", "label": "Latenz", "aliases": ["Antwortzeit"], "type": "konzept",
+    "id": "latency", "label": "Latency", "aliases": ["response time"], "type": "concept",
     "summary": "Time between request and response, measured at the client.",
-    "neighbours": [{"id": "queue", "rel": "rises with", "label": "Warteschlange"}],
+    "neighbours": [{"id": "queue", "rel": "rises with", "label": "Queue"}],
     "passages": [{"text": "…", "source": {"title": "Basics", "locator": "Latency", "href": "https://…"}}],
     "sources": [{"title": "Basics", "href": "https://…"}]
   }]
@@ -79,8 +79,11 @@ An adapter is anything that writes this JSON. The panel never talks to a service
 | knowledge service | contract only | resolve a term, ask for its neighbours and the chunks that mention it, write the pack at build time |
 
 The Markdown adapter takes passages from the paragraphs, list items and table rows
-that mention a label or alias (word boundaries, case as written), the passage in the
-section the term list names for its summary first. Neighbours are the relations the
+that mention a label or alias, the passage in the section the term list names for its
+summary first, prose before table rows. A name with a lower-case letter matches in any
+case (`Latency` finds "the latency"); a name without one is an acronym and matches only
+as written (`IT` never finds "it"). A term may head a compound (`latency-bound`), never
+sit inside a word. Neighbours are the relations the
 term list names, then the terms that share a paragraph with it, most frequent first.
 Passages are clipped at sentence ends.
 
@@ -104,14 +107,16 @@ every time and be testable).
 | Situation | What happens |
 |---|---|
 | click on a term | the panel opens on the right with the term; the term shows `aria-expanded` |
-| click on the same term again, Esc, or the close button | the panel closes, the focus returns to the term |
+| click on the same term again, Esc, or the close button | the panel closes. Opened from the keyboard (Enter or Space on the term, or K), the focus returns to where it was; opened with the pointer, no focus stays on the term, so the next Space or Enter moves a deck on instead of reopening the panel |
+| Esc with another view open (a deck's reading view, a module) | the panel closes first; the next Esc reaches the view. An open `?` help closes before the panel |
 | K | the terms marked on the current slide (or the page), as a list; K again closes |
 | a related term in the pack | opens in the panel; Back returns |
 | a deck while the panel is open | arrows, Space and the number jump still move the slides; a list follows the slide |
 | narrow screen (below 900 px) | the panel is a sheet at the bottom; a deck is not scaled |
 | a term the pack does not hold | plain text, disabled |
 | print and PDF | panel and marks are hidden; the slide prints as designed |
-| light and dark | tokens only (`--raised`, `--line`, `--accent-*`, `--muted`), deck tokens through the alias layer |
+| light and dark | tokens only (`--raised`, `--line`, `--accent-*`, `--muted`, `--ink`), deck tokens through the alias layer; secondary text in the panel leans toward the ink, so a design with a weak muted colour still reads at 4.5:1 |
+| forced colours (Windows high contrast) | the help mark takes the system link colour |
 
 A deck also gets a `?` help row for K. The term view (kind, name, aliases, summary,
 relations, passages with source, sources) follows the knowledge view of an

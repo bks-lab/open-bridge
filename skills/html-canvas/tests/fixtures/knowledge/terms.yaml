@@ -1,22 +1,28 @@
 # Fixture for knowledge-pack.py: a neutral topic, invented text.
 terms:
   - id: latency
-    label: Latenz
-    aliases: ["Antwortzeit"]
-    type: konzept
-    summary: "Zeit zwischen Anfrage und Antwort, gemessen am Client. Sie steigt, sobald Aufträge in der Warteschlange warten."
-    summary_source: "grundlagen.md#Latenz"
+    label: Latency
+    aliases: ["response time"]
+    type: concept
+    summary: "Time between request and response, measured at the client. It rises as soon as jobs wait in the queue."
+    summary_source: "basics.md#Latency"
     related:
-      - {id: queue, rel: "steigt mit"}
+      - {id: queue, rel: "rises with"}
   - id: queue
-    label: Warteschlange
-    aliases: ["Queue"]
-    type: technik
-    summary: "Aufträge, die auf einen freien Bearbeiter warten."
-    summary_source: "grundlagen.md#Warteschlange"
+    label: Queue
+    aliases: ["backlog"]
+    type: technique
+    summary: "Jobs waiting for a free worker."
+    summary_source: "basics.md#Queue"
   - id: throughput
-    label: Durchsatz
+    label: Throughput
     aliases: []
-    type: konzept
-    summary: "Erledigte Aufträge pro Zeiteinheit."
-    summary_source: "betrieb.md#Kennzahlen"
+    type: concept
+    summary: "Jobs completed per unit of time."
+    summary_source: "operations.md#Metrics"
+  - id: it
+    label: IT
+    aliases: []
+    type: organisation
+    summary: "The team that runs the systems."
+    summary_source: "operations.md#Who runs the systems"
