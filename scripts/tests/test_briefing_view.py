@@ -1358,3 +1358,76 @@ def test_a_one_word_category_is_no_fact_line():
             _ritem(2, "Overlay acme: sync due", raw_state="2 commits behind")]
     text = bv.draw(_report(None, sections, _rsec("apps", "Apps", rows)))
     assert "application" not in text and "2 commits behind" in text
+
+
+# ---------------------------------------------------------------- style: calm (07.11.2026)
+# The report still read as restless: bold, italics, brackets, dots, marks and answer letters on
+# every line. `calm` is the same rows with almost no typography: a date line, Today, Next days
+# (the date in front), Waiting on others in one line, what the Bridge offers, one count of the
+# rest, and titles that open their task or issue.
+
+def _calm(secs, sections, view=None, **kw):
+    return bv.draw(bv.build(result(*secs, **kw), profile(view={"style": "calm", **(view or {})}, sections=sections)))
+
+
+CALM_SECTIONS = [{"kind": "inbox"}, {"kind": "tasks"}, {"kind": "tracker", "id": "gh", "provider": "github"}]
+
+
+def test_calm_is_a_valid_style():
+    assert bf.profile_problems(profile(view={"style": "calm"}), "morning") == []
+
+
+def test_calm_reads_as_a_few_plain_lines():
+    text = _calm([sec("inbox", "inbox", [inbox_item("i1", "Sign the contract", gate="only-you"),
+                                         inbox_item("i2", "Object to the raise", urgency="later", due="2026-10-30")]),
+                  sec("tasks", "tasks", [task_item("t1", "Portal relaunch", nxt={"what": "write the brief", "who": "Bob"})])],
+                 CALM_SECTIONS)
+    lines = text.splitlines()
+    assert lines[0] == "**Monday, 5 October**"
+    assert "1 for you today, 1 waiting on others." in text
+    assert "**Today**" in text and "**Next days**" in text and "**Waiting on others**" in text
+    assert "1. Sign the contract" in text
+    assert "2. Until 30.10: Object to the raise" in text
+    for noise in ("·", "*(", "only you", "(a yes", "…)", "### "):
+        assert noise not in text, noise
+    assert not any(l.startswith("*") and not l.startswith("**") for l in lines)    # no italics
+
+
+def test_calm_waiting_is_one_line_of_names_and_dates():
+    deferred = inbox_item("i3", "Answer from the agency", urgency="later", state="deferred", until="2026-10-12",
+                          waiting_on="Agency")
+    text = _calm([sec("inbox", "inbox", [deferred]),
+                  sec("tasks", "tasks", [task_item("t1", "Portal relaunch", nxt={"what": "review", "who": "Bob"})])],
+                 CALM_SECTIONS)
+    block = text[text.index("**Waiting on others**"):].splitlines()[1]
+    assert block == "Agency until 12.10, Bob (Portal relaunch)"
+
+
+def test_calm_titles_open_their_task_or_issue():
+    card = {"id": "acme/app#7", "title": "Fix the login", "state": "review", "url": "https://github.com/acme/app/pull/7"}
+    text = _calm([sec("tasks", "tasks", [task_item("t1", "Portal relaunch", nxt={"what": "Ship the portal", "due": "2026-10-05"})]),
+                  sec("gh", "tracker", [card])], CALM_SECTIONS)
+    assert "[Ship the portal](work/tasks/t1/STATUS.md)" in text
+    assert "[Fix the login](https://github.com/acme/app/pull/7)" in text
+
+
+def test_calm_counts_the_rest_once_and_says_how_to_answer():
+    cards = [{"id": f"acme/app#{n}", "title": f"Card {n}", "state": "ready"} for n in range(9)]
+    text = _calm([sec("inbox", "inbox", [inbox_item("i1", "Sign the contract")]), sec("gh", "tracker", cards)],
+                 CALM_SECTIONS, view={"report": {"per_bucket": 3}})
+    assert sum(1 for l in text.splitlines() if "Card " in l) == 3
+    assert "6 more in the cockpit." in text
+    assert text.rstrip().endswith("Answer with a number, e.g. “1 yes”.")
+
+
+def test_calm_on_a_free_day_says_so():
+    text = _calm([sec("inbox", "inbox", [inbox_item("i1", "Sign the contract")])], CALM_SECTIONS,
+                 view={"off_days": {"days": ["mon"]}})
+    assert "A free day. 1 for you today" in text
+
+
+def test_calm_names_a_task_by_its_next_step():
+    # "Romy: prepare the contest" said what the task is; today's line is the step: "mark sheet A"
+    text = _calm([sec("tasks", "tasks", [task_item("t1", "Contest: prepare", nxt={"what": "Mark sheet A", "due": "2026-10-05"})])],
+                 CALM_SECTIONS)
+    assert "1. [Mark sheet A](work/tasks/t1/STATUS.md)" in text

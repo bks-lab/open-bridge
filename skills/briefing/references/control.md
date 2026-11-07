@@ -124,7 +124,8 @@ Two things are yours besides:
   delegate `a go · b not now` (start it, or leave it), waiting `a nudge · b wait`
   (a nudge is a DRAFT for the person, never sent), drop `a park · b keep`
   (park = `status: backlog`). A profile may rename the options; their order
-  keeps these meanings.
+  keeps these meanings. In `style: calm` there are no letters: "3 yes", "3 later",
+  "3 drop" (or the bucket's own words) name the row and the answer.
 
 A stream that runs every morning belongs in the profile, not in this list: a
 `command` section with `report_ok: true` turns it into rows and an all-clear
