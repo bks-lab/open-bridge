@@ -94,6 +94,10 @@ curl -s localhost:8011/health
   Optional `approval.auto_approve` lets a small model release small answers
   (ping, greeting, general knowledge) unasked; peer requests, long answers and
   any triage failure still go to the owner.
+- **Peer auth**: `trust: peer` needs `auth:`: `bearer` (one token per listed
+  peer) or `derived` (any peer a relay vouches for: sender header plus an HMAC
+  token from one shared secret, `peers: open` or a list; `access.peer_template`
+  seeds a first-time peer's folder). Fails closed; see `_runtime/auth.py`.
 - **Public-endpoint caps** — concurrency, input length; add a per-IP edge
   rate-limit at your CDN.
 - **Honest card** — advertise only capabilities that are real.

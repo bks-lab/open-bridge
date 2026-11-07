@@ -212,7 +212,7 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
     auth = parse_auth(instance, spec.get("auth"))
     if trust == "peer" and not auth.enabled:
         raise ValueError(
-            f"agent '{instance}': trust: peer needs an auth: block (mode: bearer); "
+            f"agent '{instance}': trust: peer needs an auth: block (mode: bearer or derived); "
             "a peer endpoint without authentication would be a public one"
         )
 
@@ -256,7 +256,7 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
     # One folder per peer, and topics the owner opens on request (see _runtime/access.py).
     access = parse_access(
         instance, spec.get("access"), inst_dir=inst_dir.resolve(), tools_dir=tools_dir,
-        trust=trust, peer_ids=[p.id for p in auth.peers], allowed_tools=allowed_tools,
+        trust=trust, peer_ids=auth.peer_ids, allowed_tools=allowed_tools,
         extra_read_dirs=extra_read_dirs, has_approval=approval.enabled,
     )
     inline_patterns = list(spec.get("inline_grounding") or [])
