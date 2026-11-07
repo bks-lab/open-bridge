@@ -66,6 +66,16 @@ wrong identity), the card declares the scheme, and the loader refuses to start a
 `agents/_runtime/auth.py`; replacing static tokens with OIDC later changes that
 module only.
 
+For a peer behind a relay that already authenticates callers, `auth.mode: derived`
+replaces the per-peer list with one shared secret (`secret_env`, 32 characters or
+more): the relay names the caller in `X-A2A-Sender` and sends a bearer token equal to
+hex HMAC-SHA256(secret, `a2a-local-bearer/v1/<id>`). `peers: open` accepts any plain
+id, a list restricts. A missing header, a bad id, a wrong token or an unlisted id
+gets 401; the id is the authenticated caller exactly as in bearer mode. With
+per-peer folders (`access:`), `access.peer_template` is copied to a first-time
+peer's folder; without one, that peer's request fails closed. Owner approval is
+unchanged.
+
 A peer endpoint usually adds owner approval (`approval:` in `agent.yaml`,
 `agents/_runtime/approval.py`): every finished answer is held, the task stays
 WORKING with a waiting message, nothing of it streams out, and an instance-owned
