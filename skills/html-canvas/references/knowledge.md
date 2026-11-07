@@ -20,7 +20,7 @@ knowledge travels with the page as a small JSON pack.
 
 | Part | Where | Job |
 |---|---|---|
-| Term mark | in the text | `<button type="button" class="kp-term" data-know="<id>">latency</button>`: a thin accent underline and a small filled help mark after the word, inside the line box |
+| Term mark | in the text | `<button type="button" class="kp-term" data-know="<id>">latency</button>`: a dashed accent underline, solid with a soft ground on hover and while open; `data-kp-mark="icon"` on `<html>` adds a small filled help mark after the word |
 | Knowledge pack | `<script type="application/json" id="knowledge-pack">`, between `<!-- knowledge-pack:start -->` and `:end` | every term the page uses, one hop of neighbours, passages, sources |
 | Panel | block `knowledge` in `assets/sections.js` and `assets/sections.css` | reads the pack, shows a term, its relations and passages; one code path for pages and decks |
 | Build side | `scripts/knowledge-pack.py` | `build` (Markdown adapter), `check`, `mark`, `embed` |
