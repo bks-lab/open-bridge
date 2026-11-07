@@ -131,7 +131,10 @@ def build(args):
     design = pathlib.Path(default_design(args.design))
     if design.exists():
         d2c = load_design_to_css()
-        css, skipped = d2c.build_css(d2c.frontmatter(design))
+        try:
+            css, skipped = d2c.build_css(d2c.frontmatter(design))
+        except ValueError as e:
+            fail("%s: %s" % (design, e))
         try:
             out = d2c.inject(out, css)
         except ValueError as e:

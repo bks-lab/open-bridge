@@ -288,7 +288,10 @@ def apply_tokens(text: str, design: Path | None, d2c) -> str:
     if design is None:
         note("no DESIGN.md found, the page keeps its neutral system colours (pass --design)")
         return text
-    css, skipped = d2c.build_css(d2c.frontmatter(design))
+    try:
+        css, skipped = d2c.build_css(d2c.frontmatter(design))
+    except ValueError as e:
+        fail("%s: %s" % (design, e))
     css = load("bridge_design.py").source_mark(design) + css
     if skipped:
         note("DESIGN.md keys not mapped: %s" % ", ".join(skipped))

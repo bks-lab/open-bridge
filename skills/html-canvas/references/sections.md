@@ -403,8 +403,8 @@ In the text, anywhere above it:
 ## <a id="knowledge"></a>Knowledge panel (terms open their knowledge beside the page)
 Where the glossary answers a term in a popover, the knowledge panel opens beside the
 page and keeps it readable: the page reflows to the left, a deck scales its slide to
-the left as designed. No pop-up. A term is a button with a dashed accent underline (a help mark
-after the word with `data-kp-mark="icon"` on `<html>`): `<button type="button" class="kp-term" data-know="<id>">`. The knowledge comes
+the left as designed. No pop-up. A term is a button with a dashed accent underline (the design's
+`components.knowledge-term` changes line and symbol, `knowledge.md` § Term mark): `<button type="button" class="kp-term" data-know="<id>">`. The knowledge comes
 from a **knowledge pack** (`knowledge-pack@1`, JSON) embedded as
 `<script type="application/json" id="knowledge-pack">` or fetched from
 `data-knowledge-src` on `<html>` (the embedded pack is the fallback). The panel shows

@@ -129,6 +129,26 @@ through `presets/design.map.yaml` and `html-canvas/scripts/design-to-css.py`
 DESIGN.md typography roles. Decoration (gradient zones, backdrop blur) shows only
 behind the class `fx`, see `reference/rules.md`.
 
+**What a DESIGN.md may add for a deck.** Each part is opt-in; a design without it
+builds the deck it built before.
+
+| In DESIGN.md | The deck |
+|---|---|
+| colour roles `highlight`, `glow` | the arc under a heading (`.slide__arc`) in its own colour with a second, wider glow; without them the arc is the accent |
+| colour role `gradient-via` | a middle stop for the gradient numbers (`--stat-gradient`), between `gradient-from` and `gradient-to` |
+| `components.slide-display`, `slide-heading`, `slide-body`, `slide-label` | the type cut of that role: `fontWeight`, `letterSpacing`, `lineHeight`, from `typography: "{typography.<role>}"` and/or given directly. Sizes stay with the engine. Without them the preset's quiet cut (weight 500) stays |
+| `components.slide-arc.width` | the arc's line width in px (default 1px) |
+| `components.knowledge-term` | how a knowledge term looks: `html-canvas/references/knowledge.md` § Term mark |
+
+```yaml
+components:
+  slide-heading: {typography: "{typography.h2}"}
+  slide-body: {fontWeight: 300, lineHeight: 1.4}
+  slide-arc: {width: 2px}
+```
+
+A wrong reference or value stops the build with the component's name.
+
 **Style presets** carry their own palette and fonts in YAML. They are for a deck
 that should not wear the house brand, and the fallback without DESIGN.md. The
 tokens a style preset defines, per mode (`colors.dark`, `colors.light`):

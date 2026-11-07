@@ -75,6 +75,7 @@ import importlib.util
 import re
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 try:
     import yaml
@@ -130,6 +131,9 @@ COLOR_MAP = {
     "warning": ["warn"],
     "danger": ["danger"],
     "info": ["info"],
+    # brand extras a design may carry: a line and glow colour, the gradient stops
+    "highlight": ["highlight"],
+    "glow": ["glow"],
     # legacy keys from the pre-2026-07 palette, kept so an un-migrated fork
     # still produces a complete sheet instead of a half-empty one
     "surface-subtle": ["surface-subtle"],
@@ -285,6 +289,88 @@ def emit_scale(prefix: str, scale: dict) -> list[str]:
     return [f"  --{prefix}-{k}: {v};" for k, v in scale.items()]
 
 
+# How a knowledge term looks (the knowledge block, references/knowledge.md) is the
+# design's choice: `components.knowledge-term` in a DESIGN.md. Every key is optional;
+# what is left out keeps the block's default, a dashed accent underline without a
+# symbol. Colours name a colour role ("{colors.<role>}") and resolve per mode, so the
+# entry never hand-picks a colour. A page overrides it with data-kp-mark on <html>.
+KP_LINES = ("dashed", "solid", "dotted", "double", "wavy", "none")
+KP_ICONS = ("none", "help", "bulb")
+KP_LENGTH = re.compile(r"^\d*\.?\d+(em|px|rem)$")
+KP_ROLE = re.compile(r"^\{colors\.([\w-]+)\}$")
+KP_KEYS = ("underline", "underlineColor", "underlineThickness", "underlineOffset",
+           "textColor", "icon", "iconPosition", "iconColor")
+
+
+def knowledge_tokens(design: dict) -> tuple[list[str], list[str]]:
+    """Return (:root lines, dark lines) for components.knowledge-term, or ([], [])."""
+    entry = (design.get("components") or {}).get("knowledge-term")
+    if not entry:
+        return [], []
+    if not isinstance(entry, dict):
+        raise ValueError("components.knowledge-term must be a mapping")
+    colors = design.get("colors") or {}
+    dark_colors = design.get("colorsDark") or {}
+
+    def fail(key: str, why: str) -> NoReturn:
+        raise ValueError(f"components.knowledge-term.{key}: {entry[key]!r} {why}")
+
+    def role(key: str) -> tuple[str, str]:
+        m = KP_ROLE.match(str(entry[key]).strip())
+        if not m:
+            fail(key, 'must name a colour role as "{colors.<role>}", never a colour value')
+        name = m.group(1)
+        if name not in colors:
+            fail(key, f"names a role the design does not have (colors.{name})")
+        light = check_colour(colors[name], "kp", name, "light")
+        dark = dark_colors.get(name, colors.get("dark-" + name, colors[name]))
+        return light, check_colour(dark, "kp", name, "dark")
+
+    for key in entry:
+        if key not in KP_KEYS:
+            raise ValueError(f"components.knowledge-term.{key}: unknown key; known: {', '.join(KP_KEYS)}")
+    root, dark = [], []
+    if "underline" in entry:
+        line = str(entry["underline"]).strip()
+        if line not in KP_LINES:
+            fail("underline", f"is not one of {', '.join(KP_LINES)}")
+        root.append(f"  --kp-line: {'solid' if line == 'none' else line};")
+        if line == "none":
+            root.append("  --kp-line-on: none;")
+    for key, var in (("underlineThickness", "kp-line-width"), ("underlineOffset", "kp-line-offset")):
+        if key in entry:
+            if not KP_LENGTH.match(str(entry[key]).strip()):
+                fail(key, "must be a length such as 0.1em or 2px")
+            root.append(f"  --{var}: {str(entry[key]).strip()};")
+    for key, names in (("underlineColor", ("kp-line-color", "kp-line-hover")), ("textColor", ("kp-text",))):
+        if key in entry:
+            light, dk = role(key)
+            root += [f"  --{n}: {light};" for n in names]
+            dark += [f"  --{n}: {dk};" for n in names]
+    icon = str(entry.get("icon", "none")).strip()
+    side = str(entry.get("iconPosition", "after")).strip()
+    if side not in ("after", "before"):
+        fail("iconPosition", "is not after or before")
+    if "icon" in entry:
+        if icon in KP_ICONS:
+            if icon != "none":
+                root += [f"  --kp-icon: var(--kp-icon-{icon});", '  --kp-glyph: "";',
+                         "  --kp-icon-w: 0.85em;"]
+        elif 0 < len(icon) <= 4 and icon.isprintable() and not set(icon) & set('"\\;{}<>/'):
+            root += ["  --kp-icon: none;", f'  --kp-glyph: "{icon}";', "  --kp-icon-paint: transparent;",
+                     "  --kp-icon-w: auto;", "  --kp-icon-forced: transparent;"]
+        else:
+            fail("icon", f"is not one of {', '.join(KP_ICONS)} nor a short glyph (up to 4 characters)")
+        shown = "none" if icon == "none" else "inline-block"
+        root += [f"  --kp-icon-after: {shown if side == 'after' else 'none'};",
+                 f"  --kp-icon-before: {shown if side == 'before' else 'none'};"]
+    if "iconColor" in entry and icon in ("help", "bulb"):
+        light, dk = role("iconColor")
+        root.append(f"  --kp-icon-paint: {light};")
+        dark.append(f"  --kp-icon-paint: {dk};")
+    return root, dark
+
+
 # The shell's theme contract. A consumer with other selectors passes its own.
 DEFAULT_SELECTORS = {"light": ":root", "dark": "html.dark"}
 
@@ -316,6 +402,9 @@ def build_css(design: dict, selectors: dict | None = None) -> tuple[str, list[st
         root_lines += emit_scale("space", design["spacing"])
     if design.get("rounded"):
         root_lines += emit_scale("radius", design["rounded"])
+    kp_root, kp_dark = knowledge_tokens(design)
+    root_lines += kp_root
+    dark_lines += kp_dark
 
     # A manifest in the older shape has no surface-raised, so the shell's card
     # colour would be undefined. Cards then sit on the page colour, as before.
@@ -325,7 +414,7 @@ def build_css(design: dict, selectors: dict | None = None) -> tuple[str, list[st
     # Print: the dark palette never reaches paper, and the page ground drops to
     # the card colour (DESIGN.md, Colors: "drop the warm ground to white, keep
     # every other token"). Emitted from the same tables, so it cannot drift.
-    print_lines = [l for l in cr]
+    print_lines = [l for l in cr] + kp_root   # the light term colours on paper, whatever the screen mode
     raised = colors.get("surface-raised")
     if raised:
         print_lines = [l for l in print_lines if not l.lstrip().startswith("--surface:")]
@@ -544,6 +633,12 @@ def build_mapped_css(design: dict, entries: dict, selectors: dict | None = None,
                           if spec.get("with") not in (None, "transparent") else "transparent")
                 val = f"color-mix(in srgb, {val} {spec['mix']:g}%, {ground})"
             target.append(f"  --{name}: {val};")
+
+    # the knowledge term travels with every consumer that carries the block
+    kp_root, kp_dark = knowledge_tokens(design)
+    light += kp_root
+    darks += kp_dark
+    paper += kp_root
 
     css = css_header(design) + light_sel + " {\n" + "\n".join(light) + "\n}\n"
     css += "\n" + dark_sel + " {\n" + "\n".join(darks) + "\n}\n"

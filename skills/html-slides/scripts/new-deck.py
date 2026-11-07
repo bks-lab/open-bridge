@@ -341,10 +341,86 @@ def design_tokens(preset: dict, design: Path) -> str:
                 if re.match(r"^-?\d+(\.\d+)?(em|px|rem)$", track):
                     lines.append("  --label-tracking: %s;" % track)
                 break
+    colours = data.get("colors") or {}
+    if "gradient-via" in colours:
+        lines.append("  --stat-gradient: linear-gradient(100deg, var(--gradient-from, var(--accent)) 10%, "
+                     "var(--gradient-via) 52%, var(--gradient-to, var(--accent)) 95%);")
     css += "\n:root {\n%s\n}\n" % "\n".join(lines)
+    try:
+        css += component_rules(data)
+    except ValueError as e:
+        raise DeckError("%s: %s" % (design, e))
     begin, end, _ = d2c.markers("deck-tokens")
     filled = d2c.inject(begin + "\n" + NEUTRAL_TOKENS + "\n" + end, css, "deck-tokens")
     return css_region("/* deck-preset: design */\n" + bridge_design().source_mark(design) + filled)
+
+
+# components.slide-* in a DESIGN.md: the type cut of the slide roles, opt-in. The
+# preset's quiet cut (weight 500, its tracking) stays for a design without them. Each
+# entry takes a typography role ("{typography.h2}") and/or the values directly; sizes
+# stay with the engine, whose type scales with the slide. The rules carry `html .deck`
+# so they win over the preset overrides and the engine without !important. The first
+# selector takes the whole cut, its companions (stat values, result cards, captions)
+# the weight and tracking only, not the line height.
+SLIDE_COMPONENTS = {
+    "slide-display": (".slide__display", ".slide__stat-value"),
+    "slide-heading": (".slide__heading", ".slide__result-value"),
+    "slide-body": (".slide__body", ".slide__bullets", ".slide__stat-label", ".slide__quote p"),
+    "slide-label": (".slide__label", ".slide__result-label"),
+}
+TYPE_PROPS = {"fontWeight": "font-weight", "letterSpacing": "letter-spacing", "lineHeight": "line-height"}
+TYPE_VALUE = {"fontWeight": re.compile(r"^(?:[1-9]\d{0,2}|1000|normal|bold)$"),
+              "letterSpacing": re.compile(r"^-?\d*\.?\d+(em|px|rem|%)$|^0$|^normal$"),
+              "lineHeight": re.compile(r"^\d*\.?\d+(em|px|rem|%)?$|^normal$")}
+TYPE_REF = re.compile(r"^\{typography\.([\w-]+)\}$")
+
+
+def component_rules(data: dict) -> str:
+    """CSS rules for components.slide-* and components.slide-arc, or '' without them."""
+    comps = data.get("components") or {}
+    typography = data.get("typography") or {}
+    rules = []
+    for name, selectors in SLIDE_COMPONENTS.items():
+        entry = comps.get(name)
+        if entry is None:
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError("components.%s must be a mapping" % name)
+        spec = {}
+        if "typography" in entry:
+            m = TYPE_REF.match(str(entry["typography"]).strip())
+            if not m or not isinstance(typography.get(m.group(1)), dict):
+                raise ValueError("components.%s.typography: %r names no typography role of this design"
+                                 % (name, entry["typography"]))
+            spec.update({k: v for k, v in typography[m.group(1)].items() if k in TYPE_PROPS})
+        for key in entry:
+            if key != "typography" and key not in TYPE_PROPS:
+                raise ValueError("components.%s.%s: unknown key; known: typography, %s"
+                                 % (name, key, ", ".join(TYPE_PROPS)))
+        spec.update({k: v for k, v in entry.items() if k in TYPE_PROPS})
+        decls = []
+        for key, prop in TYPE_PROPS.items():
+            if key in spec:
+                val = str(spec[key]).strip()
+                if not TYPE_VALUE[key].match(val):
+                    raise ValueError("components.%s.%s: %r is not a %s value" % (name, key, val, prop))
+                decls.append("%s: %s;" % (prop, val))
+        if decls:
+            rules.append("html .deck %s { %s }" % (selectors[0], " ".join(decls)))
+            cut = [d for d in decls if not d.startswith("line-height")]
+            if cut and len(selectors) > 1:
+                rules.append("html .deck :is(%s) { %s }" % (", ".join(selectors[1:]), " ".join(cut)))
+    arc = comps.get("slide-arc")
+    if arc is not None:
+        if not isinstance(arc, dict) or set(arc) - {"width"}:
+            raise ValueError("components.slide-arc takes only width")
+        width = str(arc.get("width", "")).strip()
+        if not re.match(r"^\d*\.?\d+px$", width):
+            raise ValueError("components.slide-arc.width: %r is not a width in px" % width)
+        rules.append(":root { --arc-width: %s; }" % width)
+    if not rules:
+        return ""
+    return "\n/* design-components: from components.slide-* in the design */\n" + "\n".join(rules) + "\n"
 
 
 def design_families(preset: dict, design: Path) -> dict[str, list[int]]:

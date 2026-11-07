@@ -20,7 +20,7 @@ knowledge travels with the page as a small JSON pack.
 
 | Part | Where | Job |
 |---|---|---|
-| Term mark | in the text | `<button type="button" class="kp-term" data-know="<id>">latency</button>`: a dashed accent underline, solid with a soft ground on hover and while open; `data-kp-mark="icon"` on `<html>` adds a small filled help mark after the word |
+| Term mark | in the text | `<button type="button" class="kp-term" data-know="<id>">latency</button>`: a dashed accent underline, solid with a soft ground on hover and while open; the design may change it (§ Term mark), a page with `data-kp-mark` on `<html>` |
 | Knowledge pack | `<script type="application/json" id="knowledge-pack">`, between `<!-- knowledge-pack:start -->` and `:end` | every term the page uses, one hop of neighbours, passages, sources |
 | Panel | block `knowledge` in `assets/sections.js` and `assets/sections.css` | reads the pack, shows a term, its relations and passages; one code path for pages and decks |
 | Build side | `scripts/knowledge-pack.py` | `build` (Markdown adapter), `check`, `mark`, `embed` |
@@ -39,6 +39,40 @@ python3 $P embed deck.html --pack pack.json          # one region, replaced on e
 `new-deck.py --refresh` leaves the pack region alone (it rewrites only its own
 regions), so a refreshed deck keeps its knowledge; run `embed` again after a new build
 of the pack.
+
+## Term mark
+
+How a term looks is the design's choice, the way a template decides how a link looks.
+One reader wants a quiet dashed line, a deck for a manager a clear line with a bulb, a
+website an ordinary link. A DESIGN.md says it in `components.knowledge-term`;
+`design-to-css.py` writes the `--kp-*` tokens for pages and decks alike. Every key is
+optional, and without the entry a term is a dashed accent underline without a symbol.
+
+| Key | Values | Default |
+|---|---|---|
+| `underline` | `dashed`, `solid`, `dotted`, `double`, `wavy`, `none` | `dashed` |
+| `underlineColor` | a colour role, `"{colors.<role>}"`, resolved per mode | the accent line |
+| `underlineThickness`, `underlineOffset` | a length (`0.1em`, `2px`) | `.08em`, `.26em` |
+| `textColor` | a colour role | the text colour |
+| `icon` | `none`, `help` (a filled help mark), `bulb` (an outlined light bulb), or a short glyph such as `"💡"` | `none` |
+| `iconPosition` | `after`, `before` | `after` |
+| `iconColor` | a colour role, for `help` and `bulb` | the accent text colour |
+
+```yaml
+components:
+  knowledge-term:
+    underline: solid
+    underlineColor: "{colors.highlight}"
+    underlineThickness: 0.1em
+    icon: bulb
+    iconColor: "{colors.highlight}"
+```
+
+A colour is always a role, never a value, and a wrong key or value stops the build
+with its name. A page overrides the design on `<html>`: `data-kp-mark="icon"` (help
+mark), `"bulb"`, or `"dashed"` (back to the default look). A drawn symbol is a mask, so
+it takes the colour of the design and sits inside the line box; a glyph is drawn as
+text in its own colours. Print hides line and symbol.
 
 ## The pack: knowledge-pack@1
 
@@ -122,12 +156,13 @@ every time and be testable).
 | a term the pack does not hold | plain text, disabled |
 | print and PDF | panel and marks are hidden; the slide prints as designed |
 | light and dark | tokens only (`--raised`, `--line`, `--accent-*`, `--muted`, `--ink`), deck tokens through the alias layer; secondary text in the panel leans toward the ink, so a design with a weak muted colour still reads at 4.5:1 |
-| forced colours (Windows high contrast) | the help mark takes the system link colour |
+| forced colours (Windows high contrast) | a drawn symbol (help mark, bulb) takes the system link colour |
 
 A deck also gets a `?` help row for K. The term view (kind, name, aliases, summary,
 relations, passages with source, sources) follows the knowledge view of an
 associative podcast player; that player shows it as a separate view, the panel puts
-it beside the page.
+it beside the page. The `bulb` symbol is that player's knowledge marker, used with its
+author's permission, so a term reads the same in both.
 
 ## Not yet
 

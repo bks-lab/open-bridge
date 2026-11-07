@@ -426,18 +426,18 @@ def test_print_leaves_no_room_for_the_panel(open_page, tmp_path):
 def mark_style(page) -> dict:
     return page.evaluate("""() => { const t = document.querySelector('#usage [data-know="latency"]');
         const s = getComputedStyle(t), a = getComputedStyle(t, '::after');
-        return {style: s.textDecorationStyle, line: s.textDecorationLine, after: a.content}; }""")
+        return {style: s.textDecorationStyle, line: s.textDecorationLine, after: a.display}; }""")
 
 
 def test_a_term_is_a_dashed_underline_without_a_symbol(open_page, tmp_path):
     page = open_page(page_with_pack(tmp_path).read_text("utf-8"))
     st = mark_style(page)
     assert st["line"] == "underline" and st["style"] == "dashed", st
-    assert st["after"] in ("none", "normal"), "no help symbol by default"
+    assert st["after"] == "none", "no help symbol by default"
 
 
 def test_the_help_symbol_is_an_option_on_the_page(open_page, tmp_path):
     html = page_with_pack(tmp_path).read_text("utf-8").replace("<html ", '<html data-kp-mark="icon" ', 1)
     page = open_page(html)
     st = mark_style(page)
-    assert st["after"] not in ("none", "normal"), "data-kp-mark=icon shows the help symbol"
+    assert st["after"] == "inline-block", "data-kp-mark=icon shows the help symbol"
