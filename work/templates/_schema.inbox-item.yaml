@@ -76,6 +76,20 @@ properties:
         description: "Executed without a shell"
       label:
         type: string
+  actions:
+    type: array
+    uniqueItems: true
+    items:
+      enum: [approve, reject, defer, drop, close]
+    description: |
+      What a person may do with the item, in display order: a notifier (phone
+      bot, cockpit) shows exactly these buttons. `[]` is "nothing to do", no
+      buttons. Absent is unknown: a notifier keeps deriving buttons from the
+      gate. Not to be confused with `action` (the command `run` executes).
+  expires_at:
+    type: string
+    pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?([+-][0-9]{2}:[0-9]{2}|Z)$"
+    description: "ISO 8601 timestamp with an offset: when the item stops mattering (an approval that times out). Informational, it changes no state"
   closes_when:
     $ref: "#/$defs/probe"
   waits_for:

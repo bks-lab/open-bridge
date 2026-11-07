@@ -11,7 +11,8 @@ Bridge with an inbox. Declare it in an agent's agent.yaml:
       timeout_sec: 3600
 
 It reads the request from stdin, files it as an inbox item (kind draft, gate
-only-you, urgency now: an answer leaving to someone else is the owner's call),
+only-you, urgency now: an answer leaving to someone else is the owner's call;
+actions approve and reject, expires_at when timeout_sec runs out),
 and waits until a person decided on that item:
 
     python3 scripts/inbox.py approve <id>                 -> {"decision": "approve"}
@@ -29,6 +30,7 @@ else, so a crash here means the answer is not sent. Model: docs/inbox.md.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import importlib.util
 import json
 import subprocess
@@ -113,6 +115,9 @@ def main(argv=None) -> int:
         source=f"agent-approval/{peer}", kind="draft", gate="only-you", urgency="now",
         summary=f"Answer to {peer} waits for your release: {_clip(str(request.get('question') or ''), 80)}",
         detail=f"Question:\n{request.get('question') or ''}\n\nDrafted answer:\n{answer}",
+        # A notifier offers exactly these, and shows until when: the runtime gives up after timeout_sec.
+        actions=["approve", "reject"],
+        expires_at=(dt.datetime.now().astimezone() + dt.timedelta(seconds=timeout)).isoformat(timespec="seconds"),
     )
     item_path = f"work/inbox/{item_id}"
     inbox_py = Path(__file__).with_name("inbox.py")
