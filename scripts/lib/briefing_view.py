@@ -37,7 +37,7 @@ except ImportError:  # loaded by path (briefing.py, the tests) with scripts/ not
     _spec.loader.exec_module(_verbs)
     art_of_kind = _verbs.art_of_kind
 
-STYLES = ("sources", "triage", "brevity", "plan", "report")
+STYLES = ("sources", "triage", "brevity", "plan", "report", "calm")
 BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
 VIEW_KEYS = {"style", "headline", "dayline", "agenda", "overview", "report", "since_last", "lookahead_days", "max_items", "answer_keys", "hygiene", "color",
              "width", "labels", "buckets", "plan", "pages", "page_rest", "page_skip", "marks", "off_days"}
@@ -92,6 +92,21 @@ LABELS = {
     "off_day": "Off today: {n} more wait for the next working day",
     "collapsed": "Not listed one by one: {items}",
     "status_rows": "{n} → {rows}",
+    "calm_title": "{weekday}, {day} {month}",
+    "weekdays": "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday",
+    "months": "January,February,March,April,May,June,July,August,September,October,November,December",
+    "calm_summary": "{n} for you today, {w} waiting on others.",
+    "calm_off": "A free day.",
+    "calm_failed": "Not reachable: {items}",
+    "calm_today": "Today",
+    "calm_next": "Next days",
+    "calm_waiting": "Waiting on others",
+    "calm_delegate": "I'll do it if you want",
+    "calm_until": "Until {date}: ",
+    "calm_until_short": "until {date}",
+    "calm_rest": "{n} more in the cockpit.",
+    "calm_rest_off": "{n} more wait for the next working day.",
+    "calm_answer": "Answer with a number, e.g. “{n} yes”.",
     "more": "+{n} more",
     "end": "That's all for today.",
     "why": "why",
@@ -297,6 +312,21 @@ LABELS_DE = {
     "off_day": "Heute frei: {n} weitere warten auf den nächsten Arbeitstag",
     "collapsed": "Nicht einzeln aufgeführt: {items}",
     "status_rows": "{n} → {rows}",
+    "calm_title": "{weekday}, {day}. {month}",
+    "weekdays": "Montag,Dienstag,Mittwoch,Donnerstag,Freitag,Samstag,Sonntag",
+    "months": "Januar,Februar,März,April,Mai,Juni,Juli,August,September,Oktober,November,Dezember",
+    "calm_summary": "{n} für dich heute, {w} warten auf andere.",
+    "calm_off": "Heute frei.",
+    "calm_failed": "Nicht erreichbar: {items}",
+    "calm_today": "Heute",
+    "calm_next": "Nächste Tage",
+    "calm_waiting": "Wartet auf andere",
+    "calm_delegate": "Mache ich, wenn du willst",
+    "calm_until": "Bis {date}: ",
+    "calm_until_short": "bis {date}",
+    "calm_rest": "{n} weitere im Cockpit.",
+    "calm_rest_off": "{n} weitere warten auf den nächsten Arbeitstag.",
+    "calm_answer": "Antwort mit Nummer, z. B. „{n} ja“.",
     "more": "+{n} weitere",
     "end": "Das war's für heute.",
     "why": "warum",
@@ -1209,6 +1239,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 if item.get("state") == "deferred":
                     # put off is put off, also when only you can do it: it stands in Do when its date says so
                     bucket = "do" if soon else "waiting" if item.get("waiting_on") else "plan"
+                    who_until = {"who": item.get("waiting_on"), "until": item.get("until")}
                     if bucket == "waiting":
                         why.insert(0, labels["with"].format(who=item["waiting_on"]))
                 elif item.get("waits_for") is True:
@@ -1233,6 +1264,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 add(key, row(sid, item, forced or bucket, title, why, rank, due=item.get("due"),
                              filed=key != f"inbox:{iid}", inbox_id=iid, gate=item.get("gate"),
                              urgency=item.get("urgency"), has_action=bool(item.get("has_action")),
+                             **(who_until if item.get("state") == "deferred" else {}),
                              inbox_state=item.get("state"), inbox_key=item.get("key"),
                              # the area it was given (inbox.py area, or the router on add); a task's area wins later
                              area=item.get("area") or None,
@@ -1290,6 +1322,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                         bucket = "do" if due is not None and due.date() <= horizon else "plan"
                     else:
                         bucket = "waiting"
+                        extra["who"] = str(nxt.get("who"))
                         why = [labels["with"].format(who=nxt.get("who")),
                                labels["waiting_days"].format(n=age) if age is not None else ""] + why
                         extra["nudge"] = age is not None and age >= nudge_days
@@ -1513,12 +1546,14 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     titles_of = {s.get("id"): s.get("title") or s.get("id") for s in result.get("sections") or []}
     collapsed: list = []
     rcfg_ = view.get("report") if isinstance(view.get("report"), dict) else {}
-    if style == "report" and isinstance(rcfg_.get("collapse"), list):
+    collapsed_n = 0
+    if style in ("report", "calm") and isinstance(rcfg_.get("collapse"), list):
         # inventory (a board, a tracker) as one count: what was filed from it to the inbox still stands as a row
         for sid in rcfg_["collapse"]:
             gone = [r for r in visible if set(r.get("sources") or []) == {sid}]
             if any(s.get("id") == sid for s in result.get("sections") or []):
                 collapsed.append(f"{titles_of.get(sid)} {len(gone)}")
+                collapsed_n += len(gone)
             visible = [r for r in visible if not any(r is g for g in gone)]
     off = view.get("off_days") if isinstance(view.get("off_days"), dict) else {}
     off_day = 0
@@ -1545,7 +1580,8 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
            "activity": data["activity"],
            "boards": data["boards"], "overview": view.get("overview", "inline"), "status": data["status"],
            "report": view.get("report") if isinstance(view.get("report"), dict) else {}, "agenda": agenda if style != "plan" else [], "clear": data["clear"],
-           "collapsed": collapsed, "off_day": off_day}
+           "collapsed": collapsed, "collapsed_n": collapsed_n, "off_day": off_day,
+           "off_today": WEEKDAYS[now.weekday()] in (off.get("days") or [])}
     if off_day or (WEEKDAYS[now.weekday()] in (off.get("days") or [])):
         out["workplace"] = None
 
@@ -1698,6 +1734,8 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
     """Terminal text. Colour carries meaning only (due now, waiting, scaffolding dimmed)."""
     if view.get("style") == "report":
         return draw_report(view)
+    if view.get("style") == "calm":
+        return draw_calm(view)
     use = color and view.get("color", "auto") != "none"
     width = width or _int(view.get("width"), 100, 40)
     labels = view["labels"]
@@ -2011,6 +2049,104 @@ def draw_report(view: dict) -> str:
     if view.get("show_hygiene", True) and view.get("hygiene"):
         out += [f"*{labels['housekeeping']}:* " + " · ".join(view["hygiene"]), ""]
     out.append(f"*{labels['end']}*")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------- calm (markdown, almost no typography)
+
+def _calm_link(r: dict) -> str | None:
+    """Where a row's title leads: its issue or PR, else its task's STATUS.md (a path the terminal opens)."""
+    url = str(r.get("url") or "")
+    if url.startswith(("https://", "http://")):
+        return url
+    if r.get("task"):
+        return f"work/tasks/{r['task']}/STATUS.md"
+    return url if url.endswith("STATUS.md") else None
+
+
+def _calm_title(r: dict, labels: dict, limit: int = 70, step: bool = True) -> str:
+    # a task row says its next step (what to do), its own title only names the task; the link opens the task
+    pure_task = step and (r.get("sources") or [None])[0] == "tasks" and not r.get("inbox_id")
+    title = str(r.get("step") if pure_task and r.get("step") else r.get("title") or "")
+    head = labels["waiting_for"].split("{")[0]
+    if head and title.startswith(head):
+        title = title[len(head):]
+    text = _short(title, limit).replace("[", "(").replace("]", ")")
+    link = _calm_link(r)
+    return f"{_marked(r)}[{text}]({link})" if link else f"{_marked(r)}{text}"
+
+
+def draw_calm(view: dict) -> str:
+    """The same rows as the report, said quietly: a date line, Today, Next days with the date in front,
+    Waiting on others in one line of names, what the Bridge offers, one count of the rest. Bold only for
+    the headings; no italics, no brackets of facts, no answer letters (07.11.2026)."""
+    labels = view["labels"]
+    rcfg = view.get("report") or {}
+    per = _int(rcfg.get("per_bucket"), 5, 1)
+    now = _when(view.get("collected_at")) or dt.datetime.now()
+    days = [d.strip() for d in labels["weekdays"].split(",")]
+    months = [m.strip() for m in labels["months"].split(",")]
+    title = labels["calm_title"].format(weekday=days[now.weekday()] if len(days) == 7 else "",
+                                        day=now.day, month=months[now.month - 1] if len(months) == 12 else now.month)
+    by = {b["id"]: b for b in view.get("buckets") or []}
+    total = sum(b.get("total", len(b["items"])) for b in by.values())
+
+    def items(bid):
+        return list((by.get(bid) or {}).get("items") or [])
+
+    today = items("do")
+    plan = items("plan")
+    dated = sorted([r for r in plan if r.get("due")], key=lambda r: str(_when(r["due"])))
+    nxt = (dated + [r for r in plan if not r.get("due")])[:per]
+    waiting = items("waiting")
+    offer = items("delegate")[:3]
+    waiting_n = (by.get("waiting") or {}).get("total", len(waiting))
+
+    out = [f"**{title.strip(', ')}**",
+           ((labels["calm_off"] + " ") if view.get("off_today") else "")
+           + labels["calm_summary"].format(n=(by.get("do") or {}).get("total", len(today)), w=waiting_n)]
+    failed = [st for st in view.get("status") or [] if st.get("status") == "error"]
+    if failed:
+        out.append(labels["calm_failed"].format(items=", ".join(st["title"] for st in failed)))
+    n = 0
+    first = None
+    for head, rows, dated_rows in ((labels["calm_today"], today, False), (labels["calm_next"], nxt, True)):
+        if not rows:
+            continue
+        out += ["", f"**{head}**"]
+        for r in rows:
+            n += 1
+            first = first or n
+            when = ""
+            if dated_rows and r.get("due"):
+                when = labels["calm_until"].format(date=_fmt_when(r["due"], now, labels))
+            out.append(f"{n}. {when}{_calm_title(r, labels)}")
+    if waiting:
+        names = []
+        for r in waiting:
+            who = str(r.get("who") or "").strip()
+            name = f"{who} ({_topic(_calm_title({**r, 'url': None, 'task': None, 'mark': None}, labels, step=False), 30)})" \
+                if who and r.get("until") is None and not r.get("inbox_id") else \
+                (who or _topic(_calm_title({**r, "url": None, "task": None, "mark": None}, labels, step=False), 40))
+            if r.get("until"):
+                name += " " + labels["calm_until_short"].format(date=_fmt_when(r["until"], now, labels))
+            names.append(name)
+        out += ["", f"**{labels['calm_waiting']}**", ", ".join(names)]
+    if offer:
+        out += ["", f"**{labels['calm_delegate']}**"]
+        for r in offer:
+            n += 1
+            first = first or n
+            out.append(f"{n}. {_calm_title(r, labels)}")
+    shown = len(today) + len(nxt) + len(waiting) + len(offer)
+    rest = max(0, total - shown) + (view.get("off_day") or 0) + (view.get("collapsed_n") or 0)
+    tail = []
+    if rest:
+        tail.append(labels["calm_rest_off" if view.get("off_today") else "calm_rest"].format(n=rest))
+    if first:
+        tail.append(labels["calm_answer"].format(n=first))
+    if tail:
+        out += [""] + tail
     return "\n".join(out)
 
 

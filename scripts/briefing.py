@@ -2506,7 +2506,7 @@ def main(argv=None) -> int:
         p.add_argument("--max-items", type=int, metavar="N",
                        help="show up to N rows in this run's view instead of the profile's view.max_items "
                             "(for a dashboard that pages itself)")
-        p.add_argument("--style", choices=("sources", "triage", "brevity", "plan", "report"),
+        p.add_argument("--style", choices=("sources", "triage", "brevity", "plan", "report", "calm"),
                        help="show this run in another view than the profile's view.style")
         if name == "collect":
             p.add_argument("--json", action="store_true")
