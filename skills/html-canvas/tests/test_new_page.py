@@ -574,6 +574,32 @@ def test_a_recorded_design_inside_the_bridge_resolves(label, rel):
     assert bd.recorded("/* design-source: %s */" % label) == (bd.BRIDGE / rel).resolve()
 
 
+# --- a design id without PyYAML -----------------------------------------------------------------
+
+def _bridge_design_without_resolver(monkeypatch, root):
+    """bridge_design as it runs where scripts/designs.py cannot load (no PyYAML), on a fake Bridge."""
+    bd = _bridge_design()
+    monkeypatch.setattr(bd, "resolver", lambda: None)
+    monkeypatch.setattr(bd, "BRIDGE", root)
+    return bd
+
+
+def test_a_design_id_resolves_to_its_file_without_pyyaml(tmp_path, monkeypatch):
+    brand = tmp_path / "identity" / "designs" / "brand.md"
+    brand.parent.mkdir(parents=True)
+    brand.write_text("---\nname: brand\n---\n", "utf-8")
+    bd = _bridge_design_without_resolver(monkeypatch, tmp_path)
+    assert bd.resolve("brand") == brand, "a bare id is a file under identity/designs/, never a relative path"
+    assert bd.recorded("/* design-source: brand */") == brand
+
+
+def test_an_unknown_design_id_without_pyyaml_is_a_design_error(tmp_path, monkeypatch):
+    bd = _bridge_design_without_resolver(monkeypatch, tmp_path)
+    with pytest.raises(bd.DesignError) as err:
+        bd.recorded("/* design-source: brand */")
+    assert "brand" in str(err.value)
+
+
 def test_source_mark_only_records_what_recorded_accepts(tmp_path):
     bd = _bridge_design()
     assert bd.source_mark(bd.BRIDGE / "DESIGN.md") == "/* design-source: DESIGN.md */\n"

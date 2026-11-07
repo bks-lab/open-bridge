@@ -142,7 +142,12 @@ def resolve(design: str | None = None, *, context: str | None = None, persona: s
     designs = resolver()
     if designs is None:
         if design:
-            return Path(design)
+            # no designs.py (no PyYAML): a bare id is still a file under identity/designs/,
+            # never a path relative to wherever the caller runs
+            path = BRIDGE / "identity" / "designs" / f"{design}.md"
+            if not path.is_file():
+                raise DesignError(f"design '{design}' is unknown, there is no identity/designs/{design}.md")
+            return path
         found = find_design(target) if target is not None else None
         if found or not fallback:
             return found
