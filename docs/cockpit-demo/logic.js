@@ -3094,9 +3094,9 @@ const HOME_OPTIONS = ['today', 'preview', 'trend', 'title', 'project', 'pulse', 
 const HOME_CORE = ['scan', 'brief']   // what a click on the bridge's core does; several combine
 // the parts the overview can show under its table, each off until chosen (Settings, Start page)
 export const DESK_PARTS = ['waiting', 'guide', 'tabs', 'day']
-// the control view (areas) is the start page; the bridge, tiles, list and focus are a choice, the pinned shelf too
-// (Work filters by the star). A choice saved before o:stage existed has no view option and so gets the control view
-const OFF_BY_DEFAULT = new Set(['o:stage', 'o:classic', 'o:list', 'o:focusview', 'k:brief', 's:pinned'])
+// the bridge (the circle with the bridge in the middle) is the start page of a fresh cockpit; the control view (areas),
+// tiles, list and focus are a choice, the pinned shelf too (Work filters by the star)
+const OFF_BY_DEFAULT = new Set(['o:classic', 'o:list', 'o:focusview', 'k:brief', 's:pinned'])
 
 /** Everything the start page can show, in the order it offers it: each gauge in percent of a page (a quota),
  *  the counts of the day, every page of the profile, the shelves, and the options that change how things

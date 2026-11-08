@@ -1331,7 +1331,7 @@ work page that Prio orders, and `?views=files,flow` narrows the switch.
 
 ### The start page
 
-**The overview (the default).** Start is a slim control view with three
+**The overview (a choice).** A fresh cockpit starts with the bridge (the circle with the bridge in the middle); the overview is picked under Settings, Start page. It is a slim control view with three
 parts and nothing else:
 
 1. One head line: the day, "N waiting on you (6 tabs, 3 entries)" (the
@@ -1394,7 +1394,7 @@ list, focus) and every shelf stay a choice under Settings, Start page; a
 shelf chosen shows only in those views, and Settings says so beside it
 ("not in the overview"). A choice saved before the overview existed has no view option
 set and so shows the overview; one that picked tiles, list or focus keeps
-it. The bridge is now the option `o:stage`, off by default, and the Pinned
+it. The bridge is the option `o:stage`, on by default for a fresh cockpit, and the Pinned
 shelf is no longer among the defaults (Work filters by the star instead).
 
 **The other views.** "Start" in them is styled like the project website (DESIGN.md: a

@@ -37,10 +37,13 @@ const ask = (id, over = {}) => ({ key: `inbox:${id}`, inbox_id: id, title: `Ques
 const read = (daysAgo, m = {}, over = {}) => ({ at: NOW - daysAgo * DAY, m, until: null, unread: false, ...over })
 
 function state({ work = [], now = [], moved = {}, marks = {}, focus = [], seen = { enabled: true }, ui = {}, flow = {}, ...rest } = {}) {
+  const model = { sections: [{ id: 'now', rows: now }, { id: 'give', rows: [] }, { id: 'work', rows: work }, { id: 'track', rows: [] },
+    { id: 'later', rows: [] }], hidden: [], returns: [], pages: [], moved }
   return {
-    now: NOW, model: { sections: [{ id: 'now', rows: now }, { id: 'give', rows: [] }, { id: 'work', rows: work }, { id: 'track', rows: [] },
-      { id: 'later', rows: [] }], hidden: [], returns: [], pages: [], moved },
-    tabs: { tabs: [] }, driver: { caps: null }, triage: { items: {} }, jevOrder: {}, home: { tiles: null, seen: null, pins: [] },
+    now: NOW, model,
+    tabs: { tabs: [] }, driver: { caps: null }, triage: { items: {} }, jevOrder: {},
+    // a fresh cockpit starts with the bridge; these tests read the overview
+    home: { tiles: logic.homeViewSet(logic.homeChosen(model, null), 'areas'), seen: logic.homeCatalog(model).map(x => x.id), pins: [] },
     work: { flow: { enabled: true, drop_reasons: ['not_needed'], return_after_s: 20, seen, ...flow } },
     seen: { marks, focus }, themes: { enabled: false }, details: { inbox: {}, task: {}, activity: {} },
     ui: { page: 'briefing', workView: 'flow', busy: {}, flowAt: null, flowChip: 'all', flowJump: null, flowView: 'overview', ...ui }, ...rest,

@@ -150,9 +150,11 @@ test('the control view: the default, also for a choice made before it existed; a
     { title: 'Week: 19 %', meter: { value: 19, max: 100, unit: '%', window_h: 168 } }] }] }] }
   const all = logic.homeCatalog(model).map(x => x.id)
   const old = all.filter(x => x !== 'o:stage')        // what the chooser offered before the control view
-  assert.equal(logic.homeView(logic.homeChosen(model, null)), 'areas')
-  // chosen before, no view option set (it was the bridge then): now the control view, the bridge is not added
-  assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['c:waiting', 's:tasks'], seen: old })), 'areas')
+  assert.equal(logic.homeView(logic.homeChosen(model, null)), 'stage')   // a fresh cockpit starts with the bridge
+  // chosen before the bridge was offered, no view option set: it gets the default now, the bridge
+  assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['c:waiting', 's:tasks'], seen: old })), 'stage')
+  // chosen with the bridge on offer and no view option set: the control view stays
+  assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['c:waiting', 's:tasks'], seen: all })), 'areas')
   // a view chosen before stays
   assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['c:waiting', 'o:focusview'], seen: old })), 'focus')
   assert.equal(logic.homeView(logic.homeChosen(model, { tiles: ['o:classic'], seen: old })), 'tiles')
@@ -512,7 +514,7 @@ test('the overview: the head counts what waits as the line All does, split into 
 test('the overview with the areas switched off says where they went', () => {
   const s = cockpitState(NOW, { ui: { page: '@start' } })
   const { logic } = loadedRooms
-  s.home = { tiles: logic.homeChosen(s.model, null).filter(x => x !== 's:areas'), seen: logic.homeCatalog(s.model).map(x => x.id), pins: [] }
+  s.home = { tiles: logic.homeViewSet(logic.homeChosen(s.model, null), 'areas').filter(x => x !== 's:areas'), seen: logic.homeCatalog(s.model).map(x => x.id), pins: [] }
   const el = mount(html`<${HomePage} s=${s} c=${recorder()} />`)
   assert.equal(el.$('table'), null)
   assert.match(el.$('.desk').text(), new RegExp(en.home.areasOff.slice(0, 20)))
@@ -645,7 +647,7 @@ test('Work under an area filter: the tab column shows and counts that area, the 
 function deskState(parts, over = {}) {
   const { logic } = loadedRooms
   const base = cockpitState(NOW, { ui: { page: '@start', ...(over.ui ?? {}) } })
-  const tiles = [...logic.homeChosen(base.model, null), ...parts]
+  const tiles = [...logic.homeViewSet(logic.homeChosen(base.model, null), 'areas'), ...parts]
   return { ...base, home: { tiles, seen: logic.homeCatalog(base.model).map(x => x.id), pins: [] } }
 }
 
