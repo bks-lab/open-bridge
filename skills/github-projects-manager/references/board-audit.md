@@ -93,6 +93,9 @@ hygiene defect (`no-status items` in the audit summary).
 ```bash
 gh issue close "$N" --repo "$ORG/$REPO" --reason "not planned" --comment "…"
 ```
+Close first, then set the board's declined state: the "Item closed" workflow
+flips Status to done after a close. `issue_transition.py decline` does the whole
+sequence, with the wait and the read-back.
 
 ### Change the close-reason of an ALREADY-CLOSED issue (no reopen)
 When an issue was closed as `completed` but should be `not_planned` (or vice
