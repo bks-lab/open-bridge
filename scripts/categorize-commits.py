@@ -620,9 +620,12 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_signin.py",        # forged, expired, foreign tokens and the owner's ways shut
     "scripts/lib/bridge_cockpit/workspaces.py",           # the Workspaces area of the settings page: switches beside the config
     "scripts/web/views/workspaces.js",
+    "scripts/lib/bridge_cockpit/views.py",                # Settings, On this machine: pages and sections off on one machine
+    "scripts/web/views/machine.js",
     "scripts/lib/bridge_cockpit/tab_history.py",          # a tab's whole conversation, searchable: /api/tab-history
     "scripts/tests/test_bridge_cockpit_tab_history.py",
     "scripts/tests/test_bridge_cockpit_workspaces.py",    # a workspace's rules, what a child inherits, archive and delete
+    "scripts/tests/test_bridge_cockpit_views.py",         # Settings, On this machine: the file, the verb, the collect flags
     "scripts/lib/bridge_cockpit/usage.py",
     "scripts/tests/test_bridge_cockpit_usage.py",
     "scripts/lib/bridge_cockpit/daybook.py",              # the start page's day by day
@@ -800,6 +803,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_draft_cards.test.mjs",
     "scripts/tests/bridge_cockpit_costs.test.mjs",
     "scripts/tests/bridge_cockpit_areas.test.mjs",
+    "scripts/tests/bridge_cockpit_machine.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
     "scripts/tests/bridge_cockpit_person.test.mjs",
     "scripts/tests/bridge_cockpit_logrange.test.mjs",

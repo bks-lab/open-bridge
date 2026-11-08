@@ -180,6 +180,12 @@ class PageVerbs:
         self.app.workspaces.enable(on)
         ctx.extra["workspaces"] = self.app.workspaces.changed()
 
+    def v_view_switch(self, ctx: Ctx, kind: str, id: str, on: bool) -> None:
+        """A page or a section of the profile on or off on this machine (views.py); the next pass collects it so"""
+        self.app.views.switch(kind, id, on)
+        ctx.extra["views"] = self.app.views.changed()
+        self.app.collector.request("both")
+
     def workspace_engine(self, ctx: Ctx, verb: str, slug: str) -> None:
         """One call of scripts/workspace.py, whose refusal reaches the page in its own words"""
         run = ctx.call(f"workspace.{verb}", slug, self.app.workspaces.command(verb, slug), SHORT_TIMEOUT)

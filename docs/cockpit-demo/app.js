@@ -19,7 +19,7 @@ import {
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn,
-  pointBack, pointList, ghWalkAt, flowOpenKey,
+  pointBack, pointList, ghWalkAt, flowOpenKey, machineModel,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -206,6 +206,7 @@ const store = createStore({
   launch: null,        // the model an agent tab starts with (state.launch); null: an older server, the choice stays hidden
   ticker: null,        // the news ticker (state.ticker); null: an older server, the band and its settings stay hidden
   workspaces: null,    // the areas with their switches and rules (state.workspaces); null: an older server
+  views: null,         // the pages and sections switched off on this machine (state.views); null: an older server
   guide: null,         // the decision guide of waiting tabs (state.guide); null: an older server, the guide stays hidden
   tour: null,          // the first-run tour (state.tour): { enabled, done }; null: an older server, it never starts by itself
   work: null,          // the work tab as the config sets it (state.work): { view, focus_to_files }; null: an older server, as before
@@ -395,7 +396,8 @@ function applyState(payload) {
   store.set(s => ({
     ...s,
     server: payload.server ?? s.server,
-    model: payload.model ?? null,
+    // what this machine switched off leaves the model at once (Settings, On this machine)
+    model: machineModel(payload.model ?? null, payload.views ?? s.views),
     more: freshMore(s.more, payload.model ?? null),
     tabs: payload.tabs ?? s.tabs,
     sessions: payload.sessions ?? s.sessions,
@@ -415,6 +417,7 @@ function applyState(payload) {
     ticker: payload.ticker ?? s.ticker,
     guide: payload.guide ?? s.guide,
     workspaces: payload.workspaces ?? s.workspaces,
+    views: payload.views ?? s.views,
     tour: payload.tour ?? s.tour,
     work: payload.work ?? s.work,
     themes: payload.themes ?? s.themes,
@@ -496,6 +499,8 @@ const handlers = {
   },
   state: applyState,
   view(model) {
+    // what this machine switched off leaves the model at once (Settings, On this machine)
+    model = machineModel(model, store.get().views)
     // the return channel: an answer that was not there before is worth a note
     const had = new Map((store.get().model?.returns ?? []).map(r => [r.key, r.stage]))
     for (const r of model?.returns ?? []) {
@@ -611,6 +616,10 @@ const handlers = {
   // a switch or a workspace's file changed, here or in another browser
   workspaces(w) {
     workspacesAnswer({ workspaces: w })
+  },
+  // a page or a section switched on or off on this machine, here or in another browser, or a new list of them
+  views(v) {
+    viewsAnswer({ views: v })
   },
   // the decision guide changed: a reading started or ended, a tab left, the switches changed here or elsewhere
   guide(g) {
@@ -902,6 +911,15 @@ function tickerAnswer(r) {
     if (newerTicker(s.ticker, r?.ticker)) return { ...s, ticker: r.ticker }
     return s
   })
+  return r
+}
+
+/** The views block an answer carries: what was just switched off leaves the page at once, what comes back on
+ *  comes with the pass the switch asked for; a page left that is no longer there goes to the start page */
+function viewsAnswer(r) {
+  if (!r?.views) return r
+  store.set(s => (newerTicker(s.views, r.views) ? { ...s, views: r.views, model: machineModel(s.model, r.views) } : s))
+  fixPage()
   return r
 }
 
@@ -1868,6 +1886,8 @@ const ctl = {
   workspaceActive: async (key, on) => workspacesAnswer(await act('workspace_active', { key, on })),
   workspacePlan: key => act('workspace_plan', { key }),
   workspaceDelete: async key => workspacesAnswer(await act('workspace_delete', { key })),
+  // the area On this machine of the settings page: a page or a section on or off here, kept beside the config
+  viewSwitch: async (kind, id, on) => viewsAnswer(await act('view_switch', { kind, id, on })),
   // the decision guide: a reading returns at once and ends with a guide event; the switches save at once
   // what a waiting tab's pane in the chat shows: the reading, both, or the terminal; kept in this browser
   guideRead: async ref => guideAnswer(await act('guide_read', { tab_ref: ref })),

@@ -52,6 +52,7 @@ python3 scripts/briefing.py collect --only tracker --only calendar   # only thes
 python3 scripts/briefing.py collect --json --max-items 500   # every row, for a dashboard that pages itself
 python3 scripts/briefing.py collect --fresh       # ask every source now, whatever cache_minutes allows
 python3 scripts/briefing.py collect --json --setup  # also the cockpit's Setup page (scripts/bridge-setup.py)
+python3 scripts/briefing.py collect --skip-page lab --skip-section ci-runs   # what one machine switched off
 python3 scripts/briefing.py owed [<id>]           # streams the profile does not cover, and how to run them
 python3 scripts/briefing.py commits [<id>] --since 2026-10-01 --until 2026-10-31 [--section <id>]
                                                   # own commits of a commits section over a range, as times (JSON)
@@ -677,6 +678,15 @@ its own `cards:` names one (they stand on the folder's overview). It names anoth
 not itself, one level deep, and neither side has `group: work` or `group: day`; `validate`
 says which rule an entry breaks. The cockpit's own Background jobs page is placed the same
 way by an entry of `id` and `under` only: `{id: "@workers", under: ops}`.
+`collect --skip-page <page id>` and `--skip-section <section id>` (repeatable; the cockpit passes
+what its Settings, On this machine switched off, the terminal briefing never does) leave out what
+one machine does not need: a section named is not run at all and stands nowhere, the briefing
+included; a page named, and every page under it, is no page of that run, and its sections are not
+run unless a page still in the run names them or their kind is one the briefing shows itself
+(`inbox`, `advise`, `tasks`: those run and stand on no page). A page whose sections are all left out
+is no page either. An id the profile does not have changes nothing. The JSON of every collect
+carries `page_catalog`, every page with its sections as the profile names them, before anything
+was left out, so a dashboard can list what to switch back on.
 `view.page_skip: [<section id>, ...]` keeps sections off every page, the rest page
 included, while they still run: a section that only feeds a file another page reads. Each section
 also says what it adds to its tab's badge (`weight`: rows not dimmed, for

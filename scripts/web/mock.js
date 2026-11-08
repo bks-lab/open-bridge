@@ -1186,6 +1186,9 @@ export function buildState(now = Date.now(), opts = {}) {
       { key: 'Billing', area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
       { key: 'Home', area: 'Home', id: null, title: 'Home', parent: null, children: [], archived: false, level: null, style: null, mail: null, persona: null, on: true, held_by: null, active: true, active_held_by: null, fixed: false },
     ] },
+    // Settings, On this machine (views.py): the profile's pages as the collect lists them, nothing switched off
+    views: { rev: 0, pages_off: [], sections_off: [], catalog: pages.filter(p => p.group !== 'settings').map(p => ({ id: p.id, title: p.title,
+      group: p.group ?? 'main', under: p.under ?? null, sections: (p.sections ?? []).map(x => ({ id: x.id, title: x.title, kind: x.kind ?? '' })) })) },
     // the first-run tour: ended in the demo unless ?tour=1 asks for a first visit
     tour: { enabled: true, done: opts.tour ? null : { how: 'finished', v: 1, at: isoIn(-3, now) } },
     // the Chat as cmux (cockpit.chat_layout: workspaces): ?chat=workspaces
@@ -3019,6 +3022,13 @@ export function createMockTransport(opts = {}) {
             items: state.workspaces.items.map(i => (i.area === args.area ? { ...i, on: !!args.on } : i)) }
           result.workspaces = state.workspaces
           result.note = 'Mock: setting saved'
+        }
+        if (verb === 'view_switch') {
+          const field = args.kind === 'page' ? 'pages_off' : 'sections_off'
+          const kept = state.views[field].filter(x => x !== args.id)
+          state.views = { ...state.views, rev: state.views.rev + 1, [field]: args.on ? kept : [...kept, args.id] }
+          result.views = state.views
+          result.note = 'Mock: kept on this machine'
         }
         if (verb === 'workspaces_enabled') {
           state.workspaces = { ...state.workspaces, rev: state.workspaces.rev + 1, enabled: !!args.on }

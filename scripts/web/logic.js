@@ -5047,3 +5047,35 @@ export function mergePages(model, ev) {
   const pages = ev.order.map(id => fresh.get(id) ?? had.get(id))
   return pages.every(Boolean) ? { ...model, seq: ev.seq, pages } : null
 }
+
+/** The model as this machine shows it (Settings, On this machine, the server's views.json): a page switched off, and
+ *  every page under it, has no tab and leaves its folder's bar and ▾; a section switched off stands nowhere; a page
+ *  whose sections are all off goes like a page switched off. The collect leaves them out anyway (briefing.py
+ *  --skip-page, --skip-section): this takes them away at once, before the next pass comes. The same model when
+ *  nothing is off */
+export function machineModel(model, views) {
+  const pagesOff = new Set(views?.pages_off ?? [])
+  const sectionsOff = new Set(views?.sections_off ?? [])
+  if (!model?.pages || (!pagesOff.size && !sectionsOff.size)) return model
+  const gone = new Set(model.pages.filter(p => pagesOff.has(p.id) || pagesOff.has(p.under)).map(p => p.id))
+  const kept = []
+  for (const p of model.pages) {
+    if (gone.has(p.id)) continue
+    const sections = (p.sections ?? []).filter(x => !sectionsOff.has(x.id))
+    if ((p.sections ?? []).length && !sections.length) { gone.add(p.id); continue }
+    kept.push(sections.length === (p.sections ?? []).length ? p : { ...p, sections })
+  }
+  if (!gone.size && kept.every((p, i) => p === model.pages[i])) return model
+  const pages = kept.map(p => (p.subs?.some(x => gone.has(x)) ? { ...p, subs: p.subs.filter(x => !gone.has(x)) } : p))
+  const alarms = (model.alarms ?? []).filter(a => !gone.has(a.page_id))
+  return { ...model, pages, alarms }
+}
+
+/** The pages of Settings, On this machine in the profile's order, each folder followed by its sub pages (which carry
+ *  the folder's title as parentTitle); a sub page whose folder is not listed stands on its own */
+export function machineTree(catalog) {
+  const all = Array.isArray(catalog) ? catalog : []
+  const byId = new Map(all.map(p => [p.id, p]))
+  const top = all.filter(p => !p.under || !byId.has(p.under))
+  return top.flatMap(p => [p, ...all.filter(x => x.under === p.id && x !== p).map(x => ({ ...x, parentTitle: p.title }))])
+}

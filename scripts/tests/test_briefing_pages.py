@@ -991,3 +991,83 @@ def test_actionable_in_a_page_entry_is_validated():
     assert not bv._page_problems(ok)
     bad = {"pages": [{"id": "x", "title": "X", "sections": [{"id": "probes", "actionable": "yes"}]}]}
     assert any("actionable must be true or false" in p for p in bv._page_problems(bad))
+
+
+# ---------------------------------------------------------------- switched off on one machine (collect --skip-page/--skip-section)
+
+def _machine_profile():
+    return {"id": "morning", "sections": [
+        {"kind": "inbox"}, {"kind": "command", "id": "probes", "title": "Probes"}, {"kind": "tracker", "id": "mine"},
+        {"kind": "calendar", "id": "cal"}, {"kind": "commits", "id": "commits"}, {"kind": "activity", "id": "log"}],
+        "view": {"pages": [{"id": "ops", "title": "Ops", "sections": ["probes", "mine"]},
+                           {"id": "@workers", "under": "ops"},
+                           {"id": "lab", "title": "Lab", "sections": ["commits"], "under": "ops"},
+                           {"id": "work", "group": "work", "sections": ["inbox"]},
+                           {"id": "week", "sections": ["cal", "mine"]}]}}
+
+
+def test_the_catalog_lists_every_page_and_its_sections_before_a_run():
+    catalog = bv.page_catalog(_machine_profile())
+    assert [(p["id"], [s["id"] for s in p["sections"]]) for p in catalog] == [
+        ("ops", ["probes", "mine"]), ("lab", ["commits"]), ("work", ["inbox"]), ("week", ["cal", "mine"]), ("more", ["log"])]
+    assert catalog[0]["title"] == "Ops" and catalog[0]["sections"][0] == {"id": "probes", "title": "Probes", "kind": "command"}
+    assert catalog[1]["under"] == "ops" and catalog[2]["group"] == "work"
+    assert catalog[0]["sections"][1]["title"] == "Mine"       # no title: its id, as a run names it
+    # without view.pages the pages by kind, the rest page last
+    plain = bv.page_catalog({"id": "p", "sections": [{"kind": "command", "id": "probe"}, {"kind": "workplace"}]})
+    assert [(p["id"], [s["id"] for s in p["sections"]]) for p in plain] == [("status", ["probe"]), ("more", ["workplace"])]
+
+
+def test_a_section_switched_off_is_not_run_and_stands_nowhere():
+    out = bv.switched_off(_machine_profile(), (), ["mine"])
+    assert [s.get("id") or s["kind"] for s in out["sections"]] == ["inbox", "probes", "cal", "commits", "log"]
+    assert out["view"]["pages"] == _machine_profile()["view"]["pages"]
+    # an id the profile no longer has changes nothing
+    assert bv.switched_off(_machine_profile(), ["gone"], ["nope"])["sections"] == _machine_profile()["sections"]
+
+
+def test_a_page_switched_off_takes_its_sub_pages_and_the_sections_only_it_names():
+    out = bv.switched_off(_machine_profile(), ["ops"], ())
+    assert [p["id"] for p in out["view"]["pages"]] == ["@workers", "work", "week"]
+    # probes and the lab's commits go; mine stays, the week still names it
+    assert [s.get("id") or s["kind"] for s in out["sections"]] == ["inbox", "mine", "cal", "log"]
+    # the briefing shows the inbox itself: its page off, it still runs and stands on no page
+    off = bv.switched_off(_machine_profile(), ["work"], ())
+    assert "inbox" in [s["kind"] for s in off["sections"]] and off["view"]["page_skip"] == ["inbox"]
+    pages = bv.pages({"collected_at": NOW, "sections": [_sec("inbox", "inbox", []), _sec("log", "activity", [])]}, off)
+    assert [p["id"] for p in pages] == ["more"] and [s["id"] for s in pages[0]["sections"]] == ["log"]
+
+
+def test_a_page_whose_sections_are_all_off_disappears_and_leaves_its_folder():
+    out = bv.switched_off(_machine_profile(), (), ["commits"])
+    result = {"collected_at": NOW, "sections": [_sec("probes", "command", []), _sec("mine", "tracker", [])]}
+    pages = bv.pages(result, out)
+    assert "lab" not in [p["id"] for p in pages] and _page(pages, "ops")["subs"] == ["@workers"]
+
+
+def test_collect_skips_what_this_machine_switched_off_and_still_lists_it(tmp_path, capsys):
+    root = tmp_path / "b"
+    (root / "work" / "inbox").mkdir(parents=True)
+    (root / "work" / "tasks").mkdir(parents=True)
+    (root / "bridge-config.yaml").write_text("{}\n", encoding="utf-8")
+    ran = tmp_path / "ran"
+    probe = [sys.executable, "-c", f"open({str(ran)!r}, 'w').write('x'); print('[]')"]
+    path = root / "workflow" / "briefings" / "morning.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump({
+        "schema_version": 1, "scope": "user", "id": "morning", "default": True,
+        "sections": [{"kind": "tasks"}, {"kind": "command", "id": "lab-probe", "title": "Lab probe", "argv": probe},
+                     {"kind": "command", "id": "ci", "argv": [sys.executable, "-c", "print('[]')"]}],
+        "view": {"style": "triage", "pages": [{"id": "lab", "title": "Lab", "sections": ["lab-probe"]},
+                                              {"id": "ci-monitor", "sections": ["ci"]}]}}), encoding="utf-8")
+    assert bf.main(["--root", str(root), "collect", "--json", "--no-save", "--skip-section", "lab-probe"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert not ran.exists()                                   # its program did not run
+    assert "lab-probe" not in [s["id"] for s in data["sections"]]
+    assert [p["id"] for p in data["pages"]] == ["ci-monitor"]
+    assert [(p["id"], [s["id"] for s in p["sections"]]) for p in data["page_catalog"]] == [
+        ("lab", ["lab-probe"]), ("ci-monitor", ["ci"])]
+    assert bf.main(["--root", str(root), "collect", "--json", "--no-save", "--skip-page", "ci-monitor"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert ran.exists() and [p["id"] for p in data["pages"]] == ["lab"]
+    assert "ci" not in [s["id"] for s in data["sections"]]

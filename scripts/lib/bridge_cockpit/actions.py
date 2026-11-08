@@ -98,6 +98,7 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "priority": (PRIORITIES, "unknown priority"),
     "a2a_mode": (AGENT_MODES, "question or task"),
     "reopen_as": (("doing", "backlog"), "doing or backlog"),
+    "view_kind": (("page", "section"), "page or section"),
     "restore_as": (REOPEN_AS, " or ".join(REOPEN_AS)),
     "account_status": (ACCOUNT_STATUSES, "unknown status"),
     "board_mode": (BOARD_MODES, "off, mine or all"),
