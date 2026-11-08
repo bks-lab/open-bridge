@@ -391,11 +391,15 @@ export function mount(vnode) {
 export function cockpitState(now, over = {}) {
   if (!loaded) throw new Error('cockpit_render: await loadCockpit() before cockpitState()')
   const { ui = {}, ...rest } = over
+  const built = loaded.mock.buildState(now)
+  // a fresh cockpit starts with the bridge; the tests of the page read the overview, so the helper picks it
+  const model = rest.model ?? built.model
+  const tiles = loaded.logic.homeViewSet(loaded.logic.homeChosen(model, null), 'areas')
   return {
-    ...loaded.mock.buildState(now),
+    ...built,
     boot: { status: 'ok', error: null, version: '0.1.0', config: {}, scratch: null },
     now, layout: 'wide', mock: false, conn: 'open', driver: { caps: null },
-    home: { tiles: null, seen: null, pins: [] }, details: { inbox: {}, task: {} }, more: {},
+    home: { tiles, seen: loaded.logic.homeCatalog(model).map(x => x.id), pins: [] }, details: { inbox: {}, task: {} }, more: {},
     ui: { page: 'briefing', busy: {}, openMsg: null, drawer: null, theme: 'auto', expanded: {}, picked: [], ...ui },
     ...rest,
   }

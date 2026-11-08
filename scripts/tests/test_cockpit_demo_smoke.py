@@ -253,6 +253,17 @@ def test_area_name_opens_the_files_for_this_visit_only(base_url, browser):
     page = ctx.new_page()
     _watch(page, problems, where)
     page.goto(f"{base_url}?lang=en")
+    # a fresh cockpit starts with the bridge; this test reads the overview, the first view of the start page
+    page.wait_for_selector(".pagebar-tabs > [role=tab]")
+    word = re.compile("Settings|Einstellungen")
+    bar = page.locator(".pagebar-tabs > [role=tab]").filter(has_text=word)
+    if bar.count():
+        bar.first.click()
+    else:
+        page.locator(".ptab-more > [role=tab]").click()
+        page.locator(".more-menu [role=menuitem]").filter(has_text=word).first.click()
+    page.locator(".view-opt").nth(0).click()   # areas, bridge, tiles, list, focus
+    page.locator(".pagebar-tabs > [role=tab]").first.click()
     page.wait_for_selector(".desk .home-area-pick")
     before = page.evaluate("() => localStorage.getItem('bridge-cockpit.workTab')")
     page.locator("tbody .home-area-pick").nth(1).click()
