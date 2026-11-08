@@ -70,12 +70,12 @@ OWNER_VERBS = frozenset("""
     tab_option tab_rename tab_send tab_yes task_keep task_reopen task_review task_running task_unmerge team_role
     ticker_edit ticker_profile ticker_refresh ticker_settings ticker_settings_reset timeline_ask to_task
     to_task_undo tour_done tour_reset unhide worker_advise workspace_active workspace_close workspace_delete
-    workspace_new workspace_plan workspace_rename workspace_switch workspaces_enabled""".split())
+    workspace_new workspace_plan workspace_rename workspace_switch workspaces_enabled view_switch""".split())
 
 PERSON_EVENTS = frozenset({"view", "workspaces", "loading"})
 OWNER_EVENTS = frozenset({"ticker", "guide", "quick", "sessions", "agents", "relay", "acks", "triage", "quick_live",
                           "home", "view_pages", "tour", "themes", "seen", "tabs", "relay_state", "note", "launch", "describe",
-                          "alert"})
+                          "alert", "views"})
 
 # the state as a person gets it: these are worked out below, the rest is the empty shape the page knows
 STATE_PERSON = frozenset({"ok", "server", "model", "loading", "workspaces", "work", "person_ask"})
@@ -88,6 +88,7 @@ STATE_NEUTRAL: dict[str, Any] = {
     "quick_live": {}, "agents": {"peers": [], "convs": [], "keep_hours": 0},
     "triage": {"running": None, "error": None, "last": None, "items": {}},
     "jev": {"enabled": False, "ready": False, "reason": "off"},
+    "views": {"rev": 0, "pages_off": [], "sections_off": [], "catalog": []},
     "prio": {"haiku": {"enabled": False, "ready": False, "model": None, "budget_left": 0}, "fallback": "off"},
     "launch": {"enabled": False, "manual": False, "auto": False, "effort": False, "models": [], "efforts": [],
                "default_model": None, "default_effort": None, "router": "off", "settings": {}},

@@ -2512,6 +2512,11 @@ def main(argv=None) -> int:
             p.add_argument("--json", action="store_true")
             p.add_argument("--setup", action="store_true",
                            help="add the cockpit's Setup page (scripts/bridge-setup.py); the cockpit passes it")
+            p.add_argument("--skip-page", action="append", default=[], metavar="PAGE",
+                           help="leave out this page of view.pages and the sections only it names (repeatable; "
+                                "the cockpit passes what Settings, On this machine switched off)")
+            p.add_argument("--skip-section", action="append", default=[], metavar="SECTION",
+                           help="do not run this section at all, it stands on no page (repeatable)")
         else:
             p.add_argument("--color", choices=("auto", "always", "never"), default="auto")
     sub.add_parser("validate")
@@ -2618,6 +2623,11 @@ def main(argv=None) -> int:
         profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, "_whole": True}
     if getattr(args, "setup", False):
         profile = with_setup(profile, root, cfg)
+    # what one machine switched off (the cockpit's views.json): the catalog still lists it, so it can come back on
+    catalog = _view().page_catalog(profile)
+    whole = profile
+    if getattr(args, "skip_page", None) or getattr(args, "skip_section", None):
+        profile = _view().switched_off(profile, args.skip_page, args.skip_section)
     ctx = Context(root, cfg=cfg)
     ctx.fresh = bool(getattr(args, "fresh", False))
     previous = load_snapshot(root, profile["id"])
@@ -2626,7 +2636,7 @@ def main(argv=None) -> int:
     if only:
         skip |= set(SECTION_KINDS) - set(only)
     result = collect(root, profile, ctx, previous=previous, skip=tuple(sorted(skip)), style=args.style, only=only)
-    result["owed"] = [o["id"] for o in owed(root, cfg, profile)]
+    result["owed"] = [o["id"] for o in owed(root, cfg, whole)]
     if args.file:
         box = _inbox().Inbox(root / "work" / "inbox", actor="briefing")
         filed, closed = file_to_inbox(box, profile, result)
@@ -2653,6 +2663,7 @@ def main(argv=None) -> int:
         if _view().style_of(profile, args.style) != "sources":
             data["view"] = _view().build(result, profile, args.style)
         data["pages"] = _view().pages(result, profile, root=root)
+        data["page_catalog"] = catalog
         if args.json:
             print(json.dumps(data, ensure_ascii=False, indent=1, default=str))
         else:

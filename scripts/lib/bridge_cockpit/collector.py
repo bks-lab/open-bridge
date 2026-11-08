@@ -604,7 +604,8 @@ class Collector:
             argv.append("--fresh")
         if self.ask_triage:
             argv += ["--style", "triage"]
-        return argv
+        views = getattr(app, "views", None)     # what Settings, On this machine switched off (views.py)
+        return argv + (views.argv() if views is not None else [])
 
     def refresh_tasks(self) -> None:
         seen = task_snapshot(self.app.root)     # before the read: a change during it is read next time
@@ -673,6 +674,9 @@ class Collector:
             record(False)
             return
         record(True)
+        views = getattr(app, "views", None)
+        if views is not None and views.learn(raw.get("page_catalog")):
+            views.changed()
         with self.lock:
             before = self.view
             # What this run left out stays at the state of the previous one. Add the tasks only afterwards:

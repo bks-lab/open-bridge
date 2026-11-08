@@ -2785,3 +2785,74 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
                 shown[pid]["under"] = under
             shown[under].setdefault("subs", []).append(pid)
     return out
+
+
+def page_catalog(profile: dict) -> list:
+    """Every page a dashboard draws from this profile and the sections it names, before any run: the list a dashboard
+    offers to switch off on one machine (the cockpit's Settings, On this machine). The pages of `view.pages` in their
+    order (without it the pages by kind), then the rest page with what no page names. The cockpit's own placed pages
+    (PLACED_PAGES) and the Setup page are not in it; a section the profile does not have is left out, as pages() does."""
+    view = _cfg(profile)
+    labels = _labels(view, profile.get("_language"))
+    by_id = {str(s.get("id") or s.get("kind")): s for s in profile.get("sections") or [] if isinstance(s, dict)}
+
+    def entry(sid: str) -> dict:
+        s = by_id[sid]
+        title = s.get("title") if isinstance(s.get("title"), str) and s.get("title") else sid.replace("-", " ").capitalize()
+        return {"id": sid, "title": title, "kind": s.get("kind")}
+    out = []
+    configured = view.get("pages") if isinstance(view.get("pages"), list) else None
+    if configured is not None:
+        for page in configured:
+            if not isinstance(page, dict) or not isinstance(page.get("id"), str) or page["id"] in PLACED_PAGES:
+                continue
+            ids = [e if isinstance(e, str) else e.get("id") for e in page.get("sections") or []
+                   if isinstance(e, str) or (isinstance(e, dict) and isinstance(e.get("id"), str))]
+            ids = [x for x in dict.fromkeys(ids) if x in by_id]
+            if not ids:
+                continue
+            title = page.get("title") if isinstance(page.get("title"), str) else labels.get(f"page_{page['id']}", page["id"])
+            out.append({"id": page["id"], "title": title, "sections": [entry(x) for x in ids],
+                        "group": page.get("group") if page.get("group") in PAGE_GROUPS else "main",
+                        "under": page.get("under") if isinstance(page.get("under"), str) and page.get("under") else None})
+    else:
+        for pid in DEFAULT_PAGES:
+            ids = [x for x, s in by_id.items() if PAGE_OF_KIND.get(s.get("kind")) == pid and x not in SETUP_SECTIONS]
+            if ids:
+                out.append({"id": pid, "title": labels[f"page_{pid}"], "sections": [entry(x) for x in ids],
+                            "group": DEFAULT_PAGE_GROUP[pid], "under": None})
+    skip = view.get("page_skip") if isinstance(view.get("page_skip"), list) else []
+    placed = {x["id"] for p in out for x in p["sections"]} | {x for x in skip if isinstance(x, str)} | set(SETUP_SECTIONS)
+    if configured is None or view.get("page_rest", "show") != "hide":
+        rest = [x for x, s in by_id.items() if x not in placed and s.get("kind") not in BRIEFING_KINDS]
+        if rest:
+            out.append({"id": REST_PAGE, "title": labels["page_more"], "sections": [entry(x) for x in rest],
+                        "group": "more", "under": None})
+    return out
+
+
+def switched_off(profile: dict, pages_off=(), sections_off=()) -> dict:
+    """The profile as one machine wants it (the cockpit's views.json, `collect --skip-page/--skip-section`). A section
+    switched off is not run at all, so it stands nowhere, the briefing included. A page switched off, and every page
+    under it, leaves the dashboard; its sections are not run either unless a page still on names them, or the
+    briefing page shows their kind itself (BRIEFING_KINDS): those still run and stand on no page (`page_skip`).
+    An id the profile no longer has changes nothing."""
+    catalog = page_catalog(profile)
+    known = {p["id"] for p in catalog}
+    off = set(pages_off) & known
+    # a folder switched off takes its sub pages with it
+    off |= {p["id"] for p in catalog if p["under"] in off}
+    if not off and not set(sections_off):
+        return profile
+    kinds = {x["id"]: x["kind"] for p in catalog for x in p["sections"]}
+    shown = {x["id"] for p in catalog if p["id"] not in off for x in p["sections"]}
+    hidden = {x["id"] for p in catalog if p["id"] in off for x in p["sections"]} - shown
+    drop = set(sections_off) | {x for x in hidden if kinds.get(x) not in BRIEFING_KINDS}
+    view = dict(_cfg(profile))
+    if isinstance(view.get("pages"), list):
+        view["pages"] = [p for p in view["pages"] if not (isinstance(p, dict) and p.get("id") in off)]
+    kept = sorted(hidden - drop)
+    if kept:
+        view["page_skip"] = [*(view.get("page_skip") if isinstance(view.get("page_skip"), list) else []), *kept]
+    sections = [s for s in profile.get("sections") or [] if not (isinstance(s, dict) and str(s.get("id") or s.get("kind")) in drop)]
+    return {**profile, "sections": sections, **({"view": view} if view or "view" in profile else {})}

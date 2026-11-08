@@ -2402,7 +2402,8 @@ and the live status of the start page (above): the switch, speed and amounts,
 the status kinds, the editor's interests, and the feed list, where rows are
 added, removed or switched off and saved as a whole. A feed that failed at its
 last read shows its error there. Those changes go to
-`.bridge/cockpit/ticker.json`, with their own "Reset". Every start records its
+`.bridge/cockpit/ticker.json`, with their own "Reset". The area On this machine
+switches pages and sections off for one computer ([On this machine](#on-this-machine)). Every start records its
 model, effort and who
 chose it (`chosen`, `recommended`, `status`, `check`, `jev`, `haiku`, `default`) in
 `launches.json`, the data to tune the bands with later.
@@ -3345,6 +3346,27 @@ The first visit's welcome offers **Set up first** beside Start the tour and Skip
 have a row: it opens Settings at Setup and closes the welcome without ending the tour, so the next
 visit offers the tour again.
 
+### On this machine
+
+The area **On this machine** (de: Auf diesem Rechner) of **Settings** lists every page of the
+briefing profile's `view.pages` in their order, a sub page under its folder, and
+under each page its sections by their titles, each with a switch; everything is on
+until switched off. Not every machine needs every page: a lab page, a job tracker
+or a CI monitor may matter on one computer and be noise on another. A section
+switched off is not collected at all (its program does not run: every collect of
+the cockpit passes `--skip-section <id>` to `briefing.py collect`) and stands
+nowhere, the briefing page included. A page switched off (`--skip-page <id>`) has
+no tab and no place in its folder's bar or ▾; a folder switched off takes its sub
+pages with it, and a page whose sections are all off disappears the same way. The
+sections of a page switched off are not collected either, unless a page still on
+names them or the briefing page shows their kind itself (inbox, advice, tasks).
+The choice is kept for this machine in `.bridge/cockpit/views.json` (section 6),
+never in the profile, and takes effect without a restart: the page drops what was
+switched off at once and the switch asks for a new pass, which brings back what was
+switched on. The list comes from the catalog the last collect sent
+(`page_catalog`), so a page switched off still stands there. The terminal
+`/briefing` never reads the file.
+
 ### The first-run tour
 
 The first time the page opens it offers a short tour, the way other tools introduce
@@ -3999,6 +4021,7 @@ share or clean up.
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
 | `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |
 | `workspaces.json` | the two switches of the settings page (`{"enabled": bool, "off": [names], "inactive": [names]}`) | no |
+| `views.json` | the pages and sections switched off on this machine (Settings, On this machine): `{"pages_off": [ids], "sections_off": [ids]}`; an id the profile no longer has is kept and changes nothing | no |
 | `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |
 | `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
@@ -4535,6 +4558,15 @@ revisit reads "revisit on <day>" and its Activity row the decision **Revisit**
 (`revisit` among the decisions of `activity.py`). The cockpit demo shows the
 marks with `?seen=1` (two points read, one of them new since, the rest never
 opened), its verbs kept in the page's state only. Off, everything stays as before.
+
+### Upgrading: pages and sections per machine
+
+Nothing to do: until a switch is used every page and section shows and runs as
+before. New on the wire: the verb `view_switch` (`kind` page or section, `id`,
+`on`), the state's key `views` (`pages_off`, `sections_off`, `catalog`) and its
+event `views`; `briefing.py collect` takes `--skip-page` and `--skip-section`
+(repeatable) and its JSON carries `page_catalog`. New file: `views.json` in the
+state folder (section 6). Going back: switch everything on, or delete `views.json`.
 
 ## 7. Ports
 

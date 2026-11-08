@@ -2824,6 +2824,12 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .hdr-pick { margin-left: 16px; }
 .pop-item.is-child { padding-left: 24px; }
 .ws-item:first-child .set-row { border-top: 0; }
+/* Settings, On this machine (views/machine.js): a page, its sections a step in and lighter, a sub page under its folder */
+.mc-page.is-child { padding-left: 20px; }
+.mc-page:first-child > .set-row { border-top: 0; }
+.mc-sections { padding-left: 20px; }
+.mc-sections .set-row { padding: 8px 0; border-top-style: dashed; }
+.mc-sections .set-label { font-weight: 400; }
 .set-text { display: grid; gap: 2px; min-width: 0; }
 .set-label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; color: var(--on-surface); }
 .set-explain { max-width: 60ch; }
