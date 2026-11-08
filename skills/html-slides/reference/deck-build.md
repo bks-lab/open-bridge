@@ -136,15 +136,20 @@ builds the deck it built before.
 |---|---|
 | colour roles `highlight`, `glow` | the arc under a heading (`.slide__arc`) in its own colour with a second, wider glow; without them the arc is the accent |
 | colour role `gradient-via` | a middle stop for the gradient numbers (`--stat-gradient`), between `gradient-from` and `gradient-to` |
-| `components.slide-display`, `slide-heading`, `slide-body`, `slide-label` | the type cut of that role: `fontWeight`, `letterSpacing`, `lineHeight`, from `typography: "{typography.<role>}"` and/or given directly. Sizes stay with the engine. Without them the preset's quiet cut (weight 500) stays |
-| `components.slide-arc.width` | the arc's line width in px (default 1px) |
+| `components.slide-<role>` | how a text role is set: `fontFamily` (display, body, mono, label), `fontWeight`, `fontSize` (a length, `vw` to scale with the slide, or `clamp()`), `letterSpacing`, `lineHeight`, `textTransform`, `textColor` (a colour role, per mode), or `typography: "{typography.<role>}"`. Roles: `slide-display`, `slide-subtitle`, `slide-heading`, `slide-subhead` (h3), `slide-label` (also the result card label), `slide-body` (body copy and bullets), `slide-small` (stat labels, card text, numbered descriptions, table cells), `slide-item-title` (numbered titles, card titles, h4), `slide-result-value`, `slide-stat`, `slide-table-head`, `slide-quote`, `slide-number` (also `marker: plain` drops the box) |
+| `components.slide-layout` | `align: top` with `paddingTop`, and `paddingX`, for content slides; a photo slide keeps the room for its photo |
+| `components.slide-arc` | `width` (px), `span` (a length, e.g. `100%`), `baseline` (a colour role for a hairline under the arc) |
+| `components.slide-bleed` | `veil`: how strongly a full-bleed photo is veiled under its text, 0 to 100 (default look 94) |
 | `components.knowledge-term` | how a knowledge term looks: `html-canvas/references/knowledge.md` § Term mark |
 
 ```yaml
 components:
-  slide-heading: {typography: "{typography.h2}"}
-  slide-body: {fontWeight: 300, lineHeight: 1.4}
-  slide-arc: {width: 2px}
+  slide-layout: {align: top, paddingTop: 8.9vh, paddingX: 5vw}
+  slide-heading: {typography: "{typography.h2}", fontSize: "clamp(22px, 2.97vw, 82px)"}
+  slide-body: {fontFamily: body, fontWeight: 300, fontSize: "clamp(13px, 1.49vw, 42px)", lineHeight: 1.4}
+  slide-label: {fontWeight: 500, textTransform: uppercase, textColor: "{colors.eyebrow}"}
+  slide-number: {marker: plain}
+  slide-arc: {width: 2px, span: 100%, baseline: "{colors.border}"}
 ```
 
 A wrong reference or value stops the build with the component's name.

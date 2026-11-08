@@ -355,72 +355,188 @@ def design_tokens(preset: dict, design: Path) -> str:
     return css_region("/* deck-preset: design */\n" + bridge_design().source_mark(design) + filled)
 
 
-# components.slide-* in a DESIGN.md: the type cut of the slide roles, opt-in. The
-# preset's quiet cut (weight 500, its tracking) stays for a design without them. Each
-# entry takes a typography role ("{typography.h2}") and/or the values directly; sizes
-# stay with the engine, whose type scales with the slide. The rules carry `html .deck`
-# so they win over the preset overrides and the engine without !important. The first
-# selector takes the whole cut, its companions (stat values, result cards, captions)
-# the weight and tracking only, not the line height.
-SLIDE_COMPONENTS = {
-    "slide-display": (".slide__display", ".slide__stat-value"),
-    "slide-heading": (".slide__heading", ".slide__result-value"),
-    "slide-body": (".slide__body", ".slide__bullets", ".slide__stat-label", ".slide__quote p"),
+# components.slide-* in a DESIGN.md: how each text role of a slide is set, plus the
+# layout around it, all opt-in. A design without them keeps the preset's quiet look.
+# A text role takes a typography role ("{typography.h2}") and/or values directly:
+# fontFamily (display, body, mono, label), fontWeight, fontSize (a length, vw for a
+# size that scales with the slide, or clamp()), letterSpacing, lineHeight,
+# textTransform, textColor (a colour role, resolved per mode). The rules carry
+# `html .deck` so they win over the preset overrides and the engine; a colour the
+# preset forces with !important is set with !important too.
+SLIDE_ROLES = {
+    "slide-display": (".slide__display",),
+    "slide-subtitle": (".slide__subtitle",),
+    "slide-heading": (".slide__heading",),
     "slide-label": (".slide__label", ".slide__result-label"),
+    "slide-body": (".slide__body", ".slide__bullets li"),
+    "slide-small": (".slide__stat-label", ".cheat-card__item", ".slide__numbered > li > :not(strong)",
+                    ".data-table td"),
+    "slide-subhead": (".slide h3",),
+    "slide-item-title": (".slide__numbered > li > strong", ".cheat-card__title", ".slide h4"),
+    "slide-result-value": (".slide__result-value",),
+    "slide-stat": (".slide__stat-value",),
+    "slide-table-head": (".data-table th",),
+    "slide-quote": (".slide__quote p",),
+    "slide-number": (".slide__numbered > li::before",),
 }
-TYPE_PROPS = {"fontWeight": "font-weight", "letterSpacing": "letter-spacing", "lineHeight": "line-height"}
+TYPE_PROPS = {"fontWeight": "font-weight", "fontSize": "font-size", "letterSpacing": "letter-spacing",
+              "lineHeight": "line-height", "textTransform": "text-transform"}
+LENGTH = r"-?\d*\.?\d+(?:em|px|rem|vw|vh|%)"
 TYPE_VALUE = {"fontWeight": re.compile(r"^(?:[1-9]\d{0,2}|1000|normal|bold)$"),
+              "fontSize": re.compile(r"^(?:%s|clamp\(\s*%s\s*,\s*%s\s*,\s*%s\s*\))$" % (LENGTH, LENGTH, LENGTH, LENGTH)),
               "letterSpacing": re.compile(r"^-?\d*\.?\d+(em|px|rem|%)$|^0$|^normal$"),
-              "lineHeight": re.compile(r"^\d*\.?\d+(em|px|rem|%)?$|^normal$")}
+              "lineHeight": re.compile(r"^\d*\.?\d+(em|px|rem|%)?$|^normal$"),
+              "textTransform": re.compile(r"^(?:none|uppercase|lowercase|capitalize)$")}
+FAMILIES = {"display": "var(--font-display)", "body": "var(--font-body)", "mono": "var(--font-mono)",
+            "label": "var(--font-label, var(--font-mono))"}
 TYPE_REF = re.compile(r"^\{typography\.([\w-]+)\}$")
+COLOUR_REF = re.compile(r"^\{colors\.([\w-]+)\}$")
+# what a plain number drops: the box, its ground and its border
+PLAIN_NUMBER = ("background: none; border: 0; padding: 0; min-width: 0; text-align: left; "
+                "color: var(--accent);")
+CONTENT_SLIDES = ".slide:not(.slide--bleed):not(.slide--divider):not(.slide--title):not(.slide--split)"
+
+
+def _colour(data: dict, where: str, ref) -> tuple[str, str]:
+    m = COLOUR_REF.match(str(ref).strip())
+    colors, dark = data.get("colors") or {}, data.get("colorsDark") or {}
+    if not m or m.group(1) not in colors:
+        raise ValueError('%s: %r must name a colour role of this design as "{colors.<role>}"' % (where, ref))
+    role = m.group(1)
+    return str(colors[role]), str(dark.get(role, colors.get("dark-" + role, colors[role])))
 
 
 def component_rules(data: dict) -> str:
-    """CSS rules for components.slide-* and components.slide-arc, or '' without them."""
+    """CSS for components.slide-* of a design, or '' without them."""
     comps = data.get("components") or {}
     typography = data.get("typography") or {}
-    rules = []
-    for name, selectors in SLIDE_COMPONENTS.items():
+    rules, light_vars, dark_vars = [], [], []
+    for name, selectors in SLIDE_ROLES.items():
         entry = comps.get(name)
         if entry is None:
             continue
         if not isinstance(entry, dict):
             raise ValueError("components.%s must be a mapping" % name)
+        known = {"typography", "fontFamily", "textColor", *TYPE_PROPS} | ({"marker"} if name == "slide-number" else set())
+        for key in entry:
+            if key not in known:
+                raise ValueError("components.%s.%s: unknown key; known: %s" % (name, key, ", ".join(sorted(known))))
         spec = {}
         if "typography" in entry:
             m = TYPE_REF.match(str(entry["typography"]).strip())
             if not m or not isinstance(typography.get(m.group(1)), dict):
                 raise ValueError("components.%s.typography: %r names no typography role of this design"
                                  % (name, entry["typography"]))
-            spec.update({k: v for k, v in typography[m.group(1)].items() if k in TYPE_PROPS})
-        for key in entry:
-            if key != "typography" and key not in TYPE_PROPS:
-                raise ValueError("components.%s.%s: unknown key; known: typography, %s"
-                                 % (name, key, ", ".join(TYPE_PROPS)))
+            spec.update({k: v for k, v in typography[m.group(1)].items() if k in ("fontWeight", "letterSpacing", "lineHeight")})
         spec.update({k: v for k, v in entry.items() if k in TYPE_PROPS})
         decls = []
+        if name == "slide-number" and "marker" in entry:
+            if entry["marker"] not in ("plain", "box"):
+                raise ValueError("components.slide-number.marker: %r is not plain or box" % entry["marker"])
+            if entry["marker"] == "plain":
+                decls.append(PLAIN_NUMBER)
+        if "fontFamily" in entry:
+            fam = str(entry["fontFamily"]).strip()
+            if fam not in FAMILIES:
+                raise ValueError("components.%s.fontFamily: %r is not one of %s" % (name, fam, ", ".join(FAMILIES)))
+            decls.append("font-family: %s;" % FAMILIES[fam])
         for key, prop in TYPE_PROPS.items():
             if key in spec:
                 val = str(spec[key]).strip()
                 if not TYPE_VALUE[key].match(val):
                     raise ValueError("components.%s.%s: %r is not a %s value" % (name, key, val, prop))
                 decls.append("%s: %s;" % (prop, val))
+        if "textColor" in entry:
+            light, dark = _colour(data, "components.%s.textColor" % name, entry["textColor"])
+            var = "--cmp-%s-color" % name
+            light_vars.append("  %s: %s;" % (var, light))
+            dark_vars.append("  %s: %s;" % (var, dark))
+            # the preset forces label and heading colours with a long !important chain;
+            # this selector outranks it (0,8,0) without touching the preset
+            colour_rule = ":root:not(.cmp) .deck:not(.cmp) .slide:not(.cmp) :is(%s):not(.cmp) { color: var(%s) !important; }" % (
+                ", ".join(s for s in selectors if "::" not in s), var)
+            rules.append(colour_rule)
         if decls:
-            rules.append("html .deck %s { %s }" % (selectors[0], " ".join(decls)))
-            cut = [d for d in decls if not d.startswith("line-height")]
-            if cut and len(selectors) > 1:
-                rules.append("html .deck :is(%s) { %s }" % (", ".join(selectors[1:]), " ".join(cut)))
+            rules.append("html .deck :is(%s) { %s }" % (", ".join(s for s in selectors if "::" not in s), " ".join(decls))
+                         if not any("::" in s for s in selectors)
+                         else "html .deck %s { %s }" % (selectors[0], " ".join(decls)))
+        if name == "slide-body" and "fontSize" in spec:
+            # the bullet dot sits on the first line whatever the size
+            rules.append("html .deck .slide__bullets li::before { top: calc(10px + 0.7em - 3px); }")
+    layout = comps.get("slide-layout")
+    if layout is not None:
+        if not isinstance(layout, dict) or set(layout) - {"align", "paddingTop", "paddingX"}:
+            raise ValueError("components.slide-layout takes align, paddingTop and paddingX")
+        if "paddingX" in layout:
+            px_ = str(layout["paddingX"]).strip()
+            if not re.match("^%s$" % LENGTH, px_):
+                raise ValueError("components.slide-layout.paddingX: %r is not a length" % px_)
+            # a photo slide keeps the room for its photo on the photo side
+            rules.append("html .deck %s:not(.slide--media) { padding-left: %s; padding-right: %s; }" % (CONTENT_SLIDES, px_, px_))
+            rules.append('html .deck .slide.slide--media:not([data-media="left"]) { padding-left: %s; }' % px_)
+            rules.append('html .deck .slide.slide--media[data-media="left"] { padding-right: %s; }' % px_)
+            rules.append("html .deck .slide--bleed .slide__content { padding-left: %s; padding-right: %s; }" % (px_, px_))
+        align = str(layout.get("align", "center")).strip()
+        if align not in ("top", "center"):
+            raise ValueError("components.slide-layout.align: %r is not top or center" % align)
+        if align == "top":
+            pad = str(layout.get("paddingTop", "")).strip()
+            if pad and not re.match("^%s$" % LENGTH, pad):
+                raise ValueError("components.slide-layout.paddingTop: %r is not a length" % pad)
+            rules.append("html .deck %s { justify-content: flex-start;%s }"
+                         % (CONTENT_SLIDES, " padding-top: %s;" % pad if pad else ""))
+            rules.append("html .deck .slide--content .slide__inner { align-items: start; }")
+            rules.append("html .deck .slide__aside { align-items: flex-start; }")
     arc = comps.get("slide-arc")
     if arc is not None:
-        if not isinstance(arc, dict) or set(arc) - {"width"}:
-            raise ValueError("components.slide-arc takes only width")
-        width = str(arc.get("width", "")).strip()
-        if not re.match(r"^\d*\.?\d+px$", width):
-            raise ValueError("components.slide-arc.width: %r is not a width in px" % width)
-        rules.append(":root { --arc-width: %s; }" % width)
+        if not isinstance(arc, dict) or set(arc) - {"width", "span", "baseline"}:
+            raise ValueError("components.slide-arc takes width, span and baseline")
+        if "width" in arc:
+            width = str(arc["width"]).strip()
+            if not re.match(r"^\d*\.?\d+px$", width):
+                raise ValueError("components.slide-arc.width: %r is not a width in px" % width)
+            rules.append(":root { --arc-width: %s; }" % width)
+        if "span" in arc:
+            span = str(arc["span"]).strip()
+            if not re.match("^%s$" % LENGTH, span):
+                raise ValueError("components.slide-arc.span: %r is not a length" % span)
+            rules.append("html .deck .slide__arc { width: %s; max-width: 100%%; }" % span)
+        if "baseline" in arc:
+            light, dark = _colour(data, "components.slide-arc.baseline", arc["baseline"])
+            light_vars.append("  --arc-base: %s;" % light)
+            dark_vars.append("  --arc-base: %s;" % dark)
+            rules.append("html .deck .slide__arc::after { content: ''; position: absolute; left: 0; right: 0; "
+                         "top: 50%; height: 1px; background: var(--arc-base); }")
+    bleed = comps.get("slide-bleed")
+    if bleed is not None:
+        if not isinstance(bleed, dict) or set(bleed) - {"veil", "dim"}:
+            raise ValueError("components.slide-bleed takes veil and dim")
+        if "dim" in bleed:
+            dim = bleed["dim"]
+            if isinstance(dim, bool) or not isinstance(dim, (int, float)) or not 0 < dim <= 1:
+                raise ValueError("components.slide-bleed.dim: %r is not a brightness from 0 to 1" % dim)
+            # dark mode: the photo is darkened neutrally, as a presentation tool does, instead
+            # of veiled in the ground colour, which tints it; light mode keeps its veil
+            rules.append(".theme-dark .deck .slide--bleed .slide__bg { filter: brightness(%g); }" % dim)
+            rules.append(".theme-dark .deck .slide--bleed .slide__scrim { background: none; }")
+            rules.append(".theme-dark .deck .slide--bleed .slide__content::before { background: none; }")
+        if "veil" not in bleed:
+            veil = None
+        else:
+            veil = bleed.get("veil")
+        if veil is not None and (isinstance(veil, bool) or not isinstance(veil, (int, float)) or not 0 <= veil <= 100):
+            raise ValueError("components.slide-bleed.veil: %r is not a percentage from 0 to 100" % veil)
+        if veil is not None:
+          rules.append("html .deck .slide--bleed .slide__content::before { background: linear-gradient(to top, "
+                     "color-mix(in srgb, var(--bg) %g%%, transparent) 0%%, color-mix(in srgb, var(--bg) %g%%, "
+                     "transparent) 55%%, transparent 100%%); }" % (veil, veil * 0.6))
+          rules.append("html .deck .slide--bleed .slide__scrim { opacity: %g; }" % (veil / 100))
     if not rules:
         return ""
-    return "\n/* design-components: from components.slide-* in the design */\n" + "\n".join(rules) + "\n"
+    out = "\n/* design-components: from components.slide-* in the design */\n"
+    if light_vars:
+        out += ":root, .theme-light {\n%s\n}\n.theme-dark {\n%s\n}\n" % ("\n".join(light_vars), "\n".join(dark_vars))
+    return out + "\n".join(rules) + "\n"
 
 
 def design_families(preset: dict, design: Path) -> dict[str, list[int]]:
