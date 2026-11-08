@@ -256,6 +256,26 @@ against each other and the governance rules (in progress without assignee,
 blocked with assignee, stale items): R1 to R7 in `references/governance.md`.
 Run both for a full board review.
 
+## Declining an issue
+
+Declined means three things together: the board's declined state, a comment that
+says plainly the issue will not be implemented with the reason, and the issue
+closed as **not planned**, never as completed. The order matters: GitHub's
+built-in project workflow "Item closed" sets Status to the done state a few
+seconds after a close, so a Declined set before the close is overwritten. Comment,
+close as not planned, then set the declined state, then read it back after a
+wait and set it again if the board went to done.
+
+```bash
+python3 skills/github-projects-manager/scripts/issue_transition.py --root . \
+  decline <owner/repo#n> --text "<reason>" [--prefix "<first line of the comment>"]
+```
+
+The reason is required. The declined state comes from the board's
+`workflow/projects/<slug>.yaml` (`status_mapping.declined`, else the second
+`governance.done_states` entry); a board without one is reported and nothing is
+written, never guessed.
+
 ## Bound Context Integration
 
 When called by a coordinator skill (e.g. `customer-a-coordinator`), the
@@ -343,6 +363,9 @@ one caller, because every path that writes to a board hits the same `gh`.
   reads back at its target, closes the issue (not planned where a board declined
   it).
   The board, its status field and states come from `workflow/projects/*.yaml`.
+  `decline` comments with a required reason, closes as not planned, then sets
+  the declined state and re-sets it if the "Item closed" workflow flipped the
+  board to done (bounded wait and retries).
   The cockpit's issue card runs it on a person's click only (K1)
 - `workflow/projects/{slug}.yaml` — Per-project field configs
 - `references/governance.md`: K/W/B rules, governance levels, board health

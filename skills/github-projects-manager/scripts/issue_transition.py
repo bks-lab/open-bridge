@@ -15,6 +15,10 @@ issue's live project items are matched against those files, never guessed. The s
   holds at every level, whatever `rules` names), one comment covering both, named after the board that passes
   through; done from review comments only when there is a text or a board names `comment_on_status_change`; an
   issue declined on a board (a done state other than the first) closes as not planned;
+- decline (`decline`) is the other way out: a comment that the issue will not be implemented plus a required reason,
+  the close as not planned, and only THEN the board's declined state (`status_mapping.declined`, else the second
+  `done_states` entry), because GitHub's "Item closed" project workflow sets Status to the done state some seconds
+  after a close and would overwrite an earlier Declined; the script waits, reads back and re-sets (bounded);
 - done is a person's call (K1, `done_only_by_user`): this script decides nothing, it runs on a person's click;
 - the issue closes only after every board was read back at its target, and the close is read back too. A run
   that stops after a first write answers `partial`.
@@ -22,6 +26,7 @@ issue's live project items are matched against those files, never guessed. The s
   issue_transition.py --root <bridge> plan   <owner/repo#n>      what the boards say now, writes nothing
   issue_transition.py --root <bridge> review <owner/repo#n> [--text T | --text-file F]
   issue_transition.py --root <bridge> done   <owner/repo#n> [--text T | --text-file F]
+  issue_transition.py --root <bridge> decline <owner/repo#n> (--text T | --text-file F) [--prefix P]
 
 Prints one JSON object. Exit 0 when it holds (or there was nothing to do), 1 refused or failed (`error`, `detail`),
 2 usage.
@@ -34,6 +39,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -41,6 +47,9 @@ import yaml
 REF_RE = re.compile(r"^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([0-9]+)$")
 GH_TIMEOUT = 60
 DEFAULT_REVIEW = "## Review\n\n**Status**: {state}\n{reason}\n*Set to {state} on {date} from the cockpit.*\n"
+DEFAULT_DECLINE_PREFIX = "This issue will not be implemented."
+SETTLE_SECONDS = 30
+SETTLE_RETRIES = 3
 DEFAULT_DONE = "## Done\n\n{reason}\n*Set to {state} on {date} from the cockpit.*\n"
 
 
@@ -74,7 +83,11 @@ def load_boards(root: Path) -> list[dict]:
         gov: dict = data.get("governance") if isinstance(data.get("governance"), dict) else {}
         board: dict = data.get("board") if isinstance(data.get("board"), dict) else {}
         ident: dict = data.get("identity") if isinstance(data.get("identity"), dict) else {}
-        out.append({"slug": path.stem, "title": ident.get("display_name") or path.stem, "owner": str(owner),
+        mapping: dict = data.get("status_mapping") if isinstance(data.get("status_mapping"), dict) else {}
+        done_states = _strings(gov.get("done_states"))
+        declined = mapping.get("declined") if isinstance(mapping.get("declined"), str) and mapping.get("declined") else (
+            done_states[1] if len(done_states) > 1 else None)
+        out.append({"slug": path.stem, "declined_state": declined, "title": ident.get("display_name") or path.stem, "owner": str(owner),
                     "number": project["number"], "status_field": str(board.get("status_field") or "Status"),
                     "review_states": _strings(gov.get("review_states")), "done_states": _strings(gov.get("done_states")),
                     "rules": _strings(gov.get("rules")),
@@ -260,6 +273,95 @@ def transition(root: Path, ref: str, to: str, text: str = "", run=None, today: s
     return out(True, boards=boards, closed=closed)
 
 
+def decline(root: Path, ref: str, text: str, prefix: str = DEFAULT_DECLINE_PREFIX, run=None, sleep=None,
+            settle: float = SETTLE_SECONDS, retries: int = SETTLE_RETRIES) -> dict:
+    """Declines the issue: comment with the reason, close as not planned, then the declined state on every board.
+
+    The order is the point: GitHub's "Item closed" project workflow sets Status to the done state a few seconds after
+    a close, so the declined state goes on after the close and is read back after `settle` seconds, re-set where the
+    board went back (at most `retries` rounds; `sleep` is injectable)"""
+    run = run or default_run
+    sleep = sleep or time.sleep
+    owner, name, number = parse_ref(ref)
+    steps: list[dict] = []
+
+    def out(ok: bool, **extra) -> dict:
+        return {"ok": ok, "ref": ref, "to": "declined", "steps": steps, **extra}
+
+    if not text.strip():
+        return out(False, error="missing_reason", detail="declining needs a reason, it becomes the comment")
+    try:
+        issue = live(ref, run)
+    except RuntimeError as exc:
+        return out(False, error="github", detail=str(exc))
+    if issue["type"] != "issue":
+        return out(False, error="not_an_issue", detail="a pull request is merged, not closed here")
+    hit, _ = _match(load_boards(root), issue)
+    if not hit:
+        return out(False, error="no_board", detail="the issue is on no board of workflow/projects/")
+    lacking = [b["slug"] for b, _ in hit if not b["declined_state"]]
+    if lacking:
+        return out(False, error="no_declined_state", detail="no declined state (status_mapping.declined or a second "
+                   f"governance.done_states entry) on: {', '.join(lacking)}")
+
+    def write(argv: list[str], what: dict, body: str | None = None) -> str | None:
+        done = run(argv, timeout=GH_TIMEOUT, input=body)
+        steps.append({**what, "ok": done.returncode == 0})
+        return None if done.returncode == 0 else (done.stderr or done.stdout or "failed").strip()[:300]
+
+    def failed(detail: str) -> dict:
+        return out(False, error="write_failed" if not any(x["ok"] for x in steps) else "partial", detail=detail)
+
+    def set_state(b: dict, state: str, **what) -> str | None:
+        return write(["gh", "project", "item-edit", str(b["number"]), "--owner", b["owner"], "--url", issue["url"],
+                      "--field", b["status_field"], "--value", state], {"do": "status", "board": b["slug"], "value": state, **what})
+
+    def current() -> dict[str, str | None] | str:
+        try:
+            after = live(ref, run)
+        except RuntimeError as exc:
+            return str(exc)
+        return {b["slug"]: st for b, st in _match(load_boards(root), after)[0]} | {"_state": after["state"]}
+
+    if issue["state"] == "OPEN":
+        body = f"{prefix.strip()}\n\n**Reason**: {text.strip()}\n"
+        if err := write(["gh", "issue", "comment", str(number), "--repo", f"{owner}/{name}", "--body-file", "-"],
+                        {"do": "comment", "kind": "decline"}, body):
+            return failed(err)
+        if err := write(["gh", "issue", "close", str(number), "--repo", f"{owner}/{name}", "--reason", "not planned"],
+                        {"do": "close"}):
+            return failed(err)
+    resets = {b["slug"]: -1 for b, _ in hit}
+    pending = [(b, st) for b, st in hit if st != b["declined_state"] or issue["state"] == "OPEN"]
+    if not pending:
+        return out(True, closed=issue["state"] == "CLOSED",
+                   boards=[{"slug": b["slug"], "from": st, "to": b["declined_state"], "now": st, "resets": 0} for b, st in hit])
+    for rnd in range(retries + 1):
+        for b, _st in pending:
+            resets[b["slug"]] += 1
+            if err := set_state(b, b["declined_state"]):
+                return failed(err)
+        pending = []
+        if rnd == retries:
+            break
+        sleep(settle)
+        now = current()
+        if isinstance(now, str):
+            return out(False, error="readback", detail=now)
+        pending = [(b, now.get(b["slug"])) for b, _s in hit if now.get(b["slug"]) != b["declined_state"]]
+        if not pending:
+            break
+    now = current()
+    if isinstance(now, str):
+        return out(False, error="readback", detail=now)
+    boards = [{"slug": b["slug"], "from": st, "to": b["declined_state"], "now": now.get(b["slug"]),
+               "resets": max(resets[b["slug"]], 0)} for b, st in hit]
+    if not all(x["now"] == x["to"] for x in boards) or now["_state"] != "CLOSED":
+        return out(False, error="readback", detail="GitHub does not keep the declined state", boards=boards,
+                   closed=now["_state"] == "CLOSED")
+    return out(True, boards=boards, closed=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Move a GitHub issue to its board's review or done state.")
     p.add_argument("--root", default=".", help="the Bridge root (holds workflow/projects/)")
@@ -270,11 +372,19 @@ def main(argv: list[str] | None = None) -> int:
         s.add_argument("ref")
         s.add_argument("--text", default="", help="the reason, inline")
         s.add_argument("--text-file", help="the reason, as a file (UTF-8)")
+    s = sub.add_parser("decline", help="comment with a required reason, close as not planned, then set the declined state")
+    s.add_argument("ref")
+    s.add_argument("--text", default="", help="the reason, inline (required)")
+    s.add_argument("--text-file", help="the reason, as a file (UTF-8)")
+    s.add_argument("--prefix", default=DEFAULT_DECLINE_PREFIX, help="the first line of the comment")
     args = p.parse_args(argv)
     root = Path(args.root)
     try:
         if args.cmd == "plan":
             result = plan(root, args.ref, run=default_run)
+        elif args.cmd == "decline":
+            text = Path(args.text_file).read_text(encoding="utf-8") if args.text_file else args.text
+            result = decline(root, args.ref, text, prefix=args.prefix, run=default_run)
         else:
             text = Path(args.text_file).read_text(encoding="utf-8") if args.text_file else args.text
             result = transition(root, args.ref, args.cmd, text, run=default_run)

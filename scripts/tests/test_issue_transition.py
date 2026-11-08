@@ -69,6 +69,7 @@ class GitHub:
         self.bodies: list[str] = []
         self.fail_edit = False
         self.ignore_edit = False
+        self.overwrite_to: str | None = None    # the "Item closed" workflow: closed issue, board goes to this state
 
     def node(self) -> dict:
         if self.kind == "PullRequest":
@@ -97,6 +98,13 @@ class GitHub:
         elif argv[:3] == ["gh", "issue", "close"]:
             self.state = "CLOSED"
         return subprocess.CompletedProcess(argv, 0, out, "")
+
+    def automation(self) -> None:
+        """GitHub's built-in project workflow, fires once some time after the close"""
+        if self.overwrite_to and self.state == "CLOSED":
+            for key in self.items:
+                self.items[key] = self.overwrite_to
+            self.overwrite_to = None
 
     def writes(self) -> list[str]:
         """The writes in order, in words: comment, status <owner>/<n> <value>, close"""
@@ -320,3 +328,114 @@ def test_a_reason_that_starts_with_a_dash_reaches_the_script(tmp_path, capsys, m
     monkeypatch.setattr(it, "default_run", gh)
     assert it.main(["--root", str(root), "review", REF, "--text=-fixed"]) == 0
     assert "-fixed" in gh.bodies[0]
+
+
+# ---------------------------------------------------------------- decline
+
+BOARD_MAPPED = """schema_version: 1
+identity: {slug: mapped, display_name: Mapped}
+project: {tracker: github, org: acme, number: 11}
+governance:
+  done_states: ["Done"]
+status_mapping: {declined: "Won't Do"}
+"""
+BOARD_NO_DECLINE = """schema_version: 1
+identity: {slug: nodecl, display_name: NoDecl}
+project: {tracker: github, org: acme, number: 12}
+governance:
+  done_states: ["Done"]
+"""
+
+
+def decline(root, gh, reason="Out of scope for this product", sleeps=None, **kw):
+    sleeps = sleeps if sleeps is not None else []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        gh.automation()
+
+    return it.decline(root, REF, reason, run=gh, sleep=sleep, **kw)
+
+
+def test_decline_needs_a_reason_and_writes_nothing_without_one(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "🏗 In Progress"})
+    out = decline(root, gh, reason="  ")
+    assert not out["ok"] and out["error"] == "missing_reason" and gh.writes() == []
+
+
+def test_decline_comments_closes_not_planned_then_sets_declined_in_that_order(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "🏗 In Progress"})
+    sleeps: list[float] = []
+    out = decline(root, gh, sleeps=sleeps)
+    assert out["ok"], out
+    assert gh.writes() == ["comment", "close", "status acme/7 ❌ Declined"]
+    assert "Out of scope for this product" in gh.bodies[0] and "will not be implemented" in gh.bodies[0]
+    close = next(c for c in gh.calls if c[:3] == ["gh", "issue", "close"])
+    assert close[3:] == ["5", "--repo", "acme/app", "--reason", "not planned"]
+    assert out["closed"] is True and out["boards"] == [
+        {"slug": "ops", "from": "🏗 In Progress", "to": "❌ Declined", "now": "❌ Declined", "resets": 0}]
+    assert sleeps, "it waited before the final read"
+
+
+def test_decline_re_sets_declined_when_the_item_closed_workflow_flips_the_board_to_done(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "🏗 In Progress"})
+    gh.overwrite_to = "✅ Done"
+    out = decline(root, gh)
+    assert out["ok"], out
+    assert gh.writes() == ["comment", "close", "status acme/7 ❌ Declined", "status acme/7 ❌ Declined"]
+    assert gh.items[("acme", 7)] == "❌ Declined" and out["boards"][0]["now"] == "❌ Declined"
+    assert out["boards"][0]["resets"] == 1
+
+
+def test_decline_gives_up_after_the_bounded_retries_when_the_board_keeps_flipping(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "🏗 In Progress"})
+    gh.ignore_edit = True
+    sleeps: list[float] = []
+    out = decline(root, gh, sleeps=sleeps, settle=5, retries=2)
+    assert not out["ok"] and out["error"] == "readback" and len(sleeps) == 2 and sleeps == [5, 5]
+
+
+def test_decline_uses_status_mapping_declined_and_falls_back_to_a_second_done_state(tmp_path):
+    root = bridge(tmp_path, ("mapped", BOARD_MAPPED), ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 11): "Doing", ("acme", 7): "🏗 In Progress"})
+    assert decline(root, gh)["ok"]
+    assert gh.writes() == ["comment", "close", "status acme/11 Won't Do", "status acme/7 ❌ Declined"]
+
+
+def test_decline_reports_a_board_without_a_declined_state_and_writes_nothing(tmp_path):
+    root = bridge(tmp_path, ("nodecl", BOARD_NO_DECLINE), ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 12): "Doing", ("acme", 7): "🏗 In Progress"})
+    out = decline(root, gh)
+    assert not out["ok"] and out["error"] == "no_declined_state" and "nodecl" in out["detail"]
+    assert gh.writes() == [], "nothing is guessed, not even on the boards that have one"
+
+
+def test_decline_refuses_a_pull_request_and_an_issue_on_no_board(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    pr = GitHub({}, kind="PullRequest")
+    assert decline(root, pr)["error"] == "not_an_issue" and pr.writes() == []
+    none = GitHub({("other", 3): "Todo"})
+    assert decline(root, none)["error"] == "no_board" and none.writes() == []
+
+
+def test_decline_on_an_already_declined_closed_issue_does_nothing(tmp_path):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "❌ Declined"}, state="CLOSED")
+    out = decline(root, gh)
+    assert out["ok"] and gh.writes() == []
+
+
+def test_decline_cli_takes_a_reason_and_an_optional_prefix(tmp_path, capsys, monkeypatch):
+    root = bridge(tmp_path, ("ops", BOARD_STRICT))
+    gh = GitHub({("acme", 7): "🏗 In Progress"})
+    monkeypatch.setattr(it, "default_run", gh)
+    monkeypatch.setattr(it.time, "sleep", lambda s: None)
+    assert it.main(["--root", str(root), "decline", REF, "--text=Not on the roadmap", "--prefix", "Closing without a fix."]) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    assert gh.bodies[0].startswith("Closing without a fix.") and "Not on the roadmap" in gh.bodies[0]
+    assert it.main(["--root", str(root), "decline", REF]) == 1
+    assert json.loads(capsys.readouterr().out)["error"] == "missing_reason"
