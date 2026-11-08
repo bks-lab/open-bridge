@@ -608,16 +608,18 @@ export function OverviewBoard({ page, s, c }) {
 
 /** The machines on top of a folder page, one line each (logic.js machineLines): its background jobs and outages,
  *  whether it is always on, and where a sub page names it (a lab: its state there). The line opens the machine's
- *  jobs, or the page that names it when no job runs there; a place opens its page. None outside a folder page */
+ *  jobs, or the page that names it when no job runs there; a place opens its page. None outside a folder page, and
+ *  none on a folder about something else: only where Background jobs stand under it or a sub page names a machine */
 export function MachineLines({ page, s, c }) {
   const t = T()
   if (folderOf(s, page?.id) !== page?.id) return null
   const pages = s.model?.pages ?? []
-  const folder = [page, ...subPagesOf(s, page.id).map(id => pages.find(p => p.id === id)).filter(Boolean)]
+  const subs = subPagesOf(s, page.id)
+  const folder = [page, ...subs.map(id => pages.find(p => p.id === id)).filter(Boolean)]
   const view = s.workers?.data
   const lines = machineLines({ runs: view?.runs ?? [], hosts: view?.hosts ?? (view?.host ? [view.host] : []), pages: folder })
     .map(x => ({ ...x, places: x.places.filter(p => p.page !== page.id) })).filter(x => x.jobs || x.places.length)
-  if (!lines.length) return null
+  if (!lines.length || !(subs.includes(WORKERS_PAGE) || lines.some(x => x.places.length))) return null
   return html`<section class="panel panel-pad mlines" aria-labelledby=${`ml-${page.id}`}>
     <h2 class="sec-title mlines-title" id=${`ml-${page.id}`}>${t.machinesTitle}</h2>
     <ul class="mlines-list">${lines.map(x => {

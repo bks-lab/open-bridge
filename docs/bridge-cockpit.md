@@ -2124,7 +2124,11 @@ what it says there ("Lab: off"); a machine no job runs on still has its line
 when a sub page names it. A click
 on the line opens Background jobs filtered to that machine (or the page that
 names it when no job runs there), a chip opens its page. Machines nothing runs on
-and no sub page names (a printer, a watch) are not listed.
+and no sub page names (a printer, a watch) are not listed. The block stands only
+on a folder about machines: one that holds the Background jobs page
+(`{id: "@workers", under: <folder>}`), or one where a sub page names a machine in
+a row of its own. A folder about something else (sub pages that list documents,
+say) shows no machines, however many jobs run elsewhere.
 
 **Background jobs.** Every way in shows every job, grouped by machine: the
 always-on machine first, then those with an outage, then by the most jobs, each
