@@ -3263,6 +3263,34 @@ test('machines: the block on the overview opens the jobs of a machine, a lab sta
   assert.ok(!mount(html`<${MachineLines} page=${s.model.pages[1]} s=${s} c=${recorder()} />`).$('.mlines'))
 })
 
+test('machines: only a folder about machines has the block, one with Background jobs under it or a sub page that names a machine', () => {
+  const { MachineLines } = views.pages
+  const runs = [hostRun('mail', 'homebox'), hostRun('backup', 'homebox', 'high'), hostRun('sync', 'laptop', 'medium')]
+  const page = (id, title, sections, extra = {}) => ({ id, title, group: 'main', badge: { kind: 'ok' }, overview: false, cards: null,
+    jev: false, under: null, subs: [], sections, ...extra })
+  const doc = (i, title) => ({ ...opsRow(i, title), detail: 'html · 2 days ago' })
+  // a folder of documents: two sub pages of command sections that list pages, nothing about a machine
+  const docs = [
+    page('docs', 'Documents', [], { overview: true, cards: [], subs: ['docs-team', 'docs-own'] }),
+    page('docs-team', 'Team', [opsSec('pages', 'Pages', [doc(0, 'Roadmap'), doc(1, 'Pricing')])], { under: 'docs' }),
+    page('docs-own', 'Private', [opsSec('pages', 'Pages', [doc(0, 'Trip plan')])], { under: 'docs' }),
+  ]
+  const base = opsState({ runs, ui: { page: 'docs' } })
+  const at = pages => ({ ...base, model: { ...base.model, pages }, workers: { ...base.workers, data: { ...base.workers.data, hosts: ['homebox'] } } })
+  const ops = opsState().model.pages
+  const s = at([...ops, ...docs])
+  assert.equal(views.nav.folderOf(s, 'docs'), 'docs', 'a folder page')
+  assert.ok(!mount(html`<${MachineLines} page=${docs[0]} s=${s} c=${recorder()} />`).$('.mlines'), 'no machines on a folder of documents')
+  // Operations holds Background jobs: its block stands although no sub page names a machine the jobs run on
+  const el = mount(html`<${MachineLines} page=${ops[0]} s=${s} c=${recorder()} />`)
+  assert.deepEqual(el.$$('.mline').map(r => r.$('.mline-name').text()), ['homebox', 'laptop'])
+  // a sub page that names a machine in a row of its own makes a folder about machines without Background jobs
+  const lab = { ...docs[1], sections: [opsSec('remotes', 'Remotes', [{ ...opsRow(0, 'homebox'), detail: 'on' }])] }
+  const named = mount(html`<${MachineLines} page=${docs[0]} s=${at([...ops, docs[0], lab, docs[2]])} c=${recorder()} />`)
+  assert.deepEqual(named.$$('.mline').map(r => r.$('.mline-name').text()), ['homebox', 'laptop'])
+  assert.ok(named.button(en.machinePlace('Team', 'on')), 'with the chip of the page that names it')
+})
+
 test('background jobs: by machine, the always-on first, the systems with an outage first, every job in view', () => {
   const runs = [hostRun('sync', 'laptop', null, { system: 'notes' }), hostRun('mail', 'homebox', null, { system: 'mail' }),
     hostRun('backup', 'homebox', 'high', { system: 'store' }), hostRun('pilot', 'homebox', 'medium', { system: 'mail' })]
