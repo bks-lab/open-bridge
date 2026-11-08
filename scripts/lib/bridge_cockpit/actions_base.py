@@ -62,6 +62,9 @@ ROUTE_BY = ("prefix", "words", "default", "flipped", "forced")
 BY_CHOICES = ("suggestion", "batch", "instruction")
 
 SHORT_TIMEOUT = 30
+# task.py close moves the folder, then writes STATUS.md, the board and a log row: a kill halfway leaves half a close,
+# so it gets the time a loaded machine needs, and a close that ran out of it after the move still counts (actions_work.py)
+CLOSE_TIMEOUT = 120
 LAUNCH_TIMEOUT = 150
 CMUX_TIMEOUT = 10
 STATUS_TIMEOUT = 20

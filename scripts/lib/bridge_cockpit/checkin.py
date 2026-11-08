@@ -307,7 +307,8 @@ class Looker:
                 "with": ck.get("who"), "since": since, "until": ck.get("until"), "sources": sources,
                 "could_not_read": unread, **({"task": task} if task is not None else {})}
         while True:
-            text = f"{DATA_LABEL}\n{json.dumps(app.scrub_tree(data), ensure_ascii=False, separators=(',', ':'))}"
+            # default=str: a STATUS.md field YAML reads as a date (next.check: 2026-11-09, as task.py next writes it)
+            text = f"{DATA_LABEL}\n{json.dumps(app.scrub_tree(data), ensure_ascii=False, separators=(',', ':'), default=str)}"
             if len(text) <= PROMPT_MAX or len(data["sources"]) <= 1:
                 break
             data["sources"] = data["sources"][:-1]

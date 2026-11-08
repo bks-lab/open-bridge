@@ -16,7 +16,7 @@ from . import activity as act
 from . import model as m
 from .details import INBOX_ID_RE, inbox_facts, split_front
 from .history import REOPEN_AS, item as history_item
-from .actions_base import (DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
+from .actions_base import (CLOSE_TIMEOUT, DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
                            row_go)
 from .quick import MODELS
 from .text import TABLES
@@ -409,10 +409,10 @@ class WorkVerbs:
         it = history.open_undo("to_task_undo", {"id": id, "slug": slug}) if history else None
         if it is None:
             raise self.not_applicable("nothing of that to take back", "id")
-        run = ctx.call("task.close", slug, self.task_cmd("close", slug, "--declined", "--reason", self.tx["to_task_undone_reason"]),
-                       SHORT_TIMEOUT)
-        if not run.ok:
-            ctx.note(self.tx["task_close_failed"].format(title=slug, err=m.short(run.err, 100)), bad=True)
+        closed, err = self.run_close(ctx, slug, self.task_cmd("close", slug, "--declined", "--reason",
+                                                              self.tx["to_task_undone_reason"]))
+        if not closed:
+            ctx.note(self.tx["task_close_failed"].format(title=slug, err=m.short(err, 100)), bad=True)
             return
         self.v_inbox_reopen(ctx, id)
         history.mark_undone("to_task_undo", id)
@@ -516,10 +516,10 @@ class WorkVerbs:
         it = history.open_undo("return_task_undo", {"key": key, "slug": slug, "read": read}) if history else None
         if it is None:
             raise self.not_applicable("nothing of that to take back", "slug")
-        run = ctx.call("task.close", slug, self.task_cmd("close", slug, "--declined", "--reason", self.tx["return_task_undone_reason"]),
-                       SHORT_TIMEOUT)
-        if not run.ok:
-            ctx.note(self.tx["task_close_failed"].format(title=slug, err=m.short(run.err, 100)), bad=True)
+        closed, err = self.run_close(ctx, slug, self.task_cmd("close", slug, "--declined", "--reason",
+                                                              self.tx["return_task_undone_reason"]))
+        if not closed:
+            ctx.note(self.tx["task_close_failed"].format(title=slug, err=m.short(err, 100)), bad=True)
             return
         if read:
             self.app.launches.read(key, False)
@@ -726,11 +726,43 @@ class WorkVerbs:
         status = split_front(text)[0].get("status")
         return status if isinstance(status, str) else None
 
+    def closed_on_disk(self, slug: str) -> bool:
+        """What task.py close leaves behind, whichever way its run ended: no open folder of that name, one under
+        work/done/ whose STATUS.md says done"""
+        work = self.app.root / "work"
+        if any((work / kind / slug / "STATUS.md").is_file() for kind in ("tasks", "streams")):
+            return False
+        for path in (work / "done").glob(f"*/{slug}/STATUS.md"):
+            try:
+                if split_front(path.read_text(encoding="utf-8"))[0].get("status") == "done":
+                    return True
+            except (OSError, UnicodeDecodeError):
+                continue
+        return False
+
+    def run_close(self, ctx: Ctx, slug: str, argv: list[str]) -> tuple[bool, str]:
+        """task.py close with the time a write needs. A run that timed out once the folder had moved and STATUS.md
+        said done closed the task (what still ran was its board, log row or link hint): it counts, its step says so."""
+        run = ctx.call("task.close", slug, argv, CLOSE_TIMEOUT)
+        if not run.ok and run.code == -1 and self.closed_on_disk(slug):
+            ctx.steps[-1].update(ok=True, err="timeout after the close had landed")
+            return True, ""
+        return run.ok, run.err or ""
+
     def v_task_close(self, ctx: Ctx, keys: list[str], reason: str, text: str | None = None, stream: bool = False) -> None:
         rows = self.task_rows(keys, closing=True, stream=stream)
         done = failed = 0
         for row, out in rows:
             slug = self.slug(row)
+            if self.closed_on_disk(slug):
+                # closed before this click (a pass still listed it, another tab closed it): the row goes, and no undo
+                # is handed out for a close this click did not make
+                if len(rows) == 1:
+                    self.settle(ctx, row, self.tx["task_already_closed"])
+                else:
+                    self.app.collector.settle(row["key"], self.tx["task_already_closed"])
+                    ctx.settled.append(row["key"])
+                continue
             why = reason
             if why == "auto":
                 why = "not_doing" if ((out.get("review") or {}).get("verdict") == "stale") else "done"
@@ -738,11 +770,11 @@ class WorkVerbs:
             argv = self.task_cmd("close", slug, *(["--stream"] if out.get("stream") else []),
                                  *(["--declined"] if why in DECLINED_REASONS else []), "--reason", words)
             before = self.task_status(slug)     # read before the close moves the folder: the undo restores it
-            run = ctx.call("task.close", slug, argv, SHORT_TIMEOUT)
-            if not run.ok:
+            closed, err = self.run_close(ctx, slug, argv)
+            if not closed:
                 failed += 1
                 ctx.note(self.tx["task_close_failed"].format(title=m.short(row["title"], 40),
-                                                             err=m.short(run.err, 100)), bad=True)
+                                                             err=m.short(err, 100)), bad=True)
                 continue
             done += 1
             ctx.history.append({**history_item(row["key"], row["title"], "task",
