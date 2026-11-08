@@ -1709,7 +1709,7 @@ test('the start page offers every tile to choose, and without a choice only a le
   // no choice yet: the weekly quota, what waits on you, the next date, the work page, every shelf and option
   assert.deepEqual(logic.homeChosen(model, null),
     ['q:quota:week-all-models', 'c:waiting', 'c:returns', 'c:agents', 'c:workers', 'c:next', 'p:work', 's:day', 's:areas', 's:focus', 's:returns', 's:continue',
-      's:waiting', 's:tasks', 's:starts', 'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'k:scan'])
+      's:waiting', 's:tasks', 's:starts', 'o:today', 'o:preview', 'o:trend', 'o:title', 'o:project', 'o:pulse', 'o:stage', 'k:scan'])
   // a choice keeps its order, an empty one too; what the chooser had offered is never added back
   const all = ids
   assert.deepEqual(logic.homeChosen(model, { tiles: ['p:work', 'p:dates'], seen: all }), ['p:work', 'p:dates'])
