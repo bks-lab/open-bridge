@@ -1687,6 +1687,62 @@ def test_settle_closes_a_task_as_done_or_declined(world):
                                tx["close_reason"]["not_doing"] + ": no longer needed")]
 
 
+def closed_on_disk(w: World, slug: str) -> None:
+    """What task.py close leaves behind: the folder under work/done/<month>/, its STATUS.md done."""
+    import shutil
+    done = w.root / "work" / "done" / "2026-10" / slug
+    done.mkdir(parents=True)
+    (done / "STATUS.md").write_text(f"---\nstatus: done\nclosed: \"{TODAY}\"\n---\n\n# {slug}\n", encoding="utf-8")
+    shutil.rmtree(w.root / "work" / "tasks" / slug, ignore_errors=True)
+
+
+def test_a_close_that_timed_out_after_the_move_counts_as_closed(world):
+    # a loaded machine: task.py had moved the folder and written STATUS.md, board and log row, then the runner gave
+    # up on its last step; reported as failed, the row stayed, the history lost its undo and a second click said
+    # "already closed"
+    def slow(argv):
+        closed_on_disk(world, "demo-task")
+        return fail("timeout", -1)
+    world.runner.handlers["task.close"] = slow
+    res = world.act("settle", keys=["task:demo-task"], outcome="done")
+    assert res["ok"] is True
+    assert res["settled"] == ["task:demo-task"]
+    assert [u["kind"] for u in res["undo"]] == ["task"]
+    assert res["note"].startswith(world.app.tx["task_closed"])
+
+
+def test_a_close_that_timed_out_before_the_move_still_fails(world):
+    world.runner.handlers["task.close"] = lambda argv: fail("timeout", -1)
+    res = world.act("settle", keys=["task:demo-task"], outcome="done")
+    assert res["ok"] is False
+    assert res["settled"] == [] and not res.get("undo")
+
+
+def test_a_task_closed_before_the_click_leaves_the_list_without_an_undo(world):
+    # the row was still listed while the task had been closed already (a slow pass, another tab): the click takes
+    # the row out and says so, and hands out no undo for a close it did not make
+    closed_on_disk(world, "demo-task")
+    world.runner.handlers["task.close"] = lambda argv: fail("demo-task is already closed (work/done/)", 1)
+    res = world.act("settle", keys=["task:demo-task"], outcome="done")
+    assert res["ok"] is True
+    assert res["settled"] == ["task:demo-task"] and not res.get("undo")
+    assert world.app.tx["task_already_closed"] in res["note"]
+
+
+def test_closing_a_task_gets_the_time_a_write_needs(world):
+    # a kill halfway through a close leaves half a close: moved but no log row
+    seen = []
+    spawn = world.runner._spawn
+
+    def timed(argv, timeout_s):
+        if world.runner.key(argv) == "task.close":
+            seen.append(timeout_s)
+        return spawn(argv, timeout_s)
+    world.runner._spawn = timed
+    world.act("settle", keys=["task:demo-task"], outcome="done")
+    assert seen == [actions_mod.CLOSE_TIMEOUT] and actions_mod.CLOSE_TIMEOUT > actions_mod.SHORT_TIMEOUT
+
+
 def test_settle_closes_or_drops_an_inbox_item_whatever_its_gate(world):
     world.runner.calls.clear()
     world.act("settle", keys=[f"inbox:{YES_ID}"], outcome="done")

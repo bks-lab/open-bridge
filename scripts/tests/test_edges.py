@@ -777,6 +777,31 @@ def test_links_to_a_path_name_lists_the_files_that_still_point_there(tmp_path):
     assert stale == ["work/memory/fact.md", "work/tasks/alpha/STATUS.md"]
 
 
+def test_links_into_parses_only_the_files_that_name_the_moved_folder(tmp_path, monkeypatch):
+    # task.py close asks this right after the move: on a Bridge with thousands of Markdown files the parse of every
+    # line of every file took 6 to 13 s on a loaded machine and ran the cockpit's close into its time limit. A link
+    # reaches the old place only by naming its last segment, or from a file still inside it.
+    _moved_stream(tmp_path)
+    _tree(tmp_path, {
+        "work/archive/weeks/w1.md": "[other](../../tasks/alpha/STATUS.md)\n",
+        "work/streams/river/left.md": "[sibling](notes.md)\n",
+        "work/memory/encoded.md": "[e](../streams/riv%65r/notes.md)\n",
+    })
+    parsed: list[str] = []
+    real = edges._md_links_in
+
+    def spy(rel, line):
+        parsed.append(rel)
+        return real(rel, line)
+    monkeypatch.setattr(edges, "_md_links_in", spy)
+
+    stale = edges.links_into(tmp_path, "work/streams/river")
+
+    assert stale == ["work/memory/encoded.md", "work/memory/fact.md", "work/streams/river/left.md",
+                     "work/tasks/alpha/STATUS.md"]
+    assert "work/archive/weeks/w1.md" not in parsed
+
+
 def test_a_dead_link_in_closed_or_archived_work_is_history_not_a_finding(tmp_path):
     # A closed task often holds a snapshot of docs it worked on, with the
     # snapshot's own relative links. Measured on one instance: 238 of 369 dead

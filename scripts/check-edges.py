@@ -287,11 +287,13 @@ def _md_links_in(rel: str, line: str):
         yield raw, target
 
 
-def iter_md_links(repo_root) -> list[tuple[str, str, str]]:
+def iter_md_links(repo_root, keep=None) -> list[tuple[str, str, str]]:
     """Every relative Markdown link under `work/`, as (file, `#L<line>`, target).
 
     The key is a line number, which no YAML key path can look like, so a
-    caller can tell a prose edge from a declared one.
+    caller can tell a prose edge from a declared one. `keep(rel, text)`, when
+    given, says which files are worth parsing at all: the parse of every line
+    is the slow part, reading a file is not.
     """
     root = Path(repo_root)
     found: list[tuple[str, str, str]] = []
@@ -305,6 +307,8 @@ def iter_md_links(repo_root) -> list[tuple[str, str, str]]:
             try:
                 text = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
+                continue
+            if keep is not None and not keep(rel, text):
                 continue
             for number, line in _prose_lines(text):
                 for _raw, target in _md_links_in(rel, line):
@@ -461,9 +465,18 @@ def links_into(repo_root, old: str) -> list[str]:
     """Files whose Markdown links still point at `old` or below it.
 
     For the moment right after a move: `old` is where the folder used to be.
+    A link reaches it only by naming its last segment (a `..` takes names
+    away, it never adds one), or from a file still inside it, so only those
+    files are parsed: task.py close asks this on every close.
     """
     old = old.rstrip("/")
-    return sorted({rel for rel, _key, target in iter_md_links(repo_root)
+    name = old.rsplit("/", 1)[-1]
+
+    def names_it(rel: str, text: str) -> bool:
+        return (rel.startswith(old + "/") or name in text
+                or ("%" in text and name in unquote(text)))     # _md_path decodes a target
+
+    return sorted({rel for rel, _key, target in iter_md_links(repo_root, names_it)
                    if target == old or target.startswith(old + "/")})
 
 

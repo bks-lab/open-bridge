@@ -229,6 +229,28 @@ def test_a_task_with_someone_is_looked_at_from_its_notes_log_and_status(world):
     assert world.row("task:demo-task")["checkin"]["found"]["nothing"] is False
 
 
+def test_a_task_whose_next_step_holds_a_bare_date_is_looked_at_too(world):
+    # `task.py next --who … --check` writes the day without quotes, YAML reads it as a date: json.dumps raised on it,
+    # and every pass of the server failed from the day before the check-in on
+    status = world.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    status.write_text(status.read_text(encoding="utf-8").replace(
+        "status: doing\n", f"status: doing\nnext: {{what: \"Wait for the draft\", who: lena, check: {TODAY}}}\n"),
+        encoding="utf-8")
+    tasks = [{"slug": "demo-task", "label": "Demo task", "area": "Demo", "priority": "P1", "type": "feature", "status": "doing",
+              "age": 1, "next_who": "lena", "next_check": TODAY, "updated": "2026-10-03"}]
+    world.runner.handlers["workplace.tasks"] = lambda argv: ok(tasks)
+    world.app.collector.request("full", tasks=True)
+    world.app.collector.drain()
+    seen = {}
+
+    def model(argv):
+        seen["data"] = data_of(argv)
+        return answer(where=[seen["data"]["sources"][0]["label"]])
+    world.runner.handlers["claude.p"] = model
+    assert world.app.checkin.pass_once() >= 1
+    assert seen["data"]["task"]["next"]["check"] == TODAY
+
+
 def test_the_model_comes_from_the_block_else_the_service_and_codex_cannot_look(world):
     hand_over(world)
     note(world, "Lena sent the first draft")
