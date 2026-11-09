@@ -944,7 +944,7 @@ def test_the_answer_asks_for_a_name_and_where_it_stands_and_both_reach_the_brief
 
 
 def test_the_prompt_of_stage_4_makes_the_older_briefs_stale_and_a_brief_hash_without_a_name_stays_as_it_was():
-    assert dsc.PROMPT_VERSION == 3
+    assert dsc.PROMPT_VERSION >= 3
     brief = {"goal": GOAL, "acceptance": CRITERIA}
     text = json.dumps({k: brief.get(k) for k in ("goal", "story", "acceptance")}, sort_keys=True, ensure_ascii=False)
     import hashlib
@@ -1025,3 +1025,86 @@ def test_the_prompt_shows_no_placeholder_values_to_copy():
     assert "placeholder" in system.lower(), "the rules say a placeholder is no answer"
     for field in ("name", "stand", "goal", "story", "acceptance"):
         assert f"{field}:" in system, field
+
+
+# ---------------------------------------------------------------- a useful card: still holds, the asks, of whom
+
+def test_the_answer_says_whether_the_item_still_holds_what_is_asked_and_of_whom():
+    schema = json.loads(dsc.SCHEMA)
+    assert {"verdict", "ask", "to"} <= set(schema["required"])
+    assert schema["properties"]["verdict"]["enum"] == ["current", "obsolete"]
+    assert schema["properties"]["ask"]["maxItems"] == 5
+    system, text = dsc.prompt({"kind": "inbox", "data": "{}"}, "German", today="2026-11-09")
+    assert "verdict:" in system and "ask:" in system and "to:" in system and "Today is 2026-11-09" in text
+    out = answer().out
+    env = json.loads(out)
+    env["structured_output"].update(verdict="obsolete", verdict_why="The meeting was this morning.", ask=[], to="me")
+    got = dsc.parse(json.dumps(env), ITEM, HAIKU, "2026-10-25")
+    assert got["brief"]["verdict"] == "obsolete" and got["brief"]["verdict_why"] == "The meeting was this morning."
+    assert got["brief"]["to"] == "me" and "ask" in got["brief"]
+
+
+def test_the_new_prompt_makes_the_older_briefs_stale_and_the_hash_covers_the_new_fields():
+    assert dsc.PROMPT_VERSION == 4
+    base = {"goal": GOAL, "acceptance": CRITERIA}
+    assert dsc.brief_sha(base) == dsc.brief_sha({**base})
+    assert dsc.brief_sha({**base, "ask": ["One?"]}) != dsc.brief_sha({**base, "ask": ["Two?"]})
+
+
+def _inbox(item_id, summary, detail="", task=None, created="2026-11-07T17:19", brief=None):
+    from types import SimpleNamespace
+    data = {"summary": summary, "detail": detail, "kind": "question", "created": created, **({"task": task} if task else {})}
+    return SimpleNamespace(id=item_id, data=data, brief=brief)
+
+
+def test_an_inbox_item_shows_the_model_where_its_task_stands_and_a_task_change_makes_its_brief_stale(tmp_path):
+    d = tmp_path / "work" / "tasks" / "slides"
+    d.mkdir(parents=True)
+    status = d / "STATUS.md"
+    status.write_text("---\nstatus: doing\nnext: {what: \"Show Sam version 5\", who: me}\n---\n\n# Slides\n\n"
+                      "## Steps\n\n- [x] Talk with Sam at 19:34: the bulb replaces the dashed line\n", encoding="utf-8")
+    item = _inbox("20261107-1719-ask-sam", "Ask Sam five open points", "1. Dashed line? 2. Name him?", task="slides")
+    got = dsc.inbox_item(item, root=tmp_path)
+    data = json.loads(got["data"])
+    assert data["front"]["created"] == "2026-11-07T17:19"
+    assert data["task_now"]["status"] == "doing" and "bulb replaces the dashed line" in json.dumps(data["task_now"])
+    status.write_text(status.read_text(encoding="utf-8") + "- [x] Sam answered the name question\n", encoding="utf-8")
+    assert dsc.inbox_item(item, root=tmp_path)["basis"] != got["basis"]
+
+
+def test_an_inbox_item_on_a_closed_task_says_so_to_the_model(tmp_path):
+    d = tmp_path / "work" / "done" / "2026-11" / "old"
+    d.mkdir(parents=True)
+    (d / "STATUS.md").write_text("---\nstatus: done\n---\n\n# Old\n", encoding="utf-8")
+    data = json.loads(dsc.inbox_item(_inbox("20261101-0900-x", "Something about old", task="old"), root=tmp_path)["data"])
+    assert data["task_now"]["status"] == "done" and data["task_now"]["closed"] is True
+
+
+@pytest.mark.parametrize("text,at,today,passed", [
+    ("Meeting with Kim Mon 09.11. 09:30", "2026-11-03", "2026-11-09", True),
+    ("Meeting with Kim Mon 09.11. 09:30", "2026-11-03", "2026-11-08", False),
+    ("Meeting on 2026-11-09", "2026-11-03", "2026-11-10", True),
+    ("Meeting with Kim Mon 09.11.", "2026-11-09", "2026-11-12", True),
+    ("Meeting with Kim Mon 09.11.", "2026-11-09", "2026-11-09", False),
+    ("Meeting with Kim Mon 09.11.", "2026-11-10", "2026-11-12", False),
+    ("Version 1.12 released", "2026-11-03", "2026-12-20", False),
+    ("Due 31.12.2026", "2026-11-03", "2027-01-02", True),
+])
+def test_a_date_the_item_names_that_passed_since_its_brief_was_written(text, at, today, passed):
+    assert dsc.date_passed([text], at, today) is passed
+
+
+def test_the_task_now_keeps_the_latest_steps_of_a_long_section(tmp_path):
+    d = tmp_path / "work" / "tasks" / "long"
+    d.mkdir(parents=True)
+    steps = "\n".join(f"{n}. [x] An early step with a long text that says little about the end of the work" for n in range(1, 40))
+    (d / "STATUS.md").write_text(f"---\nstatus: doing\n---\n\n# Long\n\n## Steps\n\n{steps}\n40. [x] The last step: the bulb won\n",
+                                 encoding="utf-8")
+    now = dsc.task_now(tmp_path, "long")
+    text = "\n".join(now["recent_sections"])
+    assert "the bulb won" in text and len(text) <= dsc.TASK_NOW_MAX + 50
+
+
+def test_the_prompt_names_the_time_of_day_so_a_meeting_this_morning_counts_as_passed():
+    _, text = dsc.prompt({"kind": "inbox", "data": "{}"}, "German", today="2026-11-09 17:50")
+    assert text.startswith("Today is 2026-11-09 17:50.")

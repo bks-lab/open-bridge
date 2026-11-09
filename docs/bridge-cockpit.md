@@ -2715,6 +2715,25 @@ limits are `card_fields.py`; a task keeps it in
 the `brief:` block of its STATUS.md (`task.py brief`), an inbox item in its
 `describe` event (`inbox.py describe`).
 
+A card is meant to be useful or out of the way, so a brief also says whether the
+item still holds and what exactly it asks (prompt version 4): `verdict` is
+`current` or `obsolete` (with `verdict_why`, one sentence of at most 140
+characters), `ask` lists the asks still open one by one (at most five of 160
+characters: the questions themselves, never "five open points"), and `to` says of
+whom they are asked: `me` for the person who keeps the tracker, else a first name.
+To judge it, an inbox item's data carries `task_now`, where its task stands (its
+status, next step, whether it is closed, its two last sections) and the day it was
+filed; the prompt names today's date apart from the data. The task's state is part
+of the item's basis, so a change to the task makes the item's brief stale, and so
+does a day the item names (`09.11.`, `2026-11-09`) that passed since the brief was
+written (`stale_why: date`). On the card, `verdict` is {word, why} (a closed task
+makes it obsolete too), `ask` and `to` come straight from the brief, and a question
+to someone else gets the next step "ask Sam" instead of "answer". Work through
+moves an obsolete item out of the queue into the group Out of date of Not now,
+each row with its reason, calls a question to someone else a Reminder, and shows
+on every point the signals Important (its priority, else its task's), Due and Goal
+with the asks under them.
+
 The small model writes it (service `cockpit-describe` in
 `workflow/ai-services/`, default `haiku` resolved to its full id; one call
 without tools, settings or session, a fixed JSON schema with the limits of a
