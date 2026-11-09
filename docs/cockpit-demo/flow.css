@@ -448,7 +448,7 @@
 .flow-signal-goal { flex-basis: 100%; border-radius: var(--radius-md); background: transparent; border-color: transparent; padding-left: 0; }
 .flow-asks { margin: 6px 0 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--accent-subtle); font-size: var(--text-body); }
 .flow-asks-head { display: block; font-weight: 600; margin-bottom: 4px; }
-.flow-asks ol { margin: 0; padding-left: 20px; }
+.flow-asks ol { margin: 0; padding-left: 22px; list-style: decimal; }
 .flow-asks li + li { margin-top: 2px; }
 .flow-step .label-caps { color: var(--on-surface-muted); }
 .flow-step-what { font-weight: 600; color: var(--on-surface); }

@@ -1108,3 +1108,15 @@ def test_the_task_now_keeps_the_latest_steps_of_a_long_section(tmp_path):
 def test_the_prompt_names_the_time_of_day_so_a_meeting_this_morning_counts_as_passed():
     _, text = dsc.prompt({"kind": "inbox", "data": "{}"}, "German", today="2026-11-09 17:50")
     assert text.startswith("Today is 2026-11-09 17:50.")
+
+
+def test_a_change_to_its_task_makes_an_inbox_brief_stale_even_through_the_cache(world):
+    add_task(world, "slides")
+    item = world.app.root / "work" / "inbox" / YES_ID / "item.yaml"
+    item.write_text(item.read_text(encoding="utf-8").rstrip("\n") + "\ntask: slides\n", encoding="utf-8")
+    key = f"inbox:{YES_ID}"
+    assert world.act("describe_run", key=key)["ok"]
+    assert world.app.describe.state_for(key)["stale"] is False
+    status = world.app.root / "work" / "tasks" / "slides" / "STATUS.md"
+    status.write_text(status.read_text(encoding="utf-8") + "\n## Notes\n\nThe answer came in.\n", encoding="utf-8")
+    assert world.app.describe.state_for(key)["stale_why"] == "basis"

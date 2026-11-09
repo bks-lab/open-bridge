@@ -621,6 +621,7 @@ def inbox_item(item: Any, scrub: Callable[[str], str] = lambda s: s, root: Path 
     brief = item.brief
     # the basis is the data without the references, so what the disk holds besides never makes a brief stale
     return {"key": f"inbox:{item.id}", "kind": "inbox", "id": item.id, "title": title, "detail": str(fields.get("detail") or ""),
+            "task": fields.get("task") if isinstance(fields.get("task"), str) else None,
             "data": fit(_with_refs(data, reach)),
             "basis": brief_basis(fit(data)), "path": None, "brief": brief, "writable": True,
             "edited": bool(brief and brief.get("edited")), "raw_brief": brief is not None, "reach": reach}
@@ -776,18 +777,33 @@ class Describer:
             return None
         return inbox_item(found, self.app.scrub, self.app.root) if found.state in INBOX_STATES else None
 
+    def _task_stamp(self, slug: Any) -> tuple:
+        """What says the task an inbox item belongs to changed (task_now is part of the item's basis): its STATUS.md
+        under work/tasks or work/streams, else that it is not there (closed or gone)"""
+        if not isinstance(slug, str) or not SLUG_RE.match(slug):
+            return ()
+        for kind in ("tasks", "streams"):
+            try:
+                st = (Path(self.app.root) / "work" / kind / slug / "STATUS.md").stat()
+            except OSError:
+                continue
+            return (kind, st.st_mtime_ns, st.st_size)
+        return ("gone",)
+
     def _inbox_cached(self, iid: str) -> dict | None:
-        """An inbox item read again only once its item.yaml or its events changed (a new event file changes the
-        folder); a closed item is remembered as None, so describe.json's old entries cost a stat per build"""
+        """An inbox item read again only once its item.yaml, its events (a new event file changes the folder) or the
+        STATUS.md of its task changed; a closed item is remembered as None, so describe.json's old entries cost a stat
+        per build"""
         folder = Path(self.app.root) / "work" / "inbox" / iid
-        try:
-            st, ev = (folder / "item.yaml").stat(), (folder / "events").stat()
-            stamp = ("inbox", st.st_mtime_ns, st.st_size, ev.st_mtime_ns, sum(1 for _ in (folder / "events").iterdir()))
-        except (OSError, ValueError):
-            stamp = None
         cache_key = f"inbox:{iid}"
         with self.lock:
             hit = self._cache.get(cache_key)
+        try:
+            st, ev = (folder / "item.yaml").stat(), (folder / "events").stat()
+            stamp = ("inbox", st.st_mtime_ns, st.st_size, ev.st_mtime_ns, sum(1 for _ in (folder / "events").iterdir()),
+                     self._task_stamp(((hit[1] or {}) if hit else {}).get("task")))
+        except (OSError, ValueError):
+            stamp = None
         if stamp is not None and hit and hit[0] == stamp:
             return dict(hit[1]) if hit[1] else None
         found = self._inbox_read(iid)
