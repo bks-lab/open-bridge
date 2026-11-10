@@ -190,6 +190,8 @@ const en = {
   actionsTitle: 'Actions',
   dateLabel: 'Date',
   datePlaceholder: '2026-10-14',
+  // the server runs newer code than this page (app.js hello, views/header.js NewCode)
+  newCode: { line: 'Newer cockpit code is running', button: 'Load again' },
   noDate: text => `not a date: ${text} (e.g. 2026-10-14 or 14.10.)`,
   pastDate: 'pick a date after today',
   urgencyPrefix: 'Urgency',
@@ -1996,6 +1998,7 @@ const de = {
   actionsTitle: 'Aktionen',
   dateLabel: 'Datum',
   datePlaceholder: '14.10.',
+  newCode: { line: 'Neuere Fassung des Cockpits läuft', button: 'Neu laden' },
   noDate: text => `kein Datum: ${text} (z. B. 14.10. oder 2026-10-14)`,
   pastDate: 'wähle ein Datum nach heute',
   urgencyPrefix: 'Dringlichkeit',

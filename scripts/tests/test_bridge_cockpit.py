@@ -10507,3 +10507,24 @@ def test_a_check_in_reaches_the_row_from_the_item_and_from_the_task(tmp_path):
     assert dt_._checkin(events) == {"who": "lena", "until": "2026-10-11", "since": "2026-10-04"}
     assert dt_._checkin(events + [{"verb": "reopen", "at": "2026-10-12T09:00:00+00:00"}]) is None, "an answer ends it"
     assert dt_._checkin([{"verb": "defer", "until": "2026-10-11", "waits_on": "lena"}]) is None, "a plain later is none"
+
+
+def test_the_hello_names_the_code_of_the_page_and_a_changed_file_changes_it(world, tmp_path):
+    """A page keeps the code it loaded; after a restart with new code the hello names another stamp, so the page
+    knows to load again (web/app.js hello). Only what the page loads counts: a file it never fetches changes nothing"""
+    from lib.bridge_cockpit import server as srv
+    web = tmp_path / "web"
+    (web / "views").mkdir(parents=True)
+    (web / "app.js").write_text("a", encoding="utf-8")
+    (web / "views" / "card.js").write_text("b", encoding="utf-8")
+    (web / "notes.txt").write_text("x", encoding="utf-8")
+    one = srv.web_stamp(web)
+    assert re.fullmatch(r"[0-9a-f]{12}", one)
+    (web / "notes.txt").write_text("xy", encoding="utf-8")
+    assert srv.web_stamp(web) == one, "a file the page never loads"
+    (web / "views" / "card.js").write_text("bc", encoding="utf-8")
+    assert srv.web_stamp(web) != one
+    assert srv.web_stamp(tmp_path / "missing") == ""
+    hello = world.app.hello_payload("c1")
+    assert hello["code"] == srv.web_stamp(world.app.code_root / "scripts" / "web") != ""
+    assert hello["version"] == VERSION and hello["client"] == "c1"

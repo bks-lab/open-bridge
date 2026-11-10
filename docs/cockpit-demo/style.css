@@ -231,6 +231,8 @@ kbd {
 .hdr-agents:hover { color: var(--ink); }
 /* only the loading line and the as-of time give way; buttons and the relay word never overlap */
 .hdr-right > .btn, .hdr-right > .cmd, .hdr-right > .hdr-help { flex: 0 0 auto; }
+/* the server runs newer code than this page: one line and Load again (views/header.js NewCode) */
+.hdr-newcode { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font-size: var(--text-sm); color: var(--on-surface-muted); }
 /* Help, last in the header: Explain, the look-up topics and the tour under it, aligned to its right edge */
 .help-menu { min-width: 220px; }
 .help-menu .settle-hint { padding-top: 8px; }

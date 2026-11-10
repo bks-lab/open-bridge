@@ -273,6 +273,13 @@ reaches a server and nothing is saved. Add `?theme=light` or `?theme=dark` to
 the address (here or on your own cockpit) to force the mode for that one load
 without changing your stored choice.
 
+**After an update the page loads the new code itself.** A browser tab keeps
+the code it loaded. The live channel's first event names a stamp of the
+page's code (`scripts/web`, by path, time and size); when the server restarts
+with other code, the page says **Newer cockpit code is running** with **Load
+again** in the header, and loads by itself once no field holds text and
+nobody typed or clicked for 30 seconds, or at once while the tab is hidden.
+
 ## 3. What you see
 
 The header carries the profile's title, when the briefing was

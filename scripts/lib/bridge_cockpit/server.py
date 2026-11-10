@@ -563,6 +563,12 @@ class App:
     def relay_state(self, with_records: bool = True) -> dict:
         return self.relay.state(self.tabs.control_tab(), self.names_tabs(), with_records)
 
+    def hello_payload(self, client_id: str) -> dict:
+        """The first event of the live channel: the version, when this server started, its language, the client's id
+        and the stamp of the page's code (web_stamp), so a page that runs older code loads again"""
+        return {"version": VERSION, "started_ms": self.started_ms, "language": self.cfg.language, "client": client_id,
+                "code": web_stamp(self.code_root / "scripts" / "web")}
+
     def state_payload(self) -> dict:
         return {"ok": True, "server": {"version": VERSION, "started_ms": self.started_ms,
                                        "person": getattr(self.cfg, "person_name", None)},   # the start page greets by it
@@ -1041,6 +1047,22 @@ def usage_days(value: str) -> int:
     if n <= 0:
         return USAGE_RANGES[0]
     return min(USAGE_RANGES, key=lambda r: (abs(r - n), r))
+
+
+def web_stamp(base: Path) -> str:
+    """A short stamp of the code the page loads (every file under scripts/web with a served extension, by path, mtime
+    and size): the hello names it, so a page that runs older code than the server knows to load again (web/app.js).
+    "" where there is no such folder"""
+    if not base.is_dir():
+        return ""
+    digest = hashlib.sha256()
+    for f in sorted(base.rglob("*")):
+        rel = f.relative_to(base)
+        if not f.is_file() or f.suffix.lower() not in CONTENT_TYPES or any(part.startswith(".") for part in rel.parts):
+            continue
+        st = f.stat()
+        digest.update(f"{rel.as_posix()}\0{st.st_mtime_ns}\0{st.st_size}\n".encode())
+    return digest.hexdigest()[:12]
 
 
 def static_etag(mtime_ns: int, size: int) -> str:
@@ -1740,9 +1762,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.close_connection = True
             self.wfile.write(b"retry: 3000\n\n")
-            self.write_event("hello", json.dumps({"version": VERSION, "started_ms": app.started_ms,
-                                                  "language": app.cfg.language, "client": client.id},
-                                                 separators=(",", ":")))
+            self.write_event("hello", json.dumps(app.hello_payload(client.id), separators=(",", ":")))
             state = app.access.state(person) if person else app.state_payload()
             self.write_event("state", json.dumps(state, ensure_ascii=False, separators=(",", ":")))
             app.on_client_connect()
