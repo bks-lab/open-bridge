@@ -520,3 +520,53 @@ def test_the_right_column_stays_whole_and_an_asking_point_keeps_its_tabs_in_view
     assert got["aside"][0] >= got["top"] - 0.5 and got["aside"][1] <= got["bottom"] + 0.5, f"the right column leaves the scroller: {got}"
     assert got["first"] <= got["bottom"], got
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize("width", [1400, 900])
+def test_the_taskboard_panel_closes_and_leaves_the_right_columns_in_view(base_url, browser, width):
+    """?taskboard=1 adds the taskboard page. A card opens its panel; the Close button is the element under its own
+    centre (not the page bar over it) and closes the panel; a click beside the cards closes it too. On a wide screen
+    the board makes room, so the right column stays beside the open panel. A wait whose look-again day has passed
+    stands in Me again"""
+    problems: list[str] = []
+    where = ["taskboard"]
+    ctx = browser.new_context(viewport={"width": width, "height": 900})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang=de&taskboard=1")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    _steady(page)
+    tab = page.locator(".pagebar-tabs [role=tab]", has_text="Taskboard")
+    if tab.count():
+        tab.first.click()
+    else:
+        page.locator(".ptab-more > [role=tab]").click()
+        page.locator(".more-menu [role=menuitem]", has_text="Taskboard").first.click()
+    page.wait_for_selector("#main .tb-board")
+
+    assert page.locator(".tb-col-me .tb-card", has_text="Vendor quote").count() == 1, "a passed look-again day is back in Me"
+    assert page.locator(".tb-col-waiting .tb-card", has_text="Tunnels").count() == 1
+
+    page.locator(".tb-col-me .tb-card").first.click()
+    page.wait_for_selector(".tb-side")
+    close = page.locator(".tb-side .tb-side-head button")
+    box = close.bounding_box()
+    hit = page.evaluate(
+        "([x, y]) => !!document.elementFromPoint(x, y)?.closest('.tb-side-head')",
+        [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2],
+    )
+    assert hit, "the Close button is covered"
+    if width > 1100:
+        side = page.locator(".tb-side").bounding_box()
+        right = page.locator(".tb-col-review").bounding_box()
+        assert right["x"] + right["width"] <= side["x"], "the open panel covers the right column"
+    close.click()
+    assert page.locator(".tb-side").count() == 0
+
+    page.locator(".tb-col-me .tb-card").first.click()
+    page.wait_for_selector(".tb-side")
+    page.locator(".tb-col-sub").first.click()
+    assert page.locator(".tb-side").count() == 0, "a click beside the cards closes the panel"
+    ctx.close()
+    assert not problems, "\n".join(problems)

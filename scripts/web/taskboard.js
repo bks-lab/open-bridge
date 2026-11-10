@@ -78,7 +78,9 @@ export function tbCard(it, ctx = {}) {
   const slug = it?.task || it?.id || ''
   const row = ctx.byKey?.get?.(`task:${slug}`) ?? null
   const area = b.area || row?.area || ''
-  const column = tbColumn(it)
+  // a wait whose look-again day has come (or passed) is back with you: the column's promise is "until that day"
+  const lookDue = b.lane === 'waiting' && !!b.until && (tbDaysSince(b.until, ctx.now ?? Date.now()) ?? -1) >= 0
+  const column = lookDue && tbColumn(it) === 'waiting' ? 'me' : tbColumn(it)
   const stepDays = tbDaysSince(b.updated, ctx.now ?? Date.now())
   const dueDays = b.due ? -tbDaysSince(b.due, ctx.now ?? Date.now()) : null
   const card = {
@@ -87,14 +89,15 @@ export function tbCard(it, ctx = {}) {
     stand: b.stand ?? null, updated: b.updated ?? null, lane: b.lane ?? 'none', who: b.who ?? null, until: b.until ?? null,
     due: b.due ?? null, stream: !!b.stream, area, area_names: [area, ...(row?.area_names ?? [])].filter(Boolean),
     decide: column === 'me' && !!ctx.decide?.has?.(slug), tab: tabOf(it, slug, ctx.tabs), stepDays, dueDays,
-    priority: it?.priority ?? null,
+    priority: it?.priority ?? null, lookDue: lookDue && column === 'me',
   }
   card.tags = tbTags(card)
   return card
 }
 
 /** The tags of a card, as data (the view words them): decide, area, backlog, tab open, waiting on, look again, due
- *  (soon: within TB_DUE_SOON days), the step's age past TB_STEP_OLD days (not on a waiting card) */
+ *  (soon: within TB_DUE_SOON days), the step's age past TB_STEP_OLD days (not on a waiting card). A card back from
+ *  waiting (lookDue) keeps who it waited on and says since when it is due to look again */
 export function tbTags(card) {
   const tags = []
   if (card.decide) tags.push({ kind: 'decide' })
@@ -102,10 +105,11 @@ export function tbTags(card) {
   if (card.state === 'backlog') tags.push({ kind: 'backlog' })
   if (card.tab) tags.push({ kind: 'tab' })
   // a blocked_by says why in a sentence: the tag keeps its start, the panel's step says the rest
-  if (card.column === 'waiting' && card.who) tags.push({ kind: 'waitingOn', value: card.who.length > TB_WHO_MAX ? `${card.who.slice(0, TB_WHO_MAX - 1).trimEnd()}…` : card.who })
-  if (card.until) tags.push({ kind: 'lookAgain', value: card.until })
+  const waited = card.column === 'waiting' || card.lookDue
+  if (waited && card.who) tags.push({ kind: 'waitingOn', value: card.who.length > TB_WHO_MAX ? `${card.who.slice(0, TB_WHO_MAX - 1).trimEnd()}…` : card.who })
+  if (card.until) tags.push({ kind: card.lookDue ? 'lookDue' : 'lookAgain', value: card.until })
   if (card.due) tags.push({ kind: 'due', value: card.due, soon: card.dueDays != null && card.dueDays <= TB_DUE_SOON })
-  if (card.column !== 'waiting' && card.stepDays != null && card.stepDays > TB_STEP_OLD) tags.push({ kind: 'stepOld', value: card.stepDays })
+  if (!waited && card.stepDays != null && card.stepDays > TB_STEP_OLD) tags.push({ kind: 'stepOld', value: card.stepDays })
   return tags
 }
 
@@ -138,7 +142,7 @@ export function tbTidy(cards, kept = new Set(), extra = []) {
   const out = []
   const named = new Set()
   for (const c of cards ?? []) {
-    if (c.stream || c.column === 'waiting') continue
+    if (c.stream || c.column === 'waiting' || c.lookDue) continue
     let rule = null
     if (c.lane === 'none') rule = 'noNext'
     else if (c.state === 'backlog' && c.stepDays != null && c.stepDays >= TB_TIDY.backlogQuiet) rule = 'backlogQuiet'

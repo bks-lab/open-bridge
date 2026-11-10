@@ -29,6 +29,7 @@
 .tb-tag-decide { background: color-mix(in srgb, var(--accent) 18%, var(--surface-raised)); color: var(--ink); border-color: var(--accent-line); font-weight: 600; }
 .tb-tag-tab { background: color-mix(in srgb, var(--info) 16%, var(--surface-raised)); color: var(--ink); border-color: var(--info); }
 .tb-tag-stepOld { background: color-mix(in srgb, var(--warning) 16%, var(--surface-raised)); color: var(--ink); border-color: var(--warning); }
+.tb-tag-lookDue { background: color-mix(in srgb, var(--warning) 16%, var(--surface-raised)); color: var(--ink); border-color: var(--warning); font-weight: 600; }
 .tb-tag-due.is-soon { background: color-mix(in srgb, var(--danger) 16%, var(--surface-raised)); color: var(--danger); border-color: var(--danger); font-weight: 600; }
 
 .tb-streams { display: grid; gap: 10px; }
@@ -43,7 +44,8 @@
 .tb-list-title { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 
 .tb-side {
-  position: fixed; top: var(--header-h); right: 0; bottom: 0; width: min(440px, 100vw); z-index: 30; overflow: auto;
+  /* under the header and the page bar (both sticky, z 50 and 40), so its title and Close stay in view */
+  position: fixed; top: calc(var(--header-h) + var(--pagebar-h)); right: 0; bottom: 0; width: min(440px, 100vw); z-index: 35; overflow: auto;
   padding: 20px; border-radius: 0; border-width: 0 0 0 1px; box-shadow: var(--shadow-float); display: grid; gap: 12px; align-content: start;
 }
 .tb-side-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -55,6 +57,10 @@
 .tb-side-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .tb-side-acts .btn, .tb-list-row .btn { min-height: 36px; padding: 0 14px; font-size: var(--text-body); }
 
+/* an open panel: the board makes room on a wide screen, so the right columns stay in view beside it */
+@media (min-width: 1101px) {
+  .tb.has-side { padding-right: 440px; }
+}
 @media (max-width: 1100px) {
   .tb-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tb-boxes { grid-template-columns: 1fr; }

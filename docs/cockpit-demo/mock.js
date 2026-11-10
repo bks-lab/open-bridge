@@ -1043,6 +1043,29 @@ export function buildState(now = Date.now(), opts = {}) {
     ] })
   }
 
+  // the taskboard page (a `kind: tasks` section with `view: taskboard`). Only with ?taskboard=1: the browser smoke
+  // test opens a card, closes its panel and finds a wait whose look-again day has passed back in Me
+  if (!empty && opts.taskboard === true) {
+    const day = d => isoIn(d, now).slice(0, 10)
+    const tb = (i, slug, title, state, board) => item(i, { title, task: slug, state, key: `item:tasks/board/${slug}`,
+      board: { lane: 'me', who: null, until: null, due: null, step: null, goal: null, stand: null, headline: null, area: 'Demo',
+        stream: false, updated: day(-1), ...board } })
+    pages.push({ id: 'taskboard', title: 'Taskboard', badge: { kind: 'none' }, sections: [
+      { id: 'tasks-board', kind: 'tasks', view: 'taskboard', title: 'Tasks', status: 'ok', reason: '', alarm: false, empty: 'no tasks',
+        count: 6, total: 6, weight: 0, bad: 0, as_of: null, more: 0, items: [
+          tb(0, 'demo-task', 'Onboarding guide: write the first two chapters', 'doing', { step: 'Draft the first two chapters',
+            goal: 'A new teammate finds their way in one afternoon', stand: 'Outline agreed with the team' }),
+          tb(1, 'docs-refresh', 'Docs index: group every page by topic', 'doing', { lane: 'bridge', step: 'Sort the pages into topics' }),
+          tb(2, 'vendor-quote', 'Vendor quote: compare the two offers', 'doing', { lane: 'waiting', who: 'Kim', until: day(-5),
+            step: 'Kim sends the second offer' }),
+          tb(3, 'tunnel-restart', 'Tunnels: restart after the update', 'doing', { lane: 'waiting', who: 'Sam', until: day(4),
+            step: 'Sam confirms the maintenance window' }),
+          tb(4, 'release-notes', 'Release notes: check the draft', 'review', { lane: 'me', step: 'Read the draft and say yes' }),
+          tb(5, 'weekly-digest', 'Weekly digest', 'doing', { stream: true, step: 'Collect the links of the week', area: 'Ops' }),
+        ] },
+    ] })
+  }
+
   // where each page item comes from and what it is, as the collector adds them (collector.page_origin)
   const SECTION_ORIGIN = { command: sec => O('bot', sec.title), tracker: (sec, it) => O('github', it.gh?.repo ?? null),
     tasks: () => O('bridge'), calendar: sec => O('calendar', sec.title) }
