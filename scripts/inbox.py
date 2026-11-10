@@ -443,6 +443,15 @@ _ENGLISH = {"the", "and", "with", "for", "of", "to", "is", "are", "check", "upda
             "that", "should", "needs", "waiting", "failed", "after", "before", "again"}
 
 
+def closing_lint(kind: str, closes_when, closer, action) -> list[str]:
+    """What `add` warns a filer of (never refuses: filers run unattended): a finding or a result with no probe, no
+    closer and no action stays open until a person clicks, though the job that found it would know when it is gone"""
+    if kind not in ("finding", "result") or closes_when or closer or action:
+        return []
+    return [f"a {kind} with nothing to close it waits for a person: give closes_when (a probe) or --closer reporter "
+            "and close it by key when the condition is gone"]
+
+
 def title_lint(summary: str, language: str | None) -> list[str]:
     """What makes a title hard to read in a list, each as one line that says what to change: over TITLE_LINT_MAX
     characters, a path, a file name, an id-like token (an inbox id, a hash, a slug of four parts), or English words
@@ -1314,6 +1323,8 @@ def main(argv=None) -> int:
         elif args.cmd == "add":
             # a title a person reads in a list (stage 4): warned about, never refused
             for line in title_lint(args.summary, _language(args.root)):
+                _warn(line)
+            for line in closing_lint(args.kind, _json_arg(args.closes_when_json), args.closer, _json_arg(args.action_json)):
                 _warn(line)
             try:
                 args.area = area_name(args.root, args.area)

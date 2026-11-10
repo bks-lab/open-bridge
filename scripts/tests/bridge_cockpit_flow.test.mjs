@@ -155,7 +155,7 @@ test('flowParts: what is put off, waits, rests, is a stream or an idea stands in
   assert.deepEqual(laterGroup.rows.map(e => e.kind), ['later', 'resting'])
   assert.equal(laterGroup.rows[0].until, '2026-10-20')
   assert.equal(parts.leftOut.total, 6)
-  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => k !== 'github' && k !== 'obsolete'))
+  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => k !== 'github' && k !== 'obsolete' && k !== 'done'))
   // the ideas and the backlog come back only on the calm card, at most three: by rank, else the priority first
   assert.deepEqual(logic.restSuggestions(s, 3).map(r => r.key), ['task:backlog-one', 'inbox:20261009-0900-a-idea'])
   assert.deepEqual(logic.restSuggestions(s, 1).map(r => r.key), ['task:backlog-one'])
@@ -2797,7 +2797,7 @@ test('flowParts rules: hidden, put off, approved, idea, waiting and resting, rep
   assert.deepEqual(parts.doing.map(x => x.id), ['task:doing-one'])
   // an issue or PR in Now, by bucket do or urgency now, is a point of Issues and PRs, the soonest due first
   assert.deepEqual(parts.issue.map(x => x.row.key), ['ref:acme/app#1', 'ref:acme/app#9'])
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'obsolete', 'idea', 'stream', 'github'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['done', 'running', 'later', 'obsolete', 'idea', 'stream', 'github'])
   assert.deepEqual(logic.FLOW_GROUPS, ['checkin', 'back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
   assert.deepEqual(logic.FLOW_BANDS, ['checkin', 'you', 'bridge'])
   assert.deepEqual(logic.FLOW_CHIPS.tasks, ['task', 'issue'])
@@ -2894,7 +2894,7 @@ test('leftPlan: Back on per entry, the other verbs as a batch plans them', () =>
   const rows = [e(ref('acme/app', 1)), e(task('st', { stream: true }))]
   assert.deepEqual(logic.leftPlan(rows, 'done', s).calls, logic.batchPlan(rows.map(x => x.row), 'done', s).calls)
   assert.deepEqual(logic.LEFT_VERBS, { running: ['back', 'later', 'done', 'drop'], later: ['back', 'later', 'done', 'drop'],
-    idea: ['do', 'later', 'done', 'drop'], stream: ['later'], obsolete: ['done', 'drop'] })
+    idea: ['do', 'later', 'done', 'drop'], stream: ['later'], obsolete: ['done', 'drop'], done: ['done', 'drop'] })
 })
 
 test('B, merge: only open finite tasks, the one with more activity stays, then the newest move, then the state', () => {
@@ -3755,7 +3755,7 @@ test('R6B 2f, stage 4: Running elsewhere holds what waits on others, Later what 
   later: [ask('20261009-0904-a-w', { bucket: 'waiting' }), ask('20261009-0903-a-ok', { inbox_state: 'approved' })],
   hidden: [task('put-off', { hidden_until: '2026-10-20' })] })
   const parts = logic.flowParts(s)
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'obsolete', 'idea', 'stream', 'github'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['done', 'running', 'later', 'obsolete', 'idea', 'stream', 'github'])
   assert.deepEqual(parts.leftOut.groups.map(g => g.reason), ['running', 'later'])
   const [running, later] = parts.leftOut.groups.map(g => g.rows)
   assert.deepEqual(running.map(e => [e.row.key, e.kind]), [['task:waits', 'waiting'], ['inbox:20261009-0903-a-ok', 'waiting'], ['inbox:20261009-0904-a-w', 'waiting']])

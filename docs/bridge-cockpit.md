@@ -2756,7 +2756,7 @@ the `brief:` block of its STATUS.md (`task.py brief`), an inbox item in its
 
 A card is meant to be useful or out of the way, so a brief also says whether the
 item still holds and what exactly it asks (prompt version 4): `verdict` is
-`current` or `obsolete` (with `verdict_why`, one sentence of at most 140
+`current` or `obsolete` (since version 5 also `done`, below; with `verdict_why`, one sentence of at most 140
 characters), `ask` lists the asks still open one by one (at most five of 160
 characters: the questions themselves, never "five open points"), and `to` says of
 whom they are asked: `me` for the person who keeps the tracker, else a first name.
@@ -2772,6 +2772,24 @@ moves an obsolete item out of the queue into the group Out of date of Not now,
 each row with its reason, calls a question to someone else a Reminder, and shows
 on every point the signals Important (its priority, else its task's), Due and Goal
 with the asks under them.
+
+Since prompt version 5 the verdict may also be `done`: the work the item asks
+for is finished, and `verdict_why` names what shows it. To judge that, an inbox
+item and a task carry `evidence`, the rows of `work/log.md` that name them (a
+task by its slug or an issue or pull request its file names; an inbox item from
+the day it was filed, by its id or an issue or pull request it names; a ref
+counts as `owner/repo#n` and as `repo#n`, as log rows mostly write it), the newest eight of at most 240 characters each. The
+evidence stands in the data, never in the basis, so a task's basis stays its
+file's; a row newer than the brief saw makes the brief stale on its own
+(`stale_why: evidence`), so finished work is looked at again without anybody
+touching the item. A task's card names only `done` (never `current`), a stream
+and a closed task never. Work through lists what is done, inbox items and tasks
+alike, first under Not now as **Probably done**, each row with its why, and
+**Mark all N done** closes them in one click; to close only some, tick them and
+use the batch bar. `inbox.py add` warns a filer
+whose finding or result has no `closes_when`, no `--closer` and no action: such
+an item waits for a person, though the job that found it would know when it is
+gone.
 
 The small model writes it (service `cockpit-describe` in
 `workflow/ai-services/`, default `haiku` resolved to its full id; one call

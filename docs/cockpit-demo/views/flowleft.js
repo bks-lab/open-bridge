@@ -186,6 +186,7 @@ function laterWhy(e, lang, s = null) {
   if (e.kind === 'checkin') return f.with(e.who ? String(e.who)[0].toUpperCase() + String(e.who).slice(1) : null, until)
   if (e.kind === 'watch') return e.repo ?? ''
   if (e.kind === 'obsolete') return e.why ?? w.obsolete
+  if (e.kind === 'done') return e.why ?? w.done
   if (e.why === 'ahead') return w.ahead(activityWhen(e.due, lang), until)
   return [e.why === 'hidden' ? w.hidden(until) : w.deferred(until), e.due ? f.due(activityWhen(e.due, lang)) : null].filter(Boolean).join(' · ')
 }
@@ -218,9 +219,14 @@ export function LeftList({ group, s, c }) {
     const plan = reason === 'later' ? leftPlan([e], 'back', s, '', lang) : null
     return plan?.counts.back ? html`<${Btn} size="xs" variant="ghost" cls="flow-ov-back" onClick=${() => runOn([e], plan)}>${f.notnow.back}<//>` : null
   }
+  // Probably done: one click closes every row of it, each as the AI found it done (its why stands on the row)
+  const allDone = reason === 'done' && group.rows.length
+    ? html`<${Btn} size="sm" variant="primary" cls="flow-left-all" onClick=${() => runOn(group.rows, leftPlan(group.rows, 'done', s, '', lang))}>${f.notnow.allDone(group.rows.length)}<//>`
+    : null
   const head0 = html`<header class="flow-main-head">
       <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${() => c.flowOverview()}>${f.point.back}<//>
       <h2 id="flow-left-h" class="flow-main-title">${f.notnow.group[reason]} <span class="mono muted">${group.rows.length}</span></h2>
+      ${allDone}
     </header>
     <p class="muted small flow-left-sub">${f.notnow.sub[reason]}</p>
     <${BatchBar} pickable=${pickable} chosen=${chosen.map(e => e.row)} onPick=${(ks, on) => c.flowLeftPick(ks, on)} verbs=${LEFT_VERBS[reason] ?? []}
@@ -232,7 +238,7 @@ export function LeftList({ group, s, c }) {
     return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">${head0}
       ${group.rows.length ? html`<table class="flow-ov-table">
         <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${f.list.pickAll}</span></th><th>${f.list.cols.point}</th>
-          <th>${reason === 'later' || reason === 'obsolete' ? f.notnow.cols.why : f.list.cols.step}</th></tr></thead>
+          <th>${reason === 'later' || reason === 'obsolete' || reason === 'done' ? f.notnow.cols.why : f.list.cols.step}</th></tr></thead>
         <tbody>${group.rows.map(e => {
           const row = e.row
           const stand = pointStand(row, s)
@@ -244,7 +250,7 @@ export function LeftList({ group, s, c }) {
             <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
               <span class="flow-ov-stand muted small">${stand ? short(stand, 160) : reason === 'running'
                 ? html`<span class="flow-ov-why">${laterWhy(e, lang, s)}</span>` : null}</span></td>
-            ${reason === 'later' || reason === 'obsolete' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang, s)}</span> ${backOne(e)}</td>`
+            ${reason === 'later' || reason === 'obsolete' || reason === 'done' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang, s)}</span> ${backOne(e)}</td>`
               : html`<td class="flow-ov-step small">${step ? html`<span>${short(step.what, 90)}</span> <${WhoChip} who=${step.who ?? e.who} s=${s} />`
                 : e.who ? html`<${WhoChip} who=${e.who} s=${s} />` : null}${ask ? html`<span class="flow-ov-when muted">${ask}</span>`
                 : reason === 'running' ? null : html`<span class="flow-ov-when muted">${whenOf(e, reason, s, lang)}</span>`}</td>`}

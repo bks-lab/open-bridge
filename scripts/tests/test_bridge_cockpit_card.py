@@ -638,3 +638,21 @@ def test_an_inbox_card_takes_the_priority_of_its_task_when_its_row_has_none():
 def test_a_card_without_a_verdict_says_none():
     c = cd.card_of(inbox_row(), inbox_ctx())
     assert c["verdict"] is None and c["ask"] is None and c["to"] is None
+
+
+def test_a_task_the_ai_found_done_says_so_with_why_a_stream_or_a_closed_task_never():
+    brief = {**BRIEF, "verdict": "done", "verdict_why": "The log says it was merged."}
+    tasks = {"invoices": {**TASK, "brief": brief}}
+    c = cd.card_of(row(), ctx(tasks=tasks))
+    assert c["verdict"] == {"word": "done", "why": "The log says it was merged."}
+    stream = cd.card_of(row(work_kind="stream"), ctx(tasks=tasks, work={"invoices": "stream"}))
+    assert stream["verdict"] is None, "a stream runs on, it is never done"
+    closed = cd.card_of(row(work_kind="done_task", status="done"), ctx(tasks=tasks, work={"invoices": "done_task"}))
+    assert closed["verdict"] is None
+    current = cd.card_of(row(), ctx(tasks={"invoices": {**TASK, "brief": {**BRIEF, "verdict": "current"}}}))
+    assert current["verdict"] is None, "a task card names only done: current is what every task is"
+
+
+def test_an_inbox_card_the_ai_found_done_says_so_with_why():
+    c = cd.card_of(inbox_row(), inbox_ctx({"brief": {**BRIEF, "verdict": "done", "verdict_why": "Merged on 10.11."}}))
+    assert c["verdict"] == {"word": "done", "why": "Merged on 10.11."}

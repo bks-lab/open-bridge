@@ -359,3 +359,14 @@ def test_out_of_date_reasons_leave_no_rule_and_count_per_source(box):
     [row] = box.stats(days=30)
     assert (row["filed"], row["dropped"]) == (3, 3)
     assert row["reasons"] == {"done": 1, "outdated": 1, "unwanted": 1}
+
+
+def test_a_report_nothing_closes_but_a_person_is_warned_about_at_add():
+    """erledigtes-raeumt-sich-weg: a finding or result without a probe, a closer or an action stays open until a
+    person clicks; add warns its filer (never refuses: filers run unattended)"""
+    assert inbox.closing_lint("finding", None, None, None)
+    assert inbox.closing_lint("result", None, None, None)
+    assert inbox.closing_lint("finding", {"gh": "example/app#7", "state": "closed"}, None, None) == []
+    assert inbox.closing_lint("finding", None, "reporter", None) == []
+    assert inbox.closing_lint("decision", None, None, None) == [], "a decision is a person's by nature"
+    assert "closes_when" in inbox.closing_lint("finding", None, None, None)[0]

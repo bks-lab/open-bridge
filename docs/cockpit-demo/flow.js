@@ -51,20 +51,21 @@ export const FLOW_CHIPS = { all: FLOW_GROUPS, you: FLOW_YOU, running: ['doing'],
 // one group with the reason on each row), ideas and the backlog, the streams, and the watched rows a GitHub list holds
 // (`github`, the row's on_board: they stand on that page, so Not now names them in one line that leads there)
 // `obsolete`: inbox items the AI that writes the card found to have nothing left to do (card.verdict), out of the queue,
-// each with its reason, to look at and close in one go
-export const FLOW_LEFT_OUT = ['running', 'later', 'obsolete', 'idea', 'stream', 'github']
+// each with its reason, to look at and close in one go; `done`: inbox items and tasks whose work it found finished, as
+// its evidence shows (erledigtes-raeumt-sich-weg), first, each with why and one click that closes them all
+export const FLOW_LEFT_OUT = ['done', 'running', 'later', 'obsolete', 'idea', 'stream', 'github']
 
 // why a row of Not now is no point (its entry's `kind`): the kinds Running elsewhere and Later hold, in the order they
 // list them, then the groups of their own
 const RUNNING_KINDS = ['checkin', 'waiting', 'watch']
 const LATER_KINDS = ['later', 'resting']
-const LEFT_KINDS = [...RUNNING_KINDS, ...LATER_KINDS, 'obsolete', 'idea', 'stream', 'github']
+const LEFT_KINDS = ['done', ...RUNNING_KINDS, ...LATER_KINDS, 'obsolete', 'idea', 'stream', 'github']
 const GROUP_KINDS = { running: RUNNING_KINDS, later: LATER_KINDS }
 
 // the verbs each group of Not now offers in its batch bar (a row a verb does not fit stays out, not_offered); Back on
 // in Later acts on each row by why it waits, as it did in the three groups (leftPlan)
 export const LEFT_VERBS = { running: ['back', 'later', 'done', 'drop'], later: ['back', 'later', 'done', 'drop'],
-  idea: ['do', 'later', 'done', 'drop'], stream: ['later'], obsolete: ['done', 'drop'] }
+  idea: ['do', 'later', 'done', 'drop'], stream: ['later'], obsolete: ['done', 'drop'], done: ['done', 'drop'] }
 
 // the five verbs, in the order the verb bar shows them
 export const FLOW_VERBS = ['do', 'advise', 'done', 'later', 'drop']
@@ -475,6 +476,7 @@ export function flowParts(s) {
     if (r.inbox_state === 'deferred' && r.art === 'idea') leave('idea', r, { until: r.until ?? null })
     else if (r.inbox_state === 'deferred') leave('later', r, { why: 'deferred', until: r.until ?? null })
     else if (!r.inbox_id) continue
+    else if (r.card?.verdict?.word === 'done') leave('done', r, { why: r.card.verdict.why ?? null })
     else if (r.card?.verdict?.word === 'obsolete') leave('obsolete', r, { why: r.card.verdict.why ?? null })
     else if (r.inbox_state === 'approved') leave('waiting', r)
     else if (r.art === 'idea') leave('idea', r)
@@ -501,6 +503,7 @@ export function flowParts(s) {
   for (const r of open()) {
     if (isTaskRow(r)) {
       if (isStreamRow(r)) leave('stream', r)
+      else if (r.card?.verdict?.word === 'done') leave('done', r, { why: r.card.verdict.why ?? null })
       else if (r.status === 'backlog') leave('idea', r)
       else if (!TASK_STATES.includes(r.status)) leave('resting', r)
       else if (r.bucket === 'waiting' && waitsOnOthers(r, s)) leave('waiting', r)

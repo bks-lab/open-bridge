@@ -373,3 +373,11 @@ def test_an_obsolete_verdict_without_a_reason_still_holds_and_a_reason_alone_is_
     assert clean["verdict"] == "obsolete" and "verdict_why" not in clean
     clean, errors = cf.validate_brief({**GOOD, "verdict": "current", "verdict_why": "Nothing changed."})
     assert "verdict_why" not in clean and any(e.startswith("verdict_why:") for e in errors)
+
+
+def test_a_done_item_says_why_like_an_obsolete_one():
+    """done (erledigtes-raeumt-sich-weg): the work it asks for is finished, as the evidence shows, apart from obsolete
+    (nothing is left because it no longer matters); both say why in one sentence"""
+    assert cf.VERDICTS == ("current", "obsolete", "done")
+    clean, errors = cf.validate_brief({**GOOD, "verdict": "done", "verdict_why": "The log says the pull request was merged on 10.11."})
+    assert errors == [] and clean["verdict"] == "done" and clean["verdict_why"].startswith("The log says")

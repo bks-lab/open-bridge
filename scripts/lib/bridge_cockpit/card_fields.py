@@ -65,8 +65,9 @@ STORY_FIELDS = ("as", "want", "so_that")
 BRIEF_FIELDS = ("goal", "story", "acceptance", "by", "at", "basis", "edited", "name", "stand",
                 # a useful card: whether the item still holds, the open asks one by one, and of whom they are asked
                 "verdict", "verdict_why", "ask", "to")
-#: what a brief's `verdict` can say: the item still asks something (`current`) or nothing is left to do (`obsolete`)
-VERDICTS = ("current", "obsolete")
+#: what a brief's `verdict` can say: the item still asks something (`current`), nothing is left to do because it no
+#: longer matters (`obsolete`), or the work it asks for is finished, as the evidence shows (`done`)
+VERDICTS = ("current", "obsolete", "done")
 #: characters; `acceptance_items` is the most criteria a brief keeps (a stream has none)
 BRIEF_LIMITS = {"goal": 140, "story": 80, "acceptance_items": 5, "acceptance_len": 120, "name": 60, "name_words": 8, "stand": 140,
                 "verdict_why": 140, "ask_items": 5, "ask_len": 160, "to": 40}
@@ -162,10 +163,10 @@ def validate_brief(obj: Any) -> tuple[dict | None, list[str]]:
             errors.append(f"verdict: {obj['verdict']!r} is none of {', '.join(VERDICTS)}")
     if "verdict_why" in obj:
         why = _text(obj["verdict_why"], "verdict_why", BRIEF_LIMITS["verdict_why"], errors)
-        if why is not None and clean.get("verdict") == "obsolete":
+        if why is not None and clean.get("verdict") in ("obsolete", "done"):
             clean["verdict_why"] = why
         elif why is not None:
-            errors.append("verdict_why: only an obsolete verdict has a reason")
+            errors.append("verdict_why: only an obsolete or a done verdict has a reason")
     if "ask" in obj:
         items = obj["ask"]
         if not isinstance(items, list):

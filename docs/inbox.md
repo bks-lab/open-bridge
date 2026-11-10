@@ -208,6 +208,9 @@ that acts on it). `add` files an item with neither `closes_when`, `closer` nor a
 it. It does not refuse, because filers run unattended and a refusal would lose
 the item. An item with an action keeps no closer, since the run that executes it
 closes it.
+A `finding` or a `result` filed that way is warned about on stderr: it waits
+for a person, though the job that found it would know when it is gone, so give
+it `closes_when` or `--closer reporter` and close it by key.
 
 `bot` is also a routing promise: the item goes to a watcher that **looks first**.
 It investigates before a person hears about it and ends in one of three ways:

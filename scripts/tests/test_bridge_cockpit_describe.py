@@ -1032,7 +1032,7 @@ def test_the_prompt_shows_no_placeholder_values_to_copy():
 def test_the_answer_says_whether_the_item_still_holds_what_is_asked_and_of_whom():
     schema = json.loads(dsc.SCHEMA)
     assert {"verdict", "ask", "to"} <= set(schema["required"])
-    assert schema["properties"]["verdict"]["enum"] == ["current", "obsolete"]
+    assert schema["properties"]["verdict"]["enum"] == ["current", "obsolete", "done"]
     assert schema["properties"]["ask"]["maxItems"] == 5
     system, text = dsc.prompt({"kind": "inbox", "data": "{}"}, "German", today="2026-11-09")
     assert "verdict:" in system and "ask:" in system and "to:" in system and "Today is 2026-11-09" in text
@@ -1045,7 +1045,7 @@ def test_the_answer_says_whether_the_item_still_holds_what_is_asked_and_of_whom(
 
 
 def test_the_new_prompt_makes_the_older_briefs_stale_and_the_hash_covers_the_new_fields():
-    assert dsc.PROMPT_VERSION == 4
+    assert dsc.PROMPT_VERSION == 5, "5: verdict done with evidence (erledigtes-raeumt-sich-weg)"
     base = {"goal": GOAL, "acceptance": CRITERIA}
     assert dsc.brief_sha(base) == dsc.brief_sha({**base})
     assert dsc.brief_sha({**base, "ask": ["One?"]}) != dsc.brief_sha({**base, "ask": ["Two?"]})
@@ -1149,3 +1149,52 @@ def test_the_track_of_an_inbox_item_comes_from_the_noise_of_its_source(world):
     assert (track["filed"], track["dropped"], track["reasons"]) == (4, 3, {"done": 3})
     assert world.app.describe.source_track({"kind": "task", "id": "x"}) is None
     assert world.app.describe.source_track({"kind": "inbox", "id": "y", "source": None}) is None
+
+
+# ---------------------------------------------------------------- erledigtes-raeumt-sich-weg: evidence that it is done
+
+LOG = """# Log
+
+## Montag 09.11
+
+| 2026-11-08 09:00 | 🔧 | repo | Worked on the night run of example/app#7 |
+| 2026-11-09 10:00 | ✨ | repo | Fixed the importer, example/app#7 green again |
+| 2026-11-09 11:00 | 📋 | other | Unrelated row |
+| 2026-11-10 12:00 | 🔀 | repo | example/app#7 merged, slides task done |
+"""
+
+
+def test_evidence_is_the_log_rows_that_name_the_item_since_a_day(tmp_path):
+    (tmp_path / "work").mkdir()
+    (tmp_path / "work" / "log.md").write_text(LOG, encoding="utf-8")
+    rows = dsc.evidence(tmp_path, ["example/app#7"], "2026-11-09")
+    assert rows == ["2026-11-09 10:00 repo: Fixed the importer, example/app#7 green again",
+                    "2026-11-10 12:00 repo: example/app#7 merged, slides task done"]
+    assert dsc.evidence(tmp_path, ["slides"], "2026-11-01") == ["2026-11-10 12:00 repo: example/app#7 merged, slides task done"]
+    assert dsc.evidence(tmp_path, [], "2026-11-01") == [] and dsc.evidence(tmp_path / "none", ["x"], "2026-11-01") == []
+    many = "".join(f"| 2026-11-10 1{n % 10}:0{n % 6} | ✨ | r | step {n} of example/app#7 |\n" for n in range(12))
+    (tmp_path / "work" / "log.md").write_text(LOG + many, encoding="utf-8")
+    got = dsc.evidence(tmp_path, ["example/app#7"], "2026-11-09")
+    assert len(got) == dsc.EVIDENCE_MAX and got[-1].endswith("step 11 of example/app#7"), "the newest rows"
+    assert dsc.ref_needles("see example/app#7 and example/app#7, then other/site#2") == [
+        "example/app#7", "other/site#2", "app#7", "site#2"], "log rows mostly write repo#n"
+    long = f"| 2026-11-10 12:00 | ✨ | r | example/app#7 {'x' * 400} |\n"
+    (tmp_path / "work" / "log.md").write_text(long, encoding="utf-8")
+    assert len(dsc.evidence(tmp_path, ["example/app#7"], "2026-11-01")[0]) <= dsc.EVIDENCE_LEN
+
+
+def test_a_task_carries_its_evidence_and_a_newer_row_makes_its_brief_stale_the_basis_stays_the_files(world):
+    log = world.app.root / "work" / "log.md"
+    add_task(world, "slides")
+    log.write_text("| 2026-11-10 12:00 | 🔀 | repo | slides task: deck published |\n", encoding="utf-8")
+    item = dsc.task_item(world.app.root, "slides")
+    assert json.loads(item["data"])["evidence"] == ["2026-11-10 12:00 repo: slides task: deck published"]
+    assert item["evidence_at"] == "2026-11-10 12:00"
+    text = (world.app.root / "work" / "tasks" / "slides" / "STATUS.md").read_text(encoding="utf-8")
+    assert item["basis"] == dsc.brief_basis(text), "the basis stays the file's: evidence never writes into it"
+    key = "task:slides"
+    assert world.act("describe_run", key=key)["ok"]
+    assert world.app.describe.state_for(key)["stale"] is False
+    log.write_text(log.read_text(encoding="utf-8") + "| 2026-11-10 13:00 | 🔀 | repo | slides done and closed |\n", encoding="utf-8")
+    assert world.app.describe.state_for(key)["stale_why"] == "evidence", "a newer row asks for a new look"
+    assert "evidence" in dsc.SYSTEM and '"done"' in dsc.SYSTEM
